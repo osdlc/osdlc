@@ -2,63 +2,61 @@
 
 What has been merged into the default branch, and what can go away.
 
-Point it at a repository and it inventories the local branches and
-worktrees, and with `--remotes` the remote branches too, classifying each
-as `safe-to-delete`, `safe-to-keep` or `needs-investigation` — with the
-evidence behind the verdict and the literal command that would act on it.
+Point it at a repository and it lists the worktrees and local branches, and
+with `--remote` the remote branches too, and judges each one: `delete`,
+`review`, `keep` or `blocked`, with the evidence behind the verdict, the risks
+deleting it carries, and the literal command that would delete it.
 
-`repo-cleaner` (or `repo-cleaner status`) never deletes anything. It prints
-the commands that would. `repo-cleaner apply` deletes: it checks each row
-again, shows you what it will delete and skip, and asks before it runs.
+`repo-cleaner` never deletes anything; it prints the commands that would.
+`repo-cleaner clean` deletes: it checks each row again, shows you what it
+will delete and skip, and asks before it runs.
 
 By default it works on your own machine only: worktrees and local branches,
-nothing fetched and no `gh` call, compared with the `origin/<default>` you
-last fetched (the header says `not fetched`). `--remotes` (or `--only
-remotes`, or `--remote-url`) turns on all three things that need the
-network: it fetches each remote first, asks `gh` about pull requests, and
-sweeps remote branches. Remote branches are shared, often number in the
-hundreds, and each one is compared with the default branch, so they make a
-sweep much slower. A local report ends with a line saying what it left out.
+nothing fetched and no pull-request lookup, compared with the
+`origin/<default>` you last fetched (the header says `not fetched`).
+`--remote` turns on all three things that need the network: it fetches each
+remote first, asks GitHub or GitLab about pull requests, and judges remote
+branches. Remote branches are shared, often number in the hundreds, and each
+one is compared with the default branch, so they make a sweep much slower. A
+local report ends with a line saying what it left out.
 
-Without `gh`, a squash-merged branch is still found by comparing patches,
-and a clean worktree merged by ancestry is `delete` once its branch shows
-it was worked on (see [How it decides](#how-it-decides)); one that looks
-freshly made stays `review`.
+Without a pull-request lookup, a squash-merged branch is still found by
+comparing patches, and a clean worktree merged by ancestry is `delete` once
+its branch shows it was worked on (see [How it decides](#how-it-decides)); one
+that looks freshly made stays `review`.
 
-On a terminal, a long sweep step draws a progress bar on stderr, and
-`apply` draws its steps as a list that updates in place: each row has its
-own bar, empty while it waits, half full while it runs and full with a `✓`
-(or `✗`) when it is done, with a bar for the whole run underneath:
+```console
+$ repo-cleaner --remote
+/Users/me/work/api  (acme/api, default main, origin)
+  branch    fix/login-redirect     delete   PR #412 merged
+            git update-ref -d refs/heads/fix/login-redirect 3f9c2e1d8b7a6c5d4e3f2a1b0c9d8e7f6a5b4c3d
+  branch    spike/cache            review   mixed or absent signals; needs --allow abandon-unmerged (drops 2 commits)
+            git update-ref -d refs/heads/spike/cache 9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b
+  worktree  /Users/me/work/wt/412  delete   clean; PR #412 merged
+            git -C /Users/me/work/api worktree remove /Users/me/work/wt/412
+  remote    origin/fix/login-…     delete   PR #412 merged (auto-delete didn't fire)
+            git push --force-with-lease=refs/heads/fix/login-redirect:3f9c2e1d8b7a6c5d4e3f2a1b0c9d8e7f6a5b4c3d origin :refs/heads/fix/login-redirect
+
+3 to delete, 1 to review, across 1 repository.
+```
+
+On a terminal, the report and the preview are colored: red for a delete,
+blue for a prune, yellow for a review, a blocked or a skipped row, green for a
+keep. `NO_COLOR` turns this off; a pipe or a file gets no color unless
+`FORCE_COLOR` asks for it. A long sweep step draws a progress bar on stderr,
+and `clean` draws its steps as a list that updates in place, with a bar for the
+whole run underneath:
 
 ```text
-  ██████████ ✓ delete  local_branch  feat/a
-  █████░░░░░ › delete  local_branch  feat/b
-  ░░░░░░░░░░   delete  remote_branch  origin/feat/b
-  ░░░░░░░░░░   prune   worktree records in /Users/me/work/api
+  ██████████ ✓ delete  branch:feat/a
+  █████░░░░░ › delete  branch:feat/b
+  ░░░░░░░░░░   delete  remote:origin/feat/b
+  ░░░░░░░░░░   prune   worktree:/Users/me/work/wt/old
   ████████░░░░░░░░░░░░░░░░░░░░░░ 1/4
 ```
 
-A list taller than the terminal scrolls to keep the running step in view.
-A failed step's error is printed in full under the list.
-
-On a terminal, the report and the apply preview are colored: red for a
-delete, blue for a prune, yellow for a review or a skipped row, green for a
-keep. `NO_COLOR` turns this off. A pipe or a file gets no color unless
-`FORCE_COLOR` asks for it.
-
-```console
-$ repo-cleaner --remotes
-/Users/me/work/api  (acme/api, default main, origin)
-  local_branch   fix/login-redirect   delete  PR #412 merged
-                 git update-ref -d refs/heads/fix/login-redirect 3f9c2e1d8b7a6c5d4e3f2a1b0c9d8e7f6a5b4c3d
-  local_branch   spike/cache          review  mixed or absent signals
-  worktree       wt/412               delete  clean; PR #412 merged
-                 git -C /Users/me/work/api worktree remove wt/412
-  remote_branch  origin/fix/login-…   delete  PR #412 merged (auto-delete didn't fire)
-                 git push --force-with-lease=refs/heads/fix/login-redirect:3f9c2e1d8b7a6c5d4e3f2a1b0c9d8e7f6a5b4c3d origin :refs/heads/fix/login-redirect
-
-1 to delete, 1 to review, across 1 repository.
-```
+A list taller than the terminal scrolls to keep the running step in view, and
+a failed step's error is printed in full under the list.
 
 ## Install
 
@@ -90,6 +88,279 @@ nvm users in fish can use a fish port such as `nvm.fish`; fnm has
 `fnm env --use-on-cd --shell fish | source`. Then open a new shell and check
 with `type repo-cleaner`.
 
+
+## Commands
+
+```bash
+repo-cleaner [target...]          # the report: what is merged, what can go; deletes nothing
+repo-cleaner plan  [target...]    # save the sweep's rows and their evidence, to run later (-o <file>)
+repo-cleaner clean [target...]    # check again, show the steps, ask, delete
+repo-cleaner cache                # list or remove the clones kept for remote URL targets
+repo-cleaner dev                  # run repo-cleaner from a development checkout
+```
+
+Every command takes `--help`, and `--help --extended` for the full reference:
+what each option means, the words the report uses, and which combinations are
+refused. A checkout directory named like a command is swept as `./<name>`.
+
+### Targets
+
+A target is what to sweep:
+
+| Target | Swept |
+| --- | --- |
+| a checkout | that repository; a linked worktree sweeps the repository it belongs to |
+| a directory | every checkout found under it, three levels deep at most |
+| a remote URL (`https://`, `ssh://`, `file://`, `user@host:path`) | its remote branches only, through a clone kept in the cache directory (see [A remote with no checkout](#a-remote-with-no-checkout)) |
+
+No target sweeps the checkout you are in. A bare invocation never fans out.
+What a target names is read off the disk rather than from how it is written:
+a path that is itself a checkout names that repository, and a path that is
+not is searched for the checkouts under it, descending through directories
+that are not checkouts and stopping at the ones that are. A directory holding
+a checkout and three of its worktrees sweeps one repository, not four; the
+worktrees appear as rows of that repository.
+
+The report ends with what the search cost — `searched 1 target: 214
+directories read, 12 checkouts found.` — because those numbers are how a
+target pointing at the wrong directory gets caught. A search that passes
+10,000 directories says so on stderr while it is still running. A target that
+resolves to nothing is reported rather than dropped.
+
+### Sweep options
+
+The report, `plan` and `clean` take these:
+
+| Option | Meaning |
+| --- | --- |
+| `--remote` | Also judge remote branches. Turns on the network: fetches each remote first and asks GitHub or GitLab about pull requests. Slower. |
+| `--offline` | With `--remote`: do not fetch; judge against the remote-tracking refs already on disk. |
+| `--only <kinds>` | Only these kinds of row: `worktree`, `branch`, `remote`, comma-separated. Default: `worktree,branch`, plus `remote` with `--remote`. Naming `remote` implies `--remote`. |
+| `--branch <name\|HEAD>` | Only the rows of one branch: its worktree, its local branch, and its remote branch with `--remote`. `HEAD` is the branch checked out at the target. Never the default branch. |
+| `--against <remote>` | The remote whose default branch counts as "merged into". Default: `origin`, then the first remote. |
+| `--provider <name>` | With `--remote`: where pull requests come from. `auto` (by the remote's host), `github`, `gitlab`, or `none` to judge on git evidence alone. |
+| `--no-progress` | No progress line on stderr. |
+
+### The report
+
+`repo-cleaner [target...]` lists each row with its verdict, why, the risks it
+carries, and the command that would delete it.
+
+| Option | Meaning |
+| --- | --- |
+| `--all` | Also show `keep` rows. By default only `delete`, `review` and `blocked` rows are listed. Only with `--format text`. |
+| `--format text` | The report. The default. |
+| `--format summary` | Counts per repository: total, merged, delete, prune, review, blocked, keep. |
+| `--format commands` | Only the commands of `delete` rows that carry no risk, ready to copy. |
+| `--format json` | Everything, evidence included, for scripts. |
+
+```console
+$ repo-cleaner --format summary --remote
+/Users/me/work/api  (acme/api, default main, origin)
+                   total  merged  delete  prune  review  blocked   keep
+  local branches      12       8       6      0       1        0      5
+  worktrees            4       3       1      1       0        1      1
+  remote branches     40      31      30      0       6        0      4
+
+37 to delete, 1 to prune, 7 to review, 1 blocked, across 1 repository.
+```
+
+`prune` counts worktree rows whose directory is gone, or is no longer a
+checkout: deleting one drops the stale record, with `git worktree remove
+<path>` for a directory that is gone (that worktree's record alone) and the
+repository-wide `git worktree prune` for one left without its `.git`, and a
+directory that is still there stays. `merged` counts rows whose work is on
+the default branch, by ancestry, by a merged PR at the branch's head, or by a
+patch match; the default branch and the primary worktree are counted in
+`total` but not judged.
+
+### `repo-cleaner plan`
+
+Sweeps and saves every row, each with a fingerprint of the evidence behind its
+verdict, so it can be reviewed now and run later with
+`clean --plan`. `-o, --out <file>` sets where it goes; the default, `-`, is
+stdout, and the totals line goes to stderr.
+
+### `repo-cleaner clean`
+
+Sweeps (or reads `--plan`), checks every row again, shows the steps, asks,
+then deletes, compare-and-swap, verifying each step and stopping at the first
+failure. Without `--pick` it runs every row judged `delete`.
+
+| Option | Meaning |
+| --- | --- |
+| `--pick <row>` | Work on exactly these rows. See [Pick and spare](#pick-and-spare). Repeatable. |
+| `--spare <row>` | Leave this row alone, and make sure it is what you saw. Repeatable. |
+| `--allow <risk>` | Accept this risk for every row that carries it. |
+| `--allow <risk>=<row>` | Accept it for that one row only. |
+| `--plan <file\|->` | Run a saved plan instead of sweeping now (`-` reads stdin). Rows whose evidence changed since the plan are dropped, not deleted. |
+| `-y, --yes` | Do not ask. Without it, and with no terminal to ask on, `clean` refuses. |
+| `--dry-run` | Check and show the steps, then stop. |
+| `--receipt <file>` | Write a record of every step, rewritten after each one. Default: next to a `--plan` file; none otherwise. |
+| `--format text\|json` | How the steps and the outcome are shown. |
+
+```text
+/Users/me/work/api
+  delete  branch:fix/login-redirect
+          git update-ref -d refs/heads/fix/login-redirect 3f9c2e1d…
+  prune   worktree:/Users/me/work/wt/old
+          git -C /Users/me/work/api worktree remove /Users/me/work/wt/old
+  skip    worktree:/Users/me/work/wt/spike
+          needs-pick: review: clean but no clear disposability signal; pick it to run it
+
+would delete: 1 local branch, 1 stale worktree pruned
+skipped 1, not deleted: 1 needs-pick (name with --pick)
+Delete 2 items? [y/N]
+```
+
+`clean` throws away anything typed while the sweep ran, so a key pressed
+early cannot answer the question, and says so when it did.
+
+### Pick and spare
+
+**`--pick <row>`** means "work on exactly these rows". It does two things:
+
+1. **It narrows the run.** Only the picked rows are considered; everything
+   else is left alone.
+2. **It opts in rows that never run otherwise.** Without `--pick`, `clean`
+   deletes only rows judged `delete`. A `review` row, or a `keep` row with an
+   action (a branch with an open pull request), is deleted only when it is
+   named, so a borderline row never goes as part of a batch.
+
+Picking does not approve anything: a picked row that carries a risk still
+needs `--allow` for it. A `blocked` row, or a `keep` row with no action, is
+skipped and shown with the reason.
+
+**`--spare <row>`** means "leave this row alone, and make sure it is what I
+saw". The usual case: delete a merged worktree and its local branch, but keep
+the branch on the remote as a backup.
+
+- A spared row is not deleted, even if it is judged `delete`.
+- A spared remote branch is still checked. If it is gone or its tip moved
+  since the plan, the run stops before deleting anything: you spared it for
+  what it held, so if that changed, the rest of the plan rests on a wrong
+  assumption. The run's first step checks the tip again with `git ls-remote`,
+  so one that moves after the check stops the run too.
+- Sparing a worktree also spares its branch, which was only free to delete
+  because the worktree was going.
+
+### Rows, verdicts and risks
+
+A **row** is one thing that could be deleted, named `<kind>:<name>`. A bare
+name or path works when only one row has it.
+
+| Row | What it is | Deleted with |
+| --- | --- | --- |
+| `worktree:<path>` | a linked worktree | `git worktree remove`; when its directory is already gone, the same on its record alone, or `git worktree prune` when the directory is left without its `.git` |
+| `branch:<name>` | a local branch | `git update-ref -d refs/heads/<name> <sha>` |
+| `remote:<remote>/<name>` | a branch on a remote | `git push --force-with-lease=…:<sha> <remote> :refs/heads/<name>` |
+
+A **verdict** is what the sweep concluded about a row:
+
+| Verdict | Meaning | What `clean` does |
+| --- | --- | --- |
+| `delete` | Its work is on the default branch, or it is otherwise safe to lose | Deletes it, once its risks are allowed |
+| `review` | The signals are mixed, or it holds work | Deletes it only when picked and its risks are allowed |
+| `blocked` | Something rules removal out, such as a lock, a running process, or a submodule that cannot be read | Never deletes it; fix the cause and sweep again |
+| `keep` | Structural (the default branch, the current checkout, the primary worktree), or in use (an open pull request) | Never deletes a structural row; deletes one in use only when picked and `confirm-open-pr` is allowed |
+
+The report shows `prune` for a `delete` row whose worktree directory is
+already gone: only the stale record goes.
+
+A **risk** is what deleting a row would lose. Each row lists its risks, and
+you approve them by name with `--allow`:
+
+| Risk | Meaning |
+| --- | --- |
+| `abandon-unmerged` | Commits not on the default branch and not captured by an exact-head merged PR, or a worktree's (or its submodules') commits and stashes that no remote has. `evidence.uniqueCommits` counts the commits. |
+| `discard-changes` | Uncommitted or untracked files in the worktree or any of its submodules. |
+| `confirm-open-pr` | The branch has an open pull request; deleting the remote branch closes it. |
+
+A worktree's submodules are part of it: one `--allow` on the worktree row
+covers the same risk in every submodule. A stash in the worktree itself is
+shared with the main checkout and survives, so it carries no risk.
+
+A branch whose worktree is judged `delete` is not held by it: the sweep judges
+the branch on its own and records the worktree's path in `evidence.worktree`,
+so one run removes the worktree and then deletes the branch. `clean` deletes
+such a branch only when the same run removes its worktree, and drops it as
+`held` otherwise. With `--only branch` no worktree is swept, so the branch
+stays held.
+
+### Refused combinations
+
+A combination of options is refused when it contradicts itself, or when one of
+its options would have no effect: a flag that is silently ignored leaves you
+believing something that is not true. repo-cleaner never guesses, and no
+option silently overrides another.
+
+Refused before anything is deleted, with exit 2. Most are refused before
+anything is swept; a row named two ways (a bare name and its id), and an
+`--allow` for a row, are checked against the plan, after the sweep:
+
+| Combination | Why |
+| --- | --- |
+| The same row in `--pick` and `--spare` | Asks for the row to be deleted and kept |
+| `--allow <risk>=<row>` for a spared row, or for a row outside `--pick` | Approves deleting something that will not be deleted |
+| A picked or spared row of a kind `--only` leaves out | The row cannot be in the run |
+| A picked or spared row that is not one of `--branch`'s rows | The same |
+| `--branch` with more than one target, with a remote URL, or naming the default branch | `--branch` means one branch of one checkout, and the default branch is never a candidate |
+| `--plan` with targets or sweep options | The plan already fixed what is swept |
+| `--plan -` without `--yes` or `--dry-run` | stdin carries the plan, so nothing can ask |
+| `--yes` with `--dry-run` | One deletes without asking, the other deletes nothing |
+| `--receipt` with `--dry-run` | Nothing runs, so there is nothing to record |
+| `--offline` or `--provider` without `--remote` | Nothing is fetched or looked up without it |
+| `--remote` with an `--only` that leaves `remote` out | They ask for opposite things |
+| A remote URL target with `--only worktree` or `--only branch`, with `--offline`, or mixed with checkout targets | A remote URL has only remote branches, and it is fetched to be swept |
+| `--all` with any `--format` but `text` | `--all` shows keep rows in the text report only |
+
+Refused after the sweep, before deleting, with exit 1:
+
+- a picked, spared or allowed row the plan does not have;
+- a row name that matches rows in more than one repository: sweep or plan
+  only the repository it is in (a bare name can also be given as its full id,
+  when the matches are of different kinds);
+- a spared remote branch that is gone or moved since the plan.
+
+Allowed, because nothing contradicts:
+
+| Combination | What happens |
+| --- | --- |
+| The same row picked twice | It runs once |
+| `--allow <risk>` with `--allow <risk>=<row>` | The broader one covers it |
+| `--allow` for a risk no row that runs carries | Runs; the preview lists it as `unused` |
+| Picking a `blocked` or `keep` row | It is skipped and shown with the reason; the rest runs |
+| `--only remote` without `--remote` | Asking for remote branches implies the network |
+
+### A remote with no checkout
+
+```bash
+repo-cleaner git@github.com:acme/api.git
+repo-cleaner clean git@github.com:acme/api.git
+```
+
+A remote URL target sweeps a remote's branches when you have no checkout of
+it. It clones the URL once, with `--no-checkout`, into
+`repo-cleaner/remotes/` under the cache directory (`~/Library/Caches` on
+macOS, `$XDG_CACHE_HOME` or `~/.cache` on Linux, `REPO_CLEANER_CACHE_DIR` to
+move it), and sweeps that clone. Later runs reuse the clone and fetch. Only
+remote branches are swept: the clone's own branches and worktree are not
+yours. Deletes are pushed to the URL from the clone, compare-and-swap as
+always. A local bare repository is named as `file:///path/to/repo.git`.
+
+The clone is kept, not deleted after the run, so a plan of a remote URL can
+run later from anywhere: the plan names the clone's directory.
+`repo-cleaner cache` lists the clones with their URL and size;
+`repo-cleaner cache remove <url>` drops one, and `cache remove --all` drops
+every one, a clone left by a stopped run included. A plan whose clone was
+removed cannot run; sweep again. The clone is a full one, not
+`--filter=blob:none`: the patch check reads file contents.
+
+A clone is reused only while its `origin` fetches from that URL and pushes to
+it alone; `clean --plan` checks the same of a plan's clone before deleting.
+The clone's directory name and every message carry the URL with its
+credentials, query and fragment removed.
+
 ## How it decides
 
 Three signals settle most items. The first two are enough alone; the third needs a content check too (see [Patch equivalence](#patch-equivalence)):
@@ -104,11 +375,11 @@ Ancestry is measured against `<remote>/<default>`, so work merged only into an
 unpushed local default branch does not count. Without a remote, the local
 default branch is used.
 
-A merged PR that fails the head or base check is kept in `facts.pr` with
-`evidence` set to `head-moved` or `other-base`. Fork PRs are ignored.
+A merged PR that fails the head or base check is kept in `evidence.pr` with
+`proof` set to `head-moved` or `other-base`. Fork PRs are ignored.
 
 Everything else is held back. A branch that is neither merged nor an ancestor
-is `needs-investigation` with the reasons spelled out, not a guess. A worktree
+is `review` with the reasons spelled out, not a guess. A worktree
 holding uncommitted or unpushed work is never proposed for removal whatever
 else is true of it — losing an hour of someone's work costs more than any
 amount of clutter.
@@ -117,24 +388,73 @@ A clean worktree whose HEAD is merged by ancestry alone, with no merged PR
 or patch match, needs one more sign, because a worktree that `git worktree
 add -b` just made from the default branch is merged that way too, and
 removing it would lose the ignored files of work about to start. The sign is
-in `facts.branch_used`: `commits` when the branch's reflog records a commit,
+in `evidence.branchUsed`: `commits` when the branch's reflog records a commit,
 cherry-pick, `am`, or a merge or pull that made a merge commit (a
 fast-forward only moves the branch), and `upstream` when the branch
 tracks a branch on a remote, other than the default branch (a branch made
 with `--track` from `main` or `origin/main` does not count). With either, the worktree
-is `safe-to-delete`; with neither (`null`) it stays `needs-investigation`.
+is `delete`; with neither (`null`) it stays `review`.
 
-Some worktrees are held back whatever their branch says. Each lands in
-`facts.blockers`, and the row carries no command and has `deletable: false`:
+Some worktrees are held back whatever their branch says and whatever is
+allowed. Each lands in `row.blockers`, the row's verdict is `blocked`, and it
+carries no command and no action:
 
 | Blocker | Why |
 | --- | --- |
-| `locked-worktree` | Someone ran `git worktree lock` and the lock's owner is alive or unknown; the reason is in `facts.lock_reason`. A lock whose owner is dead is not a blocker (see below). |
-| `live-process` | A process other than an idle shell has its working directory in the worktree (`facts.live_processes`), lock or not. |
-| `process-probe-failed` | The process table could not be read (no `lsof`, a timeout, an `lsof` that failed outright), so nobody can say the directory is idle. `facts.process_probe_error` has the message. |
+| `locked-worktree` | Someone ran `git worktree lock` and the lock's owner is alive or unknown; the reason is in `evidence.lockReason`. A lock whose owner is dead is not a blocker (see below). |
+| `live-process` | A process other than an idle shell has its working directory in the worktree (`evidence.liveProcesses`), lock or not. |
+| `process-probe-failed` | The process table could not be read (no `lsof`, a timeout, an `lsof` that failed outright), so nobody can say the directory is idle. `evidence.processProbeError` has the message. |
 | `hidden-index-flags` | Files marked skip-worktree or assume-unchanged hide edits from `status`. |
 | `nested-repository` | An untracked or ignored directory holds a repository with its own history. |
-| `branch-in-other-worktree` | Another worktree has the same branch checked out (`facts.other_worktrees`). |
+| `branch-in-other-worktree` | Another worktree has the same branch checked out (`evidence.otherWorktrees`). |
+| `submodule-unreadable` | A submodule could not be read, so nobody can say it is safe to lose (see [Submodules](#submodules)). |
+
+### Submodules
+
+A linked worktree's submodules keep their git dirs inside the worktree's own
+git dir (`.git/worktrees/<id>/modules/<name>`), not the main checkout's. Removing
+the worktree, or pruning it once its directory is gone, deletes them: a commit
+made in a submodule and never pushed goes with it, and so does a stash or a
+local branch. Plain `git worktree remove` refuses every worktree with a
+checked-out submodule, or with a submodule git dir a `git submodule deinit`
+left behind, whatever state it is in. It takes `--force`, and `--force` also
+skips git's own check for modified and untracked files.
+
+So the sweep reads every submodule itself, nested ones through their parents,
+and every left-over submodule git dir, and records what it found in
+`evidence.submodules`. A submodule is judged as part of its worktree: the same
+risks apply wherever they are, and one `--allow` on a worktree row covers its
+submodules too.
+
+| Found in a submodule | Effect on the worktree row |
+| --- | --- |
+| Commits on HEAD or a local branch that no remote-tracking ref holds, or a stash | `review`, carries `abandon-unmerged`; the reason names each submodule and what it holds |
+| Modified, staged or untracked files | `review`, carries `discard-changes`; `evidence.submoduleDirtyFiles` counts them |
+| Skip-worktree or assume-unchanged files, nested repositories | `hidden-index-flags`, `nested-repository`, with the submodule's path in front |
+| A git call that failed | `submodule-unreadable` blocker |
+
+A worktree whose submodules are all clean and pushed is judged as any other,
+and when it is `delete` its command is `git worktree remove --force`
+(`evidence.forcedForSubmodules` is `true`, and the reason says why). Just before that
+remove, `clean` checks the worktree's own files and every submodule again,
+since git will not, and refuses the step if it would lose anything not allowed. A submodule's
+state is part of the plan fingerprint, so a submodule that moved since the plan
+drops the row first.
+
+A worktree whose directory is gone is read through its git dir: unpushed work
+in a left-over submodule git dir makes the prune row a `review` that carries
+`abandon-unmerged`.
+A worktree whose directory is gone is removed by its own record. One whose
+directory is left without its `.git` takes the repository-wide `git worktree
+prune`, which drops every gone worktree, not only the planned one. So such a
+row runs last, and only while every other gone worktree that prune would drop
+goes in the same run; otherwise `clean` drops it (`blocked`, with the reason).
+A run never drops the record of a gone worktree it did not select.
+
+Commits count as pushed only when a remote-tracking ref of the submodule holds
+them. A superproject that records a submodule commit reachable from no branch
+on the submodule's remote (fetched by sha, or on a branch since deleted) carries
+`abandon-unmerged` until a fetch brings it under one.
 
 ### Patch equivalence
 
@@ -149,16 +469,16 @@ branch as safe as an ancestor. A second, independent check must agree:
 `git merge-tree --write-tree <default> <tip>` must come out clean with exactly
 the default branch's tree, which shows the branch's content is already there. It
 needs git 2.38 or later; an older git, a conflict or any failure counts as not
-agreed. The row is `safe-to-delete` either way, but only an agreed check drops
-the `abandon-unmerged` authorization. Without it the row keeps requiring that
-grant, and a worktree with unpushed commits stays `needs-investigation`. The row
-carries three facts, and its reason says which case applied:
+agreed. The row is `delete` either way, but only an agreed check drops the
+`abandon-unmerged` risk. Without it the row keeps carrying that risk, and a
+worktree with unpushed commits stays `review`. The row carries three pieces of
+evidence, and its reason says which case applied:
 
-| Fact | Value |
+| Evidence | Value |
 | --- | --- |
-| `facts.landing` | `patch-equivalent` |
-| `facts.landing_check` | which check passed, below |
-| `facts.landing_content_confirmed` | `true` when the merge-tree check agreed, `false` otherwise |
+| `evidence.landing` | `patch-equivalent` |
+| `evidence.landingCheck` | which check passed, below |
+| `evidence.landingContentConfirmed` | `true` when the merge-tree check agreed, `false` otherwise |
 
 | `landing_check` | Meaning |
 | --- | --- |
@@ -168,7 +488,7 @@ carries three facts, and its reason says which case applied:
 
 `squashed` accepts any one commit on the default branch with the same net
 patch, not necessarily one that came from this branch. That is acceptable only
-because the content check, or the grant, stands behind it.
+because the content check, or `--allow abandon-unmerged`, stands behind it.
 
 The squashed check builds one commit object with `git commit-tree` and no ref.
 It leaves the index, the working tree and every ref alone, and needs no git
@@ -179,7 +499,7 @@ The check decides what gets deleted, so a doubt is never evidence. None of
 these count as landed:
 
 - a commit that is not on the default branch, however many others are (the
-  commits that are missing are listed in `facts.unmatched_commits` and in the
+  commits that are missing are listed in `evidence.unmatchedCommits` and in the
   investigation text when part of the work did land);
 - a git call that fails, or output that cannot be read;
 - a shallow clone, a missing merge base, a ref that does not resolve;
@@ -193,7 +513,7 @@ A patch id says two changes are the same, not that they come from the same
 branch, and it ignores whitespace. A one-line change that the default branch
 also made independently, an indentation-only difference, or work that landed
 and was then reverted all match by patch id; the content check does not agree
-with them, so they keep needing the grant.
+with them, so they keep needing `--allow abandon-unmerged`.
 
 ### Locks and running processes
 
@@ -202,9 +522,9 @@ token from the lock reason, `pid <N>`, optionally followed by `start <time>`,
 and asks whether that process is still running. It reads nothing else of the
 reason, so a free-form reason such as `keep, build running` always blocks.
 
-- The owner is dead: the lock is not a blocker. `facts.stale_lock` is `true`,
-  `facts.lock_owner` holds the pid and start time, and the row's commands begin
-  with `git worktree unlock`. `apply` unlocks, removes and verifies it, and the
+- The owner is dead: the lock is not a blocker. `evidence.staleLock` is `true`,
+  `evidence.lockOwner` holds the pid and start time, and the row's commands begin
+  with `git worktree unlock`. `clean` unlocks, removes and verifies it, and the
   receipt records the `unlock-worktree` step.
 - The owner is alive, or cannot be ruled out: `locked-worktree`.
 - A lock writes `pid <N>` and, to guard against pid reuse, `start <time>`. The
@@ -220,7 +540,7 @@ reason, so a free-form reason such as `keep, build running` always blocks.
 - The `pid` token is trusted as a local pid. A pid from another container or
   host that shares the filesystem is looked up here, will not be found, and
   reads as dead; do not sweep a repository whose locks were written elsewhere.
-- Before the unlock and again before the remove, `apply` asks again, and reads
+- Before the unlock and again before the remove, `clean` asks again, and reads
   the process table afresh. If the owner is alive by then, or a process other
   than an idle shell works in the directory, or the table cannot be read, the
   step fails and the run stops. A row dropped at the re-sweep touches nothing;
@@ -233,16 +553,16 @@ reason, so a free-form reason such as `keep, build running` always blocks.
 - Separately, any process whose working directory is inside the worktree blocks
   it as `live-process`, lock or not. A shell (`sh`, `bash`, `zsh`, `fish`) is
   idle only when it has no child processes; it is then listed in
-  `facts.idle_shells` and does not block. A shell with a child, or whose
+  `evidence.idleShells` and does not block. A shell with a child, or whose
   children are unknown, counts as a live process.
 
 Both questions go to a `ProcessProbe` (`alive(pid, startedAt?)` and
-`holders(path, { fresh? })`), passed as `probe` in the options of `sweepRepo`,
-`sweepRepos` and `applyPlan`. The default, `defaultProcessProbe()`, runs
+`holders(path, { fresh? })`), passed as `probe` in the options of `sweep`,
+`check` and `run`. The default, `defaultProcessProbe()`, runs
 `ps -o lstart=`, `ps -A -o pid=,ppid=` and `lsof -d cwd` through
 `@osdlc/command-seam`, and needs `ps` and `lsof` on `PATH`. It reads the
-process table once per probe and reuses it for every worktree: `sweepRepo`
-makes one probe per call, and `applyPlan` uses one probe for its re-sweep and
+process table once per probe and reuses it for every worktree: `sweep` makes
+one probe per repository, and `run` uses one probe for its re-sweep and
 reads the table afresh for each pre-unlock and pre-remove check. Where the
 table cannot be read the worktree is held back as `process-probe-failed`. A
 host or test supplies its own probe.
@@ -255,230 +575,48 @@ says so. See [Providers (prototype)](#providers-prototype).
 Every branch delete names the full sha the sweep judged. `update-ref -d` and
 the pinned `--force-with-lease` push both refuse when the branch has moved
 since, so a commit pushed while you read the plan survives it.
-`localDeleteCommand` and `remoteDeleteCommand` build them for hosts that add
-their own rows.
 
-Every row names, in `requires`, the risks its delete carries, so a person
-approves them by name:
-
-| Authorization | When a row needs it |
-| --- | --- |
-| `abandon-unmerged` | Commits not on the default branch and not captured by an exact-head merged PR; a worktree's unpushed commits. `facts.unique_commits` counts them. |
-| `discard-changes` | A worktree has modified, staged or untracked files. |
-| `confirm-open-pr` | The branch has an open PR. |
-
-A row kept for structure (default branch, current HEAD, a branch held by a
-worktree, the primary or caller's worktree) has `deletable: false`.
-
-A branch whose worktree is `safe-to-delete` is not held by it: the sweep judges
-the branch on its own and records the worktree's path in `facts.worktree`, so
-one run removes the worktree and then deletes the branch. `apply` deletes such
-a branch only when the same run removes its worktree, and skips it otherwise.
-With `--only branches` no worktree is swept, so the branch stays held.
-
-## Commands
+## Plan and clean
 
 ```bash
-repo-cleaner [status]   # the report: what is merged, what can go (the default)
-repo-cleaner summary    # counts per repository: total, merged, delete, prune, review, keep
-repo-cleaner plan       # the deletable rows as a plan, to stdout or -o <file>
-repo-cleaner apply      # re-check, show the steps, ask, delete
-repo-cleaner cache      # list or remove the clones --remote-url keeps
+repo-cleaner clean                                   # sweep, show the steps, ask, delete
+repo-cleaner clean --only worktree --yes             # no question
+repo-cleaner plan -o plan.json                       # save the plan to review or edit
+repo-cleaner clean --plan plan.json --pick branch:feat/x
+repo-cleaner plan | repo-cleaner clean --plan - --yes
 ```
 
-The first four take the same paths and sweep options. A checkout directory
-named like a command is swept as `./<name>`.
+A plan holds every row with a fingerprint of the evidence behind its verdict,
+and the sweep options it was made with. Without `--pick` only the rows that
+could be deleted run; the blocked and structural rows are there so a pick of
+one is skipped with its reason. `clean`
+either sweeps and plans in memory, or reads a plan with `--plan`. A plan of an
+older version is refused, not translated: sweep again.
 
-`apply` asks before deleting, and throws away anything typed while the sweep
-ran, so a key pressed early cannot answer the question. It says so when it
-did.
+Before it deletes anything, `clean` sweeps again, with the plan's options, and
+drops a row that is gone (`gone`), that can no longer be deleted (`blocked`,
+`keep`, or `held` for a branch whose worktree this run does not remove), that
+was not picked and is no longer `delete` (`needs-pick`), whose evidence moved
+(`changed`), or that carries a risk you did not `--allow` (`not-allowed`). The
+re-check reads only the kinds the selected rows are in, so running a plan of
+local rows does not compare every remote branch again, and it fetches when the
+plan's sweep did, so it judges against the same, current default branch.
 
-```console
-$ repo-cleaner summary --remotes
-/Users/me/work/api  (acme/api, default main, origin)
-                   total  merged  delete  prune  review   keep
-  local branches      12       8       6      0       1      5
-  worktrees            4       3       1      1       1      1
-  remote branches     40      31      30      0       6      4
-
-37 to delete, 1 to prune, 8 to review, across 1 repository.
-```
-
-`prune` counts worktree rows whose directory is gone, or is no longer a
-checkout: deleting one runs `git worktree prune` to drop the stale link, and
-a directory that is still there stays. The report labels those rows `prune`
-rather than `delete`. In `--output json` they are `safe-to-delete` with
-`action: "prune"`, and each summary bucket has a `prune` count, a part of its
-`safe-to-delete` count.
-
-`merged` counts rows whose work is on the default branch: by ancestry, by a
-merged PR at the branch's head, or by a patch match. A branch checked out in a
-worktree counts as merged by ancestry or PR alone. The default branch and the
-primary worktree are counted in `total` but not judged. Each row's verdict is
-in its `facts.merged`.
-
-## Scope is opt-in
-
-```bash
-repo-cleaner                        # the repository you are standing in
-repo-cleaner ~/work/api ~/work/web  # named repositories
-repo-cleaner ~/Developer            # every checkout under it
-```
-
-A bare invocation never fans out. What an argument names is read off the disk
-rather than from how it is written: a path that is itself a checkout names
-that repository, and a path that is not is searched for the checkouts under
-it, descending through directories that are not checkouts — an owner
-directory, a folder per client — and stopping at the ones that are.
-
-A linked worktree collapses into the repository it belongs to, so a directory
-holding a checkout and three of its worktrees sweeps one repository, not four.
-Those worktrees still appear — as worktree rows in that repository's own
-inventory.
-
-The report ends with what the search cost — `searched 1 entry: 214
-directories read, 12 checkouts found.` — because those numbers are how an
-entry pointing at the wrong directory gets caught. A search that passes
-10,000 directories says so on stderr while it is still running, and the walk
-stops descending three levels below the entry.
-
-An entry that resolves to nothing is reported rather than dropped. A worklist
-that silently sweeps four of the five repositories it was given is worse than
-one that says which it could not find.
-
-### A remote with no checkout
-
-```bash
-repo-cleaner --remote-url git@github.com:acme/api.git
-repo-cleaner apply --remote-url git@github.com:acme/api.git
-```
-
-`--remote-url <url>` sweeps a remote's branches when you have no checkout of
-it. It clones the URL once, with `--no-checkout`, into
-`repo-cleaner/remotes/` under the cache directory (`~/Library/Caches` on
-macOS, `$XDG_CACHE_HOME` or `~/.cache` on Linux, `REPO_CLEANER_CACHE_DIR`
-to move it), and sweeps that clone. Later runs reuse the clone and fetch. Only remote branches
-are swept: the clone's own branches and worktree are not yours. Deletes are
-pushed to the URL from the clone, compare-and-swap as always.
-
-The clone is kept, not deleted after the run, so a plan written with
-`--remote-url` can be applied later from anywhere: the plan names the clone's
-directory. `repo-cleaner cache` lists the clones with their URL and size;
-`repo-cleaner cache remove <url>` drops one, and `cache remove --all` drops
-every one, a clone left by a stopped run included. A plan whose clone was
-removed cannot be applied; sweep again. The clone is a full one, not
-`--filter=blob:none`: the patch check reads file contents, and a partial
-clone fetches them one branch at a time.
-
-The flag repeats for several remotes. It does not combine with paths,
-`--branch` or `--plan`, `--only` may only name `remotes`, and an empty URL is
-refused. A clone is reused only while its `origin` fetches from that URL and
-pushes to it alone; `apply --plan` checks the same of a plan's clone before
-deleting. The clone's directory name and every message carry the URL with
-its credentials, query and fragment removed.
-
-## Options
-
-Every command that sweeps takes these:
-
-| Flag | Effect |
-| --- | --- |
-| `--only <list>` | `worktrees`, `branches`, `remotes` (default: `worktrees,branches`) |
-| `--remotes` | Also sweep remote branches. Slower: each one is compared with the default branch |
-| `--branch <name\|HEAD>` | One branch of this repository: its worktree and local branch, and its remote branch with `--remotes`. Refuses the default branch |
-| `--measure-remote <name>` | The remote whose default branch work is measured against (default `origin`) |
-| `--remote-url <url>` | Sweep this remote's branches with no checkout of your own (see [A remote with no checkout](#a-remote-with-no-checkout)); repeatable |
-| `--provider <name>` | With `--remotes`: where pull requests come from: `auto` (default, by the remote's host), `github`, `gitlab`, or `none` to classify on git evidence alone |
-| `--no-fetch` | With `--remotes`: skip the fetch; the header then says `not fetched`. Without `--remotes`, nothing is fetched |
-
-`status` also takes:
-
-| Flag | Effect |
-| --- | --- |
-| `--keep` | Include `safe-to-keep` rows in the report |
-| `--commands` | Print the proposed commands of rows that need no authorization, and nothing else |
-| `--output json` | The full inventory, facts included |
-
-`--version` prints `repo-cleaner <version>` and exits; it must be the first
-argument. A checkout directory named like a command (`status`, `summary`,
-`plan`, `apply`, `dev`) is swept as `./status` and so on: `dev` runs the tool from a
-checkout (see Running from a checkout).
-
-## Plan and apply
-
-```bash
-repo-cleaner apply                          # sweep, show the steps, ask, delete
-repo-cleaner apply --only worktrees --yes   # no question
-repo-cleaner plan -o plan.json              # save the plan to review or edit
-repo-cleaner apply --plan plan.json --row local_branch:feat/x
-repo-cleaner plan | repo-cleaner apply --plan - --yes
-```
-
-A plan holds each deletable row with a fingerprint of the facts behind its
-verdict. `apply` either sweeps and plans in memory, or reads a plan with
-`--plan <file>` (`-` reads stdin). With no `--row` it applies every row judged
-`safe-to-delete` and drops each row to review as `needs-review`. Name a row
-with `--row <category>:<id>` to apply it, review rows included.
-
-Before it deletes anything, `apply` sweeps again and drops a row that is gone,
-no longer deletable, whose facts moved, or that carries a risk you did not
-accept with `--allow <risk>` (every row) or `--allow <risk>=<category>:<id>`
-(one row). It then shows, per repository, each row it will delete or prune
-with the command under it, each row it will skip and why, and the counts, and
-asks `Delete N items? [y/N]`:
-
-```text
-/Users/me/work/api
-  delete  local_branch   fix/login-redirect
-          git update-ref -d refs/heads/fix/login-redirect 3f9c2e1d…
-  prune   worktree records
-          git -C /Users/me/work/api worktree prune
-  skip    worktree       /Users/me/work/api/wt/spike
-          needs-review: clean but no clear disposability signal; name it with --row to apply it
-
-would delete: 1 local branch
-skipped 1, not deleted: 1 needs-review (name with --row)
-Delete 2 items? [y/N]
-```
-
-The re-check reads only the categories the selected rows are in, so applying
-a plan of local rows does not compare every remote branch again. A plan
-records in each repository's `fetch` whether its sweep fetched; the re-check
-fetches too when it did, so it judges against the same, current default
-branch. A plan written before that field re-checks without fetching.
-
-`--keep remote_branch:<remote>/<branch>` keeps a remote branch while the
-rest of its rows go: say, delete the worktree and local branch but leave
-the branch on the remote. A kept row is checked, not skipped. The re-check
-refuses the run if the branch is gone or its tip moved since the plan, and
-the run's first step checks the tip again with `git ls-remote`, so one that
-moves after the re-check stops the run before anything is deleted. Only the
-tip counts: a PR that closed since the plan does not refuse it. Another
-clone of the same remote does not delete a kept branch either; its row is
-dropped as `kept`. The row id is the one the plan lists,
-`<remote>/<branch>`, e.g. `origin/feat/x`.
-`--yes` skips the question. With no terminal to ask on and no `--yes`, it
-refuses with exit 2 rather than deleting. `--plan -` needs `--yes` or
-`--dry-run`, because stdin carries the plan. `--dry-run` prints the steps and
-stops.
-
-On yes it runs only the steps it showed: worktrees first, then local branches,
-remote branches and a prune, in that order. Branch deletes are
-compare-and-swap, every step is verified, and the first failure stops the run.
-
-Every run ends with what it did:
+On yes it runs only the steps it showed: spared remote tips first, then
+worktrees, local branches and remote branches, in that order. Branch
+deletes are compare-and-swap, every step is verified, and the first failure
+stops the run. Every run ends with what it did:
 
 ```text
 deleted: 1 worktree, 3 local branches, 2 remote branches, 1 stale worktree pruned
-skipped 2, not deleted: 1 needs-review (name with --row), 1 duplicate
+skipped 2, not deleted: 1 needs-pick (name with --pick), 1 duplicate
 status: complete
 ```
 
-The preview says `would delete:`, and a run that stops at a failed step says
-how many rows it did not reach. `--output json` carries the same counts as
-`summary`. Two clones of one remote list the same remote branches; `apply`
-deletes each once and drops the other clone's row as `duplicate`. Remotes are
-compared by the push URL git uses, with `url.*.insteadOf` applied.
+Two clones of one remote list the same remote branches; `clean` deletes each
+once and drops the other clone's row as `duplicate`, or as `spared` when the
+branch is spared through the other clone. Remotes are compared by the push URL
+git uses, with `url.*.insteadOf` applied.
 
 A receipt records every step and is rewritten after each one. With
 `--plan plan.json` it goes beside the plan, as
@@ -490,56 +628,86 @@ that swept, or read its plan from stdin, writes a receipt only when
 
 | Code | Meaning |
 | --- | --- |
-| `0` | Swept; or `apply` ran, was declined, or had nothing to run |
-| `1` | Failed against the state it found: an unreadable plan, a row not in the plan |
-| `2` | Cannot run as typed: an unknown flag, a malformed `--row`, `--branch` with a path, `apply` with nobody to ask and no `--yes` |
-| `10` | Nothing to sweep: no entry named a repository |
-| `11` | `apply` stopped at a failed step; the receipt says which |
+| `0` | Swept; or `clean` ran, was declined, or had nothing to do |
+| `1` | Failed against the state it found: an unreadable plan, a row not in it, a spared branch that moved |
+| `2` | Cannot run as typed: an unknown flag, a malformed row, a refused combination, `clean` with nobody to ask and no `--yes` |
+| `10` | Nothing to sweep: no target named a repository |
+| `11` | `clean` stopped at a failed step; the receipt says which |
 
 ## As a library
 
 ```ts
-import { sweepRepo, sweepRepos } from '@osdlc/repo-cleaner'
+import { check, plan, render, run, sweep } from '@osdlc/repo-cleaner'
 
-const sweep = sweepRepo('/Users/me/work/api', { noProvider: true })
-for (const item of sweep.items) {
-  console.log(item.classification, item.id, item.reason)
+const result = sweep(['/Users/me/work/api'], { remote: true })
+for (const row of result.repos[0]?.rows ?? []) {
+  console.log(row.id, row.verdict, row.why, row.risks)
 }
 
-const result = sweepRepos(['~/Developer'], { cwd: process.cwd() })
+const preview = check(plan(result), {
+  pick: ['branch:spike/cache'],
+  allow: [{ risk: 'abandon-unmerged', row: 'branch:spike/cache' }],
+})
+process.stdout.write(render.preview(preview))
+const receipt = run(preview)
 ```
 
-`sweepRepo` never throws for a repository it cannot read: the failure comes
-back as `error`, because a fan-out must not end on its first bad entry.
+| Export | What it does |
+| --- | --- |
+| `sweep(targets, opts?)` | Resolve the targets and judge every row. Options as on the command line: `only`, `remote`, `offline`, `against`, `provider`, `branch`, plus `cwd`, `cacheDir`, `annotate`, `onProgress`, `onWarn`, and the injectable `git`, `gh`, `glab` runners and `probe` |
+| `plan(sweep)` | Every row, fingerprinted, with the sweep's options |
+| `check(plan, approval, opts?)` | Resolve `{ pick, spare, allow }` against the plan, sweep again, and return a `Preview`: the steps, the rows dropped and why, and the allows no row needed. Deletes nothing |
+| `run(preview, opts?)` | Sweep once more and take the preview's steps, writing a `Receipt` (to `receiptPath` after every step, when given) |
+| `inspectWorktree(path, opts?)` | One worktree judged as a sweep judges it, submodules included |
+| `readPlan`, `writePlan` | Plans on disk |
+| `render` | The command line's formats: `text`, `json`, `summary`, `commands`, `preview`, `receipt` |
+| `defaultProcessProbe`, `providers` | The defaults a host can wrap or replace |
+| `RepoCleanerError` | Every refusal, with a `code`: `conflict`, `bad-input`, `not-found`, `ambiguous`, `spared-changed`, `bad-plan` |
 
-`fetch: true` runs `git fetch --prune --quiet --no-write-fetch-head <remote>`
-before classifying, so ancestry is read against fresh remote-tracking refs.
-That fetch is the only write. A repository whose fetch fails comes back with `error` starting
-`fetch failed:` and no items. `repo.fetched` says which case applied. The
-library default is off; the CLI fetches with `--remotes`, unless given `--no-fetch`.
+A row is a `WorktreeRow`, `BranchRow` or `RemoteRow`, told apart by `kind`:
+
+```ts
+interface Row {
+  kind: 'worktree' | 'branch' | 'remote'
+  id: RowId // 'worktree:/p', 'branch:feat/x', 'remote:origin/feat/x'
+  name: string // the path, the branch, `<remote>/<branch>`
+  verdict: 'delete' | 'review' | 'keep' | 'blocked'
+  action: 'remove' | 'prune' | 'delete' | null // null: never deleted
+  why: string
+  risks: Risk[] // gathered over the row's submodules
+  blockers: Blocker[] // non-empty exactly when verdict is 'blocked'
+  commands: string[]
+  notes: string[] // what is unclear, or what to do about a blocker
+  evidence: WorktreeEvidence | BranchEvidence | RemoteEvidence
+}
+```
+
+`evidence` is typed for each kind: a worktree's `path`, `branch`, `head`,
+`dirtyFiles`, `unpushedCommits`, lock and process evidence, and `submodules`;
+a branch's `sha`, `upstream`, `track`; every kind's `merged`, `pr`,
+`uniqueCommits` and landing evidence.
+
+`sweep` never throws for a repository it cannot read: that one comes back
+with `error` set, because a fan-out must not end on its first bad entry. It
+throws a `RepoCleanerError` for options that contradict each other, as the
+command line refuses them, before reading anything. `check` throws for an
+approval that contradicts itself, names a row the plan does not have, or
+spares a remote branch that moved; nothing has been touched when it does.
 
 ### Adding knowledge the library does not have
 
-Every row carries the facts behind its verdict, and `investigationParts` is a
-list of sentences rather than a finished string. That is deliberate: a host
-that knows something git does not — an issue tracker, a task corpus — re-ranks
-the returned rows and appends its own sentence, instead of reaching into
-classification. `applyPlan` takes the same re-ranking as its `annotate` hook,
-so the rows it checks again are the rows the host planned from.
+Every row carries the evidence behind its verdict, and `notes` is a list of
+sentences rather than a finished string. That is deliberate: a host that knows
+something git does not — an issue tracker, a task corpus — passes `annotate`
+to `sweep`, `check` and `run`, and re-ranks the rows or appends its own
+sentence, instead of reaching into classification. Because the same hook runs
+in every re-check, the rows a run checks are the rows the host planned from.
 
 This works because of how the ladder is ordered. Every verdict the sweep
 reaches on its own evidence outranks anything a host could contribute, so a
-host rarely has to veto one. It mostly sharpens the rows left at
-`safe-to-keep` or `needs-investigation`.
-
-A host that does hold back or demote a worktree row must also keep that
-worktree's branch, which the sweep freed because the worktree was going. Pass
-the annotated rows through `holdFreedBranches(items, { branchScoped })`, with
-`branchScoped` set for a `branch` sweep. `applyPlan` does the same after its
-`annotate` hook, so the plan and the run agree.
-
-An issue tracker's linkage, applied this way, is a host's own layer over the
-sweep and `applyPlan`.
+host rarely has to veto one. It mostly sharpens the rows left at `keep` or
+`review`. A worktree the host holds back keeps its branch: the sweep applies
+that rule after the hook.
 
 ## Providers (prototype)
 
@@ -552,11 +720,11 @@ branch.
 | `github` | `gh` | `gh pr list --state all`, up to 300 |
 | `gitlab` | `glab` | `glab api projects/<path>/merge_requests?state=all`, 100 a page, up to 300 |
 
-`--provider auto` (the default) reads the remote's host: a host with `gitlab`
+With `--remote`, `--provider auto` (the default) reads the remote's host: a host with `gitlab`
 in its name is GitLab, any other is GitHub, which is what the tool did before
 providers existed. Name one with `--provider github|gitlab` for a host the
 name does not give away, or `--provider none` to skip pull requests. A plan
-records the choice, so `apply` re-checks with the same provider.
+records the choice, so `clean` re-checks with the same provider.
 
 GitLab maps onto the same evidence: `opened` and `locked` are `OPEN`, `merged`
 is `MERGED`, `closed` is `CLOSED`, `sha` is the head commit and `target_branch`

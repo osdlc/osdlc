@@ -96,8 +96,20 @@ link file under the cwd is never read. The spec's `vendorDirs` (`{ vendor, envVa
 variables that move it. `<PREFIX>_CONVENTION` does not: the convention is
 pinned to `xdg`, where the bash launcher looks. On macOS, when a link file is
 still at the old `~/Library/Application Support/<name>/home` and not at the
-new path, `dev status` prints the `mv` command that moves it. Two files live
-under `<config>/<name>/`:
+new path, `dev status` prints the `mv` command that moves it.
+
+A tool that keeps its state somewhere else by default, such as `~/.tooly`,
+sets `stateDir: '~/.tooly'` in its spec. That directory replaces
+`<config>/<name>/` (no `<name>` is appended), and `XDG_CONFIG_HOME` is then
+not read. The override variables still win: `<PREFIX>_CONFIG_DIR` moves the
+state to `<dir>/<name>/` and `<PREFIX>_ROOT` to `<root>/config/<name>/`, as
+without it. The bash launcher bakes the same path in, so `dev link` and the
+launcher agree. The value is `~/` and then a relative path of letters, digits,
+`.`, `_` and `-`; `validateSpec` and `renderLauncher` refuse anything else.
+In a test runner process the tiered-dirs test root still wins, as it does over
+the `xdg` default, and injected `dirs` win over `stateDir`.
+
+Two files live under `<config>/<name>/` (or the `stateDir`):
 
 | File | Holds | Read by |
 |---|---|---|
@@ -123,6 +135,7 @@ export const SPEC: ToolSpec = validateSpec({
   cwdLayer: false,        // optional: true runs a checkout above the cwd
   suppressors: [],        // env vars whose presence turns off cwd + link
   vendorDirs: { vendor: 'com.example', envVars: envVars('EXAMPLE') }, // where state lives
+  stateDir: '~/.tooly',   // optional: the state's default in place of <config>/tooly
 })
 ```
 

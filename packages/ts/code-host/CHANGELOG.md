@@ -1,5 +1,20 @@
 # @osdlc/code-host
 
+## 0.7.8
+
+### Patch Changes
+
+- Updated dependencies [25ccd9e]
+  - @osdlc/typed-git@0.13.0
+  - @osdlc/typed-gh@0.16.1
+
+## 0.7.7
+
+### Patch Changes
+
+- Updated dependencies [51efdb6]
+  - @osdlc/typed-gh@0.16.0
+
 ## 0.7.6
 
 ### Patch Changes

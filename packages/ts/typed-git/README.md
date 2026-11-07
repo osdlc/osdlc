@@ -691,6 +691,7 @@ exit throws the classified failure.
 | `checkIgnoreVerbose(paths)` | `check-ignore -v --stdin -z` | `1` → empty list; rows are `{ path, source, line, pattern }`, a `!` pattern is a negation |
 | `lsFiles({ cached, others, excludeStandard, directory, paths })` | `ls-files -z` | none |
 | `lsFilesTagged()` | `ls-files -v -z` | none — `{ tag, path }` rows; `S` is skip-worktree, lowercase is assume-unchanged |
+| `submodules()` | `ls-files --stage -z` | none — `{ path, commit }` per gitlink in the index; whether one is checked out is on disk (its `.git`) |
 | `forEachRef(pattern, { format, sort, count })` | `for-each-ref` | none — lines verbatim |
 | `refs(pattern)` | `forEachRef` + `parseRefRows` | none |
 | `diffNameOnly({ cached, diffFilter, rangeArgs, paths })` | `diff --name-only -z` | none |

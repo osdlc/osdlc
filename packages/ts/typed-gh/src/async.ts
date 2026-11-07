@@ -13,7 +13,7 @@
 
 import { spawnRunnerAsync, type AsyncCommandRunner, type CommandResult } from '@osdlc/command-seam'
 
-import { runCheckedGhAsync, softAsync, triedAsync, type Soft, type TriedAsync } from './doors.ts'
+import { softAsync, triedAsync, type Soft, type TriedAsync } from './doors.ts'
 import { runVerbAsync } from './run.ts'
 import { ownerRepoSlug, parseOwnerRepo, parsePrRef } from './repo.ts'
 import type {
@@ -142,12 +142,12 @@ export class AsyncGh {
    * `.at(dir)` first.
    */
   raw(argv: string[], opts: AsyncCallOptions = {}): Promise<CommandResult> {
-    return this.runner.run(argv, { cwd: this.cwd, ...opts })
+    return this.exec(v.raw(argv), opts)
   }
 
   /** Run any `gh` call. Rejects with the classified failure on a non-zero exit. Adds no `--repo`, as {@link AsyncGh.raw}. */
   rawChecked(argv: string[], opts: AsyncCallOptions = {}): Promise<CommandResult> {
-    return runCheckedGhAsync(this.runner, argv, { cwd: this.cwd, ...opts })
+    return this.exec(v.rawChecked(argv), opts)
   }
 
   /** Run one verb from the table, checked or unchecked as the verb says. */

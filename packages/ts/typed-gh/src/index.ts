@@ -69,6 +69,8 @@ export {
   prReviewThreads,
   prUpdateBranch,
   prView,
+  raw,
+  rawChecked,
   repoList,
   repoView,
   searchPrs,

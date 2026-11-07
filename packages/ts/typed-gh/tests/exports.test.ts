@@ -54,6 +54,8 @@ const FUNCTIONS = [
   'prSetDraft',
   'prUpdateBranch',
   'prView',
+  'raw',
+  'rawChecked',
   'repoList',
   'repoView',
   'runVerb',

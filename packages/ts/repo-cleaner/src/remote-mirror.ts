@@ -18,7 +18,10 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, renameSync, rmSync } fro
 import { dirname, join } from 'node:path'
 
 import type { CommandRunner } from '@osdlc/command-seam'
+import { systemDirs } from '@osdlc/cli-tool'
 import { Git, parseRemoteRepo } from '@osdlc/typed-git'
+
+import { VENDOR_DIRS } from './devlink.ts'
 
 /** A remote URL that cannot be mirrored, or a mirror that cannot be made or reused. */
 export class RemoteMirrorError extends Error {
@@ -197,4 +200,20 @@ export function listMirrors(
 export function cachedMirrorOf(url: string, cacheDir: string): string | null {
   const dir = join(cacheDir, mirrorName(url))
   return existsSync(dir) ? dir : null
+}
+
+/**
+ * True when `target` names a remote rather than a directory: a URL with a
+ * scheme (`https://`, `ssh://`, `file://`), or the scp form `user@host:path`
+ * that names no directory on disk. A Windows drive path is never one.
+ */
+export function isRemoteUrl(target: string, exists: (path: string) => boolean): boolean {
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(target)) return true
+  if (/^[a-z]:[\\/]/i.test(target)) return false
+  return /^(?:[^@/:\\]+@)?[^/:\\]+:(?!\/\/).+$/.test(target) && !exists(target)
+}
+
+/** Where remote URL targets' clones are kept: `repo-cleaner/remotes` under the user's cache directory. */
+export function defaultCacheDir(env: Record<string, string | undefined> = process.env): string {
+  return systemDirs(VENDOR_DIRS, { env }).standalone('repo-cleaner').cache().app('remotes').path
 }
