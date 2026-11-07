@@ -10,7 +10,8 @@
  *
  * The emitted values equal `schema.parse({})`, so writing the file changes no
  * behavior. It only documents the config. Optional keys with no default are
- * emitted commented out.
+ * emitted commented out. Option `version` adds a live `version: <n>` line,
+ * which a versioned loader reads and strips before the schema sees the file.
  *
  * The tool supplies the header comment (its name, how to regenerate, where the
  * prose lives) and any tool-specific notes. Nothing here names a tool. Reads
@@ -47,6 +48,26 @@ export interface ScaffoldOptions {
    * tool uses this to show an example of the record's entries.
    */
   recordNotes?: Record<string, string[]>
+  /**
+   * The file's format version, written as a live `version: <n>` line under the
+   * header. Pass a versioned handle's `currentVersion`, so a new file reads
+   * as current and no migration runs on it. `null` or absent writes no line
+   * (an unversioned file).
+   */
+  version?: number | null
+}
+
+/**
+ * The `version` lines a new file opens with, under its header: none for an
+ * unversioned file. Throws on a version that is not an integer of at least 1,
+ * which the loader would reject.
+ */
+function versionLines(version: number | null | undefined): string[] {
+  if (version === null || version === undefined) return []
+  if (!Number.isInteger(version) || version < 1) {
+    throw new Error(`version must be an integer of at least 1, got ${version}`)
+  }
+  return [`version: ${version}`, '']
 }
 
 /** Render a scalar/array/map default as its YAML value token. */
@@ -228,7 +249,7 @@ export function scaffoldYaml(
   header: readonly string[],
   opts: ScaffoldOptions = {},
 ): string {
-  const lines: string[] = [...header, '']
+  const lines: string[] = [...header, '', ...versionLines(opts.version)]
   renderShape(shapeOf(unwrapSchema(schema)), '', lines, opts, true)
   return lines.join('\n') + '\n'
 }
@@ -249,7 +270,8 @@ function commentOutLines(lines: string[]): string[] {
 
 /**
  * A commented override template: the same output as {@link scaffoldYaml} with
- * every key commented out, under `header`. It is for the gitignored overlay
+ * every key commented out, under `header` (and the live `version` line, when
+ * given). It is for the gitignored overlay
  * file, where a key overrides the committed file once uncommented. Maps merge
  * recursively, and lists and scalars replace (see `deepMergeConfig`).
  * @experimental
@@ -261,7 +283,8 @@ export function scaffoldLocalYaml(
 ): string {
   const body: string[] = []
   renderShape(shapeOf(unwrapSchema(schema)), '', body, opts, true)
-  return [...header, ''].join('\n') + '\n' + commentOutLines(body).join('\n') + '\n'
+  const head = [...header, '', ...versionLines(opts.version)]
+  return head.join('\n') + '\n' + commentOutLines(body).join('\n') + '\n'
 }
 
 /**
@@ -285,6 +308,8 @@ export interface StarterOptions {
   live?: Record<string, Record<string, string[]>>
   /** Notes and detected entries for the commented skeletons, as for {@link scaffoldYaml}. */
   scaffold?: ScaffoldOptions
+  /** The live `version` line under the header, as {@link ScaffoldOptions.version}. */
+  version?: number | null
 }
 
 /**
@@ -309,6 +334,8 @@ export function starterYaml(schema: z.ZodTypeAny, opts: StarterOptions): string 
       .filter(([, entries]) => Object.keys(entries as object).length > 0),
   ) as Record<string, Record<string, string[]>>
   const lines: string[] = [...opts.header]
+  const version = versionLines(opts.version)
+  if (version.length > 0) lines.push('', version[0]!)
   for (const category of opts.categories) {
     const keys = Object.keys(shape).filter((k) => metas[k]!.category === category)
     if (keys.length === 0) continue

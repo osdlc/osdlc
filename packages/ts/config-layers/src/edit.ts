@@ -26,10 +26,33 @@
  * range out of the source text.
  */
 
-import { editYaml, type EditValue, type FieldEdit } from '@osdlc/yaml-splice'
-import { isAlias, isMap, isScalar, parseDocument, visit, type Pair, type YAMLMap } from 'yaml'
+import { isDeepStrictEqual } from 'node:util'
 
+import { EditError, editYaml, type EditValue, type FieldEdit } from '@osdlc/yaml-splice'
+import {
+  isAlias,
+  isMap,
+  isScalar,
+  parseDocument,
+  stringify as yamlStringify,
+  visit,
+  type Pair,
+  type YAMLMap,
+} from 'yaml'
+
+import { parseYamlText } from './loader.ts'
 import { isPlainObject } from './value.ts'
+
+/**
+ * An edit this module cannot make while keeping the bytes around it: a nested
+ * edit under an anchor defined elsewhere, an intermediate text that no longer
+ * parses, a result that does not read back as the target. Together with
+ * yaml-splice's `EditError`, the only failure {@link rewriteMigrated} answers
+ * by rendering the document again. Internal, not in the package index.
+ */
+class UneditableError extends Error {
+  override name = 'UneditableError'
+}
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -76,9 +99,98 @@ export function unsetPath(text: string, path: readonly string[]): string {
   return edit(text, path, { kind: 'unset' })
 }
 
+/**
+ * Edit `text` until it reads as `target`, keeping every byte outside the
+ * values that differ. Each difference becomes one {@link setPath} or
+ * {@link unsetPath}: a key `target` lacks is unset, a key it adds or changes
+ * is set, and mappings on both sides are compared key by key. A list is
+ * compared whole and replaced whole. A new key goes after its parent's last
+ * key. So a migration written over plain data keeps the file's comments, blank
+ * lines and key order everywhere it did not change.
+ *
+ * `target` must be JSON-shaped; an `undefined` value counts as absent. The
+ * result is read back by the loader's rules and compared with `target`. Throws
+ * when it does not match, when `text` is not a YAML mapping, or when an edit
+ * cannot be made (a nested edit under a `<<: *anchor` defined elsewhere). A
+ * caller that must write anyway can re-serialize `target`, which drops the
+ * comments.
+ * @experimental
+ */
+export function reconcileYaml(text: string, target: Record<string, unknown>): string {
+  const want = JSON.parse(JSON.stringify(target)) as Record<string, unknown>
+  const have = parseYamlText(text) ?? {}
+  if (!isPlainObject(have)) throw new Error('the document is not a mapping')
+  let out = text
+  for (const op of diffOps(have, want, [])) {
+    out = op.kind === 'set' ? setPath(out, op.path, op.value) : unsetPath(out, op.path)
+  }
+  let got: unknown
+  try {
+    got = parseYamlText(out) ?? {}
+  } catch (err) {
+    throw new UneditableError(`the edited document does not parse: ${(err as Error).message}`)
+  }
+  if (!isDeepStrictEqual(got, want)) {
+    throw new UneditableError('the edited document does not read back as the target')
+  }
+  return out
+}
+
+/**
+ * The text a migration writes: `text` edited into `target` by
+ * {@link reconcileYaml}, or, when that fails, `target` rendered again, which
+ * drops the comments. Internal, not in the package index.
+ */
+export function rewriteMigrated(
+  text: string,
+  target: Record<string, unknown>,
+): { text: string; rewrite: 'edited' | 'reserialized' } {
+  try {
+    return { text: reconcileYaml(text, target), rewrite: 'edited' }
+  } catch (err) {
+    // Anything else is a bug, here or in a migration step, not a document the edits cannot fit.
+    if (!(err instanceof UneditableError || err instanceof EditError)) throw err
+    return { text: yamlStringify(target), rewrite: 'reserialized' }
+  }
+}
+
+type DiffOp = { kind: 'set'; path: string[]; value: unknown } | { kind: 'unset'; path: string[] }
+
+/**
+ * The edits that turn `have` into `want`. Within one mapping the sets come
+ * before the unsets: `unsetPath` removes a parent it leaves empty, so a key
+ * replaced by a sibling would otherwise lose its parent's place and comments.
+ */
+function diffOps(
+  have: Record<string, unknown>,
+  want: Record<string, unknown>,
+  path: string[],
+): DiffOp[] {
+  const sets: DiffOp[] = []
+  for (const [key, value] of Object.entries(want)) {
+    const at = [...path, key]
+    if (!Object.hasOwn(have, key)) {
+      sets.push({ kind: 'set', path: at, value })
+      continue
+    }
+    const old = have[key]
+    if (isDeepStrictEqual(old, value)) continue
+    // An emptied mapping is set to `{}` outright: unsetting its last key would remove it.
+    if (isPlainObject(old) && isPlainObject(value) && Object.keys(value).length > 0) {
+      sets.push(...diffOps(old, value, at))
+    } else {
+      sets.push({ kind: 'set', path: at, value })
+    }
+  }
+  const unsets: DiffOp[] = Object.keys(have)
+    .filter((key) => !Object.hasOwn(want, key))
+    .map((key) => ({ kind: 'unset', path: [...path, key] }))
+  return [...sets, ...unsets]
+}
+
 function assertPath(path: readonly string[]): void {
   if (path.length === 0 || path.some((s) => s === '')) {
-    throw new Error(`invalid key path: '${path.join('.')}'`)
+    throw new UneditableError(`invalid key path: '${path.join('.')}'`)
   }
 }
 
@@ -92,7 +204,7 @@ function edit(text: string, path: readonly string[], op: Op): string {
 
   const doc = parseDocument(text)
   if (doc.errors.length > 0) {
-    throw new Error(`YAML parse error: ${doc.errors.map((e) => e.message).join('; ')}`)
+    throw new UneditableError(`YAML parse error: ${doc.errors.map((e) => e.message).join('; ')}`)
   }
   const root = doc.contents
   const pair = isMap(root) ? findPair(root, head) : undefined
@@ -106,7 +218,7 @@ function edit(text: string, path: readonly string[], op: Op): string {
   if (isMap(node) && node.flow !== true && node.range) {
     const externalAnchor = externalAliasIn(node)
     if (externalAnchor !== null) {
-      throw new Error(
+      throw new UneditableError(
         `cannot edit nested key under '${head}': '<<: *${externalAnchor}' inside it refers to ` +
           `an anchor defined outside that block, which a byte-preserving nested edit cannot ` +
           `carry along; edit '${head}' as a whole (or the anchor's own section) instead`,
