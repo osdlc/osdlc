@@ -1,0 +1,30 @@
+{
+  "about": "Cases for classifyFetchFailure: what a failed fetch's stderr means. The stderr strings are real git output, trimmed. Every implementation of the protocol maps each case to `expected`.",
+  "cases": [
+    {
+      "name": "ref missing at the authority",
+      "stderr": "fatal: couldn't find remote ref refs/locks/x",
+      "expected": "ref-not-found"
+    },
+    {
+      "name": "refspec matched nothing",
+      "stderr": "error: src refspec refs/locks/x did not match any refs",
+      "expected": "ref-not-found"
+    },
+    {
+      "name": "local ref lock held by another process",
+      "stderr": "error: cannot lock ref 'refs/locks/x': Unable to create '/tmp/reader/.git/refs/locks/x.lock': File exists.",
+      "expected": "lock-contention"
+    },
+    {
+      "name": "authority unreachable",
+      "stderr": "fatal: '/tmp/nowhere' does not appear to be a git repository\nfatal: Could not read from remote repository.",
+      "expected": "git-failed"
+    },
+    {
+      "name": "empty stderr",
+      "stderr": "",
+      "expected": "git-failed"
+    }
+  ]
+}
