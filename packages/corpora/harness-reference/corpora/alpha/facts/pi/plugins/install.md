@@ -22,6 +22,10 @@ observations:
     evidence: run
     probe: pi-package-install
     note: "A local install was run and appeared in `pi list`; skill loading was not run."
+open:
+  - question: "What is the shape of a `packages` entry for a local install (a string, or an object with `source`), and is a relative entry read against the settings file's folder or the folder `pi install` ran in?"
+    observed: "2026-11-06"
+    source: pi-repo
 sources:
   - id: harness-comparison
     resource: "https://github.com/osdlc/skillwright/blob/main/harness-reference/corpora/alpha/sources/harness-comparison.md"
@@ -44,6 +48,12 @@ How a plugin or package is installed.
   `pi install npm:@scope/pkg`; recorded in: packages in ~/.pi/agent/settings.json, or
   .pi/settings.json with -l. A local install was run and appeared in `pi list`; skill loading was
   not run.[^pi-repo][^skill-naming]
+
+## Open questions
+
+- What is the shape of a `packages` entry for a local install (a string, or an object with
+  `source`), and is a relative entry read against the settings file's folder or the folder
+  `pi install` ran in?[^pi-repo]
 
 [^harness-comparison]: Harness comparison (researched 2026-08-08)
 [^pi-repo]: earendil-works/pi source
