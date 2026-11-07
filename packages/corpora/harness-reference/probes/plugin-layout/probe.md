@@ -37,15 +37,15 @@ safety:
 # Plugin folder layout
 
 The fixture is a skillwright vault with one marketplace (`probe-market`), one plugin
-(`layout-probe`) and one skill (`probe`). The plugin ships `bin/tool`, copied from
-`scripts/tool`, a script that prints a marker, its `argv0` and its working directory.
+(`layout-probe`) and one skill (`probe`). The plugin ships `bin/tool`, copied from its
+`assets/bin/tool`, a script that prints a marker, its `argv0` and its working directory.
 
 The skill tells the agent to run the tool and report the output, the path of SKILL.md and the
 working directory. The source note writes the path as `${CLAUDE_PLUGIN_ROOT}/bin/tool`.
 skillwright keeps that variable for Claude Code and rewrites it to a path relative to the skill
 folder (`../../bin/tool`) for Cursor, which has no such variable.
 
-`skillwright build` reads `fixture/skillwright.yaml` and writes one pack per harness under
+`skillwright build` reads `fixture/skillwright.md` and writes one pack per harness under
 `fixture/out/`. Each run loads that pack with `--plugin-dir`, so nothing is installed.
 
 A run answers:
