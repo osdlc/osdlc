@@ -16,8 +16,9 @@ Every error the library throws is a `RefLeaseError`. Branch on the class, or on 
 | `namespace-conflict` | `NamespaceConflict` | A literal ref sits at the namespace path. | No. Delete that ref. |
 | `other` | `RefLeaseError` | Your own code's lease error, if you extend the base class. | Your call. |
 
-A `decode` function's own error is passed through unchanged, and `buildLeaseCommit` throws a
-`TypeError` for a payload that is not JSON (`undefined`, a function, a bigint).
+A `decode` function's own error is passed through unchanged. A `TypeError` means the call was wrong
+before git ran: a payload JSON cannot hold (`undefined`, a function, a `Map`, a value that contains
+itself), a ref outside your own namespace (under `refs/heads`, say), or an abbreviated sha.
 
 ## Handling them
 
@@ -54,9 +55,9 @@ a failure, stops a worker that only needed to re-read.
 The library tells them apart by git's own answer for the ref. It pushes through
 [`@osdlc/typed-git`](https://www.npmjs.com/package/@osdlc/typed-git), which reports each rejected
 ref with a reason kind: `stale` (the lease check failed), `already-exists` or `lock-failed` (another
-writer got to the authority first) are a lost race. `hook-declined`, `ref-conflict` and anything
-else are a `GitFailed`, as is a push that never got an answer (a bad URL, no network, a declined
-local `pre-push` hook). The mapping is listed as data in
+writer got to the authority first) and `non-fast-forward` are a lost race. `hook-declined`,
+`ref-conflict` and anything else are a `GitFailed`, as is a push that never got an answer (a bad
+URL, no network, a declined local `pre-push` hook). The mapping is listed as data in
 [tests/conformance/push.json](../../tests/conformance/push.json).
 
 Pushes and fetches run git in the C locale, so this works whatever language the user's git speaks.
@@ -67,5 +68,6 @@ The library never retries a write for you. Whether to retry depends on what you 
 heartbeat should give up at once, a claim may try again, an update re-applies its change. See
 [Update with retry](./recipes.md#update-with-retry).
 
-The one retry it does do is local: a fetch that collides with another process on the same local
-ref lock waits a few milliseconds and tries again.
+The one retry it does do is local: a fetch that collides with another process updating the same
+local ref (a held lock file, or the ref moved between read and write) waits a few milliseconds and
+tries again.

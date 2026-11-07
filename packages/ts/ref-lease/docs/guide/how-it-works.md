@@ -108,7 +108,7 @@ The most important difference is between the first two:
 | Builds the lease commit and pushes it with the "only if" condition | What goes in the payload |
 | Fetches leases and parses the JSON | How to check it (`decode`) |
 | Tells a lost race (`CasFailed`) from a broken push (`GitFailed`) | Whether and when to retry |
-| Keeps the local copy of each ref up to date after a write | When a lease expires, and how long to hold one |
+| Keeps the local copy of each ref up to date after a write (a fetch corrects one another process moved) | When a lease expires, and how long to hold one |
 | Writes the same bytes for the same payload | The ref names (`refs/locks/...`) and the remote |
 
 ## Words used in these guides

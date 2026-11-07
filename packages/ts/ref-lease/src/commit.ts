@@ -7,7 +7,7 @@
 
 import { canonicalJson } from './canonical-json.ts'
 import { DEFAULT_PAYLOAD_FILE } from './primitives.ts'
-import { client, type GitOptions } from './git.ts'
+import { client, gitFailed, gitFailedFrom, type GitOptions } from './git.ts'
 
 /** The author and committer of lease commits. */
 export interface LeaseIdentity {
@@ -80,8 +80,7 @@ function nowCommitDate(): string {
  *
  * @throws TypeError for a payload {@link canonicalJson} cannot encode, or a bad
  *   file name.
- * @throws FailureError from `@osdlc/typed-git` when git fails: a repository that
- *   cannot write objects is broken, not a protocol outcome.
+ * @throws GitFailed when git cannot write the objects.
  */
 export function buildLeaseCommit(payload: unknown, opts: BuildLeaseCommitOptions = {}): string {
   const payloadFile = opts.payloadFile ?? DEFAULT_PAYLOAD_FILE
@@ -94,9 +93,12 @@ export function buildLeaseCommit(payload: unknown, opts: BuildLeaseCommitOptions
     }
   }
   const git = client(opts)
-  // hash-object and mktree are plumbing with no typed verb. A failure here is a
-  // broken repository, so rawChecked's throw is what the caller wants.
-  const write = (argv: string[], input: string) => git.rawChecked(argv, { input }).stdout.trim()
+  // hash-object and mktree are plumbing with no typed verb.
+  const write = (argv: string[], input: string): string => {
+    const res = git.raw(argv, { input })
+    if (res.exitCode !== 0) throw gitFailed('BUILD-COMMIT', `git ${argv[0]} failed`, res)
+    return res.stdout.trim()
+  }
   const blob = (content: string) => write(['hash-object', '-w', '--stdin'], content)
 
   const entries = [`100644 blob ${blob(canonicalJson(payload))}\t${payloadFile}`]
@@ -111,7 +113,7 @@ export function buildLeaseCommit(payload: unknown, opts: BuildLeaseCommitOptions
     ...(opts.parentSha == null ? [] : [opts.parentSha]),
     ...(opts.extraParentShas ?? []),
   ]
-  return git.commitTree(
+  const committed = git.try.commitTree(
     tree,
     { parents, message: opts.message ?? 'lease' },
     {
@@ -125,4 +127,6 @@ export function buildLeaseCommit(payload: unknown, opts: BuildLeaseCommitOptions
       },
     },
   )
+  if (!committed.ok) throw gitFailedFrom('BUILD-COMMIT', 'git commit-tree failed', committed.error)
+  return committed.value
 }

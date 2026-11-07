@@ -1,5 +1,5 @@
 {
-  "about": "Cases for the push outcome: what a compare-and-swap push's per-ref result means. `flag` is git push --porcelain's status character for the ref; `rejection` is the reason kind @osdlc/typed-git reads from git's reason text (null unless flag is '!'); `keepsSha` is true when the write expected the sha it pushes. Every implementation of the protocol maps each case to `expected`. `op` is for reading only.",
+  "about": "Cases for the push outcome: what a compare-and-swap push's per-ref result means. `flag` is git push --porcelain's status character for the ref; `rejection` is the reason kind read from git's reason text (null unless flag is '!'), as @osdlc/typed-git reads it: that reading is typed-git's and is tested there. `keepsSha` is true when the write expected the sha it pushes. Every implementation of the protocol maps each case to `expected`. `op` is for reading only.",
   "cases": [
     {
       "name": "create succeeds",

@@ -7,6 +7,7 @@
  */
 
 import { NamespaceConflict } from './errors.ts'
+import { checkLeaseRef } from './refs.ts'
 import { C_LOCALE, client, gitFailedFrom, type GitOptions } from './git.ts'
 
 /** Options for {@link checkNamespaceConflict}. */
@@ -32,12 +33,14 @@ function defaultRemediation(ref: string): string {
  * @param namespaceRef The namespace's ref path, such as `refs/locks`.
  * @throws NamespaceConflict when the literal ref exists.
  * @throws GitFailed when the authority cannot be asked.
+ * @throws TypeError for a namespace outside `refs/`, or under `refs/heads`, `refs/tags` or `refs/remotes`.
  */
 export function checkNamespaceConflict(
   authority: string,
   namespaceRef: string,
   opts: CheckNamespaceConflictOptions = {},
 ): void {
+  checkLeaseRef(namespaceRef, 'NAMESPACE-CHECK: namespace')
   const listing = client(opts).try.lsRemote(authority, namespaceRef, C_LOCALE)
   if (!listing.ok) {
     throw gitFailedFrom(
