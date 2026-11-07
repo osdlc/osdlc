@@ -19,9 +19,11 @@ const SWEEP = `Sweep options (the report, plan and clean)
                           requests. Slower.
   --offline               With --remote: do not fetch; judge against the
                           remote-tracking refs already on disk, remote branches
-                          included, so git does not contact the remote. Pull
-                          requests are still looked up; add --provider none for
-                          no network at all.
+                          included, so judging does not contact the remote (clean's
+                          remote steps still do). Tips can be stale: a branch the
+                          remote already deleted still shows. Pull requests are
+                          still looked up; add --provider none to judge with no
+                          network at all.
   --only <kinds>          Only these kinds of row: worktree, branch, remote,
                           comma-separated. Default: worktree,branch, plus remote with
                           --remote. Naming remote implies --remote.

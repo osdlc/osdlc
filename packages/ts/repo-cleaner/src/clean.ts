@@ -914,6 +914,16 @@ function execute(
       })
       const refused = report.refs.find((r) => r.flag === '!')
       if (refused?.flag === '!') {
+        // A tracking ref outlives the branch until the next `fetch --prune`,
+        // so an offline plan can name a branch the remote already deleted.
+        // The lease then refuses; a ref the remote no longer lists is done.
+        // Drop the stale tracking ref, as a delete push would have.
+        if (!at.lsRemote(remote, ref).some((r) => r.ref === ref)) {
+          const tracking = `refs/remotes/${remote}/${row.evidence.branch}`
+          if (at.resolveRef(tracking) === step.expectedSha)
+            at.deleteRef(tracking, { expected: step.expectedSha! })
+          return `already gone from ${remote}`
+        }
         const why = refused.rawReason === null ? '' : ` (${refused.rawReason})`
         throw new Error(`${refused.summary}${why}: ${PUSH_REJECTIONS[refused.rejection].message}`)
       }

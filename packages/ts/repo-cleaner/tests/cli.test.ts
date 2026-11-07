@@ -937,6 +937,28 @@ describe('clean', () => {
     expect(branchRefs(fx.bare)).not.toContain(BRANCH)
   })
 
+  test('offline, a remote branch the remote already deleted is reported gone, and the run goes on', () => {
+    const fx = buildFixture()
+    // A second merged branch, so a step follows the gone one.
+    sh(fx.root, ['branch', 'feat/t', 'main'])
+    sh(fx.root, ['push', '-q', 'origin', 'feat/t'])
+    // The forge deletes the head branch after merge; the tracking ref stays until a prune.
+    sh(fx.bare, ['update-ref', '-d', `refs/heads/${BRANCH}`])
+    const res = run(['clean', ...REMOTE, '--only', 'remote', '--yes', '--format', 'json'], fx.root)
+    expect(res.code).toBe(0)
+    const out = JSON.parse(res.out) as { receipt: Receipt }
+    expect(out.receipt.status).toBe('complete')
+    expect(out.receipt.steps).toContainEqual(
+      expect.objectContaining({
+        row: `remote:origin/${BRANCH}`,
+        result: 'ok',
+        verification: 'already gone from origin',
+      }),
+    )
+    expect(branchRefs(fx.bare)).not.toContain('feat/t')
+    expect(sh(fx.root, ['for-each-ref', `refs/remotes/origin/${BRANCH}`])).toBe('')
+  })
+
   test('a row that turns into a review row while the question waits is dropped, not run', () => {
     const fx = buildFixture()
     sh(fx.root, ['branch', 'extra', 'main'])
@@ -1538,18 +1560,11 @@ function escapeRegExp(text: string): string {
 }
 
 describe('a pull request listing that fails (#653)', () => {
-  /**
-   * Put a `gh` on PATH that is installed and signed in, but whose every
-   * listing fails with `stderr`, for the duration of `fn`.
-   */
-  function withFailingGh<T>(stderr: string, fn: () => T): T {
+  /** Put `script` on PATH as `gh` for the duration of `fn`. */
+  function withGh<T>(script: string, fn: () => T): T {
     const bin = tempDir()
-    const gh = join(bin, 'gh')
-    writeFileSync(
-      gh,
-      `#!/bin/sh\ncase "$1" in --version|auth) exit 0;; esac\nprintf '%b' '${stderr}' >&2\nexit 1\n`,
-    )
-    chmodSync(gh, 0o755)
+    writeFileSync(join(bin, 'gh'), script)
+    chmodSync(join(bin, 'gh'), 0o755)
     const before = process.env['PATH']
     process.env['PATH'] = `${bin}:${before ?? ''}`
     try {
@@ -1558,6 +1573,12 @@ describe('a pull request listing that fails (#653)', () => {
       process.env['PATH'] = before
     }
   }
+  /** A `gh` that is installed and signed in, but whose every listing fails with `stderr`. */
+  const withFailingGh = <T>(stderr: string, fn: () => T): T =>
+    withGh(
+      `#!/bin/sh\ncase "$1" in --version|auth) exit 0;; esac\nprintf '%b' '${stderr}' >&2\nexit 1\n`,
+      fn,
+    )
   const GH = ['--remote', '--offline', '--provider', 'github', '--no-progress']
   // An escape sequence in the provider's output must not reach the terminal.
   const STDERR = '\\033[31mboom: no such repository\\n'
@@ -1619,13 +1640,10 @@ describe('a pull request listing that fails (#653)', () => {
     })
   })
 
-  test("clean prints a listing failure that only the run's own re-check meets", () => {
+  test("a listing failure that only the run's own re-check meets is printed, and drops the row", () => {
     const fx = buildFixture()
     // A gh whose first listing (the sweep's) answers and every later one fails.
-    const bin = tempDir()
-    const count = join(bin, 'listings')
-    writeFileSync(
-      join(bin, 'gh'),
+    const script = (count: string): string =>
       [
         '#!/bin/sh',
         'case "$1" in --version|auth) exit 0;; esac',
@@ -1634,21 +1652,26 @@ describe('a pull request listing that fails (#653)', () => {
         "echo 'boom: rate limited' >&2",
         'exit 1',
         '',
-      ].join('\n'),
-    )
-    chmodSync(join(bin, 'gh'), 0o755)
-    const before = process.env['PATH']
-    process.env['PATH'] = `${bin}:${before ?? ''}`
-    try {
+      ].join('\n')
+    const count = join(tempDir(), 'listings')
+    withGh(script(count), () => {
       const res = run(['clean', ...GH, '--yes', '--format', 'json'], fx.root)
       expect(res.code).toBe(0)
       expect(Number(readFileSync(count, 'utf-8'))).toBeGreaterThan(1)
       const lines = res.err.split('\n').filter((l) => l.includes('Listing PRs'))
       expect(lines).toHaveLength(1)
       expect(lines[0]).toContain('rate limited')
-    } finally {
-      process.env['PATH'] = before
-    }
+      // The preview's listing answered, so only the run's re-check can drop the row.
+      const out = JSON.parse(res.out) as { receipt: Receipt }
+      expect(out.receipt.dropped).toContainEqual(
+        expect.objectContaining({
+          row: `remote:origin/${BRANCH}`,
+          reason: 'not-allowed',
+          detail: 'needs confirm-open-pr',
+        }),
+      )
+      expect(sh(fx.root, ['ls-remote', '--heads', 'origin', BRANCH])).not.toBe('')
+    })
   })
 
   test('a remote branch with no known PR is not deleted without confirm-open-pr', () => {
