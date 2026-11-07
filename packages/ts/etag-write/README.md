@@ -16,7 +16,8 @@ notes, config files, state files.
 
 When not to use it:
 
-- You need a lock, or several files changed together as one transaction.
+- You need a lock (see `@osdlc/file-lock`), or several files changed together
+  as one transaction.
 - The file is on a network file system where `rename` is not atomic.
 - The file is large and rewritten often. Every write copies the whole file
   and hashes it.
@@ -121,6 +122,9 @@ write, and blind writes lose data.
 - **The check and the write are not one step.** `writeCas` reads, compares and
   then renames. Another writer that lands in that short window is not
   detected. This narrows the race but does not close it. It is not a lock.
+  When several processes rewrite one file, take a lock with
+  [`@osdlc/file-lock`](../file-lock/README.md) and read, change and
+  `writeCas` or `atomicWrite` inside it. Its README shows the pattern.
 - **Durability.** The temp file is fsynced before the rename and the directory
   after it. That the bytes survive a power cut depends on the operating system
   and the disk honouring fsync. No test covers it. A directory fsync that the
