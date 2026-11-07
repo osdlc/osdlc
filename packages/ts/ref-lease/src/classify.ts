@@ -26,16 +26,20 @@ const LOST_RACE: ReadonlySet<string> = new Set([
 ])
 
 /**
- * Classify the result git printed for the pushed ref. A create that finds the
- * ref already at the sha it wanted to write (`=`, up to date) lost too: the
- * ref existed.
+ * Classify the result git printed for the pushed ref.
+ *
+ * `=` (up to date) needs care: git reports it when the authority already holds
+ * the sha being pushed, before it checks the lease. That is a success only for
+ * a write whose expected sha is the sha it pushes (`keepsSha`). For any other
+ * write the ref was not where the caller expected (another writer pushed the
+ * same commit, or a create found the ref existing), so it lost.
  */
 export function pushOutcome(
-  op: 'create' | 'replace' | 'delete',
   ref: Pick<PushRefResult, 'flag' | 'rejection'>,
+  keepsSha: boolean,
 ): PushOutcome {
   if (ref.flag === '!') return LOST_RACE.has(ref.rejection ?? '') ? 'cas-failed' : 'git-failed'
-  if (ref.flag === '=' && op === 'create') return 'cas-failed'
+  if (ref.flag === '=') return keepsSha ? 'ok' : 'cas-failed'
   return 'ok'
 }
 
@@ -48,8 +52,13 @@ const NOT_FOUND_MARKERS: readonly string[] = [
   'no such ref',
 ]
 
-/** git's message when another process holds the lock on a local ref. */
-const LOCAL_LOCK_MARKERS: readonly string[] = ['cannot lock ref']
+/**
+ * git's message when another process holds a local ref's lock file:
+ * `cannot lock ref '<ref>': Unable to create '<path>.lock': File exists.`
+ * Other `cannot lock ref` failures (a directory/file ref clash, a ref that
+ * moved) are permanent and not retried.
+ */
+const LOCAL_LOCK_MARKERS: readonly string[] = [".lock': file exists"]
 
 const has = (text: string, markers: readonly string[]) => {
   const low = text.toLowerCase()

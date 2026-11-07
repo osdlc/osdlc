@@ -35,8 +35,12 @@ commit.
   authority on every call, and keeps no cache. `resetCache` is removed.
 - **Breaking:** a write no longer prints to stderr when it leaves the local mirror alone; pass
   `onMirrorSkip`.
-- **Breaking:** `canonicalJson` throws `TypeError` for a non-finite number, which it wrote as `null`.
 - `fetchNamespace` ignores a trailing `/` on the prefix.
+- A replace whose new sha the ref already holds, from an expected sha it does not hold, is a lost
+  race (`CasFailed`). git answers such a push "up to date" before it checks the lease, and it used
+  to read as a success.
+- A fetch retries only when another process holds the local ref's lock file. Other local
+  `cannot lock ref` failures, such as a ref path clash, fail at once.
 - `buildLeaseCommit` throws `TypeError` for a file name that is not one path segment.
 - Failure details are read through the git client's failure shape. No behaviour change.
 - Pushes go through `@osdlc/typed-git`'s `push`, which reports each ref's rejection as a value, and
