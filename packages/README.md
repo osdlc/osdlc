@@ -234,6 +234,10 @@ Developed here, in this repository:
   that finds the branches, worktrees and remote branches that have been merged
   and can go away, with the evidence and the command for each, and applies an
   approved plan compare-and-swap)
+- `packages/ts/ref-lease` (`@osdlc/ref-lease` on npm, compare-and-swap leases
+  on git refs: create, replace and delete a ref at any git remote only if it
+  still holds the sha you read, through `git push --force-with-lease`, with the
+  payload as canonical JSON in the ref's commit)
 - `packages/ts/story-harness` (`@osdlc/story-harness` on npm, a component's
   static Storybook build as its test harness: exact Linux screenshot
   baselines from a pinned Playwright container, Playwright helpers for

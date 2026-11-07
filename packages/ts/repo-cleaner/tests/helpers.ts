@@ -2,7 +2,7 @@ import { mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import type { CommandRunner } from '@osdlc/command-seam'
+import { type CommandResult, type CommandRunner, spawnRunner } from '@osdlc/command-seam'
 import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeGitFixture } from '@osdlc/typed-git/testing'
 
@@ -51,8 +51,15 @@ export interface CannedPr {
   isCrossRepository?: boolean
 }
 
-/** A `gh` that answers `pr list` with `prs` and fails everything else. */
-export function cannedGh(prs: CannedPr[]): CommandRunner {
+/**
+ * A `gh` that answers `pr list` with `prs` and fails everything else.
+ * `installed: false` fails `--version`, `authenticated: false` fails `auth`,
+ * and `listError` fails `pr list` with that stderr.
+ */
+export function cannedGh(
+  prs: CannedPr[],
+  opts: { installed?: boolean; authenticated?: boolean; listError?: string } = {},
+): CommandRunner {
   const rows = prs.map((pr) => ({
     baseRefName: 'main',
     isCrossRepository: false,
@@ -64,8 +71,12 @@ export function cannedGh(prs: CannedPr[]): CommandRunner {
   return {
     run(argv) {
       const ok = (stdout = '') => ({ exitCode: 0, stdout, stderr: '' })
-      if (argv[0] === '--version' || argv[0] === 'auth') return ok()
-      if (argv[0] === 'pr' && argv[1] === 'list') return ok(JSON.stringify(rows))
+      const fail = (stderr: string) => ({ exitCode: 1, stdout: '', stderr })
+      if (argv[0] === '--version') return opts.installed === false ? fail('not installed') : ok()
+      if (argv[0] === 'auth') return opts.authenticated === false ? fail('not signed in') : ok()
+      if (argv[0] === 'pr' && argv[1] === 'list') {
+        return opts.listError === undefined ? ok(JSON.stringify(rows)) : fail(opts.listError)
+      }
       return { exitCode: 1, stdout: '', stderr: 'not canned' }
     },
   }
@@ -122,4 +133,21 @@ export function cannedGlab(
       return { exitCode: 1, stdout: '', stderr: 'not canned' }
     },
   }
+}
+
+/** A git runner that answers some argv itself and runs the rest for real. */
+export function interposedRunner(
+  answer: (argv: string[]) => CommandResult | undefined,
+): CommandRunner {
+  const real = spawnRunner('git', { absolutePathOnly: true })
+  return {
+    run(argv, opts) {
+      return answer(argv) ?? real.run(argv, opts)
+    },
+  }
+}
+
+/** Whether `argv` is `git remote get-url origin`. */
+export function isGetUrlOrigin(argv: string[]): boolean {
+  return argv.includes('remote') && argv.includes('get-url') && argv.at(-1) === 'origin'
 }
