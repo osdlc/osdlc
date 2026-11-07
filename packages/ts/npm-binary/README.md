@@ -30,7 +30,7 @@ Do not use it when:
 - you want one tool to own the whole release (versions, tags, every
   registry). A release orchestrator such as
   [putitoutthere](https://www.npmjs.com/package/putitoutthere) or
-  [dist](https://opensource.axo.dev/cargo-dist/) does that; this library is
+  [dist](https://github.com/axodotdev/cargo-dist) does that; this library is
   the npm layout only, called from a script you own.
 - you would rather download the executable from a release page at install
   time (`binary-install` and similar). That needs install scripts, which many
