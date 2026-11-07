@@ -14,7 +14,7 @@
  * secretlint's recommended preset, the built-in rules, the values of
  * secret-named environment variables, and configured extra patterns. Ranges
  * are merged (overlapping or adjacent ranges become one, keeping the rule id
- * of the earliest start) and spliced right to left as `[REDACTED:<rule>]`.
+ * of the earliest start) and each is replaced with `[REDACTED:<rule>]`.
  *
  * The matched text is never logged or returned: callers get only per-rule
  * counts. Every built-in regex is bounded (no nested unbounded groups, bounded
@@ -82,11 +82,13 @@ export interface Redactor {
    * Redact every string in a parsed JSON value, object keys included. A
    * non-empty string or an object under a secret-named key (`password`,
    * `token`, `apiKey`, `cookie`, `authorization`, `auth`...) is replaced
-   * whole, and so is a string under `session`; numbers and booleans are kept.
-   * A `Date` becomes its ISO string, an `Error` its name, message and stack,
-   * a `Map` an object, a `Set` an array and a `BigInt` its decimal string.
-   * Functions (an own `toJSON` included) and symbols are dropped, as JSON drops
-   * them, so nothing runs at write time. Two keys that redact to the same text
+   * whole, and so is a string under `session`. A number under one is replaced
+   * too, unless the key names a token (a count); booleans are kept.
+   * A `Date` becomes its ISO string, an `Error` its name, message, stack, own
+   * fields and `cause`, a `Map` an object, a `Set` an array and a `BigInt` its
+   * decimal string. A value with a `toJSON` method (a `URL`, a `Buffer`) is
+   * replaced by what it returns, then redacted. Other functions and symbols are
+   * dropped, as JSON drops them, so nothing runs at write time. Two keys that redact to the same text
    * are kept apart as `key`, `key#2`... A cycle becomes `[Circular]`, and
    * nesting deeper than 64 levels `[MaxDepth]`.
    */
@@ -234,16 +236,19 @@ const GROUP_RULES: GroupRule[] = [
     id: 'assigned-secret',
     // Key name (any prefix), then an identifier tail so SECRET_KEY, client_secret_key
     // and STRIPE_SECRET_KEY match; `auth` takes no tail so `author:` does not.
-    // The value is quoted (spaces allowed, any length) or a bare run of 6+.
-    re: /(?:(?:password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|credentials?)[A-Za-z0-9_-]{0,30}|auth(?![A-Za-z]))["']?\s{0,8}[:=]\s{0,8}(?:"([^"\r\n]{1,200})"|'([^'\r\n]{1,200})'|([^\s"']{6,}))/dgi,
+    // The value is quoted (spaces and backslash escapes allowed, up to 2000 characters) or a
+    // bare run of 6+. `tokenizer` is a model setting, not a secret.
+    re: /(?:(?:password|passwd|pwd|secret|token(?!izer)|api[_-]?key|access[_-]?key|private[_-]?key|credentials?)[A-Za-z0-9_-]{0,30}|auth(?![A-Za-z]))["']?\s{0,8}[:=]\s{0,8}(?:"((?:[^"\\\r\n]|\\.){1,2000})"|'((?:[^'\\\r\n]|\\.){1,2000})'|([^\s"']{6,}))/dgi,
     trim: /[,;)}\]]+$/,
     // A count is not a secret: `"input_tokens":12048` in a usage line.
     // Code-looking values (`token = session.id`) are exempt. Under a password-like key
     // only variable references and type names are: `password=correct.horse.battery`
     // is a passphrase, not a member chain.
+    // `PWD=/home/ada/app` is the shell's working directory, not a password.
     acceptBare: (v, match) =>
       !looksLikeCode(v, PASSWORD_LIKE_KEY.test(match)) &&
-      !(TOKEN_COUNT_KEY.test(match) && /^\d+$/.test(v)),
+      !(TOKEN_COUNT_KEY.test(match) && /^\d+$/.test(v)) &&
+      !(PWD_PATH_KEY.test(match) && /^(?:[/~]|[A-Za-z]:[\\/])/.test(v)),
   },
   {
     // A long high-entropy token right after a key-ish word: git SHAs, UUIDs
@@ -257,21 +262,25 @@ const GROUP_RULES: GroupRule[] = [
 /** The match starts with a password-like key name (`DB_PASSWORD=`, `pwd:`), whose value is never treated as code. */
 const PASSWORD_LIKE_KEY = /^[A-Za-z0-9_-]*(?:password|passwd|pwd|secret)/i
 
+/** The key is exactly `pwd` (the shell's working directory variable), whose path value is no secret. */
+const PWD_PATH_KEY = /^["']?pwd["']?\s*[:=]/i
+
 /** A key that counts tokens (`input_tokens`, `cache_read_tokens`), whose number is not a secret. */
 const TOKEN_COUNT_KEY = /^[A-Za-z0-9_-]*tokens["']?\s*[:=]/i
 
 /**
  * Object keys whose value is a secret (`auth` only exactly: `author` is not one). `pwd` is left
- * out: as a key it is usually a directory. `token` does not match the plural (`input_tokens`
- * counts) or `tokenizer`; a session id (`sessionId`) is an id, not a credential.
+ * out: as a key it is usually a directory. `token` does not match the plural (`input_tokens`,
+ * `completion_tokens_details` count) or `tokenizer`; a session id (`sessionId`) is an id, not
+ * a credential.
  */
 const SECRET_KEY =
-  /password|passwd|secret|token(?!s$|izer)|api[_-]?key|access[_-]?key|private[_-]?key|credential|cookie|authorization|^auth$/i
+  /password|passwd|secret|token(?!s$|s_|izer)|api[_-]?key|access[_-]?key|private[_-]?key|credential|cookie|authorization|^auth$/i
 
 /** A key whose STRING value is a secret but whose object value is structure (`session: {id}`). */
 const SECRET_STRING_KEY = /^session$/i
 
-const PEM_BEGIN = /-----BEGIN [A-Z ]{0,30}PRIVATE KEY-----/g
+const PEM_BEGIN = /-----BEGIN [A-Z ]{0,30}PRIVATE KEY(?: BLOCK)?-----/g
 
 const TYPE_WORDS =
   /^(?:string|number|boolean|any|unknown|null|undefined|true|false|none|str|int|bool)$/i
@@ -311,8 +320,14 @@ const CODE_RECEIVERS = new Set([
  * ({@link CODE_RECEIVERS}), type name or variable reference. `referencesOnly` (a password-like
  * key) keeps just the last two: a dotted word run under `password=` is a passphrase.
  */
+/**
+ * A shell variable reference (`$API_TOKEN`, `${API_TOKEN}`), not a value: an env var name is
+ * upper-case. The closing brace is optional because the trailing-punctuation trim takes it.
+ */
+const SHELL_VAR = /^\$(?:[A-Z_][A-Z0-9_]*|\{[A-Za-z_][A-Za-z0-9_]*\}?)$/
+
 function looksLikeCode(v: string, referencesOnly = false): boolean {
-  if (v.startsWith('$') || v.startsWith('process.env.')) return true
+  if (SHELL_VAR.test(v) || v.startsWith('process.env.')) return true
   if (TYPE_WORDS.test(v)) return true
   if (referencesOnly) return false
   return (
@@ -462,6 +477,23 @@ function uniqueKey(out: object, key: string): string {
   return `${key}#${n}`
 }
 
+/**
+ * An `Error` as JSON-like entries: its name, message and stack, its own fields (`code`,
+ * `errno`, `path`...), and its `cause`, which is not enumerable but is the diagnosis.
+ */
+function errorEntries(e: Error): [string, unknown][] {
+  const own = Object.entries(e).filter(([k]) => k !== 'name' && k !== 'message' && k !== 'stack')
+  return [
+    ['name', e.name],
+    ['message', e.message],
+    ...(e.stack === undefined ? [] : [['stack', e.stack] as [string, unknown]]),
+    ...own,
+    ...(e.cause === undefined || own.some(([k]) => k === 'cause')
+      ? []
+      : [['cause', e.cause] as [string, unknown]]),
+  ]
+}
+
 /** Add `n` replacements by `rule` to `into`. */
 function count(into: Redactions, rule: string, n = 1): void {
   into[rule] = (into[rule] ?? 0) + n
@@ -532,32 +564,37 @@ export function createRedactor(opts: RedactorOptions = {}): Redactor {
       if (v instanceof Date) return Number.isNaN(v.getTime()) ? 'Invalid Date' : v.toISOString()
       ancestors.add(v)
       try {
-        if (v instanceof Error) {
-          return {
-            name: await str(v.name),
-            message: await str(v.message),
-            ...(v.stack === undefined ? {} : { stack: await str(v.stack) }),
-          }
-        }
         if (Array.isArray(v) || v instanceof Set) {
           const out: unknown[] = []
           // An array slot keeps its place: a dropped function becomes null, as in JSON.
           for (const item of v) out.push((await walk(item, depth + 1)) ?? null)
           return out
         }
+        // What JSON.stringify would write (URL, Buffer, a class with its own toJSON), redacted.
+        // Called here, before the walk, so nothing runs after redaction.
+        const toJSON: unknown = (v as { toJSON?: unknown }).toJSON
+        if (!(v instanceof Map) && typeof toJSON === 'function') {
+          return await walk(toJSON.call(v, ''), depth + 1)
+        }
         const entries: [string, unknown][] =
-          v instanceof Map ? [...v].map(([k, item]) => [String(k), item]) : Object.entries(v)
+          v instanceof Map
+            ? [...v].map(([k, item]) => [String(k), item])
+            : v instanceof Error
+              ? errorEntries(v)
+              : Object.entries(v)
         const out: Record<string, unknown> = {}
         for (const [k, item] of entries) {
           if (typeof item === 'function' || typeof item === 'symbol' || item === undefined) continue
           const key = uniqueKey(out, await str(k))
           // A secret-named key carries its value's context, which a per-string
-          // pass cannot see: `{ "password": "hunter22" }`. Numbers and booleans
-          // are kept (`max_tokens: 100`).
+          // pass cannot see: `{ "password": "hunter22" }`. A number is blanked too
+          // (`{ "pin": ... }` under `password`), except under a token key, where it is
+          // a count (`token_count: 100`). Booleans are kept.
           const blank =
             (SECRET_KEY.test(k) &&
               ((typeof item === 'string' && item.length > 0) ||
-                (item !== null && typeof item === 'object'))) ||
+                (item !== null && typeof item === 'object') ||
+                (typeof item === 'number' && !/token/i.test(k)))) ||
             (SECRET_STRING_KEY.test(k) && typeof item === 'string' && item.length > 0)
           if (blank) count(redactions, 'assigned-secret')
           const value = blank ? '[REDACTED:assigned-secret]' : await walk(item, depth + 1)

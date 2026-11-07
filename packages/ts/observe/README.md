@@ -366,15 +366,17 @@ const redactions = await appendRedactedJsonl(
 
 What it finds: secretlint's recommended preset (cloud, chat, package-registry
 and payment provider keys, private keys, connection strings, basic auth),
-PEM private keys, JWTs, provider API keys, URL passwords, `Authorization`
+PEM and PGP private keys, JWTs, provider API keys, URL passwords, `Authorization`
 and cookie headers, bearer tokens, a value assigned to a secret-named key
 (`DB_PASSWORD=...`, `"api_key": "..."`), a long high-entropy token after a
 key-like word, and the value of every environment variable whose name has a
 secret-like part (`KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `AUTH`...) and is 8
 characters or longer. `envNames` adds variables by name and `extraPatterns`
 adds regexes, reported as `custom:<id>`. `redactJson` also blanks the value of
-a secret-named key whatever it holds, and keeps numbers, so
-`"max_tokens": 100` stays.
+a secret-named key whatever it holds, except a number under a key that names
+a token, which is a count: `"max_tokens": 100` stays. A value with a `toJSON`
+method (a `URL`, a `Buffer`) is replaced by what that returns, then redacted,
+and an `Error` keeps its own fields and `cause`.
 
 What it misses: a secret with no shape or context (a bare 40-character AWS
 secret key with no key name or access key id nearby looks like any other

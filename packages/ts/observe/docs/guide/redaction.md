@@ -118,7 +118,8 @@ replaced:
    - `Authorization` and `Cookie` headers, and `Bearer ...` tokens.
    - A value assigned to a secret-sounding name: `DB_PASSWORD=...`,
      `"api_key": "..."`, `client_secret: ...`.
-   - JWTs, provider API keys, PEM private key blocks, passwords inside URLs.
+   - JWTs, provider API keys, PEM and PGP private key blocks, passwords inside
+     URLs.
    - A long, random-looking token right after a word like `key` or `token`.
 3. **Your environment.** The value of every environment variable whose name
    contains a part such as `KEY`, `TOKEN`, `SECRET`, `PASSWORD` or `AUTH`, and is

@@ -10,7 +10,11 @@
  */
 const MODIFIER_GROUP = /\(\?(?:[a-zA-Z]+(?:-[a-zA-Z]*)?|-[a-zA-Z]+):/
 
-/** A bounded repeat of at most this many times is cheap enough that its inner quantifiers are allowed. */
+/**
+ * A bounded repeat of at most this many times is cheap enough that its inner variable-width
+ * quantifiers are allowed. An inner unbounded quantifier is never cheap: `(?:a+){3}b` tries
+ * every split of a run of `a`s, polynomial in its length.
+ */
 const SMALL_REPEAT_MAX = 3
 
 interface Group {
@@ -216,8 +220,10 @@ function endsInSeparator(body: string): boolean {
  * of a group that holds an unbounded quantifier (`(x+)+`), a variable-width
  * bounded quantifier (`(a{1,2})+`, `(a?a?)+`), or an alternation
  * whose branches can start alike (`(a|a)+`, `(a|aa)*`, `(\w|\d)+`; `(a|b)+` is
- * fine), or a repeat of more than {@link SMALL_REPEAT_MAX} of a group that holds
- * an unbounded or variable-width quantifier (`(.*a){10}`, `(a{1,2}){20}`).
+ * fine), a repeat of two or more of a group that holds an unbounded quantifier
+ * (`(?:a+){3}b`, `(.*a){10}`), or a repeat of more than
+ * {@link SMALL_REPEAT_MAX} of a group that holds a variable-width quantifier
+ * (`(a{1,2}){20}`).
  * A group that {@link endsInSeparator} is allowed any repeat
  * (`(?:[0-9a-f]{1,4}:){7}`), though its quantifiers still count against the
  * groups around it. Escapes and character classes count as one atom.
@@ -264,9 +270,8 @@ function hasCatastrophicRepeat(source: string): boolean {
       const q = quantifierAt(source, i + 1)
       if (q !== null && (modifiers || !endsInSeparator(source.slice(group.bodyStart, i)))) {
         if (q.unbounded && (group.unbounded || group.variable || group.overlapping)) return true
-        if (!q.unbounded && q.max > SMALL_REPEAT_MAX && (group.unbounded || group.variable)) {
-          return true
-        }
+        if (!q.unbounded && q.max > 1 && group.unbounded) return true
+        if (!q.unbounded && q.max > SMALL_REPEAT_MAX && group.variable) return true
       }
       markQuantifier(group, q)
       top().unbounded ||= group.unbounded
@@ -287,11 +292,13 @@ function hasCatastrophicRepeat(source: string): boolean {
  * compile, or it has a shape known to backtrack catastrophically: an
  * unbounded repeat of a group that holds an unbounded quantifier (`(x+)+`), a
  * variable-width bounded quantifier (`(a{1,2})+`) or an alternation whose
- * branches can start alike (`(a|aa)*`), or a large bounded repeat of such a
- * group (`(.*a){10}`). A group that ends in a separator the rest of it cannot
- * match is allowed (`(?:[0-9a-f]{1,4}:){7}`). A static check, best effort
- * rather than a proof: it rejects the common shapes, not every pattern that
- * can be slow.
+ * branches can start alike (`(a|aa)*`), a bounded repeat of a group holding
+ * an unbounded quantifier (`(?:a+){3}b`), or a large bounded repeat of a
+ * variable-width one (`(a{1,2}){20}`). A group that ends in a separator the
+ * rest of it cannot match is allowed (`(?:[0-9a-f]{1,4}:){7}`). A static
+ * check, best effort rather than a proof: it rejects the common shapes, not
+ * every pattern that can be slow. Adjacent unbounded runs outside a group
+ * (`a+a+a+b`) are not detected.
  *
  * @example
  * ```ts

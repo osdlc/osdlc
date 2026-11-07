@@ -31,8 +31,8 @@ ruled that redaction is aggressive and always on for content: it cannot be
 disabled, only extended.
 
 Four passes each collect ranges over the original text. Overlapping or
-adjacent ranges merge, keeping the rule of the earliest start, and are spliced
-right to left as `[REDACTED:<rule>]`.
+adjacent ranges merge, keeping the rule of the earliest start, and each is replaced
+as `[REDACTED:<rule>]`.
 
 1. **secretlint.** `@secretlint/core` with
    `@secretlint/secretlint-rule-preset-recommend`. It covers cloud, chat,
@@ -42,7 +42,7 @@ right to left as `[REDACTED:<rule>]`.
    the logged text cannot switch a rule off.
 2. **Built-in rules.**
    - JWTs, and provider API keys the preset's strict shapes miss.
-   - PEM private key blocks, by a linear scan, which the preset misses on
+   - PEM and PGP private key blocks, by a linear scan, which the preset misses on
      short bodies.
    - Passwords in connection strings, `Authorization` and cookie headers, and
      bearer tokens.
