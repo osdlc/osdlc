@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig, type PlaywrightTestConfig } from '@playwright/test'
@@ -12,7 +13,12 @@ export interface StoryConfigOptions {
   storybookDir?: string
   /** Where the specs live. Default `tests-stories`. */
   testDir?: string
-  /** The config file's directory, which Playwright resolves `outputDir` against. Default the working directory. */
+  /**
+   * The config file's directory: pass `import.meta.dirname`. The perf report goes
+   * to `<configDir>/test-results/story-perf.json`, beside the `outputDir` that
+   * Playwright resolves against the config file. Default the working directory,
+   * which differs from the config's when Playwright runs with `-c` from elsewhere.
+   */
   configDir?: string
 }
 
@@ -24,7 +30,8 @@ const serveStatic = fileURLToPath(new URL(`../runner/serve-static.${ext}`, impor
  * A Playwright config for host specs against a static Storybook build, served
  * by the runner's `serveStatic`. No retries in either mode. Sets
  * `STORY_PERF_FILE` (unless already set) to `<configDir>/test-results/story-perf.json`,
- * the perf report path every worker's `budget` writes to.
+ * the perf report path every worker's `budget` writes to, and `STORY_PERF_RUN`
+ * to a new id, so a run never merges into an earlier run's report.
  */
 export function defineStoryConfig(options: StoryConfigOptions): PlaywrightTestConfig {
   const {
@@ -35,8 +42,9 @@ export function defineStoryConfig(options: StoryConfigOptions): PlaywrightTestCo
     configDir = process.cwd(),
   } = options
   const perf = mode === 'perf'
-  // Workers inherit the runner's environment.
+  // Workers inherit the runner's environment, so both are set once per run.
   process.env.STORY_PERF_FILE ??= resolve(configDir, 'test-results', 'story-perf.json')
+  process.env.STORY_PERF_RUN ??= randomUUID()
   return defineConfig({
     testDir,
     testMatch: perf ? '**/*.perf.ts' : '**/*.e2e.ts',

@@ -202,7 +202,8 @@ const close = await serveStatic('storybook-static', 6107)
   `index.json`, in index order, with docs entries dropped: `include` and
   `exclude` take id prefixes, and `contains` a substring.
 - `serveStatic(dir, port)` serves a static build on `127.0.0.1` only. A path
-  outside `dir` is a 404, and a path with no file falls back to `index.html`.
+  outside `dir` and a missing file are a 404, and a directory serves its
+  `index.html`.
   It rejects when the port is taken, and resolves to a function that stops
   the server.
 

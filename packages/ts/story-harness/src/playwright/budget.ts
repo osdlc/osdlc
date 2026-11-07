@@ -10,11 +10,9 @@
  */
 import { randomUUID } from 'node:crypto'
 import {
-  closeSync,
   existsSync,
   linkSync,
   mkdirSync,
-  openSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -34,8 +32,11 @@ export interface Verdict {
 }
 
 export interface PerfReport {
-  /** The Playwright runner's process id, the parent of every worker. */
-  runId: number
+  /**
+   * The run's id: `STORY_PERF_RUN`, which `defineStoryConfig` sets once per run,
+   * else the Playwright runner's process id, the parent of every worker.
+   */
+  runId: string
   mode: 'record' | 'assert'
   date: string
   userAgent: string
@@ -50,8 +51,8 @@ export interface PerfReport {
 export interface PerfRecorderOptions {
   outFile?: string
   env?: Record<string, string | undefined>
-  /** Default `process.ppid`: workers of one run share their parent. */
-  runId?: number
+  /** Default `STORY_PERF_RUN`, else `process.ppid`: workers of one run share their parent. */
+  runId?: string | number
   /** How long a write waits for the report's lock before it throws. Default 30 s. */
   lockDeadlineMs?: number
 }
@@ -124,10 +125,13 @@ export function removeStaleLock(
 /** Run `fn` while holding `<file>.lock`, so one process at a time reads, merges and writes. */
 function withLock(file: string, deadlineMs: number, fn: () => void): void {
   const lock = `${file}.lock`
+  const token = `${process.pid}.${randomUUID()}`
   const deadline = Date.now() + deadlineMs
   for (;;) {
     try {
-      closeSync(openSync(lock, 'wx'))
+      // The token says whose lock it is, so a release never removes a lock
+      // another worker took over after judging this one stale.
+      writeFileSync(lock, token, { flag: 'wx' })
       break
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
@@ -149,7 +153,16 @@ function withLock(file: string, deadlineMs: number, fn: () => void): void {
   try {
     fn()
   } finally {
-    rmSync(lock, { force: true })
+    releaseLock(lock, token)
+  }
+}
+
+/** Remove `lock` if it still holds `token`. */
+export function releaseLock(lock: string, token: string): void {
+  try {
+    if (readFileSync(lock, 'utf8') === token) rmSync(lock, { force: true })
+  } catch {
+    // Already gone: another worker took it over and released it.
   }
 }
 
@@ -164,7 +177,7 @@ export function createPerfRecorder(options: PerfRecorderOptions = {}) {
   if (!(slack > 0))
     throw new Error(`PW_PERF_SLACK must be a positive number, got ${env.PW_PERF_SLACK}`)
 
-  const runId = options.runId ?? process.ppid
+  const runId = String(options.runId ?? env.STORY_PERF_RUN ?? process.ppid)
   const lockDeadlineMs = options.lockDeadlineMs ?? LOCK_DEADLINE_MS
   const earlier = readReport(outFile)
   const report: PerfReport =

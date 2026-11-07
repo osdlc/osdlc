@@ -39,7 +39,8 @@ const MIME: Record<string, string> = {
 
 /**
  * Serve `dir` on `127.0.0.1:<port>`. A path that resolves outside `dir` gets a
- * 404, and a path with no file falls back to `index.html`. Rejects when the
+ * 404, and so does a missing file, so a story that loads a missing asset sees
+ * the error. A directory serves its `index.html`. Rejects when the
  * port cannot be bound (for example `EADDRINUSE`). Resolves to a function that
  * stops the server.
  *
@@ -54,11 +55,11 @@ export async function serveStatic(dir: string, port: number): Promise<() => void
   const server = createServer(async (req, res) => {
     try {
       const urlPath = decodeURIComponent((req.url ?? '/').split('?')[0]!)
-      let filePath = resolve(root, '.' + (urlPath === '/' ? '/index.html' : urlPath))
+      let filePath = resolve(root, '.' + urlPath)
       // A decoded `..` must not leave the build.
-      if (!filePath.startsWith(inside)) throw new Error('outside the build')
+      if (filePath !== root && !filePath.startsWith(inside)) throw new Error('outside the build')
       const st = await stat(filePath).catch(() => null)
-      if (!st || st.isDirectory()) filePath = join(root, 'index.html')
+      if (st?.isDirectory()) filePath = join(filePath, 'index.html')
       const body = await readFile(filePath)
       res.writeHead(200, {
         'Content-Type': MIME[extname(filePath).toLowerCase()] ?? 'application/octet-stream',

@@ -6,7 +6,7 @@
  * - `BASELINE_DIR`: where the baseline PNGs are read and written;
  * - `ARTIFACTS_DIR`: where expected/actual/diff images of a failure go;
  * - `STORY_INCLUDE` / `STORY_EXCLUDE`: comma-separated story id prefixes;
- * - `SETTLE_MS`: wait after each story's `play`.
+ * - `SETTLE_MS`: wait after each story's `play`; unset or empty, the default;
  */
 import { defineConfig } from '@playwright/test'
 import { VIEWPORT } from './story.ts'

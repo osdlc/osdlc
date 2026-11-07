@@ -27,8 +27,9 @@
 set -euo pipefail
 
 RUNNER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-IMAGE="mcr.microsoft.com/playwright:v1.62.1-noble"
+# The image and the @playwright/test installed in it must be the same version.
 PLAYWRIGHT_VERSION="1.62.1"
+IMAGE="mcr.microsoft.com/playwright:v${PLAYWRIGHT_VERSION}-noble"
 PLATFORM="${STORY_SHOTS_PLATFORM:-linux/amd64}"
 # This folder holds TypeScript in the package source and JavaScript once built.
 CONFIG="playwright.config.js"
@@ -44,7 +45,8 @@ shift
 MODE="check"
 INCLUDE=""
 EXCLUDE=""
-SETTLE_MS="1500"
+# Empty: the runner's own default (DEFAULT_SETTLE_MS in story.ts) applies.
+SETTLE_MS=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --include | --exclude | --settle-ms)
@@ -60,6 +62,16 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
+is_count() { [[ "$1" =~ ^[0-9]+$ ]]; }
+if [[ -n "$SETTLE_MS" ]] && ! is_count "$SETTLE_MS"; then
+  echo "story-shots: --settle-ms takes a whole number of milliseconds, got $SETTLE_MS" >&2
+  exit 2
+fi
+if [[ -n "${SHOT_WORKERS:-}" ]] && { ! is_count "$SHOT_WORKERS" || [[ "$SHOT_WORKERS" -lt 1 ]]; }; then
+  echo "story-shots: SHOT_WORKERS takes a whole number of at least 1, got $SHOT_WORKERS" >&2
+  exit 2
+fi
+
 STATIC="$PKG/storybook-static"
 BASELINES="$PKG/.storybook/baselines"
 RESULTS="$PKG/test-results/story-shots"
@@ -74,19 +86,37 @@ if ! docker info >/dev/null 2>&1; then
 fi
 
 # Docker Desktop's credential helper wants the login keychain, which a
-# non-interactive shell cannot reach. The image is public, so pull anonymously.
-# The empty config also drops the active context (Colima's or OrbStack's, say),
-# so pin its endpoint first or docker falls back to /var/run/docker.sock.
+# non-interactive shell cannot reach. The image is public, so pull anonymously
+# through a config with no credential settings. It keeps the user's `proxies`,
+# so the container's npm install still goes through a corporate proxy.
+#
+# That config also drops the active context (Colima's or OrbStack's, say), so
+# pin a local socket endpoint first or docker falls back to
+# /var/run/docker.sock. A remote (tcp/ssh) context keeps its TLS material in
+# the user's config, so with one active the user's config is left as it is.
+USER_DOCKER_CONFIG="${DOCKER_CONFIG:-$HOME/.docker}/config.json"
+REMOTE_CONTEXT=0
 if [[ -z "${DOCKER_HOST:-}" ]]; then
   DOCKER_HOST="$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/dev/null || true)"
-  # Only local socket endpoints: a remote (tcp/ssh) context carries TLS material
-  # in its own config, which the empty config below would drop.
-  case "$DOCKER_HOST" in unix://* | npipe://*) export DOCKER_HOST ;; *) unset DOCKER_HOST ;; esac
+  case "$DOCKER_HOST" in
+    unix://* | npipe://*) export DOCKER_HOST ;;
+    "") unset DOCKER_HOST ;;
+    *) unset DOCKER_HOST; REMOTE_CONTEXT=1 ;;
+  esac
 fi
-DOCKER_CONFIG_DIR="$(mktemp -d)"
-trap 'rm -rf "$DOCKER_CONFIG_DIR"' EXIT
-printf '{}' > "$DOCKER_CONFIG_DIR/config.json"
-export DOCKER_CONFIG="$DOCKER_CONFIG_DIR"
+DOCKER_CONFIG_DIR=""
+trap '[[ -z "$DOCKER_CONFIG_DIR" ]] || rm -rf "$DOCKER_CONFIG_DIR"' EXIT
+if [[ $REMOTE_CONTEXT -eq 0 ]]; then
+  DOCKER_CONFIG_DIR="$(mktemp -d)"
+  node -e '
+    const fs = require("node:fs")
+    let config = {}
+    try { config = JSON.parse(fs.readFileSync(process.argv[1], "utf8")) } catch {}
+    fs.writeFileSync(process.argv[2], JSON.stringify(config.proxies ? { proxies: config.proxies } : {}))
+  ' "$USER_DOCKER_CONFIG" "$DOCKER_CONFIG_DIR/config.json" 2>/dev/null ||
+    printf '{}' > "$DOCKER_CONFIG_DIR/config.json"
+  export DOCKER_CONFIG="$DOCKER_CONFIG_DIR"
+fi
 
 mkdir -p "$BASELINES"
 rm -rf "$RESULTS"
