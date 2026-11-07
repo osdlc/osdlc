@@ -206,16 +206,16 @@ describe('rule-review checks selection', () => {
     }
   })
 
-  test('a changeset flag outside a git repository is a usage error', async () => {
+  test('a changeset flag outside a git repository exits 24 (no repository)', async () => {
     const { code, err } = await runCli(scratch, '--all')
 
-    expect(code).toBe(2)
+    expect(code).toBe(24)
     expect(err).toContain('not inside a git repository')
   })
 })
 
 describe('rule-review checks scope errors', () => {
-  test('an unreadable applies_to pattern is a usage error naming the script', async () => {
+  test('an unreadable applies_to pattern exits 10 naming the script', async () => {
     const bad = mkdtempSync(join(tmpdir(), 'rule-review-badscope-'))
     try {
       writeFile(bad, '1-bad', recorder(['src/{1..3}.ts']))
@@ -225,7 +225,7 @@ describe('rule-review checks scope errors', () => {
         checksMain([bad, '-C', committed.root, '--base', committed.base]),
       )
 
-      expect(code).toBe(2)
+      expect(code).toBe(10)
       expect(err).toContain("scope of '1-bad'")
     } finally {
       rmSync(bad, { recursive: true, force: true })

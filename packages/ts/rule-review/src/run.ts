@@ -3,8 +3,8 @@
  *
  * Fan-out is concurrency-capped. There is no correctness reason for the cap:
  * a review is read-only and no job touches the working tree, so jobs
- * cannot conflict with each other. It exists purely so a wide changeset does
- * not open thirty agent processes at once.
+ * cannot conflict with each other. It caps how many agent processes run at
+ * once (`ReviewConfig.concurrency`).
  */
 import { adapterFor, callAgent } from '@osdlc/agent-call'
 import type { AgentCallSpec, AgentName, AgentResult } from '@osdlc/agent-call'
@@ -252,9 +252,19 @@ function emptyOutcome(
   }
 }
 
-/** What a job would do, without doing it. */
+/**
+ * Why a job with no diff to read is not dispatched. A path git could not
+ * render (a nested checkout, say) leaves the judge nothing to read; asking
+ * would cost a call to judge an empty prompt.
+ */
+const NO_DIFF = 'not judged: none of its files has a diff'
+
+/**
+ * What a job would do, without doing it. A job the real run would not
+ * dispatch carries the reason, so a dry run shows what `--strict` fails on.
+ */
 function measureJob(prepared: PreparedJob): JobOutcome {
-  return emptyOutcome(prepared, 0)
+  return prepared.hasDiff ? emptyOutcome(prepared, 0) : emptyOutcome(prepared, 0, NO_DIFF)
 }
 
 async function runJob(
@@ -276,9 +286,7 @@ async function runJob(
     return outcome
   }
   if (!prepared.hasDiff) {
-    // A path git could not render (a nested checkout, say) leaves the judge
-    // nothing to read; asking would cost a call to judge an empty prompt.
-    const outcome = emptyOutcome(prepared, 0, 'not judged: none of its files has a diff')
+    const outcome = emptyOutcome(prepared, 0, NO_DIFF)
     settle(outcome)
     return outcome
   }

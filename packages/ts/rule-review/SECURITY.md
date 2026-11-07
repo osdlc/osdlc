@@ -25,7 +25,11 @@ is the latest minor release.
   it to that agent's model provider. Do not run it on a change you may not
   send there. The agent runs read-only, with no session saved.
 - The judge reads the change and the rule files, and either can try to steer
-  it: a comment in a diff can ask the agent to report nothing. Findings are
+  it: a comment in a diff can ask the agent to report nothing, or to read other
+  files. Read-only still lets the agent read any file in the checkout (its
+  working directory is the project root), and some engines can also fetch URLs
+  in read-only mode (agent-call maps opencode's to `webfetch: allow`). In CI
+  that process holds the model API key. Findings are
   evidence for a reviewer, not a security control. Do not rely on
   `--blocking` to keep hostile changes out of a pull request from an untrusted
   author.

@@ -103,14 +103,14 @@ rule-review --json            # the run as JSON on stdout
 | `--dry-run`          | Plan and measure. Starts no agent and costs nothing.                                      |
 | `--blocking`         | Exit 1 on a finding at or above the floor. Without it findings are advisory.               |
 | `--severity <level>` | The floor: `violation` (default), `tension` or `drift`.                                   |
-| `--strict`           | Exit 2 when a judgement could not complete. Use it in CI.                                 |
+| `--strict`           | Exit 11 when a judgement could not complete. Use it in CI.                                |
 | `--engine <name>`    | `claude` (default), `codex`, `antigravity`, `opencode`, and the other agent-call engines. |
 | `--model <id>`       | The model to judge with. Default: the engine's own.                                       |
 | `--concurrency <n>`  | Judgements in flight at once. Default 32.                                                 |
 | `--max-files <n>`    | Files per judgement before a source is sharded. 0 disables. Default 12.                   |
 | `--exclude <glob>`   | Drop matching paths from the changeset. Repeatable.                                       |
-| `--json`             | Print the run as JSON on stdout. Progress and the report go to stderr otherwise.          |
-| `-C <dir>`           | Run in `<dir>`.                                                                           |
+| `--json`             | Print the run as one JSON document on stdout. The report goes to stderr otherwise.        |
+| `-C, --dir <dir>`    | Run in `<dir>`.                                                                           |
 
 A branch name passed to `--base` compares from where the branch forked. When
 the local branch is behind `origin/<branch>`, the remote one is used, so a stale
@@ -121,8 +121,15 @@ checkout does not pull merged commits into the change. `@{u}`, a sha or
 | ---- | ----------------------------------------------------------------------------- |
 | 0    | No finding at or above the floor, or advisory (no `--blocking`)               |
 | 1    | A finding at or above the floor, with `--blocking`                             |
-| 2    | Usage error; the run could not start; or, with `--strict`, it was incomplete  |
+| 2    | The command line cannot run as typed                                          |
+| 10   | The run could not complete: a base that does not resolve, an unreadable glob  |
+| 11   | With `--strict`, a judgement did not complete                                 |
+| 24   | The directory is not inside a git repository                                  |
 | 130  | Interrupted by SIGINT or SIGTERM; running agents are killed                   |
+
+The codes follow the osdlc [CLI standard](https://github.com/osdlc/osdlc/blob/main/standards/cli-interface.md):
+0, 1 and 2 mean the same in every osdlc tool, 24 is the shared "no repository"
+code, and 10 and 11 are this tool's own.
 
 A judgement that fails (the agent is missing, signed out, times out, or replies
 with something other than findings) is reported and marks the run incomplete.
@@ -375,7 +382,9 @@ exit $status
 | ---- | ------------------------------------------- |
 | 0    | Every check passed or was skipped           |
 | 1    | A check failed or errored                   |
-| 2    | Usage error, or the folder cannot be read   |
+| 2    | The command line cannot run as typed        |
+| 10   | The folder or the changed files cannot be read |
+| 24   | The directory does not exist, or a changeset flag was given outside git |
 | 130  | Interrupted; the running check is killed    |
 
 ## As a library
@@ -400,8 +409,9 @@ process.exitCode = run.findings.some((f) => f.severity === 'violation') ? 1 : 0
 
 The run holds `findings` (merged, ordered from repository-wide rules to local
 ones, worst first under each), `jobs` and `outcomes` (one per judgement, with
-its error, duration, cost and prompt size), `skipped` (the sources that
-governed no changed file), `degraded` (a judgement failed) and the changeset it
+its error, duration, cost and prompt size), `skipped` (sources a provider
+returned that matched no changed file; the built-in provider does not return
+instruction files outside the change), `degraded` (a judgement failed) and the changeset it
 judged. Pass `dryRun: true` to plan without starting an agent, `config` to
 change any [setting](#settings), and `signal` to stop the run: aborting kills
 every running agent.
@@ -555,7 +565,11 @@ and each carries `@experimental` in its documentation.
   `RunChecksOptions` and `Changeset`.
 
 Everything else exported is stable within a minor version. The JSON that
-`--json` prints is the run as the library returns it.
+`--json` prints is the run as the library returns it, with `schemaVersion: 1`
+and `kind: "review"` in front (`"checks"` and `"checks-plan"` for
+`rule-review checks`). `schemaVersion` rises when a field is removed, renamed
+or retyped. A failure under `--json` prints an error document instead:
+`{ "schemaVersion": 1, "kind": "error", "code": "bad-base", "message": "…", "exit": 10 }`.
 
 ## Runtimes and platforms
 

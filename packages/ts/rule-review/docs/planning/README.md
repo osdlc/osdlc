@@ -35,6 +35,8 @@ Each entry has a `state`. A decision is `proposed`, `accepted` or
 - [D-07](decisions/D-07-check-folders.md): Check folders
 - [D-08](decisions/D-08-licence.md): Licence
 - [D-09](decisions/D-09-api-for-0-4-0.md): The API for 0.4.0
+- [D-10](decisions/D-10-command-line-contract.md): The command line follows
+  the osdlc CLI standard
 
 ## Open tasks
 

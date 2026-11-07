@@ -19,8 +19,9 @@ describe('rule-review argument handling', () => {
     const { code, out } = await run(['--help'])
 
     expect(code).toBe(0)
-    expect(out).toContain('rule-review — review a changeset')
+    expect(out).toContain('Usage: rule-review [options]')
     expect(out).toContain('--dry-run')
+    expect(out).toContain('Exit codes')
   })
 
   test('an unknown option fails with a pointer to --help', async () => {
@@ -64,35 +65,51 @@ describe('rule-review argument handling', () => {
     }
   })
 
-  test('a -C directory that does not exist is a usage error (2), for rule-review and rule-review checks', async () => {
+  test('a -C directory that does not exist exits 24 (no repository), for rule-review and rule-review checks', async () => {
     const missing = join(tmpdir(), `rule-review-missing-${process.pid}-${Date.now()}`)
 
     const reviewed = await run(['-C', missing, '--dry-run'])
-    expect(reviewed.code).toBe(2)
+    expect(reviewed.code).toBe(24)
     expect(reviewed.err).toContain(`rule-review: ${missing}`)
 
     const checks = await run(['checks', 'chk', '-C', missing])
-    expect(checks.code).toBe(2)
+    expect(checks.code).toBe(24)
     expect(checks.err).toContain(`rule-review: ${missing}`)
   })
 
-  test('a directory outside a git repo fails cleanly', async () => {
+  test('a directory outside a git repo exits 24 (no repository)', async () => {
     const { code, err } = await run(['-C', '/'])
 
-    expect(code).toBe(2)
+    expect(code).toBe(24)
     expect(err).toContain('not inside a git repository')
+  })
+
+  test('under --json a failure prints the error document on stdout', async () => {
+    const outside = await run(['-C', '/', '--json'])
+    expect(outside.code).toBe(24)
+    expect(JSON.parse(outside.out)).toEqual({
+      schemaVersion: 1,
+      kind: 'error',
+      code: 'not-a-repository',
+      message: '/ is not inside a git repository',
+      exit: 24,
+    })
+
+    const typo = await run(['--json', '--bogus'])
+    expect(typo.code).toBe(2)
+    expect(JSON.parse(typo.out)).toMatchObject({ kind: 'error', code: 'usage', exit: 2 })
   })
 })
 
 describe('rule-review scope patterns', () => {
-  test('an --exclude pattern the matcher rejects exits 2 with the reason on stderr', async () => {
+  test('an --exclude pattern the matcher rejects exits 10 with the reason on stderr', async () => {
     const { root } = makeRepo({ 'CLAUDE.md': 'Rule.\n', 'src/a.ts': 'a\n' })
     try {
       writeRepoFile(root, 'src/a.ts', 'a2\n')
 
       const { code, err } = await run(['-C', root, '--dry-run', '--exclude', '!(b).ts'])
 
-      expect(code).toBe(2)
+      expect(code).toBe(10)
       expect(err).toContain('rule-review: exclude:')
     } finally {
       rmSync(root, { recursive: true, force: true })
@@ -157,21 +174,22 @@ describe('rule-review --strict and --engine', () => {
   })
   const failing = (argv: string[]) => withPath(agent, () => run(['-C', root, ...argv]))
 
-  test('an incomplete run exits 0 by default and 2 with --strict', async () => {
+  test('an incomplete run exits 0 by default and 11 with --strict', async () => {
     const lenient = await failing(['--blocking'])
     expect(lenient.code).toBe(0)
     expect(lenient.err).toContain('the run was incomplete')
 
-    expect((await failing(['--blocking', '--strict'])).code).toBe(2)
+    expect((await failing(['--blocking', '--strict'])).code).toBe(11)
   })
 
-  test('--json carries degraded, and --strict sets the exit code from it', async () => {
+  test('--json prints one review document carrying degraded, and --strict sets the exit code from it', async () => {
     const { code, out } = await failing(['--json', '--strict'])
-    const result = JSON.parse(out) as { degraded: boolean; changedFiles: string[] }
+    const result = JSON.parse(out) as Record<string, unknown>
 
-    expect(result.degraded).toBe(true)
+    expect(Object.keys(result).slice(0, 2)).toEqual(['schemaVersion', 'kind'])
+    expect(result).toMatchObject({ schemaVersion: 1, kind: 'review', degraded: true })
     expect(result.changedFiles).toEqual(['a.ts'])
-    expect(code).toBe(2)
+    expect(code).toBe(11)
   })
 
   test('a finding is printed with terminal controls removed', async () => {
@@ -198,7 +216,7 @@ describe('rule-review --strict and --engine', () => {
     const { code, err } = await run(['--engine', 'gpt'])
 
     expect(code).toBe(2)
-    expect(err).toContain('--engine expects one of claude')
+    expect(err).toContain('Allowed choices are claude')
   })
 })
 
@@ -282,6 +300,7 @@ describe('rule-review checks', () => {
     const json = JSON.parse(out)
 
     expect(code).toBe(1)
+    expect(json).toMatchObject({ schemaVersion: 1, kind: 'checks' })
     expect(json.results.map((r: { entry: string; status: string }) => [r.entry, r.status])).toEqual(
       [
         ['1-ok', 'PASS'],
@@ -317,7 +336,7 @@ describe('rule-review checks', () => {
     const json = JSON.parse(out)
 
     expect(code).toBe(0)
-    expect(json.dryRun).toBe(true)
+    expect(json).toMatchObject({ schemaVersion: 1, kind: 'checks-plan' })
     expect(json.run.map((c: { entry: string }) => c.entry)).toContain('30-slow')
     expect(json.skipped).toContainEqual({ entry: '.hidden', reason: "leading '.'" })
   })
@@ -326,7 +345,8 @@ describe('rule-review checks', () => {
     const { code, err } = await run(['checks'])
 
     expect(code).toBe(2)
-    expect(err).toContain('needs a folder')
+    expect(err).toContain("missing required argument 'dir'")
+    expect(err).toContain("See 'rule-review checks --help'.")
   })
 
   test('an unknown flag and an extra argument are usage errors', async () => {
@@ -336,13 +356,13 @@ describe('rule-review checks', () => {
     expect(flag.code).toBe(2)
     expect(flag.err).toContain("unknown option '--bogus'")
     expect(extra.code).toBe(2)
-    expect(extra.err).toContain("unexpected argument 'other'")
+    expect(extra.err).toContain('too many arguments')
   })
 
-  test('a folder that does not exist is a usage error', async () => {
+  test('a folder that does not exist exits 10', async () => {
     const { code, err } = await run(['checks', join(fixtures, 'nope')])
 
-    expect(code).toBe(2)
+    expect(code).toBe(10)
     expect(err).toContain('cannot read check folder')
   })
 
@@ -366,7 +386,7 @@ describe('rule-review checks', () => {
     const main = await run(['--help'])
 
     expect(checks.code).toBe(0)
-    expect(checks.out).toContain('rule-review checks <dir>')
+    expect(checks.out).toContain('Usage: rule-review checks [options] <dir>')
     expect(main.out).toContain('Commands')
     expect(main.out).toContain('checks <dir>')
   })

@@ -13,7 +13,7 @@ created: 2026-11-07
   finding at or above the severity floor (`violation` by default) exits 1.
 - A judgement that fails (no agent, no key, a timeout, a reply that is not a
   findings object) marks the run incomplete (`degraded`). It never reads as
-  clean, and it does not fail the run unless `--strict` is set, which exits 2.
+  clean, and it does not fail the run unless `--strict` is set, which exits 11.
 - An unknown engine name is refused before any agent starts.
 
 ## Why

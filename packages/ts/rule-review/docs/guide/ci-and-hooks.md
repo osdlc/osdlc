@@ -25,7 +25,7 @@ Three exit behaviours, from the flags:
 | --- | --- | --- | --- |
 | No findings | 0 | 0 | 0 |
 | A finding at or above the floor | 0 | **1** | **1** |
-| A judgement could not run (no agent, no key, timeout) | 0 | 0 | **2** |
+| A judgement could not run (no agent, no key, timeout) | 0 | 0 | **11** |
 
 Without `--strict`, a judgement that fails is reported and the run is marked
 incomplete, but the exit code ignores it. That is right on a laptop: a missing
@@ -51,7 +51,7 @@ or drop `--strict` for forks and treat the result as missing.
 
 The review diffs from where the branch forked, so CI needs the history:
 `fetch-depth: 0` with `actions/checkout`, `GIT_DEPTH: 0` on GitLab. In a
-shallow clone the fork point may be missing: the review then fails with exit 2
+shallow clone the fork point may be missing: the review then fails with exit 10
 (`could not diff against …`) or compares against the wrong commit.
 
 ## Pin the version
@@ -72,10 +72,13 @@ governs a changed file, plus one per extra shard, all at the same time.
 
 ## Reading the result in CI
 
-`--json` prints the whole run on stdout. The fields a CI step needs:
+`--json` prints the whole run on stdout as one document. The fields a CI step
+needs:
 
 ```json
 {
+  "schemaVersion": 1,
+  "kind": "review",
   "base": "main",
   "resolvedBase": "origin/main",
   "changedFiles": ["src/api/users.ts", "src/math.ts"],

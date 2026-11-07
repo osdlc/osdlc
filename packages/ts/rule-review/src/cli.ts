@@ -14,67 +14,105 @@
  */
 
 import { BUILTIN_AGENTS } from '@osdlc/agent-call'
-
-import { isEngine, isSeverity } from './config.ts'
-import { say, sayError } from './output.ts'
+import { defineCli, processIo } from '@osdlc/cli-tool'
 
 import { checksMain } from './checks-command.ts'
+import { EXIT_CODE, fail, flagAsValue, interrupted, usage, withInterrupt } from './exit.ts'
 import { exitCodeFor } from './findings.ts'
-import { reviewChanges, type ReviewChangesResult } from './review-changes.ts'
+import { print, say } from './output.ts'
+import { reviewChanges } from './review-changes.ts'
 import { estimateTokens, formatTokens, jobLabel } from './tokens.ts'
 import { DEFAULT_CONFIG, SEVERITY_ORDER, type ReviewConfig } from './types.ts'
 
-const USAGE = `rule-review — review a changeset against the rule files that govern it
+/** The `kind` of the `--json` document, and its version. */
+export const REVIEW_KIND = 'review'
+const SCHEMA_VERSION = 1
+
+const CLI = defineCli({
+  name: 'rule-review',
+  summary: `Review a changeset against the rule files that govern it.
 
 Every CLAUDE.md / AGENTS.md governs its own directory. rule-review finds the
 ones whose scope encloses a changed file and asks an agent about each one,
-separately, over only the files it governs.
-
-Usage
-  rule-review [options]
-  rule-review <command> [args]
-
-Commands
-  checks <dir>        Run a folder of numbered check scripts.
-                      See 'rule-review checks --help'.
-
-Options
-  --base <ref>        Compare against <ref>. Default: uncommitted work only.
-                      Use a branch name for the whole branch, @{u} to include
-                      unpushed commits.
-  --dry-run           Show what would be judged, and what it would cost, without
-                      starting an agent. Free and fast.
-  --blocking          Exit 1 on findings at or above the severity floor.
-  --severity <level>  violation (default), tension, or drift.
-  --strict            Exit 2 when a judgement could not complete (the agent
-                      failed, timed out, or gave no findings object). Without
-                      it, an incomplete run is reported and exits as usual.
-  --engine <name>     ${BUILTIN_AGENTS.join(', ')}. Default: ${DEFAULT_CONFIG.engine}.
-  --model <id>        Model to judge with. Default: the engine's own.
-  --concurrency <n>   Judgements in flight at once. Default: ${DEFAULT_CONFIG.concurrency}.
-  --max-files <n>     Files per judgement; a broader source is split into that
-                      many-file shards, judged concurrently against the same
-                      rules. 0 disables. Default: ${DEFAULT_CONFIG.maxFilesPerJob}.
-  --exclude <glob>    Drop matching paths. Repeatable.
-  --json              Print the run as JSON on stdout instead of the report.
-  -C <dir>            Run against <dir> instead of the current directory.
-  -h, --help          This text.
-  --version           Print the version.
+separately, over only the files it governs.`,
+  flags: {
+    base: {
+      kind: 'string',
+      valueName: 'ref',
+      help: 'compare against <ref>. Default: uncommitted work only. A branch name reviews the whole branch, @{u} adds unpushed commits',
+    },
+    dryRun: {
+      kind: 'boolean',
+      help: 'show what would be judged, and what it would cost, without starting an agent',
+    },
+    blocking: { kind: 'boolean', help: 'exit 1 on findings at or above the severity floor' },
+    severity: {
+      kind: 'enum',
+      valueName: 'level',
+      choices: SEVERITY_ORDER,
+      default: DEFAULT_CONFIG.severityFloor,
+      help: 'the severity floor',
+    },
+    strict: {
+      kind: 'boolean',
+      help: 'exit 11 when a judgement could not complete (the agent failed, timed out, or gave no findings object)',
+    },
+    engine: {
+      kind: 'enum',
+      valueName: 'name',
+      choices: BUILTIN_AGENTS,
+      default: DEFAULT_CONFIG.engine,
+      help: 'the agent that judges',
+    },
+    model: {
+      kind: 'string',
+      valueName: 'id',
+      help: "model to judge with. Default: the engine's own",
+    },
+    concurrency: {
+      kind: 'string',
+      valueName: 'n',
+      help: `judgements in flight at once. Default: ${DEFAULT_CONFIG.concurrency}`,
+    },
+    maxFiles: {
+      kind: 'string',
+      valueName: 'n',
+      help: `files per judgement; a broader source is split into shards of this many files, judged against the same rules. 0 disables. Default: ${DEFAULT_CONFIG.maxFilesPerJob}`,
+    },
+    exclude: {
+      kind: 'list',
+      valueName: 'glob',
+      commaSeparated: false,
+      default: [],
+      help: 'drop matching paths. Repeatable',
+    },
+    json: { kind: 'boolean', help: 'print the run as one JSON document on stdout' },
+    dir: {
+      kind: 'string',
+      short: 'C',
+      valueName: 'dir',
+      help: 'run against <dir> instead of the current directory',
+    },
+  },
+  epilogue: `Commands
+  checks <dir>  Run a folder of numbered check scripts. See 'rule-review checks --help'.
 
 Exit codes
   0    clean, or advisory (the default: findings are reported, not enforced)
   1    findings at or above the floor, with --blocking
-  2    usage error, the run could not start, or (with --strict) it was incomplete
+  2    the command line cannot run as typed
+  10   the run could not complete: a base that does not resolve, an unreadable
+       pattern, a failing rule source provider
+  11   a judgement did not complete, with --strict
+  24   the directory is not inside a git repository
   130  interrupted by SIGINT or SIGTERM; running agents are killed
-`
 
-interface Options {
-  base?: string
-  dryRun: boolean
-  json: boolean
-  strict: boolean
-  cwd: string
-  config: ReviewConfig
+Under --json a failure prints {"schemaVersion":1,"kind":"error",...} on stdout.`,
+})
+
+/** The usage text, as `--help` prints it. */
+export function usageText(): string {
+  return CLI.help()
 }
 
 /**
@@ -85,161 +123,105 @@ function wholeNumber(v: string): number {
   return /^\d+$/.test(v) ? Number(v) : Number.NaN
 }
 
-/** Read one value that must follow its flag. */
-function value(argv: string[], i: number, flag: string): string {
-  const v = argv[i + 1]
-  if (v === undefined || v.startsWith('-')) {
-    throw new Error(`${flag} needs a value`)
-  }
-  return v
+interface Options {
+  base?: string
+  dryRun: boolean
+  json: boolean
+  strict: boolean
+  cwd: string
+  config: ReviewConfig
 }
 
-function parse(argv: string[]): Options | 'help' {
-  const opts: Options = {
-    dryRun: false,
-    json: false,
-    strict: false,
-    cwd: process.cwd(),
-    config: { ...DEFAULT_CONFIG },
+/** Read the command line into options, an error message, or `help` (already printed). */
+function parse(argv: string[]): Options | 'help' | { error: string } {
+  const parsed = CLI.parse(argv, processIo)
+  if (parsed.status === 'help') return 'help'
+  if (parsed.status === 'error') return { error: parsed.message }
+  const v = parsed.values
+  const dashed = flagAsValue(v, ['base', 'model', 'concurrency', 'maxFiles', 'exclude', 'dir'])
+  if (dashed !== undefined) return { error: dashed }
+  const config: ReviewConfig = {
+    ...DEFAULT_CONFIG,
+    blocking: v.blocking,
+    severityFloor: v.severity,
+    engine: v.engine,
+    exclude: v.exclude,
+    ...(v.model !== undefined ? { model: v.model } : {}),
   }
-  const exclude: string[] = []
-
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i]!
-    switch (arg) {
-      case '-h':
-      case '--help':
-        return 'help'
-      case '--dry-run':
-        opts.dryRun = true
-        break
-      case '--json':
-        opts.json = true
-        break
-      case '--blocking':
-        opts.config.blocking = true
-        break
-      case '--strict':
-        opts.strict = true
-        break
-      case '--base':
-        opts.base = value(argv, i++, arg)
-        break
-      case '-C':
-        opts.cwd = value(argv, i++, arg)
-        break
-      case '--engine': {
-        const v = value(argv, i++, arg)
-        if (!isEngine(v)) {
-          throw new Error(`--engine expects one of ${BUILTIN_AGENTS.join(', ')} (got '${v}')`)
-        }
-        opts.config.engine = v
-        break
-      }
-      case '--model':
-        opts.config.model = value(argv, i++, arg)
-        break
-      case '--exclude':
-        exclude.push(value(argv, i++, arg))
-        break
-      case '--severity': {
-        const v = value(argv, i++, arg)
-        if (!isSeverity(v)) {
-          throw new Error(`--severity expects ${SEVERITY_ORDER.join(', ')} (got '${v}')`)
-        }
-        opts.config.severityFloor = v
-        break
-      }
-      case '--concurrency': {
-        const n = wholeNumber(value(argv, i++, arg))
-        if (!Number.isInteger(n) || n < 1)
-          throw new Error('--concurrency expects a positive integer')
-        opts.config.concurrency = n
-        break
-      }
-      case '--max-files': {
-        const n = wholeNumber(value(argv, i++, arg))
-        if (!Number.isInteger(n) || n < 0)
-          throw new Error('--max-files expects a non-negative integer')
-        opts.config.maxFilesPerJob = n
-        break
-      }
-      default:
-        throw new Error(`unknown option '${arg}' (try --help)`)
-    }
+  if (v.concurrency !== undefined) {
+    const n = wholeNumber(v.concurrency)
+    if (!(n >= 1)) return { error: '--concurrency expects a positive integer' }
+    config.concurrency = n
   }
-  opts.config.exclude = exclude
-  return opts
+  if (v.maxFiles !== undefined) {
+    const n = wholeNumber(v.maxFiles)
+    if (!(n >= 0)) return { error: '--max-files expects a non-negative integer' }
+    config.maxFilesPerJob = n
+  }
+  return {
+    ...(v.base !== undefined ? { base: v.base } : {}),
+    dryRun: v.dryRun,
+    json: v.json,
+    strict: v.strict,
+    cwd: v.dir ?? process.cwd(),
+    config,
+  }
 }
 
 function plural(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? '' : 's'}`
 }
 
+/**
+ * Run `rule-review` with `argv` (the arguments after the binary name) and
+ * return the exit code. Output goes to the process streams.
+ */
 export async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'checks') return checksMain(argv.slice(1))
-  let opts: Options | 'help'
-  try {
-    opts = parse(argv)
-  } catch (err) {
-    sayError(err)
-    return 2
-  }
-  if (opts === 'help') {
-    process.stdout.write(USAGE)
-    return 0
-  }
+  const json = argv.includes('--json')
+  const opts = parse(argv)
+  if (opts === 'help') return EXIT_CODE.ok
+  if ('error' in opts) return usage(opts.error, json, 'rule-review --help')
 
-  // Each agent leads its own process group, out of reach of the terminal's
-  // Ctrl-C, so the signal is forwarded to the run.
-  const interrupt = new AbortController()
-  const onSignal = () => interrupt.abort()
-  process.on('SIGINT', onSignal)
-  process.on('SIGTERM', onSignal)
-  let run: ReviewChangesResult
+  let result
   try {
-    // With no --base, reviewChanges compares against HEAD: uncommitted work.
-    run = await reviewChanges({
-      cwd: opts.cwd,
-      ...(opts.base !== undefined ? { base: opts.base } : {}),
-      config: opts.config,
-      dryRun: opts.dryRun,
-      signal: interrupt.signal,
-    })
+    result = await withInterrupt((signal) =>
+      // With no --base, reviewChanges compares against HEAD: uncommitted work.
+      reviewChanges({
+        cwd: opts.cwd,
+        ...(opts.base !== undefined ? { base: opts.base } : {}),
+        config: opts.config,
+        dryRun: opts.dryRun,
+        signal,
+      }),
+    )
   } catch (err) {
-    // Exit 1 means findings, so a run that could not complete is always 2:
-    // a bad base or pattern, a setting out of range, a provider that failed.
-    sayError(err)
-    return 2
-  } finally {
-    process.off('SIGINT', onSignal)
-    process.off('SIGTERM', onSignal)
+    return fail(err, opts.json)
   }
-  if (interrupt.signal.aborted) {
-    sayError('interrupted.')
-    return 130
-  }
+  if (result.interrupted) return interrupted(opts.json, 'the running agents were')
+  const run = result.value
   const files = run.changedFiles
   const baseLabel =
     run.resolvedBase === run.base ? run.base : `${run.base} (resolved to ${run.resolvedBase})`
   const incomplete = opts.strict && run.degraded
-  const exit = incomplete ? 2 : exitCodeFor(run.findings, opts.config)
+  const exit = incomplete ? EXIT_CODE.incomplete : exitCodeFor(run.findings, opts.config)
 
   if (opts.json) {
-    process.stdout.write(JSON.stringify(run, null, 2) + '\n')
+    const doc = { schemaVersion: SCHEMA_VERSION, kind: REVIEW_KIND, ...run }
+    print(JSON.stringify(doc, null, 2) + '\n')
     return exit
   }
 
   if (files.length === 0) {
     say(`rule-review: no changes against ${baseLabel}.\n`)
-    return 0
+    return EXIT_CODE.ok
   }
 
   if (run.jobs.length === 0) {
     say(
       `rule-review: ${plural(files.length, 'changed file')}, but no CLAUDE.md or AGENTS.md governs any of them.\n`,
     )
-    return 0
+    return EXIT_CODE.ok
   }
 
   if (opts.dryRun) {
@@ -254,14 +236,18 @@ export async function main(argv: string[]): Promise<number> {
     for (const o of run.outcomes) {
       say(
         `  ${String(o.job.files.length).padStart(3)} ${o.job.files.length === 1 ? 'file ' : 'files'}  ` +
-          `${formatTokens(estimateTokens(o.promptBytes)).padStart(6)} tok  ${jobLabel(o.job)}\n`,
+          `${formatTokens(estimateTokens(o.promptBytes)).padStart(6)} tok  ${jobLabel(o.job)}` +
+          // A job the real run will not dispatch, which --strict fails on.
+          (o.error === undefined ? '\n' : `  (${o.error})\n`),
       )
     }
+    // Only a source a provider returned shows here: the built-in provider
+    // does not return instruction files outside the change.
     if (run.skipped.length > 0) {
-      say(`\n${plural(run.skipped.length, 'rule source')} not in scope, costing nothing.\n`)
+      say(`\n${plural(run.skipped.length, 'rule source')} matched no changed file.\n`)
     }
     say('\nNothing was dispatched. Drop --dry-run to run it.\n')
-    return 0
+    return EXIT_CODE.ok
   }
 
   // Judgements, not rule sources: a sharded source contributes several, and

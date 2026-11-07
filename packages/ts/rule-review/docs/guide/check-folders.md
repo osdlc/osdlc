@@ -82,7 +82,8 @@ check fails or errors, 0 otherwise.
 | `--all` | every tracked file: run every check over its whole scope |
 
 `--dry-run` lists what would run and what would be skipped. `--json` prints
-the results.
+the results as one document (`kind: "checks"`, or `"checks-plan"` with
+`--dry-run`).
 
 Check scripts are code from the repository. Run a folder only from a
 repository you trust.

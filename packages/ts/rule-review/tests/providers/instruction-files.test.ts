@@ -208,6 +208,16 @@ describe('instructionFiles', () => {
     expect(sources.map((s) => s.path)).toEqual(['CLAUDE.md'])
   })
 
+  test('with changed files, only the instruction files enclosing one are returned', async () => {
+    // docs/CLAUDE.md governs no changed file, so it is never read and never
+    // reaches the planner: it is not in `skipped` either.
+    const sources = await instructionFiles({
+      list: () => ['CLAUDE.md', 'docs/CLAUDE.md', 'apps/web/src/AGENTS.md'],
+    }).discover({ projectRoot: root, changedFiles: ['apps/web/src/a.ts'] })
+
+    expect(sources.map((s) => s.path)).toEqual(['CLAUDE.md', 'apps/web/src/AGENTS.md'])
+  })
+
   test('duplicates from the lister collapse to one source', async () => {
     // The default lister concatenates tracked and untracked results, so a
     // repeat is possible; a duplicate id would abort the whole registry.

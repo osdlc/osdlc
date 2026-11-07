@@ -106,11 +106,15 @@ export interface Finding {
   severity: Severity
 }
 
-/** What became of one dispatched job. */
+/** What became of one planned job. */
 export interface JobOutcome {
   job: ReviewJob
   findings: Finding[]
-  /** Set when the agent call itself failed; findings are then empty. */
+  /**
+   * Set when the job produced no judgement: the agent failed or gave no
+   * findings object, the run was aborted first, or none of its files had a
+   * diff. Findings are then empty.
+   */
   error?: string
   durationMs: number
   costUsd?: number
@@ -220,10 +224,8 @@ export interface ReviewConfig {
 }
 
 /**
- * The settings a run uses when the caller sets none: the `claude` engine, advisory
- * (not blocking), a `violation` floor, 32 judgements in flight, 12 files per
- * judgement, a 10-minute timeout per judgement and a 400 kB prompt warning.
- * Frozen; spread it to change a field: `{ ...DEFAULT_CONFIG, blocking: true }`.
+ * The settings a run uses when the caller sets none. Frozen; spread it to
+ * change a field: `{ ...DEFAULT_CONFIG, blocking: true }`.
  */
 export const DEFAULT_CONFIG: Readonly<ReviewConfig> = Object.freeze({
   engine: 'claude',

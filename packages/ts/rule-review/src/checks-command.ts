@@ -3,6 +3,7 @@
  */
 import { resolve } from 'node:path'
 
+import { defineCli, processIo } from '@osdlc/cli-tool'
 import { Git } from '@osdlc/typed-git'
 
 import {
@@ -22,31 +23,44 @@ import {
   runChecks,
   runToJson,
 } from './checks.ts'
-import { print, say, sayError } from './output.ts'
+import { EXIT_CODE, fail, flagAsValue, interrupted, usage, withInterrupt } from './exit.ts'
+import { print } from './output.ts'
 import { readCheckFolder } from './providers/check-folder.ts'
 
-const CHECKS_USAGE = `rule-review checks — run a folder of check scripts
-
-Usage
-  rule-review checks <dir> [options]
+const CLI = defineCli({
+  name: 'rule-review checks',
+  summary: `Run a folder of check scripts.
 
 Each executable file named <number>-<name> in <dir> is a check. Checks run one
 at a time in number order, with the project root as cwd. A .md file is a prompt
-check and is reported as skipped. Anything else is skipped with its reason.
-
-Options
-  --base <rev>  Select by the files changed against <rev> and the working tree.
-  --staged      Select by the files staged in the index.
-  --all         Select by every tracked file, so each check sees its whole scope.
-                --base, --staged and --all are mutually exclusive. With none,
-                the changeset is uncommitted work, as in bare rule-review. Outside git
-                there is no changeset: every script runs, with empty stdin and
-                no CHECK_BASE.
-  --dry-run   List what would run and what is skipped, without running anything.
-  --json      Emit the results as JSON instead of text.
-  -C <dir>    Run from <dir>. The project root is its git top-level, or <dir>
-              itself outside git.
-  -h, --help  This text.
+check and is reported as skipped. Anything else is skipped with its reason.`,
+  positionals: [{ name: 'dir', required: true, help: 'the folder of check scripts' }],
+  flags: {
+    base: {
+      kind: 'string',
+      valueName: 'rev',
+      help: 'select by the files changed against <rev> and the working tree',
+    },
+    staged: { kind: 'boolean', help: 'select by the files staged in the index' },
+    all: {
+      kind: 'boolean',
+      help: 'select by every tracked file, so each check sees its whole scope',
+    },
+    dryRun: {
+      kind: 'boolean',
+      help: 'list what would run and what is skipped, without running anything',
+    },
+    json: { kind: 'boolean', help: 'print the results as one JSON document on stdout' },
+    dir: {
+      kind: 'string',
+      short: 'C',
+      valueName: 'dir',
+      help: 'run from <dir>. The project root is its git top level, or <dir> itself outside git',
+    },
+  },
+  epilogue: `--base, --staged and --all are mutually exclusive. With none, the changeset
+is uncommitted work, as in bare rule-review. Outside git there is no changeset:
+every script runs, with empty stdin and no CHECK_BASE.
 
 Environment of each script
   CHECK_ROOT   absolute project root
@@ -66,11 +80,19 @@ A script may declare '# timeout: <seconds>' in its leading comments.
 Default: 600.
 
 Exit codes
-  0  every check passed or was skipped
-  1  a check failed or errored (non-zero exit, timeout, or signal)
-  2  the run could not be started (usage error, folder not found)
-  130  interrupted by SIGINT or SIGTERM
-`
+  0    every check passed or was skipped
+  1    a check failed or errored (non-zero exit, timeout, or signal)
+  2    the command line cannot run as typed
+  10   the run could not complete: the folder cannot be read, the changed
+       files cannot be listed, a scope pattern cannot be read
+  24   the directory does not exist, or a changeset flag was given outside git
+  130  interrupted by SIGINT or SIGTERM; the running check is killed
+
+Under --json a failure prints {"schemaVersion":1,"kind":"error",...} on stdout.`,
+})
+
+/** The `kind` of each `--json` document. */
+const KIND = { run: 'checks', plan: 'checks-plan' } as const
 
 interface ChecksOptions {
   dir: string
@@ -82,55 +104,24 @@ interface ChecksOptions {
   cwd: string
 }
 
-function parseChecks(argv: string[]): ChecksOptions | 'help' {
-  let dir: string | undefined
-  let dryRun = false
-  let json = false
-  let base: string | undefined
-  let staged = false
-  let all = false
-  let cwd = process.cwd()
-
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i]!
-    switch (arg) {
-      case '-h':
-      case '--help':
-        return 'help'
-      case '--dry-run':
-        dryRun = true
-        break
-      case '--json':
-        json = true
-        break
-      case '--base': {
-        const v = argv[++i]
-        if (v === undefined || v.startsWith('-')) throw new Error('--base needs a value')
-        base = v
-        break
-      }
-      case '--staged':
-        staged = true
-        break
-      case '--all':
-        all = true
-        break
-      case '-C': {
-        const v = argv[++i]
-        if (v === undefined || v.startsWith('-')) throw new Error('-C needs a value')
-        cwd = v
-        break
-      }
-      default:
-        if (arg.startsWith('-')) throw new Error(`unknown option '${arg}' (try --help)`)
-        if (dir !== undefined) throw new Error(`unexpected argument '${arg}' (try --help)`)
-        dir = arg
-    }
+function parseChecks(argv: string[]): ChecksOptions | 'help' | { error: string } {
+  const parsed = CLI.parse(argv, processIo)
+  if (parsed.status === 'help') return 'help'
+  if (parsed.status === 'error') return { error: parsed.message }
+  const v = parsed.values
+  const dashed = flagAsValue(v, ['base', 'dir'])
+  if (dashed !== undefined) return { error: dashed }
+  const modes = [v.base !== undefined, v.staged, v.all].filter(Boolean).length
+  if (modes > 1) return { error: '--base, --staged and --all are mutually exclusive' }
+  return {
+    dir: parsed.positionals[0]!,
+    base: v.base,
+    staged: v.staged,
+    all: v.all,
+    dryRun: v.dryRun,
+    json: v.json,
+    cwd: v.dir ?? process.cwd(),
   }
-  if (dir === undefined) throw new Error('checks needs a folder: rule-review checks <dir>')
-  const modes = [base !== undefined, staged, all].filter(Boolean).length
-  if (modes > 1) throw new Error('--base, --staged and --all are mutually exclusive')
-  return { dir, base, staged, all, dryRun, json, cwd }
 }
 
 /** The changed files and `CHECK_BASE` label for the chosen mode. */
@@ -144,38 +135,29 @@ function changesetFor(git: Git, opts: ChecksOptions): Changeset {
   return { files: filesSince(git, ref, { existingOnly: true }), base: ref }
 }
 
-/**
- * Print why the run could not complete and return 2. Exit 1 means a check
- * failed, so an error must never surface as 1: a bad scope pattern, and any
- * other fault, is "could not run".
- */
-function reportRunError(err: unknown): number {
-  sayError(err)
-  return 2
+/** Print `body` as the command's one JSON document, of kind `kind`. */
+function printDoc(kind: string, body: object): void {
+  print(JSON.stringify({ schemaVersion: 1, kind, ...body }, null, 2) + '\n')
 }
 
+/**
+ * Run `rule-review checks` with `argv` (the arguments after `checks`) and
+ * return the exit code.
+ */
 export async function checksMain(argv: string[]): Promise<number> {
-  let opts: ChecksOptions | 'help'
-  try {
-    opts = parseChecks(argv)
-  } catch (err) {
-    say(`rule-review: ${errorText(err)}\n`)
-    return 2
-  }
-  if (opts === 'help') {
-    print(CHECKS_USAGE)
-    return 0
-  }
+  const json = argv.includes('--json')
+  const opts = parseChecks(argv)
+  if (opts === 'help') return EXIT_CODE.ok
+  if ('error' in opts) return usage(opts.error, json, 'rule-review checks --help')
 
   const cwd = resolve(opts.cwd)
+  const noRepository = { code: 'not-a-repository', exit: EXIT_CODE.noRepository }
   let topLevel: string | null
   try {
     topLevel = new Git(cwd).topLevel()
   } catch (err) {
-    // A missing -C directory fails the spawn itself, which typed-git throws
-    // rather than reading as "not a repo". It is still a usage error.
-    say(`rule-review: ${cwd}: ${errorText(err)}\n`)
-    return 2
+    // A missing -C directory fails the spawn itself rather than reading as "not a repo".
+    return fail(`${cwd}: ${errorText(err)}`, opts.json, noRepository)
   }
   const root = topLevel ?? cwd
   const dir = resolve(cwd, opts.dir)
@@ -184,21 +166,18 @@ export async function checksMain(argv: string[]): Promise<number> {
   try {
     folder = await readCheckFolder(dir)
   } catch (err) {
-    say(`rule-review: cannot read check folder ${dir}: ${errorText(err)}\n`)
-    return 2
+    return fail(`cannot read check folder ${dir}: ${errorText(err)}`, opts.json)
   }
 
   const explicit = opts.base !== undefined || opts.staged || opts.all
   if (topLevel === null && explicit) {
-    say(`rule-review: ${cwd} is not inside a git repository\n`)
-    return 2
+    return fail(`${cwd} is not inside a git repository`, opts.json, noRepository)
   }
   let changeset: Changeset | undefined
   try {
     changeset = topLevel === null ? undefined : changesetFor(new Git(root), opts)
   } catch (err) {
-    say(`rule-review: could not list changed files: ${errorText(err)}\n`)
-    return 2
+    return fail(`could not list changed files: ${errorText(err)}`, opts.json)
   }
 
   if (opts.dryRun) {
@@ -206,27 +185,25 @@ export async function checksMain(argv: string[]): Promise<number> {
     try {
       plan = planChecks(folder, changeset)
     } catch (err) {
-      return reportRunError(err)
+      return fail(err, opts.json)
     }
-    print(opts.json ? JSON.stringify({ dryRun: true, ...plan }, null, 2) + '\n' : formatPlan(plan))
-    return 0
+    if (opts.json) printDoc(KIND.plan, plan)
+    else print(formatPlan(plan))
+    return EXIT_CODE.ok
   }
 
-  // Each check leads its own process group, out of reach of the terminal's
-  // Ctrl-C, so the signal is forwarded to the run.
-  const interrupt = new AbortController()
-  const onSignal = () => interrupt.abort()
-  process.on('SIGINT', onSignal)
-  process.on('SIGTERM', onSignal)
-  let run
+  let result
   try {
-    run = await runChecks(folder, { projectRoot: root, changeset, signal: interrupt.signal })
+    result = await withInterrupt((signal) =>
+      runChecks(folder, { projectRoot: root, changeset, signal }),
+    )
   } catch (err) {
-    return reportRunError(err)
-  } finally {
-    process.off('SIGINT', onSignal)
-    process.off('SIGTERM', onSignal)
+    return fail(err, opts.json)
   }
-  print(opts.json ? JSON.stringify(runToJson(run), null, 2) + '\n' : formatReport(run))
-  return interrupt.signal.aborted ? 130 : checksExitCode(run.results)
+  const run = result.value
+  if (opts.json) printDoc(KIND.run, runToJson(run))
+  else print(formatReport(run))
+  // Under --json the results are already printed; the interruption goes to stderr only.
+  if (result.interrupted) return interrupted(false, 'the running check was')
+  return checksExitCode(run.results)
 }

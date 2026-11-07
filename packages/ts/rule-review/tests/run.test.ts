@@ -686,3 +686,17 @@ test('a job none of whose files has a diff is not dispatched, and degrades the r
   expect(result.degraded).toBe(true)
   expect(result.outcomes[0]?.error).toContain('none of its files has a diff')
 })
+
+test('a dry run shows the same job as not judged, so the preview matches what --strict fails on', async () => {
+  const result = await review({
+    projectRoot: '/repo',
+    sources: [source('root', ['**'], 0)],
+    changedFiles: ['nested/'],
+    diffs: [],
+    config: DEFAULT_CONFIG,
+    dryRun: true,
+  })
+
+  expect(result.degraded).toBe(true)
+  expect(result.outcomes[0]?.error).toBe('not judged: none of its files has a diff')
+})

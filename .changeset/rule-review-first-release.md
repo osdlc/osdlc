@@ -24,10 +24,17 @@ path-scoped check scripts (experimental). The package was developed, unpublished
 - `changedFiles`, `stagedFiles`, `trackedFiles`, `fileDiffs`, `resolveBase` and `defaultBase`
   read the changeset from git. Each takes a directory path or a `Git` from `@osdlc/typed-git`.
 - `ScopeError`: a scope or `--exclude` pattern the matcher cannot read stops the run and names
-  the pattern. The command exits 2.
+  the pattern. The command exits 10.
 - `signal` on `review` and `reviewChanges`: aborting kills every running agent. The command
   forwards SIGINT and SIGTERM and exits 130.
-- `--strict` exits 2 when a judgement could not complete.
+- `--strict` exits 11 when a judgement could not complete.
+- The command line follows the osdlc CLI standard. Exit codes: 0 clean or advisory, 1 findings
+  at or above the floor with `--blocking` (a failed check for `checks`), 2 a command line that
+  cannot run as typed, 10 a run that could not complete, 11 an incomplete run with `--strict`,
+  24 no repository, 130 interrupted. `--json` prints one document that starts with
+  `schemaVersion: 1` and `kind` (`review`, `checks`, `checks-plan`); a failure under `--json`
+  prints the standard error document. Flags and help are declared with `defineCli` from
+  `@osdlc/cli-tool`, so `-C` is also `--dir`.
 - `rule-review --version` prints the version. `rule-review dev` and `RULE_REVIEW_HOME` run the
   command from a development checkout.
 - `rule-review checks <dir>`, and the experimental check-folder exports, run a folder of numbered
@@ -72,14 +79,14 @@ path-scoped check scripts (experimental). The package was developed, unpublished
 - A `CLAUDE.md` symlinked to, or importing, its sibling `AGENTS.md` is judged once.
 - A conflicted path appears once in `trackedFiles`.
 - A path git cannot render is left out of `fileDiffs`, and a diff that fails stops the run with
-  exit 2 instead of a stack trace.
+  exit 10 instead of a stack trace.
 - A `configFor` that throws rejects the run before any agent starts. A job that rejects aborts
   the jobs still running, and an aborted run starts no more agents.
 - Settings are checked when a run starts: an unknown engine, a `concurrency` that is not a positive integer or `Infinity`, a negative `maxFilesPerJob`, a non-positive `timeoutMs` or an unknown `severityFloor` rejects the run with the setting's name, before any agent starts. A `NaN` concurrency used to start no judgement at all.
 - A directory path given to the changeset readers reads the whole checkout from its top level, whichever subdirectory it names.
 - The prompt fences the rules and each diff with tags whose suffix is a hash of their contents, so a change that contains `</file>` or `</rules>` cannot close its block early.
-- A judgement none of whose files has a diff is not sent to the agent; it is recorded as not judged.
-- An error that stops a run exits 2, never 1, so a CI step can tell findings from a run that could not complete.
+- A judgement none of whose files has a diff is not sent to the agent; it is recorded as not judged, in a dry run too.
+- An error that stops a run exits 10, never 1, so a CI step can tell findings from a run that could not complete.
 - `rule-review checks --base <rev>` sets `CHECK_BASE` to the fork point the files were measured from, so `git diff "$CHECK_BASE"` shows the same change; with no changeset, an inherited `CHECK_BASE` is unset.
 - A branch named like a sha or containing `@` is resolved as a branch.
 - `DEFAULT_CONFIG.exclude` is frozen too.
@@ -88,4 +95,5 @@ path-scoped check scripts (experimental). The package was developed, unpublished
 - A check script's headers are read from its first 4 KiB without reading the whole file.
 - After an abort, `runChecks` no longer reports skip rows for files that never had a turn.
 - `--concurrency` and `--max-files` refuse `1.5`, `1e2` and `0x10`.
-- A `-C` directory that does not exist exits 2 as a usage error.
+- A `-C` directory that does not exist exits 24, as a directory outside git does.
+- A flag's value cannot be another flag: `--base --json` is refused, not read as the ref `--json`.
