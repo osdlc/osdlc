@@ -45,7 +45,7 @@ Chromatic or another hosted service.
 npm install --save-dev @osdlc/story-harness @playwright/test
 ```
 
-`@playwright/test` is a peer dependency (1.45 or later), so your specs and the
+`@playwright/test` is a peer dependency (1.62 or later), so your specs and the
 helpers share one copy. Node 22 or later. ESM only.
 
 ## Screenshot baselines: `story-shots`
@@ -208,7 +208,7 @@ minor version.
 
 ## Platforms and runtimes
 
-- Node 22 or later, ESM only. `@playwright/test` 1.45 or later as a peer.
+- Node 22 or later, ESM only. `@playwright/test` 1.62 or later as a peer.
 - The Playwright helpers and the perf report run wherever Playwright runs.
 - `story-shots` needs bash and Docker, and runs on Linux and macOS. On macOS
   with Colima, start the VM with Rosetta (`colima start --vm-type vz
@@ -223,7 +223,7 @@ minor version.
 | `@storybook/test-runner` | Runs stories and `play` functions in Playwright, with hooks to add screenshots | No pinned Linux image, no baseline pruning and no perf report. |
 | `@storybook/addon-vitest` | Stories as Vitest browser tests | Runs inside Vitest, not against a static build; no perf helpers. |
 | BackstopJS | Screenshot regression of URLs, with a Docker mode | Not Storybook-aware: no story index, no `play` errors, no skip parameter. |
-| Lost Pixel, Loki, storycap with reg-suit | Storybook screenshot regression | No release in the last 12 months, and none measures perf. |
+| Lost Pixel, Loki, storycap with reg-suit | Storybook screenshot regression | None had a release in the 12 months before 2026-11-07, and none measures perf. |
 
 ## Licence
 

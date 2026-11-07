@@ -289,7 +289,9 @@ jobs:
           pnpm --filter @osdlc/typed-git --filter @osdlc/pr-update --filter @osdlc/trust-repo
           --no-bail run test
 
-  # Not required by the ruleset. story-harness drives Chromium and Docker, which
+  # Not required by the ruleset, but packages-publish.yml calls this workflow
+  # before every release, so a failure here blocks every library's release,
+  # as old-git does. story-harness drives Chromium and Docker, which
   # `verify` does not install: its browser tests run here, then the
   # `story-shots` command end to end against a fixture build, in the pinned
   # Playwright image on the runner's Docker.

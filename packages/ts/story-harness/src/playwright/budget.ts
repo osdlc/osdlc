@@ -19,6 +19,7 @@ import {
   renameSync,
   rmSync,
   statSync,
+  type Stats,
   writeFileSync,
 } from 'node:fs'
 import { cpus, loadavg } from 'node:os'
@@ -51,6 +52,8 @@ export interface PerfRecorderOptions {
   env?: Record<string, string | undefined>
   /** Default `process.ppid`: workers of one run share their parent. */
   runId?: number
+  /** How long a write waits for the report's lock before it throws. Default 30 s. */
+  lockDeadlineMs?: number
 }
 
 function readReport(outFile: string): PerfReport | undefined {
@@ -119,24 +122,25 @@ export function removeStaleLock(
 }
 
 /** Run `fn` while holding `<file>.lock`, so one process at a time reads, merges and writes. */
-function withLock(file: string, fn: () => void): void {
+function withLock(file: string, deadlineMs: number, fn: () => void): void {
   const lock = `${file}.lock`
-  const deadline = Date.now() + LOCK_DEADLINE_MS
+  const deadline = Date.now() + deadlineMs
   for (;;) {
     try {
       closeSync(openSync(lock, 'wx'))
       break
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+      let seen: Stats | undefined
       try {
-        const seen = statSync(lock)
-        if (Date.now() - seen.mtimeMs > STALE_LOCK_MS) removeStaleLock(lock, seen)
+        seen = statSync(lock)
       } catch {
         // Released between the open and the stat.
       }
+      if (seen && Date.now() - seen.mtimeMs > STALE_LOCK_MS) removeStaleLock(lock, seen)
       if (Date.now() > deadline) {
         throw new Error(
-          `story-harness: could not take ${lock} within ${LOCK_DEADLINE_MS / 1000} s; remove it if no run is writing the report`,
+          `story-harness: could not take ${lock} within ${deadlineMs / 1000} s; remove it if no run is writing the report`,
         )
       }
       sleepSync(2)
@@ -161,6 +165,7 @@ export function createPerfRecorder(options: PerfRecorderOptions = {}) {
     throw new Error(`PW_PERF_SLACK must be a positive number, got ${env.PW_PERF_SLACK}`)
 
   const runId = options.runId ?? process.ppid
+  const lockDeadlineMs = options.lockDeadlineMs ?? LOCK_DEADLINE_MS
   const earlier = readReport(outFile)
   const report: PerfReport =
     earlier?.runId === runId
@@ -182,7 +187,7 @@ export function createPerfRecorder(options: PerfRecorderOptions = {}) {
 
   const write = () => {
     mkdirSync(dirname(outFile), { recursive: true })
-    withLock(outFile, () => {
+    withLock(outFile, lockDeadlineMs, () => {
       const disk = readReport(outFile)
       if (disk?.runId === runId) {
         report.values = { ...disk.values, ...own.values }

@@ -71,7 +71,7 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
   },
   "peerDependencies": {
-    "@playwright/test": "^1.45.0"
+    "@playwright/test": "^1.62.0"
   },
   "devDependencies": {
     "@osdlc/prettier-config": "workspace:^",

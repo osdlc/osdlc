@@ -8,9 +8,9 @@ The first release of `@osdlc/story-harness` on npm. It uses a component's static
 - `@osdlc/story-harness/browser`: `storyMetrics`, the in-page metrics hook for perf stories, and `seeded`, a deterministic PRNG.
 - `@osdlc/story-harness/playwright`: `defineStoryConfig`, `preparePage`, `openStory`, the perf helpers, and `budget`, `record` and `recordBrowser`, which write one report that every worker merges into. `openPerfStory`, `noLongTasks`, `paintedAt` and `responseEnd` are experimental.
 - `@osdlc/story-harness/runner`: `captureStories`, `captureCli`, `serveStatic` and `selectStories`.
-- Compiled ESM with `.d.ts`, Node 22 or newer. `@playwright/test` 1.45 or newer is a peer dependency. Licence `MIT OR Apache-2.0`.
+- Compiled ESM with `.d.ts`, Node 22 or newer. `@playwright/test` 1.62 or newer is a peer dependency. Licence `MIT OR Apache-2.0`.
 
-Changes since the history below:
+Changes since the last unpublished version in the history below. No earlier version was published, so the breaking ones cost no version bump:
 
 - **Breaking:** the baseline check is the `story-shots` command, in place of a path to its script. The runner is one `./runner` entry (`captureStories`, `captureCli`, `serveStatic`, `selectStories`), in place of file paths. `createPerfRecorder` is no longer exported; `budget`, `record` and `recordBrowser` write the report.
 - **Breaking:** with several `themes` in the flat layout, `captureStories` writes `<name>--<theme>.png`; before, each theme overwrote the same file.
