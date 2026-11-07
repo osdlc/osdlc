@@ -111,6 +111,12 @@ describe('originOwner', () => {
     ['a bitbucket: shortcut', 'bitbucket:mine/x'],
     ['a gist: shortcut', 'gist:mine/x'],
     ['a sourcehut: shortcut', 'sourcehut:mine/x'],
+    ['a mixed-case shortcut', 'GitHub:mine/x'],
+    ['a mixed-case gitlab: shortcut', 'Gitlab:mine/x'],
+    ['a shortcut with a URL-looking triple slash', 'github:///mine/x'],
+    ['a mixed-case shortcut with a triple slash', 'GitHub:///mine/x'],
+    ['a mixed-case shortcut with a host-looking double slash', 'GitHub://x/mine/x'],
+    ['an upper-case gitlab shortcut with a triple slash', 'GITLAB:///mine/x'],
   ])('is null for %s', (_label, url) => {
     expect(originOwner(repoWithOrigin(url).dir)).toBeNull()
   })
