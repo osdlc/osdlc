@@ -2,144 +2,77 @@
  * `@osdlc/repo-cleaner` — what has been merged into the default branch, and
  * what can go away.
  *
- * Point it at a repository and it inventories the local branches, worktrees
- * and remote branches, classifying each as safe-to-delete, safe-to-keep or
- * needs-investigation, with the evidence behind the verdict and the literal
- * command that would act on it. The sweep never deletes anything; `applyPlan`
- * deletes the rows of a plan a person approved.
+ * `sweep` inventories worktrees, local branches and remote branches across
+ * one repository or many, and judges each row: `delete`, `review`, `keep` or
+ * `blocked`, with the risks its deletion carries and the evidence behind it.
+ * The sweep deletes nothing. `plan` saves the rows and their evidence;
+ * `check` resolves a person's approval against a plan and shows the steps a
+ * run would take; `run` takes them, compare-and-swap, verifying each.
  *
- * Two signals settle most items — a merged pull request, and ancestry of the
- * default branch — and either alone is enough. A host that knows more than
- * git does (an issue tracker, say) re-ranks the returned rows
- * rather than reaching into classification, which is why every row carries
- * its facts and why `investigationParts` is a list rather than a sentence.
+ * A host that knows more than git does (an issue tracker, say) passes
+ * `annotate` to re-rank the rows, rather than reaching into classification,
+ * which is why every row carries its evidence and why `notes` is a list.
  */
 
-export {
-  classifyLocalBranch,
-  classifyRemoteBranch,
-  gatherLocalBranches,
-  gatherRemoteBranches,
-  localDeleteCommand,
-  remoteDeleteCommand,
-  resolveBranch,
-} from './branches.ts'
-export {
-  classifyWorktree,
-  gatherWorktrees,
-  hasBlockers,
-  worktreePruneCommand,
-  worktreeRemoveCommand,
-  worktreeUnlockCommand,
-  type WorktreeBlocker,
-} from './worktrees.ts'
-export { DiscoveryFailed, discoverRepo } from './discover.ts'
-export { assessLanding, patchEquivalent, type Landing, type LandingCheck } from './landing.ts'
-export {
-  ApplyArgumentError,
-  ApplyRefused,
-  applyPlan,
-  type RowSelection,
-  parseGrant,
-  parseRowRef,
-  type ApplyOptions,
-  type Grant,
-} from './apply.ts'
-export type { Annotate, HostHooks } from './hooks.ts'
+export { sweep, inspectWorktree, type Runners, type SweepOptions } from './sweep.ts'
 export {
   PLAN_VERSION,
-  PlanReadError,
-  planRepo,
-  parsePlan,
+  plan,
   readPlan,
   writePlan,
   type Plan,
   type PlanRepo,
-  type PlannableRow,
+  type PlanRow,
 } from './plan.ts'
+export {
+  check,
+  run,
+  type Allow,
+  type Approval,
+  type CheckOptions,
+  type Preview,
+  type ResolvedApproval,
+  type Resolved,
+  type RunOptions,
+} from './clean.ts'
 export {
   RECEIPT_VERSION,
   ReceiptSchema,
+  type DropReason,
   type Dropped,
   type Receipt,
-  type RowRef,
   type Step,
 } from './receipt.ts'
+export { render, type RunSummary, type Style } from './render.ts'
+export { defaultProcessProbe, type ProcessHolder, type ProcessProbe } from './processes.ts'
+export { providers, type PrProvider, type ProviderChoice } from './providers/index.ts'
+export type { Annotate } from './hooks.ts'
 export {
-  defaultProcessProbe,
-  isIdleShell,
-  parseLockOwner,
-  parseLsofCwd,
-  type DefaultProbeOptions,
-  type LockOwner,
-  type ProcessHolder,
-  type ProcessProbe,
-} from './processes.ts'
-export { fetchPrs } from './prs.ts'
-export {
-  PROVIDER_CHOICES,
-  PROVIDER_NAMES,
-  chooseProvider,
-  forgeTarget,
-  githubProvider,
-  gitlabProvider,
-  probeProvider,
-  providers,
-  type ForgeTarget,
-  type PrProvider,
-  type ProviderChoice,
-  type ProviderName,
-  type ProviderStatus,
-} from './providers/index.ts'
-export {
-  expandTilde,
-  isCheckoutRoot,
-  resolveEntries,
-  type Resolution,
-  type ResolveOptions,
-} from './resolve.ts'
-export {
-  holdFreedBranches,
-  sweepRepo,
-  sweepRepos,
-  type SweepOptions,
-  type SweepReposOptions,
-} from './sweep.ts'
-export {
-  proposedCommands,
-  renderJson,
-  renderApplySummary,
-  renderReceipt,
-  summarizeReceipt,
-  type ApplySummary,
-  renderRepo,
-  renderScan,
-  renderSummary,
-  renderText,
-  requiresNote,
-} from './render.ts'
-export {
-  ALL_SCOPES,
-  AUTHORIZATIONS,
-  authorizationsFor,
-  emptyBucket,
-  emptyScan,
-  findDuplicateCheckouts,
-  isUnfetched,
-  makeItem,
-  summarize,
-  type Authorization,
-  type Category,
-  type Classification,
-  type DuplicateCheckout,
-  type PRInfo,
+  KINDS,
+  RISKS,
+  RepoCleanerError,
+  type Action,
+  type Blocker,
+  type BranchEvidence,
+  type BranchRow,
+  type Bucket,
+  type Counts,
+  type ErrorCode,
+  type Kind,
+  type LandingEvidence,
+  type PrEvidence,
+  type RemoteEvidence,
+  type RemoteRow,
   type RepoInfo,
   type RepoSweep,
-  type ScanStats,
-  type Scope,
-  type SummaryBucket,
-  type SweepItem,
+  type Risk,
+  type Row,
+  type RowId,
+  type SubmoduleEvidence,
+  type Sweep,
   type SweepProgress,
-  type SweepResult,
-  type UnresolvedEntry,
+  type SweptWith,
+  type Verdict,
+  type WorktreeEvidence,
+  type WorktreeRow,
 } from './types.ts'

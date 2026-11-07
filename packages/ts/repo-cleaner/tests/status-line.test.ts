@@ -11,7 +11,7 @@ describe('describeSweep', () => {
           repo: '/home/me/work/api',
           index: 2,
           of: 5,
-          step: 'remote-branches',
+          step: 'remote',
           done: 36,
           total: 427,
         },
@@ -48,18 +48,15 @@ describe('describeStep', () => {
     row,
     action: row === null ? 'prune-worktrees' : 'delete-remote',
     command: '',
-    expected_sha: null,
+    expectedSha: null,
     result: 'pending',
     error: null,
     verification: null,
   })
 
-  test('names the row, or the repository for the closing prune', () => {
-    expect(describeStep(2, 7, step({ category: 'remote_branch', id: 'origin/x' }))).toBe(
-      'deleting ██████░░░░░░░░░░░░░░ 3/7: delete-remote origin/x',
-    )
-    expect(describeStep(6, 7, step(null))).toBe(
-      'deleting █████████████████░░░ 7/7: prune-worktrees /r',
+  test('names the row', () => {
+    expect(describeStep(2, 7, step('remote:origin/x'))).toBe(
+      'deleting ██████░░░░░░░░░░░░░░ 3/7: delete-remote remote:origin/x',
     )
   })
 })

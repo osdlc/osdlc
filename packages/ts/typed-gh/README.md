@@ -419,6 +419,34 @@ const repos = await runVerbAsync(repoList('acme', {}, { hostname: 'ghe.example.c
 `(binary, argv, opts) => result` function is not a runner; wrap it yourself as
 `{ run: (argv, opts) => fn('gh', argv, opts) }`.
 
+`raw(argv)` and `rawChecked(argv)` are `Gh.raw` and `Gh.rawChecked` as verbs, for a call the verb
+table does not have. Through `runVerb`, `raw` returns the `CommandResult` whatever the exit code,
+and `rawChecked` returns it when `gh` exits 0 with its whole output and throws the classified
+failure otherwise. Like the methods, they add no `--repo` and no host.
+
+## Keeping a bundle small
+
+A tool that is bundled and makes a few `gh` calls should import the verbs it calls and run them
+with `runVerb`, and not construct a `Gh`. A bundler drops a function that nothing imports, but it
+cannot drop a method a class never calls. So one `new Gh()` keeps every verb and parser in the
+bundle, and the verb path keeps only the verbs you import:
+
+```ts
+import { defaultRunnerFactory, prDiff, rawChecked, runVerb } from '@osdlc/typed-gh'
+
+const runner = defaultRunnerFactory('gh')
+const opts = { cwd: '/repo' }
+const diff = runVerb(prDiff(42), runner, opts)
+const files = runVerb(rawChecked(['api', 'repos/{owner}/{repo}/pulls/42/files']), runner, opts)
+```
+
+Built with `bun build --minify`, those two calls take 14.4 KB through `runVerb` and 68.0 KB through
+`Gh` (7.6 KB of each is command-seam's runner). The verb path gives up `try`, `soft` and the
+helpers that make several calls (`prFind`, `openPrFor`, `prViewSettled`): catch the `FailureError`
+instead. A tool that already uses many methods loses little by constructing `Gh`. The measurements
+and the reasons `Gh` is not split into entry points are in
+[docs/planning/decisions/bundle-size.md](docs/planning/decisions/bundle-size.md).
+
 ## `AsyncGh`
 
 The awaitable form of `Gh`, with the same methods, for code that runs many calls at once and must
@@ -573,7 +601,9 @@ experimental.
 - `AsyncCallOptions`: `timeoutMs` and `signal`, accepted by sixteen methods of `AsyncGh`.
 - `defaultRunnerFactory` and `RunnerFactory`: how a client makes its default runner for `gh`.
 - `runVerb` and `runVerbAsync`, with `RunVerbOptions` and `RunVerbAsyncOptions`: run one verb through
-  a runner you own, with its `env`, `input`, timeout and checked contract applied.
+  a runner you own, with its `env`, `input`, timeout and checked contract applied. With the verb
+  functions, they are the way to call `gh` without a `Gh`, which keeps a bundle small (see
+  "Keeping a bundle small").
 
 Methods on both clients:
 
@@ -601,10 +631,11 @@ Methods on both clients:
 
 A verb is plain data: argv, a `checked` flag, a `readOnly` flag, optional stdin and environment,
 and a `parse` function. `readOnly` is true for every query and `prDiff`, and false for every
-mutation, so a caller that keeps an allowlist of safe calls can check a verb before running it.
-Each verb takes an optional `GhTarget` last. Each client method has a verb of the same name, except
-`raw`, `rawChecked`, `at`, `withRepo`, `prViewSettled`, `openPrFor`, `prFind`, `authenticated`,
-`ready` and `ownerRepo`. `openPrsForBranch` is a verb with no method.
+mutation and for `raw` and `rawChecked`, so a caller that keeps an allowlist of safe calls can check
+a verb before running it. Each verb takes an optional `GhTarget` last, except `raw` and
+`rawChecked`, which take only argv. Each client method has a verb of the same name, except `at`,
+`withRepo`, `prViewSettled`, `openPrFor`, `prFind`, `authenticated`, `ready` and `ownerRepo`.
+`openPrsForBranch` is a verb with no method.
 
 - `GhVerb`: the shape of a verb. `GhTarget`: the `repo` and `hostname` a verb talks to.
 - Verb builders: `prList`, `prView`, `prBody`, `openPrsForBranch`, `prReviewThreads`, `prDiff`,
@@ -612,6 +643,9 @@ Each verb takes an optional `GhTarget` last. Each client method has a verb of th
   `createReview`, `issueList`, `issueView`, `labelList`, `setIssueLabel`, `createLabel`,
   `editLabel`, `issueCommentEdit`, `repoList`, `repoView`, `searchPrs`, `api`, `graphql`,
   `installed` and `authStatus`.
+- `raw` and `rawChecked`: any argv as a verb whose value is the `CommandResult`. `raw` returns it
+  whatever the exit code; `rawChecked` throws the classified failure unless `gh` exits 0 with its
+  whole output.
 - `pickPrForBranch`: the first row whose head branch is exactly the one you name. `prList({ head })`
   already filters exactly. This is for rows from elsewhere, such as a `head:` search. It takes plain
   rows or a `ListResult`, so `openPrsForBranch`'s or `prList`'s parsed answer passes straight in.
