@@ -66,9 +66,9 @@ interface HostAdapter {
   adapter adds nothing, and the report says it was skipped.
 - Adapters' `annotate` functions chain, in run order, into repo-cleaner's
   `annotate`, so their verdicts survive every re-check.
-- `removeWorktree` is a new repo-cleaner hook. The checks around it are
-  `clean`'s live-process and forced-remove checks before, and afterwards the
-  verification that the directory is gone and git no longer lists the
+- `removeWorktree` is a new repo-cleaner hook. Before it, `clean` checks for
+  live processes and, when the remove is forced, that forcing is safe; after
+  it, `clean` verifies that the directory is gone and git no longer lists the
   worktree.
 
 ### Risks and the unattended subset
