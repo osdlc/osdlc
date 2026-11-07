@@ -56,8 +56,9 @@ On Alpine (and other musl-based Linux), a binary built against glibc fails
 with a message like `not found` or `Error loading shared library`, even though
 the file is there.
 
-npm sees platforms only by `os` and `cpu`. It cannot tell glibc Linux from
-musl Linux, so the same `linux-x64` package installs on both. Build the Linux
+The platform packages are gated by `os` and `cpu` only. npm, pnpm and Yarn
+can also gate on a `libc` field, but this library does not set one, so the
+same `linux-x64` package installs on both. Build the Linux
 binaries statically against musl (for Rust, the
 `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl` targets): a
 static musl binary runs on both.

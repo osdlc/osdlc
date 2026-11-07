@@ -34,9 +34,12 @@ export interface PublishOptions {
 /**
  * Publishes each package with `npm publish` from its directory, the platform
  * packages in order and the launcher last. It first asks the registry
- * (`npm view <name>@<version> version`) for every package at once, and skips
- * the ones already there. npm uses its own login, registry and each package's
- * `publishConfig`. Throws on the first failed publish.
+ * (`npm view <name>@<version> version`, on the package's
+ * `publishConfig.registry` when it sets one) for every package at once, and
+ * skips the ones already there. Throws before publishing anything when a
+ * lookup fails for any reason but "not found" (E404), and on the first failed
+ * publish. npm uses its own login and each package's `publishConfig`, so set
+ * `publishConfig.tag` to publish a prerelease under a tag other than `latest`.
  */
 export async function publishPackages({
   platformDirs,
@@ -47,14 +50,20 @@ export async function publishPackages({
 }: PublishOptions): Promise<void> {
   const packages = await Promise.all(
     [...platformDirs, launcherDir].map(async (dir) => {
-      const { name, version } = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as {
-        name: string
-        version: string
+      const { name, version, publishConfig } = JSON.parse(
+        readFileSync(join(dir, 'package.json'), 'utf8'),
+      ) as { name: string; version: string; publishConfig?: { registry?: string } }
+      // `npm publish` reads publishConfig.registry; `npm view` does not, so ask the same registry.
+      const registry = publishConfig?.registry
+      const viewArgv = ['view', `${name}@${version}`, 'version']
+      if (registry !== undefined) viewArgv.push('--registry', registry)
+      const view = await viewRunner.run(viewArgv, { cwd: dir })
+      // E404 means this version (or the whole package) is not there. Any other
+      // failure, such as no network or no login, leaves it unknown, so stop.
+      if (view.exitCode !== 0 && !view.stderr.includes('E404')) {
+        throw new Error(`npm ${viewArgv.join(' ')} failed in ${dir}: ${view.stderr.trim()}`)
       }
-      const existing = await viewRunner.run(['view', `${name}@${version}`, 'version'], {
-        cwd: dir,
-      })
-      const published = existing.exitCode === 0 && existing.stdout.trim() === version
+      const published = view.exitCode === 0 && view.stdout.trim() === version
       return { dir, name, version, published }
     }),
   )

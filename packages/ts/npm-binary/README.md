@@ -161,11 +161,14 @@ Package shapes:
 
 - `platformManifest(product, platform, options)`: a platform package's
   `package.json`, with `os`, `cpu`, `preferUnplugged: true` (so Yarn PnP keeps
-  the binary a real file) and `files` defaulting to the binary.
+  the binary a real file) and `files` defaulting to the binary (a
+  template's `files` gets the binary added).
 - `launcherManifest(product, platforms, options)`: the launcher's
   `package.json`, with `bin`, every platform package in
   `optionalDependencies` at the same version, `files` defaulting to the
-  launcher and `README.md`, and `engines.node` defaulting to `>=18`.
+  launcher and `README.md` (a template's `files` gets the launcher added),
+  and `engines.node` defaulting to `>=18`. A launcher template with
+  `"type": "module"` is refused: the launcher is CommonJS.
 - `PlatformManifestOptions` and `LauncherManifestOptions`: `version`,
   `description`, the launcher's `launcherPath`, and an optional `template`
   with fields to carry (`license`, `author`, `publishConfig`, ...). Template
@@ -201,8 +204,9 @@ Publishing and cargo:
 The library runs anywhere Node 22 runs. The launcher it writes runs on every
 platform in the list you pass. What it does not do:
 
-- tell glibc from musl. A `linux-x64` package built against glibc fails on
-  Alpine. Ship a static (musl) Linux build, or leave Linux musl out.
+- tell glibc from musl. It sets no `libc` field, so one `linux-x64` package
+  installs on glibc and musl (Alpine) hosts alike, and a glibc build fails on
+  Alpine. Ship a static (musl) Linux build.
 - fall back to an emulated build. On Windows on Arm, `process.arch` is `arm64`,
   so the launcher reports no build unless your list has `win32-arm64`, even
   though an x64 build would run under emulation.

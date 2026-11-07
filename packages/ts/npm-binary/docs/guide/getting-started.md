@@ -92,9 +92,9 @@ target/aarch64-unknown-linux-musl/release/mytool
 target/x86_64-pc-windows-msvc/release/mytool.exe
 ```
 
-Build Linux binaries against musl (statically linked) if you can. npm cannot
-tell glibc Linux from musl Linux (Alpine), so one `linux-x64` package has to run
-on both. See [Troubleshooting](troubleshooting.md).
+Build Linux binaries against musl (statically linked) if you can. The
+platform packages carry no `libc` field, so one `linux-x64` package installs on
+glibc Linux and musl Linux (Alpine) alike, and has to run on both. See [Troubleshooting](troubleshooting.md).
 
 If your script needs to know where cargo puts its output, ask cargo:
 
@@ -176,7 +176,8 @@ const platformDirs = NPM_PLATFORMS.map((platform) => {
 
 - `os` and `cpu` are what make npm skip it on other machines.
 - `files` ships only the binary. Set `files` in the template to ship more,
-  such as a README or a licence file.
+  such as a README or a licence file; the binary is added to that list if it
+  is missing, so one template can serve every package.
 - `preferUnplugged` makes Yarn Plug'n'Play extract the binary to a real file,
   so it can be run.
 - `copyExecutable` copies the file and sets mode `755`. Without the executable
@@ -266,11 +267,26 @@ next few seconds would get a launcher whose binaries do not exist yet.
 Before publishing anything, it asks the registry which `name@version` pairs
 are already there and skips them. If a run fails halfway (a network error
 after three platform packages, say), run the same command again: it publishes
-the rest.
+the rest. If that check itself fails for any reason other than "not found"
+(no network, not logged in), it stops before publishing anything.
 
-It uses the `npm` on your `PATH`, logged in as you are. Registry and access
-settings come from npm's own config and each package's `publishConfig`.
+It uses the `npm` on your `PATH`, logged in as you are. Registry, access and
+tag settings come from npm's own config and each package's `publishConfig`;
+the check asks the same `publishConfig.registry` that `npm publish` will use.
 `dryRun: true` passes `--dry-run`, so you can see what would be published.
+
+### Prereleases
+
+npm publishes every version under the `latest` tag unless told otherwise, and
+recent npm versions refuse a prerelease such as `1.3.0-beta.1` without a tag.
+Set the tag in the template for that release:
+
+```ts
+const template = { license: 'MIT', publishConfig: { access: 'public', tag: 'next' } }
+```
+
+Users then get it with `npm install mytool@next`, and `npm install mytool`
+keeps installing the latest stable version.
 
 ### Publishing from CI with provenance
 
@@ -286,9 +302,13 @@ const template = {
 }
 ```
 
-and give the publishing job `permissions: id-token: write`. npm needs each
-package to exist before it can trust a CI workflow for it, so the very first
-release of each of the six packages is published by hand.
+and give the publishing job `permissions: id-token: write`.
+
+To publish from CI with no npm token at all, use npm's
+[trusted publishing](https://docs.npmjs.com/trusted-publishers). npm can only
+trust a workflow for a package that already exists, so the very first version
+of each of the six packages is published by hand, then each one gets the
+workflow as its trusted publisher.
 
 ## 6. Try it before you publish
 

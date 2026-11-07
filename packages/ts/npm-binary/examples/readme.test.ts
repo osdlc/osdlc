@@ -151,7 +151,7 @@ test('publishing goes platform packages first, the launcher last', async () => {
   const options: PublishOptions = {
     platformDirs,
     launcherDir,
-    viewRunner: { run: async () => ({ exitCode: 1, stdout: '', stderr: '' }) },
+    viewRunner: { run: async () => ({ exitCode: 1, stdout: '', stderr: 'npm error code E404' }) },
     publishRunner: {
       run: (_argv, { cwd }) => {
         published.push(basename(cwd))

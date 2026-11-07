@@ -100,7 +100,10 @@ nobody else delivers SIGINT to the binary, so the launcher forwards it.
 Two edge cases follow from this:
 
 - While a standard stream is a terminal, `kill -INT <launcher pid>` reaches
-  the launcher but not the binary. Send SIGTERM to stop it from a script.
+  the launcher but not the binary, and the launcher keeps waiting, so the
+  tool keeps running. A script or task runner that stops the tool with SIGINT
+  aimed at one pid (`timeout -s INT`, some IDE task runners) should send
+  SIGTERM instead.
 - If you run it from a terminal with all three streams redirected
   (`mytool < in > out 2> err`), the launcher cannot tell it is still in the
   terminal's foreground job, so Ctrl-C reaches the binary twice.

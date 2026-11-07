@@ -1,13 +1,12 @@
 ---
-'@osdlc/npm-binary': patch
+"@osdlc/npm-binary": patch
 ---
 
 The first release of `@osdlc/npm-binary` on npm. It ships a compiled binary through npm as one launcher package plus one `os`/`cpu`-gated package per platform, which npm picks through `optionalDependencies`.
 
-- Platform names (`platformKey`, `platformPackageName`, `binaryFileName`, `binaryPathInPackage`, `findPlatform`, `hostPlatform`, `NPM_PLATFORMS`), the two `package.json` shapes (`platformManifest`, `launcherManifest`), `renderLauncher`, `publishPackages`, `cargoTargetDir`, `writeJson` and `copyExecutable`.
-- The launcher no longer forwards SIGINT while stdin, stdout or stderr is a terminal, so one Ctrl-C reaches the binary once, not twice (`echo x | tool` included). While a standard stream is a terminal, a `kill -INT` sent to the launcher alone no longer reaches the binary; send SIGTERM, which is always forwarded.
-- Names with quotes or backslashes are written into the launcher correctly. Before, a backslash was decoded twice and a single quote broke the script.
-- A template's `name`, `version` or `description` keeps its position but no longer overrides the arguments.
-- `cargoTargetDir` throws when cargo's output has no `target_directory`, instead of returning `undefined`.
-- `publishPackages` takes `viewRunner` and `publishRunner`, so a test can run it without npm.
-- ESM only, compiled JavaScript with `.d.ts`, Node 22 or newer. The launcher it writes is CommonJS with no dependencies and runs on Node 18 or newer. Licence `MIT OR Apache-2.0`.
+- Platform names: `platformKey`, `platformPackageName`, `binaryExt`, `binaryFileName`, `binaryPathInPackage`, `findPlatform`, `hostPlatform` and `NPM_PLATFORMS`.
+- `platformManifest` and `launcherManifest` write the two `package.json` shapes. A `template` carries shared fields in the order you give them; `name`, `version` and `description` always come from the arguments; each package's `files` always includes its binary or launcher. `writeJson` and `copyExecutable` write them out.
+- `renderLauncher` writes a CommonJS launcher with no dependencies, for Node 18 or later. It runs the binary for the host with inherited stdio, forwards SIGTERM and SIGHUP, re-raises the binary's signal or exits `128 + signal`, and explains a missing or unsupported platform. It forwards SIGINT only when no standard stream is a terminal, so one Ctrl-C reaches the binary once. While a standard stream is a terminal, a SIGINT sent to the launcher's pid alone does not reach the binary; stop it with SIGTERM.
+- `publishPackages` publishes the platform packages first and the launcher last, skips versions already on the registry, and stops before publishing anything when it cannot tell what is there. `viewRunner` and `publishRunner` replace `npm` in tests.
+- `cargoTargetDir` asks cargo for its target directory.
+- ESM only, compiled JavaScript with `.d.ts`, Node 22 or newer. Licence `MIT OR Apache-2.0`.

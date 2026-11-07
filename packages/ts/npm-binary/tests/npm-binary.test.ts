@@ -38,6 +38,11 @@ describe('names', () => {
     expect(binaryPathInPackage(NESTED, MAC)).toBe('bin/tool')
   })
 
+  test('a scope that is not an npm scope is refused', () => {
+    expect(() => platformPackageName({ ...ROOT, scope: '' }, MAC)).toThrow(/npm scope/)
+    expect(() => platformPackageName({ ...ROOT, scope: 'acme' }, MAC)).toThrow(/npm scope/)
+  })
+
   test('an unknown platform names the known ones', () => {
     expect(() => findPlatform(NPM_PLATFORMS, 'sunos-sparc')).toThrow(/darwin-arm64/)
   })
@@ -103,10 +108,36 @@ describe('template precedence', () => {
     expect(Object.keys(p).slice(0, 4)).toEqual(['name', 'description', 'license', 'version'])
   })
 
-  test('the template is not changed', () => {
-    const own = { name: 'wrong', files: ['bin'] }
-    platformManifest(ROOT, MAC, { version: '1.0.0', description: 'd', template: own })
-    expect(own).toEqual({ name: 'wrong', files: ['bin'] })
+  test('the template is copied: the result shares no objects with it', () => {
+    const own = { name: 'wrong', files: ['tool'], publishConfig: { access: 'public' } }
+    const m = platformManifest(ROOT, MAC, { version: '1.0.0', description: 'd', template: own })
+    ;(m.publishConfig as { tag?: string }).tag = 'next'
+    ;(m.files as string[]).push('extra')
+    expect(own).toEqual({ name: 'wrong', files: ['tool'], publishConfig: { access: 'public' } })
+  })
+
+  test("a template's files always get the binary or launcher added", () => {
+    const template = { files: ['README.md'] }
+    const p = platformManifest(NESTED, MAC, { version: '1.0.0', description: 'd', template })
+    expect(p.files).toEqual(['README.md', 'bin/tool'])
+    const l = launcherManifest(ROOT, NPM_PLATFORMS, {
+      version: '1.0.0',
+      description: 'd',
+      launcherPath: 'bin/tool.js',
+      template,
+    })
+    expect(l.files).toEqual(['README.md', 'bin/tool.js'])
+  })
+
+  test('a launcher template that makes it ESM is refused', () => {
+    expect(() =>
+      launcherManifest(ROOT, NPM_PLATFORMS, {
+        version: '1.0.0',
+        description: 'd',
+        launcherPath: 'bin/tool.js',
+        template: { type: 'module' },
+      }),
+    ).toThrow(/CommonJS/)
   })
 })
 
@@ -369,8 +400,10 @@ describe('publishPackages', () => {
       writeFileSync(join(dir, 'package.json'), JSON.stringify({ name, version: '1.0.0' }))
       return dir
     }
-    const { asyncRunner: viewRunner } = fakeRunner((argv) =>
-      published.includes(argv[1]!) ? { stdout: '1.0.0\n' } : { exitCode: 1 },
+    const { asyncRunner: viewRunner, calls: views } = fakeRunner((argv) =>
+      published.includes(argv[1]!)
+        ? { stdout: '1.0.0\n' }
+        : { exitCode: 1, stderr: 'npm error code E404' },
     )
     const runs: string[] = []
     const publishRunner: StreamRunner = {
@@ -389,6 +422,8 @@ describe('publishPackages', () => {
         publishRunner,
       },
       runs,
+      views,
+      pkg,
     }
   }
 
@@ -406,6 +441,31 @@ describe('publishPackages', () => {
       '@acme/tool-darwin-arm64 publish --dry-run',
       '@acme/tool publish --dry-run',
     ])
+  })
+
+  test('a lookup that fails for another reason than E404 stops before any publish', async () => {
+    const { options, runs } = setup([])
+    const { asyncRunner } = fakeRunner(() => ({ exitCode: 1, stderr: 'npm error code ENOTFOUND' }))
+    await expect(publishPackages({ ...options, viewRunner: asyncRunner })).rejects.toThrow(
+      /ENOTFOUND/,
+    )
+    expect(runs).toEqual([])
+  })
+
+  test("the lookup asks the package's publishConfig.registry", async () => {
+    const { options, views } = setup([])
+    writeFileSync(
+      join(options.launcherDir, 'package.json'),
+      JSON.stringify({
+        name: '@acme/tool',
+        version: '1.0.0',
+        publishConfig: { registry: 'https://npm.example.com' },
+      }),
+    )
+    await publishPackages(options)
+    expect(views.map((c) => c.argv.join(' '))).toContain(
+      'view @acme/tool@1.0.0 version --registry https://npm.example.com',
+    )
   })
 
   test('a failed publish stops the run before the launcher', async () => {

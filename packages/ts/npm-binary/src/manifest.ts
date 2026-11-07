@@ -24,14 +24,16 @@ export interface PlatformManifestOptions {
   /**
    * Fields to carry, such as `license`, `author` or `publishConfig`. Each keeps
    * its position. `name`, `version` and `description` here only fix their
-   * position: their values come from the arguments.
+   * position: their values come from the arguments. The template is copied,
+   * so the result shares no objects with it.
    */
   template?: Manifest
 }
 
 /**
  * One platform package's package.json: gated by `os` and `cpu`, so npm
- * installs it only on a matching host. `files` defaults to the binary alone.
+ * installs it only on a matching host. `files` defaults to the binary alone;
+ * a template's `files` gets the binary added when it lacks it.
  * `preferUnplugged` keeps the binary a real file under Yarn PnP, so the
  * launcher can run it.
  */
@@ -43,7 +45,7 @@ export function platformManifest(
   const m = withIdentity(platformPackageName(product, platform), version, description, template)
   m.os = [platform.os]
   m.cpu = [platform.cpu]
-  m.files ??= [binaryPathInPackage(product, platform)]
+  m.files = withFile(m.files, binaryPathInPackage(product, platform), [])
   m.preferUnplugged = true
   return m
 }
@@ -61,17 +63,23 @@ export interface LauncherManifestOptions {
 /**
  * The launcher package's package.json. Lists every platform package as an
  * optional dependency at the same version, built or not. `files` defaults to
- * the launcher and the README, and `engines.node` to `>=18`. No `type`
- * field: the launcher is CommonJS.
+ * the launcher and the README; a template's `files` gets the launcher added
+ * when it lacks it. `engines.node` defaults to `>=18`. The launcher is
+ * CommonJS, so a template with `"type": "module"` is refused.
  */
 export function launcherManifest(
   product: BinaryProduct,
   platforms: readonly NpmPlatform[],
   { version, description, launcherPath, template = {} }: LauncherManifestOptions,
 ): Manifest {
+  if (template.type === 'module') {
+    throw new Error(
+      'launcherManifest: the template sets "type": "module", but the launcher is CommonJS; leave "type" out of the launcher template',
+    )
+  }
   const m = withIdentity(product.launcher, version, description, template)
   m.bin = { [product.binary]: launcherPath }
-  m.files ??= [launcherPath, 'README.md']
+  m.files = withFile(m.files, launcherPath, ['README.md'])
   m.optionalDependencies = Object.fromEntries(
     platforms.map((p) => [platformPackageName(product, p), version]),
   )
@@ -94,7 +102,16 @@ function withIdentity(
   const first = Object.fromEntries(
     Object.entries(identity).filter(([key]) => !Object.hasOwn(template, key)),
   )
-  return Object.assign(first, template, identity)
+  return Object.assign(first, structuredClone(template), identity)
+}
+
+/**
+ * The `files` list with `file` in it: the template's list plus `file` when it
+ * is missing, or `file` and `rest` when the template has none.
+ */
+function withFile(files: unknown, file: string, rest: string[]): unknown[] {
+  if (!Array.isArray(files)) return [file, ...rest]
+  return files.includes(file) ? files : [...files, file]
 }
 
 /** Writes `value` as JSON with two-space indent and a final newline, as npm does. */

@@ -10,8 +10,10 @@ export interface NpmPlatform {
 
 /**
  * The default platform list, in publish and listing order: macOS on Apple
- * silicon and Intel, Linux on x64 and arm64 (glibc), and Windows on x64.
- * A product that ships for fewer or more passes its own list.
+ * silicon and Intel, Linux on x64 and arm64, and Windows on x64. Linux
+ * packages carry no `libc` gate, so one Linux build serves glibc and musl
+ * hosts alike: ship a static (musl) build. A product that ships for fewer or
+ * more passes its own list.
  */
 export const NPM_PLATFORMS: readonly NpmPlatform[] = [
   { os: 'darwin', cpu: 'arm64' },
@@ -27,7 +29,7 @@ export interface BinaryProduct {
   readonly binary: string
   /** The launcher package users install. */
   readonly launcher: string
-  /** Platform packages are `<scope>/<platformPrefix>-<os>-<cpu>`. */
+  /** Platform packages are `<scope>/<platformPrefix>-<os>-<cpu>`; an npm scope such as `@acme`. */
   readonly scope: string
   readonly platformPrefix: string
   /** Directory inside a platform package that holds the binary; `''` is the package root. */
@@ -41,6 +43,11 @@ export function platformKey(p: NpmPlatform): string {
 
 /** `<scope>/<platformPrefix>-<os>-<cpu>`, e.g. `@acme/tool-linux-x64`. */
 export function platformPackageName(product: BinaryProduct, p: NpmPlatform): string {
+  if (!/^@[^/@\s]+$/.test(product.scope)) {
+    throw new Error(
+      `scope must be an npm scope such as "@acme", got ${JSON.stringify(product.scope)}`,
+    )
+  }
   return `${product.scope}/${product.platformPrefix}-${platformKey(p)}`
 }
 

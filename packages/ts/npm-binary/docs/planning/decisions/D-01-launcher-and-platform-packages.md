@@ -48,5 +48,6 @@ created: 2026-11-07
 - An install with optional dependencies turned off (`--omit=optional`), or
   from a lockfile made on another platform, has no platform package. The
   launcher names the package and the cause.
-- npm sees platforms only by `os` and `cpu`, so glibc and musl Linux look the
-  same. The README says so.
+- Platform packages are gated by `os` and `cpu` only, with no `libc` field, so
+  one Linux package serves glibc and musl hosts. Products ship a static (musl)
+  Linux build. The README says so.
