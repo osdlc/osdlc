@@ -1614,7 +1614,7 @@ describe('a pull request listing that fails (#653)', () => {
       for (const dir of [fx.root, bare]) {
         expect(res.err).toContain(`repo-cleaner clean: ${realpathSync(dir)}: Listing PRs`)
       }
-      // The run's own re-check says the same; a dry run has none, and nothing repeats.
+      // Each repository's note once: a dry run never reaches the run's re-check.
       expect(res.err.split('\n').filter((l) => l.includes(realpathSync(bare)))).toHaveLength(1)
     })
   })
@@ -1624,6 +1624,9 @@ describe('a pull request listing that fails (#653)', () => {
     withFailingGh(STDERR, () => {
       const res = run(['clean', ...GH, '--yes', '--format', 'json'], fx.root)
       expect(res.code).toBe(0)
+      // The preview and the run both re-check and both find the listing failed;
+      // the note is printed once.
+      expect(res.err.split('\n').filter((l) => l.includes('Listing PRs'))).toHaveLength(1)
       const out = JSON.parse(res.out) as { receipt: Receipt }
       expect(out.receipt.dropped).toContainEqual(
         expect.objectContaining({

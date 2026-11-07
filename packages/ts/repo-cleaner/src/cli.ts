@@ -73,7 +73,15 @@ import {
 } from './status-line.ts'
 import { stepBoard, type StepBoard } from './step-board.ts'
 import { sweep as sweepTargets, sweptWith, type SweepOptions } from './sweep.ts'
-import { KINDS, RISKS, RepoCleanerError, type Kind, type Sweep } from './types.ts'
+import {
+  KINDS,
+  RISKS,
+  RepoCleanerError,
+  sweepNotes,
+  type Kind,
+  type RepoNote,
+  type Sweep,
+} from './types.ts'
 
 const EXIT_NOTHING_TO_SWEEP = 10
 const EXIT_STEP_FAILED = 11
@@ -436,19 +444,11 @@ function reportUnreadable(ctx: CliContext, name: string, s: Sweep): boolean {
 
 /** Each repository's `RepoSweep.notes`, on stderr, for the outputs that do not carry them. */
 function reportNotes(ctx: CliContext, name: string, s: Sweep): void {
-  writeNotes(
-    ctx,
-    name,
-    s.repos.flatMap((r) => r.notes.map((note) => ({ repo: r.repo?.root ?? r.path, note }))),
-  )
+  writeNotes(ctx, name, sweepNotes(s))
 }
 
 /** Notes as `<name>: <repo>: <note>` lines on stderr. A note quotes git's and the provider's output, so controls are stripped. */
-function writeNotes(
-  ctx: CliContext,
-  name: string,
-  notes: readonly { repo: string; note: string }[],
-): void {
+function writeNotes(ctx: CliContext, name: string, notes: readonly RepoNote[]): void {
   for (const { repo, note } of notes)
     ctx.io.stderr(stripControls(`${name}: ${repo}: ${note}`) + '\n')
 }

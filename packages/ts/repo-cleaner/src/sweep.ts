@@ -373,9 +373,12 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
       prs = looked.prs
       if (looked.error !== null) {
         repo = { ...repo, provider: { ...status, listError: looked.error } }
-        // `auto` asks GitHub for any host, so a local or `file:` remote lands here too.
+        // `auto` asks GitHub for any host that is not GitLab's, so a local
+        // remote, or one on a host that is not a forge, lands here too.
         const hint =
-          status.host === null ? ' Pass `--provider none` if this remote has no forge.' : ''
+          opts.provider === 'auto' || status.host === null
+            ? ' Pass `--provider none` if this remote has no forge.'
+            : ''
         notes.push(
           `Listing ${status.noun}s with \`${status.listing}\` failed (${looked.error}); judged on git evidence alone.${hint}`,
         )

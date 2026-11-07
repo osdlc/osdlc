@@ -664,8 +664,8 @@ const receipt = run(preview)
 | --- | --- |
 | `sweep(targets, opts?)` | Resolve the targets and judge every row. Options as on the command line: `only`, `remote`, `offline`, `against`, `provider`, `branch`, plus `cwd`, `cacheDir`, `annotate`, `onProgress`, `onWarn`, and the injectable `git`, `gh`, `glab` runners and `probe` |
 | `plan(sweep)` | Every row, fingerprinted, with the sweep's options |
-| `check(plan, approval, opts?)` | Resolve `{ pick, spare, allow }` against the plan, sweep again, and return a `Preview`: the steps, the rows dropped and why, and the allows no row needed. Deletes nothing |
-| `run(preview, opts?)` | Sweep once more and take the preview's steps, writing a `Receipt` (to `receiptPath` after every step, when given) |
+| `check(plan, approval, opts?)` | Resolve `{ pick, spare, allow }` against the plan, sweep again, and return a `Preview`: the steps, the rows dropped and why, the allows no row needed, and `notes`, what the re-check judged without. Deletes nothing |
+| `run(preview, opts?)` | Sweep once more and take the preview's steps, writing a `Receipt` (to `receiptPath` after every step, when given). `onNotes` hears what its own re-check judged without |
 | `inspectWorktree(path, opts?)` | One worktree judged as a sweep judges it, submodules included |
 | `readPlan`, `writePlan` | Plans on disk |
 | `render` | The command line's formats: `text`, `json`, `summary`, `commands`, `preview`, `receipt` |

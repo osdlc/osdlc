@@ -1479,6 +1479,31 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
     expect(remotes.get('origin/main')?.risks).toEqual([])
   })
 
+  test('the --provider none hint follows auto, not only a remote with no host', () => {
+    // Real git, except that `origin` reads as a host that `auto` sends to GitHub.
+    const hosted: CommandRunner = {
+      run(argv, opts) {
+        if (argv.includes('remote') && argv.includes('get-url') && argv.at(-1) === 'origin') {
+          return { exitCode: 0, stdout: 'https://git.example.com/acme/app.git\n', stderr: '' }
+        }
+        return realGit.run(argv, opts)
+      },
+    }
+    const noteOf = (provider: 'auto' | 'github'): string | undefined =>
+      sweepOne(checkout, {
+        cwd: checkout,
+        remote: true,
+        offline: true,
+        provider,
+        gh: unseeingGh,
+        git: hosted,
+      }).notes[0]
+    const hint = 'Pass `--provider none` if this remote has no forge.'
+    expect(noteOf('auto')).toContain(hint)
+    // Named outright, the provider is the person's choice: no hint.
+    expect(noteOf('github')).not.toContain(hint)
+  })
+
   test('a gh that is missing or signed out is named as the reason, not as no PR found', () => {
     const answering = (failing: string): CommandRunner => ({
       run(argv) {

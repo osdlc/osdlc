@@ -52,6 +52,8 @@ import {
   type SweepProgress,
   type SweptWith,
   parseRowId,
+  sweepNotes,
+  type RepoNote,
 } from './types.ts'
 import { errorText } from './util.ts'
 import { removeIsForced, worktreeCommands } from './worktrees.ts'
@@ -146,7 +148,7 @@ export interface Preview {
    * without. With a sweep passed in (`CheckOptions.sweep`), every repository
    * of that sweep; otherwise each plan repository the re-check swept again.
    */
-  notes: { repo: string; note: string }[]
+  notes: RepoNote[]
 }
 
 // ── resolving an approval ──────────────────────────────────────────────────
@@ -503,13 +505,12 @@ function recheck(
   }
   // A sweep passed in speaks for every repository it read, selected or not: a
   // repository with nothing to run is where a missing listing matters most.
-  const allNotes =
-    opts.sweep === undefined
-      ? notes
-      : opts.sweep.repos.flatMap((r) =>
-          r.notes.map((note) => ({ repo: r.repo?.root ?? r.path, note })),
-        )
-  return { accepted: kept, dropped, verified, notes: allNotes }
+  return {
+    accepted: kept,
+    dropped,
+    verified,
+    notes: opts.sweep === undefined ? notes : sweepNotes(opts.sweep),
+  }
 }
 
 // ── one row per remote branch ──────────────────────────────────────────────

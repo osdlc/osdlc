@@ -365,6 +365,17 @@ export interface RepoSweep {
   error: string | null
 }
 
+/** One of a repository's `notes`, with the repository's root. */
+export interface RepoNote {
+  repo: string
+  note: string
+}
+
+/** Every repository's `notes` in `sweep`, each with its repository. */
+export function sweepNotes(sweep: Pick<Sweep, 'repos'>): RepoNote[] {
+  return sweep.repos.flatMap((r) => r.notes.map((note) => ({ repo: r.repo?.root ?? r.path, note })))
+}
+
 /** A target that named no repository. */
 export interface UnresolvedEntry {
   entry: string

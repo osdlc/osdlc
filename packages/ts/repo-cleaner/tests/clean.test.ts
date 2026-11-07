@@ -24,7 +24,7 @@ import { dirname, join, relative } from 'node:path'
 import { Git, PUSH_REJECTIONS } from '@osdlc/typed-git'
 import { makeBareAndWorker } from '@osdlc/typed-git/testing'
 
-import { sh } from './helpers.ts'
+import { cannedGh, sh } from './helpers.ts'
 import {
   check,
   networkRemoteKey,
@@ -158,6 +158,26 @@ describe('check and run fetch as the plan did', () => {
   }
   const runIt = (fx: Fixture, p: Plan) =>
     run(check(p, { pick: ['branch:merged-a'] }, { cwd: fx.root }), { cwd: fx.root })
+
+  test("the run's own re-check reports a listing that fails only at the run", () => {
+    const fx = buildFixture()
+    const good = cannedGh([])
+    const failing = {
+      run: (argv: readonly string[]) =>
+        argv[0] === '--version' || argv[0] === 'auth'
+          ? { exitCode: 0, stdout: '', stderr: '' }
+          : { exitCode: 1, stdout: '', stderr: 'boom: rate limited' },
+    }
+    const p = makePlan(fx.root, { provider: 'github', gh: good })
+    const shown = check(p, { pick: ['branch:merged-a'] }, { cwd: fx.root, gh: good })
+    expect(shown.notes).toEqual([])
+    const heard: { repo: string; note: string }[] = []
+    const receipt = run(shown, { cwd: fx.root, gh: failing, onNotes: (n) => heard.push(...n) })
+    expect(receipt.status).toBe('complete')
+    expect(heard).toHaveLength(1)
+    expect(heard[0]?.repo).toBe(realpathSync(fx.root))
+    expect(heard[0]?.note).toMatch(/^Listing PRs with `gh pr list` failed \(.*rate limited/)
+  })
 
   test('a plan swept after a fetch is re-checked after one', () => {
     const { fx, plan: p, remoteMain } = setup(true)
