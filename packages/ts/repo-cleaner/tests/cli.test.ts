@@ -1705,9 +1705,7 @@ describe('a pull request listing that fails (#653)', () => {
         [realpathSync(fx.root), realpathSync(bare)].sort(),
       )
       // A local bare remote names no forge, so the note says how to stop asking.
-      expect(out.notes[0]?.note).toContain(
-        'Pass `--provider none` if this remote has no pull requests.',
-      )
+      expect(out.notes[0]?.note).toContain('Pass `--provider none` if this remote has no PRs.')
       for (const dir of [fx.root, bare]) {
         expect(res.err).toContain(`repo-cleaner clean: ${realpathSync(dir)}: Listing PRs`)
       }
