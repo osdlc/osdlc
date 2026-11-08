@@ -71,14 +71,32 @@ jobs:
       REQUEST: ${{ github.event.comment.body || github.event.review.body }}
       SOURCE_URL: ${{ github.event.comment.html_url || github.event.review.html_url }}
     steps:
+      # The job's `if` can only test for the text "@claude". This step drops
+      # code blocks, inline code and quoted lines first, so a comment that only
+      # quotes "@claude" (a table of findings, say) stops here without
+      # installing anything or spending a token.
+      - name: Check for a real mention
+        id: mention
+        run: |
+          if printf '%s\n' "$REQUEST" \
+            | perl -0777 -pe 's/```.*?```//gs; s/`[^`\n]*`//g; s/^[ \t]*>.*$//mg' \
+            | grep -qE '(^|[^[:alnum:]_/.-])@claude([^[:alnum:]_-]|$)'; then
+            echo "real=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "Only quoted or code mentions of @claude; nothing to do."
+          fi
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.mention.outputs.real == '1'
         with:
           fetch-depth: 0
 
       - name: Check out the pull request
+        if: steps.mention.outputs.real == '1'
         run: gh pr checkout "$PR"
 
       - name: Install Claude Code and the craft plugin
+        if: steps.mention.outputs.real == '1'
         run: |
           curl -fsSL https://claude.ai/install.sh | bash -s -- "$CLAUDE_CODE_VERSION"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
@@ -87,6 +105,7 @@ jobs:
 
       - name: Ask Claude
         id: claude
+        if: steps.mention.outputs.real == '1'
         env:
           # One key or several, tried in order; see "Keys" at the top of this file.
           KEYS: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -153,7 +172,7 @@ jobs:
             break
           done
           if [ "$tried" -eq 0 ]; then
-            echo "No ANTHROPIC_API_KEY secret is set" | tee result.json
+            jq -n '{is_error: true, result: "No ANTHROPIC_API_KEY secret is set"}' | tee result.json
           fi
           exit "$status"
 
