@@ -16,11 +16,10 @@
  */
 
 import { visit, SKIP } from 'unist-util-visit'
-import { scanBodyWith } from '@osdlc/markdown-link'
 import type { LinkResolution, WikilinkResolver } from '../types.ts'
 import { isSafeLinkPath } from '../url.ts'
 import { unmaskEscaped } from './escapes.ts'
-import { tokenizeLinks, type FoundLink } from './link-scan.ts'
+import { scanLinks, tokenizeLinks, type FoundLink } from './link-scan.ts'
 import { hastNode, isPhrasingParent, text, type MdNode } from './util.ts'
 
 /**
@@ -229,7 +228,7 @@ function isWholeWikilink(label: string): boolean {
   // as text, which would lose the reference.
   if (!Array.from(label).some((char) => !'#|^ \t\n'.includes(char))) return false
   const body = `[[${label}]]`
-  const scan = scanBodyWith(body, { selfLinks: true, codeRules: 'commonmark' })
+  const scan = scanLinks(body)
   const found = scan.links[0] ?? scan.abandoned.find((a) => a.reason === 'empty-target')
   return (
     scan.links.length + scan.abandoned.length === 1 &&
