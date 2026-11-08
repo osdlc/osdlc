@@ -9,7 +9,7 @@ created: 2026-10-07
 
 ## Goal
 
-A clean worktree whose work a fetched remote branch already holds is `delete`, so removing it loses nothing a remote does not have. Today it stays at `review`, or carries `abandon-unmerged` when no upstream is set.
+A clean, used worktree whose work a fetched remote branch already holds is `delete` unless a PR is open, so removing it loses nothing a remote does not have. Today it stays at `review`, or carries `abandon-unmerged` when no upstream is set.
 
 ## Spec
 

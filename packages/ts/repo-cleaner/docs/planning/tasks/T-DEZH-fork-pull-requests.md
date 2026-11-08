@@ -9,7 +9,7 @@ created: 2026-11-07
 
 ## Goal
 
-The GitHub provider lists pull requests for the remote the sweep judges, and counts PRs opened from a fork to its parent. Today `gh` picks `upstream` over `origin`, so a fork's branches are judged against the parent's PRs and read as having none.
+The GitHub provider lists pull requests for the remote the sweep judges. PRs opened from a fork to its parent are either counted or flagged in a note; the issue leaves that choice open. Today `gh` picks `upstream` over `origin`, so a fork's branches are judged against the parent's PRs and read as having none.
 
 ## Spec
 

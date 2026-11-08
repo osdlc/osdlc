@@ -104,4 +104,4 @@ subagents. Builds on the blocker list from [T-96DZ](https://github.com/sksizer/d
 
 Shipped in osdlc/osdlc [#499](https://github.com/osdlc/osdlc/pull/499), first published in `@osdlc/repo-cleaner` 0.5.2, after the package moved. Each AC has a named test in osdlc's `packages/ts/repo-cleaner/tests/liveness.test.ts` (AC-1 to AC-7). The decision it served, [D-L7N5](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-L7N5-host-cleaner.md), moved to osdlc.
 
-This task was written in sksizer/dev, when repo-cleaner still lived there, and moved here with its id. Its history is in [the dev copy](https://github.com/sksizer/dev/blob/27fe89ef0557a1e3adcd1120ecb5a052944ebda4/docs/planning/tasks/T-DUYG-repo-cleaner-worktree-lock-liveness.md).
+This task was written in sksizer/dev, when repo-cleaner still lived there, and moved here with its id. Its paths are from then: the package's sources are now under `src/`. Its history is in [the dev copy](https://github.com/sksizer/dev/blob/27fe89ef0557a1e3adcd1120ecb5a052944ebda4/docs/planning/tasks/T-DUYG-repo-cleaner-worktree-lock-liveness.md).

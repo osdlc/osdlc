@@ -1,7 +1,7 @@
 # repo-cleaner planning
 
-Why `@osdlc/repo-cleaner` has the shape it has. The [README](../../README.md)
-says how to use the package. This folder says why.
+Why `@osdlc/repo-cleaner` has the shape it has, and what is still open. The
+[README](../../README.md) says how to use the package. This folder says why.
 
 These files are maintained here, in
 [osdlc/osdlc](https://github.com/osdlc/osdlc). Open an issue or a pull request
