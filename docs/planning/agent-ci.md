@@ -129,17 +129,17 @@ move; merged PRs drop off.
 
 | Order | PR | What | Why this order | Status |
 | --- | --- | --- | --- | --- |
-| 1 | [#721](https://github.com/osdlc/osdlc/pull/721) | agent-call: cursor allow and deny via `.cursor/cli.json` | Waiting longest; the live Claude review's four findings are fixed and answered | waiting on your review since 20:41 UTC; CI rerunning after the fixes; behind main |
+| 1 | [#721](https://github.com/osdlc/osdlc/pull/721) | agent-call: cursor allow and deny via `.cursor/cli.json` | Waiting longest; the live Claude review's four findings are fixed and answered | waiting on your review since 20:41 UTC (over 2h; nudged 23:17); CI green; behind main |
 | 2 | [#723](https://github.com/osdlc/osdlc/pull/723) | agent-call `run`: forward SIGINT and SIGTERM, exit 130 when interrupted | Small; ships in the same agent-call release as #721 | waiting on your review since 22:12 UTC; CI green; behind main |
 | 3 | [#716](https://github.com/osdlc/osdlc/pull/716) | `agent-setup` action and `gh-actions release` workflow | Independent of agent-call; needed before `agent-pr-answer` | waiting on your review since 23:03 UTC; CI green; behind main |
 
 ## PR tracker
 
-Checked 2026-11-08 22:17 UTC. A periodic check refreshes this table and the graph.
+Checked 2026-11-08 23:17 UTC. A periodic check refreshes this table and the graph.
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
-| [#721](https://github.com/osdlc/osdlc/pull/721) | feat(agent-call): enforce allow and deny tools on cursor | open | none | behind main; CI rerunning | waiting on your review | merge |
+| [#721](https://github.com/osdlc/osdlc/pull/721) | feat(agent-call): enforce allow and deny tools on cursor | open | none | behind main | waiting on your review | merge |
 | [#723](https://github.com/osdlc/osdlc/pull/723) | fix(agent-call): follow-ups from the codex review of #715 | open | none | behind main | waiting on your review | merge |
 | [#716](https://github.com/osdlc/osdlc/pull/716) | feat(gh-actions): add the agent-setup action | open | none | behind main | waiting on your review | merge |
 | [#727](https://github.com/osdlc/osdlc/pull/727) | feat(gh-actions): claude-pr action; claude.yml calls it | merged | — | — | — | merged into #724's branch 2026-11-08 |
