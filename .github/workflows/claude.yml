@@ -20,8 +20,12 @@
 # skills bundle; nothing that edits, commits, pushes or comments. The last
 # step posts Claude's answer, or the error when there is none.
 #
-# Auth is ANTHROPIC_API_KEY, a Claude Console API key that bills to the
-# org's API credits. The CLI version is pinned below.
+# Keys: Claude Console API keys that bill to the org's API credits, in the
+# secrets ANTHROPIC_API_KEY, ANTHROPIC_API_KEY_2 and ANTHROPIC_API_KEY_3. Each
+# one that is set is tried in order; only an authentication failure moves on
+# to the next, and it leaves a warning on the run naming the dead slot. To
+# rotate: put the new key in a free slot, then delete the old secret. The CLI
+# version is pinned below.
 #
 # Every action is pinned to a commit SHA; the comment names its release.
 name: claude
@@ -82,7 +86,10 @@ jobs:
       - name: Ask Claude
         id: claude
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Up to three keys, tried in order; see "Keys" at the top of this file.
+          KEY_1: ${{ secrets.ANTHROPIC_API_KEY }}
+          KEY_2: ${{ secrets.ANTHROPIC_API_KEY_2 }}
+          KEY_3: ${{ secrets.ANTHROPIC_API_KEY_3 }}
         run: |
           # `@claude review [focus]` at the start of the comment runs the review skill.
           focus=$(printf '%s\n' "$REQUEST" | sed -nE '1s/^[[:space:]]*@claude[[:space:]]+review([[:space:]]+(.*))?[[:space:]]*$/review:\2/p')
@@ -107,16 +114,38 @@ jobs:
 
           $REQUEST"
           fi
-          set +e
-          claude -p "$prompt" \
-            --output-format json \
-            --max-turns 60 \
-            --allowedTools "Read,Glob,Grep,Skill,Agent,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(node:*)" \
-            --disallowedTools "Edit,MultiEdit,Write,NotebookEdit,Bash(git commit:*),Bash(git push:*),Bash(gh pr comment:*)" \
-            < /dev/null > result.json
-          status=$?
-          set -e
-          jq '{is_error, subtype, num_turns, total_cost_usd, api_error_status, result}' result.json || cat result.json
+          status=1
+          tried=0
+          for n in 1 2 3; do
+            var="KEY_$n"
+            key=${!var}
+            [ -n "$key" ] || continue
+            tried=$((tried + 1))
+            set +e
+            ANTHROPIC_API_KEY="$key" claude -p "$prompt" \
+              --output-format json \
+              --max-turns 60 \
+              --allowedTools "Read,Glob,Grep,Skill,Agent,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(node:*)" \
+              --disallowedTools "Edit,MultiEdit,Write,NotebookEdit,Bash(git commit:*),Bash(git push:*),Bash(gh pr comment:*)" \
+              < /dev/null > result.json
+            status=$?
+            set -e
+            echo "key $n: exit $status"
+            jq '{is_error, subtype, num_turns, total_cost_usd, api_error_status, result}' result.json || cat result.json
+            if [ "$status" -eq 0 ] && jq -e '.is_error == false' result.json > /dev/null 2>&1; then
+              break
+            fi
+            # Only an authentication failure moves on to the next key.
+            if jq -e '.api_error_status == 401' result.json > /dev/null 2>&1 \
+              || grep -qiE 'authentication_error|invalid x-api-key|invalid api key' result.json; then
+              echo "::warning::ANTHROPIC_API_KEY slot $n failed authentication; rotate or delete it"
+              continue
+            fi
+            break
+          done
+          if [ "$tried" -eq 0 ]; then
+            echo "No ANTHROPIC_API_KEY secret is set" | tee result.json
+          fi
           exit "$status"
 
       - name: Post the answer
