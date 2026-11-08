@@ -600,7 +600,7 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
 name = "markdown-contract"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "comrak",
  "globset",
@@ -627,7 +627,7 @@ dependencies = [
 
 [[package]]
 name = "markdown-link"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "frontmatter-lossless",
  "serde_json",
@@ -1364,7 +1364,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vfs-seam"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "tempfile",
  "thiserror",
@@ -1372,7 +1372,7 @@ dependencies = [
 
 [[package]]
 name = "vfs-walk"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "tempfile",
  "thiserror",
