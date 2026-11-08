@@ -114,7 +114,7 @@ flowchart LR
   classDef later fill:#8a93a3,stroke:#6b7384,color:#ffffff
   class W710,P711,P707,P712,PLAN,PARLEY,PLANPR,ARCH,RUN done
   class UP yours
-  class SETUP external
+  class SETUP blocked
   class REV done
   class PERM,PROBE,CHECK,ANS,SPEC,MULTI next
   class REL active
@@ -131,7 +131,7 @@ move; merged PRs drop off.
 | --- | --- | --- | --- | --- |
 | 1 | [#721](https://github.com/osdlc/osdlc/pull/721) | agent-call: cursor allow and deny via `.cursor/cli.json` | Waiting longest; the live Claude review's four findings are fixed and answered | waiting on your review since 20:41 UTC; CI rerunning after the fixes; behind main |
 | 2 | [#723](https://github.com/osdlc/osdlc/pull/723) | agent-call `run`: forward SIGINT and SIGTERM, exit 130 when interrupted | Small; ships in the same agent-call release as #721 | waiting on your review since 22:12 UTC; CI green; behind main |
-| 3 | [#716](https://github.com/osdlc/osdlc/pull/716) | `agent-setup` action and `gh-actions release` workflow | Independent of agent-call; needed before `agent-pr-answer` | draft; gate done; 3 macOS checks queued; behind main |
+| 3 | [#716](https://github.com/osdlc/osdlc/pull/716) | `agent-setup` action and `gh-actions release` workflow | Independent of agent-call; needed before `agent-pr-answer` | waiting on your review since 23:03 UTC; CI green; behind main |
 
 ## PR tracker
 
@@ -141,7 +141,7 @@ Checked 2026-11-08 22:17 UTC. A periodic check refreshes this table and the grap
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
 | [#721](https://github.com/osdlc/osdlc/pull/721) | feat(agent-call): enforce allow and deny tools on cursor | open | none | behind main; CI rerunning | waiting on your review | merge |
 | [#723](https://github.com/osdlc/osdlc/pull/723) | fix(agent-call): follow-ups from the codex review of #715 | open | none | behind main | waiting on your review | merge |
-| [#716](https://github.com/osdlc/osdlc/pull/716) | feat(gh-actions): add the agent-setup action | draft | none | behind main | gate done; macOS checks queued | merge |
+| [#716](https://github.com/osdlc/osdlc/pull/716) | feat(gh-actions): add the agent-setup action | open | none | behind main | waiting on your review | merge |
 | [#727](https://github.com/osdlc/osdlc/pull/727) | feat(gh-actions): claude-pr action; claude.yml calls it | merged | — | — | — | merged into #724's branch 2026-11-08 |
 | [#724](https://github.com/osdlc/osdlc/pull/724) | ci(claude): claude-pr action with @claude review, key list and done markers | merged | — | — | — | merged 2026-11-08 |
 | [#715](https://github.com/osdlc/osdlc/pull/715) | feat(agent-call): agent-call run command | merged | — | — | — | merged 2026-11-08 |
