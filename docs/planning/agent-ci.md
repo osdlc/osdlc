@@ -188,6 +188,15 @@ them, uncited, and I2 found one of its notes wrong. Proposed subjects:
 agent-call's permission rows should then be checked against these facts the
 way tradecraft-core's profile is (D-FDLQ).
 
+## Later: harness-reference as agent-call's data
+
+agent-call's flag and permission tables could come from a compiled snapshot
+of harness-reference, selected by the installed harness's version, with
+output parsers and approximations staying in code. Steps: check against the
+corpus first (as above), then give execution-relevant subjects
+machine-usable value shapes, then generate the tables. Its probes could
+double as agent-call adapter tests.
+
 ## Changes to the plan from the findings
 
 - Files layer: skillwright over agent-adapt, no merge (I1).
