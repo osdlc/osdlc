@@ -112,6 +112,7 @@ describe('cursor plan', () => {
         path: '.cursor/cli.json',
         key: 'permissions',
         value: { allow: ['Read(**)'], deny: ['Write(**)', 'Shell(*)'] },
+        merge: expect.any(Function),
         preview: expect.stringContaining('"Shell(*)"'),
       },
     ])

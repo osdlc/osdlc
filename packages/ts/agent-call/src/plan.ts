@@ -46,6 +46,8 @@ export interface ProjectFileEdit {
   /** Top-level key to replace. */
   key: string
   value: unknown
+  /** Combines the key's existing value (undefined when absent) with `value`; default is replace. */
+  merge?: ((existing: unknown, value: unknown) => unknown) | undefined
   /** The file's content when it did not exist before (for `--explain` and dry runs). */
   preview: string
 }

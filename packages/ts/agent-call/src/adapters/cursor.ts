@@ -47,6 +47,15 @@ export interface CursorAdapterOptions extends CommandOptions {
   trustWorkspace?: boolean
 }
 
+/** Keeps the file's `permissions.deny` and adds the call's; the call's `allow` replaces the file's. */
+function mergePermissions(existing: unknown, value: unknown): unknown {
+  if (existing === null || typeof existing !== 'object' || Array.isArray(existing)) return value
+  const old = (existing as { deny?: unknown }).deny
+  const oldDeny = Array.isArray(old) ? old : []
+  const mine = value as { deny?: unknown[] }
+  return { ...existing, ...mine, deny: [...new Set([...oldDeny, ...(mine.deny ?? [])])] }
+}
+
 /**
  * Cursor Agent CLI (`agent -p`). The install script links both `agent` and
  * the older `cursor-agent`. `--help` and the CLI's own error messages name
@@ -173,6 +182,7 @@ function planCursor(command: readonly string[], trust: boolean, spec: AgentCallS
       path: CLI_JSON,
       key: 'permissions',
       value: rules,
+      merge: mergePermissions,
       preview: JSON.stringify({ permissions: rules }, null, 2) + '\n',
     })
   }

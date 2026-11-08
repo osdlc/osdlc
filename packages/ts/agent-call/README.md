@@ -445,7 +445,9 @@ format (a JSON envelope or an event stream), so metadata is captured.
 - cursor has no tool-rule flag, so `permissions.allowTools` and `denyTools`
   are written to `.cursor/cli.json` (`permissions.allow` / `permissions.deny`)
   in the call's working directory (`spec.cwd`, else the process's) for the
-  length of the call. Other keys in the file are kept, the original bytes are
+  length of the call. Other keys in the file are kept, and so are existing
+  `permissions.deny` entries (the call's denies are added to them); the call's
+  `allow` replaces the file's `allow`. The original bytes are
   restored afterwards (the file and a `.cursor` directory the call created are
   deleted), also on error, timeout and abort. `planCall` shows the rules in
   `planned.projectFiles`. Names map as: `Read`, `Write`, `Read(p)`, `Write(p)`
@@ -460,7 +462,9 @@ format (a JSON envelope or an event stream), so metadata is captured.
   (`spawn-failed`) while one runs: a lock file `.cursor/cli.json.agent-call.lock`
   holds the owner pid and the original bytes. A hard kill (SIGKILL, power loss)
   leaves both files behind; the next call sees the dead pid, restores the
-  original from the lock and carries on. To recover by hand, put back
+  original from the lock and carries on (if two calls find the same stale lock,
+  one wins and the other is refused). If restoring fails at the end of a call,
+  the lock is left in place so the original stays recoverable. To recover by hand, put back
   `.cursor/cli.json` (the `original` field of the lock, base64; or drop the
   `permissions` key) and delete the lock. Keep other tools out of that file
   while a call runs.
