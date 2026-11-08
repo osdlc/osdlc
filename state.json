@@ -24,9 +24,9 @@
       "line": 99,
       "title": "--clean removes the destination before any write, and does not refuse nested src/dst",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "e27cb84d3c004b2bfbadb3723b218aa5d77607b2"
     },
     {
       "id": "r1-3",
