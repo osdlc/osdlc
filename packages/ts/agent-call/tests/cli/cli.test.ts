@@ -93,6 +93,13 @@ describe('path containment', () => {
   })
 })
 
+describe('working directory', () => {
+  test('the agent does not run in --root', () => {
+    const run = parseSpecText('run:\n  prompt:\n    - file: prompts/p.md\n', '.yml')
+    expect(resolveCall(run, dir, new Map()).spec.cwd).toBeUndefined()
+  })
+})
+
 describe('inputs and placeholders', () => {
   test('parses literals and @file', () => {
     const inputs = parseInputs(['a=1', 'b=x=y', 'c=@ctx.txt'], dir)

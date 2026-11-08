@@ -196,7 +196,9 @@ export function resolveCall(
     return input.path
   })
 
-  const spec: AgentCallSpec = { prompt, cwd: root }
+  // No cwd: the agent runs in the current directory (in CI, the pull request's
+  // checkout), while `root` is the trusted checkout the spec and prompts come from.
+  const spec: AgentCallSpec = { prompt }
   if (run.model !== undefined) spec.model = run.model
   if (run.permissions !== undefined) spec.permissions = run.permissions
   if (files.length > 0) spec.context = { files }
