@@ -236,7 +236,38 @@ export const TableBlock = defineComponent({
         const source = tableRows(section)
         const indices =
           section.tagName === 'tbody' && order ? order : source.map((_, index) => index)
-        for (const index of indices) rows.push(rowCells(source[index]!).map(cellText))
+        // A cell spanning columns or rows owns several grid slots; the copy
+        // fills the extra ones with empty fields so each value stays in its column.
+        const carried = new Map<number, number>()
+        for (const index of indices) {
+          const fields: string[] = []
+          const take = () => {
+            for (const [column, left] of carried) {
+              if (column === fields.length) {
+                fields.push('')
+                if (left <= 1) carried.delete(column)
+                else carried.set(column, left - 1)
+                return true
+              }
+            }
+            return false
+          }
+          for (const cell of rowCells(source[index]!)) {
+            while (take());
+            const column = fields.length
+            const colSpan = Math.max(1, Number(cell.properties?.colSpan) || 1)
+            const rawRows = cell.properties?.rowSpan
+            const rowSpan = rawRows === undefined || rawRows === '' ? 1 : Number(rawRows)
+            fields.push(cellText(cell))
+            for (let k = 1; k < colSpan; k++) fields.push('')
+            if (rowSpan === 0 || rowSpan > 1) {
+              const below = rowSpan === 0 ? indices.length : rowSpan - 1
+              for (let k = 0; k < colSpan; k++) carried.set(column + k, below)
+            }
+          }
+          while (take());
+          rows.push(fields)
+        }
       }
       return rows
     }

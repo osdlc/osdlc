@@ -18,7 +18,13 @@
 
 import { warnMissingPeer } from './peers.ts'
 
-export type KatexModule = typeof import('katex').default
+/** The part of `katex` this package calls, so the root entry's types do not import the optional peer. */
+export interface KatexModule {
+  renderToString(
+    latex: string,
+    options?: { displayMode?: boolean; throwOnError?: boolean; output?: string },
+  ): string
+}
 
 let katexPromise: Promise<KatexModule> | undefined
 

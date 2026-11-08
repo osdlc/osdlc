@@ -77,15 +77,6 @@ export function hastNode(
   return { type, children, data: { hName, hProperties } }
 }
 
-/** `decodeURIComponent` that returns its input rather than throwing on a stray `%`. */
-export function safeDecode(value: string): string {
-  try {
-    return decodeURIComponent(value)
-  } catch {
-    return value
-  }
-}
-
 /**
  * Where a `link`/`image` points, or a `linkReference`/`imageReference` through
  * its `definition`. `[label][ref]`, `[label][]` and `[label]` are CommonMark

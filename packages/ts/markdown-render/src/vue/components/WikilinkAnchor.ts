@@ -8,7 +8,7 @@
 
 import { defineComponent, h, type PropType } from 'vue'
 import type { HastNode } from '../render.ts'
-import { toVueProps } from '../render.ts'
+import { hastNodeText, toVueProps } from '../render.ts'
 import { useHandlers, type WikilinkTarget } from '../context.ts'
 import { isSafeLinkPath } from '../../url.ts'
 import type { LinkResolution } from '../../types.ts'
@@ -39,11 +39,6 @@ export function resolutionFromNode(node: HastNode): WikilinkTarget {
   return resolution
 }
 
-function textOf(node: HastNode): string {
-  if (node.type === 'text') return String(node.value ?? '')
-  return (node.children ?? []).map(textOf).join('')
-}
-
 export const WikilinkAnchor = defineComponent({
   name: 'WikilinkAnchor',
   props: {
@@ -54,7 +49,7 @@ export const WikilinkAnchor = defineComponent({
 
     const resolution = (): WikilinkTarget => ({
       ...resolutionFromNode(props.node),
-      display: textOf(props.node),
+      display: hastNodeText(props.node),
     })
 
     const onClick = (event: MouseEvent) => {

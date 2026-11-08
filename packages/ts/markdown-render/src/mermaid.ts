@@ -14,6 +14,8 @@ export type MermaidTheme = 'default' | 'dark' | 'forest' | 'neutral' | 'base' | 
 /** The slice of the mermaid module a renderer uses. */
 export interface MermaidLike {
   initialize(config: object): void
+  /** The config in force; when present, a level another caller loosened is put back. */
+  getConfig?(): { securityLevel?: string }
   render(id: string, source: string): Promise<{ svg: string }>
 }
 
@@ -55,7 +57,9 @@ export function createMermaidRenderer(
       })
     }
     const mermaid = await loading
-    if (initializedTheme !== theme) {
+    const loosened =
+      mermaid.getConfig !== undefined && mermaid.getConfig().securityLevel !== 'strict'
+    if (initializedTheme !== theme || loosened) {
       // `securityLevel` is passed rather than left to mermaid's default, which
       // is already `strict`. `initialize` MERGES into one module-global config,
       // so the level in force is whatever the last caller left — and mermaid is

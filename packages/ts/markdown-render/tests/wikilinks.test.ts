@@ -452,6 +452,10 @@ describe('remarkMarkdownLinks: a relative .md link is a note link', () => {
     expect(out).not.toContain('data-path')
   })
 
+  test('splitMarkdownLink decodes a path with a stray percent sign', () => {
+    expect(splitMarkdownLink('Q3%20100%.md')).toEqual({ target: 'Q3 100%.md', fragment: '' })
+  })
+
   test('splitMarkdownLink is the whole claim rule', () => {
     expect(splitMarkdownLink('Note.md')).toEqual({ target: 'Note.md', fragment: '' })
     expect(splitMarkdownLink('a/b.markdown#c')).toEqual({ target: 'a/b.markdown', fragment: 'c' })

@@ -42,7 +42,8 @@ import { ATTACHMENT_EXTENSIONS, noteExtension } from '../paths.ts'
 import { urlScheme } from '../url.ts'
 import { defaultResolver } from './wikilinks.ts'
 import { embedKind } from './embeds.ts'
-import { clearLinkFields, definitionUrls, destination, safeDecode, type MdNode } from './util.ts'
+import { clearLinkFields, definitionUrls, destination, type MdNode } from './util.ts'
+import { percentDecode } from '@osdlc/markdown-link'
 
 export interface RemarkMarkdownImagesOptions {
   /** Injected resolver. Defaults to {@link defaultResolver}. */
@@ -65,7 +66,7 @@ export function splitMarkdownImage(url: string): string | null {
   if (!url || url.startsWith('#') || url.startsWith('/') || url.startsWith('//')) return null
   if (urlScheme(url) !== undefined) return null
   const hash = url.indexOf('#')
-  const target = safeDecode(hash === -1 ? url : url.slice(0, hash))
+  const target = percentDecode(hash === -1 ? url : url.slice(0, hash))
   if (!target) return null
   // Extension required, and it has to be one the dialect actually embeds.
   // This is also what keeps `![](Some Note)` — which is not an attachment

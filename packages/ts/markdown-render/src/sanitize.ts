@@ -123,7 +123,6 @@ function buildSchema(): Schema {
     CLASS_DEFINITION,
   ] as never
   attributes['markdown-embed'] = EMBED_ATTRS as never
-  attributes.input = extend(attributes.input, ['checked', 'disabled', 'type']) as never
 
   // Heading and block ids are addressable anchors (`#heading`, `#^block`), so
   // the default schema's blanket `user-content-` prefix on `id` would break

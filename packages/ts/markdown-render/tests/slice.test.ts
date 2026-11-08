@@ -298,7 +298,9 @@ describe('the heading slicer follows the parser (review finding #7)', () => {
     expect(sliceByBlockId(['---', 'para ^abc'].join('\n'), 'abc')).toBe('para')
     // The first line is not skipped: a `^id` on a line between two `---`
     // lines is a real reference.
-    expect(sliceByBlockId(['---', 'id: x ^abc', '---', '', 'para'].join('\n'), 'abc')).toBe('id: x')
+    expect(sliceByBlockId(['---', 'id: x ^abc', '---', '', 'para'].join('\n'), 'abc')).toBe(
+      'id: x\n---',
+    )
   })
 })
 
@@ -719,7 +721,7 @@ describe('the slicers follow the parser on what may interrupt a paragraph', () =
   })
 
   test('a setext heading inside a list item is a heading', () => {
-    expect(titles('- Foo\n  Bar\n  ---\n  baz')).toEqual([['Bar', 2]])
+    expect(titles('- Foo\n  Bar\n  ---\n  baz')).toEqual([['Foo Bar', 2]])
     expect(titles('- Foo\n  ---')).toEqual([['Foo', 2]])
     expect(titles('1. Foo\n   ---')).toEqual([['Foo', 2]])
     // An unindented underline is outside the item: a thematic break.
@@ -783,5 +785,25 @@ describe('sliceByBlockId finds an id exactly where the renderer assigns one', ()
     // `> q\n> ^abc`, `1. a\n^abc`) keep an earlier marker line that the renderer
     // treats differently; they are pinned as they are today.
     expect(sliceByBlockId(markdown, id)).toBe(slice)
+  })
+})
+
+describe('headings the line scan must agree with the parser on', () => {
+  test('a multi-line setext title is one heading from its first line', () => {
+    const doc = '# Top\n\nintro\n\nFoo\nBar\n===\n\ntext'
+    expect(sourceHeadings(doc)).toEqual([
+      { heading: 'Top', depth: 1, line: 1 },
+      { heading: 'Foo Bar', depth: 1, line: 5 },
+    ])
+    expect(sliceByHeading(doc, 'Foo Bar')).toBe('Foo\nBar\n===\n\ntext')
+    expect(sliceByHeading(doc, 'Top')).toBe('# Top\n\nintro')
+  })
+
+  test('an empty ATX heading ends the section above it', () => {
+    expect(sliceByHeading('## A\n\nx\n\n#\n\ny', 'A')).toBe('## A\n\nx')
+  })
+
+  test('a block id on a setext title keeps its underline', () => {
+    expect(sliceByBlockId('Title ^x\n---\n\nbody', 'x')).toBe('Title\n---')
   })
 })

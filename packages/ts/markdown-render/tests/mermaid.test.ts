@@ -207,6 +207,23 @@ describe('createMermaidRenderer', () => {
   })
 })
 
+describe('security level', () => {
+  test('is put back when another caller loosened it', async () => {
+    const { fake, load } = fakeLoader()
+    let level = 'strict'
+    fake.getConfig = () => ({ securityLevel: level })
+    const render = createMermaidRenderer(load)
+    await render('graph TD; A-->B')
+    expect(fake.initializeCalls).toHaveLength(1)
+    await render('graph TD; A-->B')
+    expect(fake.initializeCalls).toHaveLength(1)
+    level = 'loose'
+    await render('graph TD; A-->B')
+    expect(fake.initializeCalls).toHaveLength(2)
+    expect(fake.initializeCalls[1]).toMatchObject({ securityLevel: 'strict' })
+  })
+})
+
 describe('renderMermaid', () => {
   test('is importable without loading mermaid', () => {
     expect(typeof renderMermaid).toBe('function')
