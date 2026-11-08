@@ -7,7 +7,10 @@
  * Each is read through a Zod schema. {@link machineConfigFile} loads the machine
  * file. It never throws, keeps the valid sections and reports what it dropped.
  * An env var can move the file. It migrates older files in memory and writes
- * the file atomically.
+ * the file atomically, as a compare-and-swap when the caller passes the etag
+ * it read. {@link defineMigrations} builds the migration steps of either file
+ * from declarative moves, and {@link reconcileYaml} writes a migrated document
+ * back as edits, so the file keeps its comments.
  *
  * {@link configNeeds} takes both schemas. For a command that declares
  * `{ config: 'dotted.key' }`, it says whether the setting is set in either
@@ -58,16 +61,18 @@ export { pathMatcher, stripUnknownKeys } from './unknown-keys.ts'
 export type { StrippedKeys } from './unknown-keys.ts'
 export type {
   AssembleConfigOptions,
+  ConfigFileMigrateResult,
   ConfigHandle,
   ConfigLayers,
   ConfigOf,
+  LayerMigration,
   ParsedFileRead,
   RawLayer,
   ReadMappingOptions,
   UnknownKeyUse,
 } from './loader.ts'
 
-export { setPath, unsetPath } from './edit.ts'
+export { reconcileYaml, setPath, unsetPath } from './edit.ts'
 
 export { renderReference } from './reference.ts'
 export type { ReferenceOptions } from './reference.ts'
@@ -161,8 +166,22 @@ export type {
   MachineConfigIssue,
   MachineConfigLoad,
   MachineMigrateResult,
+  MachineWriteOptions,
 } from './machine.ts'
 
+export {
+  BASE_CONFIG_VERSION,
+  currentConfigVersion,
+  defineMigrations,
+  migrateConfigRaw,
+} from './migrate.ts'
+export type {
+  ConfigMigration,
+  MigratedRaw,
+  MigrationPath,
+  MigrationStep,
+  MigrationWarning,
+} from './migrate.ts'
 export { currentMachineVersion, migrateMachineRaw } from './machine-migrate.ts'
 export type { MachineMigration } from './machine-migrate.ts'
 
