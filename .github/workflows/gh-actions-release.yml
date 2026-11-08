@@ -71,6 +71,5 @@ jobs:
           git tag -a "$full" -m "gh-actions $VERSION"
           git tag -f -a "$major" -m "gh-actions $VERSION" "$full^{}"
           remote="https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git push "$remote" "refs/tags/$full"
-          git push --force "$remote" "refs/tags/$major"
+          git push --atomic "$remote" "refs/tags/$full" "+refs/tags/$major"
           echo "Tagged $(git rev-parse HEAD) as $full and moved $major."

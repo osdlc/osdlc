@@ -174,7 +174,11 @@ plan_plugins() {
   if [ "$HARNESS" = cursor ]; then
     [ "${#markets[@]}" -eq 0 ] || die "plugins are not supported on cursor: skillwright only registers its marketplaces (cursor-agent has no per-plugin install); list marketplaces alone"
     while IFS= read -r line; do
-      if [ -n "${line//[[:space:]]/}" ]; then markets+=("${line%%=*}"); fi
+      if [ -n "${line//[[:space:]]/}" ]; then
+        name="${line%%=*}"
+        name="${name#"${name%%[![:space:]]*}"}"
+        markets+=("${name%"${name##*[![:space:]]}"}")
+      fi
     done <<< "$MARKETPLACES"
   elif [ "${#markets[@]}" -eq 0 ]; then
     die "marketplaces given without plugins; skillwright installs plugins, not bare marketplaces, on $HARNESS"
