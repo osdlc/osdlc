@@ -272,7 +272,9 @@ agent-call run spec.yml [--agent <id>] [--root <dir>] \
   `structured`, `sessionId`, `usage`, `costUsd`, `model`, `error`, `exitCode`,
   `durationMs`, `agent`, `notes`). `raw`, `planned` and `events` are left out.
 - Exit codes: `0` success, `1` the run failed (`ok: false`), `2` usage or spec
-  error, `3` strict mode refused the call.
+  error, `3` strict mode refused the call, `130` SIGINT or SIGTERM stopped the
+  run (the agent's process group is stopped first, and the result is still
+  printed).
 
 ## API
 
