@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { z } from 'zod'
 import type { WikilinkCollection } from './remark-wikilinks.ts'
+import { slugify } from './slug.ts'
 import { walkFiles } from './walk.ts'
 
 /**
@@ -27,22 +28,7 @@ export interface RefIndex {
   byType: Map<string, IndexedCollection>
 }
 
-/**
- * One path segment as a lookup key. Letters and digits of any script are
- * kept, so `日本` and `東京` stay apart, and typographic quotes are dropped like
- * ASCII ones: Astro's smartypants turns `[[Bob's Notes]]` into `Bob’s Notes`
- * before this plugin sees it.
- */
-function keySegment(seg: string): string {
-  return seg
-    .trim()
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '') // strip combining diacritics
-    .replace(/['"`\u2018\u2019\u201c\u201d]/g, '')
-    .replace(/[^\p{L}\p{N}\p{M}]+/gu, '-')
-    .replace(/^-+|-+$/g, '')
-}
+const keySegment = slugify
 
 /**
  * Normalise a link target or path into a lookup key: drop a trailing `.md`,

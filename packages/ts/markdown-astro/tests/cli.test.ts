@@ -43,3 +43,23 @@ describe('markdown-astro cli', () => {
     expect(r.err.trim().split('\n')).toHaveLength(1)
   })
 })
+
+describe('markdown-astro cli arguments', () => {
+  test.each([
+    [['transform', '--dry-run'], /unknown option --dry-run/],
+    [['transform', '--clena'], /unknown option --clena/],
+    [['check', '-c'], /-c needs a value/],
+    [['check', '--vault'], /--vault needs a value/],
+    [['check', 'extra'], /unexpected argument extra/],
+  ])('%j is rejected before anything runs', (argv, message) => {
+    const r = run(...argv)
+    expect(r.code).toBe(1)
+    expect(r.err).toMatch(message)
+  })
+
+  test('an unknown command is named even without a config file', () => {
+    const r = run('trnasform', '-c', join(CONFIG, 'missing.yaml'))
+    expect(r.code).toBe(1)
+    expect(r.err).toContain('Unknown command: trnasform')
+  })
+})

@@ -31,6 +31,39 @@ describe('loadConfig collection dirs', () => {
     return () => loadConfig(path)
   }
 
+  test.each([
+    [
+      'a missing vaultDir',
+      ['  - {name: notes, contentDir: c}'],
+      /collections\[0\] needs a non-empty string `vaultDir`/,
+    ],
+    [
+      'a missing contentDir',
+      ['  - {name: notes, vaultDir: n}'],
+      /collections\[0\] needs a non-empty string `contentDir`/,
+    ],
+    [
+      'a non-string name',
+      ['  - {name: 3, vaultDir: n, contentDir: c}'],
+      /needs a non-empty string `name`/,
+    ],
+  ])('names the field for %s', (_what, collections, message) => {
+    assert.throws(load(collections), message)
+  })
+
+  test('rejects an unknown danglingRefPolicy', () => {
+    const dir = site([])
+    const path = join(dir, DEFAULT_CONFIG_NAME)
+    writeFileSync(
+      path,
+      'danglingRefPolicy: warning\ncollections:\n  - {name: n, vaultDir: n, contentDir: c}\n',
+    )
+    assert.throws(
+      () => loadConfig(path),
+      /danglingRefPolicy must be `error` or `warn`, got "warning"/,
+    )
+  })
+
   test('rejects a vaultDir nested in another collection, so --clean cannot delete it', () => {
     const run = load([
       '  - {name: notes, vaultDir: Notes, contentDir: src/content/notes}',
@@ -81,13 +114,12 @@ describe('loadConfig collection dirs', () => {
     assert.throws(run, /"notes" and "sub" have equal or nested vaultDirs/)
   })
 
-  test('accepts sibling dirs that share a name prefix, and a collection without a contentDir', () => {
+  test('accepts sibling dirs that share a name prefix', () => {
     const config = load([
       '  - {name: notes, vaultDir: Notes, contentDir: src/content/notes}',
       '  - {name: archive, vaultDir: NotesArchive, contentDir: src/content/notes-archive}',
-      '  - {name: tasks, vaultDir: Tasks}',
     ])() as { collections: unknown[] }
-    assert.equal(config.collections.length, 3)
+    assert.equal(config.collections.length, 2)
   })
 })
 

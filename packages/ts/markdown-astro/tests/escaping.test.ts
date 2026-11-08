@@ -59,6 +59,13 @@ test('a quote, tag or collection name with a quote is escaped in the wikilink sp
   assert.match(missing, /wikilink-missing/)
 })
 
+test('a collection name with a quote is escaped in a resolved relation span', () => {
+  writeFileSync(join(dir, 'note.md'), '# note\n')
+  const html = render('[[note]]')
+  assert.match(html, /data-collection="a&quot;b"/)
+  assert.ok(!html.includes('data-collection="a"b"'))
+})
+
 test('an alias with markup still links when the processor passes the source file', () => {
   const html = String(
     unified()

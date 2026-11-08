@@ -7,7 +7,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs'
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import {
   ASSET_MANIFEST,
   assetManifestReader,
@@ -17,7 +17,7 @@ import {
 import type { MarkdownAstroConfig } from './config.ts'
 import type { CopyOp } from './markdown.ts'
 import { rewriteFile } from './rewrite.ts'
-import { walkFiles } from './walk.ts'
+import { isInside, walkFiles } from './walk.ts'
 import { listMarkdown as listMarkdownIn } from './wikilink-ref.ts'
 import type { Direction } from './rewrite.ts'
 
@@ -46,12 +46,6 @@ export interface RunOptions {
 
 const listMarkdown = (dir: string): string[] => (existsSync(dir) ? listMarkdownIn(dir) : [])
 
-/** True when `path` is `root` or lies under it. */
-function isInside(root: string, path: string): boolean {
-  const rel = relative(resolve(root), resolve(path))
-  return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
-}
-
 function collectionDirs(
   config: MarkdownAstroConfig,
   direction: Direction,
@@ -73,6 +67,16 @@ function realish(path: string): string {
   }
 }
 
+/** True when `file` resolves to somewhere under `dir`; a file removed since the walk is not. */
+function reachesInto(dir: string, file: string): boolean {
+  try {
+    return isInside(dir, realpathSync.native(file))
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false
+    throw err
+  }
+}
+
 /**
  * Refuse `--clean` when deleting `dst` would delete notes in `src`: the two are
  * the same or nested once links are resolved, or a file the walk of `src`
@@ -82,10 +86,7 @@ function assertCleanSafe(src: string, dst: string): void {
   const realSrc = realish(src)
   const realDst = realish(dst)
   const nested = isInside(realSrc, realDst) || isInside(realDst, realSrc)
-  if (
-    nested ||
-    (existsSync(src) && walkFiles(src).some((f) => isInside(realDst, realpathSync.native(f.full))))
-  ) {
+  if (nested || (existsSync(src) && walkFiles(src).some((f) => reachesInto(realDst, f.full)))) {
     throw new Error(`--clean refused: ${src} and ${dst} are the same or nested (links resolved)`)
   }
 }

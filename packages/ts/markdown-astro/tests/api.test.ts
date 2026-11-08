@@ -13,6 +13,7 @@ import { pathKey } from '../src/wikilink-ref.ts'
 test('slugify keeps letters of any script, drops marks and quotes, joins words with -', () => {
   expect(slugify('  Bob\'s "Notes" ')).toBe('bobs-notes')
   expect(slugify('Café Münchën')).toBe('cafe-munchen')
+  expect(slugify('Bob\u2019s Notes')).toBe('bobs-notes')
   expect(slugify('東京 2026')).toBe('東京-2026')
   expect(slugify('---')).toBe('')
 })

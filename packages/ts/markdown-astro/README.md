@@ -204,12 +204,12 @@ inert placeholder.
 ## Slugs
 
 `slugify` turns a wikilink target or title into the filename stem used on disk, so
-`[[Maple Street School]]` and `maple-street-school.md` meet at one key.
+`[[Oak Lane Guide]]` and `oak-lane-guide.md` meet at one key.
 
 ```ts
 import { slugify } from '@osdlc/markdown-astro'
 
-slugify('Maple Street School') // 'maple-street-school'
+slugify('Oak Lane Guide') // 'oak-lane-guide'
 ```
 
 ## API stability

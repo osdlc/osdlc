@@ -1,7 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { basename } from './markdown.ts'
-import { walkFiles } from './walk.ts'
+import { byCodeUnit, walkFiles } from './walk.ts'
 
 interface AssetRef {
   /** Path of the asset relative to the vault root (the copy source). */
@@ -105,9 +105,12 @@ export const ASSET_MANIFEST = '.markdown-astro/assets.json'
 
 /** Write the media manifest: embed target as written -> path under the public asset dir. */
 export function writeAssetManifest(file: string, assets: Map<string, string>): void {
-  const sorted = Object.fromEntries([...assets].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+  const sorted = Object.fromEntries([...assets].sort(([a], [b]) => byCodeUnit(a, b)))
   mkdirSync(dirname(file), { recursive: true })
-  writeFileSync(file, `${JSON.stringify(sorted, null, 2)}\n`)
+  // Written beside and renamed into place, so a reader never sees half a file.
+  const tmp = `${file}.tmp`
+  writeFileSync(tmp, `${JSON.stringify(sorted, null, 2)}\n`)
+  renameSync(tmp, file)
 }
 
 /**
@@ -128,10 +131,10 @@ export function assetManifestReader(file: string): (target: string) => string | 
     if (mtime !== loadedAt) {
       try {
         assets = JSON.parse(readFileSync(file, 'utf8')) as Record<string, string>
+        loadedAt = mtime
       } catch {
-        assets = {}
+        assets = {} // unreadable now: answer nothing, and read again on the next lookup
       }
-      loadedAt = mtime
     }
     return Object.hasOwn(assets, target) ? (assets[target] ?? null) : null
   }

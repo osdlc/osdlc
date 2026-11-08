@@ -1,6 +1,6 @@
 import type { Dirent } from 'node:fs'
 import { readdirSync, realpathSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 /** A regular file found by {@link walkFiles}. */
 export interface WalkedFile {
@@ -28,6 +28,17 @@ function skippable(err: unknown, codes: ReadonlySet<string>): boolean {
   return codes.has((err as NodeJS.ErrnoException).code ?? '')
 }
 
+/** Compare strings by UTF-16 code unit, so a sort is the same on every machine. */
+export function byCodeUnit(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0
+}
+
+/** True when `path` is `root` or lies under it. */
+export function isInside(root: string, path: string): boolean {
+  const rel = relative(resolve(root), resolve(path))
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
+}
+
 export function walkFiles(root: string): WalkedFile[] {
   const out: WalkedFile[] = []
   const visited = new Set<string>()
@@ -42,7 +53,7 @@ export function walkFiles(root: string): WalkedFile[] {
       if (skippable(err, SKIPPABLE)) return // unreadable, or gone since it was listed
       throw err
     }
-    entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+    entries.sort((a, b) => byCodeUnit(a.name, b.name))
     if (visited.has(real)) return
     visited.add(real)
     for (const ent of entries) {

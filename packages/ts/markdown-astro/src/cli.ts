@@ -25,6 +25,14 @@ Options:
   -h, --help            Show this help
 `
 
+const COMMANDS = new Set(['transform', 'export-vault', 'check'])
+
+function optionValue(argv: readonly string[], i: number, flag: string): string {
+  const v = argv[i]
+  if (v === undefined) throw new Error(`${flag} needs a value`)
+  return v
+}
+
 function parseArgs(argv: readonly string[]) {
   const args = {
     command: '',
@@ -39,9 +47,11 @@ function parseArgs(argv: readonly string[]) {
     if (a === '-h' || a === '--help') args.help = true
     else if (a === '-q' || a === '--quiet') args.quiet = true
     else if (a === '--clean') args.clean = true
-    else if (a === '-c' || a === '--config') args.config = argv[++i]
-    else if (a === '--vault') args.vault = argv[++i]
+    else if (a === '-c' || a === '--config') args.config = optionValue(argv, ++i, a)
+    else if (a === '--vault') args.vault = optionValue(argv, ++i, a)
+    else if (a.startsWith('-')) throw new Error(`unknown option ${a} (see --help)`)
     else if (!args.command) args.command = a
+    else throw new Error(`unexpected argument ${a} (see --help)`)
   }
   return args
 }
@@ -66,6 +76,12 @@ function main(argv: readonly string[]): number {
     return args.help ? 0 : 1
   }
 
+  if (!COMMANDS.has(args.command)) {
+    console.error(`Unknown command: ${args.command}\n`)
+    console.log(HELP)
+    return 1
+  }
+
   const config = loadConfig(
     args.config ?? resolveDefaultConfig(),
     args.vault === undefined ? {} : { vault: args.vault },
@@ -82,10 +98,6 @@ function main(argv: readonly string[]): number {
     case 'check':
       report(transform(config, { verbose, dryRun: true }), true)
       break
-    default:
-      console.error(`Unknown command: ${args.command}\n`)
-      console.log(HELP)
-      return 1
   }
   return 0
 }

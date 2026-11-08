@@ -121,7 +121,7 @@ export function remarkWikilinks(this: unknown, options: RemarkWikilinksOptions) 
   const className = options.className ?? 'wikilink'
   const danglingRefPolicy: DanglingRefPolicy = options.danglingRefPolicy ?? 'error'
   const mediaPath = options.assets ? assetManifestReader(options.assets.manifest) : () => null
-  const publicBase = (options.assets?.publicBase ?? '').replace(/\/$/, '')
+  const publicBase = (options.assets?.publicBase ?? '').replace(/\/+$/, '')
   /** A media target to the URL of its published copy, from the asset manifest. */
   const mediaUrl = (target: string): string | null => {
     // Astro's smartypants may have curled the quotes of the target as
@@ -191,13 +191,13 @@ export function remarkWikilinks(this: unknown, options: RemarkWikilinksOptions) 
       )
       return {
         type: 'html',
-        value: `<span class="${className} ${className}-missing" data-wikilink="${escapeHtml(r.id)}">${escapeHtml(label)}</span>`,
+        value: `<span class="${escapeHtml(className)} ${escapeHtml(className)}-missing" data-wikilink="${escapeHtml(r.id)}">${escapeHtml(label)}</span>`,
       }
     }
     // Resolved but route-less: a valid relation span (not dangling).
     return {
       type: 'html',
-      value: `<span class="${className}" data-wikilink="${escapeHtml(r.id)}" data-collection="${escapeHtml(r.collection)}">${escapeHtml(label)}</span>`,
+      value: `<span class="${escapeHtml(className)}" data-wikilink="${escapeHtml(r.id)}" data-collection="${escapeHtml(r.collection)}">${escapeHtml(label)}</span>`,
     }
   }
 

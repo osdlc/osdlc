@@ -96,7 +96,7 @@ interface ToAstroResult {
  * linear, so a long unterminated `![[` costs no more than its length.
  */
 export function embedsToImages(body: string, publicBase: string, index: AssetIndex): ToAstroResult {
-  const base = publicBase.replace(/\/$/, '')
+  const base = publicBase.replace(/\/+$/, '')
   const copies: CopyOp[] = []
   const missing: string[] = []
   const assets: Record<string, string> = {}
@@ -166,7 +166,7 @@ export function fmAssetToUrl(
   publicBase: string,
   index: AssetIndex,
 ): FmToAstroResult {
-  const base = publicBase.replace(/\/$/, '')
+  const base = publicBase.replace(/\/+$/, '')
   // Anchored, but a `\s*` beside a lazy class is ambiguous: an
   // unterminated `[[<spaces>|<spaces>` frontmatter value went cubic (~3.5s at
   // 1600 spaces). Greedy bounded classes stop at the delimiter; `raw` is
@@ -218,7 +218,7 @@ export function imagesToEmbeds(
   mediaPath?: (target: string) => string | null,
 ): ToVaultResult {
   const assets: string[] = []
-  const base = publicBase.replace(/\/$/, '')
+  const base = publicBase.replace(/\/+$/, '')
   let out = ''
   let last = 0
   for (const m of maskCode(body).matchAll(MD_IMAGE_RE)) {
@@ -261,7 +261,7 @@ export function fmUrlToAsset(
   value: string,
   publicBase: string,
 ): { value: string; asset: string | null } {
-  const base = publicBase.replace(/\/$/, '')
+  const base = publicBase.replace(/\/+$/, '')
   const decoded = decodePath(value)
   if (!decoded.startsWith(base + '/')) return { value, asset: null }
   const sub = decoded.slice(base.length + 1)

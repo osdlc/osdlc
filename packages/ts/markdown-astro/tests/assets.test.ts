@@ -83,6 +83,18 @@ test('the asset manifest round-trips and is re-read when it changes', () => {
   assert.equal(find('clip.mp4'), 'clip.mp4')
 })
 
+test('an unreadable manifest answers nothing and is read again once it is fixed', () => {
+  const file = join(mkdtempSync(join(tmpdir(), 'oa-manifest-')), 'assets.json')
+  writeFileSync(file, '{ not json')
+  const find = assetManifestReader(file)
+  assert.equal(find('a.mp4'), null)
+  writeFileSync(file, JSON.stringify({ 'a.mp4': 'a.mp4' }))
+  utimesSync(file, new Date(), new Date(Date.now() - 5_000)) // an mtime that matches no earlier read
+  assert.equal(find('a.mp4'), 'a.mp4')
+  writeFileSync(file, '{ not json again')
+  assert.equal(find('a.mp4'), null)
+})
+
 test('a dangling symlink in the vault is skipped, not fatal', () => {
   const root = vault(['_attachments/p.png'])
   symlinkSync(join(root, 'nonexistent'), join(root, 'broken-link'))

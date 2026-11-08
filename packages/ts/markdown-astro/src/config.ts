@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs'
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
+import { dirname, isAbsolute, resolve } from 'node:path'
 import { parse } from 'yaml'
+
+import { isInside } from './walk.ts'
 
 export interface CollectionMapping {
   /** Collection name (matches Astro `collections` key). */
@@ -110,6 +112,7 @@ export function loadConfig(
   if (!raw.collections?.length) {
     throw new Error(`markdown-astro config: no \`collections\` defined in ${abs}`)
   }
+  validateConfig(raw, abs)
   rejectNestedDirs(raw.collections, 'vaultDir', vault, abs)
   rejectNestedDirs(raw.collections, 'contentDir', astroRoot, abs)
 
@@ -123,13 +126,30 @@ export function loadConfig(
   }
 }
 
+/** Throw a message naming the field and the config file for a collection or policy of the wrong shape. */
+function validateConfig(raw: RawConfig, configPath: string): void {
+  const bad = (what: string): never => {
+    throw new Error(`markdown-astro config: ${what} in ${configPath}`)
+  }
+  const collections: unknown = raw.collections
+  if (!Array.isArray(collections)) return bad('`collections` must be a list')
+  ;(collections as CollectionMapping[]).forEach((c, i) => {
+    if (typeof c !== 'object' || c === null) bad(`collections[${i}] must be a mapping`)
+    for (const key of ['name', 'vaultDir', 'contentDir'] as const) {
+      if (typeof c[key] !== 'string' || !c[key]) {
+        bad(`collections[${i}] needs a non-empty string \`${key}\``)
+      }
+    }
+  })
+  const policy = raw.danglingRefPolicy
+  if (policy !== undefined && policy !== 'error' && policy !== 'warn') {
+    bad(`danglingRefPolicy must be \`error\` or \`warn\`, got ${JSON.stringify(policy)}`)
+  }
+}
+
 /** True when `a` and `b` are the same dir or one contains the other. */
 function overlaps(a: string, b: string): boolean {
-  const inside = (p: string, dir: string) => {
-    const rel = relative(dir, p)
-    return rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel)
-  }
-  return inside(a, b) || inside(b, a)
+  return isInside(a, b) || isInside(b, a)
 }
 
 /**
