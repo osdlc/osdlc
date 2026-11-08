@@ -15,9 +15,8 @@ requests. Started 2026-11-08.
   unmerged in favour of the generic layout below. Its branch,
   `sksizer/actions-package`, is the starting point for `agent-pr-answer`
   (`post.sh`, the prompt, the README and license layout).
-- The design discussion is the parley
-  [agent-gh-actions-design](../parley/agent-gh-actions-design.json). Its
-  framing (packaging first) is superseded by this plan.
+- A parley, agent-gh-actions-design, discussed packaging first. It was
+  retired unanswered on 2026-11-08; this plan supersedes it.
 
 ## Roadmap
 
@@ -93,9 +92,9 @@ flowchart LR
   classDef active fill:#c77d0a,stroke:#94600a,color:#ffffff
   classDef next fill:#2f5bd3,stroke:#2144a3,color:#ffffff
   classDef later fill:#8a93a3,stroke:#6b7384,color:#ffffff
-  class W710,P711,P707,P712,PLAN done
-  class UP active
-  class PLANPR,PARLEY,PERM,PROBE,RUN,CHECK,STRICT,CUR,SETUP,ANS,SPEC,MULTI next
+  class W710,P711,P707,P712,PLAN,PARLEY done
+  class UP,PLANPR,RUN,SETUP active
+  class PERM,PROBE,CHECK,STRICT,CUR,ANS,SPEC,MULTI next
   class MCP,PUB,DATA,PIN later
 ```
 
@@ -170,7 +169,7 @@ sections after it.
 
 ## Work, in order
 
-1. Push this plan as a docs PR; retire the packaging parley.
+1. Push this plan as a docs PR. (The packaging parley is retired.)
 2. Add the `permissions` category to harness-reference for claude, codex
    and cursor (I5).
 3. `agent-call run`: spec file, `file` / `text` / `input` prompt parts,
