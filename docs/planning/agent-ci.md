@@ -55,16 +55,17 @@ flowchart LR
     PROBE["Cursor clean-config probe"]
   end
   subgraph call["One call · @osdlc/agent-call"]
-    RUN["PR 715: run CLI (draft)"]
+    RUN["PR 715: run CLI, adding maxTurns"]
     CHECK["Check permission rows against the facts"]
     STRICT["Backlog: enforced read-only mappings (claude tool denies + sandbox, cursor cli.json) so strict passes"]
-    CUR["Cursor: write .cursor/cli.json, fix print-mode note"]
+    CUR["Cursor: agent-call writes .cursor/cli.json for allow and deny"]
+    REL["Release agent-call with the run CLI and maxTurns"]
   end
   subgraph gate["Gate"]
     ARCH["API and architecture review 1: approved"]
   end
   subgraph acts["CI glue · packages/gh-actions"]
-    SETUP["PR 716: agent-setup (draft)"]
+    SETUP["PR 716: agent-setup, fixes and release workflow"]
     ANS["agent-pr-answer: prefetch, run, post"]
   end
   subgraph roll["Rollout"]
@@ -86,12 +87,12 @@ flowchart LR
   PERM --> CHECK
   CHECK --> STRICT
   RUN --> STRICT
-  PROBE --> CUR
-  CHECK --> CUR
+  PROBE --> CHECK
   P712 -.-> ANS
   RUN --> ARCH
   SETUP --> ARCH
-  ARCH --> ANS
+  ARCH --> REL
+  REL --> ANS
   ARCH --> SPEC
   ANS --> SPEC
   SPEC --> MULTI
@@ -112,7 +113,7 @@ flowchart LR
   class W710,P711,P707,P712,PLAN,PARLEY,PLANPR,ARCH done
   class UP yours
   class RUN,SETUP active
-  class PERM,PROBE,CHECK,ANS,SPEC,MULTI next
+  class PERM,PROBE,CHECK,REL,ANS,SPEC,MULTI next
   class CUR active
   class MCP,PUB,DATA,PIN,STRICT later
 ```
