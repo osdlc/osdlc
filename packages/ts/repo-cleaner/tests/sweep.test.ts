@@ -24,7 +24,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { type CommandRunner } from '@osdlc/command-seam'
-import { Git } from '@osdlc/typed-git'
+import { Git, checkoutRoot } from '@osdlc/typed-git'
 import { IDENTITY, makeGitFixture, makeOriginAndCheckout } from '@osdlc/typed-git/testing'
 
 import { cannedGh, cannedGlab, commit, git, interposedRunner, isGetUrlOrigin } from './helpers.ts'
@@ -702,7 +702,41 @@ describe('no target (#680)', () => {
     expect(result.repos.map((r) => r.repo?.root).sort()).toEqual([alpha, beta])
   })
 
-  test('from a directory in no checkout, searches below it as before', () => {
+  test('a search that stopped at the depth limit is reported, not widened', () => {
+    const dotfiles = checkout(join(home, 'deep-home'))
+    const projects = join(dotfiles, 'Developer')
+    checkout(join(projects, 'a', 'b', 'c', 'too-deep'))
+    const result = sweep([], { cwd: projects })
+    expect(result.repos).toEqual([])
+    expect(result.scan.depthLimited).toBeGreaterThan(0)
+    expect(result.unresolved).toEqual([{ entry: projects, reason: 'no git checkouts under it' }])
+  })
+
+  test('checkouts found below that cannot be read are reported, not widened', () => {
+    const dotfiles = checkout(join(home, 'broken-home'))
+    const projects = join(dotfiles, 'Developer')
+    const broken = join(projects, 'broken')
+    mkdirSync(broken, { recursive: true })
+    writeFileSync(join(broken, '.git'), 'gitdir: /nowhere\n', 'utf-8')
+    const result = sweep([], { cwd: projects })
+    expect(result.repos).toEqual([])
+    expect(result.scan.checkoutsFound).toBe(1)
+    expect(result.unresolved).toEqual([{ entry: projects, reason: 'no git checkouts under it' }])
+  })
+
+  test('when the checkout around cannot be read either, the first search is what is reported', () => {
+    const fake = join(home, 'fake')
+    mkdirSync(fake)
+    writeFileSync(join(fake, '.git'), 'gitdir: /nowhere\n', 'utf-8')
+    const inner = subdir(fake)
+    const result = sweep([], { cwd: inner })
+    expect(result.repos).toEqual([])
+    expect(result.unresolved).toEqual([{ entry: inner, reason: 'no git checkouts under it' }])
+    expect(result.scan.containers).toBe(1)
+  })
+
+  test('from a directory in no checkout, searches below it as before', (ctx) => {
+    if (checkoutRoot(home) !== null) ctx.skip('the temp directory is inside a git checkout here')
     const empty = join(home, 'empty')
     mkdirSync(empty)
     const result = sweep([], { cwd: empty })

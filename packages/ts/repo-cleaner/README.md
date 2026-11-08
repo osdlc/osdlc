@@ -115,11 +115,13 @@ A target is what to sweep:
 
 No target is the same as naming the current directory: at a checkout's root
 it sweeps that repository, and in a directory of checkouts it sweeps each
-one. In a subdirectory of a checkout with no checkouts below it, it sweeps
-the checkout around it, as git does. The search comes first, so a directory
-of checkouts that sits inside a checkout of its own, such as a home
-directory kept in git, still sweeps the checkouts below it. A subdirectory
-named as a target is read as written and searched.
+one. In a subdirectory of a checkout where the search finds no checkout at
+all, it sweeps the checkout around it, as git does. The search comes first,
+so a directory of checkouts that sits inside a checkout of its own, such as
+a home directory kept in git, still sweeps the checkouts below it. A search
+that finds checkouts it cannot read, or stops at the depth limit, is
+reported as it is. A subdirectory named as a target is read as written and
+searched.
 What a target names is read off the disk rather than from how it is written:
 a path that is itself a checkout names that repository, and a path that is
 not is searched for the checkouts under it, descending through directories

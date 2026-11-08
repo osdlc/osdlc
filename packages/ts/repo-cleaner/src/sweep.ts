@@ -195,7 +195,7 @@ export function sweptWith(
  * Sweep `targets`: checkouts, directories to search for checkouts, or remote
  * URLs (swept through a clone kept in `cacheDir`, remote branches only). No
  * targets means `[cwd]`, resolved the same way, except that a `cwd` inside a
- * checkout with no checkouts below it sweeps that checkout.
+ * checkout, where the search finds no checkout at all, sweeps that checkout.
  *
  * Never throws for a repository it cannot read: that one comes back with
  * `error` set, because a fan-out must not end on its first bad entry. Throws a
@@ -232,10 +232,16 @@ export function sweep(targets: readonly string[], opts: SweepOptions = {}): Swee
   // With no target, a subdirectory of a checkout that holds no checkouts
   // means the checkout around it, as it does for git itself. The search comes
   // first, so a directory of checkouts that sits inside a checkout of its own
-  // (a home directory kept in git) still sweeps the checkouts below it.
-  const around = targets.length === 0 && resolution.repos.length === 0 ? checkoutRoot(cwd) : null
+  // (a home directory kept in git) still sweeps the checkouts below it. A
+  // search that found checkouts it could not read, or stopped at the depth
+  // limit, did not find nothing: it is reported as it is.
+  const { scan } = resolution
+  const foundNothing = scan.checkoutsFound === 0 && scan.depthLimited === 0
+  const around =
+    targets.length === 0 && resolution.repos.length === 0 && foundNothing ? checkoutRoot(cwd) : null
   if (around !== null && around !== resolve(cwd)) {
-    resolution = resolveEntries([around], resolveOpts)
+    const widened = resolveEntries([around], resolveOpts)
+    if (widened.repos.length > 0) resolution = widened
   }
   if (branch !== undefined && resolution.repos.length > 1) {
     throw new RepoCleanerError(
