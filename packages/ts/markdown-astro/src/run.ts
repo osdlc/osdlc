@@ -1,5 +1,5 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import {
   ASSET_MANIFEST,
   assetManifestReader,
@@ -36,6 +36,12 @@ export interface RunOptions {
 }
 
 const listMarkdown = (dir: string): string[] => (existsSync(dir) ? listMarkdownIn(dir) : [])
+
+/** True when `path` is `root` or lies under it. */
+function isInside(root: string, path: string): boolean {
+  const rel = relative(resolve(root), resolve(path))
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
+}
 
 function ensureDir(dir: string): void {
   mkdirSync(dir, { recursive: true })
@@ -97,6 +103,9 @@ function run(config: MarkdownAstroConfig, direction: Direction, opts: RunOptions
     }
 
     if (opts.clean && !opts.dryRun && existsSync(dstDir)) {
+      if (isInside(srcDir, dstDir) || isInside(dstDir, srcDir)) {
+        throw new Error(`--clean refused: ${srcDir} and ${dstDir} are the same or nested`)
+      }
       rmSync(dstDir, { recursive: true, force: true })
     }
 
@@ -129,7 +138,12 @@ function run(config: MarkdownAstroConfig, direction: Direction, opts: RunOptions
   const failed = new Set<string>()
   for (const c of copies.values()) {
     const from = join(copySrcRoot, c.srcRel)
-    if (!existsSync(from)) {
+    // A `..` in a published URL must not reach outside the copy roots.
+    if (
+      !isInside(copySrcRoot, from) ||
+      !isInside(copyDstRoot, join(copyDstRoot, c.destRel)) ||
+      !existsSync(from)
+    ) {
       missing.add(c.srcRel)
       failed.add(c.destRel)
       continue
@@ -144,7 +158,8 @@ function run(config: MarkdownAstroConfig, direction: Direction, opts: RunOptions
 
   // The build reads this to point each media embed at its copy. Only files
   // that were copied are listed, so the rest render as missing attachments.
-  if (direction === 'toAstro' && !opts.dryRun) {
+  // Nothing produced (wrong or empty vault) keeps the previous manifest, like the clean guard.
+  if (direction === 'toAstro' && !opts.dryRun && stats.files > 0) {
     for (const [target, outSub] of assets) if (failed.has(outSub)) assets.delete(target)
     writeAssetManifest(resolve(config.astroRoot, ASSET_MANIFEST), assets)
   }

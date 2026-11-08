@@ -2,7 +2,7 @@ import { afterEach, test, vi } from 'vitest'
 import assert from 'node:assert/strict'
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { ASSET_MANIFEST } from '../src/assets.ts'
 import { exportVault, transform } from '../src/run.ts'
 
@@ -208,4 +208,50 @@ test('--clean still replaces the output when the source has notes', () => {
   transform(config, { clean: true })
   assert.ok(existsSync(join(config.astroRoot, 'src/content/notes/a.md')))
   assert.ok(!existsSync(join(config.astroRoot, 'src/content/notes/b.md')), 'a stale note survived')
+})
+
+test('exportVault does not copy through a `..` in a published URL', () => {
+  const root = mkdtempSync(join(tmpdir(), 'oa-run-'))
+  const astroRoot = join(root, 'site')
+  mkdirSync(join(astroRoot, 'src/content/notes'), { recursive: true })
+  writeFileSync(join(root, 'secret.txt'), 's')
+  writeFileSync(join(astroRoot, 'src/content/notes/a.md'), '![x](/_media/../../../secret.txt)\n')
+  const vault = join(root, 'vault')
+  const stats = exportVault(site(vault, astroRoot))
+  assert.equal(stats.assetsCopied, 0)
+  assert.ok(!existsSync(join(vault, '_attachments', '..', 'secret.txt')))
+})
+
+test('--clean refuses when the source and destination are nested', () => {
+  const root = mkdtempSync(join(tmpdir(), 'oa-run-'))
+  const dir = join(root, 'x')
+  mkdirSync(join(dir, 'Notes'), { recursive: true })
+  writeFileSync(join(dir, 'Notes', 'a.md'), 'a\n')
+  const config = {
+    ...site(dir, dir),
+    collections: [{ name: 'notes', vaultDir: 'Notes', contentDir: 'Notes' }],
+  }
+  assert.throws(() => transform(config, { clean: true }), /--clean refused/)
+  assert.ok(existsSync(join(dir, 'Notes', 'a.md')))
+})
+
+test('hidden directories are not published as notes', () => {
+  const root = mkdtempSync(join(tmpdir(), 'oa-run-'))
+  const vault = join(root, 'vault')
+  mkdirSync(join(vault, 'Notes/.trash'), { recursive: true })
+  writeFileSync(join(vault, 'Notes/a.md'), 'a\n')
+  writeFileSync(join(vault, 'Notes/.trash/old.md'), 'o\n')
+  const astroRoot = join(root, 'site')
+  transform(site(vault, astroRoot))
+  assert.ok(existsSync(join(astroRoot, 'src/content/notes/a.md')))
+  assert.ok(!existsSync(join(astroRoot, 'src/content/notes/.trash/old.md')))
+})
+
+test('an empty vault keeps the previous asset manifest', () => {
+  const root = mkdtempSync(join(tmpdir(), 'oa-run-'))
+  const astroRoot = join(root, 'site')
+  mkdirSync(dirname(join(astroRoot, ASSET_MANIFEST)), { recursive: true })
+  writeFileSync(join(astroRoot, ASSET_MANIFEST), '{"assets":{"a.pdf":"a.pdf"}}')
+  transform(site(join(root, 'vault'), astroRoot))
+  assert.match(readFileSync(join(astroRoot, ASSET_MANIFEST), 'utf8'), /a\.pdf/)
 })

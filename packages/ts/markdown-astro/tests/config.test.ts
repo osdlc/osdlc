@@ -120,3 +120,13 @@ describe('loadConfig vault', () => {
     assert.equal(loadConfig(path, { vault: other }).vault, other)
   })
 })
+
+test('rejects a publicBase of `/`, which would match every absolute path', () => {
+  const dir = site([])
+  const path = join(dir, DEFAULT_CONFIG_NAME)
+  writeFileSync(
+    path,
+    'assets: {publicBase: /}\ncollections:\n  - {name: n, vaultDir: N, contentDir: c}\n',
+  )
+  assert.throws(() => loadConfig(path), /publicBase/)
+})

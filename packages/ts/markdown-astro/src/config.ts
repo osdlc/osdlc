@@ -103,6 +103,10 @@ export function loadConfig(
     vaultDir: raw.assets?.vaultDir ?? '_attachments',
   }
 
+  if (!assets.publicBase.replace(/\/+$/, '')) {
+    throw new Error(`markdown-astro config: assets.publicBase must not be \`/\` or empty in ${abs}`)
+  }
+
   if (!raw.collections?.length) {
     throw new Error(`markdown-astro config: no \`collections\` defined in ${abs}`)
   }

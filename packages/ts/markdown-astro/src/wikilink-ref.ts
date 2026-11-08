@@ -76,6 +76,7 @@ function lookup(col: IndexedCollection, p: string): string | undefined {
 export function listMarkdown(dir: string, prefix = ''): string[] {
   const out: string[] = []
   for (const ent of readdirSync(dir, { withFileTypes: true })) {
+    if (ent.name.startsWith('.')) continue // .obsidian, .trash, ...
     const rel = prefix ? `${prefix}/${ent.name}` : ent.name
     if (ent.isDirectory()) out.push(...listMarkdown(join(dir, ent.name), rel))
     else if (ent.name.endsWith('.md')) out.push(rel)
