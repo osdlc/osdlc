@@ -57,9 +57,9 @@
       "line": 725,
       "title": "drop(wr) after pending() never runs; wr already lives in the future",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "5f44bdf41d01587a27aac18bf7e51b49f0a0afa3"
     }
   ]
 }
