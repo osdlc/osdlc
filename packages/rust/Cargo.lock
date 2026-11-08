@@ -614,7 +614,7 @@ dependencies = [
 
 [[package]]
 name = "markdown-corpus"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "frontmatter-lossless",
  "markdown-link",
@@ -637,7 +637,7 @@ dependencies = [
 
 [[package]]
 name = "markdown-relink"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "etag-write",
  "markdown-corpus",
@@ -652,7 +652,7 @@ dependencies = [
 
 [[package]]
 name = "markdown-vault-fs"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "path-guard",
  "regex",
