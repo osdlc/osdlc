@@ -37,6 +37,8 @@ const suite = JSON.parse(
 const CASE_KEYS = ['name', 'input', 'expect']
 const RENDERER_ONLY = 'renderer_only'
 
+const ENCODER = new TextEncoder()
+
 /** The UTF-16 index of UTF-8 byte offset `offset` in `text`, or null off a character boundary. */
 function utf16Index(text: string, offset: number): number | null {
   let bytes = 0
@@ -44,7 +46,7 @@ function utf16Index(text: string, offset: number): number | null {
   for (const char of text) {
     if (bytes === offset) return index
     if (bytes > offset) return null
-    bytes += new TextEncoder().encode(char).length
+    bytes += ENCODER.encode(char).length
     index += char.length
   }
   return bytes === offset ? index : null

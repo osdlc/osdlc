@@ -195,7 +195,7 @@ function blankDestinations(chars: string[]): void {
     else if (c === '[') open++
     else if (c === ']' && open > 0) {
       open--
-      const close = chars[i + 1] === '(' ? closes.get(i + 1) : undefined
+      const close = closes.get(i + 1)
       if (close !== undefined) {
         blank(chars, i + 2, close)
         i = close

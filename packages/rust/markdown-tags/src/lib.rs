@@ -116,9 +116,7 @@ impl TagDialect {
             TagDialect::Ascii => "ascii",
         }
     }
-}
 
-impl TagDialect {
     fn rule(self) -> &'static Rule {
         match self {
             TagDialect::Obsidian => &OBSIDIAN,
