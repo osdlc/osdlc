@@ -1,8 +1,9 @@
 import { afterEach, test } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { buildAssetIndex } from '../src/assets.ts'
 import { walkFiles } from '../src/walk.ts'
 import { exportVault, transform } from '../src/run.ts'
 
@@ -45,7 +46,7 @@ test('two links to one directory list it once', () => {
   writeFileSync(join(root, 'elsewhere', 'linked.md'), 'l')
   symlinkSync(join(root, 'elsewhere'), join(root, 'n', 'a'), 'dir')
   symlinkSync(join(root, 'elsewhere'), join(root, 'n', 'b'), 'dir')
-  assert.equal(rels(join(root, 'n')).length, 1)
+  assert.deepEqual(rels(join(root, 'n')), ['a/linked.md']) // name order: a before b
 })
 
 test('a loop ends and lists each note once', () => {
@@ -107,4 +108,57 @@ test('--clean resolves a destination that does not exist yet through its existin
     collections: [{ name: 'notes', vaultDir: 'Notes', contentDir: '../alias/Notes/new' }],
   }
   assert.throws(() => transform(cfg, { clean: true }), /--clean refused/)
+})
+
+test('a dot entry is skipped', () => {
+  const root = tmp()
+  mkdirSync(join(root, '.trash'))
+  writeFileSync(join(root, '.trash', 'old.md'), 'o')
+  writeFileSync(join(root, '.hidden.md'), 'h')
+  writeFileSync(join(root, 'a.md'), 'a')
+  assert.deepEqual(rels(root), ['a.md'])
+})
+
+test('a file reached through two links is listed once', () => {
+  const root = tmp()
+  mkdirSync(join(root, 'n'))
+  writeFileSync(join(root, 'target.md'), 't')
+  symlinkSync(join(root, 'target.md'), join(root, 'n', 'a.md'))
+  symlinkSync(join(root, 'target.md'), join(root, 'n', 'b.md'))
+  assert.deepEqual(rels(join(root, 'n')), ['a.md'])
+})
+
+test('an unreadable subfolder is skipped', (ctx) => {
+  const root = tmp()
+  mkdirSync(join(root, 'locked'))
+  writeFileSync(join(root, 'locked', 'x.md'), 'x')
+  writeFileSync(join(root, 'ok.md'), 'o')
+  chmodSync(join(root, 'locked'), 0o000)
+  try {
+    if (process.platform === 'win32' || process.getuid?.() === 0) ctx.skip()
+    assert.deepEqual(rels(root), ['ok.md'])
+  } finally {
+    chmodSync(join(root, 'locked'), 0o755)
+  }
+})
+
+test('a read error that is not a permission error propagates', () => {
+  const root = tmp()
+  writeFileSync(join(root, 'file.md'), 'f')
+  // The root itself is a file, not a directory: ENOTDIR, not a skippable error.
+  assert.throws(() => walkFiles(join(root, 'file.md')), /ENOTDIR/)
+})
+
+test('an embed through the second link path resolves to the first path', () => {
+  const root = tmp()
+  mkdirSync(join(root, 'elsewhere'))
+  writeFileSync(join(root, 'elsewhere', 'pic.png'), 'p')
+  symlinkSync(join(root, 'elsewhere'), join(root, 'a'), 'dir')
+  symlinkSync(join(root, 'elsewhere'), join(root, 'b'), 'dir')
+  const index = buildAssetIndex(root, '_attachments')
+  const viaB = index.resolve('b/pic.png')
+  const viaA = index.resolve('a/pic.png')
+  assert.equal(viaA.resolved, true)
+  assert.equal(viaB.resolved, true)
+  assert.equal(viaB.outSub, viaA.outSub)
 })

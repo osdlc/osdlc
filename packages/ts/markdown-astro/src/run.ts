@@ -66,7 +66,7 @@ function collectionDirs(
 function realish(path: string): string {
   const p = resolve(path)
   try {
-    return realpathSync(p)
+    return realpathSync.native(p)
   } catch {
     const parent = dirname(p)
     return parent === p ? p : join(realish(parent), basename(p))
@@ -84,7 +84,7 @@ function assertCleanSafe(src: string, dst: string): void {
   const nested = isInside(realSrc, realDst) || isInside(realDst, realSrc)
   if (
     nested ||
-    (existsSync(src) && walkFiles(src).some((f) => isInside(realDst, realpathSync(f.full))))
+    (existsSync(src) && walkFiles(src).some((f) => isInside(realDst, realpathSync.native(f.full))))
   ) {
     throw new Error(`--clean refused: ${src} and ${dst} are the same or nested (links resolved)`)
   }
