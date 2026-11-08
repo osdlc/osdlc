@@ -7,7 +7,7 @@
  * author asked to be literal: a live wikilink, a live tag, a `==mark==`, an
  * embed, a block id that deletes the text before it.
  *
- * The dialect consumes remark's parse (D-7VMX), so the fix is a
+ * The dialect consumes remark's parse, so the fix is a
  * `mdast-util-from-markdown` extension rather than a pre-parser: when the
  * parser emits an escaped character the dialect cares about, it wraps it in a
  * sentinel. The character itself is untouched; what changes is that it is no

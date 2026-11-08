@@ -80,6 +80,8 @@ const NO_FOLDED_LISTS: ReadonlySet<number> = new Set()
  * `foldable` adds the one route that is opt-in — `li` → {@link ListItemFold} —
  * and defaults to off, because fold chrome a host has not wired up is a
  * control that does nothing. See `MarkdownRender`'s `foldable` prop.
+ *
+ * @experimental A host contract for a self-assembled pipeline with no known user yet; it may change in a minor release.
  */
 export function defaultComponents(foldable = false): ComponentMap {
   return {
@@ -257,7 +259,9 @@ export const MarkdownRender = defineComponent({
           processor = createMarkdownProcessor(options)
           processorFor = options
         }
-        const next = (await processor.run(processor.parse(props.source))) as unknown as Root
+        const next = (await processor.run(processor.parse(props.source), {
+          value: props.source,
+        })) as unknown as Root
         // A slower earlier render must never overwrite a newer one.
         if (id !== renderId) return
         tree.value = next

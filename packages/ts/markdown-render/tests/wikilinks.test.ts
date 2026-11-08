@@ -292,8 +292,7 @@ describe('buildNode seam', () => {
 })
 
 describe('remarkWikilinks: the resolved path is scheme-checked', () => {
-  // A resolver that calls anything with a scheme "external" — the shape the
-  // notes app shipped — is enough to get an arbitrary URL out of plain
+  // A resolver that calls anything with a scheme "external" —   // an app shipped — is enough to get an arbitrary URL out of plain
   // wikilink syntax, no raw HTML involved. `href` would then be stripped by
   // the sanitizer while `data-path` sailed through, and the host acts on
   // `data-path`.

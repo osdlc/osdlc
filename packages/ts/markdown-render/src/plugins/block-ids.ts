@@ -1,7 +1,7 @@
 /**
  * Trailing `^block-id` markers.
  *
- * Per D-0008, Obsidian only registers a block reference when the `^anchor` is
+ * Obsidian only registers a block reference when the `^anchor` is
  * line-terminal; mid-line anchors are ordinary text. Two placements are
  * supported, matching Obsidian:
  *
@@ -49,7 +49,7 @@ export const STANDALONE_BLOCK_ID_RE = /^[ \t]*\^([A-Za-z0-9][A-Za-z0-9-]*)[ \t]*
  *
  * Stopping matters. `text **bold ^id**` and `[label ^id](url)` both end in a
  * phrasing container, so their `^id` is followed by `**` or `](url)` and is not
- * line-terminal — D-0008 says that is ordinary text. Taking the deepest last
+ * line-terminal — Obsidian reads that as ordinary text. Taking the deepest last
  * text node instead would delete the author's words and mint an id from them.
  */
 function trailingTextNode(node: MdNode): MdNode | undefined {

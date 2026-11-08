@@ -6,7 +6,7 @@
  * `@osdlc/markdown-render/vue`.
  *
  * The source passed in is a note *body* — frontmatter is framing, split off by
- * the caller (D-4QGN keeps that concern out of the renderer).
+ * the caller, so the renderer never reads it.
  */
 
 export {
