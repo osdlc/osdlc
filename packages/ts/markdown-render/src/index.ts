@@ -57,7 +57,6 @@ export type {
   LoadedNote,
   MarkdownRenderOptions,
   OutlineEntry,
-  Schema,
   WikilinkResolver,
 } from './types.ts'
 
@@ -69,16 +68,12 @@ export {
   splitFragment,
   wikilinkNode,
   wikilinkProps,
-  WIKILINK_RE,
-  FIELD_MAX,
-  MAX_SCAN_LENGTH,
   type RemarkWikilinksOptions,
 } from './plugins/wikilinks.ts'
 export {
   remarkEmbeds,
   embedKind,
   isMediaKind,
-  EMBED_RE,
   MAX_EMBED_DEPTH,
   MAX_EMBEDS_PER_DOCUMENT,
   type EmbedKind,
@@ -98,7 +93,6 @@ export {
 export {
   remarkCallouts,
   defaultTitle,
-  CALLOUT_RE,
   type CalloutFold,
   type CalloutInfo,
 } from './plugins/callouts.ts'
@@ -114,7 +108,7 @@ export {
 } from './plugins/markdown-images.ts'
 export { remarkTags, type RemarkTagsOptions } from './plugins/tags.ts'
 export { remarkMark } from './plugins/mark.ts'
-export { remarkBlockIds, BLOCK_ID_RE, STANDALONE_BLOCK_ID_RE } from './plugins/block-ids.ts'
+export { remarkBlockIds, BLOCK_ID_RE } from './plugins/block-ids.ts'
 export { remarkComments } from './plugins/comments.ts'
 // A host assembling its own pipeline needs both halves, and needs them to
 // bracket the tokenizers — without them escaped syntax activates.

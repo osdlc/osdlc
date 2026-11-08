@@ -13,7 +13,7 @@ import { loneEmbed } from './embeds.ts'
 import { hastNode, type MdNode } from './util.ts'
 
 /** `[!type]`, optional `-`/`+` fold marker, optional title on the same line. */
-export const CALLOUT_RE = /^\[!([\w-]+)\]([-+])?[ \t]*/
+const CALLOUT_RE = /^\[!([\w-]+)\]([-+])?[ \t]*/
 
 /** Fold state written to `data-fold`: `-` starts collapsed, `+` starts open. */
 export type CalloutFold = '-' | '+'

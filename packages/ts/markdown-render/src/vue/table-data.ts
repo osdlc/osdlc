@@ -43,7 +43,7 @@ function isBlock(node: HastNode): boolean {
 }
 
 /**
- * `render.ts`'s `nodeText`, with the line breaks the reader sees: a `<br>` is
+ * `render.ts`'s `hastNodeText`, with the line breaks the reader sees: a `<br>` is
  * one, and a block child (several `<p>` in a raw-HTML cell) sits on its own
  * line. Whitespace-only text between blocks draws nothing and adds nothing.
  */

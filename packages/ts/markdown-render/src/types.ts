@@ -11,7 +11,6 @@ import type { TagDialect } from '@osdlc/markdown-tags'
 import type { Options as Schema } from 'rehype-sanitize'
 
 export type { Root as HastRoot } from 'hast'
-export type { Options as Schema } from 'rehype-sanitize'
 
 /**
  * A syntax-highlighting pass: a rehype transformer run last, after sanitize.

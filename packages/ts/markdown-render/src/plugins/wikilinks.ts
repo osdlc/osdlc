@@ -1,35 +1,27 @@
 /**
  * `[[wikilink]]` tokenizer.
  *
- * The tokenization strategy: regex over `text` nodes, splice the replacement
- * into the parent, `SKIP` past what we inserted. Resolution is injected rather
- * than baked against any content source, so the same tokenizer serves the
- * live vault, a build, and tests. `@osdlc/markdown-astro`'s build-time plugin
+ * Where a link is comes from `@osdlc/markdown-link`'s body scanner, which reads
+ * the source once and reports offsets; `link-scan.ts` places each link in the
+ * mdast by those offsets, including the one shape a per-node scan cannot see,
+ * an alias carrying markup (`[[Note|the *key* idea]]`), which remark has
+ * already parsed into an `emphasis` node. Resolution is injected rather than
+ * baked against any content source, so the same tokenizer serves the live
+ * vault, a build, and tests. `@osdlc/markdown-astro`'s build-time plugin
  * delegates to it with an Astro-collection resolver.
  *
- * Two passes. The first is that regex over single `text` nodes. The second
- * handles the one shape it cannot see: an alias carrying markup
- * (`[[Note|the *key* idea]]`), which remark has already parsed into an
- * `emphasis` node, so no single text node holds both `[[` and `]]`. See
- * {@link spliceStraddling}.
- *
- * Before either, {@link mergeShortcutReferences} undoes the one parse that
+ * Before the scan, {@link mergeShortcutReferences} undoes the one parse that
  * splits `[[Note]]` before any pass sees it: a reference definition whose label
  * matches the target.
  */
 
 import { visit, SKIP } from 'unist-util-visit'
+import { scanBodyWith } from '@osdlc/markdown-link'
 import type { LinkResolution, WikilinkResolver } from '../types.ts'
 import { isSafeLinkPath } from '../url.ts'
 import { unmaskEscaped } from './escapes.ts'
-import {
-  hastNode,
-  isPhrasingParent,
-  text,
-  visitTextOutside,
-  type MdNode,
-  type MdParent,
-} from './util.ts'
+import { tokenizeLinks, type FoundLink } from './link-scan.ts'
+import { hastNode, isPhrasingParent, text, type MdNode } from './util.ts'
 
 /**
  * Subtrees a `[[…]]` never tokenizes in. A markdown link's text is already a
@@ -46,85 +38,6 @@ const SKIP_SUBTREES = new Set([
   'tag',
 ])
 
-/**
- * Non-embed `[[target#fragment|alias]]`. The leading-`!` embeds are excluded by
- * the lookbehind — `remarkEmbeds` owns those.
- *
- * A `#^abc` fragment is a block reference; anything else is a heading.
- *
- * The fields are **greedy over mutually exclusive character classes and
- * length-bounded**, deliberately. Do not pad them with `\s*`
- * (`\s*([^\]|#]*?)\s*`): the class itself matches whitespace, so every
- * whitespace character gets an ambiguous split between padding and capture, and
- * an unterminated `[[<spaces>|<spaces>` sends the matcher superlinear — a
- * 244-byte paragraph cost ~19s inside the remark visitor, which is synchronous
- * and so stalls the whole render. Classes that stop at the next delimiter give
- * one split per start offset, and {@link FIELD_MAX} caps what each offset can
- * cost. The padding is redundant anyway: the captures are trimmed at the use
- * sites (`target.trim()`, {@link splitFragment}, `rawAlias?.trim()`).
- *
- * Unlike markdown-astro's spelling, the target stays optional (`{0,512}`) and
- * the fragment stays captured — `[[#Heading]]` links to the current note.
- */
-export const WIKILINK_RE =
-  /(?<!!)\[\[([^\]|#]{0,512})(?:#([^\]|]{1,512}))?(?:\|([^\]]{0,512}))?\]\]/g
-
-/**
- * Longest a single `[[…]]` field may be, mirrored in {@link WIKILINK_RE} and
- * `EMBED_RE` in `embeds.ts` (regex literals cannot interpolate). Generous next
- * to any real vault path or alias, small enough to bound the matcher's work.
- * A field beyond the cap leaves the whole `[[…]]` as literal text.
- */
-export const FIELD_MAX = 512
-
-/**
- * Longest text node the `[[…]]` / `![[…]]` scanners will walk. A backstop, not
- * a feature: real prose nodes are orders of magnitude smaller, and a node this
- * large is a generated or hostile document rather than something a reader
- * wants wikilinked.
- */
-export const MAX_SCAN_LENGTH = 100_000
-
-/**
- * The `[[<target>[#<fragment>]` half of a straddling link, matched against the
- * slice between `[[` and the first `|` after it.
- *
- * Only the *alias* may carry markup: the target and the `#fragment` are path
- * syntax, so this half has to be one plain-text run or the whole `[[…]]` stays
- * literal. The fields keep {@link WIKILINK_RE}'s classes and {@link FIELD_MAX}
- * bound, and the slice holds no `|` by construction, so there is nothing for
- * the matcher to backtrack across.
- */
-const STRADDLE_HEAD_RE = /^([^\]|#]{0,512})(?:#([^\]|]{1,512}))?$/
-
-/**
- * How many `[[` openers one text node offers the straddling pass before it
- * gives up. A straddling alias is a phrase with emphasis in it; a node holding
- * a run of unclosed openers is a hostile document, and this stops each of them
- * from costing a {@link FIELD_MAX} window.
- */
-const MAX_HEAD_CANDIDATES = 8
-
-/**
- * How many siblings past the opener the straddling pass looks for the closing
- * `]]`. An alias is a phrase — a handful of emphasis or code runs — not a
- * paragraph.
- */
-const MAX_STRADDLE_NODES = 32
-
-/** Nodes one alias may hold, over all of {@link MAX_STRADDLE_NODES} siblings. */
-const MAX_ALIAS_NODES = 256
-
-/** How deep {@link aliasText} descends before calling the alias implausible. */
-const MAX_ALIAS_DEPTH = 6
-
-/**
- * Phrasing types an alias may carry. A whitelist, not a blocklist: the thing
- * that must never get in is another link — an anchor inside an anchor is what
- * {@link SKIP_SUBTREES} exists to prevent, and `rehype-raw` splits it.
- */
-const ALIAS_TYPES = new Set(['text', 'emphasis', 'strong', 'delete', 'inlineCode', 'break'])
-
 export interface RemarkWikilinksOptions {
   /** Injected resolver. Defaults to {@link defaultResolver}. */
   resolveLink?: WikilinkResolver
@@ -139,8 +52,8 @@ export interface RemarkWikilinksOptions {
    *
    * `resolution` is the resolver's answer merged with the parsed
    * heading/blockId and the computed label — exactly what the default builder
-   * renders from. `rawTarget`/`rawAlias` are the verbatim regex captures,
-   * before any trimming — for hosts reproducing a legacy emission exactly.
+   * renders from. `rawTarget`/`rawAlias` are the text as written, before any
+   * trimming — for hosts reproducing a legacy emission exactly.
    */
   buildNode?: (link: {
     target: string
@@ -286,187 +199,41 @@ export function wikilinkNode(
   )
 }
 
-/** What {@link spliceStraddling} needs from the plugin's options. */
-interface StraddleContext {
-  resolve: WikilinkResolver
-  build: NonNullable<RemarkWikilinksOptions['buildNode']>
-  notePath?: string
-}
-
-/** The head of a straddling link: `[[<target>[#<fragment>]|`. */
-interface StraddleHead {
-  /** Offset of the `[[`. */
-  open: number
-  /** Offset just past the `|`, where the alias starts. */
-  aliasFrom: number
+/** The `[[target#fragment|alias]]` between the brackets, split at the first `#` and the first `|`. */
+function splitInner(inner: string): {
   rawTarget: string
   rawFragment: string | undefined
+  rawAlias: string | null
+} {
+  const pipe = inner.indexOf('|')
+  let before = pipe < 0 ? inner : inner.slice(0, pipe)
+  // `[[Note\|alias]]`, the way a table cell spells the pipe.
+  if (pipe >= 0 && before.endsWith('\\')) before = before.slice(0, -1)
+  const hash = before.indexOf('#')
+  return {
+    rawTarget: hash < 0 ? before : before.slice(0, hash),
+    rawFragment: hash < 0 ? undefined : before.slice(hash + 1),
+    rawAlias: pipe < 0 ? null : inner.slice(pipe + 1),
+  }
 }
 
 /**
- * Find the head of a `[[…]]` whose alias may run past this text node.
- *
- * Leftmost wins, as {@link WIKILINK_RE} does. A candidate is rejected when it
- * is an embed (`![[…]]`, `remarkEmbeds`' business), when its `]]` is in this
- * same node (the first pass already had its say — including the say of leaving
- * an over-{@link FIELD_MAX} link literal), or when the target/fragment half is
- * not one plain-text run.
+ * Does `[[label]]` read as one whole wikilink? The join of a reference is made
+ * only when the scanner would accept it, so a label the dialect rejects keeps
+ * its reference link.
  */
-function findStraddleHead(value: string): StraddleHead | null {
-  let open = value.indexOf('[[')
-  for (let tries = 0; open >= 0 && tries < MAX_HEAD_CANDIDATES; tries++) {
-    if (value[open - 1] !== '!') {
-      const bar = value.indexOf('|', open + 2)
-      // No `|` left in the node, so no later opener has an alias here either.
-      if (bar < 0) return null
-      if (bar - open - 2 <= 2 * FIELD_MAX + 1 && value.indexOf(']]', bar + 1) < 0) {
-        const m = STRADDLE_HEAD_RE.exec(value.slice(open + 2, bar))
-        if (m) {
-          return { open, aliasFrom: bar + 1, rawTarget: m[1] ?? '', rawFragment: m[2] }
-        }
-      }
-    }
-    open = value.indexOf('[[', open + 2)
-  }
-  return null
-}
-
-/**
- * Plain text under `node`, or `null` when it holds something an anchor must
- * not wrap or is bigger than an alias plausibly is.
- */
-function aliasText(node: MdNode, budget: { nodes: number }, depth = 0): string | null {
-  if (depth > MAX_ALIAS_DEPTH || budget.nodes-- <= 0) return null
-  if (!ALIAS_TYPES.has(node.type)) return null
-  if (typeof node.value === 'string') return node.value
-  let out = ''
-  for (const child of node.children ?? []) {
-    const inner = aliasText(child, budget, depth + 1)
-    if (inner === null) return null
-    out += inner
-  }
-  return out
-}
-
-/** The alias of one straddling link, gathered across siblings. */
-interface StraddleAlias {
-  nodes: MdNode[]
-  /** Those nodes flattened to plain text, untrimmed. */
-  text: string
-  /** Index of the sibling holding `]]`, and the offset of it. */
-  closeIndex: number
-  closeAt: number
-}
-
-/**
- * Collect the alias: the head node's text after the `|`, then whole siblings,
- * up to the one holding `]]`. `null` when no closer is in reach, the alias runs
- * past {@link FIELD_MAX}, or a node in it is not an {@link ALIAS_TYPES} one.
- */
-function collectAlias(parent: MdParent, i: number, headTail: string): StraddleAlias | null {
-  const budget = { nodes: MAX_ALIAS_NODES }
-  const nodes: MdNode[] = headTail ? [text(headTail)] : []
-  let plain = headTail
-
-  const limit = Math.min(parent.children.length, i + 1 + MAX_STRADDLE_NODES)
-  for (let j = i + 1; j < limit; j++) {
-    const sibling = parent.children[j]
-    if (!sibling) return null
-    if (sibling.type === 'text' && typeof sibling.value === 'string') {
-      const at = sibling.value.indexOf(']]')
-      if (at >= 0) {
-        const tail = sibling.value.slice(0, at)
-        if (plain.length + tail.length > FIELD_MAX) return null
-        if (tail) nodes.push(text(tail))
-        return { nodes, text: plain + tail, closeIndex: j, closeAt: at }
-      }
-    }
-    const inner = aliasText(sibling, budget)
-    if (inner === null) return null
-    plain += inner
-    if (plain.length > FIELD_MAX) return null
-    nodes.push(sibling)
-  }
-  return null
-}
-
-/**
- * Second pass over one phrasing parent: tokenize a `[[…]]` whose `]]` sits in a
- * later sibling because the alias carried markup.
- *
- * Modelled on `spliceDelimited` in `util.ts`, which does the same straddling
- * scan for `%%` and `==`. It is not reused: those are one symmetric delimiter
- * either side of the span, whereas a wikilink's opener carries the target and
- * `#fragment` with it, and those must NOT straddle.
- *
- * Cheap when there is nothing to do: a parent with one child cannot straddle at
- * all, and a head node with no `|` after its `[[` is dropped on one `indexOf`.
- */
-function spliceStraddling(parent: MdParent, ctx: StraddleContext): void {
-  let i = 0
-  // A straddle needs a later sibling to close in, so the last child is never a
-  // head — which is also the whole cost of a single-text-node paragraph.
-  while (i + 1 < parent.children.length) {
-    const node = parent.children[i]
-    if (!node || node.type !== 'text' || typeof node.value !== 'string') {
-      i++
-      continue
-    }
-    const value = node.value
-    if (!value.includes('[[') || value.length > MAX_SCAN_LENGTH) {
-      i++
-      continue
-    }
-    const head = findStraddleHead(value)
-    const alias = head && collectAlias(parent, i, value.slice(head.aliasFrom))
-    if (!head || !alias) {
-      i++
-      continue
-    }
-
-    const target = head.rawTarget.trim()
-    const fragment = splitFragment(head.rawFragment)
-    const { heading, blockId } = fragment
-    const aliasLabel = alias.text.trim() || undefined
-    const label = defaultDisplay(target, head.rawFragment, aliasLabel)
-    const resolved: LinkResolution = target
-      ? ctx.resolve(unmaskEscaped(target), ctx.notePath)
-      : {
-          kind: 'note',
-          ...(ctx.notePath !== undefined ? { path: ctx.notePath } : {}),
-          display: label,
-        }
-
-    const built = ctx.build({
-      target,
-      rawTarget: head.rawTarget,
-      heading: heading ?? null,
-      blockId: blockId ?? null,
-      alias: aliasLabel ?? null,
-      rawAlias: alias.text,
-      label,
-      resolution: withFragment(resolved, fragment, label),
-      // A blank alias has no markup worth keeping; the label carries it.
-      ...(aliasLabel ? { children: alias.nodes } : {}),
-    })
-    if (built === null) {
-      i++
-      continue
-    }
-
-    const closeNode = parent.children[alias.closeIndex]
-    const before = value.slice(0, head.open)
-    const after = String(closeNode?.value ?? '').slice(alias.closeAt + 2)
-    const replacement: MdNode[] = []
-    if (before) replacement.push(text(before))
-    replacement.push(...(Array.isArray(built) ? built : [built]))
-    if (after) replacement.push(text(after))
-
-    parent.children.splice(i, alias.closeIndex - i + 1, ...replacement)
-    // Resume on the trailing text node — it may open the next link — or just
-    // past everything inserted when there is none.
-    i += replacement.length - (after ? 1 : 0)
-  }
+function isWholeWikilink(label: string): boolean {
+  // `[[#]]` and `[[|]]` scan as links but name nothing: the plugin leaves them
+  // as text, which would lose the reference.
+  if (!Array.from(label).some((char) => !'#|^ \t\n'.includes(char))) return false
+  const body = `[[${label}]]`
+  const scan = scanBodyWith(body, { selfLinks: true, codeRules: 'commonmark' })
+  const found = scan.links[0] ?? scan.abandoned.find((a) => a.reason === 'empty-target')
+  return (
+    scan.links.length + scan.abandoned.length === 1 &&
+    found?.start === 0 &&
+    found.end === body.length
+  )
 }
 
 /**
@@ -474,16 +241,14 @@ function spliceStraddling(parent: MdParent, ctx: StraddleContext): void {
  *
  * With `[Note]: url` anywhere in the document (labels match
  * case-insensitively), remark parses `[[Note]]` as the text `[`, a shortcut
- * `linkReference`, and the text `]`. Neither pass sees `[[` and `]]` in one
- * text node then, so the wikilink became a link to the definition's URL inside
- * literal brackets. Obsidian always reads `[[…]]` as a wikilink, so the three
- * nodes are joined back into their source text — the reference's `label` is
- * its source spelling — and the first pass tokenizes that as usual. `![[Note]]`
- * joins too, which hands it to `remarkEmbeds`.
+ * `linkReference`, and the text `]`. The link's brackets are then in three
+ * nodes. Obsidian always reads `[[…]]` as a wikilink, so the three nodes are
+ * joined back into their source text — the reference's `label` is its source
+ * spelling — and the scan places the link in that as usual. `![[Note]]` joins
+ * too, which hands it to `remarkEmbeds`.
  *
- * Only a join the tokenizers will accept is made: `[[label]]` must be one whole
- * {@link WIKILINK_RE} match (`EMBED_RE` has the same fields) and the joined
- * text must fit {@link MAX_SCAN_LENGTH}. Otherwise the reference link stays.
+ * Only a join the scanner accepts is made: `[[label]]` must be one whole link.
+ * Otherwise the reference link stays.
  */
 function mergeShortcutReferences(tree: MdNode): void {
   visit(tree as never, (node: MdNode) => {
@@ -502,24 +267,13 @@ function mergeShortcutReferences(tree: MdNode): void {
         ref.referenceType !== 'shortcut' ||
         typeof ref.label !== 'string' ||
         !head.endsWith('[') ||
-        !tail.startsWith(']')
+        !tail.startsWith(']') ||
+        !isWholeWikilink(ref.label)
       ) {
         i++
         continue
       }
-      const source = `[${ref.label}]`
-      WIKILINK_RE.lastIndex = 0
-      const match = WIKILINK_RE.exec(`[${source}]`)
-      const value = `${head}${source}${tail}`
-      if (
-        match?.index !== 0 ||
-        match[0].length !== source.length + 2 ||
-        value.length > MAX_SCAN_LENGTH
-      ) {
-        i++
-        continue
-      }
-      const merged = text(value)
+      const merged = text(`${head}[${ref.label}]${tail}`)
       if (before.position && after.position) {
         merged.position = { start: before.position.start, end: after.position.end }
       }
@@ -530,10 +284,13 @@ function mergeShortcutReferences(tree: MdNode): void {
   })
 }
 
+/** What the default builder emits for one link, or `null` to keep the text. */
+type Build = NonNullable<RemarkWikilinksOptions['buildNode']>
+
 /** Remark plugin: tokenize `[[wikilinks]]` into anchor nodes. */
 export function remarkWikilinks(options: RemarkWikilinksOptions = {}) {
   const resolve = options.resolveLink ?? defaultResolver
-  const build: NonNullable<RemarkWikilinksOptions['buildNode']> =
+  const build: Build =
     options.buildNode ??
     // `[[]]`, `[[ ]]`, `[[|]]`: no target, fragment or alias, so nothing to link
     // to and nothing to show. The source stays literal rather than becoming an
@@ -543,74 +300,41 @@ export function remarkWikilinks(options: RemarkWikilinksOptions = {}) {
         ? null
         : wikilinkNode(link.target, link.resolution, link.label, link.children))
 
-  return (tree: MdNode) => {
+  /** One link: what the plugin builds for the text between its brackets. */
+  const buildLink = ({ inner, aliasNodes }: FoundLink): MdNode | MdNode[] | null => {
+    const { rawTarget, rawFragment, rawAlias } = splitInner(inner)
+    const target = rawTarget.trim()
+    const fragment = splitFragment(rawFragment)
+    const { heading, blockId } = fragment
+    const alias = rawAlias?.trim() || undefined
+    const label = defaultDisplay(target, rawFragment, alias)
+
+    const resolved: LinkResolution = target
+      ? // The resolver is host code: hand it the author's text, not a sentinel.
+        resolve(unmaskEscaped(target), options.notePath)
+      : // A fragment-only link points at the current note.
+        {
+          kind: 'note',
+          ...(options.notePath !== undefined ? { path: options.notePath } : {}),
+          display: label,
+        }
+
+    return build({
+      target,
+      rawTarget,
+      heading: heading ?? null,
+      blockId: blockId ?? null,
+      alias: alias ?? null,
+      rawAlias,
+      label,
+      resolution: withFragment(resolved, fragment, label),
+      // A blank alias has no markup worth keeping; the label carries it.
+      ...(aliasNodes && alias ? { children: aliasNodes } : {}),
+    })
+  }
+
+  return (tree: MdNode, file?: unknown) => {
     mergeShortcutReferences(tree)
-    visitTextOutside(tree, SKIP_SUBTREES, (node: MdNode, i: number, parent: MdParent) => {
-      if (typeof node.value !== 'string') return
-      if (!node.value.includes('[[')) return
-      if (node.value.length > MAX_SCAN_LENGTH) return
-
-      const value = node.value
-      const replacement: MdNode[] = []
-      let last = 0
-      WIKILINK_RE.lastIndex = 0
-      let m: RegExpExecArray | null
-      while ((m = WIKILINK_RE.exec(value)) !== null) {
-        const [whole, rawTarget, rawFragment, rawAlias] = m
-
-        const target = (rawTarget ?? '').trim()
-        const fragment = splitFragment(rawFragment)
-        const { heading, blockId } = fragment
-        const alias = rawAlias?.trim() || undefined
-        const label = defaultDisplay(target, rawFragment, alias)
-
-        const resolved: LinkResolution = target
-          ? // The resolver is host code: hand it the author's text, not a sentinel.
-            resolve(unmaskEscaped(target), options.notePath)
-          : // A fragment-only link points at the current note.
-            {
-              kind: 'note',
-              ...(options.notePath !== undefined ? { path: options.notePath } : {}),
-              display: label,
-            }
-
-        const built = build({
-          target,
-          rawTarget: rawTarget ?? '',
-          heading: heading ?? null,
-          blockId: blockId ?? null,
-          alias: alias ?? null,
-          rawAlias: rawAlias ?? null,
-          label,
-          resolution: withFragment(resolved, fragment, label),
-        })
-        // `null` keeps the match literal: leave `last` where it is so the
-        // matched text rides along in the next pre-match (or tail) slice.
-        if (built === null) continue
-
-        if (m.index > last) replacement.push(text(value.slice(last, m.index)))
-        replacement.push(...(Array.isArray(built) ? built : [built]))
-        last = m.index + whole.length
-      }
-      if (!replacement.length) return
-      if (last < value.length) replacement.push(text(value.slice(last)))
-
-      parent.children.splice(i, 1, ...replacement)
-      return i + replacement.length
-    })
-
-    // Second pass, over parents rather than text nodes: a `[[…]]` the first
-    // pass could not see because its alias carried markup. Anchors the first
-    // pass emitted are `wikilink` nodes, so SKIP_SUBTREES keeps this off them.
-    const ctx: StraddleContext = {
-      resolve,
-      build,
-      ...(options.notePath !== undefined ? { notePath: options.notePath } : {}),
-    }
-    visit(tree as never, (node: MdNode) => {
-      if (SKIP_SUBTREES.has(node.type)) return SKIP
-      if (isPhrasingParent(node)) spliceStraddling(node, ctx)
-      return
-    })
+    tokenizeLinks(tree, file, { kind: 'wikilink', skip: SKIP_SUBTREES, build: buildLink })
   }
 }

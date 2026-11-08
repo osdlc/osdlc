@@ -7,10 +7,10 @@
 
 import { defineComponent, h, onMounted, ref, watch, type PropType } from 'vue'
 import { renderMath } from '../../math.ts'
-import { nodeText, type HastNode } from '../render.ts'
+import { hastNodeText, type HastNode } from '../render.ts'
 
 function latexOf(node: HastNode): string {
-  return nodeText(node).trim()
+  return hastNodeText(node).trim()
 }
 
 /** Replace `el`'s content with the source as `<code class="markdown-math-fallback">`. */

@@ -14,7 +14,7 @@
  */
 
 import { computed, defineComponent, h, ref, watch, type PropType } from 'vue'
-import { classList, nodeText, toVueProps, type HastNode } from '../render.ts'
+import { classList, hastNodeText, toVueProps, type HastNode } from '../render.ts'
 
 export const Callout = defineComponent({
   name: 'Callout',
@@ -41,7 +41,7 @@ export const Callout = defineComponent({
         p?.dataLine,
         position?.start.offset,
         position?.end.offset,
-        nodeText(props.node),
+        hastNodeText(props.node),
       ])
     })
     watch(sourceKey, () => {
