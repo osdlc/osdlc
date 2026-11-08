@@ -35,9 +35,9 @@
       "line": 76,
       "title": "One cut future shares a single waker between the read and write sides",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "66dd2d34d344db2b76e36eecc7e523096e22c25c"
     },
     {
       "id": "r1-4",
