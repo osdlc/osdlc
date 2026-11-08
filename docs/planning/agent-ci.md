@@ -16,6 +16,77 @@ requests. Started 2026-11-08.
   [agent-gh-actions-design](../parley/agent-gh-actions-design.json). Its
   framing (packaging first) is superseded by this plan.
 
+## Roadmap
+
+Arrows mean "needs". Green is done, purple an open PR, amber in
+progress, blue next, grey later. Update the classes at the bottom as items
+move.
+
+```mermaid
+flowchart LR
+  subgraph now["Shipped and open"]
+    W710["PR 710: claude.yml runs claude -p"]
+    P712["PR 712: claude-setup + claude-pr-answer actions"]
+    PLAN["Plan + investigations I1–I5"]
+    CLOSE["Close PRs 711 and 707; settle the old parley"]
+  end
+  subgraph facts["Facts · harness-reference (skillwright repo)"]
+    UP["Upload your harness-reference work"]
+    PERM["permissions/ category: claude, codex, cursor"]
+    PROBE["Cursor clean-config probe"]
+  end
+  subgraph call["One call · @osdlc/agent-call"]
+    CHECK["Check permission rows against the facts"]
+    CUR["Cursor: write .cursor/cli.json, fix print-mode note"]
+    RUN["run CLI: spec file, prompt parts, --explain, strict"]
+  end
+  subgraph acts["CI glue · packages/gh-actions"]
+    SETUP["agent-setup over skillwright install"]
+    ANS["agent-pr-answer: prefetch, run, post"]
+  end
+  subgraph roll["Rollout"]
+    SPEC["claude.yml on the spec"]
+    MULTI["Same spec on codex and cursor"]
+  end
+  subgraph later["Later"]
+    MCP["MCP and hooks via skillwright"]
+    PUB["Move to osdlc/actions + Marketplace"]
+    DATA["harness-reference as agent-call's data"]
+    PIN["skillwright: agent-adapt 0.19.2 → 0.19.3"]
+  end
+
+  W710 --> P712
+  P712 --> CLOSE
+  UP --> PERM
+  PLAN --> PERM
+  PERM --> PROBE
+  PERM --> CHECK
+  PROBE --> CUR
+  CHECK --> CUR
+  CHECK --> RUN
+  P712 --> SETUP
+  P712 --> ANS
+  RUN --> ANS
+  SETUP --> SPEC
+  ANS --> SPEC
+  CUR --> MULTI
+  SPEC --> MULTI
+  MULTI --> MCP
+  MULTI --> PUB
+  CHECK --> DATA
+
+  classDef done fill:#2e8b57,stroke:#1f6640,color:#ffffff
+  classDef open fill:#7a4fc2,stroke:#5a3596,color:#ffffff
+  classDef active fill:#c77d0a,stroke:#94600a,color:#ffffff
+  classDef next fill:#2f5bd3,stroke:#2144a3,color:#ffffff
+  classDef later fill:#8a93a3,stroke:#6b7384,color:#ffffff
+  class W710,PLAN done
+  class P712 open
+  class UP active
+  class CLOSE,PERM,PROBE,CHECK,CUR,RUN,SETUP,ANS,SPEC,MULTI next
+  class MCP,PUB,DATA,PIN later
+```
+
 ## Principle
 
 Each kind of harness difference has one owner, and the facts behind all of
