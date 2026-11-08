@@ -9,10 +9,12 @@ import {
   accepted,
   compare,
   discover,
+  main,
   median,
   parseCriterion,
   parseVitest,
   pick,
+  table,
 } from "./perf-gate.ts";
 
 const link: BenchPackage = { lang: "ts", name: "markdown-link", deps: [] };
@@ -143,4 +145,82 @@ test("parseCriterion reads median estimates in ms and discover finds bench packa
   mkdirSync(join(root, "packages/ts/b/benches"), { recursive: true });
   writeFileSync(join(root, "packages/ts/b/benches/notes.md"), "");
   assert.deepEqual(discover(root), [{ lang: "ts", name: "a", deps: ["b"] }]);
+});
+
+test("discover reads workspace dependencies from a Cargo.toml", () => {
+  const root = mkdtempSync(join(tmpdir(), "perf-gate-test-"));
+  mkdirSync(join(root, "packages/rust/a/benches"), { recursive: true });
+  writeFileSync(join(root, "packages/rust/a/benches/x.rs"), "");
+  writeFileSync(
+    join(root, "packages/rust/a/Cargo.toml"),
+    [
+      "[dependencies]",
+      "markdown-link = { workspace = true }",
+      'serde = { version = "1" }',
+      "",
+    ].join("\n"),
+  );
+  assert.deepEqual(discover(root), [
+    { lang: "rust", name: "a", deps: ["markdown-link"] },
+  ]);
+});
+
+test("pick: -wasm twins count as their package; only the root package.json is shared", () => {
+  const names = (c: string[]) => pick(c, all).map((p) => `${p.lang}:${p.name}`);
+  assert.deepEqual(names(["packages/rust/markdown-link-wasm/src/lib.rs"]), [
+    "ts:markdown-link",
+    "rust:markdown-link",
+    "ts:markdown-render",
+  ]);
+  assert.equal(names(["package.json"]).length, 3);
+  assert.deepEqual(names(["packages/ts/path-guard/package.json"]), []);
+  for (const f of [
+    "pnpm-lock.yaml",
+    "scripts/perf-gate.ts",
+    ".github/workflows/perf-gate.yml",
+    "packages/rust/Cargo.lock",
+  ])
+    assert.equal(names([f]).length, 3, f);
+});
+
+test("table: ms or us, and the sign of the change", () => {
+  const t = table([
+    { id: "a", base: 2, head: 3, ratio: 1.5, status: "slower" },
+    { id: "b", base: 0.002, head: 0.001, ratio: 0.5, status: "faster" },
+    { id: "c", base: null, head: 1, ratio: null, status: "new" },
+  ]);
+  assert.match(t, /\| a \| 2\.00 ms \| 3\.00 ms \| \+50\.0% \| slower \|/);
+  assert.match(t, /\| b \| 2\.0 us \| 1\.0 us \| -50\.0% \| faster \|/);
+  assert.match(t, /\| c \| - \| 1\.00 ms \|  \| new \|/);
+});
+
+test("main rejects malformed arguments with exit code 2", () => {
+  const quiet = (argv: string[]) => {
+    const err = console.error;
+    console.error = () => {};
+    try {
+      return main(argv);
+    } finally {
+      console.error = err;
+    }
+  };
+  assert.equal(quiet([]), 2);
+  assert.equal(quiet(["base"]), 2);
+  assert.equal(quiet(["base", "head", "--rounds"]), 2);
+  assert.equal(quiet(["base", "head", "--rounds", "0"]), 2);
+  assert.equal(quiet(["base", "head", "--rounds", "x"]), 2);
+  assert.equal(quiet(["base", "head", "--out", "--rounds", "5"]), 2);
+  assert.equal(quiet(["base", "head", "--changed"]), 2);
+  assert.equal(quiet(["base", "head", "--bogus"]), 2);
+});
+
+test("main stops early when no package with benchmarks is affected", () => {
+  const root = mkdtempSync(join(tmpdir(), "perf-gate-test-"));
+  const log = console.log;
+  console.log = () => {};
+  try {
+    assert.equal(main([root, root, "--rounds", "1"]), 0);
+  } finally {
+    console.log = log;
+  }
 });

@@ -32,9 +32,8 @@ node scripts/perf-gate.ts ../base . --rounds 3
 
 ## The corpus
 
-`bench/corpus/` builds a vault of 1200 synthetic notes from a seed (about 4 MiB;
-median note 2.2 KiB, largest about 50 KiB), plus the slow inputs: markdown-link's
-linear-time cases and the ReDoS cases of markdown-render and markdown-astro. It
+`bench/corpus/` builds a vault of 1200 synthetic notes from a seed (`node bench/corpus/cli.ts out.json --stats` prints its size and shape),
+plus the slow inputs: markdown-link's linear-time cases and the ReDoS cases of markdown-render and markdown-astro. It
 holds no real content. Notes carry frontmatter with tags, wikilinks (alias,
 heading, block, self), embeds (sized), markdown links, tags in the obsidian,
 unicode and ascii dialects, code spans, fences and callouts, with links and

@@ -4,12 +4,11 @@
 // kilobytes, a few tens of kilobytes), and each note mixes prose with the
 // constructs the markdown libraries scan for.
 //
-// Per kilobyte of body the generator yields about 4 wikilinks, 0.25 embeds,
-// 0.65 markdown links, 1.9 inline tags and 0.4 code spans, with a fenced
-// block and a callout about every 2.5 kilobytes. Links and tags also
-// appear inside code, where they must not be found, and in the places a
-// scanner could misread: aliases, headings, block ids, sizes, escaped pipes
-// in tables, link destinations that hold a `#`, HTML comments.
+// The densities per kilobyte are checked in corpus.test.ts; `node
+// bench/corpus/cli.ts out.json --stats` prints the current values. Links and
+// tags also appear inside code, where they must not be found, and in the
+// places a scanner could misread: aliases, headings, block ids, sizes,
+// escaped pipes in tables, link destinations that hold a `#`, HTML comments.
 //
 // The output is deterministic: the same options give the same bytes.
 

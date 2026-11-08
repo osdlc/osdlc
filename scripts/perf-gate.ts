@@ -1,6 +1,6 @@
 // The perf gate: runs the benchmarks of the packages a pull request touches
 // on the base commit and on the head commit, in one job, and fails when a
-// gated benchmark's median is more than 15% slower on the head.
+// gated benchmark's median is more than THRESHOLD slower on the head.
 //
 //   node scripts/perf-gate.ts <base-dir> <head-dir> [--changed <file>] [--rounds N] [--out <dir>]
 //   node scripts/perf-gate.ts pick <head-dir> --changed <file>
@@ -38,6 +38,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
 
 /** A benchmark median may grow by this fraction before the gate fails. */
@@ -345,11 +346,6 @@ export function table(rows: Row[], threshold = THRESHOLD): string {
   return lines.join("\n");
 }
 
-function flag(args: string[], name: string): string | undefined {
-  const i = args.indexOf(name);
-  return i >= 0 ? args[i + 1] : undefined;
-}
-
 function changedFiles(file: string | undefined): string[] | null {
   if (file === undefined) return null;
   return readFileSync(file, "utf8")
@@ -358,28 +354,46 @@ function changedFiles(file: string | undefined): string[] | null {
     .filter(Boolean);
 }
 
-/** Run the gate; resolves with the process exit code. */
+const USAGE =
+  "usage: node scripts/perf-gate.ts <base-dir> <head-dir> [--changed <file>] [--rounds N] [--out <dir>]";
+
+/** Run the gate; returns the process exit code. */
 export function main(argv: string[]): number {
-  if (argv[0] === "pick") {
-    const head = argv[1] ?? ".";
-    const picked = pick(changedFiles(flag(argv, "--changed")), discover(head));
+  let parsed;
+  try {
+    parsed = parseArgs({
+      args: argv,
+      allowPositionals: true,
+      strict: true,
+      options: {
+        changed: { type: "string" },
+        rounds: { type: "string" },
+        out: { type: "string" },
+      },
+    });
+  } catch (e) {
+    console.error(`perf gate: ${(e as Error).message}\n${USAGE}`);
+    return 2;
+  }
+  const { positionals } = parsed;
+  const { changed, rounds: roundsArg, out: outDir } = parsed.values;
+  if (positionals[0] === "pick") {
+    const head = positionals[1] ?? ".";
+    const picked = pick(changedFiles(changed), discover(head));
     console.log(JSON.stringify(picked.map((p) => `${p.lang}:${p.name}`)));
     return 0;
   }
-  const [base, head] = argv;
-  if (!base || !head || base.startsWith("--") || head.startsWith("--")) {
-    console.error(
-      "usage: node scripts/perf-gate.ts <base-dir> <head-dir> [--changed <file>] [--rounds N] [--out <dir>]",
-    );
+  const [base, head] = positionals;
+  if (!base || !head) {
+    console.error(USAGE);
     return 2;
   }
-  const rounds = Number(flag(argv, "--rounds") ?? 3);
+  const rounds = Number(roundsArg ?? 3);
   if (!Number.isInteger(rounds) || rounds < 1) {
     console.error("perf gate: --rounds must be a positive integer");
     return 2;
   }
-  const outDir = flag(argv, "--out");
-  const picked = pick(changedFiles(flag(argv, "--changed")), discover(head));
+  const picked = pick(changedFiles(changed), discover(head));
   if (picked.length === 0) {
     console.log(
       "perf gate: no package with benchmarks is affected; nothing to compare.",
