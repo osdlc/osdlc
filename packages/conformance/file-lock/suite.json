@@ -1,0 +1,886 @@
+{
+  "family": "file-lock",
+  "reference": "ts",
+  "referenceVersion": "0.0.0",
+  "sections": {
+    "marker_name": {
+      "description": "The takeover marker's name for a lock at `path` whose text is `raw`: `<path>.stale-` and the first 24 hex digits of the SHA-256 of the text's UTF-8 bytes. Text that is not UTF-8 is decoded first, with U+FFFD for each bad sequence, so every implementation hashes the same bytes.",
+      "cases": [
+        {
+          "name": "a lock the TypeScript package wrote",
+          "input": {
+            "path": "x.lock",
+            "raw": "{\n  \"pid\": 4120,\n  \"token\": \"9b2e1c5a-0d7e-4c55-8f1e-2b6a3c4d5e6f\"\n}\n"
+          },
+          "expect": {
+            "marker": "x.lock.stale-e9ade9d56abe978305415929"
+          }
+        },
+        {
+          "name": "a lock the Rust crate wrote",
+          "input": {
+            "path": "x.lock",
+            "raw": "{\n  \"name\": \"nightly\",\n  \"pid\": 4188,\n  \"token\": \"r-1\"\n}\n"
+          },
+          "expect": {
+            "marker": "x.lock.stale-8e868c4137f19bfcbcda4390"
+          }
+        },
+        {
+          "name": "a bare token, as the old determined anchor lock wrote",
+          "input": {
+            "path": "x.lock",
+            "raw": "5f0c3c8e-6a3e-4d34-9c39-2a1b7f1d0c11"
+          },
+          "expect": {
+            "marker": "x.lock.stale-33d269dd8f7322b90e890f54"
+          }
+        },
+        {
+          "name": "an empty lock",
+          "input": {
+            "path": "x.lock",
+            "raw": ""
+          },
+          "expect": {
+            "marker": "x.lock.stale-e3b0c44298fc1c149afbf4c8"
+          }
+        },
+        {
+          "name": "text that is not UTF-8",
+          "input": {
+            "path": "x.lock",
+            "raw": {
+              "hex": "7b22746f6b656e223a2274ff2d31227d"
+            }
+          },
+          "expect": {
+            "marker": "x.lock.stale-fbf70f5ff0f493b8209a7ee3"
+          }
+        },
+        {
+          "name": "a lock longer than a file name may be",
+          "input": {
+            "path": "dir/x.lock",
+            "raw": "{\"note\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"token\": \"t-long\"}"
+          },
+          "expect": {
+            "marker": "dir/x.lock.stale-0b4022091197f6971bb57fe8"
+          }
+        }
+      ]
+    },
+    "claim": {
+      "description": "Claim `x.lock` in an empty directory with `content`, judging a held lock by its age (stale once untouched for more than `staleMs`). `lock` is the file there before, with its mtime `ageMs` in the past; each of `markers` is a takeover marker present beforehand, named from that text. The result: whether the lock was claimed, the holder named when it was not (`null` when none was settled), the lock afterwards (`null` when absent; its parsed content, with this claim's own token shown as `<ours>`; whether its text is unchanged; whether its mtime is under 5 s old), and the other names left in the directory.",
+      "cases": [
+        {
+          "name": "a free lock is claimed",
+          "input": {
+            "lock": null,
+            "content": {
+              "pid": 7
+            },
+            "staleMs": 10000
+          },
+          "expect": {
+            "claimed": true,
+            "holder": null,
+            "after": {
+              "content": {
+                "pid": 7,
+                "token": "<ours>"
+              },
+              "unchanged": false,
+              "fresh": true
+            },
+            "beside": []
+          }
+        },
+        {
+          "name": "a token field in the content is replaced by the claim's",
+          "input": {
+            "lock": null,
+            "content": {
+              "pid": 7,
+              "token": "mine"
+            },
+            "staleMs": 10000
+          },
+          "expect": {
+            "claimed": true,
+            "holder": null,
+            "after": {
+              "content": {
+                "pid": 7,
+                "token": "<ours>"
+              },
+              "unchanged": false,
+              "fresh": true
+            },
+            "beside": []
+          }
+        },
+        {
+          "name": "a live lock the TypeScript package wrote is held",
+          "input": {
+            "lock": {
+              "raw": "{\n  \"pid\": 4120,\n  \"token\": \"9b2e1c5a-0d7e-4c55-8f1e-2b6a3c4d5e6f\"\n}\n",
+              "ageMs": 0
+            },
+            "content": {
+              "pid": 7
+            },
+            "staleMs": 10000
+          },
+          "expect": {
+            "claimed": false,
+            "holder": {
+              "content": {
+                "pid": 4120,
+                "token": "9b2e1c5a-0d7e-4c55-8f1e-2b6a3c4d5e6f"
+              }
+            },
+            "after": {
+              "content": {
+                "pid": 4120,
+                "token": "9b2e1c5a-0d7e-4c55-8f1e-2b6a3c4d5e6f"
+              },
+              "unchanged": true,
+              "fresh": true
+            },
+            "beside": []
+          }
+        },
+        {
+          "name": "a live lock the Rust crate wrote is held",
+          "input": {
+            "lock": {
+              "raw": "{\n  \"name\": \"nightly\",\n  \"pid\": 4188,\n  \"token\": \"r-1\"\n}\n",
+              "ageMs": 0
+            },
+            "content": {
+              "pid": 7
+            },
+            "staleMs": 10000
+          },
+          "expect": {
+            "claimed": false,
+            "holder": {
+              "content": {
+                "name": "nightly",
+                "pid": 4188,
+                "token": "r-1"
+              }
+            },
+            "after": {
+              "content": {
+                "name": "nightly",
+                "pid": 4188,
+                "token": "r-1"
+              },
+              "unchanged": true,
+              "fresh": true
+            },
+            "beside": []
+          }
+        },
+        {
+          "name": "a live lock in compact JSON is held",
+          "input": {
+            "lock": {
+              "raw": "{\"pid\":12,\"token\":\"t-1\"}",
+              "ageMs": 0
+            },
+            "content": {
+              "pid": 7
+            },
+            "staleMs": 10000
+          },
+          "expect": {
+            "claimed": false,
+            "holder": {
+              "content": {
+                "pid": 12,
+                "token": "t-1"
+              }
+            },
+            "after": {
+              "content": {
+                "pid": 12,
+                "token": "t-1"
+              },
+              "unchanged": true,
+              "fresh": true
+            },
+            "beside": []
+          }
+        },
+        {
+          "name": "a stale lock is taken over",
+          "input": {
+            "lock": {
+              "raw": "{\n  \"pid\": 4120,\n  \"token\": \"9b2e1c5a-0d7e-4c55-8f1e-2b6a3c4d5e6f\"\n}\n",
+              "ageMs": 60000
+            },
+            "content": {
+              "pid": 7
+            },
+            "staleMs": 10000
+          },
+          "expect": {
+            "claimed": true,
+            "holder": null,
+            "after": {
+              "content": {
+                "pid": 7,
+                "token": "<ours>"
+              },
+              "unchanged": false,
+              "fresh": true
+            },
+            "beside": []
+          }
+        },
+        {
+          "name": "a live bare-token lock is held, with no content",
+          "input": {
+            "lock": {
+              "raw": "5f0c3c8e-6a3e-4d34-9c39-2a1b7f1d0c11",
+              "ageMs": 0
+            },
+            "content": {
+              "pid": 7
+            },
+            "staleMs": 10000
+          },
+          "expect": {
+            "claimed": false,
+            "holder": {
+              "content": null
+            },
+            "after": {
+              "content": null,
+              "unchanged": true,
+              "fresh": true
+            },
+            "beside": []
+          }
+        },
+        {
+          "name": "a stale bare-token lock is taken over",
+          "input": {
+            "lock": {
+              "raw": "5f0c3c8e-6a3e-4d34-9c39-2a1b7f1d0c11",
+              "ageMs": 60000
+            },
+            "content": {
+              "pid": 7
+            },
+            "staleMs": 10000
+          },
+          "expect": {
+            "claimed": true,
+            "holder": null,
+            "after": {
+              "content": {
+                "pid": 7,
+                "token": "<ours>"
+              },
+              "unchanged": false,
+              "fresh": true
+            },
+            "beside": []
+          }
+        },
+        {
+          "name": "a lock whose token is not a string has no content",
+          "input": {
+            "lock": {
+              "raw": "{\"pid\": 3, \"token\": 5}",
+              "ageMs": 0
+            },
+            "content": {
+              "pid": 7
+            },
+            "staleMs": 10000
+          },
+          "expect": {
+            "claimed": false,
+            "holder": {
+              "content": null
+            },
+            "after": {
+              "content": null,
+              "unchanged": true,
+              "fresh": true
+            },
+            "beside": []
+          }
+        },
+        {
+          "name": "a JSON array is not lock content",
+          "input": {
+            "lock": {
+              "raw": "[1, 2]",
+              "ageMs": 0
+            },
+            "content": {
+              "pid": 7
+            },
+            "staleMs": 10000
+          },
+          "expect": {
+            "claimed": false,
+            "holder": {
+              "content": null
+            },
+            "after": {
+              "content": null,
+              "unchanged": true,
+              "fresh": true
+            },
+            "beside": []
+          }
+        },
+        {
+          "name": "an empty lock has no content",
+          "input": {
+            "lock": {
+              "raw": "",
+              "ageMs": 0
+            },
+            "content": {
+              "pid": 7
+            },
+            "staleMs": 10000
+          },
+          "expect": {
+            "claimed": false,
+            "holder": {
+              "content": null
+            },
+            "after": {
+              "content": null,
+              "unchanged": true,
+              "fresh": true
+            },
+            "beside": []
+          }
+        },
+        {
+          "name": "a stale lock that is not UTF-8 is taken over",
+          "input": {
+            "lock": {
+              "raw": {
+                "hex": "7b22746f6b656e223a2274ff2d31227d"
+              },
+              "ageMs": 60000
+            },
+            "content": {
+              "pid": 7
+            },
+            "staleMs": 10000
+          },
+          "expect": {
+            "claimed": true,
+            "holder": null,
+            "after": {
+              "content": {
+                "pid": 7,
+                "token": "<ours>"
+              },
+              "unchanged": false,
+              "fresh": true
+            },
+            "beside": []
+          }
+        },
+        {
+          "name": "a stale lock longer than a file name may be is taken over",
+          "input": {
+            "lock": {
+              "raw": "{\"note\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"token\": \"t-long\"}",
+              "ageMs": 60000
+            },
+            "content": {
+              "pid": 7
+            },
+            "staleMs": 10000
+          },
+          "expect": {
+            "claimed": true,
+            "holder": null,
+            "after": {
+              "content": {
+                "pid": 7,
+                "token": "<ours>"
+              },
+              "unchanged": false,
+              "fresh": true
+            },
+            "beside": []
+          }
+        },
+        {
+          "name": "a stale lock whose marker another reaper holds is left alone",
+          "input": {
+            "lock": {
+              "raw": "{\n  \"pid\": 4120,\n  \"token\": \"9b2e1c5a-0d7e-4c55-8f1e-2b6a3c4d5e6f\"\n}\n",
+              "ageMs": 60000
+            },
+            "content": {
+              "pid": 7
+            },
+            "staleMs": 10000,
+            "markers": [
+              "{\n  \"pid\": 4120,\n  \"token\": \"9b2e1c5a-0d7e-4c55-8f1e-2b6a3c4d5e6f\"\n}\n"
+            ]
+          },
+          "expect": {
+            "claimed": false,
+            "holder": null,
+            "after": {
+              "content": {
+                "pid": 4120,
+                "token": "9b2e1c5a-0d7e-4c55-8f1e-2b6a3c4d5e6f"
+              },
+              "unchanged": true,
+              "fresh": false
+            },
+            "beside": [
+              "x.lock.stale-e9ade9d56abe978305415929"
+            ]
+          }
+        },
+        {
+          "name": "a marker for other text does not block a takeover",
+          "input": {
+            "lock": {
+              "raw": "{\n  \"pid\": 4120,\n  \"token\": \"9b2e1c5a-0d7e-4c55-8f1e-2b6a3c4d5e6f\"\n}\n",
+              "ageMs": 60000
+            },
+            "content": {
+              "pid": 7
+            },
+            "staleMs": 10000,
+            "markers": [
+              "{\n  \"name\": \"nightly\",\n  \"pid\": 4188,\n  \"token\": \"r-1\"\n}\n"
+            ]
+          },
+          "expect": {
+            "claimed": true,
+            "holder": null,
+            "after": {
+              "content": {
+                "pid": 7,
+                "token": "<ours>"
+              },
+              "unchanged": false,
+              "fresh": true
+            },
+            "beside": [
+              "x.lock.stale-8e868c4137f19bfcbcda4390"
+            ]
+          }
+        }
+      ]
+    },
+    "release": {
+      "description": "Release `x.lock` with `token`. `lock` is as in `claim`. The result: whether it was released, the lock afterwards and the other names left, as in `claim`.",
+      "cases": [
+        {
+          "name": "a lock holding the token is released",
+          "input": {
+            "lock": {
+              "raw": "{\"pid\":12,\"token\":\"t-1\"}",
+              "ageMs": 0
+            },
+            "token": "t-1"
+          },
+          "expect": {
+            "result": true,
+            "after": null,
+            "beside": []
+          }
+        },
+        {
+          "name": "a lock the TypeScript package wrote is released by its token",
+          "input": {
+            "lock": {
+              "raw": "{\n  \"pid\": 4120,\n  \"token\": \"9b2e1c5a-0d7e-4c55-8f1e-2b6a3c4d5e6f\"\n}\n",
+              "ageMs": 0
+            },
+            "token": "9b2e1c5a-0d7e-4c55-8f1e-2b6a3c4d5e6f"
+          },
+          "expect": {
+            "result": true,
+            "after": null,
+            "beside": []
+          }
+        },
+        {
+          "name": "a lock the Rust crate wrote is released by its token",
+          "input": {
+            "lock": {
+              "raw": "{\n  \"name\": \"nightly\",\n  \"pid\": 4188,\n  \"token\": \"r-1\"\n}\n",
+              "ageMs": 0
+            },
+            "token": "r-1"
+          },
+          "expect": {
+            "result": true,
+            "after": null,
+            "beside": []
+          }
+        },
+        {
+          "name": "a lock holding another token is left alone",
+          "input": {
+            "lock": {
+              "raw": "{\"pid\":12,\"token\":\"t-1\"}",
+              "ageMs": 0
+            },
+            "token": "t-2"
+          },
+          "expect": {
+            "result": false,
+            "after": {
+              "content": {
+                "pid": 12,
+                "token": "t-1"
+              },
+              "unchanged": true,
+              "fresh": true
+            },
+            "beside": []
+          }
+        },
+        {
+          "name": "a missing lock is not an error",
+          "input": {
+            "lock": null,
+            "token": "t-1"
+          },
+          "expect": {
+            "result": false,
+            "after": null,
+            "beside": []
+          }
+        },
+        {
+          "name": "a bare-token lock is never released, even by its text",
+          "input": {
+            "lock": {
+              "raw": "5f0c3c8e-6a3e-4d34-9c39-2a1b7f1d0c11",
+              "ageMs": 0
+            },
+            "token": "5f0c3c8e-6a3e-4d34-9c39-2a1b7f1d0c11"
+          },
+          "expect": {
+            "result": false,
+            "after": {
+              "content": null,
+              "unchanged": true,
+              "fresh": true
+            },
+            "beside": []
+          }
+        },
+        {
+          "name": "a stale lock is released by its own holder",
+          "input": {
+            "lock": {
+              "raw": "{\"pid\":12,\"token\":\"t-1\"}",
+              "ageMs": 60000
+            },
+            "token": "t-1"
+          },
+          "expect": {
+            "result": true,
+            "after": null,
+            "beside": []
+          }
+        }
+      ]
+    },
+    "touch": {
+      "description": "Touch `x.lock` with `token`: refresh its mtime. `lock` is as in `claim`. The result: whether it was touched, the lock afterwards and the other names left, as in `claim`.",
+      "cases": [
+        {
+          "name": "an old lock holding the token is refreshed",
+          "input": {
+            "lock": {
+              "raw": "{\"pid\":12,\"token\":\"t-1\"}",
+              "ageMs": 60000
+            },
+            "token": "t-1"
+          },
+          "expect": {
+            "result": true,
+            "after": {
+              "content": {
+                "pid": 12,
+                "token": "t-1"
+              },
+              "unchanged": true,
+              "fresh": true
+            },
+            "beside": []
+          }
+        },
+        {
+          "name": "an old lock holding another token is left old",
+          "input": {
+            "lock": {
+              "raw": "{\"pid\":12,\"token\":\"t-1\"}",
+              "ageMs": 60000
+            },
+            "token": "t-2"
+          },
+          "expect": {
+            "result": false,
+            "after": {
+              "content": {
+                "pid": 12,
+                "token": "t-1"
+              },
+              "unchanged": true,
+              "fresh": false
+            },
+            "beside": []
+          }
+        },
+        {
+          "name": "a missing lock is not an error",
+          "input": {
+            "lock": null,
+            "token": "t-1"
+          },
+          "expect": {
+            "result": false,
+            "after": null,
+            "beside": []
+          }
+        },
+        {
+          "name": "a bare-token lock is never touched",
+          "input": {
+            "lock": {
+              "raw": "5f0c3c8e-6a3e-4d34-9c39-2a1b7f1d0c11",
+              "ageMs": 60000
+            },
+            "token": "5f0c3c8e-6a3e-4d34-9c39-2a1b7f1d0c11"
+          },
+          "expect": {
+            "result": false,
+            "after": {
+              "content": null,
+              "unchanged": true,
+              "fresh": false
+            },
+            "beside": []
+          }
+        }
+      ]
+    },
+    "update": {
+      "description": "Update `x.lock` with `token`, merging the fields of `set` into its content; the token is kept. `lock` is as in `claim`. The result: whether it was updated, the lock afterwards and the other names left, as in `claim`.",
+      "cases": [
+        {
+          "name": "a lock holding the token is rewritten, keeping it",
+          "input": {
+            "lock": {
+              "raw": "{\"pid\":12,\"token\":\"t-1\"}",
+              "ageMs": 0
+            },
+            "token": "t-1",
+            "set": {
+              "phase": "run"
+            }
+          },
+          "expect": {
+            "result": true,
+            "after": {
+              "content": {
+                "pid": 12,
+                "token": "t-1",
+                "phase": "run"
+              },
+              "unchanged": false,
+              "fresh": true
+            },
+            "beside": []
+          }
+        },
+        {
+          "name": "a token in the new fields is replaced by the lock's",
+          "input": {
+            "lock": {
+              "raw": "{\"pid\":12,\"token\":\"t-1\"}",
+              "ageMs": 0
+            },
+            "token": "t-1",
+            "set": {
+              "token": "forged"
+            }
+          },
+          "expect": {
+            "result": true,
+            "after": {
+              "content": {
+                "pid": 12,
+                "token": "t-1"
+              },
+              "unchanged": false,
+              "fresh": true
+            },
+            "beside": []
+          }
+        },
+        {
+          "name": "a lock holding another token is left alone",
+          "input": {
+            "lock": {
+              "raw": "{\"pid\":12,\"token\":\"t-1\"}",
+              "ageMs": 0
+            },
+            "token": "t-2",
+            "set": {
+              "phase": "run"
+            }
+          },
+          "expect": {
+            "result": false,
+            "after": {
+              "content": {
+                "pid": 12,
+                "token": "t-1"
+              },
+              "unchanged": true,
+              "fresh": true
+            },
+            "beside": []
+          }
+        },
+        {
+          "name": "a missing lock is not an error",
+          "input": {
+            "lock": null,
+            "token": "t-1",
+            "set": {
+              "phase": "run"
+            }
+          },
+          "expect": {
+            "result": false,
+            "after": null,
+            "beside": []
+          }
+        },
+        {
+          "name": "a bare-token lock is never rewritten",
+          "input": {
+            "lock": {
+              "raw": "5f0c3c8e-6a3e-4d34-9c39-2a1b7f1d0c11",
+              "ageMs": 0
+            },
+            "token": "5f0c3c8e-6a3e-4d34-9c39-2a1b7f1d0c11",
+            "set": {
+              "phase": "run"
+            }
+          },
+          "expect": {
+            "result": false,
+            "after": {
+              "content": null,
+              "unchanged": true,
+              "fresh": true
+            },
+            "beside": []
+          }
+        }
+      ]
+    },
+    "section": {
+      "description": "Run a section under `x.lock`, judging a held lock by its age (`staleMs`) and waiting `timeoutMs` (0 tries once). `lock` and `markers` are as in `claim`. The result: whether the section ran, the lock afterwards and the other names left, as in `claim`; or the error `lock_timeout` when the lock stayed held.",
+      "cases": [
+        {
+          "name": "a free lock: the section runs and the lock is gone after",
+          "input": {
+            "lock": null,
+            "staleMs": 10000,
+            "timeoutMs": 0
+          },
+          "expect": {
+            "ran": true,
+            "after": null,
+            "beside": []
+          }
+        },
+        {
+          "name": "a live lock: the waiter times out",
+          "input": {
+            "lock": {
+              "raw": "{\n  \"pid\": 4120,\n  \"token\": \"9b2e1c5a-0d7e-4c55-8f1e-2b6a3c4d5e6f\"\n}\n",
+              "ageMs": 0
+            },
+            "staleMs": 10000,
+            "timeoutMs": 0
+          },
+          "error": {
+            "kind": "lock_timeout"
+          }
+        },
+        {
+          "name": "a stale lock: it is taken over and the section runs",
+          "input": {
+            "lock": {
+              "raw": "{\n  \"pid\": 4120,\n  \"token\": \"9b2e1c5a-0d7e-4c55-8f1e-2b6a3c4d5e6f\"\n}\n",
+              "ageMs": 60000
+            },
+            "staleMs": 10000,
+            "timeoutMs": 0
+          },
+          "expect": {
+            "ran": true,
+            "after": null,
+            "beside": []
+          }
+        },
+        {
+          "name": "a stale bare-token lock: it is taken over and the section runs",
+          "input": {
+            "lock": {
+              "raw": "5f0c3c8e-6a3e-4d34-9c39-2a1b7f1d0c11",
+              "ageMs": 60000
+            },
+            "staleMs": 10000,
+            "timeoutMs": 0
+          },
+          "expect": {
+            "ran": true,
+            "after": null,
+            "beside": []
+          }
+        },
+        {
+          "name": "a stale lock whose marker another reaper holds: the waiter times out",
+          "input": {
+            "lock": {
+              "raw": "{\n  \"pid\": 4120,\n  \"token\": \"9b2e1c5a-0d7e-4c55-8f1e-2b6a3c4d5e6f\"\n}\n",
+              "ageMs": 60000
+            },
+            "staleMs": 10000,
+            "timeoutMs": 0,
+            "markers": [
+              "{\n  \"pid\": 4120,\n  \"token\": \"9b2e1c5a-0d7e-4c55-8f1e-2b6a3c4d5e6f\"\n}\n"
+            ]
+          },
+          "error": {
+            "kind": "lock_timeout"
+          }
+        }
+      ]
+    }
+  }
+}

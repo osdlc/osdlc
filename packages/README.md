@@ -80,8 +80,8 @@ the standard.
   `packages/conformance/families.json`, run by every implementation's tests,
   with expected values written by the reference implementation's generator.
   `pnpm run check:conformance` checks the suites. `tiered-dirs`,
-  `config-layers`, `frontmatter-lossless`, `intersect` and `path-guard` have
-  moved there. Until they move, `gfm-pipe-table` (the Rust implementation of
+  `config-layers`, `file-lock`, `frontmatter-lossless`, `intersect` and
+  `path-guard` have moved there. Until they move, `gfm-pipe-table` (the Rust implementation of
   `@osdlc/gfm-table`) keeps `packages/rust/gfm-pipe-table/tests/fixtures/parity.json`,
   `markdown-link` its crate's `tests/fixtures/conformance.json`, and
   `markdown-contract` runs the TypeScript package's `corpus/` directly.
@@ -94,7 +94,8 @@ the standard.
 - **One-sided features are allowed.** An implementation may have an export the other
   language has no use for. Its README lists such exports.
 - **Versions.** Implementations share the major and minor version. Patch releases are
-  independent. `tiered-dirs`'
+  independent. An implementation at 0.0.0 has never been released and is not
+  compared: its first release takes the family's major and minor. `tiered-dirs`'
   [D-02](ts/tiered-dirs/docs/planning/decisions/D-02-version-line-and-stability.md)
   applies this rule to one family.
 - **Skipping versions to catch up.** One implementation may release a breaking
@@ -147,6 +148,9 @@ Developed here, in this repository:
 - `packages/rust/markdown-relink` (`markdown-relink` on crates.io)
 - `packages/rust/markdown-vault-fs` (`markdown-vault-fs` on crates.io, the
   vault layer over `vfs-walk`)
+- `packages/rust/osdlc-file-lock` (`osdlc-file-lock` on crates.io, the Rust
+  implementation of `@osdlc/file-lock`, so a Rust process and a Node.js process
+  can hold one lock file in turn)
 - `packages/rust/path-guard` (`path-guard` on crates.io)
 - `packages/rust/slug-collate` (`slug-collate` on crates.io)
 - `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)
@@ -168,7 +172,7 @@ Developed here, in this repository:
 - `packages/ts/etag-write` (`@osdlc/etag-write` on npm, the crate's TypeScript implementation)
 - `packages/ts/file-lock` (`@osdlc/file-lock` on npm, cross-process exclusive
   file locks: a held lock with an owner token and a staleness rule, and a short
-  critical section; TypeScript only, since Rust has `File::lock`)
+  critical section; the `osdlc-file-lock` crate is its Rust implementation)
 - `packages/ts/frontmatter-lossless` (`@osdlc/frontmatter-lossless` on npm,
   the TypeScript implementation of the `frontmatter-lossless` crate)
 - `packages/ts/color` (`@osdlc/color` on npm, sRGB colour arithmetic for

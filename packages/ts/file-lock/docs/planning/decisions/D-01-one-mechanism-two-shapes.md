@@ -20,7 +20,8 @@ created: 2026-11-07
 - The section is synchronous only. An async variant is added when a user
   needs one; until then, async work uses `claimLock` and `releaseLock`.
 - There is no Rust twin. Rust has `File::lock` in the standard library since
-  1.89.
+  1.89. [D-02](D-02-a-rust-twin-for-shared-lock-files.md) changes this for
+  lock files that a Rust process and a Node.js process both take.
 - There are no OS advisory locks (`flock`, `fcntl`). Node has no built-in
   binding, and a native addon is a cost every consumer pays.
 

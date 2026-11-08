@@ -149,6 +149,13 @@ test('implementations share major.minor', () => {
   ])
 })
 
+test('an implementation that was never released is not compared', () => {
+  assert.deepEqual(versionProblems('dirs', { a: '0.0.0', b: '0.1.0' }), [])
+  assert.deepEqual(versionProblems('dirs', { a: '0.0.0', b: '0.1.0', c: '0.2.0' }), [
+    'dirs: implementations do not share major.minor: a 0.0.0, b 0.1.0, c 0.2.0',
+  ])
+})
+
 test('suite readers and cross-language reads are found in test sources', () => {
   const readers = suiteReaders(
     new Map([

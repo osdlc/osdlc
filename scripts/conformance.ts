@@ -28,7 +28,7 @@
 //     exactly one of expect and error.
 //   - Each implementation's tests/ names the family's suite path.
 //   - The implementations share major.minor, unless the family is in
-//     CATCHING_UP below.
+//     CATCHING_UP below. One at 0.0.0 was never released and is not compared.
 //   - Every library whose tests read a suite under packages/conformance/ is
 //     listed for that family, and no TypeScript library reads a crate's
 //     fixtures (or a crate a TypeScript library's) unless it is in UNMIGRATED.
@@ -198,9 +198,17 @@ export function majorMinor(version: string): string {
   return version.split('.').slice(0, 2).join('.')
 }
 
+/**
+ * The version of a package that was never released. Its first release takes
+ * the family's major.minor (a `minor` changeset from 0.0.0 gives 0.1.0), so
+ * until then it is not compared.
+ */
+export const UNRELEASED = '0.0.0'
+
 /** Problems with the versions of one family's implementations. */
 export function versionProblems(family: string, versions: Record<string, string>): string[] {
-  const seen = new Set(Object.values(versions).map(majorMinor))
+  const released = Object.values(versions).filter((v) => v !== UNRELEASED)
+  const seen = new Set(released.map(majorMinor))
   if (seen.size <= 1) return CATCHING_UP[family] === undefined ? [] : [`${family}: listed in CATCHING_UP but its versions agree; remove it`]
   if (CATCHING_UP[family] !== undefined) return []
   const list = Object.entries(versions).map(([dir, v]) => `${dir} ${v}`)
