@@ -36,4 +36,5 @@ parse.
 
 `corpora/level-*` cover the root file's `level` key, and `corpora/reserved-keys` the reserved keys
 `dialect` and `profiles`. `corpora/folder-record-*` cover record folders: a record with a script, a
-query and a CSV beside it, a folder with no record file, and a record folder inside another.
+query and a CSV beside it, a folder with no record file, a record folder inside another, and a
+record file in a format the corpus does not allow.

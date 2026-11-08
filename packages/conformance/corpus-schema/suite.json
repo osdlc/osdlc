@@ -136,6 +136,18 @@
             ],
             "warnings": []
           }
+        },
+        {
+          "name": "a record file in a format the corpus does not allow still makes a record folder",
+          "input": {
+            "corpus": "corpora/folder-record-format"
+          },
+          "expect": {
+            "errors": [
+              "methods/Survey/Survey.json: format"
+            ],
+            "warnings": []
+          }
         }
       ]
     }

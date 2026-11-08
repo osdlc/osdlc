@@ -489,8 +489,9 @@ function readRecords(
     for (const file of files) {
       if (!file.startsWith(`${type.dir}/`) || schemaFiles.has(file)) continue
       const folder = folders.find((f) => file.startsWith(`${f}/`))
-      if (folder !== undefined && posix.dirname(file) !== folder) continue
-      if (folder !== undefined && stem(file) !== basename(folder)) continue
+      const owned =
+        folder !== undefined && (posix.dirname(file) !== folder || stem(file) !== basename(folder))
+      if (owned) continue
       const ext = extname(file)
       const lower = ext.toLowerCase()
       if (lower === '.yml') {

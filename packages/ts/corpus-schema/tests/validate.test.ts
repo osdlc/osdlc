@@ -244,6 +244,19 @@ describe('types and records', () => {
     assert.equal(files.get('notes')?.get('Survey'), 'notes/Survey/Survey.md')
   })
 
+  test('a record file in a format the corpus does not allow still makes a record folder', () => {
+    put('corpus-schema.md', '---\ncorpus-schema: 0\n---\n')
+    rmSync(join(dir, 'notes/notes.schema.json'))
+    rmSync(join(dir, 'tags'), { recursive: true })
+    rmSync(join(dir, 'cards'), { recursive: true })
+    put('notes/notes.schema.md', '---\nrequired: [name]\n---\n')
+    put('notes/Survey/Survey.json', '{"name": "Survey"}\n')
+    put('notes/Survey/method.md', '---\nstep: 1\n---\n')
+    assert.deepEqual(errors(), [
+      "notes/Survey/Survey.json: format: json is not in the corpus's formats",
+    ])
+  })
+
   test('a folder record id clashes with a file record of the same name', () => {
     put('notes/Survey/Survey.md', note())
     put('notes/survey.md', note())
@@ -454,6 +467,17 @@ describe('ids', () => {
 })
 
 describe('x-ref', () => {
+  test('an x-ref to a record folder links to its record file, not the folder or its files', () => {
+    put('notes/Survey/Survey.md', note())
+    put('notes/Survey/run.py', 'print(1)\n')
+    put('notes/Note B.md', note('partner: "[Survey](Survey/Survey.md)"\n'))
+    assert.deepEqual(errors(), [])
+    put('notes/Note B.md', note('partner: "[Survey](Survey/)"\n'))
+    assert.ok(has(errors(), 'partner: notes/Survey is not a notes record'))
+    put('notes/Note B.md', note('partner: "[run](Survey/run.py)"\n'))
+    assert.ok(has(errors(), 'partner: notes/Survey/run.py is not a notes record'))
+  })
+
   test('a link to a record of the type passes', () => {
     put('notes/Note B.md', note('partner: "[Note A](Note%20A.md)"\n'))
     assert.deepEqual(errors(), [])

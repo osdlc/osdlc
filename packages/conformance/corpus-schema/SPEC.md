@@ -156,6 +156,8 @@ a method that the record describes.
   `<folder>.yaml` or `<folder>.json`, is a record folder. The name matches exactly, case included.
   The record file is one record, and its id is the folder name: `methods/Survey/Survey.md` has the
   id `Survey`.
+- This holds whatever the corpus's `formats` lists. A record file in a format the corpus does not
+  allow still makes a record folder, and the file is an error (see Formats).
 - Every other file under a record folder, at any depth, belongs to the record. It is not a record
   itself, so it is not checked against the schema and its id is not checked. Validation ignores it,
   as it ignores narrative.
