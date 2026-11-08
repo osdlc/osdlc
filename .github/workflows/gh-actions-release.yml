@@ -64,6 +64,8 @@ jobs:
             grep -qx "## $VERSION" "$log" || missing+=("$log")
           done
           [ "${#missing[@]}" -eq 0 ] || die "no '## $VERSION' entry in: ${missing[*]}"
+          newest="$(git tag -l "gh-actions/v${VERSION%%.*}.*" | sed 's|.*/v||' | sort -V | tail -n1)"
+          if [ -n "$newest" ] && [ "$(printf '%s\n%s\n' "$newest" "$VERSION" | sort -V | tail -n1)" != "$VERSION" ]; then die "$newest is newer than $VERSION; moving $major back would downgrade callers"; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "$full" -m "gh-actions $VERSION"
