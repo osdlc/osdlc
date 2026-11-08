@@ -1415,7 +1415,7 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
     expect(swept.repo?.provider?.listError).toContain('you cannot see it')
     expect(swept.notes).toHaveLength(1)
     expect(swept.notes[0]).toMatch(
-      /^Listing PRs with `gh pr list` failed \(.*you cannot see it.*\); judged on git evidence alone\. Pass `--provider none` if this remote has no forge\.$/,
+      /^Listing PRs with `gh pr list` failed \(.*you cannot see it.*\); judged on git evidence alone\. Pass `--provider none` if this remote has no PRs\.$/,
     )
     const branches = rowsOf(swept.rows, 'branch')
     expect(branches.get('merged')?.verdict).toBe('delete')
@@ -1456,7 +1456,7 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
       provider: 'auto' | 'github',
       url = 'https://git.example.com/acme/app.git',
     ): string | undefined => sweepHere({ provider, gh: unseeingGh, git: hostedAt(url) }).notes[0]
-    const hint = 'Pass `--provider none` if this remote has no forge.'
+    const hint = 'Pass `--provider none` if this remote has no PRs.'
     expect(noteOf('auto')).toContain(hint)
     // Named outright for a hosted remote, the provider is the person's choice: no hint.
     expect(noteOf('github')).not.toContain(hint)
@@ -1477,7 +1477,7 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
   // `auto` asks GitHub for a github.com remote, which is a forge, so its note
   // gives no `--provider none` hint; `--provider github` on the fixture's
   // local-path remote, which names no forge, does.
-  const hint = ' Pass `--provider none` if this remote has no forge.'
+  const hint = ' Pass `--provider none` if this remote has no PRs.'
   test.each(
     (
       [

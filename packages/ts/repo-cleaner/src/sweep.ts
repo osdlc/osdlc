@@ -281,7 +281,7 @@ function providerNote(
   const hint =
     status.host === null ||
     (choice === 'auto' && status.name === 'github' && status.host !== 'github.com')
-      ? ' Pass `--provider none` if this remote has no forge.'
+      ? ` Pass \`--provider none\` if this remote has no ${status.noun}s.`
       : ''
   if (unchecked.kind === 'list-failed') {
     return `Listing ${status.noun}s with \`${status.listing}\` failed (${status.listError}); judged on git evidence alone.${hint}`
