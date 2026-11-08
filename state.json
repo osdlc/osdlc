@@ -1,12 +1,68 @@
 {
   "schema": 1,
   "pr": 719,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "e3d25d2c6408afd071dc365a3755412892db5449",
+  "base": "03af645fa0081b5b25a7de821a1b7651b1f1a927",
+  "round": 1,
   "claim": {
     "owner": "mac:claude-q7m2xk",
     "at": "2026-11-08T19:20:00.046Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/ts/markdown-astro/src/markdown.ts",
+      "line": 268,
+      "title": "toVault: `..` segments in a public-base URL escape the copy roots",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/ts/markdown-astro/src/run.ts",
+      "line": 99,
+      "title": "--clean removes the destination before any write, and does not refuse nested src/dst",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": "packages/ts/markdown-astro/src/markdown.ts",
+      "line": 169,
+      "title": "publicBase '/' makes every absolute frontmatter path look like a published asset",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-4",
+      "round": 1,
+      "path": "packages/ts/markdown-astro/src/run.ts",
+      "line": 149,
+      "title": "Manifest is overwritten with an empty map when no collection produced files",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-5",
+      "round": 1,
+      "path": "packages/ts/markdown-astro/src/wikilink-ref.ts",
+      "line": 75,
+      "title": "run.ts publishes dot-directories and can recurse through symlink loops",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
