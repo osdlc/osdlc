@@ -59,8 +59,6 @@ jobs:
       - uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1.0.269
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # Temporary: shows Claude's error text in the log. Remove after one run.
-          show_full_output: true
           claude_args: >-
             --max-turns 20
             --disallowedTools "Edit,MultiEdit,Write,NotebookEdit,Bash"
