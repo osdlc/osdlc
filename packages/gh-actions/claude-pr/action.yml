@@ -1,0 +1,84 @@
+name: claude-pr
+description: >-
+  Answers @claude on a pull request with Claude Code, or reviews the pull
+  request with /craft:code-review when the comment starts with
+  "@claude review". Posts the result as a comment ending in a done or failed
+  marker.
+author: osdlc
+
+inputs:
+  anthropic-api-key:
+    description: >-
+      Claude Console API key, or several separated by spaces, commas or
+      newlines; tried in order, moving on only after an authentication failure.
+    required: true
+  github-token:
+    description: Token for gh (read the pull request, post the comment).
+    default: ${{ github.token }}
+  claude-code-version:
+    description: Claude Code CLI version to install.
+    default: 2.1.319
+  marketplace-url:
+    description: Git URL of the plugin marketplace.
+    default: https://github.com/osdlc/marketplace.git
+  plugins:
+    description: Plugins to install, plugin@marketplace, space separated. Review mode needs craft.
+    default: craft@osdlc
+  max-turns:
+    description: Claude's turn limit.
+    default: "60"
+
+runs:
+  using: composite
+  steps:
+    # The caller's `if` can only test for the text "@claude"; this drops code
+    # blocks, inline code and quoted lines, and the rest is skipped unless a
+    # mention is left.
+    - id: mention
+      shell: bash
+      env:
+        REQUEST: ${{ github.event.comment.body || github.event.review.body }}
+      run: '"$GITHUB_ACTION_PATH/mention.sh"'
+
+    - if: steps.mention.outputs.real == '1'
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        fetch-depth: 0
+        token: ${{ inputs.github-token }}
+
+    - if: steps.mention.outputs.real == '1'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        PR: ${{ github.event.issue.number || github.event.pull_request.number }}
+      run: gh pr checkout "$PR"
+
+    - if: steps.mention.outputs.real == '1'
+      shell: bash
+      env:
+        CLAUDE_CODE_VERSION: ${{ inputs.claude-code-version }}
+        MARKETPLACE_URL: ${{ inputs.marketplace-url }}
+        PLUGINS: ${{ inputs.plugins }}
+      run: '"$GITHUB_ACTION_PATH/install.sh"'
+
+    - id: claude
+      if: steps.mention.outputs.real == '1'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        KEYS: ${{ inputs.anthropic-api-key }}
+        MAX_TURNS: ${{ inputs.max-turns }}
+        REPO: ${{ github.repository }}
+        PR: ${{ github.event.issue.number || github.event.pull_request.number }}
+        REQUEST: ${{ github.event.comment.body || github.event.review.body }}
+        SOURCE_URL: ${{ github.event.comment.html_url || github.event.review.html_url }}
+      run: '"$GITHUB_ACTION_PATH/ask.sh"'
+
+    - if: always() && steps.mention.outputs.real == '1'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        PR: ${{ github.event.issue.number || github.event.pull_request.number }}
+        MODE: ${{ steps.claude.outputs.mode }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: '"$GITHUB_ACTION_PATH/post.sh"'
