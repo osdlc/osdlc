@@ -247,6 +247,10 @@ approved on 2026-11-08. Decisions:
   step is skipped (`steps.claude.outcome != 'skipped'`), so the pull request
   gets no reply. `agent-pr-answer` replaces this workflow; it must post an
   error on every failure path. Found in the #717 pre-review.
+- `pr-update` (`packages/ts/pr-update/src/repair/agents.ts:97`) calls
+  `callAgent` with no signal, so interrupting it leaves the agent running.
+  Follow-up from [#723](https://github.com/osdlc/osdlc/pull/723): one shared
+  interrupt helper for every host that calls `callAgent`.
 
 ## PR process
 
