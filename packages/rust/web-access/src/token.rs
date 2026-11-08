@@ -370,4 +370,20 @@ mod tests {
             [0xff, 0xfe, 0x00]
         );
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_token_file_without_read_permission_is_an_error_not_a_new_token() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let p = token_path(dir.path());
+        std::fs::write(&p, "kept\n").unwrap();
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o200)).unwrap();
+        if std::fs::read(&p).is_ok() {
+            return; // root reads anything; the case cannot be staged.
+        }
+        assert!(load_or_mint(dir.path()).is_err());
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o600)).unwrap();
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), "kept\n");
+    }
 }

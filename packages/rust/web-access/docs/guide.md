@@ -112,7 +112,7 @@ one that fails answers the request.
 
 | # | Check | Fails with | Why it exists |
 |---|---|---|---|
-| 1 | `Host` is on the allowlist | 421 `host not allowed` | Stops DNS rebinding: a page on `evil.example` that points its name at `192.168.1.5` still sends `Host: evil.example`. |
+| 1 | `Host` is on the allowlist, or for a wildcard bind a current interface address on its port | 421 `host not allowed` | Stops DNS rebinding: a page on `evil.example` that points its name at `192.168.1.5` still sends `Host: evil.example`. |
 | 2 | A mutating request or a WebSocket upgrade with an `Origin` has an allowed origin | 403 `origin not allowed` | Stops another site from changing data, or opening a socket, through your browser. |
 | 3 | The path normalises | 400 `bad path` | Stops `/a/../admin` and `/a%2Fb` tricks from slipping past route rules. |
 | 4 | A loopback peer under `loopback_open` | passes with `full` | Lets the app's own window work with no token, when you allow it. |
@@ -322,9 +322,9 @@ let options = ServeOptions {
 };
 ```
 
-`stop()` stops accepting connections, releases the ports, and waits up to five
-seconds for the server to wind down. A connection that is already open, such as
-a stream or a WebSocket, is not ended by `stop()`: it runs until it closes. See
+`stop()` stops accepting connections and waits up to five seconds for
+in-flight requests to finish. It then closes every connection still open, such
+as a stream or a WebSocket, and releases the ports. See
 [Security model](#security-model).
 
 ## Using the guard without `serve`
@@ -437,7 +437,7 @@ What the settings page shows comes from `WebAccessStatus`:
 | 403 | `origin not allowed` | A change or WebSocket from another site. | A page on another origin, or a dev server on another port. |
 | 403 | `{"error":"read_only"}` | A view-only token tried to change something. | A read link used for an edit. |
 | 403 | `{"error":"forbidden_in_context",...}` | Your `HostPolicy` refused it. | For example, a remote `full` grant reaching a terminal route. |
-| 421 | `host not allowed` | The `Host` header is not one the server answers to. | A new network address since the server started, or DNS rebinding. |
+| 421 | `host not allowed` | The `Host` header is not one the server answers to. | A host name the server does not know, another port, or DNS rebinding. |
 
 ## Security model
 
@@ -453,7 +453,7 @@ What it does not protect against, and what to do instead:
 |---|---|---|
 | Plain HTTP | Someone who can read the network traffic can read the token. | Use it only on networks you trust, or behind TLS (for example a VPN or Tailscale Serve). |
 | Cookies are not kept apart by port | Browsers send a host's cookies to every port on it. Another server on the same address can read `web_access_20015`. The port in the name only stops two servers overwriting each other's cookie. | Do not run untrusted servers on the same address as a shared app, especially with admin on. |
-| Open connections survive a revoke | Turning sharing or admin off, or rotating a token, stops new requests. A WebSocket or stream already open keeps going until it closes. | Close long-lived connections yourself when the grant they were opened with is withdrawn. |
+| Open connections survive a revoke in your own server | `serve`'s `stop()` closes open connections, and `SharingRuntime` stops the server when sharing or admin is turned off or a token is rotated. With the guard in your own server, a WebSocket or stream already open keeps going until it closes. | Close long-lived connections yourself when the grant they were opened with is withdrawn. |
 | Reverse proxies | Behind a proxy on the same machine, every request comes from loopback, so every request is `WebLocal`. | Do not put a proxy in front, or turn `loopback_open` off and do not trust `WebLocal`. |
 | Windows file permissions | Token files get no owner-only mode. | Keep the token directory in the user's profile, such as under `%LOCALAPPDATA%`. |
 | One token per grant | Every device shares the same token, so you cannot revoke one device. | Rotate the token, which signs every device out. |
@@ -462,9 +462,11 @@ Report a vulnerability as [SECURITY.md](../SECURITY.md) says.
 
 ## Common questions
 
-**My phone gets 421 after I switched networks.** With `Listen::AllInterfaces`,
-the allowed hosts are the addresses the machine had when the server started.
-Restart sharing (with `SharingRuntime::set`) after the address changes.
+**My old link stopped working after I switched networks.** With
+`Listen::AllInterfaces`, the server answers on any address the machine has on
+its port, but the share links list the addresses it had when the server
+started. Restart sharing (with `SharingRuntime::set`) to get links for the new
+address.
 
 **My app's own window gets 401.** Either give it a token, or let loopback in with
 `GuardPolicy { loopback_open: true }`. `serve` does that for you only when there

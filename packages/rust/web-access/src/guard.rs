@@ -4,8 +4,10 @@
 //! Every request, whatever its method (GET, SSE and static files included),
 //! must pass in this order:
 //!
-//! 1. The `Host` header is on the allowlist, else 421. This holds for loopback
-//!    peers too: it is what stops a DNS-rebinding page from reading the app.
+//! 1. The `Host` header is on the allowlist or, for a wildcard bind, is a
+//!    current interface IP on the bound port, else 421. This holds for
+//!    loopback peers too: it is what stops a DNS-rebinding page from reading
+//!    the app.
 //! 2. A mutating request, or a protocol upgrade such as a WebSocket handshake,
 //!    with an `Origin` header has an allowed Origin, else 403. An upgrade may
 //!    also come from a desktop webview's own origin (`tauri://localhost`,
@@ -15,7 +17,8 @@
 //!    the normalised path; read-safe rules match the raw path.
 //! 4. A loopback peer passes with [`Grant::Full`] when
 //!    [`GuardPolicy::loopback_open`] is set.
-//! 5. A `GET` carrying a valid `?token=` sets the cookie to that token and
+//! 5. A `GET` carrying a valid `?token=` (as written or percent-decoded; the
+//!    cookie is stored percent-encoded) sets the cookie to that token and
 //!    answers with a small page that moves to the same URL without the
 //!    parameter (a `Refresh` header and a `<meta>` refresh, not a 303), so the
 //!    token never stays in the address bar, history or a `Referer`. The move
@@ -38,7 +41,7 @@
 //! Every response carries `Referrer-Policy: no-referrer` and
 //! `X-Content-Type-Options: nosniff`.
 
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -250,6 +253,14 @@ impl Tokens {
     fn grant_for(&self, presented: &str) -> Option<Grant> {
         self.find(presented).map(|e| e.grant)
     }
+
+    /// [`Self::find`] for a `?token=` or cookie value: as written, then
+    /// percent-decoded. The raw match keeps a link or cookie written before
+    /// tokens were encoded working for a hand-set token holding a literal
+    /// `%XX`.
+    fn find_encoded(&self, raw: &str) -> Option<&Entry> {
+        self.find(raw).or_else(|| self.find(&decode_token(raw)))
+    }
 }
 
 /// Guard behaviour toggles.
@@ -266,6 +277,7 @@ pub struct GuardState {
     tokens: Tokens,
     read_safe: Vec<RouteRule<()>>,
     allowed_hosts: Vec<String>,
+    live_hosts: Option<LiveHosts>,
     policy: GuardPolicy,
     on_denied: Option<Arc<OnDenied>>,
     denials: DenialBudget,
@@ -291,10 +303,37 @@ impl GuardState {
             tokens,
             read_safe: Vec::new(),
             allowed_hosts: hosts,
+            live_hosts: None,
             policy,
             on_denied: None,
             denials: DenialBudget::new(Instant::now()),
         }
+    }
+
+    /// Also allow `<ip>:<port>` for a wildcard bind in `binds` (same port and
+    /// address family) when `ips` lists `ip` at request time, so an interface
+    /// address that appears after start is not refused. `ips` runs only when
+    /// such a Host misses the allowlist.
+    pub(crate) fn with_live_hosts(mut self, binds: Vec<SocketAddr>, ips: HostIps) -> Self {
+        self.live_hosts = Some(LiveHosts { binds, ips });
+        self
+    }
+
+    /// Whether a normalised `host:port` authority may be served.
+    fn host_allowed(&self, authority: &str) -> bool {
+        if self.allowed_hosts.iter().any(|h| h == authority) {
+            return true;
+        }
+        let Some(live) = &self.live_hosts else {
+            return false;
+        };
+        let Ok(addr) = authority.parse::<SocketAddr>() else {
+            return false;
+        };
+        live.binds
+            .iter()
+            .any(|b| b.port() == addr.port() && b.is_ipv4() == addr.is_ipv4())
+            && (live.ips)().contains(&addr.ip())
     }
 
     /// Routes a [`Grant::Read`] request may use with a non-safe method or a
@@ -365,6 +404,15 @@ impl GuardState {
     }
 }
 
+/// The host's interface IPs, listed when asked.
+pub(crate) type HostIps = Arc<dyn Fn() -> Vec<IpAddr> + Send + Sync>;
+
+/// See [`GuardState::with_live_hosts`].
+struct LiveHosts {
+    binds: Vec<SocketAddr>,
+    ips: HostIps,
+}
+
 /// `path` cut to at most [`MAX_RECORDED_PATH`] bytes on a char boundary, with
 /// a marker when something was dropped.
 fn clamp_path(path: &str) -> String {
@@ -416,18 +464,17 @@ pub fn origin_matches_host(origin: &str, host: &str) -> bool {
     origin_authority(origin).is_some_and(|o| o == normalize_authority(host, 80))
 }
 
-/// Every cookie named `name`, decoded (see [`encode_token`]): another app on
-/// the same host can set a stale one (cookies are not port-isolated), so the
-/// first must not shadow a valid one.
-fn cookie_values<'a>(req: &'a Request<Body>, name: &'a str) -> impl Iterator<Item = String> + 'a {
+/// Every cookie named `name`, still encoded (see [`encode_token`]): another
+/// app on the same host can set a stale one (cookies are not port-isolated),
+/// so the first must not shadow a valid one.
+fn cookie_values<'a>(req: &'a Request<Body>, name: &'a str) -> impl Iterator<Item = &'a str> + 'a {
     req.headers()
         .get_all(header::COOKIE)
         .iter()
         .filter_map(|v| v.to_str().ok())
         .flat_map(|v| v.split(';'))
         .filter_map(|pair| pair.trim().split_once('='))
-        .filter(move |(k, _)| *k == name)
-        .map(|(_, v)| decode_token(v))
+        .filter_map(move |(k, v)| (k == name).then_some(v))
 }
 
 /// Everything but the URL-unreserved characters `A-Z a-z 0-9 - . _ ~`.
@@ -452,14 +499,13 @@ fn decode_token(raw: &str) -> String {
         .map_or_else(|_| raw.to_owned(), |t| t.into_owned())
 }
 
-/// The value of `?token=`, percent-decoded, and the query with that parameter
-/// removed; `None` when the query has no `token` parameter. A value that does
-/// not decode to UTF-8 is kept as written.
-pub(crate) fn split_token_param(query: &str) -> Option<(String, String)> {
+/// The raw (still encoded) value of `?token=` and the query with that
+/// parameter removed; `None` when the query has no `token` parameter.
+pub(crate) fn split_token_param(query: &str) -> Option<(&str, String)> {
     let is_token = |p: &&str| *p == "token" || p.starts_with("token=");
     // The last `token` wins, as browsers and form parsers read a repeated key.
     let raw = query.split('&').rfind(is_token)?;
-    let token = decode_token(raw.strip_prefix("token=").unwrap_or(""));
+    let token = raw.strip_prefix("token=").unwrap_or("");
     let rest: Vec<&str> = query
         .split('&')
         .filter(|p| !p.is_empty() && !is_token(p))
@@ -543,10 +589,8 @@ async fn check(state: &GuardState, req: Request<Body>, next: Next) -> Response {
         .and_then(|v| v.to_str().ok())
         .or_else(|| req.uri().authority().map(|a| a.as_str()));
     let authority = host.map(|h| normalize_authority(h, 80));
-    let allowed = authority
-        .as_ref()
-        .filter(|h| state.allowed_hosts.contains(h));
-    // The allowlisted port the browser reached us on names the cookie.
+    let allowed = authority.as_ref().filter(|h| state.host_allowed(h));
+    // The allowed port the browser reached us on names the cookie.
     let Some(cookie) = allowed.and_then(|h| authority_port(h)).map(cookie_name) else {
         state.deny(parts, DenialReason::BadHost);
         return refuse(StatusCode::MISDIRECTED_REQUEST, "host not allowed");
@@ -561,7 +605,7 @@ async fn check(state: &GuardState, req: Request<Body>, next: Next) -> Response {
         let origin = origin.to_str().ok();
         let ok = origin
             .and_then(origin_authority)
-            .is_some_and(|o| state.allowed_hosts.contains(&o))
+            .is_some_and(|o| state.host_allowed(&o))
             || (upgrade && origin.is_some_and(is_webview_origin));
         if !ok {
             state.deny(parts, DenialReason::ForeignOrigin);
@@ -584,7 +628,7 @@ async fn check(state: &GuardState, req: Request<Body>, next: Next) -> Response {
     if method == Method::GET
         && let Some((tok, rest)) = req.uri().query().and_then(split_token_param)
     {
-        if state.tokens.grant_for(&tok).is_some() {
+        if let Some(entry) = state.tokens.find_encoded(tok) {
             // Exactly one leading slash: browsers read `//host` as a
             // protocol-relative, off-origin redirect.
             let safe = format!("/{}", path.trim_start_matches('/'));
@@ -594,8 +638,8 @@ async fn check(state: &GuardState, req: Request<Body>, next: Next) -> Response {
                 format!("{safe}?{rest}")
             };
             // Encoded, so a token with `;` or a control character cannot break
-            // the header; `cookie_values` decodes it.
-            let value = encode_token(&tok);
+            // the header.
+            let value = encode_token(&entry.token);
             let set_cookie = format!("{cookie}={value}; HttpOnly; SameSite=Strict; Path=/");
             return bounce(&location, &set_cookie);
         }
@@ -610,7 +654,7 @@ async fn check(state: &GuardState, req: Request<Body>, next: Next) -> Response {
     let mut grant = header_tok.and_then(|t| state.tokens.grant_for(t));
     for t in cookie_values(&req, &cookie) {
         presented_wrong = true;
-        grant = grant.max(state.tokens.grant_for(&t));
+        grant = grant.max(state.tokens.find_encoded(t).map(|e| e.grant));
     }
     if let Some(grant) = grant {
         return state.admit(req, context, grant, next).await;
@@ -1383,6 +1427,93 @@ mod tests {
         assert_eq!(path_and_query, "/?token=a%26b%23c%20d");
         let res = status(app, req("GET", path_and_query, LAN, &[])).await;
         assert_eq!(bounce_target(&res), "/");
+    }
+
+    /// A link or cookie written before tokens were percent-encoded carries a
+    /// hand-set token raw; one holding `%41` must still match itself.
+    #[tokio::test]
+    async fn a_raw_link_and_cookie_for_a_token_holding_a_percent_still_work() {
+        const RAW: &str = "ab%41cdef-hand-set";
+        let app = || {
+            let state = GuardState::new(
+                Tokens::full_only(RAW.to_owned()),
+                [HOST.to_owned()],
+                GuardPolicy::default(),
+            );
+            Router::new()
+                .route("/", get(|| async { "ok" }))
+                .layer(axum::middleware::from_fn_with_state(Arc::new(state), guard))
+        };
+        let link = format!("/?token={RAW}");
+        let res = status(app(), req("GET", &link, LAN, &[])).await;
+        assert_eq!(bounce_target(&res), "/");
+        // The cookie it sets is the encoded token.
+        let set = res.headers()[header::SET_COOKIE].to_str().unwrap();
+        assert!(
+            set.starts_with("web_access_3000=ab%2541cdef-hand-set;"),
+            "{set}"
+        );
+        let cookie = format!("{}={RAW}", cookie_name(3000));
+        let res = status(app(), req("GET", "/", LAN, &[("cookie", &cookie)])).await;
+        assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    /// A guard on `HOST` with a wildcard bind on :3000 whose interface list
+    /// holds 10.0.0.7; `calls` counts how often the list is read.
+    fn live_host_app(calls: Arc<AtomicUsize>) -> Router {
+        let state = GuardState::new(
+            Tokens::full_only(TOKEN.to_owned()),
+            [HOST.to_owned()],
+            GuardPolicy::default(),
+        )
+        .with_live_hosts(
+            vec!["0.0.0.0:3000".parse().unwrap()],
+            Arc::new(move || {
+                calls.fetch_add(1, Ordering::SeqCst);
+                vec!["10.0.0.7".parse().unwrap()]
+            }),
+        );
+        Router::new()
+            .route("/", get(|| async { "ok" }).post(|| async { "posted" }))
+            .layer(axum::middleware::from_fn_with_state(Arc::new(state), guard))
+    }
+
+    fn req_on(method: &str, uri: &str, host: &str, extra: &[(&str, &str)]) -> Request<Body> {
+        let mut r = req(method, uri, LAN, extra);
+        r.headers_mut()
+            .insert(header::HOST, HeaderValue::from_str(host).unwrap());
+        r
+    }
+
+    #[tokio::test]
+    async fn a_live_interface_host_is_served_on_the_bound_port_only() {
+        const LIVE: &str = "10.0.0.7:3000";
+        let calls = Arc::new(AtomicUsize::new(0));
+        let app = || live_host_app(calls.clone());
+        let h = [(TOKEN_HEADER, TOKEN)];
+        // An allowlisted Host never reads the interface list.
+        let res = status(app(), req_on("GET", "/", HOST, &h)).await;
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+
+        let res = status(app(), req_on("GET", "/", LIVE, &h)).await;
+        assert_eq!(res.status(), StatusCode::OK);
+        // Its share link sets this port's cookie.
+        let res = status(app(), req_on("GET", "/?token=s3cret-token", LIVE, &[])).await;
+        let set = res.headers()[header::SET_COOKIE].to_str().unwrap();
+        assert!(set.starts_with("web_access_3000="), "{set}");
+        // Its own Origin passes a mutation; another address's does not.
+        let own = [(TOKEN_HEADER, TOKEN), ("origin", "http://10.0.0.7:3000")];
+        let res = status(app(), req_on("POST", "/", LIVE, &own)).await;
+        assert_eq!(res.status(), StatusCode::OK);
+        let foreign = [(TOKEN_HEADER, TOKEN), ("origin", "http://10.0.0.8:3000")];
+        let res = status(app(), req_on("POST", "/", LIVE, &foreign)).await;
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
+        // Another port, an address not on an interface, or a name is 421.
+        for host in ["10.0.0.7:3001", "10.0.0.8:3000", "evil.example:3000"] {
+            let res = status(app(), req_on("GET", "/", host, &h)).await;
+            assert_eq!(res.status(), StatusCode::MISDIRECTED_REQUEST, "{host}");
+        }
     }
 
     #[tokio::test]

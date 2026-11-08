@@ -122,7 +122,8 @@ The examples run with `cargo run --example <name>`:
 
 Every request, whatever its method, passes these checks in order:
 
-1. The `Host` header is on the allowlist, else 421. This holds for loopback
+1. The `Host` header is on the allowlist, else 421. A wildcard bind also
+   admits any current interface address on its port. This holds for loopback
    peers too: it is what stops a DNS-rebinding page from reading the app.
 2. A mutating request, or a protocol upgrade such as a WebSocket handshake,
    that carries an `Origin` header has an allowed origin, else 403. An upgrade
@@ -172,10 +173,12 @@ origins can be reported to a callback (`GuardState::with_on_denied`), at most
   there can read the token. The port in the name only keeps two servers from
   overwriting each other's cookie. Do not run untrusted servers on the same
   address as a shared app, above all with admin access on.
-- Turning sharing off, turning admin off or rotating a token stops new
-  requests, but a connection that is already open (a stream or a WebSocket)
-  keeps running until it closes. Close long-lived connections yourself when the
-  grant they were opened with is withdrawn.
+- `stop()` closes connections that are still open (a stream or a WebSocket)
+  after a grace period, and `SharingRuntime` stops the server when sharing or
+  admin is turned off or a token is rotated. With the guard in your own server,
+  a connection that is already open keeps running until it closes. Close
+  long-lived connections yourself when the grant they were opened with is
+  withdrawn.
 - On Windows, token files get no owner-only mode. Keep the token directory in
   the user's own profile (for example under `%LOCALAPPDATA%`), where the
   default permissions keep other users out.
