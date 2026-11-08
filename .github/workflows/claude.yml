@@ -10,9 +10,9 @@
 # edit tools and Bash, which the action would otherwise use to commit and
 # push to the pull request's branch.
 #
-# Auth is CLAUDE_CODE_OAUTH_TOKEN, a token from `claude setup-token` that
-# bills to a Claude subscription. The action talks to GitHub as the Claude
-# GitHub App, which must be installed on the repository.
+# Auth is ANTHROPIC_API_KEY, a Claude Console API key that bills to the
+# org's API credits. The action talks to GitHub as the Claude GitHub App,
+# which must be installed on the repository.
 #
 # Every action is pinned to a commit SHA; the comment names its release.
 name: claude
@@ -58,7 +58,7 @@ jobs:
           fetch-depth: 1
       - uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1.0.269
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           # Temporary: shows Claude's error text in the log. Remove after one run.
           show_full_output: true
           claude_args: >-
