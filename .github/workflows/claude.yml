@@ -6,17 +6,15 @@
 # before a runner starts, so nobody else's comment spends a runner minute or
 # a token. Comments on issues are skipped too.
 #
-# This runs the Claude Code CLI directly (`claude -p`) rather than
-# anthropics/claude-code-action, whose @claude path was refused by the API
-# with billing_error while the CLI with the same credential was not. The
-# steps are plain shell, so a failure shows its real error in the log.
+# The steps are the composite actions in packages/gh-actions/: claude-setup
+# installs a pinned Claude Code and the craft plugin, and claude-pr-answer
+# runs `claude -p` with read-only tools and posts the answer, or the error.
+# The workflow checks out the default branch and runs the actions from it, and
+# checks the pull request out under pr/, so a pull request cannot change the
+# action that runs with the API key.
 #
-# Claude only reads and answers. `--allowedTools` grants file reading,
-# skills, read-only git and gh commands, and node for the scripts the craft
-# skills bundle; nothing that edits, commits, pushes or comments. The last
-# step posts Claude's answer, or the error when there is none.
-#
-# Auth is CLAUDE_CODE_OAUTH_TOKEN. The CLI version is pinned below.
+# Auth is ANTHROPIC_API_KEY, a Claude Console API key that bills to the org's
+# API credits.
 #
 # Every action is pinned to a commit SHA; the comment names its release.
 name: claude
@@ -30,9 +28,6 @@ on:
     types: [submitted]
 
 permissions: {}
-
-env:
-  CLAUDE_CODE_VERSION: 2.1.319
 
 jobs:
   answer:
@@ -53,67 +48,27 @@ jobs:
       contents: read
       pull-requests: write
       issues: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      REPO: ${{ github.repository }}
-      PR: ${{ github.event.issue.number || github.event.pull_request.number }}
-      REQUEST: ${{ github.event.comment.body || github.event.review.body }}
-      SOURCE_URL: ${{ github.event.comment.html_url || github.event.review.html_url }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/pull/${{ github.event.issue.number || github.event.pull_request.number }}/head
+          path: pr
           fetch-depth: 0
 
-      - name: Check out the pull request
-        run: gh pr checkout "$PR"
+      - uses: ./packages/gh-actions/claude-setup
+        with:
+          marketplaces: https://github.com/osdlc/marketplace.git
+          plugins: craft@osdlc
 
-      - name: Install Claude Code and the craft plugin
-        run: |
-          curl -fsSL https://claude.ai/install.sh | bash -s -- "$CLAUDE_CODE_VERSION"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          "$HOME/.local/bin/claude" plugin marketplace add https://github.com/osdlc/marketplace.git
-          "$HOME/.local/bin/claude" plugin install craft@osdlc
-
-      - name: Ask Claude
-        id: claude
-        env:
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-        run: |
-          prompt="You are answering a question on pull request #$PR in $REPO.
-          The pull request branch is checked out in the current directory.
-          Use \`gh pr view $PR --comments\` and \`gh pr diff $PR\` for its description, discussion and diff.
-          Answer only what is asked, in GitHub-flavored markdown, as your final message.
-          You cannot edit files, commit or post; the workflow posts your final message.
-
-          The request, from $SOURCE_URL:
-
-          $REQUEST"
-          set +e
-          claude -p "$prompt" \
-            --output-format json \
-            --max-turns 30 \
-            --allowedTools "Read,Glob,Grep,Skill,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(node:*)" \
-            --disallowedTools "Edit,MultiEdit,Write,NotebookEdit,Bash(git commit:*),Bash(git push:*),Bash(gh pr comment:*)" \
-            < /dev/null > result.json
-          status=$?
-          set -e
-          jq '{is_error, subtype, num_turns, total_cost_usd, api_error_status, result}' result.json || cat result.json
-          exit "$status"
-
-      - name: Post the answer
-        if: always() && steps.claude.outcome != 'skipped'
-        env:
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          if [ -s result.json ] && jq -e '.is_error == false' result.json > /dev/null 2>&1; then
-            jq -r '.result' result.json > answer.md
-          else
-            {
-              echo "Claude could not answer. [Run log]($RUN_URL)"
-              echo
-              echo '```'
-              jq -r '.result // "no result"' result.json 2>/dev/null || echo "no result"
-              echo '```'
-            } > answer.md
-          fi
-          gh pr comment "$PR" --body-file answer.md
+      - uses: ./packages/gh-actions/claude-pr-answer
+        with:
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          pr: ${{ github.event.issue.number || github.event.pull_request.number }}
+          request: ${{ github.event.comment.body || github.event.review.body }}
+          source-url: ${{ github.event.comment.html_url || github.event.review.html_url }}
+          working-directory: pr

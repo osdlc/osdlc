@@ -1,0 +1,77 @@
+name: Claude PR answer
+description: Ask Claude Code a question about a pull request with read-only tools, and post its answer as a comment.
+author: sksizer
+
+inputs:
+  anthropic-api-key:
+    description: Claude Console API key.
+    required: true
+  pr:
+    description: Pull request number.
+    required: true
+  request:
+    description: The question or instruction, usually the triggering comment's body.
+    required: true
+  source-url:
+    description: Link to the triggering comment, quoted to Claude.
+    default: ''
+  working-directory:
+    description: Checkout of the pull request that Claude works in.
+    default: .
+  github-token:
+    description: Token for gh. Needs pull-requests read, and write to post.
+    default: ${{ github.token }}
+  model:
+    description: Model to use. Empty uses the Claude Code default.
+    default: ''
+  max-turns:
+    description: Cap on agent turns.
+    default: '30'
+  allowed-tools:
+    description: Tools Claude may use without asking.
+    default: Read,Glob,Grep,Skill,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(node:*)
+  disallowed-tools:
+    description: Tools Claude may never use. Wins over allowed-tools.
+    default: Edit,MultiEdit,Write,NotebookEdit,Bash(git commit:*),Bash(git push:*),Bash(gh pr comment:*)
+  post:
+    description: Post the answer, or the error, as a pull request comment.
+    default: 'true'
+
+outputs:
+  is-error:
+    description: Whether Claude's run ended in an error.
+    value: ${{ steps.answer.outputs.is-error }}
+  result-file:
+    description: Path to the CLI's JSON result.
+    value: ${{ steps.answer.outputs.result-file }}
+  cost-usd:
+    description: Reported cost of the run in USD.
+    value: ${{ steps.answer.outputs.cost-usd }}
+
+runs:
+  using: composite
+  steps:
+    - id: answer
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        PR: ${{ inputs.pr }}
+        REQUEST: ${{ inputs.request }}
+        SOURCE_URL: ${{ inputs.source-url }}
+        MODEL: ${{ inputs.model }}
+        MAX_TURNS: ${{ inputs.max-turns }}
+        ALLOWED_TOOLS: ${{ inputs.allowed-tools }}
+        DISALLOWED_TOOLS: ${{ inputs.disallowed-tools }}
+      run: '"$GITHUB_ACTION_PATH/answer.sh"'
+
+    - if: always() && inputs.post == 'true' && steps.answer.outputs.result-file != ''
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        PR: ${{ inputs.pr }}
+        RESULT_FILE: ${{ steps.answer.outputs.result-file }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: '"$GITHUB_ACTION_PATH/post.sh"'

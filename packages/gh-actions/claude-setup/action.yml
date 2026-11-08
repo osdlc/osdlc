@@ -1,0 +1,30 @@
+name: Claude Code setup
+description: Install a pinned Claude Code CLI and, optionally, plugins from marketplaces.
+author: sksizer
+
+inputs:
+  version:
+    description: Claude Code version to install.
+    default: 2.1.319
+  marketplaces:
+    description: Plugin marketplace sources (git URLs, paths or owner/repo), one per line.
+    default: ''
+  plugins:
+    description: Plugins to install, one per line, as plugin@marketplace.
+    default: ''
+
+outputs:
+  claude-path:
+    description: Absolute path to the installed claude binary.
+    value: ${{ steps.install.outputs.claude-path }}
+
+runs:
+  using: composite
+  steps:
+    - id: install
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        MARKETPLACES: ${{ inputs.marketplaces }}
+        PLUGINS: ${{ inputs.plugins }}
+      run: '"$GITHUB_ACTION_PATH/setup.sh"'

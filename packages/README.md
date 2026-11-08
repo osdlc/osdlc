@@ -32,6 +32,10 @@ of them.
   `<crate>/vX.Y.Z`, for example `etag-write/v0.1.0`, and gets a GitHub
   release. The crate name keeps one crate's tags apart from another's, so
   it must be unique across `packages/rust/`.
+- Composite GitHub Actions live in `packages/gh-actions/<name>/`. They are
+  not published to a registry: callers reference them by path and commit,
+  and each release is tagged `<action>/vX.Y.Z`.
+  [`gh-actions/README.md`](gh-actions/README.md) covers their shape.
 - A library can move to its own repository later if it grows.
 
 ## Licenses
