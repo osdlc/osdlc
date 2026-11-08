@@ -33,6 +33,8 @@ use crate::{Size, is_vault_link_url, md_link_target, parse_inner, parse_inner_se
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ScanOptions {
     /// Which rules decide what is code. Links in code are not links.
+    /// [`CodeRules::None`] finds no code, for text that a markdown parser has
+    /// already taken the code out of.
     pub code_rules: CodeRules,
     /// Skip links inside HTML comments, `<!--` to `-->` or the end of the
     /// body. Off by default: a comment's links are found.
@@ -124,7 +126,7 @@ pub enum AbandonReason {
 pub struct AbandonedLink {
     /// Why it is not a link.
     pub reason: AbandonReason,
-    /// Whether a `!` came before the `[[`.
+    /// Whether an unescaped `!` came before the `[[`.
     pub embed: bool,
     /// Byte offset within the **body** of the `[[`, or of the `!` before it.
     pub byte_start: usize,
@@ -149,7 +151,11 @@ pub struct BodyScan {
 ///
 /// Code is blanked before matching, `[[` never nests, and a markdown link
 /// counts only when `is_vault_link_url` accepts its URL and it carries no
-/// scheme. The span is what an editor decoration, a hover preview and a
+/// scheme. A `!` after an odd run of `\` is escaped: `\![[Note]]` is a
+/// [`BodyLinkKind::Wikilink`] that starts at the `[[`, with the `!` left
+/// outside its span as literal text, where `![[Note]]` is an
+/// [`BodyLinkKind::Embed`] that starts at the `!`. An even run, as in
+/// `\\![[Note]]`, escapes the backslash and leaves an embed. The span is what an editor decoration, a hover preview and a
 /// rename's link rewrite need: which bytes to touch.
 ///
 /// # Why the offsets need a char table
@@ -235,7 +241,7 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
     let mut i = 0usize;
     while i < chars.len() {
         if chars[i] == '[' && chars.get(i + 1) == Some(&'[') {
-            let embed = i > 0 && chars[i - 1] == '!';
+            let embed = i > 0 && chars[i - 1] == '!' && !escaped_bang(&chars, i - 1);
             let start = at[if embed { i - 1 } else { i }];
             let mut j = i + 2;
             let mut inner = String::new();
@@ -346,6 +352,18 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
         links: out,
         abandoned: merge_runs(abandoned),
     }
+}
+
+/// Whether the `!` at `bang` follows an odd run of `\`: `\![[Note]]` is a
+/// literal `!` and a wikilink, not an embed.
+fn escaped_bang(chars: &[char], bang: usize) -> bool {
+    chars[..bang]
+        .iter()
+        .rev()
+        .take_while(|c| **c == '\\')
+        .count()
+        % 2
+        == 1
 }
 
 /// Folds each abandoned `[[` that starts inside the one before it into that

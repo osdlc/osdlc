@@ -32,8 +32,20 @@ slug-collate = { workspace = true }
 [dev-dependencies]
 # Frontmatter framing for the differential test.
 frontmatter-lossless = { workspace = true }
-# Reads the shared case file, tests/fixtures/conformance.json.
-serde_json = { workspace = true }
+# tests/conformance.rs and the generator only: they read and write the family's
+# suite, packages/conformance/markdown-link/suite.json, which the TypeScript
+# package (packages/ts/markdown-link) also runs. `preserve_order` keeps the
+# suite's keys in the order they are written. The crate parses no JSON at
+# runtime.
+serde_json = { workspace = true, features = ["preserve_order"] }
+
+# The conformance suite's generator: `cargo run -p markdown-link --example
+# conformance-write` rewrites the expected values in
+# packages/conformance/markdown-link/suite.json. It lives under tests/, beside
+# the runner it shares code with, so it is not published.
+[[example]]
+name = "conformance-write"
+path = "tests/conformance/write.rs"
 
 [lints]
 workspace = true

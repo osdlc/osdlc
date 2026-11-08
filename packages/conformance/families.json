@@ -23,6 +23,14 @@
       { "language": "rust", "dir": "packages/rust/glob-intersect", "name": "glob-intersect" }
     ]
   },
+  "markdown-link": {
+    "reference": "rust",
+    "generator": "cargo run -p markdown-link --example conformance-write",
+    "implementations": [
+      { "language": "rust", "dir": "packages/rust/markdown-link", "name": "markdown-link" },
+      { "language": "ts", "dir": "packages/ts/markdown-link", "name": "@osdlc/markdown-link" }
+    ]
+  },
   "path-guard": {
     "reference": "ts",
     "generator": "pnpm --filter @osdlc/path-guard conformance:write",

@@ -99,3 +99,60 @@ describe('stripCode', () => {
     }
   }, 120_000)
 })
+
+describe('container blocks', () => {
+  test('a fence in a list item is code and ends with the item', () => {
+    expect(stripCode('- ```\n  [[a]]\n  ```\n\n[[b]]')).toBe('     \n       \n     \n\n[[b]]')
+    // Not indented to the content: the item ends, so does the fence.
+    expect(stripCode('- ```\n[[a]]\n')).toBe('     \n[[a]]\n')
+    // A blank line stays in the item; the unclosed fence runs on.
+    expect(stripCode('- ```\n  [[a]]\n\n  [[b]]\n[[c]]')).toBe('     \n       \n\n       \n[[c]]')
+  })
+
+  test('a fence indented to the content column opens', () => {
+    expect(stripCode('10. item\n    ```\n    [[a]]\n    ```\n[[b]]')).toBe(
+      '10. item\n       \n         \n       \n[[b]]',
+    )
+    // Four columns past the content is indented code.
+    expect(stripCode('- item\n      ```\n')).toBe('- item\n      ```\n')
+    // A tab goes to the next multiple of four.
+    expect(stripCode('-\titem\n\t```\n')).toBe('-\titem\n    \n')
+  })
+
+  test('a fence in a block quote ends with the quote', () => {
+    expect(stripCode('> ```\n> [[a]]\n> ```\n[[b]]')).toBe('     \n       \n     \n[[b]]')
+    expect(stripCode('> ```\n> [[a]]\n[[b]]')).toBe('     \n       \n[[b]]')
+    expect(stripCode('> ```\n> a\n\n[[b]]')).toBe('     \n   \n\n[[b]]')
+  })
+
+  test('containers nest', () => {
+    expect(stripCode('- a\n  - b\n    > ```\n    > [[x]]\n  [[y]]')).toBe(
+      '- a\n  - b\n         \n           \n  [[y]]',
+    )
+  })
+
+  test('a thematic break or a marker with no space is not a container', () => {
+    expect(stripCode('- - -\n[[a]]')).toBe('- - -\n[[a]]')
+    expect(stripCode('1.5 ```\n[[a]]')).toBe('1.5 ```\n[[a]]')
+  })
+
+  test("'skill-export' knows no containers and 'none' finds no code", () => {
+    const text = '- ```\n  [[a]]\n  ```\n[[b]]'
+    expect(stripCodeWith(text, 'none')).toBe(text)
+    expect(stripCodeWith(text, 'skill-export')).toBe('- ```\n  [[a]]\n     \n     ')
+  })
+})
+
+describe('table rows', () => {
+  test('a span stays in its cell', () => {
+    // GFM cuts the row at every unescaped pipe first, backticks or not.
+    expect(stripCode('| `a | [[x]] | b` |')).toBe('| `a | [[x]] | b` |')
+    expect(stripCode('| `a` | [[x]] |')).toBe('|     | [[x]] |')
+    // An escaped pipe stays in the cell, and so in the span.
+    expect(stripCode('| `a \\| b` | [[x]] |')).toBe('|          | [[x]] |')
+    // Rows in a list item and a block quote.
+    expect(stripCode('- x\n  | `a | [[x]] | b` |')).toBe('- x\n  | `a | [[x]] | b` |')
+    expect(stripCode('> | `a | [[x]] | b` |')).toBe('> | `a | [[x]] | b` |')
+    expect(stripCodeWith('| `a | [[x]] | b` |', 'skill-export')).toBe('|                 |')
+  })
+})
