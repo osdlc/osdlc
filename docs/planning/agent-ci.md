@@ -58,7 +58,7 @@ flowchart LR
     RUN["PR 715: run CLI with maxTurns"]
     CHECK["Check permission rows against the facts"]
     STRICT["Backlog: enforced read-only mappings (claude tool denies + sandbox, cursor cli.json) so strict passes"]
-    CUR["Cursor: agent-call writes .cursor/cli.json for allow and deny"]
+    CUR["PR 721: cursor allow and deny via .cursor/cli.json"]
     REL["Release agent-call with the run CLI and maxTurns"]
   end
   subgraph gate["Gate"]
@@ -114,7 +114,7 @@ flowchart LR
   class UP yours
   class RUN,SETUP blocked
   class PERM,PROBE,CHECK,REL,ANS,SPEC,MULTI next
-  class CUR active
+  class CUR blocked
   class MCP,PUB,DATA,PIN,STRICT later
 ```
 
@@ -124,6 +124,7 @@ Checked 2026-11-08. A periodic check refreshes this table and the graph.
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
+| [#721](https://github.com/osdlc/osdlc/pull/721) | feat(agent-call): allow and deny tools on cursor | open  | none   | —              | needs your review; verified live on cursor                           | merge                    |
 | [#716](https://github.com/osdlc/osdlc/pull/716) | feat(gh-actions): agent-setup action  | draft | none   | —              | review 1 and code review applied; needs you to mark it ready and review | merge                    |
 | [#715](https://github.com/osdlc/osdlc/pull/715) | feat(agent-call): agent-call run command | draft | none   | —              | review 1 applied; needs you to mark it ready and review              | merge, then release agent-call |
 | [#713](https://github.com/osdlc/osdlc/pull/713) | docs(planning): plan coding agents in CI | merged | — | — | — | merged 2026-11-08 |
