@@ -374,6 +374,10 @@ export function main(argv: string[]): number {
     return 2;
   }
   const rounds = Number(flag(argv, "--rounds") ?? 3);
+  if (!Number.isInteger(rounds) || rounds < 1) {
+    console.error("perf gate: --rounds must be a positive integer");
+    return 2;
+  }
   const outDir = flag(argv, "--out");
   const picked = pick(changedFiles(flag(argv, "--changed")), discover(head));
   if (picked.length === 0) {
@@ -419,12 +423,13 @@ export function main(argv: string[]): number {
         console.log(
           `round ${round + 1}/${rounds}: ${side} ${p.lang}:${p.name}`,
         );
-        for (const [id, ms] of runPackage(
-          roots[side],
-          p,
-          corpusFile,
-          scratch,
-        )) {
+        const medians = runPackage(roots[side], p, corpusFile, scratch);
+        // An empty report would otherwise read as "no benchmarks, nothing slower".
+        if (medians.size === 0)
+          throw new Error(
+            `perf gate: ${side} ${p.lang}:${p.name} reported no benchmarks`,
+          );
+        for (const [id, ms] of medians) {
           const list = samples[side].get(id) ?? [];
           list.push(ms);
           samples[side].set(id, list);
