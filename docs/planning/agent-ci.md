@@ -55,7 +55,7 @@ flowchart LR
     PROBE["Cursor clean-config probe"]
   end
   subgraph call["One call · @osdlc/agent-call"]
-    RUN["PR 715: run CLI with maxTurns"]
+    RUN["PR 715: run CLI with maxTurns, merged"]
     CHECK["Check permission rows against the facts"]
     STRICT["Backlog: enforced read-only mappings (claude tool denies + sandbox, cursor cli.json) so strict passes"]
     CUR["PR 721: cursor allow and deny via .cursor/cli.json"]
@@ -110,10 +110,11 @@ flowchart LR
   classDef yours fill:#f5c27a,stroke:#c99545,color:#1b2230
   classDef next fill:#2f5bd3,stroke:#2144a3,color:#ffffff
   classDef later fill:#8a93a3,stroke:#6b7384,color:#ffffff
-  class W710,P711,P707,P712,PLAN,PARLEY,PLANPR,ARCH done
+  class W710,P711,P707,P712,PLAN,PARLEY,PLANPR,ARCH,RUN done
   class UP yours
-  class RUN,SETUP active
-  class PERM,PROBE,CHECK,REL,ANS,SPEC,MULTI next
+  class SETUP active
+  class PERM,PROBE,CHECK,ANS,SPEC,MULTI next
+  class REL active
   class CUR active
   class MCP,PUB,DATA,PIN,STRICT later
 ```
@@ -125,9 +126,8 @@ move; merged PRs drop off.
 
 | Order | PR | What | Why this order | Status |
 | --- | --- | --- | --- | --- |
-| 1 | [#715](https://github.com/osdlc/osdlc/pull/715) | agent-call `run` CLI and `limits.maxTurns` | Unblocks the agent-call release that `agent-pr-answer` needs | ready; checks rerunning after update from main |
-| 2 | [#721](https://github.com/osdlc/osdlc/pull/721) | agent-call: cursor allow and deny via `.cursor/cli.json` | Same package as #715; review after it so a conflict (README tables, changesets) lands on one PR; can ship in the same release | draft; gate done, waiting on a flaky agent-seat test rerun |
-| 3 | [#716](https://github.com/osdlc/osdlc/pull/716) | `agent-setup` action and `gh-actions release` workflow | Independent of agent-call; needed before `agent-pr-answer` | ready; checks rerunning after update from main |
+| 1 | [#721](https://github.com/osdlc/osdlc/pull/721) | agent-call: cursor allow and deny via `.cursor/cli.json` | Same package as #715 (merged); can ship in the same agent-call release | draft; /craft:pr-review running; behind main |
+| 2 | [#716](https://github.com/osdlc/osdlc/pull/716) | `agent-setup` action and `gh-actions release` workflow | Independent of agent-call; needed before `agent-pr-answer` | draft; /craft:pr-review running |
 
 ## PR tracker
 
@@ -137,7 +137,7 @@ Checked 2026-11-08. A periodic check refreshes this table and the graph.
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
 | [#721](https://github.com/osdlc/osdlc/pull/721) | feat(agent-call): allow and deny tools on cursor | draft | none   | —              | pre-review gate running: /simplify, /code-review, responses | merge                    |
 | [#716](https://github.com/osdlc/osdlc/pull/716) | feat(gh-actions): agent-setup action  | draft | none   | —              | pre-review gate running: /simplify, /code-review, responses | merge                    |
-| [#715](https://github.com/osdlc/osdlc/pull/715) | feat(agent-call): agent-call run command | draft | none   | —              | pre-review gate running: /simplify, /code-review, responses | merge, then release agent-call |
+| [#715](https://github.com/osdlc/osdlc/pull/715) | feat(agent-call): agent-call run command | merged | — | — | — | merged 2026-11-08 |
 | [#717](https://github.com/osdlc/osdlc/pull/717) | docs(planning): status and API review 1 | merged | — | — | — | merged 2026-11-08 |
 | [#713](https://github.com/osdlc/osdlc/pull/713) | docs(planning): plan coding agents in CI | merged | — | — | — | merged 2026-11-08 |
 | [#712](https://github.com/osdlc/osdlc/pull/712) | gh-actions: claude-setup, claude-pr-answer | closed | none  | —              | —                                                                    | closed 2026-11-08; branch kept as a starting point |
