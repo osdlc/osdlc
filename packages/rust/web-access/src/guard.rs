@@ -254,12 +254,17 @@ impl Tokens {
         self.find(presented).map(|e| e.grant)
     }
 
-    /// [`Self::find`] for a `?token=` or cookie value: as written, then
+    /// [`Self::find`] for a `?token=` or cookie value, as written and
     /// percent-decoded. The raw match keeps a link or cookie written before
     /// tokens were encoded working for a hand-set token holding a literal
-    /// `%XX`.
+    /// `%XX`. When the two match different entries (hand-set tokens `a b` and
+    /// `a%20b`), the lower grant wins, so one token's link never carries the
+    /// other's higher grant.
     fn find_encoded(&self, raw: &str) -> Option<&Entry> {
-        self.find(raw).or_else(|| self.find(&decode_token(raw)))
+        match (self.find(raw), self.find(&decode_token(raw))) {
+            (Some(r), Some(d)) => Some(if d.grant < r.grant { d } else { r }),
+            (r, d) => r.or(d),
+        }
     }
 }
 
@@ -1456,6 +1461,44 @@ mod tests {
         let cookie = format!("{}={RAW}", cookie_name(3000));
         let res = status(app(), req("GET", "/", LAN, &[("cookie", &cookie)])).await;
         assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    /// Hand-set tokens `a b` and `a%20b` collide: the raw value of one's link
+    /// or cookie is the other token. The lower grant must win, in both orders.
+    #[tokio::test]
+    async fn a_value_matching_two_tokens_raw_and_decoded_gets_the_lower_grant() {
+        let app = |low: (&str, Grant), high: (&str, Grant)| {
+            let state = GuardState::new(
+                Tokens::none().with(low.0, low.1).with(high.0, high.1),
+                [HOST.to_owned()],
+                GuardPolicy::default(),
+            );
+            let who = |g: Grant| async move { format!("{g:?}") };
+            Router::new()
+                .route("/", get(who))
+                .layer(axum::middleware::from_fn_with_state(Arc::new(state), guard))
+        };
+        let cookie = |v: &str| format!("{}={v}", cookie_name(3000));
+        for (spaced, percent) in [(Grant::Read, Grant::Admin), (Grant::Full, Grant::Read)] {
+            let app = || app(("a b", spaced), ("a%20b", percent));
+            let lower = format!("{:?}", spaced.min(percent));
+            // `a%20b` is the encoded `a b` and the raw `a%20b`.
+            let res = status(app(), req("GET", "/?token=a%20b", LAN, &[])).await;
+            assert_eq!(bounce_target(&res), "/");
+            let set = res.headers()[header::SET_COOKIE].to_str().unwrap();
+            let low_token = if spaced < percent { "a b" } else { "a%20b" };
+            let want = format!("web_access_3000={};", encode_token(low_token));
+            assert!(set.starts_with(&want), "{set}");
+            let res = status(app(), req("GET", "/", LAN, &[("cookie", &cookie("a%20b"))])).await;
+            assert_eq!(body(res).await, lower);
+            // The encoded `a%20b` matches only that token, at its own grant.
+            let res = status(
+                app(),
+                req("GET", "/", LAN, &[("cookie", &cookie("a%2520b"))]),
+            )
+            .await;
+            assert_eq!(body(res).await, format!("{percent:?}"));
+        }
     }
 
     /// A guard on `HOST` with a wildcard bind on :3000 whose interface list

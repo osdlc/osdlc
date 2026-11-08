@@ -323,8 +323,11 @@ let options = ServeOptions {
 ```
 
 `stop()` stops accepting connections and waits up to five seconds for
-in-flight requests to finish. It then closes every connection still open, such
-as a stream or a WebSocket, and releases the ports. See
+in-flight requests to finish. Then every connection still open, such as a
+stream or a WebSocket, fails all further reads and writes, and the ports are
+released. A stream is closed before `stop()` returns. An upgraded WebSocket
+belongs to its handler, which sees the error the next time it reads or writes
+(a handler waiting on a read is woken) and then closes it. See
 [Security model](#security-model).
 
 ## Using the guard without `serve`
@@ -453,7 +456,7 @@ What it does not protect against, and what to do instead:
 |---|---|---|
 | Plain HTTP | Someone who can read the network traffic can read the token. | Use it only on networks you trust, or behind TLS (for example a VPN or Tailscale Serve). |
 | Cookies are not kept apart by port | Browsers send a host's cookies to every port on it. Another server on the same address can read `web_access_20015`. The port in the name only stops two servers overwriting each other's cookie. | Do not run untrusted servers on the same address as a shared app, especially with admin on. |
-| Open connections survive a revoke in your own server | `serve`'s `stop()` closes open connections, and `SharingRuntime` stops the server when sharing or admin is turned off or a token is rotated. With the guard in your own server, a WebSocket or stream already open keeps going until it closes. | Close long-lived connections yourself when the grant they were opened with is withdrawn. |
+| Open connections survive a revoke in your own server | `serve`'s `stop()` ends open connections (their reads and writes fail), and `SharingRuntime` stops the server when sharing or admin is turned off or a token is rotated. With the guard in your own server, a WebSocket or stream already open keeps going until it closes. | Close long-lived connections yourself when the grant they were opened with is withdrawn. |
 | Reverse proxies | Behind a proxy on the same machine, every request comes from loopback, so every request is `WebLocal`. | Do not put a proxy in front, or turn `loopback_open` off and do not trust `WebLocal`. |
 | Windows file permissions | Token files get no owner-only mode. | Keep the token directory in the user's profile, such as under `%LOCALAPPDATA%`. |
 | One token per grant | Every device shares the same token, so you cannot revoke one device. | Rotate the token, which signs every device out. |
@@ -464,7 +467,7 @@ Report a vulnerability as [SECURITY.md](../SECURITY.md) says.
 
 **My old link stopped working after I switched networks.** With
 `Listen::AllInterfaces`, the server answers on any address the machine has on
-its port, but the share links list the addresses it had when the server
+its port (a new address within about two seconds), but the share links list the addresses it had when the server
 started. Restart sharing (with `SharingRuntime::set`) to get links for the new
 address.
 
@@ -477,8 +480,8 @@ keep no cookies between visits. The header form (`x-web-access-token`) works for
 scripts; for people, open the link in the system browser.
 
 **How do I sign every device out?** Rotate the grant's token:
-`runtime.rotate(Grant::Full)`. Open WebSockets are not closed by that; see the
-security model.
+`runtime.rotate(Grant::Full)`. That restarts the server, which ends open
+streams and WebSockets too; see the security model.
 
 **Can I use my own header name?** Not yet. The header is `x-web-access-token`
 (`web_access::guard::TOKEN_HEADER`).

@@ -173,10 +173,11 @@ origins can be reported to a callback (`GuardState::with_on_denied`), at most
   there can read the token. The port in the name only keeps two servers from
   overwriting each other's cookie. Do not run untrusted servers on the same
   address as a shared app, above all with admin access on.
-- `stop()` closes connections that are still open (a stream or a WebSocket)
-  after a grace period, and `SharingRuntime` stops the server when sharing or
-  admin is turned off or a token is rotated. With the guard in your own server,
-  a connection that is already open keeps running until it closes. Close
+- `stop()` ends connections that are still open (a stream or a WebSocket)
+  after a grace period: every further read and write on them fails.
+  `SharingRuntime` stops the server when sharing or admin is turned off or a
+  token is rotated. With the guard in your own server, a connection that is
+  already open keeps running until it closes. Close
   long-lived connections yourself when the grant they were opened with is
   withdrawn.
 - On Windows, token files get no owner-only mode. Keep the token directory in

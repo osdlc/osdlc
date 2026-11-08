@@ -9,18 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- `ServerHandle::stop` now closes connections that are still open, such as a
+- `ServerHandle::stop` now ends connections that are still open, such as a
   stream or an upgraded WebSocket, after the grace period for in-flight
-  requests. Before, they kept running on the old guard after `stop` returned,
-  so turning sharing off or rotating a token through `SharingRuntime` did not
-  end them.
+  requests: every further read and write on them fails. Before, they kept
+  running on the old guard after `stop` returned, so turning sharing off or
+  rotating a token through `SharingRuntime` did not end them.
 - With `Listen::AllInterfaces`, the guard admits an interface address the
   machine gains after the server started, on the bound port. Before, it
-  answered 421 until sharing was restarted. Share links still list the
-  addresses present at start.
-- A `?token=` link or cookie value is matched as written before it is
+  answered 421 until sharing was restarted. `serve` rereads the interface
+  list at most every two seconds. Share links still list the addresses present
+  at start.
+- A `?token=` link or cookie value is matched as written as well as
   percent-decoded, so a raw link or cookie for a hand-set token holding a
-  literal `%XX` still works.
+  literal `%XX` still works. When the raw and the decoded value match two
+  different hand-set tokens, the lower grant wins.
 
 ## [0.4.1] - 2026-11-07
 

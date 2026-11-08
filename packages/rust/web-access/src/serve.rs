@@ -5,9 +5,9 @@ use std::future::Future;
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::task::{Context, Poll};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use axum::Router;
 use axum::serve::{Listener, ListenerExt as _};
@@ -29,6 +29,12 @@ const GRACE: Duration = Duration::from_secs(5);
 /// aborts the server tasks.
 const CUT_GRACE: Duration = Duration::from_secs(1);
 
+/// How long the interface list read by the guard's live-host check is reused.
+/// It runs before any token check, so the cache bounds what a peer sending
+/// unknown `Host` values can cost; an address gained later is admitted within
+/// this time.
+const HOST_IPS_TTL: Duration = Duration::from_secs(2);
+
 /// A [`TcpListener`] whose connections all fail once `cut` turns true.
 ///
 /// axum runs each connection in a task of its own, so aborting the serve task
@@ -45,14 +51,12 @@ impl Listener for CutListener {
 
     async fn accept(&mut self) -> (Self::Io, Self::Addr) {
         let (io, addr) = Listener::accept(&mut self.inner).await;
-        let mut cut = self.cut.clone();
-        let cut = Box::pin(async move {
-            // A dropped handle closes the channel; that is not a cut.
-            if cut.wait_for(|c| *c).await.is_err() {
-                std::future::pending::<()>().await;
-            }
-        });
-        (CutStream { io, cut: Some(cut) }, addr)
+        let stream = CutStream {
+            io,
+            read_cut: Some(cut_signal(self.cut.clone())),
+            write_cut: Some(cut_signal(self.cut.clone())),
+        };
+        (stream, addr)
     }
 
     fn local_addr(&self) -> io::Result<Self::Addr> {
@@ -60,27 +64,42 @@ impl Listener for CutListener {
     }
 }
 
-/// One connection of a [`CutListener`].
-struct CutStream {
-    io: TcpStream,
-    /// `None` once the cut has fired: a finished future must not be polled again.
-    cut: Option<Pin<Box<dyn Future<Output = ()> + Send>>>,
+type CutSignal = Pin<Box<dyn Future<Output = ()> + Send>>;
+
+/// Ready once `cut` turns true. A dropped handle closes the channel; that is
+/// not a cut.
+fn cut_signal(mut cut: watch::Receiver<bool>) -> CutSignal {
+    Box::pin(async move {
+        if cut.wait_for(|c| *c).await.is_err() {
+            std::future::pending::<()>().await;
+        }
+    })
 }
 
-impl CutStream {
-    /// An error once cut, and on every call after. Polling registers the waker,
-    /// so a connection idle on a pending body is woken to see it.
-    fn check(&mut self, cx: &mut Context<'_>) -> io::Result<()> {
-        let fired = match &mut self.cut {
-            None => true,
-            Some(cut) => cut.as_mut().poll(cx).is_ready(),
-        };
-        if fired {
-            self.cut = None;
-            return Err(io::ErrorKind::ConnectionAborted.into());
-        }
-        Ok(())
+/// One connection of a [`CutListener`].
+///
+/// Reads and writes poll separate signals, so each keeps its own waker: a
+/// connection split across a reader task and a writer task wakes both.
+struct CutStream {
+    io: TcpStream,
+    /// `None` once fired: a finished future must not be polled again.
+    read_cut: Option<CutSignal>,
+    write_cut: Option<CutSignal>,
+}
+
+/// An error once `signal` has fired, and on every call after. Polling
+/// registers the waker, so a direction idle on a pending body is woken to see
+/// it.
+fn check(signal: &mut Option<CutSignal>, cx: &mut Context<'_>) -> io::Result<()> {
+    let fired = match signal {
+        None => true,
+        Some(cut) => cut.as_mut().poll(cx).is_ready(),
+    };
+    if fired {
+        *signal = None;
+        return Err(io::ErrorKind::ConnectionAborted.into());
     }
+    Ok(())
 }
 
 impl AsyncRead for CutStream {
@@ -89,7 +108,7 @@ impl AsyncRead for CutStream {
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
-        self.check(cx)?;
+        check(&mut self.read_cut, cx)?;
         Pin::new(&mut self.io).poll_read(cx, buf)
     }
 }
@@ -100,7 +119,7 @@ impl AsyncWrite for CutStream {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
-        self.check(cx)?;
+        check(&mut self.write_cut, cx)?;
         Pin::new(&mut self.io).poll_write(cx, buf)
     }
 
@@ -109,7 +128,7 @@ impl AsyncWrite for CutStream {
         cx: &mut Context<'_>,
         bufs: &[io::IoSlice<'_>],
     ) -> Poll<io::Result<usize>> {
-        self.check(cx)?;
+        check(&mut self.write_cut, cx)?;
         Pin::new(&mut self.io).poll_write_vectored(cx, bufs)
     }
 
@@ -118,7 +137,7 @@ impl AsyncWrite for CutStream {
     }
 
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        self.check(cx)?;
+        check(&mut self.write_cut, cx)?;
         Pin::new(&mut self.io).poll_flush(cx)
     }
 
@@ -191,19 +210,28 @@ impl ServerHandle {
             .collect()
     }
 
-    /// Stop accepting new connections, let in-flight requests finish (up to a
-    /// grace period), then close every connection still open, such as a
-    /// stream or an upgraded WebSocket, and release the ports.
+    /// Stop accepting new connections and let in-flight requests finish (up
+    /// to a grace period). Then every connection still open, such as a stream
+    /// or an upgraded WebSocket, fails all further reads and writes, and the
+    /// ports are released. A stream is closed before `stop` returns. An
+    /// upgraded connection belongs to its handler and closes once the handler
+    /// sees the error; a handler waiting on it is woken to see it.
     pub async fn stop(mut self) {
         let _ = self.stop_tx.send(true);
-        // One grace period for all listeners, not one each.
+        // One grace period for all listeners, not one each; the same for the
+        // cut below.
         let deadline = tokio::time::Instant::now() + GRACE;
         for task in &mut self.tasks {
             let _ = tokio::time::timeout_at(deadline, task).await;
         }
         let _ = self.cut_tx.send(true);
+        let cut_deadline = tokio::time::Instant::now() + CUT_GRACE;
         for mut task in self.tasks {
-            if !task.is_finished() && tokio::time::timeout(CUT_GRACE, &mut task).await.is_err() {
+            if !task.is_finished()
+                && tokio::time::timeout_at(cut_deadline, &mut task)
+                    .await
+                    .is_err()
+            {
                 task.abort();
                 let _ = task.await;
             }
@@ -263,8 +291,47 @@ pub async fn serve_opts(
     tokens: Tokens,
     opts: ServeOptions,
 ) -> Result<ServerHandle, ServeError> {
-    let host_ips = || interfaces().into_iter().map(|i| i.ip).collect();
-    serve_with_ips(router, cfg, tokens, opts, Arc::new(host_ips)).await
+    let host_ips: HostIps = Arc::new(|| interfaces().into_iter().map(|i| i.ip).collect());
+    serve_with_ips(
+        router,
+        cfg,
+        tokens,
+        opts,
+        cached_ips(host_ips, HOST_IPS_TTL),
+    )
+    .await
+}
+
+/// `ips`, called at most once per `ttl`; callers in between get the last list.
+fn cached_ips(ips: HostIps, ttl: Duration) -> HostIps {
+    let cache = IpCache {
+        ips,
+        ttl,
+        last: Mutex::new(None),
+    };
+    Arc::new(move || cache.get(Instant::now()))
+}
+
+struct IpCache {
+    ips: HostIps,
+    ttl: Duration,
+    last: Mutex<Option<(Instant, Vec<IpAddr>)>>,
+}
+
+impl IpCache {
+    /// The lock is held while the list is read, so concurrent misses read it
+    /// once.
+    fn get(&self, now: Instant) -> Vec<IpAddr> {
+        let mut last = self.last.lock().unwrap_or_else(PoisonError::into_inner);
+        match &*last {
+            Some((at, list)) if now.saturating_duration_since(*at) < self.ttl => list.clone(),
+            _ => {
+                let list = (self.ips)();
+                *last = Some((now, list.clone()));
+                list
+            }
+        }
+    }
 }
 
 /// [`serve_opts`] with the interface list as a parameter, so a test can change it.
@@ -570,6 +637,123 @@ mod tests {
         assert!(io.write(b"x").await.is_err_and(aborted));
         assert!(io.flush().await.is_err_and(aborted));
         assert!(io.read(&mut buf).await.is_err_and(aborted));
+    }
+
+    #[tokio::test]
+    async fn stop_cuts_an_upgraded_connection() {
+        use hyper_util::rt::TokioIo;
+        // Takes the connection over as a WebSocket handler would, and echoes.
+        let upgrade = |mut req: axum::extract::Request| async move {
+            let on = hyper::upgrade::on(&mut req);
+            tokio::spawn(async move {
+                let mut io = TokioIo::new(on.await.unwrap());
+                let mut buf = [0u8; 64];
+                while let Ok(n @ 1..) = io.read(&mut buf).await {
+                    if io.write_all(&buf[..n]).await.is_err() {
+                        break;
+                    }
+                }
+            });
+            axum::response::Response::builder()
+                .status(axum::http::StatusCode::SWITCHING_PROTOCOLS)
+                .header("connection", "upgrade")
+                .header("upgrade", "echo")
+                .body(axum::body::Body::empty())
+                .unwrap()
+        };
+        let app = Router::new().route("/up", get(upgrade));
+        let handle = serve(
+            app,
+            &cfg(Listen::Loopback),
+            Tokens::full_only("tok".to_owned()),
+        )
+        .await
+        .unwrap();
+        let addr = handle.addrs()[0];
+        let mut s = TcpStream::connect(addr).await.unwrap();
+        let req = format!(
+            "GET /up HTTP/1.1\r\nHost: {addr}\r\nx-web-access-token: tok\r\n\
+             Connection: upgrade\r\nUpgrade: echo\r\n\r\n"
+        );
+        s.write_all(req.as_bytes()).await.unwrap();
+        let mut buf = vec![0u8; 4096];
+        let mut seen = String::new();
+        while !seen.contains("\r\n\r\n") {
+            let n = s.read(&mut buf).await.unwrap();
+            assert_ne!(n, 0, "closed before the upgrade: {seen}");
+            seen.push_str(&String::from_utf8_lossy(&buf[..n]));
+        }
+        assert!(seen.starts_with("HTTP/1.1 101"), "{seen}");
+        s.write_all(b"ping").await.unwrap();
+        let n = s.read(&mut buf).await.unwrap();
+        assert_eq!(&buf[..n], b"ping");
+
+        // The handler is parked on a read; the cut must wake it.
+        handle.stop().await;
+        let after = tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                match s.read(&mut buf).await {
+                    Ok(0) | Err(_) => return,
+                    Ok(_) => {}
+                }
+            }
+        })
+        .await;
+        assert!(after.is_ok(), "the upgraded connection outlived stop");
+    }
+
+    /// A connection split across a reader task and a writer task: the cut must
+    /// wake the reader even after the writer polled last.
+    #[tokio::test]
+    async fn a_cut_wakes_both_halves_of_a_split_connection() {
+        let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = l.local_addr().unwrap();
+        let (cut_tx, cut_rx) = watch::channel(false);
+        let mut cl = CutListener {
+            inner: l,
+            cut: cut_rx,
+        };
+        let (_client, accepted) = tokio::join!(TcpStream::connect(addr), cl.accept());
+        let (mut rd, mut wr) = tokio::io::split(accepted.0);
+        let reader = tokio::spawn(async move { rd.read(&mut [0u8; 8]).await });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let (wrote_tx, wrote_rx) = tokio::sync::oneshot::channel();
+        let writer = tokio::spawn(async move {
+            wr.write_all(b"x").await.unwrap();
+            let _ = wrote_tx.send(());
+            std::future::pending::<()>().await;
+            drop(wr);
+        });
+        wrote_rx.await.unwrap();
+
+        cut_tx.send(true).unwrap();
+        let read = tokio::time::timeout(Duration::from_secs(2), reader).await;
+        writer.abort();
+        let read = read
+            .expect("the reader stayed parked after the cut")
+            .unwrap();
+        assert!(read.is_err_and(|e| e.kind() == std::io::ErrorKind::ConnectionAborted));
+    }
+
+    #[test]
+    fn the_interface_list_is_reused_for_its_ttl() {
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let n = calls.clone();
+        let cache = IpCache {
+            ips: Arc::new(move || {
+                let i = n.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                vec![IpAddr::V4(Ipv4Addr::new(10, 0, 0, i as u8))]
+            }),
+            ttl: Duration::from_secs(2),
+            last: Mutex::new(None),
+        };
+        let t0 = Instant::now();
+        let first = cache.get(t0);
+        assert_eq!(cache.get(t0 + Duration::from_millis(1999)), first);
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+        // Once it is stale the list is read again, so a new address shows up.
+        assert_ne!(cache.get(t0 + Duration::from_secs(2)), first);
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 2);
     }
 
     #[tokio::test]
