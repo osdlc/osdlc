@@ -13,9 +13,9 @@
       "line": 229,
       "title": "indented code line counts as paragraph",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "a906d5cecc70b859f27e33cdc38e224e5791780d"
     },
     {
       "id": "r2-2",
