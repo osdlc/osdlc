@@ -179,3 +179,12 @@ describe('comments: false', () => {
     expect(out).toContain('Secret')
   })
 })
+
+describe('a comment cutting through a link', () => {
+  test('a link with one marker inside it loses its destination', async () => {
+    const out = await html('[public %%](https://x.example/private) hidden%% after')
+    expect(out).not.toContain('x.example')
+    expect(out).toContain('public')
+    expect(out).toContain('after')
+  })
+})

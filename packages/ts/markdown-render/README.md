@@ -49,8 +49,7 @@ note-reading views, static site and Astro builds, and previews beside an editor.
 ## Stability
 
 The package is 0.x: a minor release may break the API. The stable API is every
-export not listed under *Experimental exports* below. Each stable export has a
-use in `examples/`.
+export not listed under *Experimental exports* below. 
 
 ### Experimental exports
 
@@ -124,6 +123,7 @@ to split off (the renderer never reads it).
 | `@osdlc/markdown-render` | the processor (`renderToHtml`, `renderToHast`, …), the math and mermaid helpers, outline/slice/path utilities, the sanitize schema, and every dialect plugin |
 | `@osdlc/markdown-render/plugins` | the dialect plugins alone, plus what a host needs to render embeds itself (`sliceEmbed`, `MAX_EMBED_DEPTH`, `MAX_EMBEDS_PER_DOCUMENT`, and the shared embed rendering rules `embedSize`, `embedAlt`, `embedBlocker`, `embedPlaceholder`, `embedMedia`, `embedNoteProperties`) and the `LinkResolution`/`WikilinkResolver` types — for a host that assembles its own remark pipeline (an Astro build, a static exporter) |
 | `@osdlc/markdown-render/vue` | the Vue 3 components and the `NoteSource` context |
+| `@osdlc/markdown-render/shiki` | the Shiki code highlighter, loaded on demand |
 | `@osdlc/markdown-render/theme.css` | the `--markdown-*` theme contract |
 
 `./plugins` is Vue-free and Shiki-free: it omits `rehypeShiki` (and
@@ -159,8 +159,7 @@ the Vue blocks show the source instead of nothing: `<code
 class="markdown-math-fallback">` for math, `<pre class="markdown-mermaid-fallback">`
 for a diagram.
 
-`LoadedNote` — a note body plus its raw frontmatter YAML — is a core type,
-re-exported from `./vue` for existing importers.
+`LoadedNote` — a note body plus its raw frontmatter YAML — is a core type.
 
 ### Pipeline
 
@@ -215,7 +214,7 @@ dialect `data-*` attributes, `<mark>`, `<markdown-embed>`, task-list
 checkboxes, and `id` on flow elements. Raw HTML in a note is parsed by
 `rehype-raw` and *then* sanitized, which is the only safe order. `<script>`,
 event handlers, `javascript:` URLs, and `data:` iframes are stripped — see
-`test/sanitize.test.ts`, which asserts each of those adversarially.
+`tests/sanitize.test.ts`, which asserts each of those adversarially.
 
 Four things it does that the default schema does not:
 

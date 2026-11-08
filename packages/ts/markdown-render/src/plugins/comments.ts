@@ -115,8 +115,9 @@ function pathTo(node: MdNode, target: MdNode): MdNode[] | null {
  * are kept — the caller has already trimmed their text.
  */
 function removeBetween(root: MdNode, from: MdNode, to: MdNode | null): void {
-  const spine = new Set<MdNode>(pathTo(root, from) ?? [])
-  if (to) for (const node of pathTo(root, to) ?? []) spine.add(node)
+  const fromPath = new Set<MdNode>(pathTo(root, from) ?? [])
+  const toPath = new Set<MdNode>(to ? (pathTo(root, to) ?? []) : [])
+  const spine = new Set<MdNode>([...fromPath, ...toPath])
 
   let state: 'before' | 'inside' | 'after' = 'before'
 
@@ -132,8 +133,13 @@ function removeBetween(root: MdNode, from: MdNode, to: MdNode | null): void {
       } else if (spine.has(child)) {
         // An ancestor of an endpoint: keep the branch, and let the recursion
         // find the endpoint inside it and flip the state there.
-        kept.push(child)
         if (Array.isArray(child.children)) walk(child as MdParent)
+        // A link that only one marker is inside cannot stay: its destination
+        // would publish what the comment hides. Its surviving text stays.
+        const half = fromPath.has(child) !== toPath.has(child) || (!to && fromPath.has(child))
+        if ((child.type === 'link' || child.type === 'linkReference') && half) {
+          kept.push(...((child.children ?? []) as MdNode[]))
+        } else kept.push(child)
       } else if (state !== 'inside') {
         kept.push(child)
       }

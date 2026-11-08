@@ -26,7 +26,8 @@ import type { WikilinkResolver } from '../types.ts'
 import { urlScheme } from '../url.ts'
 import { defaultResolver, splitFragment, wikilinkProps, withFragment } from './wikilinks.ts'
 import { isMarkdownPath } from '../paths.ts'
-import { clearLinkFields, definitionUrls, destination, safeDecode, type MdNode } from './util.ts'
+import { clearLinkFields, definitionUrls, destination, type MdNode } from './util.ts'
+import { percentDecode } from '@osdlc/markdown-link'
 
 export interface RemarkMarkdownLinksOptions {
   /** Injected resolver. Defaults to {@link defaultResolver}. */
@@ -48,7 +49,7 @@ export function splitMarkdownLink(url: string): { target: string; fragment: stri
   const rawTarget = hash === -1 ? url : url.slice(0, hash)
   const fragment = hash === -1 ? '' : url.slice(hash + 1)
   if (!isMarkdownPath(rawTarget)) return null
-  return { target: safeDecode(rawTarget), fragment: safeDecode(fragment) }
+  return { target: percentDecode(rawTarget), fragment: percentDecode(fragment) }
 }
 
 /** Remark plugin: rewrite relative `.md` links into wikilink anchors. */

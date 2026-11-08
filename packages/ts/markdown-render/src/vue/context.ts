@@ -125,8 +125,7 @@ export { MAX_EMBED_DEPTH, MAX_EMBEDS_PER_DOCUMENT } from '../plugins/embeds.ts'
 /**
  * The document-wide transclusion budget. Shared by the whole render tree.
  *
- * `spent` is a live count, not a running total: a host that provides its own
- * budget hands over a fresh `{ spent: 0 }` and then leaves the field alone.
+ * `spent` is a live count, not a running total.
  * `MarkdownRender` makes the object reactive before providing it, so an embed
  * that mounted over budget can claim a charge a later unmount releases.
  */

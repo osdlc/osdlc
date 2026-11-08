@@ -307,6 +307,20 @@ describe('TableBlock', () => {
     expect(written[0]?.split('\r\n')[1]).toBe('Alpha,ravi,3')
   })
 
+  test('copy keeps each value in its column across colspan and rowspan', async () => {
+    recordingClipboard()
+    const host = await mount({
+      source:
+        '<table><thead><tr><th>a</th><th>b</th><th>c</th></tr></thead><tbody>' +
+        '<tr><td colspan="2">x</td><td>y</td></tr>' +
+        '<tr><td rowspan="2">p</td><td>q</td><td>r</td></tr>' +
+        '<tr><td>s</td><td>t</td></tr></tbody></table>',
+    })
+    click(copyButton(host))
+    await flush()
+    expect(written[0]).toBe(['a,b,c', 'x,,y', 'p,q,r', ',s,t'].join('\r\n'))
+  })
+
   test('a cell copies what the reader sees: link text, code text, quotes escaped', async () => {
     recordingClipboard()
     const source = [
@@ -416,7 +430,7 @@ describe('TableBlock', () => {
     // Copying is unaffected: it never depended on the columns lining up.
     click(copyButton(host))
     await flush()
-    expect(written).toEqual(['AB,C\r\n1,2,3'])
+    expect(written).toEqual(['AB,,C\r\n1,2,3'])
   })
 
   test('a table with more than one tbody is offered no sort, and copies every body', async () => {

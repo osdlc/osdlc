@@ -17,7 +17,7 @@ import { BLOCK_ID_RE, STANDALONE_BLOCK_ID_RE } from './plugins/block-ids.ts'
  * run. An optional closing `#` run counts only after a space or tab, per
  * CommonMark.
  */
-const ATX_HEADING = /^ {0,3}(#{1,6})[ \t]+(.*?)[ \t]*(?:(?<=[ \t])#+[ \t]*)?$/
+const ATX_HEADING = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*(?:(?<=[ \t])#+[ \t]*)?$/
 /** The `===` / `---` line under a setext heading. */
 const SETEXT_UNDERLINE = /^ {0,3}(=+|-+)[ \t]*$/
 
@@ -361,6 +361,8 @@ function standsAlone(
 
 interface Heading {
   index: number
+  /** The first line of the heading; differs from `index` for a multi-line setext title. */
+  first: number
   depth: number
   title: string
   setext: boolean
@@ -413,9 +415,8 @@ function headings(lines: string[], fenced: boolean[]): Heading[] {
     const line = lines[i] ?? ''
     const atx = ATX_HEADING.exec(line)
     const hashes = atx?.[1]
-    const atxTitle = atx?.[2]
-    if (hashes !== undefined && atxTitle !== undefined) {
-      found.push({ index: i, depth: hashes.length, title: atxTitle, setext: false })
+    if (atx && hashes !== undefined) {
+      found.push({ index: i, first: i, depth: hashes.length, title: atx[2] ?? '', setext: false })
       continue
     }
     // Setext: a paragraph line with an underline beneath it. The line above the
@@ -432,8 +433,17 @@ function headings(lines: string[], fenced: boolean[]): Heading[] {
     if (QUOTE_MARKER.test(opener)) continue
     const content = listItemContent(opener)
     if (content !== undefined && under.length - under.trimStart().length < content) continue
-    const title = (start === i && content !== undefined ? line.slice(content) : line).trim()
-    found.push({ index: i, depth: under.trim().startsWith('=') ? 1 : 2, title, setext: true })
+    const title = lines
+      .slice(start, i + 1)
+      .map((text, at) => (at === 0 && content !== undefined ? text.slice(content) : text).trim())
+      .join(' ')
+    found.push({
+      index: i,
+      first: start,
+      depth: under.trim().startsWith('=') ? 1 : 2,
+      title,
+      setext: true,
+    })
   }
   return found
 }
@@ -444,7 +454,7 @@ export interface SourceHeading {
   heading: string
   /** 1–6. */
   depth: number
-  /** 1-based line number; for a setext heading, its title line. */
+  /** 1-based line number; for a setext heading, the first line of its title. */
   line: number
 }
 
@@ -465,7 +475,7 @@ export function sourceHeadings(markdown: string): SourceHeading[] {
   return headings(lines, fencedLines(lines)).map((found) => ({
     heading: found.title,
     depth: found.depth,
-    line: found.index + 1,
+    line: found.first + 1,
   }))
 }
 
@@ -571,8 +581,8 @@ export function sliceByHeading(markdown: string, heading: string): string | null
 
   const start = found[at] as Heading
   const next = found[sectionEnd(found, at)]
-  const end = next ? next.index : lines.length
-  return lines.slice(start.index, end).join(lineEnding(markdown)).trimEnd()
+  const end = next ? next.first : lines.length
+  return lines.slice(start.first, end).join(lineEnding(markdown)).trimEnd()
 }
 
 /**
@@ -597,9 +607,9 @@ export function sliceByBlockId(markdown: string, blockId: string): string | null
   const atx = new Set<number>()
   const underlines = new Set<number>()
   for (const found of headings(lines, fenced)) {
-    headingStart.set(found.index, found.index)
+    headingStart.set(found.index, found.first)
     if (found.setext) {
-      headingStart.set(found.index + 1, found.index)
+      headingStart.set(found.index + 1, found.first)
       underlines.add(found.index + 1)
     } else atx.add(found.index)
   }
@@ -649,6 +659,9 @@ export function sliceByBlockId(markdown: string, blockId: string): string | null
     }
   }
   if (last < 0) return null
+  // The id sits on a setext heading's title line; its underline is part of the block.
+  const idLine = last
+  if (underlines.has(last + 1) && !underlines.has(last)) last++
 
   let start = last
   const heading = headingStart.get(last)
@@ -683,8 +696,8 @@ export function sliceByBlockId(markdown: string, blockId: string): string | null
   }
 
   const block = lines.slice(start, last + 1)
-  const lastLine = block.length - 1
-  block[lastLine] = (block[lastLine] ?? '').replace(BLOCK_ID_RE, '').trimEnd()
+  const at = idLine - start
+  block[at] = (block[at] ?? '').replace(BLOCK_ID_RE, '').trimEnd()
   return block.join(lineEnding(markdown)).trimEnd()
 }
 

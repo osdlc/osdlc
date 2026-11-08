@@ -1,8 +1,8 @@
 /**
  * `@osdlc/markdown-render/plugins` — the remark/rehype dialect plugins with no
  * Vue and no Shiki in the module graph, for hosts (Astro, static builds) that
- * assemble their own pipeline. The root entry re-exports the same list plus
- * the Shiki pieces; the two lists are kept in step by hand.
+ * assemble their own pipeline. The root entry re-exports the same list; the
+ * two lists are kept in step by hand.
  */
 
 export {
