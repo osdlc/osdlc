@@ -14,7 +14,7 @@ permissions: {}
 
 jobs:
   setup:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     permissions:
       contents: read
@@ -22,11 +22,20 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - harness: claude
+          - os: ubuntu-latest
+            harness: claude
             plugins: craft@osdlc
-          - harness: codex
+          - os: ubuntu-latest
+            harness: codex
             plugins: craft@osdlc
-          - harness: cursor
+          - os: ubuntu-latest
+            harness: cursor
+            plugins: ""
+          - os: macos-latest
+            harness: claude
+            plugins: craft@osdlc
+          - os: macos-latest
+            harness: cursor
             plugins: ""
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -36,7 +45,7 @@ jobs:
         uses: ./packages/gh-actions/agent-setup
         with:
           harness: ${{ matrix.harness }}
-          marketplaces: ${{ matrix.plugins != '' && 'osdlc=https://github.com/osdlc/marketplace.git' || '' }}
+          marketplaces: osdlc=https://github.com/osdlc/marketplace.git
           plugins: ${{ matrix.plugins }}
       - name: Check the CLI
         env:

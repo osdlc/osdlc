@@ -42,11 +42,12 @@ Cursor, which registers marketplaces but cannot install their plugins:
 | `version`             | per harness below | CLI version to install.                                                                                            |
 | `marketplaces`        | none              | One per line: `name=https-git-url`, then an optional ref after a space. `name` must be the marketplace's own name. |
 | `plugins`             | none              | One per line: `plugin@marketplace`. The marketplace must be listed in `marketplaces`.                              |
+| `sha256`              | none              | SHA-256 of the cursor tarball. Built in for the default cursor build; required for any other cursor version.       |
 | `skillwright-version` | `0.7.0`           | skillwright release that installs the plugins.                                                                     |
 
 | Harness  | Default version      | How it installs                                                  | Pinning                                                                                                                                              |
 | -------- | -------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `claude` | `2.1.319`            | `https://claude.ai/install.sh <version>`                         | Yes, the installer takes the version.                                                                                                                |
+| `claude` | `2.1.319`            | `https://claude.ai/install.sh <version>`                         | Version only; the installer checks the binary against the release manifest it fetches.                                                               |
 | `codex`  | `0.162.0`            | `npm install --global --prefix ~/.local @openai/codex@<version>` | Yes.                                                                                                                                                 |
 | `cursor` | `2026.11.05-86047df` | tarball from `downloads.cursor.com/lab/<version>/...`            | Yes, but not through `cursor.com/install`, which hard-codes the current build and takes no version. The version is a full build id, date and commit. |
 

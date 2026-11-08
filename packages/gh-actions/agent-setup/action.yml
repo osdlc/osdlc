@@ -21,6 +21,12 @@ inputs:
   plugins:
     description: Plugins to install, one per line, as plugin@marketplace. Not supported on cursor.
     default: ""
+  sha256:
+    description: >-
+      SHA-256 of the cursor tarball. Optional for the default cursor build,
+      which has its checksums built in; required for any other cursor version.
+      Not used by claude or codex.
+    default: ""
   skillwright-version:
     description: skillwright release that installs the plugins.
     default: 0.7.0
@@ -40,5 +46,6 @@ runs:
         VERSION: ${{ inputs.version }}
         MARKETPLACES: ${{ inputs.marketplaces }}
         PLUGINS: ${{ inputs.plugins }}
+        SHA256: ${{ inputs.sha256 }}
         SKILLWRIGHT_VERSION: ${{ inputs.skillwright-version }}
       run: '"$GITHUB_ACTION_PATH/setup.sh"'
