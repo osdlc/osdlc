@@ -90,9 +90,9 @@
       "line": 91,
       "title": "A dangling symlink named *.md is listed as a note, then read after --clean has already deleted the destination",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "90f9dd5dd42e23c0d8dbc3f156e07d269f1f7567"
     },
     {
       "id": "r4-2",
