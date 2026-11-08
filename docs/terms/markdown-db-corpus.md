@@ -2,9 +2,9 @@
 
 Status: current.
 
-A [corpus](corpus.md) that holds a markdown-db root file: `markdown-db.md`, `markdown-db.yaml` or `markdown-db.json`. It holds everything under its folder (types of records, their schemas, and free-form narrative) except dot-named paths, `node_modules` and any folder with its own root file, which is a separate corpus. Its name is its folder name. [S-markdown-db](../planning/standards/S-markdown-db.md) defines it.
+A [corpus](corpus.md) that holds a markdown-db root file: `markdown-db.md`, `markdown-db.yaml` or `markdown-db.json`. It holds everything under its folder (types of records, their schemas, and free-form narrative) except dot-named paths, `node_modules` and any folder with its own root file, which is a separate corpus. Its name is its folder name. The [markdown-db spec](../../packages/conformance/markdown-db/SPEC.md) defines it.
 
-In S-markdown-db and `@osdlc/markdown-db`, "corpus" alone means a markdown-db corpus. Everywhere else in this repository it keeps the general meaning.
+In that spec and in `@osdlc/markdown-db`, "corpus" alone means a markdown-db corpus. Everywhere else in this repository it keeps the general meaning.
 
 ## In code
 

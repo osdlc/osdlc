@@ -47,10 +47,12 @@ pnpm run format:check
 
 ## The cases
 
-`tests/cases/` holds one folder per case: `corpus/`, a markdown-db corpus, and
-`expected.json`, the `<file>: <field>` prefixes the validator reports. A case
-names no code, so another implementation can run the same cases. A change to
-the standard's rules gets a case here.
+The markdown-db spec and its conformance cases live in
+[`packages/conformance/markdown-db/`](https://github.com/osdlc/osdlc/tree/main/packages/conformance/markdown-db):
+`SPEC.md`, `suite.json`, and one corpus folder under `corpora/` for each case. A case names no
+code, so another implementation can run the same cases. `tests/conformance.test.ts` runs them
+here. A change to the spec's rules gets a case there. Write the case's `input` by hand, then run
+`pnpm run conformance:write` to write its `expect`.
 
 ## Code style
 

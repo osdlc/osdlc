@@ -1,5 +1,6 @@
 /**
- * markdown-db command line (S-markdown-db). Version 0 defines `validate`.
+ * The markdown-db command line, for the markdown-db spec
+ * (packages/conformance/markdown-db/SPEC.md). Version 0 defines `validate`.
  *
  *   markdown-db validate [--fix] <folder>...
  *
@@ -30,13 +31,20 @@ if (verb !== 'validate' || dirs.length === 0) usage()
 let failed = false
 const roots = new Set<string>()
 for (const dir of dirs) {
-  const base = resolve(dir)
-  const found = existsSync(base) && statSync(base).isDirectory() ? findCorpora(base) : []
+  let found: string[] = []
+  try {
+    found = existsSync(dir) && statSync(dir).isDirectory() ? findCorpora(dir) : []
+  } catch (e) {
+    // An unreadable folder: findCorpora's message is one line.
+    process.stderr.write(`${(e as Error).message}\n`)
+    failed = true
+    continue
+  }
   if (found.length === 0) {
     process.stderr.write(`${dir}: no markdown-db root file at or below it\n`)
     failed = true
   }
-  for (const root of found) roots.add(root)
+  for (const root of found) roots.add(resolve(root))
 }
 
 const ids = new Map<string, string>()

@@ -1,6 +1,7 @@
 /**
- * Links in markdown-db files (S-markdown-db, Links): finding them in text,
- * matching wikilinks by path suffix, and writing the canonical relative Markdown link.
+ * Links in markdown-db files (the markdown-db spec's Links section,
+ * packages/conformance/markdown-db/SPEC.md): finding them in text, matching wikilinks by path
+ * suffix, and writing the canonical relative Markdown link.
  */
 import { extname } from 'node:path'
 import { bodyLinksSpanned, stripCode } from '@osdlc/markdown-link'
@@ -74,7 +75,10 @@ export function extractLinks(text: string): Link[] {
   return links.sort((a, b) => a.start - b.start)
 }
 
-/** NFC, then case folding. Upper- then lower-casing stands in for Unicode full case folding. */
+/**
+ * The key two ids or type names are compared by: NFC, then case folding. Upper- then lower-casing
+ * stands in for Unicode full case folding.
+ */
 export const fold = (s: string): string =>
   s.normalize('NFC').toUpperCase().toLowerCase().normalize('NFC')
 
@@ -111,10 +115,20 @@ const percent = (c: string): string =>
     .map((b) => `%${b.toString(16).toUpperCase().padStart(2, '0')}`)
     .join('')
 
-/** A path as a link destination: spaces and the characters that end one are percent-encoded. */
+/**
+ * A path as a Markdown link destination: `%`, whitespace, `(`, `)`, `<`, `>`, `?` and `#` are
+ * percent-encoded as UTF-8. `/` is kept.
+ */
 export const encodePath = (path: string): string => path.replace(/[%\s()<>?#]/gu, percent)
 
-/** A relative Markdown link to `path`. */
+/**
+ * A Markdown link to `path`, written the way the validator reads it: `[text](path)` with `\`,
+ * `[` and `]` escaped in the text and the path encoded by `encodePath`. `path` is used as given,
+ * so pass it relative to the file that will hold the link.
+ *
+ * @param fragment - The part after `#`, such as a heading, without the `#`. `''` for none.
+ * @param embed - Write an embed, `![text](path)`, instead of a link.
+ */
 export function markdownLink(text: string, path: string, fragment = '', embed = false): string {
   const label = text.replace(/[\\[\]]/g, '\\$&')
   const anchor = fragment === '' ? '' : `#${encodePath(fragment)}`

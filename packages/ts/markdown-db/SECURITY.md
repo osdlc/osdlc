@@ -11,6 +11,12 @@ Use GitHub private vulnerability reporting on the repository: open the
 Include the version, a short description, and steps to reproduce. A minimal
 code sample helps.
 
+## Trust
+
+A corpus's schemas and regular expressions run on its data, and `--fix` rewrites files in place.
+The README's [Trust](./README.md#trust) section says what that means for a corpus you do not
+trust.
+
 ## Supported versions
 
 Only the latest release gets security fixes. While the version is 0.x, that

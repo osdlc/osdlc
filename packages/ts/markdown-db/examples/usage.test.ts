@@ -3,7 +3,7 @@
  * export appears here at least once.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -34,7 +34,7 @@ afterEach(() => {
 })
 
 describe('reading a corpus', () => {
-  test('the README example: find every corpus under a folder and validate it', () => {
+  test('the README example runs: it finds every corpus under a folder and reports its problems', async () => {
     put('Data/reading-list/markdown-db.md', '---\nmarkdown-db: 0\n---\n')
     put(
       'Data/reading-list/books/books.schema.yaml',
@@ -42,12 +42,31 @@ describe('reading a corpus', () => {
     )
     put('Data/reading-list/books/Dune.md', '---\nauthor: Frank Herbert\n---\n')
 
-    const errors: string[] = []
-    for (const root of findCorpora(join(dir, 'Data'))) {
-      const report: CorpusReport = validateCorpus(root)
-      errors.push(...report.errors)
+    // The README's ts block, as written. The Vitest alias resolves the package name from any folder.
+    const readme = readFileSync(join(import.meta.dirname, '../README.md'), 'utf8')
+    const blocks = [...readme.matchAll(/```ts\n([\s\S]*?)```/g)].map((m) => m[1] as string)
+    expect(blocks).toHaveLength(1)
+    put('readme.ts', blocks[0] as string)
+    const { check } = (await import(join(dir, 'readme.ts'))) as {
+      check: (folder: string) => string[]
     }
-    expect(errors).toEqual([])
+
+    expect(check(join(dir, 'Data'))).toEqual([])
+    put('Data/reading-list/books/Emma.md', '---\ntitle: Emma\n---\n')
+    expect(check(join(dir, 'Data'))).toEqual(['reading-list: books/Emma.md: author: required'])
+  })
+
+  test('findCorpora finds nested corpora; a corpus with no types has an empty report', () => {
+    put('c/markdown-db.md', '---\nmarkdown-db: 0\n---\n')
+    put('c/inner/markdown-db.yaml', 'markdown-db: 0\nid: inner-db\n')
+    expect(findCorpora(dir)).toEqual([join(dir, 'c'), join(dir, 'c/inner')])
+    const report: CorpusReport = validateCorpus(join(dir, 'c/inner'))
+    expect([report.name, report.id, report.records.size, report.errors]).toEqual([
+      'inner',
+      'inner-db',
+      0,
+      [],
+    ])
   })
 
   test('a report holds each valid record and its file, by type and id', () => {

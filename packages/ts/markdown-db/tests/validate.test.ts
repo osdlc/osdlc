@@ -1,7 +1,15 @@
 import assert from 'node:assert/strict'
 import { afterEach, beforeEach, describe, test } from 'vitest'
 
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -91,14 +99,19 @@ describe('corpus and root file', () => {
 
   test('two root files fail', () => {
     put('markdown-db.yaml', 'markdown-db: 0\n')
-    assert.ok(has(errors(), 'a folder holds one root file'))
+    assert.ok(
+      has(
+        errors(),
+        'markdown-db.yaml: (file): a folder holds one root file, and markdown-db.md is one',
+      ),
+    )
   })
 
   test('a missing root file or an unsupported version fails', () => {
     put('markdown-db.md', '---\nmarkdown-db: 1\n---\n')
     assert.ok(has(errors(), 'markdown-db.md: markdown-db: must be 0'))
     rmSync(join(dir, 'markdown-db.md'))
-    assert.ok(has(errors(), 'no markdown-db.md'))
+    assert.ok(has(errors(), '.: (folder): no markdown-db.md'))
   })
 
   test('id is optional and must be a string; unknown keys warn', () => {
@@ -151,7 +164,9 @@ describe('corpus and root file', () => {
 
   test('a corpus inside a type folder fails', () => {
     put('notes/inner/markdown-db.yaml', 'markdown-db: 0\n')
-    assert.ok(has(errors(), 'notes/inner: a corpus must not sit inside type folder notes'))
+    assert.ok(
+      has(errors(), 'notes/inner: (folder): a corpus must not sit inside type folder notes'),
+    )
   })
 })
 
@@ -207,12 +222,30 @@ describe('types and records', () => {
 
   test('data that is not a mapping fails', () => {
     put('cards/C.json', '[1, 2]\n')
-    assert.ok(has(errors(), 'cards/C.json: data must be a mapping'))
+    assert.ok(has(errors(), 'cards/C.json: (data): must be a mapping'))
+  })
+
+  test('data that does not parse is one (data) line, with the line and column in the file', () => {
+    put('notes/Note B.md', '---\nname: B\nopen: [true\n---\n\nBody.\n')
+    put('tags/U.yaml', 'label: [U\n')
+    put('cards/D.json', '{"a":\n')
+    const e = errors()
+    for (const file of ['notes/Note B.md', 'tags/U.yaml', 'cards/D.json'])
+      assert.ok(has(e, `${file}: (data): `), file)
+    assert.ok(e.every((line) => !line.includes('\n')))
+    assert.match(
+      e.find((l) => l.startsWith('notes/Note B.md'))!,
+      / at line 3, column \d+$/,
+    )
+    assert.match(
+      e.find((l) => l.startsWith('tags/U.yaml'))!,
+      / at line \d+, column \d+$/,
+    )
   })
 
   test('a .yml file in a type fails', () => {
     put('tags/U.yml', 'label: U\n')
-    assert.ok(has(errors(), 'tags/U.yml: use the .yaml extension'))
+    assert.ok(has(errors(), 'tags/U.yml: (file): use the .yaml extension'))
   })
 
   test('a record extension in another case fails', () => {
@@ -220,29 +253,46 @@ describe('types and records', () => {
     put('tags/U.YAML', 'label: U\n')
     put('tags/V.YML', 'label: V\n')
     const e = errors()
-    assert.ok(has(e, 'notes/Upper.MD: use the lower-case .md extension'))
-    assert.ok(has(e, 'tags/U.YAML: use the lower-case .yaml extension'))
-    assert.ok(has(e, 'tags/V.YML: use the .yaml extension'))
+    assert.ok(has(e, 'notes/Upper.MD: (file): use the lower-case .md extension'))
+    assert.ok(has(e, 'tags/U.YAML: (file): use the lower-case .yaml extension'))
+    assert.ok(has(e, 'tags/V.YML: (file): use the .yaml extension'))
   })
 
   test('two schema files in one type fail', () => {
     put('tags/tags.schema.json', '{}')
-    assert.ok(has(errors(), 'a type holds one schema file'))
+    assert.ok(
+      has(
+        errors(),
+        'tags/tags.schema.json: (file): a type holds one schema file, and tags/tags.schema.yaml is one',
+      ),
+    )
   })
 
   test('a type inside a type fails', () => {
     put('notes/sub/sub.schema.json', '{}')
-    assert.ok(has(errors(), 'notes/sub: a type folder must not sit inside type notes'))
+    assert.ok(has(errors(), 'notes/sub: (folder): a type folder must not sit inside type notes'))
+  })
+
+  test("a rejected type's schema still has its links checked", () => {
+    put('notes/sub/sub.schema.md', '---\n---\n\nSee [gone](Gone.md).\n')
+    // more/tags sorts first, so the tags folder is the one rejected.
+    put('more/tags/tags.schema.json', '{}')
+    put('tags/tags.schema.yaml', `${TAGS_SCHEMA}description: "[gone](Gone.md)"\n`)
+    const e = errors()
+    assert.ok(has(e, 'notes/sub: (folder): a type folder must not sit inside type notes'))
+    assert.ok(has(e, 'notes/sub/sub.schema.md: body: Gone.md: no such file'))
+    assert.ok(has(e, 'tags: (folder): type name is also used by more/tags'))
+    assert.ok(has(e, 'tags/tags.schema.yaml: description: Gone.md: no such file'))
   })
 
   test('two types with one name fail', () => {
     put('more/tags/tags.schema.json', '{}')
-    assert.ok(has(errors(), 'tags: type name is also used by more/tags'))
+    assert.ok(has(errors(), 'tags: (folder): type name is also used by more/tags'))
   })
 
   test('a bad schema fails', () => {
     put('tags/tags.schema.yaml', 'type: object\nrequried: [label]\n')
-    assert.ok(has(errors(), 'tags/tags.schema.yaml: strict mode: unknown keyword'))
+    assert.ok(has(errors(), 'tags/tags.schema.yaml: (schema): strict mode: unknown keyword'))
   })
 
   test('valid JSON Schema 2020-12 passes: only unknown keywords are strict', () => {
@@ -335,6 +385,13 @@ describe('x-ref', () => {
     assert.equal(e.length, 1)
   })
 
+  test('a URL or a link to a heading is not a record file', () => {
+    put('notes/Note B.md', note('partner: "[A](https://example.com/A.md)"\n'))
+    assert.ok(has(errors(), 'notes/Note B.md: partner: must link to a notes record file'))
+    put('notes/Note B.md', note('partner: "[A](#heading)"\n'))
+    assert.ok(has(errors(), 'notes/Note B.md: partner: must link to a notes record file'))
+  })
+
   test('a wikilink resolves, with a warning', () => {
     put('notes/Note B.md', note('partner: "[[Note A]]"\n'))
     const report = run()
@@ -353,6 +410,68 @@ describe('x-ref', () => {
       `${TAGS_SCHEMA}  meta:\n    properties:\n      by: { x-ref: notes }\n`,
     )
     assert.ok(has(errors(), 'properties.meta.properties.by: v0 defines x-ref only'))
+  })
+})
+
+// Symlinks need a privilege on Windows, and chmod does not stop root or Windows from reading.
+const SYMLINKS = { skip: process.platform === 'win32' }
+const PERMISSIONS = { skip: process.platform === 'win32' || process.getuid?.() === 0 }
+
+describe('the file system', () => {
+  test('a symlink in a type folder is not followed and warns', SYMLINKS, () => {
+    put('elsewhere/Note L.md', note())
+    symlinkSync(join(dir, 'elsewhere/Note L.md'), join(dir, 'notes/Note L.md'))
+    symlinkSync(join(dir, 'elsewhere'), join(dir, 'notes/linked'))
+    symlinkSync(join(dir, 'elsewhere'), join(dir, 'linked'))
+    const report = run()
+    assert.deepEqual(report.errors, [])
+    assert.deepEqual(report.warnings.sort(), [
+      'notes/Note L.md: (symlink): not followed, so not checked',
+      'notes/linked: (symlink): not followed, so not checked',
+    ])
+    assert.equal(report.records.get('notes')?.has('Note L'), false)
+  })
+
+  test('a folder or file that cannot be read is an error, not a throw', PERMISSIONS, () => {
+    put('notes/locked/Note C.md', note())
+    chmodSync(join(dir, 'notes/locked'), 0o000)
+    chmodSync(join(dir, 'tags/T.yaml'), 0o000)
+    try {
+      const e = errors()
+      assert.ok(has(e, 'notes/locked: (folder): cannot read (EACCES)'))
+      assert.ok(has(e, 'tags/T.yaml: (file): cannot read (EACCES)'))
+      // Inside a corpus, findCorpora leaves the folder to validateCorpus.
+      assert.deepEqual(findCorpora(dir), [dir])
+    } finally {
+      chmodSync(join(dir, 'notes/locked'), 0o755)
+      chmodSync(join(dir, 'tags/T.yaml'), 0o644)
+    }
+  })
+
+  test('a file --fix cannot write is an error, not a throw', PERMISSIONS, () => {
+    put('notes/Note B.md', note('', 'See [[Note A]].\n'))
+    chmodSync(join(dir, 'notes/Note B.md'), 0o444)
+    try {
+      const report = validateCorpus(dir, { fix: true })
+      assert.deepEqual(report.fixed, [])
+      assert.ok(has(report.errors, 'notes/Note B.md: (file): cannot write (EACCES)'))
+    } finally {
+      chmodSync(join(dir, 'notes/Note B.md'), 0o644)
+    }
+  })
+
+  test('findCorpora throws one line for a folder outside every corpus', PERMISSIONS, () => {
+    const outside = mkdtempSync(join(tmpdir(), 'markdown-db-outside-'))
+    mkdirSync(join(outside, 'locked'))
+    chmodSync(join(outside, 'locked'), 0o000)
+    try {
+      assert.throws(() => findCorpora(outside), {
+        message: `${join(outside, 'locked')}: cannot read folder (EACCES)`,
+      })
+    } finally {
+      chmodSync(join(outside, 'locked'), 0o755)
+      rmSync(outside, { recursive: true, force: true })
+    }
   })
 })
 

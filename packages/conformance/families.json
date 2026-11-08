@@ -23,6 +23,13 @@
       { "language": "rust", "dir": "packages/rust/glob-intersect", "name": "glob-intersect" }
     ]
   },
+  "markdown-db": {
+    "reference": "ts",
+    "generator": "pnpm --filter @osdlc/markdown-db conformance:write",
+    "implementations": [
+      { "language": "ts", "dir": "packages/ts/markdown-db", "name": "@osdlc/markdown-db" }
+    ]
+  },
   "path-guard": {
     "reference": "ts",
     "generator": "pnpm --filter @osdlc/path-guard conformance:write",

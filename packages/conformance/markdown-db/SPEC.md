@@ -1,14 +1,16 @@
-# S-markdown-db: markdown-db, version 0
+# markdown-db, version 0
 
 **Status: in force, version 0.** Accepted 2026-11-05. It is rewritten in place while it is at
-version 0. [Design review](../../parley/markdown-db-v0.json).
+version 0. [Design review](../../../docs/parley/markdown-db-v0.json). The spec lives in osdlc
+while it is young, beside its [conformance cases](README.md), and moves to a repository of its own
+once it is stable.
 
 ## Purpose
 
 markdown-db keeps typed records as files in a folder that people browse and edit as plain notes,
-and tools validate. The folder is pure data. Every rule a tool enforces is written in this standard
+and tools validate. The folder is pure data. Every rule a tool enforces is written in this spec
 or in the corpus's own files, never only in code. Code is one implementation of it; the reference
-validator is the [`@osdlc/markdown-db`](../../../packages/ts/markdown-db/README.md) package.
+validator is the [`@osdlc/markdown-db`](../../ts/markdown-db/README.md) package.
 
 The key words MUST, MUST NOT, SHOULD and MAY are used as in RFC 2119.
 
@@ -23,9 +25,9 @@ The key words MUST, MUST NOT, SHOULD and MAY are used as in RFC 2119.
 - **Record**: one file of a type. Its id is its file name.
 - **Narrative**: every other file in a corpus.
 
-In the rest of osdlc a [corpus](../../terms/corpus.md) is any folder of linked notes. The corpus
-here is a [markdown-db corpus](../../terms/markdown-db-corpus.md): one of those that holds a root
-file.
+In the rest of osdlc a [corpus](../../../docs/terms/corpus.md) is any folder of linked notes. The
+corpus here is a [markdown-db corpus](../../../docs/terms/markdown-db-corpus.md): one of those that
+holds a root file.
 
 ### Corpus
 
@@ -36,6 +38,9 @@ file.
 - A corpus holds every file under its folder, except:
   - any path with a component that starts with `.` (`.git/`, `.obsidian/`, `.DS_Store`);
   - any path with a component named `node_modules`;
+  - a symbolic link, to a file or to a folder. A tool does not follow it, so a link to it does not
+    resolve. A validator SHOULD warn on a symbolic link in a type folder, since a record there is
+    not checked;
   - a folder holding its own root file. That folder is a separate corpus, and the outer corpus
     stops at it.
 - A corpus MUST NOT sit inside a type folder.
@@ -84,6 +89,9 @@ notes, even in one type.
   `.yaml` or `.json`, matched exactly, case included. A type folder MUST NOT hold more than one.
 - The type's name is its folder name. Type names MUST be unique within a corpus. A type folder MAY
   sit at any depth in the corpus, but MUST NOT sit inside another type folder.
+- A type folder that breaks either rule is an error, and its folder is not a type. Its schema file
+  is still checked for links. Its records are not checked as its own: under another type folder
+  they are that type's records, and elsewhere they are narrative.
 - The schema is a JSON Schema, draft 2020-12, for a record's data. In `.md` the schema is the
   frontmatter and the body documents the type. In `.yaml` and `.json` it is the whole file.
 - An empty schema (an empty file, empty frontmatter, a `.md` file with no frontmatter, or `{}`)
@@ -183,9 +191,12 @@ keywords in strict mode, so a validator MUST register both.
 
 v0 defines one verb.
 
-- `validate <folder>` checks every corpus at or below the folder against this standard, and exits
+- `validate <folder>` checks every corpus at or below the folder against this spec, and exits
   non-zero when it finds any error. It reports each problem on one line:
-  `<file>: <field>: <message>`, with the file relative to the corpus root.
+  `<file>: <field>: <message>`, with the file relative to the corpus root. A problem that is not
+  in one field puts a word in parentheses in the field's place, such as `(data)` for data that
+  does not parse or `(folder)` for a folder that cannot be read. A file or folder that cannot be
+  read is an error of the corpus that holds it.
 - `validate --fix <folder>` first rewrites every wikilink it can resolve as a relative Markdown
   link, in the files a validator checks. It changes nothing else in those files.
 
@@ -196,15 +207,17 @@ comments and the body. In v0 a write replaces the whole file, and the last write
 
 ## Enforcement
 
-[`@osdlc/markdown-db`](../../../packages/ts/markdown-db/README.md) is the reference validator. Its
+[`@osdlc/markdown-db`](../../ts/markdown-db/README.md) is the reference validator. Its
 `validate` command checks a folder against every rule above that a validator checks:
 
 ```sh
 markdown-db validate <folder>
 ```
 
-The package's tests hold it to this standard. `packages/ts/markdown-db/tests/cases/` holds cases
-that name no code, so a validator in another language can run the same ones.
+The package's tests hold it to this spec. [`suite.json`](suite.json) and the corpora under
+[`corpora/`](corpora/), beside this file, are cases that name no code, so a validator in another
+language can run the same ones. [S-conformance-suites](../../../docs/planning/standards/S-conformance-suites.md)
+says how they are kept.
 
 ## Exemptions
 
@@ -273,7 +286,7 @@ This section is guidance, not a rule. A corpus may sit anywhere; these are the r
   keeps its database inside the user's vault, and the user still reads and edits it as notes.
 - **In a code repository**: `corpora/<name>/`.
 - **Keep corpora that link to each other side by side**, in one folder.
-- **Don't nest** a corpus inside another corpus's type folder. The standard forbids it.
+- **Don't nest** a corpus inside another corpus's type folder. The spec forbids it.
 
 ## Prior art
 

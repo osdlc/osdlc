@@ -1,9 +1,0 @@
-{
-  "errors": [
-    "harnesses/Antigravity.md: status",
-    "vendors/Acme.json: format",
-    "harnesses/Antigravity.md: body",
-    "harnesses/Gemini CLI.md: successor"
-  ],
-  "warnings": ["harnesses/Gemini CLI.md: body"]
-}

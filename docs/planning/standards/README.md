@@ -8,11 +8,14 @@ as `S-<slug>`. The slug is chosen when the standard is written and does not
 change afterwards. Standards are not numbered. A number would only record the
 order they were written in, and that order says nothing about how they relate.
 
-| Standard                                          | Rule                                                           | Command                         |
-| ------------------------------------------------- | -------------------------------------------------------------- | ------------------------------- |
-| [S-package-shape-ts](./S-package-shape-ts.md)     | The shape of a TypeScript library in `packages/ts/`            | `pnpm run check:packages`       |
-| [S-package-shape-rs](./S-package-shape-rs.md)     | The shape of a Rust crate in `packages/rust/`                  | `pnpm run check:crates`         |
-| [S-conformance-suites](./S-conformance-suites.md) | A library family's implementations share one conformance suite | `pnpm run check:conformance`    |
-| [S-markdown-db](./S-markdown-db.md)               | markdown-db, version 0: typed records as files in a folder     | `markdown-db validate <folder>` |
+| Standard                                          | Rule                                                           | Command                      |
+| ------------------------------------------------- | -------------------------------------------------------------- | ---------------------------- |
+| [S-package-shape-ts](./S-package-shape-ts.md)     | The shape of a TypeScript library in `packages/ts/`            | `pnpm run check:packages`    |
+| [S-package-shape-rs](./S-package-shape-rs.md)     | The shape of a Rust crate in `packages/rust/`                  | `pnpm run check:crates`      |
+| [S-conformance-suites](./S-conformance-suites.md) | A library family's implementations share one conformance suite | `pnpm run check:conformance` |
 
 The enforcing scripts live in [`scripts/`](../../../scripts/).
+
+A format that libraries implement is a spec, not a standard here. It lives with its conformance
+cases in `packages/conformance/<family>/SPEC.md`, such as the
+[markdown-db spec](../../../packages/conformance/markdown-db/SPEC.md).

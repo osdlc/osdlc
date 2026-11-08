@@ -1,10 +1,21 @@
 # @osdlc/markdown-db
 
-A validator for markdown-db corpora. A corpus is a folder of typed records kept as Markdown, YAML
-and JSON files, with a schema for each type, that people edit as plain notes. This package
-implements
-[S-markdown-db: markdown-db, version 0](https://github.com/osdlc/osdlc/blob/main/docs/planning/standards/S-markdown-db.md).
-Every rule it checks comes from that standard or from the corpus's own files.
+Facts kept as notes drift. A field gets misspelled, a link points at a file that was renamed, and
+nothing notices. This package checks a folder of such notes, a markdown-db corpus, the way a
+database checks its rows: each record against its type's JSON Schema, and each link and reference
+against the files that exist.
+
+It is for people and tools that keep typed records as Markdown, YAML and JSON files in a folder,
+edit them as plain notes (in Obsidian, on GitHub, in an editor) and want CI to catch mistakes. The
+format is the [markdown-db spec](https://github.com/osdlc/osdlc/blob/main/packages/conformance/markdown-db/SPEC.md), version 0. Every rule this
+package checks comes from that spec or from the corpus's own files.
+
+Do not use it to query notes or build an index of them, to check the structure of one Markdown
+document, or as a database for an app with many concurrent writers. The comparison below names
+tools for those jobs.
+
+This is not MarkdownDB (`mddb`, from datopian and flowershow), and not the unscoped npm package
+`markdown-db`.
 
 ## Install
 
@@ -25,28 +36,37 @@ markdown-db validate [--fix] <folder>...
 
 `validate` checks every corpus at or below each folder. It prints one line per problem, as
 `<file>: <field>: <message>` with the file relative to the corpus root, and `ok: <name>: <counts>`
-for each corpus that passes. `--fix` first rewrites every wikilink it can resolve as a relative
-Markdown link.
+for each corpus that passes. A problem that is not in one field puts a word in parentheses in the
+field's place, such as `(data)` for frontmatter that does not parse. `--fix` first rewrites every
+wikilink it can resolve as a relative Markdown link.
 
-| Exit code | Meaning                                                |
-| --------- | ------------------------------------------------------ |
-| `0`       | Every corpus is valid. Warnings may have been printed. |
-| `1`       | A corpus has an error, or a folder holds no corpus.    |
-| `2`       | Bad usage: an unknown verb or option, or no folder.    |
+| Exit code | Meaning                                                                       |
+| --------- | ----------------------------------------------------------------------------- |
+| `0`       | Every corpus is valid. Warnings may have been printed.                        |
+| `1`       | A corpus has an error, a folder holds no corpus, or a folder cannot be read. |
+| `2`       | Bad usage: an unknown verb or option, or no folder.                           |
 
 ## Library
 
 ```ts
 import { findCorpora, validateCorpus } from '@osdlc/markdown-db'
 
-for (const root of findCorpora('Data')) {
-  const report = validateCorpus(root) // a CorpusReport
-  for (const e of report.errors) console.error(e)
+/** Every problem in every corpus at or below `folder`, each line led by its corpus's name. */
+export function check(folder: string): string[] {
+  const problems: string[] = []
+  for (const root of findCorpora(folder)) {
+    const report = validateCorpus(root)
+    problems.push(...report.errors.map((e) => `${report.name}: ${e}`))
+  }
+  return problems
 }
 ```
 
-A `CorpusReport` holds `records` (valid records by type, then id), `files` (the corpus-relative path
-of each of those records, by type, then id), `errors`, `warnings` and `fixed`.
+`findCorpora(dir)` finds every corpus at or below a folder by its root file. It throws when a
+folder outside every corpus cannot be read. `validateCorpus(root, { fix })` checks one corpus and
+returns a `CorpusReport`. Every problem it finds is a line in the report, never a throw. A report
+holds `root`, `name` and `id`, `records` (valid records by type, then id, each record's `Data`),
+`files` (the corpus-relative path of each of those records), `errors`, `warnings` and `fixed`.
 
 Writers of records can use the same rules the validator reads with:
 
@@ -57,38 +77,65 @@ Writers of records can use the same rules the validator reads with:
 | `markdownLink(text, path)` | A relative Markdown link, with the path and label escaped. |
 | `encodePath(path)`         | A path as a link destination.                              |
 
-`src/index.ts` lists the exports. `examples/usage.test.ts` uses each one.
+The TSDoc in `dist/index.d.ts` describes each export. `examples/usage.test.ts` uses each one.
+
+## Trust
+
+A corpus's schemas run on its data. JSON Schema `pattern` and the spec's `x-id-pattern` are regular
+expressions the corpus supplies, and a badly written one can take a very long time on some input
+(ReDoS). Validate a corpus from a source you do not trust only with a time limit, for example in a
+CI job with a timeout.
+
+`--fix` and `validateCorpus(root, { fix: true })` rewrite files in place. They change only
+wikilinks, and they leave a file alone if the rewrite would change its data, but they do not keep a
+backup. Run them on files under version control.
 
 ## How it compares
 
-[`@osdlc/markdown-contract`](https://github.com/osdlc/osdlc/tree/main/packages/ts/markdown-contract#readme)
-checks the section and block structure of one Markdown document. This package checks a corpus:
-frontmatter and data files against JSON Schema, and links, ids and references across files.
-[mdbase](https://github.com/mdbase-dev/mdbase-spec) is the closest prior art. The standard lists
-the rules it borrows and where it differs.
+- The [mdbase spec](https://github.com/mdbase-dev/mdbase-spec), with its TypeScript implementations
+  [`@callumalpass/mdbase`](https://www.npmjs.com/package/@callumalpass/mdbase) and
+  [`mdbase-cli`](https://www.npmjs.com/package/mdbase-cli), is the closest. It also types Markdown
+  records and validates them, and the markdown-db spec borrows several of its rules. It declares types in
+  type notes under `_types/` and resolves links from each collection's root. markdown-db puts each
+  type's JSON Schema in the type's own folder, so a type carries its rules when it moves, and uses
+  relative links, which GitHub and site generators follow.
+- MarkdownDB ([`mddb`](https://www.npmjs.com/package/mddb)) parses a folder of Markdown into a
+  SQL database for queries. It does not check records against schema files in the folder.
+- [`@synstack/markdown-db`](https://www.npmjs.com/package/@synstack/markdown-db) uses Markdown files
+  with frontmatter as a database from TypeScript code. It has no written spec for the folder.
+- [`@osdlc/markdown-contract`](https://github.com/osdlc/osdlc/tree/main/packages/ts/markdown-contract#readme)
+  checks the sections and blocks of one Markdown document. This package checks a whole corpus:
+  data against JSON Schema, and links, ids and references across files.
+
+This package exists because the rules should live in the folder and in a written spec, not only in
+code, so that a validator in any language checks a corpus the same way. Its conformance cases sit
+beside the spec for that reason.
 
 ## Tests
 
-`pnpm run build`, then `pnpm run test`. The CLI tests run the built program. `tests/cases/` holds
-corpora with their expected reports, written so that a validator in another language can run the
-same cases. A case compares only the `<file>: <field>` prefix of each problem, as a set; message
-text and order are not part of it. The cases move to `packages/conformance/markdown-db/` once a
-second implementation exists, as
-[S-conformance-suites](https://github.com/osdlc/osdlc/blob/main/docs/planning/standards/S-conformance-suites.md)
-describes.
+`pnpm run build`, then `pnpm run test`. The CLI tests run the built program.
+`tests/conformance.test.ts` runs the spec's conformance cases from
+[`packages/conformance/markdown-db/`](https://github.com/osdlc/osdlc/tree/main/packages/conformance/markdown-db#readme). A case compares
+only the `<file>: <field>` prefix of each problem, as a set. Message text and order are not part of
+it.
 
 ## Known gap
 
 `@osdlc/markdown-link` finds only some Markdown links: only `.md` and media targets, with no titles
-and no parentheses in the path. S-markdown-db checks every relative link, so `src/links.ts` finds
+and no parentheses in the path. The spec checks every relative link, so `src/links.ts` finds
 Markdown links with its own pattern. [osdlc/osdlc#635](https://github.com/osdlc/osdlc/issues/635)
 tracks the fix; the local pattern goes once it lands.
 
 ## Stability
 
-This is a 0.x package that follows version 0 of its standard. A breaking change comes only in a new
-minor version, and the CHANGELOG marks it. The standard fixes the `<file>: <field>` prefix of each
-problem line, not its message text, so a message may change in any release.
+This is a 0.x package that follows version 0 of its spec. A minor release may change any export,
+and the CHANGELOG marks the change as breaking. A patch release does not. The spec fixes the
+`<file>: <field>` prefix of each problem line, not its message text, so a message may change in any
+release.
+
+The experimental exports, which may change in any release:
+
+- none
 
 ## Runtimes and platforms
 

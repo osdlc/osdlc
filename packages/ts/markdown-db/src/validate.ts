@@ -1,6 +1,7 @@
 /**
- * markdown-db validator (S-markdown-db, version 0). Nothing here knows a
- * particular corpus: every rule comes from the standard, the root file or a type's schema.
+ * The markdown-db validator, for version 0 of the markdown-db spec
+ * (packages/conformance/markdown-db/SPEC.md). Nothing here knows a particular corpus: every rule
+ * comes from the spec, the root file or a type's schema.
  */
 import { type Dirent, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, extname, join, posix } from 'node:path'
@@ -8,7 +9,7 @@ import { isDeepStrictEqual } from 'node:util'
 import { Ajv2020, type ErrorObject, type ValidateFunction } from 'ajv/dist/2020.js'
 import addFormatsModule, { type FormatsPlugin } from 'ajv-formats'
 import { split } from '@osdlc/frontmatter-lossless'
-import { parse as parseYaml } from 'yaml'
+import { parse as parseYaml, YAMLParseError } from 'yaml'
 import {
   extractLinks,
   fold,
@@ -27,6 +28,10 @@ const addFormats = (addFormatsModule as unknown as { default: FormatsPlugin }).d
 export const ROOT_FILES = ['markdown-db.md', 'markdown-db.yaml', 'markdown-db.json']
 const ROOT_KEYS = new Set(['markdown-db', 'id', 'formats'])
 
+/**
+ * A record's data: the YAML frontmatter of a `.md` record, or the whole of a `.yaml` or `.json`
+ * record, as parsed. Empty data is `{}`.
+ */
 export type Data = Record<string, unknown>
 
 interface Ref {
@@ -68,86 +73,159 @@ interface Corpus {
   warnings: string[]
 }
 
+/** What `validateCorpus` found in one corpus. */
 export interface CorpusReport {
+  /** The corpus folder, as passed to `validateCorpus`. */
   root: string
+  /** The corpus's name: its folder name. */
   name: string
+  /** The root file's `id`, or undefined when it has none or it is not a non-empty string. */
   id: string | undefined
-  /** Valid records by type, then id. */
+  /** Valid records by type, then id. A type with no valid records maps to an empty map. */
   records: Map<string, Map<string, Data>>
   /** The corpus-relative path of each valid record, by type, then id. */
   files: Map<string, Map<string, string>>
+  /**
+   * One line per error, as `<file>: <field>: <message>`, the file relative to the corpus root.
+   * The corpus is valid when this is empty.
+   */
   errors: string[]
+  /** One line per warning, in the same form as `errors`. Warnings do not make a corpus invalid. */
   warnings: string[]
-  /** Files `fix` rewrote. */
+  /** The corpus-relative paths of the files `fix` rewrote. Empty without `fix`. */
   fixed: string[]
 }
 
 const skipped = (name: string): boolean => name.startsWith('.') || name === 'node_modules'
 const entries = (abs: string): Dirent[] => readdirSync(abs, { withFileTypes: true })
+/** `s` on one line, so each problem stays one line. */
+const oneLine = (s: string): string => s.replace(/\s*\r?\n\s*/g, ' ').trim()
+/** Why a file or folder could not be read or written: its error code, such as EACCES, or the message. */
+const whyFailed = (e: unknown): string =>
+  (e as NodeJS.ErrnoException).code ?? oneLine((e as Error).message)
 // Exact names: existsSync ignores case on macOS and Windows.
 const hasRootFile = (names: Dirent[]): boolean =>
   names.some((d) => d.isFile() && ROOT_FILES.includes(d.name))
 
-/** Every corpus root at or below `dir`, nested ones included. */
+/**
+ * Every corpus root at or below `dir`, nested ones included: each folder that holds a root file.
+ * Each path is `dir` joined with the folder's path below it. Dot folders, `node_modules` and
+ * symlinks are not searched.
+ *
+ * A folder that cannot be read inside a corpus already found is skipped, since `validateCorpus`
+ * reports it as an error of that corpus.
+ *
+ * @throws Error when `dir`, or a folder below it that is in no corpus found, cannot be read. The
+ *   message is one line: `<folder>: cannot read folder (<code>)`.
+ */
 export function findCorpora(dir: string): string[] {
   const found: string[] = []
-  const visit = (abs: string): void => {
-    const names = entries(abs)
-    if (hasRootFile(names)) found.push(abs)
-    for (const d of names) if (d.isDirectory() && !skipped(d.name)) visit(join(abs, d.name))
+  const visit = (path: string, inCorpus: boolean): void => {
+    let names: Dirent[]
+    try {
+      names = entries(path)
+    } catch (e) {
+      if (inCorpus) return
+      throw new Error(`${path}: cannot read folder (${whyFailed(e)})`, { cause: e })
+    }
+    const isRoot = hasRootFile(names)
+    if (isRoot) found.push(path)
+    for (const d of names)
+      if (d.isDirectory() && !skipped(d.name)) visit(join(path, d.name), inCorpus || isRoot)
   }
-  visit(dir)
+  visit(dir, false)
   return found
 }
 
 /**
  * The corpus's files and folders, relative and with `/`, stopping at nested corpora, and the files
- * of those nested corpora.
+ * of those nested corpora. Symlinks are not followed: the corpus's own are listed in `symlinks`.
+ * A folder that cannot be read is an error in `problems`.
  */
 function walk(root: string): {
   files: string[]
   dirs: string[]
   nested: string[]
   nestedFiles: string[]
+  symlinks: string[]
+  problems: string[]
 } {
   const files: string[] = []
   const dirs: string[] = []
   const nested: string[] = []
   const nestedFiles: string[] = []
+  const symlinks: string[] = []
+  const problems: string[] = []
+  const read = (rel: string): Dirent[] => {
+    try {
+      return entries(join(root, rel))
+    } catch (e) {
+      problems.push(`${rel === '' ? '.' : rel}: (folder): cannot read (${whyFailed(e)})`)
+      return []
+    }
+  }
   const visit = (rel: string, names: Dirent[], inNested: boolean): void => {
     for (const d of names) {
       if (skipped(d.name)) continue
       const path = rel === '' ? d.name : `${rel}/${d.name}`
+      if (d.isSymbolicLink() && !inNested) symlinks.push(path)
       if (d.isFile()) (inNested ? nestedFiles : files).push(path)
       if (!d.isDirectory()) continue
-      const sub = entries(join(root, path))
+      const sub = read(path)
       const startsNested = !inNested && hasRootFile(sub)
       if (startsNested) nested.push(path)
       else if (!inNested) dirs.push(path)
       visit(path, sub, inNested || startsNested)
     }
   }
-  visit('', entries(root), false)
-  return { files: files.sort(), dirs: dirs.sort(), nested, nestedFiles: nestedFiles.sort() }
+  visit('', read(''), false)
+  return {
+    files: files.sort(),
+    dirs: dirs.sort(),
+    nested,
+    nestedFiles: nestedFiles.sort(),
+    symlinks: symlinks.sort(),
+    problems,
+  }
 }
 
-/** A file's data: the frontmatter of a `.md` file, else the whole file. Empty data is `{}`. */
+/** YAML parsed with any error on one line, its position counted in `whole` from `offset`. */
+function parseYamlAt(yaml: string, whole: string, offset: number): unknown {
+  try {
+    return parseYaml(yaml, { prettyErrors: false })
+  } catch (e) {
+    if (!(e instanceof YAMLParseError)) throw e
+    const at = offset + e.pos[0]
+    const before = whole.slice(0, at)
+    const line = before.split('\n').length
+    const column = at - before.lastIndexOf('\n')
+    throw new Error(`${oneLine(e.message)} at line ${line}, column ${column}`, { cause: e })
+  }
+}
+
+/**
+ * A file's data: the frontmatter of a `.md` file, else the whole file. Empty data is `{}`. Throws
+ * on a parse error, with the line and column in the file, or when the data is not a mapping.
+ */
 export function readData(text: string, ext: string): Data {
   let data: unknown
   if (ext === '.md') {
-    const { yaml } = split(text)
-    data = yaml === null ? {} : parseYaml(yaml)
+    const { yaml, yamlRange } = split(text)
+    data = yaml === null ? {} : parseYamlAt(yaml, text, yamlRange.start)
   } else if (ext === '.json') data = text.trim() === '' ? {} : JSON.parse(text)
-  else data = parseYaml(text)
+  else data = parseYamlAt(text, text, 0)
   data ??= {}
   if (typeof data !== 'object' || Array.isArray(data))
-    throw new Error('data must be a mapping, not a scalar or list')
+    throw new Error('must be a mapping, not a scalar or list')
   return data as Data
 }
 
 const BAD_ID_CHAR = /[/\\:*?"<>|[\]#^\p{Cc}]/u
 
-/** Why `id` breaks the id rules, or undefined when it follows them. */
+/**
+ * Why `id` breaks the spec's id rules, or undefined when it follows them. The reason reads after
+ * the id, as in `"a/b" holds "/"`. A type's `x-id-pattern` is not checked here.
+ */
 export function idProblem(id: string): string | undefined {
   if (id === '') return 'is empty'
   const bad = BAD_ID_CHAR.exec(id)?.[0]
@@ -179,7 +257,7 @@ const stem = (file: string): string => basename(file, extname(file))
 
 /** Read the root file, the types and their records, checking everything but links. */
 function load(root: string): Corpus {
-  const { files, dirs, nested, nestedFiles } = walk(root)
+  const { files, dirs, nested, nestedFiles, symlinks, problems } = walk(root)
   const c: Corpus = {
     root,
     name: basename(root),
@@ -193,27 +271,36 @@ function load(root: string): Corpus {
     types: new Map(),
     recordType: new Map(),
     checked: new Map(),
-    errors: [],
+    errors: problems,
     warnings: [],
   }
   const extensions = readRoot(c)
   if (extensions === undefined) return c
   const schemaFiles = readTypes(c, dirs)
+  for (const link of symlinks)
+    if ([...c.types.values()].some((t) => link.startsWith(`${t.dir}/`)))
+      c.warnings.push(`${link}: (symlink): not followed, so not checked`)
   readRecords(c, files, extensions, schemaFiles)
   return c
 }
 
 /**
- * Read `file`'s data and keep its text for the link checks. Reports a parse error and returns
- * undefined.
+ * Read `file`'s data and keep its text for the link checks. Reports a file it cannot read or
+ * parse, and returns undefined.
  */
 function readChecked(c: Corpus, file: string): Data | undefined {
-  const text = readFileSync(join(c.root, file), 'utf8')
+  let text: string
+  try {
+    text = readFileSync(join(c.root, file), 'utf8')
+  } catch (e) {
+    c.errors.push(`${file}: (file): cannot read (${whyFailed(e)})`)
+    return undefined
+  }
   let data: Data | undefined
   try {
     data = readData(text, extname(file))
   } catch (e) {
-    c.errors.push(`${file}: ${(e as Error).message}`)
+    c.errors.push(`${file}: (data): ${oneLine((e as Error).message)}`)
   }
   c.checked.set(file, { text, data })
   return data
@@ -224,10 +311,11 @@ function readRoot(c: Corpus): string[] | undefined {
   const rootFiles = ROOT_FILES.filter((f) => c.files.has(f))
   const rootFile = rootFiles[0]
   if (rootFile === undefined) {
-    c.errors.push(`${c.root}: no ${ROOT_FILES.join(', ')}`)
+    c.errors.push(`.: (folder): no ${ROOT_FILES.join(', ')}`)
     return undefined
   }
-  if (rootFiles.length > 1) c.errors.push(`${rootFiles.join(', ')}: a folder holds one root file`)
+  for (const f of rootFiles.slice(1))
+    c.errors.push(`${f}: (file): a folder holds one root file, and ${rootFile} is one`)
   const data = readChecked(c, rootFile)
   if (data === undefined) return undefined
   if (data['markdown-db'] !== 0) {
@@ -278,20 +366,24 @@ function readTypes(c: Corpus, dirs: string[]): Set<string> {
     const schemaFile = found[0]
     if (schemaFile === undefined) continue
     for (const f of found) schemaFiles.add(f)
-    if (found.length > 1) c.errors.push(`${found.join(', ')}: a type holds one schema file`)
+    for (const f of found.slice(1))
+      c.errors.push(`${f}: (file): a type holds one schema file, and ${schemaFile} is one`)
+    // A rejected type's schema is still read, so its links are checked.
     const outer = [...c.types.values()].find((t) => dir.startsWith(`${t.dir}/`))
     if (outer !== undefined) {
-      c.errors.push(`${dir}: a type folder must not sit inside type ${outer.name}`)
+      c.errors.push(`${dir}: (folder): a type folder must not sit inside type ${outer.name}`)
+      readChecked(c, schemaFile)
       continue
     }
     const clash = typeDirs.get(fold(name))
     if (clash !== undefined) {
-      c.errors.push(`${dir}: type name is also used by ${clash}`)
+      c.errors.push(`${dir}: (folder): type name is also used by ${clash}`)
+      readChecked(c, schemaFile)
       continue
     }
     typeDirs.set(fold(name), dir)
     const nameProblem = idProblem(name)
-    if (nameProblem !== undefined) c.errors.push(`${dir}: type name ${nameProblem}`)
+    if (nameProblem !== undefined) c.errors.push(`${dir}: (folder): type name ${nameProblem}`)
 
     const type: Type = {
       name,
@@ -308,14 +400,14 @@ function readTypes(c: Corpus, dirs: string[]): Set<string> {
     try {
       type.validate = ajv.compile(schema)
     } catch (e) {
-      c.errors.push(`${schemaFile}: ${(e as Error).message}`)
+      c.errors.push(`${schemaFile}: (schema): ${oneLine((e as Error).message)}`)
     }
     const pattern = schema['x-id-pattern']
     if (typeof pattern === 'string')
       try {
         type.idPattern = new RegExp(pattern, 'u')
       } catch (e) {
-        c.errors.push(`${schemaFile}: x-id-pattern: ${(e as Error).message}`)
+        c.errors.push(`${schemaFile}: x-id-pattern: ${oneLine((e as Error).message)}`)
       }
     for (const place of xrefPlaces(schema)) {
       const [first, field, third] = place
@@ -338,7 +430,7 @@ function readTypes(c: Corpus, dirs: string[]): Set<string> {
   for (const n of c.nested) {
     const inType = [...c.types.values()].find((t) => n.startsWith(`${t.dir}/`))
     if (inType !== undefined)
-      c.errors.push(`${n}: a corpus must not sit inside type folder ${inType.dir}`)
+      c.errors.push(`${n}: (folder): a corpus must not sit inside type folder ${inType.dir}`)
   }
   return schemaFiles
 }
@@ -357,12 +449,12 @@ function readRecords(
       const ext = extname(file)
       const lower = ext.toLowerCase()
       if (lower === '.yml') {
-        c.errors.push(`${file}: use the .yaml extension`)
+        c.errors.push(`${file}: (file): use the .yaml extension`)
         continue
       }
       if (!RECORD_EXTENSIONS.includes(lower)) continue
       if (ext !== lower) {
-        c.errors.push(`${file}: use the lower-case ${lower} extension`)
+        c.errors.push(`${file}: (file): use the lower-case ${lower} extension`)
         continue
       }
       if (!extensions.includes(ext)) {
@@ -485,8 +577,9 @@ function checkLinks(c: Corpus): void {
             continue
           }
           const r = resolve(c, file, link)
+          // A URL or a link to a heading in this file.
           if (r === undefined)
-            c.errors.push(`${file}: ${ref.field}: must link to a file, not a URL`)
+            c.errors.push(`${file}: ${ref.field}: must link to a ${ref.type} record file`)
           else if ('problem' in r && r.warn)
             c.errors.push(`${file}: ${ref.field}: must link to a ${ref.type} record in this corpus`)
           else if ('file' in r && c.recordType.get(r.file)?.name !== ref.type)
@@ -511,9 +604,10 @@ function withoutLinks(value: unknown): unknown {
 }
 
 /** Rewrite each wikilink that resolves to one file as a relative Markdown link. */
-function fixWikilinks(c: Corpus): { fixed: string[]; warnings: string[] } {
+function fixWikilinks(c: Corpus): { fixed: string[]; warnings: string[]; errors: string[] } {
   const fixed: string[] = []
   const warnings: string[] = []
+  const errors: string[] = []
   for (const [file, { text, data }] of c.checked) {
     if (data === undefined) continue
     const ext = extname(file)
@@ -552,16 +646,28 @@ function fixWikilinks(c: Corpus): { fixed: string[]; warnings: string[] } {
       warnings.push(`${file}: wikilinks not rewritten; write each one in data as a quoted string`)
       continue
     }
-    writeFileSync(join(c.root, file), out)
-    fixed.push(file)
+    try {
+      writeFileSync(join(c.root, file), out)
+      fixed.push(file)
+    } catch (e) {
+      errors.push(`${file}: (file): cannot write (${whyFailed(e)})`)
+    }
   }
-  return { fixed, warnings }
+  return { fixed, warnings, errors }
 }
 
-/** Validate the corpus at `root`. With `fix`, rewrite its wikilinks first. */
+/**
+ * Validate the corpus at `root` against the markdown-db spec, version 0. Every problem is a line
+ * in the report, including a file or folder that cannot be read or, with `fix`, written. Nothing
+ * is thrown for them.
+ *
+ * With `fix`, first rewrite each wikilink that resolves to one file as a relative Markdown link,
+ * in place, in the root file, schema files and records. A file whose data would change is left
+ * as it is, with a warning. The report then describes the corpus after the rewrite.
+ */
 export function validateCorpus(root: string, { fix = false } = {}): CorpusReport {
   let c = load(root)
-  const fixes = fix ? fixWikilinks(c) : { fixed: [], warnings: [] }
+  const fixes = fix ? fixWikilinks(c) : { fixed: [], warnings: [], errors: [] }
   if (fixes.fixed.length > 0) c = load(root)
   checkLinks(c)
   return {
@@ -580,7 +686,7 @@ export function validateCorpus(root: string, { fix = false } = {}): CorpusReport
         new Map([...t.records].map(([id, r]) => [id, r.file])),
       ]),
     ),
-    errors: c.errors,
+    errors: [...fixes.errors, ...c.errors],
     warnings: [...fixes.warnings, ...c.warnings],
     fixed: fixes.fixed,
   }

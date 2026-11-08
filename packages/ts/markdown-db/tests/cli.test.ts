@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { afterEach, beforeEach, describe, test } from 'vitest'
 
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -81,6 +81,33 @@ describe('markdown-db validate', () => {
     assert.equal(r.stdout, 'ok: one: 1 notes\n')
     assert.equal(r.stderr, '')
   })
+
+  test(
+    'reports a folder it cannot read as an error, not a stack trace',
+    // chmod does not stop root or Windows from reading.
+    { skip: process.platform === 'win32' || process.getuid?.() === 0 },
+    () => {
+      corpus('one', 'a')
+      mkdirSync(join(dir, 'locked'))
+      mkdirSync(join(dir, 'one/notes/locked'))
+      chmodSync(join(dir, 'locked'), 0o000)
+      chmodSync(join(dir, 'one/notes/locked'), 0o000)
+      try {
+        const outside = cli('validate', '.')
+        assert.equal(outside.status, 1)
+        assert.equal(outside.stderr, 'locked: cannot read folder (EACCES)\n')
+        const inside = cli('validate', 'one')
+        assert.equal(inside.status, 1)
+        assert.equal(
+          inside.stderr,
+          'notes/locked: (folder): cannot read (EACCES)\none: 1 error(s)\n',
+        )
+      } finally {
+        chmodSync(join(dir, 'locked'), 0o755)
+        chmodSync(join(dir, 'one/notes/locked'), 0o755)
+      }
+    },
+  )
 
   test('exits 2 on bad usage', () => {
     for (const args of [

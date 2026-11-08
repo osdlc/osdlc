@@ -70,7 +70,8 @@ implementation. A build of one implementation for another runtime, such as
 `@osdlc/yaml-splice` (the crate built to WebAssembly), is a binding, not an
 implementation, and keeps its own version. The rules below apply when the
 implementations are hosted here. They keep the same behaviour, not the same
-code.
+code. A family that states a format in a `SPEC.md`, such as `markdown-db`, may
+have one implementation so far.
 [S-conformance-suites](../docs/planning/standards/S-conformance-suites.md) is
 the standard.
 
@@ -80,8 +81,8 @@ the standard.
   `packages/conformance/families.json`, run by every implementation's tests,
   with expected values written by the reference implementation's generator.
   `pnpm run check:conformance` checks the suites. `tiered-dirs`,
-  `config-layers`, `frontmatter-lossless`, `intersect` and `path-guard` have
-  moved there. Until they move, `gfm-pipe-table` (the Rust implementation of
+  `config-layers`, `frontmatter-lossless`, `intersect`, `markdown-db` and
+  `path-guard` are there. Until they move, `gfm-pipe-table` (the Rust implementation of
   `@osdlc/gfm-table`) keeps `packages/rust/gfm-pipe-table/tests/fixtures/parity.json`,
   `markdown-link` its crate's `tests/fixtures/conformance.json`, and
   `markdown-contract` runs the TypeScript package's `corpus/` directly.
@@ -189,8 +190,8 @@ Developed here, in this repository:
 - `packages/ts/markdown-contract` (`@osdlc/markdown-contract` on npm,
   contracts for markdown documents: one parse gives findings with lines and a
   typed model; contracts in TypeScript or YAML, a folder runner and a CLI)
-- `packages/ts/markdown-db` (`@osdlc/markdown-db` on npm, the validator for
-  [S-markdown-db](../docs/planning/standards/S-markdown-db.md): typed records
+- `packages/ts/markdown-db` (`@osdlc/markdown-db` on npm, the validator for the
+  [markdown-db spec](./conformance/markdown-db/SPEC.md): typed records
   kept as Markdown, YAML and JSON files in a folder, checked against the
   schemas, ids and links the folder holds; a library and a `markdown-db`
   command)
