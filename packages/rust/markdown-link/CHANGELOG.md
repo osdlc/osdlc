@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `strip_code`: under `CodeRules::CommonMark` a backtick after an odd run of
+  `\` is a literal backtick and opens no code span, so a link in
+  ``See \`[[Note]]\` here`` is found. `CodeRules::SkillExport` does not honour
+  the escape, as before.
+- `display_text` shows a link into the same note, `[[#Setup|steps]]` or
+  `[[#Setup]]`, as its alias, or else its heading or `^block`, where it
+  dropped the link.
+- `tests/fixtures/conformance.json` carries both as `code` and `display`
+  cases, which `@osdlc/markdown-link` reads too.
+
 ## [0.8.0] - 2026-11-04
 
 The scanner reports each `[[` it gave up on. Nothing is removed or changed.
