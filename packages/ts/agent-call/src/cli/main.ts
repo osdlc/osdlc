@@ -14,7 +14,7 @@ export interface CliIo {
   stderr: (text: string) => void
   cwd: string
   /** Aborted on SIGINT/SIGTERM so the agent's process group is killed. */
-  signal?: AbortSignal | undefined
+  signal: AbortSignal
 }
 
 export const USAGE = `usage: agent-call run <spec.yml|spec.json> [--agent <id>] [--root <dir>]

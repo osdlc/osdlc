@@ -39,6 +39,7 @@ async function cli(args: string[]) {
     cwd: dir,
     stdout: (t) => (out += t),
     stderr: (t) => (err += t),
+    signal: new AbortController().signal,
   })
   return { code, out, err }
 }
