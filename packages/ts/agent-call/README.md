@@ -263,9 +263,11 @@ agent-call run spec.yml [--agent <id>] [--root <dir>] \
   runs. `--dry-run` prints the same and exits 0 without running.
 - `strict: true` exits 3 before running if any note is `approximated` or
   `dropped` (`emulated` is allowed), or if a field has no home in the library
-  spec. `run.maxTurns` is accepted but the library has no turn limit, so it is
-  reported as dropped: it fails a strict spec and is otherwise listed under
-  `--explain`.
+  spec.
+- `run.maxTurns` (a positive integer) is passed to the call as
+  `limits.maxTurns`. It is native on claude (`--max-turns`) and qwen
+  (`--max-session-turns`). Other agents have no turn limit flag, so it is
+  reported as dropped, which fails a strict spec.
 - stdout is the normalized result as one JSON document (`ok`, `text`,
   `structured`, `sessionId`, `usage`, `costUsd`, `model`, `error`, `exitCode`,
   `durationMs`, `agent`, `notes`). `raw`, `planned` and `events` are left out.
@@ -384,6 +386,7 @@ that did not map one to one:
 | `session.persist: false` | `--no-session-persistence` | `--ephemeral` | dropped | dropped |
 | `mcp.servers` | `--mcp-config` | `-c mcp_servers.*` | dropped | dropped |
 | `budgetUsd` | `--max-budget-usd` | dropped | dropped | dropped |
+| `limits.maxTurns` | `--max-turns` | dropped | dropped | dropped |
 | `timeoutMs` | library-level (SIGTERM → SIGKILL) on all agents | | | |
 | `maxOutputBytes` | library-level per-stream cap (SIGTERM → SIGKILL, reason `output-limit`) on all agents | | | |
 | `extraArgs` | appended verbatim on all agents | | | |
@@ -414,6 +417,7 @@ The same rows for the other six agents:
 | `session.persist: false` | dropped | `--no-session` | `--chat-recording false` (approximated) | dropped | dropped | dropped |
 | `mcp.servers` | `--additional-mcp-config` | dropped | `--mcp-config` | dropped | `--plugin-dir` temp plugin (approximated) | `--patch` mcp-client rows (approximated) |
 | `budgetUsd` | dropped | dropped | dropped | dropped | dropped | dropped |
+| `limits.maxTurns` | dropped | dropped | `--max-session-turns` | dropped | dropped | dropped |
 | `timeoutMs` | library-level (SIGTERM → SIGKILL) on all agents | | | | | |
 | `maxOutputBytes` | library-level per-stream cap (SIGTERM → SIGKILL, reason `output-limit`) on all agents | | | | | |
 | `extraArgs` | appended verbatim on all agents | | | | | |

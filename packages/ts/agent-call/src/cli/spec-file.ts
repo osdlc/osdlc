@@ -196,12 +196,8 @@ export function resolveCall(
   if (run.permissions !== undefined) spec.permissions = run.permissions
   if (files.length > 0) spec.context = { files }
 
+  if (run.maxTurns !== undefined) spec.limits = { maxTurns: run.maxTurns }
+
   const unsupported: ResolvedCall['unsupported'] = []
-  if (run.maxTurns !== undefined) {
-    unsupported.push({
-      field: 'maxTurns',
-      detail: 'AgentCallSpec has no turn limit, so it was not passed to the agent',
-    })
-  }
   return { spec, unsupported }
 }

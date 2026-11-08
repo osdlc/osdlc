@@ -124,7 +124,8 @@ describe('inputs and placeholders', () => {
     const { spec, unsupported } = resolveCall(run, dir, parseInputs(['n=1', 'c=@ctx.txt'], dir))
     expect(spec.prompt).toBe('You answer questions.\n\nn 1')
     expect(spec.context?.files).toEqual([join(dir, 'ctx.txt'), join(dir, 'ctx.txt')])
-    expect(unsupported.map((u) => u.field)).toEqual(['maxTurns'])
+    expect(spec.limits).toEqual({ maxTurns: 5 })
+    expect(unsupported).toEqual([])
   })
 })
 
@@ -138,15 +139,25 @@ describe('strict detection', () => {
     expect(strictViolations(notes).map((n) => n.support)).toEqual(['approximated', 'dropped'])
   })
 
-  test('strict spec with maxTurns exits 3 and runs nothing', async () => {
+  test('strict spec with maxTurns exits 3 on an agent with no turn limit', async () => {
     writeFileSync(
       join(dir, 'strict.yml'),
-      'run:\n  agent: claude\n  strict: true\n  maxTurns: 3\n  prompt: [{text: hi}]\n',
+      'run:\n  agent: codex\n  strict: true\n  maxTurns: 3\n  prompt: [{text: hi}]\n',
     )
     const r = await cli(['run', 'strict.yml'])
     expect(r.code).toBe(3)
     expect(r.err).toMatch(/strict mode refused[\s\S]*maxTurns/)
     expect(r.out).toBe('')
+  })
+
+  test('maxTurns reaches the plan: native on claude, so strict passes', async () => {
+    writeFileSync(
+      join(dir, 'turns.yml'),
+      'run:\n  agent: claude\n  strict: true\n  maxTurns: 3\n  prompt: [{text: hi}]\n',
+    )
+    const r = await cli(['run', 'turns.yml', '--dry-run'])
+    expect(r.code).toBe(0)
+    expect(r.err).toMatch(/"--max-turns","3"/)
   })
 
   test('strict spec with a dropped field on cursor exits 3', async () => {
