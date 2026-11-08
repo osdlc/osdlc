@@ -19,8 +19,8 @@ requests. Started 2026-11-08.
 ## Roadmap
 
 Arrows mean "needs". Green is done, purple a PR ready to merge
-(approved, checks green), teal a PR in review, amber in progress, blue
-next, grey later. Update the classes at the bottom as items
+(approved, checks green), teal a PR in review, red blocked, amber in
+progress, blue next, grey later. Update the classes at the bottom as items
 move.
 
 ```mermaid
@@ -29,6 +29,8 @@ flowchart LR
     W710["PR 710: claude.yml runs claude -p"]
     P712["PR 712: claude-setup + claude-pr-answer actions"]
     PLAN["Plan + investigations I1–I5"]
+    P707["PR 707: hide full output again (moot)"]
+    P711["PR 711: API key on the old workflow (superseded)"]
     CLOSE["Close PRs 711 and 707; settle the old parley"]
   end
   subgraph facts["Facts · harness-reference (skillwright repo)"]
@@ -58,6 +60,8 @@ flowchart LR
 
   W710 --> P712
   P712 --> CLOSE
+  P707 --> CLOSE
+  P711 --> CLOSE
   UP --> PERM
   PLAN --> PERM
   PERM --> PROBE
@@ -79,15 +83,27 @@ flowchart LR
   classDef done fill:#2e8b57,stroke:#1f6640,color:#ffffff
   classDef review fill:#0f8a8a,stroke:#0a6666,color:#ffffff
   classDef ready fill:#7a4fc2,stroke:#5a3596,color:#ffffff
+  classDef blocked fill:#c0392b,stroke:#8e2a20,color:#ffffff
   classDef active fill:#c77d0a,stroke:#94600a,color:#ffffff
   classDef next fill:#2f5bd3,stroke:#2144a3,color:#ffffff
   classDef later fill:#8a93a3,stroke:#6b7384,color:#ffffff
   class W710,PLAN done
-  class P712 review
+  class P712,P711 review
+  class P707 blocked
   class UP active
   class CLOSE,PERM,PROBE,CHECK,CUR,RUN,SETUP,ANS,SPEC,MULTI next
   class MCP,PUB,DATA,PIN later
 ```
+
+## PR tracker
+
+Checked 2026-11-08. A periodic check refreshes this table and the graph.
+
+| PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
+| ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
+| #712 | gh-actions: claude-setup, claude-pr-answer | open  | none   | clean          | needs a review                                                       | merge                    |
+| #711 | claude.yml: ANTHROPIC_API_KEY            | open  | none   | unknown        | superseded by #712                                                   | close after #712 merges  |
+| #707 | claude: hide full output again           | open  | none   | **conflicting** | `claude.yml` was rewritten by #710; the setting it changes is gone | close, don't resolve     |
 
 ## Principle
 
