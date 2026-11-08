@@ -126,8 +126,9 @@ move; merged PRs drop off.
 
 | Order | PR | What | Why this order | Status |
 | --- | --- | --- | --- | --- |
-| 1 | [#721](https://github.com/osdlc/osdlc/pull/721) | agent-call: cursor allow and deny via `.cursor/cli.json` | Same package as #715 (merged); can ship in the same agent-call release | draft; /craft:pr-review running; behind main |
-| 2 | [#716](https://github.com/osdlc/osdlc/pull/716) | `agent-setup` action and `gh-actions release` workflow | Independent of agent-call; needed before `agent-pr-answer` | draft; /craft:pr-review running |
+| 1 | [#723](https://github.com/osdlc/osdlc/pull/723) | agent-call `run`: forward SIGINT and SIGTERM to the agent | Small fix from the codex review of #715; can ship in the same agent-call release | draft; gate running |
+| 2 | [#721](https://github.com/osdlc/osdlc/pull/721) | agent-call: cursor allow and deny via `.cursor/cli.json` | Same package as #715 (merged); can ship in the same agent-call release | draft; /craft:pr-review running; behind main |
+| 3 | [#716](https://github.com/osdlc/osdlc/pull/716) | `agent-setup` action and `gh-actions release` workflow | Independent of agent-call; needed before `agent-pr-answer` | draft; /craft:pr-review running |
 
 ## PR tracker
 
@@ -135,6 +136,7 @@ Checked 2026-11-08. A periodic check refreshes this table and the graph.
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
+| [#723](https://github.com/osdlc/osdlc/pull/723) | fix(agent-call): forward signals in run | draft | none | — | pre-review gate running | merge |
 | [#721](https://github.com/osdlc/osdlc/pull/721) | feat(agent-call): allow and deny tools on cursor | draft | none   | —              | pre-review gate running: /simplify, /code-review, responses | merge                    |
 | [#716](https://github.com/osdlc/osdlc/pull/716) | feat(gh-actions): agent-setup action  | draft | none   | —              | pre-review gate running: /simplify, /code-review, responses | merge                    |
 | [#715](https://github.com/osdlc/osdlc/pull/715) | feat(agent-call): agent-call run command | merged | — | — | — | merged 2026-11-08 |
