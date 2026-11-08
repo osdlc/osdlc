@@ -7,7 +7,7 @@ through [skillwright](https://github.com/osdlc/skillwright).
 ## Use
 
 ```yaml
-- uses: osdlc/osdlc/packages/gh-actions/agent-setup@<commit-sha> # v1
+- uses: osdlc/osdlc/packages/gh-actions/agent-setup@<commit-sha> # gh-actions/v1
   id: setup
   with:
     harness: claude
@@ -18,7 +18,7 @@ through [skillwright](https://github.com/osdlc/skillwright).
 Codex, the same plugins:
 
 ```yaml
-- uses: osdlc/osdlc/packages/gh-actions/agent-setup@<commit-sha> # v1
+- uses: osdlc/osdlc/packages/gh-actions/agent-setup@<commit-sha> # gh-actions/v1
   with:
     harness: codex
     marketplaces: osdlc=https://github.com/osdlc/marketplace.git main
@@ -28,7 +28,7 @@ Codex, the same plugins:
 Cursor, which registers marketplaces but cannot install their plugins:
 
 ```yaml
-- uses: osdlc/osdlc/packages/gh-actions/agent-setup@<commit-sha> # v1
+- uses: osdlc/osdlc/packages/gh-actions/agent-setup@<commit-sha> # gh-actions/v1
   with:
     harness: cursor
     marketplaces: osdlc=https://github.com/osdlc/marketplace.git
