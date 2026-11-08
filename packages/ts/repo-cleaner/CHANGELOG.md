@@ -1,5 +1,14 @@
 # @osdlc/repo-cleaner
 
+## 0.20.1
+
+### Patch Changes
+
+- Updated dependencies [0703abd]
+- Updated dependencies [61b12ce]
+  - @osdlc/cli-tool@0.18.0
+  - @osdlc/typed-gh@0.17.0
+
 ## 0.20.0
 
 ### Minor Changes
