@@ -24,9 +24,9 @@
       "line": 461,
       "title": "scratch dir leaks on failure",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "875ccb09c39818f4a7902508910236662c544127"
     }
   ]
 }
