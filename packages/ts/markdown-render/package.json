@@ -1,0 +1,99 @@
+{
+  "name": "@osdlc/markdown-render",
+  "version": "0.5.0",
+  "description": "Obsidian-dialect markdown renderer on unified/remark, plus a Vue 3 integration. Every dialect feature is a remark/rehype plugin — never a bespoke parser.",
+  "type": "module",
+  "sideEffects": [
+    "./src/theme.css"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./plugins": {
+      "types": "./dist/plugins/index.d.ts",
+      "default": "./dist/plugins/index.js"
+    },
+    "./vue": {
+      "types": "./dist/vue/index.d.ts",
+      "default": "./dist/vue/index.js"
+    },
+    "./shiki": {
+      "types": "./dist/shiki.d.ts",
+      "default": "./dist/shiki.js"
+    },
+    "./theme.css": "./src/theme.css"
+  },
+  "files": [
+    "dist/",
+    "src/theme.css",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "test": "bunx --bun vitest run",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint .",
+    "prepublishOnly": "npm run clean && npm run build"
+  },
+  "dependencies": {
+    "@osdlc/gfm-table": "workspace:^",
+    "@osdlc/markdown-tags": "workspace:^",
+    "@osdlc/markdown-link": "workspace:^",
+    "@types/hast": "^3.0.4",
+    "@types/mdast": "^4.0.4",
+    "@types/unist": "^3.0.3",
+    "github-slugger": "^2.0.0",
+    "rehype-raw": "^7.0.0",
+    "rehype-sanitize": "^6.0.0",
+    "rehype-stringify": "^10.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
+    "remark-parse": "^11.0.0",
+    "remark-rehype": "^11.1.2",
+    "shiki": "^4.4.1",
+    "unified": "^11.0.5",
+    "unist-util-visit": "^5.0.0"
+  },
+  "peerDependencies": {
+    "katex": "^0.18.1",
+    "mermaid": "^11.12.2",
+    "vue": "^3.5"
+  },
+  "peerDependenciesMeta": {
+    "katex": {
+      "optional": true
+    },
+    "mermaid": {
+      "optional": true
+    },
+    "vue": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "katex": "^0.18.1",
+    "mermaid": "^11.12.2",
+    "vue": "^3.5.25",
+    "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/tsconfig": "workspace:^",
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "jsdom": "^26.0.0",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
