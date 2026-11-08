@@ -24,9 +24,9 @@
       "line": 33,
       "title": "MathBlock draw has no stale-draw guard",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "3dafcd6417463cb9ceff7e725bc9768c03492484"
     }
   ]
 }
