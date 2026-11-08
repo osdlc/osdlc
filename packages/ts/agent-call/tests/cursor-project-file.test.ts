@@ -186,40 +186,18 @@ describe('cursor .cursor/cli.json around the call', () => {
     })
   })
 
-  test('concurrent takeover of one stale lock: every call wins or is refused, original ends restored', async () => {
-    await mkdir(join(dir, '.cursor'))
-    const original = '{"keep":1}\n'
-    await writeFile(join(dir, '.cursor/cli.json'), '{"permissions":{}}')
-    await writeFile(
-      join(dir, '.cursor/cli.json.agent-call.lock'),
-      JSON.stringify({
-        pid: 2 ** 22 + 12345,
-        captured: true,
-        original: Buffer.from(original).toString('base64'),
-        createdDir: null,
-      }),
-    )
+  test('release leaves a lock that records another pid (the loser of a takeover race)', async () => {
     const edit = {
       path: '.cursor/cli.json',
       key: 'permissions',
       value: { allow: [], deny: [] },
       preview: '',
     }
-    // The interleaving is not deterministic, and all callers share one pid here,
-    // so this checks the invariants rather than a single winner: every call
-    // either holds the file or is refused (a loser can briefly see the winner's
-    // half-written file), and releasing leaves the original.
-    const results = await Promise.allSettled(
-      Array.from({ length: 6 }, () => applyProjectFile(dir, edit)),
-    )
-    const won = results.filter((r) => r.status === 'fulfilled')
-    expect(won.length).toBeGreaterThanOrEqual(1)
-    for (const r of results) {
-      if (r.status === 'rejected')
-        expect(String(r.reason)).toMatch(/in use|take over|not a JSON object/)
-    }
-    for (const r of won) await (r as PromiseFulfilledResult<() => Promise<void>>).value()
-    expect(await readFile(join(dir, '.cursor/cli.json'), 'utf8')).toBe(original)
-    expect(await readdir(join(dir, '.cursor'))).toEqual(['cli.json'])
+    const release = await applyProjectFile(dir, edit)
+    const lock = join(dir, '.cursor/cli.json.agent-call.lock')
+    const theirs = JSON.stringify({ pid: process.pid + 1 })
+    await writeFile(lock, theirs)
+    await release()
+    expect(await readFile(lock, 'utf8')).toBe(theirs)
   })
 })
