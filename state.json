@@ -1,12 +1,35 @@
 {
   "schema": 1,
   "pr": 718,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "b57cd406b18cff513231824b452c13a27cff8b1d",
+  "base": "18bcafc465352201dd8c57e7995ea2a7b21cf0c9",
+  "round": 1,
   "claim": {
     "owner": "Mac.local:claude-q7x2kd",
     "at": "2026-11-08T19:17:37.799Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "scripts/perf-gate.ts",
+      "line": 187,
+      "title": "removed benchmarks are never gated",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "scripts/perf-gate.ts",
+      "line": 461,
+      "title": "scratch dir leaks on failure",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
