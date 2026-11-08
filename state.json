@@ -35,9 +35,9 @@
       "line": 169,
       "title": "publicBase '/' makes every absolute frontmatter path look like a published asset",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "e27cb84d3c004b2bfbadb3723b218aa5d77607b2"
     },
     {
       "id": "r1-4",
