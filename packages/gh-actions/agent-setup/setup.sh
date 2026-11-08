@@ -150,7 +150,6 @@ plugins_of() {
   while IFS= read -r plugin; do
     plugin="${plugin//[[:space:]]/}"
     [ -n "$plugin" ] || continue
-    [[ "$plugin" =~ ^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$ ]] || die "plugin '$plugin' must be plugin@marketplace"
     [ "${plugin#*@}" = "$1" ] && printf '%s ' "${plugin%@*}"
   done <<< "$PLUGINS"
   return 0
@@ -189,7 +188,9 @@ plan_plugins() {
 }
 
 markets=()
-if [ -n "${MARKETPLACES//[[:space:]]/}${PLUGINS//[[:space:]]/}" ]; then
+want_plugins=
+[ -z "${MARKETPLACES//[[:space:]]/}${PLUGINS//[[:space:]]/}" ] || want_plugins=1
+if [ -n "$want_plugins" ]; then
   plan_plugins
 fi
 
@@ -230,7 +231,7 @@ install_plugins() {
   done
 }
 
-if [ -n "${MARKETPLACES//[[:space:]]/}${PLUGINS//[[:space:]]/}" ]; then
+if [ -n "$want_plugins" ]; then
   install_plugins
 fi
 
