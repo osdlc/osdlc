@@ -46,7 +46,7 @@ flowchart LR
     PLAN["Plan + investigations I1–I5"]
   end
   subgraph house["Housekeeping"]
-    PLANPR["PR 713: this plan"]
+    PLANPR["PR 713: this plan, merged"]
     PARLEY["Retire the packaging parley"]
   end
   subgraph facts["Facts · harness-reference (skillwright repo)"]
@@ -55,16 +55,17 @@ flowchart LR
     PROBE["Cursor clean-config probe"]
   end
   subgraph call["One call · @osdlc/agent-call"]
-    RUN["PR 715: run CLI (draft)"]
+    RUN["PR 715: run CLI with maxTurns"]
     CHECK["Check permission rows against the facts"]
-    STRICT["strict mode"]
-    CUR["Cursor: write .cursor/cli.json, fix print-mode note"]
+    STRICT["Backlog: enforced read-only mappings (claude tool denies + sandbox, cursor cli.json) so strict passes"]
+    CUR["PR 721: cursor allow and deny via .cursor/cli.json"]
+    REL["Release agent-call with the run CLI and maxTurns"]
   end
   subgraph gate["Gate"]
-    ARCH["API and architecture review: dependencies and public APIs"]
+    ARCH["API and architecture review 1: approved"]
   end
   subgraph acts["CI glue · packages/gh-actions"]
-    SETUP["PR 716: agent-setup (draft)"]
+    SETUP["PR 716: agent-setup and release workflow"]
     ANS["agent-pr-answer: prefetch, run, post"]
   end
   subgraph roll["Rollout"]
@@ -86,15 +87,14 @@ flowchart LR
   PERM --> CHECK
   CHECK --> STRICT
   RUN --> STRICT
-  PROBE --> CUR
-  CHECK --> CUR
+  PROBE --> CHECK
   P712 -.-> ANS
   RUN --> ARCH
   SETUP --> ARCH
-  ARCH --> ANS
+  ARCH --> REL
+  REL --> ANS
   ARCH --> SPEC
   ANS --> SPEC
-  STRICT --> SPEC
   SPEC --> MULTI
   CUR --> MULTI
   MULTI --> MCP
@@ -110,13 +110,12 @@ flowchart LR
   classDef yours fill:#f5c27a,stroke:#c99545,color:#1b2230
   classDef next fill:#2f5bd3,stroke:#2144a3,color:#ffffff
   classDef later fill:#8a93a3,stroke:#6b7384,color:#ffffff
-  class W710,P711,P707,P712,PLAN,PARLEY done
+  class W710,P711,P707,P712,PLAN,PARLEY,PLANPR,ARCH done
   class UP yours
-  class PLANPR review
-  class ARCH active
-  class RUN,SETUP review
-  class PERM,PROBE,CHECK,STRICT,CUR,ANS,SPEC,MULTI next
-  class MCP,PUB,DATA,PIN later
+  class RUN,SETUP active
+  class PERM,PROBE,CHECK,REL,ANS,SPEC,MULTI next
+  class CUR active
+  class MCP,PUB,DATA,PIN,STRICT later
 ```
 
 ## PR tracker
@@ -125,9 +124,10 @@ Checked 2026-11-08. A periodic check refreshes this table and the graph.
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
-| [#716](https://github.com/osdlc/osdlc/pull/716) | feat(gh-actions): agent-setup action  | draft | none   | —              | waits on the API and architecture review                             | review gate, then merge  |
-| [#715](https://github.com/osdlc/osdlc/pull/715) | feat(agent-call): agent-call run command | draft | none   | —              | waits on the API and architecture review                             | review gate, then merge  |
-| [#713](https://github.com/osdlc/osdlc/pull/713) | docs(planning): plan coding agents in CI | open  | none   | —              | needs your review                                                    | merge when reviewed      |
+| [#721](https://github.com/osdlc/osdlc/pull/721) | feat(agent-call): allow and deny tools on cursor | draft | none   | —              | pre-review gate running: /simplify, /code-review, responses | merge                    |
+| [#716](https://github.com/osdlc/osdlc/pull/716) | feat(gh-actions): agent-setup action  | draft | none   | —              | pre-review gate running: /simplify, /code-review, responses | merge                    |
+| [#715](https://github.com/osdlc/osdlc/pull/715) | feat(agent-call): agent-call run command | draft | none   | —              | pre-review gate running: /simplify, /code-review, responses | merge, then release agent-call |
+| [#713](https://github.com/osdlc/osdlc/pull/713) | docs(planning): plan coding agents in CI | merged | — | — | — | merged 2026-11-08 |
 | [#712](https://github.com/osdlc/osdlc/pull/712) | gh-actions: claude-setup, claude-pr-answer | closed | none  | —              | —                                                                    | closed 2026-11-08; branch kept as a starting point |
 | [#711](https://github.com/osdlc/osdlc/pull/711) | claude.yml: ANTHROPIC_API_KEY            | merged | none  | —              | —                                                                    | merged 2026-11-08        |
 | [#622](https://github.com/osdlc/osdlc/pull/622) | Proposal: transcripts in agent-call and observe | draft | none   | —              | —                                                                    | related to agent-call, not on this plan's path |
@@ -180,8 +180,7 @@ Rules:
 
 ## Investigations
 
-Settle these before building. Findings go in the table below and the
-sections after it.
+All five are answered; the findings follow the sections below.
 
 | Id  | Question                                                                                                      | Status |
 | --- | ------------------------------------------------------------------------------------------------------------- | ------ |
@@ -208,36 +207,47 @@ The first round covers `agent-call run` and `agent-setup` while they are
 built, and gates `agent-pr-answer` and the move of `claude.yml` to the
 spec. Its output is a review document with a decision per question.
 
-Questions raised so far:
+Review 1 ([agent-ci-review-1](../parley/agent-ci-review-1.json)) was
+approved on 2026-11-08. Decisions:
 
-- `strict` refuses read-only on claude and cursor, because both map it to an
-  approximation (`--permission-mode plan`, `--mode ask`). Per-field
-  acceptance, or exact mappings backed by harness-reference facts? (#715)
-- `maxTurns`: `AgentCallSpec` has no turn limit; claude has `--max-turns`.
-  Add it to the library spec? (#715)
-- Cursor `allowTools` is dropped; write `.cursor/cli.json` instead (I2).
-- agent-setup installs cursor from its build tarball, because cursor's
-  installer cannot pin a version. Acceptable? (#716)
-- Cursor plugins: skillwright only registers the marketplace. Hard error or
-  warning? (#716)
-- Releasing the shared `v1` tag: a workflow or by hand? (#716)
-- `marketplaces` input as `name=url [ref]`, since skillwright cannot read a
-  remote marketplace's name. (#716)
+| Question | Decision |
+| --- | --- |
+| strict | Keep as built: fail, the caller relaxes with `strict: false`. Enforced read-only mappings are backlogged. |
+| Turn limit | Add `limits.maxTurns` to `AgentCallSpec` (#715). |
+| Cursor allow and deny rules | agent-call writes `.cursor/cli.json` for the length of the call, then restores it. |
+| `yaml` dependency | Keep it in `@osdlc/agent-call`, loaded only by the CLI. |
+| Cursor install | The pinned build tarball from Cursor's download server, checked against SHA-256. |
+| Cursor plugins | Fail when plugins are requested on cursor. |
+| `v1` release | Add a release workflow now (#716). |
+| `marketplaces` input | Keep `name=url [ref]`. |
+| Order | Merge #715 with these decisions, release agent-call, then build `agent-pr-answer`. |
+
+## Known issues
+
+- `claude.yml`: when checkout or the CLI install fails, the "Post the answer"
+  step is skipped (`steps.claude.outcome != 'skipped'`), so the pull request
+  gets no reply. `agent-pr-answer` replaces this workflow; it must post an
+  error on every failure path. Found in the #717 pre-review.
+
+## PR process
+
+Every PR opens as a draft. Before it is marked ready for review it goes
+through /simplify and /code-review, and every finding gets a response (fixed,
+or declined with a reason) in one PR comment. Then it moves out of draft.
 
 ## Work, in order
 
-1. Push this plan as a docs PR. (The packaging parley is retired.)
-2. Add the `permissions` category to harness-reference for claude, codex
+1. Add the `permissions` category to harness-reference for claude, codex
    and cursor (I5).
-3. `agent-call run`: spec file, `file` / `text` / `input` prompt parts,
-   `--explain`. This can start now. `strict` follows once its capability
-   map is checked against harness-reference.
-4. Generic actions in `packages/gh-actions/`, one shared `v1`:
+2. `agent-call run`: spec file, `file` / `text` / `input` prompt parts,
+   `--explain`. `strict` follows once its capability map is checked against
+   harness-reference.
+3. Generic actions in `packages/gh-actions/`, one shared `v1`:
    `agent-setup` over skillwright's install, `agent-pr-answer` as fetch,
    `agent-call run`, post, starting from #712's branch.
-5. Move `claude.yml` to the spec; then run the same spec on codex and
+4. Move `claude.yml` to the spec; then run the same spec on codex and
    cursor.
-6. Later: MCP and hooks through skillwright; move the actions to
+5. Later: MCP and hooks through skillwright; move the actions to
    `osdlc/actions` with a Marketplace listing once something outside osdlc
    uses them.
 
