@@ -222,6 +222,13 @@ approved on 2026-11-08. Decisions:
 | `marketplaces` input | Keep `name=url [ref]`. |
 | Order | Merge #715 with these decisions, release agent-call, then build `agent-pr-answer`. |
 
+## Known issues
+
+- `claude.yml`: when checkout or the CLI install fails, the "Post the answer"
+  step is skipped (`steps.claude.outcome != 'skipped'`), so the pull request
+  gets no reply. `agent-pr-answer` replaces this workflow; it must post an
+  error on every failure path. Found in the #717 pre-review.
+
 ## PR process
 
 Every PR opens as a draft. Before it is marked ready for review it goes
