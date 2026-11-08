@@ -1,8 +1,8 @@
 /**
  * Shared mdast helpers for the dialect plugins.
  *
- * Every dialect feature is a remark plugin operating on remark's own parse
- * (D-7VMX): plugins re-tokenize `text` nodes and splice replacements in, which
+ * Every dialect feature is a remark plugin operating on remark's own parse:
+ * plugins re-tokenize `text` nodes and splice replacements in, which
  * is why fenced/inline code is immune — it never becomes a `text` node.
  */
 
@@ -26,6 +26,11 @@ export interface MdNode {
   [key: string]: unknown
 }
 
+/**
+ * A loose mdast node known to have children.
+ *
+ * @experimental A host contract for a self-assembled pipeline with no known user yet; it may change in a minor release.
+ */
 export interface MdParent extends MdNode {
   children: MdNode[]
 }
@@ -34,6 +39,8 @@ export interface MdParent extends MdNode {
  * Merge hast properties onto a node, concatenating `className` rather than
  * replacing it — several plugins decorate the same block (a callout that also
  * carries a `data-line` and a block id).
+ *
+ * @experimental A host contract for a self-assembled pipeline with no known user yet; it may change in a minor release.
  */
 export function setHProps(node: MdNode, props: Record<string, unknown>): void {
   node.data ??= {}
@@ -58,6 +65,8 @@ function toClassList(value: unknown): string[] {
 /**
  * A custom mdast node that mdast-util-to-hast turns into `<hName …>` via its
  * unknown-node handler plus `applyData`.
+ *
+ * @experimental A host contract for a self-assembled pipeline with no known user yet; it may change in a minor release.
  */
 export function hastNode(
   type: string,

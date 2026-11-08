@@ -184,6 +184,8 @@ export function wikilinkProps(target: string, resolution: LinkResolution): Recor
  *
  * `children` is the alias's own nodes, for an alias that carried markup
  * (`[[Note|the *key* idea]]`); omitted, the anchor holds `label` as plain text.
+ *
+ * @experimental A host contract for a self-assembled pipeline with no known user yet; it may change in a minor release.
  */
 export function wikilinkNode(
   target: string,

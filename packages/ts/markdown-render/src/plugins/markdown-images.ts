@@ -58,6 +58,8 @@ export interface RemarkMarkdownImagesOptions {
  * a heading or a block id (Obsidian uses it for `#page=3` on a PDF), so
  * emitting it as one would be a lie, and it must not reach the resolver —
  * `assets/paper.pdf#page=3` is not a path any vault holds.
+ *
+ * @experimental A host contract for a self-assembled pipeline with no known user yet; it may change in a minor release.
  */
 export function splitMarkdownImage(url: string): string | null {
   if (!url || url.startsWith('#') || url.startsWith('/') || url.startsWith('//')) return null

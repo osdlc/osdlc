@@ -1,7 +1,7 @@
 /**
  * The pipeline.
  *
- * Binding constraint (D-7VMX): the dialect consumes remark's parse. Every
+ * Binding constraint: the dialect consumes remark's parse. Every
  * feature below is a remark or rehype plugin over the standard mdast/hast
  * pipeline — there is no bespoke Obsidian parser anywhere in this package, and
  * there must not be one.
@@ -62,7 +62,10 @@ export type MarkdownProcessor = Processor<MdastRoot, MdastRoot, HastRoot, undefi
  * Build the markdown → hast processor for one set of options.
  *
  * The returned processor has no compiler: use `.parse()` + `.run()` (or
- * {@link renderToHast}). {@link renderToHtml} builds its own stringifying
+ * {@link renderToHast}). Pass the source to `.run()` as its second argument
+ * (`processor.run(tree, { value: source })`): the wikilink and embed plugins
+ * place links by source offset, and without the source they find only the links
+ * that sit inside one text node, so `[[Note|a *marked* alias]]` stays text. {@link renderToHtml} builds its own stringifying
  * variant.
  */
 export function createMarkdownProcessor(options: MarkdownRenderOptions = {}): MarkdownProcessor {
@@ -139,7 +142,7 @@ export async function renderToHast(
 ): Promise<HastRoot> {
   const processor = createMarkdownProcessor(options)
   const mdast = processor.parse(markdown)
-  return (await processor.run(mdast)) as unknown as HastRoot
+  return (await processor.run(mdast, { value: markdown })) as unknown as HastRoot
 }
 
 /**

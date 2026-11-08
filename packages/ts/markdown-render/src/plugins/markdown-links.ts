@@ -40,6 +40,8 @@ export interface RemarkMarkdownLinksOptions {
 /**
  * Split a link destination into the vault target and its `#fragment`, or
  * `null` when this is not a relative markdown link.
+ *
+ * @experimental A host contract for a self-assembled pipeline with no known user yet; it may change in a minor release.
  */
 export function splitMarkdownLink(url: string): { target: string; fragment: string } | null {
   if (!url || url.startsWith('#') || url.startsWith('/') || url.startsWith('//')) return null

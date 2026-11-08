@@ -1,16 +1,38 @@
 {
   "name": "@osdlc/markdown-render",
-  "version": "0.5.0",
-  "description": "Obsidian-dialect markdown renderer on unified/remark, plus a Vue 3 integration. Every dialect feature is a remark/rehype plugin \u2014 never a bespoke parser.",
-  "type": "module",
-  "sideEffects": [
-    "./src/theme.css"
+  "version": "0.7.0",
+  "description": "Markdown to HTML and Vue 3 rendering on unified and remark for CommonMark, GFM and the Obsidian extensions (wikilinks, embeds, callouts, tags, block ids, comments, highlights), with injected link resolution, sanitized output and Vue components. Every feature is a remark or rehype plugin.",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/ts/markdown-render"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/ts/markdown-render#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "keywords": [
+    "markdown",
+    "commonmark",
+    "gfm",
+    "obsidian",
+    "wikilink",
+    "unified",
+    "remark",
+    "rehype",
+    "vue",
+    "renderer",
+    "typescript"
   ],
   "publishConfig": {
     "access": "public"
   },
+  "type": "module",
+  "sideEffects": [
+    "./src/theme.css"
+  ],
   "engines": {
-    "node": ">=24"
+    "node": ">=22"
   },
   "exports": {
     ".": {
@@ -35,18 +57,24 @@
     "dist/",
     "src/theme.css",
     "README.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "SECURITY.md",
+    "CONTRIBUTING.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
-    "test": "bunx --bun vitest run",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
     "bench": "vitest bench --run",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit",
+    "smoke": "node tests/smoke.mjs",
+    "prepublishOnly": "npm run clean && npm run build",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "oxlint .",
-    "prepublishOnly": "npm run clean && npm run build"
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
   },
   "dependencies": {
     "@osdlc/gfm-table": "workspace:^",
@@ -68,7 +96,7 @@
     "unist-util-visit": "^5.0.0"
   },
   "peerDependencies": {
-    "katex": "^0.18.1",
+    "katex": "^0.19.1",
     "mermaid": "^11.12.2",
     "vue": "^3.5"
   },
@@ -84,7 +112,7 @@
     }
   },
   "devDependencies": {
-    "katex": "^0.18.1",
+    "katex": "^0.19.1",
     "mermaid": "^11.12.2",
     "vue": "^3.5.25",
     "@osdlc/prettier-config": "workspace:^",

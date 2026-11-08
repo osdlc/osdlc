@@ -49,7 +49,7 @@ describe('remarkBlockIds', () => {
     expect(item).toMatch(/<li[^>]*data-block-id="abc"[^>]*>item<\/li>/)
   })
 
-  test('a mid-line caret is NOT a block id (D-0008)', async () => {
+  test('a mid-line caret is NOT a block id', async () => {
     const out = await html('a ^notanid b')
     expect(out).not.toContain('data-block-id')
     expect(out).toContain('^notanid')

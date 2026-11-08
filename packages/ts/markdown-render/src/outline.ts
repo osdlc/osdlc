@@ -36,7 +36,11 @@ function walk(node: Element | Root, entries: OutlineEntry[]): void {
   }
 }
 
-/** Flatten an element's text content. */
+/**
+ * Flatten an element's text content.
+ *
+ * @experimental A host contract for a self-assembled pipeline with no known user yet; it may change in a minor release.
+ */
 export function hastText(node: { type?: string; value?: unknown; children?: unknown[] }): string {
   if (node.type === 'text') return String(node.value ?? '')
   const children = (node.children ?? []) as Array<Parameters<typeof hastText>[0]>

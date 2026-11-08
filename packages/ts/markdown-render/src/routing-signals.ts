@@ -20,7 +20,11 @@
  * it must not reach the table through an import that drags `vue` in with it.
  */
 
-/** A class name that routes an element of one tag to a component. */
+/**
+ * A class name that routes an element of one tag to a component.
+ *
+ * @experimental A host contract for a self-assembled pipeline with no known user yet; it may change in a minor release.
+ */
 export interface ClassRoute {
   /** Tag the route applies to. */
   tag: string
@@ -30,7 +34,11 @@ export interface ClassRoute {
   key: string
 }
 
-/** Class routes, in the order `routeKeys` tries them — most specific first. */
+/**
+ * Class routes, in the order `routeKeys` tries them — most specific first.
+ *
+ * @experimental A host contract for a self-assembled pipeline with no known user yet; it may change in a minor release.
+ */
 export const CLASS_ROUTES: readonly ClassRoute[] = [
   { tag: 'code', className: 'math-inline', key: 'math-inline' },
   { tag: 'a', className: 'wikilink', key: 'a.wikilink' },
@@ -43,6 +51,8 @@ export const CLASS_ROUTES: readonly ClassRoute[] = [
  * only input. `rehypeCodeMeta` stamps it before the raw pass; the Shiki pass
  * re-stamps it afterwards from the `<code>`'s `language-*` class — which is
  * why that class is a routing signal in its own right.
+ *
+ * @experimental A host contract for a self-assembled pipeline with no known user yet; it may change in a minor release.
  */
 export const FENCE_LANG_PROP = 'dataLang'
 
@@ -57,6 +67,8 @@ export const FENCE_LANG_PROP = 'dataLang'
  *
  * Not tag-scoped: `class="tag"` on a `<span>` routes nowhere, but it is still
  * the dialect's own class and matching the whole family costs nothing.
+ *
+ * @experimental A host contract for a self-assembled pipeline with no known user yet; it may change in a minor release.
  */
 export const STRIPPED_CLASSES: ReadonlyArray<string | RegExp> = [
   /^wikilink(-[a-z0-9-]+)?$/,
@@ -78,14 +90,22 @@ export function classNames(properties: Record<string, unknown> | undefined): str
   return []
 }
 
-/** Is this class name one of the dialect's own? */
+/**
+ * Is this class name one of the dialect's own?
+ *
+ * @experimental A host contract for a self-assembled pipeline with no known user yet; it may change in a minor release.
+ */
 export function isRoutingClass(name: string): boolean {
   return STRIPPED_CLASSES.some((rule) =>
     typeof rule === 'string' ? rule === name : rule.test(name),
   )
 }
 
-/** Does this element carry anything the router — or the Shiki pass — keys on? */
+/**
+ * Does this element carry anything the router — or the Shiki pass — keys on?
+ *
+ * @experimental A host contract for a self-assembled pipeline with no known user yet; it may change in a minor release.
+ */
 export function carriesRoutingSignal(properties: Record<string, unknown> | undefined): boolean {
   if (!properties) return false
   for (const name of STRIPPED_PROPERTIES) if (properties[name] !== undefined) return true
@@ -96,6 +116,8 @@ export function carriesRoutingSignal(properties: Record<string, unknown> | undef
 /**
  * Remove every routing signal, in place. What is left keeps its tag, its text
  * and its non-routing attributes, and can no longer reach a component.
+ *
+ * @experimental A host contract for a self-assembled pipeline with no known user yet; it may change in a minor release.
  */
 export function stripRoutingSignals(properties: Record<string, unknown>): void {
   for (const name of STRIPPED_PROPERTIES) delete properties[name]

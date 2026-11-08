@@ -1,14 +1,69 @@
 # @osdlc/markdown-render
 
-Obsidian-dialect markdown renderer built on unified/remark, with a Vue 3
-integration. The shared rendering plane for the determined ecosystem: the notes
-app renders through the Vue entry, build-time consumers (Astro, static export)
-render through `renderToHtml`, and both see exactly the same dialect.
+Markdown to HTML and Vue 3 rendering on unified and remark, for CommonMark,
+GFM and the Obsidian extensions: wikilinks, embeds, callouts, tags, block ids,
+comments and highlights. Link resolution is injected, so the same renderer
+serves a live vault, a static build and tests, and the output is sanitized.
+Every feature is a remark or rehype plugin over the standard mdast/hast
+pipeline. There is no bespoke parser in this package, and there must not be
+one.
 
-**Design constraint (D-7VMX, binding):** the dialect consumes remark's parse.
-Every feature below is a remark or rehype plugin over the standard mdast/hast
-pipeline. There is no bespoke Obsidian parser in this package, and there must
-not be one.
+## Install
+
+```sh
+npm install @osdlc/markdown-render
+```
+
+`vue` (for the `/vue` entry), `katex` (math) and `mermaid` (diagrams) are
+optional peer dependencies. Install the ones you use. Node 22 or later, and
+any modern browser for the `/vue` entry; the package is pure JavaScript with no
+filesystem, process or OS-specific code.
+
+## Who it is for
+
+Programs that turn a markdown note into HTML or Vue nodes and must treat
+`[[wikilinks]]`, `![[embeds]]`, callouts and `#tags` the way Obsidian does:
+note-reading views, static site and Astro builds, and previews beside an editor.
+
+## When not to use it
+
+- You render plain CommonMark or GFM. `remark-rehype` with the GFM plugin is
+  smaller, and this package's install weight (Shiki, rehype-raw, the sanitizer)
+  buys you nothing.
+- You only want `[[wikilinks]]` turned into links in an existing remark
+  pipeline. A wikilink plugin alone fits better, or use this package's
+  `/plugins` entry, which carries the dialect plugins with no Vue and no Shiki.
+- You need Obsidian's editor, Canvas or Bases views. This renders notes only.
+
+## How it compares
+
+- `remark-wiki-link`, `@moritzrs/micromark-extension-ofm-wikilink` and similar:
+  one syntax each. This package covers wikilinks, embeds, callouts, tags, block
+  ids, comments and highlights together, with one sanitizing pipeline, and finds
+  links with [`@osdlc/markdown-link`](../markdown-link)'s scanner, so a tool
+  that reads the same notes agrees with the renderer on every link.
+- `markdown-it` with Obsidian plugins: a different parser and plugin model; this
+  package is unified-native, so remark and rehype plugins compose with it.
+- Obsidian's own renderer: not embeddable outside the app.
+
+## Stability
+
+The package is 0.x: a minor release may break the API. The stable API is every
+export not listed under *Experimental exports* below. Each stable export has a
+use in `examples/`.
+
+### Experimental exports
+
+These have no known consumer outside the package. They are documented host
+contracts for a self-assembled pipeline, and they may change in a minor release.
+Each carries an `@experimental` TSDoc tag, and a test keeps this list and the
+tags in step.
+
+- Root and `/plugins`: `setHProps`, `hastNode`, `MdParent`, `wikilinkNode`,
+  `splitMarkdownLink`, `splitMarkdownImage`, `remarkDataLine`, `hastText`,
+  `CLASS_ROUTES`, `STRIPPED_CLASSES`, `FENCE_LANG_PROP`, `carriesRoutingSignal`,
+  `isRoutingClass`, `stripRoutingSignals`, `ClassRoute`.
+- `/vue`: `defaultComponents`, `groupHeadingSections`, `renderHeadingSections`.
 
 ## Dialect
 
@@ -60,7 +115,7 @@ const outline = extractOutline(tree) // [{depth, text, id}, …]
 ```
 
 `source` is a note **body**: frontmatter is document framing and is the caller's
-to split off (D-4QGN keeps that concern out of the renderer).
+to split off (the renderer never reads it).
 
 ### Subpath exports
 
@@ -97,9 +152,7 @@ over these helpers, so a non-Vue host (e.g. an editor widget) shares the same
 rendering.
 
 **Optional peers.** `katex` and `mermaid` are optional peer dependencies. A
-host that renders math or diagrams declares them itself: `@sksizer/markdown-ui`
-declares both for every layer consumer, and a `file:`-wired host lists them in
-its own `package.json`. When one is absent its dynamic import rejects, the
+host that renders math or diagrams declares them itself in its own `package.json`. When one is absent its dynamic import rejects, the
 package logs one warning per process
 (`@osdlc/markdown-render: katex is not installed; math renders as source`), and
 the Vue blocks show the source instead of nothing: `<code
@@ -116,6 +169,14 @@ wikilinks → embeds → markdown note links → callouts → tags → highlight
 ids → *escape restore* → heading ids → `data-line` → `remark-rehype` (raw HTML
 allowed) → fence metadata → *mark* → `rehype-raw` → *enforce* →
 `rehype-sanitize` → (the consumer's `highlight` pass).
+
+Wikilinks and embeds are found by `@osdlc/markdown-link`'s body scanner, which
+reads the source once, and placed in the tree by source offset. The scan is
+linear, so there is no cap on a field's length and no node is skipped for being
+large. When you drive `createMarkdownProcessor` by hand, pass the source to
+`run` (`processor.run(tree, { value: source })`) so offsets are available;
+without it only links inside a single text node are found, and an alias that
+carries markup (`[[Note|the *key* idea]]`) stays text.
 
 Comments run ahead of every tokenizer, so commented-out content never becomes
 nodes: a `[[link]]` inside a comment does not reach the host's `resolveLink`,
@@ -336,10 +397,9 @@ traversal means to your backing store.
 `theme.css` defines a `--markdown-*` variable contract with neutral light/dark
 fallbacks. Host themes set variables; they do not override selectors. Dark mode
 follows `prefers-color-scheme` and a `.dark` ancestor class, which is also what
-selects the Shiki theme. Inside a Determined shell, bridging
-`--markdown-*-override ← --d-*` is the canonical path (the notes experience's
-`notes.css` is the reference), so colors follow the app's `.dark` class; the
-`prefers-color-scheme` fallback is the standalone path.
+selects the Shiki theme. A host with its own design tokens bridges them with
+`--markdown-*-override: var(--its-token)`, so colors follow its `.dark` class;
+the `prefers-color-scheme` fallback is the standalone path.
 
 Every variable is set as `--markdown-<name>-override`:
 
@@ -383,11 +443,11 @@ contract. Both are geometry, so neither has a dark-mode value.
 ## Testing
 
 ```sh
-bunx --bun vitest run   # under Bun (some tests use Bun APIs)
-bunx tsc --noEmit
+pnpm test
+pnpm run typecheck
 ```
 
-Both commands work from this package. Vue components are mounted against jsdom:
+Both commands work from this package, under Node. Vue components are mounted against jsdom:
 the component test files opt in with a `// @vitest-environment jsdom` docblock
 (jsdom replaces the global `URL`, which breaks the file-URL tests, so it is not
 the default), and `tests/setup-dom.ts` hands out Vue via a dynamic import
@@ -400,3 +460,7 @@ sequence, error propagation) is tested here over a fake module. KaTeX is
 verified here: `renderToString` is a pure string function, and what it emits (a
 MathML twin plus an `aria-hidden` visual copy) is an accessibility contract
 this package owns.
+
+## Licence
+
+`MIT OR Apache-2.0`. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).

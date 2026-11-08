@@ -83,6 +83,8 @@ function opensSection(depth: number, current: HeadingSection | null): boolean {
  *
  * Pure and unit-testable on its own: no Vue, no DOM, no recursion — see the
  * header for how the render layer builds full nesting out of repeated calls.
+ *
+ * @experimental A host contract for a self-assembled pipeline with no known user yet; it may change in a minor release.
  */
 export function groupHeadingSections(children: HastNode[]): HeadingSection[] {
   const sections: HeadingSection[] = []
@@ -125,6 +127,8 @@ export interface HeadingFoldContext {
  * only when its `foldable` prop is on; a callout/blockquote/table cell never
  * reaches it at all, because nothing calls back into this function from
  * inside `renderNode`'s ordinary walk.
+ *
+ * @experimental A host contract for a self-assembled pipeline with no known user yet; it may change in a minor release.
  */
 export function renderHeadingSections(
   children: HastNode[],
