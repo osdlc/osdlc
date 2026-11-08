@@ -4,7 +4,9 @@
 #
 # A comment that starts with `@claude review` runs the craft plugin's
 # /craft:code-review on the pull request against its base branch instead, and
-# posts the findings. Text after `review` is passed on as the focus.
+# posts the findings. Text after `review` is passed on as the focus. A
+# finished review opens with "Claude review done" and ends with the marker
+# `<!-- claude-review: done head=<sha> -->`.
 #
 # Only sksizer can trigger it: the job's `if` checks the comment's author
 # before a runner starts, so nobody else's comment spends a runner minute or
@@ -91,6 +93,7 @@ jobs:
         run: |
           # `@claude review [focus]` at the start of the comment runs the review skill.
           if printf '%s\n' "$REQUEST" | head -n 1 | grep -qE '^[[:space:]]*@claude[[:space:]]+review([[:space:]]|$)'; then
+            echo "mode=review" >> "$GITHUB_OUTPUT"
             focus=$(printf '%s\n' "$REQUEST" | sed -E '1s/^[[:space:]]*@claude[[:space:]]+review[[:space:]]*//')
             base=$(gh pr view "$PR" --json baseRefName --jq .baseRefName)
             prompt="Review pull request #$PR in $REPO by running the /craft:code-review skill with base origin/$base.
@@ -101,6 +104,7 @@ jobs:
           You cannot edit files, commit or post; the workflow posts your final message.
           ${focus:+Focus requested by the reviewer: $focus}"
           else
+            echo "mode=answer" >> "$GITHUB_OUTPUT"
             prompt="You are answering a question on pull request #$PR in $REPO.
           The pull request branch is checked out in the current directory.
           Use \`gh pr view $PR --comments\` and \`gh pr diff $PR\` for its description, discussion and diff.
@@ -157,16 +161,41 @@ jobs:
         if: always() && steps.claude.outcome != 'skipped'
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          MODE: ${{ steps.claude.outputs.mode }}
         run: |
+          # Every comment ends with a marker, so a reader (or a script) can
+          # tell the run is finished: `<!-- claude-review: done head=<sha> -->`,
+          # or `failed`; answers use `claude-answer`. A review also opens with
+          # a visible "Claude review done" line naming the commit it covered.
+          head=$(git rev-parse HEAD)
+          kind=claude-${MODE:-answer}
           if [ -s result.json ] && jq -e '.is_error == false' result.json > /dev/null 2>&1; then
-            jq -r '.result' result.json > answer.md
-          else
+            outcome=done
             {
-              echo "Claude could not answer. [Run log]($RUN_URL)"
+              if [ "$MODE" = review ]; then
+                echo "**Claude review done** for ${head:0:7}. The findings are below; respond to them now."
+                echo
+              fi
+              jq -r '.result' result.json
+            } > answer.md
+          else
+            outcome=failed
+            {
+              if [ "$MODE" = review ]; then
+                echo "**Claude review failed** for ${head:0:7}."
+              else
+                echo "Claude could not answer. [Run log]($RUN_URL)"
+              fi
               echo
               echo '```'
               jq -r '.result // "no result"' result.json 2>/dev/null || echo "no result"
               echo '```'
             } > answer.md
           fi
+          {
+            echo
+            echo "<sub>[Run log]($RUN_URL)</sub>"
+            echo
+            echo "<!-- $kind: $outcome head=$head -->"
+          } >> answer.md
           gh pr comment "$PR" --body-file answer.md
