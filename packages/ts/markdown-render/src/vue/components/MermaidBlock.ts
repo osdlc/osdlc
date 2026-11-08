@@ -11,11 +11,11 @@
  */
 
 import { defineComponent, h, onMounted, ref, watch, type PropType } from 'vue'
-import { nodeText, type HastNode } from '../render.ts'
+import { hastNodeText, type HastNode } from '../render.ts'
 import { renderMermaid, type MermaidTheme } from '../../mermaid.ts'
 
 function sourceOf(node: HastNode): string {
-  return nodeText(node).replace(/\n$/, '')
+  return hastNodeText(node).replace(/\n$/, '')
 }
 
 export const MermaidBlock = defineComponent({

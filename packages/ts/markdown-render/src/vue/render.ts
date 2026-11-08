@@ -219,9 +219,9 @@ export function classList(node: HastNode): string[] {
  * Exact for a code fence whatever the highlighter did to it: highlighting
  * splits the body into nested spans, and only the text nodes carry characters.
  */
-export function nodeText(node: HastNode): string {
+export function hastNodeText(node: HastNode): string {
   if (node.type === 'text') return String(node.value ?? '')
-  return (node.children ?? []).map(nodeText).join('')
+  return (node.children ?? []).map(hastNodeText).join('')
 }
 
 /**

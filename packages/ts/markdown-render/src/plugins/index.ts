@@ -12,16 +12,12 @@ export {
   splitFragment,
   wikilinkNode,
   wikilinkProps,
-  WIKILINK_RE,
-  FIELD_MAX,
-  MAX_SCAN_LENGTH,
   type RemarkWikilinksOptions,
 } from './wikilinks.ts'
 export {
   remarkEmbeds,
   embedKind,
   isMediaKind,
-  EMBED_RE,
   MAX_EMBED_DEPTH,
   MAX_EMBEDS_PER_DOCUMENT,
   type EmbedKind,
@@ -41,13 +37,7 @@ export {
 // Partial transclusion slices the source, so a host that loads embedded notes
 // itself needs it as much as the plugins.
 export { sliceEmbed } from '../slice.ts'
-export {
-  remarkCallouts,
-  defaultTitle,
-  CALLOUT_RE,
-  type CalloutFold,
-  type CalloutInfo,
-} from './callouts.ts'
+export { remarkCallouts, defaultTitle, type CalloutFold, type CalloutInfo } from './callouts.ts'
 export {
   remarkMarkdownLinks,
   splitMarkdownLink,
@@ -60,7 +50,7 @@ export {
 } from './markdown-images.ts'
 export { remarkTags, type RemarkTagsOptions } from './tags.ts'
 export { remarkMark } from './mark.ts'
-export { remarkBlockIds, BLOCK_ID_RE, STANDALONE_BLOCK_ID_RE } from './block-ids.ts'
+export { remarkBlockIds, BLOCK_ID_RE } from './block-ids.ts'
 export { remarkComments } from './comments.ts'
 // The escape pair brackets the tokenizers: without it, escaped syntax
 // (`\[\[Note]]`, `\#tag`) activates as if the author had not escaped it.

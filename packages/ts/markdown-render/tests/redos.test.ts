@@ -2,9 +2,11 @@
  * Catastrophic-backtracking regressions: the payload family that measured the
  * original blowup.
  *
- * Both scanners run synchronously inside a render — the remark visitors inside
- * the unified pipeline — so a matcher that goes superlinear does not degrade
- * the render, it hangs it. Every payload here is a *short* note (a few hundred
+ * Both tokenizers run synchronously inside a render — the remark visitors inside
+ * the unified pipeline — so a scanner that goes superlinear does not degrade
+ * the render, it hangs it. The payloads were written against the regex
+ * tokenizer this package used to have; they now guard
+ * `@osdlc/markdown-link`'s scanner as the renderer uses it. Every payload here is a *short* note (a few hundred
  * bytes) that used to cost seconds: before the hardening, the N=120 wikilink
  * payload (244 bytes) cost ~19s, quadrupling every +20 characters.
  *
@@ -29,13 +31,7 @@
  */
 
 import { describe, expect, test } from 'vitest'
-import {
-  remarkWikilinks,
-  remarkEmbeds,
-  FIELD_MAX,
-  MAX_SCAN_LENGTH,
-  type MdNode,
-} from '../src/index.ts'
+import { remarkWikilinks, remarkEmbeds, type MdNode } from '../src/index.ts'
 import { html, vaultResolver } from './helpers.ts'
 
 /** How much bigger each rung of a growth ladder is than the one below it. */
@@ -254,68 +250,39 @@ describe('redos hardening', () => {
   // it early (see SANITY_CEILING_MS). Same reasoning as the timeout above:
   // fail on the ratio, not on the clock.
   test('a long run of unterminated openers costs a flat amount per opener', () => {
-    // `[[[[[[…` is the polynomial case, not the exponential one: the
-    // unbounded lazy field the hardening replaced let every start offset walk
-    // to end-of-string, which is quadratic — restoring it reads ~4.0×
-    // (wikilinks) / ~4.5× (embeds) per rung, against a hardened ~1.1×.
-    //
-    // The ladder starts at 1000 openers, not lower, because FIELD_MAX bounds
-    // each start offset to a 512-character window: below ~512 openers the
-    // string runs out before the window does, so an honest scanner is itself
-    // superlinear there and the rung ratio means nothing. From 1000 up, every
-    // offset sees a full window and the cost per opener is flat.
+    // `[[[[[[…` is the polynomial case, not the exponential one: a scanner that
+    // lets every opener walk to the end of the string is quadratic, and reads
+    // ~4.0× per rung against ~1.1× for a linear one.
     const rungs = ladder(1000, 2)
     assertLinearGrowth(remarkWikilinks(), (k) => '[['.repeat(k), rungs)
     assertLinearGrowth(remarkEmbeds(), (k) => '![['.repeat(k), rungs)
   }, 30_000)
 
-  test('a text node beyond MAX_SCAN_LENGTH is not scanned at all', () => {
-    const body = `[[Note]] ${'x'.repeat(MAX_SCAN_LENGTH)}`
+  test('a very large text node is scanned like any other', () => {
+    // There is no size past which a node is skipped: the scan is linear, so a
+    // big note costs in proportion to its size and its links still link.
+    const body = `[[Note]] ${'x'.repeat(200_000)} [[Other]]`
     const children = childrenAfter(remarkWikilinks(), body)
-    expect(children).toHaveLength(1)
-    expect(children[0]!.type).toBe('text')
-    expect(children[0]!.value).toBe(body)
+    expect(children.map((c) => c.type)).toEqual(['wikilink', 'text', 'wikilink'])
   })
 
-  test('a field at exactly FIELD_MAX still tokenizes', () => {
-    const target = 'a'.repeat(FIELD_MAX)
-    const children = childrenAfter(remarkWikilinks(), `[[${target}]]`)
-    expect(children).toHaveLength(1)
-    expect(children[0]!.type).toBe('wikilink')
-
-    const alias = 'b'.repeat(FIELD_MAX)
-    const aliased = childrenAfter(remarkWikilinks(), `[[Note|${alias}]]`)
-    expect(aliased[0]!.type).toBe('wikilink')
-
-    const heading = 'c'.repeat(FIELD_MAX)
-    const fragmented = childrenAfter(remarkWikilinks(), `[[Note#${heading}]]`)
-    expect(fragmented[0]!.type).toBe('wikilink')
-  })
-
-  test('a field longer than FIELD_MAX leaves the whole link as literal text', () => {
-    for (const body of [
-      `[[${'a'.repeat(FIELD_MAX + 1)}]]`,
-      `[[Note|${'b'.repeat(FIELD_MAX + 1)}]]`,
-      `[[Note#${'c'.repeat(FIELD_MAX + 1)}]]`,
-    ]) {
-      // No replacement happened at all: the single text node is untouched.
+  test('long fields tokenize, with no cap on a target, an alias or a heading', () => {
+    const long = 'a'.repeat(10_000)
+    for (const body of [`[[${long}]]`, `[[Note|${long}]]`, `[[Note#${long}]]`]) {
       const children = childrenAfter(remarkWikilinks(), body)
       expect(children).toHaveLength(1)
-      expect(children[0]!.type).toBe('text')
-      expect(children[0]!.value).toBe(body)
+      expect(children[0]!.type).toBe('wikilink')
     }
   })
 
-  test('an embed field longer than FIELD_MAX leaves the embed as literal text', () => {
-    const body = `![[${'a'.repeat(FIELD_MAX + 1)}.png]]`
-    const children = childrenAfter(remarkEmbeds(), body)
-    expect(children).toHaveLength(1)
-    expect(children[0]!.type).toBe('text')
+  test('a long embed field tokenizes too', () => {
+    const children = childrenAfter(remarkEmbeds(), `x ![[${'a'.repeat(10_000)}.png]]`)
+    expect(children.map((c) => c.type)).toEqual(['text', 'wikiEmbed'])
   })
 
   test('padding inside a well-formed link is still trimmed off', async () => {
-    // The pattern no longer strips whitespace, so the trimming happens at the
-    // use sites. Same output either way.
+    // The scanner keeps whitespace in the fields, so the trimming happens at
+    // the use sites.
     const out = await html('[[  Note  #  Section  |  Alias  ]]', {
       resolveLink: vaultResolver(['Note']),
     })

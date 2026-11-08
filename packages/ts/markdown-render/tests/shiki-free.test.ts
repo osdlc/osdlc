@@ -3,66 +3,65 @@
  * consumer that does not import `@osdlc/markdown-render/shiki` must ship no
  * Shiki chunk — hundreds of grammar files otherwise ride into every build.
  *
- * The bundle runs as a `bun build` subprocess, not in-process `Bun.build`:
- * in-process bundling shares module state with the other test files and fails
- * once one of them has loaded the pipeline. This package has no path to the
- * repo's command seam, and the child runs to completion before it is read.
+ * The graph is walked statically, from the entry through every relative import
+ * (static or dynamic), collecting the bare specifiers each module names. A
+ * bundler follows the same edges, so a module that names Shiki is in the
+ * bundle.
  */
 
 import { describe, expect, test } from 'vitest'
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { existsSync, readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
 
-const src = (name: string) => new URL(`../src/${name}`, import.meta.url).pathname
+const src = (name: string) => resolve(import.meta.dirname, `../src/${name}`)
 
-function walk(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const full = join(dir, name)
-    return statSync(full).isDirectory() ? walk(full) : [full]
-  })
+/** Every `from '…'` and `import('…')` specifier in a module's source. */
+function specifiers(source: string): string[] {
+  const found: string[] = []
+  for (const match of source.matchAll(/(?:from|import\s*\()\s*['"]([^'"]+)['"]/g)) {
+    found.push(match[1] as string)
+  }
+  return found
 }
 
-/** Bundle the entries and report which outputs mention `shiki`, by path or text. */
-function shikiMentions(entrypoints: string[]): { paths: string[]; texts: string[] } {
-  const outdir = mkdtempSync(join(tmpdir(), 'markdown-render-shiki-free-'))
-  try {
-    const build = Bun.spawnSync({
-      cmd: [
-        process.execPath,
-        'build',
-        ...entrypoints,
-        '--splitting',
-        '--target=browser',
-        '--external',
-        'vue',
-        '--outdir',
-        outdir,
-      ],
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-    expect(build.exitCode, build.stderr.toString()).toBe(0)
-    const files = walk(outdir)
-    expect(files.length).toBeGreaterThan(0)
-    return {
-      paths: files.filter((file) => /shiki/i.test(file.slice(outdir.length))),
-      texts: files.filter((file) => /shiki/i.test(readFileSync(file, 'utf8'))),
+/** The modules reachable from `entry` by relative imports, and the bare specifiers they name. */
+function graph(entry: string): { files: Set<string>; bare: Set<string> } {
+  const files = new Set<string>()
+  const bare = new Set<string>()
+  const queue = [entry]
+  while (queue.length > 0) {
+    const file = queue.pop() as string
+    if (files.has(file)) continue
+    files.add(file)
+    for (const specifier of specifiers(readFileSync(file, 'utf8'))) {
+      if (!specifier.startsWith('.')) {
+        bare.add(specifier)
+        continue
+      }
+      const target = resolve(dirname(file), specifier)
+      if (existsSync(target)) queue.push(target)
     }
-  } finally {
-    rmSync(outdir, { recursive: true, force: true })
   }
+  return { files, bare }
+}
+
+/** What in the graphs of `entries` is Shiki: a file named for it or a specifier that imports it. */
+function shikiMentions(entries: string[]): string[] {
+  return entries.flatMap((entry) => {
+    const { files, bare } = graph(entry)
+    return [
+      ...[...files].filter((file) => /shiki/i.test(file.slice(src('').length))),
+      ...[...bare].filter((specifier) => /^shiki(\/|$)/.test(specifier)),
+    ]
+  })
 }
 
 describe('import graph', () => {
-  test('the main and Vue entries bundle without a trace of Shiki', () => {
-    const found = shikiMentions([src('index.ts'), src('vue/index.ts')])
-    expect(found.paths).toEqual([])
-    expect(found.texts).toEqual([])
+  test('the main and Vue entries reach no Shiki', () => {
+    expect(shikiMentions([src('index.ts'), src('vue/index.ts')])).toEqual([])
   })
 
-  test('the /shiki subpath does bundle Shiki, so the check above can fail', () => {
-    const found = shikiMentions([src('shiki.ts')])
-    expect(found.texts.length).toBeGreaterThan(0)
+  test('the /shiki subpath does reach Shiki, so the check above can fail', () => {
+    expect(shikiMentions([src('shiki.ts')]).length).toBeGreaterThan(0)
   })
 })

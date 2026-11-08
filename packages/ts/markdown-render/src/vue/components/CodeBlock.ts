@@ -22,7 +22,7 @@
  */
 
 import { defineComponent, h, ref, type PropType, type VNode } from 'vue'
-import { nodeText, toVueProps, type HastNode } from '../render.ts'
+import { hastNodeText, toVueProps, type HastNode } from '../render.ts'
 import { copyButton, copyStatus, icon, useCopyAction } from '../copy-action.ts'
 
 const wrapIcon = () =>
@@ -41,7 +41,7 @@ export const CodeBlock = defineComponent({
     const wrapped = ref(false)
     // Read on click, never at render: a note of forty fences would otherwise
     // walk forty highlighted trees to build text nobody asked for.
-    const { copied, copy } = useCopyAction(() => nodeText(props.node).replace(/\n$/, ''))
+    const { copied, copy } = useCopyAction(() => hastNodeText(props.node).replace(/\n$/, ''))
 
     return () => {
       const raw = props.node.properties?.dataLang

@@ -36,7 +36,7 @@ import {
   type VNodeArrayChildren,
 } from 'vue'
 import { toCsv } from '@osdlc/gfm-table'
-import { nodeText, toVueProps, type HastNode } from '../render.ts'
+import { hastNodeText, toVueProps, type HastNode } from '../render.ts'
 import { copyButton, copyStatus, useCopyAction } from '../copy-action.ts'
 import {
   cellText,
@@ -143,7 +143,7 @@ function tableSignature(node: HastNode): string {
     node.properties?.dataLine,
     position?.start.offset,
     position?.end.offset,
-    nodeText(node),
+    hastNodeText(node),
   ])
 }
 

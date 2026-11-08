@@ -2,7 +2,6 @@ import { describe, expect, test } from 'vitest'
 import { html, vaultResolver } from './helpers.ts'
 import {
   defaultDisplay,
-  FIELD_MAX,
   hastNode,
   remarkWikilinks,
   splitFragment,
@@ -148,8 +147,8 @@ describe('remarkWikilinks', () => {
   })
 
   test('a bracketed reference that cannot be a wikilink keeps its reference link', async () => {
-    // A target past the field cap never tokenizes; joining it would lose the link.
-    const label = 'a'.repeat(600)
+    // `[[#]]` names nothing to link to; joining it would lose the reference.
+    const label = '#'
     const out = await html(`See [[${label}]].\n\n[${label}]: https://example.com`, { resolveLink })
     expect(out).not.toContain('class="wikilink"')
     expect(out).toContain('<a href="https://example.com"')
@@ -530,15 +529,24 @@ describe('an alias carrying markup (review finding #11)', () => {
 
   test('the resolver and the builder still see the alias as plain text', () => {
     const seen: string[] = []
+    // A link that crosses nodes is placed by the source offsets the parse gave
+    // each node, so the tree carries them and the file carries the source.
+    const at = (offset: number) => ({ line: 1, column: offset + 1, offset })
+    const span = (start: number, end: number) => ({ start: at(start), end: at(end) })
+    const source = '[[Note|the *key* idea]]'
     const tree: MdNode = {
       type: 'root',
       children: [
         {
           type: 'paragraph',
           children: [
-            { type: 'text', value: '[[Note|the ' },
-            { type: 'emphasis', children: [{ type: 'text', value: 'key' }] },
-            { type: 'text', value: ' idea]]' },
+            { type: 'text', value: '[[Note|the ', position: span(0, 11) },
+            {
+              type: 'emphasis',
+              position: span(11, 16),
+              children: [{ type: 'text', value: 'key', position: span(12, 15) }],
+            },
+            { type: 'text', value: ' idea]]', position: span(16, 23) },
           ],
         },
       ],
@@ -549,7 +557,7 @@ describe('an alias carrying markup (review finding #11)', () => {
         seen.push(link.label, link.resolution.display ?? '', String(link.alias))
         return null
       },
-    })(tree)
+    })(tree, { value: source })
     expect(seen).toEqual(['the key idea', 'the key idea', 'the key idea'])
   })
 
@@ -601,8 +609,9 @@ describe('an alias carrying markup (review finding #11)', () => {
     expect(out).toContain('>a <em>second</em> one</a>')
   })
 
-  test('an alias longer than FIELD_MAX stays literal', async () => {
-    const out = await html(`[[Note|*x* ${'a'.repeat(FIELD_MAX)}]]`, { resolveLink })
-    expect(out).not.toContain('class="wikilink"')
+  test('a long markup alias tokenizes, with no cap on its length', async () => {
+    const out = await html(`[[Note|*x* ${'a'.repeat(5000)}]]`, { resolveLink })
+    expect(out).toContain('class="wikilink"')
+    expect(out).toContain('<em>x</em>')
   })
 })

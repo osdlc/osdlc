@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'vitest'
+import { readdirSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import { createMarkdownProcessor, renderToHast, renderToHtml } from '../src/index.ts'
 import { html, vaultResolver } from './helpers.ts'
 
@@ -104,11 +106,10 @@ describe('pipeline', () => {
 
   test('the core entry is framework-free — no module outside src/vue imports Vue', async () => {
     const root = new URL('../src/', import.meta.url).pathname
-    const glob = new Bun.Glob('**/*.ts')
     const offenders: string[] = []
-    for await (const relative of glob.scan({ cwd: root })) {
-      if (relative.startsWith('vue/')) continue
-      const source = await Bun.file(`${root}${relative}`).text()
+    for (const relative of readdirSync(root, { recursive: true, encoding: 'utf8' })) {
+      if (!relative.endsWith('.ts') || relative.startsWith('vue/')) continue
+      const source = await readFile(`${root}${relative}`, 'utf8')
       if (/from ['"]vue['"]/.test(source)) offenders.push(relative)
     }
     expect(offenders).toEqual([])

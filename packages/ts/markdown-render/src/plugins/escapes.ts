@@ -39,7 +39,7 @@ import type { MdNode } from './util.ts'
  * The sentinel: a private-use code point, so no note is likely to hold one and
  * no tokenizer treats it as whitespace, a delimiter or a word character.
  */
-const SENTINEL = '\uE000'
+export const SENTINEL = '\uE000'
 
 const SENTINELS = /\uE000/g
 

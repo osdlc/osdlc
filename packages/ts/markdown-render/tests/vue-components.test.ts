@@ -24,10 +24,11 @@ const {
   MarkdownRender,
   MermaidBlock,
   provideNoteSource,
-  EmbedBudgetKey,
   MAX_EMBED_DEPTH,
   MAX_EMBEDS_PER_DOCUMENT,
 } = markdownVue
+// The budget key is internal to the package: a host cannot provide its own.
+const { EmbedBudgetKey } = await import('../src/vue/context.ts')
 
 // `renderMermaid` caches the mermaid module on first use, so mocking the
 // `mermaid` package here would be too late once a fence has drawn. Mocking the

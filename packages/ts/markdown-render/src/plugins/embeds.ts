@@ -9,20 +9,11 @@
 
 import { visit, SKIP } from 'unist-util-visit'
 import type { WikilinkResolver } from '../types.ts'
-import { defaultResolver, MAX_SCAN_LENGTH, splitFragment } from './wikilinks.ts'
+import { defaultResolver, splitFragment } from './wikilinks.ts'
+import { tokenizeLinks, type FoundLink } from './link-scan.ts'
 import { isAudioPath, isImagePath, isPdfPath, isVideoPath } from '../paths.ts'
-import { hastNode, type MdNode, type MdParent, text } from './util.ts'
+import { hastNode, type MdNode, type MdParent } from './util.ts'
 import { unmaskEscaped } from './escapes.ts'
-
-/**
- * `![[target#fragment|display]]`.
- *
- * Greedy over mutually exclusive classes and length-bounded, for the same
- * reason as `WIKILINK_RE` in `wikilinks.ts` — see the note there. The
- * captures are trimmed at the use sites; the `512` bound mirrors `FIELD_MAX`
- * from `wikilinks.ts`, since regex literals cannot interpolate.
- */
-export const EMBED_RE = /!\[\[([^\]|#]{0,512})(?:#([^\]|]{1,512}))?(?:\|([^\]]{0,512}))?\]\]/g
 
 export type EmbedKind = 'note' | 'image' | 'video' | 'audio' | 'pdf' | 'heading' | 'block'
 
@@ -105,55 +96,42 @@ export function loneEmbed(paragraph: MdNode): MdNode | undefined {
 export function remarkEmbeds(options: RemarkEmbedsOptions = {}) {
   const resolve = options.resolveLink ?? defaultResolver
 
-  return (tree: MdNode) => {
-    visit(tree as never, 'text', (node: MdNode, i: number | undefined, parent: MdParent) => {
-      if (i === undefined || !parent || typeof node.value !== 'string') return
-      if (!node.value.includes('![[')) return
-      if (node.value.length > MAX_SCAN_LENGTH) return
+  /** One embed: what the plugin builds for the text between its brackets. */
+  const buildEmbed = ({ inner }: FoundLink): MdNode | null => {
+    const pipe = inner.indexOf('|')
+    const before = pipe < 0 ? inner : inner.slice(0, pipe)
+    const hash = before.indexOf('#')
+    const target = (hash < 0 ? before : before.slice(0, hash)).trim()
+    const fragment = splitFragment(hash < 0 ? undefined : before.slice(hash + 1))
+    // `![[]]` names nothing; embedding the current note would be a
+    // self-transclusion. It stays literal. An alias does not change that
+    // (`![[|x]]` still names nothing to embed), unlike `[[|x]]`, which is a
+    // visible link back to the current note.
+    if (!target && !fragment.heading && !fragment.blockId) return null
 
-      const value = node.value
-      const replacement: MdNode[] = []
-      let last = 0
-      EMBED_RE.lastIndex = 0
-      let m: RegExpExecArray | null
-      while ((m = EMBED_RE.exec(value)) !== null) {
-        const [whole, rawTarget, rawFragment, rawDisplay] = m
-        const target = (rawTarget ?? '').trim()
-        const fragment = splitFragment(rawFragment)
-        // `![[]]` names nothing; embedding the current note would be a
-        // self-transclusion. It stays in the next literal slice. An alias does
-        // not change that (`![[|x]]` still names nothing to embed), unlike
-        // `[[|x]]`, which is a visible link back to the current note.
-        if (!target && !fragment.heading && !fragment.blockId) continue
-        if (m.index > last) replacement.push(text(value.slice(last, m.index)))
+    const resolved = target
+      ? resolve(unmaskEscaped(target), options.notePath)
+      : { kind: 'note' as const, path: options.notePath, display: target }
+    const kind = embedKind(target, fragment, resolved.kind)
 
-        const resolved = target
-          ? resolve(unmaskEscaped(target), options.notePath)
-          : { kind: 'note' as const, path: options.notePath, display: target }
-        const kind = embedKind(target, fragment, resolved.kind)
+    const props: Record<string, unknown> = {
+      dataEmbedTarget: target,
+      dataEmbedKind: kind,
+      dataResolvedKind: resolved.kind,
+    }
+    if (resolved.kind !== 'missing' && resolved.path !== undefined) {
+      props.dataEmbedPath = resolved.path
+    }
+    if (fragment.heading) props.dataEmbedHeading = fragment.heading
+    if (fragment.blockId) props.dataEmbedBlockId = fragment.blockId
+    const display = (pipe < 0 ? '' : inner.slice(pipe + 1)).trim()
+    if (display) props.dataEmbedDisplay = display
 
-        const props: Record<string, unknown> = {
-          dataEmbedTarget: target,
-          dataEmbedKind: kind,
-          dataResolvedKind: resolved.kind,
-        }
-        if (resolved.kind !== 'missing' && resolved.path !== undefined) {
-          props.dataEmbedPath = resolved.path
-        }
-        if (fragment.heading) props.dataEmbedHeading = fragment.heading
-        if (fragment.blockId) props.dataEmbedBlockId = fragment.blockId
-        const display = rawDisplay?.trim()
-        if (display) props.dataEmbedDisplay = display
+    return hastNode('wikiEmbed', 'markdown-embed', props)
+  }
 
-        replacement.push(hastNode('wikiEmbed', 'markdown-embed', props))
-        last = m.index + whole.length
-      }
-      if (!replacement.length) return
-      if (last < value.length) replacement.push(text(value.slice(last)))
-
-      parent.children.splice(i, 1, ...replacement)
-      return [SKIP, i + replacement.length]
-    })
+  return (tree: MdNode, file?: unknown) => {
+    tokenizeLinks(tree, file, { kind: 'embed', build: buildEmbed })
 
     // An embed alone in a paragraph is a block-level transclusion; unwrap it.
     visit(tree as never, 'paragraph', (node: MdNode, i: number | undefined, parent: MdParent) => {

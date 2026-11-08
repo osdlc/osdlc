@@ -15,14 +15,7 @@ export {
   useNoteSource,
   useHandlers,
   NoteSourceKey,
-  HandlersKey,
   EmbedAncestorsKey,
-  EmbedBudgetKey,
-  FoldStateKey,
-  HostComponentsKey,
-  HostOptionsKey,
-  MarkdownComponentKey,
-  TasksLiveKey,
   MAX_EMBED_DEPTH,
   MAX_EMBEDS_PER_DOCUMENT,
   type EmbedBudget,
@@ -32,16 +25,13 @@ export {
   type WikilinkTarget,
 } from './context.ts'
 
-// A core type, re-exported so existing `./vue` importers keep compiling.
-export type { LoadedNote } from '../types.ts'
-
 export {
   renderNode,
   renderChildren,
   matchOverride,
   routeKeys,
   toVueProps,
-  nodeText,
+  hastNodeText,
   attrName,
   classList,
   type ComponentMap,
@@ -71,13 +61,3 @@ export {
   type HeadingSection,
   type HeadingFoldContext,
 } from './heading-sections.ts'
-
-// The copy seam both block components consume. The icon helpers and the
-// confirmation clock stay internal: a host wants the control, not its parts.
-export {
-  copyButton,
-  copyStatus,
-  useCopyAction,
-  type CopyAction,
-  type CopyButtonOptions,
-} from './copy-action.ts'
