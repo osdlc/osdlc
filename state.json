@@ -46,9 +46,9 @@
       "line": 206,
       "title": "CUT_GRACE is per listener, not one shared deadline",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "66dd2d34d344db2b76e36eecc7e523096e22c25c"
     }
   ]
 }
