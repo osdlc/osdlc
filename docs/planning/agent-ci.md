@@ -118,7 +118,7 @@ flowchart LR
   class REV blocked
   class PERM,PROBE,CHECK,ANS,SPEC,MULTI next
   class REL active
-  class CUR external
+  class CUR blocked
   class MCP,PUB,DATA,PIN,STRICT later
 ```
 
@@ -131,7 +131,7 @@ move; merged PRs drop off.
 | --- | --- | --- | --- | --- |
 | 1 | [#724](https://github.com/osdlc/osdlc/pull/724) | `claude.yml`: `@claude review` runs `/craft:code-review`; up to three API keys for rotation | Wanted ASAP, so you can start using reviews now | waiting on your review since 20:11 UTC; checks running |
 | 2 | [#723](https://github.com/osdlc/osdlc/pull/723) | agent-call `run`: forward SIGINT and SIGTERM to the agent | Small fix from the codex review of #715; can ship in the same agent-call release | draft; gate done; CI running, ready when green |
-| 3 | [#721](https://github.com/osdlc/osdlc/pull/721) | agent-call: cursor allow and deny via `.cursor/cli.json` | Same package as #715 (merged); can ship in the same agent-call release | draft; gate done; behind main; CI running |
+| 3 | [#721](https://github.com/osdlc/osdlc/pull/721) | agent-call: cursor allow and deny via `.cursor/cli.json` | Same package as #715 (merged); can ship in the same agent-call release | ready for your review; CI green; behind main |
 | 4 | [#716](https://github.com/osdlc/osdlc/pull/716) | `agent-setup` action and `gh-actions release` workflow | Independent of agent-call; needed before `agent-pr-answer` | draft; gate done; behind main; agent-setup test run still queued |
 
 ## PR tracker
@@ -142,7 +142,7 @@ Checked 2026-11-08 20:20 UTC. A periodic check refreshes this table and the grap
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
 | [#724](https://github.com/osdlc/osdlc/pull/724) | ci(claude): @claude review runs /craft:code-review | open | none | blocked: needs review, checks running | waiting on your review | merge |
 | [#723](https://github.com/osdlc/osdlc/pull/723) | fix(agent-call): follow-ups from the codex review of #715 | draft | none | clean once CI passes | gate done; CI running | merge |
-| [#721](https://github.com/osdlc/osdlc/pull/721) | feat(agent-call): enforce allow and deny tools on cursor | draft | none | behind main | gate done; CI running | merge |
+| [#721](https://github.com/osdlc/osdlc/pull/721) | feat(agent-call): enforce allow and deny tools on cursor | open | none | behind main | waiting on your review | merge |
 | [#716](https://github.com/osdlc/osdlc/pull/716) | feat(gh-actions): add the agent-setup action | draft | none | behind main | gate done; agent-setup test run queued (runner backlog) | merge |
 | [#715](https://github.com/osdlc/osdlc/pull/715) | feat(agent-call): agent-call run command | merged | — | — | — | merged 2026-11-08 |
 | [#717](https://github.com/osdlc/osdlc/pull/717) | docs(planning): status and API review 1 | merged | — | — | — | merged 2026-11-08 |
