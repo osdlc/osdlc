@@ -57,7 +57,7 @@ flowchart LR
   subgraph call["One call · @osdlc/agent-call"]
     RUN["PR 715: run CLI (draft)"]
     CHECK["Check permission rows against the facts"]
-    STRICT["strict mode"]
+    STRICT["Backlog: enforced read-only mappings (claude tool denies + sandbox, cursor cli.json) so strict passes"]
     CUR["Cursor: write .cursor/cli.json, fix print-mode note"]
   end
   subgraph gate["Gate"]
@@ -94,7 +94,6 @@ flowchart LR
   ARCH --> ANS
   ARCH --> SPEC
   ANS --> SPEC
-  STRICT --> SPEC
   SPEC --> MULTI
   CUR --> MULTI
   MULTI --> MCP
@@ -114,8 +113,8 @@ flowchart LR
   class UP yours
   class ARCH blocked
   class RUN,SETUP review
-  class PERM,PROBE,CHECK,STRICT,CUR,ANS,SPEC,MULTI next
-  class MCP,PUB,DATA,PIN later
+  class PERM,PROBE,CHECK,CUR,ANS,SPEC,MULTI next
+  class MCP,PUB,DATA,PIN,STRICT later
 ```
 
 ## PR tracker
@@ -210,8 +209,11 @@ spec. Its output is a review document with a decision per question.
 Questions raised so far:
 
 - `strict` refuses read-only on claude and cursor, because both map it to an
-  approximation (`--permission-mode plan`, `--mode ask`). Per-field
-  acceptance, or exact mappings backed by harness-reference facts? (#715)
+  approximation (`--permission-mode plan`, `--mode ask`). **Decided:** keep
+  strict as built (fail; the caller relaxes with `strict: false`). Backlog:
+  make read-only enforced on claude (tool denies plus the Bash sandbox) and
+  cursor (`--mode ask` plus `.cursor/cli.json` denies), backed by
+  harness-reference facts, so strict passes. (#715)
 - `maxTurns`: `AgentCallSpec` has no turn limit; claude has `--max-turns`.
   Add it to the library spec? (#715)
 - Cursor `allowTools` is dropped; write `.cursor/cli.json` instead (I2).
