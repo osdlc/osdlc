@@ -59,7 +59,7 @@
       "path": "packages/rust/web-access/src/serve.rs",
       "line": 725,
       "title": "drop(wr) after pending() never runs; wr already lives in the future",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/704#discussion_r4505445234",
       "status": "fixed",
       "reason": null,
       "fixedIn": "5f44bdf41d01587a27aac18bf7e51b49f0a0afa3"
