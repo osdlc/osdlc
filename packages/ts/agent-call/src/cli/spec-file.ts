@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { accessSync, readFileSync } from 'node:fs'
 import { extname } from 'node:path'
 
 import { parse as parseYaml } from 'yaml'
@@ -179,8 +179,13 @@ export function resolveCall(
 
   const files = run.context.map((part) => {
     if ('file' in part) {
-      read(part.file)
-      return containedPath(root, part.file)
+      const abs = containedPath(root, part.file)
+      try {
+        accessSync(abs)
+      } catch (err) {
+        throw new UsageError(`cannot read ${part.file}: ${(err as Error).message}`)
+      }
+      return abs
     }
     const input = requireInput(inputs, part.input)
     if (input.path === undefined) {
@@ -191,7 +196,7 @@ export function resolveCall(
     return input.path
   })
 
-  const spec: AgentCallSpec = { prompt }
+  const spec: AgentCallSpec = { prompt, cwd: root }
   if (run.model !== undefined) spec.model = run.model
   if (run.permissions !== undefined) spec.permissions = run.permissions
   if (files.length > 0) spec.context = { files }
