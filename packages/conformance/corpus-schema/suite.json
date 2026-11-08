@@ -91,6 +91,16 @@
               "corpus-schema.yaml: profiles"
             ]
           }
+        },
+        {
+          "name": "two types may share a schema's $id",
+          "input": {
+            "corpus": "corpora/shared-id"
+          },
+          "expect": {
+            "errors": [],
+            "warnings": []
+          }
         }
       ]
     }

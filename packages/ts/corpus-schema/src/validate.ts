@@ -161,11 +161,13 @@ function walk(root: string): {
   const nestedFiles: string[] = []
   const symlinks: string[] = []
   const problems: string[] = []
-  const read = (rel: string): Dirent[] => {
+  // A folder inside a nested corpus is that corpus's problem, not this one's.
+  const read = (rel: string, inNested = false): Dirent[] => {
     try {
       return entries(join(root, rel))
     } catch (e) {
-      problems.push(`${rel === '' ? '.' : rel}: (folder): cannot read (${whyFailed(e)})`)
+      if (!inNested)
+        problems.push(`${rel === '' ? '.' : rel}: (folder): cannot read (${whyFailed(e)})`)
       return []
     }
   }
@@ -176,7 +178,7 @@ function walk(root: string): {
       if (d.isSymbolicLink() && !inNested) symlinks.push(path)
       if (d.isFile()) (inNested ? nestedFiles : files).push(path)
       if (!d.isDirectory()) continue
-      const sub = read(path)
+      const sub = read(path, inNested)
       const startsNested = !inNested && hasRootFile(sub)
       if (startsNested) nested.push(path)
       else if (!inNested) dirs.push(path)
@@ -356,9 +358,11 @@ function readRoot(c: Corpus): string[] | undefined {
 /** Find the types: folders holding `<their name>.schema.{md,yaml,json}`. Returns every schema file. */
 function readTypes(c: Corpus, dirs: string[]): Set<string> {
   // strictSchema only: a misspelled keyword is an error. The other strict options reject valid
-  // JSON Schema 2020-12, such as `properties` without `type: object`.
+  // JSON Schema 2020-12, such as `properties` without `type: object`. addUsedSchema off keeps each
+  // type's schema apart: two may share a `$id`, and one cannot `$ref` another.
   const ajv = new Ajv2020({
     allErrors: true,
+    addUsedSchema: false,
     strictSchema: true,
     strictTypes: false,
     strictTuples: false,

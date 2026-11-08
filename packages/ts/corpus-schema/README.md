@@ -68,7 +68,7 @@ export function check(folder: string): string[] {
 `findCorpora(dir)` finds every corpus at or below a folder by its root file. It throws when a
 folder outside every corpus cannot be read. `validateCorpus(root, { fix })` checks one corpus and
 returns a `CorpusReport`. Every problem it finds is a line in the report, never a throw. A report
-holds `root`, `name` and `id`, `records` (valid records by type, then id, each record's `Data`),
+holds `root`, `name`, `id` and `level` (the level the root file states), `records` (valid records by type, then id, each record's `Data`),
 `files` (the corpus-relative path of each of those records), `errors`, `warnings` and `fixed`.
 
 Writers of records can use the same rules the validator reads with:

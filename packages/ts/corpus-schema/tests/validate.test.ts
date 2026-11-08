@@ -329,6 +329,18 @@ describe('types and records', () => {
     assert.ok(has(errors(), 'tags: (folder): type name is also used by more/tags'))
   })
 
+  test("two types may share a schema's $id, and one cannot $ref another", () => {
+    const schema = JSON.stringify({ $id: 'https://example.org/thing', type: 'object' })
+    put('tags/tags.schema.yaml', '')
+    rmSync(join(dir, 'tags/tags.schema.yaml'))
+    put('tags/tags.schema.json', schema)
+    put('things/things.schema.json', schema)
+    put('things/X.json', '{}')
+    assert.deepEqual(errors(), [])
+    put('things/things.schema.json', JSON.stringify({ $ref: 'https://example.org/thing' }))
+    assert.ok(has(errors(), "things/things.schema.json: (schema): can't resolve reference"))
+  })
+
   test('a bad schema fails', () => {
     put('tags/tags.schema.yaml', 'type: object\nrequried: [label]\n')
     assert.ok(has(errors(), 'tags/tags.schema.yaml: (schema): strict mode: unknown keyword'))
@@ -486,6 +498,24 @@ describe('the file system', () => {
       chmodSync(join(dir, 'tags/T.yaml'), 0o644)
     }
   })
+
+  test(
+    "a folder that cannot be read in a nested corpus is that corpus's error only",
+    PERMISSIONS,
+    () => {
+      put('inner/corpus-schema.yaml', 'corpus-schema: 0\n')
+      put('inner/notes/locked/x.md', '')
+      chmodSync(join(dir, 'inner/notes/locked'), 0o000)
+      try {
+        assert.deepEqual(errors(), [])
+        assert.ok(
+          has(validateCorpus(join(dir, 'inner')).errors, 'notes/locked: (folder): cannot read'),
+        )
+      } finally {
+        chmodSync(join(dir, 'inner/notes/locked'), 0o755)
+      }
+    },
+  )
 
   test('a file --fix cannot write is an error, not a throw', PERMISSIONS, () => {
     put('notes/Note B.md', note('', 'See [[Note A]].\n'))

@@ -127,6 +127,8 @@ notes, even in one type.
   they are that type's records, and elsewhere they are narrative.
 - The schema is a JSON Schema, draft 2020-12, for a record's data. In `.md` the schema is the
   frontmatter and the body documents the type. In `.yaml` and `.json` it is the whole file.
+- Each type's schema stands alone. Two types MAY give their schemas the same `$id`, and a `$ref`
+  in one type's schema does not resolve to another type's schema.
 - An empty schema (an empty file, empty frontmatter, a `.md` file with no frontmatter, or `{}`)
   makes an untyped type. Its records are not checked against a schema. Their ids, formats and links
   are. A level 2 corpus has no untyped types.
