@@ -1,0 +1,44 @@
+name: Agent setup
+description: Install a pinned coding-agent CLI (claude, codex or cursor) and, optionally, plugins from marketplaces.
+author: sksizer
+
+inputs:
+  harness:
+    description: The coding agent to install, one of claude, codex or cursor.
+    required: true
+  version:
+    description: >-
+      CLI version to install. Empty means the default for the harness
+      (claude 2.1.319, codex 0.162.0, cursor 2026.11.05-86047df). Cursor takes a
+      full build id, version and commit, as in 2026.11.05-86047df.
+    default: ""
+  marketplaces:
+    description: >-
+      Plugin marketplaces, one per line, as `name=https-git-url` with an
+      optional ` ref` after the URL. The name must match the marketplace's own
+      name.
+    default: ""
+  plugins:
+    description: Plugins to install, one per line, as plugin@marketplace. Not supported on cursor.
+    default: ""
+  skillwright-version:
+    description: skillwright release that installs the plugins.
+    default: 0.7.0
+
+outputs:
+  cli-path:
+    description: Absolute path to the installed harness binary.
+    value: ${{ steps.install.outputs.cli-path }}
+
+runs:
+  using: composite
+  steps:
+    - id: install
+      shell: bash
+      env:
+        HARNESS: ${{ inputs.harness }}
+        VERSION: ${{ inputs.version }}
+        MARKETPLACES: ${{ inputs.marketplaces }}
+        PLUGINS: ${{ inputs.plugins }}
+        SKILLWRIGHT_VERSION: ${{ inputs.skillwright-version }}
+      run: '"$GITHUB_ACTION_PATH/setup.sh"'
