@@ -10,7 +10,8 @@
  *
  * A caller that passes no entries gets no repositories. `sweep` with no
  * targets passes the directory it stands in, which resolves like any other
- * entry; when that finds nothing, `sweep` widens it to the checkout around it.
+ * entry; when that finds nothing in a directory the checkout around it tracks,
+ * `sweep` widens it to that checkout.
  */
 
 import { homedir } from 'node:os'

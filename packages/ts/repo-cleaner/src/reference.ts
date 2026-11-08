@@ -11,7 +11,7 @@ const TARGETS = `Targets
     a remote URL          its remote branches only, through a clone kept in the cache
                           directory (https://, ssh://, file://, or user@host:path)
   No target sweeps the directory you are in, read the same way; in a subdirectory
-  of a checkout where the search finds no checkout, the checkout around it.`
+  the checkout around it tracks, where the search finds no checkout, that checkout.`
 
 const SWEEP = `Sweep options (the report, plan and clean)
   --remote                Also judge remote branches. Turns on the network: fetches

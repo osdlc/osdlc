@@ -672,8 +672,12 @@ describe('no target (#680)', () => {
     commit(dir, 'initial commit')
     return dir
   }
-  const subdir = (dir: string): string => {
-    mkdirSync(join(dir, 'src', 'lib'), { recursive: true })
+  /** `dir/src/lib`, holding a file `dir`'s checkout tracks. */
+  const subdir = (dir: string, depth: string[] = []): string => {
+    const inner = join(dir, 'src', 'lib', ...depth)
+    mkdirSync(inner, { recursive: true })
+    writeFileSync(join(inner, 'index.ts'), 'export {}\n', 'utf-8')
+    commit(dir, 'add src')
     return join(dir, 'src', 'lib')
   }
 
@@ -702,7 +706,15 @@ describe('no target (#680)', () => {
     expect(result.repos.map((r) => r.repo?.root).sort()).toEqual([alpha, beta])
   })
 
-  test('a search that stopped at the depth limit is reported, not widened', () => {
+  test('a tracked subdirectory deeper than the search limit still sweeps its checkout', () => {
+    const app = checkout(join(home, 'deep-app'))
+    const inner = subdir(app, ['a', 'b', 'c', 'd'])
+    const result = sweep([], { cwd: inner })
+    expect(result.repos.map((r) => r.repo?.root)).toEqual([app])
+  })
+
+  test('a directory its checkout does not track is reported, not widened', () => {
+    // A home directory kept in git, whose projects sit past the search limit.
     const dotfiles = checkout(join(home, 'deep-home'))
     const projects = join(dotfiles, 'Developer')
     checkout(join(projects, 'a', 'b', 'c', 'too-deep'))
@@ -713,8 +725,8 @@ describe('no target (#680)', () => {
   })
 
   test('checkouts found below that cannot be read are reported, not widened', () => {
-    const dotfiles = checkout(join(home, 'broken-home'))
-    const projects = join(dotfiles, 'Developer')
+    const app = checkout(join(home, 'broken-app'))
+    const projects = subdir(app)
     const broken = join(projects, 'broken')
     mkdirSync(broken, { recursive: true })
     writeFileSync(join(broken, '.git'), 'gitdir: /nowhere\n', 'utf-8')
@@ -724,7 +736,7 @@ describe('no target (#680)', () => {
     expect(result.unresolved).toEqual([{ entry: projects, reason: 'no git checkouts under it' }])
   })
 
-  test('when the checkout around cannot be read either, the first search is what is reported', () => {
+  test('when git cannot read the checkout around, the first search is what is reported', () => {
     const fake = join(home, 'fake')
     mkdirSync(fake)
     writeFileSync(join(fake, '.git'), 'gitdir: /nowhere\n', 'utf-8')

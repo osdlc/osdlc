@@ -113,6 +113,9 @@ describe('arguments', () => {
     const fx = buildFixture()
     const inner = join(fx.root, 'src', 'lib')
     mkdirSync(inner, { recursive: true })
+    writeFileSync(join(inner, 'index.ts'), 'export {}\n')
+    sh(fx.root, ['add', '-A'])
+    sh(fx.root, ['commit', '-q', '-m', 'add src'])
     const res = run(['--format', 'json'], inner)
     expect(res.code).toBe(0)
     const out = JSON.parse(res.out) as {
