@@ -475,6 +475,106 @@
             "commonmark": "- row\n  | `a | b` |     |\n",
             "skill_export": "- row\n  |         |     |\n"
           }
+        },
+        {
+          "name": "blank_line_in_a_block_quote_keeps_a_list_item_fence",
+          "input": {
+            "source": "> - ```\n>   x\n>\n>   [[y]]\n>   ```\n[[z]]\n"
+          },
+          "expect": {
+            "commonmark": "       \n     \n \n         \n       \n[[z]]\n",
+            "skill_export": "> -    \n     \n \n         \n       \n[[z]]\n"
+          }
+        },
+        {
+          "name": "ordered_item_not_from_one_does_not_interrupt_a_paragraph",
+          "input": {
+            "source": "Text\n2. ```\n   [[a]]\n"
+          },
+          "expect": {
+            "commonmark": "Text\n2. ```\n   [[a]]\n",
+            "skill_export": "Text\n2. ```\n   [[a]]\n"
+          }
+        },
+        {
+          "name": "ordered_item_from_one_interrupts_a_paragraph",
+          "input": {
+            "source": "Text\n1. ```\n   [[a]]\n   ```\n[[b]]\n"
+          },
+          "expect": {
+            "commonmark": "Text\n      \n        \n      \n[[b]]\n",
+            "skill_export": "Text\n1. ```\n   [[a]]\n      \n     \n"
+          }
+        },
+        {
+          "name": "ordered_item_not_from_one_after_a_blank_line_opens",
+          "input": {
+            "source": "Text\n\n2. ```\n   [[a]]\n   ```\n[[b]]\n"
+          },
+          "expect": {
+            "commonmark": "Text\n\n      \n        \n      \n[[b]]\n",
+            "skill_export": "Text\n\n2. ```\n   [[a]]\n      \n     \n"
+          }
+        },
+        {
+          "name": "year_before_a_fence_is_paragraph_text",
+          "input": {
+            "source": "We met in\n1984. ```js\n[[Note]]\n"
+          },
+          "expect": {
+            "commonmark": "We met in\n1984. ```js\n[[Note]]\n",
+            "skill_export": "We met in\n1984. ```js\n[[Note]]\n"
+          }
+        },
+        {
+          "name": "tab_after_a_quote_marker_takes_one_column",
+          "input": {
+            "source": "> ```\n>\t[[a]]\n> ```\n"
+          },
+          "expect": {
+            "commonmark": "     \n       \n     \n",
+            "skill_export": ">    \n       \n     \n"
+          }
+        },
+        {
+          "name": "tab_after_a_list_marker_sets_the_content_column",
+          "input": {
+            "source": " -\t```\n\t[[a]]\n"
+          },
+          "expect": {
+            "commonmark": "      \n      \n",
+            "skill_export": " -\t```\n\t[[a]]\n"
+          }
+        },
+        {
+          "name": "thematic_break_is_not_a_list_item",
+          "input": {
+            "source": "- - -\n[[a]]\n"
+          },
+          "expect": {
+            "commonmark": "- - -\n[[a]]\n",
+            "skill_export": "- - -\n[[a]]\n"
+          }
+        },
+        {
+          "name": "number_with_a_dot_inside_is_not_a_list_item",
+          "input": {
+            "source": "1.5 ```\n[[a]]\n"
+          },
+          "expect": {
+            "commonmark": "1.5 ```\n[[a]]\n",
+            "skill_export": "1.5 ```\n[[a]]\n"
+          }
+        },
+        {
+          "name": "table_row_in_a_block_quote",
+          "input": {
+            "source": "> | `a | [[x]] | b` |\n"
+          },
+          "expect": {
+            "commonmark": "> | `a | [[x]] | b` |\n",
+            "skill_export": "> |                 |\n"
+          }
         }
       ]
     },

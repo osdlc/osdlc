@@ -155,8 +155,9 @@ pub struct BodyScan {
 /// [`BodyLinkKind::Wikilink`] that starts at the `[[`, with the `!` left
 /// outside its span as literal text, where `![[Note]]` is an
 /// [`BodyLinkKind::Embed`] that starts at the `!`. An even run, as in
-/// `\\![[Note]]`, escapes the backslash and leaves an embed. The span is what an editor decoration, a hover preview and a
-/// rename's link rewrite need: which bytes to touch.
+/// `\\![[Note]]`, escapes the backslash and leaves an embed. The span is what
+/// an editor decoration, a hover preview and a rename's link rewrite need:
+/// which bytes to touch.
 ///
 /// # Why the offsets need a char table
 ///

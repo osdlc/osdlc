@@ -103,6 +103,8 @@ class Fences {
   private readonly cursor = new Cursor()
   /** Where the outermost block quote in `containers` is. */
   private firstQuote = -1
+  /** Whether the last line was paragraph text, which a list item may interrupt only as CommonMark lets it. */
+  private paragraph = false
   /** Where the text of the last line starts, past the markers of its containers. */
   contentStart = 0
   private readonly rules: CodeRules
@@ -157,12 +159,15 @@ class Fences {
       this.containers.length === 0 &&
       (start >= lineEnd || !opensBlock(s.charCodeAt(start)))
     ) {
+      this.paragraph = start < lineEnd
       return 'outside'
     }
     const end = lineEnd > start && s.charCodeAt(lineEnd - 1) === CR ? lineEnd - 1 : lineEnd
     const blank = isBlank(s, start, end)
     const depth = this.containers.length
     const cursor = this.cursor.reset(s, start, end)
+    const wasParagraph = this.paragraph
+    this.paragraph = false
     let matched = 0
     if (blank) {
       // A blank line continues every list item and ends a block quote.
@@ -172,7 +177,8 @@ class Fences {
         const container = this.containers[matched]!
         if (container.quote) {
           if (!cursor.quote()) break
-        } else if (cursor.textCol >= container.content) {
+        } else if (cursor.textPos >= end || cursor.textCol >= container.content) {
+          // A line blank after its markers continues a list item.
           cursor.base = container.content
         } else {
           break
@@ -197,14 +203,18 @@ class Fences {
 
     this.truncate(matched)
     if (!blank) {
+      // A list item starting on a paragraph's continuation line may only
+      // interrupt it as CommonMark lets it.
+      let interrupts = wasParagraph && matched === depth
       while (cursor.indent() <= 3) {
         if (cursor.quote()) {
           this.push({ quote: true })
-          continue
+        } else {
+          const content = cursor.itemStart(interrupts)
+          if (content === null) break
+          this.push({ quote: false, content })
         }
-        const content = cursor.itemStart()
-        if (content === null) break
-        this.push({ quote: false, content })
+        interrupts = false
       }
       if (cursor.indent() <= 3) {
         const fence = opensFence(s, cursor.textPos, end, this.rules)
@@ -216,6 +226,7 @@ class Fences {
       }
     }
     this.contentStart = cursor.contentStart()
+    this.paragraph = cursor.textPos < end
     return 'outside'
   }
 }
@@ -311,7 +322,7 @@ class Cursor {
    * A list marker at the text starts a list item: step past it, and give the
    * column its content starts at, or `null` when there is no marker.
    */
-  itemStart(): number | null {
+  itemStart(interrupts: boolean): number | null {
     const { s, end } = this
     const at = this.textPos
     if (at >= end) return null
@@ -324,12 +335,16 @@ class Cursor {
       while (digitsEnd < end && isAsciiDigit(s.charCodeAt(digitsEnd))) digitsEnd++
       const delimiter = digitsEnd < end ? s[digitsEnd] : ''
       if (digitsEnd - at > 9 || (delimiter !== '.' && delimiter !== ')')) return null
+      // An ordered list interrupts a paragraph only when it starts at 1.
+      if (interrupts && Number(s.slice(at, digitsEnd)) !== 1) return null
       marker = digitsEnd - at + 1
     } else {
       return null
     }
     const after = at + marker < end ? s.charCodeAt(at + marker) : -1
     if ((after !== -1 && after !== SPACE && after !== TAB) || thematicBreak(s, at, end)) return null
+    // An empty item cannot interrupt a paragraph.
+    if (interrupts && isBlank(s, at + marker, end)) return null
     const markerEnd = this.textCol + marker
     this.skipSpace(at + marker, markerEnd)
     // Nothing after the marker, or an indented code block: the content

@@ -48,6 +48,10 @@
 //! marker line, container markers included, becomes spaces. Lazy
 //! continuation lines are not tracked: a line of a paragraph that is not
 //! indented to its list item ends the item here, where CommonMark keeps it.
+//! A list item interrupts a paragraph only as CommonMark lets it: an ordered
+//! item must start at 1 and no item may be empty. The line before is taken to
+//! be a paragraph when it is text outside a fence, so a heading or a table
+//! row counts as one.
 //! [`CodeRules::SkillExport`] reads one line at a time and knows no
 //! containers, as the renderers it matches do.
 //!
@@ -192,6 +196,9 @@ pub struct Fences {
     containers: Vec<Container>,
     /// Where the outermost block quote in `containers` is.
     first_quote: Option<usize>,
+    /// Whether the last line was paragraph text, which a list item may
+    /// interrupt only as CommonMark lets it.
+    paragraph: bool,
     content: usize,
 }
 
@@ -217,9 +224,9 @@ impl Fences {
     /// Where the text of the line last given to [`Fences::line`] starts, past
     /// the block quote and list item markers and the indent they take, as a
     /// byte index into it. Zero outside [`CodeRules::CommonMark`]. A line of
-    /// four columns of indent or more keeps four bytes of it, so a block
-    /// quote's marker is never part of the text but an indented-code line
-    /// still reads as one.
+    /// four columns of indent or more starts up to four bytes early, so a
+    /// block quote's marker is never part of the text but an indented-code
+    /// line still reads as one.
     pub fn content_start(&self) -> usize {
         self.content
     }
@@ -280,12 +287,14 @@ impl Fences {
                 Some(b' ' | b'\t' | b'>' | b'-' | b'*' | b'+' | b'0'..=b'9' | b'`' | b'~')
             )
         {
+            self.paragraph = !line.is_empty();
             return FenceLine::Outside;
         }
         let line = line.strip_suffix(b"\r").unwrap_or(line);
         let blank = is_blank(line);
         let depth = self.containers.len();
         let mut cursor = Cursor::start(line);
+        let was_paragraph = std::mem::take(&mut self.paragraph);
         let mut matched = 0;
         if blank {
             // A blank line continues every list item and ends a block quote.
@@ -294,7 +303,12 @@ impl Fences {
             while matched < depth {
                 match self.containers[matched] {
                     Container::Quote if cursor.quote() => {}
-                    Container::Item(content) if cursor.text_col >= content => cursor.base = content,
+                    // A line blank after its markers continues a list item.
+                    Container::Item(content)
+                        if cursor.text_pos >= line.len() || cursor.text_col >= content =>
+                    {
+                        cursor.base = content;
+                    }
                     _ => break,
                 }
                 matched += 1;
@@ -323,14 +337,18 @@ impl Fences {
 
         self.truncate(matched);
         if !blank {
+            // A list item starting on a paragraph's continuation line may only
+            // interrupt it as CommonMark lets it.
+            let mut interrupts = was_paragraph && matched == depth;
             while cursor.indent() <= 3 {
                 if cursor.quote() {
                     self.push(Container::Quote);
-                } else if let Some(content) = cursor.item_start() {
+                } else if let Some(content) = cursor.item_start(interrupts) {
                     self.push(Container::Item(content));
                 } else {
                     break;
                 }
+                interrupts = false;
             }
             if cursor.indent() <= 3
                 && let Some((character, length)) = opens_fence(&line[cursor.text_pos..], self.rules)
@@ -345,6 +363,7 @@ impl Fences {
             }
         }
         self.content = cursor.content_start();
+        self.paragraph = cursor.text_pos < line.len();
         FenceLine::Outside
     }
 }
@@ -432,7 +451,7 @@ impl<'a> Cursor<'a> {
 
     /// A list marker at the text starts a list item: step past it, and give
     /// the column its content starts at.
-    fn item_start(&mut self) -> Option<usize> {
+    fn item_start(&mut self, interrupts: bool) -> Option<usize> {
         let rest = &self.line[self.text_pos..];
         let marker = match rest.first()? {
             b'-' | b'*' | b'+' => 1,
@@ -441,11 +460,24 @@ impl<'a> Cursor<'a> {
                 if digits > 9 || !matches!(rest.get(digits), Some(b'.' | b')')) {
                     return None;
                 }
+                // An ordered list interrupts a paragraph only when it starts at 1.
+                if interrupts
+                    && rest[..digits]
+                        .iter()
+                        .fold(0u32, |n, &b| n * 10 + u32::from(b - b'0'))
+                        != 1
+                {
+                    return None;
+                }
                 digits + 1
             }
             _ => return None,
         };
         if !matches!(rest.get(marker), None | Some(b' ' | b'\t')) || thematic_break(rest) {
+            return None;
+        }
+        // An empty item cannot interrupt a paragraph.
+        if interrupts && is_blank(&rest[marker..]) {
             return None;
         }
         let marker_end = self.text_col + marker;
@@ -1007,66 +1039,7 @@ mod tests {
         assert_eq!(find_span_close(b"`a``b`", CodeRules::SkillExport), Some(2));
     }
 
-    #[test]
-    fn a_fence_in_a_list_item_is_code_and_ends_with_the_item() {
-        assert_eq!(
-            strip_code("- ```\n  [[a]]\n  ```\n\n[[b]]"),
-            "     \n       \n     \n\n[[b]]"
-        );
-        // Not indented to the content: the item ends, so does the fence.
-        assert_eq!(strip_code("- ```\n[[a]]\n"), "     \n[[a]]\n");
-        // A blank line stays in the item; the unclosed fence runs on.
-        assert_eq!(
-            strip_code("- ```\n  [[a]]\n\n  [[b]]\n[[c]]"),
-            "     \n       \n\n       \n[[c]]"
-        );
-    }
-
-    #[test]
-    fn a_fence_indented_to_the_content_column_opens() {
-        // Content column 4: four spaces of indent are not indented code.
-        assert_eq!(
-            strip_code("10. item\n    ```\n    [[a]]\n    ```\n[[b]]"),
-            "10. item\n       \n         \n       \n[[b]]"
-        );
-        // Four columns past the content are.
-        assert_eq!(strip_code("- item\n      ```\n"), "- item\n      ```\n");
-        // Tabs count to the next multiple of four.
-        assert_eq!(strip_code("-\titem\n\t```\n"), "-\titem\n    \n");
-    }
-
-    #[test]
-    fn a_fence_in_a_block_quote_ends_with_the_quote() {
-        assert_eq!(
-            strip_code("> ```\n> [[a]]\n> ```\n[[b]]"),
-            "     \n       \n     \n[[b]]"
-        );
-        assert_eq!(strip_code("> ```\n> [[a]]\n[[b]]"), "     \n       \n[[b]]");
-        assert_eq!(strip_code("> ```\n> a\n\n[[b]]"), "     \n   \n\n[[b]]");
-    }
-
-    #[test]
-    fn containers_nest() {
-        assert_eq!(
-            strip_code("- a\n  - b\n    > ```\n    > [[x]]\n  [[y]]"),
-            "- a\n  - b\n         \n           \n  [[y]]"
-        );
-        assert_eq!(
-            strip_code("1. a\n   ```\n   [[x]]\n2. b [[y]]"),
-            "1. a\n      \n        \n2. b [[y]]"
-        );
-    }
-
-    #[test]
-    fn a_marker_line_that_is_not_a_container_is_not_one() {
-        for text in ["- - -\n```\n", "-dash ```\n", "1.5 ```\n", "- ``\n"] {
-            let out = strip_code(text);
-            assert_eq!(out.chars().count(), text.chars().count());
-        }
-        assert_eq!(strip_code("- - -\n[[a]]"), "- - -\n[[a]]");
-        assert_eq!(strip_code("1.5 ```\n[[a]]"), "1.5 ```\n[[a]]");
-    }
-
+    // The cases for fences in containers and table rows are in the shared suite.
     #[test]
     fn skill_export_and_none_know_no_containers() {
         let text = "- ```\n  [[a]]\n  ```\n[[b]]";
@@ -1080,19 +1053,7 @@ mod tests {
     }
 
     #[test]
-    fn a_span_stays_in_its_table_cell() {
-        // GFM cuts the row at every unescaped pipe first, backticks or not.
-        assert_eq!(strip_code("| `a | [[x]] | b` |"), "| `a | [[x]] | b` |");
-        assert_eq!(strip_code("| `a` | [[x]] |"), "|     | [[x]] |");
-        // An escaped pipe stays in the cell, and so in the span.
-        assert_eq!(strip_code("| `a \\| b` | [[x]] |"), "|          | [[x]] |");
-        // Rows in a list item and a block quote.
-        assert_eq!(
-            strip_code("- x\n  | `a | [[x]] | b` |"),
-            "- x\n  | `a | [[x]] | b` |"
-        );
-        assert_eq!(strip_code("> | `a | [[x]] | b` |"), "> | `a | [[x]] | b` |");
-        // SkillExport reads a row as any line.
+    fn skill_export_reads_a_table_row_as_any_line() {
         assert_eq!(
             strip_code_with("| `a | [[x]] | b` |", CodeRules::SkillExport),
             "|                 |"
