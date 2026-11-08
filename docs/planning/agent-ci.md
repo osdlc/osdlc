@@ -18,8 +18,9 @@ requests. Started 2026-11-08.
 
 ## Roadmap
 
-Arrows mean "needs". Green is done, purple an open PR, amber in
-progress, blue next, grey later. Update the classes at the bottom as items
+Arrows mean "needs". Green is done, purple a PR ready to merge
+(approved, checks green), teal a PR in review, amber in progress, blue
+next, grey later. Update the classes at the bottom as items
 move.
 
 ```mermaid
@@ -76,12 +77,13 @@ flowchart LR
   CHECK --> DATA
 
   classDef done fill:#2e8b57,stroke:#1f6640,color:#ffffff
-  classDef open fill:#7a4fc2,stroke:#5a3596,color:#ffffff
+  classDef review fill:#0f8a8a,stroke:#0a6666,color:#ffffff
+  classDef ready fill:#7a4fc2,stroke:#5a3596,color:#ffffff
   classDef active fill:#c77d0a,stroke:#94600a,color:#ffffff
   classDef next fill:#2f5bd3,stroke:#2144a3,color:#ffffff
   classDef later fill:#8a93a3,stroke:#6b7384,color:#ffffff
   class W710,PLAN done
-  class P712 open
+  class P712 review
   class UP active
   class CLOSE,PERM,PROBE,CHECK,CUR,RUN,SETUP,ANS,SPEC,MULTI next
   class MCP,PUB,DATA,PIN later
