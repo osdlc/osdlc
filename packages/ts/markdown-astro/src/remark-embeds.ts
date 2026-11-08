@@ -86,10 +86,15 @@ function embedResolver(lookups: EmbedLookups): WikilinkResolver {
  * same-note embed (`![[#Heading]]`) renders the cycle placeholder, as in the
  * app.
  */
-export function renderEmbeds(tree: MdNode, notePath: string | undefined, lookups: EmbedLookups) {
+export function renderEmbeds(
+  tree: MdNode,
+  notePath: string | undefined,
+  lookups: EmbedLookups,
+  file?: unknown,
+) {
   const resolveLink = embedResolver(lookups)
   const page: PageState = { spent: 0, spliced: 0 }
-  renderTree(tree, notePath, notePath ? [notePath] : [], page, lookups, resolveLink)
+  renderTree(tree, notePath, notePath ? [notePath] : [], page, lookups, resolveLink, file)
 }
 
 function renderTree(
@@ -99,8 +104,10 @@ function renderTree(
   page: PageState,
   lookups: EmbedLookups,
   resolveLink: WikilinkResolver,
+  file?: unknown,
 ): void {
-  remarkEmbeds({ resolveLink, ...(notePath !== undefined ? { notePath } : {}) })(tree)
+  // The scanner reads the source text, not the tree: `file` holds it as `{ value }`.
+  remarkEmbeds({ resolveLink, ...(notePath !== undefined ? { notePath } : {}) })(tree, file)
   const walk = (parent: MdNode): void => {
     const children = parent.children
     if (!children) return
@@ -158,7 +165,7 @@ function renderEmbed(
   const nested = lookups.parse(slice)
   stripPositions(nested)
   scopeReferences(nested, `embed-${++page.spliced}-`)
-  renderTree(nested, path, [...ancestors, path], page, lookups, resolveLink)
+  renderTree(nested, path, [...ancestors, path], page, lookups, resolveLink, { value: slice })
   return {
     type: 'wikiEmbed',
     children: nested.children ?? [],

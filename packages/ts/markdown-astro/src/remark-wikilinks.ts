@@ -215,8 +215,8 @@ export function remarkWikilinks(this: unknown, options: RemarkWikilinksOptions) 
   }
 
   const tokenize = tokenizeWikilinks({ resolveLink, buildNode })
-  return (tree: Parameters<typeof tokenize>[0], file?: { path?: string }) => {
-    renderEmbeds(tree, file?.path ? resolvePath(file.path) : undefined, lookups)
-    tokenize(tree)
+  return (tree: Parameters<typeof tokenize>[0], file?: { path?: string; value?: unknown }) => {
+    renderEmbeds(tree, file?.path ? resolvePath(file.path) : undefined, lookups, file)
+    tokenize(tree, file)
   }
 }

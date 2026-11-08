@@ -58,3 +58,20 @@ test('a quote, tag or collection name with a quote is escaped in the wikilink sp
   assert.ok(!missing.includes('" onmouseover="'))
   assert.match(missing, /wikilink-missing/)
 })
+
+test('an alias with markup still links when the processor passes the source file', () => {
+  const html = String(
+    unified()
+      .use(remarkParse)
+      .use(remarkWikilinks, {
+        collections: [{ name: 'notes', dir, route: null }],
+        warnOnCollision: false,
+        danglingRefPolicy: 'warn',
+      })
+      .use(remarkRehype, { allowDangerousHtml: true })
+      .use(rehypeStringify, { allowDangerousHtml: true })
+      .processSync('See [[nowhere|*Ada* and `x`]].'),
+  )
+  assert.match(html, /wikilink/)
+  assert.ok(!html.includes('[['))
+})
