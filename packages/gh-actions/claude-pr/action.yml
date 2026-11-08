@@ -61,13 +61,14 @@ runs:
         PLUGINS: ${{ inputs.plugins }}
       run: '"$GITHUB_ACTION_PATH/install.sh"'
 
-    - id: claude
-      if: steps.mention.outputs.real == '1'
+    - if: steps.mention.outputs.real == '1'
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}
         KEYS: ${{ inputs.anthropic-api-key }}
         MAX_TURNS: ${{ inputs.max-turns }}
+        MODE: ${{ steps.mention.outputs.mode }}
+        RESULT: ${{ runner.temp }}/claude-pr-result.json
         REPO: ${{ github.repository }}
         PR: ${{ github.event.issue.number || github.event.pull_request.number }}
         REQUEST: ${{ github.event.comment.body || github.event.review.body }}
@@ -79,6 +80,8 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.github-token }}
         PR: ${{ github.event.issue.number || github.event.pull_request.number }}
-        MODE: ${{ steps.claude.outputs.mode }}
+        REPO: ${{ github.repository }}
+        MODE: ${{ steps.mention.outputs.mode }}
+        RESULT: ${{ runner.temp }}/claude-pr-result.json
         RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       run: '"$GITHUB_ACTION_PATH/post.sh"'
