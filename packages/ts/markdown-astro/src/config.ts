@@ -88,7 +88,7 @@ export function loadConfig(
   options: LoadConfigOptions = {},
 ): MarkdownAstroConfig {
   const abs = isAbsolute(configPath) ? configPath : resolve(process.cwd(), configPath)
-  const raw = parse(readFileSync(abs, 'utf8')) as RawConfig
+  const raw = (parse(readFileSync(abs, 'utf8')) ?? {}) as RawConfig
   const baseDir = dirname(abs)
 
   const astroRoot = resolve(baseDir, raw.astroRoot ?? '.')

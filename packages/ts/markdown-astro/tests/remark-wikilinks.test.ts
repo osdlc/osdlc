@@ -261,3 +261,9 @@ test('a [[file.pdf]] link to a published attachment links its copy, under the er
   assert.equal(node.url, '/_media/docs/report.pdf')
   assert.equal(node.children[0].value, 'report.pdf')
 })
+
+test('typed [[type/slug]] resolves through the collection type', () => {
+  const dir = fixture(['rec.md'])
+  const cols = [{ name: 'records', dir, route: '/r/:slug', type: 'health' }]
+  assert.equal(resolveLink('health/rec', cols).url, '/r/rec')
+})

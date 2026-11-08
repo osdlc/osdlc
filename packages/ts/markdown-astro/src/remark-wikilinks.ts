@@ -40,6 +40,8 @@ export interface WikilinkCollection {
   vaultDir?: string
   /** Route template (`/posts/:slug`) or null if the collection has no route. */
   route: string | null
+  /** Prefix for typed `[[type/slug]]` links that target this collection. */
+  type?: string
 }
 
 export interface RemarkWikilinksOptions {
@@ -130,9 +132,9 @@ export function remarkWikilinks(this: unknown, options: RemarkWikilinksOptions) 
     return sub === null ? null : assetUrl(publicBase, sub)
   }
   const collisions: string[] = []
-  // TODO: The empty type map ignores the collection `type` map, so a typed `[[type/slug]]` in prose fails
-  // while the same ref validates in frontmatter. Pass the `type -> collection` map in via the options.
-  const index = buildRefIndex(options.collections, new Map(), (msg) => collisions.push(msg))
+  const typeMap = new Map<string, string>()
+  for (const c of options.collections) if (c.type) typeMap.set(c.type, c.name)
+  const index = buildRefIndex(options.collections, typeMap, (msg) => collisions.push(msg))
   if ((options.warnOnCollision ?? true) && collisions.length) {
     console.warn(
       `[markdown-astro] ambiguous wikilink name(s) — bare links resolve to the first match; ` +

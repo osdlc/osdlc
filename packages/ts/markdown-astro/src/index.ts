@@ -56,5 +56,6 @@ function toWikilinkCollections(config: MarkdownAstroConfig): WikilinkCollection[
     dir: resolve(config.astroRoot, c.contentDir),
     vaultDir: c.vaultDir,
     route: c.route ?? null,
+    ...(c.type ? { type: c.type } : {}),
   }))
 }

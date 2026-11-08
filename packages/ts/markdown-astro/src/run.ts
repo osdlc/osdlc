@@ -1,11 +1,4 @@
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import {
   ASSET_MANIFEST,
@@ -129,7 +122,7 @@ function run(config: MarkdownAstroConfig, direction: Direction, opts: RunOptions
       stats.files += 1
       stats.byCollection[col.name] = (stats.byCollection[col.name] ?? 0) + 1
     }
-    log(`  · ${col.name}: ${stats.byCollection[col.name]} files`)
+    log(`  · ${col.name}: ${stats.byCollection[col.name] ?? 0} files`)
   }
 
   // Copy only the assets actually referenced, preserving sub-paths.
