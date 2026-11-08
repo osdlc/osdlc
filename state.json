@@ -35,9 +35,9 @@
       "line": 500,
       "title": "paragraph-interrupt edges missing from suite",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "a906d5cecc70b859f27e33cdc38e224e5791780d"
     }
   ]
 }
