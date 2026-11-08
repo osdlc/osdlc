@@ -13,9 +13,9 @@
       "line": 319,
       "title": "New reader checks in checkRepo have no test",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "3dafcd6417463cb9ceff7e725bc9768c03492484"
     },
     {
       "id": "r1-2",
