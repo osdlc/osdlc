@@ -300,18 +300,10 @@ class Cursor {
     }
     const pos = this.textPos + 1
     const col = this.textCol + 1
-    this.base = col
+    // The marker takes one space or the first column of a tab after it.
     const next = pos < this.end ? this.s.charCodeAt(pos) : -1
-    if (next === SPACE) {
-      this.base = col + 1
-      this.skipSpace(pos + 1, col + 1)
-    } else if (next === TAB) {
-      // Only the first column of the tab belongs to the marker.
-      this.base = col + 1
-      this.skipSpace(pos, col)
-    } else {
-      this.skipSpace(pos, col)
-    }
+    this.base = next === SPACE || next === TAB ? col + 1 : col
+    this.skipSpace(pos, col)
     return true
   }
 
@@ -632,7 +624,7 @@ export function stripCodeWith(text: string, rules: CodeRules): string {
   let writtenUpTo = 0
   const blank = (start: number, end: number): void => {
     out.push(text.slice(writtenUpTo, start))
-    for (const c of text.slice(start, end)) out.push(c === '\n' ? '\n' : ' ')
+    out.push(text.slice(start, end).replace(/[^\n]/gu, ' '))
     writtenUpTo = end
   }
 

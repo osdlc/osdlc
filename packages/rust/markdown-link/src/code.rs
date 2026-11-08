@@ -324,7 +324,7 @@ impl Fences {
         self.truncate(matched);
         if !blank {
             while cursor.indent() <= 3 {
-                if cursor.quote_start() {
+                if cursor.quote() {
                     self.push(Container::Quote);
                 } else if let Some(content) = cursor.item_start() {
                     self.push(Container::Item(content));
@@ -412,19 +412,13 @@ impl<'a> Cursor<'a> {
     fn after_quote_marker(&mut self) {
         let pos = self.text_pos + 1;
         let col = self.text_col + 1;
-        self.base = col;
-        match self.line.get(pos) {
-            Some(b' ') => {
-                self.base = col + 1;
-                self.skip_space(pos + 1, col + 1);
-            }
-            Some(b'\t') => {
-                // Only the first column of the tab belongs to the marker.
-                self.base = col + 1;
-                self.skip_space(pos, col);
-            }
-            _ => self.skip_space(pos, col),
-        }
+        // The marker takes one space or the first column of a tab after it.
+        self.base = if matches!(self.line.get(pos), Some(b' ' | b'\t')) {
+            col + 1
+        } else {
+            col
+        };
+        self.skip_space(pos, col);
     }
 
     /// A block quote's `>` continues the quote: step past it.
@@ -434,11 +428,6 @@ impl<'a> Cursor<'a> {
             self.after_quote_marker();
         }
         found
-    }
-
-    /// A `>` at the text starts a block quote: step past it.
-    fn quote_start(&mut self) -> bool {
-        self.quote()
     }
 
     /// A list marker at the text starts a list item: step past it, and give
@@ -1018,21 +1007,17 @@ mod tests {
         assert_eq!(find_span_close(b"`a``b`", CodeRules::SkillExport), Some(2));
     }
 
-    fn blanked(text: &str) -> String {
-        strip_code(text)
-    }
-
     #[test]
     fn a_fence_in_a_list_item_is_code_and_ends_with_the_item() {
         assert_eq!(
-            blanked("- ```\n  [[a]]\n  ```\n\n[[b]]"),
+            strip_code("- ```\n  [[a]]\n  ```\n\n[[b]]"),
             "     \n       \n     \n\n[[b]]"
         );
         // Not indented to the content: the item ends, so does the fence.
-        assert_eq!(blanked("- ```\n[[a]]\n"), "     \n[[a]]\n");
+        assert_eq!(strip_code("- ```\n[[a]]\n"), "     \n[[a]]\n");
         // A blank line stays in the item; the unclosed fence runs on.
         assert_eq!(
-            blanked("- ```\n  [[a]]\n\n  [[b]]\n[[c]]"),
+            strip_code("- ```\n  [[a]]\n\n  [[b]]\n[[c]]"),
             "     \n       \n\n       \n[[c]]"
         );
     }
@@ -1041,33 +1026,33 @@ mod tests {
     fn a_fence_indented_to_the_content_column_opens() {
         // Content column 4: four spaces of indent are not indented code.
         assert_eq!(
-            blanked("10. item\n    ```\n    [[a]]\n    ```\n[[b]]"),
+            strip_code("10. item\n    ```\n    [[a]]\n    ```\n[[b]]"),
             "10. item\n       \n         \n       \n[[b]]"
         );
         // Four columns past the content are.
-        assert_eq!(blanked("- item\n      ```\n"), "- item\n      ```\n");
+        assert_eq!(strip_code("- item\n      ```\n"), "- item\n      ```\n");
         // Tabs count to the next multiple of four.
-        assert_eq!(blanked("-\titem\n\t```\n"), "-\titem\n    \n");
+        assert_eq!(strip_code("-\titem\n\t```\n"), "-\titem\n    \n");
     }
 
     #[test]
     fn a_fence_in_a_block_quote_ends_with_the_quote() {
         assert_eq!(
-            blanked("> ```\n> [[a]]\n> ```\n[[b]]"),
+            strip_code("> ```\n> [[a]]\n> ```\n[[b]]"),
             "     \n       \n     \n[[b]]"
         );
-        assert_eq!(blanked("> ```\n> [[a]]\n[[b]]"), "     \n       \n[[b]]");
-        assert_eq!(blanked("> ```\n> a\n\n[[b]]"), "     \n   \n\n[[b]]");
+        assert_eq!(strip_code("> ```\n> [[a]]\n[[b]]"), "     \n       \n[[b]]");
+        assert_eq!(strip_code("> ```\n> a\n\n[[b]]"), "     \n   \n\n[[b]]");
     }
 
     #[test]
     fn containers_nest() {
         assert_eq!(
-            blanked("- a\n  - b\n    > ```\n    > [[x]]\n  [[y]]"),
+            strip_code("- a\n  - b\n    > ```\n    > [[x]]\n  [[y]]"),
             "- a\n  - b\n         \n           \n  [[y]]"
         );
         assert_eq!(
-            blanked("1. a\n   ```\n   [[x]]\n2. b [[y]]"),
+            strip_code("1. a\n   ```\n   [[x]]\n2. b [[y]]"),
             "1. a\n      \n        \n2. b [[y]]"
         );
     }
@@ -1075,11 +1060,11 @@ mod tests {
     #[test]
     fn a_marker_line_that_is_not_a_container_is_not_one() {
         for text in ["- - -\n```\n", "-dash ```\n", "1.5 ```\n", "- ``\n"] {
-            let out = blanked(text);
+            let out = strip_code(text);
             assert_eq!(out.chars().count(), text.chars().count());
         }
-        assert_eq!(blanked("- - -\n[[a]]"), "- - -\n[[a]]");
-        assert_eq!(blanked("1.5 ```\n[[a]]"), "1.5 ```\n[[a]]");
+        assert_eq!(strip_code("- - -\n[[a]]"), "- - -\n[[a]]");
+        assert_eq!(strip_code("1.5 ```\n[[a]]"), "1.5 ```\n[[a]]");
     }
 
     #[test]
@@ -1097,16 +1082,16 @@ mod tests {
     #[test]
     fn a_span_stays_in_its_table_cell() {
         // GFM cuts the row at every unescaped pipe first, backticks or not.
-        assert_eq!(blanked("| `a | [[x]] | b` |"), "| `a | [[x]] | b` |");
-        assert_eq!(blanked("| `a` | [[x]] |"), "|     | [[x]] |");
+        assert_eq!(strip_code("| `a | [[x]] | b` |"), "| `a | [[x]] | b` |");
+        assert_eq!(strip_code("| `a` | [[x]] |"), "|     | [[x]] |");
         // An escaped pipe stays in the cell, and so in the span.
-        assert_eq!(blanked("| `a \\| b` | [[x]] |"), "|          | [[x]] |");
+        assert_eq!(strip_code("| `a \\| b` | [[x]] |"), "|          | [[x]] |");
         // Rows in a list item and a block quote.
         assert_eq!(
-            blanked("- x\n  | `a | [[x]] | b` |"),
+            strip_code("- x\n  | `a | [[x]] | b` |"),
             "- x\n  | `a | [[x]] | b` |"
         );
-        assert_eq!(blanked("> | `a | [[x]] | b` |"), "> | `a | [[x]] | b` |");
+        assert_eq!(strip_code("> | `a | [[x]] | b` |"), "> | `a | [[x]] | b` |");
         // SkillExport reads a row as any line.
         assert_eq!(
             strip_code_with("| `a | [[x]] | b` |", CodeRules::SkillExport),
