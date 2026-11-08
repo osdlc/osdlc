@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "pr": 719,
-  "head": "0992b0e0224e546645a28cdff089ac1bf5f63f0a",
-  "base": "6fcfc966d1bdbea9f55f87170a8b0ef4a05447b9",
-  "round": 3,
+  "head": "bfd0cc4d526e5facb756dcb1ddf9fdd92d95ba77",
+  "base": "c6690b4eb01d4ec20c476cf468f2292097e782e4",
+  "round": 4,
   "claim": {
     "owner": "mac:claude-r7t4wp",
     "at": "2026-11-08T19:56:39.176Z"
@@ -85,6 +85,50 @@
       "status": "fixed",
       "reason": null,
       "fixedIn": "d1f80484764e2cb00cbcfd2f282a72d5d11d8075"
+    },
+    {
+      "id": "r4-1",
+      "round": 4,
+      "path": "packages/ts/markdown-astro/src/wikilink-ref.ts",
+      "line": 91,
+      "title": "A dangling symlink named *.md is listed as a note, then read after --clean has already deleted the destination",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r4-2",
+      "round": 4,
+      "path": "packages/ts/markdown-astro/src/run.ts",
+      "line": 99,
+      "title": "The nested --clean guard compares lexical paths; a symlinked folder can reach the destination from inside the source",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r4-3",
+      "round": 4,
+      "path": "packages/ts/markdown-astro/src/wikilink-ref.ts",
+      "line": 90,
+      "title": "Ancestor-only loop check walks non-loop symlinks again, listing one file under several paths",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r4-4",
+      "round": 4,
+      "path": "packages/ts/markdown-astro/tests/run.test.ts",
+      "line": 289,
+      "title": "No test for a dangling symlink, a symlink to a file, or the loop case beyond termination",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
     }
   ]
 }
