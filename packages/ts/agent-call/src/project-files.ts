@@ -1,4 +1,4 @@
-import { mkdir, open, readFile, rm, rmdir, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, open, readFile, rm, rmdir, stat, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'node:path'
 
 import type { ProjectFileEdit } from './plan.js'
@@ -77,7 +77,13 @@ export async function applyProjectFile(
       } catch {
         record = undefined
       }
-      if (record === undefined || typeof record.pid !== 'number' || pidAlive(record.pid)) {
+      // An empty or garbled lock is a creator that died (or is still writing)
+      // between create and write; it is stale only once it has aged.
+      const unreadable = record === undefined || typeof record.pid !== 'number'
+      const aged =
+        unreadable &&
+        Date.now() - (await stat(lock).catch(() => ({ mtimeMs: Date.now() }))).mtimeMs > 10_000
+      if (unreadable ? !aged : pidAlive(record!.pid)) {
         await removeDirIfEmpty(createdDir)
         throw new ProjectFileError(
           `${edit.path} is in use by another agent-call run in ${cwd}` +
@@ -90,8 +96,10 @@ export async function applyProjectFile(
         throw new ProjectFileError(`could not take over the stale lock ${lock}`)
       }
       // Stale: the owner died. Put its original back, then take the lock.
-      await restoreFrom(file, record)
-      await removeDirIfEmpty(record.createdDir)
+      if (record !== undefined) {
+        await restoreFrom(file, record)
+        await removeDirIfEmpty(record.createdDir)
+      }
       await unlink(lock).catch(() => undefined)
     }
   }
@@ -104,6 +112,7 @@ export async function applyProjectFile(
   }
   try {
     await handle.writeFile(JSON.stringify(record))
+    await handle.close()
 
     let originalBytes: Buffer | null = null
     try {
@@ -132,8 +141,6 @@ export async function applyProjectFile(
   } catch (err) {
     await release()
     throw err
-  } finally {
-    await handle.close()
   }
   return release
 }

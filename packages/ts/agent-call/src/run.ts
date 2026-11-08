@@ -248,10 +248,9 @@ async function execute(
     }
   } catch (err) {
     await restoreAll()
-    if (err instanceof ProjectFileError) {
-      return { stdout: '', stderr: err.message, exitCode: null, durationMs: 0, timedOut: false }
-    }
-    throw err
+    const message =
+      err instanceof ProjectFileError || err instanceof Error ? err.message : String(err)
+    return { stdout: '', stderr: message, exitCode: null, durationMs: 0, timedOut: false }
   }
   let tempDir: string | undefined
   try {
