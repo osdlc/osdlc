@@ -351,8 +351,8 @@ The same rows for the other six agents:
 | `permissions.mode: edits` | `--allow-tool=write` | `--tools read,grep,find,ls,edit,write` (approximated) | `--approval-mode auto-edit` | `--auto low` (approximated) | no flag (print mode applies edits, rejects commands) | `DSH_PERMISSION_MODE` `workspace-write` (approximated) |
 | `permissions.mode: full-auto` | `--allow-all-tools` (approximated) | `--tools` all built-ins (approximated) | auto-edit + allowed shell and web fetch (approximated) | `--auto medium` (approximated) | `--sandbox enabled` | `DSH_PERMISSION_MODE` `workspace-write` |
 | `permissions.mode: bypass` | `--allow-all` | `--tools` all built-ins | `--approval-mode yolo` | `--skip-permissions-unsafe` | `--force --sandbox disabled` | `DSH_PERMISSION_MODE` `danger-full-access` |
-| `permissions.allowTools` | `--allow-tool` | `--tools` (approximated) | `--allowed-tools` | `--add-tools` (approximated) | dropped | dropped |
-| `permissions.denyTools` | `--deny-tool` | `--exclude-tools` | `--exclude-tools` | `--remove-tools` (approximated) | dropped | dropped |
+| `permissions.allowTools` | `--allow-tool` | `--tools` (approximated) | `--allowed-tools` | `--add-tools` (approximated) | `.cursor/cli.json` rules (approximated) | dropped |
+| `permissions.denyTools` | `--deny-tool` | `--exclude-tools` | `--exclude-tools` | `--remove-tools` (approximated) | `.cursor/cli.json` rules (approximated) | dropped |
 | `context.files` | prompt preamble | `@path` arguments | `@path` in prompt | prompt preamble | prompt preamble | prompt preamble |
 | `context.dirs` | `--add-dir` | dropped | `--include-directories` | dropped | `--add-dir` | dropped |
 | `context.text` | prompt preamble | prompt preamble | prompt preamble | prompt preamble | prompt preamble | prompt preamble |
@@ -442,6 +442,28 @@ format (a JSON envelope or an event stream), so metadata is captured.
   working directory and each `context.dirs` entry trusted under
   `~/.cursor/projects/` for good, interactive sessions included. Do not use it
   on a checkout you would not open in Cursor yourself.
+- cursor has no tool-rule flag, so `permissions.allowTools` and `denyTools`
+  are written to `.cursor/cli.json` (`permissions.allow` / `permissions.deny`)
+  in the call's working directory (`spec.cwd`, else the process's) for the
+  length of the call. Other keys in the file are kept, the original bytes are
+  restored afterwards (the file and a `.cursor` directory the call created are
+  deleted), also on error, timeout and abort. `planCall` shows the rules in
+  `planned.projectFiles`. Names map as: `Read`, `Write`, `Read(p)`, `Write(p)`
+  and cursor-form rules such as `Shell(rm)` pass as `native`; `Grep`, `Glob`,
+  `LS` -> `Read(**)`; `Edit`, `MultiEdit`, `NotebookEdit` -> `Write(**)` (or
+  `Write(p)`); `Bash` -> `Shell(*)`; `Bash(git push:*)` -> `Shell(git)` (cursor
+  matches command names; an allow entry with arguments is dropped because it
+  would widen the grant); `mcp__server__tool` -> `Mcp(server:tool)`;
+  `WebFetch(domain:x)` -> `WebFetch(x)`; these are `approximated`. Any other
+  name is `dropped` with a note. Denies held under `--force` on agent
+  2026.10.19. A second cursor call in the same directory is refused
+  (`spawn-failed`) while one runs: a lock file `.cursor/cli.json.agent-call.lock`
+  holds the owner pid and the original bytes. A hard kill (SIGKILL, power loss)
+  leaves both files behind; the next call sees the dead pid, restores the
+  original from the lock and carries on. To recover by hand, put back
+  `.cursor/cli.json` (the `original` field of the lock, base64; or drop the
+  `permissions` key) and delete the lock. Keep other tools out of that file
+  while a call runs.
 - cursor's default binary is `agent`, and deepseek's is `dsh`. Both names are
   generic. `detectAgents` counts `agent` as Cursor only when it prints a
   date-stamped version, but for `dsh` it only checks that `dsh --version`

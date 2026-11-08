@@ -5,8 +5,16 @@ import {
   type Part,
   type Usage,
 } from '../conversation.js'
-import { note, TMP_TOKEN, type CapabilityNote, type PlannedCall, type TempFile } from '../plan.js'
+import {
+  note,
+  TMP_TOKEN,
+  type CapabilityNote,
+  type PlannedCall,
+  type ProjectFileEdit,
+  type TempFile,
+} from '../plan.js'
 import type { AgentCallSpec, OutputFormat } from '../spec.js'
+import { cursorPermissions } from './cursor-permissions.js'
 import { parseClaudeStyle } from './claude-style.js'
 import {
   applyPermissionMode,
@@ -25,6 +33,8 @@ import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 const PLUGIN_MANIFEST_FILE = 'plugin.json'
 const MCP_CONFIG_FILE = 'mcp.json'
 const PLUGIN_NAME = 'agent-call'
+/** Project permission file, relative to the working directory. */
+const CLI_JSON = '.cursor/cli.json'
 
 /** Options for {@link cursorAdapter}. */
 export interface CursorAdapterOptions extends CommandOptions {
@@ -71,6 +81,7 @@ export function cursorAdapter(options: CursorAdapterOptions = {}): AgentAdapter 
 function planCursor(command: readonly string[], trust: boolean, spec: AgentCallSpec): PlannedCall {
   const notes: CapabilityNote[] = []
   const tempFiles: TempFile[] = []
+  const projectFiles: ProjectFileEdit[] = []
   // --trust marks the workspace trusted (a lasting marker under
   // ~/.cursor/projects/) instead of exiting with "Workspace Trust Required".
   // It approves nothing else: commands and MCP servers keep their own checks.
@@ -153,21 +164,18 @@ function planCursor(command: readonly string[], trust: boolean, spec: AgentCallS
       detail: '--force --sandbox disabled',
     },
   })
-  if ((permissions?.allowTools ?? []).length > 0) {
-    note(
-      notes,
-      'permissions.allowTools',
-      'dropped',
-      'no public flag; configure permissions.allow in ~/.cursor/cli-config.json or .cursor/cli.json',
-    )
-  }
-  if ((permissions?.denyTools ?? []).length > 0) {
-    note(
-      notes,
-      'permissions.denyTools',
-      'dropped',
-      'no public flag; configure permissions.deny in ~/.cursor/cli-config.json or .cursor/cli.json',
-    )
+  // cursor has no tool-rule flag. Rules come from .cursor/cli.json in the
+  // working directory, which the runner holds for the length of the call.
+  // Verified on agent 2026.10.19: enforced under -p, and denies hold with --force.
+  const rules = cursorPermissions(notes, permissions?.allowTools, permissions?.denyTools)
+  if (rules !== undefined) {
+    const value = { allow: rules.allow, deny: rules.deny }
+    projectFiles.push({
+      path: CLI_JSON,
+      key: 'permissions',
+      value,
+      preview: JSON.stringify({ permissions: value }, null, 2) + '\n',
+    })
   }
 
   for (const dir of spec.context?.dirs ?? []) {
@@ -218,6 +226,7 @@ function planCursor(command: readonly string[], trust: boolean, spec: AgentCallS
     cwd: spec.cwd,
     outputFormat: format,
     tempFiles,
+    ...(projectFiles.length > 0 ? { projectFiles } : {}),
     notes,
     spec,
   }

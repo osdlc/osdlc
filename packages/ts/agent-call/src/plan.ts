@@ -36,6 +36,21 @@ export interface TempFile {
 }
 
 /**
+ * An edit to a JSON file in the call's working directory, held for the length
+ * of the call: `key` is set to `value`, other keys stay, and the original
+ * bytes are put back afterwards (the file is deleted if it did not exist).
+ */
+export interface ProjectFileEdit {
+  /** Path relative to the working directory, e.g. `.cursor/cli.json`. */
+  path: string
+  /** Top-level key to replace. */
+  key: string
+  value: unknown
+  /** The file's content when it did not exist before (for `--explain` and dry runs). */
+  preview: string
+}
+
+/**
  * A translated call, as plain data. `planCall()` returns one without running
  * anything, so you can inspect, log or snapshot-test the exact command an
  * adapter would run.
@@ -54,6 +69,8 @@ export interface PlannedCall {
   /** The output format actually requested from the CLI. */
   outputFormat: OutputFormat
   tempFiles: TempFile[]
+  /** Project files edited for the length of the call. Absent when none. */
+  projectFiles?: ProjectFileEdit[] | undefined
   notes: CapabilityNote[]
   /** The canonical spec this call was planned from. */
   spec: AgentCallSpec
