@@ -1,85 +1,70 @@
-//! `inline_tags` on a synthetic note, in each dialect, with and without link
-//! syntax. The body generator matches `bench/corpus.ts` in the TypeScript
-//! twin. Run with `cargo bench -p markdown-tags`.
+//! Gated benchmarks for `inline_tags` on the shared synthetic corpus, one group
+//! per dialect.
+//!
+//! The corpus is built by `bench/corpus/cli.ts` and read from the JSON file
+//! named by `OSDLC_BENCH_CORPUS`; `scripts/perf-gate.ts` and
+//! `node bench/corpus/cli.ts <file>` write it. The TypeScript twin,
+//! `packages/ts/markdown-tags/benches/inline-tags.bench.ts`, times the same
+//! cases under the same names. See `bench/README.md`.
+#![allow(missing_docs)]
 
 use std::hint::black_box;
+use std::time::Duration;
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use markdown_tags::{TagDialect, inline_tags};
+use serde_json::Value;
 
-const WORDS: [&str; 10] = [
-    "alpha", "draft", "plan", "review", "notes", "santé", "daily", "idea", "todo", "log",
-];
-
-/// A linear congruential generator, so every run builds the same body.
-struct Lcg(u32);
-
-impl Lcg {
-    fn next(&mut self) -> f64 {
-        self.0 = self.0.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
-        f64::from(self.0) / 4_294_967_296.0
-    }
-
-    fn word(&mut self) -> &'static str {
-        WORDS[(self.next() * WORDS.len() as f64) as usize]
-    }
+fn strings(corpus: &Value, key: &str) -> Vec<String> {
+    corpus[key]
+        .as_array()
+        .unwrap_or_else(|| panic!("corpus has no `{key}` array"))
+        .iter()
+        .map(|v| v.as_str().expect("a corpus body is a string").to_owned())
+        .collect()
 }
 
-fn paragraph(rng: &mut Lcg, links: bool) -> String {
-    let mut parts: Vec<String> = Vec::new();
-    for _ in 0..40 {
-        let roll = rng.next();
-        parts.push(if roll < 0.1 {
-            format!("#{}/{}", rng.word(), rng.word())
-        } else if roll < 0.15 {
-            format!("(#{})", rng.word())
-        } else if roll < 0.18 {
-            format!("#{}", 2000 + (rng.next() * 30.0) as u32)
-        } else if roll < 0.22 {
-            format!("`#{}`", rng.word())
-        } else if links && roll < 0.28 {
-            format!("[{}](notes/{}.md#{})", rng.word(), rng.word(), rng.word())
-        } else if links && roll < 0.3 {
-            format!("[[{}#{}|{}]]", rng.word(), rng.word(), rng.word())
-        } else {
-            rng.word().to_owned()
+fn load() -> Value {
+    let path = std::env::var("OSDLC_BENCH_CORPUS")
+        .expect("OSDLC_BENCH_CORPUS must name the corpus file: node bench/corpus/cli.ts <file>");
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"));
+    serde_json::from_str(&text).expect("the corpus file is JSON")
+}
+
+fn tags(c: &mut Criterion) {
+    let corpus = load();
+    let bodies = strings(&corpus, "bodies");
+    let largest = corpus["largest"].as_str().expect("corpus has `largest`");
+
+    for dialect in TagDialect::ALL {
+        let mut group = c.benchmark_group(format!("inline_tags {}", dialect.as_str()));
+        group.bench_function("vault", |b| {
+            b.iter(|| {
+                for body in &bodies {
+                    black_box(inline_tags(black_box(body), dialect));
+                }
+            })
         });
-    }
-    parts.join(" ")
-}
-
-/// A note body of about `kilobytes` KB.
-fn note_body(kilobytes: usize, links: bool) -> String {
-    let mut rng = Lcg(7);
-    let mut blocks: Vec<String> = Vec::new();
-    let mut size = 0;
-    while size < kilobytes * 1000 {
-        let block = if rng.next() < 0.12 {
-            format!("```ts\nconst tag = '#{}'\n```", rng.word())
-        } else {
-            paragraph(&mut rng, links)
-        };
-        size += block.len() + 2;
-        blocks.push(block);
-    }
-    if links {
-        blocks.push("[ref]: notes/ref.md \"title #in-title\"".to_owned());
-    }
-    blocks.join("\n\n") + "\n"
-}
-
-fn bench_inline_tags(c: &mut Criterion) {
-    for (shape, links) in [("no links", false), ("with links", true)] {
-        let body = note_body(8, links);
-        let mut group = c.benchmark_group(format!("inline_tags, 8 KB note, {shape}"));
-        for dialect in TagDialect::ALL {
-            group.bench_function(dialect.as_str(), |b| {
-                b.iter(|| inline_tags(black_box(&body), dialect));
+        group.bench_function("largest-note", |b| {
+            b.iter(|| black_box(inline_tags(black_box(largest), dialect)))
+        });
+        for case in corpus["slow"].as_array().expect("corpus has `slow`") {
+            let name = case["name"].as_str().expect("a slow case has a name");
+            let body = case["body"].as_str().expect("a slow case has a body");
+            group.bench_function(name, |b| {
+                b.iter(|| black_box(inline_tags(black_box(body), dialect)))
             });
         }
         group.finish();
     }
 }
 
-criterion_group!(benches, bench_inline_tags);
+criterion_group! {
+    name = benches;
+    config = Criterion::default()
+        .sample_size(30)
+        .warm_up_time(Duration::from_secs(1))
+        .measurement_time(Duration::from_secs(2));
+    targets = tags
+}
 criterion_main!(benches);

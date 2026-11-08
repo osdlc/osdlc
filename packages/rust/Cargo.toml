@@ -32,9 +32,6 @@ base64 = "0.22"
 # Pinned exactly: the line numbers markdown-contract reports are part of its
 # contract with @osdlc/markdown-contract, and a comrak release can move them.
 comrak = { version = "=0.53.0", default-features = false }
-# markdown-tags: the benchmarks that gate a slowdown of the tag scan. No default
-# features: no plots and no rayon.
-criterion = { version = "0.8", default-features = false }
 # web-access mints its tokens from the OS random source with `getrandom::fill`,
 # new in 0.3.
 getrandom = "0.3"

@@ -52,8 +52,10 @@ A new case goes into that file, so both suites cover it. Write the case's
 to write its `expect`; never write that by hand. A change to tag behaviour
 lands in both packages in one pull request.
 
-`bench/` holds the benchmarks (`pnpm run bench`), one per dialect with and
-without link syntax. The Rust crate has the same set in `benches/`.
+`benches/` holds the benchmarks (`pnpm run bench`), one test per dialect on the
+shared synthetic corpus in the repository's `bench/`. The Rust crate has the
+same cases in `benches/`. A pull request that slows one by more than 15% fails
+the perf gate.
 
 ## Code style
 
