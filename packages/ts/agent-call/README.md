@@ -9,8 +9,9 @@ output shape and the session. Each adapter turns that into a command line for
 approximation. The result comes back normalized (final text, structured
 output, session id, token usage, cost) with the raw output kept. On request,
 the whole transcript is also converted into one conversation model for
-analysis afterwards. One dependency, `@osdlc/command-seam`, for its `PATH`
-lookup.
+analysis afterwards. Two dependencies: `@osdlc/command-seam`, for its `PATH`
+lookup, and `yaml`, which only the `agent-call run` command loads. The library
+import does not.
 
 ## Why
 
@@ -221,6 +222,55 @@ written.
 A parser that throws on the output does not reject: the result is `ok: false`
 with reason `agent-error`. `planCall` throws the same way as planning. The
 `callAgent` TSDoc is the full list.
+
+## Command line: `agent-call run`
+
+The package installs an `agent-call` command that runs one call from a spec
+file reviewed in a repository. The library import never loads it or the `yaml`
+parser.
+
+```yaml
+# .github/agents/pr-answer.yml (YAML or JSON)
+setup: { harness: claude } # only harness is read, as the default agent
+run:
+  agent: claude # optional; --agent overrides; falls back to setup.harness
+  model: claude-sonnet-5-5
+  strict: true # exit 3 instead of approximating or dropping a field
+  permissions: { mode: read-only, allowTools: [Read, Grep, Glob] }
+  prompt: # parts joined in order with a blank line
+    - file: .github/agents/prompts/pr-answer.md
+    - text: "Answer the request about pull request {{pr}}."
+    - input: request
+  context:
+    - input: pr-context # needs --input pr-context=@path
+```
+
+```sh
+agent-call run spec.yml [--agent <id>] [--root <dir>] \
+  [--input name=value | name=@file]... [--explain] [--dry-run]
+```
+
+- `file:` paths, in prompt and context, resolve against `--root` (default: the
+  current directory). Absolute paths and `..` escapes are refused, so a CI job
+  can read the spec and prompts from a trusted checkout while the agent runs
+  in another one. The agent's working directory is the current directory.
+- `{{name}}` in a `text:` part is replaced by the input's value. An unknown
+  placeholder, or an `input:` part with no matching `--input`, is an error.
+- `--input name=@path` reads the file for prompt parts. A `context` `input:`
+  entry takes the path and must come from `name=@path`.
+- `--explain` prints to stderr the agent, the exact argv, the names (never
+  values) of the environment variables set, and every capability note. Then it
+  runs. `--dry-run` prints the same and exits 0 without running.
+- `strict: true` exits 3 before running if any note is `approximated` or
+  `dropped` (`emulated` is allowed), or if a field has no home in the library
+  spec. `run.maxTurns` is accepted but the library has no turn limit, so it is
+  reported as dropped: it fails a strict spec and is otherwise listed under
+  `--explain`.
+- stdout is the normalized result as one JSON document (`ok`, `text`,
+  `structured`, `sessionId`, `usage`, `costUsd`, `model`, `error`, `exitCode`,
+  `durationMs`, `agent`, `notes`). `raw`, `planned` and `events` are left out.
+- Exit codes: `0` success, `1` the run failed (`ok: false`), `2` usage or spec
+  error, `3` strict mode refused the call.
 
 ## API
 
