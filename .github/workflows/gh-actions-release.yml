@@ -9,9 +9,9 @@
 # does.
 #
 # Run it by hand from the Actions tab with the version. It refuses a version
-# that is not X.Y.Z, a tag that already exists, a run from any branch other
-# than the default, and any action whose CHANGELOG.md has no entry for the
-# version.
+# that is not X.Y.Z, a tag that already exists, a version older than the
+# newest tag in its major line, a run from any branch other than the default,
+# and any action whose CHANGELOG.md has no entry for the version.
 name: gh-actions release
 
 on:
