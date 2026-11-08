@@ -123,9 +123,9 @@
       "line": 289,
       "title": "No test for a dangling symlink, a symlink to a file, or the loop case beyond termination",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "90f9dd5dd42e23c0d8dbc3f156e07d269f1f7567"
     }
   ]
 }
