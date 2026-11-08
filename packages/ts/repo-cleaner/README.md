@@ -116,13 +116,14 @@ A target is what to sweep:
 No target is the same as naming the current directory: at a checkout's root
 it sweeps that repository, and in a directory of checkouts it sweeps each
 one. In a subdirectory of a checkout, such as `src/`, it sweeps the checkout
-around it, as git does. That happens when the search below finds no
-checkout and the checkout around tracks files in the directory. So a
-directory of checkouts inside a checkout of its own, such as `~/Developer`
-under a home directory kept in git, still sweeps the checkouts below it, or
-reports that it found none: the home repository tracks nothing there. A
-search that finds checkouts it cannot read is reported as it is. A
-subdirectory named as a target is read as written and searched.
+around it. That happens when the search below finds no checkout and the
+checkout around tracks files in the directory (or git cannot say, in which
+case the report gives git's reason). So a directory of checkouts inside a
+checkout of its own, such as `~/Developer` under a home directory kept in
+git, still sweeps the checkouts below it, or reports that it found none, as
+long as the home repository tracks no file there. A search that finds
+checkouts it cannot read is reported as it is. A subdirectory named as a
+target is read as written and searched.
 What a target names is read off the disk rather than from how it is written:
 a path that is itself a checkout names that repository, and a path that is
 not is searched for the checkouts under it, descending through directories

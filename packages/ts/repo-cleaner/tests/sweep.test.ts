@@ -680,6 +680,7 @@ describe('no target (#680)', () => {
     commit(dir, 'add src')
     return join(dir, 'src', 'lib')
   }
+  // `depth` builds a tree below `src/lib`; the directory returned is always `src/lib`.
 
   test('from a subdirectory of a checkout, sweeps that checkout', () => {
     const app = checkout(join(home, 'app'))
@@ -706,9 +707,11 @@ describe('no target (#680)', () => {
     expect(result.repos.map((r) => r.repo?.root).sort()).toEqual([alpha, beta])
   })
 
-  test('a tracked subdirectory deeper than the search limit still sweeps its checkout', () => {
+  test('a tracked subdirectory whose tree runs past the search limit still sweeps its checkout', () => {
     const app = checkout(join(home, 'deep-app'))
     const inner = subdir(app, ['a', 'b', 'c', 'd'])
+    // The search below src/lib stops at the depth limit, finding nothing.
+    expect(resolveEntries([inner], { git: new Git(inner) }).scan.depthLimited).toBeGreaterThan(0)
     const result = sweep([], { cwd: inner })
     expect(result.repos.map((r) => r.repo?.root)).toEqual([app])
   })
@@ -736,15 +739,14 @@ describe('no target (#680)', () => {
     expect(result.unresolved).toEqual([{ entry: projects, reason: 'no git checkouts under it' }])
   })
 
-  test('when git cannot read the checkout around, the first search is what is reported', () => {
+  test('when git cannot read the checkout around, the report says so', () => {
     const fake = join(home, 'fake')
     mkdirSync(fake)
     writeFileSync(join(fake, '.git'), 'gitdir: /nowhere\n', 'utf-8')
-    const inner = subdir(fake)
-    const result = sweep([], { cwd: inner })
+    const result = sweep([], { cwd: subdir(fake) })
     expect(result.repos).toEqual([])
-    expect(result.unresolved).toEqual([{ entry: inner, reason: 'no git checkouts under it' }])
-    expect(result.scan.containers).toBe(1)
+    // Not "no git checkouts under it", which would hide why.
+    expect(result.unresolved).toEqual([{ entry: fake, reason: 'not a readable git checkout' }])
   })
 
   test('from a directory in no checkout, searches below it as before', (ctx) => {

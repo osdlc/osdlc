@@ -191,10 +191,14 @@ export function sweptWith(
   }
 }
 
-/** Whether the checkout `dir` is in tracks any file under it; false when git cannot say. */
+/**
+ * Whether the checkout `dir` is in tracks any file under it. True as well when
+ * git cannot say: then widening to that checkout reports why it cannot be
+ * read, which says more than "no git checkouts under it".
+ */
 function tracksFilesIn(dir: string, git: Git): boolean {
   const listed = git.at(dir).try.lsFiles({ cached: true })
-  return listed.ok && listed.value.length > 0
+  return !listed.ok || listed.value.length > 0
 }
 
 /**
