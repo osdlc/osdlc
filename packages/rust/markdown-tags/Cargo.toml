@@ -1,0 +1,47 @@
+[package]
+name = "markdown-tags"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Inline #tag lexing for Markdown note bodies, in three dialects: Obsidian's rule (the default), a Unicode one that scans everything, and an ASCII one that skips code spans and fences and also accepts a tag after `(`."
+license.workspace = true
+repository.workspace = true
+homepage = "https://github.com/osdlc/osdlc/tree/main/packages/rust/markdown-tags"
+readme = "README.md"
+keywords = ["markdown", "tags", "hashtag", "lexer", "notes"]
+categories = ["parser-implementations", "text-processing"]
+include = [
+  "src/**/*.rs",
+  "examples/**/*.rs",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
+
+[lib]
+name = "markdown_tags"
+
+# markdown-link owns the code-blanking pass the Obsidian and ASCII dialects run
+# first, so links and tags agree on what is inside a code span.
+[dependencies]
+markdown-link = { workspace = true }
+
+# The conformance suite's generator: `cargo run -p markdown-tags --example
+# conformance-write` rewrites the expected values in
+# packages/conformance/markdown-tags/suite.json. It lives under tests/, beside
+# the runner it shares code with, so it is not published.
+[[example]]
+name = "conformance-write"
+path = "tests/conformance/write.rs"
+
+# tests/conformance.rs and the generator only: they read and write the
+# family's suite, packages/conformance/markdown-tags/suite.json, which the
+# TypeScript package (packages/ts/markdown-tags) also runs. `preserve_order`
+# keeps the suite's keys in the order they are written. The crate parses no
+# JSON at runtime.
+[dev-dependencies]
+serde_json = { workspace = true, features = ["preserve_order"] }
+
+[lints]
+workspace = true

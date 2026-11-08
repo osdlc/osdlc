@@ -806,6 +806,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "markdown-tags"
+version = "0.1.0"
+dependencies = [
+ "markdown-link",
+ "serde_json",
+]
+
+[[package]]
 name = "markdown-vault-fs"
 version = "0.6.0"
 dependencies = [

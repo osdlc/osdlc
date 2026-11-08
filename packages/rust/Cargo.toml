@@ -9,7 +9,7 @@
 [workspace]
 # resolver 3 picks dependency versions that support `rust-version` (the MSRV).
 resolver = "3"
-members = ["agent-adapt", "config-layers", "etag-write", "frontmatter-lossless", "gfm-pipe-table", "glob-intersect", "markdown-contract", "markdown-corpus", "markdown-link", "markdown-relink", "markdown-vault-fs", "path-guard", "slug-collate", "tiered-dirs", "tradecraft", "typed-git", "vfs-seam", "vfs-walk", "web-access", "yaml-splice", "yaml-splice-wasm"]
+members = ["agent-adapt", "config-layers", "etag-write", "frontmatter-lossless", "gfm-pipe-table", "glob-intersect", "markdown-contract", "markdown-corpus", "markdown-link", "markdown-relink", "markdown-tags", "markdown-vault-fs", "path-guard", "slug-collate", "tiered-dirs", "tradecraft", "typed-git", "vfs-seam", "vfs-walk", "web-access", "yaml-splice", "yaml-splice-wasm"]
 
 [workspace.package]
 edition = "2024"
