@@ -179,6 +179,9 @@ Developed here, in this repository:
   contrast checks)
 - `packages/ts/agent-call` (`@osdlc/agent-call` on npm, one call spec for
   headless coding-agent CLIs)
+- `packages/ts/agent-seat` (`@osdlc/agent-seat` on npm, opens an interactive
+  coding-agent session in the terminal app, multiplexer or editor a person
+  already uses, behind one host contract in optional parts)
 - `packages/ts/observe` (`@osdlc/observe` on npm, a JSONL log envelope with
   correlation ids, agent session records, a process scan and reconcile)
 - `packages/ts/tiered-dirs` (`@osdlc/tiered-dirs` on npm, machine-local
