@@ -1,0 +1,1089 @@
+{
+ "id": "markdown-db-v0",
+ "title": "markdown-db v0: typed corpora that live together in one vault (revision 2: tested)",
+ "summary": "Revision 2 after testing in Obsidian 1.12.7, Astro 7.4.5 and Nuxt Content 3.16.2. Links inside a corpus become relative Markdown links, because they keep a corpus byte-identical wherever it is mounted. Wikilinks stay accepted, never canonical.",
+ "created": "2026-11-05",
+ "revision": 11,
+ "repo": {
+  "remote": "https://github.com/osdlc/skillwright",
+  "commit": "8b96809143d05a099c0e017ac3bba5a6aca62be4",
+  "root": "/Users/sksizer2/dev/repos/osdlc/skillwright-harness-facts"
+ },
+ "blocks": [
+  {
+   "type": "prose",
+   "id": "problem",
+   "title": "The problem and the constraints",
+   "text": "We want to keep facts, such as how coding-agent harnesses behave, as a **corpus**: a folder of typed records that people browse and edit as plain files, and tools validate.\n\nConstraints:\n\n- **Pure data.** The corpus holds only records, schemas and one small root file. Every rule a tool enforces is written in the corpus or in the spec, never only in code. Schemas are JSON Schema 2020-12, not Zod or Rust types.\n- **Browsable.** File names read as what they are (`Claude Code.md`), in Finder, on GitHub and in Obsidian.\n- **Many corpora in one vault.** Several corpora can sit anywhere in one Obsidian vault, nested at any depth, beside ordinary notes. Moving a corpus must not break links into or out of it.\n- **Links that work everywhere.** A reference must resolve the same in our validator and in Obsidian.\n\nThe prior art survey found **mdbase** (mdbase-dev/mdbase-spec) closest. We borrow its path and collision rules. We do not adopt its link resolution: mdbase resolves from each collection's root and treats every nested collection as a closed world, so links across corpora break there.\n\n**What changed in revision 2.** We tested the proposal in real tools. In Obsidian, moving a corpus that uses wikilinks rewrote the corpus's own files with vault paths (`[[Archive/2026/harness-reference/harnesses/Claude Code]]`), so the corpus stopped being portable. With relative Markdown links the corpus files did not change at all. Site generators confirmed it: Docusaurus, VitePress and MkDocs follow relative `.md` links natively, and none follows wikilinks without a plugin. So links inside a corpus are now relative Markdown links."
+  },
+  {
+   "type": "annotated-text",
+   "id": "vault",
+   "title": "The example vault",
+   "language": "text",
+   "text": "my-vault/\n├── .obsidian/\n├── markdown-db.md                   corpus \"my-vault\" (front page)\n├── projects/\n│   ├── projects.schema.json         type \"projects\"\n│   └── Skillwright.md\n├── Daily/\n│   └── 2026-11-05.md\n├── Notes/\n│   └── Claude Code.md               unrelated note, same name (the trap)\n└── Research/\n    ├── harness-reference/\n    │   ├── markdown-db.md           corpus \"harness-reference\" (front page)\n    │   └── harnesses/\n    │       ├── harnesses.schema.md     type \"harnesses\" (optional)\n    │       ├── Antigravity CLI.md\n    │       ├── Claude Code.md\n    │       └── google/\n    │           └── Gemini CLI.md    records may sit at any depth\n    └── skill-catalog/\n        ├── markdown-db.yaml         corpus \"skill-catalog\" (data-only form)\n        └── skills/\n            ├── skills.schema.json\n            └── deploy.yaml",
+   "steps": [
+    {
+     "id": "v-root",
+     "title": "A corpus is a folder holding `markdown-db.md` (or `.yaml` / `.json`)",
+     "anchor": {
+      "type": "TextQuoteSelector",
+      "exact": "my-vault/\n├── .obsidian/\n├── markdown-db.md"
+     },
+     "summary": "The vault root is itself a corpus here, named `my-vault`. It owns `projects/`.",
+     "detail": "The marker's file name alone identifies a corpus. Its data (the spec version, later `depends`) sits in the frontmatter of `markdown-db.md`, or in the whole file for `.yaml` / `.json`. In the `.md` form the body is the corpus's front page, visible in Obsidian. Exactly one marker per folder. A corpus's **name is its folder name**."
+    },
+    {
+     "id": "v-nested",
+     "title": "Nested corpora own their own subtree",
+     "anchor": {
+      "type": "TextQuoteSelector",
+      "exact": "markdown-db.md           corpus \"harness-reference\" (front page)"
+     },
+     "summary": "A folder with its own root file is a separate corpus. The parent stops at it.",
+     "detail": "`my-vault` does not own anything under `Research/harness-reference/` or `Research/skill-catalog/`. **Ownership** decides which schema checks a record. It does not limit **resolution**: links resolve across the whole vault (see the resolution ladder)."
+    },
+    {
+     "id": "v-type",
+     "title": "A type is a folder holding its own schema",
+     "anchor": {
+      "type": "TextQuoteSelector",
+      "exact": "├── harnesses.schema.md     type \"harnesses\" (optional)"
+     },
+     "summary": "A folder holding `<its name>.schema.*` is a type. Other folders are free-form narrative.",
+     "detail": "The schema is named after its folder: `harnesses/harnesses.schema.md` (or `.yaml` / `.json`), so search and the quick switcher find it by the type name. A folder holding `<its name>.schema.*` is a type; any other folder is free-form narrative. An empty schema makes an untyped type.\n\nRecords may sit at any depth below the type folder (`google/Gemini CLI.md`). Ids are file names and stay unique within the type."
+    },
+    {
+     "id": "v-loose",
+     "title": "Files outside any type folder are left alone",
+     "anchor": {
+      "type": "TextQuoteSelector",
+      "exact": "Daily/\n│   └── 2026-11-05.md"
+     },
+     "summary": "Daily notes belong to the vault, not to a type. The validator ignores them.",
+     "detail": "The same holds for `README.md` inside a corpus. People can keep any notes around a corpus without the validator complaining."
+    },
+    {
+     "id": "v-yaml",
+     "title": "Types can use YAML or JSON records",
+     "anchor": {
+      "type": "TextQuoteSelector",
+      "exact": "skills/\n            ├── skills.schema.json\n            └── deploy.yaml"
+     },
+     "summary": "`skills/` holds whole-file YAML records.",
+     "detail": "One extension per type. Obsidian does not open these files, so only `validate` checks their links."
+    }
+   ]
+  },
+  {
+   "type": "annotated-text",
+   "id": "files",
+   "title": "What the files say",
+   "language": "text",
+   "text": "# Research/harness-reference/markdown-db.md\n---\nmarkdown-db: 0\n---\nFacts about how coding-agent harnesses behave. Start with [the harnesses](harnesses/harnesses.schema.md).\n\n# Research/harness-reference/harnesses/harnesses.schema.json  (excerpt)\n{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"Harness\",\n  \"type\": \"object\",\n  \"additionalProperties\": false,\n  \"required\": [\"vendor\", \"status\"],\n  \"properties\": {\n    \"vendor\":    { \"type\": \"string\" },\n    \"status\":    { \"enum\": [\"current\", \"sunsetting\", \"retired\"] },\n    \"successor\": { \"type\": \"string\", \"x-ref\": \"harnesses\" }\n  }\n}\n\n# Research/harness-reference/harnesses/google/Gemini CLI.md\n---\nvendor: Google\nstatus: sunsetting\nsuccessor: \"[Antigravity CLI](../Antigravity%20CLI.md)\"\n---\nGoogle's open-source terminal agent. Replaced by Antigravity CLI\nfor consumer tiers on 2026-06-18. See also [Claude Code](../Claude%20Code.md).\n\n# Research/skill-catalog/markdown-db.yaml\nmarkdown-db: 0\ndepends:\n  harness-reference: { source: \"github:osdlc/skillwright//harness-reference/corpora/beta\" }\n\n# Research/skill-catalog/skills/deploy.yaml\ndescription: Deploy the current branch to staging.\nruns_on:\n  - \"[[harness-reference/harnesses/Claude Code]]\"\n  - \"[[harness-reference/harnesses/Gemini CLI]]\"\n\n# projects/Skillwright.md   (a note in the host vault, not in a corpus record)\n---\npublishes_to:\n  - \"[Claude Code](../Research/harness-reference/harnesses/Claude%20Code.md)\"\n---\nHost notes may use any link form; Obsidian keeps them up to date.",
+   "steps": [
+    {
+     "id": "f-version",
+     "title": "The root file: the spec version, then a front page",
+     "anchor": {
+      "type": "TextQuoteSelector",
+      "exact": "markdown-db: 0\n---\nFacts"
+     },
+     "summary": "Frontmatter holds the data; the body is what a reader sees first in Obsidian.",
+     "detail": "Later versions may allow overrides here (a type folder whose name differs from the type, nested record folders). v0 has none."
+    },
+    {
+     "id": "f-xref",
+     "title": "`x-ref` marks a field that holds a link",
+     "anchor": {
+      "type": "TextQuoteSelector",
+      "exact": "\"x-ref\": \"harnesses\""
+     },
+     "summary": "The value must resolve to a record of type `harnesses` in this corpus.",
+     "detail": "`x-ref` is a named keyword of the markdown-db vocabulary. Validators must register it; JSON Schema validators reject unknown keywords by default."
+    },
+    {
+     "id": "f-link",
+     "title": "A link inside the corpus is a relative Markdown link",
+     "anchor": {
+      "type": "TextQuoteSelector",
+      "exact": "successor: \"[Antigravity CLI](../Antigravity%20CLI.md)\""
+     },
+     "summary": "In frontmatter it is a Markdown link inside a string; Obsidian 1.11.4+ treats it as a link in Properties.",
+     "detail": "The path is relative to the file holding it. Spaces are written `%20` (or the target wrapped in `<…>` in the body). Every tool reads it the same way: GitHub, Docusaurus, VitePress, MkDocs, Obsidian, Foam, mdbase, OKF.\n\nA bare path string (`successor: \"Antigravity CLI.md\"`) is **not** a link in any tool we tested, so the spec requires the `[text](path)` form."
+    },
+    {
+     "id": "f-body",
+     "title": "Body links use the same form",
+     "anchor": {
+      "type": "TextQuoteSelector",
+      "exact": "See also [Claude Code](../Claude%20Code.md)."
+     },
+     "summary": "Standard CommonMark. No plugin needed in docs generators.",
+     "detail": "Tested: Obsidian rewrites these correctly when a record moves inside the corpus, and leaves them alone when the whole corpus moves."
+    },
+    {
+     "id": "f-cross",
+     "title": "A corpus declares the corpora it links to",
+     "anchor": {
+      "type": "TextQuoteSelector",
+      "exact": "depends:\n  harness-reference:"
+     },
+     "summary": "`depends` names another corpus, like a package dependency. Open design: see the mount question.",
+     "detail": "Cross-corpus links are the one case relative paths can't handle well, because they depend on where both corpora are mounted. Naming the dependency keeps the corpus byte-identical wherever it is mounted; `mount` records where each dependency lives.",
+     "warning": "Not settled. The mount and distribution design comes next."
+    },
+    {
+     "id": "f-yamlrec",
+     "title": "Cross-corpus links name the dependency",
+     "anchor": {
+      "type": "TextQuoteSelector",
+      "exact": "  - \"[[harness-reference/harnesses/Claude Code]]\""
+     },
+     "summary": "Written as a wikilink with the corpus name. Resolved through the mount table by our tools, and by suffix match in Obsidian.",
+     "detail": "This record is YAML, so no editor sees or rewrites its links; only `validate` checks them."
+    },
+    {
+     "id": "f-parent",
+     "title": "Host notes outside any corpus are free",
+     "anchor": {
+      "type": "TextQuoteSelector",
+      "exact": "publishes_to:\n  - \"[Claude Code](../Research/harness-reference/harnesses/Claude%20Code.md)\""
+     },
+     "summary": "A vault note may link into a corpus any way it likes. Obsidian rewrote this link correctly when the corpus moved.",
+     "detail": "Only the host's own files change on a move. The corpus does not."
+    }
+   ]
+  },
+  {
+   "type": "precedence",
+   "id": "resolve",
+   "title": "How a link resolves (revision 2)",
+   "rungs": [
+    {
+     "id": "r-two",
+     "label": "Relative Markdown link: `[X](X%20Y.md)`",
+     "detail": "**Canonical inside a corpus.** Resolved from the file that holds it, literally. `validate` does not fall back to name matching, unlike Obsidian, so a broken path is always reported."
+    },
+    {
+     "id": "r-three",
+     "label": "Dependency wikilink: `[[harness-reference/harnesses/X]]`",
+     "detail": "**Canonical across corpora.** The first segment names a corpus listed in `depends`; the mount table says where it is. Obsidian resolves it by path suffix."
+    },
+    {
+     "id": "r-one",
+     "label": "Any other wikilink: `[[X]]`, `[[harnesses/X]]`",
+     "detail": "Accepted, not canonical. Resolved by unique path suffix; more than one match is an error. `validate --fix` rewrites it to the canonical form."
+    },
+    {
+     "id": "r-none",
+     "label": "No match",
+     "detail": "An error: a dangling reference."
+    }
+   ],
+   "examples": [
+    {
+     "id": "e-succ",
+     "label": "Gemini CLI → `[Antigravity CLI](Antigravity%20CLI.md)`",
+     "matches": "r-two",
+     "note": "Same corpus."
+    },
+    {
+     "id": "e-deploy",
+     "label": "deploy.yaml → `[[harness-reference/harnesses/Claude Code]]`",
+     "matches": "r-three",
+     "note": "Declared dependency."
+    },
+    {
+     "id": "e-proj",
+     "label": "Daily note → `[[Claude Code]]`",
+     "matches": "r-one",
+     "note": "Host note; in a record this would be an error, because the trap note makes it ambiguous."
+    },
+    {
+     "id": "e-typo",
+     "label": "`[Antigravity](Antigravity.md)`",
+     "matches": "r-none",
+     "note": "No such file."
+    }
+   ]
+  },
+  {
+   "type": "trace",
+   "id": "uc-validate",
+   "title": "Use case 1 · validate one corpus",
+   "input": "markdown-db validate Research/harness-reference",
+   "steps": [
+    {
+     "id": "t1-root",
+     "label": "Read `markdown-db.yaml`",
+     "outcome": "checked",
+     "reason": "Spec version 0 is supported."
+    },
+    {
+     "id": "t1-types",
+     "label": "Find types",
+     "outcome": "checked",
+     "reason": "`harnesses/` holds `harnesses.schema.md`, so it is a type. `README.md` and other unmarked files are narrative and skipped."
+    },
+    {
+     "id": "t1-ids",
+     "label": "Check ids",
+     "outcome": "checked",
+     "reason": "`Claude Code`, `Gemini CLI`, `Antigravity CLI`: no forbidden characters, unique after NFC and case folding."
+    },
+    {
+     "id": "t1-schema",
+     "label": "Check each record against the schema",
+     "outcome": "checked",
+     "reason": "Frontmatter of each record validates against `harnesses/harnesses.schema.md`."
+    },
+    {
+     "id": "t1-refs",
+     "label": "Resolve `x-ref` fields",
+     "outcome": "checked",
+     "reason": "`Gemini CLI` → `[[harnesses/Antigravity CLI]]` exists."
+    },
+    {
+     "id": "t1-done",
+     "label": "Result",
+     "outcome": "pass",
+     "reason": "Exit 0. Errors would print as `harnesses/Gemini CLI.md: successor: no record harnesses/Antigravity CLI` with a stable code."
+    }
+   ],
+   "outcomes": {
+    "checked": "skip",
+    "pass": "ok",
+    "ok": "ok",
+    "error": "bad",
+    "warn": "warn",
+    "later": "skip"
+   }
+  },
+  {
+   "type": "trace",
+   "id": "uc-move",
+   "title": "Use case 2 · move a corpus to another folder",
+   "input": "Drag Research/harness-reference to Archive/2026/harness-reference",
+   "steps": [
+    {
+     "id": "t2-own",
+     "label": "Links inside the corpus",
+     "outcome": "checked",
+     "reason": "Relative paths move with the files. Tested in Obsidian 1.12.7: zero changes to the corpus's files."
+    },
+    {
+     "id": "t2-in",
+     "label": "Host notes linking in",
+     "outcome": "checked",
+     "reason": "Obsidian rewrote `projects/Skillwright.md` to the new relative path. Correct."
+    },
+    {
+     "id": "t2-wiki",
+     "label": "For comparison: the same move with wikilinks",
+     "outcome": "error",
+     "reason": "Obsidian rewrote the corpus's own links to vault paths (`[[Archive/2026/harness-reference/harnesses/Claude Code]]`). The corpus no longer works anywhere else."
+    },
+    {
+     "id": "t2-done",
+     "label": "Result",
+     "outcome": "pass",
+     "reason": "With relative links the corpus stays byte-identical, which is what mounting needs."
+    }
+   ],
+   "outcomes": {
+    "checked": "skip",
+    "pass": "ok",
+    "ok": "ok",
+    "error": "bad",
+    "warn": "warn",
+    "later": "skip"
+   }
+  },
+  {
+   "type": "trace",
+   "id": "uc-rename",
+   "title": "Use case 3 · move or rename a record",
+   "input": "Move harnesses/Gemini CLI.md to harnesses/google/Gemini CLI.md",
+   "steps": [
+    {
+     "id": "t3-obs",
+     "label": "Body links, in Obsidian",
+     "outcome": "checked",
+     "reason": "Tested: links into and out of the record were rewritten correctly (`google/Gemini%20CLI.md`, `../Claude%20Code.md`)."
+    },
+    {
+     "id": "t3-fm",
+     "label": "Frontmatter links, in Obsidian",
+     "outcome": "warn",
+     "reason": "Tested: `successor` was not rewritten on this move (fixed only on a later move). Obsidian still showed it as resolved, by falling back to name matching."
+    },
+    {
+     "id": "t3-fs",
+     "label": "`validate`",
+     "outcome": "error",
+     "reason": "Reports the stale `successor` path, because it checks paths literally. `validate --fix` repairs it."
+    },
+    {
+     "id": "t3-verb",
+     "label": "`markdown-db move`",
+     "outcome": "pass",
+     "reason": "A future verb: moves the file and rewrites every reference, body and frontmatter."
+    }
+   ],
+   "outcomes": {
+    "checked": "skip",
+    "pass": "ok",
+    "ok": "ok",
+    "error": "bad",
+    "warn": "warn",
+    "later": "skip"
+   }
+  },
+  {
+   "type": "trace",
+   "id": "uc-clash",
+   "title": "Use case 4 · a same-named note elsewhere in the vault",
+   "input": "The vault also has Notes/Claude Code.md, unrelated",
+   "steps": [
+    {
+     "id": "t4-ours",
+     "label": "Relative links in the corpus",
+     "outcome": "checked",
+     "reason": "Exact paths: unaffected."
+    },
+    {
+     "id": "t4-obs",
+     "label": "A bare `[[Claude Code]]`",
+     "outcome": "warn",
+     "reason": "Tested: from the daily note Obsidian picks the trap note; from inside the corpus it picks the corpus record. Every other tool picks differently."
+    },
+    {
+     "id": "t4-warn",
+     "label": "`validate`",
+     "outcome": "pass",
+     "reason": "An ambiguous wikilink in a record is an error. Host notes are not checked."
+    }
+   ],
+   "outcomes": {
+    "checked": "skip",
+    "pass": "ok",
+    "ok": "ok",
+    "error": "bad",
+    "warn": "warn",
+    "later": "skip"
+   }
+  },
+  {
+   "type": "trace",
+   "id": "uc-new",
+   "title": "Use case 5 · add a record",
+   "input": "markdown-db new Research/harness-reference harnesses \"Kiro\"",
+   "steps": [
+    {
+     "id": "t5-id",
+     "label": "Check the id",
+     "outcome": "checked",
+     "reason": "`Kiro` is a portable name and unused in `harnesses`."
+    },
+    {
+     "id": "t5-file",
+     "label": "Write `harnesses/Kiro.md`",
+     "outcome": "pass",
+     "reason": "Frontmatter with the schema's required fields left empty, then a blank body."
+    },
+    {
+     "id": "t5-check",
+     "label": "Validate",
+     "outcome": "error",
+     "reason": "Required fields are empty until filled in: the scaffold is a starting point, not a valid record. Obsidian users can do the same by creating the note by hand."
+    }
+   ],
+   "outcomes": {
+    "checked": "skip",
+    "pass": "ok",
+    "ok": "ok",
+    "error": "bad",
+    "warn": "warn",
+    "later": "skip"
+   }
+  },
+  {
+   "type": "trace",
+   "id": "uc-build",
+   "title": "Use case 6 · build views",
+   "input": "markdown-db build Research/harness-reference",
+   "steps": [
+    {
+     "id": "t6-json",
+     "label": "`dist/data.json`",
+     "outcome": "checked",
+     "reason": "Every record with resolved links."
+    },
+    {
+     "id": "t6-astro",
+     "label": "`--target astro` / `--target nuxt`",
+     "outcome": "checked",
+     "reason": "Collection config, the schema converted to Zod, the reference transform and the link rewriter: about 100 lines of glue per framework today, identical for every corpus."
+    },
+    {
+     "id": "t6-base",
+     "label": "`dist/harnesses.base`",
+     "outcome": "pass",
+     "reason": "An Obsidian Bases table view."
+    }
+   ],
+   "outcomes": {
+    "checked": "skip",
+    "pass": "ok",
+    "ok": "ok",
+    "error": "bad",
+    "warn": "warn",
+    "later": "skip"
+   }
+  },
+  {
+   "type": "matrix",
+   "id": "compat",
+   "title": "Revision 1 comparison (wikilinks only; superseded by the tested matrix)",
+   "rowLabel": "link",
+   "colLabel": "resolver",
+   "rows": [
+    {
+     "id": "m-same",
+     "label": "Same corpus, two segments",
+     "detail": "Gemini CLI → `[[harnesses/Antigravity CLI]]`"
+    },
+    {
+     "id": "m-bare",
+     "label": "Same corpus, bare name",
+     "detail": "`[[Antigravity CLI]]`"
+    },
+    {
+     "id": "m-sib",
+     "label": "Sibling corpus",
+     "detail": "deploy.yaml → `[[harness-reference/harnesses/Claude Code]]`"
+    },
+    {
+     "id": "m-down",
+     "label": "Parent into nested corpus",
+     "detail": "Skillwright.md → `[[harness-reference/harnesses/Claude Code]]`"
+    },
+    {
+     "id": "m-moved",
+     "label": "Any of the above after moving a corpus",
+     "detail": "Use case 2"
+    }
+   ],
+   "cols": [
+    {
+     "id": "ours",
+     "label": "markdown-db"
+    },
+    {
+     "id": "obsidian",
+     "label": "Obsidian"
+    },
+    {
+     "id": "mdbase",
+     "label": "mdbase v0.3"
+    }
+   ],
+   "cells": [
+    {
+     "row": "m-same",
+     "col": "ours",
+     "state": "valid"
+    },
+    {
+     "row": "m-same",
+     "col": "obsidian",
+     "state": "valid",
+     "note": "suffix match"
+    },
+    {
+     "row": "m-same",
+     "col": "mdbase",
+     "state": "valid",
+     "note": "from the collection root"
+    },
+    {
+     "row": "m-bare",
+     "col": "ours",
+     "state": "valid",
+     "note": "within the x-ref type"
+    },
+    {
+     "row": "m-bare",
+     "col": "obsidian",
+     "state": "warn",
+     "note": "vault-wide by name",
+     "hint": "use two segments"
+    },
+    {
+     "row": "m-bare",
+     "col": "mdbase",
+     "state": "valid",
+     "note": "by file name in the collection"
+    },
+    {
+     "row": "m-sib",
+     "col": "ours",
+     "state": "valid",
+     "note": "corpus found by folder name"
+    },
+    {
+     "row": "m-sib",
+     "col": "obsidian",
+     "state": "valid",
+     "note": "suffix match"
+    },
+    {
+     "row": "m-sib",
+     "col": "mdbase",
+     "state": "error",
+     "note": "escapes the collection root"
+    },
+    {
+     "row": "m-down",
+     "col": "ours",
+     "state": "valid"
+    },
+    {
+     "row": "m-down",
+     "col": "obsidian",
+     "state": "valid"
+    },
+    {
+     "row": "m-down",
+     "col": "mdbase",
+     "state": "error",
+     "note": "not a record of the parent collection"
+    },
+    {
+     "row": "m-moved",
+     "col": "ours",
+     "state": "valid"
+    },
+    {
+     "row": "m-moved",
+     "col": "obsidian",
+     "state": "valid"
+    },
+    {
+     "row": "m-moved",
+     "col": "mdbase",
+     "state": "warn",
+     "note": "same-collection links only"
+    }
+   ]
+  },
+  {
+   "type": "prose",
+   "id": "apps",
+   "title": "Mini-apps and where to put corpora",
+   "text": "**Use case: an app keeps its data as a corpus in a vault.** A reading list, a task tracker, a set of inherited policies: an Obsidian plugin, CLI or small web app reads and writes records, and the user can still browse and edit them as notes. That adds four needs:\n\n1. **Finding its corpus.** Users move and rename folders, so an app needs a stable handle: an optional `id` in the root file (`id: reading-list`, or a UUID). The app scans for `markdown-db.md` and picks the one with its id. The folder name stays the corpus's name for links.\n2. **Writing records faithfully.** A writer changes only the keys it owns and keeps key order, unknown keys and the body. Same rule as rust-ontogen's `markdown-store` and mdbase.\n3. **Concurrent edits.** v0: whole-file writes, last writer wins. Apps that need merging follow mdbase's merge profile.\n4. **Upgrades.** A schema version and migrations: deferred, but the root file leaves room for them.\n\n**Placement guidance (non-normative).** The spec lets a corpus sit anywhere; these are the recommended places:\n\n- **In a vault:** one top-level folder for structured data (`Data/` or `_data/`), one corpus per app or dataset under it, named after it. Side by side, not nested.\n- **In a code repository:** `corpora/<name>/`, as `harness-reference` does.\n- **Don't** put a corpus inside another corpus's type folder.\n- **Keep corpora that link to each other side by side** in one folder."
+  },
+  {
+   "type": "matrix",
+   "id": "tested",
+   "title": "Tested: what each tool did with each link form",
+   "rowLabel": "case",
+   "colLabel": "tool",
+   "rows": [
+    {
+     "id": "x-body",
+     "label": "Relative link in body"
+    },
+    {
+     "id": "x-fm",
+     "label": "Relative link in frontmatter (`\"[X](X.md)\"`)"
+    },
+    {
+     "id": "x-wiki",
+     "label": "Wikilink in body"
+    },
+    {
+     "id": "x-move",
+     "label": "Corpus files after moving the corpus"
+    },
+    {
+     "id": "x-schema",
+     "label": "Enforces the JSON Schema"
+    }
+   ],
+   "cols": [
+    {
+     "id": "obs",
+     "label": "Obsidian 1.12.7"
+    },
+    {
+     "id": "github",
+     "label": "GitHub"
+    },
+    {
+     "id": "docs",
+     "label": "Docusaurus / VitePress / MkDocs"
+    },
+    {
+     "id": "astro",
+     "label": "Astro 7.4.5"
+    },
+    {
+     "id": "nuxt",
+     "label": "Nuxt Content 3.16.2"
+    }
+   ],
+   "cells": [
+    {
+     "row": "x-body",
+     "col": "obs",
+     "state": "valid",
+     "note": "rewritten on record moves"
+    },
+    {
+     "row": "x-body",
+     "col": "github",
+     "state": "valid"
+    },
+    {
+     "row": "x-body",
+     "col": "docs",
+     "state": "valid",
+     "note": "native (docs)"
+    },
+    {
+     "row": "x-body",
+     "col": "astro",
+     "state": "warn",
+     "note": "20 lines of glue"
+    },
+    {
+     "row": "x-body",
+     "col": "nuxt",
+     "state": "warn",
+     "note": "built-in rewrite broken; 20 lines of glue"
+    },
+    {
+     "row": "x-fm",
+     "col": "obs",
+     "state": "warn",
+     "note": "a link; missed on one move"
+    },
+    {
+     "row": "x-fm",
+     "col": "github",
+     "state": "skip",
+     "note": "shown as text"
+    },
+    {
+     "row": "x-fm",
+     "col": "docs",
+     "state": "skip",
+     "note": "not read"
+    },
+    {
+     "row": "x-fm",
+     "col": "astro",
+     "state": "valid",
+     "note": "via transform → reference()"
+    },
+    {
+     "row": "x-fm",
+     "col": "nuxt",
+     "state": "warn",
+     "note": "via parse hook"
+    },
+    {
+     "row": "x-wiki",
+     "col": "obs",
+     "state": "valid"
+    },
+    {
+     "row": "x-wiki",
+     "col": "github",
+     "state": "error",
+     "note": "literal text"
+    },
+    {
+     "row": "x-wiki",
+     "col": "docs",
+     "state": "warn",
+     "note": "plugin, shortest path"
+    },
+    {
+     "row": "x-wiki",
+     "col": "astro",
+     "state": "warn",
+     "note": "plugin"
+    },
+    {
+     "row": "x-wiki",
+     "col": "nuxt",
+     "state": "warn",
+     "note": "plugin"
+    },
+    {
+     "row": "x-move",
+     "col": "obs",
+     "state": "valid",
+     "note": "unchanged with relative links; rewritten with wikilinks"
+    },
+    {
+     "row": "x-move",
+     "col": "github",
+     "state": "skip"
+    },
+    {
+     "row": "x-move",
+     "col": "docs",
+     "state": "skip"
+    },
+    {
+     "row": "x-move",
+     "col": "astro",
+     "state": "skip"
+    },
+    {
+     "row": "x-move",
+     "col": "nuxt",
+     "state": "skip"
+    },
+    {
+     "row": "x-schema",
+     "col": "obs",
+     "state": "error",
+     "note": "no schema support"
+    },
+    {
+     "row": "x-schema",
+     "col": "github",
+     "state": "error",
+     "note": "no schema support"
+    },
+    {
+     "row": "x-schema",
+     "col": "docs",
+     "state": "error",
+     "note": "no schema support"
+    },
+    {
+     "row": "x-schema",
+     "col": "astro",
+     "state": "valid",
+     "note": "after converting to Zod"
+    },
+    {
+     "row": "x-schema",
+     "col": "nuxt",
+     "state": "error",
+     "note": "accepted status: bogus"
+    }
+   ]
+  }
+ ],
+ "questions": [
+  {
+   "id": "q-root",
+   "group": "Corpus",
+   "kind": "single",
+   "about": "f-version",
+   "prompt": "How is a corpus root marked?",
+   "recommended": "mdb-md",
+   "options": [
+    {
+     "id": "mdb-md",
+     "label": "`markdown-db.md` (or `.yaml` / `.json`), data in frontmatter",
+     "detail": "The name alone marks a corpus. The `.md` form is the corpus's front page in Obsidian. No clash with folder notes, no Hugo leaf-bundle issue."
+    },
+    {
+     "id": "index-md",
+     "label": "`index.md` with `markdown-db: 0` in its frontmatter",
+     "detail": "OKF-shaped and a landing page in docs generators. Detection must read frontmatter; common file name; Hugo treats it as a leaf bundle."
+    },
+    {
+     "id": "required",
+     "label": "`markdown-db.yaml` only",
+     "detail": "Unambiguous, but invisible in Obsidian and no front page."
+    },
+    {
+     "id": "none",
+     "label": "No marker",
+     "detail": "No boundary for nesting and no version check."
+    }
+   ]
+  },
+  {
+   "id": "q-name",
+   "group": "Corpus",
+   "kind": "single",
+   "about": "v-root",
+   "prompt": "What is a corpus's name?",
+   "recommended": "folder",
+   "options": [
+    {
+     "id": "folder",
+     "label": "Its folder name",
+     "detail": "Three-segment links work as plain path suffixes, in Obsidian too. Renaming the folder breaks links into it, like renaming a package."
+    },
+    {
+     "id": "declared",
+     "label": "A `name` in the root file",
+     "detail": "Survives a folder rename, but Obsidian cannot resolve links by a declared name, so cross-corpus links would work only in our validator."
+    }
+   ]
+  },
+  {
+   "id": "q-typedef",
+   "group": "Types",
+   "kind": "single",
+   "about": "v-type",
+   "prompt": "Where does a type's schema live, and is it required?",
+   "recommended": "inside-any",
+   "options": [
+    {
+     "id": "inside-any",
+     "label": "Inside the type folder, named after it: `harnesses/harnesses.schema.md` / `.yaml` / `.json`",
+     "detail": "Travels with its folder. The `.md` form shows the type as a note in Obsidian, with prose about it. JSON Schema editor tooling reads only the `.json` / `.yaml` forms."
+    },
+    {
+     "id": "inside",
+     "label": "Inside the type folder, `.json` only",
+     "detail": "One form, full JSON Schema tooling; not visible in Obsidian."
+    },
+    {
+     "id": "schema-json",
+     "label": "`<type>.schema.json` beside the `<type>/` folder",
+     "detail": "Revision 1's proposal."
+    },
+    {
+     "id": "type-note",
+     "label": "A type note `_types/<type>.md`, as mdbase does",
+     "detail": "Schemas gathered in one folder, apart from their records."
+    }
+   ]
+  },
+  {
+   "id": "q-ids",
+   "group": "Types",
+   "kind": "single",
+   "about": "t1-ids",
+   "prompt": "What may an id look like?",
+   "recommended": "display",
+   "options": [
+    {
+     "id": "display",
+     "label": "Any portable file name (`Claude Code`)",
+     "detail": "No `/ \\ : * ? \" < > |`, no `[ ] # ^ |` (they break wikilinks), no leading or trailing space or dot. Unique after NFC and case folding. A type may narrow it with `x-id-pattern`."
+    },
+    {
+     "id": "slug",
+     "label": "Lowercase slugs only (`claude-code`)",
+     "detail": "Safe in URLs and shells, but less readable in Finder and Obsidian."
+    }
+   ]
+  },
+  {
+   "id": "q-form",
+   "group": "Links",
+   "kind": "single",
+   "about": "r-two",
+   "prompt": "Which link form is canonical inside a corpus?",
+   "recommended": "relative",
+   "options": [
+    {
+     "id": "relative",
+     "label": "Relative Markdown links",
+     "detail": "Tested: keeps the corpus unchanged when it moves; native in GitHub and docs generators. Costs `%20` for spaces and frontmatter strings like `\"[X](X%20Y.md)\"`."
+    },
+    {
+     "id": "two",
+     "label": "Two-segment wikilinks `[[harnesses/X]]`",
+     "detail": "Tested: Obsidian rewrites them to vault paths when the corpus moves; GitHub and docs generators need plugins."
+    },
+    {
+     "id": "either",
+     "label": "Both, neither canonical",
+     "detail": "Most flexible; two spellings for one reference and no portability guarantee."
+    }
+   ]
+  },
+  {
+   "id": "q-cross",
+   "group": "Links",
+   "kind": "single",
+   "about": "f-cross",
+   "prompt": "How are links between corpora written?",
+   "recommended": "siblings",
+   "options": [
+    {
+     "id": "siblings",
+     "label": "Siblings + relative links: dependent corpora are mounted side by side; links are relative paths; `depends` lets tools check",
+     "detail": "One link form everywhere, followed by GitHub, Obsidian and docs generators. Corpus files never change when the sibling group moves together. Costs a layout rule: linked corpora live in one folder."
+    },
+    {
+     "id": "depends",
+     "label": "Name a declared dependency: `[[harness-reference/harnesses/X]]` plus `depends`",
+     "detail": "Our tools resolve it through the mount table and Obsidian by path suffix; GitHub and site generators cannot follow it at all."
+    },
+    {
+     "id": "relative",
+     "label": "Relative paths across corpora",
+     "detail": "Work in every tool, but break when either corpus moves, and mounting would have to rewrite files."
+    },
+    {
+     "id": "later",
+     "label": "Not in v0",
+     "detail": "Closed corpora until the mount design is done."
+    }
+   ],
+   "status": "closed",
+   "resolution": "Deferred to the mount and distribution design. v0 does not define links between corpora."
+  },
+  {
+   "id": "q-formats",
+   "group": "Types",
+   "kind": "single",
+   "about": "f-yamlrec",
+   "prompt": "How does a corpus choose which record formats it allows?",
+   "recommended": "list",
+   "options": [
+    {
+     "id": "list",
+     "label": "`formats:` list in the root file, default `[md]`",
+     "detail": "Markdown-only by default: every record is a note, fully browsable and kept up to date in Obsidian. A hybrid corpus declares `formats: [md, yaml, json]`: data-only records may sit beside notes, even in one type; ids stay unique ignoring the extension."
+    },
+    {
+     "id": "mode",
+     "label": "A named switch: `mode: notes | hybrid`",
+     "detail": "Same two behaviours under friendlier names; less extensible."
+    },
+    {
+     "id": "md-only",
+     "label": "Markdown only, no option",
+     "detail": "Simplest; data-only records are `.md` files with an empty body."
+    },
+    {
+     "id": "per-type",
+     "label": "Per type, by file extension (revision 1)",
+     "detail": "No declaration; each type uses one format. Mixed corpora happen by accident rather than by choice."
+    }
+   ]
+  },
+  {
+   "id": "q-mdbase",
+   "group": "Prior art",
+   "kind": "single",
+   "about": "problem",
+   "prompt": "How should markdown-db relate to mdbase?",
+   "recommended": "borrow",
+   "options": [
+    {
+     "id": "borrow",
+     "label": "Own spec; borrow mdbase's path, collision and type rules with credit",
+     "detail": "Keeps vault-wide resolution and whole-file records, which mdbase lacks. Propose cross-collection links to mdbase upstream."
+    },
+    {
+     "id": "profile",
+     "label": "A profile of mdbase",
+     "detail": "Conformant mdbase collections plus conventions. Cross-corpus links would be invalid in mdbase tools."
+    },
+    {
+     "id": "adopt",
+     "label": "Adopt mdbase as is",
+     "detail": "No spec of our own. Loses cross-corpus links and YAML/JSON records."
+    }
+   ]
+  },
+  {
+   "id": "q-strict",
+   "group": "Links",
+   "kind": "single",
+   "about": "r-two",
+   "prompt": "Should `validate` check relative paths literally, with no name fallback?",
+   "recommended": "literal",
+   "options": [
+    {
+     "id": "literal",
+     "label": "Yes, literally",
+     "detail": "Catches the case Obsidian hides: a broken path it still resolves by name. GitHub and site generators would show it as dead."
+    },
+    {
+     "id": "fallback",
+     "label": "Fall back to name matching, like Obsidian",
+     "detail": "Fewer errors; broken links reach published sites."
+    }
+   ]
+  },
+  {
+   "id": "q-fix",
+   "group": "Links",
+   "kind": "single",
+   "about": "r-one",
+   "prompt": "Should `validate --fix` rewrite accepted wikilinks to the canonical form?",
+   "recommended": "yes",
+   "options": [
+    {
+     "id": "yes",
+     "label": "Yes",
+     "detail": "People can paste wikilinks in Obsidian; the corpus converges on one form."
+    },
+    {
+     "id": "no",
+     "label": "No, report only",
+     "detail": "Never edits files."
+    }
+   ]
+  },
+  {
+   "id": "q-typefolders",
+   "group": "Types",
+   "kind": "single",
+   "about": "v-type",
+   "prompt": "What makes a folder a type, and where does free-form narrative go?",
+   "recommended": "schema",
+   "options": [
+    {
+     "id": "schema",
+     "label": "A folder holding `<its name>.schema.*` is a type; everything else is narrative",
+     "detail": "Mirrors the corpus marker. Narrative lives in record bodies, the corpus front page, and any folder without a schema file (guides, essays, daily notes). An empty schema file makes an untyped type. Links from narrative into records are still checked."
+    },
+    {
+     "id": "declared",
+     "label": "The root file lists its types: `types: [harnesses]`",
+     "detail": "One place to see every type; the schema stays fully optional. Moving or adding a type means editing the root file."
+    },
+    {
+     "id": "toplevel",
+     "label": "Every top-level folder is a type",
+     "detail": "No marker needed, but narrative can only sit in record bodies or the root, and a vault root cannot be a corpus without its daily notes becoming types."
+    }
+   ]
+  },
+  {
+   "id": "q-corpus-id",
+   "group": "Corpus",
+   "kind": "single",
+   "about": "apps",
+   "prompt": "Should the root file carry an optional stable `id`?",
+   "recommended": "optional",
+   "options": [
+    {
+     "id": "optional",
+     "label": "Optional `id`, for apps and correlation",
+     "detail": "Lets an app find its corpus after the user renames or moves the folder. Links still use the folder name."
+    },
+    {
+     "id": "required",
+     "label": "Required `id`",
+     "detail": "Every corpus is correlatable, at the cost of one more thing to author."
+    },
+    {
+     "id": "none",
+     "label": "No id; apps are configured with a path",
+     "detail": "Simplest spec; apps break when the folder moves."
+    }
+   ]
+  }
+ ]
+}

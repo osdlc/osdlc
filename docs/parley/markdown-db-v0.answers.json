@@ -1,0 +1,492 @@
+{
+  "doc": "markdown-db-v0",
+  "updated": "2026-11-05T07:00:28.350Z",
+  "status": "reviewing",
+  "comments": [
+    {
+      "id": "cmw363mvu",
+      "node": "files",
+      "selector": {
+        "type": "TextQuoteSelector",
+        "exact": "\"x-ref\": \"harnesses\""
+      },
+      "text": "what is this x-ref stating here? the type?",
+      "at": "2026-11-05T06:31:30.714Z",
+      "sent": "2026-11-05T06:31:30.714Z",
+      "replies": [
+        {
+          "from": "agent",
+          "text": "It names the type of the record the field points to. It is not the field's own type.\n\nIn \"successor\": { \"type\": \"string\", \"x-ref\": \"harnesses\" }:\n- \"type\": \"string\" is plain JSON Schema: the value is a string, here a link like [Antigravity CLI](../Antigravity%20CLI.md).\n- \"x-ref\": \"harnesses\" is our keyword. It says the link must resolve to a record in the harnesses type of this corpus, the harnesses/ folder. It works like a foreign key in a database: successor must point at an existing harness, not a skill or a missing file.\n\nvalidate enforces both. JSON Schema checks the string. Then the link is resolved, and validate checks that the target exists and sits in harnesses/.\n\nOther forms:\n- \"x-ref\": \"harness-reference/harnesses\" points at a type in another corpus, as skill-catalog does.\n- On an array, \"items\": { \"x-ref\": ... } means each element is such a link.\n\nIt is an x- keyword because JSON Schema has no notion of links between files. The spec names it as part of a small markdown-db vocabulary that validators must register.",
+          "at": "2026-11-05T06:31:45.684Z",
+          "revision": 4,
+          "by": {
+            "model": "claude-opus-5-5",
+            "harness": "claude-code"
+          }
+        },
+        {
+          "from": "reviewer",
+          "text": "oh ok - so wer're saying its a ref to a harness?",
+          "at": "2026-11-05T06:34:19.428Z",
+          "sent": "2026-11-05T06:34:19.428Z"
+        },
+        {
+          "from": "agent",
+          "text": "Yes. successor is a reference to one harness record. If successor pointed at a skill, a project note or a file that doesn't exist, validate would report it.\n\nA naming note: the value is the folder name, harnesses, plural, because a type's name is its folder name. If \"x-ref\": \"harnesses\" reads oddly as \"a reference to a harness\", the spec could let a type declare a singular label, e.g. title: Harness in its schema, for messages and docs. The x-ref value would still be the folder name.",
+          "at": "2026-11-05T06:34:31.541Z",
+          "revision": 5,
+          "by": {
+            "model": "claude-opus-5-5",
+            "harness": "claude-code"
+          }
+        }
+      ]
+    },
+    {
+      "id": "cmw36863j",
+      "node": "f-body",
+      "text": "when you say obsidian leaves these alone - what if you move the target - does obsidian fix it?",
+      "at": "2026-11-05T06:35:02.238Z",
+      "sent": "2026-11-05T06:35:02.238Z",
+      "replies": [
+        {
+          "from": "agent",
+          "text": "Yes, for body links. We tested it in Obsidian 1.12.7 with \"relative path\" and \"Markdown links\" on. We moved harnesses/Gemini CLI.md to harnesses/google/Gemini CLI.md:\n\n- Links into it were fixed. Claude Code.md's body link changed from (Gemini%20CLI.md) to (google/Gemini%20CLI.md).\n- Links out of it were fixed too. Its own body link to Claude Code changed from (Claude%20Code.md) to (../Claude%20Code.md).\n- One miss: its frontmatter link (successor) was not rewritten on that move. Obsidian still showed it as resolved, because it falls back to matching by filename. It was corrected only on the next move.\n- Not tested: a frontmatter link in another record pointing at the moved file. I'd expect it to behave like the miss above, but we haven't checked.\n\n\"Leaves these alone\" referred to moving the whole corpus. Then every relative link inside it stays valid, and Obsidian correctly changes nothing.\n\nSo moves done in Obsidian are mostly safe. validate catches the frontmatter misses, because it checks paths literally. A markdown-db move verb would fix both body and frontmatter. I can run the untested case now if you want.",
+          "at": "2026-11-05T06:35:17.367Z",
+          "revision": 5,
+          "by": {
+            "model": "claude-opus-5-5",
+            "harness": "claude-code"
+          }
+        }
+      ]
+    },
+    {
+      "id": "cmw36yniv",
+      "node": "markdown-db-v0",
+      "text": "ok, another use case I thought of - is that this can drive 'mini-apps' - an app can have a database inside a markdown vault even if its positioned somewhat arbitrarily. I would also say we should provide guidance and recommendations for where to anchor these even if the spec does try to support them being mounted anywhere in the repo",
+      "at": "2026-11-05T06:55:37.879Z",
+      "sent": "2026-11-05T06:55:37.879Z",
+      "replies": [
+        {
+          "from": "agent",
+          "text": "Good use case. An app could be an Obsidian plugin, a CLI or a small web app, and it would keep its data as a corpus inside the user's vault: a reading list, a task tracker, a set of policies. The user can still read and edit that data as notes. It raises four things the spec should cover:\n\n1. Finding its corpus. The user may move or rename the folder, so the folder name isn't a stable handle for the app. That brings back your earlier idea: an optional stable id in the root file, e.g. id: reading-list or a UUID. The app scans for markdown-db.md and picks the one with its id. The folder name stays the corpus's name for links. The id is only for correlation.\n2. Writing records. Apps write as well as read, so the spec needs a fidelity rule: change only the keys you own, and keep key order, unknown keys and the body. rust-ontogen's markdown-store and mdbase both already define this.\n3. Concurrent edits. A person may edit in Obsidian while the app writes. v0 can simply say writes are whole-file and last-writer-wins, and point at mdbase's merge profile for apps that need more.\n4. Upgrades. A new app version may change the schema, which needs a schema version and a migration story. That's deferred, but the root file should leave room for it.\n\nOn placement: agreed. The spec supports any location, but it should recommend where to put corpora. I'll add a non-normative guidance section:\n- In a vault: one top-level folder for app data (e.g. Data/ or _data/), with one corpus per app under it, named after the app. Siblings, not nested, which also keeps the deferred cross-corpus option open.\n- In a code repo: corpora/<name>/, as harness-reference does.\n- Avoid nesting a corpus inside another corpus's type folders.\n- Keep linked corpora side by side.\n\nI'll add this as a section on the page, with a question on the stable id.",
+          "at": "2026-11-05T06:56:09.183Z",
+          "revision": 10,
+          "by": {
+            "model": "claude-opus-5-5",
+            "harness": "claude-code"
+          }
+        }
+      ]
+    }
+  ],
+  "choices": {
+    "q-name": {
+      "selected": [
+        "folder"
+      ],
+      "note": "is this file intended as a marker for a tool to find conforming corpora embedded in a vault or markdown collection?",
+      "at": "2026-11-05T06:25:30.239Z",
+      "replies": [
+        {
+          "from": "agent",
+          "text": "Yes. markdown-db.yaml marks a corpus root, the way .git marks a repository or package.json marks a package. It does three jobs:\n\n1. Discovery. A tool walks a vault or any Markdown collection and treats every folder holding the file as a corpus. Nothing else in the vault needs to change.\n2. Boundary. Everything under that folder belongs to the corpus, down to the next folder with its own markdown-db.yaml, which is a nested corpus. That is how a parent and a nested corpus know which records each owns and validates.\n3. Version. It holds the spec version (markdown-db: 0), so a tool can refuse a corpus written for a spec it doesn't support.\n\nLater it may also hold depends (the corpora this one links to). In a host vault it may hold a mount table, so tools find mounted corpora without scanning.\n\nHow this ties to the question: the file marks where a corpus is. The question is what the corpus is called. I recommend the folder name, because Obsidian can then resolve cross-corpus links like [[harness-reference/harnesses/X]] by path suffix. The alternative puts name: in this same file. That survives a folder rename, but Obsidian can't resolve links by a declared name.",
+          "at": "2026-11-05T06:22:30.292Z",
+          "revision": 2,
+          "by": {
+            "model": "claude-opus-5-5",
+            "harness": "claude-code"
+          }
+        },
+        {
+          "from": "reviewer",
+          "text": "yes that makes sense. lets be sure we capture this reasoning when we define the spec",
+          "at": "2026-11-05T06:25:47.470Z",
+          "sent": "2026-11-05T06:25:47.470Z"
+        },
+        {
+          "from": "reviewer",
+          "text": "is this file intended as a marker for a tool to find conforming corpora embedded in a vault or markdown collection?",
+          "at": "2026-11-05T06:54:39.835Z",
+          "sent": "2026-11-05T06:54:39.835Z"
+        },
+        {
+          "from": "agent",
+          "text": "Recorded: a corpus's name is its folder name. The marker question is answered above.",
+          "at": "2026-11-05T06:54:54.498Z",
+          "revision": 10,
+          "by": {
+            "model": "claude-opus-5-5",
+            "harness": "claude-code"
+          }
+        }
+      ],
+      "hash": "21175dcd8e63",
+      "revision": 2,
+      "sent": "2026-11-05T06:54:39.835Z"
+    },
+    "q-typedef": {
+      "selected": [
+        "inside-any"
+      ],
+      "note": "what about putting it inside the folder? I'm not sure it matters much but if we put markdown-db.yaml inside its container then maybe we do same for schema. it can/should be optional as well?",
+      "at": "2026-11-05T06:54:26.484Z",
+      "replies": [
+        {
+          "from": "agent",
+          "text": "Good idea. I'd switch to it, with a reserved file name: harnesses/markdown-db.schema.json.\n\nWhy it's better:\n- It matches the root file. A corpus is marked by markdown-db.yaml inside its folder, and a type is described by markdown-db.schema.json inside its folder.\n- The type folder is self-contained. Copy or move harnesses/ and its schema goes with it.\n- The corpus root gets tidier. It's just the root file, the README and the type folders.\n\nThe one cost is that the schema shares a folder with the records. A reserved name keeps them apart. The markdown-db prefix can't be mistaken for a record id, and the spec reserves that name in every type folder, which matters for types whose records are .json files.\n\nOptional schema: yes. A folder with no schema is still a type. validate still checks ids, file format, uniqueness and links, but not field values. Adding a schema later turns on field checks.\n\nThat changes what makes a folder a type. Proposal: every top-level folder in a corpus is a type, with or without a schema. Records may sit at any depth below it, like google/Gemini CLI.md. Ids stay unique within the type.\n\nI'll update the question and the example to show this as the new recommendation.",
+          "at": "2026-11-05T06:29:20.591Z",
+          "revision": 2,
+          "by": {
+            "model": "claude-opus-5-5",
+            "harness": "claude-code"
+          }
+        },
+        {
+          "from": "reviewer",
+          "text": "in fact I like it living with the directory - you could move the directory and keep its schema with its files",
+          "at": "2026-11-05T06:29:32.385Z",
+          "sent": "2026-11-05T06:29:32.385Z"
+        },
+        {
+          "from": "agent",
+          "text": "Agreed. That's now the recommended option (\"Inside the type folder as markdown-db.schema.json, optional\"). Pick it and I'll record it as decided.\n\nOne consequence I'll put in the spec: a type folder holding its schema is portable on its own. You could copy harnesses/ into another corpus and it arrives with its rules. Its links inside the type are relative, so they still work. Its links to other types in the old corpus would need the new corpus to have those types too, and validate reports any that don't resolve.",
+          "at": "2026-11-05T06:30:00.746Z",
+          "revision": 3,
+          "by": {
+            "model": "claude-opus-5-5",
+            "harness": "claude-code"
+          }
+        },
+        {
+          "from": "reviewer",
+          "text": "I think the first segment of the name matches the folder so it's more findable",
+          "at": "2026-11-05T06:53:17.894Z",
+          "sent": "2026-11-05T06:53:17.894Z"
+        },
+        {
+          "from": "agent",
+          "text": "Agreed: harnesses/harnesses.schema.md (or .yaml / .json).\n\nWhy it fits:\n- Search and Obsidian's quick switcher find it by typing the type name. Open tabs also show \"harnesses.schema\", not five identical \"markdown-db.schema\" tabs.\n- It matches two existing conventions: Obsidian's folder-note pattern (<folder>/<folder>.md) and the bundle convention in our osdlc terms (<name>/<name>.md).\n- Detection stays name-only: a type is a folder holding <its own name>.schema.{md,yaml,json}.\n\nCosts:\n- Renaming the folder means renaming the schema file too. Obsidian won't do that by itself. validate reports a folder whose schema name doesn't match, and a future markdown-db move verb would do both.\n- A record can't have the id \"harnesses.schema\". That's a reasonable reservation.\n\nThen the corpus marker: should it follow the same pattern, harness-reference/harness-reference.md? For the corpus I'd keep the fixed name markdown-db.md. A corpus must be discoverable by a tool scanning a whole vault. A fixed name is one lookup per folder, while <folder>.md would mean reading the frontmatter of every folder note in the vault to tell corpora from ordinary folder notes. If you'd rather have the pattern everywhere, <folder>.md with markdown-db: 0 in its frontmatter works too, at that cost.\n\nI'll update the example and the question to <type>/<type>.schema.md.",
+          "at": "2026-11-05T06:53:43.501Z",
+          "revision": 9,
+          "by": {
+            "model": "claude-opus-5-5",
+            "harness": "claude-code"
+          }
+        },
+        {
+          "from": "reviewer",
+          "text": "what about putting it inside the folder? I'm not sure it matters much but if we put markdown-db.yaml inside its container then maybe we do same for schema. it can/should be optional as well?",
+          "at": "2026-11-05T06:54:39.835Z",
+          "sent": "2026-11-05T06:54:39.835Z"
+        },
+        {
+          "from": "agent",
+          "text": "Recorded: the schema lives inside the type folder, named after it (harnesses/harnesses.schema.md / .yaml / .json).",
+          "at": "2026-11-05T06:54:54.609Z",
+          "revision": 10,
+          "by": {
+            "model": "claude-opus-5-5",
+            "harness": "claude-code"
+          }
+        }
+      ],
+      "hash": "bc703a02a828",
+      "revision": 10,
+      "history": [
+        {
+          "selected": [],
+          "ask": "what about putting it inside the folder? I'm not sure it matters much but if we put markdown-db.yaml inside its container then maybe we do same for schema. it can/should be optional as well?",
+          "at": "2026-11-05T06:28:57.890Z",
+          "revision": 2
+        }
+      ],
+      "sent": "2026-11-05T06:54:39.835Z"
+    },
+    "q-root": {
+      "selected": [
+        "mdb-md"
+      ],
+      "note": "would it potentially be better to make it an index.yaml - then it would be closer to okf from google? just a thought. then we'd also have to check frontmatter properties however to identify a corpora folder",
+      "at": "2026-11-05T06:52:50.774Z",
+      "replies": [
+        {
+          "from": "agent",
+          "text": "Worth considering. One correction first: OKF uses index.md, not index.yaml. Its root index.md may carry okf_version in frontmatter. So the OKF-shaped version is index.md with markdown-db: 0 in its frontmatter, and prose about the corpus in its body.\n\nFor index.md:\n- The marker becomes the corpus's front page. It's visible and linkable in Obsidian, and it replaces README.md.\n- Docusaurus, VitePress and similar render a folder's index.md as its landing page, so a published corpus gets a home page for free.\n- It's close to OKF without taking on OKF's other rules.\n\nAgainst index.md:\n- Detection must read frontmatter, not just check that a file exists. It's cheap, but every index.md in a vault has to be opened. An index.md without the markdown-db key is just a note.\n- index.md is already common: folder notes and docs landing pages. A folder that already has one gains a role, but only if someone adds the key.\n- Hugo gotcha: in Hugo, an index.md turns a folder into a leaf bundle and hides its child pages. A corpus published with Hugo would need _index.md semantics.\n- The same name would then be needed for type folders, or the pattern breaks: markdown-db.schema.json stays JSON.\n\nindex.yaml: no tool gives it a meaning, so it has the costs of a special name without the front-page benefit. I'd rule it out.\n\nMy view: index.md is the better choice if browsing matters most, which it has so far. markdown-db.yaml is the safer one, since there's no ambiguity and no Hugo issue. I'll add index.md as an option on this question. I lean slightly toward index.md, and want your call.",
+          "at": "2026-11-05T06:31:06.154Z",
+          "revision": 3,
+          "by": {
+            "model": "claude-opus-5-5",
+            "harness": "claude-code"
+          }
+        },
+        {
+          "from": "reviewer",
+          "text": "what about optionally markdown-db.md? also - could we optionally declare the schema in a schema.md file in the frontmatter. my thought is just an optional styling so you can view the entire database in obsidian for example.",
+          "at": "2026-11-05T06:33:24.072Z",
+          "sent": "2026-11-05T06:33:24.072Z"
+        },
+        {
+          "from": "agent",
+          "text": "markdown-db.md is better than index.md. It keeps what was good about index.md and drops the costs:\n- It is visible in Obsidian, and its body is the corpus's front page.\n- Its name alone marks a corpus, so there's no frontmatter scan and no clash with folder notes.\n- Hugo gives it no meaning, so no leaf-bundle problem.\n\nYour two ideas fit one rule, which I'd adopt: every markdown-db file may be written in any record format. The data goes in the frontmatter of a .md file, or in the whole file for .yaml or .json. Exactly one per folder.\n- Corpus root: markdown-db.md, markdown-db.yaml or markdown-db.json.\n- Type schema: markdown-db.schema.md, markdown-db.schema.yaml or markdown-db.schema.json.\n\nSo in Obsidian you could browse the whole database: the corpus front page, a note per type with its schema in the frontmatter and prose about the type in the body, and the records.\n\nOne adjustment to your schema.md: keep the markdown-db. prefix, so markdown-db.schema.md. A bare schema.md would clash with a record whose id is \"schema\", which is a plausible name in some types.\n\nThe costs of the .md schema form:\n- The schema is written in YAML, not JSON. Same content, but JSON Schema editor tooling won't pick it up directly. The yaml-language-server association, for example, needs a .json or .yaml file.\n- Obsidian's Properties panel shows a nested schema as raw YAML. It's readable, not pretty.\n\nI'll update both questions to recommend this: markdown-db.md for the root, and any of the three formats for both files.",
+          "at": "2026-11-05T06:33:42.589Z",
+          "revision": 4,
+          "by": {
+            "model": "claude-opus-5-5",
+            "harness": "claude-code"
+          }
+        },
+        {
+          "from": "reviewer",
+          "text": "would it potentially be better to make it an index.yaml - then it would be closer to okf from google? just a thought. then we'd also have to check frontmatter properties however to identify a corpora folder",
+          "at": "2026-11-05T06:54:39.835Z",
+          "sent": "2026-11-05T06:54:39.835Z"
+        },
+        {
+          "from": "agent",
+          "text": "Recorded: a corpus is marked by markdown-db.md (or .yaml / .json), with its data in frontmatter and its front page in the body.",
+          "at": "2026-11-05T06:54:54.718Z",
+          "revision": 10,
+          "by": {
+            "model": "claude-opus-5-5",
+            "harness": "claude-code"
+          }
+        }
+      ],
+      "hash": "e70611fcea55",
+      "revision": 9,
+      "history": [
+        {
+          "selected": [],
+          "ask": "would it potentially be better to make it an index.yaml - then it would be closer to okf from google? just a thought. then we'd also have to check frontmatter properties however to identify a corpora folder",
+          "at": "2026-11-05T06:30:44.675Z",
+          "revision": 3
+        }
+      ],
+      "sent": "2026-11-05T06:54:39.835Z"
+    },
+    "q-formats": {
+      "selected": [
+        "list"
+      ],
+      "note": "I don't get what this means",
+      "at": "2026-11-05T06:54:04.334Z",
+      "replies": [
+        {
+          "from": "agent",
+          "text": "It asks what file a single record may be.\n\nDefault: a record is a Markdown file. The data is in the frontmatter and prose is in the body, like harnesses/Claude Code.md:\n\n---\nvendor: Anthropic\nstatus: current\n---\nAnthropic's coding agent...\n\nThe question is whether a type may instead store each record as a plain data file, with no prose, like skills/deploy.yaml:\n\ndescription: Deploy the current branch to staging.\nruns_on:\n  - \"[[harness-reference/harnesses/Claude Code]]\"\n\nOr the same as deploy.json. It's the same record, just without a body.\n\nWhy allow it: some data has no prose, like a list of models or a table of versions. YAML or JSON files are shorter and easier for programs to write. Astro, Nuxt, Hugo and Jekyll all load such files as data.\n\nWhy not: Obsidian doesn't open .yaml or .json files. Those records are invisible there, and their links are never shown or updated on a move. Only validate checks them.\n\nEach type picks one format for all its records. You can't mix .md and .yaml in harnesses/.\n\nIf browsing in Obsidian matters more, choose Markdown only. A data-only record is then a .md file with frontmatter and an empty body, which works everywhere.",
+          "at": "2026-11-05T06:37:56.432Z",
+          "revision": 5,
+          "by": {
+            "model": "claude-opus-5-5",
+            "harness": "claude-code"
+          }
+        },
+        {
+          "from": "reviewer",
+          "text": "I had the notion that it would be an optional mode - so we'd declare at the top whether it's a markdown only, or if it's a mixed data. so we can satisfy use cases where its more oriented towards obsidian style users, or more oriented towards being a hybrid portable database. but maybe I'm mixing concepts.",
+          "at": "2026-11-05T06:47:08.086Z",
+          "sent": "2026-11-05T06:47:08.086Z"
+        },
+        {
+          "from": "agent",
+          "text": "You're not mixing concepts. That's a cleaner way to frame it: a corpus-level choice declared in the root file, not a per-type accident.\n\nProposal:\n\n  # markdown-db.md frontmatter\n  markdown-db: 0\n  formats: [md]                  # the default: Obsidian-first\n\nor\n\n  formats: [md, yaml, json]      # hybrid: a portable database\n\n- Default, Markdown only. Every record is a note. The corpus is fully browsable in Obsidian, and every link is visible and kept up to date on moves. validate rejects a .yaml or .json file in a type folder.\n- Hybrid. Data-only records may be .yaml or .json, next to .md, even within one type. Ids must still be unique ignoring the extension, so a.md and a.json can't coexist. validate checks them all. The corpus author accepts that Obsidian won't show the data files.\n\nSo the mode is just the list of allowed formats. An explicit list is plainer than a named mode, and it extends if a format is ever added, e.g. toml. If you'd rather have a named switch, mode: notes | hybrid would map to the same two lists.\n\nI'll rewrite the question this way, with formats: [md] as the default.",
+          "at": "2026-11-05T06:47:33.187Z",
+          "revision": 7,
+          "by": {
+            "model": "claude-opus-5-5",
+            "harness": "claude-code"
+          }
+        },
+        {
+          "from": "reviewer",
+          "text": "I don't get what this means",
+          "at": "2026-11-05T06:54:39.835Z",
+          "sent": "2026-11-05T06:54:39.835Z"
+        },
+        {
+          "from": "agent",
+          "text": "Recorded: a formats: list in the root file, default [md].",
+          "at": "2026-11-05T06:54:54.831Z",
+          "revision": 10,
+          "by": {
+            "model": "claude-opus-5-5",
+            "harness": "claude-code"
+          }
+        }
+      ],
+      "hash": "2f91aeaf8b24",
+      "revision": 10,
+      "history": [
+        {
+          "selected": [],
+          "ask": "I don't get what this means",
+          "at": "2026-11-05T06:37:37.463Z",
+          "revision": 5
+        }
+      ],
+      "sent": "2026-11-05T06:54:39.835Z"
+    },
+    "q-cross": {
+      "selected": [],
+      "ask": "what good does naming a declared dependency do? in our own tools we could respect it right - but obsidian or 3rd parties won't",
+      "at": "2026-11-05T06:39:12.631Z",
+      "sent": "2026-11-05T06:39:12.718Z",
+      "hash": "17de53df813a",
+      "revision": 5,
+      "replies": [
+        {
+          "from": "agent",
+          "text": "You're right. depends only helps our tools.\n- Obsidian and Foam resolve [[harness-reference/harnesses/X]] by path suffix whether or not depends exists.\n- GitHub and site generators can't resolve a wikilink at all.\n\nWhat depends buys is only for our side:\n- validate knows which corpus to look for, and errors clearly when it's missing.\n- mount knows what to install.\n- Later, distribution and versions.\n\nThe real problem is that cross-corpus links have no form that third-party tools follow and that also survives moving corpora independently.\n\nYour question suggests a third option, which I now think is best: a layout rule. Corpora that link to each other are mounted as siblings in one folder, like packages in node_modules. Cross-corpus links are then ordinary relative links:\n\n  [Claude Code](../../harness-reference/harnesses/Claude%20Code.md)\n\nThat gives one link form everywhere. GitHub, Obsidian and the docs generators all follow it. The corpus files never change when the whole group of siblings is mounted elsewhere. depends stays, so validate and mount can check that the sibling is there.\n\nThe cost: corpora that depend on each other can't be scattered around a vault. They live together, e.g. Research/ in the example. A corpus moved out alone breaks its cross-corpus links, and validate reports it.\n\nI'll add this as an option and make it the recommendation.",
+          "at": "2026-11-05T06:39:32.639Z",
+          "revision": 5,
+          "by": {
+            "model": "claude-opus-5-5",
+            "harness": "claude-code"
+          }
+        },
+        {
+          "from": "reviewer",
+          "text": "ok - I'd like to defer this topic for now",
+          "at": "2026-11-05T06:39:56.401Z",
+          "sent": "2026-11-05T06:39:56.401Z"
+        },
+        {
+          "from": "agent",
+          "text": "Deferred. I've closed this question as deferred to the mount and distribution design. v0 will say: links between corpora are not defined yet, and validate reports them as out of scope, not as errors. The three options stay recorded for when we pick it up.",
+          "at": "2026-11-05T06:40:09.939Z",
+          "revision": 6,
+          "by": {
+            "model": "claude-opus-5-5",
+            "harness": "claude-code"
+          }
+        }
+      ]
+    },
+    "q-typefolders": {
+      "selected": [
+        "schema"
+      ],
+      "note": "what does a nested corpus mean? what if you want free form narrative along with your 'dataset'?",
+      "at": "2026-11-05T06:54:13.951Z",
+      "replies": [
+        {
+          "from": "agent",
+          "text": "A nested corpus is a corpus inside another corpus's folder. In the example, the vault root is itself a corpus (my-vault, marked by its markdown-db.md), and Research/harness-reference/ has its own markdown-db.md. So harness-reference is a corpus nested inside my-vault.\n\nRule: the inner marker starts a new corpus. The outer corpus stops there. It doesn't treat harness-reference's folders as its own types, or check its records. The inner corpus has its own types, schemas and formats setting.\n\nWhy it matters for this question: if every top-level folder of a corpus is a type, then my-vault's top-level folders would be projects/, Daily/, Notes/ and Research/. Daily/ and Notes/ hold ordinary notes, not typed records, so that rule is too broad for a vault that is also a corpus. That's what the option text means by \"a folder that should not be a type has to live outside the corpus or be a nested corpus\".\n\nThis pushes me toward the other option for corpora that share a folder with plain notes: a folder is a type only if it holds a markdown-db.schema file. Or a middle way: the root file lists its types, e.g. types: [projects], and other folders are left alone.\n\nSimplest picture: the vault root is not a corpus, and corpora are only the marked folders inside it. Then \"every top-level folder is a type\" works fine. Should a vault root be allowed to be a corpus at all? If not, nesting only means corpora side by side or inside plain folders. That removes most of the complexity.",
+          "at": "2026-11-05T06:48:42.386Z",
+          "revision": 8,
+          "by": {
+            "model": "claude-opus-5-5",
+            "harness": "claude-code"
+          }
+        },
+        {
+          "from": "reviewer",
+          "text": "what does a nested corpus mean? what if you want free form narrative along with your 'dataset'?",
+          "at": "2026-11-05T06:48:54.424Z",
+          "sent": "2026-11-05T06:48:54.424Z"
+        },
+        {
+          "from": "agent",
+          "text": "Free-form narrative next to the data is a good test, and it settles this question.\n\nNarrative already has three homes:\n1. Each record's body: prose about that one harness.\n2. The corpus front page: the body of markdown-db.md.\n3. Other notes and folders in the corpus that aren't types: guides/, essays, an overview of how harnesses differ. These need a clear rule for what is and isn't a type.\n\nSo I'd change the recommendation. A folder is a type if and only if it holds a markdown-db.schema file. Everything else in the corpus is free-form narrative, ignored by validate except that its links into records are checked.\n\nThis mirrors the corpus marker: a corpus is a folder holding markdown-db.md, and a type is a folder holding markdown-db.schema.md, .yaml or .json.\n\nThe schema stays optional in spirit. A schema file with no rules (an empty frontmatter, or {}) makes an untyped type: ids, format and links are checked, fields are not. The file is required only as the marker.\n\nThat also fixes the vault-root case. If my-vault is a corpus, Daily/ and Notes/ are plain narrative because they hold no schema file. Only projects/ is a type.\n\nI'll rewrite the question with this as the recommendation.",
+          "at": "2026-11-05T06:49:10.154Z",
+          "revision": 8,
+          "by": {
+            "model": "claude-opus-5-5",
+            "harness": "claude-code"
+          }
+        },
+        {
+          "from": "reviewer",
+          "text": "what does a nested corpus mean? what if you want free form narrative along with your 'dataset'?",
+          "at": "2026-11-05T06:54:39.835Z",
+          "sent": "2026-11-05T06:54:39.835Z"
+        },
+        {
+          "from": "agent",
+          "text": "Recorded: a folder holding <its name>.schema.* is a type. Everything else in a corpus is free-form narrative.",
+          "at": "2026-11-05T06:54:54.938Z",
+          "revision": 10,
+          "by": {
+            "model": "claude-opus-5-5",
+            "harness": "claude-code"
+          }
+        }
+      ],
+      "hash": "ab47c5e714fd",
+      "revision": 10,
+      "history": [
+        {
+          "selected": [],
+          "ask": "what does a nested corpus mean? what if you want free form narrative along with your 'dataset'?",
+          "at": "2026-11-05T06:48:48.654Z",
+          "revision": 8
+        }
+      ],
+      "sent": "2026-11-05T06:54:39.835Z"
+    },
+    "q-strict": {
+      "selected": [
+        "literal"
+      ],
+      "at": "2026-11-05T06:52:31.887Z",
+      "hash": "caeea3643b9f",
+      "revision": 9
+    },
+    "q-fix": {
+      "selected": [
+        "yes"
+      ],
+      "at": "2026-11-05T06:52:38.988Z",
+      "hash": "f842caf73a7b",
+      "revision": 9
+    },
+    "q-ids": {
+      "selected": [
+        "display"
+      ],
+      "at": "2026-11-05T06:53:33.762Z",
+      "hash": "2b9de22fb0f0",
+      "revision": 9
+    },
+    "q-form": {
+      "selected": [
+        "relative"
+      ],
+      "at": "2026-11-05T06:53:40.130Z",
+      "hash": "e92dd04ecf3e",
+      "revision": 9
+    },
+    "q-mdbase": {
+      "selected": [
+        "borrow"
+      ],
+      "at": "2026-11-05T06:54:08.394Z",
+      "hash": "67d357276380",
+      "revision": 10
+    },
+    "q-corpus-id": {
+      "selected": [
+        "optional"
+      ],
+      "at": "2026-11-05T07:00:28.350Z",
+      "hash": "e911653ad24a",
+      "revision": 11
+    }
+  },
+  "seen": {
+    "q-mdbase": "67d357276380",
+    "q-root": "e70611fcea55",
+    "q-name": "21175dcd8e63",
+    "q-typedef": "bc703a02a828",
+    "q-ids": "2b9de22fb0f0",
+    "q-cross": "f9f58a9bd3cf",
+    "q-form": "e92dd04ecf3e",
+    "q-formats": "2f91aeaf8b24",
+    "q-typefolders": "ab47c5e714fd",
+    "q-strict": "caeea3643b9f",
+    "q-fix": "f842caf73a7b",
+    "q-corpus-id": "e911653ad24a"
+  }
+}
