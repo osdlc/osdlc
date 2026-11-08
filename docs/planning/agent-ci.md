@@ -29,7 +29,7 @@ flowchart LR
     W710["PR 710: claude.yml runs claude -p"]
     P712["PR 712: claude-setup + claude-pr-answer actions"]
     PLAN["Plan + investigations I1–I5"]
-    P707["PR 707: hide full output again (moot)"]
+    P707["PR 707: closed as moot"]
     P711["PR 711: API key on the old workflow (superseded)"]
     CLOSE["Close PRs 711 and 707; settle the old parley"]
   end
@@ -87,9 +87,8 @@ flowchart LR
   classDef active fill:#c77d0a,stroke:#94600a,color:#ffffff
   classDef next fill:#2f5bd3,stroke:#2144a3,color:#ffffff
   classDef later fill:#8a93a3,stroke:#6b7384,color:#ffffff
-  class W710,PLAN done
+  class W710,PLAN,P707 done
   class P712,P711 review
-  class P707 blocked
   class UP active
   class CLOSE,PERM,PROBE,CHECK,CUR,RUN,SETUP,ANS,SPEC,MULTI next
   class MCP,PUB,DATA,PIN later
@@ -103,7 +102,7 @@ Checked 2026-11-08. A periodic check refreshes this table and the graph.
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
 | #712 | gh-actions: claude-setup, claude-pr-answer | open  | none   | clean          | needs a review                                                       | merge                    |
 | #711 | claude.yml: ANTHROPIC_API_KEY            | open  | none   | unknown        | superseded by #712                                                   | close after #712 merges  |
-| #707 | claude: hide full output again           | open  | none   | **conflicting** | `claude.yml` was rewritten by #710; the setting it changes is gone | close, don't resolve     |
+| #707 | claude: hide full output again           | closed | none   | —              | —                                                                    | closed as moot 2026-11-08 |
 
 ## Principle
 
