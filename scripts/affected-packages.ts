@@ -49,8 +49,8 @@ export type Families = Map<string, string[]>
 export function families(): Families {
   const file = 'packages/conformance/families.json'
   if (!existsSync(file)) return new Map()
-  const raw = JSON.parse(readFileSync(file, 'utf8')) as Record<string, { implementations: { dir: string }[] }>
-  return new Map(Object.entries(raw).map(([name, f]) => [name, f.implementations.map((i) => i.dir)]))
+  const raw = JSON.parse(readFileSync(file, 'utf8')) as Record<string, { implementations: { dir: string }[]; readers?: { dir: string }[] }>
+  return new Map(Object.entries(raw).map(([name, f]) => [name, [...f.implementations, ...(f.readers ?? [])].map((i) => i.dir)]))
 }
 
 /** The parts of a package.json these rules read. */
