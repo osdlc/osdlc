@@ -13,9 +13,9 @@
       "line": 262,
       "title": "find_encoded lets a raw match override the decoded match, so one token's link can carry another token's grant",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "66dd2d34d344db2b76e36eecc7e523096e22c25c"
     },
     {
       "id": "r1-2",
