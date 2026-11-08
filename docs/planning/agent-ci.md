@@ -64,7 +64,7 @@ flowchart LR
     ARCH["API and architecture review: dependencies and public APIs"]
   end
   subgraph acts["CI glue · packages/gh-actions"]
-    SETUP["agent-setup over skillwright install"]
+    SETUP["PR 716: agent-setup (draft)"]
     ANS["agent-pr-answer: prefetch, run, post"]
   end
   subgraph roll["Rollout"]
@@ -113,8 +113,8 @@ flowchart LR
   class W710,P711,P707,P712,PLAN,PARLEY done
   class UP yours
   class PLANPR review
-  class SETUP,ARCH active
-  class RUN review
+  class ARCH active
+  class RUN,SETUP review
   class PERM,PROBE,CHECK,STRICT,CUR,ANS,SPEC,MULTI next
   class MCP,PUB,DATA,PIN later
 ```
@@ -125,6 +125,7 @@ Checked 2026-11-08. A periodic check refreshes this table and the graph.
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
+| #716 | feat(gh-actions): agent-setup action  | draft | none   | —              | waits on the API and architecture review                             | review gate, then merge  |
 | #715 | feat(agent-call): agent-call run command | draft | none   | —              | waits on the API and architecture review                             | review gate, then merge  |
 | #713 | docs(planning): plan coding agents in CI | open  | none   | —              | needs your review                                                    | merge when reviewed      |
 | #712 | gh-actions: claude-setup, claude-pr-answer | closed | none  | —              | —                                                                    | closed 2026-11-08; branch kept as a starting point |
@@ -215,6 +216,13 @@ Questions raised so far:
 - `maxTurns`: `AgentCallSpec` has no turn limit; claude has `--max-turns`.
   Add it to the library spec? (#715)
 - Cursor `allowTools` is dropped; write `.cursor/cli.json` instead (I2).
+- agent-setup installs cursor from its build tarball, because cursor's
+  installer cannot pin a version. Acceptable? (#716)
+- Cursor plugins: skillwright only registers the marketplace. Hard error or
+  warning? (#716)
+- Releasing the shared `v1` tag: a workflow or by hand? (#716)
+- `marketplaces` input as `name=url [ref]`, since skillwright cannot read a
+  remote marketplace's name. (#716)
 
 ## Work, in order
 
