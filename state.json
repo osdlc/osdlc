@@ -71,9 +71,9 @@
       "line": 81,
       "title": "listMarkdown no longer follows symlinked directories",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "d1f80484764e2cb00cbcfd2f282a72d5d11d8075"
     },
     {
       "id": "r3-2",
