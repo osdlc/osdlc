@@ -1,0 +1,64 @@
+# Answers questions on pull requests. Mention @claude in a pull request
+# comment, an inline review comment or a review, and Claude replies in a
+# comment on the pull request.
+#
+# Only sksizer can trigger it: each job's `if` checks the comment's author
+# before a runner starts, so nobody else's comment spends a runner minute or
+# a token. Comments on issues are skipped too.
+#
+# Claude only reads and answers here. `--disallowedTools` removes the file
+# edit tools and Bash, which the action would otherwise use to commit and
+# push to the pull request's branch.
+#
+# Auth is CLAUDE_CODE_OAUTH_TOKEN, a token from `claude setup-token` that
+# bills to a Claude subscription. The action talks to GitHub as the Claude
+# GitHub App, which must be installed on the repository.
+#
+# Every action is pinned to a commit SHA; the comment names its release.
+name: claude
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+
+permissions: {}
+
+concurrency:
+  group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  answer:
+    if: >-
+      (github.event_name == 'issue_comment'
+        && github.event.issue.pull_request
+        && github.event.comment.user.login == 'sksizer'
+        && contains(github.event.comment.body, '@claude'))
+      || (github.event_name == 'pull_request_review_comment'
+        && github.event.comment.user.login == 'sksizer'
+        && contains(github.event.comment.body, '@claude'))
+      || (github.event_name == 'pull_request_review'
+        && github.event.review.user.login == 'sksizer'
+        && contains(github.event.review.body, '@claude'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+      - uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1.0.269
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: >-
+            --max-turns 20
+            --disallowedTools "Edit,MultiEdit,Write,NotebookEdit,Bash"
