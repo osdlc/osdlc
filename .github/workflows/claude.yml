@@ -7,8 +7,14 @@
 # a token. Comments on issues are skipped too.
 #
 # Claude only reads and answers here. `--disallowedTools` removes the file
-# edit tools and Bash, which the action would otherwise use to commit and
-# push to the pull request's branch.
+# edit tools and the git commands the action would otherwise use to commit
+# and push to the pull request's branch.
+#
+# The craft plugin is installed from the osdlc marketplace, so a comment can
+# call its skills, e.g. `@claude /craft:code-review`. Most of them need a
+# shell, so `--allowedTools` grants a narrow Bash: read-only git and gh
+# commands, and node for the scripts the skills bundle. The action sets
+# GH_TOKEN, so gh is signed in.
 #
 # Auth is CLAUDE_CODE_OAUTH_TOKEN, a token from `claude setup-token` that
 # bills to a Claude subscription. The action talks to GitHub as the Claude
@@ -45,7 +51,7 @@ jobs:
         && github.event.review.user.login == 'sksizer'
         && contains(github.event.review.body, '@claude'))
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: read
       pull-requests: write
@@ -59,6 +65,9 @@ jobs:
       - uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1.0.269
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          plugin_marketplaces: "https://github.com/osdlc/marketplace.git"
+          plugins: "craft@osdlc"
           claude_args: >-
-            --max-turns 20
-            --disallowedTools "Edit,MultiEdit,Write,NotebookEdit,Bash"
+            --max-turns 30
+            --allowedTools "Skill,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(node:*)"
+            --disallowedTools "Edit,MultiEdit,Write,NotebookEdit,Bash(git commit:*),Bash(git push:*),Bash(git rm:*)"
