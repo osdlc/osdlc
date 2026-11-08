@@ -24,9 +24,8 @@ fn strings(corpus: &Value, key: &str) -> Vec<String> {
 }
 
 fn load() -> Value {
-    let path = std::env::var("OSDLC_BENCH_CORPUS").expect(
-        "OSDLC_BENCH_CORPUS must name the corpus file: node bench/corpus/cli.ts <file>",
-    );
+    let path = std::env::var("OSDLC_BENCH_CORPUS")
+        .expect("OSDLC_BENCH_CORPUS must name the corpus file: node bench/corpus/cli.ts <file>");
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"));
     serde_json::from_str(&text).expect("the corpus file is JSON")
 }

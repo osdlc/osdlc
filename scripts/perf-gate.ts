@@ -24,7 +24,7 @@
 // threshold passes when the PR carries the `perf-accepted` label and a
 // `Perf-accepted: <reason>` line in its body (PERF_LABELS and PERF_BODY in the
 // environment, as the workflow sets them).
-import { execFileSync } from 'node:child_process'
+import { execFileSync } from "node:child_process";
 import {
   appendFileSync,
   cpSync,
@@ -35,71 +35,83 @@ import {
   readdirSync,
   rmSync,
   writeFileSync,
-} from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 /** A benchmark median may grow by this fraction before the gate fails. */
-export const THRESHOLD = 0.15
+export const THRESHOLD = 0.15;
 /** The label that lets a deliberate slowdown through. */
-export const ACCEPT_LABEL = 'perf-accepted'
+export const ACCEPT_LABEL = "perf-accepted";
 /** Shortest reason, in characters, that counts as a stated reason. */
-const MIN_REASON = 10
+const MIN_REASON = 10;
 
 /** One package that has benchmarks, in one language. */
 export interface BenchPackage {
-  lang: 'ts' | 'rust'
+  lang: "ts" | "rust";
   /** The directory name under packages/<lang>/. */
-  name: string
+  name: string;
   /** Names of other benchmarked-language packages it depends on (workspace dependencies). */
-  deps: string[]
+  deps: string[];
 }
 
 /** Median time per iteration by benchmark id, in milliseconds. */
-export type Medians = Map<string, number>
+export type Medians = Map<string, number>;
 
 /** How one benchmark moved. */
 export interface Row {
-  id: string
-  base: number | null
-  head: number | null
+  id: string;
+  base: number | null;
+  head: number | null;
   /** head / base, or null when either side is missing. */
-  ratio: number | null
-  status: 'ok' | 'slower' | 'faster' | 'new' | 'removed'
+  ratio: number | null;
+  status: "ok" | "slower" | "faster" | "new" | "removed";
 }
 
 /** Packages with a `benches/` directory holding at least one benchmark file. */
 export function discover(root: string): BenchPackage[] {
-  const out: BenchPackage[] = []
-  for (const lang of ['ts', 'rust'] as const) {
-    const dir = join(root, 'packages', lang)
-    if (!existsSync(dir)) continue
+  const out: BenchPackage[] = [];
+  for (const lang of ["ts", "rust"] as const) {
+    const dir = join(root, "packages", lang);
+    if (!existsSync(dir)) continue;
     for (const name of readdirSync(dir).sort()) {
-      const benches = join(dir, name, 'benches')
-      if (!existsSync(benches)) continue
-      const want = lang === 'ts' ? /\.bench\.ts$/ : /\.rs$/
-      if (!readdirSync(benches).some((f) => want.test(f))) continue
-      out.push({ lang, name, deps: dependencies(root, lang, name) })
+      const benches = join(dir, name, "benches");
+      if (!existsSync(benches)) continue;
+      const want = lang === "ts" ? /\.bench\.ts$/ : /\.rs$/;
+      if (!readdirSync(benches).some((f) => want.test(f))) continue;
+      out.push({ lang, name, deps: dependencies(root, lang, name) });
     }
   }
-  return out
+  return out;
 }
 
 /** Names of the workspace packages `name` depends on. */
-function dependencies(root: string, lang: 'ts' | 'rust', name: string): string[] {
-  if (lang === 'ts') {
-    const pkg = JSON.parse(readFileSync(join(root, 'packages/ts', name, 'package.json'), 'utf8')) as Record<
-      string,
-      Record<string, string> | undefined
-    >
-    const all = { ...pkg['dependencies'], ...pkg['devDependencies'], ...pkg['peerDependencies'] }
+function dependencies(
+  root: string,
+  lang: "ts" | "rust",
+  name: string,
+): string[] {
+  if (lang === "ts") {
+    const pkg = JSON.parse(
+      readFileSync(join(root, "packages/ts", name, "package.json"), "utf8"),
+    ) as Record<string, Record<string, string> | undefined>;
+    const all = {
+      ...pkg["dependencies"],
+      ...pkg["devDependencies"],
+      ...pkg["peerDependencies"],
+    };
     return Object.keys(all)
-      .filter((d) => d.startsWith('@osdlc/'))
-      .map((d) => d.slice('@osdlc/'.length))
+      .filter((d) => d.startsWith("@osdlc/"))
+      .map((d) => d.slice("@osdlc/".length));
   }
-  const toml = readFileSync(join(root, 'packages/rust', name, 'Cargo.toml'), 'utf8')
-  return [...toml.matchAll(/^([a-z0-9_-]+)\s*=\s*\{[^}]*workspace\s*=\s*true/gm)].map((m) => m[1] as string)
+  const toml = readFileSync(
+    join(root, "packages/rust", name, "Cargo.toml"),
+    "utf8",
+  );
+  return [
+    ...toml.matchAll(/^([a-z0-9_-]+)\s*=\s*\{[^}]*workspace\s*=\s*true/gm),
+  ].map((m) => m[1] as string);
 }
 
 /**
@@ -108,228 +120,366 @@ function dependencies(root: string, lang: 'ts' | 'rust', name: string): string[]
  * corpus, the harness, this script, the workflow, a lockfile or a toolchain
  * pin); and every package that depends on one of those.
  */
-export function pick(changed: string[] | null, all: BenchPackage[]): BenchPackage[] {
-  if (changed === null) return all
-  const shared = /^(bench\/|scripts\/perf-gate|\.github\/workflows\/perf-gate\.yml$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|package\.json$|packages\/rust\/(Cargo\.(toml|lock)|rust-toolchain\.toml)$)/
-  if (changed.some((f) => shared.test(f))) return all
-  const names = new Set<string>()
+export function pick(
+  changed: string[] | null,
+  all: BenchPackage[],
+): BenchPackage[] {
+  if (changed === null) return all;
+  const shared =
+    /^(bench\/|scripts\/perf-gate|\.github\/workflows\/perf-gate\.yml$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|package\.json$|packages\/rust\/(Cargo\.(toml|lock)|rust-toolchain\.toml)$)/;
+  if (changed.some((f) => shared.test(f))) return all;
+  const names = new Set<string>();
   for (const f of changed) {
-    const m = /^packages\/(?:ts|rust)\/([^/]+)\//.exec(f)
-    if (m) names.add((m[1] as string).replace(/-wasm$/, ''))
+    const m = /^packages\/(?:ts|rust)\/([^/]+)\//.exec(f);
+    if (m) names.add((m[1] as string).replace(/-wasm$/, ""));
   }
   // Add dependents until nothing new joins.
-  for (let grew = true; grew; ) {
-    grew = false
+  for (let grew = true; grew;) {
+    grew = false;
     for (const p of all) {
       if (!names.has(p.name) && p.deps.some((d) => names.has(d))) {
-        names.add(p.name)
-        grew = true
+        names.add(p.name);
+        grew = true;
       }
     }
   }
-  return all.filter((p) => names.has(p.name))
+  return all.filter((p) => names.has(p.name));
 }
 
 /** Whether the PR carries the label and a stated reason. */
-export function accepted(labels: string[], body: string): { ok: boolean; reason: string | null } {
-  if (!labels.includes(ACCEPT_LABEL)) return { ok: false, reason: null }
-  const m = /^\s*perf-accepted:[ \t]*(\S.*)$/im.exec(body)
-  const reason = m?.[1]?.trim() ?? ''
-  return reason.length >= MIN_REASON ? { ok: true, reason } : { ok: false, reason: null }
+export function accepted(
+  labels: string[],
+  body: string,
+): { ok: boolean; reason: string | null } {
+  if (!labels.includes(ACCEPT_LABEL)) return { ok: false, reason: null };
+  const m = /^\s*perf-accepted:[ \t]*(\S.*)$/im.exec(body);
+  const reason = m?.[1]?.trim() ?? "";
+  return reason.length >= MIN_REASON
+    ? { ok: true, reason }
+    : { ok: false, reason: null };
 }
 
 /** The median of `values`, which must not be empty. */
 export function median(values: number[]): number {
-  const s = [...values].sort((a, b) => a - b)
-  const mid = s.length >> 1
-  return s.length % 2 ? (s[mid] as number) : ((s[mid - 1] as number) + (s[mid] as number)) / 2
+  const s = [...values].sort((a, b) => a - b);
+  const mid = s.length >> 1;
+  return s.length % 2
+    ? (s[mid] as number)
+    : ((s[mid - 1] as number) + (s[mid] as number)) / 2;
 }
 
 /** Compare two sides' medians. Rows are sorted by id. */
-export function compare(base: Medians, head: Medians, threshold = THRESHOLD): Row[] {
-  const rows: Row[] = []
+export function compare(
+  base: Medians,
+  head: Medians,
+  threshold = THRESHOLD,
+): Row[] {
+  const rows: Row[] = [];
   for (const id of [...new Set([...base.keys(), ...head.keys()])].sort()) {
-    const b = base.get(id) ?? null
-    const h = head.get(id) ?? null
+    const b = base.get(id) ?? null;
+    const h = head.get(id) ?? null;
     if (b === null || h === null) {
-      rows.push({ id, base: b, head: h, ratio: null, status: b === null ? 'new' : 'removed' })
-      continue
+      rows.push({
+        id,
+        base: b,
+        head: h,
+        ratio: null,
+        status: b === null ? "new" : "removed",
+      });
+      continue;
     }
-    const ratio = h / b
-    const status = ratio > 1 + threshold ? 'slower' : ratio < 1 - threshold ? 'faster' : 'ok'
-    rows.push({ id, base: b, head: h, ratio, status })
+    const ratio = h / b;
+    const status =
+      ratio > 1 + threshold
+        ? "slower"
+        : ratio < 1 - threshold
+          ? "faster"
+          : "ok";
+    rows.push({ id, base: b, head: h, ratio, status });
   }
-  return rows
+  return rows;
 }
 
 /** `<id> -> ms` from a vitest JSON report (reporter=json) of one package. */
 export function parseVitest(pkg: string, report: unknown): Medians {
-  const out: Medians = new Map()
-  const files = (report as { testResults?: { assertionResults?: unknown[] }[] }).testResults ?? []
+  const out: Medians = new Map();
+  const files =
+    (report as { testResults?: { assertionResults?: unknown[] }[] })
+      .testResults ?? [];
   for (const file of files) {
-    for (const a of (file.assertionResults ?? []) as { benchmarks?: { name: string; tasks: { name: string; latency: { p50: number } }[] }[] }[]) {
+    for (const a of (file.assertionResults ?? []) as {
+      benchmarks?: {
+        name: string;
+        tasks: { name: string; latency: { p50: number } }[];
+      }[];
+    }[]) {
       for (const group of a.benchmarks ?? []) {
-        for (const task of group.tasks) out.set(`ts:${pkg}/${group.name}/${task.name}`, task.latency.p50)
+        for (const task of group.tasks)
+          out.set(`ts:${pkg}/${group.name}/${task.name}`, task.latency.p50);
       }
     }
   }
-  return out
+  return out;
 }
 
 /** `<id> -> ms` from criterion's `benchmark.json` and `estimates.json` pairs under `dir`. */
 export function parseCriterion(crate: string, dir: string): Medians {
-  const out: Medians = new Map()
+  const out: Medians = new Map();
   const walk = (d: string): void => {
     for (const e of readdirSync(d, { withFileTypes: true })) {
-      if (!e.isDirectory()) continue
-      const p = join(d, e.name)
-      if (e.name === 'new' && existsSync(join(p, 'estimates.json')) && existsSync(join(p, 'benchmark.json'))) {
-        const est = JSON.parse(readFileSync(join(p, 'estimates.json'), 'utf8')) as { median: { point_estimate: number } }
-        const meta = JSON.parse(readFileSync(join(p, 'benchmark.json'), 'utf8')) as { full_id: string }
-        out.set(`rust:${crate}/${meta.full_id}`, est.median.point_estimate / 1e6)
-      } else if (e.name !== 'report') {
-        walk(p)
+      if (!e.isDirectory()) continue;
+      const p = join(d, e.name);
+      if (
+        e.name === "new" &&
+        existsSync(join(p, "estimates.json")) &&
+        existsSync(join(p, "benchmark.json"))
+      ) {
+        const est = JSON.parse(
+          readFileSync(join(p, "estimates.json"), "utf8"),
+        ) as { median: { point_estimate: number } };
+        const meta = JSON.parse(
+          readFileSync(join(p, "benchmark.json"), "utf8"),
+        ) as { full_id: string };
+        out.set(
+          `rust:${crate}/${meta.full_id}`,
+          est.median.point_estimate / 1e6,
+        );
+      } else if (e.name !== "report") {
+        walk(p);
       }
     }
-  }
-  if (existsSync(dir)) walk(dir)
-  return out
+  };
+  if (existsSync(dir)) walk(dir);
+  return out;
 }
 
-function sh(cmd: string, args: string[], cwd: string, env: Record<string, string> = {}): string {
+function sh(
+  cmd: string,
+  args: string[],
+  cwd: string,
+  env: Record<string, string> = {},
+): string {
   return execFileSync(cmd, args, {
     cwd,
     env: { ...process.env, ...env },
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'inherit'],
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "inherit"],
     maxBuffer: 256 << 20,
-  })
+  });
 }
 
 /** Build what a package's benchmarks import, on one side. */
 function build(root: string, p: BenchPackage): void {
-  if (p.lang === 'ts') sh('pnpm', ['--filter', `./packages/ts/${p.name}...`, '--if-present', 'run', 'build'], root)
+  if (p.lang === "ts")
+    sh(
+      "pnpm",
+      [
+        "--filter",
+        `./packages/ts/${p.name}...`,
+        "--if-present",
+        "run",
+        "build",
+      ],
+      root,
+    );
 }
 
 /** Run one package's benchmarks on one side; its medians. */
-function runPackage(root: string, p: BenchPackage, corpusFile: string, scratch: string): Medians {
-  if (p.lang === 'ts') {
-    const out = join(scratch, `${p.name}-${Math.random().toString(36).slice(2)}.json`)
-    sh('pnpm', ['exec', 'vitest', 'bench', '--run', '--reporter=json', `--outputFile=${out}`], join(root, 'packages/ts', p.name))
-    return parseVitest(p.name, JSON.parse(readFileSync(out, 'utf8')))
+function runPackage(
+  root: string,
+  p: BenchPackage,
+  corpusFile: string,
+  scratch: string,
+): Medians {
+  if (p.lang === "ts") {
+    const out = join(
+      scratch,
+      `${p.name}-${Math.random().toString(36).slice(2)}.json`,
+    );
+    sh(
+      "pnpm",
+      [
+        "exec",
+        "vitest",
+        "bench",
+        "--run",
+        "--reporter=json",
+        `--outputFile=${out}`,
+      ],
+      join(root, "packages/ts", p.name),
+    );
+    return parseVitest(p.name, JSON.parse(readFileSync(out, "utf8")));
   }
-  const rustRoot = join(root, 'packages/rust')
-  const target = join(rustRoot, 'target', 'criterion')
-  rmSync(target, { recursive: true, force: true })
-  sh('cargo', ['bench', '-p', p.name, '--benches', '--locked'], rustRoot, { OSDLC_BENCH_CORPUS: corpusFile })
-  return parseCriterion(p.name, target)
+  const rustRoot = join(root, "packages/rust");
+  const target = join(rustRoot, "target", "criterion");
+  rmSync(target, { recursive: true, force: true });
+  sh("cargo", ["bench", "-p", p.name, "--benches", "--locked"], rustRoot, {
+    OSDLC_BENCH_CORPUS: corpusFile,
+  });
+  return parseCriterion(p.name, target);
 }
 
 /** Whether `root` has the package's benchmarks (a new benchmark's package is absent on the base). */
 function hasBenches(root: string, p: BenchPackage): boolean {
-  return discover(root).some((q) => q.lang === p.lang && q.name === p.name)
+  return discover(root).some((q) => q.lang === p.lang && q.name === p.name);
 }
 
 /** The markdown table of the rows. */
 export function table(rows: Row[], threshold = THRESHOLD): string {
-  const fmt = (v: number | null): string => (v === null ? '-' : v >= 1 ? `${v.toFixed(2)} ms` : `${(v * 1000).toFixed(1)} us`)
+  const fmt = (v: number | null): string =>
+    v === null
+      ? "-"
+      : v >= 1
+        ? `${v.toFixed(2)} ms`
+        : `${(v * 1000).toFixed(1)} us`;
   const lines = [
     `Median per iteration, head against base; a gated benchmark fails above +${Math.round(threshold * 100)}%.`,
-    '',
-    '| benchmark | base | head | change | |',
-    '| --- | ---: | ---: | ---: | --- |',
-  ]
+    "",
+    "| benchmark | base | head | change | |",
+    "| --- | ---: | ---: | ---: | --- |",
+  ];
   for (const r of rows) {
-    const change = r.ratio === null ? '' : `${r.ratio >= 1 ? '+' : ''}${((r.ratio - 1) * 100).toFixed(1)}%`
-    lines.push(`| ${r.id} | ${fmt(r.base)} | ${fmt(r.head)} | ${change} | ${r.status === 'ok' ? '' : r.status} |`)
+    const change =
+      r.ratio === null
+        ? ""
+        : `${r.ratio >= 1 ? "+" : ""}${((r.ratio - 1) * 100).toFixed(1)}%`;
+    lines.push(
+      `| ${r.id} | ${fmt(r.base)} | ${fmt(r.head)} | ${change} | ${r.status === "ok" ? "" : r.status} |`,
+    );
   }
-  return lines.join('\n')
+  return lines.join("\n");
 }
 
 function flag(args: string[], name: string): string | undefined {
-  const i = args.indexOf(name)
-  return i >= 0 ? args[i + 1] : undefined
+  const i = args.indexOf(name);
+  return i >= 0 ? args[i + 1] : undefined;
 }
 
 function changedFiles(file: string | undefined): string[] | null {
-  if (file === undefined) return null
-  return readFileSync(file, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean)
+  if (file === undefined) return null;
+  return readFileSync(file, "utf8")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
 }
 
 /** Run the gate; resolves with the process exit code. */
 export function main(argv: string[]): number {
-  if (argv[0] === 'pick') {
-    const head = argv[1] ?? '.'
-    const picked = pick(changedFiles(flag(argv, '--changed')), discover(head))
-    console.log(JSON.stringify(picked.map((p) => `${p.lang}:${p.name}`)))
-    return 0
+  if (argv[0] === "pick") {
+    const head = argv[1] ?? ".";
+    const picked = pick(changedFiles(flag(argv, "--changed")), discover(head));
+    console.log(JSON.stringify(picked.map((p) => `${p.lang}:${p.name}`)));
+    return 0;
   }
-  const [base, head] = argv
-  if (!base || !head || base.startsWith('--') || head.startsWith('--')) {
-    console.error('usage: node scripts/perf-gate.ts <base-dir> <head-dir> [--changed <file>] [--rounds N] [--out <dir>]')
-    return 2
+  const [base, head] = argv;
+  if (!base || !head || base.startsWith("--") || head.startsWith("--")) {
+    console.error(
+      "usage: node scripts/perf-gate.ts <base-dir> <head-dir> [--changed <file>] [--rounds N] [--out <dir>]",
+    );
+    return 2;
   }
-  const rounds = Number(flag(argv, '--rounds') ?? 3)
-  const outDir = flag(argv, '--out')
-  const picked = pick(changedFiles(flag(argv, '--changed')), discover(head))
+  const rounds = Number(flag(argv, "--rounds") ?? 3);
+  const outDir = flag(argv, "--out");
+  const picked = pick(changedFiles(flag(argv, "--changed")), discover(head));
   if (picked.length === 0) {
-    console.log('perf gate: no package with benchmarks is affected; nothing to compare.')
-    return 0
+    console.log(
+      "perf gate: no package with benchmarks is affected; nothing to compare.",
+    );
+    return 0;
   }
-  console.log(`perf gate: ${picked.map((p) => `${p.lang}:${p.name}`).join(', ')}; ${rounds} rounds`)
+  console.log(
+    `perf gate: ${picked.map((p) => `${p.lang}:${p.name}`).join(", ")}; ${rounds} rounds`,
+  );
 
-  const scratch = mkdtempSync(join(tmpdir(), 'perf-gate-'))
-  const corpusFile = join(scratch, 'corpus.json')
-  sh('node', [join(head, 'bench/corpus/cli.ts'), corpusFile], head)
+  const scratch = mkdtempSync(join(tmpdir(), "perf-gate-"));
+  const corpusFile = join(scratch, "corpus.json");
+  sh("node", [join(head, "bench/corpus/cli.ts"), corpusFile], head);
   // Both sides time the head's corpus.
-  if (existsSync(join(base, 'bench'))) cpSync(join(head, 'bench/corpus'), join(base, 'bench/corpus'), { recursive: true })
+  if (existsSync(join(base, "bench")))
+    cpSync(join(head, "bench/corpus"), join(base, "bench/corpus"), {
+      recursive: true,
+    });
 
-  const sides = { base: { root: base }, head: { root: head } } as const
-  const samples = { base: new Map<string, number[]>(), head: new Map<string, number[]>() }
-  for (const side of ['base', 'head'] as const) {
-    for (const p of picked) if (side === 'head' || hasBenches(base, p)) build(sides[side].root, p)
+  const sides = { base: { root: base }, head: { root: head } } as const;
+  const samples = {
+    base: new Map<string, number[]>(),
+    head: new Map<string, number[]>(),
+  };
+  for (const side of ["base", "head"] as const) {
+    for (const p of picked)
+      if (side === "head" || hasBenches(base, p)) build(sides[side].root, p);
   }
   for (let round = 0; round < rounds; round++) {
-    const order = round % 2 === 0 ? (['base', 'head'] as const) : (['head', 'base'] as const)
+    const order =
+      round % 2 === 0
+        ? (["base", "head"] as const)
+        : (["head", "base"] as const);
     for (const p of picked) {
       for (const side of order) {
-        if (side === 'base' && !hasBenches(base, p)) continue
-        console.log(`round ${round + 1}/${rounds}: ${side} ${p.lang}:${p.name}`)
-        for (const [id, ms] of runPackage(sides[side].root, p, corpusFile, scratch)) {
-          const list = samples[side].get(id) ?? []
-          list.push(ms)
-          samples[side].set(id, list)
+        if (side === "base" && !hasBenches(base, p)) continue;
+        console.log(
+          `round ${round + 1}/${rounds}: ${side} ${p.lang}:${p.name}`,
+        );
+        for (const [id, ms] of runPackage(
+          sides[side].root,
+          p,
+          corpusFile,
+          scratch,
+        )) {
+          const list = samples[side].get(id) ?? [];
+          list.push(ms);
+          samples[side].set(id, list);
         }
       }
     }
   }
-  const reduce = (m: Map<string, number[]>): Medians => new Map([...m].map(([id, v]) => [id, median(v)]))
-  const rows = compare(reduce(samples.base), reduce(samples.head))
-  const text = table(rows)
-  console.log(text)
+  const reduce = (m: Map<string, number[]>): Medians =>
+    new Map([...m].map(([id, v]) => [id, median(v)]));
+  const rows = compare(reduce(samples.base), reduce(samples.head));
+  const text = table(rows);
+  console.log(text);
   if (outDir) {
-    mkdirSync(outDir, { recursive: true })
-    writeFileSync(join(outDir, 'perf-gate.json'), JSON.stringify({ rounds, rows, samples: { base: [...samples.base], head: [...samples.head] } }, null, 2))
-    writeFileSync(join(outDir, 'perf-gate.md'), text + '\n')
+    mkdirSync(outDir, { recursive: true });
+    writeFileSync(
+      join(outDir, "perf-gate.json"),
+      JSON.stringify(
+        {
+          rounds,
+          rows,
+          samples: { base: [...samples.base], head: [...samples.head] },
+        },
+        null,
+        2,
+      ),
+    );
+    writeFileSync(join(outDir, "perf-gate.md"), text + "\n");
   }
-  rmSync(scratch, { recursive: true, force: true })
+  rmSync(scratch, { recursive: true, force: true });
 
-  const slower = rows.filter((r) => r.status === 'slower')
-  const labels = (process.env['PERF_LABELS'] ?? '').split(',').map((l) => l.trim()).filter(Boolean)
-  const verdict = accepted(labels, process.env['PERF_BODY'] ?? '')
-  let summary = text
-  let code = 0
+  const slower = rows.filter((r) => r.status === "slower");
+  const labels = (process.env["PERF_LABELS"] ?? "")
+    .split(",")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const verdict = accepted(labels, process.env["PERF_BODY"] ?? "");
+  let summary = text;
+  let code = 0;
   if (slower.length > 0) {
     if (verdict.ok) {
-      summary += `\n\nSlowdown accepted by the \`${ACCEPT_LABEL}\` label: ${verdict.reason}`
+      summary += `\n\nSlowdown accepted by the \`${ACCEPT_LABEL}\` label: ${verdict.reason}`;
     } else {
-      summary += `\n\n${slower.length} benchmark(s) are more than ${Math.round(THRESHOLD * 100)}% slower. To let a deliberate slowdown through, add the \`${ACCEPT_LABEL}\` label and a line \`Perf-accepted: <reason>\` to the PR body.`
-      code = 1
+      summary += `\n\n${slower.length} benchmark(s) are more than ${Math.round(THRESHOLD * 100)}% slower. To let a deliberate slowdown through, add the \`${ACCEPT_LABEL}\` label and a line \`Perf-accepted: <reason>\` to the PR body.`;
+      code = 1;
     }
-    console.log(summary.slice(text.length))
+    console.log(summary.slice(text.length));
   }
-  if (process.env['GITHUB_STEP_SUMMARY']) appendFileSync(process.env['GITHUB_STEP_SUMMARY'], `## Perf gate\n\n${summary}\n`)
-  return code
+  if (process.env["GITHUB_STEP_SUMMARY"])
+    appendFileSync(
+      process.env["GITHUB_STEP_SUMMARY"],
+      `## Perf gate\n\n${summary}\n`,
+    );
+  return code;
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) process.exit(main(process.argv.slice(2)))
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href)
+  process.exit(main(process.argv.slice(2)));

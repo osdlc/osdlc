@@ -17,7 +17,10 @@
 // install of its own.
 
 /** The part of vitest's `bench` fixture this helper calls. */
-export type BenchFixture = (name: string, fn: () => void | Promise<void>) => { run(): Promise<unknown> }
+export type BenchFixture = (
+  name: string,
+  fn: () => void | Promise<void>,
+) => { run(): Promise<unknown> };
 
 /** Time each case in turn. */
 export async function runCases(
@@ -25,6 +28,6 @@ export async function runCases(
   cases: Record<string, () => void | Promise<void>>,
 ): Promise<void> {
   for (const [name, fn] of Object.entries(cases)) {
-    await bench(name, fn).run()
+    await bench(name, fn).run();
   }
 }

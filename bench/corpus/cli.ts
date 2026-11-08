@@ -4,21 +4,24 @@
 //
 // The file is `{ "bodies": string[], "largest": string, "slow": {name, body}[] }`.
 // `--stats` prints the corpus size and construct counts to stderr.
-import { writeFileSync } from 'node:fs'
+import { writeFileSync } from "node:fs";
 
-import { corpus } from './index.ts'
+import { corpus } from "./index.ts";
 
-const [out, ...flags] = process.argv.slice(2)
+const [out, ...flags] = process.argv.slice(2);
 if (!out) {
-  console.error('usage: node bench/corpus/cli.ts <out.json> [--stats]')
-  process.exit(2)
+  console.error("usage: node bench/corpus/cli.ts <out.json> [--stats]");
+  process.exit(2);
 }
-const c = corpus()
-writeFileSync(out, JSON.stringify({ bodies: c.bodies, largest: c.largest, slow: c.slow }))
-if (flags.includes('--stats')) {
-  const all = c.bodies.join('\n')
-  const count = (re: RegExp) => (all.match(re) ?? []).length
-  const kb = all.length / 1024
+const c = corpus();
+writeFileSync(
+  out,
+  JSON.stringify({ bodies: c.bodies, largest: c.largest, slow: c.slow }),
+);
+if (flags.includes("--stats")) {
+  const all = c.bodies.join("\n");
+  const count = (re: RegExp) => (all.match(re) ?? []).length;
+  const kb = all.length / 1024;
   console.error(
     JSON.stringify(
       {
@@ -37,5 +40,5 @@ if (flags.includes('--stats')) {
       null,
       2,
     ),
-  )
+  );
 }
