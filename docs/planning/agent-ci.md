@@ -46,7 +46,7 @@ flowchart LR
     PLAN["Plan + investigations I1–I5"]
   end
   subgraph house["Housekeeping"]
-    PLANPR["PR 713: this plan"]
+    PLANPR["PR 713: this plan, merged"]
     PARLEY["Retire the packaging parley"]
   end
   subgraph facts["Facts · harness-reference (skillwright repo)"]
@@ -61,7 +61,7 @@ flowchart LR
     CUR["Cursor: write .cursor/cli.json, fix print-mode note"]
   end
   subgraph gate["Gate"]
-    ARCH["API and architecture review: dependencies and public APIs"]
+    ARCH["API and architecture review 1: docs/parley/agent-ci-review-1.json"]
   end
   subgraph acts["CI glue · packages/gh-actions"]
     SETUP["PR 716: agent-setup (draft)"]
@@ -110,10 +110,9 @@ flowchart LR
   classDef yours fill:#f5c27a,stroke:#c99545,color:#1b2230
   classDef next fill:#2f5bd3,stroke:#2144a3,color:#ffffff
   classDef later fill:#8a93a3,stroke:#6b7384,color:#ffffff
-  class W710,P711,P707,P712,PLAN,PARLEY done
+  class W710,P711,P707,P712,PLAN,PARLEY,PLANPR done
   class UP yours
-  class PLANPR review
-  class ARCH active
+  class ARCH blocked
   class RUN,SETUP review
   class PERM,PROBE,CHECK,STRICT,CUR,ANS,SPEC,MULTI next
   class MCP,PUB,DATA,PIN later
@@ -127,7 +126,7 @@ Checked 2026-11-08. A periodic check refreshes this table and the graph.
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
 | [#716](https://github.com/osdlc/osdlc/pull/716) | feat(gh-actions): agent-setup action  | draft | none   | —              | waits on the API and architecture review                             | review gate, then merge  |
 | [#715](https://github.com/osdlc/osdlc/pull/715) | feat(agent-call): agent-call run command | draft | none   | —              | waits on the API and architecture review                             | review gate, then merge  |
-| [#713](https://github.com/osdlc/osdlc/pull/713) | docs(planning): plan coding agents in CI | open  | none   | —              | needs your review                                                    | merge when reviewed      |
+| [#713](https://github.com/osdlc/osdlc/pull/713) | docs(planning): plan coding agents in CI | merged | — | — | — | merged 2026-11-08 |
 | [#712](https://github.com/osdlc/osdlc/pull/712) | gh-actions: claude-setup, claude-pr-answer | closed | none  | —              | —                                                                    | closed 2026-11-08; branch kept as a starting point |
 | [#711](https://github.com/osdlc/osdlc/pull/711) | claude.yml: ANTHROPIC_API_KEY            | merged | none  | —              | —                                                                    | merged 2026-11-08        |
 | [#622](https://github.com/osdlc/osdlc/pull/622) | Proposal: transcripts in agent-call and observe | draft | none   | —              | —                                                                    | related to agent-call, not on this plan's path |
