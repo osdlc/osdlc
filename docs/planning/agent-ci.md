@@ -118,6 +118,17 @@ flowchart LR
   class MCP,PUB,DATA,PIN,STRICT later
 ```
 
+## Review queue
+
+What is ready for your review, in the order to review it. Rewritten as PRs
+move; merged PRs drop off.
+
+| Order | PR | What | Why this order | Status |
+| --- | --- | --- | --- | --- |
+| 1 | [#715](https://github.com/osdlc/osdlc/pull/715) | agent-call `run` CLI and `limits.maxTurns` | Unblocks the agent-call release that `agent-pr-answer` needs | ready; checks rerunning after update from main |
+| 2 | [#721](https://github.com/osdlc/osdlc/pull/721) | agent-call: cursor allow and deny via `.cursor/cli.json` | Same package as #715; review after it so a conflict (README tables, changesets) lands on one PR; can ship in the same release | draft; gate done, waiting on a flaky agent-seat test rerun |
+| 3 | [#716](https://github.com/osdlc/osdlc/pull/716) | `agent-setup` action and `gh-actions release` workflow | Independent of agent-call; needed before `agent-pr-answer` | ready; checks rerunning after update from main |
+
 ## PR tracker
 
 Checked 2026-11-08. A periodic check refreshes this table and the graph.
