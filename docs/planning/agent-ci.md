@@ -180,8 +180,7 @@ Rules:
 
 ## Investigations
 
-Settle these before building. Findings go in the table below and the
-sections after it.
+All five are answered; the findings follow the sections below.
 
 | Id  | Question                                                                                                      | Status |
 | --- | ------------------------------------------------------------------------------------------------------------- | ------ |
@@ -223,25 +222,6 @@ approved on 2026-11-08. Decisions:
 | `marketplaces` input | Keep `name=url [ref]`. |
 | Order | Merge #715 with these decisions, release agent-call, then build `agent-pr-answer`. |
 
-Questions raised before the review:
-
-- `strict` refuses read-only on claude and cursor, because both map it to an
-  approximation (`--permission-mode plan`, `--mode ask`). **Decided:** keep
-  strict as built (fail; the caller relaxes with `strict: false`). Backlog:
-  make read-only enforced on claude (tool denies plus the Bash sandbox) and
-  cursor (`--mode ask` plus `.cursor/cli.json` denies), backed by
-  harness-reference facts, so strict passes. (#715)
-- `maxTurns`: `AgentCallSpec` has no turn limit; claude has `--max-turns`.
-  Add it to the library spec? (#715)
-- Cursor `allowTools` is dropped; write `.cursor/cli.json` instead (I2).
-- agent-setup installs cursor from its build tarball, because cursor's
-  installer cannot pin a version. Acceptable? (#716)
-- Cursor plugins: skillwright only registers the marketplace. Hard error or
-  warning? (#716)
-- Releasing the shared `v1` tag: a workflow or by hand? (#716)
-- `marketplaces` input as `name=url [ref]`, since skillwright cannot read a
-  remote marketplace's name. (#716)
-
 ## PR process
 
 Every PR opens as a draft. Before it is marked ready for review it goes
@@ -250,18 +230,17 @@ or declined with a reason) in one PR comment. Then it moves out of draft.
 
 ## Work, in order
 
-1. Push this plan as a docs PR. (The packaging parley is retired.)
-2. Add the `permissions` category to harness-reference for claude, codex
+1. Add the `permissions` category to harness-reference for claude, codex
    and cursor (I5).
-3. `agent-call run`: spec file, `file` / `text` / `input` prompt parts,
-   `--explain`. This can start now. `strict` follows once its capability
-   map is checked against harness-reference.
-4. Generic actions in `packages/gh-actions/`, one shared `v1`:
+2. `agent-call run`: spec file, `file` / `text` / `input` prompt parts,
+   `--explain`. `strict` follows once its capability map is checked against
+   harness-reference.
+3. Generic actions in `packages/gh-actions/`, one shared `v1`:
    `agent-setup` over skillwright's install, `agent-pr-answer` as fetch,
    `agent-call run`, post, starting from #712's branch.
-5. Move `claude.yml` to the spec; then run the same spec on codex and
+4. Move `claude.yml` to the spec; then run the same spec on codex and
    cursor.
-6. Later: MCP and hooks through skillwright; move the actions to
+5. Later: MCP and hooks through skillwright; move the actions to
    `osdlc/actions` with a Marketplace listing once something outside osdlc
    uses them.
 
