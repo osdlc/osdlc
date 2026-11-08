@@ -36,7 +36,7 @@ fn tags(c: &mut Criterion) {
     let bodies = strings(&corpus, "bodies");
     let largest = corpus["largest"].as_str().expect("corpus has `largest`");
 
-    for dialect in TagDialect::ALL {
+    for &dialect in TagDialect::ALL {
         let mut group = c.benchmark_group(format!("inline_tags {}", dialect.as_str()));
         group.bench_function("vault", |b| {
             b.iter(|| {

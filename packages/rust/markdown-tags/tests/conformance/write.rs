@@ -5,8 +5,8 @@
 //! cargo run -p markdown-tags --example conformance-write
 //! ```
 //!
-//! Inputs are written by hand in the suite. This rewrites every `inline_tags`
-//! case's `expect` from what this crate, the family's reference, gives, and
+//! Inputs are written by hand in the suite. This rewrites every case's
+//! `expect` except `renderer_only`'s, from what this crate, the family's reference, gives, and
 //! stamps `referenceVersion` with the crate's version. The `renderer_only`
 //! section is the renderer's answer, which a source scan cannot give, so its
 //! `expect` values stay as written. Running it twice writes the same bytes.

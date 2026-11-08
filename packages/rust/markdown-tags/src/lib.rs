@@ -100,7 +100,8 @@ impl TagDialect {
     ///
     /// assert_eq!(TagDialect::ALL[0], TagDialect::default());
     /// ```
-    pub const ALL: [TagDialect; 3] = [TagDialect::Obsidian, TagDialect::Unicode, TagDialect::Ascii];
+    pub const ALL: &'static [TagDialect] =
+        &[TagDialect::Obsidian, TagDialect::Unicode, TagDialect::Ascii];
 
     /// The dialect's name: `obsidian`, `unicode` or `ascii`.
     ///
@@ -164,7 +165,8 @@ impl FromStr for TagDialect {
     /// rather than meaning something.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         TagDialect::ALL
-            .into_iter()
+            .iter()
+            .copied()
             .find(|d| d.as_str() == s)
             .ok_or_else(|| ParseTagDialectError(s.to_owned()))
     }
@@ -408,10 +410,25 @@ fn blank_definitions(chars: &mut [char]) {
         } else if let Some(colon) = definition_colon(line).filter(|_| may_start) {
             blank(&mut chars[start + colon + 1..end]);
         } else {
-            may_start = false;
+            may_start = is_atx_heading(line);
         }
         start = end + 1;
     }
+}
+
+/// Whether `line` is an ATX heading: up to three spaces, one to six `#`, then a
+/// space, a tab or the end of the line. A heading is not a paragraph, so a
+/// definition may follow it directly.
+fn is_atx_heading(line: &[char]) -> bool {
+    let indent = line.iter().take_while(|&&c| c == ' ').count();
+    if indent > 3 {
+        return false;
+    }
+    let hashes = line[indent..].iter().take_while(|&&c| c == '#').count();
+    (1..=6).contains(&hashes)
+        && line
+            .get(indent + hashes)
+            .is_none_or(|&c| c == ' ' || c == '\t' || c == '\r')
 }
 
 /// The index of the `:` in a `[label]:` line, or `None` when the line is not
@@ -465,7 +482,7 @@ mod tests {
 
     #[test]
     fn a_dialect_round_trips_through_its_name() {
-        for d in TagDialect::ALL {
+        for &d in TagDialect::ALL {
             assert_eq!(d.to_string().parse::<TagDialect>(), Ok(d));
         }
         assert_eq!(

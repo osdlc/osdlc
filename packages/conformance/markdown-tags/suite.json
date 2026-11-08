@@ -692,6 +692,90 @@
               "def"
             ]
           }
+        },
+        {
+          "name": "definition_after_a_heading",
+          "input": {
+            "body": "# Title\n[ref]: #anchor\n"
+          },
+          "expect": {
+            "obsidian": [],
+            "unicode": [
+              "anchor"
+            ],
+            "ascii": [
+              "anchor"
+            ]
+          }
+        },
+        {
+          "name": "definition_after_an_indented_heading",
+          "input": {
+            "body": "   ## Title\n[ref]: #anchor"
+          },
+          "expect": {
+            "obsidian": [],
+            "unicode": [
+              "anchor"
+            ],
+            "ascii": [
+              "anchor"
+            ]
+          }
+        },
+        {
+          "name": "hash_line_is_not_a_heading",
+          "input": {
+            "body": "#Title\n[ref]: #anchor"
+          },
+          "expect": {
+            "obsidian": [
+              "Title",
+              "anchor"
+            ],
+            "unicode": [
+              "Title",
+              "anchor"
+            ],
+            "ascii": [
+              "Title",
+              "anchor"
+            ]
+          }
+        },
+        {
+          "name": "definition_after_a_blank_line_crlf",
+          "input": {
+            "body": "a\r\n\r\n[ref]: #anchor\r\n"
+          },
+          "expect": {
+            "obsidian": [],
+            "unicode": [
+              "anchor"
+            ],
+            "ascii": [
+              "anchor"
+            ]
+          }
+        },
+        {
+          "name": "destination_across_a_blank_line_crlf",
+          "input": {
+            "body": "[a](#x\r\n\r\n#y)"
+          },
+          "expect": {
+            "obsidian": [
+              "x",
+              "y"
+            ],
+            "unicode": [
+              "y"
+            ],
+            "ascii": [
+              "x",
+              "y"
+            ]
+          }
         }
       ]
     },

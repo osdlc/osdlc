@@ -4,8 +4,9 @@
  *
  * The suite holds the cases this package and the Rust `markdown-tags` crate
  * must agree on. The crate is the family's reference: its generator writes
- * every `inline_tags` expectation. Each case gives the tags found in a body
- * under all three dialects.
+ * every expectation but `renderer_only`'s. An `inline_tags` case gives the tags
+ * found in a body under all three dialects; a `tag_at` case gives the tag at
+ * one offset.
  *
  * The `renderer_only` section is a renderer's answer, read from the syntax
  * tree where a source scan cannot match it. This package skips it, by name,

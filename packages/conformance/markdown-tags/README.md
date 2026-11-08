@@ -67,4 +67,9 @@ Why a case is there, where its name does not say it:
 - `escaped_bracket`: An escaped [ opens no link text.
 - `destination_across_a_blank_line`: A blank line ends the paragraph, so the ( is never closed.
 - `footnote_definition`: A footnote's text is rendered, so obsidian does not blank it.
+- `definition_after_a_heading`: A heading is not a paragraph, so a definition may follow it directly.
+- `definition_after_an_indented_heading`: A heading may be indented up to three spaces.
+- `hash_line_is_not_a_heading`: No space follows the #, so the line is a paragraph and the definition cannot interrupt it.
+- `definition_after_a_blank_line_crlf`: As a definition after a blank line, with CRLF line endings.
+- `destination_across_a_blank_line_crlf`: As destination_across_a_blank_line, with CRLF line endings.
 - `definition_inside_a_paragraph`: A reference definition cannot interrupt a paragraph, so this line is text.

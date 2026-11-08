@@ -29,7 +29,7 @@ pub fn run(section: &str, input: &Value) -> Result<Option<Value>, String> {
         "inline_tags" => {
             let body = body(input)?;
             let mut out = Map::new();
-            for dialect in TagDialect::ALL {
+            for &dialect in TagDialect::ALL {
                 out.insert(
                     dialect.as_str().to_owned(),
                     tags(inline_tags(body, dialect)),

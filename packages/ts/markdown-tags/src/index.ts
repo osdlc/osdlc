@@ -238,12 +238,33 @@ function blankDefinitions(chars: string[]): void {
     let end = chars.indexOf('\n', start)
     if (end === -1) end = chars.length
     const line = chars.slice(start, end)
-    const colon = definitionColon(line)
     if (line.every((c) => WHITE_SPACE.test(c))) mayStart = true
-    else if (mayStart && colon !== null) blank(chars, start + colon + 1, end)
-    else mayStart = false
+    else {
+      const colon = mayStart ? definitionColon(line) : null
+      if (colon !== null) blank(chars, start + colon + 1, end)
+      else mayStart = isAtxHeading(line)
+    }
     start = end + 1
   }
+}
+
+/**
+ * Whether `line` is an ATX heading: up to three spaces, one to six `#`, then a
+ * space, a tab or the end of the line. A heading is not a paragraph, so a
+ * definition may follow it directly.
+ */
+function isAtxHeading(line: string[]): boolean {
+  let indent = 0
+  while (line[indent] === ' ') indent++
+  if (indent > 3) return false
+  let hashes = 0
+  while (line[indent + hashes] === '#') hashes++
+  const next = line[indent + hashes]
+  return (
+    hashes >= 1 &&
+    hashes <= 6 &&
+    (next === undefined || next === ' ' || next === '\t' || next === '\r')
+  )
 }
 
 /** The index of the `:` in a `[label]:` line, or `null` when the line is not one. */

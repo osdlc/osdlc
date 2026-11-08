@@ -26,7 +26,7 @@ fn the_public_items_are_the_pinned_ones() {
     let _: fn(&str) -> (Vec<String>, Vec<String>) = extract_both;
     let _: fn(&str, usize, TagDialect) -> Option<String> = tag_at;
     let _: fn(&str) -> Result<TagDialect, ParseTagDialectError> = TagDialect::from_str;
-    let _: [TagDialect; 3] = TagDialect::ALL;
+    let _: &[TagDialect] = TagDialect::ALL;
     let _: fn(TagDialect) -> &'static str = TagDialect::as_str;
 }
 

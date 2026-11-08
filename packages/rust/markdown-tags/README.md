@@ -94,7 +94,9 @@ renderer, so it finds no tag in `[see](#section)`, `![alt](#img)` or
 space. The blanking is a source approximation: a destination is the balanced
 `(...)` after a `]` that closes an open `[` in the same paragraph, and a
 definition is a `[label]:` line (not a `[^footnote]:`) that starts the text,
-follows a blank line or follows another definition.
+follows a blank line, a heading or another definition. A definition whose
+destination or title sits on the next line (`[ref]:` then `#anchor`) is not
+recognised, so a `#` there is read as a tag; the renderer reads none.
 
 Use `Obsidian` where the answer must match what a reader sees. Use `Unicode`
 where losing a tag is the worse mistake (a search index). Use `Ascii` where a

@@ -5,7 +5,7 @@ use markdown_tags::{TagDialect, extract_both, inline_tags, tag_at};
 fn main() {
     let body = "#santé and (#draft) #2024\n\n```\n#nottag\n```\n";
 
-    for dialect in TagDialect::ALL {
+    for &dialect in TagDialect::ALL {
         println!("{dialect:9} {:?}", inline_tags(body, dialect));
     }
 
