@@ -11,7 +11,7 @@ import { existsSync, realpathSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
 
 import type { CommandRunner } from '@osdlc/command-seam'
-import { Git } from '@osdlc/typed-git'
+import { Git, checkoutRoot } from '@osdlc/typed-git'
 import { Gh } from '@osdlc/typed-gh'
 
 import {
@@ -26,7 +26,7 @@ import { defaultProcessProbe, type ProcessProbe } from './processes.ts'
 import { lookupPrs, prsUnchecked } from './prs.ts'
 import { PROVIDER_CHOICES, providers, type ProviderChoice } from './providers/index.ts'
 import { defaultCacheDir, ensureMirror, isRemoteUrl, redactUrl } from './remote-mirror.ts'
-import { expandTilde, resolveEntries } from './resolve.ts'
+import { expandTilde, resolveEntries, type Resolution } from './resolve.ts'
 import {
   KINDS,
   RepoCleanerError,
@@ -192,9 +192,21 @@ export function sweptWith(
 }
 
 /**
+ * Whether the checkout `dir` is in tracks any file under it. True as well when
+ * git cannot say: then widening to that checkout reports why it cannot be
+ * read, which says more than "no git checkouts under it".
+ */
+function tracksFilesIn(dir: string, git: Git): boolean {
+  const listed = git.at(dir).try.lsFiles({ cached: true })
+  return !listed.ok || listed.value.length > 0
+}
+
+/**
  * Sweep `targets`: checkouts, directories to search for checkouts, or remote
  * URLs (swept through a clone kept in `cacheDir`, remote branches only). No
- * targets means `[cwd]`, resolved the same way.
+ * targets means `[cwd]`, resolved the same way, except that a `cwd` where the
+ * search finds no checkout, and whose checkout tracks files in it, sweeps
+ * that checkout.
  *
  * Never throws for a repository it cannot read: that one comes back with
  * `error` set, because a fan-out must not end on its first bad entry. Throws a
@@ -219,14 +231,28 @@ export function sweep(targets: readonly string[], opts: SweepOptions = {}): Swee
       }
     }
   }
-  const resolution =
+  const resolveOpts = {
+    git: new Git(cwd, { runner: opts.git }),
+    baseDir: cwd,
+    ...(opts.onWarn === undefined ? {} : { onWarn: opts.onWarn }),
+  }
+  let resolution: Resolution =
     entries.length === 0
       ? { repos: [], unresolved: [], scan: emptyScan() }
-      : resolveEntries(entries, {
-          git: new Git(cwd, { runner: opts.git }),
-          baseDir: cwd,
-          ...(opts.onWarn === undefined ? {} : { onWarn: opts.onWarn }),
-        })
+      : resolveEntries(entries, resolveOpts)
+  // With no target, a directory the checkout around it tracks files in means
+  // that checkout, as it does for git itself. The search comes first, and a
+  // directory the checkout tracks nothing in is not part of it: a home
+  // directory kept in git does not track ~/Developer, so a search there that
+  // finds nothing is reported as it is. So is a search that found checkouts
+  // it could not read.
+  const around =
+    targets.length === 0 && resolution.repos.length === 0 && resolution.scan.checkoutsFound === 0
+      ? checkoutRoot(cwd)
+      : null
+  if (around !== null && around !== resolve(cwd) && tracksFilesIn(cwd, resolveOpts.git)) {
+    resolution = resolveEntries([around], resolveOpts)
+  }
   if (branch !== undefined && resolution.repos.length > 1) {
     throw new RepoCleanerError(
       'conflict',
