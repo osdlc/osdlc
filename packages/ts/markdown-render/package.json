@@ -29,7 +29,7 @@
   },
   "type": "module",
   "sideEffects": [
-    "./src/theme.css"
+    "./dist/theme.css"
   ],
   "engines": {
     "node": ">=22"
@@ -51,11 +51,10 @@
       "types": "./dist/shiki.d.ts",
       "default": "./dist/shiki.js"
     },
-    "./theme.css": "./src/theme.css"
+    "./theme.css": "./dist/theme.css"
   },
   "files": [
     "dist/",
-    "src/theme.css",
     "README.md",
     "CHANGELOG.md",
     "LICENSE-MIT",
@@ -64,7 +63,7 @@
     "CONTRIBUTING.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node -e \"require('node:fs').cpSync('src/theme.css', 'dist/theme.css')\"",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "test": "vitest run",
     "coverage": "vitest run --coverage",

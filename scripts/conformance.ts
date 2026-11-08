@@ -34,7 +34,8 @@
 //     applies them, so a family a changeset levels passes on main and on that
 //     pull request.
 //   - Every library whose tests read a suite under packages/conformance/ is
-//     listed for that family, and no TypeScript library reads a crate's
+//     listed for that family, as an implementation or, for a library that only
+//     reads the suite (a renderer), as a reader, and no TypeScript library reads a crate's
 //     fixtures (or a crate a TypeScript library's) unless it is in UNMIGRATED.
 //
 // Each check returns a list of problems, empty when all is well.
@@ -65,6 +66,7 @@ export const CATCHING_UP: Record<string, string> = {
 export const UNMIGRATED = new Set([
   'packages/ts/gfm-table',
   'packages/ts/markdown-link',
+  'packages/ts/markdown-render',
   'packages/ts/yaml-splice',
   'packages/rust/markdown-contract',
 ])
@@ -79,6 +81,8 @@ export interface Family {
   reference: string
   generator: string
   implementations: Implementation[]
+  /** Libraries that read the suite but are not twins: no version match is asked of them. */
+  readers?: Implementation[]
 }
 
 const LANGUAGES = ['ts', 'rust']
@@ -98,7 +102,7 @@ export function registryProblems(raw: unknown): string[] {
       problems.push(`${name}: not an object`)
       continue
     }
-    const extra = Object.keys(f).filter((k) => !['reference', 'generator', 'implementations'].includes(k))
+    const extra = Object.keys(f).filter((k) => !['reference', 'generator', 'implementations', 'readers'].includes(k))
     if (extra.length > 0) problems.push(`${name}: unknown keys ${extra.join(', ')}`)
     if (typeof f['generator'] !== 'string' || f['generator'] === '') problems.push(`${name}: no generator command`)
     const impls = f['implementations']
@@ -424,7 +428,7 @@ export function checkRepo(root: string): string[] {
 
   const listed = new Map<string, Set<string>>()
   for (const [name, f] of Object.entries(families)) {
-    for (const i of f.implementations) {
+    for (const i of [...f.implementations, ...(f.readers ?? [])]) {
       if (!listed.has(i.dir)) listed.set(i.dir, new Set())
       listed.get(i.dir)!.add(name)
     }
