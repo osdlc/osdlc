@@ -126,9 +126,10 @@ move; merged PRs drop off.
 
 | Order | PR | What | Why this order | Status |
 | --- | --- | --- | --- | --- |
-| 1 | [#723](https://github.com/osdlc/osdlc/pull/723) | agent-call `run`: forward SIGINT and SIGTERM to the agent | Small fix from the codex review of #715; can ship in the same agent-call release | draft; gate done, 2 fixes pushed; CI queued |
-| 2 | [#721](https://github.com/osdlc/osdlc/pull/721) | agent-call: cursor allow and deny via `.cursor/cli.json` | Same package as #715 (merged); can ship in the same agent-call release | draft; gate done, codex fixes pushed; CI queued |
-| 3 | [#716](https://github.com/osdlc/osdlc/pull/716) | `agent-setup` action and `gh-actions release` workflow | Independent of agent-call; needed before `agent-pr-answer` | draft; gate done, codex fixes pushed; CI queued |
+| 1 | [#724](https://github.com/osdlc/osdlc/pull/724) | `claude.yml`: `@claude review` runs `/craft:code-review`; up to three API keys for rotation | Wanted ASAP, so you can start using reviews now | draft; codex review running |
+| 2 | [#723](https://github.com/osdlc/osdlc/pull/723) | agent-call `run`: forward SIGINT and SIGTERM to the agent | Small fix from the codex review of #715; can ship in the same agent-call release | draft; gate done, 2 fixes pushed; CI queued |
+| 3 | [#721](https://github.com/osdlc/osdlc/pull/721) | agent-call: cursor allow and deny via `.cursor/cli.json` | Same package as #715 (merged); can ship in the same agent-call release | draft; gate done, codex fixes pushed; CI queued |
+| 4 | [#716](https://github.com/osdlc/osdlc/pull/716) | `agent-setup` action and `gh-actions release` workflow | Independent of agent-call; needed before `agent-pr-answer` | draft; gate done, codex fixes pushed; CI queued |
 
 ## PR tracker
 
