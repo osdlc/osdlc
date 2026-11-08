@@ -169,12 +169,11 @@ function planCursor(command: readonly string[], trust: boolean, spec: AgentCallS
   // Verified on agent 2026.10.19: enforced under -p, and denies hold with --force.
   const rules = cursorPermissions(notes, permissions?.allowTools, permissions?.denyTools)
   if (rules !== undefined) {
-    const value = { allow: rules.allow, deny: rules.deny }
     projectFiles.push({
       path: CLI_JSON,
       key: 'permissions',
-      value,
-      preview: JSON.stringify({ permissions: value }, null, 2) + '\n',
+      value: rules,
+      preview: JSON.stringify({ permissions: rules }, null, 2) + '\n',
     })
   }
 
