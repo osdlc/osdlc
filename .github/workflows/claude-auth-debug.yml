@@ -1,8 +1,8 @@
 # Temporary: finds why claude-code-action fails on this repo. Delete after use.
 name: claude-auth-debug
 on:
-  push:
-    branches: [tmp/claude-auth-debug]
+  pull_request:
+    branches: [main]
 permissions:
   contents: read
   id-token: write
