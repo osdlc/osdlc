@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.1](https://github.com/osdlc/osdlc/compare/markdown-link/v0.8.0...markdown-link/v0.8.1) - 2026-11-08
+
+### Fixed
+
+- *(markdown-link)* escaped backticks are literal; same-note links display ([#694](https://github.com/osdlc/osdlc/pull/694))
+
 ### Fixed
 
 - `strip_code`: under `CodeRules::CommonMark` a backtick after an odd run of
