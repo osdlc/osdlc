@@ -161,6 +161,7 @@ function assertLinearGrowth(
   makeBody: (size: number) => string,
   rungs: readonly number[],
   ceilingMs?: number,
+  { step = GROWTH_STEP, reps = TIMING_REPS, ceiling = GROWTH_CEILING } = {},
 ): void {
   // The first pass through a fresh transformer pays regex compilation and JIT
   // warm-up. Spend it on the smallest rung, where it is cheap under any
@@ -171,7 +172,7 @@ function assertLinearGrowth(
   let previous = Infinity
   for (const [i, size] of rungs.entries()) {
     const body = makeBody(size)
-    const passes = GROWTH_STEP ** (top - i)
+    const passes = step ** (top - i)
 
     let elapsed = timeWindow(run, body, passes)
     // The absolute ceiling is checked on this first window, ahead of the
@@ -180,11 +181,11 @@ function assertLinearGrowth(
     // and failing here costs the suite one window of a blown-up rung rather
     // than TIMING_REPS of them.
     if (ceilingMs !== undefined) expect(elapsed / passes).toBeLessThan(ceilingMs)
-    for (let rep = 1; rep < TIMING_REPS; rep++) {
+    for (let rep = 1; rep < reps; rep++) {
       elapsed = Math.min(elapsed, timeWindow(run, body, passes))
     }
 
-    expect(elapsed).toBeLessThan(previous * GROWTH_CEILING)
+    expect(elapsed).toBeLessThan(previous * ceiling)
     previous = elapsed
   }
 }
@@ -251,11 +252,14 @@ describe('redos hardening', () => {
   // fail on the ratio, not on the clock.
   test('a long run of unterminated openers costs a flat amount per opener', () => {
     // `[[[[[[…` is the polynomial case, not the exponential one: a scanner that
-    // lets every opener walk to the end of the string is quadratic, and reads
-    // ~4.0× per rung against ~1.1× for a linear one.
-    const rungs = ladder(1000, 2)
-    assertLinearGrowth(remarkWikilinks(), (k) => '[['.repeat(k), rungs)
-    assertLinearGrowth(remarkEmbeds(), (k) => '![['.repeat(k), rungs)
+    // lets every opener walk to the end of the string is quadratic. The two
+    // rungs are 10× apart, with equal total volume per window, so a quadratic
+    // scanner reads ~10× against ~1× for a linear one; the bound of 3× sits
+    // far from both, and the minimum of many windows removes runner noise.
+    const rungs = [1000, 10_000]
+    const wide = { step: 10, reps: 9, ceiling: 3 }
+    assertLinearGrowth(remarkWikilinks(), (k) => '[['.repeat(k), rungs, undefined, wide)
+    assertLinearGrowth(remarkEmbeds(), (k) => '![['.repeat(k), rungs, undefined, wide)
   }, 30_000)
 
   test('a very large text node is scanned like any other', () => {
