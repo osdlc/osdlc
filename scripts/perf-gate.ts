@@ -319,11 +319,6 @@ function runPackage(
   return parseCriterion(p.name, target);
 }
 
-/** Whether `root` has the package's benchmarks (a new benchmark's package is absent on the base). */
-function hasBenches(root: string, p: BenchPackage): boolean {
-  return discover(root).some((q) => q.lang === p.lang && q.name === p.name);
-}
-
 /** The markdown table of the rows. */
 export function table(rows: Row[], threshold = THRESHOLD): string {
   const fmt = (v: number | null): string =>
@@ -400,14 +395,18 @@ export function main(argv: string[]): number {
       recursive: true,
     });
 
-  const sides = { base: { root: base }, head: { root: head } } as const;
+  const roots = { base, head } as const;
+  // A new benchmark's package is absent on the base.
+  const onBase = new Set(discover(base).map((q) => `${q.lang}:${q.name}`));
+  const hasBenches = (p: BenchPackage): boolean =>
+    onBase.has(`${p.lang}:${p.name}`);
   const samples = {
     base: new Map<string, number[]>(),
     head: new Map<string, number[]>(),
   };
   for (const side of ["base", "head"] as const) {
     for (const p of picked)
-      if (side === "head" || hasBenches(base, p)) build(sides[side].root, p);
+      if (side === "head" || hasBenches(p)) build(roots[side], p);
   }
   for (let round = 0; round < rounds; round++) {
     const order =
@@ -416,12 +415,12 @@ export function main(argv: string[]): number {
         : (["head", "base"] as const);
     for (const p of picked) {
       for (const side of order) {
-        if (side === "base" && !hasBenches(base, p)) continue;
+        if (side === "base" && !hasBenches(p)) continue;
         console.log(
           `round ${round + 1}/${rounds}: ${side} ${p.lang}:${p.name}`,
         );
         for (const [id, ms] of runPackage(
-          sides[side].root,
+          roots[side],
           p,
           corpusFile,
           scratch,
