@@ -3,7 +3,7 @@
   "pr": 719,
   "head": "0992b0e0224e546645a28cdff089ac1bf5f63f0a",
   "base": "6fcfc966d1bdbea9f55f87170a8b0ef4a05447b9",
-  "round": 2,
+  "round": 3,
   "claim": {
     "owner": "mac:claude-h2d6vn",
     "at": "2026-11-08T19:47:59.369Z"
@@ -63,6 +63,28 @@
       "status": "fixed",
       "reason": null,
       "fixedIn": "e27cb84d3c004b2bfbadb3723b218aa5d77607b2"
+    },
+    {
+      "id": "r3-1",
+      "round": 3,
+      "path": "packages/ts/markdown-astro/src/wikilink-ref.ts",
+      "line": 81,
+      "title": "listMarkdown no longer follows symlinked directories",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r3-2",
+      "round": 3,
+      "path": "packages/ts/markdown-astro/src/run.ts",
+      "line": 106,
+      "title": "Nested --clean guard fires mid-run, after earlier collections were already cleaned and rewritten",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
     }
   ]
 }
