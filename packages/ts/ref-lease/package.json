@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/ref-lease",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Compare-and-swap leases on git refs: create, replace and delete a ref at any git remote only if it still holds the sha you read, through git push --force-with-lease, with the payload as canonical JSON in the ref's commit. The payload type is yours.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
