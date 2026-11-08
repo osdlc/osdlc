@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './adapters/types.js'
 import type { Conversation } from './conversation.js'
 import { TMP_TOKEN, type PlannedCall } from './plan.js'
-import { applyProjectFile, ProjectFileError } from './project-files.js'
+import { applyProjectFile } from './project-files.js'
 import { spawnCollect } from './spawn.js'
 import type { AgentCallSpec } from './spec.js'
 
@@ -248,9 +248,7 @@ async function execute(
     }
   } catch (err) {
     await restoreAll()
-    const message =
-      err instanceof ProjectFileError || err instanceof Error ? err.message : String(err)
-    return { stdout: '', stderr: message, exitCode: null, durationMs: 0, timedOut: false }
+    return { stdout: '', stderr: errorMessage(err), exitCode: null, durationMs: 0, timedOut: false }
   }
   let tempDir: string | undefined
   try {
@@ -297,9 +295,12 @@ async function execute(
     }
     return raw
   } finally {
-    if (tempDir !== undefined) {
-      await rm(tempDir, { recursive: true, force: true })
+    try {
+      if (tempDir !== undefined) {
+        await rm(tempDir, { recursive: true, force: true })
+      }
+    } finally {
+      await restoreAll()
     }
-    await restoreAll()
   }
 }

@@ -114,4 +114,11 @@ describe('cursor .cursor/cli.json around the call', () => {
     expect(await readFile(join(dir, '.cursor/cli.json'), 'utf8')).toBe('[1]')
     expect(await readdir(join(dir, '.cursor'))).toEqual(['cli.json'])
   })
+
+  test('does not create a missing working directory', async () => {
+    const missing = join(dir, 'missing')
+    const result = await callAgent(fake(SHOW), spec(missing))
+    expect(result.error?.detail).toContain('does not exist')
+    expect(await readdir(dir)).toEqual([])
+  })
 })

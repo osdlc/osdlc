@@ -18,7 +18,9 @@ interface LockRecord {
   createdDir?: string | null
 }
 
+/** Same rule as `@osdlc/file-lock`'s `pidAlive`, kept local to hold the one-dependency rule. */
 function pidAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false
   try {
     process.kill(pid, 0)
     return true
@@ -57,6 +59,11 @@ export async function applyProjectFile(
   cwd: string,
   edit: ProjectFileEdit,
 ): Promise<() => Promise<void>> {
+  const isDir = await stat(cwd).then(
+    (s) => s.isDirectory(),
+    () => false,
+  )
+  if (!isDir) throw new ProjectFileError(`working directory ${cwd} does not exist`)
   const file = resolve(cwd, edit.path)
   const lock = file + LOCK_SUFFIX
   const createdDir = (await mkdir(dirname(file), { recursive: true })) ?? null
