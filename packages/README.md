@@ -189,6 +189,11 @@ Developed here, in this repository:
 - `packages/ts/markdown-contract` (`@osdlc/markdown-contract` on npm,
   contracts for markdown documents: one parse gives findings with lines and a
   typed model; contracts in TypeScript or YAML, a folder runner and a CLI)
+- `packages/ts/markdown-db` (`@osdlc/markdown-db` on npm, the validator for
+  [S-markdown-db](../docs/planning/standards/S-markdown-db.md): typed records
+  kept as Markdown, YAML and JSON files in a folder, checked against the
+  schemas, ids and links the folder holds; a library and a `markdown-db`
+  command)
 - `packages/ts/markdown-link` (`@osdlc/markdown-link` on npm, wikilink and
   relative markdown link parsing with spans, and the code lexer that keeps
   links in code out; the TypeScript implementation of the parsing half of the
