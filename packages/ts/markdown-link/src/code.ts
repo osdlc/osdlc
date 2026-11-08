@@ -226,7 +226,8 @@ class Fences {
       }
     }
     this.contentStart = cursor.contentStart()
-    this.paragraph = cursor.textPos < end
+    // An indented line starts code, not a paragraph, unless it continues one.
+    this.paragraph = cursor.textPos < end && (cursor.indent() <= 3 || wasParagraph)
     return 'outside'
   }
 }

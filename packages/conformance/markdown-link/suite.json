@@ -575,6 +575,86 @@
             "commonmark": "> | `a | [[x]] | b` |\n",
             "skill_export": "> |                 |\n"
           }
+        },
+        {
+          "name": "empty_bullet_does_not_interrupt_a_paragraph",
+          "input": {
+            "source": "Text\n-\n[[a]]\n"
+          },
+          "expect": {
+            "commonmark": "Text\n-\n[[a]]\n",
+            "skill_export": "Text\n-\n[[a]]\n"
+          }
+        },
+        {
+          "name": "empty_ordered_item_does_not_interrupt_a_paragraph",
+          "input": {
+            "source": "Text\n1.\n[[a]]\n"
+          },
+          "expect": {
+            "commonmark": "Text\n1.\n[[a]]\n",
+            "skill_export": "Text\n1.\n[[a]]\n"
+          }
+        },
+        {
+          "name": "bullet_interrupts_a_paragraph",
+          "input": {
+            "source": "Text\n- ```\n  [[a]]\n  ```\n[[b]]\n"
+          },
+          "expect": {
+            "commonmark": "Text\n     \n       \n     \n[[b]]\n",
+            "skill_export": "Text\n- ```\n  [[a]]\n     \n     \n"
+          }
+        },
+        {
+          "name": "ordered_item_with_paren_delimiter_from_one_interrupts_a_paragraph",
+          "input": {
+            "source": "Text\n1) ```\n   [[a]]\n   ```\n[[b]]\n"
+          },
+          "expect": {
+            "commonmark": "Text\n      \n        \n      \n[[b]]\n",
+            "skill_export": "Text\n1) ```\n   [[a]]\n      \n     \n"
+          }
+        },
+        {
+          "name": "ordered_item_with_paren_delimiter_not_from_one_does_not_interrupt_a_paragraph",
+          "input": {
+            "source": "Text\n2) ```\n   [[a]]\n"
+          },
+          "expect": {
+            "commonmark": "Text\n2) ```\n   [[a]]\n",
+            "skill_export": "Text\n2) ```\n   [[a]]\n"
+          }
+        },
+        {
+          "name": "ordered_item_from_one_with_leading_zeros_interrupts_a_paragraph",
+          "input": {
+            "source": "Text\n0001. ```\n      [[a]]\n      ```\n[[b]]\n"
+          },
+          "expect": {
+            "commonmark": "Text\n         \n           \n         \n[[b]]\n",
+            "skill_export": "Text\n0001.    \n           \n         \n[[b]]\n"
+          }
+        },
+        {
+          "name": "nested_ordered_item_not_from_one_does_not_interrupt_a_continuation",
+          "input": {
+            "source": "- a\n  2. ```\n  [[b]]\n"
+          },
+          "expect": {
+            "commonmark": "- a\n  2. ```\n  [[b]]\n",
+            "skill_export": "- a\n  2. ```\n  [[b]]\n"
+          }
+        },
+        {
+          "name": "indented_code_line_is_not_paragraph_text_for_a_following_item",
+          "input": {
+            "source": "    code\n2. ```\n[[a]]\n"
+          },
+          "expect": {
+            "commonmark": "    code\n      \n[[a]]\n",
+            "skill_export": "    code\n2. ```\n[[a]]\n"
+          }
         }
       ]
     },

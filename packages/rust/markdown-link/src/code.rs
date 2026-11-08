@@ -363,7 +363,8 @@ impl Fences {
             }
         }
         self.content = cursor.content_start();
-        self.paragraph = cursor.text_pos < line.len();
+        // An indented line starts code, not a paragraph, unless it continues one.
+        self.paragraph = cursor.text_pos < line.len() && (cursor.indent() <= 3 || was_paragraph);
         FenceLine::Outside
     }
 }
