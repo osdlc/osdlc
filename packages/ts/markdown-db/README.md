@@ -2,7 +2,8 @@
 
 A validator for markdown-db corpora. A corpus is a folder of typed records kept as Markdown, YAML
 and JSON files, with a schema for each type, that people edit as plain notes. This package
-implements [S-markdown-db: markdown-db, version 0](../../../docs/planning/standards/S-markdown-db.md).
+implements
+[S-markdown-db: markdown-db, version 0](https://github.com/osdlc/osdlc/blob/main/docs/planning/standards/S-markdown-db.md).
 Every rule it checks comes from that standard or from the corpus's own files.
 
 ## Install
@@ -60,9 +61,9 @@ Writers of records can use the same rules the validator reads with:
 
 ## How it compares
 
-[`@osdlc/markdown-contract`](../markdown-contract/README.md) checks the section and block structure
-of one Markdown document. This package checks a corpus: frontmatter and data files against JSON
-Schema, and links, ids and references across files.
+[`@osdlc/markdown-contract`](https://github.com/osdlc/osdlc/tree/main/packages/ts/markdown-contract#readme)
+checks the section and block structure of one Markdown document. This package checks a corpus:
+frontmatter and data files against JSON Schema, and links, ids and references across files.
 [mdbase](https://github.com/mdbase-dev/mdbase-spec) is the closest prior art. The standard lists
 the rules it borrows and where it differs.
 
@@ -73,7 +74,8 @@ corpora with their expected reports, written so that a validator in another lang
 same cases. A case compares only the `<file>: <field>` prefix of each problem, as a set; message
 text and order are not part of it. The cases move to `packages/conformance/markdown-db/` once a
 second implementation exists, as
-[S-conformance-suites](../../../docs/planning/standards/S-conformance-suites.md) describes.
+[S-conformance-suites](https://github.com/osdlc/osdlc/blob/main/docs/planning/standards/S-conformance-suites.md)
+describes.
 
 ## Known gap
 
