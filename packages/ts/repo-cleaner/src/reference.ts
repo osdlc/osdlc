@@ -10,7 +10,8 @@ const TARGETS = `Targets
     a directory           every checkout found under it, three levels deep at most
     a remote URL          its remote branches only, through a clone kept in the cache
                           directory (https://, ssh://, file://, or user@host:path)
-  No target sweeps the directory you are in, read the same way.`
+  No target sweeps the directory you are in, read the same way; in a subdirectory
+  of a checkout with no checkouts below it, the checkout around it.`
 
 const SWEEP = `Sweep options (the report, plan and clean)
   --remote                Also judge remote branches. Turns on the network: fetches

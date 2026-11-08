@@ -661,6 +661,64 @@ describe('resolveEntries', () => {
   })
 })
 
+describe('no target (#680)', () => {
+  const home = realpathSync(mkdtempSync(join(tmpdir(), 'repo-cleaner-bare-')))
+  afterAll(() => rmSync(home, { recursive: true, force: true }))
+
+  function checkout(dir: string): string {
+    mkdirSync(dir, { recursive: true })
+    makeGitFixture({ dir, initialBranch: 'main' })
+    writeFileSync(join(dir, 'README.md'), '# fixture\n', 'utf-8')
+    commit(dir, 'initial commit')
+    return dir
+  }
+  const subdir = (dir: string): string => {
+    mkdirSync(join(dir, 'src', 'lib'), { recursive: true })
+    return join(dir, 'src', 'lib')
+  }
+
+  test('from a subdirectory of a checkout, sweeps that checkout', () => {
+    const app = checkout(join(home, 'app'))
+    const result = sweep([], { cwd: subdir(app) })
+    expect(result.repos.map((r) => r.repo?.root)).toEqual([app])
+    expect(result.unresolved).toEqual([])
+  })
+
+  test("from a subdirectory of a linked worktree, sweeps the worktree's repository", () => {
+    const app = checkout(join(home, 'wt-app'))
+    const wt = join(home, 'wt-app-feature')
+    git(['worktree', 'add', '-q', '-b', 'feature', wt, 'main'], app)
+    const result = sweep([], { cwd: subdir(wt) })
+    expect(result.repos.map((r) => r.repo?.root)).toEqual([app])
+  })
+
+  test('a directory of checkouts inside a checkout of its own still sweeps the ones below it', () => {
+    // A home directory kept in git, with projects below it.
+    const dotfiles = checkout(join(home, 'dotfiles-home'))
+    const projects = join(dotfiles, 'Developer')
+    const alpha = checkout(join(projects, 'alpha'))
+    const beta = checkout(join(projects, 'beta'))
+    const result = sweep([], { cwd: projects })
+    expect(result.repos.map((r) => r.repo?.root).sort()).toEqual([alpha, beta])
+  })
+
+  test('from a directory in no checkout, searches below it as before', () => {
+    const empty = join(home, 'empty')
+    mkdirSync(empty)
+    const result = sweep([], { cwd: empty })
+    expect(result.repos).toEqual([])
+    expect(result.unresolved).toEqual([{ entry: empty, reason: 'no git checkouts under it' }])
+  })
+
+  test('a subdirectory named as a target is read as written: searched, not widened', () => {
+    const app = checkout(join(home, 'named'))
+    const inner = subdir(app)
+    const result = sweep([inner], { cwd: home })
+    expect(result.repos).toEqual([])
+    expect(result.unresolved).toEqual([{ entry: inner, reason: 'no git checkouts under it' }])
+  })
+})
+
 describe('duplicate checkouts', () => {
   const remoteUrl = 'https://github.com/acme/dup.git'
 

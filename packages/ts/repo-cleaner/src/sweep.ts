@@ -11,7 +11,7 @@ import { existsSync, realpathSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
 
 import type { CommandRunner } from '@osdlc/command-seam'
-import { Git } from '@osdlc/typed-git'
+import { Git, checkoutRoot } from '@osdlc/typed-git'
 import { Gh } from '@osdlc/typed-gh'
 
 import {
@@ -26,7 +26,7 @@ import { defaultProcessProbe, type ProcessProbe } from './processes.ts'
 import { lookupPrs, prsUnchecked } from './prs.ts'
 import { PROVIDER_CHOICES, providers, type ProviderChoice } from './providers/index.ts'
 import { defaultCacheDir, ensureMirror, isRemoteUrl, redactUrl } from './remote-mirror.ts'
-import { expandTilde, resolveEntries } from './resolve.ts'
+import { expandTilde, resolveEntries, type Resolution } from './resolve.ts'
 import {
   KINDS,
   RepoCleanerError,
@@ -194,7 +194,8 @@ export function sweptWith(
 /**
  * Sweep `targets`: checkouts, directories to search for checkouts, or remote
  * URLs (swept through a clone kept in `cacheDir`, remote branches only). No
- * targets means `[cwd]`, resolved the same way.
+ * targets means `[cwd]`, resolved the same way, except that a `cwd` inside a
+ * checkout with no checkouts below it sweeps that checkout.
  *
  * Never throws for a repository it cannot read: that one comes back with
  * `error` set, because a fan-out must not end on its first bad entry. Throws a
@@ -219,14 +220,23 @@ export function sweep(targets: readonly string[], opts: SweepOptions = {}): Swee
       }
     }
   }
-  const resolution =
+  const resolveOpts = {
+    git: new Git(cwd, { runner: opts.git }),
+    baseDir: cwd,
+    ...(opts.onWarn === undefined ? {} : { onWarn: opts.onWarn }),
+  }
+  let resolution: Resolution =
     entries.length === 0
       ? { repos: [], unresolved: [], scan: emptyScan() }
-      : resolveEntries(entries, {
-          git: new Git(cwd, { runner: opts.git }),
-          baseDir: cwd,
-          ...(opts.onWarn === undefined ? {} : { onWarn: opts.onWarn }),
-        })
+      : resolveEntries(entries, resolveOpts)
+  // With no target, a subdirectory of a checkout that holds no checkouts
+  // means the checkout around it, as it does for git itself. The search comes
+  // first, so a directory of checkouts that sits inside a checkout of its own
+  // (a home directory kept in git) still sweeps the checkouts below it.
+  const around = targets.length === 0 && resolution.repos.length === 0 ? checkoutRoot(cwd) : null
+  if (around !== null && around !== resolve(cwd)) {
+    resolution = resolveEntries([around], resolveOpts)
+  }
   if (branch !== undefined && resolution.repos.length > 1) {
     throw new RepoCleanerError(
       'conflict',

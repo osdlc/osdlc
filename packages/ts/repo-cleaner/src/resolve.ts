@@ -8,9 +8,9 @@
  * covers everything under it — including a per-owner or per-client
  * directory — without listing any of them.
  *
- * A caller that passes no entries gets no repositories. The CLI's bare
- * invocation passes the directory it stands in, which resolves like any
- * other entry.
+ * A caller that passes no entries gets no repositories. `sweep` with no
+ * targets passes the directory it stands in, which resolves like any other
+ * entry; when that finds nothing, `sweep` widens it to the checkout around it.
  */
 
 import { homedir } from 'node:os'
