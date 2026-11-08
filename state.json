@@ -1,12 +1,46 @@
 {
   "schema": 1,
   "pr": 728,
-  "head": "f51bf2cb41fc23e8b546f56c805c96328cb211ff",
-  "base": "3d4a6d78f02b0741882fb2014fbbe176569cffbe",
-  "round": 1,
+  "head": "6b22393e19c313985977213254f2be98435a485f",
+  "base": "d05feebfbfabcc9dc8f9a77f0216c6af4c3930b0",
+  "round": 2,
   "claim": {
     "owner": "mbp:claude-k7r2xq",
     "at": "2026-11-08T23:43:54.524Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r2-1",
+      "round": 2,
+      "path": "packages/ts/markdown-link/src/code.ts",
+      "line": 229,
+      "title": "indented code line counts as paragraph",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r2-2",
+      "round": 2,
+      "path": "packages/rust/markdown-link/src/code.rs",
+      "line": 366,
+      "title": "indented code line counts as paragraph (Rust twin)",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r2-3",
+      "round": 2,
+      "path": "packages/conformance/markdown-link/suite.json",
+      "line": 500,
+      "title": "paragraph-interrupt edges missing from suite",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
