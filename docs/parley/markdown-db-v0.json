@@ -6,8 +6,7 @@
  "revision": 11,
  "repo": {
   "remote": "https://github.com/osdlc/skillwright",
-  "commit": "8b96809143d05a099c0e017ac3bba5a6aca62be4",
-  "root": "/Users/sksizer2/dev/repos/osdlc/skillwright-harness-facts"
+  "commit": "8b96809143d05a099c0e017ac3bba5a6aca62be4"
  },
  "blocks": [
   {

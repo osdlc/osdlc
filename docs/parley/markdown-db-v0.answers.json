@@ -1,7 +1,7 @@
 {
   "doc": "markdown-db-v0",
   "updated": "2026-11-05T07:00:28.350Z",
-  "status": "reviewing",
+  "status": "approved",
   "comments": [
     {
       "id": "cmw363mvu",
@@ -16,7 +16,7 @@
       "replies": [
         {
           "from": "agent",
-          "text": "It names the type of the record the field points to. It is not the field's own type.\n\nIn \"successor\": { \"type\": \"string\", \"x-ref\": \"harnesses\" }:\n- \"type\": \"string\" is plain JSON Schema: the value is a string, here a link like [Antigravity CLI](../Antigravity%20CLI.md).\n- \"x-ref\": \"harnesses\" is our keyword. It says the link must resolve to a record in the harnesses type of this corpus, the harnesses/ folder. It works like a foreign key in a database: successor must point at an existing harness, not a skill or a missing file.\n\nvalidate enforces both. JSON Schema checks the string. Then the link is resolved, and validate checks that the target exists and sits in harnesses/.\n\nOther forms:\n- \"x-ref\": \"harness-reference/harnesses\" points at a type in another corpus, as skill-catalog does.\n- On an array, \"items\": { \"x-ref\": ... } means each element is such a link.\n\nIt is an x- keyword because JSON Schema has no notion of links between files. The spec names it as part of a small markdown-db vocabulary that validators must register.",
+          "text": "It names the type of the record the field points to. It is not the field's own type.\n\nIn \"successor\": { \"type\": \"string\", \"x-ref\": \"harnesses\" }:\n- \"type\": \"string\" is plain JSON Schema: the value is a string, here a link like [Antigravity CLI](../Antigravity%20CLI.md).\n- \"x-ref\": \"harnesses\" is our keyword. It says the link must resolve to a record in the harnesses type of this corpus, the harnesses/ folder. It works like a foreign key in a database: successor must point at an existing harness, not a skill or a missing file.\n\nvalidate enforces both. JSON Schema checks the string. Then the link is resolved, and validate checks that the target exists and sits in harnesses/.\n\nOther forms:\n- On an array, \"items\": { \"x-ref\": ... } means each element is such a link.\n- A form such as \"x-ref\": \"harness-reference/harnesses\", naming a type in another corpus, was considered. v0 does not define it: links between corpora are deferred, and an x-ref link that leaves the corpus is an error.\n\nIt is an x- keyword because JSON Schema has no notion of links between files. The spec names it as part of a small markdown-db vocabulary that validators must register.",
           "at": "2026-11-05T06:31:45.684Z",
           "revision": 4,
           "by": {
