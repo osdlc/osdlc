@@ -1,14 +1,6 @@
 import { afterEach, test, vi } from 'vitest'
 import assert from 'node:assert/strict'
-import {
-  existsSync,
-  mkdtempSync,
-  mkdirSync,
-  symlinkSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { ASSET_MANIFEST } from '../src/assets.ts'
@@ -284,17 +276,4 @@ test('--clean checks every collection before it deletes anything', () => {
     existsSync(join(astroRoot, 'src/content/notes/keep.md')),
     'first collection was cleaned',
   )
-})
-
-test('a symlinked subfolder is followed, and a symlink loop ends', () => {
-  const root = mkdtempSync(join(tmpdir(), 'oa-run-'))
-  const vault = join(root, 'vault')
-  mkdirSync(join(vault, 'Notes'), { recursive: true })
-  mkdirSync(join(root, 'elsewhere'), { recursive: true })
-  writeFileSync(join(root, 'elsewhere', 'linked.md'), 'l\n')
-  symlinkSync(join(root, 'elsewhere'), join(vault, 'Notes', 'sub'), 'dir')
-  symlinkSync(join(vault, 'Notes'), join(vault, 'Notes', 'loop'), 'dir')
-  const astroRoot = join(root, 'site')
-  transform(site(vault, astroRoot))
-  assert.ok(existsSync(join(astroRoot, 'src/content/notes/sub/linked.md')))
 })

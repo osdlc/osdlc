@@ -1,14 +1,7 @@
-import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  realpathSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs'
-import { dirname, join } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { dirname } from 'node:path'
 import { basename } from './markdown.ts'
+import { walkFiles } from './walk.ts'
 
 interface AssetRef {
   /** Path of the asset relative to the vault root (the copy source). */
@@ -39,44 +32,14 @@ export function buildAssetIndex(vaultRoot: string, vaultAssetDir: string): Asset
   const byBasename = new Map<string, string[]>()
   const allPaths = new Set<string>()
 
-  // Real paths of the directories being walked, so a symlink back to one of
-  // them is not followed again.
-  const ancestors = new Set<string>()
-  const walk = (dir: string, prefix: string): void => {
-    let real: string
-    let names: string[]
-    try {
-      real = realpathSync(dir)
-      names = readdirSync(dir)
-    } catch {
-      // Unreadable, or gone since it was listed. Skipped like an entry that
-      // cannot be stat'ed.
-      return
+  if (existsSync(vaultRoot)) {
+    for (const { rel } of walkFiles(vaultRoot)) {
+      if (rel.endsWith('.md')) continue
+      allPaths.add(rel)
+      const key = basename(rel).toLowerCase()
+      ;(byBasename.get(key) ?? byBasename.set(key, []).get(key)!).push(rel)
     }
-    if (ancestors.has(real)) return
-    ancestors.add(real)
-    for (const name of names) {
-      if (name.startsWith('.')) continue // skip .obsidian, .git, etc.
-      const full = join(dir, name)
-      const rel = prefix ? `${prefix}/${name}` : name
-      let isDir: boolean
-      try {
-        isDir = statSync(full).isDirectory()
-      } catch {
-        // Cannot stat it, e.g. a dangling symlink. Skipped without a word; an
-        // embed of it is reported later as a missing copy.
-        continue
-      }
-      if (isDir) walk(full, rel)
-      else if (!name.endsWith('.md')) {
-        allPaths.add(rel)
-        const key = name.toLowerCase()
-        ;(byBasename.get(key) ?? byBasename.set(key, []).get(key)!).push(rel)
-      }
-    }
-    ancestors.delete(real)
   }
-  if (existsSync(vaultRoot)) walk(vaultRoot, '')
 
   const assetPrefix = `${vaultAssetDir.replace(/\/+$/, '')}/`
   const outSubs = new Map<string, string>()

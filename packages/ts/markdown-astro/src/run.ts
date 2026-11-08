@@ -1,5 +1,13 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { isAbsolute, join, relative, resolve, sep } from 'node:path'
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import {
   ASSET_MANIFEST,
   assetManifestReader,
@@ -9,6 +17,7 @@ import {
 import type { MarkdownAstroConfig } from './config.ts'
 import type { CopyOp } from './markdown.ts'
 import { rewriteFile } from './rewrite.ts'
+import { walkFiles } from './walk.ts'
 import { listMarkdown as listMarkdownIn } from './wikilink-ref.ts'
 import type { Direction } from './rewrite.ts'
 
@@ -51,6 +60,34 @@ function collectionDirs(
   const vaultSide = resolve(config.vault, col.vaultDir)
   const astroSide = resolve(config.astroRoot, col.contentDir)
   return direction === 'toAstro' ? [vaultSide, astroSide] : [astroSide, vaultSide]
+}
+
+/** `realpath` of `path`, or of its nearest existing ancestor plus the rest when it does not exist yet. */
+function realish(path: string): string {
+  const p = resolve(path)
+  try {
+    return realpathSync(p)
+  } catch {
+    const parent = dirname(p)
+    return parent === p ? p : join(realish(parent), basename(p))
+  }
+}
+
+/**
+ * Refuse `--clean` when deleting `dst` would delete notes in `src`: the two are
+ * the same or nested once links are resolved, or a file the walk of `src`
+ * reaches lives inside `dst`.
+ */
+function assertCleanSafe(src: string, dst: string): void {
+  const realSrc = realish(src)
+  const realDst = realish(dst)
+  const nested = isInside(realSrc, realDst) || isInside(realDst, realSrc)
+  if (
+    nested ||
+    (existsSync(src) && walkFiles(src).some((f) => isInside(realDst, realpathSync(f.full))))
+  ) {
+    throw new Error(`--clean refused: ${src} and ${dst} are the same or nested (links resolved)`)
+  }
 }
 
 function ensureDir(dir: string): void {
@@ -96,9 +133,7 @@ function run(config: MarkdownAstroConfig, direction: Direction, opts: RunOptions
   if (opts.clean && !opts.dryRun) {
     for (const col of config.collections) {
       const [src, dst] = collectionDirs(config, direction, col)
-      if (isInside(src, dst) || isInside(dst, src)) {
-        throw new Error(`--clean refused: ${src} and ${dst} are the same or nested`)
-      }
+      assertCleanSafe(src, dst)
     }
   }
 
