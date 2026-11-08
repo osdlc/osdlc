@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "pr": 704,
-  "head": "d21b524f4c8372f5703a12e0ea7e89dc1d32e22e",
+  "head": "e2e4dab6e8c6af8ae8bd95ba91b1a3d8b6eef0b2",
   "base": "b0a6e9cde619e567f5f3cd24a3650d6e840bb39d",
-  "round": 1,
+  "round": 2,
   "claim": {
     "owner": "Mac.local:unknown-y1pkcl",
     "at": "2026-11-08T07:35:00.082Z"
@@ -52,6 +52,17 @@
       "status": "fixed",
       "reason": null,
       "fixedIn": "66dd2d34d344db2b76e36eecc7e523096e22c25c"
+    },
+    {
+      "id": "r2-1",
+      "round": 2,
+      "path": "packages/rust/web-access/src/serve.rs",
+      "line": 725,
+      "title": "drop(wr) after pending() never runs; wr already lives in the future",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
     }
   ]
 }
