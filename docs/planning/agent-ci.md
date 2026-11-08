@@ -20,9 +20,20 @@ requests. Started 2026-11-08.
 
 ## Roadmap
 
-Arrows mean "needs". Green is done, purple a PR ready to merge
-(approved, checks green), teal a PR in review, red blocked, amber in
-progress, blue next, grey later. A dotted arrow means "reuses code from".
+Arrows mean "needs"; a dotted arrow means "reuses code from".
+
+| Colour       | Status                                                        |
+| ------------ | ------------------------------------------------------------- |
+| Green        | Done                                                          |
+| Purple       | PR ready to merge (approved, checks green)                    |
+| Teal         | PR in review                                                  |
+| Red          | Blocked on sksizer: a decision or input is needed             |
+| Pink         | Blocked by something external (conflict, failing CI, another team) |
+| Amber        | In progress by the agent                                      |
+| Light orange | In progress by sksizer                                        |
+| Blue         | Next                                                          |
+| Grey         | Later                                                         |
+
 Update the classes at the bottom as items move.
 
 ```mermaid
@@ -35,7 +46,7 @@ flowchart LR
     PLAN["Plan + investigations I1–I5"]
   end
   subgraph house["Housekeeping"]
-    PLANPR["Push this plan as a docs PR"]
+    PLANPR["PR 713: this plan"]
     PARLEY["Retire the packaging parley"]
   end
   subgraph facts["Facts · harness-reference (skillwright repo)"]
@@ -89,11 +100,15 @@ flowchart LR
   classDef review fill:#0f8a8a,stroke:#0a6666,color:#ffffff
   classDef ready fill:#7a4fc2,stroke:#5a3596,color:#ffffff
   classDef blocked fill:#c0392b,stroke:#8e2a20,color:#ffffff
+  classDef external fill:#e88fb4,stroke:#b8628a,color:#1b2230
   classDef active fill:#c77d0a,stroke:#94600a,color:#ffffff
+  classDef yours fill:#f5c27a,stroke:#c99545,color:#1b2230
   classDef next fill:#2f5bd3,stroke:#2144a3,color:#ffffff
   classDef later fill:#8a93a3,stroke:#6b7384,color:#ffffff
   class W710,P711,P707,P712,PLAN,PARLEY done
-  class UP,PLANPR,RUN,SETUP active
+  class UP yours
+  class PLANPR review
+  class RUN,SETUP active
   class PERM,PROBE,CHECK,STRICT,CUR,ANS,SPEC,MULTI next
   class MCP,PUB,DATA,PIN later
 ```
@@ -104,6 +119,7 @@ Checked 2026-11-08. A periodic check refreshes this table and the graph.
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
+| #713 | docs(planning): plan coding agents in CI | open  | none   | —              | needs your review                                                    | merge when reviewed      |
 | #712 | gh-actions: claude-setup, claude-pr-answer | closed | none  | —              | —                                                                    | closed 2026-11-08; branch kept as a starting point |
 | #711 | claude.yml: ANTHROPIC_API_KEY            | merged | none  | —              | —                                                                    | merged 2026-11-08        |
 | #622 | Proposal: transcripts in agent-call and observe | draft | none   | —              | —                                                                    | related to agent-call, not on this plan's path |
