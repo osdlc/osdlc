@@ -27,6 +27,16 @@ export function strictViolations(notes: readonly CapabilityNote[]): CapabilityNo
   return notes.filter((n) => n.support === 'approximated' || n.support === 'dropped')
 }
 
+function noteLines(
+  notes: readonly CapabilityNote[],
+  extra: readonly { field: string; detail: string }[],
+): string[] {
+  return [
+    ...notes.map((n) => `${n.support} ${n.field}: ${n.detail}`),
+    ...extra.map((n) => `dropped ${n.field}: ${n.detail}`),
+  ]
+}
+
 /** The plan as text for `--explain` and `--dry-run`: agent, argv, env var names, notes. Never env values. */
 export function explainText(
   planned: PlannedCall,
@@ -35,10 +45,7 @@ export function explainText(
   const lines = [`agent: ${planned.agent}`, `argv: ${JSON.stringify(planned.argv)}`]
   lines.push(`env: ${Object.keys(planned.env).sort().join(', ') || '(none)'}`)
   lines.push(`prompt: ${planned.stdin !== undefined ? 'stdin' : 'argv'}`)
-  const notes = [
-    ...planned.notes.map((n) => `${n.support} ${n.field}: ${n.detail}`),
-    ...extra.map((n) => `dropped ${n.field}: ${n.detail}`),
-  ]
+  const notes = noteLines(planned.notes, extra)
   lines.push(notes.length === 0 ? 'notes: (none)' : 'notes:', ...notes.map((n) => `  ${n}`))
   return lines.join('\n') + '\n'
 }
@@ -101,10 +108,7 @@ async function run(argv: readonly string[], io: CliIo): Promise<number> {
     io.stderr(explainText(planned, unsupported))
   }
   if (file.strict) {
-    const bad = [
-      ...strictViolations(planned.notes).map((n) => `${n.support} ${n.field}: ${n.detail}`),
-      ...unsupported.map((n) => `dropped ${n.field}: ${n.detail}`),
-    ]
+    const bad = noteLines(strictViolations(planned.notes), unsupported)
     if (bad.length > 0) {
       io.stderr(
         `agent-call: strict mode refused the call:\n${bad.map((b) => `  ${b}`).join('\n')}\n`,
