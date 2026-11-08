@@ -20,12 +20,12 @@
 # skills bundle; nothing that edits, commits, pushes or comments. The last
 # step posts Claude's answer, or the error when there is none.
 #
-# Keys: Claude Console API keys that bill to the org's API credits, in the
-# secrets ANTHROPIC_API_KEY, ANTHROPIC_API_KEY_2 and ANTHROPIC_API_KEY_3. Each
-# one that is set is tried in order; only an authentication failure moves on
-# to the next, and it leaves a warning on the run naming the dead slot. To
-# rotate: put the new key in a free slot, then delete the old secret. The CLI
-# version is pinned below.
+# Keys: the ANTHROPIC_API_KEY secret holds one Claude Console API key, or
+# several separated by newlines, commas or spaces; they bill to the org's API
+# credits. They are tried in order, and only an authentication failure moves
+# on to the next, leaving a warning on the run that names the dead key's
+# position. To rotate: set the secret to "new old", then later to "new". The
+# CLI version is pinned below.
 #
 # Every action is pinned to a commit SHA; the comment names its release.
 name: claude
@@ -86,15 +86,12 @@ jobs:
       - name: Ask Claude
         id: claude
         env:
-          # Up to three keys, tried in order; see "Keys" at the top of this file.
-          KEY_1: ${{ secrets.ANTHROPIC_API_KEY }}
-          KEY_2: ${{ secrets.ANTHROPIC_API_KEY_2 }}
-          KEY_3: ${{ secrets.ANTHROPIC_API_KEY_3 }}
+          # One key or several, tried in order; see "Keys" at the top of this file.
+          KEYS: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           # `@claude review [focus]` at the start of the comment runs the review skill.
-          focus=$(printf '%s\n' "$REQUEST" | sed -nE '1s/^[[:space:]]*@claude[[:space:]]+review([[:space:]]+(.*))?[[:space:]]*$/review:\2/p')
-          if [ -n "$focus" ]; then
-            focus=${focus#review:}
+          if printf '%s\n' "$REQUEST" | head -n 1 | grep -qE '^[[:space:]]*@claude[[:space:]]+review([[:space:]]|$)'; then
+            focus=$(printf '%s\n' "$REQUEST" | sed -E '1s/^[[:space:]]*@claude[[:space:]]+review[[:space:]]*//')
             base=$(gh pr view "$PR" --json baseRefName --jq .baseRefName)
             prompt="Review pull request #$PR in $REPO by running the /craft:code-review skill with base origin/$base.
           The pull request branch is checked out in the current directory, and origin/$base is fetched.
@@ -116,11 +113,14 @@ jobs:
           fi
           status=1
           tried=0
-          for n in 1 2 3; do
-            var="KEY_$n"
-            key=${!var}
-            [ -n "$key" ] || continue
+          keys=()
+          while IFS= read -r k; do
+            if [ -n "$k" ]; then keys+=("$k"); fi
+          done < <(printf '%s\n' "$KEYS" | tr ',' '\n' | tr -s '[:space:]' '\n')
+          for key in "${keys[@]}"; do echo "::add-mask::$key"; done
+          for key in "${keys[@]}"; do
             tried=$((tried + 1))
+            n=$tried
             set +e
             ANTHROPIC_API_KEY="$key" claude -p "$prompt" \
               --output-format json \
@@ -136,9 +136,14 @@ jobs:
               break
             fi
             # Only an authentication failure moves on to the next key.
-            if jq -e '.api_error_status == 401' result.json > /dev/null 2>&1 \
-              || grep -qiE 'authentication_error|invalid x-api-key|invalid api key' result.json; then
-              echo "::warning::ANTHROPIC_API_KEY slot $n failed authentication; rotate or delete it"
+            # The text check looks only at a run that never got a turn, or at
+            # output that is not JSON, so tool inputs Claude tried cannot match.
+            auth='authentication_error|invalid x-api-key|invalid api key'
+            if jq -e --arg re "$auth" '.api_error_status == 401
+                or (.is_error == true and (.num_turns // 0) <= 1 and ((.result // "") | test($re; "i")))' \
+                result.json > /dev/null 2>&1 \
+              || { ! jq -e . result.json > /dev/null 2>&1 && grep -qiE "$auth" result.json; }; then
+              echo "::warning::key $n in ANTHROPIC_API_KEY failed authentication; remove it from the secret"
               continue
             fi
             break
