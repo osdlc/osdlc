@@ -1,7 +1,7 @@
 {
   "name": "@osdlc/markdown-render",
   "version": "0.5.0",
-  "description": "Obsidian-dialect markdown renderer on unified/remark, plus a Vue 3 integration. Every dialect feature is a remark/rehype plugin — never a bespoke parser.",
+  "description": "Obsidian-dialect markdown renderer on unified/remark, plus a Vue 3 integration. Every dialect feature is a remark/rehype plugin \u2014 never a bespoke parser.",
   "type": "module",
   "sideEffects": [
     "./src/theme.css"
@@ -41,6 +41,7 @@
     "build": "tsc -p tsconfig.build.json",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "test": "bunx --bun vitest run",
+    "bench": "vitest bench --run",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
