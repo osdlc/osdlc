@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "pr": 719,
-  "head": "e3d25d2c6408afd071dc365a3755412892db5449",
-  "base": "03af645fa0081b5b25a7de821a1b7651b1f1a927",
-  "round": 1,
+  "head": "0992b0e0224e546645a28cdff089ac1bf5f63f0a",
+  "base": "6fcfc966d1bdbea9f55f87170a8b0ef4a05447b9",
+  "round": 2,
   "claim": {
     "owner": "mac:claude-w5p3rt",
     "at": "2026-11-08T19:46:54.594Z"
