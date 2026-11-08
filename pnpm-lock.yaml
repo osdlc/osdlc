@@ -83,6 +83,9 @@ importers:
       '@osdlc/command-seam':
         specifier: workspace:^
         version: link:../command-seam
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.1
     devDependencies:
       '@osdlc/prettier-config':
         specifier: workspace:^

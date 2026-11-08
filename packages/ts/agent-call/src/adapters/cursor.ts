@@ -203,6 +203,10 @@ function planCursor(command: readonly string[], trust: boolean, spec: AgentCallS
     note(notes, 'budgetUsd', 'dropped', 'cursor has no budget cap flag')
   }
 
+  if (spec.limits?.maxTurns !== undefined) {
+    note(notes, 'limits.maxTurns', 'dropped', 'cursor has no turn limit flag')
+  }
+
   argv.push(...(spec.extraArgs ?? []))
 
   // No prompt argument, so the CLI reads the prompt from stdin (it trims it).

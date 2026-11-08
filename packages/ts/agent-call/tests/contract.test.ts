@@ -408,6 +408,23 @@ const ROWS: Row[] = [
       deepseek: { support: 'dropped', planned: '' },
     },
   },
+  {
+    label: 'limits.maxTurns',
+    spec: { limits: { maxTurns: 4 } },
+    field: 'limits.maxTurns',
+    cells: {
+      claude: { support: 'native', readme: '--max-turns' },
+      codex: { support: 'dropped', planned: '' },
+      antigravity: { support: 'dropped', planned: '' },
+      opencode: { support: 'dropped', planned: '' },
+      copilot: { support: 'dropped', planned: '' },
+      pi: { support: 'dropped', planned: '' },
+      qwen: { support: 'native', readme: '--max-session-turns' },
+      droid: { support: 'dropped', planned: '' },
+      cursor: { support: 'dropped', planned: '' },
+      deepseek: { support: 'dropped', planned: '' },
+    },
+  },
 ]
 
 /**
