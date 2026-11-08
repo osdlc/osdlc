@@ -107,6 +107,8 @@ export function registryProblems(raw: unknown): string[] {
         for (const [n, r] of readers.entries()) {
           if (!isObject(r) || typeof r['dir'] !== 'string' || typeof r['name'] !== 'string' || !LANGUAGES.includes(r['language'] as string)) {
             problems.push(`${name}: reader ${n} needs language, dir and name`)
+          } else if (!r['dir'].startsWith(r['language'] === 'ts' ? 'packages/ts/' : 'packages/rust/')) {
+            problems.push(`${name}: reader ${r['dir']} is not under packages/${r['language'] === 'ts' ? 'ts' : 'rust'}/`)
           }
         }
       }
@@ -312,6 +314,15 @@ export function checkRepo(root: string): string[] {
       else versions[impl.dir] = v
       const named = suiteReaders(new Map([[impl.dir, testSources(root, impl.dir)]])).get(impl.dir)
       if (named?.has(name) !== true) problems.push(`${name}: no test under ${impl.dir}/tests names packages/conformance/${name}/`)
+    }
+    for (const r of f.readers ?? []) {
+      if (f.implementations.some((i) => i.dir === r.dir)) problems.push(`${name}: ${r.dir} is both an implementation and a reader`)
+      if (!existsSync(join(root, r.dir))) {
+        problems.push(`${name}: ${r.dir} does not exist`)
+        continue
+      }
+      const named = suiteReaders(new Map([[r.dir, testSources(root, r.dir)]])).get(r.dir)
+      if (named?.has(name) !== true) problems.push(`${name}: no test under ${r.dir}/tests names packages/conformance/${name}/`)
     }
     problems.push(...versionProblems(name, versions))
   }
