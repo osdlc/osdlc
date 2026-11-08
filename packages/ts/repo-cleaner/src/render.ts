@@ -122,6 +122,11 @@ function repoHeader(sweep: RepoSweep): string {
   return `${name}  (${bits.filter((b) => b !== null).join(', ')})`
 }
 
+/** A repository's notes on what the sweep judged without, one line each under its header. */
+function noteLines(sweep: RepoSweep, style: Style): string[] {
+  return sweep.notes.map((note) => `  ${style.review('note')}: ${stripControls(note)}`)
+}
+
 /** The word a report shows for a row: its verdict, or `prune` for a `delete` that only prunes. */
 function verdictWord(row: Pick<Row, 'verdict' | 'action'>): string {
   return isPrune(row) ? 'prune' : row.verdict
@@ -138,7 +143,7 @@ function wordStyle(style: Style, word: string): (text: string) => string {
 /** One repository's rows, indented under its header. `all` shows `keep` rows too. */
 export function renderRepo(sweep: RepoSweep, opts: { all?: boolean; style?: Style } = {}): string {
   const style = opts.style ?? PLAIN
-  const lines = [style.strong(repoHeader(sweep))]
+  const lines = [style.strong(repoHeader(sweep)), ...noteLines(sweep, style)]
   if (sweep.error !== null) {
     lines.push(`  ${style.delete('error')}: ${sweep.error}`)
     return lines.join('\n')
@@ -250,7 +255,7 @@ function report(blocks: string[], sweep: Sweep, style: Style): string {
 /** The sweep as counts (`--format summary`): a table per repository, then the totals line. */
 export function renderSummary(sweep: Sweep, style: Style = PLAIN): string {
   const blocks = sweep.repos.map((r) => {
-    const lines = [repoHeader(r)]
+    const lines = [repoHeader(r), ...noteLines(r, style)]
     if (r.error !== null) {
       lines.push(`  error: ${r.error}`)
       return lines.join('\n')
@@ -325,8 +330,13 @@ export function renderCommands(sweep: Sweep): string[] {
 
 /** What a run did, or would do, counted by kind. */
 export interface RunSummary {
-  /** Rows deleted (or, in a preview, that would be), by kind. Pruned worktrees are counted apart. */
+  /**
+   * Rows deleted (or, in a preview, that would be), by kind. Pruned worktrees,
+   * and remote branches a delete step found already gone, are counted apart.
+   */
   deleted: Record<Kind, number>
+  /** Remote branches a delete step found the remote had already deleted. */
+  gone: number
   /** Worktrees whose stale record was pruned; their directories were gone or left alone. */
   pruned: number
   /** Dropped rows by reason. */
@@ -344,6 +354,7 @@ export function summarizeRun(r: {
 }): RunSummary {
   const out: RunSummary = {
     deleted: { worktree: 0, branch: 0, remote: 0 },
+    gone: 0,
     pruned: 0,
     dropped: {},
     failed: 0,
@@ -359,6 +370,10 @@ export function summarizeRun(r: {
       continue
     }
     if (s.result !== 'ok' && s.result !== 'would-run') continue
+    if (s.action === 'delete-remote' && s.gone === true) {
+      out.gone += 1
+      continue
+    }
     if (s.action === 'remove-worktree') out.deleted.worktree += 1
     else if (s.action === 'prune-worktrees') out.pruned += 1
     else if (s.action === 'delete-branch') out.deleted.branch += 1
@@ -399,6 +414,7 @@ export function renderRunSummary(
     s.deleted.branch > 0 ? plural(s.deleted.branch, 'local branch', 'local branches') : null,
     s.deleted.remote > 0 ? plural(s.deleted.remote, 'remote branch', 'remote branches') : null,
     s.pruned > 0 ? `${plural(s.pruned, 'stale worktree', 'stale worktrees')} pruned` : null,
+    s.gone > 0 ? `${plural(s.gone, 'remote branch', 'remote branches')} already gone` : null,
   ].filter((p) => p !== null)
   const lines = [
     `${opts.preview === true ? 'would delete' : 'deleted'}: ${parts.length > 0 ? parts.join(', ') : 'nothing'}`,

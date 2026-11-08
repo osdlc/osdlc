@@ -237,6 +237,10 @@ Developed here, in this repository:
   that finds the branches, worktrees and remote branches that have been merged
   and can go away, with the evidence and the command for each, and applies an
   approved plan compare-and-swap)
+- `packages/ts/ref-lease` (`@osdlc/ref-lease` on npm, compare-and-swap leases
+  on git refs: create, replace and delete a ref at any git remote only if it
+  still holds the sha you read, through `git push --force-with-lease`, with the
+  payload as canonical JSON in the ref's commit)
 
 The development repository will take each TypeScript library from npm, like
 any other consumer. Today it still keeps its own copies. Open issues and pull

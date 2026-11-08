@@ -35,7 +35,9 @@ while the lock still holds that token.
 When not to use it:
 
 - The lock must hold across machines, or the directory is on a network file
-  system. `link()` and `rename()` are relied on to be atomic.
+  system. `link()` and `rename()` are relied on to be atomic. For workers on
+  several machines that share a git remote, use
+  [`@osdlc/ref-lease`](../ref-lease/README.md).
 - You need a shared (reader) lock, or a lock the kernel drops when the process
   dies. Those are OS advisory locks (`flock`, `fcntl`), which Node has no
   built-in binding for.
