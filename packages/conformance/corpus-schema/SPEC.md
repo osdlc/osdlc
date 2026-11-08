@@ -25,11 +25,11 @@ The key words MUST, MUST NOT, SHOULD and MAY are used as in RFC 2119.
 The spec has three levels. A corpus at a level follows the rules of that level and of the levels
 below it.
 
-| Level | The corpus declares                                     | Rules it adds                                                     |
-| ----- | ------------------------------------------------------- | ----------------------------------------------------------------- |
-| 0     | Nothing. Any folder of linked notes, with no root file. | Its relative Markdown links resolve (see Links).                  |
-| 1     | A root file marks it as a corpus.                       | Type folders, ids, YAML and JSON records. Schemas are optional.   |
-| 2     | A JSON Schema for each type.                            | Every record is checked against its type's schema. `x-ref` links. |
+| Level | The corpus declares                                     | Rules it adds                                                                   |
+| ----- | ------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| 0     | Nothing. Any folder of linked notes, with no root file. | Its relative Markdown links resolve (see Links).                                |
+| 1     | A root file marks it as a corpus.                       | Type folders, record folders, ids, YAML and JSON records. Schemas are optional. |
+| 2     | A JSON Schema for each type.                            | Every record is checked against its type's schema. `x-ref` links.               |
 
 - At level 1 a type MAY be untyped: its schema file is empty (see Types). A type that has a schema
   is checked against it at any level.
@@ -140,11 +140,39 @@ named after the folder so that search and Obsidian's quick switcher find it by t
 ### Records
 
 - Every `.md`, `.yaml` and `.json` file under a type folder, at any depth, is a record of that type,
-  except the type's schema file. Other files there are narrative, such as attachments.
+  except the type's schema file and the files a record folder owns (see Record folders). Other
+  files there are narrative, such as attachments.
 - A record's type comes from its folder. A record carries no type field.
 - A record's data MUST be a mapping. A `.md` record with no frontmatter has empty data. Its body MAY
   be empty.
 - A record's data MUST validate against its type's schema.
+
+### Record folders
+
+A record can keep files of its own beside it, such as the script, the query and the CSV results of
+a method that the record describes.
+
+- A folder inside a type folder that holds a record file named after the folder, `<folder>.md`,
+  `<folder>.yaml` or `<folder>.json`, is a record folder. The name matches exactly, case included.
+  The record file is one record, and its id is the folder name: `methods/Survey/Survey.md` has the
+  id `Survey`.
+- Every other file under a record folder, at any depth, belongs to the record. It is not a record
+  itself, so it is not checked against the schema and its id is not checked. Validation ignores it,
+  as it ignores narrative.
+- Links from the record file to its own files resolve, as any relative link does:
+  `[the counts](results/counts.csv)`. Links into another record's folder resolve too:
+  `[the list](../Pilot/harnesses.csv)`. An `x-ref` links to the record file, not to the folder.
+- A record folder MUST NOT hold another record folder, at any depth. That is an error, and the
+  inner folder's files belong to the outer record. A record folder MUST NOT hold a type folder,
+  since no type folder sits inside another (see Types).
+- The id rules apply across both shapes: `methods/Survey/Survey.md` and `methods/survey.md`
+  collide.
+- A folder inside a type folder with no record file named after it is not a record folder. It is a
+  plain folder, as before: each `.md`, `.yaml` and `.json` file in it is a record of the type.
+
+This is the shape osdlc calls a [bundle](../../../docs/terms/corpus.md#not-to-be-confused-with): a note's folder holding `<name>/<name>.md` and the files
+beside it. Moving the folder moves the record and its files together, and their relative links
+keep working.
 
 ### Ids
 
@@ -270,6 +298,19 @@ harness-reference/
     ├── Claude Code.md
     └── google/
         └── Gemini CLI.md           records may sit at any depth
+```
+
+A record folder keeps a record's own files beside it:
+
+```text
+methods/
+├── methods.schema.yaml
+└── Survey/
+    ├── Survey.md                   the record, id "Survey"
+    ├── count.py                    belongs to the record
+    ├── query.sql
+    └── results/
+        └── counts.csv
 ```
 
 `corpus-schema.md`:

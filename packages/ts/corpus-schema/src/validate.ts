@@ -288,7 +288,7 @@ function load(root: string): Corpus {
   for (const link of symlinks)
     if ([...c.types.values()].some((t) => link.startsWith(`${t.dir}/`)))
       c.warnings.push(`${link}: (symlink): not followed, so not checked`)
-  readRecords(c, files, extensions, schemaFiles)
+  readRecords(c, files, dirs, extensions, schemaFiles)
   return c
 }
 
@@ -452,17 +452,45 @@ function readTypes(c: Corpus, dirs: string[]): Set<string> {
   return schemaFiles
 }
 
-/** Check each type's records: the .md, .yaml and .json files under its folder, at any depth. */
+/**
+ * The record folders under a type folder: each folder below it that holds a record file named
+ * after the folder, such as `methods/Survey/Survey.md`. A record folder inside another one is an
+ * error, and its files belong to the outer record.
+ */
+function recordFolders(c: Corpus, type: Type, dirs: string[]): string[] {
+  const found: string[] = []
+  for (const dir of dirs) {
+    if (!dir.startsWith(`${type.dir}/`)) continue
+    const name = basename(dir)
+    if (!RECORD_EXTENSIONS.some((ext) => c.files.has(`${dir}/${name}${ext}`))) continue
+    // `dirs` is sorted, so an outer folder comes before the folders inside it.
+    const outer = found.find((f) => dir.startsWith(`${f}/`))
+    if (outer === undefined) found.push(dir)
+    else
+      c.errors.push(`${dir}: (folder): a record folder must not sit inside record folder ${outer}`)
+  }
+  return found
+}
+
+/**
+ * Check each type's records: the .md, .yaml and .json files under its folder, at any depth. In a
+ * record folder only the file named after the folder is a record. Its other files belong to it.
+ */
 function readRecords(
   c: Corpus,
   files: string[],
+  dirs: string[],
   extensions: string[],
   schemaFiles: Set<string>,
 ): void {
   for (const type of c.types.values()) {
     const ids = new Map<string, string>()
+    const folders = recordFolders(c, type, dirs)
     for (const file of files) {
       if (!file.startsWith(`${type.dir}/`) || schemaFiles.has(file)) continue
+      const folder = folders.find((f) => file.startsWith(`${f}/`))
+      if (folder !== undefined && posix.dirname(file) !== folder) continue
+      if (folder !== undefined && stem(file) !== basename(folder)) continue
       const ext = extname(file)
       const lower = ext.toLowerCase()
       if (lower === '.yml') {

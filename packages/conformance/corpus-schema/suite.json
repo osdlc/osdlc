@@ -101,6 +101,41 @@
             "errors": [],
             "warnings": []
           }
+        },
+        {
+          "name": "a record folder owns its script, query and CSV, and links into another record's folder resolve",
+          "input": {
+            "corpus": "corpora/folder-record"
+          },
+          "expect": {
+            "errors": [],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a folder with no record file named after it is a plain folder, as before",
+          "input": {
+            "corpus": "corpora/folder-record-missing"
+          },
+          "expect": {
+            "errors": [
+              "methods/Survey/notes.md: author",
+              "methods/Survey/notes.md: question"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a record folder inside a record folder is an error",
+          "input": {
+            "corpus": "corpora/folder-record-nested"
+          },
+          "expect": {
+            "errors": [
+              "methods/Survey/Pilot: (folder)"
+            ],
+            "warnings": []
+          }
         }
       ]
     }

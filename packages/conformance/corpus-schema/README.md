@@ -35,4 +35,5 @@ to write its `expect`. Never write `expect` by hand.
 parse.
 
 `corpora/level-*` cover the root file's `level` key, and `corpora/reserved-keys` the reserved keys
-`dialect` and `profiles`.
+`dialect` and `profiles`. `corpora/folder-record-*` cover record folders: a record with a script, a
+query and a CSV beside it, a folder with no record file, and a record folder inside another.

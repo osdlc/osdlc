@@ -222,6 +222,63 @@ describe('types and records', () => {
     assert.equal(run().records.get('notes')?.size, 2)
   })
 
+  test('a folder holding a record named after it is one record, and owns its other files', () => {
+    put(
+      'notes/Survey/Survey.md',
+      note('', '[script](run.py), [results](out/results.csv), [other](../Pilot/data.csv)\n'),
+    )
+    put('notes/Survey/run.py', 'print(1)\n')
+    put('notes/Survey/out/results.csv', 'a,b\n1,2\n')
+    // Neither would pass the notes schema as a record.
+    put('notes/Survey/method.md', '---\nstep: 1\n---\n')
+    put('notes/Survey/out/raw.json', '[1, 2]\n')
+    put('notes/Pilot/Pilot.yaml', 'name: Pilot\n')
+    put('notes/Pilot/data.csv', 'x\n')
+    const { errors, records, files } = run()
+    assert.deepEqual(errors, [])
+    assert.deepEqual([...(records.get('notes')?.keys() ?? [])].sort(), [
+      'Note A',
+      'Pilot',
+      'Survey',
+    ])
+    assert.equal(files.get('notes')?.get('Survey'), 'notes/Survey/Survey.md')
+  })
+
+  test('a folder record id clashes with a file record of the same name', () => {
+    put('notes/Survey/Survey.md', note())
+    put('notes/survey.md', note())
+    assert.ok(has(errors(), 'id: "survey" is also notes/Survey/Survey.md'))
+  })
+
+  test('a folder with no record named after it is a plain folder', () => {
+    put('notes/Survey/run.py', 'print(1)\n')
+    put('notes/Survey/method.md', '---\nstep: 1\n---\n')
+    put('notes/Survey/survey.md', note())
+    const report = run()
+    assert.ok(has(report.errors, 'notes/Survey/method.md: name: required'))
+    assert.ok(report.records.get('notes')?.has('survey'))
+  })
+
+  test('a record folder inside a record folder fails, and its files belong to the outer one', () => {
+    put('notes/Survey/Survey.md', note())
+    put('notes/Survey/Pilot/Pilot.md', '---\nstep: 1\n---\n')
+    put('notes/Survey/deep/Wave/Wave.md', '---\nstep: 2\n---\n')
+    const report = run()
+    assert.deepEqual(report.errors, [
+      'notes/Survey/Pilot: (folder): a record folder must not sit inside record folder notes/Survey',
+      'notes/Survey/deep/Wave: (folder): a record folder must not sit inside record folder notes/Survey',
+    ])
+    assert.equal(report.records.get('notes')?.size, 2)
+  })
+
+  test('a type folder inside a record folder fails', () => {
+    put('notes/Survey/Survey.md', note())
+    put('notes/Survey/steps/steps.schema.md', '---\n---\n')
+    assert.ok(
+      has(errors(), 'notes/Survey/steps: (folder): a type folder must not sit inside type notes'),
+    )
+  })
+
   test('an empty body passes', () => {
     put('notes/Note A.md', note('', ''))
     assert.deepEqual(errors(), [])
