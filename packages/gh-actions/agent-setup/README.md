@@ -74,6 +74,9 @@ Limits:
 - Claude: skillwright passes no ref to `claude plugin marketplace add`, so a
   ref on a claude marketplace is an error. Pin by URL.
 - Marketplaces must be HTTPS git URLs.
+- Cursor: registering a marketplace calls `cursor-agent plugin marketplace list`,
+  which needs `CURSOR_API_KEY` in the step's env. The test workflow installs
+  cursor with no marketplace because it has no secrets.
 - The `name` you give must match the name in the marketplace's own manifest.
 
 ## What is verified

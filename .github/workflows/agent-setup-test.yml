@@ -45,7 +45,7 @@ jobs:
         uses: ./packages/gh-actions/agent-setup
         with:
           harness: ${{ matrix.harness }}
-          marketplaces: osdlc=https://github.com/osdlc/marketplace.git
+          marketplaces: ${{ matrix.plugins != '' && 'osdlc=https://github.com/osdlc/marketplace.git' || '' }}
           plugins: ${{ matrix.plugins }}
       - name: Check the CLI
         env:
