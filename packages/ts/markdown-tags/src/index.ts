@@ -176,6 +176,7 @@ function codePointBefore(text: string, index: number): string {
  * follows the same steps.
  */
 function blankLinkSyntax(text: string): string {
+  if (!text.includes(']')) return text
   const chars = Array.from(text)
   blankDestinations(chars)
   blankDefinitions(chars)

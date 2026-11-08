@@ -328,6 +328,9 @@ fn scan(text: &str, rule: &Rule) -> Vec<String> {
 /// and the line starts the text, follows a blank line or follows another
 /// definition.
 fn blank_link_syntax(text: &str) -> String {
+    if !text.contains(']') {
+        return text.to_owned();
+    }
     let mut chars: Vec<char> = text.chars().collect();
     blank_destinations(&mut chars);
     blank_definitions(&mut chars);
