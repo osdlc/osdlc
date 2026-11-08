@@ -59,7 +59,7 @@ flowchart LR
     CHECK["Check permission rows against the facts"]
     STRICT["Backlog: enforced read-only mappings (claude tool denies + sandbox, cursor cli.json) so strict passes"]
     CUR["PR 721: cursor allow and deny via .cursor/cli.json"]
-    REV["PR 724: @claude review runs craft code-review"]
+    REV["PR 724 + 727: claude-pr action, @claude review"]
     REL["Release agent-call with the run CLI and maxTurns"]
   end
   subgraph gate["Gate"]
@@ -115,7 +115,7 @@ flowchart LR
   class W710,P711,P707,P712,PLAN,PARLEY,PLANPR,ARCH,RUN done
   class UP yours
   class SETUP external
-  class REV blocked
+  class REV done
   class PERM,PROBE,CHECK,ANS,SPEC,MULTI next
   class REL active
   class CUR blocked
@@ -129,21 +129,21 @@ move; merged PRs drop off.
 
 | Order | PR | What | Why this order | Status |
 | --- | --- | --- | --- | --- |
-| 1 | [#724](https://github.com/osdlc/osdlc/pull/724) | `claude.yml`: `@claude review` runs `/craft:code-review`; a list of API keys for rotation; skips quoted mentions | Wanted ASAP; the same file is already merged in 7 other repos | waiting on your review since 20:11 UTC; 3 macOS checks queued (merge on green) |
-| 2 | [#723](https://github.com/osdlc/osdlc/pull/723) | agent-call `run`: forward SIGINT and SIGTERM to the agent | Small fix from the codex review of #715; can ship in the same agent-call release | draft; gate done, Claude's summary answered (exit 130 + abort test); CI running |
-| 3 | [#721](https://github.com/osdlc/osdlc/pull/721) | agent-call: cursor allow and deny via `.cursor/cli.json` | Same package as #715 (merged); can ship in the same agent-call release | waiting on your review since 20:41 UTC; CI green; behind main |
-| 4 | [#716](https://github.com/osdlc/osdlc/pull/716) | `agent-setup` action and `gh-actions release` workflow | Independent of agent-call; needed before `agent-pr-answer` | draft; gate done, Claude's summary answered (dry-run tests, macOS codex); behind main; 3 macOS checks queued |
+| 1 | [#721](https://github.com/osdlc/osdlc/pull/721) | agent-call: cursor allow and deny via `.cursor/cli.json` | Waiting longest; the live Claude review's four findings are fixed and answered | waiting on your review since 20:41 UTC; CI rerunning after the fixes; behind main |
+| 2 | [#723](https://github.com/osdlc/osdlc/pull/723) | agent-call `run`: forward SIGINT and SIGTERM, exit 130 when interrupted | Small; ships in the same agent-call release as #721 | waiting on your review since 22:12 UTC; CI green; behind main |
+| 3 | [#716](https://github.com/osdlc/osdlc/pull/716) | `agent-setup` action and `gh-actions release` workflow | Independent of agent-call; needed before `agent-pr-answer` | draft; gate done; 3 macOS checks queued; behind main |
 
 ## PR tracker
 
-Checked 2026-11-08 21:17 UTC. A periodic check refreshes this table and the graph.
+Checked 2026-11-08 22:17 UTC. A periodic check refreshes this table and the graph.
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
-| [#724](https://github.com/osdlc/osdlc/pull/724) | ci(claude): @claude review runs /craft:code-review | open | none | blocked: needs review, checks running | waiting on your review | merge |
-| [#723](https://github.com/osdlc/osdlc/pull/723) | fix(agent-call): follow-ups from the codex review of #715 | draft | none | clean once CI passes | gate done; CI running | merge |
-| [#721](https://github.com/osdlc/osdlc/pull/721) | feat(agent-call): enforce allow and deny tools on cursor | open | none | behind main | waiting on your review | merge |
-| [#716](https://github.com/osdlc/osdlc/pull/716) | feat(gh-actions): add the agent-setup action | draft | none | behind main | gate done; agent-setup test run queued (runner backlog) | merge |
+| [#721](https://github.com/osdlc/osdlc/pull/721) | feat(agent-call): enforce allow and deny tools on cursor | open | none | behind main; CI rerunning | waiting on your review | merge |
+| [#723](https://github.com/osdlc/osdlc/pull/723) | fix(agent-call): follow-ups from the codex review of #715 | open | none | behind main | waiting on your review | merge |
+| [#716](https://github.com/osdlc/osdlc/pull/716) | feat(gh-actions): add the agent-setup action | draft | none | behind main | gate done; macOS checks queued | merge |
+| [#727](https://github.com/osdlc/osdlc/pull/727) | feat(gh-actions): claude-pr action; claude.yml calls it | merged | — | — | — | merged into #724's branch 2026-11-08 |
+| [#724](https://github.com/osdlc/osdlc/pull/724) | ci(claude): claude-pr action with @claude review, key list and done markers | merged | — | — | — | merged 2026-11-08 |
 | [#715](https://github.com/osdlc/osdlc/pull/715) | feat(agent-call): agent-call run command | merged | — | — | — | merged 2026-11-08 |
 | [#717](https://github.com/osdlc/osdlc/pull/717) | docs(planning): status and API review 1 | merged | — | — | — | merged 2026-11-08 |
 | [#713](https://github.com/osdlc/osdlc/pull/713) | docs(planning): plan coding agents in CI | merged | — | — | — | merged 2026-11-08 |
@@ -243,10 +243,6 @@ approved on 2026-11-08. Decisions:
 
 ## Known issues
 
-- `claude.yml`: when checkout or the CLI install fails, the "Post the answer"
-  step is skipped (`steps.claude.outcome != 'skipped'`), so the pull request
-  gets no reply. `agent-pr-answer` replaces this workflow; it must post an
-  error on every failure path. Found in the #717 pre-review.
 - `pr-update` (`packages/ts/pr-update/src/repair/agents.ts:97`) calls
   `callAgent` with no signal, so interrupting it leaves the agent running.
   Follow-up from [#723](https://github.com/osdlc/osdlc/pull/723): one shared
