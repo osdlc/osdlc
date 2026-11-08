@@ -55,7 +55,7 @@ flowchart LR
     PROBE["Cursor clean-config probe"]
   end
   subgraph call["One call · @osdlc/agent-call"]
-    RUN["run CLI: spec file, prompt parts, --explain"]
+    RUN["PR 715: run CLI (draft)"]
     CHECK["Check permission rows against the facts"]
     STRICT["strict mode"]
     CUR["Cursor: write .cursor/cli.json, fix print-mode note"]
@@ -113,7 +113,8 @@ flowchart LR
   class W710,P711,P707,P712,PLAN,PARLEY done
   class UP yours
   class PLANPR review
-  class RUN,SETUP,ARCH active
+  class SETUP,ARCH active
+  class RUN review
   class PERM,PROBE,CHECK,STRICT,CUR,ANS,SPEC,MULTI next
   class MCP,PUB,DATA,PIN later
 ```
@@ -124,6 +125,7 @@ Checked 2026-11-08. A periodic check refreshes this table and the graph.
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
+| #715 | feat(agent-call): agent-call run command | draft | none   | —              | waits on the API and architecture review                             | review gate, then merge  |
 | #713 | docs(planning): plan coding agents in CI | open  | none   | —              | needs your review                                                    | merge when reviewed      |
 | #712 | gh-actions: claude-setup, claude-pr-answer | closed | none  | —              | —                                                                    | closed 2026-11-08; branch kept as a starting point |
 | #711 | claude.yml: ANTHROPIC_API_KEY            | merged | none  | —              | —                                                                    | merged 2026-11-08        |
@@ -204,6 +206,15 @@ any significant refactor, review:
 The first round covers `agent-call run` and `agent-setup` while they are
 built, and gates `agent-pr-answer` and the move of `claude.yml` to the
 spec. Its output is a review document with a decision per question.
+
+Questions raised so far:
+
+- `strict` refuses read-only on claude and cursor, because both map it to an
+  approximation (`--permission-mode plan`, `--mode ask`). Per-field
+  acceptance, or exact mappings backed by harness-reference facts? (#715)
+- `maxTurns`: `AgentCallSpec` has no turn limit; claude has `--max-turns`.
+  Add it to the library spec? (#715)
+- Cursor `allowTools` is dropped; write `.cursor/cli.json` instead (I2).
 
 ## Work, in order
 
