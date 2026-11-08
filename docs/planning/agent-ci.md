@@ -129,14 +129,14 @@ move; merged PRs drop off.
 
 | Order | PR | What | Why this order | Status |
 | --- | --- | --- | --- | --- |
-| 1 | [#724](https://github.com/osdlc/osdlc/pull/724) | `claude.yml`: `@claude review` runs `/craft:code-review`; up to three API keys for rotation | Wanted ASAP, so you can start using reviews now | waiting on your review since 20:11 UTC; checks running |
-| 2 | [#723](https://github.com/osdlc/osdlc/pull/723) | agent-call `run`: forward SIGINT and SIGTERM to the agent | Small fix from the codex review of #715; can ship in the same agent-call release | draft; gate done; CI running, ready when green |
-| 3 | [#721](https://github.com/osdlc/osdlc/pull/721) | agent-call: cursor allow and deny via `.cursor/cli.json` | Same package as #715 (merged); can ship in the same agent-call release | ready for your review; CI green; behind main |
-| 4 | [#716](https://github.com/osdlc/osdlc/pull/716) | `agent-setup` action and `gh-actions release` workflow | Independent of agent-call; needed before `agent-pr-answer` | draft; gate done; behind main; agent-setup test run still queued |
+| 1 | [#724](https://github.com/osdlc/osdlc/pull/724) | `claude.yml`: `@claude review` runs `/craft:code-review`; a list of API keys for rotation; skips quoted mentions | Wanted ASAP; the same file is already merged in 7 other repos | waiting on your review since 20:11 UTC; 3 macOS checks queued (merge on green) |
+| 2 | [#723](https://github.com/osdlc/osdlc/pull/723) | agent-call `run`: forward SIGINT and SIGTERM to the agent | Small fix from the codex review of #715; can ship in the same agent-call release | draft; gate done, Claude's summary answered (exit 130 + abort test); CI running |
+| 3 | [#721](https://github.com/osdlc/osdlc/pull/721) | agent-call: cursor allow and deny via `.cursor/cli.json` | Same package as #715 (merged); can ship in the same agent-call release | waiting on your review since 20:41 UTC; CI green; behind main |
+| 4 | [#716](https://github.com/osdlc/osdlc/pull/716) | `agent-setup` action and `gh-actions release` workflow | Independent of agent-call; needed before `agent-pr-answer` | draft; gate done, Claude's summary answered (dry-run tests, macOS codex); behind main; 3 macOS checks queued |
 
 ## PR tracker
 
-Checked 2026-11-08 20:20 UTC. A periodic check refreshes this table and the graph.
+Checked 2026-11-08 21:17 UTC. A periodic check refreshes this table and the graph.
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
