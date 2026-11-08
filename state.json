@@ -24,9 +24,9 @@
       "line": 336,
       "title": "Live-host check enumerates interfaces on every unmatched request, before auth",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "66dd2d34d344db2b76e36eecc7e523096e22c25c"
     },
     {
       "id": "r1-3",
