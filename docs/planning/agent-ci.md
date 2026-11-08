@@ -30,7 +30,7 @@ flowchart LR
     P712["PR 712: claude-setup + claude-pr-answer actions"]
     PLAN["Plan + investigations I1–I5"]
     P707["PR 707: closed as moot"]
-    P711["PR 711: API key on the old workflow (superseded)"]
+    P711["PR 711: claude.yml on ANTHROPIC_API_KEY"]
     CLOSE["Close PRs 711 and 707; settle the old parley"]
   end
   subgraph facts["Facts · harness-reference (skillwright repo)"]
@@ -87,8 +87,8 @@ flowchart LR
   classDef active fill:#c77d0a,stroke:#94600a,color:#ffffff
   classDef next fill:#2f5bd3,stroke:#2144a3,color:#ffffff
   classDef later fill:#8a93a3,stroke:#6b7384,color:#ffffff
-  class W710,PLAN,P707 done
-  class P712,P711 review
+  class W710,PLAN,P707,P711 done
+  class P712 review
   class UP active
   class CLOSE,PERM,PROBE,CHECK,CUR,RUN,SETUP,ANS,SPEC,MULTI next
   class MCP,PUB,DATA,PIN later
@@ -100,8 +100,8 @@ Checked 2026-11-08. A periodic check refreshes this table and the graph.
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
-| #712 | gh-actions: claude-setup, claude-pr-answer | open  | none   | clean          | needs a review                                                       | merge                    |
-| #711 | claude.yml: ANTHROPIC_API_KEY            | open  | none   | unknown        | superseded by #712                                                   | close after #712 merges  |
+| #712 | gh-actions: claude-setup, claude-pr-answer | open  | none   | clean after merging main | needs a decision: merge or close for the generic layout | decide                   |
+| #711 | claude.yml: ANTHROPIC_API_KEY            | merged | none  | —              | —                                                                    | merged 2026-11-08        |
 | #707 | claude: hide full output again           | closed | none   | —              | —                                                                    | closed as moot 2026-11-08 |
 
 ## Principle
