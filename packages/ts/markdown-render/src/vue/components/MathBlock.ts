@@ -30,13 +30,20 @@ function makeMathComponent(name: string, displayMode: boolean, tagName: string) 
     setup(props) {
       const host = ref<HTMLElement | null>(null)
 
+      // A later draw supersedes an earlier one that settles after it.
+      let drawn = 0
+
       const draw = async () => {
         const el = host.value
         if (!el) return
+        const token = ++drawn
         const latex = latexOf(props.node)
         try {
-          el.innerHTML = await renderMath(latex, displayMode)
+          const html = await renderMath(latex, displayMode)
+          if (token !== drawn) return
+          el.innerHTML = html
         } catch {
+          if (token !== drawn) return
           showMathSource(el, latex)
         }
       }
