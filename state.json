@@ -82,9 +82,9 @@
       "line": 106,
       "title": "Nested --clean guard fires mid-run, after earlier collections were already cleaned and rewritten",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "d1f80484764e2cb00cbcfd2f282a72d5d11d8075"
     }
   ]
 }
