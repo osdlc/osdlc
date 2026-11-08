@@ -1,12 +1,35 @@
 {
   "schema": 1,
   "pr": 720,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "408660c3ec2f7730fcb02ea140b09294ef22745d",
+  "base": "4ed89f4a5444f355af4f77601debb7de99fde73c",
+  "round": 1,
   "claim": {
     "owner": "Mac.local:claude-q7k2zd",
     "at": "2026-11-08T19:18:58.627Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "scripts/conformance.ts",
+      "line": 319,
+      "title": "New reader checks in checkRepo have no test",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/ts/markdown-render/src/vue/components/MathBlock.ts",
+      "line": 33,
+      "title": "MathBlock draw has no stale-draw guard",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
