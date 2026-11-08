@@ -13,7 +13,7 @@ needs `action.yml` at a repository's root.
 Reference it by path in this repository and pin the commit:
 
 ```yaml
-- uses: osdlc/osdlc/packages/gh-actions/agent-setup@<commit-sha> # v1
+- uses: osdlc/osdlc/packages/gh-actions/agent-setup@<commit-sha> # gh-actions/v1
 ```
 
 Inside this repository, call it by local path (`./packages/gh-actions/<name>`)
@@ -36,11 +36,17 @@ place a workflow would do this.
 
 ## Versioning
 
-All actions in this directory share one version. A release is a single tag,
-`v1` for the major line and `v1.2.3` for each release, and covers every
-action here. The tag marks the repository commit that holds that release;
-callers pin the commit and name the tag in a comment. Each action's
-`CHANGELOG.md` records what changed in it.
+All actions in this directory share one version. A release puts two tags on
+one commit of the default branch: `gh-actions/v1.2.3`, created once, and
+`gh-actions/v1` for the major line, moved to each new release. Together they
+cover every action here. Callers pin the commit and name the tag in a
+comment. Each action's `CHANGELOG.md` records what changed in it, and has an
+entry for every release.
+
+To release, run the `gh-actions release` workflow from the Actions tab with
+the version. It refuses a version that is not `X.Y.Z`, an existing tag, a
+branch other than the default, and a `CHANGELOG.md` with no entry for the
+version.
 
 ## Security
 
