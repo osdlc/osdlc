@@ -13,8 +13,8 @@
       "line": 187,
       "title": "removed benchmarks are never gated",
       "comment": null,
-      "status": "open",
-      "reason": null,
+      "status": "declined",
+      "reason": "a removed benchmark is shown in the table; failing on removals needs a rename policy, left as a follow-up",
       "fixedIn": null
     },
     {
