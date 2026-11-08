@@ -7,6 +7,13 @@
       { "language": "rust", "dir": "packages/rust/config-layers", "name": "config-layers" }
     ]
   },
+  "corpus-schema": {
+    "reference": "ts",
+    "generator": "pnpm --filter @osdlc/corpus-schema conformance:write",
+    "implementations": [
+      { "language": "ts", "dir": "packages/ts/corpus-schema", "name": "@osdlc/corpus-schema" }
+    ]
+  },
   "frontmatter-lossless": {
     "reference": "rust",
     "generator": "cargo run -p frontmatter-lossless --example conformance-write",
@@ -21,13 +28,6 @@
     "implementations": [
       { "language": "ts", "dir": "packages/ts/intersect", "name": "@osdlc/intersect" },
       { "language": "rust", "dir": "packages/rust/glob-intersect", "name": "glob-intersect" }
-    ]
-  },
-  "markdown-db": {
-    "reference": "ts",
-    "generator": "pnpm --filter @osdlc/markdown-db conformance:write",
-    "implementations": [
-      { "language": "ts", "dir": "packages/ts/markdown-db", "name": "@osdlc/markdown-db" }
     ]
   },
   "path-guard": {

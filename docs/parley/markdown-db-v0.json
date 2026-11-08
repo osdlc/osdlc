@@ -1,7 +1,7 @@
 {
  "id": "markdown-db-v0",
  "title": "markdown-db v0: typed corpora that live together in one vault (revision 2: tested)",
- "summary": "Revision 2 after testing in Obsidian 1.12.7, Astro 7.4.5 and Nuxt Content 3.16.2. Links inside a corpus become relative Markdown links, because they keep a corpus byte-identical wherever it is mounted. Wikilinks stay accepted, never canonical.",
+ "summary": "The spec is now called corpus-schema (renamed 2026-11-08). This record keeps its first name, markdown-db. Revision 2 after testing in Obsidian 1.12.7, Astro 7.4.5 and Nuxt Content 3.16.2. Links inside a corpus become relative Markdown links, because they keep a corpus byte-identical wherever it is mounted. Wikilinks stay accepted, never canonical.",
  "created": "2026-11-05",
  "revision": 11,
  "repo": {

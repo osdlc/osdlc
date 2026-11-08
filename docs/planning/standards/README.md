@@ -18,4 +18,4 @@ The enforcing scripts live in [`scripts/`](../../../scripts/).
 
 A format that libraries implement is a spec, not a standard here. It lives with its conformance
 cases in `packages/conformance/<family>/SPEC.md`, such as the
-[markdown-db spec](../../../packages/conformance/markdown-db/SPEC.md).
+[corpus-schema spec](../../../packages/conformance/corpus-schema/SPEC.md).
