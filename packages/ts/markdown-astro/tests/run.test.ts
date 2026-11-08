@@ -1,6 +1,14 @@
 import { afterEach, test, vi } from 'vitest'
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  symlinkSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { ASSET_MANIFEST } from '../src/assets.ts'
@@ -254,4 +262,39 @@ test('an empty vault keeps the previous asset manifest', () => {
   writeFileSync(join(astroRoot, ASSET_MANIFEST), '{"assets":{"a.pdf":"a.pdf"}}')
   transform(site(join(root, 'vault'), astroRoot))
   assert.match(readFileSync(join(astroRoot, ASSET_MANIFEST), 'utf8'), /a\.pdf/)
+})
+
+test('--clean checks every collection before it deletes anything', () => {
+  const root = mkdtempSync(join(tmpdir(), 'oa-run-'))
+  const vault = join(root, 'vault')
+  mkdirSync(join(vault, 'Notes'), { recursive: true })
+  writeFileSync(join(vault, 'Notes', 'a.md'), 'a\n')
+  const astroRoot = join(root, 'site')
+  const config = {
+    ...site(vault, astroRoot),
+    collections: [
+      { name: 'notes', vaultDir: 'Notes', contentDir: 'src/content/notes' },
+      { name: 'same', vaultDir: 'Notes', contentDir: '../vault/Notes' },
+    ],
+  }
+  mkdirSync(join(astroRoot, 'src/content/notes'), { recursive: true })
+  writeFileSync(join(astroRoot, 'src/content/notes/keep.md'), 'k\n')
+  assert.throws(() => transform(config, { clean: true }), /--clean refused/)
+  assert.ok(
+    existsSync(join(astroRoot, 'src/content/notes/keep.md')),
+    'first collection was cleaned',
+  )
+})
+
+test('a symlinked subfolder is followed, and a symlink loop ends', () => {
+  const root = mkdtempSync(join(tmpdir(), 'oa-run-'))
+  const vault = join(root, 'vault')
+  mkdirSync(join(vault, 'Notes'), { recursive: true })
+  mkdirSync(join(root, 'elsewhere'), { recursive: true })
+  writeFileSync(join(root, 'elsewhere', 'linked.md'), 'l\n')
+  symlinkSync(join(root, 'elsewhere'), join(vault, 'Notes', 'sub'), 'dir')
+  symlinkSync(join(vault, 'Notes'), join(vault, 'Notes', 'loop'), 'dir')
+  const astroRoot = join(root, 'site')
+  transform(site(vault, astroRoot))
+  assert.ok(existsSync(join(astroRoot, 'src/content/notes/sub/linked.md')))
 })

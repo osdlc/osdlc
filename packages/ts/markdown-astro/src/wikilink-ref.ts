@@ -1,4 +1,5 @@
-import { existsSync, readdirSync } from 'node:fs'
+import type { Dirent } from 'node:fs'
+import { existsSync, readdirSync, realpathSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
 import type { WikilinkCollection } from './remark-wikilinks.ts'
@@ -73,15 +74,34 @@ function lookup(col: IndexedCollection, p: string): string | undefined {
 }
 
 /** Recursively list markdown files under `dir` as `/`-separated relative paths. */
-export function listMarkdown(dir: string, prefix = ''): string[] {
+export function listMarkdown(
+  dir: string,
+  prefix = '',
+  ancestors: ReadonlySet<string> = new Set(),
+): string[] {
+  const real = realpathSync(dir)
+  if (ancestors.has(real)) return [] // symlink loop
+  const chain = new Set(ancestors).add(real)
   const out: string[] = []
   for (const ent of readdirSync(dir, { withFileTypes: true })) {
     if (ent.name.startsWith('.')) continue // .obsidian, .trash, ...
+    const full = join(dir, ent.name)
     const rel = prefix ? `${prefix}/${ent.name}` : ent.name
-    if (ent.isDirectory()) out.push(...listMarkdown(join(dir, ent.name), rel))
+    if (isDirectory(ent, full)) out.push(...listMarkdown(full, rel, chain))
     else if (ent.name.endsWith('.md')) out.push(rel)
   }
   return out
+}
+
+/** A directory, or a symlink to one; a dangling link is not. */
+function isDirectory(ent: Dirent, full: string): boolean {
+  if (ent.isDirectory()) return true
+  if (!ent.isSymbolicLink()) return false
+  try {
+    return statSync(full).isDirectory()
+  } catch {
+    return false
+  }
 }
 
 /**

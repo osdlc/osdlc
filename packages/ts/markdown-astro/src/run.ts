@@ -43,6 +43,16 @@ function isInside(root: string, path: string): boolean {
   return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
 }
 
+function collectionDirs(
+  config: MarkdownAstroConfig,
+  direction: Direction,
+  col: MarkdownAstroConfig['collections'][number],
+): [src: string, dst: string] {
+  const vaultSide = resolve(config.vault, col.vaultDir)
+  const astroSide = resolve(config.astroRoot, col.contentDir)
+  return direction === 'toAstro' ? [vaultSide, astroSide] : [astroSide, vaultSide]
+}
+
 function ensureDir(dir: string): void {
   mkdirSync(dir, { recursive: true })
 }
@@ -82,15 +92,18 @@ function run(config: MarkdownAstroConfig, direction: Direction, opts: RunOptions
   const missing = new Set<string>()
   const assets = new Map<string, string>()
 
+  // Checked before anything is deleted, so a bad collection cannot leave a half-cleaned tree.
+  if (opts.clean && !opts.dryRun) {
+    for (const col of config.collections) {
+      const [src, dst] = collectionDirs(config, direction, col)
+      if (isInside(src, dst) || isInside(dst, src)) {
+        throw new Error(`--clean refused: ${src} and ${dst} are the same or nested`)
+      }
+    }
+  }
+
   for (const col of config.collections) {
-    const srcDir =
-      direction === 'toAstro'
-        ? resolve(config.vault, col.vaultDir)
-        : resolve(config.astroRoot, col.contentDir)
-    const dstDir =
-      direction === 'toAstro'
-        ? resolve(config.astroRoot, col.contentDir)
-        : resolve(config.vault, col.vaultDir)
+    const [srcDir, dstDir] = collectionDirs(config, direction, col)
 
     const files = listMarkdown(srcDir)
     if (!files.length) {
@@ -103,9 +116,6 @@ function run(config: MarkdownAstroConfig, direction: Direction, opts: RunOptions
     }
 
     if (opts.clean && !opts.dryRun && existsSync(dstDir)) {
-      if (isInside(srcDir, dstDir) || isInside(dstDir, srcDir)) {
-        throw new Error(`--clean refused: ${srcDir} and ${dstDir} are the same or nested`)
-      }
       rmSync(dstDir, { recursive: true, force: true })
     }
 
