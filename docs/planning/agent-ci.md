@@ -60,6 +60,9 @@ flowchart LR
     STRICT["strict mode"]
     CUR["Cursor: write .cursor/cli.json, fix print-mode note"]
   end
+  subgraph gate["Gate"]
+    ARCH["API and architecture review: dependencies and public APIs"]
+  end
   subgraph acts["CI glue · packages/gh-actions"]
     SETUP["agent-setup over skillwright install"]
     ANS["agent-pr-answer: prefetch, run, post"]
@@ -86,8 +89,10 @@ flowchart LR
   PROBE --> CUR
   CHECK --> CUR
   P712 -.-> ANS
-  RUN --> ANS
-  SETUP --> SPEC
+  RUN --> ARCH
+  SETUP --> ARCH
+  ARCH --> ANS
+  ARCH --> SPEC
   ANS --> SPEC
   STRICT --> SPEC
   SPEC --> MULTI
@@ -108,7 +113,7 @@ flowchart LR
   class W710,P711,P707,P712,PLAN,PARLEY done
   class UP yours
   class PLANPR review
-  class RUN,SETUP active
+  class RUN,SETUP,ARCH active
   class PERM,PROBE,CHECK,STRICT,CUR,ANS,SPEC,MULTI next
   class MCP,PUB,DATA,PIN later
 ```
@@ -182,6 +187,23 @@ sections after it.
 | I3  | Does `claude -p` expand a leading `/plugin:skill` the way an interactive session does?                        | answered: yes |
 | I4  | Does `codex exec` pick a skill from prose, and does `$plugin:skill` work in exec mode?                        | answered: yes (project skill; plugin namespace not run) |
 | I5  | What does harness-reference need in a `permissions` category, and does agent-call's capability map agree with it? | answered: subjects proposed; one agent-call note contradicted |
+
+## API and architecture review
+
+An ongoing gate, not a one-off. Before a library change merges, and before
+any significant refactor, review:
+
+- **Dependencies**: which package depends on which, and whether each
+  dependency points the right way (facts ← files ← call ← actions; nothing
+  in agent-call depends on skillwright or agent-adapt).
+- **Public APIs**: the `agent-call run` CLI and spec format, the
+  `agent-setup` and `agent-pr-answer` inputs and outputs, and anything
+  exported for other packages.
+- **Duplication**: harness facts encoded in more than one place.
+
+The first round covers `agent-call run` and `agent-setup` while they are
+built, and gates `agent-pr-answer` and the move of `claude.yml` to the
+spec. Its output is a review document with a decision per question.
 
 ## Work, in order
 
