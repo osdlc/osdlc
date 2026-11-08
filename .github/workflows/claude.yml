@@ -2,6 +2,10 @@
 # comment, an inline review comment or a review, and Claude replies in a
 # comment on the pull request.
 #
+# A comment that starts with `@claude review` runs the craft plugin's
+# /craft:code-review on the pull request against its base branch instead, and
+# posts the findings. Text after `review` is passed on as the focus.
+#
 # Only sksizer can trigger it: the job's `if` checks the comment's author
 # before a runner starts, so nobody else's comment spends a runner minute or
 # a token. Comments on issues are skipped too.
@@ -11,7 +15,7 @@
 # with billing_error while the CLI with the same credential was not. The
 # steps are plain shell, so a failure shows its real error in the log.
 #
-# Claude only reads and answers. `--allowedTools` grants file reading,
+# Claude only reads and answers. `--allowedTools` grants file reading, sub-agents,
 # skills, read-only git and gh commands, and node for the scripts the craft
 # skills bundle; nothing that edits, commits, pushes or comments. The last
 # step posts Claude's answer, or the error when there is none.
@@ -80,7 +84,20 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          prompt="You are answering a question on pull request #$PR in $REPO.
+          # `@claude review [focus]` at the start of the comment runs the review skill.
+          focus=$(printf '%s\n' "$REQUEST" | sed -nE '1s/^[[:space:]]*@claude[[:space:]]+review([[:space:]]+(.*))?[[:space:]]*$/review:\2/p')
+          if [ -n "$focus" ]; then
+            focus=${focus#review:}
+            base=$(gh pr view "$PR" --json baseRefName --jq .baseRefName)
+            prompt="Review pull request #$PR in $REPO by running the /craft:code-review skill with base origin/$base.
+          The pull request branch is checked out in the current directory, and origin/$base is fetched.
+          Review only what this branch changes against origin/$base (\`git diff origin/$base...HEAD\`); read the changed files in full where needed.
+          Your final message is posted to the pull request as a comment: GitHub-flavored markdown, findings in order of severity,
+          each with its file:line, the concrete failure and the fix. Say so plainly if there are no findings.
+          You cannot edit files, commit or post; the workflow posts your final message.
+          ${focus:+Focus requested by the reviewer: $focus}"
+          else
+            prompt="You are answering a question on pull request #$PR in $REPO.
           The pull request branch is checked out in the current directory.
           Use \`gh pr view $PR --comments\` and \`gh pr diff $PR\` for its description, discussion and diff.
           Answer only what is asked, in GitHub-flavored markdown, as your final message.
@@ -89,11 +106,12 @@ jobs:
           The request, from $SOURCE_URL:
 
           $REQUEST"
+          fi
           set +e
           claude -p "$prompt" \
             --output-format json \
-            --max-turns 30 \
-            --allowedTools "Read,Glob,Grep,Skill,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(node:*)" \
+            --max-turns 60 \
+            --allowedTools "Read,Glob,Grep,Skill,Agent,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(node:*)" \
             --disallowedTools "Edit,MultiEdit,Write,NotebookEdit,Bash(git commit:*),Bash(git push:*),Bash(gh pr comment:*)" \
             < /dev/null > result.json
           status=$?
