@@ -36,7 +36,7 @@ export function walkFiles(root: string): WalkedFile[] {
     let real: string
     let entries: Dirent[]
     try {
-      real = realpathSync(dir)
+      real = realpathSync.native(dir)
       entries = readdirSync(dir, { withFileTypes: true })
     } catch (err) {
       if (skippable(err, SKIPPABLE)) return // unreadable, or gone since it was listed
@@ -63,7 +63,15 @@ export function walkFiles(root: string): WalkedFile[] {
       }
       if (isDir) walk(full, rel)
       else if (isFile) {
-        const realFile = ent.isSymbolicLink() ? realpathSync(full) : join(real, ent.name)
+        let realFile = join(real, ent.name)
+        if (ent.isSymbolicLink()) {
+          try {
+            realFile = realpathSync.native(full)
+          } catch (err) {
+            if (skippable(err, DANGLING)) continue // removed since it was stat'ed
+            throw err
+          }
+        }
         if (seenFiles.has(realFile)) continue
         seenFiles.add(realFile)
         out.push({ rel, full })
