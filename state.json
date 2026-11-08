@@ -112,9 +112,9 @@
       "line": 90,
       "title": "Ancestor-only loop check walks non-loop symlinks again, listing one file under several paths",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "90f9dd5dd42e23c0d8dbc3f156e07d269f1f7567"
     },
     {
       "id": "r4-4",
