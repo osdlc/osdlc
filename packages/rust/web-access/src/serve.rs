@@ -722,7 +722,6 @@ mod tests {
             wr.write_all(b"x").await.unwrap();
             let _ = wrote_tx.send(());
             std::future::pending::<()>().await;
-            drop(wr);
         });
         wrote_rx.await.unwrap();
 
