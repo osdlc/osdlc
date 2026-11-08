@@ -10,8 +10,11 @@ requests. Started 2026-11-08.
   running `claude -p` directly (#710). anthropics/claude-code-action was
   dropped: the API refused its comment-mode runs with `billing_error` while
   the same credential worked from the CLI.
-- #712 moves those steps into two composite actions,
-  `packages/gh-actions/claude-setup` and `packages/gh-actions/claude-pr-answer`.
+- #711 switched it to `ANTHROPIC_API_KEY`.
+- #712 (claude-setup and claude-pr-answer composite actions) was closed
+  unmerged in favour of the generic layout below. Its branch,
+  `sksizer/actions-package`, is the starting point for `agent-pr-answer`
+  (`post.sh`, the prompt, the README and license layout).
 - The design discussion is the parley
   [agent-gh-actions-design](../parley/agent-gh-actions-design.json). Its
   framing (packaging first) is superseded by this plan.
@@ -20,18 +23,21 @@ requests. Started 2026-11-08.
 
 Arrows mean "needs". Green is done, purple a PR ready to merge
 (approved, checks green), teal a PR in review, red blocked, amber in
-progress, blue next, grey later. Update the classes at the bottom as items
-move.
+progress, blue next, grey later. A dotted arrow means "reuses code from".
+Update the classes at the bottom as items move.
 
 ```mermaid
 flowchart LR
-  subgraph now["Shipped and open"]
+  subgraph done["Done"]
     W710["PR 710: claude.yml runs claude -p"]
-    P712["PR 712: claude-setup + claude-pr-answer actions"]
-    PLAN["Plan + investigations I1–I5"]
-    P707["PR 707: closed as moot"]
     P711["PR 711: claude.yml on ANTHROPIC_API_KEY"]
-    CLOSE["Close PRs 711 and 707; settle the old parley"]
+    P707["PR 707: closed as moot"]
+    P712["PR 712: closed; branch kept as a starting point"]
+    PLAN["Plan + investigations I1–I5"]
+  end
+  subgraph house["Housekeeping"]
+    PLANPR["Push this plan as a docs PR"]
+    PARLEY["Retire the packaging parley"]
   end
   subgraph facts["Facts · harness-reference (skillwright repo)"]
     UP["Upload your harness-reference work"]
@@ -39,9 +45,10 @@ flowchart LR
     PROBE["Cursor clean-config probe"]
   end
   subgraph call["One call · @osdlc/agent-call"]
+    RUN["run CLI: spec file, prompt parts, --explain"]
     CHECK["Check permission rows against the facts"]
+    STRICT["strict mode"]
     CUR["Cursor: write .cursor/cli.json, fix print-mode note"]
-    RUN["run CLI: spec file, prompt parts, --explain, strict"]
   end
   subgraph acts["CI glue · packages/gh-actions"]
     SETUP["agent-setup over skillwright install"]
@@ -58,24 +65,23 @@ flowchart LR
     PIN["skillwright: agent-adapt 0.19.2 → 0.19.3"]
   end
 
-  W710 --> P712
-  P712 --> CLOSE
-  P707 --> CLOSE
-  P711 --> CLOSE
+  PLAN --> PLANPR
+  PLAN --> PARLEY
   UP --> PERM
   PLAN --> PERM
   PERM --> PROBE
   PERM --> CHECK
+  CHECK --> STRICT
+  RUN --> STRICT
   PROBE --> CUR
   CHECK --> CUR
-  CHECK --> RUN
-  P712 --> SETUP
-  P712 --> ANS
+  P712 -.-> ANS
   RUN --> ANS
   SETUP --> SPEC
   ANS --> SPEC
-  CUR --> MULTI
+  STRICT --> SPEC
   SPEC --> MULTI
+  CUR --> MULTI
   MULTI --> MCP
   MULTI --> PUB
   CHECK --> DATA
@@ -87,10 +93,9 @@ flowchart LR
   classDef active fill:#c77d0a,stroke:#94600a,color:#ffffff
   classDef next fill:#2f5bd3,stroke:#2144a3,color:#ffffff
   classDef later fill:#8a93a3,stroke:#6b7384,color:#ffffff
-  class W710,PLAN,P707,P711 done
-  class P712 review
+  class W710,P711,P707,P712,PLAN done
   class UP active
-  class CLOSE,PERM,PROBE,CHECK,CUR,RUN,SETUP,ANS,SPEC,MULTI next
+  class PLANPR,PARLEY,PERM,PROBE,RUN,CHECK,STRICT,CUR,SETUP,ANS,SPEC,MULTI next
   class MCP,PUB,DATA,PIN later
 ```
 
@@ -100,8 +105,9 @@ Checked 2026-11-08. A periodic check refreshes this table and the graph.
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
-| #712 | gh-actions: claude-setup, claude-pr-answer | open  | none   | clean after merging main | needs a decision: merge or close for the generic layout | decide                   |
+| #712 | gh-actions: claude-setup, claude-pr-answer | closed | none  | —              | —                                                                    | closed 2026-11-08; branch kept as a starting point |
 | #711 | claude.yml: ANTHROPIC_API_KEY            | merged | none  | —              | —                                                                    | merged 2026-11-08        |
+| #622 | Proposal: transcripts in agent-call and observe | draft | none   | —              | —                                                                    | related to agent-call, not on this plan's path |
 | #707 | claude: hide full output again           | closed | none   | —              | —                                                                    | closed as moot 2026-11-08 |
 
 ## Principle
@@ -164,15 +170,15 @@ sections after it.
 
 ## Work, in order
 
-1. Merge #712 as it is; close #711 and #707.
+1. Push this plan as a docs PR; retire the packaging parley.
 2. Add the `permissions` category to harness-reference for claude, codex
    and cursor (I5).
 3. `agent-call run`: spec file, `file` / `text` / `input` prompt parts,
-   `--explain`, `strict`. Check its capability map against
-   harness-reference.
+   `--explain`. This can start now. `strict` follows once its capability
+   map is checked against harness-reference.
 4. Generic actions in `packages/gh-actions/`, one shared `v1`:
    `agent-setup` over skillwright's install, `agent-pr-answer` as fetch,
-   `agent-call run`, post.
+   `agent-call run`, post, starting from #712's branch.
 5. Move `claude.yml` to the spec; then run the same spec on codex and
    cursor.
 6. Later: MCP and hooks through skillwright; move the actions to
