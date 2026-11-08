@@ -1,0 +1,47 @@
+# Runs packages/gh-actions/agent-setup for each harness on a real runner:
+# installs the pinned CLI, installs the craft plugin where the harness
+# supports it, and checks the CLI answers --version. Needs no secrets: it
+# never calls a model.
+name: agent-setup test
+
+on:
+  pull_request:
+    paths:
+      - packages/gh-actions/agent-setup/**
+      - .github/workflows/agent-setup-test.yml
+
+permissions: {}
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - harness: claude
+            plugins: craft@osdlc
+          - harness: codex
+            plugins: craft@osdlc
+          - harness: cursor
+            plugins: ""
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: setup
+        uses: ./packages/gh-actions/agent-setup
+        with:
+          harness: ${{ matrix.harness }}
+          marketplaces: ${{ matrix.plugins != '' && 'osdlc=https://github.com/osdlc/marketplace.git' || '' }}
+          plugins: ${{ matrix.plugins }}
+      - name: Check the CLI
+        env:
+          CLI: ${{ steps.setup.outputs.cli-path }}
+          HARNESS: ${{ matrix.harness }}
+        run: |
+          "$CLI" --version
+          if [ "$HARNESS" = claude ]; then claude plugin list; fi
