@@ -36,6 +36,9 @@ comrak = { version = "=0.53.0", default-features = false }
 # new in 0.3.
 getrandom = "0.3"
 globset = { version = "0.4", default-features = false }
+# The benchmarks under each crate's benches/ (bench/README.md). No default
+# features: no plotting or parallel report code, which the perf gate never reads.
+criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
 # web-access lists the host's interfaces for its Host allowlist.
 if-addrs = "0.13"
 # js-sys 0.3.103 is the release that pairs with wasm-bindgen 0.2.126.
