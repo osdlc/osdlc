@@ -26,6 +26,11 @@ import { isPhrasingParent, text, type MdNode, type MdParent } from './util.ts'
 /** What the scanner counts as a link: the dialect reads `[[#Heading]]` as a link to the note it is in. */
 const SCAN_OPTIONS = { selfLinks: true, codeRules: 'commonmark' } as const
 
+/** Scans `source` for links the way both link plugins read them. */
+export function scanLinks(source: string): BodyScan {
+  return scanBodyWith(source, SCAN_OPTIONS)
+}
+
 /** A link the scanner found, as offsets into the frame it scanned. */
 interface Span {
   start: number
@@ -56,18 +61,13 @@ function spansOf(scan: BodyScan, source: string): Spans {
     if (
       gone.reason === 'empty-target' &&
       !gone.embed &&
-      isClosedEmpty(source.slice(gone.start + 2, gone.end - 2))
+      !source.slice(gone.start + 2, gone.end - 2).includes('[')
     ) {
       wikilinks.push({ start: gone.start, end: gone.end })
     }
   }
   wikilinks.sort((a, b) => a.start - b.start)
   return { wikilinks, embeds }
-}
-
-/** Is `inner` the text of a closed `[[…]]` with nothing nested in it? */
-function isClosedEmpty(inner: string): boolean {
-  return !inner.includes('[')
 }
 
 /** The document being rendered: its source, scanned once for both plugins. */
@@ -96,7 +96,7 @@ function docOf(file: unknown): Doc | null {
           source,
           // Neither plugin has anything to do in a source without a `[[`.
           spans: source.includes('[[')
-            ? spansOf(scanBodyWith(source, SCAN_OPTIONS), source)
+            ? spansOf(scanLinks(source), source)
             : { wikilinks: [], embeds: [] },
         }
   docs.set(file, doc)
@@ -239,7 +239,7 @@ function sourceView(node: MdNode, doc: Doc, kind: Kind, closing = false): View |
 /** A text node's view of its own value. */
 function valueView(node: MdNode, kind: Kind): View {
   const value = node.value as string
-  const spans = spansOf(scanBodyWith(value, SCAN_OPTIONS), value)
+  const spans = spansOf(scanLinks(value), value)
   return {
     value,
     inSource: false,

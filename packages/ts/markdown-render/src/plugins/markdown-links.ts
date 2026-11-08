@@ -25,10 +25,8 @@ import { visit } from 'unist-util-visit'
 import type { WikilinkResolver } from '../types.ts'
 import { urlScheme } from '../url.ts'
 import { defaultResolver, splitFragment, wikilinkProps, withFragment } from './wikilinks.ts'
+import { isMarkdownPath } from '../paths.ts'
 import { clearLinkFields, definitionUrls, destination, safeDecode, type MdNode } from './util.ts'
-
-/** Extensions this dialect renders as a note. */
-const MARKDOWN_EXT = /\.(md|markdown)$/i
 
 export interface RemarkMarkdownLinksOptions {
   /** Injected resolver. Defaults to {@link defaultResolver}. */
@@ -49,7 +47,7 @@ export function splitMarkdownLink(url: string): { target: string; fragment: stri
   const hash = url.indexOf('#')
   const rawTarget = hash === -1 ? url : url.slice(0, hash)
   const fragment = hash === -1 ? '' : url.slice(hash + 1)
-  if (!MARKDOWN_EXT.test(rawTarget)) return null
+  if (!isMarkdownPath(rawTarget)) return null
   return { target: safeDecode(rawTarget), fragment: safeDecode(fragment) }
 }
 

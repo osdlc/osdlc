@@ -70,6 +70,13 @@ test('the registry names its reference, its generator and two implementations', 
   assert.deepEqual(registryProblems({ Dirs: FAMILY }).slice(0, 1), ['Dirs: a family name is lower-case and dash-separated'])
 })
 
+test('readers are listed with a language, dir and name', () => {
+  const reader = { language: 'ts', dir: 'packages/ts/view', name: '@x/view' }
+  assert.deepEqual(registryProblems({ dirs: { ...FAMILY, readers: [reader] } }), [])
+  assert.deepEqual(registryProblems({ dirs: { ...FAMILY, readers: [{ dir: 'x' }] } }), ['dirs: reader 0 needs language, dir and name'])
+  assert.deepEqual(registryProblems({ dirs: { ...FAMILY, readers: 'x' } }), ['dirs: readers is a list'])
+})
+
 test('regenerating builds each TypeScript reference and what it depends on, not a Rust one', () => {
   const rust = {
     reference: 'rust',

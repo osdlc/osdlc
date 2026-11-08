@@ -30,8 +30,8 @@
 //   - The implementations share major.minor, unless the family is in
 //     CATCHING_UP below.
 //   - Every library whose tests read a suite under packages/conformance/ is
-//     listed for that family, as an implementation or, for a library that only
-//     reads the suite (a renderer), as a reader, and no TypeScript library reads a crate's
+//     listed for that family, as an implementation or as a reader (a library
+//     that only reads the suite), and no TypeScript library reads a crate's
 //     fixtures (or a crate a TypeScript library's) unless it is in UNMIGRATED.
 //
 // Each check returns a list of problems, empty when all is well.
@@ -100,6 +100,17 @@ export function registryProblems(raw: unknown): string[] {
     const extra = Object.keys(f).filter((k) => !['reference', 'generator', 'implementations', 'readers'].includes(k))
     if (extra.length > 0) problems.push(`${name}: unknown keys ${extra.join(', ')}`)
     if (typeof f['generator'] !== 'string' || f['generator'] === '') problems.push(`${name}: no generator command`)
+    const readers = f['readers']
+    if (readers !== undefined) {
+      if (!Array.isArray(readers)) problems.push(`${name}: readers is a list`)
+      else {
+        for (const [n, r] of readers.entries()) {
+          if (!isObject(r) || typeof r['dir'] !== 'string' || typeof r['name'] !== 'string' || !LANGUAGES.includes(r['language'] as string)) {
+            problems.push(`${name}: reader ${n} needs language, dir and name`)
+          }
+        }
+      }
+    }
     const impls = f['implementations']
     if (!Array.isArray(impls) || impls.length < 2) {
       problems.push(`${name}: a family has at least two implementations`)
