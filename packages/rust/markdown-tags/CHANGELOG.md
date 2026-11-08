@@ -7,23 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## History before the first release
+
+The crate was developed inside another repository before its first release
+here. Its first published version is 0.4.0, shared with the TypeScript twin
+`@osdlc/markdown-tags` 0.4.0. What changed on the way, oldest first:
+
 ### Added
 
-- `TagDialect::Obsidian`, the rule of the `@sksizer/markdown-render` renderer: a Unicode alphabet,
-  at least one character that is not a number, code blanked first, and `(` also opens a tag. It also
-  blanks link and image destinations and reference definitions, which the renderer does not read as
-  text, so `[see](#section)` gives no tag.
-- `TagDialect` implements `Default` (`Obsidian`), `Display` and `FromStr` over the names
-  `obsidian`, `unicode` and `ascii`, and has `ALL` and `as_str`. It derives `Hash`, so it can key
-  a cache. A wrong name parses to
+- Inline `#tag` lexer for Markdown note bodies in two dialects,
+  `TagDialect::Unicode` and `TagDialect::Ascii`, and `extract_both`.
+- `TagDialect::Obsidian`, the default: a Unicode alphabet, at least one
+  character that is not a number, code blanked first, and `(` also opens a tag.
+  It also blanks link and image destinations and reference definitions after
+  code, because a renderer does not read them as text, so `[see](#section)`
+  gives no tag.
+- `TagDialect` implements `Default` (`Obsidian`), `Display` and `FromStr` over
+  the names `obsidian`, `unicode` and `ascii`, and has `ALL` and `as_str`. It
+  derives `Hash`, so it can key a cache. A wrong name parses to
   `ParseTagDialectError`.
-- `tests/fixtures/conformance.json`, a case file with every case's tags in all three dialects. The
-  TypeScript twin `@sksizer/markdown-tags` reads it too.
+- `tag_at(text, index, dialect)`, the tag whose `#` is at a byte offset by the
+  dialect's character rule alone, as the TypeScript twin's `tagAt`.
+- A conformance suite shared with the TypeScript twin,
+  `packages/conformance/markdown-tags/suite.json`, with every case's tags in
+  all three dialects.
 
-## [0.1.0] - 2026-10-06
+### Changed
 
-### Added
-
-- Inline `#tag` lexer for Markdown note bodies in two dialects, `TagDialect::Unicode` and
-  `TagDialect::Ascii`, moved out of the monorepo's Rust libraries into its own crate
-  ([#2807](https://github.com/sksizer/dev/pull/2807)).
+- **Breaking:** the two original dialects are named `Unicode` and `Ascii`.
+- **Breaking:** the `Obsidian` dialect stops reading a tag inside a link or
+  image destination or after a reference definition's `]:`. Output for the
+  default dialect changes for existing input.
+- `TagDialect` is `#[non_exhaustive]`, so a later dialect is not a breaking
+  change.

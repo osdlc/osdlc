@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/markdown-tags",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Inline #tag lexing for Markdown note bodies in three dialects: Obsidian's rule (the default), a Unicode one that scans code, and an ASCII one. The TypeScript twin of the markdown-tags Rust crate, held to it by a shared conformance suite.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
@@ -49,6 +49,7 @@
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "test": "vitest run",
     "coverage": "vitest run --coverage",
+    "bench": "vitest bench --run",
     "smoke": "node tests/smoke.mjs",
     "prepublishOnly": "npm run clean && npm run build",
     "format": "prettier --write .",

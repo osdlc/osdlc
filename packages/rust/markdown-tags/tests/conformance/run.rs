@@ -5,14 +5,14 @@
 //! and the runner (`tests/conformance.rs`, which checks every `expect` against
 //! it). Both include it with `#[path]`, so it is not a test of its own.
 
-use markdown_tags::{TagDialect, inline_tags};
+use markdown_tags::{TagDialect, inline_tags, tag_at};
 use serde_json::{Map, Value};
 
 /// Path of the suite, from the crate's directory.
 pub const SUITE_PATH: &str = "../../conformance/markdown-tags/suite.json";
 
 /// The sections the suite holds. A section not listed here fails the runner.
-pub const SECTIONS: [&str; 2] = ["inline_tags", "renderer_only"];
+pub const SECTIONS: [&str; 3] = ["inline_tags", "tag_at", "renderer_only"];
 
 /// The section only a renderer can answer. It reads the syntax tree, and a
 /// source scan cannot match it, so this crate and its twin skip the section
@@ -35,6 +35,35 @@ pub fn run(section: &str, input: &Value) -> Result<Option<Value>, String> {
                     tags(inline_tags(body, dialect)),
                 );
             }
+            Ok(Some(Value::Object(out)))
+        }
+        "tag_at" => {
+            let map = input.as_object().ok_or("input is not an object")?;
+            if let Some(k) = map
+                .keys()
+                .find(|k| !["text", "index", "dialect"].contains(&k.as_str()))
+            {
+                return Err(format!("unknown input key {k}"));
+            }
+            let text = map
+                .get("text")
+                .and_then(Value::as_str)
+                .ok_or("input.text is not a string")?;
+            let index = map
+                .get("index")
+                .and_then(Value::as_u64)
+                .ok_or("input.index is not a non-negative integer")?;
+            let dialect = map
+                .get("dialect")
+                .and_then(Value::as_str)
+                .ok_or("input.dialect is not a string")?
+                .parse::<TagDialect>()
+                .map_err(|e| e.to_string())?;
+            let found = usize::try_from(index)
+                .ok()
+                .and_then(|i| tag_at(text, i, dialect));
+            let mut out = Map::new();
+            out.insert("tag".to_owned(), found.map_or(Value::Null, Value::String));
             Ok(Some(Value::Object(out)))
         }
         RENDERER_ONLY => {

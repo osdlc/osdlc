@@ -3,7 +3,8 @@
 //!
 //! The suite holds the cases this crate and the TypeScript
 //! `@osdlc/markdown-tags` package must agree on: each `inline_tags` case gives
-//! the tags found in a body under all three dialects. This crate is the
+//! the tags found in a body under all three dialects, and each `tag_at` case
+//! the tag at an offset. This crate is the
 //! family's reference: its generator, `tests/conformance/write.rs`, writes
 //! every `expect` from `tests/conformance/run.rs`, which this test shares.
 //!
@@ -14,7 +15,7 @@
 //! test does not know all fail it.
 //!
 //! On top of the stored values it checks that [`extract_both`] agrees with
-//! [`inline_tags`].
+//! [`inline_tags`] on every `inline_tags` case.
 
 use markdown_tags::{TagDialect, extract_both, inline_tags};
 use serde_json::Value;
@@ -84,6 +85,9 @@ fn run_case(section: &str, case: &Value) -> Result<(), String> {
     let got = run::run(section, input)?.ok_or("a section with no answer to check")?;
     if &got != want {
         return Err(format!("got {got}, want {want}"));
+    }
+    if section != "inline_tags" {
+        return Ok(());
     }
     let body = run::body(input)?;
     let (unicode, ascii) = extract_both(body);

@@ -1,6 +1,6 @@
 [package]
 name = "markdown-tags"
-version = "0.1.0"
+version = "0.4.0"
 edition.workspace = true
 rust-version.workspace = true
 description = "Inline #tag lexing for Markdown note bodies, in three dialects: Obsidian's rule (the default), a Unicode one that scans everything, and an ASCII one that skips code spans and fences and also accepts a tag after `(`."
@@ -42,6 +42,13 @@ path = "tests/conformance/write.rs"
 # JSON at runtime.
 [dev-dependencies]
 serde_json = { workspace = true, features = ["preserve_order"] }
+# benches/inline_tags.rs, the benchmarks of the tag scan.
+criterion = { workspace = true }
+
+# criterion supplies its own `main`.
+[[bench]]
+name = "inline_tags"
+harness = false
 
 [lints]
 workspace = true

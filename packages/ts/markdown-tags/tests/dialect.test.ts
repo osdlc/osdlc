@@ -41,3 +41,14 @@ test('tagAt does not blank code or links', () => {
   expect(inlineTags('[see](#section)')).toEqual([])
   expect(tagAt('[see](#section)', 6)).toBe('section')
 })
+
+test('an unknown dialect throws a RangeError naming the accepted ones', () => {
+  // A JavaScript caller can pass any value; the type checker is not there.
+  for (const bad of ['Obsidian', '', 'gfm', null, 1]) {
+    const dialect = bad as never
+    expect(() => inlineTags('#a', dialect)).toThrow(RangeError)
+    expect(() => tagAt('#a', 0, dialect)).toThrow(RangeError)
+  }
+  expect(() => inlineTags('#a', 'Obsidian' as never)).toThrow('obsidian, unicode, ascii')
+  expect(() => tagAt('#a', 0, 'Obsidian' as never)).toThrow(/"Obsidian"/)
+})

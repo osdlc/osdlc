@@ -1,7 +1,7 @@
 {
   "family": "markdown-tags",
   "reference": "rust",
-  "referenceVersion": "0.1.0",
+  "referenceVersion": "0.4.0",
   "sections": {
     "inline_tags": {
       "description": "Inline tags of `body` in encounter order, not deduplicated, under each dialect: `expect` maps `obsidian`, `unicode` and `ascii` to the tag names found, without the `#`. Offsets are not part of the answer.",
@@ -691,6 +691,198 @@
             "ascii": [
               "def"
             ]
+          }
+        }
+      ]
+    },
+    "tag_at": {
+      "description": "The tag whose `#` is at `index` in `text` under `dialect`, as `expect.tag`, or null. `index` is an offset in UTF-8 bytes; the TypeScript runner converts to its UTF-16 index, and an `index` that is not on a character boundary or is past the end gives null. The dialect's character rule only: no code or link blanking.",
+      "cases": [
+        {
+          "name": "after_a_paren",
+          "input": {
+            "text": "(#draft) #2024 x#no",
+            "index": 1,
+            "dialect": "obsidian"
+          },
+          "expect": {
+            "tag": "draft"
+          }
+        },
+        {
+          "name": "digits_only_obsidian",
+          "input": {
+            "text": "(#draft) #2024 x#no",
+            "index": 9,
+            "dialect": "obsidian"
+          },
+          "expect": {
+            "tag": null
+          }
+        },
+        {
+          "name": "digits_only_unicode",
+          "input": {
+            "text": "(#draft) #2024 x#no",
+            "index": 9,
+            "dialect": "unicode"
+          },
+          "expect": {
+            "tag": "2024"
+          }
+        },
+        {
+          "name": "paren_before_unicode",
+          "input": {
+            "text": "(#draft) #2024 x#no",
+            "index": 1,
+            "dialect": "unicode"
+          },
+          "expect": {
+            "tag": null
+          }
+        },
+        {
+          "name": "paren_before_ascii",
+          "input": {
+            "text": "(#draft) #2024 x#no",
+            "index": 1,
+            "dialect": "ascii"
+          },
+          "expect": {
+            "tag": "draft"
+          }
+        },
+        {
+          "name": "inside_a_word",
+          "input": {
+            "text": "(#draft) #2024 x#no",
+            "index": 17,
+            "dialect": "obsidian"
+          },
+          "expect": {
+            "tag": null
+          }
+        },
+        {
+          "name": "not_a_hash",
+          "input": {
+            "text": "(#draft) #2024 x#no",
+            "index": 0,
+            "dialect": "obsidian"
+          },
+          "expect": {
+            "tag": null
+          }
+        },
+        {
+          "name": "at_start",
+          "input": {
+            "text": "#start tag",
+            "index": 0,
+            "dialect": "unicode"
+          },
+          "expect": {
+            "tag": "start"
+          }
+        },
+        {
+          "name": "past_the_end",
+          "input": {
+            "text": "#a",
+            "index": 2,
+            "dialect": "unicode"
+          },
+          "expect": {
+            "tag": null
+          }
+        },
+        {
+          "name": "empty_text",
+          "input": {
+            "text": "",
+            "index": 0,
+            "dialect": "unicode"
+          },
+          "expect": {
+            "tag": null
+          }
+        },
+        {
+          "name": "astral_letter_after_hash",
+          "input": {
+            "text": "#𝐀b",
+            "index": 0,
+            "dialect": "obsidian"
+          },
+          "expect": {
+            "tag": "𝐀b"
+          }
+        },
+        {
+          "name": "astral_letter_before_hash",
+          "input": {
+            "text": "𝐀#b",
+            "index": 4,
+            "dialect": "obsidian"
+          },
+          "expect": {
+            "tag": null
+          }
+        },
+        {
+          "name": "inside_a_character",
+          "input": {
+            "text": "é#a",
+            "index": 1,
+            "dialect": "unicode"
+          },
+          "expect": {
+            "tag": null
+          }
+        },
+        {
+          "name": "code_is_not_blanked",
+          "input": {
+            "text": "` #code`",
+            "index": 2,
+            "dialect": "obsidian"
+          },
+          "expect": {
+            "tag": "code"
+          }
+        },
+        {
+          "name": "link_destination_is_not_blanked",
+          "input": {
+            "text": "[see](#section)",
+            "index": 6,
+            "dialect": "obsidian"
+          },
+          "expect": {
+            "tag": "section"
+          }
+        },
+        {
+          "name": "ascii_stops_at_non_ascii",
+          "input": {
+            "text": "#santé",
+            "index": 0,
+            "dialect": "ascii"
+          },
+          "expect": {
+            "tag": "sant"
+          }
+        },
+        {
+          "name": "nested_tag",
+          "input": {
+            "text": "x #a/b-c d",
+            "index": 2,
+            "dialect": "obsidian"
+          },
+          "expect": {
+            "tag": "a/b-c"
           }
         }
       ]

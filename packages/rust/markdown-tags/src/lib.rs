@@ -12,14 +12,15 @@
 //! | code spans and fences | blanked first | **scanned** | blanked first |
 //! | link destinations, reference definitions | blanked first | scanned | scanned |
 //!
-//! [`TagDialect::Obsidian`] is the default. It is the rule of the
-//! `@sksizer/markdown-render` renderer, applied to the source text. Its pattern is
+//! [`TagDialect::Obsidian`] is the default. It is the rule of a renderer
+//! that reads the syntax tree (`@osdlc/markdown-render`), applied to the source text. Its pattern is
 //! a JavaScript regex, so its `\s` is JavaScript's: it counts U+FEFF and not
 //! U+0085. The other two dialects use [`char::is_whitespace`], which is the
 //! other way round.
 //!
 //! The renderer reads the syntax tree, so a source scan differs from it in
-//! these ways, which the case file marks `rendererOnly`. A `#` right after
+//! these ways, which the conformance suite keeps in its `renderer_only`
+//! section. A `#` right after
 //! inline markup (`**bold**#tag`) or a decoded entity (`a&nbsp;#tag`) is a tag
 //! there and not here. Link text is never a tag there.
 //!
@@ -45,8 +46,8 @@
 //! Code blanking is [`markdown_link::strip_code`], so links and tags agree on what
 //! counts as code.
 //!
-//! The TypeScript twin is `@sksizer/markdown-tags`. Both suites read
-//! `tests/fixtures/conformance.json`, which gives every case's answer in all
+//! The TypeScript twin is `@osdlc/markdown-tags`. Both run the shared
+//! `markdown-tags` conformance suite, which gives every case's answer in all
 //! three dialects.
 //!
 //! ```
@@ -65,7 +66,19 @@ use std::str::FromStr;
 
 /// Which inline-tag dialect to scan with. Prints as and parses from
 /// `obsidian`, `unicode` and `ascii`, so a setting value can name one.
+///
+/// Not exhaustive: a later release may add a dialect, so a `match` on it needs
+/// a wildcard arm.
+///
+/// ```
+/// use markdown_tags::TagDialect;
+///
+/// assert_eq!(TagDialect::default(), TagDialect::Obsidian);
+/// assert_eq!(TagDialect::Ascii.to_string(), "ascii");
+/// assert_eq!("unicode".parse::<TagDialect>(), Ok(TagDialect::Unicode));
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[non_exhaustive]
 pub enum TagDialect {
     /// Obsidian's rule: Unicode alphabet, at least one char that is not a
     /// number, code and link destinations blanked first, `(` also opens a tag.
@@ -81,14 +94,36 @@ pub enum TagDialect {
 
 impl TagDialect {
     /// Every dialect, default first.
+    ///
+    /// ```
+    /// use markdown_tags::TagDialect;
+    ///
+    /// assert_eq!(TagDialect::ALL[0], TagDialect::default());
+    /// ```
     pub const ALL: [TagDialect; 3] = [TagDialect::Obsidian, TagDialect::Unicode, TagDialect::Ascii];
 
     /// The dialect's name: `obsidian`, `unicode` or `ascii`.
+    ///
+    /// ```
+    /// use markdown_tags::TagDialect;
+    ///
+    /// assert_eq!(TagDialect::Obsidian.as_str(), "obsidian");
+    /// ```
     pub fn as_str(self) -> &'static str {
         match self {
             TagDialect::Obsidian => "obsidian",
             TagDialect::Unicode => "unicode",
             TagDialect::Ascii => "ascii",
+        }
+    }
+}
+
+impl TagDialect {
+    fn rule(self) -> &'static Rule {
+        match self {
+            TagDialect::Obsidian => &OBSIDIAN,
+            TagDialect::Unicode => &UNICODE,
+            TagDialect::Ascii => &ASCII,
         }
     }
 }
@@ -99,7 +134,16 @@ impl fmt::Display for TagDialect {
     }
 }
 
-/// A string that names no [`TagDialect`].
+/// A string that names no [`TagDialect`]. [`TagDialect::from_str`] returns it
+/// for any name that is not exactly `obsidian`, `unicode` or `ascii`; its
+/// `Display` text names the accepted ones.
+///
+/// ```
+/// use markdown_tags::TagDialect;
+///
+/// let err = "Unicode".parse::<TagDialect>().unwrap_err();
+/// assert!(err.to_string().contains("expected obsidian, unicode or ascii"));
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParseTagDialectError(String);
 
@@ -133,6 +177,12 @@ impl FromStr for TagDialect {
 /// Not deduplicated: callers dedupe at different points (some union with
 /// frontmatter tags, some keep the first occurrence), and deduping here would
 /// decide which duplicate wins for them.
+///
+/// ```
+/// use markdown_tags::{TagDialect, inline_tags};
+///
+/// assert_eq!(inline_tags("#a #b `#c`", TagDialect::Obsidian), vec!["a", "b"]);
+/// ```
 pub fn inline_tags(body: &str, dialect: TagDialect) -> Vec<String> {
     match dialect {
         TagDialect::Obsidian => scan(
@@ -145,12 +195,58 @@ pub fn inline_tags(body: &str, dialect: TagDialect) -> Vec<String> {
 }
 
 /// The `Unicode` and `Ascii` dialects from one body: `(unicode, ascii)`.
-/// `determined-index` reads this pair for search and the graph.
+/// A search index that keeps non-ASCII tags and a link graph that skips code
+/// can read both in one call.
+///
+/// ```
+/// use markdown_tags::extract_both;
+///
+/// let (unicode, ascii) = extract_both("#santé");
+/// assert_eq!(unicode, vec!["santé"]);
+/// assert_eq!(ascii, vec!["sant"]);
+/// ```
 pub fn extract_both(body: &str) -> (Vec<String>, Vec<String>) {
     (
         inline_tags(body, TagDialect::Unicode),
         inline_tags(body, TagDialect::Ascii),
     )
+}
+
+/// The tag whose `#` is at byte `index` of `text` under `dialect`, or `None`.
+///
+/// Applies the dialect's character rule only, with no code or link blanking,
+/// for a caller that already holds plain text and reads code and links
+/// itself. `None` when `index` is out of range or not on a character
+/// boundary, when the byte there is not `#`, when the `#` follows a character
+/// the dialect does not allow, or when the run fails the dialect's rule. The
+/// TypeScript twin's `tagAt` takes a UTF-16 offset instead.
+///
+/// ```
+/// use markdown_tags::{TagDialect, tag_at};
+///
+/// let text = "(#draft) #2024";
+/// assert_eq!(tag_at(text, 1, TagDialect::Obsidian), Some("draft".to_owned()));
+/// assert_eq!(tag_at(text, 9, TagDialect::Obsidian), None);
+/// assert_eq!(tag_at(text, 9, TagDialect::Unicode), Some("2024".to_owned()));
+/// ```
+pub fn tag_at(text: &str, index: usize, dialect: TagDialect) -> Option<String> {
+    let rule = dialect.rule();
+    let after = text.get(index..)?.strip_prefix('#')?;
+    if let Some(before) = text[..index].chars().next_back()
+        && !(rule.opens_after)(before)
+    {
+        return None;
+    }
+    if !after.chars().next().is_some_and(rule.starts) {
+        return None;
+    }
+    let end = after
+        .char_indices()
+        .skip(1)
+        .find(|&(_, c)| !(rule.continues)(c))
+        .map_or(after.len(), |(i, _)| i);
+    let run = &after[..end];
+    run.chars().any(rule.needs_one).then(|| run.to_owned())
 }
 
 /// One dialect's character tests.
@@ -386,6 +482,40 @@ mod tests {
         for s in ["", "Obsidian", "UNICODE", " ascii", "gfm"] {
             assert!(s.parse::<TagDialect>().is_err(), "{s:?}");
         }
+    }
+
+    #[test]
+    fn tag_at_reads_one_tag_by_the_dialect_rule() {
+        let text = "(#draft) #2024 x#no";
+        let at = |i, d| tag_at(text, i, d);
+        assert_eq!(at(1, TagDialect::Obsidian).as_deref(), Some("draft"));
+        assert_eq!(at(9, TagDialect::Obsidian), None);
+        assert_eq!(at(9, TagDialect::Unicode).as_deref(), Some("2024"));
+        assert_eq!(at(1, TagDialect::Unicode), None);
+        assert_eq!(at(17, TagDialect::Obsidian), None);
+        assert_eq!(at(0, TagDialect::Obsidian), None);
+    }
+
+    #[test]
+    fn tag_at_refuses_a_bad_index() {
+        // `é` is two bytes: index 2 is inside it.
+        assert_eq!(tag_at("é#a", 2, TagDialect::Unicode), None);
+        assert_eq!(tag_at("#a", 2, TagDialect::Unicode), None);
+        assert_eq!(tag_at("#a", 99, TagDialect::Unicode), None);
+        assert_eq!(tag_at("", 0, TagDialect::Unicode), None);
+    }
+
+    #[test]
+    fn tag_at_does_not_blank_code_or_links() {
+        assert_eq!(
+            tag_at("` #code`", 2, TagDialect::Obsidian).as_deref(),
+            Some("code")
+        );
+        assert_eq!(
+            tag_at("[see](#section)", 6, TagDialect::Obsidian).as_deref(),
+            Some("section")
+        );
+        assert!(inline_tags("[see](#section)", TagDialect::Obsidian).is_empty());
     }
 
     #[test]

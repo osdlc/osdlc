@@ -206,7 +206,7 @@ and points here.
 | manifest-graph       | TS, Rust                    | `rust/manifest-graph/tests/fixtures/parity.json`                                    | TS        |
 | markdown-contract    | TS, Rust                    | `ts/markdown-contract/corpus/`, `rust/markdown-contract/tests/fixtures/parity.json` | TS        |
 | markdown-link        | Rust, TS                    | `rust/markdown-link/tests/fixtures/conformance.json`                                | Rust      |
-| markdown-tags        | Rust, TS                    | `rust/markdown-tags/tests/fixtures/conformance.json`                                | Rust      |
+| markdown-tags        | Rust, TS                    | moved: `conformance/markdown-tags/suite.json`                                       | Rust      |
 | observe              | TS, Rust `osdlc-observe`    | `rust/osdlc-observe/tests/fixtures/parity.json`                                     | TS        |
 | path-guard           | TS, Rust                    | moved: `conformance/path-guard/suite.json`                                          | TS        |
 | pr-update            | TS, Rust                    | `rust/pr-update/tests/fixtures/parity.json`                                         | TS        |

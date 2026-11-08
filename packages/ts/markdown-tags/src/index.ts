@@ -1,8 +1,8 @@
 /**
  * Inline `#tag` lexing for Markdown note bodies, in three dialects: the
  * TypeScript twin of the `markdown-tags` crate. Each function gives the same
- * answer as its Rust namesake, and both suites read the crate's
- * `tests/fixtures/conformance.json`.
+ * answer as its Rust namesake, and both run the shared `markdown-tags`
+ * conformance suite.
  */
 
 import { stripCode } from '@osdlc/markdown-link'
@@ -12,11 +12,15 @@ export const TAG_DIALECTS = ['obsidian', 'unicode', 'ascii'] as const
 
 /**
  * Which inline-tag dialect to scan with: `obsidian` (the renderer's rule),
- * `unicode` or `ascii`. The crate docs, `packages/rust/markdown-tags/src/lib.rs`,
- * state each rule.
+ * `unicode` or `ascii`. The README states each rule.
  */
 export type TagDialect = (typeof TAG_DIALECTS)[number]
 
+/**
+ * The dialect used when a function is given none: `'obsidian'`, which reads
+ * code, link destinations and reference definitions as not text and follows
+ * Obsidian's rule for what a tag may hold.
+ */
 export const DEFAULT_TAG_DIALECT: TagDialect = 'obsidian'
 
 /** Whether `value` names a dialect, for checking a setting value. */
@@ -29,8 +33,12 @@ export function isTagDialect(value: unknown): value is TagDialect {
  *
  * Not deduplicated: callers dedupe at different points, and deduping here
  * would decide which duplicate wins for them.
+ *
+ * @throws {RangeError} when `dialect` is not one of {@link TAG_DIALECTS}, as
+ * a caller that skips the type checker can pass any value.
  */
 export function inlineTags(body: string, dialect: TagDialect = DEFAULT_TAG_DIALECT): string[] {
+  checkDialect(dialect)
   switch (dialect) {
     case 'obsidian':
       return scan(blankLinkSyntax(stripCode(body)), OBSIDIAN)
@@ -46,13 +54,24 @@ export function inlineTags(body: string, dialect: TagDialect = DEFAULT_TAG_DIALE
  * applies the dialect's character rule only, with no code or link blanking,
  * for a caller that already holds plain text: the renderer's text node, or
  * the editor's inline parser, which reads code and links itself.
+ *
+ * @throws {RangeError} when `dialect` is not one of {@link TAG_DIALECTS}.
  */
 export function tagAt(
   text: string,
   index: number,
   dialect: TagDialect = DEFAULT_TAG_DIALECT,
 ): string | null {
+  checkDialect(dialect)
   return tagWith(text, index, RULES[dialect])
+}
+
+function checkDialect(dialect: unknown): asserts dialect is TagDialect {
+  if (!isTagDialect(dialect)) {
+    throw new RangeError(
+      `unknown tag dialect ${JSON.stringify(dialect)}: expected ${TAG_DIALECTS.join(', ')}`,
+    )
+  }
 }
 
 /** The `unicode` and `ascii` dialects from one body: `[unicode, ascii]`. */

@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest in `@osdlc/markdown-link`.
+Thanks for your interest in `@osdlc/markdown-tags`.
 
 ## Issues
 
@@ -13,7 +13,7 @@ misbehaves. Report security problems privately. See
 ## Pull requests
 
 This package lives in [osdlc/osdlc](https://github.com/osdlc/osdlc) under
-`packages/ts/markdown-link`. Open pull requests there. They are reviewed and
+`packages/ts/markdown-tags`. Open pull requests there. They are reviewed and
 merged there.
 
 ## Running the tests
@@ -24,7 +24,7 @@ under Node 22.12 or later.
 
 ```sh
 pnpm install
-cd packages/ts/markdown-link
+cd packages/ts/markdown-tags
 pnpm test
 ```
 
@@ -42,13 +42,18 @@ pnpm run lint
 pnpm run format:check
 ```
 
-## The case file
+## The conformance suite
 
-`packages/rust/markdown-link/tests/fixtures/conformance.json` is read by this
-package's `tests/conformance.test.ts` and by the Rust crate's
-`tests/conformance.rs`. A new case goes into that file, so both suites cover
-it. A change to the parsing behaviour lands in both packages in one pull
-request.
+`packages/conformance/markdown-tags/suite.json` is read by this package's
+`tests/conformance.test.ts` and by the Rust crate's `tests/conformance.rs`.
+A new case goes into that file, so both suites cover it. Write the case's
+`input` by hand, then run
+`cargo run -p markdown-tags --example conformance-write` from `packages/rust`
+to write its `expect`; never write that by hand. A change to tag behaviour
+lands in both packages in one pull request.
+
+`bench/` holds the benchmarks (`pnpm run bench`), one per dialect with and
+without link syntax. The Rust crate has the same set in `benches/`.
 
 ## Code style
 
