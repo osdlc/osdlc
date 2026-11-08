@@ -16,7 +16,8 @@
 # skills bundle; nothing that edits, commits, pushes or comments. The last
 # step posts Claude's answer, or the error when there is none.
 #
-# Auth is CLAUDE_CODE_OAUTH_TOKEN. The CLI version is pinned below.
+# Auth is ANTHROPIC_API_KEY, a Claude Console API key that bills to the
+# org's API credits. The CLI version is pinned below.
 #
 # Every action is pinned to a commit SHA; the comment names its release.
 name: claude
@@ -77,7 +78,7 @@ jobs:
       - name: Ask Claude
         id: claude
         env:
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           prompt="You are answering a question on pull request #$PR in $REPO.
           The pull request branch is checked out in the current directory.
