@@ -1,12 +1,57 @@
 {
   "schema": 1,
   "pr": 704,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "d21b524f4c8372f5703a12e0ea7e89dc1d32e22e",
+  "base": "b0a6e9cde619e567f5f3cd24a3650d6e840bb39d",
+  "round": 1,
   "claim": {
     "owner": "Mac.local:claude-q7m2xk",
     "at": "2026-11-08T07:13:19.777Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/rust/web-access/src/guard.rs",
+      "line": 262,
+      "title": "find_encoded lets a raw match override the decoded match, so one token's link can carry another token's grant",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/rust/web-access/src/guard.rs",
+      "line": 336,
+      "title": "Live-host check enumerates interfaces on every unmatched request, before auth",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": "packages/rust/web-access/src/serve.rs",
+      "line": 76,
+      "title": "One cut future shares a single waker between the read and write sides",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-4",
+      "round": 1,
+      "path": "packages/rust/web-access/src/serve.rs",
+      "line": 206,
+      "title": "CUT_GRACE is per listener, not one shared deadline",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
