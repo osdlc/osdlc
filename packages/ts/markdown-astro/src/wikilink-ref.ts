@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
 import type { WikilinkCollection } from './remark-wikilinks.ts'
@@ -73,13 +73,12 @@ function lookup(col: IndexedCollection, p: string): string | undefined {
 }
 
 /** Recursively list markdown files under `dir` as `/`-separated relative paths. */
-function listMarkdown(dir: string, prefix = ''): string[] {
+export function listMarkdown(dir: string, prefix = ''): string[] {
   const out: string[] = []
-  for (const name of readdirSync(dir)) {
-    const full = join(dir, name)
-    const rel = prefix ? `${prefix}/${name}` : name
-    if (statSync(full).isDirectory()) out.push(...listMarkdown(full, rel))
-    else if (name.endsWith('.md')) out.push(rel)
+  for (const ent of readdirSync(dir, { withFileTypes: true })) {
+    const rel = prefix ? `${prefix}/${ent.name}` : ent.name
+    if (ent.isDirectory()) out.push(...listMarkdown(join(dir, ent.name), rel))
+    else if (ent.name.endsWith('.md')) out.push(rel)
   }
   return out
 }
@@ -88,7 +87,7 @@ function listMarkdown(dir: string, prefix = ''): string[] {
  * Build the per-collection key index for one collection. Shared by the prose
  * remark visitor and frontmatter FK resolution so both paths agree on keys.
  */
-export function indexCollection(
+function indexCollection(
   c: WikilinkCollection,
   onCollision?: (msg: string) => void,
 ): IndexedCollection {
@@ -165,8 +164,7 @@ export function resolveRef(
     if (col && slug) {
       const id = lookup(col, slug)
       if (id !== undefined) {
-        const href = col.route ? col.route.replace(':slug', () => id) : null
-        return { collection: col.name, id, href }
+        return hit(col, id)
       }
       // Known type but unresolved slug: a miss (do not fall through to the
       // untyped path, which could match the literal `type/slug` as a vault key).
@@ -178,11 +176,15 @@ export function resolveRef(
   for (const col of index.collections) {
     const id = lookup(col, target)
     if (id !== undefined) {
-      const href = col.route ? col.route.replace(':slug', () => id) : null
-      return { collection: col.name, id, href }
+      return hit(col, id)
     }
   }
   return null
+}
+
+function hit(col: IndexedCollection, id: string) {
+  const href = col.route ? col.route.replace(':slug', () => id) : null
+  return { collection: col.name, id, href }
 }
 
 const SLUG_RE = /^[^\s/]+(?:\/[^\s/]+)*$/ // non-empty, no spaces; allows path segments

@@ -62,7 +62,7 @@ export function assetUrl(base: string, outSub: string): string {
   return `${base}/${tail}`
 }
 
-export interface ToAstroResult {
+interface ToAstroResult {
   body: string
   copies: CopyOp[]
   /** Embed targets that did not match any file in the vault. */
@@ -150,7 +150,7 @@ function decodePath(value: string): string {
     .join('/')
 }
 
-export interface FmToAstroResult {
+interface FmToAstroResult {
   value: string
   copy: CopyOp | null
   missing: string | null
@@ -184,7 +184,7 @@ export function fmAssetToUrl(
   }
 }
 
-export interface ToVaultResult {
+interface ToVaultResult {
   body: string
   /** Paths under the public dir of the images that point at the public base, to copy into the vault. */
   assets: string[]

@@ -8,8 +8,9 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { basename } from './markdown.ts'
 
-export interface AssetRef {
+interface AssetRef {
   /** Path of the asset relative to the vault root (the copy source). */
   vaultPath: string
   /** Path under the site's public asset base (the copy dest + URL tail). */
@@ -22,8 +23,6 @@ export interface AssetIndex {
   /** Resolve an embed target (a path or a bare basename) to a concrete asset. */
   resolve(target: string): AssetRef
 }
-
-const basename = (p: string): string => p.split(/[\\/]/).pop() ?? p
 
 /**
  * Index every non-markdown file in the vault so embeds can be resolved the way

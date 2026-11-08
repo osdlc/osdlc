@@ -2,10 +2,8 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
-  readdirSync,
   readFileSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -18,6 +16,7 @@ import {
 import type { MarkdownAstroConfig } from './config.ts'
 import type { CopyOp } from './markdown.ts'
 import { rewriteFile } from './rewrite.ts'
+import { listMarkdown as listMarkdownIn } from './wikilink-ref.ts'
 import type { Direction } from './rewrite.ts'
 
 export interface RunStats {
@@ -43,19 +42,7 @@ export interface RunOptions {
   include?: (collection: string, rel: string, text: string) => boolean
 }
 
-function listMarkdown(dir: string): string[] {
-  if (!existsSync(dir)) return []
-  const out: string[] = []
-  for (const name of readdirSync(dir)) {
-    const full = join(dir, name)
-    if (statSync(full).isDirectory()) {
-      out.push(...listMarkdown(full).map((p) => join(name, p)))
-    } else if (name.endsWith('.md')) {
-      out.push(name)
-    }
-  }
-  return out
-}
+const listMarkdown = (dir: string): string[] => (existsSync(dir) ? listMarkdownIn(dir) : [])
 
 function ensureDir(dir: string): void {
   mkdirSync(dir, { recursive: true })
