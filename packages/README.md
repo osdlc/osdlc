@@ -160,6 +160,10 @@ Developed here, in this repository:
 - `packages/rust/vfs-walk` (`vfs-walk` on crates.io, the folder walk over
   `vfs-seam`, with no Markdown or vault rules; builds for
   `wasm32-unknown-unknown`)
+- `packages/rust/web-access` (`web-access` on crates.io, puts an axum app on
+  the local network safely: listen settings, minted tokens, a request guard
+  with grants and access contexts, a route permission table and a server that
+  can be stopped)
 - `packages/rust/yaml-splice` (`yaml-splice` on crates.io)
 - `packages/rust/yaml-splice-wasm`, the WebAssembly build of `yaml-splice`
   for its npm package (not published to crates.io)
