@@ -125,13 +125,13 @@ Checked 2026-11-08. A periodic check refreshes this table and the graph.
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
-| #716 | feat(gh-actions): agent-setup action  | draft | none   | —              | waits on the API and architecture review                             | review gate, then merge  |
-| #715 | feat(agent-call): agent-call run command | draft | none   | —              | waits on the API and architecture review                             | review gate, then merge  |
-| #713 | docs(planning): plan coding agents in CI | open  | none   | —              | needs your review                                                    | merge when reviewed      |
-| #712 | gh-actions: claude-setup, claude-pr-answer | closed | none  | —              | —                                                                    | closed 2026-11-08; branch kept as a starting point |
-| #711 | claude.yml: ANTHROPIC_API_KEY            | merged | none  | —              | —                                                                    | merged 2026-11-08        |
-| #622 | Proposal: transcripts in agent-call and observe | draft | none   | —              | —                                                                    | related to agent-call, not on this plan's path |
-| #707 | claude: hide full output again           | closed | none   | —              | —                                                                    | closed as moot 2026-11-08 |
+| [#716](https://github.com/osdlc/osdlc/pull/716) | feat(gh-actions): agent-setup action  | draft | none   | —              | waits on the API and architecture review                             | review gate, then merge  |
+| [#715](https://github.com/osdlc/osdlc/pull/715) | feat(agent-call): agent-call run command | draft | none   | —              | waits on the API and architecture review                             | review gate, then merge  |
+| [#713](https://github.com/osdlc/osdlc/pull/713) | docs(planning): plan coding agents in CI | open  | none   | —              | needs your review                                                    | merge when reviewed      |
+| [#712](https://github.com/osdlc/osdlc/pull/712) | gh-actions: claude-setup, claude-pr-answer | closed | none  | —              | —                                                                    | closed 2026-11-08; branch kept as a starting point |
+| [#711](https://github.com/osdlc/osdlc/pull/711) | claude.yml: ANTHROPIC_API_KEY            | merged | none  | —              | —                                                                    | merged 2026-11-08        |
+| [#622](https://github.com/osdlc/osdlc/pull/622) | Proposal: transcripts in agent-call and observe | draft | none   | —              | —                                                                    | related to agent-call, not on this plan's path |
+| [#707](https://github.com/osdlc/osdlc/pull/707) | claude: hide full output again           | closed | none   | —              | —                                                                    | closed as moot 2026-11-08 |
 
 ## Principle
 
