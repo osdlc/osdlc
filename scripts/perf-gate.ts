@@ -275,7 +275,7 @@ function build(root: string, p: BenchPackage): void {
       "pnpm",
       [
         "--filter",
-        `./packages/ts/${p.name}...`,
+        `{./packages/ts/${p.name}}...`,
         "--if-present",
         "run",
         "build",
