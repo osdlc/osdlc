@@ -49,16 +49,17 @@ test('a good registry has no problems', () => {
   assert.deepEqual(registryProblems({ dirs: FAMILY }), [])
 })
 
-test('the registry names its reference, its generator and two implementations', () => {
+test('the registry names its reference, its generator and its implementations', () => {
   assert.deepEqual(registryProblems({ dirs: { ...FAMILY, reference: 'go' } }), [
     'dirs: the reference go is not one of its implementations',
   ])
   assert.deepEqual(registryProblems({ dirs: { ...FAMILY, generator: 'node write.ts' } }), [
     'dirs: the generator is `pnpm --filter @x/dirs conformance:write`',
   ])
-  assert.deepEqual(registryProblems({ dirs: { ...FAMILY, implementations: FAMILY.implementations.slice(0, 1) } }), [
-    'dirs: a family has at least two implementations',
+  assert.deepEqual(registryProblems({ dirs: { ...FAMILY, implementations: [] } }), [
+    'dirs: a family has at least one implementation',
   ])
+  assert.deepEqual(registryProblems({ dirs: { ...FAMILY, implementations: FAMILY.implementations.slice(0, 1) } }), [])
   const rust = {
     ...FAMILY,
     reference: 'rust',
@@ -217,6 +218,21 @@ test('a repository check finds an unread suite, an unlisted reader, version drif
   assert.deepEqual(
     repo((put) => put('packages/ts/stray/tests/x.test.ts', "'../../../rust/stray/tests/fixtures/parity.json'")),
     ["packages/ts/stray: reads the other language's fixtures; move them to a suite in packages/conformance/"],
+  )
+})
+
+test('a family with one implementation needs a SPEC.md', () => {
+  const one = (put: Put) => {
+    put('packages/conformance/families.json', JSON.stringify({ dirs: { ...FAMILY, implementations: FAMILY.implementations.slice(0, 1) } }))
+    put('packages/rust/dirs/tests/c.rs', '// reads nothing')
+  }
+  assert.deepEqual(repo(one), ['dirs: a family with one implementation states its format in packages/conformance/dirs/SPEC.md'])
+  assert.deepEqual(
+    repo((put) => {
+      one(put)
+      put('packages/conformance/dirs/SPEC.md', '# dirs\n')
+    }),
+    [],
   )
 })
 

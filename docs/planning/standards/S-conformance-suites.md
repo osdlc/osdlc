@@ -17,7 +17,9 @@ to the same behaviour by the same data.
 ## Terms
 
 - **Family.** A set of libraries, one per language, that do the same job.
-  The `gfm-table` family is `@osdlc/gfm-table` and `gfm-pipe-table`.
+  The `gfm-table` family is `@osdlc/gfm-table` and `gfm-pipe-table`. A
+  family with a `SPEC.md` may have one implementation so far: its suite holds
+  the cases the next implementation must pass. `markdown-db` is one.
 - **Implementation.** One library in a family.
 - **Reference implementation.** The implementation whose behaviour is right
   when two disagree. Its generator writes the expected values in the suite.
@@ -150,11 +152,12 @@ version.
 `scripts/conformance.ts`, run by `pnpm run check:conformance`, checks:
 
 - every family in `families.json` names its reference among its
-  implementations, the generator command above, and at least two
-  implementations, each under `packages/ts/` or `packages/rust/` as its
+  implementations, the generator command above, and at least one
+  implementation, each under `packages/ts/` or `packages/rust/` as its
   language says;
 - every family has its directory, README and suite files, and every
-  implementation directory exists;
+  implementation directory exists. A family with one implementation also has
+  a `SPEC.md`;
 - every suite file has the shape above;
 - each implementation's `tests/` names the family's suite path;
 - the implementations share major.minor;
@@ -204,6 +207,7 @@ and points here.
 | gfm-table            | TS, Rust `gfm-pipe-table`   | `rust/gfm-pipe-table/tests/fixtures/parity.json`                                    | TS        |
 | intersect            | TS, Rust `glob-intersect`   | moved: `conformance/intersect/suite.json`                                           | TS        |
 | manifest-graph       | TS, Rust                    | `rust/manifest-graph/tests/fixtures/parity.json`                                    | TS        |
+| markdown-db          | TS                          | moved: `conformance/markdown-db/suite.json`                                         | TS        |
 | markdown-contract    | TS, Rust                    | `ts/markdown-contract/corpus/`, `rust/markdown-contract/tests/fixtures/parity.json` | TS        |
 | markdown-link        | Rust, TS                    | `rust/markdown-link/tests/fixtures/conformance.json`                                | Rust      |
 | markdown-tags        | Rust, TS                    | `rust/markdown-tags/tests/fixtures/conformance.json`                                | Rust      |
