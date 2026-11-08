@@ -1,0 +1,19 @@
+# Temporary: prints the raw Claude CLI error on a runner. Delete after use.
+name: claude-auth-debug
+on:
+  push:
+    branches: [tmp/claude-auth-debug]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: curl -fsSL https://claude.ai/install.sh | bash
+      - env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          echo "token length: ${#CLAUDE_CODE_OAUTH_TOKEN}"
+          ~/.local/bin/claude --version
+          ~/.local/bin/claude -p "Reply with just: hi" --max-turns 1 --output-format json || true
