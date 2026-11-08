@@ -166,6 +166,9 @@ Developed here, in this repository:
 - `packages/ts/yaml-splice` (`@osdlc/yaml-splice` on npm, the crate built to
   WebAssembly, with the built `wasm/` committed)
 - `packages/ts/etag-write` (`@osdlc/etag-write` on npm, the crate's TypeScript implementation)
+- `packages/ts/file-lock` (`@osdlc/file-lock` on npm, cross-process exclusive
+  file locks: a held lock with an owner token and a staleness rule, and a short
+  critical section; TypeScript only, since Rust has `File::lock`)
 - `packages/ts/frontmatter-lossless` (`@osdlc/frontmatter-lossless` on npm,
   the TypeScript implementation of the `frontmatter-lossless` crate)
 - `packages/ts/color` (`@osdlc/color` on npm, sRGB colour arithmetic for
