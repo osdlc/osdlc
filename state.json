@@ -15,7 +15,7 @@
       "path": "packages/rust/web-access/src/guard.rs",
       "line": 262,
       "title": "find_encoded lets a raw match override the decoded match, so one token's link can carry another token's grant",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/704#discussion_r4505397529",
       "status": "fixed",
       "reason": null,
       "fixedIn": "66dd2d34d344db2b76e36eecc7e523096e22c25c"
@@ -26,7 +26,7 @@
       "path": "packages/rust/web-access/src/guard.rs",
       "line": 336,
       "title": "Live-host check enumerates interfaces on every unmatched request, before auth",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/704#discussion_r4505397532",
       "status": "fixed",
       "reason": null,
       "fixedIn": "66dd2d34d344db2b76e36eecc7e523096e22c25c"
@@ -37,7 +37,7 @@
       "path": "packages/rust/web-access/src/serve.rs",
       "line": 76,
       "title": "One cut future shares a single waker between the read and write sides",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/704#discussion_r4505397536",
       "status": "fixed",
       "reason": null,
       "fixedIn": "66dd2d34d344db2b76e36eecc7e523096e22c25c"
@@ -48,7 +48,7 @@
       "path": "packages/rust/web-access/src/serve.rs",
       "line": 206,
       "title": "CUT_GRACE is per listener, not one shared deadline",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/704#discussion_r4505397538",
       "status": "fixed",
       "reason": null,
       "fixedIn": "66dd2d34d344db2b76e36eecc7e523096e22c25c"
