@@ -391,6 +391,8 @@ export function main(argv: string[]): number {
   );
 
   const scratch = mkdtempSync(join(tmpdir(), "perf-gate-"));
+  // Also runs when a build or benchmark throws.
+  process.once("exit", () => rmSync(scratch, { recursive: true, force: true }));
   const corpusFile = join(scratch, "corpus.json");
   sh("node", [join(head, "bench/corpus/cli.ts"), corpusFile], head);
   // Both sides time the head's corpus.
@@ -458,7 +460,6 @@ export function main(argv: string[]): number {
     );
     writeFileSync(join(outDir, "perf-gate.md"), text + "\n");
   }
-  rmSync(scratch, { recursive: true, force: true });
 
   const slower = rows.filter((r) => r.status === "slower");
   const labels = (process.env["PERF_LABELS"] ?? "")
