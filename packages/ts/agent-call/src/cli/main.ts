@@ -13,6 +13,8 @@ export interface CliIo {
   stdout: (text: string) => void
   stderr: (text: string) => void
   cwd: string
+  /** Aborted on SIGINT/SIGTERM so the agent's process group is killed. */
+  signal?: AbortSignal | undefined
 }
 
 export const USAGE = `usage: agent-call run <spec.yml|spec.json> [--agent <id>] [--root <dir>]
@@ -118,7 +120,7 @@ async function run(argv: readonly string[], io: CliIo): Promise<number> {
   }
   if (values['dry-run'] === true) return EXIT_OK
 
-  const result = await callAgent(adapter, spec)
+  const result = await callAgent(adapter, spec, { signal: io.signal })
   const { raw: _raw, planned: _planned, events: _events, ...normalized } = result
   io.stdout(
     JSON.stringify({ ...normalized, agent: planned.agent, notes: planned.notes }, null, 2) + '\n',
