@@ -193,6 +193,9 @@ Developed here, in this repository:
   relative markdown link parsing with spans, and the code lexer that keeps
   links in code out; the TypeScript implementation of the parsing half of the
   `markdown-link` crate)
+- `packages/ts/markdown-astro` (`@osdlc/markdown-astro` on npm, brings
+  Obsidian-vault markdown, wikilinks and embeds, into Astro content collections:
+  a vault-to-content transform, a remark plugin and a CLI)
 - `packages/ts/path-guard` (`@osdlc/path-guard` on npm, a path containment
   guard: lexical validation, then a symlink-aware proof that a path stays
   inside its root; the TypeScript implementation of the `path-guard` crate)
