@@ -61,7 +61,7 @@ flowchart LR
     CUR["Cursor: write .cursor/cli.json, fix print-mode note"]
   end
   subgraph gate["Gate"]
-    ARCH["API and architecture review 1: docs/parley/agent-ci-review-1.json"]
+    ARCH["API and architecture review 1: approved"]
   end
   subgraph acts["CI glue · packages/gh-actions"]
     SETUP["PR 716: agent-setup (draft)"]
@@ -109,11 +109,11 @@ flowchart LR
   classDef yours fill:#f5c27a,stroke:#c99545,color:#1b2230
   classDef next fill:#2f5bd3,stroke:#2144a3,color:#ffffff
   classDef later fill:#8a93a3,stroke:#6b7384,color:#ffffff
-  class W710,P711,P707,P712,PLAN,PARLEY,PLANPR done
+  class W710,P711,P707,P712,PLAN,PARLEY,PLANPR,ARCH done
   class UP yours
-  class ARCH blocked
-  class RUN,SETUP review
-  class PERM,PROBE,CHECK,CUR,ANS,SPEC,MULTI next
+  class RUN,SETUP active
+  class PERM,PROBE,CHECK,ANS,SPEC,MULTI next
+  class CUR active
   class MCP,PUB,DATA,PIN,STRICT later
 ```
 
@@ -206,7 +206,22 @@ The first round covers `agent-call run` and `agent-setup` while they are
 built, and gates `agent-pr-answer` and the move of `claude.yml` to the
 spec. Its output is a review document with a decision per question.
 
-Questions raised so far:
+Review 1 ([agent-ci-review-1](../parley/agent-ci-review-1.json)) was
+approved on 2026-11-08. Decisions:
+
+| Question | Decision |
+| --- | --- |
+| strict | Keep as built: fail, the caller relaxes with `strict: false`. Enforced read-only mappings are backlogged. |
+| Turn limit | Add `limits.maxTurns` to `AgentCallSpec` (#715). |
+| Cursor allow and deny rules | agent-call writes `.cursor/cli.json` for the length of the call, then restores it. |
+| `yaml` dependency | Keep it in `@osdlc/agent-call`, loaded only by the CLI. |
+| Cursor install | The pinned build tarball from Cursor's download server, checked against SHA-256. |
+| Cursor plugins | Fail when plugins are requested on cursor. |
+| `v1` release | Add a release workflow now (#716). |
+| `marketplaces` input | Keep `name=url [ref]`. |
+| Order | Merge #715 with these decisions, release agent-call, then build `agent-pr-answer`. |
+
+Questions raised before the review:
 
 - `strict` refuses read-only on claude and cursor, because both map it to an
   approximation (`--permission-mode plan`, `--mode ask`). **Decided:** keep
