@@ -423,6 +423,9 @@ importers:
       '@osdlc/frontmatter-lossless':
         specifier: workspace:^
         version: link:../frontmatter-lossless
+      '@osdlc/harness-knowledge':
+        specifier: workspace:^
+        version: link:../harness-knowledge
       '@osdlc/path-guard':
         specifier: workspace:^
         version: link:../path-guard
