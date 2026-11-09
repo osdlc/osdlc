@@ -4,10 +4,7 @@
   "head": "a906d5cecc70b859f27e33cdc38e224e5791780d",
   "base": "d05feebfbfabcc9dc8f9a77f0216c6af4c3930b0",
   "round": 3,
-  "claim": {
-    "owner": "mbp:claude-x",
-    "at": "2026-11-08T23:58:57.573Z"
-  },
+  "claim": null,
   "findings": [
     {
       "id": "r2-1",
