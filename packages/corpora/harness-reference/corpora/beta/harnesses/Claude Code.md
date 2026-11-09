@@ -9,16 +9,11 @@ status: current
 versioning: semver
 checked: '2026-11-05'
 sources:
-  - url: "https://www.claude.com/product/claude-code"
-    title: "Claude Code product page"
-  - url: "https://code.claude.com/docs/en/overview"
-    title: "Claude Code overview"
-  - url: "https://code.claude.com/docs/en/quickstart"
-    title: "Claude Code quickstart"
-  - url: "https://code.claude.com/docs/en/changelog"
-    title: "Claude Code changelog"
-  - url: "https://github.com/anthropics/claude-code/blob/main/LICENSE.md"
-    title: "anthropics/claude-code LICENSE.md"
+  - "[Claude Code product page](../references/Anthropic/Claude%20Code%20product%20page.md)"
+  - "[Claude Code overview](../references/Anthropic/Claude%20Code%20overview.md)"
+  - "[Claude Code quickstart](../references/Anthropic/Claude%20Code%20quickstart.md)"
+  - "[Claude Code changelog](../references/Anthropic/Claude%20Code%20changelog.md)"
+  - "[Claude Code license](../references/Anthropic/Claude%20Code%20license.md)"
 ---
 
 Claude Code is Anthropic's coding agent. It starts as `claude` in a terminal, and also runs in VS

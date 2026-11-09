@@ -11,14 +11,10 @@ status: current
 versioning: semver
 checked: '2026-11-05'
 sources:
-  - url: "https://pi.dev"
-    title: "pi.dev"
-  - url: "https://pi.dev/docs"
-    title: "Pi docs"
-  - url: "https://github.com/earendil-works/pi"
-    title: "earendil-works/pi README"
-  - url: "https://github.com/earendil-works/pi/releases"
-    title: "earendil-works/pi releases"
+  - "[Pi homepage](../references/Earendil%20Inc/Pi%20homepage.md)"
+  - "[Pi docs](../references/Earendil%20Inc/Pi%20docs.md)"
+  - "[Pi README](../references/Earendil%20Inc/Pi%20README.md)"
+  - "[Pi releases](../references/Earendil%20Inc/Pi%20releases.md)"
 ---
 
 Pi is an extensible terminal coding agent from Earendil Inc., started with `pi`. It is MIT-licensed

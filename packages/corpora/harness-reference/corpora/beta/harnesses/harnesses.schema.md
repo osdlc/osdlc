@@ -56,10 +56,10 @@ properties:
     type: string
     format: date
   sources:
-    description: The pages every value above comes from.
+    description: Links to the reference records for the pages every value above comes from.
     type: array
     minItems: 1
-    items: { $ref: "#/$defs/source" }
+    items: { type: string, x-ref: references }
 if:
   properties: { open_source: { const: false } }
   required: [open_source]
@@ -70,15 +70,6 @@ $defs:
     type: string
     format: uri
     pattern: "^https://"
-  source:
-    description: >-
-      A page that backs one or more field values: a vendor site, docs, repository or release list.
-    type: object
-    additionalProperties: false
-    required: [url, title]
-    properties:
-      url: { $ref: "#/$defs/https-url" }
-      title: { type: string, minLength: 1 }
 ---
 
 # Harnesses
@@ -93,5 +84,8 @@ says what it holds. The rules below are the ones a description does not say clea
 - `successor` and `fork_of` are relative links to another harness, written as a quoted string:
   `successor: "[Antigravity](Antigravity.md)"`. `x-ref: harnesses` makes the validator check that
   the link points at a harness record.
+- `sources` lists links to [reference](../references/references.schema.md) records, one per page:
+  `"[Claude Code overview](../references/Anthropic/Claude%20Code%20overview.md)"`. Add a reference
+  record first when a page has none.
 - `license` is allowed only when `open_source` is true.
 - A record carries no `type` field. Its type comes from its folder.

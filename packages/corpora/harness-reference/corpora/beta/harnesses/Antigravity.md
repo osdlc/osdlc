@@ -9,14 +9,10 @@ status: current
 versioning: semver
 checked: '2026-11-05'
 sources:
-  - url: "https://antigravity.google"
-    title: "Google Antigravity"
-  - url: "https://antigravity.google/docs/overview"
-    title: "Antigravity overview"
-  - url: "https://antigravity.google/docs/changelog"
-    title: "Antigravity changelog"
-  - url: "https://github.com/google-gemini/gemini-cli"
-    title: "google-gemini/gemini-cli README"
+  - "[Google Antigravity](../references/Google/Google%20Antigravity.md)"
+  - "[Antigravity overview](../references/Google/Antigravity%20overview.md)"
+  - "[Antigravity changelog](../references/Google/Antigravity%20changelog.md)"
+  - "[Gemini CLI README](../references/Google/Gemini%20CLI%20README.md)"
 ---
 
 Antigravity is Google's agent platform, made of a desktop app, a CLI started with `agy`, an IDE and

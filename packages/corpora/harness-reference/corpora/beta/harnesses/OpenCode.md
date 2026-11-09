@@ -11,12 +11,9 @@ status: current
 versioning: semver
 checked: '2026-11-05'
 sources:
-  - url: "https://opencode.ai/docs"
-    title: "OpenCode docs"
-  - url: "https://github.com/anomalyco/opencode"
-    title: "anomalyco/opencode README"
-  - url: "https://github.com/anomalyco/opencode/releases"
-    title: "anomalyco/opencode releases"
+  - "[OpenCode docs](../references/Anomaly/OpenCode%20docs.md)"
+  - "[OpenCode README](../references/Anomaly/OpenCode%20README.md)"
+  - "[OpenCode releases](../references/Anomaly/OpenCode%20releases.md)"
 ---
 
 OpenCode is an open-source coding agent from Anomaly, with a terminal UI started with `opencode`, a

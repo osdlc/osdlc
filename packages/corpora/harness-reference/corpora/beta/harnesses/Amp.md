@@ -9,12 +9,9 @@ status: current
 versioning: unknown
 checked: '2026-11-05'
 sources:
-  - url: "https://ampcode.com"
-    title: "Amp homepage"
-  - url: "https://ampcode.com/manual"
-    title: "Amp manual"
-  - url: "https://ampcode.com/terms"
-    title: "Amp Terms of Service"
+  - "[Amp homepage](../references/Amp%20Frontier%20Corporation/Amp%20homepage.md)"
+  - "[Amp manual](../references/Amp%20Frontier%20Corporation/Amp%20manual.md)"
+  - "[Amp Terms of Service](../references/Amp%20Frontier%20Corporation/Amp%20Terms%20of%20Service.md)"
 ---
 
 Amp is a coding agent from Amp Frontier Corporation, the company its terms of service name. It runs

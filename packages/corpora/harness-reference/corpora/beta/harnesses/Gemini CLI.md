@@ -12,16 +12,11 @@ successor: "[Antigravity](Antigravity.md)"
 versioning: semver
 checked: '2026-11-05'
 sources:
-  - url: "https://github.com/google-gemini/gemini-cli"
-    title: "google-gemini/gemini-cli README"
-  - url: "https://geminicli.com"
-    title: "Gemini CLI homepage"
-  - url: "https://geminicli.com/docs/"
-    title: "Gemini CLI documentation"
-  - url: "https://geminicli.com/docs/ide-integration/"
-    title: "Gemini CLI IDE integration"
-  - url: "https://github.com/google-gemini/gemini-cli/releases"
-    title: "google-gemini/gemini-cli releases"
+  - "[Gemini CLI README](../references/Google/Gemini%20CLI%20README.md)"
+  - "[Gemini CLI homepage](../references/Google/Gemini%20CLI%20homepage.md)"
+  - "[Gemini CLI documentation](../references/Google/Gemini%20CLI%20documentation.md)"
+  - "[Gemini CLI IDE integration](../references/Google/Gemini%20CLI%20IDE%20integration.md)"
+  - "[Gemini CLI releases](../references/Google/Gemini%20CLI%20releases.md)"
 ---
 
 Gemini CLI is Google's open-source terminal agent, started with `gemini`, with a VS Code companion

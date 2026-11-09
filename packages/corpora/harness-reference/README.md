@@ -12,13 +12,14 @@ The record is kept in `corpora/`: `alpha`, an OKF bundle with its own validator,
   beta can hold subjects and facts; then alpha is frozen and its facts move to beta.
 - `corpora/alpha/sources/`: research notes the alpha corpus cites. Upstream docs and repositories
   are cited by their own URLs.
-- `corpora/beta/`: the beta corpus, built up step by step. Step one is one file per harness. Its
-  schema is a hand-written JSON Schema in `corpora/beta/harnesses/harnesses.schema.md`. See
-  [corpora/beta/README.md](corpora/beta/README.md).
+- `corpora/beta/`: the beta corpus, built up step by step: one file per harness, per referenced
+  page and per observation. Each type's schema is a hand-written JSON Schema in its folder, such as
+  `corpora/beta/harnesses/harnesses.schema.md`. See [corpora/beta/README.md](corpora/beta/README.md).
 - `probes/`: reproducible runs that back `evidence: run` observations.
 - `src/alpha/`: the alpha schema, validator, page generator and tests.
 - `schema/alpha/`: JSON Schemas generated from `src/alpha/schema.ts`, for other tools.
-- `src/beta/`: tests of the beta corpus. The corpus is checked by the
+- `src/beta/`: `capture`, which writes evidence records from a fetched page, and tests of the beta
+  corpus. The corpus is checked by the
   [`@osdlc/markdown-db`](../packages/ts/markdown-db/README.md) validator, a workspace package.
 
 ## The alpha corpus
@@ -128,11 +129,12 @@ Node 24 runs the TypeScript in `src/` directly. From this folder:
 
 ```sh
 pnpm run validate       # check both corpora, alpha's links into this repository, and schema/alpha/*.json
-pnpm run test           # alpha validator, renderer and beta corpus tests
+pnpm run test           # alpha validator, renderer, beta corpus and capture tests
 pnpm run typecheck
 pnpm run generate       # write the alpha pages to dist/ (not committed)
 pnpm run check          # all four
 pnpm run write-schema   # rewrite schema/alpha/*.json after changing src/alpha/schema.ts
+pnpm run capture ...    # write a beta evidence record; see corpora/beta/README.md
 ```
 
 CI runs `pnpm run check` when anything under `harness-reference/` or `packages/ts/markdown-db/`

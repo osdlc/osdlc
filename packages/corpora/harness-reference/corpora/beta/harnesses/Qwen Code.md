@@ -12,12 +12,9 @@ fork_of: "[Gemini CLI](Gemini%20CLI.md)"
 versioning: semver
 checked: '2026-11-05'
 sources:
-  - url: "https://github.com/QwenLM/qwen-code"
-    title: "QwenLM/qwen-code README"
-  - url: "https://qwenlm.github.io/qwen-code-docs/en/users/overview"
-    title: "Qwen Code overview"
-  - url: "https://github.com/QwenLM/qwen-code/releases"
-    title: "QwenLM/qwen-code releases"
+  - "[Qwen Code README](../references/Qwen%20%28QwenLM%29/Qwen%20Code%20README.md)"
+  - "[Qwen Code overview](../references/Qwen%20%28QwenLM%29/Qwen%20Code%20overview.md)"
+  - "[Qwen Code releases](../references/Qwen%20%28QwenLM%29/Qwen%20Code%20releases.md)"
 ---
 
 Qwen Code is the Qwen team's open-source coding agent, started with `qwen`. It began as a fork of

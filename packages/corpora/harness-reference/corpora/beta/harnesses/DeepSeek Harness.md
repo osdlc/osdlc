@@ -11,14 +11,10 @@ status: current
 versioning: semver
 checked: '2026-11-05'
 sources:
-  - url: "https://deepseek.com/harness"
-    title: "DeepSeek Harness homepage"
-  - url: "https://github.com/deepseek-ai/deepseek-harness"
-    title: "deepseek-ai/deepseek-harness README"
-  - url: "https://github.com/deepseek-ai/deepseek-harness/blob/fcc0ad462172522aaf5c93a7b2e01f6b9f0b0159/apps/cli/package.json"
-    title: "dsh CLI package.json"
-  - url: "https://github.com/deepseek-ai/deepseek-harness/releases"
-    title: "deepseek-ai/deepseek-harness releases"
+  - "[DeepSeek Harness homepage](../references/DeepSeek/DeepSeek%20Harness%20homepage.md)"
+  - "[DeepSeek Harness README](../references/DeepSeek/DeepSeek%20Harness%20README.md)"
+  - "[dsh CLI package.json](../references/DeepSeek/dsh%20CLI%20package.json.md)"
+  - "[DeepSeek Harness releases](../references/DeepSeek/DeepSeek%20Harness%20releases.md)"
 ---
 
 DeepSeek Harness is DeepSeek's open-source, plugin-based agent harness, in preview. The `dsh`

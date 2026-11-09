@@ -9,14 +9,10 @@ status: current
 versioning: semver
 checked: '2026-11-05'
 sources:
-  - url: "https://kiro.dev"
-    title: "Kiro homepage"
-  - url: "https://kiro.dev/docs/"
-    title: "Kiro documentation"
-  - url: "https://kiro.dev/docs/cli/"
-    title: "Kiro CLI"
-  - url: "https://kiro.dev/changelog/"
-    title: "Kiro changelog"
+  - "[Kiro homepage](../references/AWS/Kiro%20homepage.md)"
+  - "[Kiro documentation](../references/AWS/Kiro%20documentation.md)"
+  - "[Kiro CLI](../references/AWS/Kiro%20CLI.md)"
+  - "[Kiro changelog](../references/AWS/Kiro%20changelog.md)"
 ---
 
 Kiro is a spec-driven coding agent built and operated by AWS. It comes as a desktop IDE based on

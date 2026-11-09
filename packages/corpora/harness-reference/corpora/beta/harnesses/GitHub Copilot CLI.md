@@ -9,14 +9,10 @@ status: current
 versioning: semver
 checked: '2026-11-05'
 sources:
-  - url: "https://docs.github.com/en/copilot/concepts/agents/about-copilot-cli"
-    title: "GitHub Copilot CLI (GitHub Docs)"
-  - url: "https://github.com/github/copilot-cli"
-    title: "github/copilot-cli README"
-  - url: "https://github.com/github/copilot-cli/blob/main/LICENSE.md"
-    title: "GitHub Copilot CLI License"
-  - url: "https://github.com/github/copilot-cli/releases"
-    title: "github/copilot-cli releases"
+  - "[About GitHub Copilot CLI](../references/GitHub/About%20GitHub%20Copilot%20CLI.md)"
+  - "[GitHub Copilot CLI README](../references/GitHub/GitHub%20Copilot%20CLI%20README.md)"
+  - "[GitHub Copilot CLI license](../references/GitHub/GitHub%20Copilot%20CLI%20license.md)"
+  - "[GitHub Copilot CLI releases](../references/GitHub/GitHub%20Copilot%20CLI%20releases.md)"
 ---
 
 GitHub Copilot CLI is GitHub's coding agent for the terminal, started with `copilot`. Its GitHub
