@@ -1,4 +1,5 @@
 ---
+slug: goose
 vendor: Agentic AI Foundation (Linux Foundation)
 homepage: "https://goose-docs.ai"
 docs: "https://goose-docs.ai"
@@ -11,10 +12,10 @@ status: current
 versioning: semver
 checked: '2026-11-05'
 sources:
-  - "[goose docs](../references/Agentic%20AI%20Foundation%20%28Linux%20Foundation%29/goose%20docs.md)"
-  - "[Install goose](../references/Agentic%20AI%20Foundation%20%28Linux%20Foundation%29/Install%20goose.md)"
-  - "[goose README](../references/Agentic%20AI%20Foundation%20%28Linux%20Foundation%29/goose%20README.md)"
-  - "[goose releases](../references/Agentic%20AI%20Foundation%20%28Linux%20Foundation%29/goose%20releases.md)"
+  - "[goose docs](../documents/Agentic%20AI%20Foundation%20%28Linux%20Foundation%29/goose%20docs.md)"
+  - "[Install goose](../documents/Agentic%20AI%20Foundation%20%28Linux%20Foundation%29/Install%20goose.md)"
+  - "[goose README](../documents/Agentic%20AI%20Foundation%20%28Linux%20Foundation%29/goose%20README.md)"
+  - "[goose releases](../documents/Agentic%20AI%20Foundation%20%28Linux%20Foundation%29/goose%20releases.md)"
 ---
 
 goose is an open-source, general-purpose AI agent with a desktop app and a CLI started with `goose`.

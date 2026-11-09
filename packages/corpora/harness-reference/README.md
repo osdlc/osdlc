@@ -8,19 +8,23 @@ generator turns the record into static HTML pages.
 The record is kept in `corpora/`: `alpha`, an OKF bundle with its own validator, and `beta`, a
 [corpus-schema](https://github.com/osdlc/osdlc/blob/main/packages/conformance/corpus-schema/SPEC.md) corpus.
 
-- `corpora/alpha/`: the alpha corpus, the first prototype. New subjects and facts go here until
-  beta can hold subjects and facts; then alpha is frozen and its facts move to beta.
+- `corpora/alpha/`: the alpha corpus, the first prototype. Beta now holds subjects and statements.
+  Alpha stays the place for new facts until the full import (phase 4 of the
+  [harness knowledge plan](https://github.com/osdlc/skillwright/pull/96)) lands; then it is frozen.
 - `corpora/alpha/sources/`: research notes the alpha corpus cites. Upstream docs and repositories
   are cited by their own URLs.
-- `corpora/beta/`: the beta corpus, built up step by step: one file per harness, per referenced
-  page and per observation. Each type's schema is a hand-written JSON Schema in its folder, such as
-  `corpora/beta/harnesses/harnesses.schema.md`. See [corpora/beta/README.md](corpora/beta/README.md).
-- `probes/`: reproducible runs that back `evidence: run` observations.
+- `corpora/beta/`: the beta corpus, a claims corpus: harnesses, documents, methods, study results,
+  subjects and statements. Each type's schema is a hand-written JSON Schema in its folder, such as
+  `corpora/beta/statements/statements.schema.md`. See [corpora/beta/README.md](corpora/beta/README.md).
+- `probes/`: reproducible runs that back `evidence: run` observations. Beta holds them as methods.
 - `src/alpha/`: the alpha schema, validator, page generator and tests.
 - `schema/alpha/`: JSON Schemas generated from `src/alpha/schema.ts`, for other tools.
-- `src/beta/`: `capture`, which writes evidence records from a fetched page, and tests of the beta
-  corpus. The corpus is checked by the
+- `src/beta/`: `capture`, which writes study results from a fetched page; `lint`, the rules that
+  compare beta records; `import-alpha`, which converts alpha facts into beta statements; and tests.
+  The corpus is checked by the
   [`@osdlc/corpus-schema`](https://www.npmjs.com/package/@osdlc/corpus-schema) validator, a published package.
+- `src/compile/`: `compile`, which reads beta and writes `dist/harness-knowledge.json`, and
+  `lookup`, which reads that file. See [The compiled file](#the-compiled-file).
 
 ## The alpha corpus
 
@@ -121,7 +125,8 @@ Every path in a command is relative to the probe folder. The validator refuses a
 names a home directory (`/Users/`, `/home/`, `~/` or `$HOME`), a subject or harness with no concept, and a harness with no commands.
 
 To record a run, add an observation with `evidence: run`, `probe: <id>`, the `checked_version` the
-run used, and `model` where the subject allows it.
+run used, and `model` where the subject allows it. In beta a probe is a method, and a run is a
+study result that links it.
 
 ## Checking it
 
@@ -129,12 +134,15 @@ Node 24 runs the TypeScript in `src/` directly. From this folder:
 
 ```sh
 pnpm run validate       # check both corpora, alpha's links into this repository, and schema/alpha/*.json
-pnpm run test           # alpha validator, renderer, beta corpus and capture tests
+pnpm run lint           # the beta rules that compare records (values, scopes, supersedes)
+pnpm run test           # alpha validator, renderer, beta corpus, lint, importer, compiler
 pnpm run typecheck
 pnpm run generate       # write the alpha pages to dist/ (not committed)
-pnpm run check          # all four
+pnpm run check          # all five
 pnpm run write-schema   # rewrite schema/alpha/*.json after changing src/alpha/schema.ts
-pnpm run capture ...    # write a beta evidence record; see corpora/beta/README.md
+pnpm run capture ...    # write a beta study result; see corpora/beta/README.md
+pnpm run import-alpha --category cli   # convert alpha facts to beta; repeat the flag, or --all
+pnpm run compile        # write dist/harness-knowledge.json and its schema (not committed)
 ```
 
 CI runs `pnpm run check` when anything under `harness-reference/`, the workflow file
@@ -145,6 +153,33 @@ observation still in force), a page per harness and
 per subject, a page per probe under `probes/` (linked from the observations it backs),
 `changes.html` (every observation by date), `gaps.html` (open questions and cells with no
 observation in force) and `data.json` (the whole corpus).
+
+## The compiled file
+
+`pnpm run compile` reads the beta corpus and writes two files to `dist/`, which is not committed:
+
+- `harness-knowledge.json`: the harnesses, the subjects with their `valueSchema`, and one entry per
+  `current` or `disputed` statement: the value, its scope, its strength and a `basis` permalink to
+  the statement at a commit. Evidence, study results and documents stay in the corpus.
+- `harness-knowledge.schema.json`: the JSON Schema of that file.
+
+`--commit <sha>` sets the commit the permalinks point at; it defaults to `git rev-parse HEAD`.
+`compile` refuses a corpus that fails validation or lint.
+
+`lookup(knowledge, harness, subject, { version, platform, model, accept })` in
+`src/compile/lookup.ts` returns `{ value, strength, basis, disputed }` or `undefined`. `since` is
+inclusive and `until` exclusive; semver versions compare by precedence and dates as strings. With
+no version it takes the value with `until: null`. An empty `platform` or a null `model` fits any
+query; the narrowest scope wins, and two equally narrow values throw `AmbiguousValue`. Weak and
+disputed values are skipped unless `accept` allows them.
+
+## Importing alpha into beta
+
+`pnpm run import-alpha --category cli` converts the facts of the chosen alpha categories (`--category`
+repeats; `--all` takes every one). Sources and notes become documents, probes become methods, each
+observation becomes a study result, and each fact becomes statements, one per distinct
+`since`, `until` and `model`. It reuses a document with the same URL and leaves an existing subject
+record alone, so a `valueSchema` tidied by hand survives. Rerunning writes nothing new.
 
 ## Correcting an alpha fact
 

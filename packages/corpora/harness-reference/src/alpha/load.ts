@@ -11,6 +11,8 @@ import { dirname, join, relative, resolve, sep } from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { z } from 'zod'
 
+import { compareSemver } from '../beta/versions.ts'
+
 import {
   type Category,
   type Fact,
@@ -64,34 +66,8 @@ export function parseConcept(text: string): { frontmatter: unknown; body: string
   return { frontmatter: parseYaml(match[1] ?? ''), body: match[2] ?? '' }
 }
 
-/** Compare two semver strings by precedence (semver 2.0.0 §11): -1, 0 or 1. */
-export function semverOrder(a: string, b: string): number {
-  const split = (v: string): [number[], string[]] => {
-    const [core = '', pre] = v.split(/-(.*)/s, 2)
-    return [core.split('.').map(Number), pre === undefined ? [] : pre.split('.')]
-  }
-  const [ca, pa] = split(a)
-  const [cb, pb] = split(b)
-  for (let i = 0; i < 3; i++) {
-    const d = (ca[i] ?? 0) - (cb[i] ?? 0)
-    if (d !== 0) return Math.sign(d)
-  }
-  if (pa.length === 0 || pb.length === 0) return Math.sign(pb.length - pa.length)
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const x = pa[i]
-    const y = pb[i]
-    if (x === undefined) return -1
-    if (y === undefined) return 1
-    if (x === y) continue
-    const nx = /^\d+$/.test(x)
-    const ny = /^\d+$/.test(y)
-    if (nx && ny) return Math.sign(Number(x) - Number(y))
-    if (nx) return -1
-    if (ny) return 1
-    return x < y ? -1 : 1
-  }
-  return 0
-}
+/** Semver precedence, shared with the beta corpus (see `compareSemver`). */
+export const semverOrder = compareSemver
 
 function walk(dir: string): string[] {
   return readdirSync(dir)

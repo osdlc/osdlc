@@ -1,4 +1,5 @@
 ---
+slug: cursor
 vendor: Anysphere
 homepage: "https://cursor.com"
 docs: "https://cursor.com/docs"
@@ -9,10 +10,10 @@ status: current
 versioning: unknown
 checked: '2026-11-05'
 sources:
-  - "[Cursor homepage](../references/Anysphere/Cursor%20homepage.md)"
-  - "[Cursor docs](../references/Anysphere/Cursor%20docs.md)"
-  - "[Cursor CLI overview](../references/Anysphere/Cursor%20CLI%20overview.md)"
-  - "[Cursor changelog](../references/Anysphere/Cursor%20changelog.md)"
+  - "[Cursor homepage](../documents/Anysphere/Cursor%20homepage.md)"
+  - "[Cursor docs](../documents/Anysphere/Cursor%20docs.md)"
+  - "[Cursor CLI overview](../documents/Anysphere/Cursor%20CLI%20overview.md)"
+  - "[Cursor changelog](../documents/Anysphere/Cursor%20changelog.md)"
 ---
 
 Cursor is an AI code editor and coding agent from Anysphere. It also has a CLI and a web agent. The

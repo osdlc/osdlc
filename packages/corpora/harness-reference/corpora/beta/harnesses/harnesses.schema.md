@@ -6,8 +6,14 @@ description: >-
   vendor writes it.
 type: object
 additionalProperties: false
-required: [vendor, homepage, docs, open_source, surfaces, status, versioning, checked, sources]
+required: [slug, vendor, homepage, docs, open_source, surfaces, status, versioning, checked, sources]
 properties:
+  slug:
+    description: >-
+      A stable key for the harness: lowercase letters, digits and hyphens. The compiled knowledge
+      file keys on it, so a rename of the record does not change it.
+    type: string
+    pattern: "^[a-z0-9][a-z0-9-]*$"
   vendor:
     description: The company or organization that makes it.
     type: string
@@ -56,10 +62,10 @@ properties:
     type: string
     format: date
   sources:
-    description: Links to the reference records for the pages every value above comes from.
+    description: Links to the document records for the pages every value above comes from.
     type: array
     minItems: 1
-    items: { type: string, x-ref: references }
+    items: { type: string, x-ref: documents }
 if:
   properties: { open_source: { const: false } }
   required: [open_source]
@@ -84,8 +90,10 @@ says what it holds. The rules below are the ones a description does not say clea
 - `successor` and `fork_of` are relative links to another harness, written as a quoted string:
   `successor: "[Antigravity](Antigravity.md)"`. `x-ref: harnesses` makes the validator check that
   the link points at a harness record.
-- `sources` lists links to [reference](../references/references.schema.md) records, one per page:
-  `"[Claude Code overview](../references/Anthropic/Claude%20Code%20overview.md)"`. Add a reference
+- `slug` is the harness's key outside the corpus. It is unique, and it never changes once other
+  records or a compiled file use it.
+- `sources` lists links to [document](../documents/documents.schema.md) records, one per page:
+  `"[Claude Code overview](../documents/Anthropic/Claude%20Code%20overview.md)"`. Add a document
   record first when a page has none.
 - `license` is allowed only when `open_source` is true.
 - A record carries no `type` field. Its type comes from its folder.

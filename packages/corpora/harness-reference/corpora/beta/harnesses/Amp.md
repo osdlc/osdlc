@@ -1,4 +1,5 @@
 ---
+slug: amp
 vendor: Amp Frontier Corporation
 homepage: "https://ampcode.com"
 docs: "https://ampcode.com/manual"
@@ -9,9 +10,9 @@ status: current
 versioning: unknown
 checked: '2026-11-05'
 sources:
-  - "[Amp homepage](../references/Amp%20Frontier%20Corporation/Amp%20homepage.md)"
-  - "[Amp manual](../references/Amp%20Frontier%20Corporation/Amp%20manual.md)"
-  - "[Amp Terms of Service](../references/Amp%20Frontier%20Corporation/Amp%20Terms%20of%20Service.md)"
+  - "[Amp homepage](../documents/Amp%20Frontier%20Corporation/Amp%20homepage.md)"
+  - "[Amp manual](../documents/Amp%20Frontier%20Corporation/Amp%20manual.md)"
+  - "[Amp Terms of Service](../documents/Amp%20Frontier%20Corporation/Amp%20Terms%20of%20Service.md)"
 ---
 
 Amp is a coding agent from Amp Frontier Corporation, the company its terms of service name. It runs

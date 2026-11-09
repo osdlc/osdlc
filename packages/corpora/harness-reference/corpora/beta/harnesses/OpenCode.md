@@ -1,4 +1,5 @@
 ---
+slug: opencode
 vendor: Anomaly
 homepage: "https://opencode.ai"
 docs: "https://opencode.ai/docs"
@@ -11,9 +12,9 @@ status: current
 versioning: semver
 checked: '2026-11-05'
 sources:
-  - "[OpenCode docs](../references/Anomaly/OpenCode%20docs.md)"
-  - "[OpenCode README](../references/Anomaly/OpenCode%20README.md)"
-  - "[OpenCode releases](../references/Anomaly/OpenCode%20releases.md)"
+  - "[OpenCode docs](../documents/Anomaly/OpenCode%20docs.md)"
+  - "[OpenCode README](../documents/Anomaly/OpenCode%20README.md)"
+  - "[OpenCode releases](../documents/Anomaly/OpenCode%20releases.md)"
 ---
 
 OpenCode is an open-source coding agent from Anomaly, with a terminal UI started with `opencode`, a

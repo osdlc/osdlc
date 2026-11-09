@@ -11,6 +11,7 @@ import {
   capture,
   type CaptureDeps,
   type CaptureOptions,
+  contribution,
   findExcerpt,
   htmlToText,
 } from './capture.ts'
@@ -41,7 +42,7 @@ const deps = (body = PAGE, status = 200, type = 'text/html; charset=utf-8'): Cap
 const opts = (over: Partial<CaptureOptions> = {}): CaptureOptions => ({
   corpus: dir,
   harness: 'Claude Code',
-  reference: 'references/Anthropic/Claude Code overview.md',
+  document: 'documents/Anthropic/Claude Code overview.md',
   kind: 'docs',
   excerpt: 'Claude Code starts as claude\n  in a terminal',
   observedBy: 'person: test',
@@ -51,8 +52,11 @@ const opts = (over: Partial<CaptureOptions> = {}): CaptureOptions => ({
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'harness-reference-capture-'))
   cpSync(beta, dir, { recursive: true })
-  rmSync(join(dir, 'evidence'), { recursive: true })
-  cpSync(join(beta, 'evidence/evidence.schema.md'), join(dir, 'evidence/evidence.schema.md'))
+  // Statements cite study results, so both start empty.
+  for (const type of ['study-results', 'statements']) {
+    rmSync(join(dir, type), { recursive: true })
+    cpSync(join(beta, type, `${type}.schema.md`), join(dir, type, `${type}.schema.md`))
+  }
   fetched = []
   signals = []
 })
@@ -84,21 +88,22 @@ describe('findExcerpt', () => {
 })
 
 describe('capture', () => {
-  test('writes an evidence record for an existing reference, with the quote and its context', async () => {
+  test('writes a study result for an existing reference, with the quote and its context', async () => {
     const result = await capture(opts({ locator: 'Get started', version: '2.1.318' }), deps())
     assert.deepEqual(result, {
-      evidence: 'evidence/Claude Code/2026-11-08 Claude Code overview.md',
-      reference: 'references/Anthropic/Claude Code overview.md',
-      createdReference: false,
+      studyResult: 'study-results/Claude Code/2026-11-08 Claude Code overview.md',
+      document: 'documents/Anthropic/Claude Code overview.md',
+      createdDocument: false,
     })
     assert.deepEqual(fetched, ['https://code.claude.com/docs/en/overview'])
     assert.ok(signals[0] instanceof AbortSignal)
-    const text = readFileSync(join(dir, result.evidence), 'utf8')
+    const text = readFileSync(join(dir, result.studyResult), 'utf8')
     assert.equal(
       text,
       `---
 kind: docs
-reference: "[Claude Code overview](../../references/Anthropic/Claude%20Code%20overview.md)"
+reportedIn:
+  - "[Claude Code overview](../../documents/Anthropic/Claude%20Code%20overview.md)"
 harness: "[Claude Code](../../harnesses/Claude%20Code.md)"
 version: 2.1.318
 version_basis: inferred
@@ -108,7 +113,12 @@ excerpt:
   exact: Claude Code starts as claude in a terminal
   prefix: "hen run claude in your project. "
   suffix: " and more text follows here."
-observed_by: "person: test"
+contributions:
+  - contributor:
+      name: test
+      agentType: person
+    activityType: created
+    date: 2026-11-08T00:00:00Z
 ---
 
 > Claude Code starts as claude in a terminal
@@ -116,38 +126,55 @@ observed_by: "person: test"
     )
     const report = validateCorpus(dir)
     assert.deepEqual(report.errors, [])
-    assert.equal(report.records.get('evidence')?.size, 1)
+    assert.equal(report.records.get('study-results')?.size, 1)
   })
 
-  test('adds a reference record for a URL that has none', async () => {
+  test('adds a document record for a URL that has none', async () => {
     const url = 'https://code.claude.com/docs/en/new-page'
-    const result = await capture(opts({ reference: url }), deps())
-    assert.equal(result.createdReference, true)
-    assert.equal(result.reference, 'references/Anthropic/Fixture & page.md')
+    const result = await capture(opts({ document: url }), deps())
+    assert.equal(result.createdDocument, true)
+    assert.equal(result.document, 'documents/Anthropic/Fixture & page.md')
     assert.equal(
-      readFileSync(join(dir, result.reference), 'utf8'),
-      `---\nurl: ${url}\ntitle: Fixture & page\npublisher: Anthropic\nurl_status: live\n---\n`,
+      readFileSync(join(dir, result.document), 'utf8'),
+      `---\ntitle: Fixture & page\nurls:\n  - ${url}\npublisher: Anthropic\nurl_status: live\n---\n`,
     )
-    assert.equal(result.evidence, 'evidence/Claude Code/2026-11-08 Fixture & page.md')
+    assert.equal(result.studyResult, 'study-results/Claude Code/2026-11-08 Fixture & page.md')
     assert.deepEqual(validateCorpus(dir).errors, [])
   })
 
-  test('reuses the reference record for a URL it already has', async () => {
+  test('reuses the document record for a URL it already has', async () => {
     const result = await capture(
-      opts({ reference: 'https://code.claude.com/docs/en/overview' }),
+      opts({ document: 'https://code.claude.com/docs/en/overview' }),
       deps(),
     )
-    assert.equal(result.createdReference, false)
-    assert.equal(result.reference, 'references/Anthropic/Claude Code overview.md')
+    assert.equal(result.createdDocument, false)
+    assert.equal(result.document, 'documents/Anthropic/Claude Code overview.md')
+  })
+
+  test('matches a document URL the way import-alpha does, ignoring space and trailing slashes', async () => {
+    const result = await capture(
+      opts({ document: 'https://code.claude.com/docs/en/overview/' }),
+      deps(),
+    )
+    assert.equal(result.createdDocument, false)
+    assert.equal(result.document, 'documents/Anthropic/Claude Code overview.md')
+  })
+
+  test('refuses an observed-by that names nobody', () => {
+    assert.throws(() => contribution('agent:  ', '2026-11-08'), /names nobody/)
+    assert.deepEqual(contribution('agent: bot', '2026-11-08').contributor, {
+      name: 'bot',
+      agentType: 'software',
+    })
   })
 
   test('refuses an excerpt the page does not hold, and writes nothing', async () => {
     await assert.rejects(
-      capture(opts({ reference: 'https://example.com/x', excerpt: 'hidden' }), deps()),
+      capture(opts({ document: 'https://example.com/x', excerpt: 'hidden' }), deps()),
       /excerpt not found/,
     )
-    assert.ok(!existsSync(join(dir, 'references/Anthropic/Fixture & page.md')))
-    assert.ok(!existsSync(join(dir, 'evidence/Claude Code')))
+    assert.ok(!existsSync(join(dir, 'documents/Anthropic/Fixture & page.md')))
+    assert.ok(!existsSync(join(dir, 'study-results/Claude Code')))
   })
 
   test('refuses a failed fetch, an unknown harness, a kind that is not a page and a bad name', async () => {
@@ -159,21 +186,21 @@ observed_by: "person: test"
       'https://code.claude.com/docs/en/overview',
       'https://code.claude.com/docs/en/overview',
     ])
-    assert.ok(!existsSync(join(dir, 'evidence/Claude Code')))
+    assert.ok(!existsSync(join(dir, 'study-results/Claude Code')))
   })
 
-  test('refuses a bad reference: plain http, a non-record path and a Windows path', async () => {
+  test('refuses a bad document: plain http, a non-record path and a Windows path', async () => {
     await assert.rejects(
-      capture(opts({ reference: 'http://example.com/x' }), deps()),
+      capture(opts({ document: 'http://example.com/x' }), deps()),
       /must use https/,
     )
     await assert.rejects(
-      capture(opts({ reference: 'harnesses/Claude Code.md' }), deps()),
-      /not a reference record/,
+      capture(opts({ document: 'harnesses/Claude Code.md' }), deps()),
+      /not a document record/,
     )
     await assert.rejects(
-      capture(opts({ reference: 'C:\\corpus\\references\\x.md' }), deps()),
-      /not a reference record/,
+      capture(opts({ document: 'C:\\corpus\\references\\x.md' }), deps()),
+      /not a document record/,
     )
     assert.deepEqual(fetched, [])
   })
@@ -181,40 +208,40 @@ observed_by: "person: test"
   test('refuses a reference name the validator would reject, or that clashes after folding', async () => {
     const url = 'https://example.com/new'
     await assert.rejects(
-      capture(opts({ reference: url, referenceName: 'Codex CLI | ChatGPT Learn' }), deps()),
-      /reference name .* holds "\|"/,
+      capture(opts({ document: url, documentName: 'Codex CLI | ChatGPT Learn' }), deps()),
+      /document name .* holds "\|"/,
     )
     await assert.rejects(
-      capture(opts({ reference: url, referenceName: 'CLAUDE CODE OVERVIEW' }), deps()),
+      capture(opts({ document: url, documentName: 'CLAUDE CODE OVERVIEW' }), deps()),
       /already exists for another URL/,
     )
     await assert.rejects(
-      capture(opts({ reference: url, publisher: 'a/b' }), deps()),
+      capture(opts({ document: url, publisher: 'a/b' }), deps()),
       /publisher .* holds a slash/,
     )
-    assert.ok(!existsSync(join(dir, 'evidence/Claude Code')))
+    assert.ok(!existsSync(join(dir, 'study-results/Claude Code')))
   })
 
   test('needs a title when the page has none', async () => {
     const bare = '<html><body><p>Claude Code starts as claude in a terminal</p></body></html>'
     const url = 'https://example.com/untitled'
     const excerpt = 'Claude Code starts as claude'
-    await assert.rejects(capture(opts({ reference: url, excerpt }), deps(bare)), /no title/)
-    const ok = await capture(opts({ reference: url, excerpt, title: 'Untitled page' }), deps(bare))
-    assert.equal(ok.reference, 'references/Anthropic/Untitled page.md')
+    await assert.rejects(capture(opts({ document: url, excerpt }), deps(bare)), /no title/)
+    const ok = await capture(opts({ document: url, excerpt, title: 'Untitled page' }), deps(bare))
+    assert.equal(ok.document, 'documents/Anthropic/Untitled page.md')
   })
 
   test('reads a plain-text or Markdown response as it is', async () => {
     const markdown = '# Notes\n\nClaude Code  starts\nas claude here.\n'
     const result = await capture(
       opts({
-        reference: 'https://example.com/notes.md',
+        document: 'https://example.com/notes.md',
         title: 'Notes',
         excerpt: 'Claude Code starts as claude',
       }),
       deps(markdown, 200, 'text/markdown'),
     )
-    const text = readFileSync(join(dir, result.evidence), 'utf8')
+    const text = readFileSync(join(dir, result.studyResult), 'utf8')
     assert.ok(text.includes('prefix: "# Notes "'))
     assert.deepEqual(validateCorpus(dir).errors, [])
   })
@@ -223,21 +250,21 @@ observed_by: "person: test"
     const url = 'https://github.com/acme/tool/blob/0123abc/LICENSE.md'
     const result = await capture(
       opts({
-        reference: url,
+        document: url,
         title: 'acme/tool LICENSE',
-        referenceName: 'acme tool LICENSE',
+        documentName: 'acme tool LICENSE',
         excerpt: 'starts as claude',
       }),
       deps('Claude Code starts as claude in a terminal', 200, 'text/plain'),
     )
     assert.deepEqual(fetched, ['https://raw.githubusercontent.com/acme/tool/0123abc/LICENSE.md'])
-    assert.ok(readFileSync(join(dir, result.reference), 'utf8').includes(`url: ${url}\n`))
+    assert.ok(readFileSync(join(dir, result.document), 'utf8').includes(`  - ${url}\n`))
   })
 
   test('reads a github.com repository URL as its README source', async () => {
     const url = 'https://github.com/acme/tool'
     await capture(
-      opts({ reference: url, title: 'acme tool README', excerpt: 'starts as claude' }),
+      opts({ document: url, title: 'acme tool README', excerpt: 'starts as claude' }),
       deps('Claude Code starts as claude in a terminal', 200, 'text/markdown'),
     )
     assert.deepEqual(fetched, ['https://api.github.com/repos/acme/tool/readme'])
@@ -246,14 +273,14 @@ observed_by: "person: test"
   test('removes what it wrote when the corpus no longer validates', async () => {
     await assert.rejects(
       capture(
-        opts({ reference: 'https://example.com/new', publisher: 'New Pub', observedBy: '' }),
+        opts({ document: 'https://example.com/new', publisher: 'New Pub', observedBy: '' }),
         deps(),
       ),
-      /do not validate/,
+      /names nobody/,
     )
-    assert.ok(!existsSync(join(dir, 'references/New Pub')))
-    assert.ok(!existsSync(join(dir, 'evidence/Claude Code')))
-    assert.ok(existsSync(join(dir, 'evidence/evidence.schema.md')))
+    assert.ok(!existsSync(join(dir, 'documents/New Pub')))
+    assert.ok(!existsSync(join(dir, 'study-results/Claude Code')))
+    assert.ok(existsSync(join(dir, 'study-results/study-results.schema.md')))
     assert.deepEqual(validateCorpus(dir).errors, [])
   })
 
@@ -261,6 +288,6 @@ observed_by: "person: test"
     await capture(opts(), deps())
     await assert.rejects(capture(opts(), deps()), /append-only/)
     const second = await capture(opts({ name: 'overview again' }), deps())
-    assert.equal(second.evidence, 'evidence/Claude Code/2026-11-08 overview again.md')
+    assert.equal(second.studyResult, 'study-results/Claude Code/2026-11-08 overview again.md')
   })
 })

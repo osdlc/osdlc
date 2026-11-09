@@ -1,4 +1,5 @@
 ---
+slug: codex
 vendor: OpenAI
 homepage: "https://github.com/openai/codex"
 docs: "https://learn.chatgpt.com/docs/codex/cli"
@@ -11,9 +12,9 @@ status: current
 versioning: semver
 checked: '2026-11-05'
 sources:
-  - "[Codex README](../references/OpenAI/Codex%20README.md)"
-  - "[Codex CLI docs](../references/OpenAI/Codex%20CLI%20docs.md)"
-  - "[Codex releases](../references/OpenAI/Codex%20releases.md)"
+  - "[Codex README](../documents/OpenAI/Codex%20README.md)"
+  - "[Codex CLI docs](../documents/OpenAI/Codex%20CLI%20docs.md)"
+  - "[Codex releases](../documents/OpenAI/Codex%20releases.md)"
 ---
 
 Codex CLI is OpenAI's open-source coding agent for the terminal, started with `codex`. OpenAI also

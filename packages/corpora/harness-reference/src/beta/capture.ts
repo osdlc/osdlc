@@ -1,7 +1,7 @@
 /**
- * `capture`: fetch a page, check that a quote occurs on it, and write an evidence record to the
- * beta corpus, adding the page's reference record when it has none. The schemas in
- * corpora/beta/references/ and corpora/beta/evidence/ hold the rules; this checks the result with
+ * `capture`: fetch a page, check that a quote occurs on it, and write a study result to the beta
+ * corpus, adding the page's document record when it has none. The schemas in
+ * corpora/beta/documents/ and corpora/beta/study-results/ hold the rules; this checks the result with
  * the corpus-schema validator and removes what it wrote if the corpus no longer validates.
  */
 import { existsSync, mkdirSync, readdirSync, rmdirSync, rmSync, writeFileSync } from 'node:fs'
@@ -9,20 +9,14 @@ import { basename, dirname, extname, join, relative, resolve, sep } from 'node:p
 import { parseArgs } from 'node:util'
 import { fileURLToPath } from 'node:url'
 
-import {
-  type CorpusReport,
-  type Data,
-  fold,
-  idProblem,
-  markdownLink,
-  validateCorpus,
-} from '@osdlc/corpus-schema'
-import { stringify } from 'yaml'
+import { type CorpusReport, type Data, fold, idProblem, validateCorpus } from '@osdlc/corpus-schema'
 
-/** The kinds evidence.schema.md requires a reference for (its if/then); keep the two in step. */
+import { createdBy, link, normalizeUrl, record } from './corpus.ts'
+
+/** The kinds study-results.schema.md requires a document for (its if/then); keep the two in step. */
 export const PAGE_KINDS = ['docs', 'changelog', 'source', 'issue', 'third-party'] as const
 export type PageKind = (typeof PAGE_KINDS)[number]
-/** The `version_basis` enum of evidence.schema.md; keep the two in step. */
+/** The `version_basis` enum of study-results.schema.md; keep the two in step. */
 const VERSION_BASES = ['exact', 'inferred', 'unknown'] as const
 type VersionBasis = (typeof VERSION_BASES)[number]
 
@@ -30,8 +24,8 @@ export interface CaptureOptions {
   corpus: string
   /** The harness record's id, such as `Claude Code`. */
   harness: string
-  /** An https URL, or the path of a reference record. */
-  reference: string
+  /** An https URL, or the path of a document record. */
+  document: string
   kind: PageKind
   excerpt: string
   observedBy: string
@@ -39,13 +33,13 @@ export interface CaptureOptions {
   version?: string
   /** Defaults to `inferred` when `version` is given. */
   versionBasis?: VersionBasis
-  /** The evidence record's name after its date. Defaults to the reference's id. */
+  /** The study result's name after its date. Defaults to the document's id. */
   name?: string
-  /** A new reference's id. Defaults to the page title. */
-  referenceName?: string
-  /** A new reference's title. Defaults to the page's <title>. */
+  /** A new document's id. Defaults to the page title. */
+  documentName?: string
+  /** A new document's title. Defaults to the page's <title>. */
   title?: string
-  /** A new reference's publisher. Defaults to the harness's vendor. */
+  /** A new document's publisher. Defaults to the harness's vendor. */
   publisher?: string
 }
 
@@ -57,9 +51,9 @@ export interface CaptureDeps {
 
 export interface CaptureResult {
   /** Paths relative to the corpus root. */
-  evidence: string
-  reference: string
-  createdReference: boolean
+  studyResult: string
+  document: string
+  createdDocument: boolean
 }
 
 /** Milliseconds `capture` waits for a page. */
@@ -145,9 +139,16 @@ export function findExcerpt(
   }
 }
 
-/** A relative Markdown link from the file `from` to the file `to`, both corpus-relative. */
-const link = (from: string, to: string): string =>
-  markdownLink(basename(to, extname(to)), relative(dirname(from), to).split(sep).join('/'))
+/**
+ * The `created` contribution for `observedBy`, written `person: <name>` or `agent: <name>`; an
+ * agent is a software contributor.
+ */
+export function contribution(observedBy: string, observed: string): Data {
+  const m = /^(person|agent):\s*(.*)$/su.exec(observedBy)
+  const name = (m?.[2] ?? observedBy).trim()
+  if (name === '') throw new Error(`observed-by "${observedBy}" names nobody`)
+  return createdBy(name, m?.[1] === 'agent' ? 'software' : 'person', observed)
+}
 
 /**
  * What to fetch for `url`. A github.com page is chrome around a file, so a `blob/` URL is read as
@@ -169,11 +170,7 @@ function fetchTarget(url: string): { url: string; accept: string } {
   return { url, accept: 'text/html, text/markdown, text/plain;q=0.9, */*;q=0.1' }
 }
 
-function record(data: Data, body: string): string {
-  return `---\n${stringify(data, { lineWidth: 0 })}---\n${body === '' ? '' : `\n${body}\n`}`
-}
-
-/** Find or create the reference, fetch the page, check the quote and write the evidence record. */
+/** Find or create the document, fetch the page, check the quote and write the study result. */
 export async function capture(opts: CaptureOptions, deps: CaptureDeps): Promise<CaptureResult> {
   const corpus = resolve(opts.corpus)
   const before = validateCorpus(corpus)
@@ -189,20 +186,25 @@ export async function capture(opts: CaptureOptions, deps: CaptureDeps): Promise<
   if (harness === undefined || harnessFile === undefined)
     throw new Error(`no harness record named "${opts.harness}"`)
 
-  const references = before.records.get('references') ?? new Map<string, Data>()
-  const referenceFiles = before.files.get('references') ?? new Map<string, string>()
-  let referenceId: string | undefined
+  const documents = before.records.get('documents') ?? new Map<string, Data>()
+  const documentFiles = before.files.get('documents') ?? new Map<string, string>()
+  let documentId: string | undefined
   let url: string
-  if (/^[a-z][a-z0-9+.-]*:\/\//iu.test(opts.reference)) {
-    url = opts.reference
-    if (!url.startsWith('https://')) throw new Error(`${url}: a reference URL must use https`)
-    referenceId = [...references].find(([, data]) => data['url'] === url)?.[0]
+  if (/^[a-z][a-z0-9+.-]*:\/\//iu.test(opts.document)) {
+    url = opts.document
+    if (!url.startsWith('https://')) throw new Error(`${url}: a document URL must use https`)
+    documentId = [...documents].find(([, data]) =>
+      ((data['urls'] as string[] | undefined) ?? []).some(
+        (u) => normalizeUrl(u) === normalizeUrl(url),
+      ),
+    )?.[0]
   } else {
-    const abs = [resolve(opts.reference), resolve(corpus, opts.reference)].find(existsSync)
+    const abs = [resolve(opts.document), resolve(corpus, opts.document)].find(existsSync)
     const rel = abs === undefined ? undefined : relative(corpus, abs).split(sep).join('/')
-    referenceId = [...referenceFiles].find(([, file]) => file === rel)?.[0]
-    if (referenceId === undefined) throw new Error(`${opts.reference}: not a reference record`)
-    url = String(references.get(referenceId)?.['url'])
+    documentId = [...documentFiles].find(([, file]) => file === rel)?.[0]
+    if (documentId === undefined) throw new Error(`${opts.document}: not a document record`)
+    // A record with several URLs is read at its first, which the document lists as canonical.
+    url = String((documents.get(documentId)?.['urls'] as string[] | undefined)?.[0])
   }
 
   const target = fetchTarget(url)
@@ -226,52 +228,54 @@ export async function capture(opts: CaptureOptions, deps: CaptureDeps): Promise<
     written.push(rel)
   }
   try {
-    let referenceFile = referenceId === undefined ? undefined : referenceFiles.get(referenceId)
-    const createdReference = referenceFile === undefined
-    if (referenceFile === undefined) {
+    let documentFile = documentId === undefined ? undefined : documentFiles.get(documentId)
+    const createdDocument = documentFile === undefined
+    if (documentFile === undefined) {
       const title = opts.title ?? (html ? pageTitle(raw) : undefined)
       if (title === undefined) throw new Error(`${url}: the page has no title; pass --title`)
-      const name = normalize(opts.referenceName ?? title)
+      const name = normalize(opts.documentName ?? title)
       const publisher = normalize(opts.publisher ?? String(harness['vendor']))
       const nameProblem = idProblem(name)
       if (nameProblem !== undefined)
-        throw new Error(`reference name "${name}" ${nameProblem}; pass --reference-name`)
+        throw new Error(`document name "${name}" ${nameProblem}; pass --document-name`)
       if (/[/\\]/u.test(publisher))
         throw new Error(`publisher "${publisher}" holds a slash; pass --publisher`)
-      if ([...references.keys()].some((id) => fold(id) === fold(name)))
+      if ([...documents.keys()].some((id) => fold(id) === fold(name)))
         throw new Error(
-          `a reference named "${name}" already exists for another URL; pass --reference-name`,
+          `a document named "${name}" already exists for another URL; pass --document-name`,
         )
-      referenceFile = `references/${publisher.replace(/[ .]+$/u, '')}/${name}.md`
-      write(referenceFile, record({ url, title, publisher, url_status: 'live' }, ''))
+      documentFile = `documents/${publisher.replace(/[ .]+$/u, '')}/${name}.md`
+      write(documentFile, record({ title, urls: [url], publisher, url_status: 'live' }, ''))
     }
 
     const observed = deps.today()
-    const name = opts.name ?? basename(referenceFile, extname(referenceFile))
-    const evidenceFile = `evidence/${opts.harness}/${observed} ${name}.md`
+    const name = opts.name ?? basename(documentFile, extname(documentFile))
+    const studyResultFile = `study-results/${opts.harness}/${observed} ${name}.md`
     const nameProblem = idProblem(`${observed} ${name}`)
     if (nameProblem !== undefined)
-      throw new Error(`evidence name "${observed} ${name}" ${nameProblem}; pass another --name`)
-    if (existsSync(join(corpus, evidenceFile)))
-      throw new Error(`${evidenceFile} already exists; evidence is append-only, so pass --name`)
+      throw new Error(`study-result name "${observed} ${name}" ${nameProblem}; pass another --name`)
+    if (existsSync(join(corpus, studyResultFile)))
+      throw new Error(
+        `${studyResultFile} already exists; study results are append-only, so pass --name`,
+      )
     const basis = opts.versionBasis ?? (opts.version === undefined ? undefined : 'inferred')
     const data: Data = {
       kind: opts.kind,
-      reference: link(evidenceFile, referenceFile),
-      harness: link(evidenceFile, harnessFile),
+      reportedIn: [link(studyResultFile, documentFile)],
+      harness: link(studyResultFile, harnessFile),
       ...(opts.version === undefined ? {} : { version: opts.version }),
       ...(basis === undefined ? {} : { version_basis: basis }),
       observed,
       ...(opts.locator === undefined ? {} : { locator: opts.locator }),
       excerpt: found,
-      observed_by: opts.observedBy,
+      contributions: [contribution(opts.observedBy, observed)],
     }
-    write(evidenceFile, record(data, `> ${found.exact}`))
+    write(studyResultFile, record(data, `> ${found.exact}`))
 
     const after: CorpusReport = validateCorpus(corpus)
     if (after.errors.length > 0)
       throw new Error(`the new records do not validate:\n${after.errors.join('\n')}`)
-    return { evidence: evidenceFile, reference: referenceFile, createdReference }
+    return { studyResult: studyResultFile, document: documentFile, createdDocument }
   } catch (e) {
     for (const rel of written.reverse()) {
       rmSync(join(corpus, rel))
@@ -286,15 +290,13 @@ export async function capture(opts: CaptureOptions, deps: CaptureDeps): Promise<
   }
 }
 
-const USAGE = `usage: capture --harness <id> --reference <url or path> --kind <${PAGE_KINDS.join('|')}>
+const USAGE = `usage: capture --harness <id> --document <url or path> --kind <${PAGE_KINDS.join('|')}>
                --excerpt <text> --observed-by <who> [--locator <where>]
                [--version <v> [--version-basis exact|inferred|unknown]] [--name <name>]
-               [--reference-name <name>] [--title <title>] [--publisher <name>] [--corpus <dir>]`
+               [--document-name <name>] [--title <title>] [--publisher <name>] [--corpus <dir>]`
 
 const today = (): string => {
-  const d = new Date()
-  const pad = (n: number): string => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  return new Date().toISOString().slice(0, 10)
 }
 
 async function main(argv: string[]): Promise<number> {
@@ -306,7 +308,7 @@ async function main(argv: string[]): Promise<number> {
       options: {
         corpus: str,
         harness: str,
-        reference: str,
+        document: str,
         kind: str,
         excerpt: str,
         locator: str,
@@ -314,7 +316,7 @@ async function main(argv: string[]): Promise<number> {
         'version-basis': str,
         'observed-by': str,
         name: str,
-        'reference-name': str,
+        'document-name': str,
         title: str,
         publisher: str,
       },
@@ -323,9 +325,9 @@ async function main(argv: string[]): Promise<number> {
     console.error(`${(e as Error).message}\n${USAGE}`)
     return 2
   }
-  const { harness, reference, kind, excerpt } = values
+  const { harness, document, kind, excerpt } = values
   const observedBy = values['observed-by']
-  if (!harness || !reference || !kind || !excerpt || !observedBy) {
+  if (!harness || !document || !kind || !excerpt || !observedBy) {
     console.error(USAGE)
     return 2
   }
@@ -334,7 +336,7 @@ async function main(argv: string[]): Promise<number> {
       {
         corpus: values['corpus'] ?? resolve(import.meta.dirname, '../../corpora/beta'),
         harness,
-        reference,
+        document,
         kind: kind as PageKind,
         excerpt,
         observedBy,
@@ -342,14 +344,14 @@ async function main(argv: string[]): Promise<number> {
         version: values['version'],
         versionBasis: values['version-basis'] as VersionBasis | undefined,
         name: values['name'],
-        referenceName: values['reference-name'],
+        documentName: values['document-name'],
         title: values['title'],
         publisher: values['publisher'],
       },
       { fetch: (url, init) => fetch(url, init), today },
     )
-    if (result.createdReference) console.log(`wrote ${result.reference}`)
-    console.log(`wrote ${result.evidence}`)
+    if (result.createdDocument) console.log(`wrote ${result.document}`)
+    console.log(`wrote ${result.studyResult}`)
     return 0
   } catch (e) {
     console.error(`capture: ${(e as Error).message}`)

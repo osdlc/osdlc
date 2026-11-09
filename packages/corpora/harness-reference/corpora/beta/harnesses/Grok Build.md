@@ -1,4 +1,5 @@
 ---
+slug: grok-build
 vendor: SpaceXAI
 homepage: "https://x.ai/cli"
 docs: "https://docs.x.ai/build/overview"
@@ -11,9 +12,9 @@ status: current
 versioning: unknown
 checked: '2026-11-05'
 sources:
-  - "[Grok Build README](../references/SpaceXAI/Grok%20Build%20README.md)"
-  - "[Grok Build license](../references/SpaceXAI/Grok%20Build%20license.md)"
-  - "[Grok Build getting started](../references/SpaceXAI/Grok%20Build%20getting%20started.md)"
+  - "[Grok Build README](../documents/SpaceXAI/Grok%20Build%20README.md)"
+  - "[Grok Build license](../documents/SpaceXAI/Grok%20Build%20license.md)"
+  - "[Grok Build getting started](../documents/SpaceXAI/Grok%20Build%20getting%20started.md)"
 ---
 
 Grok Build is a terminal coding agent with a fullscreen TUI, started with `grok`. Its repository and
