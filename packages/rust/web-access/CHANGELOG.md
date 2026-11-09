@@ -17,7 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `RuntimeError::Tokens` and does not start. Before, the share link for `a b`
   carried `a%20b`, the other token byte for byte, so its holder reached the
   other token's grant through the `x-web-access-token` header, a cookie, or a
-  re-encoded `?token=a%2520b`. Chain with `?` or `and_then`;
+  re-encoded `?token=a%2520b`. The comparison decodes bytes without
+  requiring UTF-8, so `%FF%41` and `%FFA` collide too. They also refuse a
+  token already in the set with a different grant, with
+  `TokensError::Duplicate`: the guard gives a token its highest grant, so
+  matching hand-set read and admin files made the Read link grant Admin. The
+  same token with the same grant is ignored. Chain with `?` or `and_then`;
   `Tokens::full_only` still cannot fail.
 
 ### Fixed

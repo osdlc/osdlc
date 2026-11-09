@@ -270,9 +270,13 @@ once; the header matches as written. A share link carries the token
 percent-encoded, so two tokens that differ only in percent-encoding, such as
 `a b` and `a%20b`, would let one token's link reach the other: the link for
 `a b` carries `a%20b`. `with` refuses such a token with
-`TokensError::Collision`, whatever the two grants, and `SharingRuntime`
-reports it as `RuntimeError::Tokens` without starting. Minted tokens never
-collide.
+`TokensError::Collision`, whatever the two grants. The comparison decodes
+bytes and does not need UTF-8, so `%FF%41` and `%FFA` collide too. `with`
+also refuses a token already in the set with a different grant, with
+`TokensError::Duplicate`: the higher grant would win, so the lower token's
+link would carry the higher grant. The same token with the same grant is
+ignored. `SharingRuntime` reports either as `RuntimeError::Tokens` without
+starting. Minted tokens never collide.
 
 ## Serving: `serve` and `ServerHandle`
 

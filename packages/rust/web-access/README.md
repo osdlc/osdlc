@@ -138,14 +138,15 @@ Every request, whatever its method, passes these checks in order:
    stay in the address bar, the history or a `Referer`.
 6. Otherwise the `web_access_<port>` cookie or the `x-web-access-token` header
    must hold one of the tokens, else 401.
+7. A `read` grant may not use a method other than `GET`, `HEAD` or `OPTIONS`,
+   or open a WebSocket, else 403 `{"error":"read_only"}`, unless a read-safe
+   rule names the route.
 
 A link or cookie value matches a token as written or percent-decoded once; the
 header matches as written. `Tokens::with` refuses two tokens that differ only
 in percent-encoding (`a b` and `a%20b`), whatever their grants: the share link
-of one would carry the other.
-7. A `read` grant may not use a method other than `GET`, `HEAD` or `OPTIONS`,
-   or open a WebSocket, else 403 `{"error":"read_only"}`, unless a read-safe
-   rule names the route.
+of one would carry the other. It also refuses the same token with two
+different grants, since the higher grant would win.
 
 A request that passes carries its `AccessContext` (`webLocal` or `webRemote`)
 and its `Grant` in the request extensions. Both are axum extractors, and both
@@ -204,7 +205,7 @@ described above.
 This is a 0.x crate. Breaking changes are possible between minor versions and
 are listed in the [changelog](CHANGELOG.md).
 
-Every public item is stable within the 0.4 line, except these, which are
+Every public item is stable within the 0.5 line, except these, which are
 experimental and may change in a patch release:
 
 - `Tokens::with_label`

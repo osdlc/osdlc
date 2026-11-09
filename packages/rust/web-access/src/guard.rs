@@ -191,15 +191,28 @@ pub enum TokensError {
         /// The grant of the token being added.
         added: Grant,
     },
+    /// The added token is already in the set with a different grant. The
+    /// guard gives a token its highest grant, so the lower one would grant
+    /// the higher. The same token with the same grant is ignored.
+    #[error(
+        "the same token was added as {existing:?} and as {added:?}; use a different token for each grant"
+    )]
+    Duplicate {
+        /// The grant of the token already in the set.
+        existing: Grant,
+        /// The grant it was added with again.
+        added: Grant,
+    },
 }
 
 /// The accepted tokens, each with the grant it confers. They are fixed for the
 /// life of a [`GuardState`]: rotating a token means building a new state.
 ///
 /// No two distinct tokens in a set differ only in percent-encoding (see
-/// [`TokensError::Collision`]); [`Self::with`] refuses such a token, so every
+/// [`TokensError::Collision`]), and no token is in it twice (see
+/// [`TokensError::Duplicate`]); [`Self::with`] refuses such a token, so every
 /// guard, `serve` and `SharingRuntime` included, starts only with a set that
-/// has none.
+/// has neither.
 #[derive(Debug, Clone, Default)]
 pub struct Tokens(Vec<Entry>);
 
@@ -223,12 +236,15 @@ impl Tokens {
         }
     }
 
-    /// Add `token` with `grant`; blank tokens are ignored.
+    /// Add `token` with `grant`. A blank token, or one already in the set with
+    /// the same grant, is ignored.
     ///
     /// # Errors
     ///
     /// [`TokensError::Collision`] when `token` and a different token already
     /// in the set differ only in percent-encoding, whatever their grants.
+    /// [`TokensError::Duplicate`] when `token` is already in the set with a
+    /// different grant.
     pub fn with(self, token: impl Into<String>, grant: Grant) -> Result<Self, TokensError> {
         self.push(token.into(), grant, None)
     }
@@ -261,15 +277,13 @@ impl Tokens {
             return Ok(self);
         }
         let canon = fully_decoded(&token);
-        if let Some(e) = self
-            .0
-            .iter()
-            .find(|e| e.token != token && fully_decoded(&e.token) == canon)
-        {
-            return Err(TokensError::Collision {
-                existing: e.grant,
-                added: grant,
-            });
+        if let Some(e) = self.0.iter().find(|e| fully_decoded(&e.token) == canon) {
+            let (existing, added) = (e.grant, grant);
+            return match (e.token == token, existing == added) {
+                (true, true) => Ok(self),
+                (true, false) => Err(TokensError::Duplicate { existing, added }),
+                (false, _) => Err(TokensError::Collision { existing, added }),
+            };
         }
         self.0.push(Entry {
             token,
@@ -561,8 +575,9 @@ fn decode_token(raw: &str) -> String {
         .map_or_else(|_| raw.to_owned(), |t| t.into_owned())
 }
 
-/// `token` percent-decoded until it stops changing. [`Tokens::push`] refuses
-/// two distinct tokens with the same result.
+/// `token` percent-decoded as bytes until it stops changing. The decode does
+/// not require UTF-8, so `%FF%41` and `%FFA` both give the bytes `FF 41`.
+/// [`Tokens::push`] refuses two distinct tokens with the same result.
 ///
 /// The guard matches a link or cookie value as written and decoded once, and
 /// the header as written. A share link carries `encode_token(t)`, so its holder
@@ -572,13 +587,14 @@ fn decode_token(raw: &str) -> String {
 /// Checking only "one decodes or encodes to the other" would cover that, but
 /// not a chain (`a b`, `a%2520b`) or a guess at which characters to escape
 /// (`%61b`, `a%62`). Everything reachable either way has the same fully
-/// decoded form, since `decode_token(encode_token(x)) == x`. Equal forms are
-/// an equivalence, so checking each new token against the set is enough. Each
+/// decoded form: `encode_token(x)` decodes to `x`, and [`decode_token`] either
+/// gives the byte-level decode or keeps the value. Equal forms are an
+/// equivalence, so checking each new token against the set is enough. Each
 /// decode that changes the value shortens it, so the loop ends.
-fn fully_decoded(token: &str) -> String {
-    let mut cur = token.to_owned();
+fn fully_decoded(token: &str) -> Vec<u8> {
+    let mut cur = token.as_bytes().to_vec();
     loop {
-        let next = decode_token(&cur);
+        let next: Vec<u8> = percent_encoding::percent_decode(&cur).collect();
         if next == cur {
             return cur;
         }
@@ -1559,6 +1575,7 @@ mod tests {
             ("a b", "a%2520b"),
             ("%61b", "a%62"),
             ("ab", "%61b"),
+            ("%FF%41", "%FFA"),
         ];
         for (x, y) in pairs {
             for (first, second) in [(x, y), (y, x)] {
@@ -1580,17 +1597,44 @@ mod tests {
                         "{first} then {second}"
                     );
                     assert!(!err.to_string().contains(first), "{err}");
+                    assert!(!err.to_string().contains(second), "{err}");
                 }
             }
         }
-        // Tokens that only share a decoded prefix, or are identical, pass.
+        // Tokens that only share a decoded prefix pass.
         assert!(
             Tokens::none()
                 .with("a b", Grant::Read)
                 .and_then(|t| t.with("a%20bc", Grant::Admin))
-                .and_then(|t| t.with("a b", Grant::Read))
                 .is_ok()
         );
+    }
+
+    /// The guard gives a token its highest grant, so the same token added as
+    /// Read and as Admin would make the Read link an Admin credential. That is
+    /// refused in both orders; the same token with the same grant is ignored.
+    #[test]
+    fn the_same_token_with_two_grants_is_refused() {
+        for (g1, g2) in [(Grant::Read, Grant::Admin), (Grant::Admin, Grant::Read)] {
+            let err = Tokens::none()
+                .with("x9q", g1)
+                .and_then(|t| t.with_label("x9q", g2, "phone"))
+                .unwrap_err();
+            assert_eq!(
+                err,
+                TokensError::Duplicate {
+                    existing: g1,
+                    added: g2
+                }
+            );
+            assert!(!err.to_string().contains("x9q"), "{err}");
+        }
+        let set = Tokens::none()
+            .with("x9q", Grant::Read)
+            .and_then(|t| t.with("x9q", Grant::Read))
+            .unwrap();
+        assert_eq!(set.0.len(), 1);
+        assert_eq!(set.grant_for("x9q"), Some(Grant::Read));
     }
 
     /// The second line of defence, reached only with a set built around

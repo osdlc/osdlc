@@ -1,6 +1,6 @@
 [package]
 name = "web-access"
-version = "0.4.1"
+version = "0.5.0"
 edition.workspace = true
 rust-version.workspace = true
 description = "Put an axum app on the local network safely: listen settings, minted tokens, a request guard with grants and access contexts, a route permission table and a server that can be stopped."

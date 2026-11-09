@@ -47,8 +47,9 @@ pub enum RuntimeError {
     /// A token file could not be read or written.
     #[error("web-access token: {0}")]
     Token(#[from] std::io::Error),
-    /// Two of the tokens differ only in percent-encoding (a hand-set token
-    /// file or override), so the server was not started.
+    /// Two of the tokens differ only in percent-encoding, or are the same
+    /// token with different grants (a hand-set token file or override), so
+    /// the server was not started.
     #[error("web-access tokens: {0}")]
     Tokens(#[from] TokensError),
     /// The full token comes from an override, so it cannot be rotated.
@@ -664,6 +665,22 @@ mod tests {
             status.error.unwrap().contains("percent-encoding"),
             "names the collision"
         );
+    }
+
+    /// Matching hand-set read and admin files would make the Read link an
+    /// Admin credential, so the set is refused.
+    #[tokio::test]
+    async fn the_same_hand_set_token_for_read_and_admin_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(token::READ_TOKEN_FILE), "same-token").unwrap();
+        std::fs::write(dir.path().join(token::ADMIN_TOKEN_FILE), "same-token").unwrap();
+        let rt = runtime(&dir, MemStore::default());
+        let status = rt.set(cfg_admin()).await.unwrap();
+        assert!(status.enabled && !status.running);
+        assert!(status.share_urls.read.is_empty() && status.share_urls.admin.is_empty());
+        let error = status.error.unwrap();
+        assert!(error.contains("Read") && error.contains("Admin"), "{error}");
+        assert!(!error.contains("same-token"), "{error}");
     }
 
     #[tokio::test]
