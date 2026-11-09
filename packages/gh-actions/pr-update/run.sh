@@ -18,6 +18,7 @@ STRATEGY="${STRATEGY:-merge}"
 REPAIR_AGENT="${REPAIR_AGENT:-}"
 REPAIR_TIMEOUT_SECONDS="${REPAIR_TIMEOUT_SECONDS:-600}"
 INCLUDE_DRAFTS="${INCLUDE_DRAFTS:-true}"
+INCLUDE_BOTS="${INCLUDE_BOTS:-false}"
 APPLY="${APPLY:-true}"
 FAIL_ON_CONFLICT="${FAIL_ON_CONFLICT:-false}"
 EXTRA_ARGS="${EXTRA_ARGS:-}"
@@ -43,7 +44,7 @@ rm -f "$report"
 export PR_NUMBER
 
 OUT_DIR="$tmp" SKIP_LABEL="${SKIP_LABEL:-}" CONFLICT_LABEL="${CONFLICT_LABEL:-}" \
-  INCLUDE_DRAFTS="$INCLUDE_DRAFTS" env -u ANTHROPIC_API_KEY "$here/select-prs.sh"
+  INCLUDE_DRAFTS="$INCLUDE_DRAFTS" INCLUDE_BOTS="$INCLUDE_BOTS" env -u ANTHROPIC_API_KEY "$here/select-prs.sh"
 eligible="$(wc -l <"$tmp/eligible.txt" | tr -d ' ')"
 excluded="$(wc -l <"$tmp/excluded.tsv" | tr -d ' ')"
 echo "pr-update: $eligible PR(s) to update, $excluded excluded"
