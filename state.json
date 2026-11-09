@@ -24,9 +24,9 @@
       "line": 230,
       "title": "frontmatter regex drops lines with a trailing YAML comment",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "70946ec026b4844fa70d96b6bfd676ed7794079c"
     },
     {
       "id": "r1-3",
