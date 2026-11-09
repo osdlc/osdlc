@@ -24,9 +24,9 @@
       "line": 82,
       "title": "readiness timeout reports only a null mismatch",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "8e5da1f54a95ddc8903e7b4bd4d7389911263167"
     }
   ]
 }
