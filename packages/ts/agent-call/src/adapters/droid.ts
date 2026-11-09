@@ -22,6 +22,9 @@ import {
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
+// knowledge: droid is not a harness in the harness knowledge file, so its flags stay
+// constants (tests/knowledge-facts.test.ts).
+
 const APPEND_SYSTEM_PROMPT_FILE = 'append-system-prompt.md'
 
 /** Options for {@link droidAdapter}. */

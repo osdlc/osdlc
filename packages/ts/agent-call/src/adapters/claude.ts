@@ -12,6 +12,12 @@ import {
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
+// knowledge: missing for claude-code (no value at moderate strength or better), so the
+// argv, binary and environment constants below stay (tests/knowledge-facts.test.ts):
+// cli/binary cli/output-format cli/effort cli/continue cli/session-id
+// cli/session-persistence permissions/modes cli/context-dirs
+// instructions/system-prompt-flag mcp/strict-config
+
 const MCP_CONFIG_FILE = 'mcp.json'
 
 /** Options for {@link claudeAdapter}. */

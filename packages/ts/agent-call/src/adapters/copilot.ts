@@ -21,6 +21,12 @@ import {
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
+// knowledge: missing for copilot-cli (no value at moderate strength or better), so the
+// argv, binary and environment constants below stay (tests/knowledge-facts.test.ts):
+// cli/binary cli/output-format cli/effort cli/continue cli/session-id
+// cli/session-persistence permissions/modes cli/context-dirs
+// instructions/system-prompt-flag mcp/strict-config
+
 /** Options for {@link copilotAdapter}. */
 export interface CopilotAdapterOptions extends CommandOptions {}
 

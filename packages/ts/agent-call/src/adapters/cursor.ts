@@ -29,6 +29,12 @@ import {
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
+// knowledge: missing for cursor (no value at moderate strength or better), so the
+// argv, binary and environment constants below stay (tests/knowledge-facts.test.ts):
+// cli/binary cli/output-format cli/effort cli/continue cli/session-id
+// cli/session-persistence permissions/modes cli/context-dirs
+// instructions/system-prompt-flag mcp/strict-config
+
 /** Plugin manifest and MCP config written to the per-call temp dir, loaded with `--plugin-dir`. */
 const PLUGIN_MANIFEST_FILE = 'plugin.json'
 const MCP_CONFIG_FILE = 'mcp.json'
