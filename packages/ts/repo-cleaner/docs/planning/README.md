@@ -49,9 +49,6 @@ what shipped.
 - [T-FZEU](tasks/T-FZEU-utc-safe-process-probe.md): the process probe
   compares start times in UTC
   ([#679](https://github.com/osdlc/osdlc/issues/679))
-- [T-INEW](tasks/T-INEW-bare-invocation-from-a-subdirectory.md): run with no
-  target from a subdirectory, sweep the checkout around it
-  ([#680](https://github.com/osdlc/osdlc/issues/680))
 
 ## Done tasks
 
@@ -61,3 +58,6 @@ what shipped.
 - [T-9HB4](tasks/T-9HB4-patch-equivalence-landing.md): detect squash- and
   rebase-merged branches by patch equivalence
   ([#501](https://github.com/osdlc/osdlc/pull/501))
+- [T-INEW](tasks/T-INEW-bare-invocation-from-a-subdirectory.md): run with no
+  target from a subdirectory, sweep the checkout around it
+  ([#689](https://github.com/osdlc/osdlc/pull/689))
