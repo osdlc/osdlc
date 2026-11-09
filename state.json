@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "pr": 704,
-  "head": "64e35e8b4771535204e904da5c6bbdb10c4e55df",
-  "base": "ab1aa2162af61286ee6ede93619dd7528eba0c4b",
-  "round": 6,
+  "head": "b240e6b543db367074cccb09f05704636677a204",
+  "base": "4fbf26e72c7e7d1b488d0d33ebe39997ed76dea6",
+  "round": 7,
   "claim": {
     "owner": "Mac.local:claude-16d17m",
     "at": "2026-11-09T05:35:55.601Z"
@@ -137,6 +137,28 @@
       "line": 226,
       "title": "Tokens::none says a whitespace-only-once-decoded token arrives empty; a %20 token arrives intact as a header and as the server-set cookie",
       "comment": "https://github.com/osdlc/osdlc/pull/704#discussion_r4509294659",
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r7-1",
+      "round": 7,
+      "path": "packages/rust/web-access/src/guard.rs",
+      "line": 279,
+      "title": "grant_for still documents and computes a highest-of-several match that push now makes impossible",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r7-2",
+      "round": 7,
+      "path": null,
+      "line": null,
+      "title": "ShareUrls and WebAccessStatus derive Debug and print every share link, token included",
+      "comment": null,
       "status": "open",
       "reason": null,
       "fixedIn": null
