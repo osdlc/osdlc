@@ -10,9 +10,8 @@
 //! Not mirrored: the author rule (only PR review uses it), the `config` subpath and the
 //! models.dev fetch; see the README.
 //!
-//! The tier and trait sets are the single enums [`Tier`] and [`Trait`]; a new
-//! trait is one variant, its name in `Trait::as_str` and its place in `TRAITS` (see
-//! [`reference`](mod@reference)); a new tier also needs `TIERS` and a `classify::Placement` variant.
+//! The tier and trait sets are the single enums [`Tier`] and [`Trait`]. Adding one
+//! touches several places in step; the README's "Adding a trait or tier" lists them.
 
 pub mod binding;
 pub mod catalogue;

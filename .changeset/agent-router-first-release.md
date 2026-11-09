@@ -14,38 +14,42 @@ reviews. The main entry is pure and browser-safe. Matches the Rust `agent-router
 
 **Changed**
 
-- **Breaking:** the package is `@osdlc/agent-router`. It was developed under other names and never
+Each change below breaks against 0.4.0 in the history further down. None was published, so no
+published version breaks.
+
+- the package is `@osdlc/agent-router`. It was developed under other names and never
   published under them.
-- **Breaking:** `ok` and `err` are no longer exported. `Result` is the `@osdlc/result` type,
+- `ok` and `err` are no longer exported. `Result` is the `@osdlc/result` type,
   re-exported; build results with `@osdlc/result`'s `ok` and `err`.
-- **Breaking:** an effort that is not a known level (`claude/max@hgih`, `*/max@hgih`, `pi@off`) is
+- an effort that is not a known level (`claude/max@hgih`, `*/max@hgih`, `pi@off`) is
   a parse error, `unknown-effort`. `checkRef` returns the same code for a reference built in code,
   a wildcard's included, so the profile is `invalid`. A typo'd effort on a wildcard used to reach
   the first tool that declares no effort levels, unchecked. An effort the catalogue cannot check
   is now listed in `chosen.warnings`.
-- **Breaking:** the catalogue names efforts on `EFFORT_LEVELS` only. pi's lowest is `none` (was
+- the catalogue names efforts on `EFFORT_LEVELS` only. pi's lowest is `none` (was
   pi's own `off`); `@osdlc/agent-call` passes it to pi as `--thinking off`. Write `pi@none`. A
   config or machine catalogue layer with another word fails the schema, and `modelsDevRow` drops
   one, so no layer can list an effort a reference cannot name.
-- **Breaking:** a model a tool could read as a flag or misread is a parse error, `invalid-model`:
+- a model a tool could read as a flag or misread is a parse error, `invalid-model`:
   one that starts with `-` (or has a `/`-separated part that does, `pi/ollama/-x`), or holds
   whitespace, a control character or an invisible formatting character. `PinsSchema` refuses such
   a pin. Other punctuation (`qwen3:4b`) still parses.
-- **Breaking:** `parseRef` takes `unknown` and returns a `not-a-string` error for anything else,
+- `parseRef` takes `unknown` and returns a `not-a-string` error for anything else,
   instead of throwing.
-- **Breaking:** a context size above `MAX_SIZE` tokens (`[ctx=99999999999999999999999m]`) is
+- a context size above `MAX_SIZE` tokens (`[ctx=99999999999999999999999m]`) is
   refused: `invalid-qualifiers` in a reference, `invalid-context` in a profile. It could not be
   printed back.
-- **Breaking:** config records (profiles, pins, catalogue tools, providers, models, aliases,
+- config records (profiles, pins, catalogue tools, providers, models, aliases,
   classify families) refuse a `__proto__` key. It used to be dropped silently.
-- **Breaking:** the shipped snapshot and the built-in tables (`SNAPSHOT_LAYER`, `BUILTIN_CATALOGUE`,
+- the shipped snapshot and the built-in tables (`SNAPSHOT_LAYER`, `BUILTIN_CATALOGUE`,
   `BUILTIN_QUERY`, `BUILTIN_PROFILES`, `BUILTIN_CLASSIFY_RULES`, `DEFAULT_CHAIN_ORDER`, `TIERS`,
   `TRAITS`, `AVAILABILITY_REASONS`, `PROFILE_SKIP_REASONS`, `ROUTING_KEYS`, `HEADLESS_SLOTS`) are
   deep-frozen, `effortsFor` returns a copy, and a query freezes its `chainOrder` and `pins`. One
   caller could change them for every other.
 - The `./config` subpath and the detection report schemas are experimental. The README lists
   them.
-- Requires Node.js 22 or later.
+- Requires Node.js 22 or later. zod 4 is a peer, and `@osdlc/config-layers` an optional peer
+  that only the `./config` subpath needs.
 
 **Fixed**
 

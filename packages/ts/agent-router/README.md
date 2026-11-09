@@ -22,8 +22,8 @@ a process, touches the filesystem or the network, or knows about git. Its one
 import from `@osdlc/agent-call` is the `./models` subpath, which imports nothing.
 
 The `@osdlc/agent-router/config` subpath is the exception. It exports the `profiles`, `routing`
-and `router` config sections for a host to mount, depends on `@osdlc/config-layers` (yaml,
-zod), and is not browser-safe. A host passes its own `consumers` paths, vocabularies and wording
+and `router` config sections for a host to mount, needs the optional peer `@osdlc/config-layers`
+(which brings yaml), and is not browser-safe. A host passes its own `consumers` paths, vocabularies and wording
 to each section factory.
 
 ```ts
@@ -63,8 +63,11 @@ The model names above are examples. Tiers, efforts and models come from the cata
 ## Install
 
 ```sh
-npm install @osdlc/agent-router
+npm install @osdlc/agent-router zod
 ```
+
+zod 4 is a peer: the package exports zod schemas, so they share your zod. The `./config` subpath
+also needs `@osdlc/config-layers`, an optional peer: install it only if you use `./config`.
 
 ESM only. Node.js 22 or later; Bun also works. Pure TypeScript with no platform-specific code, so
 it runs on every operating system and in the browser (the main entry; `./config` needs Node).

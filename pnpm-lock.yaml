@@ -117,13 +117,13 @@ importers:
       '@osdlc/agent-call':
         specifier: workspace:^
         version: link:../agent-call
-      '@osdlc/config-layers':
-        specifier: workspace:^
-        version: link:../config-layers
       '@osdlc/result':
         specifier: workspace:^
         version: link:../result
     devDependencies:
+      '@osdlc/config-layers':
+        specifier: workspace:^
+        version: link:../config-layers
       '@osdlc/prettier-config':
         specifier: workspace:^
         version: link:../prettier-config

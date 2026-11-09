@@ -40,7 +40,9 @@ fn ts_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../ts/agent-router")
 }
 
-/// The vectors the TypeScript package emits (`pnpm run fixtures` there).
+/// The vectors the TypeScript package emits (`pnpm run fixtures` there). The path is
+/// spelled whole, not built from [`ts_dir`], so `scripts/conformance.ts` sees this
+/// crate read the other language's fixtures (it lists the crate in `UNMIGRATED`).
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../ts/agent-router/fixtures/")
 }

@@ -168,7 +168,17 @@ function cleanConsumer(
       run('node', ['--input-type=module', '-e', probe(peers.map(peerName))], consumer),
     )
     if (peers.length > 0) {
-      run('npm', ['install', '--no-audit', '--no-fund', '--ignore-scripts', ...peers], consumer)
+      // A peer that is a workspace sibling installs from its local tarball. npm refuses an
+      // override for a direct dependency unless the two specs match as written, so the
+      // sibling's override is dropped and the tarball installed directly instead.
+      const siblings = peers.map(peerName).filter((name) => overrides[name] !== undefined)
+      if (siblings.length > 0) {
+        const kept = Object.fromEntries(Object.entries(overrides).filter(([n]) => !siblings.includes(n)))
+        const manifest = join(consumer, 'package.json')
+        writeFileSync(manifest, JSON.stringify({ ...JSON.parse(readFileSync(manifest, 'utf8')), overrides: kept }))
+      }
+      const installs = peers.map((p) => overrides[peerName(p)] ?? p)
+      run('npm', ['install', '--no-audit', '--no-fund', '--ignore-scripts', ...installs], consumer)
       console.log(`consumer: installed the optional peers ${peers.join(', ')}`)
       process.stdout.write(run('node', ['--input-type=module', '-e', probe([])], consumer))
     }

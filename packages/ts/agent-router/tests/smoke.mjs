@@ -41,9 +41,7 @@ const bad = parseRef('claude/max@hgih')
 assert.ok(!bad.ok)
 assert.equal(bad.error.kind, 'unknown-effort')
 
-// The ./config subpath loads, with its peer zod and config-layers.
+// The ./config subpath loads, with its peers: zod, and the optional @osdlc/config-layers.
 for (const section of [profilesSection, routerSection, routingSection]) {
   assert.equal(typeof section, 'function')
 }
-
-console.log('agent-router smoke: ok')

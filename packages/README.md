@@ -89,8 +89,9 @@ the standard.
   `path-guard` are there. Until they move, `gfm-pipe-table` (the Rust implementation of
   `@osdlc/gfm-table`) keeps `packages/rust/gfm-pipe-table/tests/fixtures/parity.json`,
   `markdown-link` its crate's `tests/fixtures/conformance.json`, and
-  `markdown-contract` runs the TypeScript package's `corpus/` directly, and
-  `agent-router` reads the TypeScript package's `fixtures/`.
+  `markdown-contract` runs the TypeScript package's `corpus/` directly.
+  The `agent-router` crate reads the TypeScript package's `fixtures/` and its
+  catalogue snapshot.
   `etag-write` has no shared cases yet.
 - **Each language's idiom.** An implementation does not copy the other's names or
   signatures when that breaks its own language's habits. Rust uses

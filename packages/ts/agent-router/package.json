@@ -65,10 +65,10 @@
   },
   "dependencies": {
     "@osdlc/agent-call": "workspace:^",
-    "@osdlc/config-layers": "workspace:^",
     "@osdlc/result": "workspace:^"
   },
   "devDependencies": {
+    "@osdlc/config-layers": "workspace:^",
     "@osdlc/prettier-config": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
     "@types/node": "catalog:",
@@ -80,6 +80,12 @@
     "zod": "catalog:"
   },
   "peerDependencies": {
-    "zod": "^4"
+    "zod": "^4",
+    "@osdlc/config-layers": "^0.9.0"
+  },
+  "peerDependenciesMeta": {
+    "@osdlc/config-layers": {
+      "optional": true
+    }
   }
 }

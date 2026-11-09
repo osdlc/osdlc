@@ -1,8 +1,9 @@
 # Checks the Cargo workspace under packages/rust/, and the wasm built from it
 # that packages/ts/yaml-splice/ commits, on
 # every pull request and push to main. It also runs when the markdown-contract corpus changes,
-# because the markdown-contract crate's tests read it, when the agent-router fixture vectors
-# change, because the agent-router crate's tests read them, and when a conformance suite under
+# because the markdown-contract crate's tests read it, when the agent-router fixture vectors or
+# catalogue snapshot change, because the agent-router crate's tests read them, and when a
+# conformance suite under
 # packages/conformance/ changes, because the crates' tests read those.
 #
 # The workflow always runs, so its final `rust` job always reports. That job
@@ -89,7 +90,7 @@ jobs:
               files='*'
               ;;
           esac
-          if [ "$files" = '*' ] || grep -qE '^(packages/rust/|packages/conformance/|scripts/conformance|packages/ts/yaml-splice/wasm/|packages/ts/markdown-contract/corpus/|packages/ts/agent-router/fixtures/|\.github/workflows/(rust-ci|release-plz)\.yml$|\.github/actions/rust-|scripts/(crates-io-|semver-|package-shape-rs))' <<<"$files"; then
+          if [ "$files" = '*' ] || grep -qE '^(packages/rust/|packages/conformance/|scripts/conformance|packages/ts/yaml-splice/wasm/|packages/ts/markdown-contract/corpus/|packages/ts/agent-router/fixtures/|packages/ts/agent-router/src/catalogue/snapshot\.json|\.github/workflows/(rust-ci|release-plz)\.yml$|\.github/actions/rust-|scripts/(crates-io-|semver-|package-shape-rs))' <<<"$files"; then
             echo "rust=true" >> "$GITHUB_OUTPUT"
           else
             echo "rust=false" >> "$GITHUB_OUTPUT"
