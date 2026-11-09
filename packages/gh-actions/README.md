@@ -4,10 +4,19 @@ Each folder under `packages/gh-actions/` is one composite GitHub Action. They
 may later move to a repository of their own for the GitHub Marketplace, which
 needs `action.yml` at a repository's root.
 
-| Action                        | What it does                                                            |
-| ----------------------------- | ----------------------------------------------------------------------- |
-| [`agent-setup`](agent-setup/) | Installs a pinned claude, codex or cursor CLI and, optionally, plugins. |
-| [`pr-update`](pr-update/)     | Keeps open PRs up to date with their base using `@osdlc/pr-update`.     |
+| Action                        | What it does                                                              |
+| ----------------------------- | ------------------------------------------------------------------------- |
+| [`agent-setup`](agent-setup/) | Installs a pinned claude, codex or cursor CLI and, optionally, plugins.   |
+| [`claude-pr`](claude-pr/)     | Answers `@claude` on a pull request, or reviews it with `@claude review`. |
+| [`codex-pr`](codex-pr/)       | The same for `@codex`, with the Codex CLI.                                |
+| [`cursor-pr`](cursor-pr/)     | The same for `@cursor`, with the Cursor CLI.                              |
+| [`pr-update`](pr-update/)     | Keeps open PRs up to date with their base using `@osdlc/pr-update`.       |
+
+[`pr-common`](pr-common/) is not an action: it holds the scripts that
+claude-pr, codex-pr and cursor-pr share (it has no `action.yml` or changelog).
+They find it as `$GITHUB_ACTION_PATH/../pr-common`, which works because a
+`uses:` of any action here checks out the whole repository. `pr-common/test.sh`
+tests all three against fake CLIs.
 
 ## Using an action
 
