@@ -145,9 +145,9 @@
       "line": 279,
       "title": "grant_for still documents and computes a highest-of-several match that push now makes impossible",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "0281208ac15b295fbbe667533c820a73a10c0a94"
     },
     {
       "id": "r7-2",
