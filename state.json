@@ -112,9 +112,9 @@
       "line": 279,
       "title": "Tokens that differ only in leading or trailing whitespace pass push, but HTTP strips that whitespace from the header and the cookie parser trims it",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "64e35e8b"
     }
   ]
 }
