@@ -103,6 +103,8 @@ export function agentRepair(
       // directory failure); see callAgent's @throws.
       return { ok: false, note: `${agent}: ${e instanceof Error ? e.message : String(e)}` }
     }
+    // Signalled during the call: even a clean agent exit must not be committed or pushed.
+    if (forwardedSignal() !== undefined) return { ok: false, note: `${agent}: interrupted` }
     const said = lastLine(result.text)
     if (result.ok) return { ok: true, note: said }
     const why = result.error === undefined ? '' : `${result.error.reason}: ${result.error.detail}`

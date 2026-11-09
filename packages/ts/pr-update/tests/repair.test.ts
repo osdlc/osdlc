@@ -164,6 +164,16 @@ describe('agentRepair after a forwarded signal', () => {
     expect(res.note).toContain('interrupted')
   })
 
+  test('a signal during a clean agent run still fails the repair', async () => {
+    const fake: CallAgent = async () => {
+      forwarded.signal = 'SIGTERM'
+      return ok
+    }
+    const res = await agentRepair('claude', {}, fake)(request())
+    expect(res.ok).toBe(false)
+    expect(res.note).toContain('interrupted')
+  })
+
   test('runs the agent when no signal was forwarded', async () => {
     const fake: CallAgent = async () => ok
     expect((await agentRepair('claude', {}, fake)(request())).ok).toBe(true)
