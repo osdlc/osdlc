@@ -1,5 +1,14 @@
 # @osdlc/pr-update
 
+## 0.9.10
+
+### Patch Changes
+
+- Updated dependencies [3a8af1e]
+- Updated dependencies [3d4a6d7]
+- Updated dependencies [6422022]
+  - @osdlc/agent-call@0.10.0
+
 ## 0.9.9
 
 ### Patch Changes
