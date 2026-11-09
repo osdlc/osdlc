@@ -101,9 +101,9 @@
       "line": 574,
       "title": "fully_decoded stops at a non-UTF-8 decode, so the stated invariant does not hold for such tokens",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "7d4d5a9a49c23228aa8b9e4c76e4b8cc63000697"
     }
   ]
 }
