@@ -28,7 +28,10 @@ cat >"$work/prs.json" <<'EOF'
  {"number":103,"state":"OPEN","isDraft":false,"isCrossRepository":true,"labels":[]},
  {"number":104,"state":"OPEN","isDraft":false,"isCrossRepository":false,"labels":[{"name":"no-auto-update"}]},
  {"number":105,"state":"OPEN","isDraft":false,"isCrossRepository":false,"labels":[{"name":"needs-manual-update"}]},
- {"number":106,"state":"OPEN","isDraft":false,"isCrossRepository":false,"labels":[]}
+ {"number":106,"state":"OPEN","isDraft":false,"isCrossRepository":false,"labels":[]},
+ {"number":109,"state":"OPEN","isDraft":false,"isCrossRepository":false,"labels":[],"author":{"login":"app/release-plz","is_bot":true}},
+ {"number":110,"state":"OPEN","isDraft":false,"isCrossRepository":false,"labels":[],"author":{"login":"github-actions[bot]","is_bot":false}},
+ {"number":111,"state":"OPEN","isDraft":false,"isCrossRepository":false,"labels":[],"author":{"login":"alice","is_bot":false}}
 ]
 EOF
 
@@ -59,7 +62,7 @@ case "$1 $2" in
   "pr view")
     n="$3"
     if [[ "$*" == *headRefOid* ]]; then
-      echo '{"headRefOid":"aaaaaaaaaaaa1111","baseRefName":"main","comments":'"${FAKE_COMMENTS:-[]}"'}'
+      echo '{"headRefOid":"'"${FAKE_HEAD:-aaaaaaaaaaaa1111}"'","baseRefName":"main","comments":'"${FAKE_COMMENTS:-[]}"'}'
     else
       jq -c --argjson n "$n" '.[] | select(.number == $n)' "$FAKE_PRS"
     fi ;;
@@ -126,6 +129,19 @@ run_action extra SKIP_LABEL= EXTRA_ARGS="--retry-failed"
 c="$(cmdline "$log")"
 [[ "$c" == *"--pr 104"* && "$c" == *"--retry-failed"* ]] && pass "empty skip-label excludes nothing; extra-args passed" || fail "extra-args: $c"
 
+run_action bots SKIP_LABEL=no-auto-update
+c="$(cmdline "$log")"
+[[ "$c" != *"--pr 109"* && "$c" != *"--pr 110"* && "$c" == *"--pr 111"* ]] && pass "bot-authored PRs 109 and 110 are excluded, human 111 kept" || fail "bots: $c"
+has "bot reason in excluded list" "$work/tmp-bots/pr-update-action/excluded.tsv" "bot-authored (the bot maintains the branch itself)"
+
+run_action withbots SKIP_LABEL=no-auto-update INCLUDE_BOTS=true
+c="$(cmdline "$log")"
+[[ "$c" == *"--pr 109"* && "$c" == *"--pr 110"* ]] && pass "include-bots=true keeps bot PRs" || fail "include-bots: $c"
+
+run_action botsingle SKIP_LABEL=no-auto-update PR_NUMBER=109
+c="$(cmdline "$log")"
+[[ "$c" == *"--pr 109"* ]] && pass "a bot PR named by number is updated" || fail "botsingle: $c"
+
 # ---- one PR by number -----------------------------------------------------
 
 run_action single SKIP_LABEL=no-auto-update INCLUDE_DRAFTS=false PR_NUMBER=104 CONFLICT_LABEL=needs-manual-update
@@ -157,7 +173,7 @@ run_action ok FAKE_EXIT=0 SKIP_LABEL=no-auto-update
 [ "$code" -eq 0 ] && pass "exit 0 passes" || fail "exit 0: code $code"
 has "outputs: updated" "$out" "updated=2"
 has "outputs: conflict" "$out" "conflict=1"
-has "outputs: excluded" "$out" "excluded=2"
+has "outputs: excluded" "$out" "excluded=4"
 
 # Everything excluded: pr-update must not run (no --pr would mean all PRs).
 echo '[{"number":1,"state":"OPEN","isDraft":false,"isCrossRepository":true,"labels":[]}]' >"$work/prs-none.json"
@@ -197,6 +213,38 @@ lacks "same head and base: not commented again" "$log" "gh pr comment 106"
 run_action dry SKIP_LABEL=no-auto-update CONFLICT_LABEL=needs-manual-update APPLY=false FAKE_EXIT=1
 lacks "dry run: no label or comment" "$log" "gh pr comment"
 lacks "dry run: no --apply" "$log" "--apply"
+
+# A repaired update gets one comment with the remerge diff; clean and
+# resolver-only updates (101) none.
+repo="$work/repo"
+git init -q -b main "$repo"
+git -C "$repo" config user.email t@t
+git -C "$repo" config user.name t
+echo one >"$repo/f.txt"; git -C "$repo" add .; git -C "$repo" commit -q -m one
+git -C "$repo" checkout -q -b feat/e
+echo feat >"$repo/f.txt"; git -C "$repo" commit -q -am feat
+git -C "$repo" checkout -q main
+echo main >"$repo/f.txt"; git -C "$repo" commit -q -am main
+git -C "$repo" checkout -q feat/e
+git -C "$repo" merge -q main >/dev/null 2>&1 || true
+echo resolved >"$repo/f.txt"; git -C "$repo" commit -q -a -m "Merge main into feat/e"
+msha="$(git -C "$repo" rev-parse HEAD)"
+pushd "$repo" >/dev/null
+run_action rep SKIP_LABEL=no-auto-update FAKE_HEAD="$msha" FAKE_EXIT=1
+run_action repdup SKIP_LABEL=no-auto-update FAKE_HEAD="$msha" FAKE_EXIT=1 \
+  FAKE_COMMENTS="[{\"body\":\"x\\n<!-- pr-update: repaired head=$msha -->\"}]"
+popd >/dev/null
+lacks "same merge: not commented twice" "$log" "gh pr comment 105"
+log="$work/rep.log"
+has "repaired update gets a comment" "$log" "gh pr comment 105 --repo o/r --body-file"
+lacks "unrepaired update is silent" "$log" "gh pr comment 101"
+rbody="$work/tmp-rep/pr-update-action/repair-105.md"
+has "repair comment: headline" "$rbody" "merged \`main\`"
+has "repair comment: file" "$rbody" "- \`f.txt\`"
+has "repair comment: note" "$rbody" "kept both imports"
+has "repair comment: diff" "$rbody" "+resolved"
+has "repair comment: details" "$rbody" "<summary>Resolution</summary>"
+has "repair comment: marker" "$rbody" "<!-- pr-update: repaired head=$msha -->"
 
 # The reply for one PR: what happened, the marker.
 run_action reply PR_NUMBER=106 SKIP_LABEL= CONFLICT_LABEL=needs-manual-update REPAIR_AGENT=claude FAKE_EXIT=1
