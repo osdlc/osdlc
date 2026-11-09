@@ -1,0 +1,76 @@
+{
+  "name": "@osdlc/conformance",
+  "version": "0.0.0",
+  "description": "Checks the conformance suites of library families: one set of cases that every implementation of a library, in each language, runs. A library and a `conformance` command.",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/ts/conformance"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/ts/conformance#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "keywords": [
+    "conformance",
+    "test-suite",
+    "parity",
+    "polyglot",
+    "changesets",
+    "monorepo",
+    "ci"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "conformance": "./bin/conformance.js"
+  },
+  "files": [
+    "dist/",
+    "bin/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "SECURITY.md",
+    "CONTRIBUTING.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "test": "vitest run",
+    "smoke": "node tests/smoke.mjs",
+    "coverage": "vitest run --coverage",
+    "prepublishOnly": "npm run clean && npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
+  },
+  "dependencies": {
+    "@osdlc/command-seam": "workspace:^",
+    "smol-toml": "catalog:"
+  },
+  "devDependencies": {
+    "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/tsconfig": "workspace:^",
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

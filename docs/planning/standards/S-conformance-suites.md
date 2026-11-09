@@ -149,7 +149,9 @@ version.
 
 ## Enforcement
 
-`scripts/conformance.ts`, run by `pnpm run check:conformance`, checks:
+The `conformance` command from
+[`@osdlc/conformance`](../../../packages/ts/conformance/README.md), run by
+`pnpm run check:conformance` (`conformance check`), checks:
 
 - every family in `families.json` names its reference among its
   implementations, the generator command above, and at least one
@@ -165,7 +167,7 @@ version.
   is listed for that family, and no library's tests read the other
   language's fixtures directly.
 
-`node scripts/conformance.ts --regenerate` also runs each family's generator
+`conformance check --regenerate` also runs each family's generator
 and fails if a suite changes, which catches a change to the reference whose
 expected values were not regenerated. It first builds each TypeScript
 reference and the workspace libraries it depends on, since a generator
@@ -174,23 +176,27 @@ references in `packages-ci.yml` and for the Rust references in `rust-ci.yml`.
 
 ## Exemptions
 
-Two lists in `scripts/conformance.ts`, which shrink to nothing as migration
-finishes:
+Two lists in `packages/conformance/config.json`, which shrink to nothing as
+migration finishes:
 
-- `CATCHING_UP` names a family whose implementations do not share
+- `catchingUp` names a family whose implementations do not share
   major.minor yet, with the work that brings them level. A pending
   changeset (`.changeset/*.md`) that takes the TypeScript package level
   counts: the family passes on `main` and on the release pull request that
   applies the changeset, and needs no entry. A changeset that pulls a
   family that is level now apart fails, unless the same pull request bumps
-  the crate too or adds a `CATCHING_UP` entry.
-- `UNMIGRATED` names a library whose tests still read the other language's
+  the crate too or adds a `catchingUp` entry.
+- `unmigrated` names a library whose tests still read the other language's
   fixtures, until its family moves here. A binding that reads the crate it
   is built from (`@osdlc/yaml-splice`) stays on it, since it is not a family.
 
 The check fails when an entry in either list is no longer needed; a
-`CATCHING_UP` entry is stale once the versions agree, now or after the
+`catchingUp` entry is stale once the versions agree, now or after the
 pending changesets.
+
+A third list, `skipScan`, names a library whose tests are not scanned for
+suite paths at all, with the reason. `@osdlc/conformance` is on it: its own
+tests hold suite paths as test data.
 
 ## Migration
 

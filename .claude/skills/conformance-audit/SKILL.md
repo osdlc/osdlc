@@ -1,6 +1,6 @@
 ---
 name: conformance-audit
-description: Audit the library families in osdlc/osdlc against S-conformance-suites, read-only, on an up-to-date main. Runs `pnpm run check:conformance` and every family's generator, runs each implementation's tests, reports migration progress (families not yet in packages/conformance/, the CATCHING_UP and UNMIGRATED lists), finds Rust/TypeScript library pairs that families.json does not list, and flags implementation source that changed after its family's suite last did. Writes a report; commits nothing. Run it on demand, or periodically with `/loop 1d /conformance-audit` or `/schedule`. Invoke for "check the families", "are the Rust and TypeScript libraries still aligned", "conformance status", or "how far is the suite migration".
+description: Audit the library families in osdlc/osdlc against S-conformance-suites, read-only, on an up-to-date main. Runs `pnpm run check:conformance` and every family's generator, runs each implementation's tests, reports migration progress (families not yet in packages/conformance/, the catchingUp and unmigrated lists), finds Rust/TypeScript library pairs that families.json does not list, and flags implementation source that changed after its family's suite last did. Writes a report; commits nothing. Run it on demand, or periodically with `/loop 1d /conformance-audit` or `/schedule`. Invoke for "check the families", "are the Rust and TypeScript libraries still aligned", "conformance status", or "how far is the suite migration".
 ---
 
 # `/conformance-audit`
@@ -8,7 +8,8 @@ description: Audit the library families in osdlc/osdlc against S-conformance-sui
 Checks that every library family in this repository still behaves the same
 in each language, and how far the move to shared conformance suites has got.
 [S-conformance-suites](../../../docs/planning/standards/S-conformance-suites.md)
-is the standard; `scripts/conformance.ts` enforces its mechanical part. This
+is the standard; the `conformance` command (`@osdlc/conformance`) enforces its
+mechanical part. This
 skill adds what a pull request's CI cannot see: the whole repository at once,
 drift that builds up between pull requests, and pairs nobody registered.
 
@@ -37,9 +38,10 @@ target directory per worktree fills the disk.
 Run, and keep each one's output for the report:
 
 ```sh
+pnpm --filter @osdlc/conformance... run build
 pnpm run check:conformance
-node scripts/conformance.ts --regenerate --reference ts
-node scripts/conformance.ts --regenerate --reference rust
+pnpm exec conformance check --regenerate --reference ts
+pnpm exec conformance check --regenerate --reference rust
 ```
 
 `--regenerate` runs each family's generator and fails if a suite changed,
@@ -65,7 +67,8 @@ each side gives.
 
 - The standard's **Migration** table lists every family. A row whose
   "Fixture today" column does not say `moved:` has not moved. List them.
-- `CATCHING_UP` and `UNMIGRATED` in `scripts/conformance.ts` should shrink.
+- `catchingUp` and `unmigrated` in `packages/conformance/config.json` should
+  shrink.
   List their entries with the reason each gives.
 - A family listed in the table that has no implementation on `main` yet (its
   Rust or TypeScript half lives on a branch) is not a problem; say so once.
