@@ -107,7 +107,7 @@ for n in 101 102 105 106; do
 done
 [[ "$c" != *"--pr 103"* ]] && pass "fork PR 103 is excluded" || fail "fork PR 103 is excluded: $c"
 [[ "$c" != *"--pr 104"* ]] && pass "labelled PR 104 is excluded" || fail "labelled PR 104 is excluded: $c"
-[[ "$c" == *"--drafts"* ]] && pass "drafts are included" || fail "drafts are included: $c"
+[[ "$c" == *"--pr 102"* && "$c" != *"-drafts"* ]] && pass "drafts are included, with no drafts flag" || fail "drafts are included: $c"
 [[ "$c" == *"--trust"* && "$c" == *"--apply"* && "$c" == *"--strategy merge"* ]] && pass "trust, apply and merge" || fail "trust, apply and merge: $c"
 [[ "$c" == *"--repair-agent claude"* ]] && pass "key given: repair-agent claude" || fail "repair-agent claude: $c"
 has "repair timeout goes in a config file" "$log" "PR_UPDATE_CONFIG=$work/tmp-filter/pr-update-action/pr-update.yaml"
@@ -115,7 +115,7 @@ has "timeout value written" "$work/tmp-filter/pr-update-action/pr-update.yaml" "
 
 run_action nodrafts SKIP_LABEL=no-auto-update INCLUDE_DRAFTS=false
 c="$(cmdline "$log")"
-[[ "$c" != *"--pr 102"* && "$c" == *"--no-drafts"* ]] && pass "include-drafts=false drops draft 102" || fail "include-drafts=false: $c"
+[[ "$c" != *"--pr 102"* && "$c" != *"-drafts"* ]] && pass "include-drafts=false drops draft 102" || fail "include-drafts=false: $c"
 
 run_action nokey SKIP_LABEL=no-auto-update REPAIR_AGENT=
 c="$(cmdline "$log")"
@@ -130,7 +130,7 @@ c="$(cmdline "$log")"
 
 run_action single SKIP_LABEL=no-auto-update INCLUDE_DRAFTS=false PR_NUMBER=104 CONFLICT_LABEL=needs-manual-update
 c="$(cmdline "$log")"
-[[ "$c" == *"--pr 104"* && "$c" != *"--pr 101"* && "$c" == *"--drafts"* ]] && pass "a PR named by number ignores the skip label" || fail "single: $c"
+[[ "$c" == *"--pr 104"* && "$c" != *"--pr 101"* ]] && pass "a PR named by number ignores the skip label" || fail "single: $c"
 has "single: reply comment posted" "$log" "gh pr comment 104 --repo o/r --body-file"
 
 run_action single_fork PR_NUMBER=103

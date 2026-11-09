@@ -79,7 +79,8 @@ else
 fi
 cmd+=(update --trust --strategy "$STRATEGY" --report "$report")
 [ "$APPLY" != true ] || cmd+=(--apply)
-if [ "$INCLUDE_DRAFTS" = true ] || [ -n "$PR_NUMBER" ]; then cmd+=(--drafts); else cmd+=(--no-drafts); fi
+# Drafts are already filtered by select-prs.sh; pr-update has --no-drafts but
+# no --drafts, and the --pr list below is exactly what to update.
 [ -z "$REPAIR_AGENT" ] || cmd+=(--repair-agent "$REPAIR_AGENT")
 while IFS= read -r n; do cmd+=(--pr "$n"); done <"$tmp/eligible.txt"
 if [ -n "$EXTRA_ARGS" ]; then
