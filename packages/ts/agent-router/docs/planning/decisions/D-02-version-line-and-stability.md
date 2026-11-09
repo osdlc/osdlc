@@ -20,6 +20,11 @@ created: 2026-11-07
   lists the experimental items, and a test checks the list against the `@experimental` tags.
 - A breaking change to a stable export ships only in a new 0.x minor release, with a CHANGELOG
   entry that starts with `Breaking:`.
+- `@osdlc/config-layers` is an optional peer at a range written by hand (`^0.9.0`). Changesets
+  leaves it alone while a config-layers release stays in range
+  (`onlyUpdatePeerDependentsWhenOutOfRange` in `.changeset/config.json`). A config-layers release
+  that leaves the range needs an agent-router minor changeset that widens it by hand
+  (`^0.9.0 || ^0.10.0`), so a host on the older line is not broken by a patch.
 - A minor release may add a member to a union of codes or names, such as `AVAILABILITY_REASONS`,
   `PROFILE_SKIP_REASONS`, a validity code or `TRAITS`. A `switch` over one of these needs a
   `default` arm.

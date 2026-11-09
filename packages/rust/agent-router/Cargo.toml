@@ -12,13 +12,13 @@ readme = "README.md"
 publish = false
 
 [dependencies]
-indexmap = { version = "2", features = ["serde"] }
+indexmap = { version = "2.14", features = ["serde"] }
 regex = { workspace = true }
 serde = { workspace = true }
 # Profile order is the section's order; that needs serde_json's insertion-ordered map.
 serde_json = { workspace = true, features = ["preserve_order"] }
 thiserror = { workspace = true }
-url = "2"
+url = "2.5"
 
 [lints]
 workspace = true
