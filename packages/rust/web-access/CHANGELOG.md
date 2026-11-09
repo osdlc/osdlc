@@ -48,6 +48,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `ShareUrls` and `WebAccessStatus` no longer print the token in `Debug`: each
+  share link shows `token=<redacted>`.
 - `ServerHandle::stop` now ends connections that are still open, such as a
   stream or an upgraded WebSocket, after the grace period for in-flight
   requests: every further read and write on them fails. Before, they kept

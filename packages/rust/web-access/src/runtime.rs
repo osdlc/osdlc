@@ -75,7 +75,7 @@ pub enum RuntimeError {
 }
 
 /// Share links by what they grant. Each carries its token in `?token=`.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Clone, Default, PartialEq, Eq, Serialize)]
 #[non_exhaustive]
 pub struct ShareUrls {
     /// Links with the view-only token, one per reachable address.
@@ -89,7 +89,7 @@ pub struct ShareUrls {
 /// The settings UI's view: the stored config plus the server's state.
 /// `listen` keeps the crate's wire shape (`"loopback"`, `"allInterfaces"`,
 /// `{"interfaces": [...]}`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct WebAccessStatus {
@@ -109,6 +109,35 @@ pub struct WebAccessStatus {
     /// Why the server is not running, when it failed to start.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+}
+
+/// `Debug` shows each link with its token value replaced, so `{:?}` never
+/// prints a credential.
+impl std::fmt::Debug for ShareUrls {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let redact = |urls: &[String]| urls.iter().map(|u| redact_token(u)).collect::<Vec<_>>();
+        f.debug_struct("ShareUrls")
+            .field("read", &redact(&self.read))
+            .field("full", &redact(&self.full))
+            .field("admin", &redact(&self.admin))
+            .finish()
+    }
+}
+
+/// `Debug` shows every field; the links inside `share_urls` are redacted as
+/// in [`ShareUrls`].
+impl std::fmt::Debug for WebAccessStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WebAccessStatus")
+            .field("enabled", &self.enabled)
+            .field("listen", &self.listen)
+            .field("port", &self.port)
+            .field("admin", &self.admin)
+            .field("running", &self.running)
+            .field("share_urls", &self.share_urls)
+            .field("error", &self.error)
+            .finish()
+    }
 }
 
 impl WebAccessStatus {
@@ -416,6 +445,19 @@ fn strip_token(url: &str) -> String {
     match crate::guard::split_token_param(query) {
         Some((_, rest)) if rest.is_empty() => base.to_owned(),
         Some((_, rest)) => format!("{base}?{rest}"),
+        None => url.to_owned(),
+    }
+}
+
+/// `url` with the value of its `token` query parameter replaced by
+/// `<redacted>`.
+fn redact_token(url: &str) -> String {
+    let Some((base, query)) = url.split_once('?') else {
+        return url.to_owned();
+    };
+    match crate::guard::split_token_param(query) {
+        Some((_, rest)) if rest.is_empty() => format!("{base}?token=<redacted>"),
+        Some((_, rest)) => format!("{base}?token=<redacted>&{rest}"),
         None => url.to_owned(),
     }
 }
@@ -792,5 +834,22 @@ mod tests {
         );
         assert_eq!(strip_token("http://h/?a=1&token=abc"), "http://h/?a=1");
         assert_eq!(strip_token("http://h/"), "http://h/");
+    }
+
+    #[test]
+    fn debug_output_holds_no_token() {
+        let urls = ShareUrls {
+            read: vec!["http://h:1/?token=readsecret".into()],
+            full: vec!["http://h:1/?a=1&token=fullsecret".into()],
+            admin: vec!["http://h:1/?token=adminsecret".into()],
+        };
+        let mut status = WebAccessStatus::stopped(&WebAccessConfig::default());
+        status.share_urls = urls.clone();
+        for out in [format!("{urls:?}"), format!("{status:?}")] {
+            for secret in ["readsecret", "fullsecret", "adminsecret"] {
+                assert!(!out.contains(secret), "{out}");
+            }
+            assert!(out.contains("<redacted>"), "{out}");
+        }
     }
 }

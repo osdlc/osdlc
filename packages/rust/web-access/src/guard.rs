@@ -276,15 +276,15 @@ impl Tokens {
         pick.or(self.0.first()).map(|e| &e.token)
     }
 
-    /// The grant of the entry equal to `presented`; the highest if several
-    /// are. Compares against every entry, so timing does not reveal which one
-    /// matched. `ct_eq` returns early on a length mismatch, so a token's
+    /// The grant of the entry equal to `presented`. Tokens are unique in the
+    /// set, so at most one matches. Compares against every entry, so timing
+    /// does not reveal which one matched. `ct_eq` returns early on a length mismatch, so a token's
     /// length can leak.
     fn grant_for(&self, presented: &str) -> Option<Grant> {
         let mut found: Option<Grant> = None;
         for entry in &self.0 {
             if bool::from(presented.as_bytes().ct_eq(entry.token.as_str().as_bytes())) {
-                found = found.max(Some(entry.grant));
+                found = Some(entry.grant);
             }
         }
         found
