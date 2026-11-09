@@ -91,7 +91,8 @@ entry drops a tier's image models without a trace row, and a pinned image model 
 - Policy values are unvalidated: `ClassifyRule`, `MappingPolicy` and `Pins` are plain serde, so a
   rule with no `families`/`match`/`by_parameters`, `provider: []`, a bad threshold or an empty pin
   is accepted (an empty pin yields an entry with `native_name: ""`, and a pin a CLI would read as
-  a flag, such as `--yolo`, becomes the `native_name` as written). `query_catalogue` takes them
+  a flag, such as `--yolo`, becomes the `native_name` as written). A Rust host checks each pin
+  value with `reference::model_problem` before passing pins in. `query_catalogue` takes them
   as given; the TypeScript rejects them in `RouterConfigSchema`.
 - A malformed merged row (for example an unknown `status` such as `beta`) is dropped with a
   `problems` entry, where the TypeScript keeps it as current. Snapshot and machine layers are

@@ -33,3 +33,4 @@ runs when either path changes.
 
 - [ ] `pnpm run check:conformance` lists the family and passes.
 - [ ] `packages/rust/agent-router` is not in `UNMIGRATED`.
+- [ ] The crate reads nothing under `packages/ts/`, or the plan says why the snapshot path stays.
