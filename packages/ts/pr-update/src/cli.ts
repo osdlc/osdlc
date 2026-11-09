@@ -56,7 +56,14 @@ import { loadConfigLayers } from './config-file.ts'
 import { standalonePorts } from './defaults.ts'
 import { gitMissingFailure, preflight, type WhichSeam } from './preflight.ts'
 import { REPAIR_AGENTS, REPAIR_AGENT_SUMMARIES, type RepairAgent } from './repair/names.ts'
-import { SurveyUsageError, renderSurveyText, repoFailuresOf, runSurvey } from './survey.ts'
+import {
+  SurveyUsageError,
+  parsePrKey,
+  renderSurveyText,
+  repoFailuresOf,
+  runSurvey,
+  type PrSelector,
+} from './survey.ts'
 import {
   EXIT_UNTRUSTED,
   prUpdateTrustStore,
@@ -113,14 +120,21 @@ function expandBranchFlag(argv: readonly string[], cwd: string): string[] | { er
   return out
 }
 
-function parsePrFlags(raw: readonly string[]): { numbers: number[] } | { error: string } {
-  const numbers: number[] = []
+/** `--pr` values: a PR number (every repository) or `owner/name#N` (one repository). */
+function parsePrFlags(raw: readonly string[]): { selectors: PrSelector[] } | { error: string } {
+  const selectors: PrSelector[] = []
   for (const text of raw) {
+    if (parsePrKey(text) !== null) {
+      selectors.push(text)
+      continue
+    }
     const n = parseIntFlag('pr', text)
-    if (typeof n !== 'number') return n
-    numbers.push(n)
+    if (typeof n !== 'number' || n < 1) {
+      return { error: `--pr must be a PR number or owner/name#N, got '${text}'` }
+    }
+    selectors.push(n)
   }
-  return { numbers }
+  return { selectors }
 }
 
 const BRANCH_HELP =
@@ -165,9 +179,9 @@ const surveyCli = defineCli({
     },
     pr: {
       kind: 'list',
-      valueName: 'n',
+      valueName: 'n|owner/name#n',
       default: [],
-      help: 'Only this PR and its stack parents; repeatable.',
+      help: 'Only this PR and its stack parents; repeatable. A number selects that PR in every repository of the run; owner/name#n one PR of one repository.',
     },
     branch: {
       kind: 'string',
@@ -229,7 +243,12 @@ const updateCli = defineCli({
       kind: 'boolean',
       help: 'Show the commits and diffstat and ask y/N before each force-push. Needs --apply and a terminal.',
     },
-    pr: { kind: 'list', valueName: 'n', default: [], help: 'Update only this PR; repeatable.' },
+    pr: {
+      kind: 'list',
+      valueName: 'n|owner/name#n',
+      default: [],
+      help: 'Update only this PR; repeatable. A number selects that PR in every repository of the run; owner/name#n one PR of one repository.',
+    },
     branch: {
       kind: 'string',
       valueName: 'name',
@@ -394,7 +413,7 @@ function runSurveyCommand(argv: readonly string[], ctx: CliContext, seams: CliSe
     report = runSurvey(
       {
         ...(v.author !== undefined ? { author: v.author } : {}),
-        pr: prNumbers.numbers,
+        pr: prNumbers.selectors,
         ...(v.branch !== undefined ? { branch: v.branch } : {}),
         repo: v.repo,
         noFetch: !v.fetch,
@@ -553,7 +572,7 @@ async function runUpdateCommand(
         remote: v.remote,
         apply: v.apply,
         confirmPush: v.confirmPush,
-        pr: prNumbers.numbers,
+        pr: prNumbers.selectors,
         ...(v.branch !== undefined ? { branch: v.branch } : {}),
         trust: v.trust,
         retryFailed: v.retryFailed,
@@ -594,15 +613,7 @@ async function runUpdateCommand(
   // target was attempted and nothing was left half applied. But a conflict or
   // push failure left some PR not updated. A script that runs this in a loop
   // needs that in the exit code, not only in the JSON `counts`.
-  const listingFailure = reportRepoFailures(ctx, {
-    repos: (out.repoFailures ?? []).map(({ repo, ...failure }) => ({
-      slug: repo,
-      measurable: false,
-      fetched: false,
-      cycles: [],
-      failure,
-    })),
-  })
+  const listingFailure = reportRepoFailures(ctx, out)
   if (listingFailure !== null) return listingFailure
   return out.counts.conflict > 0 || out.counts.failed > 0 ? EXIT.error : EXIT.ok
 }

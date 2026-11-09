@@ -123,7 +123,7 @@ export interface Ports {
    * has none. Only asked about a repository the run was pointed at with
    * `--repo`, never used to widen the scope.
    */
-  locate: (slug: string) => string | null
+  locate: (repo: string) => string | null
   /** Runs the shell verbs of resolvers and verify. See {@link RunVerb}. */
   runVerb: RunVerb
   /**

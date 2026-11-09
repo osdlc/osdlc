@@ -79,10 +79,38 @@ export class SurveyUsageError extends Error {
   override name = 'SurveyUsageError'
 }
 
+/**
+ * Which PRs a run is limited to. A number selects that PR in every
+ * repository of the run. A `prKey` string (`owner/name#N`) selects one PR of
+ * one repository.
+ */
+export type PrSelector = number | string
+
+const PR_KEY = /^([^\s/#]+\/[^\s/#]+)#([1-9]\d*)$/
+
+/**
+ * `owner/name#N`: one PR of one repository. Every report names a PR this
+ * way, and `--pr` accepts it, so a PR read from the output can be passed back.
+ */
+export function prKey(repo: string, number: number): string {
+  return `${repo}#${number}`
+}
+
+/** The repository and number of an `owner/name#N` key, or null when `text` is not one. */
+export function parsePrKey(text: string): { repo: string; number: number } | null {
+  const m = PR_KEY.exec(text)
+  return m === null ? null : { repo: m[1]!, number: Number(m[2]) }
+}
+
+/** A selector as reports print it: `#N` for a bare number, else the key itself. */
+export function selectorLabel(selector: PrSelector): string {
+  return typeof selector === 'number' ? `#${selector}` : selector
+}
+
 /** A repository to survey, and the checkout its drift is measured in. */
 export interface RepoTarget {
   /** `owner/name`, as the code host knows it. */
-  slug: string
+  repo: string
   /**
    * Local checkout, or null when this machine has none. Drift and conflict
    * prediction read git objects, so a target with no path is listed and
@@ -414,25 +442,25 @@ export function scopeToPrs(
  * not, so a bare run stays on the local repository and never spreads to every
  * repository on the machine.
  *
- * A named slug with no checkout on this machine is kept and reported
+ * A named repo with no checkout on this machine is kept and reported
  * unmeasurable, not dropped. Quietly surveying fewer repositories than were
  * asked for would be worse.
  */
 export function resolveTargets(
-  localSlug: string | null,
+  localRepo: string | null,
   localPath: string,
   selected: readonly string[],
-  locate: (slug: string) => string | null,
+  locate: (repo: string) => string | null,
 ): RepoTarget[] {
   if (selected.length === 0) {
-    return localSlug === null ? [] : [{ slug: localSlug, path: localPath }]
+    return localRepo === null ? [] : [{ repo: localRepo, path: localPath }]
   }
   const seen = new Set<string>()
   const out: RepoTarget[] = []
-  for (const slug of selected) {
-    if (seen.has(slug)) continue
-    seen.add(slug)
-    out.push({ slug, path: slug === localSlug ? localPath : locate(slug) })
+  for (const repo of selected) {
+    if (seen.has(repo)) continue
+    seen.add(repo)
+    out.push({ repo, path: repo === localRepo ? localPath : locate(repo) })
   }
   return out
 }
@@ -476,10 +504,15 @@ export const SCOPE_SHAPE = {
     .describe('Maximum number of open PRs to list per repository.'),
   remote: z.string().default('origin').describe('Remote to fetch from and measure against.'),
   pr: z
-    .array(z.coerce.number().int())
+    .array(
+      z.union([
+        z.coerce.number().int().positive(),
+        z.string().regex(PR_KEY, 'a PR number or owner/name#N'),
+      ]),
+    )
     .default([])
     .describe(
-      'Restrict the run to these PR numbers, repeatable. Only they and their stack parents are fetched and merge-treed. In `update` they are still applied in stack order, and a PR whose parent is behind is still skipped, because updating onto a base about to move is wasted work.',
+      'Restrict the run to these PRs, repeatable: a number selects that PR in every repository of the run, `owner/name#N` one PR of one repository in the run. Only they and their stack parents are fetched and merge-treed. In `update` they are still applied in stack order, and a PR whose parent is behind is still skipped, because updating onto a base about to move is wasted work.',
     ),
   branch: z
     .string()
@@ -536,30 +569,26 @@ export const repoFailure = z.object({
   hint: z.string().optional(),
 })
 
-export const output = z.object({
-  repos: z
-    .array(
-      z.object({
-        slug: z.string(),
-        measurable: z.boolean(),
-        fetched: z.boolean(),
-        cycles: z
-          .array(z.number())
-          .describe(
-            "This repository's PR numbers in a base/head cycle. The top-level `cycles` lists every repository's together.",
-          ),
-        failure: repoFailure
-          .optional()
-          .describe(
-            'Present when this repository could not be listed (several-repository runs only; a single repository throws). It contributes no PRs.',
-          ),
-      }),
-    )
-    .describe('Repositories surveyed. `measurable` is false when no local checkout is known.'),
-  prs: z.array(row).describe('Open PRs in stack order — a parent always precedes its children.'),
+/** One surveyed repository, as `survey` and `update` both report it. */
+export const repoEntry = z.object({
+  repo: z.string().describe('`owner/name`.'),
+  measurable: z.boolean().describe('False when no local checkout is known.'),
+  fetched: z.boolean(),
   cycles: z
     .array(z.number())
-    .describe('PR numbers whose base/head edges form a cycle; excluded from the ordering.'),
+    .describe(
+      "This repository's PR numbers whose base/head edges form a cycle; excluded from the ordering.",
+    ),
+  failure: repoFailure
+    .optional()
+    .describe(
+      'Present when this repository could not be listed (several-repository runs only; a single repository throws). It contributes no PRs.',
+    ),
+})
+
+export const output = z.object({
+  repos: z.array(repoEntry).describe('Repositories surveyed.'),
+  prs: z.array(row).describe('Open PRs in stack order — a parent always precedes its children.'),
   counts: z.object({
     total: z.number(),
     upToDate: z.number(),
@@ -597,9 +626,9 @@ export interface SurveyEnv {
   gh: CommandRunner
   /**
    * The code host for one surveyed repository: `cwd` is the checkout to run
-   * from, `slug` the repository. Absent means GitHub over `gh`.
+   * from, `repo` the repository. Absent means GitHub over `gh`.
    */
-  codeHost?: ((target: { cwd: string; slug: string }) => CodeHost) | undefined
+  codeHost?: ((target: { cwd: string; repo: string }) => CodeHost) | undefined
   cfg: PrUpdateConfig
   ports: Pick<Ports, 'locate'>
 }
@@ -635,13 +664,13 @@ export function remoteSlug(url: string): string | null {
 export function surveyTargets(
   args: Pick<SurveyArgs, 'remote' | 'repo'>,
   env: Pick<SurveyEnv, 'projectRoot' | 'git' | 'ports'>,
-): { localSlug: string | null; targets: RepoTarget[] } {
+): { localRepo: string | null; targets: RepoTarget[] } {
   const localGit = new Git(env.projectRoot, { runner: env.git })
   const localUrl = localGit.soft.remoteGetUrl(args.remote)
-  const localSlug = localUrl !== null ? remoteSlug(localUrl) : null
+  const localRepo = localUrl !== null ? remoteSlug(localUrl) : null
   return {
-    localSlug,
-    targets: resolveTargets(localSlug, env.projectRoot, args.repo, env.ports.locate),
+    localRepo,
+    targets: resolveTargets(localRepo, env.projectRoot, args.repo, env.ports.locate),
   }
 }
 
@@ -654,27 +683,47 @@ export function surveyTargets(
  */
 export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
   const { cfg } = env
-  const { localSlug, targets } = surveyTargets(args, env)
+  const { localRepo, targets } = surveyTargets(args, env)
   const codeHostFor = env.codeHost ?? githubCodeHostFor(env.gh)
 
   // Flags beat config; config beats the built-in default.
   const author = args.author ?? cfg.author ?? undefined
   const includeDrafts = args.noDrafts ? false : cfg.include_drafts
 
+  // A key names one repository. One outside this run would select nothing,
+  // and a run that quietly did nothing for it would read as "that PR is fine".
+  const inRun = new Set(targets.map((t) => t.repo))
+  const wantedNumbers: number[] = []
+  const wantedIn = new Map<string, number[]>()
+  for (const selector of args.pr) {
+    if (typeof selector === 'number') {
+      wantedNumbers.push(selector)
+      continue
+    }
+    const key = parsePrKey(selector)
+    if (key === null)
+      throw new SurveyUsageError(`--pr ${selector}: not a PR number or owner/name#N`)
+    if (!inRun.has(key.repo)) {
+      throw new SurveyUsageError(
+        `--pr ${selector}: ${key.repo} is not a repository of this run; add --repo ${key.repo}`,
+      )
+    }
+    wantedIn.set(key.repo, [...(wantedIn.get(key.repo) ?? []), key.number])
+  }
+
   const repos: SurveyReport['repos'] = []
   const allRows: SurveyRow[] = []
-  const allCycles: number[] = []
   let branchMatches = 0
 
   for (const target of targets) {
     const measurable = target.path !== null
     const git = new Git(target.path ?? env.projectRoot, { runner: env.git })
 
-    const isLocal = target.slug === localSlug
-    const codeHost = codeHostFor({ cwd: target.path ?? env.projectRoot, slug: target.slug })
+    const isLocal = target.repo === localRepo
+    const codeHost = codeHostFor({ cwd: target.path ?? env.projectRoot, repo: target.repo })
     const listed = codeHost.listPrDetails({
       limit: args.limit,
-      ...(isLocal ? {} : { repo: target.slug }),
+      ...(isLocal ? {} : { repo: target.repo }),
       ...(author !== undefined ? { author } : {}),
     })
     // A failed listing (the tool is missing, not signed in, no network) is not
@@ -686,7 +735,7 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
       const { error } = listed
       if (targets.length === 1) throw new FailureError(error)
       repos.push({
-        slug: target.slug,
+        repo: target.repo,
         measurable,
         fetched: false,
         cycles: [],
@@ -699,7 +748,7 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
       continue
     }
     const filtered = includeDrafts ? listed.value : listed.value.filter((p) => !p.isDraft)
-    const wanted = new Set(args.pr)
+    const wanted = new Set([...wantedNumbers, ...(wantedIn.get(target.repo) ?? [])])
     if (args.branch !== undefined) {
       // A fork's branch of the same name is another repository's branch, and
       // not one this run could push to.
@@ -710,16 +759,21 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
         }
       }
     }
-    const scoped = wanted.size > 0 || args.branch !== undefined
+    // Scoped by the run, not by this repository: an `owner/name#N` for another
+    // repository selects nothing here, and must not widen this one to all PRs.
+    const scoped = args.pr.length > 0 || args.branch !== undefined
     const prs = scoped ? scopeToPrs(filtered, wanted) : filtered
 
     // After the listing, so a scoped run knows which branches to ask for.
     // `try`: when the remote cannot be reached, the survey reports what the
-    // last fetch left, flagged, instead of failing the whole run.
+    // last fetch left, flagged, instead of failing the whole run. A scoped
+    // run with nothing selected here fetches nothing: `git fetch` with no
+    // refspec would fetch every branch.
+    const refspecs = scoped ? scopedRefspecs(prs, args.remote) : []
     const fetched =
       measurable && !args.noFetch && !env.dryRun
         ? scoped
-          ? git.try.fetch(args.remote, scopedRefspecs(prs, args.remote)).ok
+          ? refspecs.length === 0 || git.try.fetch(args.remote, refspecs).ok
           : git.try.fetch(args.remote, undefined, { prune: true }).ok
         : false
     // `try`, not `soft`: a failed listing must not read as "no checkout holds
@@ -729,15 +783,14 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
       listedWorktrees === null ? [] : listedWorktrees.ok ? listedWorktrees.value : null
 
     const { rows, cycles } = surveyRows(git, prs, {
-      repo: target.slug,
+      repo: target.repo,
       worktrees,
       cfg,
       measurable,
       remote: args.remote,
     })
-    repos.push({ slug: target.slug, measurable, fetched, cycles })
+    repos.push({ repo: target.repo, measurable, fetched, cycles })
     allRows.push(...rows)
-    allCycles.push(...cycles)
   }
 
   if (args.branch !== undefined && branchMatches === 0) {
@@ -748,7 +801,6 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
   return {
     repos,
     prs: allRows,
-    cycles: allCycles,
     counts: {
       total: allRows.length,
       upToDate: count((r) => r.status === 'up-to-date'),
@@ -774,7 +826,7 @@ export function repoFailuresOf(report: Pick<SurveyReport, 'repos'>): Failure[] {
       : [
           {
             kind: r.failure.kind,
-            message: `${r.slug}: ${r.failure.message}`,
+            message: `${r.repo}: ${r.failure.message}`,
             ...(r.failure.hint === undefined ? {} : { hint: r.failure.hint }),
           },
         ],
@@ -792,27 +844,25 @@ export function renderSurveyText(out: SurveyReport): string {
   // be reached must not read as a repository with no PRs.
   const unmeasured = out.repos.filter((r) => !r.measurable)
   for (const r of unmeasured) {
-    lines.push(`${r.slug}: no local checkout — drift not measured`)
+    lines.push(`${r.repo}: no local checkout — drift not measured`)
   }
   // A repository that could not be listed is not one with no PRs.
   for (const r of out.repos) {
-    if (r.failure !== undefined) lines.push(`${r.slug}: could not be listed — ${r.failure.message}`)
+    if (r.failure !== undefined) lines.push(`${r.repo}: could not be listed — ${r.failure.message}`)
   }
   if (out.prs.length === 0) {
     lines.push('PR-SURVEY: no open PRs')
     return `${lines.join('\n')}\n`
   }
   if (unmeasured.length > 0) lines.push('')
-  const multi = out.repos.length > 1
   const w = {
-    pr: Math.max(3, ...out.prs.map((p) => String(p.number).length + 1)),
+    pr: Math.max(2, ...out.prs.map((p) => prKey(p.repo, p.number).length)),
     status: Math.max(6, ...out.prs.map((p) => p.status.length)),
     plan: Math.max(4, ...out.prs.map((p) => p.strategy.length)),
     head: Math.max(4, ...out.prs.map((p) => p.head.length)),
   }
-  const repoCol = multi ? `${pad('REPO', 18)}  ` : ''
   lines.push(
-    `${repoCol}${pad('PR', w.pr)}  ${pad('STATUS', w.status)}  ${pad('BEHIND', 6)}  ` +
+    `${pad('PR', w.pr)}  ${pad('STATUS', w.status)}  ${pad('BEHIND', 6)}  ` +
       `${pad('AHEAD', 5)}  ${pad('PLAN', w.plan)}  ${pad('HEAD', w.head)}  BASE`,
   )
   for (const p of out.prs) {
@@ -829,14 +879,13 @@ export function renderSurveyText(out: SurveyReport): string {
     if (p.strategyRule !== 'default') notes.push(p.strategyReason)
     const note = notes.length > 0 ? `  ← ${notes.join('; ')}` : ''
     lines.push(
-      `${multi ? `${pad(p.repo, 18)}  ` : ''}${pad(`#${p.number}`, w.pr)}  ` +
+      `${pad(prKey(p.repo, p.number), w.pr)}  ` +
         `${pad(p.status, w.status)}  ${pad(num(p.behind), 6)}  ${pad(num(p.ahead), 5)}  ` +
         `${pad(p.strategy, w.plan)}  ${pad(p.head, w.head)}  ${p.base}${note}`,
     )
   }
-  if (out.cycles.length > 0) {
-    lines.push(`\nunordered (base/head cycle): ${out.cycles.map((n) => `#${n}`).join(', ')}`)
-  }
+  const cycles = out.repos.flatMap((r) => r.cycles.map((n) => prKey(r.repo, n)))
+  if (cycles.length > 0) lines.push(`\nunordered (base/head cycle): ${cycles.join(', ')}`)
   const c = out.counts
   lines.push(
     `\nPR-SURVEY: total=${c.total} up-to-date=${c.upToDate} behind=${c.behind} ` +

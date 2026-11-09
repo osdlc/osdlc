@@ -43,6 +43,39 @@ describe('pr-update update --confirm-push', () => {
   })
 })
 
+describe('pr-update --pr owner/name#N', () => {
+  const dirs: string[] = []
+  afterAll(() => {
+    for (const d of dirs) rmSync(d, { recursive: true, force: true })
+  })
+
+  /** A repo whose origin is `o/r`, with a faked `gh` that lists no PRs. */
+  function project(): { dir: string; env: Record<string, string> } {
+    const repo = makeGitFixture({ dir: mkdtempSync(join(tmpdir(), 'pr-update-cli-key-')) })
+    dirs.push(repo.dir)
+    repo.commit('init', { 'a.txt': 'a' })
+    repo.git.remoteAdd('origin', FIXTURE_REMOTE)
+    return { dir: repo.dir, env: isolatedEnv(repo.dir) }
+  }
+
+  test('a key for a repository outside the run is a usage error naming the fix', async () => {
+    const { dir, env } = project()
+    const ctx = captureContext({ cwd: dir, env })
+    expect(await main(['update', '--pr', 'a/b#1'], ctx, fakeTools)).toBe(EXIT.usage)
+    expect(ctx.io.err).toContain('a/b is not a repository of this run; add --repo a/b')
+  })
+
+  test('a key for this repository that matches no open PR is listed in notFound', async () => {
+    const { dir, env } = project()
+    const ctx = captureContext({ cwd: dir, env })
+    const argv = ['update', '--pr', 'o/r#5', '--pr', '6', '--output', 'json']
+    expect(await main(argv, ctx, fakeTools)).toBe(EXIT.ok)
+    const out = JSON.parse(ctx.io.out) as { notFound: string[]; counts: { notFound: number } }
+    expect(out.notFound).toEqual(['o/r#5', '#6'])
+    expect(out.counts.notFound).toBe(2)
+  })
+})
+
 describe('pr-update update with verify: test', () => {
   const dirs: string[] = []
   afterAll(() => {
@@ -127,9 +160,11 @@ describe('pr-update usage errors', () => {
     const limit = await run('survey', '--limit', 'abc')
     expect(limit.code).toBe(EXIT.usage)
     expect(limit.err).toContain("--limit must be an integer, got 'abc'")
-    const pr = await run('update', '--pr', '1.5')
-    expect(pr.code).toBe(EXIT.usage)
-    expect(pr.err).toContain("--pr must be an integer, got '1.5'")
+    for (const bad of ['1.5', '0', 'o/r', 'o/r#', 'o/r#x']) {
+      const pr = await run('update', '--pr', bad)
+      expect(pr.code).toBe(EXIT.usage)
+      expect(pr.err).toContain(`--pr must be a PR number or owner/name#N, got '${bad}'`)
+    }
   })
 
   test('an unknown command is a usage error', async () => {

@@ -20,12 +20,11 @@ import { IDENTITY, makeBareAndWorker } from '@osdlc/typed-git/testing'
 
 import { prUpdateConfigSchema, type PrUpdateConfig } from '../src/config.ts'
 import type { AttemptStore, Ports } from '../src/ports.ts'
-import type { SurveyReport } from '../src/survey.ts'
+import { prKey, type SurveyReport } from '../src/survey.ts'
 import { attemptsDir, fileAttemptStore, listAttempts } from '../src/update/attempts.ts'
 import type { UpdateResult } from '../src/update/execute.ts'
 import {
   applyStrategyOverride,
-  prKey,
   renderUpdateText,
   runUpdate,
   selectTargets,
@@ -97,9 +96,8 @@ function row(patch: Record<string, unknown> = {}) {
 
 function report(rows: ReturnType<typeof row>[], cycles: number[] = []): SurveyReport {
   return {
-    repos: [{ slug: 'o/r', measurable: true, fetched: true, cycles }],
+    repos: [{ repo: 'o/r', measurable: true, fetched: true, cycles }],
     prs: rows as SurveyReport['prs'],
-    cycles: [],
     counts: {
       total: rows.length,
       upToDate: 0,
@@ -157,12 +155,17 @@ describe('selectTargets', () => {
     ])
   })
 
-  test('--pr naming a number the survey never reported still shows up, in skipped', () => {
-    // The loop in `selectTargets` visits only `report.prs`. A mistyped or
-    // closed `--pr` number outside that set must still appear in the result.
-    const { targets, skipped } = selectTargets(report([row({ number: 1 })]), [1, 999])
+  test('--pr naming a PR the survey never reported still shows up, in notFound', () => {
+    // The loops in `selectTargets` visit only what the survey listed. A
+    // mistyped or closed `--pr` selector must still appear in the result.
+    const { targets, skipped, notFound } = selectTargets(report([row({ number: 1 })]), [
+      1,
+      999,
+      'o/r#998',
+    ])
     expect(targets.map((t) => t.number)).toEqual([1])
-    expect(skipped).toEqual([{ repo: null, number: 999, head: '', reason: 'not found in survey' }])
+    expect(skipped).toEqual([])
+    expect(notFound).toEqual(['#999', 'o/r#998'])
   })
 
   test('a PR in a base/head cycle is reported in skipped, not lost or "not found"', () => {
@@ -193,8 +196,8 @@ describe('selectTargets — several repositories holding the same PR number', ()
     return {
       ...report([row({ repo: 'a/x', head: 'ax' }), row({ repo: 'b/y', head: 'by' })]),
       repos: [
-        { slug: 'a/x', measurable: true, fetched: true, cycles: cycles.a ?? [] },
-        { slug: 'b/y', measurable: true, fetched: true, cycles: cycles.b ?? [] },
+        { repo: 'a/x', measurable: true, fetched: true, cycles: cycles.a ?? [] },
+        { repo: 'b/y', measurable: true, fetched: true, cycles: cycles.b ?? [] },
       ],
     }
   }
@@ -244,10 +247,15 @@ describe('selectTargets — several repositories holding the same PR number', ()
         row({ repo: 'b/y', number: 2 }),
       ] as SurveyReport['prs'],
     }
-    const { skipped } = selectTargets(report2, [2])
+    const { skipped, notFound } = selectTargets(report2, [2])
     expect(skipped).toEqual([
       { repo: 'a/x', number: 1, head: 'topic', reason: 'not selected by --pr/--branch' },
     ])
+    expect(notFound).toEqual([])
+  })
+
+  test('a key for one repository is not found when only the other has that number', () => {
+    expect(selectTargets(twoRepos(), [prKey('b/y', 2)]).notFound).toEqual(['b/y#2'])
   })
 })
 
@@ -306,10 +314,12 @@ describe('renderUpdateText', () => {
     detail: 'updated',
     ...patch,
   })
-  const counts = { updated: 1, upToDate: 0, conflict: 1, failed: 1, skipped: 1 }
+  const counts = { updated: 1, upToDate: 0, conflict: 1, failed: 1, skipped: 1, notFound: 0 }
+  const empty = { results: [], skipped: [], notFound: [], repos: [] }
 
   test('marks each status, prints checkout and skipped lines, and the counts', () => {
     const text = renderUpdateText({
+      ...empty,
       applied: true,
       results: [
         res({ localCheckout: { updated: true, detail: 'moved to abc' } }),
@@ -321,38 +331,41 @@ describe('renderUpdateText', () => {
       counts,
     })
     expect(text.split('\n')).toEqual([
-      '✓ #1  rebase  topic  updated',
+      '✓ o/r#1  rebase  topic  updated',
       '    checkout: moved — moved to abc',
-      '· #2  rebase  topic  would update',
-      '✗ #3  rebase  topic  boom',
-      '! #4  rebase  topic  needs a human',
-      '- #5  other  already up to date',
+      '· o/r#2  rebase  topic  would update',
+      '✗ o/r#3  rebase  topic  boom',
+      '! o/r#4  rebase  topic  needs a human',
+      '- o/r#5  other  already up to date',
       '',
       'PR-UPDATE: updated=1 up-to-date=0 conflict=1 failed=1 skipped=1',
       '',
     ])
   })
 
-  test('names the repository once the report spans more than one', () => {
+  test('names every PR owner/name#N, in one repository or several, and lists what was not found', () => {
     const text = renderUpdateText({
+      ...empty,
       applied: true,
       results: [res({}), res({ repo: 'x/y', detail: 'boom', status: 'failed', pushed: false })],
-      skipped: [
-        { repo: 'x/y', number: 2, head: 'other', reason: 'already up to date' },
-        { repo: null, number: 9, head: '', reason: 'not found in survey' },
-      ],
-      counts,
+      skipped: [{ repo: 'x/y', number: 2, head: 'other', reason: 'already up to date' }],
+      notFound: ['#9', 'x/y#8'],
+      counts: { ...counts, notFound: 2 },
     })
-    expect(text.split('\n').slice(0, 4)).toEqual([
+    expect(text.split('\n')).toEqual([
       '✓ o/r#1  rebase  topic  updated',
       '✗ x/y#1  rebase  topic  boom',
       '- x/y#2  other  already up to date',
-      '- #9    not found in survey',
+      '? #9  no open PR in the surveyed repositories',
+      '? x/y#8  no open PR in the surveyed repositories',
+      '',
+      'PR-UPDATE: updated=1 up-to-date=0 conflict=1 failed=1 skipped=1 not-found=2',
+      '',
     ])
   })
 
   test('a rehearsal says nothing was pushed', () => {
-    const text = renderUpdateText({ applied: false, results: [], skipped: [], counts })
+    const text = renderUpdateText({ ...empty, applied: false, counts })
     expect(text).toContain('PR-UPDATE (rehearsal — nothing pushed): updated=1')
   })
 })
@@ -413,7 +426,14 @@ describe('runUpdate — the Ports contract', () => {
     })
     expect(calls).toBe(0)
     expect(out.applied).toBe(false)
-    expect(out.counts).toEqual({ updated: 0, upToDate: 0, conflict: 0, failed: 0, skipped: 0 })
+    expect(out.counts).toEqual({
+      updated: 0,
+      upToDate: 0,
+      conflict: 0,
+      failed: 0,
+      skipped: 0,
+      notFound: 0,
+    })
   })
 
   test.each(['check', 'test'] as const)(
@@ -768,7 +788,7 @@ describe('runUpdate — a located repository', () => {
         codeHost: () =>
           ({ listPrDetails: () => ({ ok: true, value: [detail] }) }) as unknown as CodeHost,
         cfg: cfg(),
-        ports: fakePorts({ locate: (slug) => (slug === 'x/y' ? other.worker.dir : null) }),
+        ports: fakePorts({ locate: (repo) => (repo === 'x/y' ? other.worker.dir : null) }),
       },
     )
     expect(out.results.map((r) => [r.number, r.status, r.pushed])).toEqual([[5, 'updated', true]])
@@ -819,12 +839,12 @@ describe('runUpdate — two repositories that each hold a PR 1', () => {
     const git: CommandRunner = {
       run: (argv, opts) => real.run(argv, { ...opts, env: { ...IDENTITY, ...opts.env } }),
     }
-    const pr1 = (slug: string): CodeHostPrDetail => {
-      const fx = slug === 'a/x' ? a : b
+    const pr1 = (repo: string): CodeHostPrDetail => {
+      const fx = repo === 'a/x' ? a : b
       return {
         number: 1,
         title: 'topic',
-        url: `https://github.com/${slug}/pull/1`,
+        url: `https://github.com/${repo}/pull/1`,
         baseRef: 'main',
         headRef: 'topic',
         headSha: fx.worker.git.resolveRef('origin/topic')!,
@@ -841,10 +861,10 @@ describe('runUpdate — two repositories that each hold a PR 1', () => {
         dryRun: false,
         git,
         gh: UNREACHABLE_GH,
-        codeHost: ({ slug }) =>
-          ({ listPrDetails: () => ({ ok: true, value: [pr1(slug)] }) }) as unknown as CodeHost,
+        codeHost: ({ repo }) =>
+          ({ listPrDetails: () => ({ ok: true, value: [pr1(repo)] }) }) as unknown as CodeHost,
         cfg: cfg({ verify: 'check' }),
-        ports: fakePorts({ locate: (slug) => checkout[slug] ?? null, ...ports }),
+        ports: fakePorts({ locate: (repo) => checkout[repo] ?? null, ...ports }),
       },
     )
   }

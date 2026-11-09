@@ -52,9 +52,12 @@ import {
 import {
   SCOPE_SHAPE,
   SurveyUsageError,
-  repoFailure,
+  prKey,
+  repoEntry,
   runSurvey,
+  selectorLabel,
   surveyTargets,
+  type PrSelector,
   type SurveyEnv,
   type SurveyReport,
 } from './survey.ts'
@@ -64,26 +67,19 @@ import type { PrUpdateConfig } from './config.ts'
 
 /** A row the run left alone, and the reason, so no row is dropped without a word. */
 export interface SkippedPr {
-  /**
-   * `owner/name`. Null only for a `--pr` number that no surveyed repository
-   * reported, which belongs to no one repository.
-   */
-  repo: string | null
+  /** `owner/name`. */
+  repo: string
   number: number
   head: string
   reason: string
 }
 
-/**
- * Which PRs a run is limited to. A number selects that PR in every
- * repository of the run, as `--pr` does. A `prKey` string selects one PR of
- * one repository.
- */
-export type PrSelector = number | string
-
-/** `owner/name#number`: one PR of one repository, unambiguous across a run. */
-export function prKey(repo: string, number: number): string {
-  return `${repo}#${number}`
+/** What `selectTargets` makes of a survey. */
+export interface Selection {
+  targets: UpdateTarget[]
+  skipped: SkippedPr[]
+  /** The `only` selectors no surveyed PR matched, as `selectorLabel` prints them. */
+  notFound: string[]
 }
 
 /** The failed-attempt key for a target, or null when either sha is unknown. */
@@ -104,12 +100,11 @@ export interface FailedAttemptPolicy {
 /**
  * Split the survey into what this run will act on and what it will not.
  *
- * Every row lands in exactly one list. Every number `only` (`--pr`) named
+ * Every row lands in exactly one list. Every selector `only` (`--pr`) named
  * lands somewhere too, even one the survey never reported (a typo, or a PR
- * that closed between the survey and this run). Such a number gets a made-up
- * `skipped` entry instead of disappearing. A PR that disappeared from the
- * report would be the worst outcome, because the reader would assume it was
- * fine.
+ * that closed between the survey and this run). Such a selector is listed in
+ * `notFound` instead of disappearing. A PR that disappeared from the report
+ * would be the worst outcome, because the reader would assume it was fine.
  *
  * A PR is identified by repository and number together. In a run over
  * several repositories, two of them can each hold a PR 1, and both must be
@@ -119,7 +114,7 @@ export function selectTargets(
   report: SurveyReport,
   only: readonly PrSelector[],
   policy: FailedAttemptPolicy = { maxFailedAttempts: 0, retryFailed: false },
-): { targets: UpdateTarget[]; skipped: SkippedPr[] } {
+): Selection {
   const store = policy.retryFailed || policy.maxFailedAttempts === 0 ? undefined : policy.attempts
   const wantedNumbers = new Set(only.filter((s): s is number => typeof s === 'number'))
   const wantedKeys = new Set(only.filter((s): s is string => typeof s === 'string'))
@@ -170,7 +165,7 @@ export function selectTargets(
   }
   // A PR in a base/head cycle has no row, because it has no place in the
   // stack order. It is still a PR the survey listed, so it is reported here.
-  for (const { slug: repo, cycles } of report.repos) {
+  for (const { repo, cycles } of report.repos) {
     for (const number of cycles) {
       const key = prKey(repo, number)
       if (seen.has(key)) continue
@@ -182,16 +177,14 @@ export function selectTargets(
       skipped.push({ repo, number, head: '', reason })
     }
   }
-  // A `--pr` number the survey never reported (a typo, or a PR that closed
-  // between the survey and this run) never reaches `note()` in the loop above,
-  // which sees only `report.prs`. Add it here, so every number this run was
-  // asked about is reported. It names no repository, because none has it.
-  for (const number of wantedNumbers) {
-    if (!seenNumbers.has(number)) {
-      skipped.push({ repo: null, number, head: '', reason: 'not found in survey' })
-    }
-  }
-  return { targets, skipped }
+  // A `--pr` selector the survey never reported (a typo, or a PR that closed
+  // between the survey and this run) never reaches `note()` in the loops
+  // above, which see only what the survey listed. Report it here, so every
+  // selector this run was asked about is accounted for.
+  const notFound = only
+    .filter((s) => (typeof s === 'number' ? !seenNumbers.has(s) : !seen.has(s)))
+    .map(selectorLabel)
+  return { targets, skipped, notFound: [...new Set(notFound)] }
 }
 
 export const input = z.object({
@@ -274,21 +267,22 @@ export const output = z.object({
   skipped: z
     .array(
       z.object({
-        repo: z
-          .string()
-          .nullable()
-          .describe('`owner/name`; null only for a `--pr` number no surveyed repository has.'),
+        repo: z.string().describe('`owner/name`.'),
         number: z.number(),
         head: z.string(),
         reason: z.string(),
       }),
     )
     .describe('PRs deliberately not acted on. Every surveyed PR is here or in `results`.'),
-  repoFailures: z
-    .array(repoFailure.extend({ repo: z.string() }))
-    .optional()
+  notFound: z
+    .array(z.string())
     .describe(
-      'Repositories that could not be listed, in a run over several repositories; absent when none failed. The run still acted on the others.',
+      '`--pr` selectors no surveyed PR matched, as `#N` (a number no repository has) or `owner/name#N`: a typo, or a PR that closed.',
+    ),
+  repos: z
+    .array(repoEntry)
+    .describe(
+      "Repositories surveyed, as `survey` reports them. A repository's `failure` is set when it could not be listed; the run still acted on the others.",
     ),
   counts: z.object({
     updated: z.number(),
@@ -296,6 +290,7 @@ export const output = z.object({
     conflict: z.number(),
     failed: z.number(),
     skipped: z.number(),
+    notFound: z.number(),
   }),
 })
 
@@ -438,7 +433,7 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
           ...args.pr,
           ...report.prs.filter((r) => r.head === args.branch).map((r) => prKey(r.repo, r.number)),
         ]
-  const { targets, skipped } = selectTargets(report, only, {
+  const { targets, skipped, notFound } = selectTargets(report, only, {
     attempts,
     maxFailedAttempts: effectiveCfg.max_failed_attempts,
     retryFailed: args.retryFailed,
@@ -449,7 +444,7 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
   // Each repository's PRs are updated in that repository's own checkout, the
   // one the survey measured them in.
   const located = surveyTargets(args, env).targets
-  const pathOf = new Map(located.map((t) => [t.slug, t.path ?? env.projectRoot]))
+  const pathOf = new Map(located.map((t) => [t.repo, t.path ?? env.projectRoot]))
   const groups = new Map<string, { path: string; targets: UpdateTarget[] }>()
   for (const t of targets) {
     const group = groups.get(t.repo)
@@ -466,9 +461,9 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
   const verifyVerbsOf = new Map<string, readonly string[]>()
   if (verify !== 'none') {
     const toAsk = new Map<string, string>()
-    for (const { slug, measurable, failure } of report.repos) {
-      const checkout = pathOf.get(slug)
-      if (measurable && failure === undefined && checkout !== undefined) toAsk.set(slug, checkout)
+    for (const { repo, measurable, failure } of report.repos) {
+      const checkout = pathOf.get(repo)
+      if (measurable && failure === undefined && checkout !== undefined) toAsk.set(repo, checkout)
     }
     // Every repository with a PR to update is asked, so none is pushed
     // unverified for want of a list.
@@ -520,20 +515,19 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
   }
 
   const t = tally(results)
-  const failedRepos = report.repos.flatMap((r) =>
-    r.failure === undefined ? [] : [{ repo: r.slug, ...r.failure }],
-  )
   return {
     applied: writes,
     results: results.map((r) => toResult(r, local.get(prKey(r.repo, r.number)))),
     skipped,
-    ...(failedRepos.length > 0 ? { repoFailures: failedRepos } : {}),
+    notFound,
+    repos: report.repos,
     counts: {
       updated: t['updated'] ?? 0,
       upToDate: t['up-to-date'] ?? 0,
       conflict: t['conflict'] ?? 0,
       failed: t['failed'] ?? 0,
       skipped: skipped.length,
+      notFound: notFound.length,
     },
   }
 }
@@ -553,19 +547,15 @@ function recordAttempts(store: AttemptStore, results: readonly UpdateResult[]): 
 /**
  * Render an update report as the same text `pr-update update` prints.
  *
- * A PR is shown as `#N` while the report names one repository, and as
- * `owner/name#N` once it names more than one, where `#N` alone is ambiguous.
+ * Every PR is shown as `owner/name#N`, whatever the number of repositories,
+ * so a run prints the same text with or without `--repo`, and each PR can be
+ * pasted back into `--pr` or into GitHub.
  */
 export function renderUpdateText(out: UpdateOutput): string {
   const lines: string[] = []
-  const repos = new Set<string>()
-  for (const r of out.results) repos.add(r.repo)
-  for (const s of out.skipped) if (s.repo !== null) repos.add(s.repo)
-  const label = (repo: string | null, number: number): string =>
-    repos.size > 1 && repo !== null ? prKey(repo, number) : `#${number}`
   for (const r of out.results) {
     const mark = r.status === 'updated' ? (r.pushed ? '✓' : '·') : r.status === 'failed' ? '✗' : '!'
-    lines.push(`${mark} ${label(r.repo, r.number)}  ${r.strategy}  ${r.head}  ${r.detail}`)
+    lines.push(`${mark} ${prKey(r.repo, r.number)}  ${r.strategy}  ${r.head}  ${r.detail}`)
     if (r.localCheckout !== undefined) {
       lines.push(
         `    checkout: ${r.localCheckout.updated ? 'moved' : 'left'} — ${r.localCheckout.detail}`,
@@ -573,13 +563,17 @@ export function renderUpdateText(out: UpdateOutput): string {
     }
   }
   for (const s of out.skipped) {
-    lines.push(`- ${label(s.repo, s.number)}  ${s.head}  ${s.reason}`)
+    lines.push(`- ${prKey(s.repo, s.number)}  ${s.head}  ${s.reason}`)
+  }
+  for (const selector of out.notFound) {
+    lines.push(`? ${selector}  no open PR in the surveyed repositories`)
   }
   const c = out.counts
   const mode = out.applied ? 'PR-UPDATE' : 'PR-UPDATE (rehearsal — nothing pushed)'
   lines.push(
     `\n${mode}: updated=${c.updated} up-to-date=${c.upToDate} ` +
-      `conflict=${c.conflict} failed=${c.failed} skipped=${c.skipped}`,
+      `conflict=${c.conflict} failed=${c.failed} skipped=${c.skipped}` +
+      (c.notFound > 0 ? ` not-found=${c.notFound}` : ''),
   )
   return `${lines.join('\n')}\n`
 }

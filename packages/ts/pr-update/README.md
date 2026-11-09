@@ -74,9 +74,19 @@ host can embed the engine as a library and supply its own ports.
 ## One PR, or all of them
 
 With no scope, `update` works on every open PR in the repository, parent
-first. `--pr N` (repeatable) names PRs. `--branch [name]` names the PR whose
-head is that branch. A bare `--branch` means the branch checked out in the
-current directory. A branch with no open PR is a usage error (exit `2`).
+first. `--pr` (repeatable) names PRs: `--pr N` is PR `N` in every repository
+of the run, and `--pr owner/name#N` is PR `N` of that one repository, which
+must be in the run: named by `--repo`, or, with no `--repo`, the checkout's
+own repository.
+`--branch [name]` names the PR whose head is that branch. A bare `--branch`
+means the branch checked out in the current directory. A branch with no open
+PR, or a `--pr owner/name#N` for a repository outside the run, is a usage
+error (exit `2`).
+
+Every report names a PR `owner/name#N`, the form GitHub links and `--pr`
+accepts, whether the run covers one repository or several. A PR number alone
+is ambiguous once a run spans several repositories. In JSON, each PR carries
+`repo` (`owner/name`) and `number`, and each repository entry `repo`.
 
 A scoped run measures only what it needs. It lists PRs from the code host
 once, then fetches and runs `merge-tree` on just the named PRs and their stack
@@ -261,13 +271,12 @@ some other way than the terminal.
 of it. Any report left by an earlier run is removed first, so a file that is
 there belongs to this run. It is written whenever the run produced a result,
 on a clean exit and on a conflict or failure alike. Each PR's entry carries its
-`repo` (`owner/name`), `status`, the `strategy` that ran, `strategyFallback`,
+`repo` and `number`, `status`, the `strategy` that ran, `strategyFallback`,
 `repaired`, `conflicts` and `localCheckout`, so a host can act on each outcome
-without parsing text. Each `skipped` entry carries its `repo` too, which is null
-only for a `--pr` number no surveyed repository has. A PR number alone is
-ambiguous once a run spans several repositories, and the text output then names
-each PR as `owner/name#N`. A
-run that throws writes `{ "error": "<message>" }` instead. A run refused before
+without parsing text. `skipped` lists the PRs left alone, each with its `repo`,
+`number` and `reason`. `notFound` lists the `--pr` selectors no surveyed PR
+matched (`#N` or `owner/name#N`). `repos` lists the repositories surveyed,
+exactly as `survey` reports them. A run that throws writes `{ "error": "<message>" }` instead. A run refused before
 it starts (a flag usage error, or no trust) writes none.
 
 There is no interactive checklist. `--confirm-push` is the way to ask before a
@@ -345,7 +354,7 @@ confirmation:
 
 | Port | What it answers |
 |---|---|
-| `locate(slug)` | Where `owner/name` is checked out on this machine, or `null` |
+| `locate(repo)` | Where `owner/name` is checked out on this machine, or `null` |
 | `runVerb(verb, cwd)` | Run one shell verb, for resolvers and verify |
 | `resolveVerifyVerbs({ which, trust, repo, checkout })` | The trust-gated verb list `verify: check` or `verify: test` runs before a push, asked once per repository |
 | `generators` (optional) | In-process rebuild steps, each with `claims(path)` and `run(worktree)` |
@@ -394,8 +403,8 @@ that cannot be built throws the same way, from `selectedCodeHostFor`.
 
 With several `--repo` targets, one repository that cannot be listed does not
 abort the others. Every repository is surveyed. The failed one is recorded on
-its `repos` entry (`failure: { kind, message, hint }`, and no PRs), listed under
-`repoFailures` in `update --report`, and printed on stderr as
+its `repos` entry (`failure: { kind, message, hint }`, and no PRs) in both
+`survey` and `update` output, and printed on stderr as
 `pr-update: <repo>: <message> <hint>`. The run then exits with the code of the
 first failure (a later one with a different code is printed but does not
 change it). With a single repository the failure is thrown.
