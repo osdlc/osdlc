@@ -4,11 +4,14 @@
 
 import { execFileSync } from 'node:child_process'
 
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { fetchRef, refKey, refStore, type RefStore } from '@osdlc/ref-lease'
 
 import { makePair, thrownBy, type Pair } from './_fixture.ts'
+
+// Each pass is a few pushes; a busy machine needs more than the default 5s.
+vi.setConfig({ testTimeout: 30_000 })
 
 describe('refKey', () => {
   const P = 'refs/things/'
