@@ -134,7 +134,8 @@ move; merged PRs drop off.
 
 | Order | PR | What | Why this order | Status |
 | --- | --- | --- | --- | --- |
-| 1 | [#741](https://github.com/osdlc/osdlc/pull/741) | pr-update stops the repair agent on SIGINT/SIGTERM, exits 130 | Small; gate done (6 fixed, 5 declined with reasons); 354 tests pass | waiting on your review since 05:55 UTC; CI rerunning after the bot merged main |
+| 1 | [#741](https://github.com/osdlc/osdlc/pull/741) (draft) | Interrupting a host kills the agent: command-seam exports group tracking, agent-call registers the agent group, pr-update installs forwarding | Back to draft for a library-level rework | draft; rework in progress, then the gate |
+| 2 | [#747](https://github.com/osdlc/osdlc/pull/747) (draft) | codex.yml and cursor.yml callers | First live run of codex-pr and cursor-pr; needs OPENAI_API_KEY and CURSOR_API_KEY | draft; gate next |
 
 ## PR tracker
 
@@ -142,7 +143,7 @@ Checked 2026-11-09 06:40 UTC. A periodic check refreshes this table and the grap
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
-| [#741](https://github.com/osdlc/osdlc/pull/741) | fix(pr-update): stop the repair agent when pr-update is interrupted | open | none | CI rerunning | waiting on your review | merge |
+| [#741](https://github.com/osdlc/osdlc/pull/741) | fix: kill the agent's process group when its host is interrupted (command-seam, agent-call, pr-update) | draft | none | — | reworking onto command-seam signal forwarding | gate, then merge |
 | [#734](https://github.com/osdlc/osdlc/pull/734) | feat(gh-actions): codex-pr and cursor-pr, shared pr-common scripts, multi-marketplace plugins | merged | — | — | — | merged 2026-11-09; next: live test with caller workflows |
 | [#733](https://github.com/osdlc/osdlc/pull/733) | Version Packages (corpus-schema; unblocked the agent-call 0.10.0 publish) | merged | — | — | — | merged 2026-11-09; agent-call 0.10.0 on npm |
 | [#731](https://github.com/osdlc/osdlc/pull/731) | chore(conformance): drop markdown-tags from CATCHING_UP in the version PR | merged | — | — | — | merged into #726's branch 2026-11-09 |
