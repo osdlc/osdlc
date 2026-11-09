@@ -15,7 +15,7 @@
       "path": "packages/ts/markdown-link/src/code.ts",
       "line": 229,
       "title": "indented code line counts as paragraph",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/728#discussion_r4508308916",
       "status": "fixed",
       "reason": null,
       "fixedIn": "a906d5cecc70b859f27e33cdc38e224e5791780d"
@@ -26,7 +26,7 @@
       "path": "packages/rust/markdown-link/src/code.rs",
       "line": 366,
       "title": "indented code line counts as paragraph (Rust twin)",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/728#discussion_r4508308919",
       "status": "fixed",
       "reason": null,
       "fixedIn": "a906d5cecc70b859f27e33cdc38e224e5791780d"
@@ -34,13 +34,13 @@
     {
       "id": "r2-3",
       "round": 2,
-      "path": "packages/conformance/markdown-link/suite.json",
-      "line": 500,
+      "path": null,
+      "line": null,
       "title": "paragraph-interrupt edges missing from suite",
-      "comment": null,
-      "status": "fixed",
+      "comment": "https://github.com/osdlc/osdlc/pull/728#pullrequestreview-5820242590",
+      "status": "open",
       "reason": null,
-      "fixedIn": "a906d5cecc70b859f27e33cdc38e224e5791780d"
+      "fixedIn": null
     },
     {
       "id": "r3-1",
@@ -48,7 +48,7 @@
       "path": "packages/conformance/markdown-link/suite.json",
       "line": 580,
       "title": "empty-bullet case does not test the rule its name states",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/728#discussion_r4508364999",
       "status": "fixed",
       "reason": null,
       "fixedIn": "a74a18e6b7ef440ecb2832e90b5302ed5024aa69"
