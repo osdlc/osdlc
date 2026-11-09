@@ -8,7 +8,8 @@
     "^\\.github/workflows/ts-packages-ci\\.yml$",
     "^\\.github/workflows/packages-windows-tier2\\.yml$",
     "^scripts/bounded-run(\\.test)?\\.ts$",
-    "^packages/ts/package-checks/"
+    "^packages/ts/package-checks/",
+    "^packages/ts/command-seam/"
   ],
   "rustTwinNames": {
     "gfm-pipe-table": "gfm-table"
