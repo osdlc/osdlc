@@ -19,7 +19,9 @@
 #             pr-update-debounce with cancel-in-progress: true. A newer push
 #             cancels the sleeping job of the older run, and a cancelled
 #             debounce makes its run's `update` skip. So after a burst of
-#             merges only the last run reaches `update`.
+#             merges only the last run reaches `update`. A burst cannot hold
+#             the update back for more than DEBOUNCE_MAX_MINUTES: a run whose
+#             burst is that old does not wait.
 #   update    the work, with cancel-in-progress: false, so a run that is
 #             already updating PRs (or paying for an agent repair) is never
 #             cancelled. At most one run updates and one waits per group;
@@ -69,6 +71,9 @@ permissions: {}
 env:
   # Minutes a push run waits before it updates anything.
   DEBOUNCE_MINUTES: "5"
+  # The longest a burst of merges can hold an update back: once the first
+  # merge of a burst is this old, the next push run updates without waiting.
+  DEBOUNCE_MAX_MINUTES: "30"
   # Who may use the /pr-update comment: logins, comma separated; and author
   # associations (OWNER, MEMBER, COLLABORATOR), comma separated, empty for none.
   TRIGGER_USERS: sksizer
@@ -147,12 +152,48 @@ jobs:
     if: needs.gate.outputs.go == 'true' && needs.gate.outputs.debounce == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      actions: read
     concurrency:
       group: pr-update-debounce
       cancel-in-progress: true
     steps:
+      # Wait DEBOUNCE_MINUTES, but never let a burst hold the update back more
+      # than DEBOUNCE_MAX_MINUTES in total. The burst started at the oldest of
+      # the push runs just before this one whose debounce a newer push
+      # cancelled (each such run ends `cancelled`). Once the burst is that old,
+      # this run waits only what is left of the cap, or not at all, so a busy
+      # main still gets an update at least every DEBOUNCE_MAX_MINUTES.
       - name: Wait for the burst to end
-        run: sleep "$((DEBOUNCE_MINUTES * 60))"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Only runs created inside the cap window matter: a burst that old waits nothing.
+          # A failed lookup falls back to the plain wait, so it never skips update.
+          cutoff="$(date -u -d "$DEBOUNCE_MAX_MINUTES minutes ago" +%Y-%m-%dT%H:%M:%SZ)"
+          runs="$(gh run list -R "$GITHUB_REPOSITORY" --workflow pr-update.yml --event push \
+            --created ">=$cutoff" --limit 100 --json databaseId,createdAt,conclusion)" || runs='[]'
+          start="$(jq -r --argjson self "$GITHUB_RUN_ID" -f /dev/stdin --argjson runs "$runs" -n <<'JQ'
+          $runs | sort_by(.createdAt) | reverse
+          | (map(.databaseId) | index($self)) as $i
+          | if $i == null then null else
+              .[$i + 1:] as $older
+              | ($older | map(.conclusion == "cancelled") | index(false)) as $k
+              | $older[0:($k // ($older | length))] as $burst
+              | (($burst | last) // .[$i]).createdAt
+            end
+          JQ
+          )" || start=null
+          now="$(date -u +%s)"
+          if [ "$start" = null ] || [ -z "$start" ]; then start_s="$now"; else start_s="$(date -u -d "$start" +%s)"; fi
+          waited=$((now - start_s))
+          left=$((DEBOUNCE_MAX_MINUTES * 60 - waited))
+          [ "$left" -gt 0 ] || left=0
+          wait=$((DEBOUNCE_MINUTES * 60))
+          [ "$wait" -le "$left" ] || wait="$left"
+          echo "burst started $start (${waited}s ago); waiting ${wait}s"
+          sleep "$wait"
 
   update:
     needs: [gate, debounce]
