@@ -21,7 +21,7 @@ export function capture(command: string, argv: string[], cwd: string, env?: EnvO
   const r = spawnRunner(command).run(argv, { cwd, env })
   if (r.exitCode === 0 && r.neverExited !== true) return r.stdout
   throw new RunFailed(
-    `${[command, ...argv].join(' ')} failed: ${failureText(r, { both: true })}`,
+    `${[command, ...argv].join(' ')} failed: ${failureText(r, { both: true }) || `exit ${r.exitCode}`}`,
     r.stdout,
   )
 }

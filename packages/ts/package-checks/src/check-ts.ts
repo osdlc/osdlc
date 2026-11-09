@@ -269,10 +269,12 @@ function shipsTypes(pkg: Pkg): boolean {
  * exit code. Prints a section per package.
  */
 export function checkTsPackages(
-  root: string,
+  repoRoot: string,
   args: string[] = [],
   settings: PackageChecksConfig = OSDLC,
 ): number {
+  // Absolute, so the folders listed here and those named in `args` compare equal.
+  const root = resolve(repoRoot)
   const allDirs: string[] = []
   const ts = join(root, settings.tsDir)
   for (const name of existsSync(ts) ? readdirSync(ts).sort() : []) {
