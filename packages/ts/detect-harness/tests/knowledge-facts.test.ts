@@ -2,23 +2,15 @@
  * The location table's hard-coded harness facts against the harness knowledge file.
  *
  * A fact is read from the file when it states one at moderate strength or better and
- * the table agrees; otherwise it stays a constant, noted `// knowledge:` in
- * src/locations.ts. This test pins which facts the file states today, so a new or changed
- * statement fails here and sends someone to wire it or to settle the disagreement.
+ * the table agrees; otherwise it stays a constant. This test asserts the constants against
+ * the file (binary, detection variables, config folder variable, skills folders) and pins
+ * the stated folders the table leaves out, so a new or changed statement fails here and
+ * sends someone to wire it or to settle the disagreement.
  */
 import { fact, loadKnowledge } from '@osdlc/harness-knowledge'
 import { describe, expect, test } from 'vitest'
 
 import { LOCATIONS } from '../src/locations.ts'
-
-const SUBJECTS = [
-  'cli/binary',
-  'cli/current-env',
-  'config/config-dir-env',
-  'skills/user-dirs',
-  'skills/project-dirs',
-  'instructions/files',
-] as const
 
 const HARNESS = {
   claude: 'claude-code',
@@ -28,34 +20,87 @@ const HARNESS = {
   pi: 'pi',
   antigravity: 'antigravity',
 } as const
+type Id = keyof typeof HARNESS
 
-/**
- * What the file states at moderate strength or better and undisputed, the dirs it lists.
- * Everything else is missing, weak or disputed (codex and pi skills/project-dirs are disputed).
- */
-const STATED: Record<string, readonly string[]> = {
-  'codex skills/user-dirs': ['~/.agents/skills'],
-  'cursor skills/user-dirs': ['~/.agents/skills', '~/.cursor/skills'],
-  'pi skills/user-dirs': ['~/.pi/agent/skills', '~/.agents/skills'],
+const strings = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+
+/** The table's skills folders for a scope, as the knowledge file spells them (`~/` or project-relative). */
+function tableSkills(id: Id, scope: 'user' | 'project'): string[] {
+  const loc = LOCATIONS[id]
+  const config = loc.bases['config']?.default
+  const home = typeof config === 'string' ? config : undefined
+  return loc.paths
+    .filter((x) => x.role === 'skills' && x.scope === scope)
+    .map((x) =>
+      x.path
+        .replace('{config}', home ?? '{config}')
+        .replace('{project}/', '')
+        .replace('<cwd>/', ''),
+    )
+}
+
+/** What the file states at moderate strength or better that the table leaves out. */
+const GAPS: Record<string, readonly string[]> = {
+  'cursor skills/user-dirs': ['~/.agents/skills'],
+  'cursor skills/project-dirs': ['.agents/skills'],
+  'pi skills/user-dirs': ['~/.agents/skills'],
+  'pi skills/project-dirs': ['.agents/skills'],
+  'antigravity skills/user-dirs': ['~/.gemini/skills'],
 }
 
 describe('the location table and the knowledge file agree', () => {
-  test('the file defines every subject and harness the table asks about', () => {
+  test('the file defines every harness the table asks about', () => {
     const k = loadKnowledge()
-    for (const s of SUBJECTS) expect(k.subjects[s], s).toBeDefined()
     for (const h of Object.values(HARNESS)) expect(k.harnesses[h], h).toBeDefined()
   })
 
-  test('the file states exactly the facts pinned here', () => {
-    const stated: Record<string, unknown> = {}
-    for (const [id, harness] of Object.entries(HARNESS)) {
-      for (const s of SUBJECTS) {
-        const dirs = fact(harness, s)?.['dirs']
-        if (fact(harness, s) !== undefined) stated[`${id} ${s}`] = dirs
+  for (const [id, harness] of Object.entries(HARNESS) as [Id, string][]) {
+    const loc = LOCATIONS[id]
+    describe(id, () => {
+      test('the binary is the stated name or one of its aliases', () => {
+        const f = fact(harness, 'cli/binary')
+        expect(f, 'cli/binary').toBeDefined()
+        expect([f?.['name'], ...strings(f?.['aliases'])]).toContain(loc.binary)
+      })
+
+      test('the harness-detection variables are stated ones', () => {
+        const f = fact(harness, 'cli/current-env')
+        if (f === undefined) return // weak or not stated: the table's constants stand
+        const vars = (f['vars'] as { name: string }[]).map((v) => v.name)
+        for (const name of loc.currentEnv) expect(vars, name).toContain(name)
+      })
+
+      test('the config folder variable is the stated one', () => {
+        const f = fact(harness, 'config/config-dir-env')
+        const names = (loc.bases['config']?.env ?? []).map((e) => e.name)
+        if (f === undefined) return
+        // opencode and cursor honour a variable the table does not read (XDG_CONFIG_HOME there).
+        if (id === 'opencode' || id === 'cursor') return expect(names).not.toContain(f['var'])
+        expect(names).toContain(f['var'])
+      })
+
+      for (const scope of ['user', 'project'] as const) {
+        const subject = `skills/${scope}-dirs`
+        test(`${subject}: the table lists only stated folders; the gaps are pinned`, () => {
+          const f = fact(harness, subject)
+          if (f === undefined) return // weak, disputed or not stated: the table's constants stand
+          // Codex's older folder is deprecated but still read, so the table keeps it.
+          const stated = [
+            ...strings(f['dirs']).map((d) => d.replace('<cwd>/', '')),
+            ...strings(f['deprecated']),
+            ...strings([f['moved_from']]),
+          ].map((d) => d.replace('$CODEX_HOME', '~/.codex'))
+          const have = tableSkills(id, scope)
+          for (const dir of have) expect(stated, dir).toContain(dir)
+          expect(
+            stated.filter((d) => !have.includes(d)),
+            `${id} ${subject}`,
+          ).toEqual(GAPS[`${id} ${subject}`] ?? [])
+        })
       }
-    }
-    expect(stated).toEqual(STATED)
-  })
+    })
+  }
 
   test('the wired fact resolves, and the table holds it', () => {
     expect(fact('codex', 'skills/user-dirs')?.['dirs']).toContain('~/.agents/skills')

@@ -12,11 +12,8 @@ import {
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
-// knowledge: missing for qwen-code (no value at moderate strength or better), so the
-// argv, binary and environment constants below stay (tests/knowledge-facts.test.ts):
-// cli/binary cli/output-format cli/effort cli/continue cli/session-id
-// cli/session-persistence permissions/modes cli/context-dirs
-// instructions/system-prompt-flag mcp/strict-config
+// The binary and flags below are asserted against the harness knowledge file in
+// tests/knowledge-facts.test.ts; policy (which mode, which default) stays here.
 
 const MCP_CONFIG_FILE = 'mcp.json'
 const SETTINGS_DEFAULTS_FILE = 'qwen-system-defaults.json'

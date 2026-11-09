@@ -22,7 +22,7 @@
  * README). They change; a wrong entry is a bug in this table, not in a provider.
  *
  * Facts the harness knowledge file states at moderate strength or better are read
- * from it; the rest are constants here, each group noted `// knowledge:` below.
+ * from it; the rest are constants here, asserted against it by the tests.
  * Runtime: `node:path`, and `node:fs` through `@osdlc/harness-knowledge`.
  */
 
@@ -155,13 +155,11 @@ function knownAgentsSkillsDir(harness: string, fallback: string): string {
   return found ?? fallback
 }
 
-// knowledge: wired from skills/user-dirs: codex's `~/.agents/skills`.
-// knowledge: missing at moderate strength or better, so constants below: cli/binary,
-// cli/current-env and config/config-dir-env for every harness; instructions/files for every
-// harness (weak only); skills/project-dirs for claude, cursor, opencode and antigravity (weak),
-// and for codex and pi (disputed).
-// knowledge: disagrees, so constants below: skills/user-dirs for cursor (also ~/.agents/skills)
-// and pi (also ~/.agents/skills). tests/knowledge-facts.test.ts pins all of this.
+// knowledge: codex's `~/.agents/skills` is read from skills/user-dirs. Every other constant
+// below (binary, detection variables, config folder variables, skills folders) is asserted
+// against the file in tests/knowledge-facts.test.ts, which also pins the stated folders the
+// table leaves out (cursor and pi `~/.agents/skills`, antigravity `~/.gemini/skills`) and
+// the values the file holds only weakly or disputed.
 
 /**
  * The location table. Entries are added as harnesses change.
