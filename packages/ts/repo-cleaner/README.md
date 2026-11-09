@@ -115,8 +115,15 @@ A target is what to sweep:
 
 No target is the same as naming the current directory: at a checkout's root
 it sweeps that repository, and in a directory of checkouts it sweeps each
-one. In a subdirectory of a checkout it searches below that subdirectory,
-like any other directory, so name the checkout instead.
+one. In a subdirectory of a checkout, such as `src/`, it sweeps the checkout
+around it. That happens when the search below finds no checkout and the
+checkout around tracks files in the directory (or git cannot say, in which
+case the report gives git's reason). So a directory of checkouts inside a
+checkout of its own, such as `~/Developer` under a home directory kept in
+git, still sweeps the checkouts below it, or reports that it found none, as
+long as the home repository tracks no file there. A search that finds
+checkouts it cannot read is reported as it is. A subdirectory named as a
+target is read as written and searched.
 What a target names is read off the disk rather than from how it is written:
 a path that is itself a checkout names that repository, and a path that is
 not is searched for the checkouts under it, descending through directories
@@ -597,7 +604,7 @@ a failed fetch costs the whole repository.
 | What failed | What you get |
 | --- | --- |
 | `gh pr list` / `glab api` (the PR listing) | Every row is judged on git evidence. Remote branches with no known PR need `--allow confirm-open-pr` to delete. One note on the repository. |
-| `gh` / `glab` not installed or not signed in | The provider is never asked, so this is treated like a failed listing: every row is judged on git evidence, remote branches with no known PR need `--allow confirm-open-pr` to delete, and a note on the repository says why. Pass `--provider none` if the remote has no forge, so there is nothing to check. |
+| `gh` / `glab` not installed or not signed in | The provider is never asked, so this is treated like a failed listing: every row is judged on git evidence, remote branches with no known PR need `--allow confirm-open-pr` to delete, and a note on the repository says why. Pass `--provider none` if the remote has no pull requests, so there is nothing to check. |
 | `git ls-remote`, after a fetch that worked | Remote branches are read from the refs that fetch just wrote. A note on the repository and on each remote row. |
 | `git ls-remote`, in `clean`'s re-check of an `--offline` plan | The run is refused before anything runs. The refs on disk are what the re-check is there to replace, and `clean` does not delete on a remote it cannot ask. |
 | `git fetch` | The repository is an error with no rows. Every row would otherwise be judged against an older default branch than the one you asked for. |
@@ -630,7 +637,7 @@ $ repo-cleaner --remote --offline
 2 to delete, 0 to review, across 1 repository.
 ```
 
-When the remote may not be on a forge at all, the note also suggests
+When the remote may have no pull requests at all, the note also suggests
 `--provider none`: for a host `auto` could only guess was GitHub, or a local
 path swept with `--provider github`. Under `auto`, a local path gets no
 provider in the first place.
@@ -656,8 +663,8 @@ status: complete
 The local branch went; the remote branch stayed. To go on, pick one:
 
 - Fix the lookup (install `gh`, sign in, check the remote URL) and run again.
-- Pass `--provider none` if this remote has no forge at all, so there is no
-  pull request to lose.
+- Pass `--provider none` if this remote has no pull requests at all, so there
+  is none to lose.
 - Check for open pull requests yourself, then pass `--allow confirm-open-pr`.
 
 The same happens when `gh` is not installed or not signed in. Nothing was
@@ -675,8 +682,8 @@ $ repo-cleaner --remote --offline
 2 to delete, 0 to review, across 1 repository.
 ```
 
-`--provider none` is how you say the remote has no forge: then there is no
-lookup, no note and no gate.
+`--provider none` is how you say the remote has no pull requests: then there
+is no lookup, no note and no gate.
 
 ### `--offline` reads what is already on disk
 
@@ -707,7 +714,7 @@ $ repo-cleaner --remote --offline --provider none     # now
 `--provider none` to judge with no network at all.
 
 The refs on disk can be stale. A remote-tracking ref stays until the next
-`git fetch --prune`, so a branch the forge deleted after its pull request
+`git fetch --prune`, so a branch the host deleted after its pull request
 merged still shows in the report, and a branch someone pushed to since shows
 its old tip. That is fine for a report, but `clean` deletes on the remote, so
 before it does, its re-check asks the remote itself with `git ls-remote`. A
@@ -779,7 +786,7 @@ is allowed.
 
 A `PrProvider` you write reports a failure by returning `null` or by
 throwing; either becomes `listError` and a note. Return an empty list only
-when the forge answered and there are no pull requests.
+when the provider answered and there are no pull requests.
 
 The decision behind this is
 [D-UVUH](docs/planning/decisions/D-UVUH-failed-lookups.md).
@@ -967,7 +974,7 @@ Not done yet:
 
 `git` on `PATH`, and `gh` (or `glab` for GitLab) for pull request evidence.
 Without it, deleting a remote branch needs `--allow confirm-open-pr`, or
-`--provider none` for a remote with no forge (see
+`--provider none` for a remote with no pull requests (see
 [When a lookup fails](#when-a-lookup-fails)). Authentication is the CLI's
 own — this package reads no token.
 

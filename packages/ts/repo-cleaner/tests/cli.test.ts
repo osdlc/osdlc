@@ -109,6 +109,23 @@ describe('arguments', () => {
     expect(run(['cache', '--help'], tempDir()).code).toBe(0)
   })
 
+  test('with no target, a subdirectory of a checkout sweeps that checkout (#680)', () => {
+    const fx = buildFixture()
+    const inner = join(fx.root, 'src', 'lib')
+    mkdirSync(inner, { recursive: true })
+    writeFileSync(join(inner, 'index.ts'), 'export {}\n')
+    sh(fx.root, ['add', '-A'])
+    sh(fx.root, ['commit', '-q', '-m', 'add src'])
+    const res = run(['--format', 'json'], inner)
+    expect(res.code).toBe(0)
+    const out = JSON.parse(res.out) as {
+      repos: { repo: { root: string } }[]
+      unresolved: unknown[]
+    }
+    expect(out.repos.map((r) => r.repo.root)).toEqual([realpathSync(fx.root)])
+    expect(out.unresolved).toEqual([])
+  })
+
   test('a malformed command exits 2', () => {
     const fx = buildFixture()
     const cwd = tempDir()
@@ -1705,7 +1722,7 @@ describe('a pull request listing that fails (#653)', () => {
         [realpathSync(fx.root), realpathSync(bare)].sort(),
       )
       // A local bare remote names no forge, so the note says how to stop asking.
-      expect(out.notes[0]?.note).toContain('Pass `--provider none` if this remote has no forge.')
+      expect(out.notes[0]?.note).toContain('Pass `--provider none` if this remote has no PRs.')
       for (const dir of [fx.root, bare]) {
         expect(res.err).toContain(`repo-cleaner clean: ${realpathSync(dir)}: Listing PRs`)
       }

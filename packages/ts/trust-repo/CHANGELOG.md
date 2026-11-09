@@ -1,5 +1,11 @@
 # @osdlc/trust-repo
 
+## 0.5.5
+
+### Patch Changes
+
+- 2d0e130: `originOwner` now matches the `github:`, `gitlab:` and similar shortcut prefixes case-insensitively. A remote such as `GitHub:///evil/x` or `GitHub://x/evil/x` returned an owner like `github.com/evil`; it now returns null.
+
 ## 0.5.4
 
 ### Patch Changes

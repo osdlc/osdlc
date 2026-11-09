@@ -1,6 +1,6 @@
 [package]
 name = "markdown-link"
-version = "0.8.0"
+version = "0.8.1"
 edition.workspace = true
 rust-version.workspace = true
 description = "Parse and resolve Markdown and wiki-style links in notes: every `[[link]]`, `![[embed]]`, and relative Markdown link in a note body or its frontmatter, with code spans excluded, plus a LinkIndex that resolves a target against a set of file paths."
@@ -34,6 +34,12 @@ slug-collate = { workspace = true }
 frontmatter-lossless = { workspace = true }
 # Reads the shared case file, tests/fixtures/conformance.json.
 serde_json = { workspace = true }
+# The benchmark in benches/body_links.rs; CI's perf gate runs it.
+criterion = { workspace = true }
+
+[[bench]]
+name = "body_links"
+harness = false
 
 [lints]
 workspace = true

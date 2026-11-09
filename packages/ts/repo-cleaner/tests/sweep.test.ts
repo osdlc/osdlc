@@ -24,7 +24,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { type CommandRunner } from '@osdlc/command-seam'
-import { Git } from '@osdlc/typed-git'
+import { Git, checkoutRoot } from '@osdlc/typed-git'
 import { IDENTITY, makeGitFixture, makeOriginAndCheckout } from '@osdlc/typed-git/testing'
 
 import { cannedGh, cannedGlab, commit, git, interposedRunner, isGetUrlOrigin } from './helpers.ts'
@@ -658,6 +658,112 @@ describe('resolveEntries', () => {
 
   test('no entries means no repositories — nothing fans out on its own', () => {
     expect(resolveEntries([], { git: new Git(root) }).repos).toEqual([])
+  })
+})
+
+describe('no target (#680)', () => {
+  const home = realpathSync(mkdtempSync(join(tmpdir(), 'repo-cleaner-bare-')))
+  afterAll(() => rmSync(home, { recursive: true, force: true }))
+
+  function checkout(dir: string): string {
+    mkdirSync(dir, { recursive: true })
+    makeGitFixture({ dir, initialBranch: 'main' })
+    writeFileSync(join(dir, 'README.md'), '# fixture\n', 'utf-8')
+    commit(dir, 'initial commit')
+    return dir
+  }
+  /** `dir/src/lib`, holding a file `dir`'s checkout tracks. */
+  const subdir = (dir: string, depth: string[] = []): string => {
+    const inner = join(dir, 'src', 'lib', ...depth)
+    mkdirSync(inner, { recursive: true })
+    writeFileSync(join(inner, 'index.ts'), 'export {}\n', 'utf-8')
+    commit(dir, 'add src')
+    return join(dir, 'src', 'lib')
+  }
+  // `depth` builds a tree below `src/lib`; the directory returned is always `src/lib`.
+
+  test('from a subdirectory of a checkout, sweeps that checkout', () => {
+    const app = checkout(join(home, 'app'))
+    const result = sweep([], { cwd: subdir(app) })
+    expect(result.repos.map((r) => r.repo?.root)).toEqual([app])
+    expect(result.unresolved).toEqual([])
+  })
+
+  test("from a subdirectory of a linked worktree, sweeps the worktree's repository", () => {
+    const app = checkout(join(home, 'wt-app'))
+    const wt = join(home, 'wt-app-feature')
+    git(['worktree', 'add', '-q', '-b', 'feature', wt, 'main'], app)
+    const result = sweep([], { cwd: subdir(wt) })
+    expect(result.repos.map((r) => r.repo?.root)).toEqual([app])
+  })
+
+  test('a directory of checkouts inside a checkout of its own still sweeps the ones below it', () => {
+    // A home directory kept in git, with projects below it.
+    const dotfiles = checkout(join(home, 'dotfiles-home'))
+    const projects = join(dotfiles, 'Developer')
+    const alpha = checkout(join(projects, 'alpha'))
+    const beta = checkout(join(projects, 'beta'))
+    const result = sweep([], { cwd: projects })
+    expect(result.repos.map((r) => r.repo?.root).sort()).toEqual([alpha, beta])
+  })
+
+  test('a tracked subdirectory whose tree runs past the search limit still sweeps its checkout', () => {
+    const app = checkout(join(home, 'deep-app'))
+    const inner = subdir(app, ['a', 'b', 'c', 'd'])
+    // The search below src/lib stops at the depth limit, finding nothing.
+    expect(resolveEntries([inner], { git: new Git(inner) }).scan.depthLimited).toBeGreaterThan(0)
+    const result = sweep([], { cwd: inner })
+    expect(result.repos.map((r) => r.repo?.root)).toEqual([app])
+  })
+
+  test('a directory its checkout does not track is reported, not widened', () => {
+    // A home directory kept in git, whose projects sit past the search limit.
+    const dotfiles = checkout(join(home, 'deep-home'))
+    const projects = join(dotfiles, 'Developer')
+    checkout(join(projects, 'a', 'b', 'c', 'too-deep'))
+    const result = sweep([], { cwd: projects })
+    expect(result.repos).toEqual([])
+    expect(result.scan.depthLimited).toBeGreaterThan(0)
+    expect(result.unresolved).toEqual([{ entry: projects, reason: 'no git checkouts under it' }])
+  })
+
+  test('checkouts found below that cannot be read are reported, not widened', () => {
+    const app = checkout(join(home, 'broken-app'))
+    const projects = subdir(app)
+    const broken = join(projects, 'broken')
+    mkdirSync(broken, { recursive: true })
+    writeFileSync(join(broken, '.git'), 'gitdir: /nowhere\n', 'utf-8')
+    const result = sweep([], { cwd: projects })
+    expect(result.repos).toEqual([])
+    expect(result.scan.checkoutsFound).toBe(1)
+    expect(result.unresolved).toEqual([{ entry: projects, reason: 'no git checkouts under it' }])
+  })
+
+  test('when git cannot read the checkout around, the report says so', () => {
+    const fake = join(home, 'fake')
+    mkdirSync(fake)
+    writeFileSync(join(fake, '.git'), 'gitdir: /nowhere\n', 'utf-8')
+    const result = sweep([], { cwd: subdir(fake) })
+    expect(result.repos).toEqual([])
+    // Not "no git checkouts under it", which would hide why.
+    expect(result.unresolved).toEqual([{ entry: fake, reason: 'not a readable git checkout' }])
+  })
+
+  test('from a directory in no checkout, searches below it as before', (ctx) => {
+    if (checkoutRoot(home) !== null) ctx.skip('the temp directory is inside a git checkout here')
+    const empty = join(home, 'empty')
+    mkdirSync(empty)
+    const result = sweep([], { cwd: empty })
+    expect(result.repos).toEqual([])
+    expect(result.unresolved).toEqual([{ entry: empty, reason: 'no git checkouts under it' }])
+  })
+
+  test('a subdirectory named as a target is read as written: searched, not widened', () => {
+    const app = checkout(join(home, 'named'))
+    const inner = subdir(app)
+    const result = sweep([inner], { cwd: home })
+    expect(result.repos).toEqual([])
+    expect(result.unresolved).toEqual([{ entry: inner, reason: 'no git checkouts under it' }])
   })
 })
 
@@ -1415,7 +1521,7 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
     expect(swept.repo?.provider?.listError).toContain('you cannot see it')
     expect(swept.notes).toHaveLength(1)
     expect(swept.notes[0]).toMatch(
-      /^Listing PRs with `gh pr list` failed \(.*you cannot see it.*\); judged on git evidence alone\. Pass `--provider none` if this remote has no forge\.$/,
+      /^Listing PRs with `gh pr list` failed \(.*you cannot see it.*\); judged on git evidence alone\. Pass `--provider none` if this remote has no PRs\.$/,
     )
     const branches = rowsOf(swept.rows, 'branch')
     expect(branches.get('merged')?.verdict).toBe('delete')
@@ -1456,7 +1562,7 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
       provider: 'auto' | 'github',
       url = 'https://git.example.com/acme/app.git',
     ): string | undefined => sweepHere({ provider, gh: unseeingGh, git: hostedAt(url) }).notes[0]
-    const hint = 'Pass `--provider none` if this remote has no forge.'
+    const hint = 'Pass `--provider none` if this remote has no PRs.'
     expect(noteOf('auto')).toContain(hint)
     // Named outright for a hosted remote, the provider is the person's choice: no hint.
     expect(noteOf('github')).not.toContain(hint)
@@ -1477,7 +1583,7 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
   // `auto` asks GitHub for a github.com remote, which is a forge, so its note
   // gives no `--provider none` hint; `--provider github` on the fixture's
   // local-path remote, which names no forge, does.
-  const hint = ' Pass `--provider none` if this remote has no forge.'
+  const hint = ' Pass `--provider none` if this remote has no PRs.'
   test.each(
     (
       [

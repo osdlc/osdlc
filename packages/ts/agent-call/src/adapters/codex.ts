@@ -202,6 +202,10 @@ function planCodex(command: readonly string[], spec: AgentCallSpec): PlannedCall
     note(notes, 'budgetUsd', 'dropped', 'codex has no budget cap flag')
   }
 
+  if (spec.limits?.maxTurns !== undefined) {
+    note(notes, 'limits.maxTurns', 'dropped', 'codex has no turn limit flag')
+  }
+
   argv.push(...(spec.extraArgs ?? []))
 
   const prompt = buildEffectivePrompt(spec, { schemaNative: true }, notes)

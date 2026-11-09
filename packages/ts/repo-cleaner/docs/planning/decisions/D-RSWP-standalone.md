@@ -26,7 +26,10 @@ task files, stays with sdlc, in
   and passes paths in.
 - **A bare invocation sweeps where the caller stands.** No target is the same
   as naming the current directory: at a checkout's root that sweeps its
-  repository, and in a directory of checkouts it fans out over them.
+  repository, and in a directory of checkouts it fans out over them. In a
+  subdirectory that the checkout around it tracks, where the search finds no
+  checkout, it sweeps that checkout
+  ([#680](https://github.com/osdlc/osdlc/issues/680)).
 - **A target is a path or a remote URL.** A checkout names that repository.
   Any other directory is searched for the checkouts under it. Linked
   worktrees collapse into their repository and appear as its rows. A remote
