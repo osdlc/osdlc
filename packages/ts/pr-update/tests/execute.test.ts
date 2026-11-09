@@ -14,6 +14,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { chmodSync, existsSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 
 import { Git } from '@osdlc/typed-git'
@@ -160,6 +161,27 @@ describe('the executor against real git', () => {
     expect(after).not.toBe(before)
     // A merge never rewrites: the old tip must still be reachable.
     expect(git.isAncestor(before!, after!)).toBe(true)
+  })
+
+  test('the merge commit names the PR branches, not the temporary local branch', async () => {
+    makeBehindPr('msg-m', { 'a.txt': 'a\n' }, { 'b.txt': 'b\n' })
+    const { git } = fx.worker
+    const out = await inWorktree((wt) =>
+      updateOne(wt, target({ head: 'msg-m' }), SETTINGS, recorder(), {
+        apply: true,
+        worktree: wtRoot,
+      }),
+    )
+    expect(out.status).toBe('updated')
+    git.fetch('origin')
+    const baseSha = git.resolveRef('origin/main')
+    const msg = execFileSync('git', ['log', '-1', '--format=%B', 'origin/msg-m'], {
+      cwd: fx.worker.dir,
+      encoding: 'utf8',
+    })
+    expect(msg.split('\n')[0]).toBe('Merge main into msg-m')
+    expect(msg).toContain(`Base: main at ${baseSha}`)
+    expect(msg).not.toContain('pr-update/')
   })
 
   test('a clean rebase rewrites, and the old tip is left behind', async () => {
