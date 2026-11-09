@@ -11,10 +11,13 @@ below closes a race that a simpler lock file gets wrong.
 ## Claim: write the whole lock first, then link it into place
 
 ```text
-1. write  x.lock.new-<token>     the full content, token included
+1. create x.lock.new-<token>     exclusively, set to `mode` if given, then the
+                                 full content, token included
 2. link   x.lock.new-<token> → x.lock
       ok      → we hold the lock
-      EEXIST  → someone else does: read it and ask the staleness rule
+      EEXIST  → something is there: open it without following a symlink or
+                blocking, check it is a regular file, read it and ask the
+                staleness rule
 3. remove x.lock.new-<token>
 ```
 
@@ -24,6 +27,25 @@ processes that link at the same moment exactly one wins.
 **Why not `open(O_EXCL)` and then write?** A process killed between the two
 leaves an empty lock. Nobody can tell whose it is, and every waiter has to
 guess by its age. With link, the lock appears with its content already in it.
+
+## What can be at the lock path
+
+When the link fails, step 2 opens what is there with `O_NOFOLLOW` and
+`O_NONBLOCK`, then checks with `fstat` on that same descriptor that it is a
+regular file. Only then is a byte read.
+
+| At `x.lock` | What the claim does |
+|---|---|
+| a lock file | reads it and asks the staleness rule |
+| nothing (released since the link failed) | tries the link again |
+| a symlink | throws `NotALockError`, kind `symlink`; the target is never opened |
+| a directory, such as one an older mkdir-based lock left | throws `NotALockError`, kind `directory` |
+| a FIFO, socket or device | throws `NotALockError`, kind `other`; opening a FIFO without `O_NONBLOCK` would wait forever for a writer |
+| a file it cannot read | throws the error, such as `EACCES` |
+
+Only "nothing there" means try again. Anything else that is not a lock file is
+an error the caller can see, rather than a claim that keeps coming back
+`{ ok: false, holder: null }` as if a takeover were in progress.
 
 ## Takeover: only one reaper, and only the lock that was judged
 
@@ -72,10 +94,15 @@ lock, so its mtime is the lock's, but creating the link sets the ctime.
 releaseLock(path, token):   read x.lock; if its token is ours, rename it to
                             x.lock.release-<uuid>, check the token again there,
                             and remove it (the file removed is the file checked)
-touchLock(path, token):     read x.lock; refresh its mtime only if its token is ours
+touchLock(path, token):     open x.lock; if its token is ours, refresh the mtime
+                            through that same descriptor
 updateLock(path, token, f): read x.lock; if its token is ours, write f(content)
-                            to a temp file and rename it over x.lock
+                            to a temp file with x.lock's mode and rename it
+                            over x.lock
 ```
+
+Each reads the lock the same way a claim does. Something that is not a lock
+file holds no token, so each answers `false` and leaves it alone.
 
 Without the token check, this happens:
 
@@ -87,6 +114,15 @@ C claims while B is still working                  two holders
 ```
 
 With it, A's release finds B's token, does nothing and returns `false`.
+
+## File mode
+
+A claim with `mode` creates its temp file owner-only and sets it to exactly
+`mode` before writing the content, so the umask does not apply and the content
+is never more readable than asked. Linking and renaming keep the inode, so the
+lock, its takeover marker and its release name all share that mode. The only
+new inode in a lock's life is the one `updateLock` writes, and it copies the
+lock's mode onto it before the rename.
 
 ## The short section
 
@@ -121,4 +157,7 @@ then throw LockTimeoutError(path, last holder seen)
 - **No shared (reader) locks**, and the kernel does not release the lock when a
   process dies: the staleness rule does that.
 - **Windows is not tested.** `pidAlive` relies on signal 0, and takeover on
-  hard links and ctime.
+  hard links and ctime. Node has no `O_NOFOLLOW` there, so a symlink at the
+  lock path is followed.
+- **Only the last component is checked.** A symlink at the lock path is
+  refused, but the directories above it are trusted.

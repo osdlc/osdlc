@@ -7,6 +7,10 @@
  *    hard-linked to the lock path. `link()` fails with `EEXIST` just as
  *    `O_EXCL` does, so one of several racing claimants wins, and the lock
  *    never exists empty or half written.
+ *  - Reading a held lock: the path is opened without following a symlink or
+ *    blocking, and must be a regular file (see `lock-file.ts`). Anything else
+ *    is not a lock this package wrote: a claim throws `NotALockError`, and the
+ *    token calls answer false.
  *  - Takeover of a stale lock: the caller's rule judges a held lock. One it
  *    judges stale is hard-linked to a marker named from a hash of its content
  *    (the content can be longer than a file name may be), exclusively, so one
@@ -22,18 +26,9 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto'
-import {
-  closeSync,
-  fstatSync,
-  linkSync,
-  openSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  statSync,
-  utimesSync,
-  writeFileSync,
-} from 'node:fs'
+import { futimesSync, linkSync, renameSync, rmSync, statSync } from 'node:fs'
+
+import { createLockFile, inspectLock, NotALockError, readLock } from './lock-file.ts'
 
 /**
  * What a lock file holds: the fields its owner recorded, and the claim's token.
@@ -60,6 +55,12 @@ export type StaleRule<F extends object = Record<string, unknown>> = (held: HeldL
 export interface ClaimOptions<F extends object = Record<string, unknown>> {
   /** Answers true for a held lock that may be taken over. */
   isStale: StaleRule<F>
+  /**
+   * Permission bits for the lock file, such as `0o600`. Set exactly: the umask
+   * does not apply. The lock keeps them through `updateLock`, a takeover and a
+   * release. Default: `0o666` less the umask, as for any new file.
+   */
+  mode?: number | undefined
 }
 
 /**
@@ -96,19 +97,13 @@ function parse<F extends object>(raw: string): LockContent<F> | null {
 }
 
 function tokenOf(path: string): string | undefined {
-  return parse(readFileSync(path, 'utf-8'))?.token
+  return parse(readLock(path).raw)?.token
 }
 
 /** The lock's text and its mtime, both from one open of the file, so they describe the same inode. */
 function readHeld<F extends object>(path: string): HeldLock<F> {
-  const fd = openSync(path, 'r')
-  try {
-    const mtimeMs = fstatSync(fd).mtimeMs
-    const raw = readFileSync(fd, 'utf-8')
-    return { content: parse<F>(raw), mtimeMs, raw }
-  } finally {
-    closeSync(fd)
-  }
+  const { raw, mtimeMs } = readLock(path)
+  return { content: parse<F>(raw), mtimeMs, raw }
 }
 
 function serialize(content: object, token: string): string {
@@ -125,7 +120,11 @@ export function markerFor(path: string, raw: string): string {
  * token added (a `token` field in `content` is replaced). A held lock that
  * `isStale` answers true for is taken over, and one of several takers wins;
  * one it answers false for is live, and the result names it. The directory
- * must exist. Errors other than "already held" are thrown.
+ * must exist.
+ *
+ * Something other than a regular file at `path` (a symlink, a directory, a
+ * FIFO) throws `NotALockError`: it is never read, and `isStale` never sees it.
+ * Any other error but "already held" is thrown too.
  */
 export function claimLock<F extends object>(
   path: string,
@@ -154,11 +153,11 @@ export interface PreparedClaim<F extends object> {
 export function prepareClaim<F extends object>(
   path: string,
   content: F,
-  { isStale }: ClaimOptions<F>,
+  { isStale, mode }: ClaimOptions<F>,
 ): PreparedClaim<F> {
   const token = randomUUID()
   const tmp = `${path}.new-${token}`
-  writeFileSync(tmp, serialize(content, token))
+  createLockFile(tmp, serialize(content, token), mode)
   return {
     attempt: () => {
       for (let attempt = 0; attempt < CLAIM_ATTEMPTS; attempt++) {
@@ -171,8 +170,9 @@ export function prepareClaim<F extends object>(
         let held: HeldLock<F>
         try {
           held = readHeld<F>(path)
-        } catch {
-          continue // released between the link and the read: claim again
+        } catch (err) {
+          if (isGone(err)) continue // released between the link and the read: claim again
+          throw err // not a lock file, or unreadable
         }
         if (!isStale(held)) return { ok: false, holder: held }
         takeOver(path, held)
@@ -187,9 +187,9 @@ export function prepareClaim<F extends object>(
 /** Remove the stale lock so one of several takers can claim a new one. A loser just claims again. */
 function takeOver(path: string, seen: HeldLock<object>): void {
   try {
-    if (readFileSync(path, 'utf-8') !== seen.raw) return // replaced since it was judged
+    if (readLock(path).raw !== seen.raw) return // replaced since it was judged
   } catch {
-    return
+    return // gone, or replaced by something that is not a lock: the next attempt reports it
   }
   const marker = markerFor(path, seen.raw)
   try {
@@ -202,16 +202,12 @@ function takeOver(path: string, seen: HeldLock<object>): void {
   }
   try {
     // Still the very lock that was judged: the same bytes, and not touched since.
-    const now = readHeld(path)
-    if (
-      readFileSync(marker, 'utf-8') === seen.raw &&
-      now.raw === seen.raw &&
-      now.mtimeMs === seen.mtimeMs
-    ) {
+    const now = readLock(path)
+    if (readLock(marker).raw === seen.raw && now.raw === seen.raw && now.mtimeMs === seen.mtimeMs) {
       rmSync(path, { force: true })
     }
   } catch {
-    // Gone meanwhile: the next attempt sorts it out.
+    // Gone or replaced meanwhile: the next attempt sorts it out.
   } finally {
     rmSync(marker, { force: true })
   }
@@ -230,19 +226,28 @@ function isGone(err: unknown): boolean {
   return (err as NodeJS.ErrnoException).code === 'ENOENT'
 }
 
+/** True for an error that means "this is not your lock": gone, or not a lock file at all. */
+function isNotOurs(err: unknown): boolean {
+  return isGone(err) || err instanceof NotALockError
+}
+
 /**
  * Refresh the lock's mtime while it still holds `token`: the holder's sign of
- * life, for a rule such as `untouchedFor`. Returns false when the lock is gone
- * or holds another token. Any other error (`EACCES`, `EIO`) is thrown.
+ * life, for a rule such as `untouchedFor`. The time is set through the
+ * descriptor the token was read from, so it lands on the file that was
+ * checked. Returns false when the lock is gone, holds another token, or is not
+ * a lock file. Any other error (`EACCES`, `EIO`) is thrown.
  */
 export function touchLock(path: string, token: string): boolean {
   try {
-    if (tokenOf(path) !== token) return false
-    const now = new Date()
-    utimesSync(path, now, now)
-    return true
+    return inspectLock(path, (file, fd) => {
+      if (parse(file.raw)?.token !== token) return false
+      const now = new Date()
+      futimesSync(fd, now, now)
+      return true
+    })
   } catch (err) {
-    if (isGone(err)) return false // the owner is finishing, or its lock was taken over
+    if (isNotOurs(err)) return false // the owner is finishing, or its lock was taken over
     throw err
   }
 }
@@ -250,10 +255,11 @@ export function touchLock(path: string, token: string): boolean {
 /**
  * Replace the content of the lock while it still holds `token`. `update` gets
  * the current content and returns the new fields; the token is kept. The new
- * content is written to a temp file and renamed over the lock, so a reader
- * never sees it half written. Returns false when the lock is gone or holds
- * another token, and leaves it as it was. An error thrown by `update`, or any
- * error other than "gone" (`ENOSPC`, `EACCES`), is thrown.
+ * content is written to a temp file with the lock's current mode and renamed
+ * over the lock, so a reader never sees it half written and the mode is kept.
+ * Returns false when the lock is gone, holds another token, or is not a lock
+ * file, and leaves it as it was. An error thrown by `update`, or any other
+ * error (`ENOSPC`, `EACCES`), is thrown.
  *
  * The token check and the rename are two steps: a takeover that lands between
  * them is overwritten. A rule that never judges a live holder stale, such as
@@ -264,18 +270,20 @@ export function updateLock<F extends object>(
   token: string,
   update: (content: LockContent<F>) => F,
 ): boolean {
-  let content: LockContent<F> | null
+  let current: { content: LockContent<F> | null; mode: number }
   try {
-    content = parse<F>(readFileSync(path, 'utf-8'))
+    const file = readLock(path)
+    current = { content: parse<F>(file.raw), mode: file.mode }
   } catch (err) {
-    if (isGone(err)) return false // released or taken over
+    if (isNotOurs(err)) return false // released or taken over
     throw err
   }
+  const { content, mode } = current
   if (content === null || content.token !== token) return false
   const next = serialize(update(content), token)
   const tmp = `${path}.new-${randomUUID()}`
   try {
-    writeFileSync(tmp, next)
+    createLockFile(tmp, next, mode)
     renameSync(tmp, path)
     return true
   } catch (err) {
@@ -288,7 +296,8 @@ export function updateLock<F extends object>(
 /**
  * Remove the lock only while it holds `token`: an owner whose lock was taken
  * over must not delete the taker's. Returns whether it removed it: false when
- * the lock is gone or holds another token. Any other error is thrown.
+ * the lock is gone, holds another token, or is not a lock file. Any other
+ * error is thrown.
  *
  * The lock is renamed aside, which is atomic, and its token checked there, so
  * the file removed is exactly the file checked. The cheap check first means a
@@ -302,11 +311,11 @@ export function releaseLock(path: string, token: string): boolean {
     if (tokenOf(path) !== token) return false
     renameSync(path, aside)
   } catch (err) {
-    if (isGone(err)) return false // already released, or taken over and released
+    if (isNotOurs(err)) return false // already released, or taken over and released
     throw err
   }
   try {
-    if (tokenOf(aside) === token) return true
+    if (asideIsOurs(aside, token)) return true
     linkSync(aside, path) // not ours: put the taker's lock back
     return false
   } catch (err) {
@@ -315,5 +324,15 @@ export function releaseLock(path: string, token: string): boolean {
     throw err
   } finally {
     rmSync(aside, { force: true })
+  }
+}
+
+/** Whether the file renamed aside holds `token`. Something that is not a lock file holds no token. */
+function asideIsOurs(aside: string, token: string): boolean {
+  try {
+    return tokenOf(aside) === token
+  } catch (err) {
+    if (err instanceof NotALockError) return false
+    throw err
   }
 }

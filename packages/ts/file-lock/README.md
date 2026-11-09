@@ -96,7 +96,7 @@ if (claim.ok) {
 
 ## The held lock
 
-`claimLock(path, content, { isStale })` writes `content` as
+`claimLock(path, content, { isStale, mode? })` writes `content` as
 JSON, with a fresh `token` field added, and returns `{ ok: true, token }` when
 it took the lock. When the lock is held, it reads it and asks `isStale`:
 
@@ -111,6 +111,18 @@ it took the lock. When the lock is held, it reads it and asks `isStale`:
 changing under every attempt, or it is stale and another claimant's takeover
 is still in progress. Try again shortly. The directory must exist; any error other than "already held" is
 thrown.
+
+The held lock is opened without following a symlink and without blocking, and
+read only if it is a regular file. Anything else at the path, a symlink, a
+directory (such as one left by an older mkdir-based lock), a FIFO or a socket,
+throws a `NotALockError` at once, with the `path` and its `kind`: `symlink`,
+`directory` or `other`. `isStale` never sees it, and a symlink's target is
+never read.
+
+`mode` sets the lock file's permission bits, such as `0o600` for a lock only
+its owner can read. It is applied exactly, so the umask does not narrow it, and
+the lock keeps it through updates, takeovers and the release. Without it the
+file gets `0o666` less the umask, as any new file does.
 
 The content is read back unchecked, cast to the type you name, so a rule should
 check the type of each field it reads. A lock written by another program
@@ -131,11 +143,14 @@ With the token in hand:
 
 Each acts only while the lock still holds `token`, and returns whether it did
 anything. An owner whose lock was taken over, or whose lock is gone, gets
-`false` and leaves the new holder's lock alone. Any other error, such as
-`EACCES` or `ENOSPC`, is thrown rather than reported as a lost lock.
+`false` and leaves the new holder's lock alone. Something that is not a lock
+file at the path holds no token, so it gets `false` too and is left as it is.
+Any other error, such as `EACCES` or `ENOSPC`, is thrown rather than reported
+as a lost lock.
 
 The types are `LockContent`, `HeldLock`, `LockClaim`, `ClaimOptions` and
-`StaleRule`.
+`StaleRule`. `NotALockError` is the error class, and `NotALockKind` the type of
+its `kind`.
 
 ## Staleness rules
 
@@ -153,7 +168,7 @@ The types are `LockContent`, `HeldLock`, `LockClaim`, `ClaimOptions` and
 
 ## The short section
 
-`withLock(path, fn, { staleMs?, timeoutMs?, retryMs?, isStale? })` runs
+`withLock(path, fn, { staleMs?, timeoutMs?, retryMs?, isStale?, mode? })` runs
 `fn` holding the lock at `path` and releases it when `fn` returns or throws.
 The lock records this process's `pid` (`SectionHolder`), and its rule is
 `untouchedFor(staleMs)` unless you pass `isStale`.
@@ -164,10 +179,12 @@ The lock records this process's `pid` (`SectionHolder`), and its rule is
 | `timeoutMs` | 30 s | give up after waiting this long; 0 tries once |
 | `retryMs` | 5 ms | pause between attempts |
 | `isStale` | `untouchedFor(staleMs)` | replaces the age rule, for example `holderGone((h) => [h.pid])` for a section that may run long |
+| `mode` | `0o666` less the umask | the lock file's permission bits, as for `claimLock` |
 
 When the lock stays held, it throws `LockTimeoutError`, whose message is
 `timed out waiting for lock <path>`, with the `path` and the last `holder`
-seen. `LockOptions` is the options type.
+seen. Something other than a lock file at the path throws `NotALockError` at
+once instead of waiting out `timeoutMs`. `LockOptions` is the options type.
 
 Waiting blocks the thread with `Atomics.wait`, so the section is for short,
 synchronous work. `fn` must not be async: the lock would be released when it
@@ -208,7 +225,7 @@ withLock(`${path}.lock`, () => {
 
 ## Behaviour to know
 
-- **Files beside the lock.** A claim writes `<path>.new-<uuid>` and removes it
+- **Files beside the lock.** A claim creates `<path>.new-<uuid>` exclusively and removes it
   before returning (`withLock` writes it once and keeps it while it waits). A
   release renames the lock to `<path>.release-<uuid>` for microseconds. A
   takeover creates `<path>.stale-<24 hex digits>` for microseconds. A process
@@ -228,9 +245,17 @@ withLock(`${path}.lock`, () => {
   reaper's. If another claimant then replaces the lock, the paused reaper can
   remove the new lock when it resumes. A pause of 10 s inside a few
   microseconds of work is the only way in.
+- **Symlinks at the lock path are not followed.** The lock is opened with
+  `O_NOFOLLOW`, and `touchLock` sets the time through the descriptor it read
+  the token from, so neither reads nor touches a file the lock path points
+  elsewhere to. On Windows, which has no `O_NOFOLLOW`, the open follows links.
 - **Keep locks in directories only their users can write.** The marker's name
   comes from the lock's content, so anyone who can write the directory can
-  create it and hold off a takeover for 10 s at a time.
+  create it and hold off a takeover for 10 s at a time. Anyone who can write
+  the directory can also put a symlink or directory at the lock path; a claim
+  then throws `NotALockError` rather than being misled, but it cannot take the
+  lock until that is removed. The package does not check the directories above
+  the lock for symlinks.
 - **`withLock` decides staleness by age.** A live holder whose section
   outlasts `staleMs` loses the lock to the next waiter, and both then run.
 - **Hard links are required.** A file system without them (some FUSE and
@@ -268,7 +293,8 @@ The experimental exports:
 
 Node.js 22 or later, ESM only. Bun works too, through the compiled `dist/`.
 The tests run on Linux and macOS. Windows is not tested: `pidAlive` relies on
-signal 0, and the takeover relies on hard links and ctime.
+signal 0, the takeover relies on hard links and ctime, and Node has no
+`O_NOFOLLOW` there, so a symlink at the lock path is followed.
 
 ## Licence
 

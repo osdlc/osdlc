@@ -1,7 +1,6 @@
 import {
   existsSync,
   linkSync,
-  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -218,22 +217,5 @@ describe('releaseLock', () => {
     writeFileSync(lock, JSON.stringify({ pid: 1 }))
     expect(releaseLock(lock, 'any')).toBe(false)
     expect(existsSync(lock)).toBe(true)
-  })
-})
-
-describe('errors other than "gone" are thrown, not reported as a lost lock', () => {
-  // A directory where the lock should be: every read fails with EISDIR, as EACCES or EIO would.
-  beforeEach(() => mkdirSync(lock))
-
-  test('touchLock', () => {
-    expect(() => touchLock(lock, 'any')).toThrow(/EISDIR/)
-  })
-
-  test('updateLock', () => {
-    expect(() => updateLock(lock, 'any', () => ({}))).toThrow(/EISDIR/)
-  })
-
-  test('releaseLock', () => {
-    expect(() => releaseLock(lock, 'any')).toThrow(/EISDIR/)
   })
 })
