@@ -3,14 +3,23 @@
  * `markdown-link` crate's `display_text` and `parse_typed_ref`.
  */
 
-import { type WikiLink, isSizeSpec, isWhitespace, parseInner, splitAlias, trim } from './parse.ts'
+import {
+  type WikiLink,
+  isSizeSpec,
+  isWhitespace,
+  parseInnerSelf,
+  splitAlias,
+  trim,
+} from './parse.ts'
 
 /**
  * Replace each wikilink and embed with what a reader sees for it, for
  * snippets and search: its alias, or else its target. An embed's trailing
  * `|300` or `|300x200` is a size, not an alias, so
- * `![[img.png|300]]` shows `img.png`. An empty alias shows the target. Code
- * is not skipped.
+ * `![[img.png|300]]` shows `img.png`. An empty alias shows the target. A
+ * link into the same note, such as `[[#Setup]]`, shows its alias, or else its
+ * heading or `^block`; a link with none of these, such as `[[]]`, shows
+ * nothing. Code is not skipped.
  *
  * Every delimiter is ASCII, so the scan can step UTF-16 units: a surrogate
  * never matches one.
@@ -24,7 +33,7 @@ export function displayText(text: string): string {
     if (text.startsWith('[[', open)) {
       const close = linkClose(text, open)
       if (close !== null) {
-        const link = parseInner(text.slice(open + 2, close), embed)
+        const link = parseInnerSelf(text.slice(open + 2, close), embed)
         if (link !== null) out += shown(link)
         i = close + 2
         continue
@@ -53,7 +62,11 @@ function shown(link: WikiLink): string {
     const last = pipe === -1 ? alias : alias.slice(pipe + 1)
     if (isSizeSpec(trim(last))) alias = pipe === -1 ? '' : trim(alias.slice(0, pipe))
   }
-  return alias || link.target
+  if (alias) return alias
+  if (link.target) return link.target
+  // A link into the same note: its heading, or else its block.
+  if (link.heading !== null) return link.heading
+  return link.block === null ? '' : `^${link.block}`
 }
 
 /**

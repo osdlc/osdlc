@@ -1,0 +1,1 @@
+{ "$id": "https://example.org/work", "type": "object", "required": ["title"], "properties": { "title": { "type": "string" } } }

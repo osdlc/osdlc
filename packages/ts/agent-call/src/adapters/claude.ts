@@ -188,6 +188,11 @@ function planClaude(command: readonly string[], spec: AgentCallSpec): PlannedCal
     note(notes, 'budgetUsd', 'native', '--max-budget-usd')
   }
 
+  if (spec.limits?.maxTurns !== undefined) {
+    argv.push('--max-turns', String(spec.limits.maxTurns))
+    note(notes, 'limits.maxTurns', 'native', '--max-turns')
+  }
+
   argv.push(...(spec.extraArgs ?? []))
 
   const stdin = buildEffectivePrompt(
