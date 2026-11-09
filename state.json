@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "pr": 704,
-  "head": "b3989b2918ba1e607d7a0f111c129d1f2da412a8",
-  "base": "b0a6e9cde619e567f5f3cd24a3650d6e840bb39d",
-  "round": 4,
+  "head": "37d146891d5b9a547bddf40df6a07b7e0f392eeb",
+  "base": "ab1aa2162af61286ee6ede93619dd7528eba0c4b",
+  "round": 5,
   "claim": {
     "owner": "Mac.local:claude-q7m2xv",
     "at": "2026-11-09T03:08:16.288Z"
@@ -107,6 +107,17 @@
       "status": "fixed",
       "reason": null,
       "fixedIn": "7d4d5a9a49c23228aa8b9e4c76e4b8cc63000697"
+    },
+    {
+      "id": "r5-1",
+      "round": 5,
+      "path": "packages/rust/web-access/src/guard.rs",
+      "line": 279,
+      "title": "Tokens that differ only in leading or trailing whitespace pass push, but HTTP strips that whitespace from the header and the cookie parser trims it",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
     }
   ]
 }
