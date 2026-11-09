@@ -143,9 +143,11 @@ Every request, whatever its method, passes these checks in order:
    rule names the route.
 
 A link or cookie value matches a token as written or percent-decoded once; the
-header matches as written. `Tokens::with` refuses two tokens that differ only
-in percent-encoding (`a b` and `a%20b`), whatever their grants: the share link
-of one would carry the other. It also refuses the same token with two
+header matches as written, less the surrounding spaces and tabs the HTTP parser
+strips. `Tokens::with` refuses two tokens that differ only in percent-encoding
+(`a b` and `a%20b`) or in leading or trailing whitespace (`a ` and `a`),
+whatever their grants: the share link of one would carry the other, or the
+parser would turn one into the other. It also refuses the same token with two
 different grants, since the higher grant would win.
 
 A request that passes carries its `AccessContext` (`webLocal` or `webRemote`)

@@ -262,16 +262,21 @@ let one = Tokens::full_only("full-token".to_owned());
 # Ok::<(), TokensError>(())
 ```
 
-Blank tokens are ignored. Tokens are compared in constant time. If a request
+Blank tokens are ignored: empty ones, and ones that are only whitespace once
+percent-decoded. Tokens are compared in constant time. If a request
 presents tokens for two grants (header and cookie), the higher grant wins.
 
 A `?token=` link or cookie value matches a token as written or percent-decoded
-once; the header matches as written. A share link carries the token
+once; the header matches as written. The HTTP parser strips spaces and tabs
+around a header value, and each cookie pair is trimmed, so `a ` sent as a
+header or cookie arrives as `a`. A share link carries the token
 percent-encoded, so two tokens that differ only in percent-encoding, such as
 `a b` and `a%20b`, would let one token's link reach the other: the link for
 `a b` carries `a%20b`. `with` refuses such a token with
 `TokensError::Collision`, whatever the two grants. The comparison decodes
-bytes and does not need UTF-8, so `%FF%41` and `%FFA` collide too. `with`
+bytes and does not need UTF-8, so `%FF%41` and `%FFA` collide too. It then
+trims leading and trailing whitespace, so `a ` and `a`, or `a%20` and `a`,
+collide as well. `with`
 also refuses a token already in the set with a different grant, with
 `TokensError::Duplicate`: the higher grant would win, so the lower token's
 link would carry the higher grant. The same token with the same grant is

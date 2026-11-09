@@ -47,9 +47,9 @@ pub enum RuntimeError {
     /// A token file could not be read or written.
     #[error("web-access token: {0}")]
     Token(#[from] std::io::Error),
-    /// Two of the tokens differ only in percent-encoding, or are the same
-    /// token with different grants (a hand-set token file or override), so
-    /// the server was not started.
+    /// Two of the tokens differ only in percent-encoding or surrounding
+    /// whitespace, or are the same token with different grants (a hand-set
+    /// token file or override), so the server was not started.
     #[error("web-access tokens: {0}")]
     Tokens(#[from] TokensError),
     /// The full token comes from an override, so it cannot be rotated.

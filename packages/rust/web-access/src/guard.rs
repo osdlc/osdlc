@@ -25,12 +25,14 @@
 //!    starts from this origin, so the `SameSite=Strict` cookie is sent even
 //!    when the link was opened from another site. It wins over any cookie, so
 //!    opening another share link replaces it. [`Tokens`] never holds two
-//!    tokens that differ only in percent-encoding, so a value cannot match one
-//!    token as written and another decoded.
+//!    tokens that differ only in percent-encoding or surrounding whitespace,
+//!    so a value cannot match one token as written and another decoded.
 //! 6. Otherwise this port's `web_access_<port>` cookie ([`cookie_name`]) or
 //!    the `x-web-access-token` header must equal one of the [`Tokens`]
-//!    (constant-time compare against every entry), else 401. If header and
-//!    cookies match different entries, the highest [`Grant`] wins.
+//!    (constant-time compare against every entry), else 401. The HTTP parser
+//!    strips spaces and tabs around a header value, and each cookie pair is
+//!    trimmed. If header and cookies match different entries, the highest
+//!    [`Grant`] wins.
 //! 7. A [`Grant::Read`] request with a non-safe method, or a protocol upgrade,
 //!    is 403 `read_only` unless a [`GuardState::with_read_safe`] rule names the
 //!    route.
@@ -181,9 +183,11 @@ impl std::fmt::Debug for Entry {
 pub enum TokensError {
     /// The added token and one already in the set differ only in
     /// percent-encoding, such as `a b` and `a%20b`, so the share link of one
-    /// would carry the other. Raised even when the two grants are equal.
+    /// would carry the other, or only in leading or trailing whitespace, such
+    /// as `a ` and `a`, which the header and cookie parsers strip. Raised even
+    /// when the two grants are equal.
     #[error(
-        "a {added:?} token and a {existing:?} token differ only in percent-encoding; use tokens that are not percent-encodings of each other"
+        "a {added:?} token and a {existing:?} token differ only in percent-encoding or surrounding whitespace; use tokens that are not variants of each other"
     )]
     Collision {
         /// The grant of the token already in the set.
@@ -208,17 +212,18 @@ pub enum TokensError {
 /// The accepted tokens, each with the grant it confers. They are fixed for the
 /// life of a [`GuardState`]: rotating a token means building a new state.
 ///
-/// No two distinct tokens in a set differ only in percent-encoding (see
-/// [`TokensError::Collision`]), and no token is in it twice (see
-/// [`TokensError::Duplicate`]); [`Self::with`] refuses such a token, so every
-/// guard, `serve` and `SharingRuntime` included, starts only with a set that
-/// has neither.
+/// No two distinct tokens in a set differ only in percent-encoding or
+/// surrounding whitespace (see [`TokensError::Collision`]), and no token is in
+/// it twice (see [`TokensError::Duplicate`]); [`Self::with`] refuses such a
+/// token, so every guard, `serve` and `SharingRuntime` included, starts only
+/// with a set that has neither.
 #[derive(Debug, Clone, Default)]
 pub struct Tokens(Vec<Entry>);
 
 impl Tokens {
-    /// No tokens. Empty tokens are dropped: one would match an empty header or
-    /// cookie.
+    /// No tokens. Blank tokens are dropped: an empty one would match an empty
+    /// header or cookie, and one that is only whitespace once percent-decoded
+    /// arrives empty as a header or cookie, whose parsers strip it.
     pub fn none() -> Self {
         Self::default()
     }
@@ -227,7 +232,7 @@ impl Tokens {
     /// collide, so this cannot fail.
     pub fn full_only(token: impl Into<Option<String>>) -> Self {
         match token.into() {
-            Some(t) if !t.is_empty() => Self(vec![Entry {
+            Some(t) if !is_blank(&t) => Self(vec![Entry {
                 token: t,
                 grant: Grant::Full,
                 label: None,
@@ -242,7 +247,8 @@ impl Tokens {
     /// # Errors
     ///
     /// [`TokensError::Collision`] when `token` and a different token already
-    /// in the set differ only in percent-encoding, whatever their grants.
+    /// in the set differ only in percent-encoding or in leading or trailing
+    /// whitespace, whatever their grants.
     /// [`TokensError::Duplicate`] when `token` is already in the set with a
     /// different grant.
     pub fn with(self, token: impl Into<String>, grant: Grant) -> Result<Self, TokensError> {
@@ -273,11 +279,11 @@ impl Tokens {
         grant: Grant,
         label: Option<String>,
     ) -> Result<Self, TokensError> {
-        if token.is_empty() {
+        if is_blank(&token) {
             return Ok(self);
         }
-        let canon = fully_decoded(&token);
-        if let Some(e) = self.0.iter().find(|e| fully_decoded(&e.token) == canon) {
+        let canon = canonical(&token);
+        if let Some(e) = self.0.iter().find(|e| canonical(&e.token) == canon) {
             let (existing, added) = (e.grant, grant);
             return match (e.token == token, existing == added) {
                 (true, true) => Ok(self),
@@ -575,13 +581,31 @@ fn decode_token(raw: &str) -> String {
         .map_or_else(|_| raw.to_owned(), |t| t.into_owned())
 }
 
+/// [`fully_decoded`] without leading or trailing ASCII whitespace: one form
+/// for every value that can reach the same token. hyper's header parser strips
+/// spaces and tabs around a header value and [`cookie_values`] trims each
+/// pair, so `a ` sent as a header or cookie arrives as `a`. Whitespace bytes
+/// are not hex digits, so they never take part in a `%XX` escape: trimming a
+/// value before decoding it does not change its canonical form.
+fn canonical(token: &str) -> Vec<u8> {
+    fully_decoded(token).trim_ascii().to_vec()
+}
+
+/// True for a token with an empty [`canonical`] form: empty, or only
+/// whitespace once percent-decoded. [`Tokens`] drops it.
+fn is_blank(token: &str) -> bool {
+    canonical(token).is_empty()
+}
+
 /// `token` percent-decoded as bytes until it stops changing. The decode does
 /// not require UTF-8, so `%FF%41` and `%FFA` both give the bytes `FF 41`.
-/// [`Tokens::push`] refuses two distinct tokens with the same result.
+/// [`Tokens::push`] refuses two distinct tokens with the same result, after
+/// [`canonical`] trims it.
 ///
 /// The guard matches a link or cookie value as written and decoded once, and
-/// the header as written. A share link carries `encode_token(t)`, so its holder
-/// knows `t` and can present it, its encodings or its decodings on any path.
+/// the header as written (after the parser strips surrounding whitespace). A
+/// share link carries `encode_token(t)`, so its holder knows `t` and can
+/// present it, its encodings or its decodings on any path.
 /// Read `a b` with Admin `a%20b` is the plain case: the Read link carries the
 /// Admin token, which works as a header, a cookie or as `?token=a%2520b`.
 /// Checking only "one decodes or encodes to the other" would cover that, but
@@ -1578,28 +1602,7 @@ mod tests {
             ("%FF%41", "%FFA"),
         ];
         for (x, y) in pairs {
-            for (first, second) in [(x, y), (y, x)] {
-                for (g1, g2) in [
-                    (Grant::Read, Grant::Admin),
-                    (Grant::Admin, Grant::Read),
-                    (Grant::Full, Grant::Full),
-                ] {
-                    let err = Tokens::none()
-                        .with(first, g1)
-                        .and_then(|t| t.with_label(second, g2, "phone"))
-                        .unwrap_err();
-                    assert_eq!(
-                        err,
-                        TokensError::Collision {
-                            existing: g1,
-                            added: g2
-                        },
-                        "{first} then {second}"
-                    );
-                    assert!(!err.to_string().contains(first), "{err}");
-                    assert!(!err.to_string().contains(second), "{err}");
-                }
-            }
+            assert_collides(x, y);
         }
         // Tokens that only share a decoded prefix pass.
         assert!(
@@ -1608,6 +1611,73 @@ mod tests {
                 .and_then(|t| t.with("a%20bc", Grant::Admin))
                 .is_ok()
         );
+    }
+
+    /// Both orders of `x` and `y`, with grants Read/Admin, Admin/Read and
+    /// Full/Full, are refused as a collision whose message names neither.
+    fn assert_collides(x: &str, y: &str) {
+        for (first, second) in [(x, y), (y, x)] {
+            for (g1, g2) in [
+                (Grant::Read, Grant::Admin),
+                (Grant::Admin, Grant::Read),
+                (Grant::Full, Grant::Full),
+            ] {
+                let err = Tokens::none()
+                    .with(first, g1)
+                    .and_then(|t| t.with_label(second, g2, "phone"))
+                    .unwrap_err();
+                assert_eq!(
+                    err,
+                    TokensError::Collision {
+                        existing: g1,
+                        added: g2
+                    },
+                    "{first:?} then {second:?}"
+                );
+                assert!(!err.to_string().contains(first), "{err}");
+                assert!(!err.to_string().contains(second), "{err}");
+            }
+        }
+    }
+
+    /// hyper's header parser strips spaces and tabs around a header value and
+    /// the cookie parser trims each pair, so Read `x9q ` sent as written
+    /// arrives as Admin `x9q`. Tokens that differ only in leading or trailing
+    /// whitespace, raw or percent-encoded, are refused; inner whitespace still
+    /// tells two tokens apart.
+    #[test]
+    fn tokens_differing_only_in_surrounding_whitespace_are_refused() {
+        let pairs = [
+            ("x9q ", "x9q"),
+            (" x9q", "x9q"),
+            ("x9q\t", "x9q"),
+            ("\tx9q", "x9q"),
+            (" x9q\t", "x9q"),
+            ("x9q%20", "x9q"),
+            ("x9q%2520", "x9q"),
+            ("%09x9q", "x9q"),
+            ("x9q%20", "x9q "),
+        ];
+        for (x, y) in pairs {
+            assert_collides(x, y);
+        }
+        assert!(
+            Tokens::none()
+                .with("x9q", Grant::Read)
+                .and_then(|t| t.with("x 9q", Grant::Admin))
+                .is_ok()
+        );
+    }
+
+    /// A token that is only whitespace, raw or percent-encoded, is blank and
+    /// dropped like an empty one.
+    #[test]
+    fn whitespace_only_tokens_are_dropped() {
+        for blank in ["", " ", "\t", " \t ", "%20", "%09%20", "%2520"] {
+            let set = Tokens::none().with(blank, Grant::Admin).unwrap();
+            assert!(set.is_empty(), "{blank:?}");
+            assert!(Tokens::full_only(blank.to_owned()).is_empty(), "{blank:?}");
+        }
     }
 
     /// The guard gives a token its highest grant, so the same token added as

@@ -24,6 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   matching hand-set read and admin files made the Read link grant Admin. The
   same token with the same grant is ignored. Chain with `?` or `and_then`;
   `Tokens::full_only` still cannot fail.
+- Breaking: `Tokens::with` and `Tokens::with_label` also refuse, with
+  `TokensError::Collision`, two tokens that differ only in leading or trailing
+  whitespace, raw or percent-encoded, such as `a ` and `a` or `a%20` and `a`.
+  The HTTP parser strips spaces and tabs around a header value and cookie
+  pairs are trimmed, so the holder of a Read `a ` sending it as written
+  reached an Admin `a`. A token that is only whitespace once percent-decoded
+  is now blank and dropped, as an empty one is.
 
 ### Fixed
 
