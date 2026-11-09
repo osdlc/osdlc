@@ -265,6 +265,11 @@ Developed here, in this repository:
   `packages/conformance/` against
   [S-conformance-suites](../docs/planning/standards/S-conformance-suites.md)
   and runs their generators; any repository with the same layout can use it)
+- `packages/ts/package-checks` (`@osdlc/package-checks` on npm, the
+  `package-checks` command: the TypeScript and Rust package shape, the
+  packed tarball in a clean consumer, breaking changes and crate versions, the
+  packages a pull request affects, and staging a new package on npm;
+  `package-checks.json` holds a repository's own settings)
 - `packages/ts/ref-lease` (`@osdlc/ref-lease` on npm, compare-and-swap leases
   on git refs: create, replace and delete a ref at any git remote only if it
   still holds the sha you read, through `git push --force-with-lease`, with the
@@ -318,8 +323,9 @@ mistake caught within hours, such as a leaked secret, and the owner does it.
 npm can only set up trusted publishing on a package that already exists, so
 CI cannot publish a new library's first version. Before its first release
 the owner does the two steps below.
-`node scripts/stage-npm-package.ts packages/ts/<name>` does both, and skips a
-step that is already done. `--dry-run` builds the package and
+`pnpm exec package-checks stage packages/ts/<name>` does both, and skips a
+step that is already done (build the package checks first:
+`pnpm run build:tooling`). `--dry-run` builds the package and
 shows what it would publish, without changing anything on npm.
 
 1. The owner publishes a real build as a placeholder version, `0.0.1-stage`:
@@ -438,17 +444,20 @@ pnpm run test
 The root scripts run each library's script of the same name.
 
 The repo tooling needs Node 24 or newer (`engines.node` in the root
-`package.json`). The package-shape checks in `scripts/` are TypeScript that
-Node runs directly by stripping the types, with no build step, so write them
-in erasable syntax only (no `enum`, `namespace` or parameter properties).
-`pnpm run typecheck:scripts` checks them. The libraries themselves still
-support Node 22.
+`package.json`). The scripts in `scripts/` are TypeScript that Node runs
+directly by stripping the types, with no build step, so write them in erasable
+syntax only (no `enum`, `namespace` or parameter properties).
+`pnpm run typecheck:scripts` checks them. The package checks and the
+conformance-suites check are packages, `@osdlc/package-checks` and
+`@osdlc/conformance-suites`; `pnpm run build:tooling` builds both, and the root
+scripts run their commands. The libraries themselves still support Node 22.
 
 `.github/workflows/packages-ci.yml` runs these and the smoke checks on Linux
 and macOS, on Node 22 and 24, and `pnpm run check:packages` on Node 24 only.
 On a pull request it checks only the libraries the pull request changed and
-the ones that depend on them. `scripts/affected-packages.ts` picks them, and
-lists the shared files that make it check every library. path-guard also runs on
+the ones that depend on them. `package-checks affected` picks them. It
+lists the shared files that make it check every library, and the root
+`package-checks.json` adds this repository's own. path-guard also runs on
 Windows. The `verify` jobs always report, so they are the checks to require.
 The libraries that start programs or resolve paths also run on Windows as
 tier 2 (`.github/workflows/packages-windows-tier2.yml`). Tier 2 reports, but

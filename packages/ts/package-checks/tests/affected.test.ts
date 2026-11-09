@@ -1,11 +1,9 @@
-// Tests for affected-packages.ts, over a made-up workspace.
-//
-//   node --test scripts/affected-packages.test.ts
+// The affected-package pick, over a made-up workspace.
 import { strict as assert } from 'node:assert'
-import { test } from 'node:test'
 
-import { pick, withDependencies } from './affected-packages.ts'
-import type { Manifest } from './affected-packages.ts'
+import { test } from 'vitest'
+
+import { OSDLC, pick, withDependencies, type Manifest } from '@osdlc/package-checks'
 
 // `app` depends on `lib`, which depends on the config package `tsconfig`.
 // `twin` has a Rust crate, and `wasm` is built from `wasm-wasm`.
@@ -38,10 +36,14 @@ test('a Rust twin maps to its TypeScript twin', () => {
   assert.deepEqual(pr(['packages/rust/feed-wasm/src/lib.rs']), ['packages/ts/feed-wasm'])
 })
 
-test('a Rust twin with another name maps through RUST_TWIN_NAMES', () => {
+test('a Rust twin with another name maps through rustTwinNames', () => {
   const named = new Map([...manifests, ['packages/ts/gfm-table', { name: '@x/gfm-table' }]])
   const files = ['packages/rust/gfm-pipe-table/tests/fixtures/parity.json']
-  assert.deepEqual(pick({ event: 'pull_request', files, manifests: named }), ['packages/ts/gfm-table'])
+  const settings = { ...OSDLC, rustTwinNames: { 'gfm-pipe-table': 'gfm-table' } }
+  assert.deepEqual(pick({ event: 'pull_request', files, manifests: named, settings }), [
+    'packages/ts/gfm-table',
+  ])
+  assert.deepEqual(pick({ event: 'pull_request', files, manifests: named }), [])
 })
 
 test('a file outside every package picks nothing', () => {
@@ -51,19 +53,43 @@ test('a file outside every package picks nothing', () => {
 test('a shared root input picks every package', () => {
   for (const file of [
     'pnpm-lock.yaml',
+    'pnpm-workspace.yaml',
     'package.json',
+    '.npmrc',
     '.oxlintrc.json',
-    '.github/workflows/packages-ci.yml',
-    '.github/workflows/packages-windows-tier2.yml',
-    'scripts/bounded-run.ts',
-    'scripts/bounded-run.test.ts',
-    'scripts/check-packages.ts',
-    'scripts/package-shape-ts.ts',
-    'scripts/package-shape-ts.test.ts',
     '.changeset/config.json',
+    'package-checks.json',
+    'packages/conformance/families.json',
   ]) {
     assert.deepEqual(pr(['packages/ts/app/a.ts', file]), ALL, file)
   }
+})
+
+test('the shared setting adds patterns', () => {
+  const settings = { ...OSDLC, shared: ['^\\.github/workflows/packages-ci\\.yml$', '^scripts/'] }
+  const at = (file: string) =>
+    pick({ event: 'pull_request', files: ['packages/ts/app/a.ts', file], manifests, settings })
+  assert.deepEqual(at('.github/workflows/packages-ci.yml'), ALL)
+  assert.deepEqual(at('scripts/bounded-run.ts'), ALL)
+  assert.deepEqual(at('.github/workflows/other.yml'), ['packages/ts/app'])
+})
+
+test('the settings move the package folders and the registry', () => {
+  const moved = new Map([...manifests].map(([d, m]) => [d.replace('packages/ts/', 'libs/'), m]))
+  const settings = {
+    ...OSDLC,
+    tsDir: 'libs',
+    rustWorkspace: 'crates',
+    families: 'suites/families.json',
+  }
+  const families = new Map([['dirs', ['libs/twin']]])
+  const at = (files: string[]) =>
+    pick({ event: 'pull_request', files, manifests: moved, families, settings })
+  assert.deepEqual(at(['libs/lib/a.ts']), ['libs/app', 'libs/lib'])
+  assert.deepEqual(at(['crates/twin/src/lib.rs']), ['libs/twin'])
+  assert.deepEqual(at(['suites/dirs/suite.json']), ['libs/twin'])
+  assert.deepEqual(at(['suites/families.json']).length, moved.size)
+  assert.deepEqual(at(['packages/ts/lib/a.ts']), [])
 })
 
 test('any event but a pull request, or a failed diff, picks every package', () => {

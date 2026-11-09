@@ -10,25 +10,23 @@
   "scripts": {
     "typecheck": "pnpm -r --if-present run typecheck",
     "build": "pnpm -r --if-present run build",
+    "build:tooling": "pnpm --filter '@osdlc/conformance-suites...' --filter '@osdlc/package-checks...' run build",
     "test": "pnpm -r --if-present run test",
     "smoke": "pnpm -r --if-present run smoke",
     "lint": "pnpm -r --if-present run lint",
     "format:check": "pnpm -r --if-present run format:check",
-    "check:packages": "node scripts/check-packages.ts",
-    "check:crates": "node scripts/package-shape-rs.ts",
+    "check:packages": "pnpm --filter '@osdlc/package-checks...' run build && package-checks ts",
+    "check:crates": "pnpm --filter '@osdlc/package-checks...' run build && package-checks rust",
     "check:conformance": "pnpm --filter '@osdlc/conformance-suites...' run build && conformance-suites check",
     "typecheck:scripts": "tsc -p scripts/tsconfig.json && tsc -p bench/tsconfig.json",
     "version-packages": "changeset version && pnpm -r --if-present run stamp-version && pnpm --filter @osdlc/wayfinder --filter '@osdlc/conformance-suites...' run build && pnpm --filter @osdlc/wayfinder run write:config-schema && conformance-suites write --reference ts"
   },
   "devDependencies": {
-    "@arethetypeswrong/cli": "catalog:",
     "@changesets/cli": "catalog:",
     "@osdlc/conformance-suites": "workspace:^",
+    "@osdlc/package-checks": "workspace:^",
     "@types/node": "catalog:",
-    "@types/semver": "catalog:",
     "oxlint": "catalog:",
-    "publint": "catalog:",
-    "semver": "catalog:",
     "typescript": "catalog:"
   }
 }
