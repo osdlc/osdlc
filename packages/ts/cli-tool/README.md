@@ -410,7 +410,7 @@ The order is:
 |---|---|---|
 | 1 | `TOOL_HOME` | that checkout |
 | 2 | cwd (only with `cwdLayer: true`) | the checkout you stand in |
-| 3 | `tool dev link` | the linked checkout |
+| 3 | `tool dev link` | the linked checkout (with `onDeadLink: 'newest-surviving'`, the newest earlier one left when it is gone) |
 | 4 | project | the copy in the project's `node_modules` |
 | 5 | local | this copy |
 
@@ -891,17 +891,17 @@ The experimental exports of `@osdlc/cli-tool/http`:
 
 The experimental exports of `@osdlc/cli-tool/devlink`:
 
-`DevlinkError`, `DevlinkHookOptions`, `ExecOptions`, `GitHead`, `HISTORY_FILE`, `HOME_FILE`, `HistoryEntry`,
-`HistoryEvent`, `HistoryKind`, `InstallInput`, `InstallResult`, `InstalledLink`, `LauncherOptions`,
+`CANDIDATES_FILE`, `DevlinkError`, `DevlinkHookOptions`, `ExecOptions`, `GitHead`, `HISTORY_FILE`,
+`HOME_FILE`, `HistoryEntry`, `HistoryEvent`, `HistoryKind`, `InstallInput`, `InstallResult`, `InstalledLink`, `LauncherOptions`,
 `LinkInput`, `LinkResult`, `LinkStatus`, `Local`, `OffResult`, `OpOptions`, `ResolveOptions`,
 `RunOptions`, `Selected`, `Selection`, `ShimStatus`, `Source`, `StateOptions`, `StatusResult`,
-`ToolSpec`, `UseInput`, `UseResult`, `appendHistory`, `clearActive`, `cwdCheckout`, `cwdDevVar`,
+`ToolSpec`, `UseInput`, `UseResult`, `appendHistory`, `candidatesPath`, `clearActive`, `cwdCheckout`, `cwdDevVar`,
 `defaultBinDir`, `devlinkHook`, `entryOf`, `envStem`, `execSelection`, `findOnPath`, `gitHead`, `history`,
 `historyPath`, `homePath`, `homeVar`, `install`, `installDir`, `isCheckout`, `isOnPath`, `launchLayerVar`,
 `launcherCheckout`, `launcherDrift`, `link`, `missingDependency`, `off`, `pathNames`, `processIo`, `projectVar`, `quietVar`,
-`readActive`, `readHistory`, `readShimTarget`, `renderLauncher`, `renderShim`, `resolve`,
+`readActive`, `readCandidates`, `readHistory`, `readShimTarget`, `renderLauncher`, `renderShim`, `resolve`,
 `runDevCli`, `samePath`, `stateDir`, `status`, `suppressed`, `usage`, `use`, `validateSpec`,
-`writeActive`
+`writeActive`, `writeCandidates`
 
 A test compares each list with the `@experimental` tags in the source.
 

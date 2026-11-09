@@ -83,6 +83,58 @@ importers:
       '@osdlc/command-seam':
         specifier: workspace:^
         version: link:../command-seam
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.1
+    devDependencies:
+      '@osdlc/prettier-config':
+        specifier: workspace:^
+        version: link:../prettier-config
+      '@osdlc/tsconfig':
+        specifier: workspace:^
+        version: link:../tsconfig
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.5
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 5.0.5(vitest@5.0.5)
+      oxlint:
+        specifier: 'catalog:'
+        version: 1.88.0
+      prettier:
+        specifier: 'catalog:'
+        version: 3.9.6
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(jsdom@26.1.0)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
+
+  packages/ts/agent-seat:
+    dependencies:
+      '@osdlc/agent-call':
+        specifier: workspace:^
+        version: link:../agent-call
+      '@osdlc/command-seam':
+        specifier: workspace:^
+        version: link:../command-seam
+      '@osdlc/detect-harness':
+        specifier: workspace:^
+        version: link:../detect-harness
+      '@osdlc/etag-write':
+        specifier: workspace:^
+        version: link:../etag-write
+      '@osdlc/path-guard':
+        specifier: workspace:^
+        version: link:../path-guard
+      '@osdlc/typed-git':
+        specifier: workspace:^
+        version: link:../typed-git
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.7
     devDependencies:
       '@osdlc/prettier-config':
         specifier: workspace:^
@@ -320,6 +372,49 @@ importers:
         specifier: 'catalog:'
         version: 4.6.7
 
+  packages/ts/corpus-schema:
+    dependencies:
+      '@osdlc/frontmatter-lossless':
+        specifier: workspace:^
+        version: link:../frontmatter-lossless
+      '@osdlc/markdown-link':
+        specifier: workspace:^
+        version: link:../markdown-link
+      ajv:
+        specifier: ^8.20.0
+        version: 8.20.0
+      ajv-formats:
+        specifier: ^3.0.1
+        version: 3.0.1(ajv@8.20.0)
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.1
+    devDependencies:
+      '@osdlc/prettier-config':
+        specifier: workspace:^
+        version: link:../prettier-config
+      '@osdlc/tsconfig':
+        specifier: workspace:^
+        version: link:../tsconfig
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.5
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 5.0.5(vitest@5.0.5)
+      oxlint:
+        specifier: 'catalog:'
+        version: 1.88.0
+      prettier:
+        specifier: 'catalog:'
+        version: 3.9.6
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(jsdom@26.1.0)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
+
   packages/ts/detect-harness:
     dependencies:
       '@osdlc/command-seam':
@@ -371,6 +466,36 @@ importers:
 
   packages/ts/etag-write:
     devDependencies:
+      '@osdlc/prettier-config':
+        specifier: workspace:^
+        version: link:../prettier-config
+      '@osdlc/tsconfig':
+        specifier: workspace:^
+        version: link:../tsconfig
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.5
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 5.0.5(vitest@5.0.5)
+      oxlint:
+        specifier: 'catalog:'
+        version: 1.88.0
+      prettier:
+        specifier: 'catalog:'
+        version: 3.9.6
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(jsdom@26.1.0)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
+
+  packages/ts/file-lock:
+    devDependencies:
+      '@osdlc/etag-write':
+        specifier: workspace:^
+        version: link:../etag-write
       '@osdlc/prettier-config':
         specifier: workspace:^
         version: link:../prettier-config
@@ -575,6 +700,68 @@ importers:
         specifier: 'catalog:'
         version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(jsdom@26.1.0)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
 
+  packages/ts/markdown-tags:
+    dependencies:
+      '@osdlc/markdown-link':
+        specifier: workspace:^
+        version: link:../markdown-link
+    devDependencies:
+      '@osdlc/prettier-config':
+        specifier: workspace:^
+        version: link:../prettier-config
+      '@osdlc/tsconfig':
+        specifier: workspace:^
+        version: link:../tsconfig
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.5
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 5.0.5(vitest@5.0.5)
+      oxlint:
+        specifier: 'catalog:'
+        version: 1.88.0
+      prettier:
+        specifier: 'catalog:'
+        version: 3.9.6
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(jsdom@26.1.0)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
+
+  packages/ts/npm-binary:
+    dependencies:
+      '@osdlc/command-seam':
+        specifier: workspace:^
+        version: link:../command-seam
+    devDependencies:
+      '@osdlc/prettier-config':
+        specifier: workspace:^
+        version: link:../prettier-config
+      '@osdlc/tsconfig':
+        specifier: workspace:^
+        version: link:../tsconfig
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.5
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 5.0.5(vitest@5.0.5)
+      oxlint:
+        specifier: 'catalog:'
+        version: 1.88.0
+      prettier:
+        specifier: 'catalog:'
+        version: 3.9.6
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(jsdom@26.1.0)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
+
   packages/ts/observe:
     dependencies:
       '@osdlc/command-seam':
@@ -708,6 +895,40 @@ importers:
       prettier:
         specifier: 'catalog:'
         version: 3.9.6
+
+  packages/ts/ref-lease:
+    dependencies:
+      '@osdlc/command-seam':
+        specifier: workspace:^
+        version: link:../command-seam
+      '@osdlc/typed-git':
+        specifier: workspace:^0.12.0 || ^0.13.0
+        version: link:../typed-git
+    devDependencies:
+      '@osdlc/prettier-config':
+        specifier: workspace:^
+        version: link:../prettier-config
+      '@osdlc/tsconfig':
+        specifier: workspace:^
+        version: link:../tsconfig
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.5
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 5.0.5(vitest@5.0.5)
+      oxlint:
+        specifier: 'catalog:'
+        version: 1.88.0
+      prettier:
+        specifier: 'catalog:'
+        version: 3.9.6
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(jsdom@26.1.0)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
 
   packages/ts/repo-cleaner:
     dependencies:

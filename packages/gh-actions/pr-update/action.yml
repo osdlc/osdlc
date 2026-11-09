@@ -1,0 +1,172 @@
+name: pr-update
+description: Bring open pull requests up to date with their base branch using @osdlc/pr-update, repair conflicts with a headless agent, label and comment on the ones that need a person, and write a job summary.
+author: osdlc
+
+inputs:
+  github-token:
+    description: >-
+      Token that pushes to the PR branches, reads the pull request list, and
+      labels and comments. Use a GitHub App token: a push made with
+      GITHUB_TOKEN does not start CI on the PR. Needs contents write, pull
+      requests write, issues write and, for a merge that brings in changes under
+      .github/workflows, workflows write. The checkout in the calling job must
+      have been made with the same token.
+    required: true
+  anthropic-api-key:
+    description: >-
+      API key for the claude repair agent. Empty means no repair: a conflict
+      the built-in resolvers cannot clear is reported and left for a person.
+    default: ""
+  pr-update-version:
+    description: Exact @osdlc/pr-update version to run.
+    default: 0.9.9
+  pr:
+    description: >-
+      One PR number. Updates only that PR, ignores the skip label and the draft
+      setting for it (a fork is still refused), and posts a summary comment on
+      it. Empty means every eligible open PR.
+    default: ""
+  strategy:
+    description: merge (never rewrites history, no force-push) or rebase.
+    default: merge
+  repair-agent:
+    description: >-
+      Agent that repairs a conflict no resolver claims: claude, codex, cursor or
+      pi. Empty disables repair. claude also needs anthropic-api-key; the others
+      take their key from the calling job's env.
+    default: claude
+  repair-timeout-seconds:
+    description: Kill one repair after this many seconds and report its PR as a conflict.
+    default: "600"
+  agent-version:
+    description: CLI version for agent-setup. Empty means its default. Not used for pi.
+    default: ""
+  skip-label:
+    description: A PR carrying this label is left alone. Empty disables the label check.
+    default: no-auto-update
+  conflict-label:
+    description: >-
+      Label added to a PR that ends conflict or failed, and removed when it later
+      ends updated or up-to-date. Created if missing. Empty disables labelling.
+    default: needs-manual-update
+  comment-conflicts:
+    description: >-
+      true posts one comment per PR, head and base on a PR that ends conflict or
+      failed, with the paths and the reason.
+    default: "true"
+  include-drafts:
+    description: Update draft PRs too, true or false.
+    default: "true"
+  include-bots:
+    description: >-
+      Update PRs authored by a bot too, true or false. Off by default: release-plz,
+      Changesets and similar rebuild and force-push their own branches on every merge.
+    default: "false"
+  dry-run:
+    description: true measures and reports but pushes, labels and comments nothing.
+    default: "false"
+  fail-on-conflict:
+    description: >-
+      true makes the step fail when a PR ended conflict or failed. By default
+      that is reported as a warning and the step succeeds; only a real error
+      (config, trust, tools, code host) fails it.
+    default: "false"
+  cache-attempts:
+    description: >-
+      Keep pr-update's failed-attempt record (.pr-update/attempts) between runs
+      with actions/cache, so a PR that already conflicted at its current head and
+      base is not retried, and no agent tokens are spent on it again.
+    default: "true"
+  extra-args:
+    description: Extra arguments for `pr-update update`, split on whitespace (for example --retry-failed).
+    default: ""
+
+outputs:
+  report-path:
+    description: Path of the pr-update JSON report.
+    value: ${{ steps.run.outputs.report-path }}
+  updated:
+    description: PRs brought up to date.
+    value: ${{ steps.run.outputs.updated }}
+  up-to-date:
+    description: PRs that were already up to date.
+    value: ${{ steps.run.outputs.up-to-date }}
+  conflict:
+    description: PRs that ended in a conflict.
+    value: ${{ steps.run.outputs.conflict }}
+  failed:
+    description: PRs whose update failed.
+    value: ${{ steps.run.outputs.failed }}
+  skipped:
+    description: PRs pr-update left alone (blocked, a recorded failure, an unpushed local branch).
+    value: ${{ steps.run.outputs.skipped }}
+  excluded:
+    description: PRs excluded before the run (skip label, fork, draft, bot author).
+    value: ${{ steps.run.outputs.excluded }}
+
+runs:
+  using: composite
+  steps:
+    - id: plan
+      shell: bash
+      env:
+        REPAIR_AGENT: ${{ inputs.repair-agent }}
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+      run: |
+        # Repair is on only when an agent is named and, for claude, a key is given.
+        repair=""
+        if [ -n "$REPAIR_AGENT" ]; then
+          if [ "$REPAIR_AGENT" != claude ] || [ -n "$ANTHROPIC_API_KEY" ]; then repair="$REPAIR_AGENT"; fi
+        fi
+        echo "repair=$repair" >> "$GITHUB_OUTPUT"
+
+    # Restore and save are separate steps so the record is saved even when the
+    # run fails or is cut off by the job timeout. A cache entry cannot be
+    # overwritten, so each run saves under its own key and the next run
+    # restores the newest one by prefix.
+    - id: restore
+      if: inputs.cache-attempts == 'true'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .pr-update/attempts
+        key: pr-update-attempts-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: pr-update-attempts-
+
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: "24"
+
+    - if: steps.plan.outputs.repair == 'claude' || steps.plan.outputs.repair == 'codex' || steps.plan.outputs.repair == 'cursor'
+      shell: bash
+      env:
+        HARNESS: ${{ steps.plan.outputs.repair }}
+        VERSION: ${{ inputs.agent-version }}
+      run: '"$GITHUB_ACTION_PATH/../agent-setup/setup.sh"'
+
+    - id: run
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        PR_UPDATE_VERSION: ${{ inputs.pr-update-version }}
+        PR_NUMBER: ${{ inputs.pr }}
+        STRATEGY: ${{ inputs.strategy }}
+        REPAIR_AGENT: ${{ steps.plan.outputs.repair }}
+        REPAIR_TIMEOUT_SECONDS: ${{ inputs.repair-timeout-seconds }}
+        SKIP_LABEL: ${{ inputs.skip-label }}
+        CONFLICT_LABEL: ${{ inputs.conflict-label }}
+        COMMENT_CONFLICTS: ${{ inputs.comment-conflicts }}
+        INCLUDE_DRAFTS: ${{ inputs.include-drafts }}
+        INCLUDE_BOTS: ${{ inputs.include-bots }}
+        APPLY: ${{ inputs.dry-run == 'true' && 'false' || 'true' }}
+        FAIL_ON_CONFLICT: ${{ inputs.fail-on-conflict }}
+        EXTRA_ARGS: ${{ inputs.extra-args }}
+        REPO: ${{ github.repository }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: '"$GITHUB_ACTION_PATH/run.sh"'
+
+    - if: always() && inputs.cache-attempts == 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .pr-update/attempts
+        key: pr-update-attempts-${{ github.run_id }}-${{ github.run_attempt }}

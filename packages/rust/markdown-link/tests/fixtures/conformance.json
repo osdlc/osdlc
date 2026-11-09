@@ -631,6 +631,35 @@
       "source": "5$/month [[Note]] or 10$/month",
       "stripped": "5$/month [[Note]] or 10$/month",
       "ranges": []
+    },
+    {
+      "name": "escaped_backtick_is_literal",
+      "note": "CommonMark: a backtick after an odd run of \\ is literal and opens no span. skill-export does not honour the escape.",
+      "source": "See \\`[[Note]]\\` here",
+      "stripped": "See \\`[[Note]]\\` here",
+      "strippedSkillExport": "See \\            here"
+    },
+    {
+      "name": "escaped_backtick_then_a_real_span",
+      "source": "a \\`b` [[Note]] `c`",
+      "stripped": "a \\`b            c`",
+      "strippedSkillExport": "a \\    [[Note]]    "
+    },
+    {
+      "name": "escaped_backslash_does_not_escape_the_backtick",
+      "source": "a \\\\`b` c",
+      "stripped": "a \\\\    c"
+    },
+    {
+      "name": "only_the_first_backtick_of_a_run_is_escaped",
+      "source": "\\``x` y",
+      "stripped": "\\`    y",
+      "strippedSkillExport": "\\``x` y"
+    },
+    {
+      "name": "backslash_inside_a_span_does_not_stop_the_close",
+      "source": "`a\\` b",
+      "stripped": "     b"
     }
   ],
   "parse": [
@@ -2634,6 +2663,38 @@
       "name": "markdown_link_is_kept",
       "text": "[a](b.md)",
       "display": "[a](b.md)"
+    },
+    {
+      "name": "same_note_heading_with_alias",
+      "text": "See [[#Setup|the setup steps]] first.",
+      "display": "See the setup steps first."
+    },
+    {
+      "name": "same_note_heading",
+      "note": "A link into the same note shows its heading when it has no alias.",
+      "text": "Jump to [[#Setup]].",
+      "display": "Jump to Setup."
+    },
+    {
+      "name": "same_note_block_embed_with_alias",
+      "text": "![[#^block|quote]]",
+      "display": "quote"
+    },
+    {
+      "name": "same_note_block_embed_with_size",
+      "note": "A size is not an alias, so the block shows.",
+      "text": "![[#^block|300]]",
+      "display": "^block"
+    },
+    {
+      "name": "same_note_heading_with_empty_alias",
+      "text": "[[# Setup |]]",
+      "display": "Setup"
+    },
+    {
+      "name": "links_with_nothing_to_show",
+      "text": "a [[]] b [[ ]] c [[#]] d",
+      "display": "a  b  c  d"
     }
   ],
   "typedRef": [

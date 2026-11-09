@@ -214,6 +214,10 @@ function planCopilot(command: readonly string[], spec: AgentCallSpec): PlannedCa
     note(notes, 'budgetUsd', 'dropped', 'copilot caps AI credits (--max-ai-credits), not dollars')
   }
 
+  if (spec.limits?.maxTurns !== undefined) {
+    note(notes, 'limits.maxTurns', 'dropped', 'copilot has no turn limit flag')
+  }
+
   argv.push(...(spec.extraArgs ?? []))
 
   // `@path` is not expanded in prompt mode, and --attachment takes only images

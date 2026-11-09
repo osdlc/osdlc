@@ -357,6 +357,12 @@ describe('codex parse, remaining branches', () => {
     expect(adapter.parseResult(planned, raw(out)).structured).toEqual({ ok: true })
   })
 
+  test('limits.maxTurns is dropped with a note', () => {
+    const planned = adapter.plan({ prompt: 'x', limits: { maxTurns: 4 } })
+    expect(planned.argv.join(' ')).not.toContain('turns')
+    expect(planned.notes.find((n) => n.field === 'limits.maxTurns')?.support).toBe('dropped')
+  })
+
   test('codex plans carry notes for dropped tool rules, budget and plugins', () => {
     const planned = adapter.plan({
       prompt: 'x',

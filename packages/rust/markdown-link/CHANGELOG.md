@@ -87,6 +87,24 @@ makes the same changes in its 0.9.0, and both suites read the new cases.
 - `tests/fixtures/conformance.json`: a `code` case may list `ranges`, a body
   link may hold `title`, and `options` may set `allMarkdownLinks`.
 
+## [0.8.1](https://github.com/osdlc/osdlc/compare/markdown-link/v0.8.0...markdown-link/v0.8.1) - 2026-11-08
+
+### Fixed
+
+- *(markdown-link)* escaped backticks are literal; same-note links display ([#694](https://github.com/osdlc/osdlc/pull/694))
+
+### Fixed
+
+- `strip_code`: under `CodeRules::CommonMark` a backtick after an odd run of
+  `\` is a literal backtick and opens no code span, so a link in
+  ``See \`[[Note]]\` here`` is found. `CodeRules::SkillExport` does not honour
+  the escape, as before.
+- `display_text` shows a link into the same note, `[[#Setup|steps]]` or
+  `[[#Setup]]`, as its alias, or else its heading or `^block`, where it
+  dropped the link.
+- `tests/fixtures/conformance.json` carries both as `code` and `display`
+  cases, which `@osdlc/markdown-link` reads too.
+
 ## [0.8.0] - 2026-11-04
 
 The scanner reports each `[[` it gave up on. Nothing is removed or changed.

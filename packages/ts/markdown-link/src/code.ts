@@ -436,6 +436,12 @@ export function regions(text: string, rules: CodeRules): Region[] {
     const start = offset
     const c = text.charCodeAt(offset)
     if (c === BACKTICK) {
+      if (rules === 'commonmark' && escaped(text, offset)) {
+        // A `\`` outside a span is a literal backtick, so a run opens at the
+        // next one. Inside a span a `\` is literal, so a close is never escaped.
+        offset++
+        continue
+      }
       const [run, close] = spans.close(offset, (from, to) => blocks.opensBlock(text, from, to))
       if (close === null) {
         offset += run
