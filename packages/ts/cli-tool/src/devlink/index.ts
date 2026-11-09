@@ -29,16 +29,20 @@ export { cwdCheckout, isCheckout, resolve, samePath, suppressed } from './resolv
 export type { Local, ResolveOptions, Selected, Selection, Source } from './resolve.ts'
 
 export {
+  CANDIDATES_FILE,
   HISTORY_FILE,
   HOME_FILE,
   appendHistory,
+  candidatesPath,
   clearActive,
   historyPath,
   homePath,
   readActive,
+  readCandidates,
   readHistory,
   stateDir,
   writeActive,
+  writeCandidates,
 } from './state.ts'
 export type { HistoryEvent, HistoryKind, StateOptions } from './state.ts'
 

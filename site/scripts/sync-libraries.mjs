@@ -4,7 +4,8 @@
 // generated on each sync; the READMEs stay the one source.
 //
 // A library with a docs/guide/ folder gets it published under its page:
-// markdown and MDX pages, which may import components from beside them.
+// markdown and MDX pages, which may import components from beside them, and
+// the images they show, copied to public/guides/<library dir>/.
 //
 // An app (APPS) gets its own top-level section instead: a landing page built
 // from its README, its guide pages, and a library page that links there.
@@ -16,6 +17,7 @@ const siteRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const packages = join(siteRoot, '..', 'packages')
 const docs = join(siteRoot, 'src', 'content', 'docs')
 const target = join(docs, 'libraries')
+const guideImages = join(siteRoot, 'public', 'guides')
 const base = '/osdlc'
 const repo = 'https://github.com/osdlc/osdlc'
 
@@ -33,6 +35,7 @@ const rust = await readRust()
 const names = [...new Set([...ts.keys(), ...rust.keys()])].sort()
 
 await rm(target, { recursive: true, force: true })
+await rm(guideImages, { recursive: true, force: true })
 await mkdir(join(target, 'ts'), { recursive: true })
 await mkdir(join(target, 'rust'), { recursive: true })
 
@@ -166,12 +169,37 @@ async function listGuide(libRoot) {
 // absolute, links to sibling pages go to their site URLs (under `url`), and
 // any other relative link goes to GitHub.
 async function copyGuidePage(lib, page, outDir, url) {
-  const source = join(packages, '..', lib.dir, 'docs', 'guide', page)
+  const guideDir = join(packages, '..', lib.dir, 'docs', 'guide')
+  const source = join(guideDir, page)
   const pageDir = posix.dirname(page)
   let text = await readFile(source, 'utf8')
   text = text.replace(/^(import .+ from )'(\.{1,2}\/[^']+)'/gm, (m, head, rel) =>
     `${head}'${join(dirname(source), rel)}'`,
   )
+  // A relative image is copied into public/ and shown from there; the link
+  // rewrite below would otherwise send it to GitHub's HTML view of the file.
+  // Code fences (``` or ~~~, indented or not) are left as written, and so are
+  // data: URIs and absolute URLs.
+  const images = new Set()
+  text = text
+    .split(/(^[ \t]*(?:`{3,}|~{3,})[^\n]*\n[\s\S]*?^[ \t]*(?:`{3,}|~{3,})[ \t]*$)/m)
+    .map((part, i) =>
+      i % 2 === 1
+        ? part
+        : part.replace(/!\[([^\]]*)\]\((?!https?:|\/|data:)([^)\s]+)\)/g, (match, alt, href) => {
+            const [file, suffix] = /^([^?#]*)(.*)$/.exec(href).slice(1)
+            const resolved = posix.normalize(posix.join(pageDir, file))
+            if (resolved.startsWith('..')) throw new Error(`${lib.dir}/docs/guide/${page}: image ${href} is outside docs/guide`)
+            images.add(resolved)
+            return `![${alt}](${base}/guides/${lib.dir}/${resolved}${suffix})`
+          }),
+    )
+    .join('')
+  for (const image of images) {
+    const out = join(guideImages, lib.dir, image)
+    await mkdir(dirname(out), { recursive: true })
+    await copyFile(join(guideDir, image), out)
+  }
   text = text.replace(/\]\((?!https?:|#|mailto:|\/)([^)\s]+)\)/g, (match, href) => {
     const [path, anchor] = href.split('#')
     const hash = anchor ? `#${anchor}` : ''

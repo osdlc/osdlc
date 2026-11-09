@@ -11,6 +11,9 @@
  *          Only when the spec sets `cwdLayer`. Off when a suppressor is set
  *          or `<NAME>_CWD_DEV=0`.
  *   link   the `home` file names a checkout. Off when a suppressor is set.
+ *          When it names one that is gone and the spec sets
+ *          `onDeadLink: 'newest-surviving'`, the first surviving checkout in
+ *          the `candidates` file runs instead.
  *   project
  *          a project above the cwd has this package in its `node_modules`,
  *          so run that copy's bin, as `npx` would: a project pins the
@@ -23,7 +26,8 @@
  *
  * A layer that names an invalid checkout (no marker, or the wrong
  * `package.json` name when the spec sets `packageName`) is skipped, not an
- * error. A deleted checkout must not break the installed tool. A layer that
+ * error. A deleted checkout must not break the installed tool. A spec that
+ * would rather stay on development code sets `onDeadLink`, above. A layer that
  * names the launcher's own checkout resolves to `local`, so a link to the
  * installed checkout never re-execs itself.
  *
@@ -36,7 +40,7 @@
 import { closeSync, openSync, readFileSync, readSync, realpathSync, statSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve as resolvePath, sep } from 'node:path'
 
-import { readActive, type StateOptions } from './state.ts'
+import { readActive, readCandidates, type StateOptions } from './state.ts'
 import {
   cwdLayerActive,
   entryOf,
@@ -347,6 +351,15 @@ export function resolve(spec: ToolSpec, opts: ResolveOptions = {}): Selection {
     if (linked !== null) {
       const hit = pick('link', linked, 'linked checkout')
       if (hit !== null) return hit
+      if (spec.onDeadLink === 'newest-surviving') {
+        const why = `newest surviving checkout (the link names ${linked}, which is gone)`
+        for (const candidate of readCandidates(spec, opts)) {
+          // Only an absolute line counts, as in the launcher's `case /*`.
+          if (!isAbsolute(candidate)) continue
+          const survivor = pick('link', candidate, why)
+          if (survivor !== null) return survivor
+        }
+      }
     }
   }
 

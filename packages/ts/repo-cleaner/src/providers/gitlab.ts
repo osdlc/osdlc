@@ -10,6 +10,7 @@
 import {
   parseJsonResult,
   runFailed,
+  stderrOrError,
   type CommandResult,
   type CommandRunner,
 } from '@osdlc/command-seam'
@@ -88,8 +89,9 @@ function succeeded(result: CommandResult): boolean {
 }
 
 /**
- * A provider over `glab`. It needs `target.project`: without one there is
- * nothing to ask, and the listing answers null.
+ * A provider over `glab`. It needs `target.project`. A listing it cannot
+ * make or read throws with the reason: no project in the remote URL, `glab`'s
+ * own error, or a page that cannot be read.
  */
 export function gitlabProvider(glab: CommandRunner): PrProvider {
   const run = (root: string, argv: string[]): CommandResult => glab.run(argv, { cwd: root })
@@ -104,7 +106,7 @@ export function gitlabProvider(glab: CommandRunner): PrProvider {
       return { available, authenticated }
     },
     listPrs(root, target, branch) {
-      if (target.project === null) return null
+      if (target.project === null) throw new Error('the remote URL names no GitLab project')
       const project = encodeURIComponent(target.project)
       const prs: PRInfo[] = []
       for (let page = 1; (page - 1) * PER_PAGE < PR_LIMIT; page++) {
@@ -123,9 +125,18 @@ export function gitlabProvider(glab: CommandRunner): PrProvider {
         ])
         // A failed, cut-short or unreadable page fails the listing: a missing
         // open MR would read as no MR.
-        if (!succeeded(result)) return null
+        if (!succeeded(result)) {
+          // Not stdout: a page cut short is half a JSON listing, not a reason.
+          throw new Error(
+            result.outputIncomplete === true
+              ? `page ${page} was cut short`
+              : stderrOrError(result) || `glab exited ${String(result.exitCode)}`,
+          )
+        }
         const listed = parseJsonResult(result)
-        if (!listed.ok || !Array.isArray(listed.value)) return null
+        if (!listed.ok || !Array.isArray(listed.value)) {
+          throw new Error(`page ${page} is not a merge request list`)
+        }
         const rows: unknown[] = listed.value
         for (const row of rows) {
           if (!isMergeRequest(row)) continue

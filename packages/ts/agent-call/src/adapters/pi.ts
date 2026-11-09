@@ -218,6 +218,10 @@ function planPi(command: readonly string[], spec: AgentCallSpec): PlannedCall {
     note(notes, 'context.files', 'native', '@path arguments')
   }
 
+  if (spec.limits?.maxTurns !== undefined) {
+    note(notes, 'limits.maxTurns', 'dropped', 'pi has no turn limit flag')
+  }
+
   argv.push(...(spec.extraArgs ?? []))
 
   // Piped stdin becomes the first prompt (trimmed), so the prompt stays out

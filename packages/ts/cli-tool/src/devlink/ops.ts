@@ -42,6 +42,7 @@ import {
   readActive,
   readHistory,
   writeActive,
+  writeCandidates,
   type HistoryEvent,
 } from './state.ts'
 import {
@@ -348,6 +349,9 @@ function activate(
     const record: HistoryEvent = { at: stamp(opts), event, checkout, branch, head }
     if (label !== undefined) record.label = label
     appendHistory(spec, record, opts)
+    if (spec.onDeadLink === 'newest-surviving') {
+      writeCandidates(spec, candidates(spec, opts), opts)
+    }
   }
   return {
     checkout,
@@ -359,6 +363,23 @@ function activate(
     wrote: !dryRun,
     dryRun,
   }
+}
+
+/** How many checkouts the `candidates` file keeps; older ones stay in the history. */
+const CANDIDATES_LIMIT = 32
+
+/**
+ * The fall-back list, rebuilt from the history so a tool that turns
+ * `onDeadLink` on later starts with every checkout linked before: one per
+ * path, most recently selected first, at most {@link CANDIDATES_LIMIT}. A
+ * checkout that is gone now is kept, since a worktree is often added again at
+ * the same path. A path with a line break cannot be a line, so it is left out.
+ */
+function candidates(spec: ToolSpec, opts: OpOptions): string[] {
+  return history(spec, opts)
+    .map((e) => e.checkout)
+    .filter((c) => !/[\n\r]/.test(c))
+    .slice(0, CANDIDATES_LIMIT)
 }
 
 /**

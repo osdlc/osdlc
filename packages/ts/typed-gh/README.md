@@ -492,7 +492,7 @@ const branches = gh.api('repos/{owner}/{repo}/branches', { paginate: true }).bod
 ```
 
 `graphql` (experimental) runs a query and returns each page's `data`. It throws when the
-call failed or any page has `errors` or no `data` (`soft.graphql` is `null`). A partial answer counts as a failure. `nodesAt` joins
+call failed or any page has `errors` or no `data` (`soft.graphql` is `null`). A partial answer counts as a failure, unless you pass `partial: true` (see [Partial answers](#partial-answers)). `nodesAt` joins
 one connection's `nodes` across the pages, and is `null` when any page lacks them.
 `fromTarget('owner')` and `fromTarget('repo')` fill a variable from the client's repo, or let gh
 fill it from the clone. A plain string is always sent as written, so a real value of `{owner}` stays
@@ -517,6 +517,70 @@ const prs = nodesAt(pages, ['repository', 'pullRequests'])
 
 With `paginate`, the query must take `$endCursor` and page one connection. gh follows only that
 one. `graphql` refuses a document holding a mutation or subscription with `RangeError`. Send one through `raw`.
+
+### Partial answers
+
+When part of a query fails, GitHub still answers the rest: an aliased pull request that was
+deleted is `null` in `data`, and an entry in `errors` names its path. gh prints that response and
+exits 1. Pass `partial: true` to read it. Each page comes back as a `GraphqlPage`, its `data` with
+its `errors` (each a `GraphqlError` of `message`, `type` and `path`). `errors` is empty for a page
+that came back whole.
+
+```ts
+const [page] = gh.graphql(
+  `query($owner: String!, $name: String!) {
+    repository(owner: $owner, name: $name) {
+      a: pullRequest(number: 1) { title }
+      b: pullRequest(number: 2) { title }
+    }
+  }`,
+  { owner: fromTarget('owner'), name: fromTarget('repo') },
+  { partial: true },
+)
+const missing = page?.errors.map((e) => e.path.join('.')) // ['repository.b'] when #2 is gone
+```
+
+It still throws (`soft.graphql` is `null`) when there is no `data` to read: a failed call, a
+response with no `data` or `data: null` (a rate limit, a query that does not validate), or output
+that does not parse. With `paginate`, gh stops at the first page with errors. When that page still has a next
+page, the pages after it were never fetched, so that throws too, rather than return fewer rows.
+`nodesAt(pages, path, { partial: true })` joins one connection across partial pages and returns
+`PartialNodes`: the `nodes`, where a node GitHub could not resolve is `null`, and every page's
+`errors`.
+
+### Stopping early
+
+`paginate` has no page cap: gh follows the connection to its end. To read at most a few pages, or
+to carry on past a page with errors (add `partial: true` and read each page's `data`), leave
+`paginate` off and pass the cursor yourself:
+
+```ts
+const query = `query($endCursor: String) {
+  repository(owner: "acme", name: "widgets") {
+    pullRequests(first: 100, after: $endCursor) {
+      pageInfo { hasNextPage endCursor }
+      nodes { number }
+    }
+  }
+}`
+interface PageInfo {
+  hasNextPage: boolean
+  endCursor: string | null
+}
+type Page = { repository: { pullRequests: { pageInfo: PageInfo } } }
+const prs: unknown[] = []
+let endCursor: string | null = null
+for (let n = 0; n < 3; n += 1) {
+  const [data]: unknown[] = gh.graphql(query, { endCursor })
+  prs.push(...(nodesAt([data], ['repository', 'pullRequests']) ?? []))
+  const info: PageInfo = (data as Page).repository.pullRequests.pageInfo
+  if (!info.hasNextPage) break
+  endCursor = info.endCursor
+}
+```
+
+The decision is in
+[docs/planning/decisions/graphql-partial-and-page-cap.md](docs/planning/decisions/graphql-partial-and-page-cap.md).
 
 ## Repositories and search
 
@@ -617,7 +681,7 @@ Methods on both clients:
 - Issue and label queries: `issueList`, `issueView` and `labelList`.
 - Repository queries: `repoList` and `repoView`.
 - Issue and label changes: `setIssueLabel`, `createLabel`, `editLabel` and `issueCommentEdit`.
-- REST and GraphQL: `api` is a GET through `gh api` and never throws (failure is `ok: false`); `graphql` is a query and throws on a failed or partial answer.
+- REST and GraphQL: `api` is a GET through `gh api` and never throws (failure is `ok: false`); `graphql` is a query and throws on a failed or partial answer, or returns a partial answer as `{ data, errors }` pages with `partial: true`.
 - Setup checks: `installed`, `authenticated`, `authStatus` and `ready`.
 - `ownerRepo` reads the owner and repository from a remote URL. It starts no process.
 - `try` and `soft`: the whole surface again as a `Result<T, GhFailure>`, and the queries again with `null` for a failure. `TriedSync`, `TriedAsync` and `Soft` are their types.
@@ -649,13 +713,15 @@ a verb before running it. Each verb takes an optional `GhTarget` last, except `r
 - `pickPrForBranch`: the first row whose head branch is exactly the one you name. `prList({ head })`
   already filters exactly. This is for rows from elsewhere, such as a `head:` search. It takes plain
   rows or a `ListResult`, so `openPrsForBranch`'s or `prList`'s parsed answer passes straight in.
-- `nodesAt`: one connection's nodes, joined across `graphql` pages.
+- `nodesAt`: one connection's nodes, joined across `graphql` pages. With `{ partial: true }`, across
+  partial pages, with their errors.
 - Field lists: `PR_REF_FIELDS` (enough to identify a PR), `PR_LIST_FIELDS` (for triage),
   `PR_VIEW_FIELDS` (the full set), `REPO_FIELDS` and `SEARCH_PR_FIELDS`.
 - Option and result types: `ListResult`, `PrListOptions`, `IssueListOptions`, `RepoListOptions`,
   `SearchPrsOptions`, `CreatePrOptions`, `CreateReviewOptions`, `ReviewComment`,
-  `CreateLabelOptions`, `ApiOptions`, `ApiResponse`, `GraphqlOptions`, `GraphqlVariable`,
-  `AuthStatus`, `PrMergeMethod` and `ReviewThread`.
+  `CreateLabelOptions`, `ApiOptions`, `ApiResponse`, `GraphqlOptions`, `GraphqlPartialOptions`,
+  `GraphqlPage`, `GraphqlError`, `PartialNodes`, `GraphqlVariable`, `AuthStatus`, `PrMergeMethod`
+  and `ReviewThread`.
 
 ### Parsers
 
@@ -702,7 +768,8 @@ The experimental items:
 - `ReviewComment`
 - `graphql`, the verb and the method on both clients
 - `nodesAt`
-- `GraphqlOptions`
+- `GraphqlOptions` and `GraphqlPartialOptions`
+- `GraphqlPage`, `GraphqlError` and `PartialNodes`
 - `GraphqlVariable`
 - `fromTarget` and `FromTarget`
 

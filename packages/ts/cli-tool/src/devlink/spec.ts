@@ -51,6 +51,19 @@ export interface ToolSpec {
    */
   projectLayer?: boolean
   /**
+   * What the link layer does when the link names a directory that is no
+   * longer a checkout (a deleted worktree). `'local'`, the default, skips the
+   * layer, so the project layer or the install runs: a deleted checkout must
+   * not break the installed tool. `'newest-surviving'` first tries the other
+   * checkouts `dev link` and `dev use` selected before, newest first, and
+   * runs the first that is still a checkout, so deleting one worktree keeps
+   * the developer on development code. Only that falls back: an unset link
+   * (`dev off`) still runs the install. The list is the plain-text
+   * `candidates` file beside the link, which `resolve` and the bash launcher
+   * both walk.
+   */
+  onDeadLink?: 'local' | 'newest-surviving'
+  /**
    * The source entry a selected checkout runs, relative to the checkout
    * root, under {@link runtime}. Defaults to {@link marker}.
    */
@@ -247,6 +260,15 @@ export function validateSpec(spec: ToolSpec): ToolSpec {
     if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(alias)) {
       throw new Error(`devlink: alias must be a single path segment, got ${JSON.stringify(alias)}`)
     }
+  }
+  if (
+    spec.onDeadLink !== undefined &&
+    spec.onDeadLink !== 'local' &&
+    spec.onDeadLink !== 'newest-surviving'
+  ) {
+    throw new Error(
+      `devlink: onDeadLink must be 'local' or 'newest-surviving', got ${JSON.stringify(spec.onDeadLink)}`,
+    )
   }
   for (const [field, value] of [
     ['marker', spec.marker],
