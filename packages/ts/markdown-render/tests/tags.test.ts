@@ -104,10 +104,24 @@ describe('remarkTags: the alphabet is Unicode, not ASCII', () => {
     expect(await html('(#draft)')).toContain('data-tag="draft"')
   })
 
-  test('a long run of digits after a # stays cheap', async () => {
-    const start = performance.now()
-    await html(`#${'1'.repeat(20_000)}`)
-    expect(performance.now() - start).toBeLessThan(500)
+  test('a long run of digits after a # grows no faster than its length', async () => {
+    // Growth, not absolute time: a 10x longer input costs about 10x as much
+    // when the scan is linear and about 100x when it is quadratic. The best of
+    // several runs drops scheduler and GC noise, which only ever adds time.
+    const best = async (size: number): Promise<number> => {
+      let min = Infinity
+      for (let rep = 0; rep < 5; rep++) {
+        const start = performance.now()
+        await html(`#${'1'.repeat(size)}`)
+        min = Math.min(min, performance.now() - start)
+      }
+      return min
+    }
+    await best(500) // warm-up
+    const small = await best(2_000)
+    const large = await best(20_000)
+    // Linear is ~10, quadratic ~100; 40 leaves room for noise either way.
+    expect(large / Math.max(small, 0.05)).toBeLessThan(40)
   })
 })
 

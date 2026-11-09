@@ -617,4 +617,24 @@ describe('an alias carrying markup (review finding #11)', () => {
     expect(out).toContain('class="wikilink"')
     expect(out).toContain('<em>x</em>')
   })
+
+  describe('code rules, as the scanner reads a document', () => {
+    test('a wikilink after a fenced code block inside a list item is a link', async () => {
+      const out = await html('1. item\n   ```\n   code\n   ```\n   see [[Note]]\n', { resolveLink })
+      expect(out).toContain('data-wikilink="Note"')
+    })
+
+    test('a link inside a code span in a table cell is not a link', async () => {
+      const out = await html('| a | b |\n| - | - |\n| `[[Note]]` | [[Note]] |\n', { resolveLink })
+      expect(out.match(/data-wikilink="Note"/g)?.length).toBe(1)
+      expect(out).toContain('<code>[[Note]]</code>')
+    })
+
+    test('a backslash-escaped bang is a literal ! then a link', async () => {
+      const out = await html('\\![[Note]]', { resolveLink })
+      expect(out).toContain('!<a')
+      expect(out).toContain('data-wikilink="Note"')
+      expect(out).not.toContain('class="embed')
+    })
+  })
 })

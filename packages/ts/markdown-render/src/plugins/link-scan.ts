@@ -26,9 +26,17 @@ import { isPhrasingParent, text, type MdNode, type MdParent } from './util.ts'
 /** What the scanner counts as a link: the dialect reads `[[#Heading]]` as a link to the note it is in. */
 const SCAN_OPTIONS = { selfLinks: true, codeRules: 'commonmark' } as const
 
-/** Scans `source` for links the way both link plugins read them. */
+/** The same, for a run of text remark has already parsed: it holds no code, so none is looked for. */
+const TEXT_OPTIONS = { selfLinks: true, codeRules: 'none' } as const
+
+/** Scans a document `source` for links the way both link plugins read them. */
 export function scanLinks(source: string): BodyScan {
   return scanBodyWith(source, SCAN_OPTIONS)
+}
+
+/** Scans the value of one parsed text node, which cannot hold code. */
+function scanText(value: string): BodyScan {
+  return scanBodyWith(value, TEXT_OPTIONS)
 }
 
 /** A link the scanner found, as offsets into the frame it scanned. */
@@ -239,7 +247,7 @@ function sourceView(node: MdNode, doc: Doc, kind: Kind, closing = false): View |
 /** A text node's view of its own value. */
 function valueView(node: MdNode, kind: Kind): View {
   const value = node.value as string
-  const spans = spansOf(scanLinks(value), value)
+  const spans = spansOf(scanText(value), value)
   return {
     value,
     inSource: false,
@@ -349,21 +357,13 @@ export function tokenizeLinks(tree: MdNode, file: unknown, options: TokenizeOpti
         const span = view.spans[k] as Span
         if (span.start >= view.to) break
         if (span.start < consumed) continue
-        let start = view.toValue(span.start)
-        // `\![[Note]]` is a literal `!` and a wikilink: the scanner reads the
-        // embed, the escape sentinel between the two shows it is not one.
-        const escapedBang =
-          kind === 'wikilink' &&
-          view.value.startsWith('!', start) &&
-          view.value.charCodeAt(start + 1) === SENTINEL.charCodeAt(0)
-        if (escapedBang) start += 2
-        const wanted = escapedBang ? '[[' : open
+        const start = view.toValue(span.start)
         if (start < valueAt) continue
 
         if (span.end <= view.to) {
           const end = view.toValue(span.end)
-          if (!shaped(view.value, start, end, wanted)) continue
-          const built = options.build({ inner: view.value.slice(start + wanted.length, end - 2) })
+          if (!shaped(view.value, start, end, open)) continue
+          const built = options.build({ inner: view.value.slice(start + open.length, end - 2) })
           if (built === null) continue
           piece(valueAt, start, consumed, span.start)
           out.push(...(Array.isArray(built) ? built : [built]))
