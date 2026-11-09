@@ -311,7 +311,10 @@ JSON, else as the bare string (`config set strategy merge`,
 `config set max_failed_attempts 3`). `set` validates the merged result before
 it writes, and keeps comments and layout. A change that would leave the config
 invalid is a usage error (exit `2`) and writes nothing. Only the result is
-checked, so `set` or `unset` can repair a file that is invalid now. A file
+checked, so `set` or `unset` can repair a file that is invalid now. The write
+is a compare-and-swap: when the file changed between the read and the write
+(an editor saved it), it is left as it is and the command exits `1` with code
+`config-conflict`; run it again. A file
 that is not YAML at all, or a `PR_UPDATE_CONFIG` naming a missing file, exits
 `14`; `config path` still lists the files. `set` and `unset` take `--dry-run`.
 An unknown key exits `2`. `get` of a key with no value, and `unset` of a key

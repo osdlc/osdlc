@@ -162,6 +162,10 @@ function planOpencode(command: readonly string[], spec: AgentCallSpec): PlannedC
     note(notes, 'budgetUsd', 'dropped', 'opencode has no budget cap flag')
   }
 
+  if (spec.limits?.maxTurns !== undefined) {
+    note(notes, 'limits.maxTurns', 'dropped', 'opencode has no turn limit flag')
+  }
+
   argv.push(...(spec.extraArgs ?? []))
 
   const prompt = buildEffectivePrompt(spec, { filesNative: true }, notes)

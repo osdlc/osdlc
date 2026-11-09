@@ -112,7 +112,14 @@ function buildFixture(): Fixture {
  * merged PR that makes the clean worktree a `delete` row.
  */
 function worktreeItem(fx: Fixture, probe: ProcessProbe): WorktreeRow {
-  const swept = sweep([fx.root], { remote: true, offline: true, gh: fx.gh, cwd: fx.root, probe })
+  const swept = sweep([fx.root], {
+    remote: true,
+    offline: true,
+    provider: 'github',
+    gh: fx.gh,
+    cwd: fx.root,
+    probe,
+  })
   const repo = swept.repos[0]!
   expect(repo.error).toBeNull()
   const item = repo.rows.find(
@@ -291,7 +298,16 @@ describe('live processes', () => {
 
 describe('run', () => {
   function makePlan(fx: Fixture, probe: ProcessProbe): Plan {
-    return planOf(sweep([fx.root], { remote: true, offline: true, gh: fx.gh, cwd: fx.root, probe }))
+    return planOf(
+      sweep([fx.root], {
+        remote: true,
+        offline: true,
+        provider: 'github',
+        gh: fx.gh,
+        cwd: fx.root,
+        probe,
+      }),
+    )
   }
 
   const pick = (fx: Fixture): string => `worktree:${fx.worktree}`

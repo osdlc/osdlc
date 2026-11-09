@@ -15,3 +15,5 @@ A folder of markdown notes and the files they link to, read as one linked whole.
 ## Not to be confused with
 
 A bundle: one note's folder inside a corpus (`<name>/<name>.md` and the files beside it), which `markdown-relink` moves as one unit.
+
+[corpus-schema](corpus-schema.md): what a corpus can declare about itself, such as typed records and their schemas, by the [corpus-schema spec](../../packages/conformance/corpus-schema/SPEC.md). In that spec and in `@osdlc/corpus-schema`, "corpus" alone means a corpus with a corpus-schema root file.

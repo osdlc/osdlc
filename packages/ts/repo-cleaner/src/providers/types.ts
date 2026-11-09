@@ -42,6 +42,11 @@ export interface ProviderStatus extends ForgeTarget, ProviderWords {
   available: boolean
   /** The CLI has credentials for `host`. */
   authenticated: boolean
+  /**
+   * Set by the sweep when the provider was asked and its listing failed: why,
+   * in the provider's words. Absent when it answered or was not asked.
+   */
+  listError?: string | undefined
 }
 
 /** One source of pull request evidence. */
@@ -52,8 +57,9 @@ export interface PrProvider {
   probe(root: string, target: ForgeTarget): { available: boolean; authenticated: boolean }
   /**
    * The repository's pull requests, fork PRs already dropped, in any order;
-   * null when the listing failed. A failure is not "no PRs": the caller
-   * classifies on git evidence alone.
+   * null, or a throw whose message says why, when the listing failed. A
+   * failure is not "no PRs": the caller classifies on git evidence alone and
+   * notes the failure on the repository.
    *
    * @param branch Narrow the listing to this exact head branch. The caller
    *   checks the head again, so a provider that cannot narrow may list all.

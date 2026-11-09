@@ -238,15 +238,26 @@ export class AsyncGh {
   }
 
   /**
-   * A GraphQL query. Resolves to each page's `data`. Rejects on a failed or partial result. See `Gh.graphql`.
+   * A GraphQL query. Resolves to each page's `data`. Rejects on a failed or partial result.
+   * With `partial: true`, resolves to each page's `data` with its `errors`. See `Gh.graphql`.
    *
    * @experimental
    */
   async graphql(
     query: string,
+    variables: Record<string, v.GraphqlVariable> | undefined,
+    opts: v.GraphqlPartialOptions & AsyncCallOptions,
+  ): Promise<v.GraphqlPage[]>
+  async graphql(
+    query: string,
+    variables?: Record<string, v.GraphqlVariable>,
+    opts?: v.GraphqlOptions & AsyncCallOptions,
+  ): Promise<unknown[]>
+  async graphql(
+    query: string,
     variables: Record<string, v.GraphqlVariable> = {},
-    opts: v.GraphqlOptions & AsyncCallOptions = {},
-  ): Promise<unknown[]> {
+    opts: (v.GraphqlOptions | v.GraphqlPartialOptions) & AsyncCallOptions = {},
+  ): Promise<unknown[] | v.GraphqlPage[]> {
     return this.read(v.graphql(query, variables, opts, this.target), opts)
   }
 

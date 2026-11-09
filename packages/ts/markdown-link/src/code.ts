@@ -19,6 +19,7 @@ const CR = 13
 const TAB = 9
 const SPACE = 32
 const BACKTICK = 96
+const BACKSLASH = 92
 const TILDE = 126
 
 interface FenceRun {
@@ -326,6 +327,13 @@ function lineEnd(s: string, from: number): number {
   return at === -1 ? s.length : at
 }
 
+/** Whether the character at `at` follows an odd run of `\`: a backslash escape. */
+function escaped(s: string, at: number): boolean {
+  let i = at
+  while (i > 0 && s.charCodeAt(i - 1) === BACKSLASH) i--
+  return (at - i) % 2 === 1
+}
+
 /**
  * Blank out fenced and inline code so links and tags inside it are not
  * harvested. `stripCodeWith` under `'commonmark'`.
@@ -366,6 +374,12 @@ export function stripCodeWith(text: string, rules: CodeRules): string {
       spans.line(offset, end)
     }
     if (text.charCodeAt(offset) === BACKTICK) {
+      if (rules === 'commonmark' && escaped(text, offset)) {
+        // A `\`` outside a span is a literal backtick, so a run opens at the
+        // next one. Inside a span a `\` is literal, so a close is never escaped.
+        offset++
+        continue
+      }
       const [run, close] = spans.close(offset)
       if (close === null) {
         offset += run
