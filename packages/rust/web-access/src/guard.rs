@@ -32,7 +32,7 @@
 //!    is 403 `read_only` unless a [`GuardState::with_read_safe`] rule names the
 //!    route.
 //!
-//! Every token is a [`Token`], whose characters (`A-Z a-z 0-9 - _`) need no
+//! Every token is a [`Token`]. Its characters (`A-Z a-z 0-9 - _`) need no
 //! escaping, so a token is compared, put in a link and set in a cookie exactly
 //! as written.
 //!
@@ -166,14 +166,15 @@ struct Entry {
     label: Option<String>,
 }
 
-/// Why [`Tokens::with`] or [`Tokens::with_label`] refused a token. It never
-/// holds a token, only grants.
+/// Why [`Tokens::with`] or [`Tokens::with_label`] refused a token. It holds
+/// grants, never a token.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum TokensError {
     /// The added token is already in the set with a different grant. The
-    /// guard gives a token its highest grant, so the lower one would grant
-    /// the higher. The same token with the same grant is ignored.
+    /// guard gives a token its highest grant, so a link meant for the lower
+    /// grant would carry the higher one. The same token with the same grant is
+    /// ignored.
     #[error(
         "the same token was added as {existing:?} and as {added:?}; use a different token for each grant"
     )]
@@ -277,9 +278,9 @@ impl Tokens {
     }
 
     /// The grant of the entry equal to `presented`. Tokens are unique in the
-    /// set, so at most one matches. Compares against every entry, so timing
-    /// does not reveal which one matched. `ct_eq` returns early on a length mismatch, so a token's
-    /// length can leak.
+    /// set, so at most one matches. Every entry is compared, so timing does
+    /// not show which one matched. `ct_eq` returns early when the lengths
+    /// differ, so timing can show a token's length.
     fn grant_for(&self, presented: &str) -> Option<Grant> {
         let mut found: Option<Grant> = None;
         for entry in &self.0 {
@@ -338,10 +339,11 @@ impl GuardState {
         }
     }
 
-    /// Also allow `<ip>:<port>` for a wildcard bind in `binds` (same port and
-    /// address family) when `ips` lists `ip` at request time, so an interface
-    /// address that appears after start is not refused. `ips` runs only when
-    /// such a Host misses the allowlist.
+    /// Also allow a Host `<ip>:<port>` when a wildcard bind in `binds` has the
+    /// same port and address family, and `ips` lists `ip` at request time.
+    /// This serves an interface address the machine gains after start. `ips`
+    /// is called only for an IP Host that misses the allowlist and matches a
+    /// bind.
     pub(crate) fn with_live_hosts(mut self, binds: Vec<SocketAddr>, ips: HostIps) -> Self {
         self.live_hosts = Some(LiveHosts { binds, ips });
         self
@@ -492,8 +494,8 @@ pub fn origin_matches_host(origin: &str, host: &str) -> bool {
     origin_authority(origin).is_some_and(|o| o == normalize_authority(host, 80))
 }
 
-/// Every cookie named `name`: another app on the same host can set a stale
-/// one (cookies are not port-isolated), so the first must not shadow a valid
+/// Every cookie named `name`. Cookies are not kept apart by port, so another
+/// app on the same host can set a stale one. The first must not hide a valid
 /// one.
 fn cookie_values<'a>(req: &'a Request<Body>, name: &'a str) -> impl Iterator<Item = &'a str> + 'a {
     req.headers()
@@ -505,8 +507,8 @@ fn cookie_values<'a>(req: &'a Request<Body>, name: &'a str) -> impl Iterator<Ite
         .filter_map(move |(k, v)| (k == name).then_some(v))
 }
 
-/// The value of `?token=`, as written, and the query with that
-/// parameter removed; `None` when the query has no `token` parameter.
+/// The value of `?token=` as written, and the query without that parameter.
+/// `None` when the query has no `token` parameter.
 pub(crate) fn split_token_param(query: &str) -> Option<(&str, String)> {
     let is_token = |p: &&str| *p == "token" || p.starts_with("token=");
     // The last `token` wins, as browsers and form parsers read a repeated key.
@@ -643,7 +645,7 @@ async fn check(state: &GuardState, req: Request<Body>, next: Next) -> Response {
             } else {
                 format!("{safe}?{rest}")
             };
-            // `tok` equals a `Token`, so it holds nothing that breaks the header.
+            // `tok` equals a `Token`, so it has no character that breaks the header.
             let set_cookie = format!("{cookie}={tok}; HttpOnly; SameSite=Strict; Path=/");
             return bounce(&location, &set_cookie);
         }
@@ -1474,7 +1476,7 @@ mod tests {
 
     /// The guard gives a token its highest grant, so the same token added as
     /// Read and as Admin would make the Read link an Admin credential. That is
-    /// refused in both orders; the same token with the same grant is ignored.
+    /// refused in both orders. The same token with the same grant is ignored.
     #[test]
     fn the_same_token_with_two_grants_is_refused() {
         let x = Token::mint().unwrap();
@@ -1500,8 +1502,8 @@ mod tests {
         assert_eq!(set.grant_for(x.as_str()), Some(Grant::Read));
     }
 
-    /// A guard on `HOST` with a wildcard bind on :3000 whose interface list
-    /// holds 10.0.0.7; `calls` counts how often the list is read.
+    /// A guard on `HOST` with a wildcard bind on :3000. Its interface list
+    /// holds 10.0.0.7. `calls` counts how often the list is read.
     fn live_host_app(calls: Arc<AtomicUsize>) -> Router {
         let state = GuardState::new(
             Tokens::full_only(tok(TOKEN)),

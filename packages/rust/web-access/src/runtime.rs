@@ -48,8 +48,8 @@ pub enum RuntimeError {
     /// than a token ([`TokenError::BadFile`]), so the server was not started.
     #[error("web-access token: {0}")]
     Token(#[from] TokenError),
-    /// The same token is set for two grants (two token files, or a file and
-    /// the override, hold the same text), so the server was not started.
+    /// The same token is set for two grants, so the server was not started.
+    /// Two token files, or a file and the override, hold the same text.
     #[error("web-access tokens: {0}")]
     Tokens(#[from] TokensError),
     /// The full token comes from an override, so it cannot be rotated.
@@ -111,8 +111,8 @@ pub struct WebAccessStatus {
     pub error: Option<String>,
 }
 
-/// `Debug` shows each link with its token value replaced, so `{:?}` never
-/// prints a credential.
+/// `Debug` hides the token value in each link, so `{:?}` never prints a
+/// credential.
 impl std::fmt::Debug for ShareUrls {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let redact = |urls: &[String]| urls.iter().map(|u| redact_token(u)).collect::<Vec<_>>();
@@ -124,8 +124,8 @@ impl std::fmt::Debug for ShareUrls {
     }
 }
 
-/// `Debug` shows every field; the links inside `share_urls` are redacted as
-/// in [`ShareUrls`].
+/// `Debug` shows every field. The links inside `share_urls` hide their token,
+/// as in [`ShareUrls`].
 impl std::fmt::Debug for WebAccessStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WebAccessStatus")
@@ -254,8 +254,8 @@ impl SharingRuntime {
         self
     }
 
-    /// Use `token` as the full token when it is set (an env override, read
-    /// with [`token::override_from_env`]); nothing is written for it and
+    /// Use `token` as the full token when it is set. This is an env override,
+    /// read with [`token::override_from_env`]. Nothing is written for it, and
     /// [`Self::rotate`] refuses `Grant::Full`.
     #[must_use]
     pub fn with_full_token_override(mut self, token: Option<Token>) -> Self {
@@ -264,8 +264,8 @@ impl SharingRuntime {
     }
 
     /// Refuse to listen beyond loopback while the overriding full token is
-    /// shorter than `len`, to raise the floor above
-    /// [`token::MIN_TOKEN_LEN`] for an override.
+    /// shorter than `len`. Use it to require a longer override than
+    /// [`token::MIN_TOKEN_LEN`].
     #[must_use]
     pub fn with_min_override_len(mut self, len: usize) -> Self {
         self.min_override_len = len;

@@ -1,5 +1,5 @@
 //! Tokens: the [`Token`] type, which holds only a well-formed token, and the
-//! files that keep tokens owner-only.
+//! owner-only files that keep tokens.
 
 use std::fmt;
 use std::io;
@@ -18,9 +18,9 @@ pub const READ_TOKEN_FILE: &str = "web-access-read-token";
 /// File name of the admin token. It exists only while admin access is on.
 pub const ADMIN_TOKEN_FILE: &str = "web-access-admin-token";
 
-/// Shortest token [`Token::parse`] accepts. 32 characters carry at least 128
-/// bits of a random secret even in hex (4 bits a character). A minted token is
-/// 43 characters; a 64-character hex digest also passes.
+/// Shortest token [`Token::parse`] accepts. Even in hex (4 bits a character),
+/// 32 characters carry at least 128 bits of a random secret. A minted token is
+/// 43 characters. A 64-character hex digest also passes.
 pub const MIN_TOKEN_LEN: usize = 32;
 
 /// The token file inside `dir`.
@@ -30,9 +30,10 @@ pub fn token_path(dir: &Path) -> PathBuf {
 
 /// A secret that grants access. Built only by [`Token::mint`] or
 /// [`Token::parse`], so it is always at least [`MIN_TOKEN_LEN`] characters of
-/// `A-Z a-z 0-9 - _`: safe as written in a URL query, a cookie and a header.
+/// `A-Z a-z 0-9 - _`. It is safe as written in a URL query, a cookie and a
+/// header.
 ///
-/// `Display` and [`Token::as_str`] give the secret; `Debug` leaves it out.
+/// `Display` and [`Token::as_str`] give the secret. `Debug` hides it.
 /// Equality compares in constant time.
 #[derive(Clone)]
 pub struct Token(String);
@@ -40,7 +41,7 @@ pub struct Token(String);
 impl Token {
     /// A fresh random token: 32 bytes from the OS random source, base64url
     /// without padding (43 characters). `Token::mint()?.to_string()` gives the
-    /// text; `cargo run -p web-access --example mint_token` prints one.
+    /// text. `cargo run -p web-access --example mint_token` prints one.
     ///
     /// # Errors
     ///
@@ -51,7 +52,8 @@ impl Token {
         Ok(Self(URL_SAFE_NO_PAD.encode(bytes)))
     }
 
-    /// `text` as a token. It is taken as written: no trimming, no decoding.
+    /// `text` as a token. It is taken as written, with no trimming and no
+    /// decoding.
     ///
     /// # Errors
     ///
@@ -105,8 +107,8 @@ pub enum TokenError {
     /// A string given to [`Token::parse`] is not a token.
     #[error("not a token: {}", RULE)]
     Malformed,
-    /// A token file holds something other than a token (it was edited by
-    /// hand, or emptied). It is left as it is.
+    /// A token file holds something other than a token, for example because
+    /// it was edited by hand or emptied. The file is left as it is.
     #[error(
         "token file {} does not hold a token ({}); delete it and a new one is minted on the next start",
         path.display(),
@@ -131,14 +133,15 @@ pub enum TokenError {
     Io(#[from] io::Error),
 }
 
-/// The override `value` read from `name` (an environment variable, say):
-/// `None` when it is unset or empty, else the token it holds, trimmed.
-/// The caller passes the value, so tests need not touch the environment.
+/// Parse an override `value` read from `name`, such as an environment
+/// variable. `None` when it is unset or empty. Otherwise the trimmed value
+/// must be a token. The caller passes the value, so tests need not touch the
+/// environment.
 ///
 /// # Errors
 ///
-/// [`TokenError::BadOverride`] naming `name` when the value is set but is not
-/// a token, whitespace-only included.
+/// [`TokenError::BadOverride`], naming `name`, when the value is set but is
+/// not a token. A whitespace-only value is not a token.
 pub fn parse_override(name: &str, value: Option<&str>) -> Result<Option<Token>, TokenError> {
     match value {
         None | Some("") => Ok(None),
@@ -154,8 +157,8 @@ pub fn parse_override(name: &str, value: Option<&str>) -> Result<Option<Token>, 
 ///
 /// # Errors
 ///
-/// [`TokenError::BadOverride`] when the variable is set but is not a token
-/// (not valid UTF-8 included).
+/// [`TokenError::BadOverride`] when the variable is set but is not a token.
+/// A value that is not valid UTF-8 is not a token.
 pub fn override_from_env(name: &str) -> Result<Option<Token>, TokenError> {
     match std::env::var_os(name) {
         None => Ok(None),
@@ -220,14 +223,14 @@ fn persist(dir: &Path, file_name: &str, token: &Token) -> io::Result<()> {
     Ok(())
 }
 
-/// The persisted token in `dir`, or a freshly minted one written there when
-/// the file does not exist. An existing file is chmod'ed to 0600 on Unix.
+/// The token saved in `dir`. When the file does not exist, a new token is
+/// minted and written there. On Unix an existing file is set to mode 0600.
 ///
 /// # Errors
 ///
-/// [`TokenError::BadFile`] when the file holds anything but a token
-/// (surrounding whitespace aside), an empty file included, or bytes that are
-/// not UTF-8; the file is left as it is. [`TokenError::Io`] when the
+/// [`TokenError::BadFile`] when the file holds anything but a token. Whitespace
+/// around the token is ignored. An empty file and bytes that are not UTF-8 are
+/// both errors. The file is left as it is. [`TokenError::Io`] when the
 /// directory or file cannot be created, read or written.
 pub fn load_or_mint(dir: &Path) -> Result<Token, TokenError> {
     load_or_mint_named(dir, TOKEN_FILE)
@@ -252,18 +255,18 @@ pub fn load_or_mint_named(dir: &Path, file_name: &str) -> Result<Token, TokenErr
                 // Tighten a file left looser by an older version or another tool.
                 std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
             }
-            // The operator wrote the file, so a bad one is reported, not
-            // replaced: links may already carry what they meant to put there.
+            // Report a bad file rather than replace it. Links may already
+            // carry the token the operator meant to put there.
             return Token::parse(existing.trim()).map_err(|_| TokenError::BadFile { path });
         }
         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-        // `InvalidData` is `read_to_string` rejecting non-UTF-8 bytes: bad
-        // content, so `BadFile` like any other malformed file.
+        // `InvalidData` means `read_to_string` found non-UTF-8 bytes. That is
+        // bad content, so it is `BadFile` like any other malformed file.
         Err(e) if e.kind() == io::ErrorKind::InvalidData => {
             return Err(TokenError::BadFile { path });
         }
-        // Unreadable (permissions, a directory): report it rather than
-        // overwrite a token that links may already carry.
+        // Unreadable, for example from permissions or a directory. Report it
+        // rather than overwrite a token that links may already carry.
         Err(e) => return Err(e.into()),
     }
     let token = Token::mint()?;
@@ -271,8 +274,8 @@ pub fn load_or_mint_named(dir: &Path, file_name: &str) -> Result<Token, TokenErr
     Ok(token)
 }
 
-/// `env_override` when set (nothing is written for it), else
-/// [`load_or_mint`]. Read the override with [`override_from_env`] or
+/// `env_override` when set, else [`load_or_mint`]. Nothing is written for an
+/// override. Read the override with [`override_from_env`] or
 /// [`parse_override`].
 ///
 /// # Errors
@@ -401,8 +404,8 @@ mod tests {
         assert!(Token::parse(&"a".repeat(MIN_TOKEN_LEN)).is_ok());
     }
 
-    /// Short tokens and every character that could collide once encoded,
-    /// trimmed or split are refused, and the error never holds the text.
+    /// Short tokens are refused, and so is every character that could collide
+    /// once encoded, trimmed or split. The error never holds the text.
     #[test]
     fn malformed_tokens_are_refused_without_their_text() {
         let base = "abcdefghijklmnopqrstuvwxyz012345678";
@@ -564,8 +567,8 @@ mod tests {
     }
 
     /// A file that does not hold a token (empty, whitespace only, or edited
-    /// by hand) is an error naming the file, never holding its text, and the
-    /// file is left as it was.
+    /// by hand) is an error. The error names the file and never holds its
+    /// text. The file is left as it was.
     #[test]
     fn a_bad_token_file_is_an_error_and_left_alone() {
         let short = "x".repeat(MIN_TOKEN_LEN - 1);

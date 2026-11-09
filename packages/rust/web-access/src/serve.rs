@@ -22,25 +22,25 @@ use crate::interfaces::interfaces;
 use crate::permissions::RouteRule;
 use crate::token::Token;
 
-/// How long `stop` waits for in-flight requests (a stream may never end on its
-/// own) before it closes their connections.
+/// How long `stop` waits for in-flight requests before it closes their
+/// connections. A stream may never end on its own.
 const GRACE: Duration = Duration::from_secs(5);
 
 /// How long `stop` waits for the cut connections to wind down before it
 /// aborts the server tasks.
 const CUT_GRACE: Duration = Duration::from_secs(1);
 
-/// How long the interface list read by the guard's live-host check is reused.
-/// It runs before any token check, so the cache bounds what a peer sending
-/// unknown `Host` values can cost; an address gained later is admitted within
-/// this time.
+/// How long the guard reuses the interface list it reads for a `Host` that is
+/// not on the allowlist. The `Host` check runs before any token check, so the
+/// cache limits what a peer sending unknown `Host` values can cost. An address
+/// the machine gains later is admitted within this time.
 const HOST_IPS_TTL: Duration = Duration::from_secs(2);
 
 /// A [`TcpListener`] whose connections all fail once `cut` turns true.
 ///
-/// axum runs each connection in a task of its own, so aborting the serve task
-/// leaves open streams (SSE, an upgraded WebSocket) running on the old guard.
-/// Failing their reads and writes is what ends them.
+/// axum runs each connection in its own task. Aborting the serve task leaves
+/// open streams (SSE, an upgraded WebSocket) running on the old guard. Failing
+/// their reads and writes is what ends them.
 struct CutListener {
     inner: TcpListener,
     cut: watch::Receiver<bool>,
@@ -67,8 +67,8 @@ impl Listener for CutListener {
 
 type CutSignal = Pin<Box<dyn Future<Output = ()> + Send>>;
 
-/// Ready once `cut` turns true. A dropped handle closes the channel; that is
-/// not a cut.
+/// Ready once `cut` turns true. A dropped handle closes the channel, and that
+/// is not a cut.
 fn cut_signal(mut cut: watch::Receiver<bool>) -> CutSignal {
     Box::pin(async move {
         if cut.wait_for(|c| *c).await.is_err() {
@@ -79,18 +79,18 @@ fn cut_signal(mut cut: watch::Receiver<bool>) -> CutSignal {
 
 /// One connection of a [`CutListener`].
 ///
-/// Reads and writes poll separate signals, so each keeps its own waker: a
-/// connection split across a reader task and a writer task wakes both.
+/// Reads and writes poll separate signals, so each keeps its own waker. A
+/// connection split into a reader task and a writer task then wakes both.
 struct CutStream {
     io: TcpStream,
-    /// `None` once fired: a finished future must not be polled again.
+    /// `None` once fired, because a finished future must not be polled again.
     read_cut: Option<CutSignal>,
     write_cut: Option<CutSignal>,
 }
 
-/// An error once `signal` has fired, and on every call after. Polling
-/// registers the waker, so a direction idle on a pending body is woken to see
-/// it.
+/// An error once `signal` has fired, and on every call after. Polling also
+/// registers the waker, so a read or write that is waiting is woken to see the
+/// cut.
 fn check(signal: &mut Option<CutSignal>, cx: &mut Context<'_>) -> io::Result<()> {
     let fired = match signal {
         None => true,
@@ -170,7 +170,7 @@ pub enum ServeError {
     },
 }
 
-/// `http://<ip>:<port>/?token=<token>`; an IPv6 address is bracketed. A
+/// `http://<ip>:<port>/?token=<token>`. An IPv6 address is bracketed. A
 /// [`Token`] needs no escaping, so the link carries it as written.
 pub fn share_url(addr: SocketAddr, token: &Token) -> String {
     format!("http://{addr}/?token={token}")
@@ -210,16 +210,16 @@ impl ServerHandle {
             .collect()
     }
 
-    /// Stop accepting new connections and let in-flight requests finish (up
-    /// to a grace period). Then every connection still open, such as a stream
-    /// or an upgraded WebSocket, fails all further reads and writes, and the
+    /// Stop accepting new connections and let in-flight requests finish, up
+    /// to a grace period. Then every connection still open, such as a stream
+    /// or an upgraded WebSocket, fails all further reads and writes. The
     /// ports are released. A stream is closed before `stop` returns. An
-    /// upgraded connection belongs to its handler and closes once the handler
-    /// sees the error; a handler waiting on it is woken to see it.
+    /// upgraded connection belongs to its handler. It closes once the handler
+    /// sees the error, and a handler waiting on it is woken to see it.
     pub async fn stop(mut self) {
         let _ = self.stop_tx.send(true);
-        // One grace period for all listeners, not one each; the same for the
-        // cut below.
+        // One grace period for all listeners, not one each. The same goes
+        // for the cut below.
         let deadline = tokio::time::Instant::now() + GRACE;
         for task in &mut self.tasks {
             let _ = tokio::time::timeout_at(deadline, task).await;
@@ -302,7 +302,7 @@ pub async fn serve_opts(
     .await
 }
 
-/// `ips`, called at most once per `ttl`; callers in between get the last list.
+/// `ips`, called at most once per `ttl`. Callers in between get the last list.
 fn cached_ips(ips: HostIps, ttl: Duration) -> HostIps {
     let cache = IpCache {
         ips,
@@ -319,8 +319,8 @@ struct IpCache {
 }
 
 impl IpCache {
-    /// The lock is held while the list is read, so concurrent misses read it
-    /// once.
+    /// The lock is held while the list is read, so callers that miss the
+    /// cache at the same time read it only once.
     fn get(&self, now: Instant) -> Vec<IpAddr> {
         let mut last = self.last.lock().unwrap_or_else(PoisonError::into_inner);
         match &*last {
@@ -445,8 +445,9 @@ async fn serve_with_ips(
                 inner: listener,
                 cut: cut_rx.clone(),
             }
-            // A no-op tap: axum gives `ConnectInfo<SocketAddr>` to a tapped
-            // listener of any type, but to an untapped one only for TcpListener.
+            // A no-op tap. axum gives `ConnectInfo<SocketAddr>` to a tapped
+            // listener of any type, but to an untapped one only when it is a
+            // TcpListener.
             .tap_io(|_| {});
             tokio::spawn(async move {
                 let shutdown = async move {

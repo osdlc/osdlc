@@ -9,60 +9,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- `token::Token`: a token that is always well formed. It is built only by
-  `Token::mint()` (32 random bytes, base64url) or `Token::parse`, which accepts
-  at least `token::MIN_TOKEN_LEN` (32) characters of `A-Z a-z 0-9 - _` and
-  nothing else, so minted tokens and 64-character hex digests pass. `Display`
-  and `as_str` give the text, `Debug` leaves it out, and equality compares in
-  constant time.
-- `token::TokenError`, which never holds token text: `Malformed`, `BadFile`
-  (names the file), `BadOverride` (names the override) and `Io`.
-- `token::override_from_env` and `token::parse_override`, which read an
+- `token::Token`, a type that always holds a well-formed token. Only
+  `Token::mint()` and `Token::parse` build one. `mint` gives 32 random bytes in
+  base64url. `parse` accepts at least `token::MIN_TOKEN_LEN` (32) characters of
+  `A-Z a-z 0-9 - _` and nothing else. Minted tokens and 64-character hex
+  digests both pass. `Display` and `as_str` give the text. `Debug` hides it.
+  Equality compares in constant time.
+- `token::TokenError`. It never holds token text. Its variants are
+  `Malformed`, `BadFile` (names the file), `BadOverride` (names the override)
+  and `Io`.
+- `token::override_from_env` and `token::parse_override`. They read an
   override and refuse one that is set but is not a token.
-- The `mint_token` example prints a new token.
+- The `mint_token` example, which prints a new token.
 
 ### Changed
 
-- Breaking: tokens must be well formed; hand-set tokens of any other form are
+- Breaking: tokens must be well formed. A hand-set token of any other form is
   refused. Only a `Token` can join a `Tokens` set: `Tokens::with`,
   `Tokens::with_label` and `Tokens::full_only` take a `Token`, and
   `Tokens::share_token` returns one. A token file or override that holds
-  anything else, an empty or whitespace-only file included, is an error naming
-  the file or variable, and `SharingRuntime` does not start; the file is left
-  as it is. Before, an empty file was minted over, and any text was a token.
+  anything else is an error that names the file or variable. This includes an
+  empty or whitespace-only file. `SharingRuntime` does not start, and the file
+  is left as it is. Before, a new token was minted over an empty file, and any
+  text was accepted as a token.
 - Breaking: the `token` file helpers (`load_or_mint*`, `resolve*`,
-  `rotate*`) return `Result<Token, TokenError>`, and `resolve` and
+  `rotate*`) return `Result<Token, TokenError>`. `resolve` and
   `SharingRuntime::with_full_token_override` take an `Option<Token>`.
   `RuntimeError::Token` holds a `TokenError`. `share_url` and
   `ServerHandle::share_urls_for` take a `&Token`.
-- Breaking: `token::mint` is removed; use `Token::mint`.
+- Breaking: `token::mint` is removed. Use `Token::mint`.
 - Breaking: `Tokens::with` and `Tokens::with_label` return
-  `Result<Tokens, TokensError>`. They refuse a token already in the set with a
-  different grant, with `TokensError::Duplicate`: the guard gives a token its
-  highest grant, so matching read and admin files made the Read link grant
-  Admin. The same token with the same grant is ignored. Chain with `?` or
-  `and_then`; `Tokens::full_only` cannot fail.
-- A share link carries the token as written, and a `?token=` or cookie value
-  is compared as written. A token needs no escaping, so nothing is
+  `Result<Tokens, TokensError>`. They refuse a token that is already in the set
+  with a different grant (`TokensError::Duplicate`). The guard gives a token
+  its highest grant, so matching read and admin files made the Read link grant
+  Admin. The same token with the same grant is ignored. Chain calls with `?` or
+  `and_then`. `Tokens::full_only` cannot fail.
+- A share link carries the token as written. A `?token=` or cookie value is
+  compared as written. A token never needs escaping, so nothing is
   percent-encoded or decoded any more.
 
 ### Fixed
 
 - A token file whose bytes are not UTF-8 is now `TokenError::BadFile`, like
-  any other malformed file. Before, it was `TokenError::Io`, so a caller that
-  falls back to an ephemeral token on `Io` did so for a bad file.
-- `ShareUrls` and `WebAccessStatus` no longer print the token in `Debug`: each
+  any other malformed file. It used to be `TokenError::Io`, so a caller that
+  falls back to a one-process token on `Io` did so for a bad file.
+- `ShareUrls` and `WebAccessStatus` no longer print the token in `Debug`. Each
   share link shows `token=<redacted>`.
 - `ServerHandle::stop` now ends connections that are still open, such as a
-  stream or an upgraded WebSocket, after the grace period for in-flight
-  requests: every further read and write on them fails. Before, they kept
-  running on the old guard after `stop` returned, so turning sharing off or
-  rotating a token through `SharingRuntime` did not end them.
-- With `Listen::AllInterfaces`, the guard admits an interface address the
-  machine gains after the server started, on the bound port. Before, it
-  answered 421 until sharing was restarted. `serve` rereads the interface
-  list at most every two seconds. Share links still list the addresses present
-  at start.
+  stream or an upgraded WebSocket. After the grace period for in-flight
+  requests, every further read and write on them fails. They used to keep
+  running on the old guard after `stop` returned. So turning sharing off, or
+  rotating a token through `SharingRuntime`, did not end them.
+- With `Listen::AllInterfaces`, the guard now serves an interface address that
+  the machine gains after the server started, on the bound port. It used to
+  answer 421 until sharing was restarted. `serve` rereads the interface list at
+  most every two seconds. Share links still list only the addresses present at
+  start.
 
 ## [0.4.1] - 2026-11-07
 
