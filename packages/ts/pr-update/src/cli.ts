@@ -334,9 +334,13 @@ function runEnv(
       override: layers.merged.code_host.override,
     }),
     cfg,
-    ports: standalonePorts(cfg, projectRoot),
+    ports: standalonePorts(cfg, projectRoot, ctx.signal),
+    ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
   }
 }
+
+/** Exit status when SIGINT or SIGTERM stopped the run; matches agent-call. */
+const EXIT_INTERRUPTED = 130
 
 /** Check the run's tools, remote and code host before any PR is listed. */
 function checkStart(
@@ -603,6 +607,7 @@ async function runUpdateCommand(
     })),
   })
   if (listingFailure !== null) return listingFailure
+  if (ctx.signal?.aborted === true) return EXIT_INTERRUPTED
   return out.counts.conflict > 0 || out.counts.failed > 0 ? EXIT.error : EXIT.ok
 }
 

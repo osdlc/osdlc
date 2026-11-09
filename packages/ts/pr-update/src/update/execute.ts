@@ -411,8 +411,7 @@ async function integrateAndPush(
       const baseSha = git.resolveRef(base)
       outcome = git.merge(base, {
         message:
-          mergeTitle(target) +
-          (baseSha === null ? '' : `\n\nBase: ${target.base} at ${baseSha}`),
+          mergeTitle(target) + (baseSha === null ? '' : `\n\nBase: ${target.base} at ${baseSha}`),
       })
     } catch (e) {
       git.try.mergeAbort()
@@ -812,7 +811,12 @@ export async function updateAll(
   targets: readonly UpdateTarget[],
   settings: UpdateSettings,
   runVerb: RunVerb,
-  opts: { apply: boolean; worktreeRoot: string; onResult?: (r: UpdateResult) => void },
+  opts: {
+    apply: boolean
+    worktreeRoot: string
+    onResult?: (r: UpdateResult) => void
+    signal?: AbortSignal
+  },
 ): Promise<UpdateResult[]> {
   const results: UpdateResult[] = []
   if (targets.length === 0) return results
@@ -823,6 +827,7 @@ export async function updateAll(
   const wt = git.at(opts.worktreeRoot)
   try {
     for (const target of targets) {
+      if (opts.signal?.aborted === true) break
       const outcome = await updateOne(wt, target, settings, runVerb, {
         apply: opts.apply,
         worktree: opts.worktreeRoot,

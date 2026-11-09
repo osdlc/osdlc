@@ -139,3 +139,32 @@ describe('agentRepair result mapping', () => {
     expect(res.note).toContain('cannot plan')
   })
 })
+
+describe('agentRepair interrupt signal', () => {
+  const ok = { ok: true, text: 'done', exitCode: 0, durationMs: 1 } as AgentResult
+
+  test('passes the signal to the agent call', async () => {
+    const ctl = new AbortController()
+    let seen: AbortSignal | undefined
+    const fake: CallAgent = async (_a, _s, options) => {
+      seen = options?.signal
+      return ok
+    }
+    await agentRepair('claude', { signal: ctl.signal }, fake)(request())
+    expect(seen).toBe(ctl.signal)
+  })
+
+  test('an already aborted signal starts no agent', async () => {
+    const ctl = new AbortController()
+    ctl.abort()
+    let called = false
+    const fake: CallAgent = async () => {
+      called = true
+      return ok
+    }
+    const res = await agentRepair('claude', { signal: ctl.signal }, fake)(request())
+    expect(called).toBe(false)
+    expect(res.ok).toBe(false)
+    expect(res.note).toContain('interrupted')
+  })
+})

@@ -62,7 +62,11 @@ export function commandRepair(command: string, timeoutSeconds: number | null = n
  * With `projectRoot`, failed updates are recorded in
  * `<projectRoot>/.pr-update/attempts/`.
  */
-export function standalonePorts(cfg?: PrUpdateStandaloneConfig, projectRoot?: string): Ports {
+export function standalonePorts(
+  cfg?: PrUpdateStandaloneConfig,
+  projectRoot?: string,
+  signal?: AbortSignal,
+): Ports {
   const command = cfg?.repair.command ?? null
   const agent = cfg?.repair.agent ?? null
   const timeout = cfg?.repair.timeout_seconds ?? null
@@ -92,6 +96,7 @@ export function standalonePorts(cfg?: PrUpdateStandaloneConfig, projectRoot?: st
           repair: agentRepair(agent, {
             model: cfg?.repair.model ?? null,
             timeoutSeconds: timeout,
+            signal,
           }),
         }
       : command !== null

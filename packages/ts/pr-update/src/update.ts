@@ -313,6 +313,8 @@ export type UpdateOutput = z.infer<typeof output>
 /** Everything a run needs beyond the args and the config. */
 export interface UpdateEnv extends SurveyEnv {
   ports: Ports
+  /** Aborted on interrupt: the update starts no further PR. */
+  signal?: AbortSignal | undefined
 }
 
 /**
@@ -425,6 +427,7 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
       ...(await updateAll(git, group, settings, env.ports.runVerb, {
         apply: writes,
         worktreeRoot,
+        ...(env.signal === undefined ? {} : { signal: env.signal }),
       })),
     )
   }
