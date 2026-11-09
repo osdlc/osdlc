@@ -13,9 +13,9 @@
       "id": "r1-1",
       "round": 1,
       "path": "scripts/conformance.ts",
-      "line": 251,
+      "line": 249,
       "title": "level now but unlevel after pending changesets passes on main",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/732#discussion_r4509032459",
       "status": "fixed",
       "reason": null,
       "fixedIn": "70946ec026b4844fa70d96b6bfd676ed7794079c"
@@ -24,9 +24,9 @@
       "id": "r1-2",
       "round": 1,
       "path": "scripts/conformance.ts",
-      "line": 230,
+      "line": 227,
       "title": "frontmatter regex drops lines with a trailing YAML comment",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/732#discussion_r4509032462",
       "status": "fixed",
       "reason": null,
       "fixedIn": "70946ec026b4844fa70d96b6bfd676ed7794079c"
@@ -35,9 +35,9 @@
       "id": "r1-3",
       "round": 1,
       "path": "scripts/conformance.ts",
-      "line": 209,
+      "line": 210,
       "title": "bumpVersion mishandles prerelease versions",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/732#discussion_r4509032470",
       "status": "fixed",
       "reason": null,
       "fixedIn": "70946ec026b4844fa70d96b6bfd676ed7794079c"
@@ -45,13 +45,13 @@
     {
       "id": "r1-4",
       "round": 1,
-      "path": "scripts/conformance.test.ts",
+      "path": null,
       "line": null,
       "title": "no tests for patch, major on 0.x, unrelated, empty or overshoot changesets",
-      "comment": null,
-      "status": "fixed",
+      "comment": "https://github.com/osdlc/osdlc/pull/732#pullrequestreview-5821133170",
+      "status": "open",
       "reason": null,
-      "fixedIn": "70946ec026b4844fa70d96b6bfd676ed7794079c"
+      "fixedIn": null
     }
   ]
 }
