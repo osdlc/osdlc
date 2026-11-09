@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest in `@osdlc/conformance`.
+Thanks for your interest in `@osdlc/conformance-suites`.
 
 ## Issues
 
@@ -13,7 +13,7 @@ privately. See [SECURITY.md](./SECURITY.md).
 ## Pull requests
 
 This package lives in [osdlc/osdlc](https://github.com/osdlc/osdlc) under
-`packages/ts/conformance`. Open pull requests there. They are reviewed and
+`packages/ts/conformance-suites`. Open pull requests there. They are reviewed and
 merged there.
 
 ## Running the tests
@@ -25,8 +25,8 @@ their `dist/`.
 
 ```sh
 pnpm install
-pnpm --filter @osdlc/conformance... run build
-cd packages/ts/conformance
+pnpm --filter @osdlc/conformance-suites... run build
+cd packages/ts/conformance-suites
 pnpm test
 pnpm run smoke
 pnpm run typecheck

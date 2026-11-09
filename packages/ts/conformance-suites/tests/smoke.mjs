@@ -14,7 +14,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import { bumpVersion, checkRepo, main, registryProblems } from '@osdlc/conformance'
+import { bumpVersion, checkRepo, main, registryProblems } from '@osdlc/conformance-suites'
 
 assert.equal(bumpVersion('0.3.2', 'minor'), '0.4.0')
 assert.deepEqual(registryProblems({ Bad: {} }).slice(0, 1), [
@@ -62,4 +62,4 @@ try {
   rmSync(root, { recursive: true, force: true })
 }
 
-console.log('smoke: @osdlc/conformance ok')
+console.log('smoke: @osdlc/conformance-suites ok')

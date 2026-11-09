@@ -149,9 +149,9 @@ version.
 
 ## Enforcement
 
-The `conformance` command from
-[`@osdlc/conformance`](../../../packages/ts/conformance/README.md), run by
-`pnpm run check:conformance` (`conformance check`), checks:
+The `conformance-suites` command from
+[`@osdlc/conformance-suites`](../../../packages/ts/conformance-suites/README.md), run by
+`pnpm run check:conformance` (`conformance-suites check`), checks:
 
 - every family in `families.json` names its reference among its
   implementations, the generator command above, and at least one
@@ -167,7 +167,7 @@ The `conformance` command from
   is listed for that family, and no library's tests read the other
   language's fixtures directly.
 
-`conformance check --regenerate` also runs each family's generator
+`conformance-suites check --regenerate` also runs each family's generator
 and fails if a suite changes, which catches a change to the reference whose
 expected values were not regenerated. It first builds each TypeScript
 reference and the workspace libraries it depends on, since a generator
@@ -195,7 +195,7 @@ The check fails when an entry in either list is no longer needed; a
 pending changesets.
 
 A third list, `skipScan`, names a library whose tests are not scanned for
-suite paths at all, with the reason. `@osdlc/conformance` is on it: its own
+suite paths at all, with the reason. `@osdlc/conformance-suites` is on it: its own
 tests hold suite paths as test data.
 
 ## Migration

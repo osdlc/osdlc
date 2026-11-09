@@ -10,6 +10,6 @@
     "packages/rust/markdown-contract"
   ],
   "skipScan": {
-    "packages/ts/conformance": "the checker's own tests hold suite paths and fixture paths as test data"
+    "packages/ts/conformance-suites": "the checker's own tests hold suite paths and fixture paths as test data"
   }
 }

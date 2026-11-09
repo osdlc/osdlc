@@ -1,4 +1,4 @@
-# @osdlc/conformance
+# @osdlc/conformance-suites
 
 Checks the conformance suites of library families. A family is a set of
 libraries, one per language, that do the same job, such as a Rust crate and
@@ -14,9 +14,9 @@ The rules are the standard
 ## Install
 
 ```sh
-npm install --save-dev @osdlc/conformance
+npm install --save-dev @osdlc/conformance-suites
 # or
-pnpm add -D @osdlc/conformance
+pnpm add -D @osdlc/conformance-suites
 ```
 
 Node 22 or later. ESM only.
@@ -54,10 +54,10 @@ packages/rust/<crate>/ Rust implementations, in a Cargo workspace at packages/ru
 ## The command
 
 ```sh
-conformance check                         # check every family
-conformance check --regenerate            # also run each generator; fail if a suite changed
-conformance check --regenerate --reference ts
-conformance write --reference ts          # run the generators and keep what they write
+conformance-suites check                         # check every family
+conformance-suites check --regenerate            # also run each generator; fail if a suite changed
+conformance-suites check --regenerate --reference ts
+conformance-suites write --reference ts          # run the generators and keep what they write
 ```
 
 - `check` checks the registry, each suite's format, that every
@@ -89,7 +89,7 @@ command line.
   "libraries": { "ts": "packages/ts", "rust": "packages/rust" },
   "catchingUp": { "tiered-dirs": "the crate reaches 0.5.0 with the realign work" },
   "unmigrated": ["packages/ts/gfm-table"],
-  "skipScan": { "packages/ts/conformance": "its tests hold suite paths as test data" }
+  "skipScan": { "packages/ts/conformance-suites": "its tests hold suite paths as test data" }
 }
 ```
 
@@ -106,7 +106,7 @@ command line.
 ## From code
 
 ```ts
-import { checkRepo, regenerate } from '@osdlc/conformance'
+import { checkRepo, regenerate } from '@osdlc/conformance-suites'
 
 const problems = checkRepo(process.cwd())
 for (const p of problems) console.error(p)
