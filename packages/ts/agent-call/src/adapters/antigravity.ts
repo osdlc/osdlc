@@ -22,11 +22,8 @@ import {
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
-// knowledge: missing for antigravity (no value at moderate strength or better), so the
-// argv, binary and environment constants below stay (tests/knowledge-facts.test.ts):
-// cli/binary cli/output-format cli/effort cli/continue cli/session-id
-// cli/session-persistence permissions/modes cli/context-dirs
-// instructions/system-prompt-flag mcp/strict-config
+// The binary and flags below are asserted against the harness knowledge file in
+// tests/knowledge-facts.test.ts; policy (which mode, which default) stays here.
 
 /** Options for {@link antigravityAdapter}. */
 export interface AntigravityAdapterOptions extends CommandOptions {}
@@ -94,6 +91,12 @@ function planAntigravity(command: readonly string[], spec: AgentCallSpec): Plann
 
   const permissions = spec.permissions
   applyPermissionMode(argv, notes, permissions?.mode, {
+    edits: {
+      argv: ['--mode', 'accept-edits'],
+      support: 'native',
+      detail:
+        '--mode accept-edits (edits inside the workspace; terminal commands still need approval)',
+    },
     'read-only': {
       argv: ['--sandbox'],
       support: 'approximated',
@@ -111,14 +114,6 @@ function planAntigravity(command: readonly string[], spec: AgentCallSpec): Plann
       detail: '--dangerously-skip-permissions',
     },
   })
-  if (permissions?.mode === 'edits') {
-    note(
-      notes,
-      'permissions.mode',
-      'dropped',
-      'antigravity documents no edits-only approval mode; unapproved tool calls are denied headless',
-    )
-  }
   if ((permissions?.allowTools ?? []).length > 0) {
     note(
       notes,
@@ -136,8 +131,10 @@ function planAntigravity(command: readonly string[], spec: AgentCallSpec): Plann
     )
   }
 
-  if ((spec.context?.dirs ?? []).length > 0) {
-    note(notes, 'context.dirs', 'dropped', 'antigravity documents no extra-directory flag')
+  const dirs = spec.context?.dirs ?? []
+  if (dirs.length > 0) {
+    for (const dir of dirs) argv.push('--add-dir', dir)
+    note(notes, 'context.dirs', 'native', '--add-dir (adds the directory to the workspace)')
   }
 
   if (spec.output?.schema !== undefined) {

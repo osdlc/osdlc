@@ -368,17 +368,17 @@ that did not map one to one:
 |---|---|---|---|---|
 | `prompt` | stdin | stdin (`-`) | `-p <prompt>` | positional |
 | `model` | `--model` | `--model` | `--model` | `--model` (provider/model) |
-| `effort` (`none` to `max`, least to most reasoning) | `--effort` (`none`, `minimal` → `low`) | `model_reasoning_effort` | `--effort` (`none`, `minimal` → `low`; `xhigh`, `max` → `high`) | `--variant` |
+| `effort` (`none` to `max`, least to most reasoning) | `--effort` (`none`, `minimal` → `low`) | `model_reasoning_effort` | `--effort` (`none`, `minimal` → `low`; `xhigh`, `max` → `high`) | `--variant` (2.x with `version`: `#variant` on `--model`) |
 | `systemPrompt` | `--system-prompt` | prompt-emulated | prompt-emulated | prompt-emulated |
 | `appendSystemPrompt` | `--append-system-prompt` | prompt-emulated | prompt-emulated | prompt-emulated |
 | `permissions.mode: read-only` | `--permission-mode plan` (approximated) | `--sandbox read-only` | `--sandbox` (approximated) | `OPENCODE_PERMISSION` deny map |
-| `permissions.mode: edits` | `--permission-mode acceptEdits` | `--sandbox workspace-write` | dropped | `OPENCODE_PERMISSION` |
+| `permissions.mode: edits` | `--permission-mode acceptEdits` | `--sandbox workspace-write` | `--mode accept-edits` | `OPENCODE_PERMISSION` |
 | `permissions.mode: full-auto` | acceptEdits + allowed Bash/Web (approximated) | `--sandbox workspace-write` | `--dangerously-skip-permissions` | `OPENCODE_PERMISSION` allow map |
 | `permissions.mode: bypass` | `--dangerously-skip-permissions` | `--dangerously-bypass-approvals-and-sandbox` | `--dangerously-skip-permissions` | `OPENCODE_PERMISSION` allow map |
 | `permissions.allowTools` | `--allowedTools` | dropped | dropped | dropped |
 | `permissions.denyTools` | `--disallowedTools` | dropped | dropped | dropped |
 | `context.files` | prompt preamble | prompt preamble | `@path` in prompt | `--file` |
-| `context.dirs` | `--add-dir` | `--add-dir` | dropped | dropped |
+| `context.dirs` | `--add-dir` | `--add-dir` | `--add-dir` | dropped |
 | `context.text` | prompt preamble | prompt preamble | prompt preamble | prompt preamble |
 | `output.format` | `text\|json\|stream-json` | `--json` events | `text\|json\|stream-json` | `--format json` events |
 | `output.schema` | `--json-schema` | `--output-schema` file | `--json-schema` | prompt-emulated |
@@ -409,7 +409,7 @@ The same rows for the other six agents:
 | `permissions.allowTools` | `--allow-tool` | `--tools` (approximated) | `--allowed-tools` | `--add-tools` (approximated) | `.cursor/cli.json` rules (approximated) | dropped |
 | `permissions.denyTools` | `--deny-tool` | `--exclude-tools` | `--exclude-tools` | `--remove-tools` (approximated) | `.cursor/cli.json` rules (approximated) | dropped |
 | `context.files` | prompt preamble | `@path` arguments | `@path` in prompt | prompt preamble | prompt preamble | prompt preamble |
-| `context.dirs` | `--add-dir` | dropped | `--include-directories` | dropped | `--add-dir` | dropped |
+| `context.dirs` | `--add-dir` | dropped | `--include-directories` | dropped | `--add-dir` | `--add-dir` |
 | `context.text` | prompt preamble | prompt preamble | prompt preamble | prompt preamble | prompt preamble | prompt preamble |
 | `output.format` | `--output-format json` events; text is `-s` | `--mode json` events; text is `-p` | `text\|json\|stream-json` | `text\|json\|stream-json` | `text\|json\|stream-json` | `--json` events |
 | `output.schema` | prompt-emulated | prompt-emulated | `--json-schema` | prompt-emulated | prompt-emulated | prompt-emulated |

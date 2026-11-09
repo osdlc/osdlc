@@ -76,6 +76,28 @@ describe('opencode plan', () => {
   })
 })
 
+describe('opencode 2.x effort', () => {
+  const v2 = opencodeAdapter({ version: '2.2.6' })
+
+  test('effort is a #variant suffix on --model, with no --variant flag', () => {
+    const planned = v2.plan({ prompt: 'x', model: 'anthropic/claude-opus-4-8', effort: 'high' })
+    expect(planned.argv).not.toContain('--variant')
+    expect(planned.argv.join(' ')).toContain('--model anthropic/claude-opus-4-8#high')
+    expect(planned.notes.find((n) => n.field === 'effort')?.support).toBe('approximated')
+  })
+
+  test('effort without a model is dropped', () => {
+    const planned = v2.plan({ prompt: 'x', effort: 'high' })
+    expect(planned.argv).not.toContain('--variant')
+    expect(planned.notes.find((n) => n.field === 'effort')?.support).toBe('dropped')
+  })
+
+  test('a 1.x version keeps --variant', () => {
+    const planned = opencodeAdapter({ version: '1.17.12' }).plan({ prompt: 'x', effort: 'high' })
+    expect(planned.argv.join(' ')).toContain('--variant high')
+  })
+})
+
 describe('opencode parse', () => {
   test('aggregates text parts from json events', () => {
     const lines = [
