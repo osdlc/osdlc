@@ -568,6 +568,12 @@ export function main(argv: string[]): number {
   const verdict = accepted(labels, process.env["PERF_BODY"] ?? "");
   let summary = text;
   let code = 0;
+  const unconfirmed = rows.filter((r) => r.status === "unconfirmed").length;
+  if (unconfirmed > 0) {
+    summary += `\n\n${unconfirmed} benchmark(s) were over the threshold once and not again; treated as runner noise.`;
+    console.log(summary.slice(text.length));
+  }
+  const shown = summary.length;
   if (slower.length > 0) {
     if (verdict.ok) {
       summary += `\n\nSlowdown accepted by the \`${ACCEPT_LABEL}\` label: ${verdict.reason}`;
@@ -575,7 +581,7 @@ export function main(argv: string[]): number {
       summary += `\n\n${slower.length} benchmark(s) are more than ${Math.round(THRESHOLD * 100)}% slower. To let a deliberate slowdown through, add the \`${ACCEPT_LABEL}\` label and a line \`Perf-accepted: <reason>\` to the PR body.`;
       code = 1;
     }
-    console.log(summary.slice(text.length));
+    console.log(summary.slice(shown));
   }
   if (process.env["GITHUB_STEP_SUMMARY"])
     appendFileSync(
