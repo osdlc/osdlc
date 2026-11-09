@@ -79,9 +79,9 @@
       "line": 267,
       "title": "push still accepts the same token twice with different grants; find gives the higher grant",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "7d4d5a9a49c23228aa8b9e4c76e4b8cc63000697"
     },
     {
       "id": "r4-3",
