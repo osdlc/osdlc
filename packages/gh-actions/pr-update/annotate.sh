@@ -3,6 +3,11 @@
 #  - A PR that ended conflict or failed gets $CONFLICT_LABEL and, once per
 #    (head sha, base sha), a comment with the reason and the marker
 #    <!-- pr-update: conflict head=<sha> base=<sha> -->.
+#  - A PR that ended updated through the repair agent (a non-empty `repaired`
+#    list; resolvers, rerere and generators never add to it) gets, once per
+#    merge commit, a comment with the repaired files, the agent's note and the
+#    resolution (git show --remerge-diff), ending
+#    <!-- pr-update: repaired head=<sha> -->. Other updates stay silent.
 #  - A PR that ended updated or up-to-date loses $CONFLICT_LABEL.
 #  - With $PR_NUMBER (an explicit request for one PR) the PR gets the full
 #    summary comment instead of the conflict comment.
@@ -54,6 +59,51 @@ pr_facts() { # number -> sets head base_name base_sha, and bodies file
   base_sha="$(gh api "repos/$REPO/branches/$base_name" -q .commit.sha)"
 }
 
+REMERGE_LINES=300
+comment_repair() { # number: the PR just pushed a merge the repair agent fixed
+  local n="$1" marker body base7 url files diff headname
+  pr_facts "$n"
+  marker="<!-- pr-update: repaired head=$head -->"
+  if grep -qxF "$marker" "$tmp/comments-$n.txt"; then
+    echo "pr-update: #$n already has a repair comment for this merge"
+    return
+  fi
+  git cat-file -e "$head^{commit}" 2>/dev/null || git fetch --quiet origin "$head" 2>/dev/null || true
+  base7="$(git rev-parse --short=7 "$head^2" 2>/dev/null || echo "${base_sha:0:7}")"
+  url="${GITHUB_SERVER_URL:-https://github.com}/$REPO/commit/$head"
+  headname="$(jq -r -L "$here" --argjson n "$n" 'include "rows"; rows[] | select(.number == $n) | .head' "$REPORT")"
+  body="$tmp/repair-$n.md"
+  files="$(git show --remerge-diff --format= --name-only "$head" 2>/dev/null || true)"
+  {
+    echo "**pr-update** merged \`$base_name\` (\`$base7\`) into \`$headname\` and repaired a conflict. Merge commit: [\`${head:0:7}\`]($url)."
+    echo
+    if [ -n "$files" ]; then
+      echo "Repaired files:"
+      sed 's/.*/- `&`/' <<<"$files"
+      echo
+    fi
+    jq -r -L "$here" --argjson n "$n" 'include "rows"; rows[] | select(.number == $n) | .repaired[] | "Agent note (\(.kind)): \(.note)"' "$REPORT"
+    echo
+    echo "<details><summary>Resolution</summary>"
+    echo
+    echo '```diff'
+    if diff="$(git show --remerge-diff --format= "$head" 2>/dev/null)" && [ -n "$diff" ]; then
+      head -n "$REMERGE_LINES" <<<"$diff"
+      if [ "$(wc -l <<<"$diff")" -gt "$REMERGE_LINES" ]; then
+        echo "... truncated to $REMERGE_LINES lines; see the merge commit for the rest"
+      fi
+    else
+      git show --stat --format= "$head" 2>/dev/null || echo "(resolution not available in this checkout)"
+    fi
+    echo '```'
+    echo
+    echo "</details>"
+    echo
+    echo "$marker"
+  } >"$body"
+  write pr comment "$n" --repo "$REPO" --body-file "$body"
+}
+
 while IFS=$'\t' read -r n outcome; do
   [ -n "$n" ] || continue
   case "$outcome" in
@@ -86,6 +136,10 @@ while IFS=$'\t' read -r n outcome; do
       fi
       ;;
     updated | up-to-date)
+      if [ "$outcome" = updated ] && [ "$COMMENT_CONFLICTS" = true ] && [ "$n" != "$PR_NUMBER" ] &&
+        jq -e -L "$here" --argjson n "$n" 'include "rows"; rows[] | select(.number == $n and .pushed and ([.repaired[] | select(.kind == "conflict")] | length) > 0)' "$REPORT" >/dev/null; then
+        comment_repair "$n"
+      fi
       if [ -n "$CONFLICT_LABEL" ] && grep -qx "$n" "$LABELED"; then
         write pr edit "$n" --repo "$REPO" --remove-label "$CONFLICT_LABEL"
       fi
