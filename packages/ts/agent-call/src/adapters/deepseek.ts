@@ -283,6 +283,10 @@ function planDeepseek(command: readonly string[], spec: AgentCallSpec): PlannedC
     note(notes, 'budgetUsd', 'dropped', 'dsh has no budget cap')
   }
 
+  if (spec.limits?.maxTurns !== undefined) {
+    note(notes, 'limits.maxTurns', 'dropped', 'dsh has no turn limit flag')
+  }
+
   argv.push(...(spec.extraArgs ?? []))
 
   // The system prompts go in the system-prompt row, so neither is folded into the prompt.

@@ -27,3 +27,5 @@ They are never reused. Each decision has a `state`: `accepted` or
 - [D-03](decisions/D-03-no-config-search.md): No config search
 - [D-04](decisions/D-04-yaml-reading-shared-with-rust.md): YAML reading rules
   shared with the Rust crate
+- [D-05](decisions/D-05-migrations-edit-the-file.md): Migrations are data, and
+  their rewrite edits the file

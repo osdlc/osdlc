@@ -34,6 +34,12 @@ slug-collate = { workspace = true }
 frontmatter-lossless = { workspace = true }
 # Reads the shared case file, tests/fixtures/conformance.json.
 serde_json = { workspace = true }
+# The benchmark in benches/body_links.rs; CI's perf gate runs it.
+criterion = { workspace = true }
+
+[[bench]]
+name = "body_links"
+harness = false
 
 [lints]
 workspace = true

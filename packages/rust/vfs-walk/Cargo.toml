@@ -1,6 +1,6 @@
 [package]
 name = "vfs-walk"
-version = "0.2.0"
+version = "0.2.1"
 edition.workspace = true
 rust-version.workspace = true
 description = "A sorted, depth-first walk of a folder tree through a vfs-seam Vfs, with prune and skip lists, a caller's entry filter, a symlink policy, an error policy and modification times. No Markdown or vault rules."

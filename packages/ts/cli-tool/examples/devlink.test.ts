@@ -29,6 +29,8 @@ import {
 } from '@osdlc/cli-tool'
 import {
   appendHistory,
+  CANDIDATES_FILE,
+  candidatesPath,
   clearActive,
   cwdCheckout,
   cwdDevVar,
@@ -59,6 +61,7 @@ import {
   pathNames,
   quietVar,
   readActive,
+  readCandidates,
   readHistory,
   readShimTarget,
   renderLauncher,
@@ -73,6 +76,7 @@ import {
   use,
   validateSpec,
   writeActive,
+  writeCandidates,
   processIo,
   projectVar,
   type CliIo,
@@ -206,6 +210,26 @@ test('the state files: the active link and an append-only history', () => {
   appendHistory(SPEC, event, state)
   expect(readHistory(SPEC, state)).toEqual([event])
   expect(clearActive(SPEC, state)).toBe(true)
+})
+
+test('with onDeadLink, a deleted linked checkout falls back to the newest one left', () => {
+  const spec: ToolSpec = validateSpec({ ...SPEC, onDeadLink: 'newest-surviving' })
+  const a = checkout('a')
+  const b = checkout('b')
+  link(spec, { checkout: a }, opts)
+  link(spec, { checkout: b }, opts)
+  // `link` and `use` keep the list beside the link, newest first.
+  expect(candidatesPath(spec, state).endsWith(CANDIDATES_FILE)).toBe(true)
+  expect(readCandidates(spec, state)).toEqual([b, a])
+  rmSync(b, { recursive: true })
+  const selection = resolve(spec, opts) as Selected
+  expect(selection.source).toBe('link')
+  expect(selection.checkout).toBe(a)
+  // Without it, the same state runs the install.
+  expect(resolve(SPEC, opts).source).toBe('local')
+  // A tool can write the list itself, for a launcher it renders by hand.
+  writeCandidates(spec, [a], state)
+  expect(readCandidates(spec, state)).toEqual([a])
 })
 
 test('install puts a shim on PATH for the name and each alias', () => {

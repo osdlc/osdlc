@@ -26,6 +26,7 @@ import {
   applierAndReservedProblems,
   applierOf,
   assembleConfig,
+  BASE_CONFIG_VERSION,
   checkConfigMeta,
   closestMatches,
   CONFIG_INVALID_EXIT,
@@ -34,11 +35,13 @@ import {
   configNeeds,
   CONSUMER_REF,
   consumerProblems,
+  currentConfigVersion,
   currentMachineVersion,
   deepMergeConfig,
   defaultOf,
   defineConfigSection,
   defineConfigVocabulary,
+  defineMigrations,
   DeprecationSchema,
   deprecatedKeysSet,
   deprecationMessage,
@@ -58,6 +61,7 @@ import {
   MACHINE_CONFIG_ISSUE_CODES,
   machineConfigFile,
   machineLayerKeys,
+  migrateConfigRaw,
   migrateMachineRaw,
   nestedFields,
   omitPath,
@@ -71,6 +75,7 @@ import {
   readConfigMeta,
   readMappingFile,
   readParsedFile,
+  reconcileYaml,
   RegisteredKeyMetaSchema,
   RELOADS_ON_CHANGE,
   renderReference,
@@ -98,11 +103,13 @@ import {
   valueIsSet,
   type AppliesVia,
   type AssembleConfigOptions,
+  type ConfigFileMigrateResult,
   type ConfigFileSpec,
   type ConfigHandle,
   type ConfigIssue,
   type ConfigLayers,
   type ConfigMetaIssue,
+  type ConfigMigration,
   type ConfigNeed,
   type ConfigNeeds,
   type ConfigNeedsOptions,
@@ -118,6 +125,7 @@ import {
   type SubstituteOptions,
   type KeyScopes,
   type LayerCheckContext,
+  type LayerMigration,
   type StrippedKeys,
   type UnknownKeyUse,
   type MachineConfigFile,
@@ -126,6 +134,11 @@ import {
   type MachineConfigLoad,
   type MachineMigrateResult,
   type MachineMigration,
+  type MachineWriteOptions,
+  type MigratedRaw,
+  type MigrationPath,
+  type MigrationStep,
+  type MigrationWarning,
   type MessageOptions,
   type MetaTerms,
   type MetaValidator,
@@ -1031,23 +1044,82 @@ test('the machine loader never throws and says what it dropped', () => {
   expect(machine.loadWithIssues().issues[0]!.code).toBe('not_mapping')
 })
 
-test('migrate an older machine file in memory and on disk', () => {
-  const rename: MachineMigration = {
-    from: 1,
-    to: 2,
-    run: (raw) => {
-      const { dirs, ...rest } = raw
-      return { ...rest, repos: dirs ?? [] }
-    },
-  }
-  expect(currentMachineVersion([])).toBe(1)
-  expect(currentMachineVersion([rename])).toBe(2)
-  expect(migrateMachineRaw({ dirs: ['~/dev'] }, [rename])).toEqual({
-    raw: { repos: ['~/dev'], version: 2 },
-    applied: [2],
-  })
-  expect(migrateMachineRaw({ version: 2, repos: [] }, [rename]).applied).toEqual([])
+test('edit the machine file without overwriting a change saved since it was read', () => {
+  const machine = machineFile()
+  machine.write('# mine\nrepos:\n  - ~/dev\n')
 
+  // Read the text and its etag, edit it, hand both back.
+  const seen = machine.read()!
+  const options: MachineWriteOptions = { etag: seen.etag }
+  const next = machine.write(setPath(seen.text, ['repos'], ['~/dev', '~/work']), options)
+  expect(readFileSync(machine.path(), 'utf8')).toContain('# mine')
+  expect(machine.read()!.etag).toBe(next)
+
+  // A second edit with the now-stale etag is refused, and the file is left as it is.
+  expect(() => machine.write('repos: []\n', { etag: seen.etag })).toThrow(
+    expect.objectContaining({ name: 'WriteConflictError', reason: 'changed' }),
+  )
+  expect(machine.load().repos).toEqual(['~/dev', '~/work'])
+})
+
+test('declare the migrations as moves, and run them on plain data', () => {
+  const steps: MigrationStep[] = [
+    { to: 2, moves: [['dirs', 'repos']] },
+    {
+      to: 3,
+      moves: [['trust.people', 'trust.owners']],
+      run: (raw, warn) => {
+        if (raw.legacy !== undefined) warn('legacy is no longer read; removed')
+        const { legacy: _legacy, ...rest } = raw
+        return rest
+      },
+    },
+  ]
+  const migrations: ConfigMigration[] = defineMigrations(steps)
+  expect(migrations.map((m) => [m.from, m.to])).toEqual([
+    [1, 2],
+    [2, 3],
+  ])
+  expect(BASE_CONFIG_VERSION).toBe(1)
+  expect(currentConfigVersion(migrations)).toBe(3)
+
+  const out: MigratedRaw = migrateConfigRaw(
+    { dirs: ['~/dev'], trust: { people: ['me'] }, legacy: 1 },
+    migrations,
+  )
+  expect(out.raw).toEqual({ repos: ['~/dev'], trust: { owners: ['me'] }, version: 3 })
+  expect(out.applied).toEqual([2, 3])
+  const warnings: MigrationWarning[] = out.warnings
+  expect(warnings.map((w) => w.message)).toEqual([
+    "moved 'dirs' to 'repos'",
+    "moved 'trust.people' to 'trust.owners'",
+    'legacy is no longer read; removed',
+  ])
+
+  // A value already at the destination wins. A key that holds a dot is given segment by segment.
+  const dotted: MigrationPath = ['paths', 'my.dev']
+  const wins = defineMigrations([{ to: 2, moves: [[dotted, 'paths.dev']] }])
+  expect(migrateConfigRaw({ paths: { 'my.dev': '/a', dev: '/b' } }, wins).raw).toEqual({
+    paths: { dev: '/b' },
+    version: 2,
+  })
+
+  // The machine-file names are the same functions and type.
+  const legacy: MachineMigration[] = migrations
+  expect(currentMachineVersion(legacy)).toBe(3)
+  expect(migrateMachineRaw({ version: 3 }, legacy).applied).toEqual([])
+})
+
+test('write a migrated document back as edits, keeping its comments', () => {
+  const text = '# my machine\nrepos:\n  - ~/dev   # main\ntrust:\n  # who I trust\n  owners: [me]\n'
+  const edited = reconcileYaml(text, { repos: ['~/dev'], trust: { owners: ['me', 'you'] } })
+  expect(edited).toContain('# my machine')
+  expect(edited).toContain('~/dev   # main')
+  expect(edited).toContain('# who I trust')
+  expect(parseYaml(edited)).toEqual({ repos: ['~/dev'], trust: { owners: ['me', 'you'] } })
+})
+
+test('migrate an older machine file in memory and on disk', () => {
   const Versioned = MachineSchema.extend({ version: z.number().int().optional() }).strict()
   const dirs = systemDirs(VENDOR, { home, env: {} })
   const machine = machineConfigFile({
@@ -1055,26 +1127,52 @@ test('migrate an older machine file in memory and on disk', () => {
     schema: Versioned,
     vendorDirs: VENDOR,
     dirs: () => dirs,
-    migrations: [rename],
+    migrations: defineMigrations([{ to: 2, moves: [['dirs', 'repos']] }]),
   })
   expect(machine.currentVersion).toBe(2)
   mkdirSync(join(machine.path(), '..'), { recursive: true })
-  writeFileSync(machine.path(), 'dirs:\n  - ~/dev\n')
+  writeFileSync(machine.path(), '# where my checkouts live\ndirs:\n  - ~/dev\n')
 
   // The old file loads through the migration without being rewritten.
   expect(machine.load().repos).toEqual(['~/dev'])
   const dry: MachineMigrateResult = machine.migrate({ dryRun: true })
-  expect(dry).toMatchObject({ from: 1, to: 2, applied: [2], written: false })
+  expect(dry).toMatchObject({ from: 1, to: 2, applied: [2], written: false, rewrite: 'edited' })
+  expect(dry.text).toBe('# where my checkouts live\nrepos:\n  - ~/dev\nversion: 2\n')
   expect(readFileSync(machine.path(), 'utf8')).toContain('dirs:')
 
+  // The rewrite edits only what changed, so the comment stays.
   expect(machine.migrate().written).toBe(true)
-  expect(parseYaml(readFileSync(machine.path(), 'utf8'))).toEqual({ repos: ['~/dev'], version: 2 })
+  expect(readFileSync(machine.path(), 'utf8')).toBe(dry.text)
   expect(machine.migrate().applied).toEqual([])
 
   // A file from a newer tool is read as-is and flagged.
   machine.clearCache()
   writeFileSync(machine.path(), 'version: 9\nrepos: [x]\n')
   expect(machine.loadWithIssues().issues[0]!.code).toBe('newer_version')
+})
+
+test('version the project file and migrate it on request', () => {
+  const dir = project()
+  const handle = assembleConfig({
+    file: FILE_SPEC,
+    sections: SECTIONS,
+    unknownTopLevel: 'reject',
+    resolve: { env: {}, cwd: root },
+    migrations: defineMigrations([{ to: 2, moves: [['origin', 'authority']] }]),
+  })
+  const file = write(dir, PROJECT_FILE, '# tooly\norigin: example   # the server\n')
+
+  // Loading migrates in memory; `version` is not a section key.
+  const layers = handle.loadLayers(dir)
+  expect(layers.merged.authority).toBe('example')
+  const migrated: LayerMigration[] = layers.migrated
+  expect(migrated).toMatchObject([{ file, from: 1, to: 2, applied: [2] }])
+
+  // `migrate` rewrites each old layer file as edits, as a compare-and-swap.
+  const results: ConfigFileMigrateResult[] = handle.migrate(dir)
+  expect(results).toMatchObject([{ layer: 'project', written: true, rewrite: 'edited' }])
+  expect(readFileSync(file, 'utf8')).toBe('# tooly\nauthority: example\nversion: 2\n')
+  expect(handle.loadLayers(dir).migrated).toEqual([])
 })
 
 // ---------------------------------------------------------------------------

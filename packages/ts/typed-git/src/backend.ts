@@ -84,6 +84,7 @@ import {
   type StatusEntry,
   type StatusPorcelainOptions,
   type TreeEntry,
+  type IndexSubmodule,
   type TaggedFile,
   type UnmergedEntry,
   type Worktree,
@@ -167,6 +168,7 @@ export type GitRequest =
   // and a copy written out by hand would drift from it.
   | ({ kind: 'lsFiles' } & LsFilesOptions)
   | { kind: 'lsFilesTagged' }
+  | { kind: 'submodules' }
   | ({ kind: 'forEachRef'; pattern: string | string[] } & ForEachRefOptions)
   | ({ kind: 'diffNameOnly' } & DiffNameOnlyOptions)
   | ({ kind: 'diffStat' } & DiffStatOptions)
@@ -256,6 +258,7 @@ export interface GitResults {
   commitTree: string
   lsFiles: string[]
   lsFilesTagged: TaggedFile[]
+  submodules: IndexSubmodule[]
   forEachRef: string[]
   diffNameOnly: string[]
   diffStat: string
@@ -408,6 +411,8 @@ function toVerb(request: GitRequest): GitVerb<unknown> {
       return v.lsFiles(request)
     case 'lsFilesTagged':
       return v.lsFilesTagged()
+    case 'submodules':
+      return v.submodules()
     case 'forEachRef':
       return v.forEachRef(request.pattern, request)
     case 'diffNameOnly':

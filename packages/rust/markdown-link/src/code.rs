@@ -593,6 +593,13 @@ pub(crate) fn regions(text: &str, rules: CodeRules) -> Vec<(Range<usize>, Region
         }
         let start = offset;
         let (region, end) = match bytes[offset] {
+            // A `\`` outside a span is a literal backtick, so a run opens at
+            // the next one. Inside a span a `\` is literal, so a close is
+            // never escaped.
+            b'`' if rules == CodeRules::CommonMark && escaped(bytes, offset) => {
+                offset += 1;
+                continue;
+            }
             b'`' => {
                 let (run, close) = spans.close_in(offset, &|line| blocks.opens_block(line));
                 match close {

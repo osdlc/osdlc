@@ -15,7 +15,10 @@
  * `resolveConfigFile` names for it: the file and its overlay under the project
  * root, or the file its env variable names and that file's overlay. They go
  * through the library's `setPath`/`unsetPath`, which keep the rest of the file
- * as it was, and only after the merged result validates. Only the result is
+ * as it was, and only after the merged result validates. The write is a
+ * compare-and-swap against the text the edit was made on: when the file changed
+ * in between (an editor saved it), nothing is written and the command fails
+ * (exit 1, code `config-conflict`). Only the result is
  * checked, so `set` and `unset` can repair a file that is invalid now. A change
  * that leaves the config invalid is a usage error (exit 2), and the file is
  * left untouched. A layer file that does not parse as YAML, or a config
@@ -54,7 +57,7 @@ import {
   type ConfigLayerValue,
   type ConfigStore,
 } from '@osdlc/cli-tool/config-command'
-import { atomicWrite } from '@osdlc/etag-write'
+import { etag, WriteConflictError, writeCas } from '@osdlc/etag-write'
 import { parse as parseYaml } from 'yaml'
 import type { z } from 'zod'
 
@@ -168,7 +171,8 @@ function writeLayer(
   const created = !existsSync(file)
   // A file that is not a YAML mapping cannot be edited in place.
   if (!created) readLayerFile(file)
-  const current = created ? null : readFileSync(file, 'utf8')
+  const bytes = created ? null : readFileSync(file)
+  const current = bytes === null ? null : bytes.toString('utf8')
   if (created && 'unset' in value) return { file, changed: false }
   const source = current ?? (layer === 'project' ? PROJECT_HEADER : localHeader(spec))
   const next = 'unset' in value ? unsetPath(source, path) : setPath(source, path, value.set)
@@ -187,7 +191,15 @@ function writeLayer(
   }
   if (!dryRun) {
     mkdirSync(dirname(file), { recursive: true })
-    atomicWrite(file, next)
+    try {
+      writeCas(file, next, bytes === null ? null : etag(bytes))
+    } catch (err) {
+      if (!(err instanceof WriteConflictError)) throw err
+      throw new CommandError(
+        `${file} changed while the edit was made; it was left as it is. Run the command again.`,
+        { code: 'config-conflict' },
+      )
+    }
   }
   return { file, changed: true }
 }
