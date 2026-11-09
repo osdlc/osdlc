@@ -84,7 +84,7 @@ the standard.
   conformance suite checks it: `packages/conformance/<family>/`, listed in
   `packages/conformance/families.json`, run by every implementation's tests,
   with expected values written by the reference implementation's generator.
-  `pnpm run check:conformance` checks the suites with `@osdlc/conformance`;
+  `pnpm run check:conformance` checks the suites with `@osdlc/conformance-suites`;
   `packages/conformance/config.json` holds its exemptions. `tiered-dirs`,
   `config-layers`, `corpus-schema`, `frontmatter-lossless`, `intersect` and
   `path-guard` are there. Until they move, `gfm-pipe-table` (the Rust implementation of
@@ -260,7 +260,7 @@ Developed here, in this repository:
   that finds the branches, worktrees and remote branches that have been merged
   and can go away, with the evidence and the command for each, and applies an
   approved plan compare-and-swap)
-- `packages/ts/conformance` (`@osdlc/conformance` on npm, the `conformance`
+- `packages/ts/conformance-suites` (`@osdlc/conformance-suites` on npm, the `conformance-suites`
   command that checks the library families' suites in
   `packages/conformance/` against
   [S-conformance-suites](../docs/planning/standards/S-conformance-suites.md)

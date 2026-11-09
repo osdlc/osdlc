@@ -4,7 +4,7 @@ import { join } from 'node:path'
 
 import { test } from 'vitest'
 
-import { main, type Run } from '@osdlc/conformance'
+import { main, type Run } from '@osdlc/conformance-suites'
 
 import { FAMILY, inRepo, SUITE, type Put } from './_fixture.ts'
 
@@ -201,5 +201,5 @@ test('a bad command line exits 2 with the usage', () => {
   assert.equal(main(['write', '--regenerate'], io), 2)
   assert.equal(main(['check', '--regenerate', '--reference', 'go'], io), 2)
   assert.equal(main(['check', '--reference', 'ts'], io), 2)
-  assert.match(lines.join('\n'), /usage: conformance check/)
+  assert.match(lines.join('\n'), /usage: conformance-suites check/)
 })

@@ -1,14 +1,14 @@
 /**
- * The `conformance` command.
+ * The `conformance-suites` command.
  *
- *   conformance check                  check every family
- *   conformance check --regenerate     also build each TypeScript reference
- *                                      and what it imports, run each
- *                                      generator, then fail if a suite changed
- *   conformance write                  only run the generators, as
- *                                      --regenerate does, and keep what they
- *                                      write. A version bump runs it: each
- *                                      suite records its reference's version
+ *   conformance-suites check                  check every family
+ *   conformance-suites check --regenerate     also build each TypeScript reference
+ *                                             and what it imports, run each
+ *                                             generator, then fail if a suite changed
+ *   conformance-suites write                  only run the generators, as
+ *                                             --regenerate does, and keep what they
+ *                                             write. A version bump runs it: each
+ *                                             suite records its reference's version
  *
  * `--reference ts|rust` limits the generators to the families whose reference
  * is that language. `--families <path>` names the registry, by default
@@ -23,8 +23,8 @@ import { parseArgs } from 'node:util'
 import { LANGUAGES } from './checks.ts'
 import { checkRepo, regenerate, type Run } from './repo.ts'
 
-const USAGE = `usage: conformance check [--regenerate] [--reference ts|rust] [--families <path>] [--root <dir>]
-       conformance write [--reference ts|rust] [--families <path>] [--root <dir>]`
+const USAGE = `usage: conformance-suites check [--regenerate] [--reference ts|rust] [--families <path>] [--root <dir>]
+       conformance-suites write [--reference ts|rust] [--families <path>] [--root <dir>]`
 
 /** Where the command writes, and how it runs commands. Tests replace them. */
 export interface CliIo {

@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import { checkRepo } from '@osdlc/conformance'
+import { checkRepo } from '@osdlc/conformance-suites'
 
 export const FAMILY = {
   reference: 'ts',
