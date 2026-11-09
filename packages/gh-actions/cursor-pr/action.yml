@@ -18,6 +18,11 @@ inputs:
   cursor-version:
     description: Cursor CLI version to install (agent-setup's pinned default).
     default: 2026.11.05-86047df
+  cursor-sha256:
+    description: >-
+      SHA-256 of the Cursor CLI tarball; required when cursor-version is not
+      the default.
+    default: ""
   model:
     description: Model name for the CLI. Empty means the CLI's default.
     default: ""
@@ -62,6 +67,7 @@ runs:
       env:
         HARNESS: cursor
         VERSION: ${{ inputs.cursor-version }}
+        SHA256: ${{ inputs.cursor-sha256 }}
         MARKETPLACES: ${{ inputs.marketplaces }}
         PLUGINS: ${{ inputs.plugins }}
       run: '"$GITHUB_ACTION_PATH/../pr-common/install-agent.sh"'

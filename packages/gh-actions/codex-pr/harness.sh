@@ -37,5 +37,6 @@ harness_run() {
          result: (if $bad then ($errtext // "codex produced no answer") else $msg end),
          auth_failed: ($bad and (($errtext // "") | test("401 Unauthorized|invalid_api_key|Incorrect API key|Missing bearer|not logged in"; "i")))}
       | .result |= (split($k) | join("***"))' > "$RESULT"
+  if [ "$status" -eq 0 ] && ! jq -e '.is_error == false' "$RESULT" > /dev/null 2>&1; then status=1; fi
   return "$status"
 }

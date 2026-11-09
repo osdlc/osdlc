@@ -4,5 +4,5 @@
 set -e
 : "${HARNESS:?HARNESS is required}"
 plugins=$(printf '%s\n' "${PLUGINS:-}" | tr ',' '\n' | tr -s '[:space:]' '\n')
-HARNESS="$HARNESS" VERSION="${VERSION:-}" MARKETPLACES="${MARKETPLACES:-}" PLUGINS="$plugins" \
+HARNESS="$HARNESS" VERSION="${VERSION:-}" SHA256="${SHA256:-}" MARKETPLACES="${MARKETPLACES:-}" PLUGINS="$plugins" \
   "$(dirname "$0")/../agent-setup/setup.sh"

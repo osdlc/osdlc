@@ -30,21 +30,31 @@ harness_prompt_suffix() {
   cat "$skills/code-review/SKILL.md"
 }
 
+cursor_restore_config() {
+  rm -f .cursor/cli.json
+  if [ "$2" = 1 ]; then cp -P "$1/cli.json.orig" .cursor/cli.json; fi
+}
+
 harness_run() {
   local d="${RUNNER_TEMP:-/tmp}/cursor-pr-run" status had=0
   mkdir -p "$d" .cursor
   : > "$d/out"; : > "$d/err"
-  if [ -e .cursor/cli.json ]; then
+  if [ -e .cursor/cli.json ] || [ -L .cursor/cli.json ]; then
     had=1
-    cp .cursor/cli.json "$d/cli.json.orig"
+    cp -P .cursor/cli.json "$d/cli.json.orig"
+    rm -f .cursor/cli.json   # write a regular file, never through a symlink
   fi
+  # Restore on exit too, so a termination signal cannot leave the deny config behind.
+  trap "cursor_restore_config '$d' '$had'" EXIT
+  trap 'exit 143' TERM INT
   cat > .cursor/cli.json <<'JSON'
 {"permissions":{"allow":["Read(**)","Shell(git)","Shell(node)"],"deny":["Write(**)","Shell(gh)","Shell(curl)","Shell(wget)"]}}
 JSON
   printf '%s' "$PROMPT" | env -u GH_TOKEN -u GITHUB_TOKEN CURSOR_API_KEY="$KEY" \
     agent -p --trust --output-format json --mode ask ${MODEL:+--model "$MODEL"} > "$d/out" 2> "$d/err"
   status=$?
-  if [ "$had" = 1 ]; then cp "$d/cli.json.orig" .cursor/cli.json; else rm -f .cursor/cli.json; fi
+  cursor_restore_config "$d" "$had"
+  trap - EXIT TERM INT
   # A good run prints the claude-style envelope ({is_error, result, ...}).
   if [ "$status" -eq 0 ] && jq -e '.is_error == false' "$d/out" > /dev/null 2>&1; then
     jq --arg k "$KEY" '. + {auth_failed: false} | .result |= (split($k) | join("***"))' "$d/out" > "$RESULT"
