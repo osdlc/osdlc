@@ -169,8 +169,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # A failed lookup falls back to the plain wait, so it never skips update.
           runs="$(gh run list -R "$GITHUB_REPOSITORY" --workflow pr-update.yml --event push \
-            --limit 50 --json databaseId,createdAt,conclusion)"
+            --limit 100 --json databaseId,createdAt,conclusion)" || runs='[]'
           start="$(jq -r --argjson self "$GITHUB_RUN_ID" -f /dev/stdin --argjson runs "$runs" -n <<'JQ'
           $runs | sort_by(.createdAt) | reverse
           | (map(.databaseId) | index($self)) as $i
@@ -181,7 +182,7 @@ jobs:
               | (($burst | last) // .[$i]).createdAt
             end
           JQ
-          )"
+          )" || start=null
           now="$(date -u +%s)"
           if [ "$start" = null ] || [ -z "$start" ]; then start_s="$now"; else start_s="$(date -u -d "$start" +%s)"; fi
           waited=$((now - start_s))
