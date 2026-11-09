@@ -69,14 +69,23 @@ describe.skipIf(!tmuxAvailable)('tmux host against a real server', () => {
       // Ask for bracketed paste (as a TUI does), then record each byte with control
       // characters made visible. Raw mode, so the pasted newline arrives as a newline and Enter is ^M.
       // Only a real paste is wrapped in ^[[200~ ... ^[[201~; per-line send-keys is not.
+      // A paste sent before the terminal is set up is neither wrapped (tmux wraps only for a pane
+      // that asked) nor read in raw mode, so the test waits for the `pane-ready` marker on screen.
       argv: [
         'bash',
         '-c',
-        `printf '\\033[?2004h'; stty raw -echo; while IFS= read -r -n1 -d '' c; do printf %s "$c" | cat -v >> out.txt; done`,
+        `printf '\\033[?2004h'; stty raw -echo; printf pane-ready; while IFS= read -r -n1 -d '' c; do printf %s "$c" | cat -v >> out.txt; done`,
       ],
       title: 'tmux-live',
     })
     expect(host.find!({ cwd })).toMatchObject([{ cwd, alive: true }])
+    // tmux parses pane output in order, so once the marker is on screen it has applied ESC[?2004h.
+    // A file written by the pane would only show the bytes reached the pty, not that tmux read them.
+    const deadline = Date.now() + 10_000
+    while (!host.capture!({ cwd })?.includes('pane-ready') && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 50))
+    }
+    expect(host.capture!({ cwd }), 'pane never signalled ready').toContain('pane-ready')
 
     const receipt = host.send!({ cwd, text: 'first line\nsecond line' })
 
@@ -85,7 +94,7 @@ describe.skipIf(!tmuxAvailable)('tmux host against a real server', () => {
     const received = await waitFor(join(cwd, 'out.txt'), 10_000, (t) => t.endsWith('^[[201~^M'))
     // Both lines arrive intact inside one paste, then Enter submits it.
     expect(received).toBe('^[[200~first line\nsecond line^[[201~^M')
-  }, 20_000)
+  }, 30_000)
 
   test('a send to a cwd with no session is not accepted, so the Router falls through', () => {
     const receipt = host.send!({ cwd: join(root, 'nobody-here'), text: 'hello' })
