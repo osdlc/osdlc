@@ -48,6 +48,7 @@ describe('run summary', () => {
     ])
     expect(summarizeRun(r)).toEqual({
       deleted: { worktree: 1, branch: 2, remote: 1 },
+      gone: 0,
       pruned: 1,
       dropped: {},
       failed: 0,
@@ -56,6 +57,13 @@ describe('run summary', () => {
     expect(renderRunSummary(r)).toEqual([
       'deleted: 1 worktree, 2 local branches, 1 remote branch, 1 stale worktree pruned',
     ])
+  })
+
+  test('a remote branch found already gone is not counted as deleted', () => {
+    const gone = { ...step('delete-remote', 'ok', 'origin/a'), gone: true as const }
+    const r = receipt('complete', [gone, step('delete-remote', 'ok', 'origin/b')])
+    expect(summarizeRun(r)).toMatchObject({ deleted: { remote: 1 }, gone: 1 })
+    expect(renderRunSummary(r)).toEqual(['deleted: 1 remote branch, 1 remote branch already gone'])
   })
 
   test('a dry run says would; drops are counted by reason', () => {

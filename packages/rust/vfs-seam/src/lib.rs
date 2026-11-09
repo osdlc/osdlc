@@ -47,6 +47,8 @@
 //! [`Metadata::modified_ns`] is a file's modification time in whole
 //! nanoseconds, so a cache can stamp a file exactly and still derive the
 //! fractional milliseconds a JavaScript tool compares ([`ns_to_ms_f64`]).
+//! A JS host turns the `mtimeMs` it is given back into nanoseconds with
+//! [`ms_f64_to_ns`].
 //!
 //! [`Clock`] is the same idea for the current time, which a cache with a
 //! time-to-live needs and `wasm32-unknown-unknown` cannot read.
@@ -69,6 +71,6 @@ pub use error::{Result, VfsError};
 #[cfg(feature = "native")]
 pub use vfs::NativeVfs;
 pub use vfs::{
-    DirEntry, MemVfs, Metadata, PlannedOp, PreviewVfs, PreviewWrite, Vfs, normalize, ns_to_ms,
-    ns_to_ms_f64,
+    DirEntry, MemVfs, Metadata, PlannedOp, PreviewVfs, PreviewWrite, Vfs, ms_f64_to_ns, normalize,
+    ns_to_ms, ns_to_ms_f64,
 };
