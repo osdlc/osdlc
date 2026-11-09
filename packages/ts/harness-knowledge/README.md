@@ -40,6 +40,10 @@ fact('codex', 'skills/user-dirs')?.dirs
   match.
 - An empty `platform` list or a null `model` matches any caller. A listed one matches only a
   caller that names it. The most specific match wins.
+- A dimension the caller omits ranks a value that is broad on it above one that is narrow on it,
+  so with no `platform` or `model` the unscoped value wins. When only scoped values exist, the
+  specific one is returned anyway (a lone macOS value is returned to a caller who names no
+  platform), but a caller who names a platform it does not list gets `undefined`.
 - Weak and disputed values are skipped unless `accept: { weak: true }` or
   `accept: { disputed: true }` is passed.
 - Two equally specific matches throw `AmbiguousValue`. That is a bug in the source data.
@@ -61,8 +65,8 @@ statements, and copied here unchanged. Only current and disputed statements are 
 To update:
 
 ```sh
-pnpm --filter @osdlc/harness-knowledge run sync -- --from <dir with the compiled files>
-pnpm --filter @osdlc/harness-knowledge run sync -- --release <skillwright release tag>
+pnpm --filter @osdlc/harness-knowledge run sync --from <dir with the compiled files>
+pnpm --filter @osdlc/harness-knowledge run sync --release <skillwright release tag>
 ```
 
 `--release` downloads the two assets from the osdlc/skillwright release with `gh`. A test checks

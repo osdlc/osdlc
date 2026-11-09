@@ -1,3 +1,5 @@
+import { resolve } from 'node:path'
+
 import { describe, expect, test } from 'vitest'
 
 import { deepseekAdapter } from '../../src/adapters/deepseek.js'
@@ -188,6 +190,11 @@ describe('deepseek plan', () => {
   test('relative extra dirs are resolved against cwd', () => {
     const planned = adapter.plan({ prompt: 'x', cwd: '/repo', context: { dirs: ['../shared'] } })
     expect(planned.argv).toContain('/shared')
+  })
+
+  test('relative extra dirs fall back to process.cwd() without a cwd', () => {
+    const planned = adapter.plan({ prompt: 'x', context: { dirs: ['rel'] } })
+    expect(planned.argv).toContain(resolve(process.cwd(), 'rel'))
   })
 
   test('tool rules, continueLast, session pinning, persist and budget are dropped', () => {

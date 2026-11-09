@@ -12,7 +12,10 @@ export function fact(
   subject: string,
   query: Omit<LookupQuery, 'accept'> = {},
 ): Record<string, unknown> | undefined {
-  const found = lookup(loadKnowledge(), harness, subject, query)
+  const found = lookup(loadKnowledge(), harness, subject, {
+    ...query,
+    accept: { weak: false, disputed: false },
+  })
   if (found === undefined || found.disputed) return undefined
   const value = found.value
   return typeof value === 'object' && value !== null && !Array.isArray(value)
