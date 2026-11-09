@@ -11,7 +11,7 @@
 # among them), a change to which checks every package. A run that is not a
 # pull request checks every package, including the call from
 # packages-publish.yml. Here it also runs Node 26, builds the repo tooling
-# (@osdlc/package-checks and @osdlc/conformance are workspace packages), and
+# (@osdlc/package-checks and @osdlc/conformance-suites are workspace packages), and
 # checks the repo scripts.
 #
 # The jobs below read the pick, so they start once `packages` ends.

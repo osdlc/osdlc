@@ -16,7 +16,7 @@ installs as root devDependencies, so its lockfile pins their versions:
 - [`@osdlc/package-checks`](../../ts/package-checks/): `package-checks
 affected` picks the packages, and `package-checks ts` packs them and runs
   publint and attw.
-- [`@osdlc/conformance`](../../ts/conformance/): `conformance check` checks
+- [`@osdlc/conformance-suites`](../../ts/conformance-suites/): `conformance-suites check` checks
   the suites, and `--regenerate` reruns their generators.
 
 osdlc/osdlc calls both workflows from its own `packages-ci.yml` and
@@ -36,13 +36,13 @@ osdlc/osdlc calls both workflows from its own `packages-ci.yml` and
   checks every package:
   `{ "shared": ["^\\.github/workflows/packages-ci\\.yml$"] }`.
 - Root devDependencies `@osdlc/package-checks`, `@changesets/cli` and, with
-  conformance suites, `@osdlc/conformance`.
+  conformance suites, `@osdlc/conformance-suites`.
 - With conformance suites: `packages/conformance/families.json`, and
   optionally `packages/conformance/config.json`. Without them, pass
   `conformance: false`.
 - For the release: a `.changeset/config.json`, and a root `version-packages`
   script that runs `changeset version` and then anything that must follow,
-  such as `conformance write --reference ts`.
+  such as `conformance-suites write --reference ts`.
 - For the release: a GitHub App installed on the repository with contents
   and pull-requests write, its client ID, and an environment (by default
   `release-plz`) that holds its private key as `RELEASE_PLZ_APP_PRIVATE_KEY`.
@@ -80,14 +80,14 @@ The checks report as `packages / changes` and
 `<calling job> / <job>`. A ruleset requires the `verify` ones by those names.
 They always run and report; only their steps narrow.
 
-| Input           | Default                             | Meaning                                                                                        |
-| --------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `os`            | `["ubuntu-latest", "macos-latest"]` | JSON array of runner labels for the `verify` matrix. Steps run in bash.                        |
-| `node`          | `["22", "24"]`                      | JSON array of Node versions for the `verify` matrix.                                           |
-| `main-node`     | `24`                                | The Node that also runs the tarball checks, and on the first OS the conformance regeneration.  |
-| `conformance`   | `true`                              | Check and regenerate the conformance suites.                                                   |
-| `tooling-build` | empty                               | Shell run before `package-checks` or `conformance` is used, for a repository that builds them. |
-| `repo-checks`   | empty                               | Shell run in `changes`, for checks of the repository itself.                                   |
+| Input           | Default                             | Meaning                                                                                               |
+| --------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `os`            | `["ubuntu-latest", "macos-latest"]` | JSON array of runner labels for the `verify` matrix. Steps run in bash.                               |
+| `node`          | `["22", "24"]`                      | JSON array of Node versions for the `verify` matrix.                                                  |
+| `main-node`     | `24`                                | The Node that also runs the tarball checks, and on the first OS the conformance regeneration.         |
+| `conformance`   | `true`                              | Check and regenerate the conformance suites.                                                          |
+| `tooling-build` | empty                               | Shell run before `package-checks` or `conformance-suites` is used, for a repository that builds them. |
+| `repo-checks`   | empty                               | Shell run in `changes`, for checks of the repository itself.                                          |
 
 Outputs, for jobs of the caller's own that run on the picked packages:
 `packages` (JSON array of folders), `filter` and `build` (pnpm `--filter`
@@ -151,7 +151,7 @@ The workflows share the `gh-actions` version with the actions in this
 directory: a release tags `gh-actions/vX.Y.Z` and moves `gh-actions/vX`
 (see [the gh-actions README](../README.md#versioning)). Pin the commit SHA and
 name the tag in a comment. The workflows and the two npm packages version
-apart: the workflows call whatever `package-checks` and `conformance` the
+apart: the workflows call whatever `package-checks` and `conformance-suites` the
 caller's lockfile holds.
 
 ## Licence

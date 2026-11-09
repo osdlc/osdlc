@@ -8,7 +8,7 @@ description: Audit the library families in osdlc/osdlc against S-conformance-sui
 Checks that every library family in this repository still behaves the same
 in each language, and how far the move to shared conformance suites has got.
 [S-conformance-suites](../../../docs/planning/standards/S-conformance-suites.md)
-is the standard; the `conformance` command (`@osdlc/conformance`) enforces its
+is the standard; the `conformance-suites` command (`@osdlc/conformance-suites`) enforces its
 mechanical part. This
 skill adds what a pull request's CI cannot see: the whole repository at once,
 drift that builds up between pull requests, and pairs nobody registered.
@@ -37,13 +37,13 @@ target directory per worktree fills the disk.
 
 Run, and keep each one's output for the report:
 
-`check:conformance` builds the `conformance` command first, so the two
+`check:conformance` builds the `conformance-suites` command first, so the two
 `pnpm exec` lines after it can run it.
 
 ```sh
 pnpm run check:conformance
-pnpm exec conformance check --regenerate --reference ts
-pnpm exec conformance check --regenerate --reference rust
+pnpm exec conformance-suites check --regenerate --reference ts
+pnpm exec conformance-suites check --regenerate --reference rust
 ```
 
 `--regenerate` runs each family's generator and fails if a suite changed,

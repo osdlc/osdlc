@@ -7,9 +7,10 @@
 # (@osdlc/package-checks): on a pull request, the packages it changed and the
 # packages that depend on them; on any other event, every package. The
 # repository's package-checks.json says which files are shared. It also checks
-# the conformance suites with `conformance check` (@osdlc/conformance), unless
-# `conformance` is false. Both commands come from the caller's root
-# devDependencies, so the caller pins their versions in its lockfile.
+# the conformance suites with `conformance-suites check`
+# (@osdlc/conformance-suites), unless `conformance` is false. Both commands
+# come from the caller's root devDependencies, so the caller pins their
+# versions in its lockfile.
 #
 # `verify` runs a matrix of `os` and `node`. Each leg installs, builds the
 # picked packages and their workspace dependencies, then runs their
@@ -46,8 +47,8 @@ on:
         default: true
       tooling-build:
         description: >-
-          Shell run before `package-checks` or `conformance` is used. Leave it
-          empty when they come from npm; a repository that builds them in its
+          Shell run before `package-checks` or `conformance-suites` is used. Leave
+          it empty when they come from npm; a repository that builds them in its
           own workspace builds them here.
         type: string
         default: ''
@@ -136,7 +137,7 @@ jobs:
 
       - name: Check the conformance suites
         if: inputs.conformance
-        run: pnpm exec conformance check
+        run: pnpm exec conformance-suites check
 
       - name: Pick the packages to check
         id: pick
@@ -206,7 +207,7 @@ jobs:
       # command builds what they import.
       - name: Regenerate the conformance suites
         if: inputs.conformance && env.MAIN == 'true' && env.FIRST == 'true'
-        run: pnpm exec conformance check --regenerate --reference ts
+        run: pnpm exec conformance-suites check --regenerate --reference ts
 
       - name: Typecheck
         if: env.PICKED == 'true'

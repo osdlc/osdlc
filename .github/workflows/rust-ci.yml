@@ -91,7 +91,7 @@ jobs:
               files='*'
               ;;
           esac
-          if [ "$files" = '*' ] || grep -qE '^(packages/rust/|packages/conformance/|packages/ts/conformance/|packages/ts/yaml-splice/wasm/|packages/ts/markdown-contract/corpus/|\.github/workflows/(rust-ci|release-plz)\.yml$|\.github/actions/rust-|scripts/crates-io-|packages/ts/package-checks/|packages/ts/command-seam/|(package-checks\.json|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$)' <<<"$files"; then
+          if [ "$files" = '*' ] || grep -qE '^(packages/rust/|packages/conformance/|packages/ts/conformance-suites/|packages/ts/yaml-splice/wasm/|packages/ts/markdown-contract/corpus/|\.github/workflows/(rust-ci|release-plz)\.yml$|\.github/actions/rust-|scripts/crates-io-|packages/ts/package-checks/|packages/ts/command-seam/|(package-checks\.json|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$)' <<<"$files"; then
             echo "rust=true" >> "$GITHUB_OUTPUT"
           else
             echo "rust=false" >> "$GITHUB_OUTPUT"
@@ -106,8 +106,8 @@ jobs:
         with:
           persist-credentials: false
 
-      # The crate shape check and the conformance check are the root's
-      # @osdlc/package-checks and @osdlc/conformance, workspace packages.
+      # The crate shape check and the conformance-suites check are the root's
+      # @osdlc/package-checks and @osdlc/conformance-suites, workspace packages.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24'
@@ -139,7 +139,7 @@ jobs:
       # docs/planning/standards/S-conformance-suites.md is the standard.
       - name: Regenerate the conformance suites
         working-directory: .
-        run: pnpm exec conformance check --regenerate --reference rust
+        run: pnpm exec conformance-suites check --regenerate --reference rust
 
       - name: Docs
         env:

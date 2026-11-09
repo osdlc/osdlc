@@ -47,5 +47,5 @@ jobs:
       # schema/config.json and its guide's `$schema` line for the new version,
       # and reruns the TypeScript-referenced conformance generators, since each
       # suite records its reference's version. It reads wayfinder's dist/ and
-      # runs the conformance command, so both are built first.
-      version-prepare: pnpm --filter '@osdlc/wayfinder...' --filter '@osdlc/conformance...' run build
+      # runs the conformance-suites command, so both are built first.
+      version-prepare: pnpm --filter '@osdlc/wayfinder...' --filter '@osdlc/conformance-suites...' run build

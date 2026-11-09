@@ -56,9 +56,9 @@ importers:
       '@changesets/cli':
         specifier: 'catalog:'
         version: 3.0.3
-      '@osdlc/conformance':
+      '@osdlc/conformance-suites':
         specifier: workspace:^
-        version: link:packages/ts/conformance
+        version: link:packages/ts/conformance-suites
       '@osdlc/package-checks':
         specifier: workspace:^
         version: link:packages/ts/package-checks
@@ -366,7 +366,7 @@ importers:
         specifier: 'catalog:'
         version: 4.6.7
 
-  packages/ts/conformance:
+  packages/ts/conformance-suites:
     dependencies:
       '@osdlc/command-seam':
         specifier: workspace:^

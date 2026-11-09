@@ -1,6 +1,6 @@
 /**
  * The README's examples, run through the package name: check a repository
- * from code, and the same through `main`, as the `conformance` command does.
+ * from code, and the same through `main`, as the `conformance-suites` command does.
  */
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -9,7 +9,7 @@ import { dirname, join } from 'node:path'
 
 import { afterEach, beforeEach, expect, test } from 'vitest'
 
-import { checkRepo, main, suiteProblems, versionProblems } from '@osdlc/conformance'
+import { checkRepo, main, suiteProblems, versionProblems } from '@osdlc/conformance-suites'
 
 let root = ''
 

@@ -13,7 +13,7 @@ import {
   suiteProblems,
   suiteReaders,
   versionProblems,
-} from '@osdlc/conformance'
+} from '@osdlc/conformance-suites'
 
 import { FAMILY, SUITE } from './_fixture.ts'
 
