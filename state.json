@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "pr": 704,
-  "head": "37d146891d5b9a547bddf40df6a07b7e0f392eeb",
+  "head": "64e35e8b4771535204e904da5c6bbdb10c4e55df",
   "base": "ab1aa2162af61286ee6ede93619dd7528eba0c4b",
-  "round": 5,
+  "round": 6,
   "claim": {
     "owner": "Mac.local:claude-ypwtkk",
     "at": "2026-11-09T03:49:21.727Z"
@@ -118,6 +118,28 @@
       "status": "fixed",
       "reason": null,
       "fixedIn": "64e35e8b"
+    },
+    {
+      "id": "r6-1",
+      "round": 6,
+      "path": "packages/rust/web-access/src/guard.rs",
+      "line": 585,
+      "title": "canonical claims one form for every value that can reach a token, but delimiter truncation in a raw cookie or link (and + from form encoding) reaches a token with a different canonical form",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r6-2",
+      "round": 6,
+      "path": "packages/rust/web-access/src/guard.rs",
+      "line": 226,
+      "title": "Tokens::none says a whitespace-only-once-decoded token arrives empty; a %20 token arrives intact as a header and as the server-set cookie",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
     }
   ]
 }
