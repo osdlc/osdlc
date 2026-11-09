@@ -61,7 +61,7 @@ flowchart LR
     CUR["PR 721: cursor allow and deny via .cursor/cli.json, merged"]
     REV["PR 724 + 727: claude-pr action, @claude review"]
     HPR["PR 734: codex-pr + cursor-pr, shared scripts"]
-    REL["Release agent-call 0.10.0: PR 726 merged, publish waits on PR 733"]
+    REL["agent-call 0.10.0 on npm (PRs 726, 733)"]
   end
   subgraph gate["Gate"]
     ARCH["API and architecture review 1: approved"]
@@ -119,9 +119,9 @@ flowchart LR
   class UP yours
   class SETUP done
   class REV done
-  class HPR blocked
+  class HPR external
   class PERM,PROBE,CHECK,ANS,SPEC,MULTI next
-  class REL blocked
+  class REL done
   class CUR done
   class MCP,PUB,DATA,PIN,STRICT later
 ```
@@ -133,18 +133,18 @@ move; merged PRs drop off.
 
 | Order | PR | What | Why this order | Status |
 | --- | --- | --- | --- | --- |
-| 1 | [#734](https://github.com/osdlc/osdlc/pull/734) | codex-pr and cursor-pr actions; claude-pr moved onto shared pr-common scripts | Only PR waiting; gate done (5 fixed, code review clean) | waiting on your review since 04:10 UTC; behind main; not tested live |
+| 1 | [#734](https://github.com/osdlc/osdlc/pull/734) | codex-pr and cursor-pr actions; claude-pr moved onto shared pr-common scripts | Only PR waiting; gate done (5 fixed, code review clean) | waiting on your review since 04:10 UTC; now conflicts with main (needs a rebase); not tested live |
 
 ## PR tracker
 
-Checked 2026-11-09 03:40 UTC. A periodic check refreshes this table and the graph.
+Checked 2026-11-09 04:17 UTC. A periodic check refreshes this table and the graph.
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
-| [#734](https://github.com/osdlc/osdlc/pull/734) | feat(gh-actions): codex-pr and cursor-pr, shared pr-common scripts, multi-marketplace plugins | open | none | behind main | waiting on your review | merge, then add caller workflows |
-| [#733](https://github.com/osdlc/osdlc/pull/733) | Version Packages (corpus-schema; unblocks the agent-call 0.10.0 publish) | open | none | clean | waiting on you to merge | merge |
+| [#734](https://github.com/osdlc/osdlc/pull/734) | feat(gh-actions): codex-pr and cursor-pr, shared pr-common scripts, multi-marketplace plugins | open | none | conflicting | merge conflict with main | resolve conflict, then merge; then add caller workflows |
+| [#733](https://github.com/osdlc/osdlc/pull/733) | Version Packages (corpus-schema; unblocked the agent-call 0.10.0 publish) | merged | — | — | — | merged 2026-11-09; agent-call 0.10.0 on npm |
 | [#731](https://github.com/osdlc/osdlc/pull/731) | chore(conformance): drop markdown-tags from CATCHING_UP in the version PR | merged | — | — | — | merged into #726's branch 2026-11-09 |
-| [#726](https://github.com/osdlc/osdlc/pull/726) | Version Packages (agent-call 0.10.0) | merged | — | — | — | merged 2026-11-09; publish waits on #733 |
+| [#726](https://github.com/osdlc/osdlc/pull/726) | Version Packages (agent-call 0.10.0) | merged | — | — | — | merged 2026-11-09; published after #733 |
 | [#721](https://github.com/osdlc/osdlc/pull/721) | feat(agent-call): enforce allow and deny tools on cursor | merged | — | — | — | merged 2026-11-09 |
 | [#723](https://github.com/osdlc/osdlc/pull/723) | fix(agent-call): follow-ups from the codex review of #715 | merged | — | — | — | merged 2026-11-09 |
 | [#716](https://github.com/osdlc/osdlc/pull/716) | feat(gh-actions): add the agent-setup action | merged | — | — | — | merged 2026-11-09 |
