@@ -7,6 +7,7 @@ needs `action.yml` at a repository's root.
 | Action                        | What it does                                                            |
 | ----------------------------- | ----------------------------------------------------------------------- |
 | [`agent-setup`](agent-setup/) | Installs a pinned claude, codex or cursor CLI and, optionally, plugins. |
+| [`pr-update`](pr-update/)     | Keeps open PRs up to date with their base using `@osdlc/pr-update`.     |
 
 ## Using an action
 
