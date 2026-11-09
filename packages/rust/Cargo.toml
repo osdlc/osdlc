@@ -9,7 +9,7 @@
 [workspace]
 # resolver 3 picks dependency versions that support `rust-version` (the MSRV).
 resolver = "3"
-members = ["agent-adapt", "config-layers", "etag-write", "frontmatter-lossless", "gfm-pipe-table", "glob-intersect", "markdown-contract", "markdown-corpus", "markdown-link", "markdown-relink", "markdown-vault-fs", "path-guard", "slug-collate", "tiered-dirs", "tradecraft", "typed-git", "vfs-seam", "vfs-walk", "web-access", "yaml-splice", "yaml-splice-wasm"]
+members = ["agent-adapt", "config-layers", "etag-write", "frontmatter-lossless", "gfm-pipe-table", "glob-intersect", "markdown-contract", "markdown-corpus", "markdown-link", "markdown-relink", "markdown-tags", "markdown-vault-fs", "path-guard", "slug-collate", "tiered-dirs", "tradecraft", "typed-git", "vfs-seam", "vfs-walk", "web-access", "yaml-splice", "yaml-splice-wasm"]
 
 [workspace.package]
 edition = "2024"
@@ -36,6 +36,9 @@ comrak = { version = "=0.53.0", default-features = false }
 # new in 0.3.
 getrandom = "0.3"
 globset = { version = "0.4", default-features = false }
+# The benchmarks under each crate's benches/ (bench/README.md). No default
+# features: no plotting or parallel report code, which the perf gate never reads.
+criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
 # web-access lists the host's interfaces for its Host allowlist.
 if-addrs = "0.13"
 # js-sys 0.3.103 is the release that pairs with wasm-bindgen 0.2.126.
@@ -47,7 +50,8 @@ regex = "1.8"
 saphyr-parser = "0.0.11"
 # 1.0.220 is the first serde that pins its own serde_derive (see config-layers).
 serde = { version = "1.0.220", features = ["derive"] }
-serde_json = "1.0.40"
+# 1.0.100 is what criterion (the benchmarks) needs; the minimal-versions job resolves to it.
+serde_json = "1.0.100"
 # 0.9.4 is the first serde_yaml that rejects a duplicate mapping key.
 serde_yaml = "0.9.4"
 sha2 = "0.10"

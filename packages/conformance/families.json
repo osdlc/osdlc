@@ -7,6 +7,13 @@
       { "language": "rust", "dir": "packages/rust/config-layers", "name": "config-layers" }
     ]
   },
+  "corpus-schema": {
+    "reference": "ts",
+    "generator": "pnpm --filter @osdlc/corpus-schema conformance:write",
+    "implementations": [
+      { "language": "ts", "dir": "packages/ts/corpus-schema", "name": "@osdlc/corpus-schema" }
+    ]
+  },
   "frontmatter-lossless": {
     "reference": "rust",
     "generator": "cargo run -p frontmatter-lossless --example conformance-write",
@@ -29,6 +36,14 @@
     "implementations": [
       { "language": "rust", "dir": "packages/rust/markdown-link", "name": "markdown-link" },
       { "language": "ts", "dir": "packages/ts/markdown-link", "name": "@osdlc/markdown-link" }
+    ]
+  },
+  "markdown-tags": {
+    "reference": "rust",
+    "generator": "cargo run -p markdown-tags --example conformance-write",
+    "implementations": [
+      { "language": "rust", "dir": "packages/rust/markdown-tags", "name": "markdown-tags" },
+      { "language": "ts", "dir": "packages/ts/markdown-tags", "name": "@osdlc/markdown-tags" }
     ]
   },
   "path-guard": {

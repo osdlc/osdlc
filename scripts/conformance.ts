@@ -22,7 +22,8 @@
 //   - packages/conformance/families.json lists each family with its reference,
 //     its generator command and its implementations. Each family has a
 //     directory holding README.md and suite.json (or one <section>.json per
-//     section), and each implementation's directory exists.
+//     section), and each implementation's directory exists. A family with one
+//     implementation also holds SPEC.md.
 //   - Every suite file has the suite format: family, reference,
 //     referenceVersion and sections, each case with a name, an input, and
 //     exactly one of expect and error.
@@ -49,6 +50,7 @@ import { parseToml } from './package-shape-rs.ts'
 export const CATCHING_UP: Record<string, string> = {
   'tiered-dirs': 'the Rust crate reaches 0.5.0 with the realign-small-twins work',
   'markdown-link': 'the Rust crate reaches 0.9.0 (a breaking change) before the changeset in .changeset/markdown-link-container-blocks.md releases the TypeScript package as 0.9.0',
+  'markdown-tags': 'the TypeScript package is set to 0.3.0 by hand and its first changeset takes it to 0.4.0, where the crate already is; the version PR that applies that changeset must delete this entry',
   'config-layers': 'the Rust crate gains the project-file migrations and compare-and-swap writes of osdlc#637',
 }
 
@@ -96,8 +98,8 @@ export function registryProblems(raw: unknown): string[] {
     if (extra.length > 0) problems.push(`${name}: unknown keys ${extra.join(', ')}`)
     if (typeof f['generator'] !== 'string' || f['generator'] === '') problems.push(`${name}: no generator command`)
     const impls = f['implementations']
-    if (!Array.isArray(impls) || impls.length < 2) {
-      problems.push(`${name}: a family has at least two implementations`)
+    if (!Array.isArray(impls) || impls.length === 0) {
+      problems.push(`${name}: a family has at least one implementation`)
       continue
     }
     const languages = impls.map((i: unknown) => (isObject(i) ? i['language'] : undefined))
@@ -271,6 +273,9 @@ export function checkRepo(root: string): string[] {
   for (const [name, f] of Object.entries(families)) {
     const dir = join(base, name)
     if (!existsSync(join(dir, 'README.md'))) problems.push(`${name}: packages/conformance/${name}/README.md is missing`)
+    if (f.implementations.length === 1 && !existsSync(join(dir, 'SPEC.md'))) {
+      problems.push(`${name}: a family with one implementation states its format in packages/conformance/${name}/SPEC.md`)
+    }
     const suites = existsSync(dir) ? readdirSync(dir).filter((n) => n.endsWith('.json')) : []
     if (suites.length === 0) problems.push(`${name}: no suite file in packages/conformance/${name}/`)
     if (suites.includes('suite.json') && suites.length > 1) problems.push(`${name}: suite.json and section files are not mixed`)

@@ -38,6 +38,8 @@ frontmatter-lossless = { workspace = true }
 # suite's keys in the order they are written. The crate parses no JSON at
 # runtime.
 serde_json = { workspace = true, features = ["preserve_order"] }
+# The benchmark in benches/body_links.rs; CI's perf gate runs it.
+criterion = { workspace = true }
 
 # The conformance suite's generator: `cargo run -p markdown-link --example
 # conformance-write` rewrites the expected values in
@@ -46,6 +48,10 @@ serde_json = { workspace = true, features = ["preserve_order"] }
 [[example]]
 name = "conformance-write"
 path = "tests/conformance/write.rs"
+
+[[bench]]
+name = "body_links"
+harness = false
 
 [lints]
 workspace = true
