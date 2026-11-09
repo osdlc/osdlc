@@ -24,7 +24,8 @@ osdlc/osdlc calls both workflows from its own `packages-ci.yml` and
 
 ## What a repository needs
 
-- A pnpm workspace with the packages in `packages/ts/<name>/`, each in the
+- A pnpm workspace whose root `package.json` has a `name` (the install
+  filters on it), with the packages in `packages/ts/<name>/`, each in the
   [package shape](../../../docs/planning/standards/S-package-shape-ts.md).
   `package-checks ts` checks the shape, and the root `package-checks.json`
   sets this repository's rules over osdlc's defaults (see the
@@ -76,7 +77,7 @@ They always run and report; only their steps narrow.
 
 | Input           | Default                             | Meaning                                                                                        |
 | --------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `os`            | `["ubuntu-latest", "macos-latest"]` | JSON array of runner labels for the `verify` matrix.                                           |
+| `os`            | `["ubuntu-latest", "macos-latest"]` | JSON array of runner labels for the `verify` matrix. Steps run in bash.                        |
 | `node`          | `["22", "24"]`                      | JSON array of Node versions for the `verify` matrix.                                           |
 | `main-node`     | `24`                                | The Node that also runs the tarball checks, and on the first OS the conformance regeneration.  |
 | `conformance`   | `true`                              | Check and regenerate the conformance suites.                                                   |
