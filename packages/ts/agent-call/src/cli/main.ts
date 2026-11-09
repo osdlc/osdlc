@@ -5,7 +5,14 @@ import { adapterFor, BUILTIN_AGENTS } from '../registry.js'
 import { callAgent, planCall } from '../run.js'
 import type { CapabilityNote, PlannedCall } from '../plan.js'
 import type { AgentName } from '../spec.js'
-import { EXIT_AGENT_ERROR, EXIT_OK, EXIT_STRICT, EXIT_USAGE, UsageError } from './errors.js'
+import {
+  EXIT_AGENT_ERROR,
+  EXIT_INTERRUPTED,
+  EXIT_OK,
+  EXIT_STRICT,
+  EXIT_USAGE,
+  UsageError,
+} from './errors.js'
 import { parseInputs } from './inputs.js'
 import { loadSpecFile, resolveCall } from './spec-file.js'
 
@@ -13,13 +20,16 @@ export interface CliIo {
   stdout: (text: string) => void
   stderr: (text: string) => void
   cwd: string
+  /** Aborted on SIGINT/SIGTERM so the agent's process group is killed. */
+  signal: AbortSignal
 }
 
 export const USAGE = `usage: agent-call run <spec.yml|spec.json> [--agent <id>] [--root <dir>]
                      [--input name=value | name=@file]... [--explain] [--dry-run]
 
 exit codes: 0 success, 1 the agent run failed, 2 usage or spec error,
-            3 strict mode refused the call (approximated or dropped fields)
+            3 strict mode refused the call (approximated or dropped fields),
+            130 interrupted by SIGINT or SIGTERM
 `
 
 /** Notes that make a call differ from what the spec asked for. */
@@ -118,10 +128,11 @@ async function run(argv: readonly string[], io: CliIo): Promise<number> {
   }
   if (values['dry-run'] === true) return EXIT_OK
 
-  const result = await callAgent(adapter, spec)
+  const result = await callAgent(adapter, spec, { signal: io.signal })
   const { raw: _raw, planned: _planned, events: _events, ...normalized } = result
   io.stdout(
     JSON.stringify({ ...normalized, agent: planned.agent, notes: planned.notes }, null, 2) + '\n',
   )
+  if (io.signal.aborted) return EXIT_INTERRUPTED
   return result.ok ? EXIT_OK : EXIT_AGENT_ERROR
 }

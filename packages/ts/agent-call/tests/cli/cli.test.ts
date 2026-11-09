@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -39,6 +39,7 @@ async function cli(args: string[]) {
     cwd: dir,
     stdout: (t) => (out += t),
     stderr: (t) => (err += t),
+    signal: new AbortController().signal,
   })
   return { code, out, err }
 }
@@ -203,4 +204,38 @@ describe('--dry-run', () => {
     expect((await cli(['run', 'spec.yml', '--dry-run'])).err).toMatch(/\{\{pr\}\}|missing/)
     expect((await cli(['run', 'spec.yml', '--agent', 'nope', ...baseArgs.slice(2)])).code).toBe(2)
   })
+})
+
+describe('interrupt', () => {
+  test('an aborted run stops the agent and exits 130', async () => {
+    const bin = join(dir, 'fake-bin')
+    mkdirSync(bin, { recursive: true })
+    const pidFile = join(dir, 'agent.pid')
+    writeFileSync(join(bin, 'claude'), `#!/bin/sh\necho $$ > '${pidFile}'\nexec sleep 30\n`, {
+      mode: 0o755,
+    })
+    writeFileSync(join(dir, 'interrupt.yml'), 'run:\n  agent: claude\n  prompt: [{text: hi}]\n')
+    const savedPath = process.env['PATH']
+    process.env['PATH'] = `${bin}:${savedPath ?? ''}`
+    try {
+      const abort = new AbortController()
+      const started = Date.now()
+      const running = main(['run', 'interrupt.yml'], {
+        cwd: dir,
+        stdout: () => undefined,
+        stderr: () => undefined,
+        signal: abort.signal,
+      })
+      while (!existsSync(pidFile) || readFileSync(pidFile, 'utf8').trim() === '') {
+        await new Promise((r) => setTimeout(r, 20))
+      }
+      const pid = Number(readFileSync(pidFile, 'utf8').trim())
+      abort.abort()
+      expect(await running).toBe(130)
+      expect(Date.now() - started).toBeLessThan(10_000)
+      expect(() => process.kill(pid, 0)).toThrow()
+    } finally {
+      process.env['PATH'] = savedPath
+    }
+  }, 15_000)
 })
