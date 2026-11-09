@@ -73,6 +73,7 @@ git identity: the action pushes merge commits from that checkout.
 | `conflict-label`         | `needs-manual-update` | Added to a PR that ends conflict or failed, removed when it later ends updated or up to date. Empty disables.        |
 | `comment-conflicts`      | `true`                | One comment per (head sha, base sha) on a conflicted PR.                                                             |
 | `include-drafts`         | `true`                | Update draft PRs.                                                                                                    |
+| `include-bots`           | `false`               | Update PRs authored by a bot. A PR named by `pr` is updated either way.                                              |
 | `dry-run`                | `false`               | Measure and report; push, label and comment nothing.                                                                 |
 | `fail-on-conflict`       | `false`               | Fail the step when a PR ended conflict or failed (see Exit policy).                                                  |
 | `cache-attempts`         | `true`                | Persist `.pr-update/attempts` between runs with actions/cache.                                                       |
@@ -84,12 +85,16 @@ Outputs: `report-path` (the pr-update JSON report), and the counts `updated`,
 ## Which PRs
 
 `select-prs.sh` lists open PRs with `gh pr list --json
-number,isDraft,isCrossRepository,labels` and passes the survivors to pr-update
+number,isDraft,isCrossRepository,labels,author` and passes the survivors to pr-update
 as `--pr N`. It excludes:
 
 - a PR from a fork (`isCrossRepository`): the token cannot push to it;
 - a draft, only when `include-drafts` is `false`;
-- a PR carrying `skip-label`.
+- a PR carrying `skip-label`;
+- a PR authored by a bot (`author.is_bot`, or a login ending in `[bot]` or
+  starting with `app/`), unless `include-bots` is `true`: release-plz and
+  Changesets rebuild and force-push their release branches on every merge to
+  main, so updating them is wasted CI.
 
 pr-update has `overrides` with `strategy: skip` that match a label, but they
 live in a config file and cannot be set from a flag, so the action filters
@@ -117,7 +122,14 @@ CI on the PR checks what was pushed.
    The action adds `conflict-label`, and posts one comment with the paths and
    the reason, ending in `<!-- pr-update: conflict head=<sha> base=<sha> -->`.
    It does not post again for the same pair.
-4. When the PR later ends `updated` or `up-to-date`, the label is removed.
+4. A PR that ends `updated` because the repair agent fixed a conflict gets one
+   comment per merge commit (with `comment-conflicts`): the repaired files, the
+   agent's note, a link to the merge commit and the resolution as `git show
+   --remerge-diff` output in a collapsed block (cut at 300 lines; `git show
+   --stat` where remerge-diff is unavailable), ending `<!-- pr-update: repaired
+   head=<merge sha> -->`. Conflicts cleared by rerere, the lockfile rule,
+   resolvers or generators, and clean updates, stay silent.
+5. When the PR later ends `updated` or `up-to-date`, the label is removed.
 
 There is no limit on the number of repairs in one run: pr-update has no such
 setting. A run is bounded by the job's `timeout-minutes` and by
