@@ -1,12 +1,57 @@
 {
   "schema": 1,
   "pr": 732,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "a130a8661f493114bd88bf670d4a3d31f73174e4",
+  "base": "ab1aa2162af61286ee6ede93619dd7528eba0c4b",
+  "round": 1,
   "claim": {
     "owner": "Mac.local:claude-k3x9qa",
     "at": "2026-11-09T02:49:33.048Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "scripts/conformance.ts",
+      "line": 251,
+      "title": "level now but unlevel after pending changesets passes on main",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "scripts/conformance.ts",
+      "line": 230,
+      "title": "frontmatter regex drops lines with a trailing YAML comment",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": "scripts/conformance.ts",
+      "line": 209,
+      "title": "bumpVersion mishandles prerelease versions",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-4",
+      "round": 1,
+      "path": "scripts/conformance.test.ts",
+      "line": null,
+      "title": "no tests for patch, major on 0.x, unrelated, empty or overshoot changesets",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
