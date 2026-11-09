@@ -49,6 +49,9 @@ what shipped.
 - [T-FZEU](tasks/T-FZEU-utc-safe-process-probe.md): the process probe
   compares start times in UTC
   ([#679](https://github.com/osdlc/osdlc/issues/679))
+- [T-UH0R](tasks/T-UH0R-a-failed-step-skips-only-what-depends-on-it.md): a
+  failed step skips only what depends on it
+  ([#646](https://github.com/osdlc/osdlc/issues/646))
 
 ## Done tasks
 
