@@ -25,7 +25,8 @@ osdlc/osdlc calls both workflows from its own `packages-ci.yml` and
 ## What a repository needs
 
 - A pnpm workspace whose root `package.json` has a `name` (the install
-  filters on it), with the packages in `packages/ts/<name>/`, each in the
+  filters on it), with the packages in `<tsDir>/<name>/` (`packages/ts`
+  unless `package-checks.json` sets `tsDir`), each in the
   [package shape](../../../docs/planning/standards/S-package-shape-ts.md).
   `package-checks ts` checks the shape, and the root `package-checks.json`
   sets this repository's rules over osdlc's defaults (see the

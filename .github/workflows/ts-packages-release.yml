@@ -146,14 +146,19 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile --ignore-scripts
 
+      - name: Build
+        run: pnpm -r --if-present run build
+
       # Trusted publishing cannot create a package: the owner stages each new
-      # one first with `package-checks stage`. The packages' folder is
-      # `tsDir` from package-checks.json, as for the other checks.
+      # one first with `package-checks stage`. After the build, since a
+      # repository may build package-checks in its own workspace. The packages' folder is
+      # `tsDir`, read through package-checks, which refuses a bad
+      # package-checks.json.
       - name: Refuse a package that is not on npm yet
         run: |
           set -euo pipefail
           shopt -s nullglob
-          dir="$(node -p "(() => { try { return require('./package-checks.json').tsDir } catch {} })() ?? 'packages/ts'")"
+          dir="$(pnpm exec package-checks config tsDir)"
           manifests=("$dir"/*/package.json)
           if [ "${#manifests[@]}" -eq 0 ]; then
             echo "::error::no packages in $dir, the tsDir of package-checks.json"
@@ -171,9 +176,6 @@ jobs:
               exit 1
             fi
           done
-
-      - name: Build
-        run: pnpm -r --if-present run build
 
       - name: Pack, publint, attw
         run: pnpm exec package-checks ts

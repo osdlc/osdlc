@@ -23,8 +23,8 @@ of them.
   publishes through npm trusted publishing, with provenance, so no npm token
   is stored. It calls the shared release workflow,
   `.github/workflows/ts-packages-release.yml`, which other repositories call
-  too ([`packages/gh-actions/ts-packages`](gh-actions/ts-packages/)). Only a new library's placeholder version is published by hand
-  (see below).
+  too ([`packages/gh-actions/ts-packages`](gh-actions/ts-packages/)). Only a
+  new library's placeholder version is published by hand (see below).
 - Each published npm version gets a git tag and a GitHub release named
   `<package>@<version>`, for example `@osdlc/command-seam@0.4.0`. The sdlc
   CLI's own tags are plain `vX.Y.Z`.
