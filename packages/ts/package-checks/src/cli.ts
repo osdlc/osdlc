@@ -133,5 +133,6 @@ function stageCommand(root: string, rest: string[]): number {
     workflow: parsed.values.workflow,
     environment: parsed.values.environment,
     scope: loadConfig(root).scope,
+    root,
   })
 }

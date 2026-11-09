@@ -148,6 +148,10 @@ export function checkRepo(root: string, options: RepoOptions = {}): string[] {
     if (!libraries.includes(dir))
       problems.push(`config.json: skipScan names ${dir}, which is not a library`)
   }
+  for (const dir of config.unmigrated) {
+    if (!libraries.includes(dir))
+      problems.push(`config.json: unmigrated names ${dir}, which is not a library`)
+  }
   const sources = new Map(
     libraries.filter((d) => config.skipScan[d] === undefined).map((d) => [d, testSources(root, d)]),
   )

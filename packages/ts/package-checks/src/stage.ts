@@ -7,6 +7,9 @@
  *
  *   package-checks stage [--dry-run] [--workflow <file>] [--environment <name>] <package dir> ...
  *
+ * Each package folder is read from the repository root, as the other commands
+ * read theirs.
+ *
  * The trusted publisher names the repository in the package's
  * `repository.url`, the workflow `--workflow` (default packages-publish.yml)
  * and, when given, `--environment`. A package already on npm is not published
@@ -104,28 +107,30 @@ export interface StageOptions {
   workflow?: string | undefined
   environment?: string | undefined
   scope?: string | null | undefined
+  /** The repository root: package folders are read from it, and npm runs in it. */
+  root?: string | undefined
 }
 
-/** Runs npm at the pinned version and returns its result. */
-function npm(args: string[]): CommandResult {
-  return spawnRunner('npx').run(['-y', NPM, ...args], { cwd: process.cwd() })
+/** Runs npm at the pinned version in `cwd` and returns its result. */
+function npm(args: string[], cwd: string): CommandResult {
+  return spawnRunner('npx').run(['-y', NPM, ...args], { cwd })
 }
 
-/** Runs npm at the pinned version with the output shown, and returns its exit code. */
-function npmLive(args: string[]): number {
-  return stream('npx', ['-y', NPM, ...args], process.cwd())
+/** Runs npm at the pinned version in `cwd` with the output shown, and returns its exit code. */
+function npmLive(args: string[], cwd: string): number {
+  return stream('npx', ['-y', NPM, ...args], cwd)
 }
 
 /** True when the package exists, false on E404. Any other failure throws. */
-function onNpm(name: string): boolean {
-  const r = npm(['view', name, 'name'])
+function onNpm(name: string, cwd: string): boolean {
+  const r = npm(['view', name, 'name'], cwd)
   if (r.exitCode === 0) return true
   if (r.stderr.includes('E404')) return false
   throw new Error(`npm view ${name} failed:\n${r.stderr}`)
 }
 
 /** Builds and packs `dir` at the placeholder version, and publishes it under the `stage` tag. */
-function publishPlaceholder(dir: string, dry: string[]): boolean {
+function publishPlaceholder(dir: string, dry: string[], cwd: string): boolean {
   const manifest = join(dir, 'package.json')
   const original = readFileSync(manifest, 'utf8')
   const out = mkdtempSync(join(tmpdir(), 'stage-npm-package-'))
@@ -157,7 +162,7 @@ function publishPlaceholder(dir: string, dry: string[]): boolean {
     }
     const publish = ['publish', tarball, '--access', 'public', '--tag', 'stage', ...dry]
     console.log(`  npm ${publish.join(' ')}`)
-    return npmLive(publish) === 0
+    return npmLive(publish, cwd) === 0
   } finally {
     rmSync(out, { recursive: true, force: true })
   }
@@ -168,12 +173,13 @@ export function stage(dirs: string[], options: StageOptions = {}): number {
   const dryRun = options.dryRun ?? false
   const workflow = options.workflow ?? DEFAULT_WORKFLOW
   const dry = dryRun ? ['--dry-run'] : []
+  const root = resolve(options.root ?? process.cwd())
   // Check every package before publishing any.
   const targets = dirs.map((d) =>
-    readTarget(resolve(d), options.scope === undefined ? OSDLC.scope : options.scope),
+    readTarget(resolve(root, d), options.scope === undefined ? OSDLC.scope : options.scope),
   )
 
-  const who = npm(['whoami'])
+  const who = npm(['whoami'], root)
   const loggedIn = who.exitCode === 0
   if (!loggedIn && !dryRun) {
     console.error(`npm whoami failed; run \`npm login\` first.\n${who.stderr}`)
@@ -186,17 +192,17 @@ export function stage(dirs: string[], options: StageOptions = {}): number {
   for (const target of targets) {
     const { dir, name } = target
     console.log(`\n${name}`)
-    const existed = onNpm(name)
+    const existed = onNpm(name, root)
     if (existed) {
       console.log('  already on npm; no placeholder needed.')
-    } else if (!publishPlaceholder(dir, dry)) {
+    } else if (!publishPlaceholder(dir, dry, root)) {
       console.error('  the placeholder publish failed; skipping its trusted publisher.')
       failed = true
       continue
     }
 
     if (existed && loggedIn) {
-      const list = npm(['trust', 'list', name, '--json'])
+      const list = npm(['trust', 'list', name, '--json'], root)
       if (list.exitCode === 0 && (JSON.parse(list.stdout || '[]') as unknown[]).length > 0) {
         console.log('  already has a trusted publisher; leaving it.')
         continue
@@ -207,7 +213,7 @@ export function stage(dirs: string[], options: StageOptions = {}): number {
     // npm cannot dry-run a trusted publisher without a login, or for a package
     // that is not on npm yet.
     if (dryRun && !(existed && loggedIn)) continue
-    if (npmLive([...trust, name, '--yes', ...dry]) !== 0) {
+    if (npmLive([...trust, name, '--yes', ...dry], root) !== 0) {
       console.error(`  npm trust failed. Add it by hand at https://www.npmjs.com/package/${name}/access:
     GitHub Actions, repository ${target.repository}, workflow ${workflow}, environment ${options.environment ?? '(none)'}.`)
       failed = true

@@ -42,9 +42,11 @@ export {
   nextBreaking,
   printSemverReport,
   semverCheck,
+  semverOutcome,
   semverTable,
   type SemverReport,
   type SemverRow,
+  type Version,
 } from './semver.ts'
 export * as shapeRs from './shape-rs.ts'
 export * as shapeTs from './shape-ts.ts'

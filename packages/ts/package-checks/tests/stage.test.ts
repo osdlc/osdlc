@@ -5,7 +5,7 @@ import { join } from 'node:path'
 
 import { test } from 'vitest'
 
-import { githubRepository, readTarget, trustArgs } from '@osdlc/package-checks'
+import { githubRepository, readTarget, stage, trustArgs } from '@osdlc/package-checks'
 
 test('the GitHub repository comes from any form of repository.url', () => {
   for (const url of [
@@ -64,4 +64,16 @@ test('the trusted publisher names the package repository, the workflow and the e
     '--environment',
     'npm',
   ])
+})
+
+test('stage reads each package folder from the root, not the working directory', () => {
+  const root = mkdtempSync(join(tmpdir(), 'stage-root-'))
+  try {
+    assert.throws(
+      () => stage(['packages/ts/new-lib'], { root, dryRun: true }),
+      (e: Error) => e.message === `${join(root, 'packages/ts/new-lib')}: no package.json`,
+    )
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })
