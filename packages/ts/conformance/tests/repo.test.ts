@@ -242,5 +242,14 @@ test('a config.json it cannot read stops the check', () => {
       ['config.json: libraries.ts and libraries.rust are separate directories'],
     )
   }
+  assert.deepEqual(
+    repo((put) =>
+      put(
+        'packages/conformance/config.json',
+        JSON.stringify({ libraries: { ts: 'ts/libs', rust: 'rust/libs' } }),
+      ),
+    ),
+    ['config.json: libraries.ts and libraries.rust end in different folder names'],
+  )
   assert.match(repo((put) => put('packages/conformance/config.json', '{'))[0]!, /^config\.json: /)
 })

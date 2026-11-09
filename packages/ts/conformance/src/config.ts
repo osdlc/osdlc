@@ -61,6 +61,9 @@ export function readConfig(raw: unknown): { config: ConformanceConfig } | { prob
       const [ts, rust] = [config.libraries['ts']!, config.libraries['rust']!]
       if (ts === rust || ts.startsWith(`${rust}/`) || rust.startsWith(`${ts}/`))
         problems.push('config.json: libraries.ts and libraries.rust are separate directories')
+      // A test names the other language's libraries by the root's last folder.
+      else if (ts.split('/').pop() === rust.split('/').pop())
+        problems.push('config.json: libraries.ts and libraries.rust end in different folder names')
     }
   }
   if (catchingUp !== undefined) {
