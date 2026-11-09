@@ -160,7 +160,8 @@ class Fences {
       (start >= lineEnd || !opensBlock(s.charCodeAt(start)))
     ) {
       // A lone CR is the blank line of a CRLF file.
-      this.paragraph = start < lineEnd && !(lineEnd - start === 1 && s.charCodeAt(start) === CR)
+      const textEnd = lineEnd > start && s.charCodeAt(lineEnd - 1) === CR ? lineEnd - 1 : lineEnd
+      this.paragraph = start < textEnd && !leavesParagraph(s, start, textEnd, this.paragraph)
       return 'outside'
     }
     const end = lineEnd > start && s.charCodeAt(lineEnd - 1) === CR ? lineEnd - 1 : lineEnd
@@ -228,7 +229,10 @@ class Fences {
     }
     this.contentStart = cursor.contentStart()
     // An indented line starts code, not a paragraph, unless it continues one.
-    this.paragraph = cursor.textPos < end && (cursor.indent() <= 3 || wasParagraph)
+    this.paragraph =
+      cursor.textPos < end &&
+      (cursor.indent() <= 3 || wasParagraph) &&
+      !(cursor.indent() <= 3 && leavesParagraph(s, cursor.textPos, end, wasParagraph))
     return 'outside'
   }
 }
@@ -523,6 +527,22 @@ function endsSpanBlock(s: string, start: number, end: number, rules: CodeRules):
 function isOneLineBlock(s: string, start: number, end: number): boolean {
   const at = start + leadingSpaces(s, start, end, 3)
   return atxHeading(s, at, end) || (at < end && s[at] === '|')
+}
+
+/**
+ * Whether a line outside a fence, from `at` after any indent, is not paragraph
+ * text: an ATX heading, a thematic break, or a setext underline directly under
+ * a paragraph.
+ */
+function leavesParagraph(s: string, at: number, end: number, afterParagraph: boolean): boolean {
+  if (atxHeading(s, at, end) || thematicBreak(s, at, end)) return true
+  if (!afterParagraph || at >= end) return false
+  const mark = s[at]
+  if (mark !== '=' && mark !== '-') return false
+  let i = at
+  while (i < end && s[i] === mark) i++
+  for (; i < end; i++) if (s[i] !== ' ' && s[i] !== '\t') return false
+  return true
 }
 
 /** `#{1,6}` then a space, a tab or the end of the line, from `at`. */

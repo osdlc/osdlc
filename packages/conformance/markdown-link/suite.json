@@ -497,6 +497,66 @@
           }
         },
         {
+          "name": "thematic_break_dashes_then_ordered_item_not_from_one",
+          "input": {
+            "source": "---\n2. ```\n   [[x]]\n   ```\n[[y]]"
+          },
+          "expect": {
+            "commonmark": "---\n      \n        \n      \n[[y]]",
+            "skill_export": "---\n2. ```\n   [[x]]\n      \n     "
+          }
+        },
+        {
+          "name": "thematic_break_stars_then_ordered_item_not_from_one",
+          "input": {
+            "source": "***\n3. ```\n   [[x]]\n   ```\n[[y]]"
+          },
+          "expect": {
+            "commonmark": "***\n      \n        \n      \n[[y]]",
+            "skill_export": "***\n3. ```\n   [[x]]\n      \n     "
+          }
+        },
+        {
+          "name": "setext_equals_underline_then_ordered_item_not_from_one",
+          "input": {
+            "source": "Title\n===\n2. ```\n   [[x]]\n   ```\n[[y]]"
+          },
+          "expect": {
+            "commonmark": "Title\n===\n      \n        \n      \n[[y]]",
+            "skill_export": "Title\n===\n2. ```\n   [[x]]\n      \n     "
+          }
+        },
+        {
+          "name": "setext_dashes_underline_then_ordered_item_not_from_one",
+          "input": {
+            "source": "Title\n---\n2. ```\n   [[x]]\n   ```\n[[y]]"
+          },
+          "expect": {
+            "commonmark": "Title\n---\n      \n        \n      \n[[y]]",
+            "skill_export": "Title\n---\n2. ```\n   [[x]]\n      \n     "
+          }
+        },
+        {
+          "name": "atx_heading_then_ordered_item_not_from_one",
+          "input": {
+            "source": "# H\n2. ```\n   [[x]]\n   ```\n[[y]]"
+          },
+          "expect": {
+            "commonmark": "# H\n      \n        \n      \n[[y]]",
+            "skill_export": "# H\n2. ```\n   [[x]]\n      \n     "
+          }
+        },
+        {
+          "name": "equals_without_a_paragraph_is_paragraph_text",
+          "input": {
+            "source": "===\n2. ```\n   [[x]]\n   ```\n[[y]]"
+          },
+          "expect": {
+            "commonmark": "===\n2. ```\n   [[x]]\n      \n     ",
+            "skill_export": "===\n2. ```\n   [[x]]\n      \n     "
+          }
+        },
+        {
           "name": "ordered_item_from_one_interrupts_a_paragraph",
           "input": {
             "source": "Text\n1. ```\n   [[a]]\n   ```\n[[b]]\n"

@@ -50,8 +50,8 @@
 //! indented to its list item ends the item here, where CommonMark keeps it.
 //! A list item interrupts a paragraph only as CommonMark lets it: an ordered
 //! item must start at 1 and no item may be empty. The line before is taken to
-//! be a paragraph when it is text outside a fence, so a heading or a table
-//! row counts as one.
+//! be a paragraph when it is text outside a fence other than a heading, a
+//! thematic break or a setext underline, so a table row counts as one.
 //! [`CodeRules::SkillExport`] reads one line at a time and knows no
 //! containers, as the renderers it matches do.
 //!
@@ -288,7 +288,8 @@ impl Fences {
             )
         {
             // A lone `\r` is the blank line of a CRLF file.
-            self.paragraph = !line.is_empty() && line != b"\r";
+            let text = line.strip_suffix(b"\r").unwrap_or(line);
+            self.paragraph = !text.is_empty() && !leaves_paragraph(text, self.paragraph);
             return FenceLine::Outside;
         }
         let line = line.strip_suffix(b"\r").unwrap_or(line);
@@ -365,7 +366,10 @@ impl Fences {
         }
         self.content = cursor.content_start();
         // An indented line starts code, not a paragraph, unless it continues one.
-        self.paragraph = cursor.text_pos < line.len() && (cursor.indent() <= 3 || was_paragraph);
+        let text = &line[cursor.text_pos..];
+        self.paragraph = cursor.text_pos < line.len()
+            && (cursor.indent() <= 3 || was_paragraph)
+            && !(cursor.indent() <= 3 && leaves_paragraph(text, was_paragraph));
         FenceLine::Outside
     }
 }
@@ -714,6 +718,18 @@ fn is_one_line_block(line: &[u8]) -> bool {
 fn atx_heading(line: &[u8]) -> bool {
     let hashes = line.iter().take_while(|b| **b == b'#').count();
     (1..=6).contains(&hashes) && matches!(line.get(hashes), None | Some(b' ' | b'\t' | b'\r'))
+}
+
+/// Whether a line outside a fence, starting after any indent, is not
+/// paragraph text: an ATX heading, a thematic break, or a setext underline
+/// directly under a paragraph.
+fn leaves_paragraph(text: &[u8], after_paragraph: bool) -> bool {
+    let underline = text.first().is_some_and(|&c| c == b'=' || c == b'-') && {
+        let mark = text[0];
+        let run = text.iter().take_while(|b| **b == mark).count();
+        text[run..].iter().all(|b| matches!(b, b' ' | b'\t'))
+    };
+    atx_heading(text) || thematic_break(text) || (after_paragraph && underline)
 }
 
 /// An ATX heading, a line starting with `|`, a setext underline, a thematic
