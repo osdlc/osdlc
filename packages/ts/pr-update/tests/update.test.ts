@@ -22,10 +22,11 @@ import { prUpdateConfigSchema, type PrUpdateConfig } from '../src/config.ts'
 import type { AttemptStore, Ports } from '../src/ports.ts'
 import { prKey, type SurveyReport } from '../src/survey.ts'
 import { attemptsDir, fileAttemptStore, listAttempts } from '../src/update/attempts.ts'
-import type { UpdateResult } from '../src/update/execute.ts'
+import type { UpdateResult, UpdateTarget } from '../src/update/execute.ts'
 import {
   applyStrategyOverride,
   renderUpdateText,
+  restackTarget,
   runUpdate,
   selectTargets,
   toResult,
@@ -364,6 +365,16 @@ describe('renderUpdateText', () => {
     ])
   })
 
+  test('a restacked PR names the parent it went onto', () => {
+    const text = renderUpdateText({
+      ...empty,
+      applied: true,
+      results: [res({ number: 2, head: 'child', restackedOnto: 1 })],
+      counts,
+    })
+    expect(text.split('\n')[0]).toBe('✓ o/r#2  rebase  child  updated  (restacked onto o/r#1)')
+  })
+
   test('a rehearsal says nothing was pushed', () => {
     const text = renderUpdateText({ ...empty, applied: false, counts })
     expect(text).toContain('PR-UPDATE (rehearsal — nothing pushed): updated=1')
@@ -389,6 +400,7 @@ const ARGS: UpdateArgs = {
   pr: [],
   trust: false,
   retryFailed: false,
+  restack: false,
 }
 
 const NO_REMOTE: CommandRunner = { run: () => ({ exitCode: 2, stdout: '', stderr: '' }) }
@@ -914,5 +926,284 @@ describe('runUpdate — two repositories that each hold a PR 1', () => {
       fx.worker.git.fetch('origin')
       expect(fx.worker.git.resolveRef('origin/topic')).toBe(heads[i])
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// restack: a whole stack in one run
+// ---------------------------------------------------------------------------
+
+describe('selectTargets — restack', () => {
+  // main <- #1 (behind) <- #2 <- #3: #2 and #3 are blocked on #1.
+  const stack = () =>
+    report([
+      row({ number: 1, head: 'g' }),
+      row({ number: 2, head: 'p', base: 'g', parent: 1, status: 'blocked', blockedBy: 1 }),
+      row({ number: 3, head: 'c', base: 'p', parent: 2, status: 'blocked', blockedBy: 1 }),
+    ])
+
+  test('without restack, blocked children wait for the next run', () => {
+    const { targets, skipped } = selectTargets(stack(), [])
+    expect(targets.map((t) => t.number)).toEqual([1])
+    expect(skipped.map((s) => s.reason)).toEqual(['blocked on #1', 'blocked on #1'])
+  })
+
+  test('with restack, each blocked child is a target after its parent, marked with it', () => {
+    const { targets, skipped } = selectTargets(stack(), [], undefined, { restack: true })
+    expect(targets.map((t) => [t.number, t.stackParent])).toEqual([
+      [1, undefined],
+      [2, 1],
+      [3, 2],
+    ])
+    expect(skipped).toEqual([])
+  })
+
+  test('a child whose parent is not a target stays blocked, and says why', () => {
+    const r = stack()
+    r.prs[0] = { ...r.prs[0]!, strategy: 'skip', strategyReason: 'fork' }
+    const { targets, skipped } = selectTargets(r, [], undefined, { restack: true })
+    expect(targets).toEqual([])
+    expect(skipped.map((s) => s.reason)).toEqual([
+      'fork',
+      'blocked on #1; parent #1 is not updated in this run',
+      'blocked on #1; parent #2 is not updated in this run',
+    ])
+  })
+
+  test('a scoped restack run takes the named PR with its stack ancestors', () => {
+    const scoped = selectTargets(stack(), [prKey('o/r', 2)], undefined, { restack: true })
+    expect(scoped.targets.map((t) => t.number)).toEqual([1, 2])
+    expect(scoped.skipped.map((s) => [s.number, s.reason])).toEqual([
+      [3, 'not selected by --pr/--branch'],
+    ])
+    const plain = selectTargets(stack(), [prKey('o/r', 2)])
+    expect(plain.targets).toEqual([])
+  })
+})
+
+describe('restackTarget', () => {
+  const child: UpdateTarget = {
+    repo: 'o/r',
+    number: 2,
+    head: 'p',
+    base: 'g',
+    headOid: 'p0',
+    baseOid: 'g0',
+    strategy: 'rebase',
+    stackParent: 1,
+  }
+  const parent = (outcome: UpdateResult['outcome']): UpdateResult => ({
+    repo: 'o/r',
+    number: 1,
+    head: 'g',
+    base: 'main',
+    headOid: 'g0',
+    baseOid: 'm0',
+    strategy: 'rebase',
+    outcome,
+  })
+  const policy = { maxFailedAttempts: 0, retryFailed: false }
+  const pushed = parent({
+    status: 'updated',
+    resolved: [],
+    pushed: true,
+    builtOid: 'g1',
+    pushedOid: 'g1',
+  })
+
+  test('goes onto the head the parent was pushed at, replaying from its old head', () => {
+    expect(restackTarget(child, [pushed], true, policy)).toEqual({
+      ...child,
+      baseOid: 'g1',
+      onto: { parent: 1, oid: 'g1', upstream: 'g0' },
+    })
+  })
+
+  test('a rehearsal goes onto the head the parent was built at', () => {
+    const built = parent({ status: 'updated', resolved: [], pushed: false, builtOid: 'g1' })
+    expect(restackTarget(child, [built], false, policy)).toMatchObject({
+      onto: { parent: 1, oid: 'g1', upstream: 'g0' },
+    })
+  })
+
+  test('a parent that was built but not pushed holds the child back in a run that writes', () => {
+    const declined = parent({
+      status: 'updated',
+      resolved: [],
+      pushed: false,
+      builtOid: 'g1',
+      declined: 'push declined',
+    })
+    expect(restackTarget(child, [declined], true, policy)).toBe(
+      'blocked on #1; parent #1 was not pushed (push declined)',
+    )
+  })
+
+  test('a parent that conflicted or failed holds the child back', () => {
+    const conflict = parent({ status: 'conflict', needsHuman: [] })
+    expect(restackTarget(child, [conflict], true, policy)).toBe(
+      'blocked on #1; parent #1 ended conflict',
+    )
+    expect(restackTarget(child, [], true, policy)).toBe('blocked on #1; parent #1 was not updated')
+  })
+
+  test('a parent that was already current leaves the child as surveyed', () => {
+    expect(restackTarget(child, [parent({ status: 'up-to-date' })], true, policy)).toBe(child)
+  })
+
+  test("a failure recorded at the child's new base holds it back", () => {
+    const attempts: AttemptStore = {
+      get: (key) => (key.baseOid === 'g1' ? { failures: 2, reason: 'x', at: '' } : null),
+      recordFailure: () => {},
+      clear: () => {},
+    }
+    const out = restackTarget(child, [pushed], true, {
+      attempts,
+      maxFailedAttempts: 2,
+      retryFailed: false,
+    })
+    expect(out).toBe('failed 2 time(s) at this head and base; waiting for either to move')
+  })
+})
+
+describe('runUpdate --restack — a three-level stack, against real git', () => {
+  // main <- g (#1) <- p (#2) <- c (#3), and main has moved on.
+  let fx: ReturnType<typeof makeBareAndWorker>
+  let calls: string[][]
+
+  function branch(name: string, from: string, files: Record<string, string>): void {
+    const { git } = fx.worker
+    git.checkout(from, { branch: name })
+    fx.worker.commit(`${name} work`, files)
+    git.push('origin', name)
+  }
+
+  beforeEach(() => {
+    fx = makeBareAndWorker({ initialBranch: 'main' })
+    const { git } = fx.worker
+    fx.worker.commit('initial', { 'README.md': 'fixture\n' })
+    git.push('origin', 'main')
+    branch('g', 'main', { 'g.txt': 'g\n' })
+    branch('p', 'g', { 'p.txt': 'p\n' })
+    branch('c', 'p', { 'c.txt': 'c\n' })
+    git.checkout('main')
+    fx.worker.commit('main moves', { 'm.txt': 'm\n' })
+    git.push('origin', 'main')
+    git.fetch('origin')
+  })
+  afterEach(() => fx.cleanup())
+
+  const tip = (name: string) => {
+    fx.worker.git.fetch('origin')
+    return fx.worker.git.resolveRef(`origin/${name}`)!
+  }
+
+  async function run(patch: Partial<UpdateArgs>, ports: Partial<Ports> = {}) {
+    calls = []
+    const real = spawnRunner('git')
+    const git: CommandRunner = {
+      run: (argv, opts) => {
+        calls.push(argv)
+        return real.run(argv, { ...opts, env: { ...IDENTITY, ...opts.env } })
+      },
+    }
+    const prs: CodeHostPrDetail[] = (
+      [
+        [1, 'g', 'main'],
+        [2, 'p', 'g'],
+        [3, 'c', 'p'],
+      ] as const
+    ).map(([number, head, base]) => ({
+      number,
+      title: head,
+      url: `https://github.com/o/r/pull/${number}`,
+      baseRef: base,
+      headRef: head,
+      headSha: fx.worker.git.resolveRef(`origin/${head}`)!,
+      isDraft: false,
+      labels: [],
+      reviewCount: 0,
+      isCrossRepository: false,
+    }))
+    return runUpdate(
+      { ...ARGS, repo: ['o/r'], restack: true, ...patch },
+      {
+        projectRoot: fx.worker.dir,
+        dryRun: false,
+        git,
+        gh: UNREACHABLE_GH,
+        codeHost: () =>
+          ({ listPrDetails: () => ({ ok: true, value: prs }) }) as unknown as CodeHost,
+        cfg: cfg(),
+        ports: fakePorts({ locate: () => fx.worker.dir, ...ports }),
+      },
+    )
+  }
+
+  test.each(['rebase', 'merge'] as const)(
+    "--apply --strategy %s updates every level in one run, each onto its parent's new head",
+    async (strategy) => {
+      const before = { g: tip('g'), p: tip('p'), c: tip('c') }
+      const out = await run({ apply: true, strategy })
+      expect(out.results.map((r) => [r.number, r.status, r.pushed, r.restackedOnto])).toEqual([
+        [1, 'updated', true, undefined],
+        [2, 'updated', true, 1],
+        [3, 'updated', true, 2],
+      ])
+      expect(out.skipped).toEqual([])
+      const { git } = fx.worker
+      const after = { g: tip('g'), p: tip('p'), c: tip('c') }
+      expect(git.isAncestor(tip('main'), after.g)).toBe(true)
+      expect(git.isAncestor(after.g, after.p)).toBe(true)
+      expect(git.isAncestor(after.p, after.c)).toBe(true)
+      expect(after).not.toEqual(before)
+      if (strategy === 'rebase') {
+        // Each child replays only its own commit, from its parent's old head.
+        expect(calls).toContainEqual(['rebase', '--onto', after.g, before.g])
+        expect(calls).toContainEqual(['rebase', '--onto', after.p, before.p])
+        expect(git.aheadBehind(after.p, after.c)).toEqual({ ahead: 1, behind: 0 })
+      }
+    },
+  )
+
+  test('a rehearsal builds every level on the one before and pushes nothing', async () => {
+    const before = { g: tip('g'), p: tip('p'), c: tip('c') }
+    const out = await run({ apply: false, strategy: 'rebase' })
+    expect(out.results.map((r) => [r.number, r.status, r.pushed, r.restackedOnto])).toEqual([
+      [1, 'updated', false, undefined],
+      [2, 'updated', false, 1],
+      [3, 'updated', false, 2],
+    ])
+    expect({ g: tip('g'), p: tip('p'), c: tip('c') }).toEqual(before)
+  })
+
+  test('without --restack, the children wait for the next run', async () => {
+    const out = await run({ apply: true, strategy: 'merge', restack: false })
+    expect(out.results.map((r) => r.number)).toEqual([1])
+    expect(out.skipped.map((s) => [s.number, s.reason])).toEqual([
+      [2, 'blocked on #1'],
+      [3, 'blocked on #1'],
+    ])
+  })
+
+  test('a declined parent push holds every level below it back', async () => {
+    const out = await run(
+      { apply: true, strategy: 'rebase', confirmPush: true },
+      { confirmPush: () => false },
+    )
+    expect(out.results.map((r) => [r.number, r.pushed])).toEqual([[1, false]])
+    expect(out.skipped.map((s) => [s.number, s.reason])).toEqual([
+      [2, 'blocked on #1; parent #1 was not pushed (push declined)'],
+      [3, 'blocked on #2; parent #2 was not updated'],
+    ])
+  })
+
+  test('--branch on the top PR restacks the whole stack under it', async () => {
+    const out = await run({ apply: true, strategy: 'merge', branch: 'c' })
+    expect(out.results.map((r) => [r.number, r.status])).toEqual([
+      [1, 'updated'],
+      [2, 'updated'],
+      [3, 'updated'],
+    ])
   })
 })

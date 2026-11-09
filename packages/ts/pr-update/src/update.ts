@@ -90,6 +90,11 @@ export function attemptKey(
   return { repo: t.repo, head: t.head, headOid: t.headOid, base: t.base, baseOid: t.baseOid }
 }
 
+/** Whether a run updates a whole stack in one pass. See {@link selectTargets}. */
+export interface SelectOptions {
+  restack?: boolean | undefined
+}
+
 export interface FailedAttemptPolicy {
   attempts?: AttemptStore | undefined
   /** See `PrUpdateConfig.max_failed_attempts`. */
@@ -109,18 +114,29 @@ export interface FailedAttemptPolicy {
  * A PR is identified by repository and number together. In a run over
  * several repositories, two of them can each hold a PR 1, and both must be
  * reported.
+ *
+ * With `restack`, a `blocked` PR whose parent is a target is a target too,
+ * marked with `stackParent`: the run updates it after its parent, onto the
+ * head the parent got (see `runUpdate`). Its failed-attempt check waits until
+ * then, because its new base sha is not known before. A scoped restack run
+ * also selects the stack ancestors of each PR it names, since a PR cannot be
+ * restacked onto a parent the run leaves behind.
  */
 export function selectTargets(
   report: SurveyReport,
   only: readonly PrSelector[],
   policy: FailedAttemptPolicy = { maxFailedAttempts: 0, retryFailed: false },
+  options: SelectOptions = {},
 ): Selection {
   const store = policy.retryFailed || policy.maxFailedAttempts === 0 ? undefined : policy.attempts
   const wantedNumbers = new Set(only.filter((s): s is number => typeof s === 'number'))
   const wantedKeys = new Set(only.filter((s): s is string => typeof s === 'string'))
   const scoped = only.length > 0
-  const selected = (repo: string, number: number): boolean =>
+  const named = (repo: string, number: number): boolean =>
     !scoped || wantedNumbers.has(number) || wantedKeys.has(prKey(repo, number))
+  const ancestors = options.restack === true && scoped ? ancestorsOfNamed(report, named) : null
+  const selected = (repo: string, number: number): boolean =>
+    named(repo, number) || ancestors?.has(prKey(repo, number)) === true
   const seen = new Set<string>()
   const seenNumbers = new Set<number>()
   const targets: UpdateTarget[] = []
@@ -143,8 +159,28 @@ export function selectTargets(
     // run, and this check narrows the type for the code after it.
     if (row.strategy !== 'rebase' && row.strategy !== 'merge') {
       note(row.strategyReason)
-    } else if (row.status === 'blocked') note(`blocked on #${row.blockedBy ?? '?'}`)
-    else if (row.status === 'unknown') note('drift could not be measured')
+    } else if (row.status === 'blocked') {
+      const parentIsTarget =
+        row.parent !== null && targets.some((t) => t.repo === row.repo && t.number === row.parent)
+      if (options.restack === true && parentIsTarget) {
+        targets.push({
+          repo: row.repo,
+          number: row.number,
+          head: row.head,
+          base: row.base,
+          headOid: row.headOid,
+          baseOid: row.baseOid,
+          strategy: row.strategy,
+          stackParent: row.parent!,
+        })
+      } else {
+        const why =
+          options.restack === true && row.parent !== null
+            ? `; parent #${row.parent} is not updated in this run`
+            : ''
+        note(`blocked on #${row.blockedBy ?? '?'}${why}`)
+      }
+    } else if (row.status === 'unknown') note('drift could not be measured')
     else if (row.status === 'up-to-date') note('already up to date')
     else {
       const target: UpdateTarget = {
@@ -187,6 +223,24 @@ export function selectTargets(
   return { targets, skipped, notFound: [...new Set(notFound)] }
 }
 
+/** The keys of every stack ancestor of a PR `named` selects. Rows come parent first. */
+function ancestorsOfNamed(
+  report: SurveyReport,
+  named: (repo: string, number: number) => boolean,
+): Set<string> {
+  const parentOf = new Map(report.prs.map((r) => [prKey(r.repo, r.number), r.parent]))
+  const out = new Set<string>()
+  for (const row of report.prs) {
+    if (!named(row.repo, row.number)) continue
+    let parent = row.parent
+    while (parent !== null && !out.has(prKey(row.repo, parent))) {
+      out.add(prKey(row.repo, parent))
+      parent = parentOf.get(prKey(row.repo, parent)) ?? null
+    }
+  }
+  return out
+}
+
 export const input = z.object({
   ...SCOPE_SHAPE,
   remote: SCOPE_SHAPE.remote.describe('Remote to fetch from, measure against and push to.'),
@@ -213,6 +267,12 @@ export const input = z.object({
     .default(false)
     .describe(
       'Attempt PRs whose update already failed at their current head and base sha. New failures are still recorded.',
+    ),
+  restack: z
+    .boolean()
+    .default(false)
+    .describe(
+      "Update a whole stack in one run. A PR blocked only because its parent is behind is updated right after that parent, onto the head the parent just got, instead of waiting for the next run. A rebase replays only its own commits (`rebase --onto`), not its parent's old ones. With --pr or --branch, the named PRs' stack ancestors are updated too.",
     ),
   strategy: z
     .enum(['rebase', 'merge'])
@@ -258,6 +318,12 @@ export const result = z.object({
     .optional()
     .describe(
       "Present in branch mode after a push: whether the working directory's checkout was moved to the pushed head, and why not when it was left alone.",
+    ),
+  restackedOnto: z
+    .number()
+    .optional()
+    .describe(
+      'Present when a restack run updated this PR onto the head its parent (this PR number, same repository) got earlier in the run.',
     ),
 })
 
@@ -313,6 +379,7 @@ export function toResult(r: UpdateResult, localCheckout?: LocalCheckout): z.infe
       ? { repaired: r.outcome.repaired }
       : {}),
     ...(localCheckout === undefined ? {} : { localCheckout }),
+    ...(r.onto === undefined ? {} : { restackedOnto: r.onto.parent }),
   }
 }
 
@@ -433,10 +500,13 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
           ...args.pr,
           ...report.prs.filter((r) => r.head === args.branch).map((r) => prKey(r.repo, r.number)),
         ]
-  const { targets, skipped, notFound } = selectTargets(report, only, {
+  const policy: FailedAttemptPolicy = {
     attempts,
     maxFailedAttempts: effectiveCfg.max_failed_attempts,
     retryFailed: args.retryFailed,
+  }
+  const { targets, skipped, notFound } = selectTargets(report, only, policy, {
+    restack: args.restack,
   })
 
   const writes = wantsWrite(args, env.dryRun)
@@ -494,6 +564,17 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
       ...(await updateAll(git, group, { ...settings, verifyVerbs }, env.ports.runVerb, {
         apply: writes,
         worktreeRoot,
+        prepare: (target, done) => {
+          const ready = restackTarget(target, done, writes, policy)
+          if (typeof ready !== 'string') return ready
+          skipped.push({
+            repo: target.repo,
+            number: target.number,
+            head: target.head,
+            reason: ready,
+          })
+          return null
+        },
       })),
     )
   }
@@ -532,6 +613,51 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
   }
 }
 
+/**
+ * A restack child, ready to run after its parent: onto the head the parent
+ * just got, or a reason it is held back. A target with no `stackParent` is
+ * returned unchanged.
+ *
+ * In a run that writes, the child goes only onto a parent that was pushed.
+ * A child pushed onto a head its parent's PR does not have would show the
+ * parent's new commits in its own diff. A rehearsal goes onto the parent's
+ * built head, which exists only in this run.
+ */
+export function restackTarget(
+  target: UpdateTarget,
+  done: readonly UpdateResult[],
+  writes: boolean,
+  policy: FailedAttemptPolicy,
+): UpdateTarget | string {
+  if (target.stackParent === undefined) return target
+  const parentNumber = target.stackParent
+  const parent = done.find((r) => r.repo === target.repo && r.number === parentNumber)
+  const label = `parent #${parentNumber}`
+  if (parent === undefined) return `blocked on #${parentNumber}; ${label} was not updated`
+  const o = parent.outcome
+  // A parent that turned out current never moved, so the child is
+  // measured against its base as the survey saw it.
+  if (o.status === 'up-to-date') return target
+  if (o.status !== 'updated') return `blocked on #${parentNumber}; ${label} ended ${o.status}`
+  if (writes && !o.pushed) {
+    return `blocked on #${parentNumber}; ${label} was not pushed (${o.declined ?? 'not pushed'})`
+  }
+  const oid = o.pushedOid ?? o.builtOid
+  if (oid === undefined) return `blocked on #${parentNumber}; ${label}'s new head is unknown`
+  const next: UpdateTarget = {
+    ...target,
+    baseOid: oid,
+    onto: { parent: parentNumber, oid, upstream: parent.headOid },
+  }
+  const store = policy.retryFailed || policy.maxFailedAttempts === 0 ? undefined : policy.attempts
+  const key = attemptKey(next)
+  const failures = store === undefined || key === null ? 0 : (store.get(key)?.failures ?? 0)
+  if (store !== undefined && failures >= policy.maxFailedAttempts) {
+    return `failed ${failures} time(s) at this head and base; waiting for either to move`
+  }
+  return next
+}
+
 /** Record each failure under its key; forget a PR target once it updates, pushed or not. */
 function recordAttempts(store: AttemptStore, results: readonly UpdateResult[]): void {
   for (const r of results) {
@@ -555,7 +681,9 @@ export function renderUpdateText(out: UpdateOutput): string {
   const lines: string[] = []
   for (const r of out.results) {
     const mark = r.status === 'updated' ? (r.pushed ? '✓' : '·') : r.status === 'failed' ? '✗' : '!'
-    lines.push(`${mark} ${prKey(r.repo, r.number)}  ${r.strategy}  ${r.head}  ${r.detail}`)
+    const onto =
+      r.restackedOnto === undefined ? '' : `  (restacked onto ${prKey(r.repo, r.restackedOnto)})`
+    lines.push(`${mark} ${prKey(r.repo, r.number)}  ${r.strategy}  ${r.head}  ${r.detail}${onto}`)
     if (r.localCheckout !== undefined) {
       lines.push(
         `    checkout: ${r.localCheckout.updated ? 'moved' : 'left'} — ${r.localCheckout.detail}`,

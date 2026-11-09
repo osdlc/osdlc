@@ -221,7 +221,12 @@ describe('the executor against real git', () => {
         worktree: wtRoot,
       }),
     )
-    expect(out).toEqual({ status: 'updated', resolved: [], pushed: false })
+    expect(out).toEqual({
+      status: 'updated',
+      resolved: [],
+      pushed: false,
+      builtOid: expect.any(String),
+    })
 
     git.fetch('origin')
     expect(git.resolveRef('origin/dry')).toBe(before!)
@@ -627,6 +632,7 @@ describe('the executor against real git', () => {
       )
       expect(out).toEqual({
         status: 'updated',
+        builtOid: expect.any(String),
         resolved: [],
         pushed: false,
         declined: 'push declined',
@@ -751,6 +757,7 @@ describe('the executor against real git', () => {
       )
       expect(out).toEqual({
         status: 'updated',
+        builtOid: expect.any(String),
         resolved: [{ kind: 'generator', path: 'api.schema.json', generator: 'schema' }],
         pushed: true,
         pushedOid: expect.any(String),
@@ -778,6 +785,7 @@ describe('the executor against real git', () => {
       )
       expect(out).toEqual({
         status: 'updated',
+        builtOid: expect.any(String),
         resolved: [],
         pushed: true,
         pushedOid: expect.any(String),

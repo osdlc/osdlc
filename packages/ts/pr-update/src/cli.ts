@@ -258,6 +258,10 @@ const updateCli = defineCli({
       kind: 'boolean',
       help: 'Treat this repo as trusted for this run (satisfies the trust gate on commands and agents the project file names).',
     },
+    restack: {
+      kind: 'boolean',
+      help: "Update a whole stack in one run: a PR blocked on its parent is updated right after it, onto the parent's new head. With --pr or --branch, their stack ancestors are updated too.",
+    },
     retryFailed: {
       kind: 'boolean',
       help: 'Attempt PRs whose update already failed at their current head and base.',
@@ -576,6 +580,7 @@ async function runUpdateCommand(
         ...(v.branch !== undefined ? { branch: v.branch } : {}),
         trust: v.trust,
         retryFailed: v.retryFailed,
+        restack: v.restack,
         ...(v.strategy !== undefined ? { strategy: v.strategy } : {}),
       },
       env,

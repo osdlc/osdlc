@@ -114,12 +114,46 @@ Being out of date passes down a stack. When PR A targets PR B's head branch, A
 is stacked on B. Updating A before B is wasted work, because A's base is about
 to move. `survey` builds the stack graph, sorts it parent first, and marks a
 child `blocked` on the nearest ancestor that is itself behind, however many
-levels up that ancestor is.
+levels up that ancestor is. By default `update` leaves a blocked child for the
+next run. `--restack` updates it in the same run, right after its parent (see
+below).
 
 A rebase is not always safe. `--force-with-lease` compares against the remote,
 so it does not notice a checkout holding commits nobody has pushed. Rebasing
 over that would lose the work with no warning. The `guards.unpushed_local`
 guard checks for this before every preference, and no override turns it off.
+
+## A whole stack in one run
+
+Without `--restack`, a stack of N levels takes N runs: each run updates the
+lowest PR that is behind and leaves the PRs above it `blocked`. With
+`--restack`, one run updates the whole stack, parent first:
+
+```sh
+pr-update update --restack --apply              # every stack in the repository
+pr-update update --restack --branch --apply     # the stack under the branch you are on
+```
+
+- A blocked PR whose parent is updated in the run is updated right after it,
+  onto the head the parent just got. A rebase replays only the PR's own
+  commits, with `git rebase --onto <parent's new head> <parent's old head>`,
+  so the parent's old commits are not replayed onto its new ones. The result
+  carries `restackedOnto` (the parent's number), and the text says
+  `(restacked onto owner/name#N)`.
+- A rehearsal (no `--apply`) builds each level on the one below it, in the
+  temporary worktree, and pushes nothing. It shows which levels would
+  conflict.
+- A child goes up only onto a parent that was pushed. If the parent conflicts,
+  fails, or its force-push is declined at `--confirm-push`, the child and
+  everything above it stay `blocked`, and `skipped` says which parent held
+  them back.
+- A blocked PR whose parent is not updated in the run (a guard skipped the
+  parent, say) stays `blocked`.
+- With `--pr` or `--branch`, the named PRs' stack ancestors are updated too,
+  since a PR cannot be restacked onto a parent the run leaves behind. PRs
+  above the named ones are not.
+- A failure recorded for the child (see below) is checked against its new base
+  sha, the head its parent just got.
 
 ## Conflicts, predicted before anything is checked out
 
@@ -463,7 +497,9 @@ full table.
   file is regenerated, not merged.
 - `git rerere` replays a recorded resolution. It is the first resolver.
 - Graphite `gt restack` and git-town `sync` restack a branch stack parent
-  first. The stack order and blocked children follow the same idea.
+  first. The stack order, blocked children and `--restack`
+  (`rebase --onto` the parent's new head) follow the same idea. See
+  [D-0002](docs/planning/decisions/D-0002-restack-a-whole-stack-in-one-run.md).
 
 ## Running from a checkout
 
