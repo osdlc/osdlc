@@ -48,7 +48,7 @@ export interface AgentRepairOptions {
 export type CallAgent = (
   adapter: AgentAdapter,
   spec: AgentCallSpec,
-  options?: { signal?: AbortSignal },
+  options?: { signal?: AbortSignal | undefined },
 ) => Promise<AgentResult>
 
 const ADAPTERS: Record<RepairAgent, () => AgentAdapter> = {
@@ -101,11 +101,7 @@ export function agentRepair(
     if (opts.signal?.aborted === true) return { ok: false, note: `${agent}: interrupted` }
     let result: AgentResult
     try {
-      result = await call(
-        ADAPTERS[agent](),
-        repairCallSpec(req, opts),
-        opts.signal === undefined ? {} : { signal: opts.signal },
-      )
+      result = await call(ADAPTERS[agent](), repairCallSpec(req, opts), { signal: opts.signal })
     } catch (e) {
       // agent-call rejects for a call it could not plan or set up (bad spec, temp
       // directory failure); see callAgent's @throws.

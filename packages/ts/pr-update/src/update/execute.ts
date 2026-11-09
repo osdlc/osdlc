@@ -815,7 +815,7 @@ export async function updateAll(
     apply: boolean
     worktreeRoot: string
     onResult?: (r: UpdateResult) => void
-    signal?: AbortSignal
+    signal?: AbortSignal | undefined
   },
 ): Promise<UpdateResult[]> {
   const results: UpdateResult[] = []

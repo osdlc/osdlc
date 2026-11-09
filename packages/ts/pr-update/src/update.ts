@@ -427,7 +427,7 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
       ...(await updateAll(git, group, settings, env.ports.runVerb, {
         apply: writes,
         worktreeRoot,
-        ...(env.signal === undefined ? {} : { signal: env.signal }),
+        signal: env.signal,
       })),
     )
   }
