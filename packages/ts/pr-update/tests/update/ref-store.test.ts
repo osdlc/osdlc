@@ -13,7 +13,7 @@ import { prUpdateStandaloneSchema } from '../../src/config.ts'
 import { standalonePorts } from '../../src/defaults.ts'
 import type { AttemptKey, BranchLease } from '../../src/ports.ts'
 import { updateAll, type UpdateTarget } from '../../src/update/execute.ts'
-import { refBranchLease } from '../../src/update/lease.ts'
+import { defaultHolder, refBranchLease } from '../../src/update/lease.ts'
 import { refAttemptStore } from '../../src/update/ref-attempts.ts'
 import { attemptRef, lockRef } from '../../src/update/ref-names.ts'
 
@@ -84,6 +84,16 @@ describe('ref store and lease', () => {
       expect(store().get(KEY)).toMatchObject({ failures: 4, reason: 'd' })
     })
 
+    test('prune keeps a record another run refreshed after this store read it', () => {
+      const old = new Date(Date.now() - 40 * DAY)
+      store({ now: () => old }).recordFailure(KEY, 'ancient')
+      const pruner = store()
+      pruner.get(KEY) // loads the stale record
+      store().recordFailure(KEY, 'fresh') // another run refreshes it
+      pruner.prune()
+      expect(store().get(KEY)).toMatchObject({ reason: 'fresh' })
+    })
+
     test('prune deletes a record older than 30 days and leaves a recent one', () => {
       const old = new Date(Date.now() - 40 * DAY)
       store({ now: () => old }).recordFailure(KEY, 'ancient')
@@ -152,6 +162,12 @@ describe('ref store and lease', () => {
   describe('refBranchLease', () => {
     const lease = (holder: string, now: () => Date = () => new Date(), ttlMs = 60_000) =>
       refBranchLease({ remote: 'origin', cwd, holder, ttlMs, now })
+
+    test('two invocations of one Actions run get distinct default holders', () => {
+      const env = { GITHUB_RUN_ID: '42' }
+      expect(defaultHolder(env)).not.toBe(defaultHolder(env))
+      expect(defaultHolder(env)).toMatch(/^github-run-42:/)
+    })
 
     test('taken, held against another holder, then released', () => {
       const a = lease('run-a')

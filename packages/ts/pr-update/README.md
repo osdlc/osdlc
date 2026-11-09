@@ -282,7 +282,7 @@ reads the record, never writes it and never takes a lease.
 
 The lease: before checking a PR out, the run creates the lock ref, or replaces it when its
 `expiresAt` is past or it names this same holder (a crashed earlier run of this holder). The holder
-is `github-run-<GITHUB_RUN_ID>` when that is set, else `<hostname>:<pid>`. A PR whose lease another
+is `github-run-<GITHUB_RUN_ID>` when that is set, else `<hostname>:<pid>`, each followed by a random suffix per run. A PR whose lease another
 live holder has is skipped, with the reason `another pr-update run is updating this branch
 (<holder>)`, and its failure is not recorded. The lease is deleted after the push, in a `finally`,
 pinned to the commit this run wrote, so a lease that expired and was taken over is never deleted

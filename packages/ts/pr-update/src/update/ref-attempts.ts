@@ -195,9 +195,10 @@ export function refAttemptStore(opts: RefAttemptStoreOptions): RefAttemptStore {
       update(ref, () => [])
     },
     prune() {
-      // A ref whose entries are all stale is deleted; a mixed one is trimmed by its next write.
+      // A ref whose entries are all stale is deleted (`update` hands over only the fresh ones, read
+      // again after a lost swap, so a record refreshed meanwhile survives); a mixed one is trimmed by its next write.
       for (const [ref, g] of [...load()]) {
-        if (fresh(g.entries).length === 0) update(ref, () => [])
+        if (fresh(g.entries).length === 0) update(ref, (entries) => entries)
       }
     },
   }

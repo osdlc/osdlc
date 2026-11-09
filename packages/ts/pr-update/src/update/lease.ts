@@ -13,6 +13,7 @@
  * therefore outlast one PR's update, repair included.
  */
 
+import { randomUUID } from 'node:crypto'
 import { hostname } from 'node:os'
 
 import {
@@ -43,15 +44,17 @@ export interface RefBranchLeaseOptions {
   /** The `ref_prefix` setting. Default `refs/pr-update/`. */
   refPrefix?: string
   ttlMs: number
-  /** Default: `GITHUB_RUN_ID` when set, else `<hostname>:<pid>`. */
+  /** Default: see {@link defaultHolder}. */
   holder?: string
   now?: () => Date
 }
 
-/** `github-run-<id>` in Actions, else `<hostname>:<pid>`. */
+/** `github-run-<id>` in Actions, else `<hostname>:<pid>`, plus a per-invocation suffix so two processes of one run never share a holder. */
 export function defaultHolder(env: NodeJS.ProcessEnv = process.env): string {
   const run = env['GITHUB_RUN_ID']
-  return run === undefined || run === '' ? `${hostname()}:${process.pid}` : `github-run-${run}`
+  const base =
+    run === undefined || run === '' ? `${hostname()}:${process.pid}` : `github-run-${run}`
+  return `${base}:${randomUUID().slice(0, 8)}`
 }
 
 /** The lease TTL when none is configured: the repair timeout plus ten minutes, else 30 minutes. */
