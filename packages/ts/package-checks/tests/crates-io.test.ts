@@ -1,10 +1,14 @@
-// Tests for crates-io-index.ts. fetch is stubbed, so nothing reaches the network.
-//
-//   node --test scripts/crates-io-index.test.ts
+// The crates.io index reader. fetch is stubbed, so nothing reaches the network.
 import { strict as assert } from 'node:assert'
-import { afterEach, test } from 'node:test'
 
-import { type CargoPackage, indexEntries, indexPath, publishesToCratesIo } from './crates-io-index.ts'
+import { afterEach, test } from 'vitest'
+
+import {
+  type CargoPackage,
+  indexEntries,
+  indexPath,
+  publishesToCratesIo,
+} from '@osdlc/package-checks'
 
 const realFetch = globalThis.fetch
 afterEach(() => {

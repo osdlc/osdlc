@@ -1,13 +1,13 @@
-// Tests for package-shape-rs.ts.
-//
-//   node --test scripts/package-shape-rs.test.ts
 import { strict as assert } from 'node:assert'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { test } from 'node:test'
 
-import {
+import { test } from 'vitest'
+
+import { section, shapeRs } from '@osdlc/package-checks'
+
+const {
   changelogProblems,
   checkWorkspace,
   crateProblems,
@@ -15,12 +15,10 @@ import {
   layoutProblems,
   manifestProblems,
   parseToml,
-  parseValue,
   publishedManifestProblems,
   readmeProblems,
-  section,
   workspaceMembers,
-} from './package-shape-rs.ts'
+} = shapeRs
 
 const GOOD_TOML = `
 # a comment
@@ -50,7 +48,8 @@ thiserror = { workspace = true }
 workspace = true
 `
 
-const GOOD_README = '# demo\n\n## Install\n\n```sh\ncargo add demo\n```\n\n## License\n\nMIT or Apache.\n'
+const GOOD_README =
+  '# demo\n\n## Install\n\n```sh\ncargo add demo\n```\n\n## License\n\nMIT or Apache.\n'
 const GOOD_ENTRIES = {
   files: ['Cargo.toml', 'README.md', 'CHANGELOG.md', 'LICENSE-MIT', 'LICENSE-APACHE'],
   dirs: ['src', 'examples'],
@@ -61,15 +60,6 @@ const good = () => ({
   entries: GOOD_ENTRIES,
   readme: GOOD_README,
   changelog: '# Changelog\n',
-})
-
-test('parseValue reads strings, booleans, numbers, arrays and inline tables', () => {
-  assert.equal(parseValue('"a b"'), 'a b')
-  assert.equal(parseValue('true'), true)
-  assert.equal(parseValue('3'), 3)
-  assert.deepEqual(parseValue('["a", "b,c"]'), ['a', 'b,c'])
-  assert.deepEqual(parseValue('{ workspace = true }'), { workspace: true })
-  assert.deepEqual(parseValue('{ version = "1", features = ["x"] }'), { version: '1', features: ['x'] })
 })
 
 test('parseToml reads tables, dotted keys, multi-line arrays and strips comments', () => {
@@ -157,8 +147,16 @@ test('a published crate keeps its files and directories', () => {
 test('README.md needs its title, Install with cargo add, and License naming both licences', () => {
   assert.deepEqual(readmeProblems('demo', GOOD_README), [])
   assert.equal(readmeProblems('demo', '# other\n').length, 3)
-  assert.match(readmeProblems('demo', '# demo\n\n## Install\n\nnothing\n\n## License\n\nMIT\n').join('\n'), /cargo add demo/)
-  assert.match(readmeProblems('demo', '# demo\n\n## Install\n\ncargo add demo\n\n## License\n\nMIT\n').join('\n'), /both MIT and Apache/)
+  assert.match(
+    readmeProblems('demo', '# demo\n\n## Install\n\nnothing\n\n## License\n\nMIT\n').join('\n'),
+    /cargo add demo/,
+  )
+  assert.match(
+    readmeProblems('demo', '# demo\n\n## Install\n\ncargo add demo\n\n## License\n\nMIT\n').join(
+      '\n',
+    ),
+    /each of MIT and Apache/,
+  )
 })
 
 test('a heading inside a fence is not a section', () => {
@@ -185,24 +183,32 @@ publish = false
 workspace = true
 `)
   assert.equal(isUnpublished(manifest), true)
-  const entries = { files: ['Cargo.toml', 'README.md', 'LICENSE-MIT', 'LICENSE-APACHE'], dirs: ['src'] }
-  assert.deepEqual(crateProblems({ dirName: 'demo', manifest, entries, readme: null, changelog: null }), [])
+  const entries = {
+    files: ['Cargo.toml', 'README.md', 'LICENSE-MIT', 'LICENSE-APACHE'],
+    dirs: ['src'],
+  }
+  assert.deepEqual(
+    crateProblems({ dirName: 'demo', manifest, entries, readme: null, changelog: null }),
+    [],
+  )
   // It still needs the workspace fields, the licence files and src/.
   manifest.package.edition = '2021'
-  const bad = crateProblems({ dirName: 'demo', manifest, entries: { files: [], dirs: [] }, readme: null, changelog: null })
+  const bad = crateProblems({
+    dirName: 'demo',
+    manifest,
+    entries: { files: [], dirs: [] },
+    readme: null,
+    changelog: null,
+  })
   assert.equal(bad.length, 4)
 })
 
-test('a multi-line string is a clear error naming the line, not a crash', () => {
-  assert.throws(
-    () => parseToml('[package]\nname = "demo"\ndescription = """\nA long\n"""\n'),
-    /line 3: multi-line strings are not supported/,
+test('a multi-line string parses, and text that is not TOML throws', () => {
+  assert.equal(
+    parseToml('[package]\nname = "demo"\ndescription = """\nA long\n"""\n').package.description,
+    'A long\n',
   )
-  assert.throws(() => parseToml("description = '''x'''\n"), /multi-line strings are not supported/)
-  assert.throws(
-    () => parseToml('keywords = [\n  "a",\n  """b""",\n]\n'),
-    /line 3: multi-line strings are not supported/,
-  )
+  assert.throws(() => parseToml('[package\nname = "demo"\n'))
 })
 
 test('triple quotes inside a one-line string are ordinary text', () => {
@@ -210,23 +216,45 @@ test('triple quotes inside a one-line string are ordinary text', () => {
   assert.equal(parseToml(`a = 'say """'\n`).a, 'say """')
 })
 
-test('checkWorkspace reports a multi-line string as a problem for its crate', () => {
+test('checkWorkspace reports a manifest that is not TOML as a problem for its crate', () => {
   const root = mkdtempSync(join(tmpdir(), 'package-shape-rs-'))
   try {
     const rust = join(root, 'packages', 'rust')
     mkdirSync(join(rust, 'demo'), { recursive: true })
     writeFileSync(join(rust, 'Cargo.toml'), '[workspace]\nmembers = ["demo"]\n')
-    writeFileSync(join(rust, 'demo', 'Cargo.toml'), '[package]\nname = "demo"\ndescription = """\nx\n"""\n')
+    writeFileSync(join(rust, 'demo', 'Cargo.toml'), '[package\nname = "demo"\n')
     const [result] = checkWorkspace(root) as [{ member: string; problems: string[] }]
     assert.equal(result.member, 'demo')
     assert.equal(result.problems.length, 1)
-    assert.match(result.problems[0]!, /packages\/rust\/demo\/Cargo\.toml: line 3: multi-line strings are not supported/)
+    assert.match(result.problems[0]!, /^cannot parse packages\/rust\/demo\/Cargo\.toml: /)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
 })
 
 test('every crate in this repository is in the shape', () => {
-  const failing = checkWorkspace(process.cwd()).filter((r) => r.problems.length > 0)
+  const failing = checkWorkspace(join(import.meta.dirname, '../../../..')).filter(
+    (r) => r.problems.length > 0,
+  )
   assert.deepEqual(failing, [])
+})
+
+test('licence words come from the SPDX expression, and the settings move the workspace', () => {
+  assert.deepEqual(shapeRs.licenceWords('MIT OR Apache-2.0'), ['MIT', 'Apache'])
+  assert.deepEqual(shapeRs.licenceWords('(MIT AND BSD-3-Clause)'), ['MIT', 'BSD'])
+  assert.deepEqual(
+    readmeProblems('demo', '# demo\n\n## Install\n\ncargo add demo\n\n## License\n\nMIT\n', 'MIT'),
+    [],
+  )
+  const root = mkdtempSync(join(tmpdir(), 'package-shape-rs-'))
+  try {
+    mkdirSync(join(root, 'crates'), { recursive: true })
+    writeFileSync(join(root, 'crates', 'Cargo.toml'), '[workspace]\nmembers = []\n')
+    const settings = { license: 'MIT', licenseFiles: ['LICENSE'], rustWorkspace: 'crates' }
+    assert.deepEqual(checkWorkspace(root, settings), [
+      { member: 'crates/Cargo.toml', problems: ['the workspace lists no members'] },
+    ])
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })

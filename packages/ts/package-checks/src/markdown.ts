@@ -1,6 +1,7 @@
-// The markdown reader both package-shape checkers share, so a TypeScript and a
-// Rust README are judged by one rule. It imports nothing: rust-ci runs
-// package-shape-rs.ts with nothing installed.
+/**
+ * The markdown reader both shape checks share, so a TypeScript and a Rust
+ * README are judged by one rule.
+ */
 
 /** The body of the `## <heading>` section of a markdown file, or null. */
 export function section(markdown: string, heading: string): string | null {

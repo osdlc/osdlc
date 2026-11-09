@@ -88,7 +88,7 @@ jobs:
               files='*'
               ;;
           esac
-          if [ "$files" = '*' ] || grep -qE '^(packages/rust/|packages/conformance/|packages/ts/conformance/|packages/ts/yaml-splice/wasm/|packages/ts/markdown-contract/corpus/|\.github/workflows/(rust-ci|release-plz)\.yml$|\.github/actions/rust-|scripts/(crates-io-|semver-|package-shape-rs))' <<<"$files"; then
+          if [ "$files" = '*' ] || grep -qE '^(packages/rust/|packages/conformance/|packages/ts/conformance/|packages/ts/yaml-splice/wasm/|packages/ts/markdown-contract/corpus/|\.github/workflows/(rust-ci|release-plz)\.yml$|\.github/actions/rust-|scripts/crates-io-|packages/ts/package-checks/)' <<<"$files"; then
             echo "rust=true" >> "$GITHUB_OUTPUT"
           else
             echo "rust=false" >> "$GITHUB_OUTPUT"
@@ -103,20 +103,24 @@ jobs:
         with:
           persist-credentials: false
 
-      # Node 24 runs the crate shape check (TypeScript) by stripping the
-      # types; it needs nothing installed.
-      # docs/planning/standards/S-package-shape-rs.md is the standard.
+      # The crate shape check and the conformance check are the root's
+      # @osdlc/package-checks and @osdlc/conformance, workspace packages.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24'
 
-      - name: Test the crate shape rules
-        working-directory: .
-        run: node --test scripts/package-shape-rs.test.ts
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
+      - name: Build the repo tooling
+        working-directory: .
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts --filter 'sdlc-packages...'
+          pnpm run build:tooling
+
+      # docs/planning/standards/S-package-shape-rs.md is the standard.
       - name: Check the crate shape
         working-directory: .
-        run: node scripts/package-shape-rs.ts
+        run: pnpm run check:crates
 
       - uses: ./.github/actions/rust-toolchain
         with:
@@ -126,15 +130,6 @@ jobs:
 
       - name: Format check
         run: cargo fmt --all --check
-
-      # The conformance check is @osdlc/conformance, a workspace package.
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-
-      - name: Build the conformance check
-        working-directory: .
-        run: |
-          pnpm install --frozen-lockfile --ignore-scripts --filter 'sdlc-packages...'
-          pnpm --filter '@osdlc/conformance...' run build
 
       # Every suite whose reference is a Rust crate: a generator that writes
       # different bytes means expected values went stale.
@@ -389,6 +384,14 @@ jobs:
         with:
           node-version: '24'
 
+      # The patch script imports @osdlc/package-checks, a workspace package.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - name: Build the repo tooling
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts --filter 'sdlc-packages...'
+          pnpm run build:tooling
+
       - name: Test the patch script
         run: node --test scripts/crates-io-unpublished-patch.test.ts
 
@@ -429,7 +432,7 @@ jobs:
 
   # A pull request with a breaking change to a crate on crates.io must set
   # the crate's new version in its Cargo.toml. See
-  # scripts/semver-version-check.ts. cargo-semver-checks misses some
+  # `package-checks semver` (@osdlc/package-checks). cargo-semver-checks misses some
   # breaking changes, so reviewers still check.
   #
   # cargo-semver-checks reads the rustdoc JSON of the pinned toolchain, so its
@@ -464,8 +467,15 @@ jobs:
         with:
           node-version: '24'
 
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - name: Build the repo tooling
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts --filter 'sdlc-packages...'
+          pnpm run build:tooling
+
       - name: Breaking changes set their own version
-        run: node scripts/semver-version-check.ts packages/rust/Cargo.toml HEAD^1
+        run: pnpm exec package-checks semver packages/rust/Cargo.toml HEAD^1
 
   rust:
     needs: [changes, lint, rust-test, msrv, minimal-versions, wasm, release-plz, semver-version]
