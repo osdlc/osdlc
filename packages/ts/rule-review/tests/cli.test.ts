@@ -107,6 +107,19 @@ describe('rule-review argument handling', () => {
     }
   })
 
+  test('the error document stays valid JSON and free of controls when the message quotes them', async () => {
+    // U+009D opens an 8-bit OSC string; stripped after serializing, it would
+    // swallow the rest of the document. ESC would survive as the text \u001b.
+    for (const bad of ['\u009dx', '\u001b[31mx']) {
+      const missing = join(tmpdir(), `rule-review-${bad}`)
+      const { code, out } = await run(['-C', missing, '--json'])
+
+      expect(code).toBe(24)
+      const doc = JSON.parse(out) as { message: string }
+      expect(doc.message).not.toMatch(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/)
+    }
+  })
+
   test('a directory outside a git repo exits 24 (no repository)', async () => {
     const { code, err } = await run(['-C', '/'])
 
@@ -222,11 +235,22 @@ describe('rule-review --strict and --engine', () => {
     expect(code).toBe(11)
   })
 
-  test('a dry run exits 0 with --strict, with and without --json', async () => {
-    // Nothing is judged in a dry run, so nothing can make it fail.
-    for (const extra of [[], ['--json']]) {
-      const { code } = await failing(['--dry-run', '--strict', '--blocking', ...extra])
-      expect(code, extra.join(' ')).toBe(0)
+  test('a dry run that would be incomplete still exits 0 with --strict, with and without --json', async () => {
+    // An untracked nested checkout is a changed path git cannot diff, so the
+    // root CLAUDE.md's job would not be dispatched: the run is degraded.
+    const { root: nested, git } = makeRepo({ 'CLAUDE.md': 'Rules.\n' })
+    git.raw(['init', '-q', join(nested, 'sub')])
+    writeRepoFile(nested, 'sub/x.ts', 'x\n')
+    try {
+      const text = await run(['-C', nested, '--dry-run', '--strict', '--blocking'])
+      expect(text.code).toBe(0)
+      expect(text.err).toContain('not judged: none of its files has a diff')
+
+      const json = await run(['-C', nested, '--dry-run', '--strict', '--blocking', '--json'])
+      expect(json.code).toBe(0)
+      expect(JSON.parse(json.out)).toMatchObject({ degraded: true, dryRun: true })
+    } finally {
+      rmSync(nested, { recursive: true, force: true })
     }
   })
 

@@ -71,6 +71,8 @@ export { ChangesetError }
  * starts no agent.
  *
  * @throws {ChangesetError} `cwd` is not inside a git checkout, or `base` does not resolve.
+ * @throws {FailureError} From `@osdlc/typed-git`, with `failure.kind` `not-installed` or
+ *   `not-executable`, when git itself cannot be run.
  * @throws {ScopeError} A source's scope or an `exclude` pattern cannot be read.
  * @throws {Error} A setting is out of range, such as an engine `@osdlc/agent-call` does not know.
  */

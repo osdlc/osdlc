@@ -33,7 +33,7 @@ import {
   usage,
   withInterrupt,
 } from './exit.ts'
-import { print } from './output.ts'
+import { print, printJson } from './output.ts'
 import { readCheckFolder } from './providers/check-folder.ts'
 
 const CLI = defineCli({
@@ -151,7 +151,7 @@ function changesetFor(git: Git, opts: ChecksOptions): Changeset {
 
 /** Print `body` as the command's one JSON document, of kind `kind`. */
 function printDoc(kind: string, body: object): void {
-  print(JSON.stringify({ schemaVersion: 1, kind, ...body }, null, 2) + '\n')
+  printJson({ schemaVersion: 1, kind, ...body }, 2)
 }
 
 /**

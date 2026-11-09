@@ -27,7 +27,7 @@ import {
   withInterrupt,
 } from './exit.ts'
 import { exitCodeFor } from './findings.ts'
-import { print, say } from './output.ts'
+import { print, printJson, say } from './output.ts'
 import { reviewChanges } from './review-changes.ts'
 import { estimateTokens, formatTokens, jobLabel } from './tokens.ts'
 import { DEFAULT_CONFIG, SEVERITY_ORDER, type ReviewConfig } from './types.ts'
@@ -228,7 +228,7 @@ export async function main(argv: string[]): Promise<number> {
 
   if (opts.json) {
     const doc = { schemaVersion: SCHEMA_VERSION, kind: REVIEW_KIND, ...run }
-    print(JSON.stringify(doc, null, 2) + '\n')
+    printJson(doc, 2)
     return exit
   }
 

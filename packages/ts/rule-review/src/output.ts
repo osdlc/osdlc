@@ -18,6 +18,19 @@ export function print(text: string): void {
   process.stdout.write(stripControls(text, { newline: true, tab: true }))
 }
 
+/**
+ * Print `value` as one JSON document on stdout, `indent` spaces deep. Every
+ * string in it has terminal controls removed before it is serialized:
+ * stripping the finished JSON instead would let an 8-bit string opener (such
+ * as U+009D) swallow the rest of the document, and `JSON.stringify` writes
+ * ESC as the text `\u001b`, which a parser would turn back into ESC.
+ */
+export function printJson(value: unknown, indent?: number): void {
+  const clean = (_key: string, v: unknown) =>
+    typeof v === 'string' ? stripControls(v, { newline: true, tab: true }) : v
+  process.stdout.write(JSON.stringify(value, clean, indent) + '\n')
+}
+
 /** Print an error line, `rule-review: <message>`, on stderr. */
 export function sayError(err: unknown): void {
   say(`rule-review: ${errorText(err)}\n`)

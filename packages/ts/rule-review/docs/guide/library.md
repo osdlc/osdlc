@@ -46,7 +46,8 @@ The result is the run plus the changeset it judged:
 | `changedFiles`, `base`, `resolvedBase`, `projectRoot`, `config` | What was judged, and how. |
 
 It throws `ChangesetError` when it cannot start (`kind` is `not-a-repository`
-or `bad-base`), `ScopeError` for a glob it cannot read, and an `Error` naming
+or `bad-base`), typed-git's `FailureError` (`failure.kind` `not-installed` or
+`not-executable`) when git itself cannot run, `ScopeError` for a glob it cannot read, and an `Error` naming
 the setting when one is out of range (an unknown engine, a zero concurrency).
 No agent has started when any of these is thrown.
 

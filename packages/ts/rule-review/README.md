@@ -527,7 +527,7 @@ the shipped `.d.ts`; the [examples](./examples) run each one.
 | --- | --- |
 | `reviewChanges(options?)` | Review a checkout's changes. Returns a `ReviewChangesResult`. |
 | `ReviewChangesOptions`, `ReviewChangesResult` | Its input, and its run plus the changeset judged. |
-| `ChangesetError` | `reviewChanges` could not start: `kind` is `not-a-repository` or `bad-base`. |
+| `ChangesetError` | `reviewChanges` could not start: `kind` is `not-a-repository` or `bad-base`. When git itself cannot run, typed-git's `FailureError` is thrown instead. |
 | `review(options)` | The same run with sources, files and diffs supplied. Takes `ReviewOptions`, returns `ReviewRun`. |
 | `discoverSources(providers, ctx)` | Every provider's rule sources; refuses a duplicate id. |
 | `planJobs(sources, files, config)` | The judgements a run would make, and the sources skipped. Returns `PlanResult`. |

@@ -20,7 +20,7 @@ path-scoped check scripts (experimental). The package was developed, unpublished
   `estimateTokens`, `formatTokens` and `jobLabel` describe a run for a dry-run report.
 - `reviewChanges(options)` reads the changeset, the rule sources and the diffs from a checkout and
   runs the review in one call. It throws `ChangesetError` (`kind` `not-a-repository` or
-  `bad-base`) when it cannot start.
+  `bad-base`) when it cannot start, and typed-git's `FailureError` when git itself cannot run.
 - `changedFiles`, `stagedFiles`, `trackedFiles`, `fileDiffs`, `resolveBase` and `defaultBase`
   read the changeset from git. Each takes a directory path or a `Git` from `@osdlc/typed-git`.
 - `ScopeError`: a scope or `--exclude` pattern the matcher cannot read stops the run and names

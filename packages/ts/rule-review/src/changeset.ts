@@ -37,6 +37,8 @@ export class ChangesetError extends Error {
  * part of the change, with paths in two spellings.
  *
  * @throws {ChangesetError} `not-a-repository` when `repo` is a directory outside git.
+ * @throws {FailureError} From `@osdlc/typed-git`, with `failure.kind` `not-installed` or
+ *   `not-executable`, when git itself cannot be run.
  */
 export function asGit(repo: Repo): Git {
   if (typeof repo !== 'string') return repo

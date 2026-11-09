@@ -4,13 +4,14 @@
  *
  * The codes follow the osdlc CLI standard (`standards/cli-interface.md`, built
  * into `@osdlc/cli-tool`): 0, 1 and 2 mean what they mean in every osdlc tool,
- * 24 is the shared "no repository" code, and 10 and 11 are this tool's own
+ * 22 and 24 are the shared "not installed" and "no repository" codes, and 10
+ * and 11 are this tool's own
  * outcomes, inside the band the standard leaves to a tool.
  */
 import { EXIT, EXIT_FAILURE, exitCodeFor, failureOf } from '@osdlc/cli-tool'
 
 import { ChangesetError, errorText } from './changeset.ts'
-import { print, say } from './output.ts'
+import { printJson, say } from './output.ts'
 import { ScopeError } from './select.ts'
 
 /** The exit codes of `rule-review` and `rule-review checks`. */
@@ -65,8 +66,9 @@ export function fail(
   say(`rule-review: ${message}\n`)
   if (known?.hint !== undefined) say(`${known.hint}\n`)
   if (json) {
+    const hint = known?.hint?.trim()
     const doc = { schemaVersion: 1, kind: 'error', code, message, exit }
-    print(JSON.stringify(known?.hint === undefined ? doc : { ...doc, hint: known.hint }) + '\n')
+    printJson(hint === undefined || hint === '' ? doc : { ...doc, hint })
   }
   return exit
 }
