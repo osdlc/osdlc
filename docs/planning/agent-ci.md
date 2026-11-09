@@ -77,7 +77,7 @@ flowchart LR
   subgraph later["Later"]
     MCP["MCP and hooks via skillwright"]
     PUB["Move to osdlc/actions + Marketplace"]
-    DATA["harness-reference as agent-call's data"]
+    DATA["harness-reference as agent-call's data (PR 750, draft)"]
     PIN["skillwright: agent-adapt 0.19.2 → 0.19.3"]
   end
 
@@ -124,7 +124,8 @@ flowchart LR
   class PERM,PROBE,CHECK,ANS,SPEC,MULTI next
   class REL done
   class CUR done
-  class MCP,PUB,DATA,PIN,STRICT later
+  class MCP,PUB,PIN,STRICT later
+  class DATA active
 ```
 
 ## Review queue
@@ -145,11 +146,12 @@ Checked 2026-11-09 08:17 UTC. A periodic check refreshes this table and the grap
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
+| [#750](https://github.com/osdlc/osdlc/pull/750) | feat(harness-knowledge): compiled harness facts, read by agent-call and detect-harness | draft | none | — | another session's work in progress | this is the "harness-reference as agent-call's data" item |
 | [#749](https://github.com/osdlc/osdlc/pull/749) | ci: shared reusable workflows for TypeScript package CI and release | open | none | checks pending | waiting on your review (shared-CI work) | related; watch for gh-actions README conflicts |
 | [#748](https://github.com/osdlc/osdlc/pull/748) | package-checks: move the package checks into @osdlc/package-checks | open | none | checks pending | waiting on your review (shared-CI work) | related, not on this plan's path |
-| [#747](https://github.com/osdlc/osdlc/pull/747) | ci: codex and cursor answer PR mentions | open | none | clean, checks green | waiting on your review; needs OPENAI_API_KEY and CURSOR_API_KEY | merge, then a live codex and cursor mention |
+| [#747](https://github.com/osdlc/osdlc/pull/747) | ci: codex and cursor answer PR mentions | open | none | clean | waiting on your review; needs OPENAI_API_KEY and CURSOR_API_KEY | merge, then a live codex and cursor mention |
 | [#750](https://github.com/osdlc/osdlc/pull/750) | feat(harness-knowledge): compiled harness facts, read by agent-call and detect-harness | draft | none | checks running | waits on the skillwright harness-knowledge stack (osdlc/skillwright#97–#104) | phase 5 of the harness-knowledge plan; wires facts after the research lands |
-| [#741](https://github.com/osdlc/osdlc/pull/741) | fix: kill the agent's process group when its host is interrupted (command-seam, agent-call, pr-update) | open | none | verify (ubuntu, node 22) failing | waiting on your review; failing check | merge |
+| [#741](https://github.com/osdlc/osdlc/pull/741) | fix: kill the agent's process group when its host is interrupted (command-seam, agent-call, pr-update) | open | none | blocked | agent-seat tmux live test failed on node 22 (looks flaky, unrelated); waiting on your review | rerun the failed job, merge |
 | [#734](https://github.com/osdlc/osdlc/pull/734) | feat(gh-actions): codex-pr and cursor-pr, shared pr-common scripts, multi-marketplace plugins | merged | — | — | — | merged 2026-11-09; next: live test with caller workflows |
 | [#733](https://github.com/osdlc/osdlc/pull/733) | Version Packages (corpus-schema; unblocked the agent-call 0.10.0 publish) | merged | — | — | — | merged 2026-11-09; agent-call 0.10.0 on npm |
 | [#731](https://github.com/osdlc/osdlc/pull/731) | chore(conformance): drop markdown-tags from CATCHING_UP in the version PR | merged | — | — | — | merged into #726's branch 2026-11-09 |
