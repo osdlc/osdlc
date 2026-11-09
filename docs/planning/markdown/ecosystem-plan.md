@@ -427,7 +427,7 @@ The numbers match the task graph at the top. "After" says what must come first.
   [osdlc/markdown#10](https://github.com/osdlc/markdown/pull/10) switches the CI and release to
   the shared workflows and checks from osdlc/osdlc
   ([osdlc/osdlc#749](https://github.com/osdlc/osdlc/pull/749)). It waits for those to merge and
-  for `@osdlc/package-checks` and `@osdlc/conformance` 0.1.0 on npm. Until then, releases still
+  for `@osdlc/package-checks` and `@osdlc/conformance-suites` 0.1.0 on npm. Until then, releases still
   go out from osdlc/osdlc.
 
 We will track each task as an issue in this repo.
