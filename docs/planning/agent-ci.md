@@ -60,6 +60,7 @@ flowchart LR
     STRICT["Backlog: enforced read-only mappings (claude tool denies + sandbox, cursor cli.json) so strict passes"]
     CUR["PR 721: cursor allow and deny via .cursor/cli.json, merged"]
     REV["PR 724 + 727: claude-pr action, @claude review"]
+    HPR["PR 734: codex-pr + cursor-pr, shared scripts"]
     REL["Release agent-call 0.10.0: PR 726 merged, publish waits on PR 733"]
   end
   subgraph gate["Gate"]
@@ -99,6 +100,8 @@ flowchart LR
   SPEC --> MULTI
   CUR --> MULTI
   REV -.-> ANS
+  REV --> HPR
+  HPR -.-> ANS
   MULTI --> MCP
   MULTI --> PUB
   CHECK --> DATA
@@ -116,6 +119,7 @@ flowchart LR
   class UP yours
   class SETUP done
   class REV done
+  class HPR active
   class PERM,PROBE,CHECK,ANS,SPEC,MULTI next
   class REL blocked
   class CUR done
@@ -135,6 +139,7 @@ Checked 2026-11-09 03:40 UTC. A periodic check refreshes this table and the grap
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
+| [#734](https://github.com/osdlc/osdlc/pull/734) | feat(gh-actions): codex-pr and cursor-pr, shared pr-common scripts, multi-marketplace plugins | draft | none | — | pre-review gate running | merge, then add caller workflows |
 | [#733](https://github.com/osdlc/osdlc/pull/733) | Version Packages (corpus-schema; unblocks the agent-call 0.10.0 publish) | open | none | clean | waiting on you to merge | merge |
 | [#731](https://github.com/osdlc/osdlc/pull/731) | chore(conformance): drop markdown-tags from CATCHING_UP in the version PR | merged | — | — | — | merged into #726's branch 2026-11-09 |
 | [#726](https://github.com/osdlc/osdlc/pull/726) | Version Packages (agent-call 0.10.0) | merged | — | — | — | merged 2026-11-09; publish waits on #733 |
