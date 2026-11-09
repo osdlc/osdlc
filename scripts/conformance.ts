@@ -28,8 +28,10 @@
 //     referenceVersion and sections, each case with a name, an input, and
 //     exactly one of expect and error.
 //   - Each implementation's tests/ names the family's suite path.
-//   - The implementations share major.minor, unless the family is in
-//     CATCHING_UP below.
+//   - The implementations share major.minor, now or once the pending
+//     changesets (.changeset/*.md) are applied, unless the family is in
+//     CATCHING_UP below. The release pull request applies them, so a family a
+//     changeset levels passes on main and on that pull request.
 //   - Every library whose tests read a suite under packages/conformance/ is
 //     listed for that family, and no TypeScript library reads a crate's
 //     fixtures (or a crate a TypeScript library's) unless it is in UNMIGRATED.
@@ -44,12 +46,13 @@ import { pathToFileURL } from 'node:url'
 import { parseToml } from './package-shape-rs.ts'
 
 /**
- * Families whose implementations do not share major.minor yet. Each entry
- * names the work that brings them level, and goes when it lands.
+ * Families whose implementations do not share major.minor yet, and that no
+ * pending changeset levels. Each entry names the work that brings them level,
+ * and goes when it lands. An entry whose versions agree, now or after the
+ * pending changesets, is stale: a family a changeset levels needs no entry.
  */
 export const CATCHING_UP: Record<string, string> = {
   'tiered-dirs': 'the Rust crate reaches 0.5.0 with the realign-small-twins work',
-  'markdown-tags': 'the TypeScript package is set to 0.3.0 by hand and its first changeset takes it to 0.4.0, where the crate already is; the version PR that applies that changeset must delete this entry',
   'config-layers': 'the Rust crate gains the project-file migrations and compare-and-swap writes of osdlc#637',
 }
 
@@ -201,13 +204,57 @@ export function majorMinor(version: string): string {
   return version.split('.').slice(0, 2).join('.')
 }
 
-/** Problems with the versions of one family's implementations. */
-export function versionProblems(family: string, versions: Record<string, string>): string[] {
-  const seen = new Set(Object.values(versions).map(majorMinor))
-  if (seen.size <= 1) return CATCHING_UP[family] === undefined ? [] : [`${family}: listed in CATCHING_UP but its versions agree; remove it`]
-  if (CATCHING_UP[family] !== undefined) return []
+const BUMPS = ['patch', 'minor', 'major']
+
+/** `version` after a `bump` (patch, minor or major) of its release. */
+export function bumpVersion(version: string, bump: string): string {
+  const [major, minor, patch] = version.split(/[.-]/).map(Number) as [number, number, number]
+  if (bump === 'major') return `${major + 1}.0.0`
+  if (bump === 'minor') return `${major}.${minor + 1}.0`
+  return `${major}.${minor}.${patch + 1}`
+}
+
+/**
+ * The highest bump each package has in the changesets, from the text of the
+ * .changeset/*.md files: frontmatter lines of `"<package>": patch|minor|major`.
+ * config.json uses no fixed or linked groups and the repository is not in
+ * pre mode, so a package's release is its own highest bump.
+ */
+export function pendingBumps(changesets: string[]): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const text of changesets) {
+    const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1] ?? ''
+    for (const m of front.matchAll(/^\s*["']?([^"':\s]+)["']?\s*:\s*(patch|minor|major)\s*$/gm)) {
+      const [, name, bump] = m as unknown as [string, string, string]
+      const have = out.get(name)
+      if (have === undefined || BUMPS.indexOf(bump) > BUMPS.indexOf(have)) out.set(name, bump)
+    }
+  }
+  return out
+}
+
+/**
+ * Problems with the versions of one family's implementations. `released` is
+ * each implementation's version once the pending changesets are applied, where
+ * it differs from `versions`; the family is level if either agrees.
+ */
+export function versionProblems(
+  family: string,
+  versions: Record<string, string>,
+  released: Record<string, string> = versions,
+  catchingUp: Record<string, string> = CATCHING_UP,
+): string[] {
+  const level = (v: Record<string, string>): boolean => new Set(Object.values(v).map(majorMinor)).size <= 1
+  const listed = catchingUp[family] !== undefined
+  if (level(versions)) return listed ? [`${family}: listed in CATCHING_UP but its versions agree; remove it`] : []
+  if (level(released)) {
+    return listed
+      ? [`${family}: listed in CATCHING_UP but the pending changesets level it (${Object.entries(released).map(([d, v]) => `${d} ${v}`).join(', ')}); remove it`]
+      : []
+  }
+  if (listed) return []
   const list = Object.entries(versions).map(([dir, v]) => `${dir} ${v}`)
-  return [`${family}: implementations do not share major.minor: ${list.join(', ')}`]
+  return [`${family}: implementations do not share major.minor: ${list.join(', ')}, and the pending changesets do not level them`]
 }
 
 /**
@@ -269,6 +316,14 @@ export function checkRepo(root: string): string[] {
   const problems = registryProblems(raw)
   if (problems.length > 0) return problems
   const families = raw as Record<string, Family>
+  const changesetDir = join(root, '.changeset')
+  const bumps = pendingBumps(
+    existsSync(changesetDir)
+      ? readdirSync(changesetDir)
+          .filter((n) => n.endsWith('.md') && n !== 'README.md')
+          .map((n) => readFileSync(join(changesetDir, n), 'utf8'))
+      : [],
+  )
 
   for (const [name, f] of Object.entries(families)) {
     const dir = join(base, name)
@@ -302,7 +357,14 @@ export function checkRepo(root: string): string[] {
       const named = suiteReaders(new Map([[impl.dir, testSources(root, impl.dir)]])).get(impl.dir)
       if (named?.has(name) !== true) problems.push(`${name}: no test under ${impl.dir}/tests names packages/conformance/${name}/`)
     }
-    problems.push(...versionProblems(name, versions))
+    const released = Object.fromEntries(
+      f.implementations.flatMap((i) => {
+        const v = versions[i.dir]
+        const bump = i.language === 'ts' ? bumps.get(i.name) : undefined
+        return v === undefined ? [] : [[i.dir, bump === undefined ? v : bumpVersion(v, bump)]]
+      }),
+    )
+    problems.push(...versionProblems(name, versions, released))
   }
 
   const listed = new Map<string, Set<string>>()
