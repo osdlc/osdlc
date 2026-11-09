@@ -19,10 +19,19 @@ inputs:
     description: Claude Code CLI version to install.
     default: 2.1.319
   marketplace-url:
-    description: Git URL of the plugin marketplace.
+    description: Git URL of the plugin marketplace (ignored when marketplaces is set).
     default: https://github.com/osdlc/marketplace.git
+  marketplaces:
+    description: >-
+      Plugin marketplaces, one per line, as `name=https-git-url` with an
+      optional ` ref` (agent-setup's format). When set it wins over
+      marketplace-url, and agent-setup installs claude and the plugins; claude
+      cannot pin a ref.
+    default: ""
   plugins:
-    description: Plugins to install, plugin@marketplace, space separated. Review mode needs craft.
+    description: >-
+      Plugins to install, plugin@marketplace, space or newline separated.
+      Review mode needs craft. With marketplaces, each must name one of them.
     default: craft@osdlc
   max-turns:
     description: Claude's turn limit.
@@ -37,8 +46,9 @@ runs:
     - id: mention
       shell: bash
       env:
+        AGENT: claude
         REQUEST: ${{ github.event.comment.body || github.event.review.body }}
-      run: '"$GITHUB_ACTION_PATH/mention.sh"'
+      run: '"$GITHUB_ACTION_PATH/../pr-common/mention.sh"'
 
     - if: steps.mention.outputs.real == '1'
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -58,12 +68,16 @@ runs:
       env:
         CLAUDE_CODE_VERSION: ${{ inputs.claude-code-version }}
         MARKETPLACE_URL: ${{ inputs.marketplace-url }}
+        MARKETPLACES: ${{ inputs.marketplaces }}
         PLUGINS: ${{ inputs.plugins }}
       run: '"$GITHUB_ACTION_PATH/install.sh"'
 
     - if: steps.mention.outputs.real == '1'
       shell: bash
       env:
+        AGENT: claude
+        HARNESS_SH: ${{ github.action_path }}/harness.sh
+        KEY_VAR: ANTHROPIC_API_KEY
         GH_TOKEN: ${{ inputs.github-token }}
         KEYS: ${{ inputs.anthropic-api-key }}
         MAX_TURNS: ${{ inputs.max-turns }}
@@ -73,15 +87,16 @@ runs:
         PR: ${{ github.event.issue.number || github.event.pull_request.number }}
         REQUEST: ${{ github.event.comment.body || github.event.review.body }}
         SOURCE_URL: ${{ github.event.comment.html_url || github.event.review.html_url }}
-      run: '"$GITHUB_ACTION_PATH/ask.sh"'
+      run: '"$GITHUB_ACTION_PATH/../pr-common/ask.sh"'
 
     - if: always() && steps.mention.outputs.real == '1'
       shell: bash
       env:
+        AGENT: claude
         GH_TOKEN: ${{ inputs.github-token }}
         PR: ${{ github.event.issue.number || github.event.pull_request.number }}
         REPO: ${{ github.repository }}
         MODE: ${{ steps.mention.outputs.mode }}
         RESULT: ${{ runner.temp }}/claude-pr-result.json
         RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-      run: '"$GITHUB_ACTION_PATH/post.sh"'
+      run: '"$GITHUB_ACTION_PATH/../pr-common/post.sh"'
