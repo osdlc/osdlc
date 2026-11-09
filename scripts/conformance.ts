@@ -49,7 +49,6 @@ import { parseToml } from './package-shape-rs.ts'
  */
 export const CATCHING_UP: Record<string, string> = {
   'tiered-dirs': 'the Rust crate reaches 0.5.0 with the realign-small-twins work',
-  'markdown-tags': 'the TypeScript package is set to 0.3.0 by hand and its first changeset takes it to 0.4.0, where the crate already is; the version PR that applies that changeset must delete this entry',
   'config-layers': 'the Rust crate gains the project-file migrations and compare-and-swap writes of osdlc#637',
 }
 
