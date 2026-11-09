@@ -17,6 +17,13 @@ test('a failed command keeps all of its stderr', () => {
   assert.match(caught.message, /first\nsecond: the reason/)
 })
 
+test('a command that fails silently reports its exit code', () => {
+  assert.throws(
+    () => capture(process.execPath, ['-e', 'process.exit(4)'], process.cwd()),
+    (e: Error) => e instanceof RunFailed && e.message.endsWith('failed: exit 4'),
+  )
+})
+
 test('the report shows a failed command and a shape error whole, and anything else by its first line', () => {
   const failed = new RunFailed(
     'node smoke.mjs failed: file:///x/smoke.mjs:2\nError: the reason',

@@ -33,7 +33,8 @@ Node 22 or later. ESM only. publint and Are The Types Wrong come with the
 package. `ts` needs pnpm, npm and tar on the PATH; `rust` needs nothing else;
 `semver` needs cargo and
 [cargo-semver-checks](https://github.com/obi1kenobi/cargo-semver-checks);
-`stage` needs npm and an npm login.
+`stage` needs pnpm, npm (it runs a pinned npm through `npx`) and an npm
+login.
 
 ## The layout it reads
 
