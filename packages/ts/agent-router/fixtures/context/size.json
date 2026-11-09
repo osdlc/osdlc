@@ -1,0 +1,306 @@
+[
+  {
+    "name": "parse-\"1k\"",
+    "input": {
+      "fn": "parse",
+      "value": "1k"
+    },
+    "expected": 1000
+  },
+  {
+    "name": "parse-\"200k\"",
+    "input": {
+      "fn": "parse",
+      "value": "200k"
+    },
+    "expected": 200000
+  },
+  {
+    "name": "parse-\"1m\"",
+    "input": {
+      "fn": "parse",
+      "value": "1m"
+    },
+    "expected": 1000000
+  },
+  {
+    "name": "parse-\"2m\"",
+    "input": {
+      "fn": "parse",
+      "value": "2m"
+    },
+    "expected": 2000000
+  },
+  {
+    "name": "parse-\"999k\"",
+    "input": {
+      "fn": "parse",
+      "value": "999k"
+    },
+    "expected": 999000
+  },
+  {
+    "name": "parse-\"10m\"",
+    "input": {
+      "fn": "parse",
+      "value": "10m"
+    },
+    "expected": 10000000
+  },
+  {
+    "name": "parse-\"\"",
+    "input": {
+      "fn": "parse",
+      "value": ""
+    },
+    "expected": null
+  },
+  {
+    "name": "parse-\"1\"",
+    "input": {
+      "fn": "parse",
+      "value": "1"
+    },
+    "expected": null
+  },
+  {
+    "name": "parse-\"1000\"",
+    "input": {
+      "fn": "parse",
+      "value": "1000"
+    },
+    "expected": null
+  },
+  {
+    "name": "parse-\"1M\"",
+    "input": {
+      "fn": "parse",
+      "value": "1M"
+    },
+    "expected": null
+  },
+  {
+    "name": "parse-\"1K\"",
+    "input": {
+      "fn": "parse",
+      "value": "1K"
+    },
+    "expected": null
+  },
+  {
+    "name": "parse-\"0k\"",
+    "input": {
+      "fn": "parse",
+      "value": "0k"
+    },
+    "expected": null
+  },
+  {
+    "name": "parse-\"01m\"",
+    "input": {
+      "fn": "parse",
+      "value": "01m"
+    },
+    "expected": null
+  },
+  {
+    "name": "parse-\"max\"",
+    "input": {
+      "fn": "parse",
+      "value": "max"
+    },
+    "expected": null
+  },
+  {
+    "name": "parse-\"1.5m\"",
+    "input": {
+      "fn": "parse",
+      "value": "1.5m"
+    },
+    "expected": null
+  },
+  {
+    "name": "parse-\"k\"",
+    "input": {
+      "fn": "parse",
+      "value": "k"
+    },
+    "expected": null
+  },
+  {
+    "name": "parse-\"m\"",
+    "input": {
+      "fn": "parse",
+      "value": "m"
+    },
+    "expected": null
+  },
+  {
+    "name": "parse-\"1km\"",
+    "input": {
+      "fn": "parse",
+      "value": "1km"
+    },
+    "expected": null
+  },
+  {
+    "name": "parse-\" 1k\"",
+    "input": {
+      "fn": "parse",
+      "value": " 1k"
+    },
+    "expected": null
+  },
+  {
+    "name": "parse-\"-1k\"",
+    "input": {
+      "fn": "parse",
+      "value": "-1k"
+    },
+    "expected": null
+  },
+  {
+    "name": "parse-\"1g\"",
+    "input": {
+      "fn": "parse",
+      "value": "1g"
+    },
+    "expected": null
+  },
+  {
+    "name": "parse-\"9007199254740k\"",
+    "input": {
+      "fn": "parse",
+      "value": "9007199254740k"
+    },
+    "expected": 9007199254740000
+  },
+  {
+    "name": "parse-\"9007199254741k\"",
+    "input": {
+      "fn": "parse",
+      "value": "9007199254741k"
+    },
+    "expected": null
+  },
+  {
+    "name": "parse-\"9007199254m\"",
+    "input": {
+      "fn": "parse",
+      "value": "9007199254m"
+    },
+    "expected": 9007199254000000
+  },
+  {
+    "name": "parse-\"9007199255m\"",
+    "input": {
+      "fn": "parse",
+      "value": "9007199255m"
+    },
+    "expected": null
+  },
+  {
+    "name": "parse-\"99999999999999999999999m\"",
+    "input": {
+      "fn": "parse",
+      "value": "99999999999999999999999m"
+    },
+    "expected": null
+  },
+  {
+    "name": "format-0",
+    "input": {
+      "fn": "format",
+      "value": 0
+    },
+    "expected": "0m"
+  },
+  {
+    "name": "format-1",
+    "input": {
+      "fn": "format",
+      "value": 1
+    },
+    "expected": "1"
+  },
+  {
+    "name": "format-999",
+    "input": {
+      "fn": "format",
+      "value": 999
+    },
+    "expected": "999"
+  },
+  {
+    "name": "format-1000",
+    "input": {
+      "fn": "format",
+      "value": 1000
+    },
+    "expected": "1k"
+  },
+  {
+    "name": "format-1500",
+    "input": {
+      "fn": "format",
+      "value": 1500
+    },
+    "expected": "1k"
+  },
+  {
+    "name": "format-200000",
+    "input": {
+      "fn": "format",
+      "value": 200000
+    },
+    "expected": "200k"
+  },
+  {
+    "name": "format-1000000",
+    "input": {
+      "fn": "format",
+      "value": 1000000
+    },
+    "expected": "1m"
+  },
+  {
+    "name": "format-1048576",
+    "input": {
+      "fn": "format",
+      "value": 1048576
+    },
+    "expected": "1048k"
+  },
+  {
+    "name": "format-1050000",
+    "input": {
+      "fn": "format",
+      "value": 1050000
+    },
+    "expected": "1050k"
+  },
+  {
+    "name": "format-262144",
+    "input": {
+      "fn": "format",
+      "value": 262144
+    },
+    "expected": "262k"
+  },
+  {
+    "name": "format-2000000",
+    "input": {
+      "fn": "format",
+      "value": 2000000
+    },
+    "expected": "2m"
+  },
+  {
+    "name": "format-1999999",
+    "input": {
+      "fn": "format",
+      "value": 1999999
+    },
+    "expected": "1999k"
+  }
+]

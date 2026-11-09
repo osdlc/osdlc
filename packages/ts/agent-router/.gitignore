@@ -1,0 +1,8 @@
+# Dependencies installed for the extracted package.
+node_modules/
+
+# Build output (`pnpm build`).
+dist/
+
+# Test coverage output (`pnpm coverage`).
+coverage/

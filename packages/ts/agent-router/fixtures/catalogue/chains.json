@@ -1,0 +1,4265 @@
+[
+  {
+    "name": "snap-fast",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "tier": "fast",
+      "traits": []
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "claude",
+          "tier": "fast",
+          "native_name": "haiku",
+          "model": "anthropic/claude-haiku-5-5",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "fast",
+          "native_name": "claude-haiku-4-5",
+          "model": "anthropic/claude-haiku-4-5",
+          "pinned": false
+        },
+        {
+          "tool": "codex",
+          "tier": "fast",
+          "native_name": "gpt-6-luna",
+          "model": "openai/gpt-6-luna",
+          "pinned": false
+        },
+        {
+          "tool": "codex",
+          "tier": "fast",
+          "native_name": "gpt-5.6-luna",
+          "model": "openai/gpt-5.6-luna",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "fast",
+          "native_name": "gemini-3.5-flash-lite",
+          "model": "google/gemini-3.5-flash-lite",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "fast",
+          "native_name": "gemini-flash-lite-latest",
+          "model": "google/gemini-flash-lite-latest",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "fast",
+          "native_name": "gemini-3.1-flash-lite",
+          "model": "google/gemini-3.1-flash-lite",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "fast",
+          "native_name": "gemini-2.5-flash-lite",
+          "model": "google/gemini-2.5-flash-lite",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "fast",
+          "native_name": "anthropic/claude-haiku-5-5",
+          "model": "anthropic/claude-haiku-5-5",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "fast",
+          "native_name": "openai/gpt-6-luna",
+          "model": "openai/gpt-6-luna",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "fast",
+          "native_name": "google/gemini-3.5-flash-lite",
+          "model": "google/gemini-3.5-flash-lite",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "fast",
+          "native_name": "google/gemini-flash-lite-latest",
+          "model": "google/gemini-flash-lite-latest",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "fast",
+          "native_name": "openai/gpt-5.6-luna",
+          "model": "openai/gpt-5.6-luna",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "fast",
+          "native_name": "google/gemini-3.1-flash-lite",
+          "model": "google/gemini-3.1-flash-lite",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "fast",
+          "native_name": "anthropic/claude-haiku-4-5",
+          "model": "anthropic/claude-haiku-4-5",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "fast",
+          "native_name": "google/gemini-2.5-flash-lite",
+          "model": "google/gemini-2.5-flash-lite",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "fast",
+          "native_name": "anthropic/claude-haiku-5-5",
+          "model": "anthropic/claude-haiku-5-5",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "fast",
+          "native_name": "openai/gpt-6-luna",
+          "model": "openai/gpt-6-luna",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "fast",
+          "native_name": "google/gemini-3.5-flash-lite",
+          "model": "google/gemini-3.5-flash-lite",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "fast",
+          "native_name": "google/gemini-flash-lite-latest",
+          "model": "google/gemini-flash-lite-latest",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "fast",
+          "native_name": "openai/gpt-5.6-luna",
+          "model": "openai/gpt-5.6-luna",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "fast",
+          "native_name": "google/gemini-3.1-flash-lite",
+          "model": "google/gemini-3.1-flash-lite",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "fast",
+          "native_name": "anthropic/claude-haiku-4-5",
+          "model": "anthropic/claude-haiku-4-5",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "fast",
+          "native_name": "google/gemini-2.5-flash-lite",
+          "model": "google/gemini-2.5-flash-lite",
+          "pinned": false
+        }
+      ],
+      "skipped": []
+    }
+  },
+  {
+    "name": "snap-standard",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "tier": "standard",
+      "traits": []
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "claude",
+          "tier": "standard",
+          "native_name": "sonnet",
+          "model": "anthropic/claude-sonnet-5-5",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "standard",
+          "native_name": "claude-sonnet-5",
+          "model": "anthropic/claude-sonnet-5",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "standard",
+          "native_name": "claude-sonnet-4-6",
+          "model": "anthropic/claude-sonnet-4-6",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "standard",
+          "native_name": "claude-sonnet-4-5",
+          "model": "anthropic/claude-sonnet-4-5",
+          "pinned": false
+        },
+        {
+          "tool": "codex",
+          "tier": "standard",
+          "native_name": "gpt-6.1-sol",
+          "model": "openai/gpt-6.1-sol",
+          "pinned": false
+        },
+        {
+          "tool": "codex",
+          "tier": "standard",
+          "native_name": "gpt-6-sol",
+          "model": "openai/gpt-6-sol",
+          "pinned": false
+        },
+        {
+          "tool": "codex",
+          "tier": "standard",
+          "native_name": "gpt-daybreak-blue-latest",
+          "model": "openai/gpt-daybreak-blue-latest",
+          "pinned": false
+        },
+        {
+          "tool": "codex",
+          "tier": "standard",
+          "native_name": "gpt-5.6",
+          "model": "openai/gpt-5.6",
+          "pinned": false
+        },
+        {
+          "tool": "codex",
+          "tier": "standard",
+          "native_name": "gpt-5.6-sol",
+          "model": "openai/gpt-5.6-sol",
+          "pinned": false
+        },
+        {
+          "tool": "cursor",
+          "tier": "standard",
+          "native_name": "gemini-3.7-flash-high",
+          "model": "google/gemini-3.7-flash",
+          "pinned": false
+        },
+        {
+          "tool": "cursor",
+          "tier": "standard",
+          "native_name": "gpt-5.6-sol-high",
+          "model": "openai/gpt-5.6-sol",
+          "pinned": false
+        },
+        {
+          "tool": "cursor",
+          "tier": "standard",
+          "native_name": "claude-sonnet-5-thinking-high",
+          "model": "anthropic/claude-sonnet-5",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "gemini-3.8-flash",
+          "model": "google/gemini-3.8-flash",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "gemini-3.7-flash",
+          "model": "google/gemini-3.7-flash",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "gemini-flash-latest",
+          "model": "google/gemini-flash-latest",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "gemini-3.6-flash",
+          "model": "google/gemini-3.6-flash",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "gemini-3.5-flash",
+          "model": "google/gemini-3.5-flash",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "gemini-3-flash-preview",
+          "model": "google/gemini-3-flash-preview",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "gemini-2.5-flash",
+          "model": "google/gemini-2.5-flash",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "openai/gpt-6.1-sol",
+          "model": "openai/gpt-6.1-sol",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-5-5",
+          "model": "anthropic/claude-sonnet-5-5",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "openai/gpt-6-sol",
+          "model": "openai/gpt-6-sol",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/gemini-3.8-flash",
+          "model": "google/gemini-3.8-flash",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/gemini-3.7-flash",
+          "model": "google/gemini-3.7-flash",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/gemini-flash-latest",
+          "model": "google/gemini-flash-latest",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "openai/gpt-daybreak-blue-latest",
+          "model": "openai/gpt-daybreak-blue-latest",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/gemini-3.6-flash",
+          "model": "google/gemini-3.6-flash",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "openai/gpt-5.6",
+          "model": "openai/gpt-5.6",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "openai/gpt-5.6-sol",
+          "model": "openai/gpt-5.6-sol",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-5",
+          "model": "anthropic/claude-sonnet-5",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/gemini-3.5-flash",
+          "model": "google/gemini-3.5-flash",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-4-6",
+          "model": "anthropic/claude-sonnet-4-6",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/gemini-3-flash-preview",
+          "model": "google/gemini-3-flash-preview",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-4-5",
+          "model": "anthropic/claude-sonnet-4-5",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/gemini-2.5-flash",
+          "model": "google/gemini-2.5-flash",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "openai/gpt-6.1-sol",
+          "model": "openai/gpt-6.1-sol",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-5-5",
+          "model": "anthropic/claude-sonnet-5-5",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "openai/gpt-6-sol",
+          "model": "openai/gpt-6-sol",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/gemini-3.8-flash",
+          "model": "google/gemini-3.8-flash",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/gemini-3.7-flash",
+          "model": "google/gemini-3.7-flash",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/gemini-flash-latest",
+          "model": "google/gemini-flash-latest",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "openai/gpt-daybreak-blue-latest",
+          "model": "openai/gpt-daybreak-blue-latest",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/gemini-3.6-flash",
+          "model": "google/gemini-3.6-flash",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "openai/gpt-5.6",
+          "model": "openai/gpt-5.6",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "openai/gpt-5.6-sol",
+          "model": "openai/gpt-5.6-sol",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-5",
+          "model": "anthropic/claude-sonnet-5",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/gemini-3.5-flash",
+          "model": "google/gemini-3.5-flash",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-4-6",
+          "model": "anthropic/claude-sonnet-4-6",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/gemini-3-flash-preview",
+          "model": "google/gemini-3-flash-preview",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-4-5",
+          "model": "anthropic/claude-sonnet-4-5",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/gemini-2.5-flash",
+          "model": "google/gemini-2.5-flash",
+          "pinned": false
+        }
+      ],
+      "skipped": []
+    }
+  },
+  {
+    "name": "snap-max",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "tier": "max",
+      "traits": []
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "claude",
+          "tier": "max",
+          "native_name": "opus",
+          "model": "anthropic/claude-opus-5-5",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "max",
+          "native_name": "claude-opus-5",
+          "model": "anthropic/claude-opus-5",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "max",
+          "native_name": "claude-opus-4-8",
+          "model": "anthropic/claude-opus-4-8",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "max",
+          "native_name": "claude-opus-4-7",
+          "model": "anthropic/claude-opus-4-7",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "max",
+          "native_name": "claude-opus-4-6",
+          "model": "anthropic/claude-opus-4-6",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "max",
+          "native_name": "claude-opus-4-5",
+          "model": "anthropic/claude-opus-4-5",
+          "pinned": false
+        },
+        {
+          "tool": "codex",
+          "tier": "max",
+          "native_name": "gpt-6-astra",
+          "model": "openai/gpt-6-astra",
+          "pinned": false
+        },
+        {
+          "tool": "cursor",
+          "tier": "max",
+          "native_name": "claude-opus-5-5-medium",
+          "model": "anthropic/claude-opus-5-5",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "max",
+          "native_name": "gemini-3.1-pro-preview",
+          "model": "google/gemini-3.1-pro-preview",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "max",
+          "native_name": "gemini-3.1-pro-preview-customtools",
+          "model": "google/gemini-3.1-pro-preview-customtools",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "max",
+          "native_name": "gemini-pro-latest",
+          "model": "google/gemini-pro-latest",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "max",
+          "native_name": "gemini-2.5-computer-use-preview-10-2025",
+          "model": "google/gemini-2.5-computer-use-preview-10-2025",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "max",
+          "native_name": "gemini-2.5-pro",
+          "model": "google/gemini-2.5-pro",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-5-5",
+          "model": "anthropic/claude-opus-5-5",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "openai/gpt-6-astra",
+          "model": "openai/gpt-6-astra",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-5",
+          "model": "anthropic/claude-opus-5",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-8",
+          "model": "anthropic/claude-opus-4-8",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-7",
+          "model": "anthropic/claude-opus-4-7",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "google/gemini-3.1-pro-preview",
+          "model": "google/gemini-3.1-pro-preview",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "google/gemini-3.1-pro-preview-customtools",
+          "model": "google/gemini-3.1-pro-preview-customtools",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "google/gemini-pro-latest",
+          "model": "google/gemini-pro-latest",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-6",
+          "model": "anthropic/claude-opus-4-6",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-5",
+          "model": "anthropic/claude-opus-4-5",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "google/gemini-2.5-computer-use-preview-10-2025",
+          "model": "google/gemini-2.5-computer-use-preview-10-2025",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "google/gemini-2.5-pro",
+          "model": "google/gemini-2.5-pro",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-5-5",
+          "model": "anthropic/claude-opus-5-5",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "openai/gpt-6-astra",
+          "model": "openai/gpt-6-astra",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-5",
+          "model": "anthropic/claude-opus-5",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-8",
+          "model": "anthropic/claude-opus-4-8",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-7",
+          "model": "anthropic/claude-opus-4-7",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "google/gemini-3.1-pro-preview",
+          "model": "google/gemini-3.1-pro-preview",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "google/gemini-3.1-pro-preview-customtools",
+          "model": "google/gemini-3.1-pro-preview-customtools",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "google/gemini-pro-latest",
+          "model": "google/gemini-pro-latest",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-6",
+          "model": "anthropic/claude-opus-4-6",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-5",
+          "model": "anthropic/claude-opus-4-5",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "google/gemini-2.5-computer-use-preview-10-2025",
+          "model": "google/gemini-2.5-computer-use-preview-10-2025",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "google/gemini-2.5-pro",
+          "model": "google/gemini-2.5-pro",
+          "pinned": false
+        }
+      ],
+      "skipped": []
+    }
+  },
+  {
+    "name": "snap-fast-local",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "tier": "fast",
+      "traits": [
+        "local"
+      ]
+    },
+    "expected": {
+      "entries": [],
+      "skipped": [
+        {
+          "tool": "claude",
+          "native_name": "haiku",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-haiku-5-5 lacks local"
+        },
+        {
+          "tool": "claude",
+          "native_name": "claude-haiku-4-5",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-haiku-4-5 lacks local"
+        },
+        {
+          "tool": "codex",
+          "native_name": "gpt-6-luna",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-6-luna lacks local"
+        },
+        {
+          "tool": "codex",
+          "native_name": "gpt-5.6-luna",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-5.6-luna lacks local"
+        },
+        {
+          "tool": "antigravity",
+          "native_name": "gemini-3.5-flash-lite",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.5-flash-lite lacks local"
+        },
+        {
+          "tool": "antigravity",
+          "native_name": "gemini-flash-lite-latest",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-flash-lite-latest lacks local"
+        },
+        {
+          "tool": "antigravity",
+          "native_name": "gemini-3.1-flash-lite",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.1-flash-lite lacks local"
+        },
+        {
+          "tool": "antigravity",
+          "native_name": "gemini-2.5-flash-lite",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-2.5-flash-lite lacks local"
+        },
+        {
+          "tool": "pi",
+          "native_name": "anthropic/claude-haiku-5-5",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-haiku-5-5 lacks local"
+        },
+        {
+          "tool": "pi",
+          "native_name": "openai/gpt-6-luna",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-6-luna lacks local"
+        },
+        {
+          "tool": "pi",
+          "native_name": "google/gemini-3.5-flash-lite",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.5-flash-lite lacks local"
+        },
+        {
+          "tool": "pi",
+          "native_name": "google/gemini-flash-lite-latest",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-flash-lite-latest lacks local"
+        },
+        {
+          "tool": "pi",
+          "native_name": "openai/gpt-5.6-luna",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-5.6-luna lacks local"
+        },
+        {
+          "tool": "pi",
+          "native_name": "google/gemini-3.1-flash-lite",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.1-flash-lite lacks local"
+        },
+        {
+          "tool": "pi",
+          "native_name": "anthropic/claude-haiku-4-5",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-haiku-4-5 lacks local"
+        },
+        {
+          "tool": "pi",
+          "native_name": "google/gemini-2.5-flash-lite",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-2.5-flash-lite lacks local"
+        },
+        {
+          "tool": "opencode",
+          "native_name": "anthropic/claude-haiku-5-5",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-haiku-5-5 lacks local"
+        },
+        {
+          "tool": "opencode",
+          "native_name": "openai/gpt-6-luna",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-6-luna lacks local"
+        },
+        {
+          "tool": "opencode",
+          "native_name": "google/gemini-3.5-flash-lite",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.5-flash-lite lacks local"
+        },
+        {
+          "tool": "opencode",
+          "native_name": "google/gemini-flash-lite-latest",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-flash-lite-latest lacks local"
+        },
+        {
+          "tool": "opencode",
+          "native_name": "openai/gpt-5.6-luna",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-5.6-luna lacks local"
+        },
+        {
+          "tool": "opencode",
+          "native_name": "google/gemini-3.1-flash-lite",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.1-flash-lite lacks local"
+        },
+        {
+          "tool": "opencode",
+          "native_name": "anthropic/claude-haiku-4-5",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-haiku-4-5 lacks local"
+        },
+        {
+          "tool": "opencode",
+          "native_name": "google/gemini-2.5-flash-lite",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-2.5-flash-lite lacks local"
+        }
+      ]
+    }
+  },
+  {
+    "name": "snap-max-reasoning",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "tier": "max",
+      "traits": [
+        "reasoning"
+      ]
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "claude",
+          "tier": "max",
+          "native_name": "opus",
+          "model": "anthropic/claude-opus-5-5",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "max",
+          "native_name": "claude-opus-5",
+          "model": "anthropic/claude-opus-5",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "max",
+          "native_name": "claude-opus-4-8",
+          "model": "anthropic/claude-opus-4-8",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "max",
+          "native_name": "claude-opus-4-7",
+          "model": "anthropic/claude-opus-4-7",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "max",
+          "native_name": "claude-opus-4-6",
+          "model": "anthropic/claude-opus-4-6",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "max",
+          "native_name": "claude-opus-4-5",
+          "model": "anthropic/claude-opus-4-5",
+          "pinned": false
+        },
+        {
+          "tool": "codex",
+          "tier": "max",
+          "native_name": "gpt-6-astra",
+          "model": "openai/gpt-6-astra",
+          "pinned": false
+        },
+        {
+          "tool": "cursor",
+          "tier": "max",
+          "native_name": "claude-opus-5-5-medium",
+          "model": "anthropic/claude-opus-5-5",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "max",
+          "native_name": "gemini-3.1-pro-preview",
+          "model": "google/gemini-3.1-pro-preview",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "max",
+          "native_name": "gemini-3.1-pro-preview-customtools",
+          "model": "google/gemini-3.1-pro-preview-customtools",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "max",
+          "native_name": "gemini-pro-latest",
+          "model": "google/gemini-pro-latest",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "max",
+          "native_name": "gemini-2.5-computer-use-preview-10-2025",
+          "model": "google/gemini-2.5-computer-use-preview-10-2025",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "max",
+          "native_name": "gemini-2.5-pro",
+          "model": "google/gemini-2.5-pro",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-5-5",
+          "model": "anthropic/claude-opus-5-5",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "openai/gpt-6-astra",
+          "model": "openai/gpt-6-astra",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-5",
+          "model": "anthropic/claude-opus-5",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-8",
+          "model": "anthropic/claude-opus-4-8",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-7",
+          "model": "anthropic/claude-opus-4-7",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "google/gemini-3.1-pro-preview",
+          "model": "google/gemini-3.1-pro-preview",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "google/gemini-3.1-pro-preview-customtools",
+          "model": "google/gemini-3.1-pro-preview-customtools",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "google/gemini-pro-latest",
+          "model": "google/gemini-pro-latest",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-6",
+          "model": "anthropic/claude-opus-4-6",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-5",
+          "model": "anthropic/claude-opus-4-5",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "google/gemini-2.5-computer-use-preview-10-2025",
+          "model": "google/gemini-2.5-computer-use-preview-10-2025",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "google/gemini-2.5-pro",
+          "model": "google/gemini-2.5-pro",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-5-5",
+          "model": "anthropic/claude-opus-5-5",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "openai/gpt-6-astra",
+          "model": "openai/gpt-6-astra",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-5",
+          "model": "anthropic/claude-opus-5",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-8",
+          "model": "anthropic/claude-opus-4-8",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-7",
+          "model": "anthropic/claude-opus-4-7",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "google/gemini-3.1-pro-preview",
+          "model": "google/gemini-3.1-pro-preview",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "google/gemini-3.1-pro-preview-customtools",
+          "model": "google/gemini-3.1-pro-preview-customtools",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "google/gemini-pro-latest",
+          "model": "google/gemini-pro-latest",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-6",
+          "model": "anthropic/claude-opus-4-6",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-5",
+          "model": "anthropic/claude-opus-4-5",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "google/gemini-2.5-computer-use-preview-10-2025",
+          "model": "google/gemini-2.5-computer-use-preview-10-2025",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "google/gemini-2.5-pro",
+          "model": "google/gemini-2.5-pro",
+          "pinned": false
+        }
+      ],
+      "skipped": []
+    }
+  },
+  {
+    "name": "snap-max-pin-heads-run",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "policy": {
+        "pins": {
+          "codex/max": "gpt-6.1-sol"
+        }
+      },
+      "tier": "max",
+      "traits": []
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "claude",
+          "tier": "max",
+          "native_name": "opus",
+          "model": "anthropic/claude-opus-5-5",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "max",
+          "native_name": "claude-opus-5",
+          "model": "anthropic/claude-opus-5",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "max",
+          "native_name": "claude-opus-4-8",
+          "model": "anthropic/claude-opus-4-8",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "max",
+          "native_name": "claude-opus-4-7",
+          "model": "anthropic/claude-opus-4-7",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "max",
+          "native_name": "claude-opus-4-6",
+          "model": "anthropic/claude-opus-4-6",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "max",
+          "native_name": "claude-opus-4-5",
+          "model": "anthropic/claude-opus-4-5",
+          "pinned": false
+        },
+        {
+          "tool": "codex",
+          "tier": "max",
+          "native_name": "gpt-6.1-sol",
+          "model": "openai/gpt-6.1-sol",
+          "pinned": true
+        },
+        {
+          "tool": "codex",
+          "tier": "max",
+          "native_name": "gpt-6-astra",
+          "model": "openai/gpt-6-astra",
+          "pinned": false
+        },
+        {
+          "tool": "cursor",
+          "tier": "max",
+          "native_name": "claude-opus-5-5-medium",
+          "model": "anthropic/claude-opus-5-5",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "max",
+          "native_name": "gemini-3.1-pro-preview",
+          "model": "google/gemini-3.1-pro-preview",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "max",
+          "native_name": "gemini-3.1-pro-preview-customtools",
+          "model": "google/gemini-3.1-pro-preview-customtools",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "max",
+          "native_name": "gemini-pro-latest",
+          "model": "google/gemini-pro-latest",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "max",
+          "native_name": "gemini-2.5-computer-use-preview-10-2025",
+          "model": "google/gemini-2.5-computer-use-preview-10-2025",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "max",
+          "native_name": "gemini-2.5-pro",
+          "model": "google/gemini-2.5-pro",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-5-5",
+          "model": "anthropic/claude-opus-5-5",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "openai/gpt-6-astra",
+          "model": "openai/gpt-6-astra",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-5",
+          "model": "anthropic/claude-opus-5",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-8",
+          "model": "anthropic/claude-opus-4-8",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-7",
+          "model": "anthropic/claude-opus-4-7",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "google/gemini-3.1-pro-preview",
+          "model": "google/gemini-3.1-pro-preview",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "google/gemini-3.1-pro-preview-customtools",
+          "model": "google/gemini-3.1-pro-preview-customtools",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "google/gemini-pro-latest",
+          "model": "google/gemini-pro-latest",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-6",
+          "model": "anthropic/claude-opus-4-6",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-5",
+          "model": "anthropic/claude-opus-4-5",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "google/gemini-2.5-computer-use-preview-10-2025",
+          "model": "google/gemini-2.5-computer-use-preview-10-2025",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "google/gemini-2.5-pro",
+          "model": "google/gemini-2.5-pro",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-5-5",
+          "model": "anthropic/claude-opus-5-5",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "openai/gpt-6-astra",
+          "model": "openai/gpt-6-astra",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-5",
+          "model": "anthropic/claude-opus-5",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-8",
+          "model": "anthropic/claude-opus-4-8",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-7",
+          "model": "anthropic/claude-opus-4-7",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "google/gemini-3.1-pro-preview",
+          "model": "google/gemini-3.1-pro-preview",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "google/gemini-3.1-pro-preview-customtools",
+          "model": "google/gemini-3.1-pro-preview-customtools",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "google/gemini-pro-latest",
+          "model": "google/gemini-pro-latest",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-6",
+          "model": "anthropic/claude-opus-4-6",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-5",
+          "model": "anthropic/claude-opus-4-5",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "google/gemini-2.5-computer-use-preview-10-2025",
+          "model": "google/gemini-2.5-computer-use-preview-10-2025",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "google/gemini-2.5-pro",
+          "model": "google/gemini-2.5-pro",
+          "pinned": false
+        }
+      ],
+      "skipped": []
+    }
+  },
+  {
+    "name": "snap-max-order",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "policy": {
+        "order": [
+          "pi",
+          "claude"
+        ]
+      },
+      "tier": "max",
+      "traits": []
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-5-5",
+          "model": "anthropic/claude-opus-5-5",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "openai/gpt-6-astra",
+          "model": "openai/gpt-6-astra",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-5",
+          "model": "anthropic/claude-opus-5",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-8",
+          "model": "anthropic/claude-opus-4-8",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-7",
+          "model": "anthropic/claude-opus-4-7",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "google/gemini-3.1-pro-preview",
+          "model": "google/gemini-3.1-pro-preview",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "google/gemini-3.1-pro-preview-customtools",
+          "model": "google/gemini-3.1-pro-preview-customtools",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "google/gemini-pro-latest",
+          "model": "google/gemini-pro-latest",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-6",
+          "model": "anthropic/claude-opus-4-6",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-5",
+          "model": "anthropic/claude-opus-4-5",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "google/gemini-2.5-computer-use-preview-10-2025",
+          "model": "google/gemini-2.5-computer-use-preview-10-2025",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "max",
+          "native_name": "google/gemini-2.5-pro",
+          "model": "google/gemini-2.5-pro",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "max",
+          "native_name": "opus",
+          "model": "anthropic/claude-opus-5-5",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "max",
+          "native_name": "claude-opus-5",
+          "model": "anthropic/claude-opus-5",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "max",
+          "native_name": "claude-opus-4-8",
+          "model": "anthropic/claude-opus-4-8",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "max",
+          "native_name": "claude-opus-4-7",
+          "model": "anthropic/claude-opus-4-7",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "max",
+          "native_name": "claude-opus-4-6",
+          "model": "anthropic/claude-opus-4-6",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "max",
+          "native_name": "claude-opus-4-5",
+          "model": "anthropic/claude-opus-4-5",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "max",
+          "native_name": "gemini-3.1-pro-preview",
+          "model": "google/gemini-3.1-pro-preview",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "max",
+          "native_name": "gemini-3.1-pro-preview-customtools",
+          "model": "google/gemini-3.1-pro-preview-customtools",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "max",
+          "native_name": "gemini-pro-latest",
+          "model": "google/gemini-pro-latest",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "max",
+          "native_name": "gemini-2.5-computer-use-preview-10-2025",
+          "model": "google/gemini-2.5-computer-use-preview-10-2025",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "max",
+          "native_name": "gemini-2.5-pro",
+          "model": "google/gemini-2.5-pro",
+          "pinned": false
+        },
+        {
+          "tool": "codex",
+          "tier": "max",
+          "native_name": "gpt-6-astra",
+          "model": "openai/gpt-6-astra",
+          "pinned": false
+        },
+        {
+          "tool": "cursor",
+          "tier": "max",
+          "native_name": "claude-opus-5-5-medium",
+          "model": "anthropic/claude-opus-5-5",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-5-5",
+          "model": "anthropic/claude-opus-5-5",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "openai/gpt-6-astra",
+          "model": "openai/gpt-6-astra",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-5",
+          "model": "anthropic/claude-opus-5",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-8",
+          "model": "anthropic/claude-opus-4-8",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-7",
+          "model": "anthropic/claude-opus-4-7",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "google/gemini-3.1-pro-preview",
+          "model": "google/gemini-3.1-pro-preview",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "google/gemini-3.1-pro-preview-customtools",
+          "model": "google/gemini-3.1-pro-preview-customtools",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "google/gemini-pro-latest",
+          "model": "google/gemini-pro-latest",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-6",
+          "model": "anthropic/claude-opus-4-6",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "anthropic/claude-opus-4-5",
+          "model": "anthropic/claude-opus-4-5",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "google/gemini-2.5-computer-use-preview-10-2025",
+          "model": "google/gemini-2.5-computer-use-preview-10-2025",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "max",
+          "native_name": "google/gemini-2.5-pro",
+          "model": "google/gemini-2.5-pro",
+          "pinned": false
+        }
+      ],
+      "skipped": []
+    }
+  },
+  {
+    "name": "image-standard-image-out-takes-image-models",
+    "input": {
+      "layers": [
+        "snapshot",
+        "image"
+      ],
+      "tier": "standard",
+      "traits": [
+        "image-out"
+      ]
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "test-image",
+          "model": "google/test-image",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "test-image-agent",
+          "model": "google/test-image-agent",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "gemini-3.1-flash-image",
+          "model": "google/gemini-3.1-flash-image",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "gemini-3.1-flash-image-preview",
+          "model": "google/gemini-3.1-flash-image-preview",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "gemini-2.5-flash-image",
+          "model": "google/gemini-2.5-flash-image",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/test-image",
+          "model": "google/test-image",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/test-image-agent",
+          "model": "google/test-image-agent",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/gemini-3.1-flash-image",
+          "model": "google/gemini-3.1-flash-image",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/gemini-3.1-flash-image-preview",
+          "model": "google/gemini-3.1-flash-image-preview",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/gemini-2.5-flash-image",
+          "model": "google/gemini-2.5-flash-image",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/test-image",
+          "model": "google/test-image",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/test-image-agent",
+          "model": "google/test-image-agent",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/gemini-3.1-flash-image",
+          "model": "google/gemini-3.1-flash-image",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/gemini-3.1-flash-image-preview",
+          "model": "google/gemini-3.1-flash-image-preview",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/gemini-2.5-flash-image",
+          "model": "google/gemini-2.5-flash-image",
+          "pinned": false
+        }
+      ],
+      "skipped": [
+        {
+          "tool": "claude",
+          "native_name": "sonnet",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-sonnet-5-5 lacks image-out"
+        },
+        {
+          "tool": "claude",
+          "native_name": "claude-sonnet-5",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-sonnet-5 lacks image-out"
+        },
+        {
+          "tool": "claude",
+          "native_name": "claude-sonnet-4-6",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-sonnet-4-6 lacks image-out"
+        },
+        {
+          "tool": "claude",
+          "native_name": "claude-sonnet-4-5",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-sonnet-4-5 lacks image-out"
+        },
+        {
+          "tool": "codex",
+          "native_name": "gpt-6.1-sol",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-6.1-sol lacks image-out"
+        },
+        {
+          "tool": "codex",
+          "native_name": "gpt-6-sol",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-6-sol lacks image-out"
+        },
+        {
+          "tool": "codex",
+          "native_name": "gpt-daybreak-blue-latest",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-daybreak-blue-latest lacks image-out"
+        },
+        {
+          "tool": "codex",
+          "native_name": "gpt-5.6",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-5.6 lacks image-out"
+        },
+        {
+          "tool": "codex",
+          "native_name": "gpt-5.6-sol",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-5.6-sol lacks image-out"
+        },
+        {
+          "tool": "cursor",
+          "native_name": "gemini-3.7-flash-high",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.7-flash lacks image-out"
+        },
+        {
+          "tool": "cursor",
+          "native_name": "gpt-5.6-sol-high",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-5.6-sol lacks image-out"
+        },
+        {
+          "tool": "cursor",
+          "native_name": "claude-sonnet-5-thinking-high",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-sonnet-5 lacks image-out"
+        },
+        {
+          "tool": "antigravity",
+          "native_name": "test-image-embed",
+          "reason": "not-agent",
+          "detail": "google/test-image-embed is an embedding model"
+        },
+        {
+          "tool": "antigravity",
+          "native_name": "gemini-3.8-flash",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.8-flash lacks image-out"
+        },
+        {
+          "tool": "antigravity",
+          "native_name": "gemini-3.7-flash",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.7-flash lacks image-out"
+        },
+        {
+          "tool": "antigravity",
+          "native_name": "gemini-flash-latest",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-flash-latest lacks image-out"
+        },
+        {
+          "tool": "antigravity",
+          "native_name": "gemini-3.6-flash",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.6-flash lacks image-out"
+        },
+        {
+          "tool": "antigravity",
+          "native_name": "gemini-3.5-flash",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.5-flash lacks image-out"
+        },
+        {
+          "tool": "antigravity",
+          "native_name": "gemini-3-flash-preview",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3-flash-preview lacks image-out"
+        },
+        {
+          "tool": "antigravity",
+          "native_name": "gemini-2.5-flash",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-2.5-flash lacks image-out"
+        },
+        {
+          "tool": "pi",
+          "native_name": "google/test-image-embed",
+          "reason": "not-agent",
+          "detail": "google/test-image-embed is an embedding model"
+        },
+        {
+          "tool": "pi",
+          "native_name": "openai/gpt-6.1-sol",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-6.1-sol lacks image-out"
+        },
+        {
+          "tool": "pi",
+          "native_name": "anthropic/claude-sonnet-5-5",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-sonnet-5-5 lacks image-out"
+        },
+        {
+          "tool": "pi",
+          "native_name": "openai/gpt-6-sol",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-6-sol lacks image-out"
+        },
+        {
+          "tool": "pi",
+          "native_name": "google/gemini-3.8-flash",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.8-flash lacks image-out"
+        },
+        {
+          "tool": "pi",
+          "native_name": "google/gemini-3.7-flash",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.7-flash lacks image-out"
+        },
+        {
+          "tool": "pi",
+          "native_name": "google/gemini-flash-latest",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-flash-latest lacks image-out"
+        },
+        {
+          "tool": "pi",
+          "native_name": "openai/gpt-daybreak-blue-latest",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-daybreak-blue-latest lacks image-out"
+        },
+        {
+          "tool": "pi",
+          "native_name": "google/gemini-3.6-flash",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.6-flash lacks image-out"
+        },
+        {
+          "tool": "pi",
+          "native_name": "openai/gpt-5.6",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-5.6 lacks image-out"
+        },
+        {
+          "tool": "pi",
+          "native_name": "openai/gpt-5.6-sol",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-5.6-sol lacks image-out"
+        },
+        {
+          "tool": "pi",
+          "native_name": "anthropic/claude-sonnet-5",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-sonnet-5 lacks image-out"
+        },
+        {
+          "tool": "pi",
+          "native_name": "google/gemini-3.5-flash",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.5-flash lacks image-out"
+        },
+        {
+          "tool": "pi",
+          "native_name": "anthropic/claude-sonnet-4-6",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-sonnet-4-6 lacks image-out"
+        },
+        {
+          "tool": "pi",
+          "native_name": "google/gemini-3-flash-preview",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3-flash-preview lacks image-out"
+        },
+        {
+          "tool": "pi",
+          "native_name": "anthropic/claude-sonnet-4-5",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-sonnet-4-5 lacks image-out"
+        },
+        {
+          "tool": "pi",
+          "native_name": "google/gemini-2.5-flash",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-2.5-flash lacks image-out"
+        },
+        {
+          "tool": "opencode",
+          "native_name": "google/test-image-embed",
+          "reason": "not-agent",
+          "detail": "google/test-image-embed is an embedding model"
+        },
+        {
+          "tool": "opencode",
+          "native_name": "openai/gpt-6.1-sol",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-6.1-sol lacks image-out"
+        },
+        {
+          "tool": "opencode",
+          "native_name": "anthropic/claude-sonnet-5-5",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-sonnet-5-5 lacks image-out"
+        },
+        {
+          "tool": "opencode",
+          "native_name": "openai/gpt-6-sol",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-6-sol lacks image-out"
+        },
+        {
+          "tool": "opencode",
+          "native_name": "google/gemini-3.8-flash",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.8-flash lacks image-out"
+        },
+        {
+          "tool": "opencode",
+          "native_name": "google/gemini-3.7-flash",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.7-flash lacks image-out"
+        },
+        {
+          "tool": "opencode",
+          "native_name": "google/gemini-flash-latest",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-flash-latest lacks image-out"
+        },
+        {
+          "tool": "opencode",
+          "native_name": "openai/gpt-daybreak-blue-latest",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-daybreak-blue-latest lacks image-out"
+        },
+        {
+          "tool": "opencode",
+          "native_name": "google/gemini-3.6-flash",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.6-flash lacks image-out"
+        },
+        {
+          "tool": "opencode",
+          "native_name": "openai/gpt-5.6",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-5.6 lacks image-out"
+        },
+        {
+          "tool": "opencode",
+          "native_name": "openai/gpt-5.6-sol",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-5.6-sol lacks image-out"
+        },
+        {
+          "tool": "opencode",
+          "native_name": "anthropic/claude-sonnet-5",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-sonnet-5 lacks image-out"
+        },
+        {
+          "tool": "opencode",
+          "native_name": "google/gemini-3.5-flash",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.5-flash lacks image-out"
+        },
+        {
+          "tool": "opencode",
+          "native_name": "anthropic/claude-sonnet-4-6",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-sonnet-4-6 lacks image-out"
+        },
+        {
+          "tool": "opencode",
+          "native_name": "google/gemini-3-flash-preview",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3-flash-preview lacks image-out"
+        },
+        {
+          "tool": "opencode",
+          "native_name": "anthropic/claude-sonnet-4-5",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-sonnet-4-5 lacks image-out"
+        },
+        {
+          "tool": "opencode",
+          "native_name": "google/gemini-2.5-flash",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-2.5-flash lacks image-out"
+        }
+      ]
+    }
+  },
+  {
+    "name": "image-standard-never-takes-image-models",
+    "input": {
+      "layers": [
+        "snapshot",
+        "image"
+      ],
+      "tier": "standard",
+      "traits": []
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "claude",
+          "tier": "standard",
+          "native_name": "sonnet",
+          "model": "anthropic/claude-sonnet-5-5",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "standard",
+          "native_name": "claude-sonnet-5",
+          "model": "anthropic/claude-sonnet-5",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "standard",
+          "native_name": "claude-sonnet-4-6",
+          "model": "anthropic/claude-sonnet-4-6",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "standard",
+          "native_name": "claude-sonnet-4-5",
+          "model": "anthropic/claude-sonnet-4-5",
+          "pinned": false
+        },
+        {
+          "tool": "codex",
+          "tier": "standard",
+          "native_name": "gpt-6.1-sol",
+          "model": "openai/gpt-6.1-sol",
+          "pinned": false
+        },
+        {
+          "tool": "codex",
+          "tier": "standard",
+          "native_name": "gpt-6-sol",
+          "model": "openai/gpt-6-sol",
+          "pinned": false
+        },
+        {
+          "tool": "codex",
+          "tier": "standard",
+          "native_name": "gpt-daybreak-blue-latest",
+          "model": "openai/gpt-daybreak-blue-latest",
+          "pinned": false
+        },
+        {
+          "tool": "codex",
+          "tier": "standard",
+          "native_name": "gpt-5.6",
+          "model": "openai/gpt-5.6",
+          "pinned": false
+        },
+        {
+          "tool": "codex",
+          "tier": "standard",
+          "native_name": "gpt-5.6-sol",
+          "model": "openai/gpt-5.6-sol",
+          "pinned": false
+        },
+        {
+          "tool": "cursor",
+          "tier": "standard",
+          "native_name": "gemini-3.7-flash-high",
+          "model": "google/gemini-3.7-flash",
+          "pinned": false
+        },
+        {
+          "tool": "cursor",
+          "tier": "standard",
+          "native_name": "gpt-5.6-sol-high",
+          "model": "openai/gpt-5.6-sol",
+          "pinned": false
+        },
+        {
+          "tool": "cursor",
+          "tier": "standard",
+          "native_name": "claude-sonnet-5-thinking-high",
+          "model": "anthropic/claude-sonnet-5",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "gemini-3.8-flash",
+          "model": "google/gemini-3.8-flash",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "gemini-3.7-flash",
+          "model": "google/gemini-3.7-flash",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "gemini-flash-latest",
+          "model": "google/gemini-flash-latest",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "gemini-3.6-flash",
+          "model": "google/gemini-3.6-flash",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "gemini-3.5-flash",
+          "model": "google/gemini-3.5-flash",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "gemini-3-flash-preview",
+          "model": "google/gemini-3-flash-preview",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "gemini-2.5-flash",
+          "model": "google/gemini-2.5-flash",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "openai/gpt-6.1-sol",
+          "model": "openai/gpt-6.1-sol",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-5-5",
+          "model": "anthropic/claude-sonnet-5-5",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "openai/gpt-6-sol",
+          "model": "openai/gpt-6-sol",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/gemini-3.8-flash",
+          "model": "google/gemini-3.8-flash",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/gemini-3.7-flash",
+          "model": "google/gemini-3.7-flash",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/gemini-flash-latest",
+          "model": "google/gemini-flash-latest",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "openai/gpt-daybreak-blue-latest",
+          "model": "openai/gpt-daybreak-blue-latest",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/gemini-3.6-flash",
+          "model": "google/gemini-3.6-flash",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "openai/gpt-5.6",
+          "model": "openai/gpt-5.6",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "openai/gpt-5.6-sol",
+          "model": "openai/gpt-5.6-sol",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-5",
+          "model": "anthropic/claude-sonnet-5",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/gemini-3.5-flash",
+          "model": "google/gemini-3.5-flash",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-4-6",
+          "model": "anthropic/claude-sonnet-4-6",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/gemini-3-flash-preview",
+          "model": "google/gemini-3-flash-preview",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-4-5",
+          "model": "anthropic/claude-sonnet-4-5",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/gemini-2.5-flash",
+          "model": "google/gemini-2.5-flash",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "openai/gpt-6.1-sol",
+          "model": "openai/gpt-6.1-sol",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-5-5",
+          "model": "anthropic/claude-sonnet-5-5",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "openai/gpt-6-sol",
+          "model": "openai/gpt-6-sol",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/gemini-3.8-flash",
+          "model": "google/gemini-3.8-flash",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/gemini-3.7-flash",
+          "model": "google/gemini-3.7-flash",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/gemini-flash-latest",
+          "model": "google/gemini-flash-latest",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "openai/gpt-daybreak-blue-latest",
+          "model": "openai/gpt-daybreak-blue-latest",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/gemini-3.6-flash",
+          "model": "google/gemini-3.6-flash",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "openai/gpt-5.6",
+          "model": "openai/gpt-5.6",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "openai/gpt-5.6-sol",
+          "model": "openai/gpt-5.6-sol",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-5",
+          "model": "anthropic/claude-sonnet-5",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/gemini-3.5-flash",
+          "model": "google/gemini-3.5-flash",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-4-6",
+          "model": "anthropic/claude-sonnet-4-6",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/gemini-3-flash-preview",
+          "model": "google/gemini-3-flash-preview",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-4-5",
+          "model": "anthropic/claude-sonnet-4-5",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/gemini-2.5-flash",
+          "model": "google/gemini-2.5-flash",
+          "pinned": false
+        }
+      ],
+      "skipped": []
+    }
+  },
+  {
+    "name": "image-standard-vision-never-takes-image-models",
+    "input": {
+      "layers": [
+        "snapshot",
+        "image"
+      ],
+      "tier": "standard",
+      "traits": [
+        "vision"
+      ]
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "claude",
+          "tier": "standard",
+          "native_name": "sonnet",
+          "model": "anthropic/claude-sonnet-5-5",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "standard",
+          "native_name": "claude-sonnet-5",
+          "model": "anthropic/claude-sonnet-5",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "standard",
+          "native_name": "claude-sonnet-4-6",
+          "model": "anthropic/claude-sonnet-4-6",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "standard",
+          "native_name": "claude-sonnet-4-5",
+          "model": "anthropic/claude-sonnet-4-5",
+          "pinned": false
+        },
+        {
+          "tool": "codex",
+          "tier": "standard",
+          "native_name": "gpt-6.1-sol",
+          "model": "openai/gpt-6.1-sol",
+          "pinned": false
+        },
+        {
+          "tool": "codex",
+          "tier": "standard",
+          "native_name": "gpt-6-sol",
+          "model": "openai/gpt-6-sol",
+          "pinned": false
+        },
+        {
+          "tool": "codex",
+          "tier": "standard",
+          "native_name": "gpt-daybreak-blue-latest",
+          "model": "openai/gpt-daybreak-blue-latest",
+          "pinned": false
+        },
+        {
+          "tool": "codex",
+          "tier": "standard",
+          "native_name": "gpt-5.6",
+          "model": "openai/gpt-5.6",
+          "pinned": false
+        },
+        {
+          "tool": "codex",
+          "tier": "standard",
+          "native_name": "gpt-5.6-sol",
+          "model": "openai/gpt-5.6-sol",
+          "pinned": false
+        },
+        {
+          "tool": "cursor",
+          "tier": "standard",
+          "native_name": "gemini-3.7-flash-high",
+          "model": "google/gemini-3.7-flash",
+          "pinned": false
+        },
+        {
+          "tool": "cursor",
+          "tier": "standard",
+          "native_name": "gpt-5.6-sol-high",
+          "model": "openai/gpt-5.6-sol",
+          "pinned": false
+        },
+        {
+          "tool": "cursor",
+          "tier": "standard",
+          "native_name": "claude-sonnet-5-thinking-high",
+          "model": "anthropic/claude-sonnet-5",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "gemini-3.8-flash",
+          "model": "google/gemini-3.8-flash",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "gemini-3.7-flash",
+          "model": "google/gemini-3.7-flash",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "gemini-flash-latest",
+          "model": "google/gemini-flash-latest",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "gemini-3.6-flash",
+          "model": "google/gemini-3.6-flash",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "gemini-3.5-flash",
+          "model": "google/gemini-3.5-flash",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "gemini-3-flash-preview",
+          "model": "google/gemini-3-flash-preview",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "gemini-2.5-flash",
+          "model": "google/gemini-2.5-flash",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "openai/gpt-6.1-sol",
+          "model": "openai/gpt-6.1-sol",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-5-5",
+          "model": "anthropic/claude-sonnet-5-5",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "openai/gpt-6-sol",
+          "model": "openai/gpt-6-sol",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/gemini-3.8-flash",
+          "model": "google/gemini-3.8-flash",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/gemini-3.7-flash",
+          "model": "google/gemini-3.7-flash",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/gemini-flash-latest",
+          "model": "google/gemini-flash-latest",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "openai/gpt-daybreak-blue-latest",
+          "model": "openai/gpt-daybreak-blue-latest",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/gemini-3.6-flash",
+          "model": "google/gemini-3.6-flash",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "openai/gpt-5.6",
+          "model": "openai/gpt-5.6",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "openai/gpt-5.6-sol",
+          "model": "openai/gpt-5.6-sol",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-5",
+          "model": "anthropic/claude-sonnet-5",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/gemini-3.5-flash",
+          "model": "google/gemini-3.5-flash",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-4-6",
+          "model": "anthropic/claude-sonnet-4-6",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/gemini-3-flash-preview",
+          "model": "google/gemini-3-flash-preview",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-4-5",
+          "model": "anthropic/claude-sonnet-4-5",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/gemini-2.5-flash",
+          "model": "google/gemini-2.5-flash",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "openai/gpt-6.1-sol",
+          "model": "openai/gpt-6.1-sol",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-5-5",
+          "model": "anthropic/claude-sonnet-5-5",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "openai/gpt-6-sol",
+          "model": "openai/gpt-6-sol",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/gemini-3.8-flash",
+          "model": "google/gemini-3.8-flash",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/gemini-3.7-flash",
+          "model": "google/gemini-3.7-flash",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/gemini-flash-latest",
+          "model": "google/gemini-flash-latest",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "openai/gpt-daybreak-blue-latest",
+          "model": "openai/gpt-daybreak-blue-latest",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/gemini-3.6-flash",
+          "model": "google/gemini-3.6-flash",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "openai/gpt-5.6",
+          "model": "openai/gpt-5.6",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "openai/gpt-5.6-sol",
+          "model": "openai/gpt-5.6-sol",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-5",
+          "model": "anthropic/claude-sonnet-5",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/gemini-3.5-flash",
+          "model": "google/gemini-3.5-flash",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-4-6",
+          "model": "anthropic/claude-sonnet-4-6",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/gemini-3-flash-preview",
+          "model": "google/gemini-3-flash-preview",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-4-5",
+          "model": "anthropic/claude-sonnet-4-5",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/gemini-2.5-flash",
+          "model": "google/gemini-2.5-flash",
+          "pinned": false
+        }
+      ],
+      "skipped": []
+    }
+  },
+  {
+    "name": "image-standard-pinned-image-model-not-agent",
+    "input": {
+      "layers": [
+        "snapshot",
+        "image"
+      ],
+      "policy": {
+        "pins": {
+          "antigravity/standard": "test-image"
+        }
+      },
+      "tier": "standard",
+      "traits": []
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "claude",
+          "tier": "standard",
+          "native_name": "sonnet",
+          "model": "anthropic/claude-sonnet-5-5",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "standard",
+          "native_name": "claude-sonnet-5",
+          "model": "anthropic/claude-sonnet-5",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "standard",
+          "native_name": "claude-sonnet-4-6",
+          "model": "anthropic/claude-sonnet-4-6",
+          "pinned": false
+        },
+        {
+          "tool": "claude",
+          "tier": "standard",
+          "native_name": "claude-sonnet-4-5",
+          "model": "anthropic/claude-sonnet-4-5",
+          "pinned": false
+        },
+        {
+          "tool": "codex",
+          "tier": "standard",
+          "native_name": "gpt-6.1-sol",
+          "model": "openai/gpt-6.1-sol",
+          "pinned": false
+        },
+        {
+          "tool": "codex",
+          "tier": "standard",
+          "native_name": "gpt-6-sol",
+          "model": "openai/gpt-6-sol",
+          "pinned": false
+        },
+        {
+          "tool": "codex",
+          "tier": "standard",
+          "native_name": "gpt-daybreak-blue-latest",
+          "model": "openai/gpt-daybreak-blue-latest",
+          "pinned": false
+        },
+        {
+          "tool": "codex",
+          "tier": "standard",
+          "native_name": "gpt-5.6",
+          "model": "openai/gpt-5.6",
+          "pinned": false
+        },
+        {
+          "tool": "codex",
+          "tier": "standard",
+          "native_name": "gpt-5.6-sol",
+          "model": "openai/gpt-5.6-sol",
+          "pinned": false
+        },
+        {
+          "tool": "cursor",
+          "tier": "standard",
+          "native_name": "gemini-3.7-flash-high",
+          "model": "google/gemini-3.7-flash",
+          "pinned": false
+        },
+        {
+          "tool": "cursor",
+          "tier": "standard",
+          "native_name": "gpt-5.6-sol-high",
+          "model": "openai/gpt-5.6-sol",
+          "pinned": false
+        },
+        {
+          "tool": "cursor",
+          "tier": "standard",
+          "native_name": "claude-sonnet-5-thinking-high",
+          "model": "anthropic/claude-sonnet-5",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "gemini-3.8-flash",
+          "model": "google/gemini-3.8-flash",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "gemini-3.7-flash",
+          "model": "google/gemini-3.7-flash",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "gemini-flash-latest",
+          "model": "google/gemini-flash-latest",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "gemini-3.6-flash",
+          "model": "google/gemini-3.6-flash",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "gemini-3.5-flash",
+          "model": "google/gemini-3.5-flash",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "gemini-3-flash-preview",
+          "model": "google/gemini-3-flash-preview",
+          "pinned": false
+        },
+        {
+          "tool": "antigravity",
+          "tier": "standard",
+          "native_name": "gemini-2.5-flash",
+          "model": "google/gemini-2.5-flash",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "openai/gpt-6.1-sol",
+          "model": "openai/gpt-6.1-sol",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-5-5",
+          "model": "anthropic/claude-sonnet-5-5",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "openai/gpt-6-sol",
+          "model": "openai/gpt-6-sol",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/gemini-3.8-flash",
+          "model": "google/gemini-3.8-flash",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/gemini-3.7-flash",
+          "model": "google/gemini-3.7-flash",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/gemini-flash-latest",
+          "model": "google/gemini-flash-latest",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "openai/gpt-daybreak-blue-latest",
+          "model": "openai/gpt-daybreak-blue-latest",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/gemini-3.6-flash",
+          "model": "google/gemini-3.6-flash",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "openai/gpt-5.6",
+          "model": "openai/gpt-5.6",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "openai/gpt-5.6-sol",
+          "model": "openai/gpt-5.6-sol",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-5",
+          "model": "anthropic/claude-sonnet-5",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/gemini-3.5-flash",
+          "model": "google/gemini-3.5-flash",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-4-6",
+          "model": "anthropic/claude-sonnet-4-6",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/gemini-3-flash-preview",
+          "model": "google/gemini-3-flash-preview",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-4-5",
+          "model": "anthropic/claude-sonnet-4-5",
+          "pinned": false
+        },
+        {
+          "tool": "pi",
+          "tier": "standard",
+          "native_name": "google/gemini-2.5-flash",
+          "model": "google/gemini-2.5-flash",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "openai/gpt-6.1-sol",
+          "model": "openai/gpt-6.1-sol",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-5-5",
+          "model": "anthropic/claude-sonnet-5-5",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "openai/gpt-6-sol",
+          "model": "openai/gpt-6-sol",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/gemini-3.8-flash",
+          "model": "google/gemini-3.8-flash",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/gemini-3.7-flash",
+          "model": "google/gemini-3.7-flash",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/gemini-flash-latest",
+          "model": "google/gemini-flash-latest",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "openai/gpt-daybreak-blue-latest",
+          "model": "openai/gpt-daybreak-blue-latest",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/gemini-3.6-flash",
+          "model": "google/gemini-3.6-flash",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "openai/gpt-5.6",
+          "model": "openai/gpt-5.6",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "openai/gpt-5.6-sol",
+          "model": "openai/gpt-5.6-sol",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-5",
+          "model": "anthropic/claude-sonnet-5",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/gemini-3.5-flash",
+          "model": "google/gemini-3.5-flash",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-4-6",
+          "model": "anthropic/claude-sonnet-4-6",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/gemini-3-flash-preview",
+          "model": "google/gemini-3-flash-preview",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "anthropic/claude-sonnet-4-5",
+          "model": "anthropic/claude-sonnet-4-5",
+          "pinned": false
+        },
+        {
+          "tool": "opencode",
+          "tier": "standard",
+          "native_name": "google/gemini-2.5-flash",
+          "model": "google/gemini-2.5-flash",
+          "pinned": false
+        }
+      ],
+      "skipped": [
+        {
+          "tool": "antigravity",
+          "native_name": "test-image",
+          "reason": "not-agent",
+          "detail": "google/test-image is an image-output model"
+        }
+      ]
+    }
+  },
+  {
+    "name": "mini-max",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "tier": "max",
+      "traits": []
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "alpha",
+          "tier": "max",
+          "native_name": "big",
+          "model": "anthropic/big-2",
+          "pinned": false
+        },
+        {
+          "tool": "gamma",
+          "tier": "max",
+          "native_name": "anthropic/big-2",
+          "model": "anthropic/big-2",
+          "pinned": false
+        },
+        {
+          "tool": "gamma",
+          "tier": "max",
+          "native_name": "ollama/llama3:70b",
+          "model": "ollama/llama3:70b",
+          "pinned": false
+        },
+        {
+          "tool": "delta",
+          "tier": "max",
+          "native_name": "large",
+          "model": "anthropic/big-2",
+          "pinned": false
+        }
+      ],
+      "skipped": []
+    }
+  },
+  {
+    "name": "mini-fast-skips-embedding-and-non-agent",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "tier": "fast",
+      "traits": []
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "alpha",
+          "tier": "fast",
+          "native_name": "small-1",
+          "model": "anthropic/small-1",
+          "pinned": false
+        },
+        {
+          "tool": "gamma",
+          "tier": "fast",
+          "native_name": "anthropic/small-1",
+          "model": "anthropic/small-1",
+          "pinned": false
+        },
+        {
+          "tool": "gamma",
+          "tier": "fast",
+          "native_name": "ollama/qwen3:4b",
+          "model": "ollama/qwen3:4b",
+          "pinned": false
+        },
+        {
+          "tool": "delta",
+          "tier": "fast",
+          "native_name": "tiny",
+          "model": "anthropic/small-1",
+          "pinned": false
+        }
+      ],
+      "skipped": [
+        {
+          "tool": "alpha",
+          "native_name": "embed-1",
+          "reason": "not-agent",
+          "detail": "anthropic/embed-1 is an embedding model"
+        },
+        {
+          "tool": "alpha",
+          "native_name": "plain-1",
+          "reason": "not-agent",
+          "detail": "anthropic/plain-1 is not an agent model"
+        },
+        {
+          "tool": "gamma",
+          "native_name": "anthropic/embed-1",
+          "reason": "not-agent",
+          "detail": "anthropic/embed-1 is an embedding model"
+        },
+        {
+          "tool": "gamma",
+          "native_name": "anthropic/plain-1",
+          "reason": "not-agent",
+          "detail": "anthropic/plain-1 is not an agent model"
+        }
+      ]
+    }
+  },
+  {
+    "name": "mini-standard-skips-withdrawn",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "tier": "standard",
+      "traits": []
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "alpha",
+          "tier": "standard",
+          "native_name": "mid-1",
+          "model": "anthropic/mid-1",
+          "pinned": false
+        },
+        {
+          "tool": "beta",
+          "tier": "standard",
+          "native_name": "gpt-x",
+          "model": "openai/gpt-x",
+          "pinned": false
+        },
+        {
+          "tool": "gamma",
+          "tier": "standard",
+          "native_name": "anthropic/mid-1",
+          "model": "anthropic/mid-1",
+          "pinned": false
+        }
+      ],
+      "skipped": []
+    }
+  },
+  {
+    "name": "mini-max-trait-filter-hit",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "tier": "max",
+      "traits": [
+        "reasoning",
+        "long-context"
+      ]
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "alpha",
+          "tier": "max",
+          "native_name": "big",
+          "model": "anthropic/big-2",
+          "pinned": false
+        },
+        {
+          "tool": "gamma",
+          "tier": "max",
+          "native_name": "anthropic/big-2",
+          "model": "anthropic/big-2",
+          "pinned": false
+        },
+        {
+          "tool": "delta",
+          "tier": "max",
+          "native_name": "large",
+          "model": "anthropic/big-2",
+          "pinned": false
+        }
+      ],
+      "skipped": [
+        {
+          "tool": "gamma",
+          "native_name": "ollama/llama3:70b",
+          "reason": "missing-trait",
+          "detail": "model ollama/llama3:70b lacks reasoning, long-context"
+        }
+      ]
+    }
+  },
+  {
+    "name": "mini-max-trait-filter-miss",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "tier": "max",
+      "traits": [
+        "local"
+      ]
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "gamma",
+          "tier": "max",
+          "native_name": "ollama/llama3:70b",
+          "model": "ollama/llama3:70b",
+          "pinned": false
+        }
+      ],
+      "skipped": [
+        {
+          "tool": "alpha",
+          "native_name": "big",
+          "reason": "missing-trait",
+          "detail": "model anthropic/big-2 lacks local"
+        },
+        {
+          "tool": "gamma",
+          "native_name": "anthropic/big-2",
+          "reason": "missing-trait",
+          "detail": "model anthropic/big-2 lacks local"
+        },
+        {
+          "tool": "delta",
+          "native_name": "large",
+          "reason": "missing-trait",
+          "detail": "model anthropic/big-2 lacks local"
+        }
+      ]
+    }
+  },
+  {
+    "name": "mini-pin-known-model-not-repeated",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "policy": {
+        "pins": {
+          "alpha/max": "big-2"
+        }
+      },
+      "tier": "max",
+      "traits": []
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "alpha",
+          "tier": "max",
+          "native_name": "big-2",
+          "model": "anthropic/big-2",
+          "pinned": true
+        },
+        {
+          "tool": "gamma",
+          "tier": "max",
+          "native_name": "anthropic/big-2",
+          "model": "anthropic/big-2",
+          "pinned": false
+        },
+        {
+          "tool": "gamma",
+          "tier": "max",
+          "native_name": "ollama/llama3:70b",
+          "model": "ollama/llama3:70b",
+          "pinned": false
+        },
+        {
+          "tool": "delta",
+          "tier": "max",
+          "native_name": "large",
+          "model": "anthropic/big-2",
+          "pinned": false
+        }
+      ],
+      "skipped": []
+    }
+  },
+  {
+    "name": "mini-pin-deprecated-model-allowed",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "policy": {
+        "pins": {
+          "alpha/max": "big-1",
+          "beta/fast": "future-model",
+          "gamma/standard": "mid-1"
+        }
+      },
+      "tier": "max",
+      "traits": []
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "alpha",
+          "tier": "max",
+          "native_name": "big-1",
+          "model": "anthropic/big-1",
+          "pinned": true
+        },
+        {
+          "tool": "alpha",
+          "tier": "max",
+          "native_name": "big",
+          "model": "anthropic/big-2",
+          "pinned": false
+        },
+        {
+          "tool": "gamma",
+          "tier": "max",
+          "native_name": "anthropic/big-2",
+          "model": "anthropic/big-2",
+          "pinned": false
+        },
+        {
+          "tool": "gamma",
+          "tier": "max",
+          "native_name": "ollama/llama3:70b",
+          "model": "ollama/llama3:70b",
+          "pinned": false
+        },
+        {
+          "tool": "delta",
+          "tier": "max",
+          "native_name": "large",
+          "model": "anthropic/big-2",
+          "pinned": false
+        }
+      ],
+      "skipped": []
+    }
+  },
+  {
+    "name": "mini-pin-unknown-model-stays",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "policy": {
+        "pins": {
+          "alpha/max": "big-1",
+          "beta/fast": "future-model",
+          "gamma/standard": "mid-1"
+        }
+      },
+      "tier": "fast",
+      "traits": []
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "alpha",
+          "tier": "fast",
+          "native_name": "small-1",
+          "model": "anthropic/small-1",
+          "pinned": false
+        },
+        {
+          "tool": "beta",
+          "tier": "fast",
+          "native_name": "future-model",
+          "pinned": true
+        },
+        {
+          "tool": "gamma",
+          "tier": "fast",
+          "native_name": "anthropic/small-1",
+          "model": "anthropic/small-1",
+          "pinned": false
+        },
+        {
+          "tool": "gamma",
+          "tier": "fast",
+          "native_name": "ollama/qwen3:4b",
+          "model": "ollama/qwen3:4b",
+          "pinned": false
+        },
+        {
+          "tool": "delta",
+          "tier": "fast",
+          "native_name": "tiny",
+          "model": "anthropic/small-1",
+          "pinned": false
+        }
+      ],
+      "skipped": [
+        {
+          "tool": "alpha",
+          "native_name": "embed-1",
+          "reason": "not-agent",
+          "detail": "anthropic/embed-1 is an embedding model"
+        },
+        {
+          "tool": "alpha",
+          "native_name": "plain-1",
+          "reason": "not-agent",
+          "detail": "anthropic/plain-1 is not an agent model"
+        },
+        {
+          "tool": "gamma",
+          "native_name": "anthropic/embed-1",
+          "reason": "not-agent",
+          "detail": "anthropic/embed-1 is an embedding model"
+        },
+        {
+          "tool": "gamma",
+          "native_name": "anthropic/plain-1",
+          "reason": "not-agent",
+          "detail": "anthropic/plain-1 is not an agent model"
+        }
+      ]
+    }
+  },
+  {
+    "name": "mini-pin-unknown-model-fails-trait-filter",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "policy": {
+        "pins": {
+          "alpha/max": "big-1",
+          "beta/fast": "future-model",
+          "gamma/standard": "mid-1"
+        }
+      },
+      "tier": "fast",
+      "traits": [
+        "agent"
+      ]
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "alpha",
+          "tier": "fast",
+          "native_name": "small-1",
+          "model": "anthropic/small-1",
+          "pinned": false
+        },
+        {
+          "tool": "gamma",
+          "tier": "fast",
+          "native_name": "anthropic/small-1",
+          "model": "anthropic/small-1",
+          "pinned": false
+        },
+        {
+          "tool": "gamma",
+          "tier": "fast",
+          "native_name": "ollama/qwen3:4b",
+          "model": "ollama/qwen3:4b",
+          "pinned": false
+        },
+        {
+          "tool": "delta",
+          "tier": "fast",
+          "native_name": "tiny",
+          "model": "anthropic/small-1",
+          "pinned": false
+        }
+      ],
+      "skipped": [
+        {
+          "tool": "alpha",
+          "native_name": "embed-1",
+          "reason": "not-agent",
+          "detail": "anthropic/embed-1 is an embedding model"
+        },
+        {
+          "tool": "alpha",
+          "native_name": "plain-1",
+          "reason": "not-agent",
+          "detail": "anthropic/plain-1 is not an agent model"
+        },
+        {
+          "tool": "beta",
+          "native_name": "future-model",
+          "reason": "missing-trait",
+          "detail": "traits agent cannot be checked: the catalogue does not know the model"
+        },
+        {
+          "tool": "gamma",
+          "native_name": "anthropic/embed-1",
+          "reason": "not-agent",
+          "detail": "anthropic/embed-1 is an embedding model"
+        },
+        {
+          "tool": "gamma",
+          "native_name": "anthropic/plain-1",
+          "reason": "not-agent",
+          "detail": "anthropic/plain-1 is not an agent model"
+        }
+      ]
+    }
+  },
+  {
+    "name": "mini-pin-embedding-model-skipped",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "policy": {
+        "pins": {
+          "alpha/fast": "embed-1"
+        }
+      },
+      "tier": "fast",
+      "traits": []
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "alpha",
+          "tier": "fast",
+          "native_name": "small-1",
+          "model": "anthropic/small-1",
+          "pinned": false
+        },
+        {
+          "tool": "gamma",
+          "tier": "fast",
+          "native_name": "anthropic/small-1",
+          "model": "anthropic/small-1",
+          "pinned": false
+        },
+        {
+          "tool": "gamma",
+          "tier": "fast",
+          "native_name": "ollama/qwen3:4b",
+          "model": "ollama/qwen3:4b",
+          "pinned": false
+        },
+        {
+          "tool": "delta",
+          "tier": "fast",
+          "native_name": "tiny",
+          "model": "anthropic/small-1",
+          "pinned": false
+        }
+      ],
+      "skipped": [
+        {
+          "tool": "alpha",
+          "native_name": "embed-1",
+          "reason": "not-agent",
+          "detail": "anthropic/embed-1 is an embedding model"
+        },
+        {
+          "tool": "alpha",
+          "native_name": "plain-1",
+          "reason": "not-agent",
+          "detail": "anthropic/plain-1 is not an agent model"
+        },
+        {
+          "tool": "gamma",
+          "native_name": "anthropic/embed-1",
+          "reason": "not-agent",
+          "detail": "anthropic/embed-1 is an embedding model"
+        },
+        {
+          "tool": "gamma",
+          "native_name": "anthropic/plain-1",
+          "reason": "not-agent",
+          "detail": "anthropic/plain-1 is not an agent model"
+        }
+      ]
+    }
+  },
+  {
+    "name": "mini-pin-model-without-agent-trait",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "policy": {
+        "pins": {
+          "alpha/fast": "plain-1"
+        }
+      },
+      "tier": "fast",
+      "traits": []
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "alpha",
+          "tier": "fast",
+          "native_name": "small-1",
+          "model": "anthropic/small-1",
+          "pinned": false
+        },
+        {
+          "tool": "gamma",
+          "tier": "fast",
+          "native_name": "anthropic/small-1",
+          "model": "anthropic/small-1",
+          "pinned": false
+        },
+        {
+          "tool": "gamma",
+          "tier": "fast",
+          "native_name": "ollama/qwen3:4b",
+          "model": "ollama/qwen3:4b",
+          "pinned": false
+        },
+        {
+          "tool": "delta",
+          "tier": "fast",
+          "native_name": "tiny",
+          "model": "anthropic/small-1",
+          "pinned": false
+        }
+      ],
+      "skipped": [
+        {
+          "tool": "alpha",
+          "native_name": "plain-1",
+          "reason": "not-agent",
+          "detail": "anthropic/plain-1 is not an agent model"
+        },
+        {
+          "tool": "alpha",
+          "native_name": "embed-1",
+          "reason": "not-agent",
+          "detail": "anthropic/embed-1 is an embedding model"
+        },
+        {
+          "tool": "gamma",
+          "native_name": "anthropic/embed-1",
+          "reason": "not-agent",
+          "detail": "anthropic/embed-1 is an embedding model"
+        },
+        {
+          "tool": "gamma",
+          "native_name": "anthropic/plain-1",
+          "reason": "not-agent",
+          "detail": "anthropic/plain-1 is not an agent model"
+        }
+      ]
+    }
+  },
+  {
+    "name": "mini-order-policy",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "policy": {
+        "order": [
+          "gamma",
+          "beta"
+        ]
+      },
+      "tier": "max",
+      "traits": []
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "gamma",
+          "tier": "max",
+          "native_name": "anthropic/big-2",
+          "model": "anthropic/big-2",
+          "pinned": false
+        },
+        {
+          "tool": "gamma",
+          "tier": "max",
+          "native_name": "ollama/llama3:70b",
+          "model": "ollama/llama3:70b",
+          "pinned": false
+        },
+        {
+          "tool": "alpha",
+          "tier": "max",
+          "native_name": "big",
+          "model": "anthropic/big-2",
+          "pinned": false
+        },
+        {
+          "tool": "delta",
+          "tier": "max",
+          "native_name": "large",
+          "model": "anthropic/big-2",
+          "pinned": false
+        }
+      ],
+      "skipped": []
+    }
+  },
+  {
+    "name": "mini-local-by-parameters",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "tier": "fast",
+      "traits": [
+        "local"
+      ]
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "gamma",
+          "tier": "fast",
+          "native_name": "ollama/qwen3:4b",
+          "model": "ollama/qwen3:4b",
+          "pinned": false
+        }
+      ],
+      "skipped": [
+        {
+          "tool": "alpha",
+          "native_name": "embed-1",
+          "reason": "not-agent",
+          "detail": "anthropic/embed-1 is an embedding model"
+        },
+        {
+          "tool": "alpha",
+          "native_name": "small-1",
+          "reason": "missing-trait",
+          "detail": "model anthropic/small-1 lacks local"
+        },
+        {
+          "tool": "alpha",
+          "native_name": "plain-1",
+          "reason": "not-agent",
+          "detail": "anthropic/plain-1 is not an agent model"
+        },
+        {
+          "tool": "gamma",
+          "native_name": "anthropic/embed-1",
+          "reason": "not-agent",
+          "detail": "anthropic/embed-1 is an embedding model"
+        },
+        {
+          "tool": "gamma",
+          "native_name": "anthropic/small-1",
+          "reason": "missing-trait",
+          "detail": "model anthropic/small-1 lacks local"
+        },
+        {
+          "tool": "gamma",
+          "native_name": "anthropic/plain-1",
+          "reason": "not-agent",
+          "detail": "anthropic/plain-1 is not an agent model"
+        },
+        {
+          "tool": "delta",
+          "native_name": "tiny",
+          "reason": "missing-trait",
+          "detail": "model anthropic/small-1 lacks local"
+        }
+      ]
+    }
+  },
+  {
+    "name": "mini-newest-first-then-larger-context",
+    "input": {
+      "layers": [
+        {
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "providers": {
+            "a": {
+              "kind": "anthropic"
+            }
+          },
+          "tools": {
+            "t": {
+              "serves": [
+                "a"
+              ],
+              "openness": "closed",
+              "modes": [
+                "headless"
+              ]
+            }
+          },
+          "models": {
+            "a/old": {
+              "family": "claude-opus",
+              "release_date": "2026-01-01",
+              "traits": [
+                "agent"
+              ]
+            },
+            "a/new-small": {
+              "family": "claude-opus",
+              "release_date": "2026-06-01",
+              "traits": [
+                "agent"
+              ],
+              "context": {
+                "default": 100
+              }
+            },
+            "a/new-big": {
+              "family": "claude-opus",
+              "release_date": "2026-06-01",
+              "traits": [
+                "agent"
+              ],
+              "context": {
+                "max": 500,
+                "default": 50
+              }
+            },
+            "a/undated": {
+              "family": "claude-opus",
+              "traits": [
+                "agent"
+              ]
+            },
+            "a/same-a": {
+              "family": "claude-opus",
+              "release_date": "2026-06-01",
+              "traits": [
+                "agent"
+              ]
+            },
+            "a/same-b": {
+              "family": "claude-opus",
+              "release_date": "2026-06-01",
+              "traits": [
+                "agent"
+              ]
+            }
+          }
+        }
+      ],
+      "tier": "max",
+      "traits": []
+    },
+    "expected": {
+      "entries": [],
+      "skipped": []
+    }
+  }
+]

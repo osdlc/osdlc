@@ -1,0 +1,2271 @@
+[
+  {
+    "name": "mini-fast",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "*/fast"
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "alpha",
+          "model": "small-1",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "alpha/fast",
+          "from": {
+            "kind": "tier",
+            "tier": "fast"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "gamma",
+          "model": "anthropic/small-1",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "gamma/fast",
+          "from": {
+            "kind": "tier",
+            "tier": "fast"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "gamma",
+          "model": "ollama/qwen3:4b",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "gamma/ollama/qwen3:4b",
+          "from": {
+            "kind": "name",
+            "name": "ollama/qwen3:4b"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "delta",
+          "model": "tiny",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "delta/fast",
+          "from": {
+            "kind": "tier",
+            "tier": "fast"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        }
+      ],
+      "skipped": [
+        {
+          "text": "alpha/embed-1",
+          "reason": "not-agent",
+          "detail": "anthropic/embed-1 is an embedding model"
+        },
+        {
+          "text": "alpha/plain-1",
+          "reason": "not-agent",
+          "detail": "anthropic/plain-1 is not an agent model"
+        },
+        {
+          "text": "gamma/anthropic/embed-1",
+          "reason": "not-agent",
+          "detail": "anthropic/embed-1 is an embedding model"
+        },
+        {
+          "text": "gamma/anthropic/plain-1",
+          "reason": "not-agent",
+          "detail": "anthropic/plain-1 is not an agent model"
+        }
+      ]
+    }
+  },
+  {
+    "name": "mini-standard",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "*/standard"
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "alpha",
+          "model": "mid-1",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "alpha/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "beta",
+          "model": "gpt-x",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "beta/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "gamma",
+          "model": "anthropic/mid-1",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "gamma/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        }
+      ],
+      "skipped": []
+    }
+  },
+  {
+    "name": "mini-max",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "*/max"
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "alpha",
+          "model": "big",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "alpha/max",
+          "from": {
+            "kind": "tier",
+            "tier": "max"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "gamma",
+          "model": "anthropic/big-2",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "gamma/max",
+          "from": {
+            "kind": "tier",
+            "tier": "max"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "gamma",
+          "model": "ollama/llama3:70b",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "gamma/ollama/llama3:70b",
+          "from": {
+            "kind": "name",
+            "name": "ollama/llama3:70b"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "delta",
+          "model": "large",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "delta/max",
+          "from": {
+            "kind": "tier",
+            "tier": "max"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        }
+      ],
+      "skipped": []
+    }
+  },
+  {
+    "name": "mini-fast-trait-local",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "*/fast[local]"
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "gamma",
+          "model": "ollama/qwen3:4b",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "gamma/ollama/qwen3:4b",
+          "from": {
+            "kind": "name",
+            "name": "ollama/qwen3:4b"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        }
+      ],
+      "skipped": [
+        {
+          "text": "alpha/embed-1",
+          "reason": "not-agent",
+          "detail": "anthropic/embed-1 is an embedding model"
+        },
+        {
+          "text": "alpha/fast",
+          "reason": "missing-trait",
+          "detail": "model anthropic/small-1 lacks local"
+        },
+        {
+          "text": "alpha/plain-1",
+          "reason": "not-agent",
+          "detail": "anthropic/plain-1 is not an agent model"
+        },
+        {
+          "text": "gamma/anthropic/embed-1",
+          "reason": "not-agent",
+          "detail": "anthropic/embed-1 is an embedding model"
+        },
+        {
+          "text": "gamma/fast",
+          "reason": "missing-trait",
+          "detail": "model anthropic/small-1 lacks local"
+        },
+        {
+          "text": "gamma/anthropic/plain-1",
+          "reason": "not-agent",
+          "detail": "anthropic/plain-1 is not an agent model"
+        },
+        {
+          "text": "delta/fast",
+          "reason": "missing-trait",
+          "detail": "model anthropic/small-1 lacks local"
+        }
+      ]
+    }
+  },
+  {
+    "name": "mini-max-traits-hit",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "*/max[reasoning,long-context]"
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "alpha",
+          "model": "big",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "alpha/max",
+          "from": {
+            "kind": "tier",
+            "tier": "max"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "gamma",
+          "model": "anthropic/big-2",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "gamma/max",
+          "from": {
+            "kind": "tier",
+            "tier": "max"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "delta",
+          "model": "large",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "delta/max",
+          "from": {
+            "kind": "tier",
+            "tier": "max"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        }
+      ],
+      "skipped": [
+        {
+          "text": "gamma/ollama/llama3:70b",
+          "reason": "missing-trait",
+          "detail": "model ollama/llama3:70b lacks long-context, reasoning"
+        }
+      ]
+    }
+  },
+  {
+    "name": "mini-max-keeps-ctx-qualifier",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "*/max[ctx=500k]"
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "alpha",
+          "model": "big",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "alpha/max[ctx=500k]",
+          "from": {
+            "kind": "tier",
+            "tier": "max"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "gamma",
+          "model": "anthropic/big-2",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "gamma/max[ctx=500k]",
+          "from": {
+            "kind": "tier",
+            "tier": "max"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "gamma",
+          "model": "ollama/llama3:70b",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "gamma/ollama/llama3:70b[ctx=500k]",
+          "from": {
+            "kind": "name",
+            "name": "ollama/llama3:70b"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "delta",
+          "model": "large",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "delta/max[ctx=500k]",
+          "from": {
+            "kind": "tier",
+            "tier": "max"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        }
+      ],
+      "skipped": []
+    }
+  },
+  {
+    "name": "mini-max-effort-moves-up",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "*/max@high"
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "alpha",
+          "model": "big",
+          "effort": "high",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "alpha/max@high",
+          "from": {
+            "kind": "tier",
+            "tier": "max"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "delta",
+          "model": "large",
+          "effort": "high",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "delta/max@high",
+          "from": {
+            "kind": "tier",
+            "tier": "max"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        }
+      ],
+      "skipped": [
+        {
+          "text": "gamma/max@high",
+          "reason": "unresolved",
+          "detail": "effort 'high' is not supported for model 'anthropic/big-2' on 'gamma'; it takes no effort"
+        },
+        {
+          "text": "gamma/ollama/llama3:70b@high",
+          "reason": "unresolved",
+          "detail": "effort 'high' is not supported for model 'ollama/llama3:70b' on 'gamma'; it takes no effort"
+        }
+      ]
+    }
+  },
+  {
+    "name": "mini-max-effort-unresolved-where-none",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "*/max@medium"
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "alpha",
+          "model": "big",
+          "effort": "medium",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "alpha/max@medium",
+          "from": {
+            "kind": "tier",
+            "tier": "max"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "delta",
+          "model": "large",
+          "effort": "medium",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "delta/max@medium",
+          "from": {
+            "kind": "tier",
+            "tier": "max"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        }
+      ],
+      "skipped": [
+        {
+          "text": "gamma/max@medium",
+          "reason": "unresolved",
+          "detail": "effort 'medium' is not supported for model 'anthropic/big-2' on 'gamma'; it takes no effort"
+        },
+        {
+          "text": "gamma/ollama/llama3:70b@medium",
+          "reason": "unresolved",
+          "detail": "effort 'medium' is not supported for model 'ollama/llama3:70b' on 'gamma'; it takes no effort"
+        }
+      ]
+    }
+  },
+  {
+    "name": "mini-fast-known-tools",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "knownTools": [
+        "alpha",
+        "delta"
+      ],
+      "ref": "*/fast"
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "alpha",
+          "model": "small-1",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "alpha/fast",
+          "from": {
+            "kind": "tier",
+            "tier": "fast"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "delta",
+          "model": "tiny",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "delta/fast",
+          "from": {
+            "kind": "tier",
+            "tier": "fast"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        }
+      ],
+      "skipped": [
+        {
+          "text": "alpha/embed-1",
+          "reason": "not-agent",
+          "detail": "anthropic/embed-1 is an embedding model"
+        },
+        {
+          "text": "alpha/plain-1",
+          "reason": "not-agent",
+          "detail": "anthropic/plain-1 is not an agent model"
+        }
+      ]
+    }
+  },
+  {
+    "name": "mini-standard-no-candidate",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "knownTools": [
+        "delta"
+      ],
+      "ref": "*/standard"
+    },
+    "expected": {
+      "entries": [],
+      "skipped": []
+    }
+  },
+  {
+    "name": "mini-max-pin-is-the-head",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "policy": {
+        "pins": {
+          "alpha/max": "big-2"
+        }
+      },
+      "knownTools": [
+        "alpha"
+      ],
+      "ref": "*/max"
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "alpha",
+          "model": "big-2",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "alpha/max",
+          "from": {
+            "kind": "tier",
+            "tier": "max",
+            "pinned": true
+          },
+          "check": {
+            "kind": "ok"
+          }
+        }
+      ],
+      "skipped": []
+    }
+  },
+  {
+    "name": "mini-max-order-policy",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "policy": {
+        "order": [
+          "delta",
+          "alpha"
+        ]
+      },
+      "ref": "*/max"
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "delta",
+          "model": "large",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "delta/max",
+          "from": {
+            "kind": "tier",
+            "tier": "max"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "alpha",
+          "model": "big",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "alpha/max",
+          "from": {
+            "kind": "tier",
+            "tier": "max"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "gamma",
+          "model": "anthropic/big-2",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "gamma/max",
+          "from": {
+            "kind": "tier",
+            "tier": "max"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "gamma",
+          "model": "ollama/llama3:70b",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "gamma/ollama/llama3:70b",
+          "from": {
+            "kind": "name",
+            "name": "ollama/llama3:70b"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        }
+      ],
+      "skipped": []
+    }
+  },
+  {
+    "name": "image-standard-image-out",
+    "input": {
+      "layers": [
+        "snapshot",
+        "image"
+      ],
+      "ref": "*/standard[image-out]"
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "antigravity",
+          "model": "test-image",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "antigravity/test-image",
+          "from": {
+            "kind": "name",
+            "name": "test-image"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "antigravity",
+          "model": "test-image-agent",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "antigravity/test-image-agent",
+          "from": {
+            "kind": "name",
+            "name": "test-image-agent"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "antigravity",
+          "model": "gemini-3.1-flash-image",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "antigravity/gemini-3.1-flash-image",
+          "from": {
+            "kind": "name",
+            "name": "gemini-3.1-flash-image"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "antigravity",
+          "model": "gemini-3.1-flash-image-preview",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "antigravity/gemini-3.1-flash-image-preview",
+          "from": {
+            "kind": "name",
+            "name": "gemini-3.1-flash-image-preview"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "antigravity",
+          "model": "gemini-2.5-flash-image",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "antigravity/gemini-2.5-flash-image",
+          "from": {
+            "kind": "name",
+            "name": "gemini-2.5-flash-image"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "pi",
+          "model": "google/test-image",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "pi/google/test-image",
+          "from": {
+            "kind": "name",
+            "name": "google/test-image"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "pi",
+          "model": "google/test-image-agent",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "pi/google/test-image-agent",
+          "from": {
+            "kind": "name",
+            "name": "google/test-image-agent"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "pi",
+          "model": "google/gemini-3.1-flash-image",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "pi/google/gemini-3.1-flash-image",
+          "from": {
+            "kind": "name",
+            "name": "google/gemini-3.1-flash-image"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "pi",
+          "model": "google/gemini-3.1-flash-image-preview",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "pi/google/gemini-3.1-flash-image-preview",
+          "from": {
+            "kind": "name",
+            "name": "google/gemini-3.1-flash-image-preview"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "pi",
+          "model": "google/gemini-2.5-flash-image",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "pi/google/gemini-2.5-flash-image",
+          "from": {
+            "kind": "name",
+            "name": "google/gemini-2.5-flash-image"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "opencode",
+          "model": "google/test-image",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "opencode/google/test-image",
+          "from": {
+            "kind": "name",
+            "name": "google/test-image"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "opencode",
+          "model": "google/test-image-agent",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "opencode/google/test-image-agent",
+          "from": {
+            "kind": "name",
+            "name": "google/test-image-agent"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "opencode",
+          "model": "google/gemini-3.1-flash-image",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "opencode/google/gemini-3.1-flash-image",
+          "from": {
+            "kind": "name",
+            "name": "google/gemini-3.1-flash-image"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "opencode",
+          "model": "google/gemini-3.1-flash-image-preview",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "opencode/google/gemini-3.1-flash-image-preview",
+          "from": {
+            "kind": "name",
+            "name": "google/gemini-3.1-flash-image-preview"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "opencode",
+          "model": "google/gemini-2.5-flash-image",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "opencode/google/gemini-2.5-flash-image",
+          "from": {
+            "kind": "name",
+            "name": "google/gemini-2.5-flash-image"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        }
+      ],
+      "skipped": [
+        {
+          "text": "claude/standard",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-sonnet-5-5 lacks image-out"
+        },
+        {
+          "text": "claude/claude-sonnet-5",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-sonnet-5 lacks image-out"
+        },
+        {
+          "text": "claude/claude-sonnet-4-6",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-sonnet-4-6 lacks image-out"
+        },
+        {
+          "text": "claude/claude-sonnet-4-5",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-sonnet-4-5 lacks image-out"
+        },
+        {
+          "text": "codex/standard",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-6.1-sol lacks image-out"
+        },
+        {
+          "text": "codex/gpt-6-sol",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-6-sol lacks image-out"
+        },
+        {
+          "text": "codex/gpt-daybreak-blue-latest",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-daybreak-blue-latest lacks image-out"
+        },
+        {
+          "text": "codex/gpt-5.6",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-5.6 lacks image-out"
+        },
+        {
+          "text": "codex/gpt-5.6-sol",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-5.6-sol lacks image-out"
+        },
+        {
+          "text": "cursor/standard",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.7-flash lacks image-out"
+        },
+        {
+          "text": "cursor/gpt-5.6-sol-high",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-5.6-sol lacks image-out"
+        },
+        {
+          "text": "cursor/claude-sonnet-5-thinking-high",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-sonnet-5 lacks image-out"
+        },
+        {
+          "text": "antigravity/test-image-embed",
+          "reason": "not-agent",
+          "detail": "google/test-image-embed is an embedding model"
+        },
+        {
+          "text": "antigravity/standard",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.8-flash lacks image-out"
+        },
+        {
+          "text": "antigravity/gemini-3.7-flash",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.7-flash lacks image-out"
+        },
+        {
+          "text": "antigravity/gemini-flash-latest",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-flash-latest lacks image-out"
+        },
+        {
+          "text": "antigravity/gemini-3.6-flash",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.6-flash lacks image-out"
+        },
+        {
+          "text": "antigravity/gemini-3.5-flash",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.5-flash lacks image-out"
+        },
+        {
+          "text": "antigravity/gemini-3-flash-preview",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3-flash-preview lacks image-out"
+        },
+        {
+          "text": "antigravity/gemini-2.5-flash",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-2.5-flash lacks image-out"
+        },
+        {
+          "text": "pi/google/test-image-embed",
+          "reason": "not-agent",
+          "detail": "google/test-image-embed is an embedding model"
+        },
+        {
+          "text": "pi/standard",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-6.1-sol lacks image-out"
+        },
+        {
+          "text": "pi/anthropic/claude-sonnet-5-5",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-sonnet-5-5 lacks image-out"
+        },
+        {
+          "text": "pi/openai/gpt-6-sol",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-6-sol lacks image-out"
+        },
+        {
+          "text": "pi/google/gemini-3.8-flash",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.8-flash lacks image-out"
+        },
+        {
+          "text": "pi/google/gemini-3.7-flash",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.7-flash lacks image-out"
+        },
+        {
+          "text": "pi/google/gemini-flash-latest",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-flash-latest lacks image-out"
+        },
+        {
+          "text": "pi/openai/gpt-daybreak-blue-latest",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-daybreak-blue-latest lacks image-out"
+        },
+        {
+          "text": "pi/google/gemini-3.6-flash",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.6-flash lacks image-out"
+        },
+        {
+          "text": "pi/openai/gpt-5.6",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-5.6 lacks image-out"
+        },
+        {
+          "text": "pi/openai/gpt-5.6-sol",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-5.6-sol lacks image-out"
+        },
+        {
+          "text": "pi/anthropic/claude-sonnet-5",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-sonnet-5 lacks image-out"
+        },
+        {
+          "text": "pi/google/gemini-3.5-flash",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.5-flash lacks image-out"
+        },
+        {
+          "text": "pi/anthropic/claude-sonnet-4-6",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-sonnet-4-6 lacks image-out"
+        },
+        {
+          "text": "pi/google/gemini-3-flash-preview",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3-flash-preview lacks image-out"
+        },
+        {
+          "text": "pi/anthropic/claude-sonnet-4-5",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-sonnet-4-5 lacks image-out"
+        },
+        {
+          "text": "pi/google/gemini-2.5-flash",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-2.5-flash lacks image-out"
+        },
+        {
+          "text": "opencode/google/test-image-embed",
+          "reason": "not-agent",
+          "detail": "google/test-image-embed is an embedding model"
+        },
+        {
+          "text": "opencode/standard",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-6.1-sol lacks image-out"
+        },
+        {
+          "text": "opencode/anthropic/claude-sonnet-5-5",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-sonnet-5-5 lacks image-out"
+        },
+        {
+          "text": "opencode/openai/gpt-6-sol",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-6-sol lacks image-out"
+        },
+        {
+          "text": "opencode/google/gemini-3.8-flash",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.8-flash lacks image-out"
+        },
+        {
+          "text": "opencode/google/gemini-3.7-flash",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.7-flash lacks image-out"
+        },
+        {
+          "text": "opencode/google/gemini-flash-latest",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-flash-latest lacks image-out"
+        },
+        {
+          "text": "opencode/openai/gpt-daybreak-blue-latest",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-daybreak-blue-latest lacks image-out"
+        },
+        {
+          "text": "opencode/google/gemini-3.6-flash",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.6-flash lacks image-out"
+        },
+        {
+          "text": "opencode/openai/gpt-5.6",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-5.6 lacks image-out"
+        },
+        {
+          "text": "opencode/openai/gpt-5.6-sol",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-5.6-sol lacks image-out"
+        },
+        {
+          "text": "opencode/anthropic/claude-sonnet-5",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-sonnet-5 lacks image-out"
+        },
+        {
+          "text": "opencode/google/gemini-3.5-flash",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.5-flash lacks image-out"
+        },
+        {
+          "text": "opencode/anthropic/claude-sonnet-4-6",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-sonnet-4-6 lacks image-out"
+        },
+        {
+          "text": "opencode/google/gemini-3-flash-preview",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3-flash-preview lacks image-out"
+        },
+        {
+          "text": "opencode/anthropic/claude-sonnet-4-5",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-sonnet-4-5 lacks image-out"
+        },
+        {
+          "text": "opencode/google/gemini-2.5-flash",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-2.5-flash lacks image-out"
+        }
+      ]
+    }
+  },
+  {
+    "name": "image-standard-plain",
+    "input": {
+      "layers": [
+        "snapshot",
+        "image"
+      ],
+      "ref": "*/standard"
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "claude",
+          "model": "sonnet",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "claude/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "claude",
+          "model": "claude-sonnet-5",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "claude/claude-sonnet-5",
+          "from": {
+            "kind": "name",
+            "name": "claude-sonnet-5"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "claude",
+          "model": "claude-sonnet-4-6",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "claude/claude-sonnet-4-6",
+          "from": {
+            "kind": "name",
+            "name": "claude-sonnet-4-6"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "claude",
+          "model": "claude-sonnet-4-5",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "claude/claude-sonnet-4-5",
+          "from": {
+            "kind": "name",
+            "name": "claude-sonnet-4-5"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "codex",
+          "model": "gpt-6.1-sol",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "codex/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "codex",
+          "model": "gpt-6-sol",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "codex/gpt-6-sol",
+          "from": {
+            "kind": "name",
+            "name": "gpt-6-sol"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "codex",
+          "model": "gpt-daybreak-blue-latest",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "codex/gpt-daybreak-blue-latest",
+          "from": {
+            "kind": "name",
+            "name": "gpt-daybreak-blue-latest"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "codex",
+          "model": "gpt-5.6",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "codex/gpt-5.6",
+          "from": {
+            "kind": "name",
+            "name": "gpt-5.6"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "codex",
+          "model": "gpt-5.6-sol",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "codex/gpt-5.6-sol",
+          "from": {
+            "kind": "name",
+            "name": "gpt-5.6-sol"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "cursor",
+          "model": "gemini-3.7-flash-high",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "cursor/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "cursor",
+          "model": "gpt-5.6-sol-high",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "cursor/gpt-5.6-sol-high",
+          "from": {
+            "kind": "name",
+            "name": "gpt-5.6-sol-high"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "cursor",
+          "model": "claude-sonnet-5-thinking-high",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "cursor/claude-sonnet-5-thinking-high",
+          "from": {
+            "kind": "name",
+            "name": "claude-sonnet-5-thinking-high"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "antigravity",
+          "model": "gemini-3.8-flash",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "antigravity/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "antigravity",
+          "model": "gemini-3.7-flash",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "antigravity/gemini-3.7-flash",
+          "from": {
+            "kind": "name",
+            "name": "gemini-3.7-flash"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "antigravity",
+          "model": "gemini-flash-latest",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "antigravity/gemini-flash-latest",
+          "from": {
+            "kind": "name",
+            "name": "gemini-flash-latest"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "antigravity",
+          "model": "gemini-3.6-flash",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "antigravity/gemini-3.6-flash",
+          "from": {
+            "kind": "name",
+            "name": "gemini-3.6-flash"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "antigravity",
+          "model": "gemini-3.5-flash",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "antigravity/gemini-3.5-flash",
+          "from": {
+            "kind": "name",
+            "name": "gemini-3.5-flash"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "antigravity",
+          "model": "gemini-3-flash-preview",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "antigravity/gemini-3-flash-preview",
+          "from": {
+            "kind": "name",
+            "name": "gemini-3-flash-preview"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "antigravity",
+          "model": "gemini-2.5-flash",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "antigravity/gemini-2.5-flash",
+          "from": {
+            "kind": "name",
+            "name": "gemini-2.5-flash"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "pi",
+          "model": "openai/gpt-6.1-sol",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "pi/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "pi",
+          "model": "anthropic/claude-sonnet-5-5",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "pi/anthropic/claude-sonnet-5-5",
+          "from": {
+            "kind": "name",
+            "name": "anthropic/claude-sonnet-5-5"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "pi",
+          "model": "openai/gpt-6-sol",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "pi/openai/gpt-6-sol",
+          "from": {
+            "kind": "name",
+            "name": "openai/gpt-6-sol"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "pi",
+          "model": "google/gemini-3.8-flash",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "pi/google/gemini-3.8-flash",
+          "from": {
+            "kind": "name",
+            "name": "google/gemini-3.8-flash"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "pi",
+          "model": "google/gemini-3.7-flash",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "pi/google/gemini-3.7-flash",
+          "from": {
+            "kind": "name",
+            "name": "google/gemini-3.7-flash"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "pi",
+          "model": "google/gemini-flash-latest",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "pi/google/gemini-flash-latest",
+          "from": {
+            "kind": "name",
+            "name": "google/gemini-flash-latest"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "pi",
+          "model": "openai/gpt-daybreak-blue-latest",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "pi/openai/gpt-daybreak-blue-latest",
+          "from": {
+            "kind": "name",
+            "name": "openai/gpt-daybreak-blue-latest"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "pi",
+          "model": "google/gemini-3.6-flash",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "pi/google/gemini-3.6-flash",
+          "from": {
+            "kind": "name",
+            "name": "google/gemini-3.6-flash"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "pi",
+          "model": "openai/gpt-5.6",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "pi/openai/gpt-5.6",
+          "from": {
+            "kind": "name",
+            "name": "openai/gpt-5.6"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "pi",
+          "model": "openai/gpt-5.6-sol",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "pi/openai/gpt-5.6-sol",
+          "from": {
+            "kind": "name",
+            "name": "openai/gpt-5.6-sol"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "pi",
+          "model": "anthropic/claude-sonnet-5",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "pi/anthropic/claude-sonnet-5",
+          "from": {
+            "kind": "name",
+            "name": "anthropic/claude-sonnet-5"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "pi",
+          "model": "google/gemini-3.5-flash",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "pi/google/gemini-3.5-flash",
+          "from": {
+            "kind": "name",
+            "name": "google/gemini-3.5-flash"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "pi",
+          "model": "anthropic/claude-sonnet-4-6",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "pi/anthropic/claude-sonnet-4-6",
+          "from": {
+            "kind": "name",
+            "name": "anthropic/claude-sonnet-4-6"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "pi",
+          "model": "google/gemini-3-flash-preview",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "pi/google/gemini-3-flash-preview",
+          "from": {
+            "kind": "name",
+            "name": "google/gemini-3-flash-preview"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "pi",
+          "model": "anthropic/claude-sonnet-4-5",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "pi/anthropic/claude-sonnet-4-5",
+          "from": {
+            "kind": "name",
+            "name": "anthropic/claude-sonnet-4-5"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "pi",
+          "model": "google/gemini-2.5-flash",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "pi/google/gemini-2.5-flash",
+          "from": {
+            "kind": "name",
+            "name": "google/gemini-2.5-flash"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "opencode",
+          "model": "openai/gpt-6.1-sol",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "opencode/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "opencode",
+          "model": "anthropic/claude-sonnet-5-5",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "opencode/anthropic/claude-sonnet-5-5",
+          "from": {
+            "kind": "name",
+            "name": "anthropic/claude-sonnet-5-5"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "opencode",
+          "model": "openai/gpt-6-sol",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "opencode/openai/gpt-6-sol",
+          "from": {
+            "kind": "name",
+            "name": "openai/gpt-6-sol"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "opencode",
+          "model": "google/gemini-3.8-flash",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "opencode/google/gemini-3.8-flash",
+          "from": {
+            "kind": "name",
+            "name": "google/gemini-3.8-flash"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "opencode",
+          "model": "google/gemini-3.7-flash",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "opencode/google/gemini-3.7-flash",
+          "from": {
+            "kind": "name",
+            "name": "google/gemini-3.7-flash"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "opencode",
+          "model": "google/gemini-flash-latest",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "opencode/google/gemini-flash-latest",
+          "from": {
+            "kind": "name",
+            "name": "google/gemini-flash-latest"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "opencode",
+          "model": "openai/gpt-daybreak-blue-latest",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "opencode/openai/gpt-daybreak-blue-latest",
+          "from": {
+            "kind": "name",
+            "name": "openai/gpt-daybreak-blue-latest"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "opencode",
+          "model": "google/gemini-3.6-flash",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "opencode/google/gemini-3.6-flash",
+          "from": {
+            "kind": "name",
+            "name": "google/gemini-3.6-flash"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "opencode",
+          "model": "openai/gpt-5.6",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "opencode/openai/gpt-5.6",
+          "from": {
+            "kind": "name",
+            "name": "openai/gpt-5.6"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "opencode",
+          "model": "openai/gpt-5.6-sol",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "opencode/openai/gpt-5.6-sol",
+          "from": {
+            "kind": "name",
+            "name": "openai/gpt-5.6-sol"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "opencode",
+          "model": "anthropic/claude-sonnet-5",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "opencode/anthropic/claude-sonnet-5",
+          "from": {
+            "kind": "name",
+            "name": "anthropic/claude-sonnet-5"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "opencode",
+          "model": "google/gemini-3.5-flash",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "opencode/google/gemini-3.5-flash",
+          "from": {
+            "kind": "name",
+            "name": "google/gemini-3.5-flash"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "opencode",
+          "model": "anthropic/claude-sonnet-4-6",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "opencode/anthropic/claude-sonnet-4-6",
+          "from": {
+            "kind": "name",
+            "name": "anthropic/claude-sonnet-4-6"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "opencode",
+          "model": "google/gemini-3-flash-preview",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "opencode/google/gemini-3-flash-preview",
+          "from": {
+            "kind": "name",
+            "name": "google/gemini-3-flash-preview"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "opencode",
+          "model": "anthropic/claude-sonnet-4-5",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "opencode/anthropic/claude-sonnet-4-5",
+          "from": {
+            "kind": "name",
+            "name": "anthropic/claude-sonnet-4-5"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "opencode",
+          "model": "google/gemini-2.5-flash",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "opencode/google/gemini-2.5-flash",
+          "from": {
+            "kind": "name",
+            "name": "google/gemini-2.5-flash"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        }
+      ],
+      "skipped": []
+    }
+  },
+  {
+    "name": "image-standard-pinned-image-model-traced",
+    "input": {
+      "layers": [
+        "snapshot",
+        "image"
+      ],
+      "policy": {
+        "pins": {
+          "antigravity/standard": "test-image"
+        }
+      },
+      "knownTools": [
+        "antigravity"
+      ],
+      "ref": "*/standard"
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "antigravity",
+          "model": "gemini-3.8-flash",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "antigravity/gemini-3.8-flash",
+          "from": {
+            "kind": "name",
+            "name": "gemini-3.8-flash"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "antigravity",
+          "model": "gemini-3.7-flash",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "antigravity/gemini-3.7-flash",
+          "from": {
+            "kind": "name",
+            "name": "gemini-3.7-flash"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "antigravity",
+          "model": "gemini-flash-latest",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "antigravity/gemini-flash-latest",
+          "from": {
+            "kind": "name",
+            "name": "gemini-flash-latest"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "antigravity",
+          "model": "gemini-3.6-flash",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "antigravity/gemini-3.6-flash",
+          "from": {
+            "kind": "name",
+            "name": "gemini-3.6-flash"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "antigravity",
+          "model": "gemini-3.5-flash",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "antigravity/gemini-3.5-flash",
+          "from": {
+            "kind": "name",
+            "name": "gemini-3.5-flash"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "antigravity",
+          "model": "gemini-3-flash-preview",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "antigravity/gemini-3-flash-preview",
+          "from": {
+            "kind": "name",
+            "name": "gemini-3-flash-preview"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "antigravity",
+          "model": "gemini-2.5-flash",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "antigravity/gemini-2.5-flash",
+          "from": {
+            "kind": "name",
+            "name": "gemini-2.5-flash"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        }
+      ],
+      "skipped": [
+        {
+          "text": "antigravity/standard",
+          "reason": "not-agent",
+          "detail": "google/test-image is an image-output model"
+        }
+      ]
+    }
+  },
+  {
+    "name": "not-a-wildcard-names-a-model",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "alpha/big"
+    },
+    "expected": {
+      "entries": [],
+      "skipped": []
+    }
+  },
+  {
+    "name": "not-a-wildcard-names-no-model",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "alpha"
+    },
+    "expected": {
+      "entries": [],
+      "skipped": []
+    }
+  },
+  {
+    "name": "snapshot-fast-two-tools",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "knownTools": [
+        "claude",
+        "codex"
+      ],
+      "ref": "*/fast"
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "claude",
+          "model": "haiku",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "claude/fast",
+          "from": {
+            "kind": "tier",
+            "tier": "fast"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "claude",
+          "model": "claude-haiku-4-5",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "claude/claude-haiku-4-5",
+          "from": {
+            "kind": "name",
+            "name": "claude-haiku-4-5"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "codex",
+          "model": "gpt-6-luna",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "codex/fast",
+          "from": {
+            "kind": "tier",
+            "tier": "fast"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "codex",
+          "model": "gpt-5.6-luna",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "codex/gpt-5.6-luna",
+          "from": {
+            "kind": "name",
+            "name": "gpt-5.6-luna"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        }
+      ],
+      "skipped": []
+    }
+  },
+  {
+    "name": "snapshot-max-local-trait",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "knownTools": [
+        "claude",
+        "pi"
+      ],
+      "ref": "*/max[local]"
+    },
+    "expected": {
+      "entries": [],
+      "skipped": [
+        {
+          "text": "claude/max",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-opus-5-5 lacks local"
+        },
+        {
+          "text": "claude/claude-opus-5",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-opus-5 lacks local"
+        },
+        {
+          "text": "claude/claude-opus-4-8",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-opus-4-8 lacks local"
+        },
+        {
+          "text": "claude/claude-opus-4-7",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-opus-4-7 lacks local"
+        },
+        {
+          "text": "claude/claude-opus-4-6",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-opus-4-6 lacks local"
+        },
+        {
+          "text": "claude/claude-opus-4-5",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-opus-4-5 lacks local"
+        },
+        {
+          "text": "pi/max",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-opus-5-5 lacks local"
+        },
+        {
+          "text": "pi/openai/gpt-6-astra",
+          "reason": "missing-trait",
+          "detail": "model openai/gpt-6-astra lacks local"
+        },
+        {
+          "text": "pi/anthropic/claude-opus-5",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-opus-5 lacks local"
+        },
+        {
+          "text": "pi/anthropic/claude-opus-4-8",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-opus-4-8 lacks local"
+        },
+        {
+          "text": "pi/anthropic/claude-opus-4-7",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-opus-4-7 lacks local"
+        },
+        {
+          "text": "pi/google/gemini-3.1-pro-preview",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.1-pro-preview lacks local"
+        },
+        {
+          "text": "pi/google/gemini-3.1-pro-preview-customtools",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-3.1-pro-preview-customtools lacks local"
+        },
+        {
+          "text": "pi/google/gemini-pro-latest",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-pro-latest lacks local"
+        },
+        {
+          "text": "pi/anthropic/claude-opus-4-6",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-opus-4-6 lacks local"
+        },
+        {
+          "text": "pi/anthropic/claude-opus-4-5",
+          "reason": "missing-trait",
+          "detail": "model anthropic/claude-opus-4-5 lacks local"
+        },
+        {
+          "text": "pi/google/gemini-2.5-computer-use-preview-10-2025",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-2.5-computer-use-preview-10-2025 lacks local"
+        },
+        {
+          "text": "pi/google/gemini-2.5-pro",
+          "reason": "missing-trait",
+          "detail": "model google/gemini-2.5-pro lacks local"
+        }
+      ]
+    }
+  }
+]

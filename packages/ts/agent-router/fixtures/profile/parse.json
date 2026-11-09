@@ -1,0 +1,497 @@
+[
+  {
+    "name": "bare-list",
+    "input": {
+      "value": [
+        "claude/fast",
+        "codex/fast"
+      ]
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "order": [
+          {
+            "tool": "claude",
+            "model": "fast"
+          },
+          {
+            "tool": "codex",
+            "model": "fast"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "bare-list-one-entry",
+    "input": {
+      "value": [
+        "claude"
+      ]
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "order": [
+          {
+            "tool": "claude"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "bare-list-wildcard-and-qualifiers",
+    "input": {
+      "value": [
+        "*/fast[local]",
+        "claude/opus[ctx=1m]@high"
+      ]
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "order": [
+          {
+            "tool": "*",
+            "model": "fast",
+            "qualifiers": {
+              "traits": [
+                "local"
+              ]
+            }
+          },
+          {
+            "tool": "claude",
+            "model": "opus",
+            "qualifiers": {
+              "traits": [],
+              "ctx": 1000000
+            },
+            "effort": "high"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "long-form-order-only",
+    "input": {
+      "value": {
+        "order": [
+          "claude/standard"
+        ]
+      }
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "order": [
+          {
+            "tool": "claude",
+            "model": "standard"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "long-form-host-and-context",
+    "input": {
+      "value": {
+        "order": [
+          "claude/standard",
+          "codex/standard"
+        ],
+        "host": "tmux",
+        "context": "1m"
+      }
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "order": [
+          {
+            "tool": "claude",
+            "model": "standard"
+          },
+          {
+            "tool": "codex",
+            "model": "standard"
+          }
+        ],
+        "host": "tmux",
+        "context": 1000000
+      }
+    }
+  },
+  {
+    "name": "long-form-context-200k",
+    "input": {
+      "value": {
+        "order": [
+          "claude/fast"
+        ],
+        "context": "200k"
+      }
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "order": [
+          {
+            "tool": "claude",
+            "model": "fast"
+          }
+        ],
+        "context": 200000
+      }
+    }
+  },
+  {
+    "name": "empty-list",
+    "input": {
+      "value": []
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape"
+      }
+    }
+  },
+  {
+    "name": "long-form-empty-order",
+    "input": {
+      "value": {
+        "order": []
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape"
+      }
+    }
+  },
+  {
+    "name": "long-form-missing-order",
+    "input": {
+      "value": {
+        "host": "tmux"
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape"
+      }
+    }
+  },
+  {
+    "name": "long-form-unknown-key",
+    "input": {
+      "value": {
+        "order": [
+          "claude/fast"
+        ],
+        "headless": true
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape"
+      }
+    }
+  },
+  {
+    "name": "long-form-host-not-a-string",
+    "input": {
+      "value": {
+        "order": [
+          "claude/fast"
+        ],
+        "host": 3
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape"
+      }
+    }
+  },
+  {
+    "name": "long-form-host-null",
+    "input": {
+      "value": {
+        "order": [
+          "claude/fast"
+        ],
+        "host": null
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape"
+      }
+    }
+  },
+  {
+    "name": "long-form-context-not-a-string",
+    "input": {
+      "value": {
+        "order": [
+          "claude/fast"
+        ],
+        "context": 1000000
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape"
+      }
+    }
+  },
+  {
+    "name": "list-with-a-number",
+    "input": {
+      "value": [
+        "claude/fast",
+        3
+      ]
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape"
+      }
+    }
+  },
+  {
+    "name": "a-string",
+    "input": {
+      "value": "claude/fast"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape"
+      }
+    }
+  },
+  {
+    "name": "a-number",
+    "input": {
+      "value": 7
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape"
+      }
+    }
+  },
+  {
+    "name": "null",
+    "input": {
+      "value": null
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape"
+      }
+    }
+  },
+  {
+    "name": "invalid-ref-names-the-index",
+    "input": {
+      "value": [
+        "claude/fast",
+        "claude/opus[1m]"
+      ]
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-ref",
+        "index": 1,
+        "error": {
+          "kind": "native-bracket",
+          "text": "claude/opus[1m]",
+          "message": "a context size is written [ctx=1m], not a tool's own [1m]: \"claude/opus[1m]\""
+        },
+        "message": "order[1]: a context size is written [ctx=1m], not a tool's own [1m]: \"claude/opus[1m]\""
+      }
+    }
+  },
+  {
+    "name": "invalid-ref-first-wins",
+    "input": {
+      "value": [
+        "",
+        "claude/opus[1m]"
+      ]
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-ref",
+        "index": 0,
+        "error": {
+          "kind": "empty-ref",
+          "text": "",
+          "message": "empty model reference: \"\""
+        },
+        "message": "order[0]: empty model reference: \"\""
+      }
+    }
+  },
+  {
+    "name": "invalid-ref-wildcard-without-tier",
+    "input": {
+      "value": [
+        "claude/fast",
+        "*"
+      ]
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-ref",
+        "index": 1,
+        "error": {
+          "kind": "wildcard-needs-tier",
+          "text": "*",
+          "message": "'*' needs a tier (fast, standard, max), as in '*/fast': \"*\""
+        },
+        "message": "order[1]: '*' needs a tier (fast, standard, max), as in '*/fast': \"*\""
+      }
+    }
+  },
+  {
+    "name": "invalid-ref-in-long-form",
+    "input": {
+      "value": {
+        "order": [
+          "nope nope"
+        ],
+        "context": "1m"
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-ref",
+        "index": 0,
+        "error": {
+          "kind": "whitespace",
+          "text": "nope nope",
+          "message": "model reference contains whitespace: \"nope nope\""
+        },
+        "message": "order[0]: model reference contains whitespace: \"nope nope\""
+      }
+    }
+  },
+  {
+    "name": "invalid-context-fraction",
+    "input": {
+      "value": {
+        "order": [
+          "claude/fast"
+        ],
+        "context": "1.5m"
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-context",
+        "message": "context: must be digits plus k or m (1m, 200k); got '1.5m'"
+      }
+    }
+  },
+  {
+    "name": "invalid-context-zero",
+    "input": {
+      "value": {
+        "order": [
+          "claude/fast"
+        ],
+        "context": "0k"
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-context",
+        "message": "context: must be digits plus k or m (1m, 200k); got '0k'"
+      }
+    }
+  },
+  {
+    "name": "invalid-context-no-unit",
+    "input": {
+      "value": {
+        "order": [
+          "claude/fast"
+        ],
+        "context": "1000"
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-context",
+        "message": "context: must be digits plus k or m (1m, 200k); got '1000'"
+      }
+    }
+  },
+  {
+    "name": "invalid-context-above-the-largest-size",
+    "input": {
+      "value": {
+        "order": [
+          "claude/fast"
+        ],
+        "context": "99999999999999999999999m"
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-context",
+        "message": "context: '99999999999999999999999m' is above the largest size, 9007199254740991 tokens"
+      }
+    }
+  },
+  {
+    "name": "invalid-ref-before-invalid-context",
+    "input": {
+      "value": {
+        "order": [
+          "claude/opus[1m]"
+        ],
+        "context": "big"
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-ref",
+        "index": 0,
+        "error": {
+          "kind": "native-bracket",
+          "text": "claude/opus[1m]",
+          "message": "a context size is written [ctx=1m], not a tool's own [1m]: \"claude/opus[1m]\""
+        },
+        "message": "order[0]: a context size is written [ctx=1m], not a tool's own [1m]: \"claude/opus[1m]\""
+      }
+    }
+  }
+]

@@ -1,0 +1,1169 @@
+[
+  {
+    "name": "table-tool-only",
+    "input": {
+      "text": "claude"
+    },
+    "expected": {
+      "ok": true,
+      "ref": {
+        "tool": "claude"
+      },
+      "formatted": "claude"
+    }
+  },
+  {
+    "name": "table-tool-tier",
+    "input": {
+      "text": "claude/max"
+    },
+    "expected": {
+      "ok": true,
+      "ref": {
+        "tool": "claude",
+        "model": "max"
+      },
+      "formatted": "claude/max"
+    }
+  },
+  {
+    "name": "table-family",
+    "input": {
+      "text": "claude/opus"
+    },
+    "expected": {
+      "ok": true,
+      "ref": {
+        "tool": "claude",
+        "model": "opus"
+      },
+      "formatted": "claude/opus"
+    }
+  },
+  {
+    "name": "table-exact-model",
+    "input": {
+      "text": "claude/opus-5.5"
+    },
+    "expected": {
+      "ok": true,
+      "ref": {
+        "tool": "claude",
+        "model": "opus-5.5"
+      },
+      "formatted": "claude/opus-5.5"
+    }
+  },
+  {
+    "name": "table-model-effort",
+    "input": {
+      "text": "claude/opus-5.5@high"
+    },
+    "expected": {
+      "ok": true,
+      "ref": {
+        "tool": "claude",
+        "model": "opus-5.5",
+        "effort": "high"
+      },
+      "formatted": "claude/opus-5.5@high"
+    }
+  },
+  {
+    "name": "table-tool-effort",
+    "input": {
+      "text": "claude@high"
+    },
+    "expected": {
+      "ok": true,
+      "ref": {
+        "tool": "claude",
+        "effort": "high"
+      },
+      "formatted": "claude@high"
+    }
+  },
+  {
+    "name": "table-local-model",
+    "input": {
+      "text": "pi/qwen2.5-coder:7b"
+    },
+    "expected": {
+      "ok": true,
+      "ref": {
+        "tool": "pi",
+        "model": "qwen2.5-coder:7b"
+      },
+      "formatted": "pi/qwen2.5-coder:7b"
+    }
+  },
+  {
+    "name": "table-provider-model",
+    "input": {
+      "text": "pi/ollama/qwen2.5-coder:7b"
+    },
+    "expected": {
+      "ok": true,
+      "ref": {
+        "tool": "pi",
+        "model": "ollama/qwen2.5-coder:7b"
+      },
+      "formatted": "pi/ollama/qwen2.5-coder:7b"
+    }
+  },
+  {
+    "name": "table-ctx-effort",
+    "input": {
+      "text": "claude/opus[ctx=1m]@high"
+    },
+    "expected": {
+      "ok": true,
+      "ref": {
+        "tool": "claude",
+        "model": "opus",
+        "qualifiers": {
+          "traits": [],
+          "ctx": 1000000
+        },
+        "effort": "high"
+      },
+      "formatted": "claude/opus[ctx=1m]@high"
+    }
+  },
+  {
+    "name": "table-tier-ctx-max",
+    "input": {
+      "text": "claude/max[ctx=max]"
+    },
+    "expected": {
+      "ok": true,
+      "ref": {
+        "tool": "claude",
+        "model": "max",
+        "qualifiers": {
+          "traits": [],
+          "ctx": "max"
+        }
+      },
+      "formatted": "claude/max[ctx=max]"
+    }
+  },
+  {
+    "name": "table-wildcard-tier",
+    "input": {
+      "text": "*/fast"
+    },
+    "expected": {
+      "ok": true,
+      "ref": {
+        "tool": "*",
+        "model": "fast"
+      },
+      "formatted": "*/fast"
+    }
+  },
+  {
+    "name": "table-wildcard-trait",
+    "input": {
+      "text": "*/fast[local]"
+    },
+    "expected": {
+      "ok": true,
+      "ref": {
+        "tool": "*",
+        "model": "fast",
+        "qualifiers": {
+          "traits": [
+            "local"
+          ]
+        }
+      },
+      "formatted": "*/fast[local]"
+    }
+  },
+  {
+    "name": "trait-vision",
+    "input": {
+      "text": "claude/fast[vision]"
+    },
+    "expected": {
+      "ok": true,
+      "ref": {
+        "tool": "claude",
+        "model": "fast",
+        "qualifiers": {
+          "traits": [
+            "vision"
+          ]
+        }
+      },
+      "formatted": "claude/fast[vision]"
+    }
+  },
+  {
+    "name": "trait-image-out",
+    "input": {
+      "text": "claude/standard[image-out]"
+    },
+    "expected": {
+      "ok": true,
+      "ref": {
+        "tool": "claude",
+        "model": "standard",
+        "qualifiers": {
+          "traits": [
+            "image-out"
+          ]
+        }
+      },
+      "formatted": "claude/standard[image-out]"
+    }
+  },
+  {
+    "name": "wildcard-image-out",
+    "input": {
+      "text": "*/standard[image-out]"
+    },
+    "expected": {
+      "ok": true,
+      "ref": {
+        "tool": "*",
+        "model": "standard",
+        "qualifiers": {
+          "traits": [
+            "image-out"
+          ]
+        }
+      },
+      "formatted": "*/standard[image-out]"
+    }
+  },
+  {
+    "name": "wildcard-vision-and-image-out",
+    "input": {
+      "text": "*/standard[vision,image-out]"
+    },
+    "expected": {
+      "ok": true,
+      "ref": {
+        "tool": "*",
+        "model": "standard",
+        "qualifiers": {
+          "traits": [
+            "image-out",
+            "vision"
+          ]
+        }
+      },
+      "formatted": "*/standard[image-out,vision]"
+    }
+  },
+  {
+    "name": "model-keeps-punctuation",
+    "input": {
+      "text": "claude/opus;v2"
+    },
+    "expected": {
+      "ok": true,
+      "ref": {
+        "tool": "claude",
+        "model": "opus;v2"
+      },
+      "formatted": "claude/opus;v2"
+    }
+  },
+  {
+    "name": "model-holds-two-ats",
+    "input": {
+      "text": "foo/bar@v1@high"
+    },
+    "expected": {
+      "ok": true,
+      "ref": {
+        "tool": "foo",
+        "model": "bar@v1",
+        "effort": "high"
+      },
+      "formatted": "foo/bar@v1@high"
+    }
+  },
+  {
+    "name": "tier-with-trait",
+    "input": {
+      "text": "claude/fast[local]"
+    },
+    "expected": {
+      "ok": true,
+      "ref": {
+        "tool": "claude",
+        "model": "fast",
+        "qualifiers": {
+          "traits": [
+            "local"
+          ]
+        }
+      },
+      "formatted": "claude/fast[local]"
+    }
+  },
+  {
+    "name": "tier-with-ctx-and-traits-sorted",
+    "input": {
+      "text": "claude/standard[reasoning,agent,ctx=200k]@low"
+    },
+    "expected": {
+      "ok": true,
+      "ref": {
+        "tool": "claude",
+        "model": "standard",
+        "qualifiers": {
+          "traits": [
+            "agent",
+            "reasoning"
+          ],
+          "ctx": 200000
+        },
+        "effort": "low"
+      },
+      "formatted": "claude/standard[ctx=200k,agent,reasoning]@low"
+    }
+  },
+  {
+    "name": "ctx-decimal-k",
+    "input": {
+      "text": "claude/opus[ctx=500k]"
+    },
+    "expected": {
+      "ok": true,
+      "ref": {
+        "tool": "claude",
+        "model": "opus",
+        "qualifiers": {
+          "traits": [],
+          "ctx": 500000
+        }
+      },
+      "formatted": "claude/opus[ctx=500k]"
+    }
+  },
+  {
+    "name": "ctx-two-m",
+    "input": {
+      "text": "claude/opus[ctx=2m]"
+    },
+    "expected": {
+      "ok": true,
+      "ref": {
+        "tool": "claude",
+        "model": "opus",
+        "qualifiers": {
+          "traits": [],
+          "ctx": 2000000
+        }
+      },
+      "formatted": "claude/opus[ctx=2m]"
+    }
+  },
+  {
+    "name": "ctx-not-whole-m",
+    "input": {
+      "text": "claude/opus[ctx=1500k]"
+    },
+    "expected": {
+      "ok": true,
+      "ref": {
+        "tool": "claude",
+        "model": "opus",
+        "qualifiers": {
+          "traits": [],
+          "ctx": 1500000
+        }
+      },
+      "formatted": "claude/opus[ctx=1500k]"
+    }
+  },
+  {
+    "name": "wildcard-all-traits",
+    "input": {
+      "text": "*/max[local,agent,embedding,reasoning,long-context]"
+    },
+    "expected": {
+      "ok": true,
+      "ref": {
+        "tool": "*",
+        "model": "max",
+        "qualifiers": {
+          "traits": [
+            "agent",
+            "embedding",
+            "local",
+            "long-context",
+            "reasoning"
+          ]
+        }
+      },
+      "formatted": "*/max[agent,embedding,local,long-context,reasoning]"
+    }
+  },
+  {
+    "name": "model-with-slash-and-colon",
+    "input": {
+      "text": "opencode/ollama/qwen3:4b@high"
+    },
+    "expected": {
+      "ok": true,
+      "ref": {
+        "tool": "opencode",
+        "model": "ollama/qwen3:4b",
+        "effort": "high"
+      },
+      "formatted": "opencode/ollama/qwen3:4b@high"
+    }
+  },
+  {
+    "name": "tool-with-digits-and-hyphen",
+    "input": {
+      "text": "cursor-agent2/max"
+    },
+    "expected": {
+      "ok": true,
+      "ref": {
+        "tool": "cursor-agent2",
+        "model": "max"
+      },
+      "formatted": "cursor-agent2/max"
+    }
+  },
+  {
+    "name": "err-empty",
+    "input": {
+      "text": ""
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "empty-ref",
+        "text": "",
+        "message": "empty model reference: \"\""
+      }
+    }
+  },
+  {
+    "name": "err-whitespace-space",
+    "input": {
+      "text": "claude/opus high"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "whitespace",
+        "text": "claude/opus high",
+        "message": "model reference contains whitespace: \"claude/opus high\""
+      }
+    }
+  },
+  {
+    "name": "err-whitespace-tab",
+    "input": {
+      "text": "claude\t"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "whitespace",
+        "text": "claude\t",
+        "message": "model reference contains whitespace: \"claude\\t\""
+      }
+    }
+  },
+  {
+    "name": "err-whitespace-nbsp",
+    "input": {
+      "text": "claude/opus "
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "whitespace",
+        "text": "claude/opus ",
+        "message": "model reference contains whitespace: \"claude/opus \""
+      }
+    }
+  },
+  {
+    "name": "err-empty-tool",
+    "input": {
+      "text": "/opus"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "empty-tool",
+        "text": "/opus",
+        "message": "empty tool: \"/opus\""
+      }
+    }
+  },
+  {
+    "name": "err-empty-tool-effort",
+    "input": {
+      "text": "@high"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "empty-tool",
+        "text": "@high",
+        "message": "empty tool: \"@high\""
+      }
+    }
+  },
+  {
+    "name": "err-invalid-tool-case",
+    "input": {
+      "text": "Claude/max"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-tool",
+        "text": "Claude/max",
+        "message": "tool must match ^[a-z][a-z0-9-]*$ or be '*': \"Claude/max\""
+      }
+    }
+  },
+  {
+    "name": "err-invalid-tool-leading-digit",
+    "input": {
+      "text": "1claude"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-tool",
+        "text": "1claude",
+        "message": "tool must match ^[a-z][a-z0-9-]*$ or be '*': \"1claude\""
+      }
+    }
+  },
+  {
+    "name": "err-invalid-tool-underscore",
+    "input": {
+      "text": "my_tool/max"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-tool",
+        "text": "my_tool/max",
+        "message": "tool must match ^[a-z][a-z0-9-]*$ or be '*': \"my_tool/max\""
+      }
+    }
+  },
+  {
+    "name": "err-empty-model",
+    "input": {
+      "text": "claude/"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "empty-model",
+        "text": "claude/",
+        "message": "empty model after '/': \"claude/\""
+      }
+    }
+  },
+  {
+    "name": "err-empty-effort",
+    "input": {
+      "text": "claude/opus@"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "empty-effort",
+        "text": "claude/opus@",
+        "message": "empty effort after '@': \"claude/opus@\""
+      }
+    }
+  },
+  {
+    "name": "err-empty-effort-after-qualifiers",
+    "input": {
+      "text": "claude/max[ctx=1m]@"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "empty-effort",
+        "text": "claude/max[ctx=1m]@",
+        "message": "empty effort after '@': \"claude/max[ctx=1m]@\""
+      }
+    }
+  },
+  {
+    "name": "err-bare-wildcard",
+    "input": {
+      "text": "*"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "wildcard-needs-tier",
+        "text": "*",
+        "message": "'*' needs a tier (fast, standard, max), as in '*/fast': \"*\""
+      }
+    }
+  },
+  {
+    "name": "err-wildcard-model-name",
+    "input": {
+      "text": "*/opus"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "wildcard-needs-tier",
+        "text": "*/opus",
+        "message": "'*' needs a tier (fast, standard, max), as in '*/fast': \"*/opus\""
+      }
+    }
+  },
+  {
+    "name": "err-wildcard-empty-model",
+    "input": {
+      "text": "*/"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "empty-model",
+        "text": "*/",
+        "message": "empty model after '/': \"*/\""
+      }
+    }
+  },
+  {
+    "name": "err-traits-need-tier-model",
+    "input": {
+      "text": "claude/opus[local]"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "traits-need-tier",
+        "text": "claude/opus[local]",
+        "message": "traits only filter, so they need a tier or a wildcard (claude/fast[local], */fast[local]): \"claude/opus[local]\""
+      }
+    }
+  },
+  {
+    "name": "err-traits-need-tier-tool",
+    "input": {
+      "text": "claude[local]"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "traits-need-tier",
+        "text": "claude[local]",
+        "message": "traits only filter, so they need a tier or a wildcard (claude/fast[local], */fast[local]): \"claude[local]\""
+      }
+    }
+  },
+  {
+    "name": "err-native-bracket-size",
+    "input": {
+      "text": "claude/opus[1m]"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "native-bracket",
+        "text": "claude/opus[1m]",
+        "message": "a context size is written [ctx=1m], not a tool's own [1m]: \"claude/opus[1m]\""
+      }
+    }
+  },
+  {
+    "name": "err-native-bracket-digits",
+    "input": {
+      "text": "claude/opus[200]"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "native-bracket",
+        "text": "claude/opus[200]",
+        "message": "a context size is written [ctx=200], not a tool's own [200]: \"claude/opus[200]\""
+      }
+    }
+  },
+  {
+    "name": "err-native-bracket-context-key",
+    "input": {
+      "text": "cursor/opus[context=1m]"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "native-bracket",
+        "text": "cursor/opus[context=1m]",
+        "message": "a context size is written [ctx=1m], not a tool's own [context=1m]: \"cursor/opus[context=1m]\""
+      }
+    }
+  },
+  {
+    "name": "err-unknown-trait",
+    "input": {
+      "text": "claude/fast[nosuch]"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-qualifiers",
+        "text": "claude/fast[nosuch]",
+        "message": "unknown trait 'nosuch'; known: local, agent, embedding, reasoning, long-context, vision, image-out: \"claude/fast[nosuch]\""
+      }
+    }
+  },
+  {
+    "name": "err-unknown-qualifier-key",
+    "input": {
+      "text": "claude/opus[effort=high]"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-qualifiers",
+        "text": "claude/opus[effort=high]",
+        "message": "unknown qualifier 'effort'; the only key is ctx: \"claude/opus[effort=high]\""
+      }
+    }
+  },
+  {
+    "name": "err-empty-qualifier-group",
+    "input": {
+      "text": "claude/opus[]"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-qualifiers",
+        "text": "claude/opus[]",
+        "message": "empty qualifiers: \"claude/opus[]\""
+      }
+    }
+  },
+  {
+    "name": "err-empty-qualifier-item",
+    "input": {
+      "text": "claude/fast[local,]"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-qualifiers",
+        "text": "claude/fast[local,]",
+        "message": "empty qualifier: \"claude/fast[local,]\""
+      }
+    }
+  },
+  {
+    "name": "err-duplicate-trait",
+    "input": {
+      "text": "claude/fast[local,local]"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "duplicate-qualifier",
+        "text": "claude/fast[local,local]",
+        "message": "trait 'local' appears twice: \"claude/fast[local,local]\""
+      }
+    }
+  },
+  {
+    "name": "err-duplicate-ctx",
+    "input": {
+      "text": "claude/opus[ctx=1m,ctx=2m]"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "duplicate-qualifier",
+        "text": "claude/opus[ctx=1m,ctx=2m]",
+        "message": "'ctx' appears twice: \"claude/opus[ctx=1m,ctx=2m]\""
+      }
+    }
+  },
+  {
+    "name": "err-bad-ctx-unit",
+    "input": {
+      "text": "claude/opus[ctx=1g]"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-qualifiers",
+        "text": "claude/opus[ctx=1g]",
+        "message": "ctx must be digits plus k or m, or max; got '1g': \"claude/opus[ctx=1g]\""
+      }
+    }
+  },
+  {
+    "name": "err-bad-ctx-decimal",
+    "input": {
+      "text": "claude/opus[ctx=1.5m]"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-qualifiers",
+        "text": "claude/opus[ctx=1.5m]",
+        "message": "ctx must be digits plus k or m, or max; got '1.5m': \"claude/opus[ctx=1.5m]\""
+      }
+    }
+  },
+  {
+    "name": "err-bad-ctx-leading-zero",
+    "input": {
+      "text": "claude/opus[ctx=01m]"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-qualifiers",
+        "text": "claude/opus[ctx=01m]",
+        "message": "ctx must be digits plus k or m, or max; got '01m': \"claude/opus[ctx=01m]\""
+      }
+    }
+  },
+  {
+    "name": "err-bad-ctx-uppercase",
+    "input": {
+      "text": "claude/opus[ctx=1M]"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-qualifiers",
+        "text": "claude/opus[ctx=1M]",
+        "message": "ctx must be digits plus k or m, or max; got '1M': \"claude/opus[ctx=1M]\""
+      }
+    }
+  },
+  {
+    "name": "err-close-without-open",
+    "input": {
+      "text": "claude/opus]"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-qualifiers",
+        "text": "claude/opus]",
+        "message": "']' without '[': \"claude/opus]\""
+      }
+    }
+  },
+  {
+    "name": "err-qualifiers-mid-reference",
+    "input": {
+      "text": "claude/opus[ctx=1m]/x"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-qualifiers",
+        "text": "claude/opus[ctx=1m]/x",
+        "message": "qualifiers are one trailing '[...]' group: \"claude/opus[ctx=1m]/x\""
+      }
+    }
+  },
+  {
+    "name": "err-two-qualifier-groups",
+    "input": {
+      "text": "claude/max[local][agent]"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-qualifiers",
+        "text": "claude/max[local][agent]",
+        "message": "qualifiers are one trailing '[...]' group: \"claude/max[local][agent]\""
+      }
+    }
+  },
+  {
+    "name": "err-at-before-qualifiers",
+    "input": {
+      "text": "claude/opus@high[ctx=1m]"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-qualifiers",
+        "text": "claude/opus@high[ctx=1m]",
+        "message": "qualifiers go before '@effort': \"claude/opus@high[ctx=1m]\""
+      }
+    }
+  },
+  {
+    "name": "err-quote-in-text",
+    "input": {
+      "text": "claude/\"opus\"x y"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "whitespace",
+        "text": "claude/\"opus\"x y",
+        "message": "model reference contains whitespace: \"claude/\\\"opus\\\"x y\""
+      }
+    }
+  },
+  {
+    "name": "err-unknown-effort",
+    "input": {
+      "text": "claude/max@hgih"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "unknown-effort",
+        "text": "claude/max@hgih",
+        "message": "effort 'hgih' is not a level (levels: none, minimal, low, medium, high, xhigh, max): \"claude/max@hgih\""
+      }
+    }
+  },
+  {
+    "name": "err-unknown-effort-on-a-wildcard",
+    "input": {
+      "text": "*/max@hgih"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "unknown-effort",
+        "text": "*/max@hgih",
+        "message": "effort 'hgih' is not a level (levels: none, minimal, low, medium, high, xhigh, max): \"*/max@hgih\""
+      }
+    }
+  },
+  {
+    "name": "err-unknown-effort-on-the-tool",
+    "input": {
+      "text": "pi@off"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "unknown-effort",
+        "text": "pi@off",
+        "message": "effort 'off' is not a level (levels: none, minimal, low, medium, high, xhigh, max): \"pi@off\""
+      }
+    }
+  },
+  {
+    "name": "err-unknown-effort-after-an-at-in-the-model",
+    "input": {
+      "text": "pi/user@host/model"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "unknown-effort",
+        "text": "pi/user@host/model",
+        "message": "effort 'host/model' is not a level (levels: none, minimal, low, medium, high, xhigh, max): \"pi/user@host/model\""
+      }
+    }
+  },
+  {
+    "name": "err-unknown-effort-after-qualifiers",
+    "input": {
+      "text": "claude/max[ctx=1m]@ultra"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "unknown-effort",
+        "text": "claude/max[ctx=1m]@ultra",
+        "message": "effort 'ultra' is not a level (levels: none, minimal, low, medium, high, xhigh, max): \"claude/max[ctx=1m]@ultra\""
+      }
+    }
+  },
+  {
+    "name": "err-invalid-model-long-flag",
+    "input": {
+      "text": "claude/--dangerously-skip-permissions"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-model",
+        "text": "claude/--dangerously-skip-permissions",
+        "message": "model must not start with '-', nor have a part after '/' that does: \"claude/--dangerously-skip-permissions\""
+      }
+    }
+  },
+  {
+    "name": "err-invalid-model-short-flag",
+    "input": {
+      "text": "codex/-c"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-model",
+        "text": "codex/-c",
+        "message": "model must not start with '-', nor have a part after '/' that does: \"codex/-c\""
+      }
+    }
+  },
+  {
+    "name": "err-invalid-model-flag-after-a-slash",
+    "input": {
+      "text": "pi/ollama/-x"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-model",
+        "text": "pi/ollama/-x",
+        "message": "model must not start with '-', nor have a part after '/' that does: \"pi/ollama/-x\""
+      }
+    }
+  },
+  {
+    "name": "err-invalid-model-zero-width",
+    "input": {
+      "text": "claude/opus​"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-model",
+        "text": "claude/opus​",
+        "message": "model holds whitespace, a control character or an invisible character: \"claude/opus​\""
+      }
+    }
+  },
+  {
+    "name": "err-invalid-model-bidi",
+    "input": {
+      "text": "claude/opus‮"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-model",
+        "text": "claude/opus‮",
+        "message": "model holds whitespace, a control character or an invisible character: \"claude/opus‮\""
+      }
+    }
+  },
+  {
+    "name": "err-invalid-model-nul",
+    "input": {
+      "text": "claude/op\u0000us"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-model",
+        "text": "claude/op\u0000us",
+        "message": "model holds whitespace, a control character or an invisible character: \"claude/op\\u0000us\""
+      }
+    }
+  },
+  {
+    "name": "err-invalid-model-bell",
+    "input": {
+      "text": "claude/opus\u0007"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-model",
+        "text": "claude/opus\u0007",
+        "message": "model holds whitespace, a control character or an invisible character: \"claude/opus\\u0007\""
+      }
+    }
+  },
+  {
+    "name": "err-invalid-model-next-line",
+    "input": {
+      "text": "claude/opus"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-model",
+        "text": "claude/opus",
+        "message": "model holds whitespace, a control character or an invisible character: \"claude/opus\""
+      }
+    }
+  },
+  {
+    "name": "model-may-hold-a-hyphen-inside",
+    "input": {
+      "text": "pi/ollama/qwen-x"
+    },
+    "expected": {
+      "ok": true,
+      "ref": {
+        "tool": "pi",
+        "model": "ollama/qwen-x"
+      },
+      "formatted": "pi/ollama/qwen-x"
+    }
+  },
+  {
+    "name": "ctx-at-the-largest-size",
+    "input": {
+      "text": "claude/opus[ctx=9007199254740k]"
+    },
+    "expected": {
+      "ok": true,
+      "ref": {
+        "tool": "claude",
+        "model": "opus",
+        "qualifiers": {
+          "traits": [],
+          "ctx": 9007199254740000
+        }
+      },
+      "formatted": "claude/opus[ctx=9007199254740k]"
+    }
+  },
+  {
+    "name": "err-ctx-above-the-largest-size",
+    "input": {
+      "text": "claude/opus[ctx=9007199254741k]"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-qualifiers",
+        "text": "claude/opus[ctx=9007199254741k]",
+        "message": "ctx=9007199254741k is above the largest size, 9007199254740991 tokens: \"claude/opus[ctx=9007199254741k]\""
+      }
+    }
+  },
+  {
+    "name": "err-ctx-far-above-the-largest-size",
+    "input": {
+      "text": "claude/opus[ctx=99999999999999999999999m]"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-qualifiers",
+        "text": "claude/opus[ctx=99999999999999999999999m]",
+        "message": "ctx=99999999999999999999999m is above the largest size, 9007199254740991 tokens: \"claude/opus[ctx=99999999999999999999999m]\""
+      }
+    }
+  }
+]

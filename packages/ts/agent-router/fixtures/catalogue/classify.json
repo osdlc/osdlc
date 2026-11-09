@@ -1,0 +1,399 @@
+[
+  {
+    "name": "parameter-count-\"qwen3:4b\"",
+    "input": {
+      "fn": "parameterCount",
+      "id": "qwen3:4b"
+    },
+    "expected": 4
+  },
+  {
+    "name": "parameter-count-\"llama3.1:70b\"",
+    "input": {
+      "fn": "parameterCount",
+      "id": "llama3.1:70b"
+    },
+    "expected": 70
+  },
+  {
+    "name": "parameter-count-\"gemma-4-26b-a4b-it\"",
+    "input": {
+      "fn": "parameterCount",
+      "id": "gemma-4-26b-a4b-it"
+    },
+    "expected": 26
+  },
+  {
+    "name": "parameter-count-\"gemma-4-31b-it\"",
+    "input": {
+      "fn": "parameterCount",
+      "id": "gemma-4-31b-it"
+    },
+    "expected": 31
+  },
+  {
+    "name": "parameter-count-\"qwen2.5-coder:7b\"",
+    "input": {
+      "fn": "parameterCount",
+      "id": "qwen2.5-coder:7b"
+    },
+    "expected": 7
+  },
+  {
+    "name": "parameter-count-\"phi:3.8b\"",
+    "input": {
+      "fn": "parameterCount",
+      "id": "phi:3.8b"
+    },
+    "expected": 3.8
+  },
+  {
+    "name": "parameter-count-\"tiny:0.5b\"",
+    "input": {
+      "fn": "parameterCount",
+      "id": "tiny:0.5b"
+    },
+    "expected": 0.5
+  },
+  {
+    "name": "parameter-count-\"model-8B\"",
+    "input": {
+      "fn": "parameterCount",
+      "id": "model-8B"
+    },
+    "expected": 8
+  },
+  {
+    "name": "parameter-count-\"x:7bit\"",
+    "input": {
+      "fn": "parameterCount",
+      "id": "x:7bit"
+    },
+    "expected": null
+  },
+  {
+    "name": "parameter-count-\"x:7b\"",
+    "input": {
+      "fn": "parameterCount",
+      "id": "x:7b"
+    },
+    "expected": 7
+  },
+  {
+    "name": "parameter-count-\"name-70B-instruct\"",
+    "input": {
+      "fn": "parameterCount",
+      "id": "name-70B-instruct"
+    },
+    "expected": 70
+  },
+  {
+    "name": "parameter-count-\"nosize\"",
+    "input": {
+      "fn": "parameterCount",
+      "id": "nosize"
+    },
+    "expected": null
+  },
+  {
+    "name": "parameter-count-\"v2:latest\"",
+    "input": {
+      "fn": "parameterCount",
+      "id": "v2:latest"
+    },
+    "expected": null
+  },
+  {
+    "name": "parameter-count-\"a-b-c\"",
+    "input": {
+      "fn": "parameterCount",
+      "id": "a-b-c"
+    },
+    "expected": null
+  },
+  {
+    "name": "parameter-count-\"big:405b\"",
+    "input": {
+      "fn": "parameterCount",
+      "id": "big:405b"
+    },
+    "expected": 405
+  },
+  {
+    "name": "parameter-count-\"q:3b-instruct\"",
+    "input": {
+      "fn": "parameterCount",
+      "id": "q:3b-instruct"
+    },
+    "expected": 3
+  },
+  {
+    "name": "parameter-count-\"x:7bx-8b\"",
+    "input": {
+      "fn": "parameterCount",
+      "id": "x:7bx-8b"
+    },
+    "expected": 8
+  },
+  {
+    "name": "parameter-count-\"\"",
+    "input": {
+      "fn": "parameterCount",
+      "id": ""
+    },
+    "expected": null
+  },
+  {
+    "name": "placements-snapshot",
+    "input": {
+      "fn": "placements",
+      "layers": [
+        "snapshot"
+      ]
+    },
+    "expected": {
+      "anthropic/claude-fable-5": "unclassified",
+      "anthropic/claude-fable-5-1": "unclassified",
+      "anthropic/claude-haiku-4-5": "fast",
+      "anthropic/claude-haiku-5-5": "fast",
+      "anthropic/claude-opus-4-5": "max",
+      "anthropic/claude-opus-4-6": "max",
+      "anthropic/claude-opus-4-7": "max",
+      "anthropic/claude-opus-4-8": "max",
+      "anthropic/claude-opus-5": "max",
+      "anthropic/claude-opus-5-5": "max",
+      "anthropic/claude-sonnet-4-5": "standard",
+      "anthropic/claude-sonnet-4-6": "standard",
+      "anthropic/claude-sonnet-5": "standard",
+      "anthropic/claude-sonnet-5-5": "standard",
+      "google/deep-research-max-preview-04-2026": "max",
+      "google/deep-research-preview-04-2026": "max",
+      "google/gemini-2.5-computer-use-preview-10-2025": "max",
+      "google/gemini-2.5-flash": "standard",
+      "google/gemini-2.5-flash-image": "standard",
+      "google/gemini-2.5-flash-lite": "fast",
+      "google/gemini-2.5-pro": "max",
+      "google/gemini-3-flash-preview": "standard",
+      "google/gemini-3-pro-image": "max",
+      "google/gemini-3-pro-image-preview": "max",
+      "google/gemini-3.1-flash-image": "standard",
+      "google/gemini-3.1-flash-image-preview": "standard",
+      "google/gemini-3.1-flash-lite": "fast",
+      "google/gemini-3.1-flash-lite-image": "fast",
+      "google/gemini-3.1-flash-lite-preview": "fast",
+      "google/gemini-3.1-pro-preview": "max",
+      "google/gemini-3.1-pro-preview-customtools": "max",
+      "google/gemini-3.5-flash": "standard",
+      "google/gemini-3.5-flash-lite": "fast",
+      "google/gemini-3.6-flash": "standard",
+      "google/gemini-3.7-flash": "standard",
+      "google/gemini-3.8-flash": "standard",
+      "google/gemini-4-argon": "unclassified",
+      "google/gemini-embedding-001": "unclassified",
+      "google/gemini-embedding-2": "unclassified",
+      "google/gemini-flash-latest": "standard",
+      "google/gemini-flash-lite-latest": "fast",
+      "google/gemini-pro-latest": "max",
+      "google/gemma-4-26b-a4b-it": "unclassified",
+      "google/gemma-4-31b-it": "unclassified",
+      "openai/chatgpt-image-latest": "unclassified",
+      "openai/gpt-3.5-turbo": "unclassified",
+      "openai/gpt-4": "unclassified",
+      "openai/gpt-4-turbo": "unclassified",
+      "openai/gpt-4.1": "unclassified",
+      "openai/gpt-4.1-mini": "unclassified",
+      "openai/gpt-4.1-nano": "unclassified",
+      "openai/gpt-4o": "unclassified",
+      "openai/gpt-4o-2024-05-13": "unclassified",
+      "openai/gpt-4o-2024-08-06": "unclassified",
+      "openai/gpt-4o-2024-11-20": "unclassified",
+      "openai/gpt-4o-mini": "unclassified",
+      "openai/gpt-5": "unclassified",
+      "openai/gpt-5-mini": "unclassified",
+      "openai/gpt-5-nano": "unclassified",
+      "openai/gpt-5-pro": "unclassified",
+      "openai/gpt-5.1": "unclassified",
+      "openai/gpt-5.2": "unclassified",
+      "openai/gpt-5.2-pro": "unclassified",
+      "openai/gpt-5.3-codex": "unclassified",
+      "openai/gpt-5.3-codex-spark": "unclassified",
+      "openai/gpt-5.4": "unclassified",
+      "openai/gpt-5.4-mini": "unclassified",
+      "openai/gpt-5.4-nano": "unclassified",
+      "openai/gpt-5.4-pro": "unclassified",
+      "openai/gpt-5.5": "unclassified",
+      "openai/gpt-5.5-pro": "unclassified",
+      "openai/gpt-5.6": "standard",
+      "openai/gpt-5.6-luna": "fast",
+      "openai/gpt-5.6-sol": "standard",
+      "openai/gpt-5.6-terra": "unclassified",
+      "openai/gpt-6-astra": "max",
+      "openai/gpt-6-luna": "fast",
+      "openai/gpt-6-sol": "standard",
+      "openai/gpt-6.1-sol": "standard",
+      "openai/gpt-6.1-terra": "unclassified",
+      "openai/gpt-daybreak-blue-latest": "standard",
+      "openai/gpt-daybreak-red-latest": "unclassified",
+      "openai/gpt-image-1": "unclassified",
+      "openai/gpt-image-1-mini": "unclassified",
+      "openai/gpt-image-1.5": "unclassified",
+      "openai/gpt-image-2": "unclassified",
+      "openai/o1": "unclassified",
+      "openai/o1-pro": "unclassified",
+      "openai/o3": "unclassified",
+      "openai/o3-mini": "unclassified",
+      "openai/o3-pro": "unclassified",
+      "openai/o4-mini": "unclassified",
+      "openai/text-embedding-3-large": "unclassified",
+      "openai/text-embedding-3-small": "unclassified",
+      "openai/text-embedding-ada-002": "unclassified"
+    }
+  },
+  {
+    "name": "placements-mini",
+    "input": {
+      "fn": "placements",
+      "layers": [
+        "mini"
+      ]
+    },
+    "expected": {
+      "anthropic/big-2": "max",
+      "anthropic/big-1": "max",
+      "anthropic/small-1": "fast",
+      "anthropic/mid-1": "standard",
+      "anthropic/gone-1": "standard",
+      "anthropic/embed-1": "fast",
+      "anthropic/plain-1": "fast",
+      "openai/gpt-x": "standard",
+      "ollama/qwen3:4b": "fast",
+      "ollama/llama3:70b": "max",
+      "ollama/nomic:1b": "unclassified"
+    }
+  },
+  {
+    "name": "placements-mini-policy-first-rule-wins",
+    "input": {
+      "fn": "placements",
+      "layers": [
+        "mini"
+      ],
+      "policy": {
+        "classify": [
+          {
+            "provider": "anthropic",
+            "families": {
+              "claude-haiku": "unclassified"
+            }
+          },
+          {
+            "match": [
+              {
+                "id": "qwen*",
+                "tier": "standard"
+              },
+              {
+                "id": "*:70b",
+                "tier": "max"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "expected": {
+      "anthropic/big-2": "max",
+      "anthropic/big-1": "max",
+      "anthropic/small-1": "unclassified",
+      "anthropic/mid-1": "standard",
+      "anthropic/gone-1": "standard",
+      "anthropic/embed-1": "unclassified",
+      "anthropic/plain-1": "unclassified",
+      "openai/gpt-x": "standard",
+      "ollama/qwen3:4b": "standard",
+      "ollama/llama3:70b": "max",
+      "ollama/nomic:1b": "unclassified"
+    }
+  },
+  {
+    "name": "placements-mini-policy-require-traits-and-parameters",
+    "input": {
+      "fn": "placements",
+      "layers": [
+        "mini"
+      ],
+      "policy": {
+        "classify": [
+          {
+            "provider": [
+              "ollama"
+            ],
+            "require_traits": [
+              "embedding"
+            ],
+            "match": [
+              {
+                "id": "nomic*",
+                "tier": "fast"
+              }
+            ]
+          },
+          {
+            "provider": "ollama",
+            "by_parameters": {
+              "fast": "<=4B",
+              "standard": "<=70B",
+              "max": ">70B"
+            }
+          }
+        ]
+      }
+    },
+    "expected": {
+      "anthropic/big-2": "max",
+      "anthropic/big-1": "max",
+      "anthropic/small-1": "fast",
+      "anthropic/mid-1": "standard",
+      "anthropic/gone-1": "standard",
+      "anthropic/embed-1": "fast",
+      "anthropic/plain-1": "fast",
+      "openai/gpt-x": "standard",
+      "ollama/qwen3:4b": "fast",
+      "ollama/llama3:70b": "standard",
+      "ollama/nomic:1b": "fast"
+    }
+  },
+  {
+    "name": "placements-mini-policy-families-without-provider",
+    "input": {
+      "fn": "placements",
+      "layers": [
+        "mini"
+      ],
+      "policy": {
+        "classify": [
+          {
+            "families": {
+              "claude-sonnet": "max",
+              "gpt": "fast",
+              "claude-opus": "standard"
+            }
+          }
+        ]
+      }
+    },
+    "expected": {
+      "anthropic/big-2": "standard",
+      "anthropic/big-1": "standard",
+      "anthropic/small-1": "fast",
+      "anthropic/mid-1": "max",
+      "anthropic/gone-1": "max",
+      "anthropic/embed-1": "fast",
+      "anthropic/plain-1": "fast",
+      "openai/gpt-x": "standard",
+      "ollama/qwen3:4b": "fast",
+      "ollama/llama3:70b": "max",
+      "ollama/nomic:1b": "unclassified"
+    }
+  }
+]

@@ -1,0 +1,137 @@
+[
+  {
+    "file": "ref/parse.json",
+    "description": "parseRef: the README reference table, the parsing rules and every typed error; `formatted` is formatRef of the parsed reference",
+    "vectors": 78
+  },
+  {
+    "file": "ref/format.json",
+    "description": "formatRef: canonical qualifier order, size rounding, empty qualifiers",
+    "vectors": 11
+  },
+  {
+    "file": "context/size.json",
+    "description": "parseSize and formatSize: the `ctx=` size grammar",
+    "vectors": 38
+  },
+  {
+    "file": "context/args.json",
+    "description": "contextArgs: a size in each tool’s own form, and when it is unchecked",
+    "vectors": 17
+  },
+  {
+    "file": "context/default-window.json",
+    "description": "defaultWindow: the offering’s default before the model’s, never a max",
+    "vectors": 9
+  },
+  {
+    "file": "context/check.json",
+    "description": "checkContext: the README context table (error, skip, unchecked, ctx=max)",
+    "vectors": 25
+  },
+  {
+    "file": "effort/adjust.json",
+    "description": "adjustEffort and effortAdjustedMessage: at most one step, up first",
+    "vectors": 14
+  },
+  {
+    "file": "validity/check-ref.json",
+    "description": "checkRef: the README validity table (error, skip, warning, ok) on the snapshot and a small catalogue",
+    "vectors": 45
+  },
+  {
+    "file": "catalogue/schema-snapshot.json",
+    "description": "SnapshotLayerSchema: documents the strict schema accepts and rejects",
+    "vectors": 84
+  },
+  {
+    "file": "catalogue/schema-machine.json",
+    "description": "MachineCatalogueSchema: documents the strict schema accepts and rejects",
+    "vectors": 29
+  },
+  {
+    "file": "catalogue/layers.json",
+    "description": "layerCatalogue: layering, per-field provenance, required fields and problems",
+    "vectors": 14
+  },
+  {
+    "file": "catalogue/offerings.json",
+    "description": "deriveOfferings and nativeName: derived rows, router.offerings add/remove, native-name order",
+    "vectors": 9
+  },
+  {
+    "file": "catalogue/query.json",
+    "description": "queryCatalogue: findModel, modelsFor, offering, tierOf, tierModel, pinned, effortsFor",
+    "vectors": 80
+  },
+  {
+    "file": "catalogue/classify.json",
+    "description": "classify and parameterCount: classifier rules, policy rules first",
+    "vectors": 23
+  },
+  {
+    "file": "catalogue/chains.json",
+    "description": "expandChain: tool order, newest first, pins, trait filters and the skipped list",
+    "vectors": 25
+  },
+  {
+    "file": "wildcard/expand.json",
+    "description": "expandWildcard: a wildcard becomes the tier chain, kept to knownTools; the candidates resolved, the others skipped with a code",
+    "vectors": 19
+  },
+  {
+    "file": "profile/parse.json",
+    "description": "parseProfile: a bare list or the long form, typed errors by entry index; the zod text of a shape error is not mirrored",
+    "vectors": 26
+  },
+  {
+    "file": "profile/parse-profiles.json",
+    "description": "parseProfiles: a profiles section beside the built-in profiles; an entry of the same name replaces one whole",
+    "vectors": 15
+  },
+  {
+    "file": "walk/choose.json",
+    "description": "chooseFromProfile under scripted availability, without the author rule: every skip-reason row of the README table, the trace text exactly, the refs the callback was asked, and validateProfile’s errors",
+    "vectors": 52
+  },
+  {
+    "file": "walk/skip-reason-text.json",
+    "description": "skipReasonText: the trace’s wording of every skip reason, with and without a detail",
+    "vectors": 32
+  },
+  {
+    "file": "resolve/resolve.json",
+    "description": "resolveRef: tier, pin, name and default models; effort moved or unchecked; the check riding along; every error kind",
+    "vectors": 30
+  },
+  {
+    "file": "binding/resolve.json",
+    "description": "resolveBinding: a named profile, an inline profile list or a single reference (a wildcard walks the chain), and the binding errors; an inline list of the wrong shape drops its zod text, which is not mirrored",
+    "vectors": 23
+  },
+  {
+    "file": "routing/parse.json",
+    "description": "parseRouting: rules with trimmed values, an optional vocabulary, and typed errors by rule index; the zod text of a shape error is not mirrored",
+    "vectors": 25
+  },
+  {
+    "file": "routing/match.json",
+    "description": "matchRule: the first rule whose when holds for the request; every key must hold, tags match any",
+    "vectors": 14
+  },
+  {
+    "file": "routing/shadow.json",
+    "description": "shadowedRules: the rules an earlier, same-or-broader rule makes unreachable",
+    "vectors": 12
+  },
+  {
+    "file": "routing/format-when.json",
+    "description": "formatWhen: a when as the config writes it, in display order",
+    "vectors": 4
+  },
+  {
+    "file": "constants.json",
+    "description": "the constants the Rust crate retypes: EFFORT_LEVELS, DEFAULT_CHAIN_ORDER, the built-in classify rules and profiles, the availability and skip reasons, the routing keys",
+    "vectors": 1
+  }
+]

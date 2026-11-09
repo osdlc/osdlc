@@ -89,7 +89,8 @@ the standard.
   `path-guard` are there. Until they move, `gfm-pipe-table` (the Rust implementation of
   `@osdlc/gfm-table`) keeps `packages/rust/gfm-pipe-table/tests/fixtures/parity.json`,
   `markdown-link` its crate's `tests/fixtures/conformance.json`, and
-  `markdown-contract` runs the TypeScript package's `corpus/` directly.
+  `markdown-contract` runs the TypeScript package's `corpus/` directly, and
+  `agent-router` reads the TypeScript package's `fixtures/`.
   `etag-write` has no shared cases yet.
 - **Each language's idiom.** An implementation does not copy the other's names or
   signatures when that breaks its own language's habits. Rust uses
@@ -134,6 +135,8 @@ Developed here, in this repository:
 - `packages/ts/command-seam` (`@osdlc/command-seam`)
 - `packages/ts/gfm-table` (`@osdlc/gfm-table`)
 - `packages/rust/agent-adapt` (`agent-adapt` on crates.io)
+- `packages/rust/agent-router` (`agent-router`, the Rust implementation of
+  `@osdlc/agent-router`'s pure core; not on crates.io)
 - `packages/rust/config-layers` (`config-layers` on crates.io)
 - `packages/rust/etag-write` (`etag-write` on crates.io)
 - `packages/rust/frontmatter-lossless` (`frontmatter-lossless` on crates.io)
@@ -184,6 +187,10 @@ Developed here, in this repository:
   contrast checks)
 - `packages/ts/agent-call` (`@osdlc/agent-call` on npm, one call spec for
   headless coding-agent CLIs)
+- `packages/ts/agent-router` (`@osdlc/agent-router` on npm, picks the
+  coding-agent CLI, model and effort to launch: a model catalogue, a resolver
+  for references such as `claude/opus@high`, and an ordered profile walk with
+  fallbacks and an author rule for reviews)
 - `packages/ts/agent-seat` (`@osdlc/agent-seat` on npm, opens an interactive
   coding-agent session in the terminal app, multiplexer or editor a person
   already uses, behind one host contract in optional parts)

@@ -1,0 +1,110 @@
+[
+  {
+    "name": "constants",
+    "input": {},
+    "expected": {
+      "effort_levels": [
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "default_chain_order": [
+        "claude",
+        "codex",
+        "cursor",
+        "antigravity",
+        "pi",
+        "opencode"
+      ],
+      "builtin_classify_rules": [
+        {
+          "provider": "anthropic",
+          "families": {
+            "claude-haiku": "fast",
+            "claude-sonnet": "standard",
+            "claude-opus": "max"
+          }
+        },
+        {
+          "provider": "openai",
+          "families": {
+            "gpt-luna": "fast",
+            "gpt-sol": "standard",
+            "gpt-astra": "max"
+          }
+        },
+        {
+          "provider": "google",
+          "families": {
+            "gemini-flash-lite": "fast",
+            "gemini-flash": "standard",
+            "gemini-pro": "max"
+          }
+        },
+        {
+          "provider": [
+            "ollama",
+            "lmstudio"
+          ],
+          "by_parameters": {
+            "fast": "<10B",
+            "standard": "<40B",
+            "max": ">=40B"
+          },
+          "require_traits": [
+            "agent"
+          ]
+        }
+      ],
+      "builtin_profiles": {
+        "default": [
+          "*/standard"
+        ],
+        "small": [
+          "*/fast"
+        ]
+      },
+      "availability_reasons": [
+        "not-installed",
+        "not-signed-in",
+        "over-budget",
+        "cooling-down",
+        "provider-unreachable",
+        "model-not-present",
+        "not-launchable",
+        "other-tool",
+        "untrusted-fork"
+      ],
+      "profile_skip_reasons": [
+        "not-installed",
+        "not-signed-in",
+        "over-budget",
+        "cooling-down",
+        "provider-unreachable",
+        "model-not-present",
+        "not-launchable",
+        "other-tool",
+        "untrusted-fork",
+        "not-agent",
+        "missing-trait",
+        "unresolved",
+        "withdrawn-model",
+        "below-context",
+        "no-candidate",
+        "author-tool"
+      ],
+      "routing_keys": [
+        "workflow",
+        "stage",
+        "complexity",
+        "impact",
+        "autonomy",
+        "tags"
+      ]
+    }
+  }
+]
