@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Breaking: `Tokens::with` and `Tokens::with_label` return
+  `Result<Tokens, TokensError>`. They refuse a token that differs from one
+  already in the set only in percent-encoding, such as `a b` and `a%20b`,
+  whatever the two grants, with `TokensError::Collision`. `SharingRuntime`
+  reports such a set, from hand-set token files or an override, as
+  `RuntimeError::Tokens` and does not start. Before, the share link for `a b`
+  carried `a%20b`, the other token byte for byte, so its holder reached the
+  other token's grant through the `x-web-access-token` header, a cookie, or a
+  re-encoded `?token=a%2520b`. Chain with `?` or `and_then`;
+  `Tokens::full_only` still cannot fail.
+
 ### Fixed
 
 - `ServerHandle::stop` now ends connections that are still open, such as a
@@ -21,8 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   at start.
 - A `?token=` link or cookie value is matched as written as well as
   percent-decoded, so a raw link or cookie for a hand-set token holding a
-  literal `%XX` still works. When the raw and the decoded value match two
-  different hand-set tokens, the lower grant wins.
+  literal `%XX` still works. A set where the raw and the decoded value could
+  match two different tokens is refused (see Changed); should one be built
+  anyway, the lower grant wins.
 
 ## [0.4.1] - 2026-11-07
 

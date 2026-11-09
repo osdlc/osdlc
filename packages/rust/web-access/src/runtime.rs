@@ -14,7 +14,7 @@ use tokio::sync::Mutex;
 
 use crate::config::{Listen, WebAccessConfig};
 use crate::context::Grant;
-use crate::guard::Tokens;
+use crate::guard::{Tokens, TokensError};
 use crate::serve::{ServeError, ServeOptions, ServerHandle, serve_opts};
 use crate::token;
 
@@ -47,6 +47,10 @@ pub enum RuntimeError {
     /// A token file could not be read or written.
     #[error("web-access token: {0}")]
     Token(#[from] std::io::Error),
+    /// Two of the tokens differ only in percent-encoding (a hand-set token
+    /// file or override), so the server was not started.
+    #[error("web-access tokens: {0}")]
+    Tokens(#[from] TokensError),
     /// The full token comes from an override, so it cannot be rotated.
     #[error("the full token is set by the environment and cannot be rotated")]
     TokenPinned,
@@ -383,9 +387,9 @@ impl SharingRuntime {
         } else {
             None
         };
-        let mut tokens = Tokens::full_only(full.clone()).with(read.clone(), Grant::Read);
+        let mut tokens = Tokens::full_only(full.clone()).with(read.clone(), Grant::Read)?;
         if let Some(a) = &admin {
-            tokens = tokens.with(a.clone(), Grant::Admin);
+            tokens = tokens.with(a.clone(), Grant::Admin)?;
         }
         let handle = serve_opts((self.build_router)(), cfg, tokens, self.options.clone()).await?;
         Ok((handle, StartTokens { full, read, admin }))
@@ -646,6 +650,20 @@ mod tests {
         let status = rt.rotate(Grant::Read).await.unwrap();
         assert!(!status.enabled && !status.running);
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+
+    #[tokio::test]
+    async fn colliding_hand_set_tokens_are_refused_and_nothing_runs() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(token::READ_TOKEN_FILE), "a b").unwrap();
+        let rt = runtime(&dir, MemStore::default()).with_full_token_override(Some("a%20b".into()));
+        let status = rt.set(cfg(true)).await.unwrap();
+        assert!(status.enabled && !status.running);
+        assert!(status.share_urls.read.is_empty());
+        assert!(
+            status.error.unwrap().contains("percent-encoding"),
+            "names the collision"
+        );
     }
 
     #[tokio::test]

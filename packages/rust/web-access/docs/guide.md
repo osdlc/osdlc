@@ -252,17 +252,27 @@ fn tokens(dir: &Path) -> std::io::Result<()> {
 `Tokens` is what a running guard accepts:
 
 ```rust
-use web_access::{Grant, Tokens};
+use web_access::{Grant, Tokens, TokensError};
 
 let tokens = Tokens::none()
-    .with("read-token", Grant::Read)
-    .with("full-token", Grant::Full);
+    .with("read-token", Grant::Read)?
+    .with("full-token", Grant::Full)?;
 // Shorthand for one full token:
 let one = Tokens::full_only("full-token".to_owned());
+# Ok::<(), TokensError>(())
 ```
 
 Blank tokens are ignored. Tokens are compared in constant time. If a request
 presents tokens for two grants (header and cookie), the higher grant wins.
+
+A `?token=` link or cookie value matches a token as written or percent-decoded
+once; the header matches as written. A share link carries the token
+percent-encoded, so two tokens that differ only in percent-encoding, such as
+`a b` and `a%20b`, would let one token's link reach the other: the link for
+`a b` carries `a%20b`. `with` refuses such a token with
+`TokensError::Collision`, whatever the two grants, and `SharingRuntime`
+reports it as `RuntimeError::Tokens` without starting. Minted tokens never
+collide.
 
 ## Serving: `serve` and `ServerHandle`
 

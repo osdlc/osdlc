@@ -45,10 +45,13 @@ pub async fn main() {
             Permission::RunCommand,
         )],
     });
+    // `with` refuses a token that differs from another only in
+    // percent-encoding; these three are distinct.
     let tokens = Tokens::none()
         .with("read-token", Grant::Read)
-        .with("full-token", Grant::Full)
-        .with("admin-token", Grant::Admin);
+        .and_then(|t| t.with("full-token", Grant::Full))
+        .and_then(|t| t.with("admin-token", Grant::Admin))
+        .expect("distinct tokens");
     let state = Arc::new(GuardState::new(
         tokens,
         ["192.168.1.5:8080".to_owned()],

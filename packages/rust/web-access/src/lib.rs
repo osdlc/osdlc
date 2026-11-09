@@ -20,7 +20,9 @@ pub mod token;
 
 pub use config::{Listen, WebAccessConfig};
 pub use context::{AccessContext, Grant};
-pub use guard::{Denial, DenialReason, GuardPolicy, GuardState, Tokens, origin_matches_host};
+pub use guard::{
+    Denial, DenialReason, GuardPolicy, GuardState, Tokens, TokensError, origin_matches_host,
+};
 pub use interfaces::{InterfaceAddr, interfaces};
 pub use origin::{is_local_authority, is_local_origin};
 pub use permissions::{HostPolicy, RouteRule, host_policy_layer};

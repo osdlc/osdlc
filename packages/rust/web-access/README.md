@@ -138,6 +138,11 @@ Every request, whatever its method, passes these checks in order:
    stay in the address bar, the history or a `Referer`.
 6. Otherwise the `web_access_<port>` cookie or the `x-web-access-token` header
    must hold one of the tokens, else 401.
+
+A link or cookie value matches a token as written or percent-decoded once; the
+header matches as written. `Tokens::with` refuses two tokens that differ only
+in percent-encoding (`a b` and `a%20b`), whatever their grants: the share link
+of one would carry the other.
 7. A `read` grant may not use a method other than `GET`, `HEAD` or `OPTIONS`,
    or open a WebSocket, else 403 `{"error":"read_only"}`, unless a read-safe
    rule names the route.
