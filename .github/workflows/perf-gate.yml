@@ -17,8 +17,8 @@
 # osdlc-release[bot], which `github.actor` reports) skips the job (a skipped job
 # counts as passed; the gate is not a required check today, and if it becomes
 # one the skip still satisfies it). Marking it ready runs the gate
-# (`ready_for_review`). A label change other than `perf-accepted` does not
-# start a run. The pick above already limits the work to pull requests that
+# (`ready_for_review`). A label change other than `perf-accepted` skips the
+# job, in a concurrency group of its own so it cannot replace a pending run. The pick above already limits the work to pull requests that
 # touch a package with benchmarks, or one it depends on, so a pull request
 # elsewhere stops after the pick. This workflow has no push trigger; a manual
 # run is never skipped.
@@ -37,7 +37,7 @@ permissions:
 # A new push supersedes the run in progress. A label or title edit waits for it
 # instead, so an unrelated label does not throw away an hour of benchmarking.
 concurrency:
-  group: perf-gate-${{ github.ref }}
+  group: perf-gate-${{ github.ref }}${{ (github.event.action == 'labeled' || github.event.action == 'unlabeled') && github.event.label.name != 'perf-accepted' && format('-{0}', github.run_id) || '' }}
   cancel-in-progress: ${{ github.event.action == 'synchronize' || github.event.action == 'opened' || github.event.action == 'reopened' }}
 
 env:
