@@ -94,7 +94,8 @@ command line.
 ```
 
 - `libraries`: where each language's libraries live. The Rust directory is
-  also where a Rust generator runs.
+  also where a Rust generator runs. The two are separate folders whose last
+  names differ, since a test reaches the other language's libraries by it.
 - `catchingUp`: families whose implementations do not share major.minor yet,
   each with the work that brings them level. A stale entry fails the check.
 - `unmigrated`: libraries whose tests still read the other language's
