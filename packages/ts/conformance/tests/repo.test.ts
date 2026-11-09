@@ -213,6 +213,12 @@ test('config.json moves the library roots and lists the exemptions', () => {
     ),
     ['config.json: skipScan names packages/ts/gone, which is not a library'],
   )
+  assert.deepEqual(
+    repo((put) =>
+      put('packages/conformance/config.json', JSON.stringify({ unmigrated: ['packages/ts/gone'] })),
+    ),
+    ['config.json: unmigrated names packages/ts/gone, which is not a library'],
+  )
 })
 
 test('a config.json it cannot read stops the check', () => {

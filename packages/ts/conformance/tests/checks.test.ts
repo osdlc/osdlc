@@ -254,6 +254,21 @@ test('suite readers and cross-language reads are found in test sources', () => {
   assert.equal(readsAcross('packages/ts/x', ["'../../../rust/x/tests/fixtures/parity.json'"]), true)
   assert.equal(readsAcross('packages/rust/x', ['"../../ts/x/corpus/a.md"']), true)
   assert.equal(readsAcross('packages/ts/x', ["'./fixtures/a.json'"]), false)
+  // A library root is matched literally, not as a regular expression.
+  const roots = { ts: 'libs/t(s)', rust: 'crates.v1' }
+  assert.equal(
+    readsAcross('libs/t(s)/x', ["'../../crates.v1/x/tests/fixtures/a.json'"], roots),
+    true,
+  )
+  assert.equal(
+    readsAcross('libs/t(s)/x', ["'../../cratesXv1/x/tests/fixtures/a.json'"], roots),
+    false,
+  )
+  assert.equal(readsAcross('crates.v1/x', ['"../../t(s)/x/corpus/a.md"'], roots), true)
+  assert.equal(
+    readsAcross('crates.v1/x', ['"../../crates[/x"'], { ts: 'a[', rust: 'crates.v1' }),
+    false,
+  )
 })
 
 test('a suite path is read under the suites directory name', () => {

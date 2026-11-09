@@ -308,6 +308,9 @@ export function versionProblems(
   return [`${family}: implementations do not share major.minor: ${show(versions)}${tail}`]
 }
 
+/** `s` with every regular-expression metacharacter escaped. */
+const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
 /**
  * The family each test file's suite path names, by library directory, from
  * `files` (library directory to its test sources). `suites` is the name of
@@ -318,10 +321,7 @@ export function suiteReaders(
   suites = 'conformance',
 ): Map<string, Set<string>> {
   const out = new Map<string, Set<string>>()
-  const path = new RegExp(
-    `${suites.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\/([a-z0-9-]+)\\/(suite|[a-z0-9_]+)\\.json`,
-    'g',
-  )
+  const path = new RegExp(`${escapeRegExp(suites)}\\/([a-z0-9-]+)\\/(suite|[a-z0-9_]+)\\.json`, 'g')
   for (const [dir, sources] of files) {
     for (const text of sources) {
       for (const m of text.matchAll(path)) {
@@ -344,7 +344,8 @@ export function readsAcross(
   sources: string[],
   roots: LibraryRoots = DEFAULT_LIBRARY_ROOTS,
 ): boolean {
-  const tail = (root: string | undefined): string => (root ?? '').split('/').pop() ?? ''
+  const tail = (root: string | undefined): string =>
+    escapeRegExp((root ?? '').split('/').pop() ?? '')
   const other = dir.startsWith(`${roots['ts']}/`)
     ? new RegExp(`${tail(roots['rust'])}\\/[a-z0-9-]+\\/tests\\/fixtures\\/`)
     : new RegExp(`${tail(roots['ts'])}\\/[a-z0-9-]+\\/(corpus|tests\\/fixtures|fixtures)\\/`)
