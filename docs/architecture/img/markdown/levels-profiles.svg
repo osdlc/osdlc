@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 264" width="880" font-family="system-ui, -apple-system, Segoe UI, sans-serif" role="img" aria-label="Levels 0 to 2, and profiles that supply level-2 types"><style>
+.bg{fill:#fbfaf7} .band{fill:#f0eee8}
+.rl{font-size:15px;font-weight:650;fill:#1d1d1b} .rs{font-size:12px;fill:#5d5d58}
+.lang{font-size:10.5px;font-weight:700;letter-spacing:.06em;fill:#5d5d58}
+.chip rect{fill:#ffffff;stroke-width:1.5} .chip.later rect{fill:none;stroke-dasharray:5 4}
+.cn{font-size:13px;font-weight:650;fill:#1d1d1b} .cs{font-size:11px;fill:#5d5d58}
+.r-osdlc rect{stroke:#2f855a} .r-osdlc .dot{fill:#2f855a}
+.r-md rect{stroke:#b83280} .r-md .dot{fill:#b83280}
+.r-dev rect{stroke:#2b6cb0} .r-dev .dot{fill:#2b6cb0}
+.r-ont rect{stroke:#6b46c1} .r-ont .dot{fill:#6b46c1}
+.r-sw rect{stroke:#c05621} .r-sw .dot{fill:#c05621}
+.fb rect{fill:#fde8e8;stroke:#c53030} .fb text{font-size:10.5px;font-weight:700;fill:#c53030}
+.dup{stroke:#c53030;stroke-width:1.6;stroke-dasharray:4 3}
+.edge{fill:none;stroke:#5d5d58;stroke-width:1.4} .ahp{fill:#5d5d58}
+.lvl rect{fill:#ffffff;stroke:#d8d5cc} .prof rect{fill:#fde7c8;stroke:#b8741a}
+.tie{stroke:#b8741a;stroke-width:1.6;fill:none}
+.task rect{stroke-width:1.6} .tt{font-size:11.5px;font-weight:650;fill:#1d1d1b}
+.tn{fill:#1d1d1b} .tnt{font-size:10.5px;font-weight:700;fill:#fbfaf7}
+.t-done rect{fill:#ffffff;stroke:#2f855a} .t-done .tn{fill:#2f855a}
+.t-doing rect{fill:#ffffff;stroke:#2b6cb0} .t-doing .tn{fill:#2b6cb0}
+.t-owner rect{fill:#fde7c8;stroke:#b8741a} .t-owner .tn{fill:#b8741a}
+.t-todo rect{fill:#ffffff;stroke:#d8d5cc} .t-todo .tn{fill:#5d5d58}
+.group{fill:none;stroke:#d8d5cc;stroke-width:1.4;stroke-dasharray:5 4} .gt{font-size:11.5px;font-weight:650;fill:#5d5d58}
+@media (prefers-color-scheme: dark) {
+.bg{fill:#16161a} .band{fill:#222227}
+.rl{font-size:15px;font-weight:650;fill:#ececea} .rs{font-size:12px;fill:#a3a39d}
+.lang{font-size:10.5px;font-weight:700;letter-spacing:.06em;fill:#a3a39d}
+.chip rect{fill:#2b2b31;stroke-width:1.5} .chip.later rect{fill:none;stroke-dasharray:5 4}
+.cn{font-size:13px;font-weight:650;fill:#ececea} .cs{font-size:11px;fill:#a3a39d}
+.r-osdlc rect{stroke:#68d391} .r-osdlc .dot{fill:#68d391}
+.r-md rect{stroke:#f687b3} .r-md .dot{fill:#f687b3}
+.r-dev rect{stroke:#63b3ed} .r-dev .dot{fill:#63b3ed}
+.r-ont rect{stroke:#b794f4} .r-ont .dot{fill:#b794f4}
+.r-sw rect{stroke:#f6ad55} .r-sw .dot{fill:#f6ad55}
+.fb rect{fill:#3b1d1d;stroke:#fc8181} .fb text{font-size:10.5px;font-weight:700;fill:#fc8181}
+.dup{stroke:#fc8181;stroke-width:1.6;stroke-dasharray:4 3}
+.edge{fill:none;stroke:#a3a39d;stroke-width:1.4} .ahp{fill:#a3a39d}
+.lvl rect{fill:#2b2b31;stroke:#3a3a40} .prof rect{fill:#3d2f1c;stroke:#f6ad55}
+.tie{stroke:#f6ad55;stroke-width:1.6;fill:none}
+.task rect{stroke-width:1.6} .tt{font-size:11.5px;font-weight:650;fill:#ececea}
+.tn{fill:#ececea} .tnt{font-size:10.5px;font-weight:700;fill:#16161a}
+.t-done rect{fill:#2b2b31;stroke:#68d391} .t-done .tn{fill:#68d391}
+.t-doing rect{fill:#2b2b31;stroke:#63b3ed} .t-doing .tn{fill:#63b3ed}
+.t-owner rect{fill:#3d2f1c;stroke:#f6ad55} .t-owner .tn{fill:#f6ad55}
+.t-todo rect{fill:#2b2b31;stroke:#3a3a40} .t-todo .tn{fill:#a3a39d}
+.group{fill:none;stroke:#3a3a40;stroke-width:1.4;stroke-dasharray:5 4} .gt{font-size:11.5px;font-weight:650;fill:#a3a39d}
+}</style><rect class="bg" width="440" height="264"/><text class="rl" x="16" y="26">Levels and profiles: two separate axes</text><text class="rs" x="16" y="44">Levels: how much a corpus declares. Profiles: whose types it uses.</text><g class="lvl"><rect x="16" y="62" width="230" height="50" rx="8"/></g><text class="cn" x="28" y="83">2 · Typed</text><text class="cs" x="28" y="100">every type has a JSON Schema</text><g class="lvl"><rect x="16" y="122" width="230" height="50" rx="8"/></g><text class="cn" x="28" y="143">1 · Records</text><text class="cs" x="28" y="160">a root file, type folders, ids</text><g class="lvl"><rect x="16" y="182" width="230" height="50" rx="8"/></g><text class="cn" x="28" y="203">0 · Linked notes</text><text class="cs" x="28" y="220">declares nothing; any vault</text><g class="prof"><rect x="276" y="62" width="150" height="50" rx="8"/></g><text class="cn" x="288" y="83">claims profile</text><text class="cs" x="288" y="100">statements, study results</text><path class="tie" d="M276,87 C262,87 262,87 247,87"/><g class="prof"><rect x="276" y="122" width="150" height="50" rx="8"/></g><text class="cn" x="288" y="143">sdlc profile</text><text class="cs" x="288" y="160">today&#x27;s sdlc kinds</text><path class="tie" d="M276,147 C262,147 262,87 247,87"/><g class="prof"><rect x="276" y="182" width="150" height="50" rx="8"/></g><text class="cn" x="288" y="203">your profile</text><text class="cs" x="288" y="220">any shared set of types</text><path class="tie" d="M276,207 C262,207 262,87 247,87"/><text class="cs" x="16" y="252">A corpus can use several profiles, next to its own types.</text></svg>
