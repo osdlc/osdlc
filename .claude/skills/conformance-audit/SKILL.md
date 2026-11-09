@@ -37,8 +37,10 @@ target directory per worktree fills the disk.
 
 Run, and keep each one's output for the report:
 
+`check:conformance` builds the `conformance` command first, so the two
+`pnpm exec` lines after it can run it.
+
 ```sh
-pnpm --filter @osdlc/conformance... run build
 pnpm run check:conformance
 pnpm exec conformance check --regenerate --reference ts
 pnpm exec conformance check --regenerate --reference rust

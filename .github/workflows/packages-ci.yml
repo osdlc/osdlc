@@ -99,10 +99,8 @@ jobs:
       - name: Test the package shape rules
         run: node --test scripts/package-shape-ts.test.ts
 
-      - name: Build the conformance check
-        run: pnpm --filter '@osdlc/conformance...' run build
-
-      # docs/planning/standards/S-conformance-suites.md is the standard.
+      # docs/planning/standards/S-conformance-suites.md is the standard. The
+      # script builds the command first.
       - name: Check the conformance suites
         run: pnpm run check:conformance
 
