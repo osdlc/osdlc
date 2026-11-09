@@ -27,6 +27,23 @@ test('a bad command line exits 2 with the usage', async () => {
   assert.match(err, /usage: package-checks ts/)
 })
 
+test('config prints one setting, with the default filled in', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'package-checks-cli-'))
+  try {
+    writeFileSync(join(root, 'package-checks.json'), JSON.stringify({ tsDir: 'libs' }))
+    assert.equal(await main(['config', 'tsDir'], root), 0)
+    assert.equal(await main(['config', 'licenseFiles'], root), 0)
+    assert.equal(out, 'libs\n["LICENSE-MIT","LICENSE-APACHE"]\n')
+    assert.equal(await main(['config', 'toString'], root), 2)
+    assert.equal(await main(['config'], root), 2)
+    writeFileSync(join(root, 'package-checks.json'), JSON.stringify({ tsDir: 3 }))
+    assert.equal(await main(['config', 'tsDir'], root), 1)
+    assert.match(err, /tsDir has the wrong type/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test('rust checks the workspace the settings name', async () => {
   const root = mkdtempSync(join(tmpdir(), 'package-checks-cli-'))
   try {

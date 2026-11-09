@@ -8,6 +8,7 @@
  *   package-checks affected [base] [head]    pick the packages a CI run checks
  *   package-checks stage [--dry-run] [--workflow <file>] [--environment <name>] <package dir> ...
  *                                            publish a new package's placeholder and add its trusted publisher
+ *   package-checks config <key>              print one setting, with the default filled in
  *
  * Every command runs in the repository root, the working directory, and reads
  * its settings from `package-checks.json` there.
@@ -27,7 +28,8 @@ const USAGE = `usage: package-checks ts [<package dir> ...]
        package-checks rust
        package-checks semver <path/to/Cargo.toml> <base-rev>
        package-checks affected [base] [head]
-       package-checks stage [--dry-run] [--workflow <file>] [--environment <name>] <package dir> ...`
+       package-checks stage [--dry-run] [--workflow <file>] [--environment <name>] <package dir> ...
+       package-checks config <key>`
 
 /** Runs the command with `argv` (without the program name) and resolves to its exit code. */
 export async function main(argv: string[], root: string = process.cwd()): Promise<number> {
@@ -48,6 +50,8 @@ export async function main(argv: string[], root: string = process.cwd()): Promis
         return affected(root, rest)
       case 'stage':
         return stageCommand(root, rest)
+      case 'config':
+        return config(root, rest)
       default:
         return usage(command === undefined ? 'no command' : `unknown command ${command}`)
     }
@@ -109,6 +113,17 @@ function affected(root: string, rest: string[]): number {
         .join(''),
     )
   }
+  return 0
+}
+
+/** Prints one setting: a string as it is, anything else as JSON. */
+function config(root: string, rest: string[]): number {
+  const [key, ...extra] = rest
+  if (key === undefined || extra.length > 0) return usage('config takes one key')
+  const settings = loadConfig(root)
+  if (!Object.hasOwn(settings, key)) return usage(`unknown key ${key}`)
+  const value = settings[key as keyof typeof settings]
+  process.stdout.write(`${typeof value === 'string' ? value : JSON.stringify(value)}\n`)
   return 0
 }
 

@@ -14,6 +14,8 @@ osdlc/osdlc keeps them:
   depend on them, for CI.
 - **`stage`** publishes a new package's placeholder to npm and adds its
   trusted publisher, which CI needs before it can publish the package.
+- **`config <key>`** prints one setting from `package-checks.json`, with the
+  default filled in, for a workflow step that needs it.
 
 The rules are the standards
 [S-package-shape-ts](https://github.com/osdlc/osdlc/blob/main/docs/planning/standards/S-package-shape-ts.md)

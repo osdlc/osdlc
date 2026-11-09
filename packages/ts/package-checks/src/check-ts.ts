@@ -269,22 +269,49 @@ function shipsTypes(pkg: Pkg): boolean {
  * exit code. Prints a section per package.
  */
 export function checkTsPackages(
-  repoRoot: string,
+  root: string,
   args: string[] = [],
   settings: PackageChecksConfig = OSDLC,
 ): number {
-  // Absolute, so the folders listed here and those named in `args` compare equal.
-  const root = resolve(repoRoot)
-  const allDirs: string[] = []
-  const ts = join(root, settings.tsDir)
-  for (const name of existsSync(ts) ? readdirSync(ts).sort() : []) {
-    if (existsSync(join(ts, name, 'package.json'))) allDirs.push(join(ts, name))
-  }
-  const dirs = args.length === 0 ? allDirs : [...new Set(args.map((d) => resolve(root, d)))]
-  const out = mkdtempSync(join(tmpdir(), 'check-packages-'))
+  const { all: allDirs, picked: dirs } = packageDirs(root, args, settings)
   const publint = toolScript('publint', 'publint')
   const attw = toolScript('@arethetypeswrong/cli', 'attw')
+  const out = mkdtempSync(join(tmpdir(), 'check-packages-'))
+  try {
+    return checkPacked(resolve(root), allDirs, dirs, out, publint, attw, settings)
+  } finally {
+    rmSync(out, { recursive: true, force: true })
+  }
+}
 
+/**
+ * Every package folder under `settings.tsDir` (`all`), and the ones to check
+ * (`picked`): the folders in `args`, or all of them when `args` is empty.
+ * Each is absolute, so a folder named in `args` matches its listed copy.
+ */
+export function packageDirs(
+  root: string,
+  args: string[],
+  settings: Pick<PackageChecksConfig, 'tsDir'> = OSDLC,
+): { all: string[]; picked: string[] } {
+  const abs = resolve(root)
+  const ts = join(abs, settings.tsDir)
+  const all = (existsSync(ts) ? readdirSync(ts).sort() : [])
+    .filter((name) => existsSync(join(ts, name, 'package.json')))
+    .map((name) => join(ts, name))
+  return { all, picked: args.length === 0 ? all : [...new Set(args.map((d) => resolve(abs, d)))] }
+}
+
+/** Packs every package into `out`, checks the picked ones, and returns the exit code. */
+function checkPacked(
+  root: string,
+  allDirs: string[],
+  dirs: string[],
+  out: string,
+  publint: string,
+  attw: string,
+  settings: PackageChecksConfig,
+): number {
   const packed = new Map<string, Packed>()
   for (const pkgDir of new Set([...allDirs, ...dirs])) {
     try {
@@ -385,7 +412,6 @@ export function checkTsPackages(
       console.error(failureLine(pkg.name, caught))
     }
   }
-  rmSync(out, { recursive: true, force: true })
   if (failed > 0) {
     console.error(`\n${failed} package(s) failed`)
     return 1
