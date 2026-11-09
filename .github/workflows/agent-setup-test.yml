@@ -1,0 +1,75 @@
+# Runs packages/gh-actions/agent-setup for each harness on a real runner:
+# installs the pinned CLI, installs the craft plugin where the harness
+# supports it, and checks the CLI answers --version and lists the plugin as
+# installed. A dry-run job checks input handling, including cursor
+# marketplaces, which a real cursor run cannot register without
+# CURSOR_API_KEY. Needs no secrets: it never calls a model.
+name: agent-setup test
+
+on:
+  pull_request:
+    paths:
+      - packages/gh-actions/agent-setup/**
+      - .github/workflows/agent-setup-test.yml
+
+permissions: {}
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: packages/gh-actions/agent-setup/test-dry-run.sh
+
+  setup:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            harness: claude
+            plugins: craft@osdlc
+          - os: ubuntu-latest
+            harness: codex
+            plugins: craft@osdlc
+          - os: ubuntu-latest
+            harness: cursor
+            plugins: ""
+          - os: macos-latest
+            harness: claude
+            plugins: craft@osdlc
+          - os: macos-latest
+            harness: codex
+            plugins: craft@osdlc
+          - os: macos-latest
+            harness: cursor
+            plugins: ""
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: setup
+        uses: ./packages/gh-actions/agent-setup
+        with:
+          harness: ${{ matrix.harness }}
+          marketplaces: ${{ matrix.plugins != '' && 'osdlc=https://github.com/osdlc/marketplace.git' || '' }}
+          plugins: ${{ matrix.plugins }}
+      - name: Check the CLI
+        env:
+          CLI: ${{ steps.setup.outputs.cli-path }}
+          HARNESS: ${{ matrix.harness }}
+        run: |
+          "$CLI" --version
+          case "$HARNESS" in
+            claude) claude plugin list | grep -F 'craft@osdlc' ;;
+            codex) codex plugin list --json | jq -e '.installed | any(.pluginId == "craft@osdlc" and .enabled)' ;;
+          esac

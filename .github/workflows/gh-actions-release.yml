@@ -1,0 +1,75 @@
+# Releases the composite actions in packages/gh-actions. They share one
+# version, so a release is two tags on the chosen commit of the default
+# branch: gh-actions/vX.Y.Z, created once, and gh-actions/vX, moved to it.
+# Callers pin the commit SHA and name the tag in a comment.
+#
+# The "Release tags" ruleset lets only admins and the osdlc-release App
+# create or move `*/v*` tags, so the job pushes with that App's token, from the
+# release-plz environment (main only) that holds its secrets, as release-plz.yml
+# does.
+#
+# Run it by hand from the Actions tab with the version. It refuses a version
+# that is not X.Y.Z, a tag that already exists, a version older than the
+# newest tag in its major line, a run from any branch other than the default,
+# and any action whose CHANGELOG.md has no entry for the version.
+name: gh-actions release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version, X.Y.Z
+        required: true
+
+permissions: {}
+
+concurrency:
+  group: gh-actions-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release-plz
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Get a GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.RELEASE_PLZ_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}
+          permission-contents: write
+      - name: Tag the release
+        env:
+          VERSION: ${{ inputs.version }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          die() { echo "::error::$*"; exit 1; }
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "version must be X.Y.Z, not '$VERSION'"
+          [ "$GITHUB_REF" = "refs/heads/$DEFAULT_BRANCH" ] || die "run this from $DEFAULT_BRANCH, not $GITHUB_REF"
+          full="gh-actions/v$VERSION"
+          major="gh-actions/v${VERSION%%.*}"
+          if git rev-parse -q --verify "refs/tags/$full" >/dev/null; then die "$full already exists"; fi
+          missing=()
+          for log in packages/gh-actions/*/CHANGELOG.md; do
+            grep -qx "## $VERSION" "$log" || missing+=("$log")
+          done
+          [ "${#missing[@]}" -eq 0 ] || die "no '## $VERSION' entry in: ${missing[*]}"
+          newest="$(git tag -l "gh-actions/v${VERSION%%.*}.*" | sed 's|.*/v||' | sort -V | tail -n1)"
+          if [ -n "$newest" ] && [ "$(printf '%s\n%s\n' "$newest" "$VERSION" | sort -V | tail -n1)" != "$VERSION" ]; then die "$newest is newer than $VERSION; moving $major back would downgrade callers"; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$full" -m "gh-actions $VERSION"
+          git tag -f -a "$major" -m "gh-actions $VERSION" "$full^{}"
+          remote="https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push --atomic "$remote" "refs/tags/$full" "+refs/tags/$major"
+          echo "Tagged $(git rev-parse HEAD) as $full and moved $major."
