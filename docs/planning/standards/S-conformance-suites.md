@@ -17,7 +17,9 @@ to the same behaviour by the same data.
 ## Terms
 
 - **Family.** A set of libraries, one per language, that do the same job.
-  The `gfm-table` family is `@osdlc/gfm-table` and `gfm-pipe-table`.
+  The `gfm-table` family is `@osdlc/gfm-table` and `gfm-pipe-table`. A
+  family with a `SPEC.md` may have one implementation so far: its suite holds
+  the cases the next implementation must pass. `corpus-schema` is one.
 - **Implementation.** One library in a family.
 - **Reference implementation.** The implementation whose behaviour is right
   when two disagree. Its generator writes the expected values in the suite.
@@ -150,11 +152,12 @@ version.
 `scripts/conformance.ts`, run by `pnpm run check:conformance`, checks:
 
 - every family in `families.json` names its reference among its
-  implementations, the generator command above, and at least two
-  implementations, each under `packages/ts/` or `packages/rust/` as its
+  implementations, the generator command above, and at least one
+  implementation, each under `packages/ts/` or `packages/rust/` as its
   language says;
 - every family has its directory, README and suite files, and every
-  implementation directory exists;
+  implementation directory exists. A family with one implementation also has
+  a `SPEC.md`;
 - every suite file has the shape above;
 - each implementation's `tests/` names the family's suite path;
 - the implementations share major.minor;
@@ -197,6 +200,7 @@ and points here.
 | color                | TS, Rust `srgb-color`       | `rust/srgb-color/tests/fixtures/parity.json`                                        | TS        |
 | command-seam         | TS, Rust                    | `rust/command-seam/tests/fixtures/parity.json`                                      | TS        |
 | config-layers        | TS, Rust                    | moved: `conformance/config-layers/suite.json`                                       | TS        |
+| corpus-schema        | TS                          | moved: `conformance/corpus-schema/suite.json`                                       | TS        |
 | detect-harness       | TS, Rust                    | `rust/detect-harness/tests/fixtures/parity.json`                                    | TS        |
 | etag-write           | TS, Rust                    | `rust/etag-write/tests/fixtures/parity.json`                                        | TS        |
 | fenced-lock          | TS, Rust                    | `rust/fenced-lock/tests/fixtures/parity.json`                                       | TS        |
@@ -206,7 +210,7 @@ and points here.
 | manifest-graph       | TS, Rust                    | `rust/manifest-graph/tests/fixtures/parity.json`                                    | TS        |
 | markdown-contract    | TS, Rust                    | `ts/markdown-contract/corpus/`, `rust/markdown-contract/tests/fixtures/parity.json` | TS        |
 | markdown-link        | Rust, TS                    | `rust/markdown-link/tests/fixtures/conformance.json`                                | Rust      |
-| markdown-tags        | Rust, TS                    | `rust/markdown-tags/tests/fixtures/conformance.json`                                | Rust      |
+| markdown-tags        | Rust, TS                    | moved: `conformance/markdown-tags/suite.json`                                       | Rust      |
 | observe              | TS, Rust `osdlc-observe`    | `rust/osdlc-observe/tests/fixtures/parity.json`                                     | TS        |
 | path-guard           | TS, Rust                    | moved: `conformance/path-guard/suite.json`                                          | TS        |
 | pr-update            | TS, Rust                    | `rust/pr-update/tests/fixtures/parity.json`                                         | TS        |

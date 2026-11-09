@@ -1,20 +1,12 @@
-# Answers questions on pull requests. Mention @claude in a pull request
-# comment, an inline review comment or a review, and Claude replies in a
-# comment on the pull request.
+# Mention @claude in a pull request comment, an inline review comment or a
+# review and Claude replies on the pull request. A comment that starts with
+# `@claude review [focus]` gets a /craft:code-review of the pull request
+# instead. The work is the claude-pr action (packages/gh-actions/claude-pr);
+# this file only says when it runs and with what.
 #
-# Only sksizer can trigger it: each job's `if` checks the comment's author
-# before a runner starts, so nobody else's comment spends a runner minute or
-# a token. Comments on issues are skipped too.
-#
-# Claude only reads and answers here. `--disallowedTools` removes the file
-# edit tools and Bash, which the action would otherwise use to commit and
-# push to the pull request's branch.
-#
-# Auth is CLAUDE_CODE_OAUTH_TOKEN, a token from `claude setup-token` that
-# bills to a Claude subscription. The action talks to GitHub as the Claude
-# GitHub App, which must be installed on the repository.
-#
-# Every action is pinned to a commit SHA; the comment names its release.
+# Only sksizer can trigger it: the job's `if` checks the author before a
+# runner starts. The action is taken from main, never from the pull request,
+# so a pull request cannot change what runs with the API key.
 name: claude
 
 on:
@@ -27,38 +19,19 @@ on:
 
 permissions: {}
 
-concurrency:
-  group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
-  cancel-in-progress: false
-
 jobs:
-  answer:
+  claude:
     if: >-
-      (github.event_name == 'issue_comment'
-        && github.event.issue.pull_request
-        && github.event.comment.user.login == 'sksizer'
-        && contains(github.event.comment.body, '@claude'))
-      || (github.event_name == 'pull_request_review_comment'
-        && github.event.comment.user.login == 'sksizer'
-        && contains(github.event.comment.body, '@claude'))
-      || (github.event_name == 'pull_request_review'
-        && github.event.review.user.login == 'sksizer'
-        && contains(github.event.review.body, '@claude'))
+      (github.event.comment.user.login || github.event.review.user.login) == 'sksizer'
+      && contains(github.event.comment.body || github.event.review.body, '@claude')
+      && (github.event_name != 'issue_comment' || github.event.issue.pull_request)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: read
       pull-requests: write
       issues: write
-      id-token: write
-      actions: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: osdlc/osdlc/packages/gh-actions/claude-pr@main
         with:
-          fetch-depth: 1
-      - uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1.0.269
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          claude_args: >-
-            --max-turns 20
-            --disallowedTools "Edit,MultiEdit,Write,NotebookEdit,Bash"
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}

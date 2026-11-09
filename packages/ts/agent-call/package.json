@@ -32,6 +32,9 @@
   },
   "type": "module",
   "sideEffects": false,
+  "bin": {
+    "agent-call": "./dist/cli/bin.js"
+  },
   "engines": {
     "node": ">=22"
   },
@@ -68,7 +71,8 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
   },
   "dependencies": {
-    "@osdlc/command-seam": "workspace:^"
+    "@osdlc/command-seam": "workspace:^",
+    "yaml": "catalog:"
   },
   "devDependencies": {
     "@osdlc/prettier-config": "workspace:^",

@@ -14,6 +14,9 @@ export default defineConfig({
   },
   test: {
     include: ['tests/**/*.test.ts', 'examples/**/*.test.ts'],
+    // The export checks build a TypeScript program and the pane tests spawn processes; on macOS
+    // runners under a parallel workspace run they exceed the 5s default.
+    testTimeout: 20000,
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
