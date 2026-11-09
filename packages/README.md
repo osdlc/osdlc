@@ -84,7 +84,8 @@ the standard.
   conformance suite checks it: `packages/conformance/<family>/`, listed in
   `packages/conformance/families.json`, run by every implementation's tests,
   with expected values written by the reference implementation's generator.
-  `pnpm run check:conformance` checks the suites. `tiered-dirs`,
+  `pnpm run check:conformance` checks the suites with `@osdlc/conformance-suites`;
+  `packages/conformance/config.json` holds its exemptions. `tiered-dirs`,
   `config-layers`, `corpus-schema`, `frontmatter-lossless`, `intersect` and
   `path-guard` are there. Until they move, `gfm-pipe-table` (the Rust implementation of
   `@osdlc/gfm-table`) keeps `packages/rust/gfm-pipe-table/tests/fixtures/parity.json`,
@@ -259,6 +260,11 @@ Developed here, in this repository:
   that finds the branches, worktrees and remote branches that have been merged
   and can go away, with the evidence and the command for each, and applies an
   approved plan compare-and-swap)
+- `packages/ts/conformance-suites` (`@osdlc/conformance-suites` on npm, the `conformance-suites`
+  command that checks the library families' suites in
+  `packages/conformance/` against
+  [S-conformance-suites](../docs/planning/standards/S-conformance-suites.md)
+  and runs their generators; any repository with the same layout can use it)
 - `packages/ts/ref-lease` (`@osdlc/ref-lease` on npm, compare-and-swap leases
   on git refs: create, replace and delete a ref at any git remote only if it
   still holds the sha you read, through `git push --force-with-lease`, with the
