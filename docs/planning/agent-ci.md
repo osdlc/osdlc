@@ -254,7 +254,7 @@ approved on 2026-11-08. Decisions:
 - `pr-update` (`packages/ts/pr-update/src/repair/agents.ts:97`) calls
   `callAgent` with no signal, so interrupting it leaves the agent running.
   Follow-up from [#723](https://github.com/osdlc/osdlc/pull/723); fixed by
-  [#741](https://github.com/osdlc/osdlc/pull/741) (draft). It is the only other caller.
+  [#741](https://github.com/osdlc/osdlc/pull/741), in review. It is the only other caller.
 
 ## PR process
 
