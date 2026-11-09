@@ -114,7 +114,7 @@
       "path": "packages/rust/web-access/src/guard.rs",
       "line": 279,
       "title": "Tokens that differ only in leading or trailing whitespace pass push, but HTTP strips that whitespace from the header and the cookie parser trims it",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/704#discussion_r4509119660",
       "status": "fixed",
       "reason": null,
       "fixedIn": "64e35e8b"
