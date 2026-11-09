@@ -13,7 +13,6 @@ import { afterAll, beforeAll, expect, test } from 'vitest'
 
 const posix = process.platform !== 'win32'
 const dir = mkdtempSync(join(tmpdir(), 'agent-call-interrupt-'))
-afterAll(() => rmSync(dir, { recursive: true, force: true }))
 
 const PACKAGE_DIR = join(import.meta.dirname, '..')
 const HOST = join(import.meta.dirname, 'support', 'interrupt-host.mjs')
@@ -21,6 +20,11 @@ const HOST = join(import.meta.dirname, 'support', 'interrupt-host.mjs')
 // type stripping does not run. It sits under node_modules/.cache, so the
 // package's dependencies resolve from it.
 const EMITTED = join(PACKAGE_DIR, 'node_modules', '.cache', 'interrupt-host')
+
+afterAll(() => {
+  rmSync(dir, { recursive: true, force: true })
+  rmSync(EMITTED, { recursive: true, force: true })
+})
 
 beforeAll(() => {
   execFileSync(
