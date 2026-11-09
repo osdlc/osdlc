@@ -335,7 +335,7 @@ function runEnv(
     }),
     cfg,
     ports: standalonePorts(cfg, projectRoot, ctx.signal),
-    ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
+    signal: ctx.signal,
   }
 }
 
@@ -606,8 +606,8 @@ async function runUpdateCommand(
       failure,
     })),
   })
-  if (listingFailure !== null) return listingFailure
   if (ctx.signal?.aborted === true) return EXIT_INTERRUPTED
+  if (listingFailure !== null) return listingFailure
   return out.counts.conflict > 0 || out.counts.failed > 0 ? EXIT.error : EXIT.ok
 }
 

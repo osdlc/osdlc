@@ -431,8 +431,12 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
       })),
     )
   }
-  // A rehearsal cannot repair, so its failures say nothing about a real run.
-  if (writes && attempts !== undefined) recordAttempts(attempts, results)
+  // A rehearsal cannot repair, so its failures say nothing about a real run. An
+  // interrupted run records nothing: its last PR may have failed only because it
+  // was stopped, and a recorded failure would skip that PR on the next run.
+  if (writes && attempts !== undefined && env.signal?.aborted !== true) {
+    recordAttempts(attempts, results)
+  }
 
   const local = new Map<number, LocalCheckout>()
   if (writes && args.branch !== undefined) {

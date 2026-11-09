@@ -64,6 +64,15 @@ describe('pr-update update with verify: test', () => {
     expect(await main(['update'], captureContext({ cwd: dir, env }), fakeTools)).toBe(EXIT.ok)
   })
 
+  test('an aborted run exits 130, and an unaborted one exits 0', async () => {
+    const { dir, env } = project('pr_update:\n  verify: test\n  test_command: make test\n')
+    const ctl = new AbortController()
+    ctl.abort()
+    const aborted = captureContext({ cwd: dir, env, signal: ctl.signal })
+    expect(await main(['update'], aborted, fakeTools)).toBe(130)
+    expect(await main(['update'], captureContext({ cwd: dir, env }), fakeTools)).toBe(EXIT.ok)
+  })
+
   test('without test_command fails before touching any PR', async () => {
     const { dir, env } = project('pr_update:\n  verify: test\n  test_command: null\n')
     await expect(main(['update'], captureContext({ cwd: dir, env }), fakeTools)).rejects.toThrow(

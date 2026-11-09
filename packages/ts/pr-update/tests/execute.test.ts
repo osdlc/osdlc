@@ -1165,6 +1165,32 @@ describe('updateAll', () => {
     expect(tally(results)).toEqual({ updated: 1, 'up-to-date': 0, conflict: 1, failed: 0 })
   })
 
+  test('an abort stops the run before the next PR is updated', async () => {
+    const { git } = fx.worker
+    for (const branch of ['a', 'b']) {
+      git.checkout('main', { branch })
+      fx.worker.commit(`${branch} work`, { [`${branch}.txt`]: `${branch}\n` })
+      git.push('origin', branch)
+    }
+    git.checkout('main')
+    git.fetch('origin')
+
+    const ctl = new AbortController()
+    const results = await updateAll(
+      git,
+      [target({ number: 1, head: 'a' }), target({ number: 2, head: 'b' })],
+      SETTINGS,
+      recorder(),
+      {
+        apply: true,
+        worktreeRoot: join(fx.worker.dir, '.pr-update', 'abort'),
+        onResult: () => ctl.abort(),
+        signal: ctl.signal,
+      },
+    )
+    expect(results.map((r) => r.number)).toEqual([1])
+  })
+
   test("untracked output one PR's verify left is not committed into the next PR", async () => {
     const { git } = fx.worker
     for (const [branch, file] of [
