@@ -134,9 +134,9 @@
       "line": 226,
       "title": "Tokens::none says a whitespace-only-once-decoded token arrives empty; a %20 token arrives intact as a header and as the server-set cookie",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "458a32c2"
     }
   ]
 }
