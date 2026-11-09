@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-06
+
+A walk can keep going past what it cannot read and say what that was.
+
+### Changed
+
+- `WalkOptions::propagate_errors: bool` is now `WalkOptions::errors:
+  Errors` (`vfs-walk`'s, re-exported): `Skip` (the default, was `false`),
+  `Propagate` (was `true`) or the new `Report`.
+- `WalkOutcome` is no longer `Clone`: its new `errors` field holds
+  `VfsError`s, which are not.
+
+### Added
+
+- `Errors::Report`: the walk skips what it cannot read, as `Skip` does, and
+  `walk_reporting` returns each folder it could not list and each file it
+  could not stat in `WalkOutcome::errors`, in the order met. A folder that
+  overlapping roots both reach is reported once. A file the walk does not
+  list (not collected, or dropped by `min_bytes`) is not reported.
+  `WalkOptions::admission` answers under `Report` as under `Skip`.
+- `Errors` re-exported from the crate root and `walk`.
+
 ## [0.5.0] - 2026-11-04
 
 Built on `vfs-seam` 0.2 and `vfs-walk` 0.2, whose modification times are

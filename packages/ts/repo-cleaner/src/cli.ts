@@ -29,6 +29,7 @@ import {
   askYesNo,
   canPrompt,
   defineCli,
+  renderError,
   type Cli,
   type CliContext,
   type FlagSpec,
@@ -73,7 +74,15 @@ import {
 } from './status-line.ts'
 import { stepBoard, type StepBoard } from './step-board.ts'
 import { sweep as sweepTargets, sweptWith, type SweepOptions } from './sweep.ts'
-import { KINDS, RISKS, RepoCleanerError, type Kind, type Sweep } from './types.ts'
+import {
+  KINDS,
+  RISKS,
+  RepoCleanerError,
+  sweepNotes,
+  type Kind,
+  type RepoNote,
+  type Sweep,
+} from './types.ts'
 
 const EXIT_NOTHING_TO_SWEEP = 10
 const EXIT_STEP_FAILED = 11
@@ -131,7 +140,7 @@ const TARGETS = [
   {
     name: 'target',
     variadic: true,
-    help: 'a checkout, a directory of checkouts, or a remote URL (default: the checkout you are in)',
+    help: 'a checkout, a directory of checkouts, or a remote URL (default: the directory you are in)',
   },
 ] as const
 
@@ -434,6 +443,16 @@ function reportUnreadable(ctx: CliContext, name: string, s: Sweep): boolean {
   return failed.length > 0
 }
 
+/** Each repository's `RepoSweep.notes`, on stderr, for the outputs that do not carry them. */
+function reportNotes(ctx: CliContext, name: string, s: Sweep): void {
+  writeNotes(ctx, name, sweepNotes(s))
+}
+
+/** Notes as `<name>: <repo>: <note>` lines on stderr. A note quotes git's and the provider's output, so it goes out as an error line does, controls removed. */
+function writeNotes(ctx: CliContext, name: string, notes: readonly RepoNote[]): void {
+  for (const { repo, note } of notes) ctx.io.stderr(renderError(`${repo}: ${note}`, name))
+}
+
 function runReport(argv: readonly string[], ctx: CliContext, status: StatusLine): number {
   const parsed = parseWith(reportCli(), NAME, argv, ctx)
   if (parsed.status === 'done') return parsed.code
@@ -452,6 +471,7 @@ function runReport(argv: readonly string[], ctx: CliContext, status: StatusLine)
   if (v.format === 'json') ctx.io.stdout(renderJson(s))
   else if (v.format === 'summary') ctx.io.stdout(renderSummary(s, style) + remoteNote(s, style))
   else if (v.format === 'commands') {
+    reportNotes(ctx, NAME, s)
     const commands = renderCommands(s)
     if (commands.length > 0) ctx.io.stdout(commands.join('\n') + '\n')
   } else {
@@ -473,6 +493,7 @@ function runPlan(argv: readonly string[], ctx: CliContext, status: StatusLine): 
     return EXIT_NOTHING_TO_SWEEP
   }
   const plan = planOf(swept.sweep)
+  reportNotes(ctx, name, swept.sweep)
   const unreadable = reportUnreadable(ctx, name, swept.sweep)
   const style = styleFor(ctx, 'stderr')
   ctx.io.stderr(renderTotals(swept.sweep, style) + '\n' + remoteNote(swept.sweep, style))
@@ -638,11 +659,27 @@ function runClean(
     return refusal(ctx, name, err)
   }
   status.clear()
+  // The re-check's notes: from the sweep just made, or from sweeping a saved
+  // plan's repositories again. The run re-checks once more; only a note that
+  // is new by then is printed again.
+  const noted = new Set<string>()
+  const notesOnce = (notes: readonly RepoNote[]): void =>
+    writeNotes(
+      ctx,
+      name,
+      notes.filter(({ repo, note }) => {
+        const key = `${repo}\0${note}`
+        if (noted.has(key)) return false
+        noted.add(key)
+        return true
+      }),
+    )
+  notesOnce(preview.notes)
 
   const showPreview = (): void => {
     if (v.format === 'json') {
       ctx.io.stdout(
-        `${JSON.stringify({ dryRun: v.dryRun, summary: summarizeRun(preview), steps: preview.steps, dropped: preview.dropped, unusedAllows: preview.unusedAllows }, null, 2)}\n`,
+        `${JSON.stringify({ dryRun: v.dryRun, summary: summarizeRun(preview), steps: preview.steps, dropped: preview.dropped, unusedAllows: preview.unusedAllows, notes: preview.notes }, null, 2)}\n`,
       )
     } else {
       ctx.io.stdout(renderPreview(preview, style))
@@ -675,6 +712,11 @@ function runClean(
       source,
       receiptPath,
       now: () => new Date(),
+      onNotes: (notes) => {
+        // The run's re-check draws its progress on the status line.
+        status.clear()
+        notesOnce(notes)
+      },
       ...(live
         ? {
             // The board carries the run's progress; the status line stays clear.

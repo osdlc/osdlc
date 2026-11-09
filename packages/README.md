@@ -32,6 +32,10 @@ of them.
   `<crate>/vX.Y.Z`, for example `etag-write/v0.1.0`, and gets a GitHub
   release. The crate name keeps one crate's tags apart from another's, so
   it must be unique across `packages/rust/`.
+- Composite GitHub Actions live in `packages/gh-actions/<name>/`. They are
+  not published to a registry: callers reference them by path and commit,
+  and all of them share one version tag, `v1`.
+  [`gh-actions/README.md`](gh-actions/README.md) covers their shape.
 - A library can move to its own repository later if it grows.
 
 ## Licenses
@@ -70,7 +74,8 @@ implementation. A build of one implementation for another runtime, such as
 `@osdlc/yaml-splice` (the crate built to WebAssembly), is a binding, not an
 implementation, and keeps its own version. The rules below apply when the
 implementations are hosted here. They keep the same behaviour, not the same
-code.
+code. A family that states a format in a `SPEC.md`, such as `corpus-schema`, may
+have one implementation so far.
 [S-conformance-suites](../docs/planning/standards/S-conformance-suites.md) is
 the standard.
 
@@ -80,8 +85,8 @@ the standard.
   `packages/conformance/families.json`, run by every implementation's tests,
   with expected values written by the reference implementation's generator.
   `pnpm run check:conformance` checks the suites. `tiered-dirs`,
-  `config-layers`, `frontmatter-lossless`, `intersect` and `path-guard` have
-  moved there. Until they move, `gfm-pipe-table` (the Rust implementation of
+  `config-layers`, `corpus-schema`, `frontmatter-lossless`, `intersect` and
+  `path-guard` are there. Until they move, `gfm-pipe-table` (the Rust implementation of
   `@osdlc/gfm-table`) keeps `packages/rust/gfm-pipe-table/tests/fixtures/parity.json`,
   `markdown-link` its crate's `tests/fixtures/conformance.json`, and
   `markdown-contract` runs the TypeScript package's `corpus/` directly.
@@ -160,18 +165,28 @@ Developed here, in this repository:
 - `packages/rust/vfs-walk` (`vfs-walk` on crates.io, the folder walk over
   `vfs-seam`, with no Markdown or vault rules; builds for
   `wasm32-unknown-unknown`)
+- `packages/rust/web-access` (`web-access` on crates.io, puts an axum app on
+  the local network safely: listen settings, minted tokens, a request guard
+  with grants and access contexts, a route permission table and a server that
+  can be stopped)
 - `packages/rust/yaml-splice` (`yaml-splice` on crates.io)
 - `packages/rust/yaml-splice-wasm`, the WebAssembly build of `yaml-splice`
   for its npm package (not published to crates.io)
 - `packages/ts/yaml-splice` (`@osdlc/yaml-splice` on npm, the crate built to
   WebAssembly, with the built `wasm/` committed)
 - `packages/ts/etag-write` (`@osdlc/etag-write` on npm, the crate's TypeScript implementation)
+- `packages/ts/file-lock` (`@osdlc/file-lock` on npm, cross-process exclusive
+  file locks: a held lock with an owner token and a staleness rule, and a short
+  critical section; TypeScript only, since Rust has `File::lock`)
 - `packages/ts/frontmatter-lossless` (`@osdlc/frontmatter-lossless` on npm,
   the TypeScript implementation of the `frontmatter-lossless` crate)
 - `packages/ts/color` (`@osdlc/color` on npm, sRGB colour arithmetic for
   contrast checks)
 - `packages/ts/agent-call` (`@osdlc/agent-call` on npm, one call spec for
   headless coding-agent CLIs)
+- `packages/ts/agent-seat` (`@osdlc/agent-seat` on npm, opens an interactive
+  coding-agent session in the terminal app, multiplexer or editor a person
+  already uses, behind one host contract in optional parts)
 - `packages/ts/observe` (`@osdlc/observe` on npm, a JSONL log envelope with
   correlation ids, agent session records, a process scan and reconcile)
 - `packages/ts/tiered-dirs` (`@osdlc/tiered-dirs` on npm, machine-local
@@ -179,6 +194,11 @@ Developed here, in this repository:
 - `packages/ts/markdown-contract` (`@osdlc/markdown-contract` on npm,
   contracts for markdown documents: one parse gives findings with lines and a
   typed model; contracts in TypeScript or YAML, a folder runner and a CLI)
+- `packages/ts/corpus-schema` (`@osdlc/corpus-schema` on npm, the validator
+  for the [corpus-schema spec](./conformance/corpus-schema/SPEC.md): what a
+  corpus declares about itself, typed records kept as Markdown, YAML and JSON
+  files in a folder, checked against the schemas, ids and links the folder
+  holds; a library and a `corpus-schema` command)
 - `packages/ts/markdown-link` (`@osdlc/markdown-link` on npm, wikilink and
   relative markdown link parsing with spans, and the code lexer that keeps
   links in code out; the TypeScript implementation of the parsing half of the
@@ -238,6 +258,10 @@ Developed here, in this repository:
   that reviews a change against the `CLAUDE.md` and `AGENTS.md` files that
   govern it, one headless agent judgement per rule file, and runs a folder of
   path-scoped check scripts)
+- `packages/ts/ref-lease` (`@osdlc/ref-lease` on npm, compare-and-swap leases
+  on git refs: create, replace and delete a ref at any git remote only if it
+  still holds the sha you read, through `git push --force-with-lease`, with the
+  payload as canonical JSON in the ref's commit)
 
 The development repository will take each TypeScript library from npm, like
 any other consumer. Today it still keeps its own copies. Open issues and pull

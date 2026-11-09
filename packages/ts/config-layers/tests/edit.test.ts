@@ -8,7 +8,7 @@ import { describe, expect, test } from 'vitest'
 
 import { parse } from 'yaml'
 
-import { setPath, unsetPath } from '../src/edit.ts'
+import { reconcileYaml, rewriteMigrated, setPath, unsetPath } from '../src/edit.ts'
 
 const FIXTURE = `# Project config.   Odd  spacing is deliberate.
 
@@ -208,5 +208,131 @@ service:
     expect(setPath(src, ['service', 'features', 'alpha'], false)).toBe(
       src.replace('alpha: true', 'alpha: false'),
     )
+  })
+})
+
+describe('reconcileYaml', () => {
+  const MACHINE = `# Machine config.
+
+dirs:
+  - ~/dev   # main
+agent:
+  claude:
+    command: claude  # the CLI
+  codex:
+    command: codex
+trust:
+  owners: [me]   # only me
+`
+  const AGENT = { claude: { command: 'claude' }, codex: { command: 'codex' } }
+
+  test('a renamed key: the rest of the file keeps every byte, comments included', () => {
+    const out = reconcileYaml(MACHINE, {
+      repos: ['~/dev'],
+      agent: AGENT,
+      trust: { owners: ['me'] },
+      version: 2,
+    })
+    expect(out).toBe(
+      MACHINE.replace('dirs:\n  - ~/dev   # main\n', '') + 'repos:\n  - ~/dev\nversion: 2\n',
+    )
+  })
+
+  test('a nested move edits inside its parent and keeps the sibling block', () => {
+    const out = reconcileYaml(MACHINE, {
+      dirs: ['~/dev'],
+      agent: { codex: { command: 'codex' } },
+      agents: { claude: { command: 'claude' } },
+      trust: { owners: ['me'] },
+    })
+    expect(out).toBe(
+      MACHINE.replace('  claude:\n    command: claude  # the CLI\n', '') +
+        'agents:\n  claude:\n    command: claude\n',
+    )
+  })
+
+  test('a key replaced by a sibling keeps its parent in place', () => {
+    const src = 'a:   # the a block\n  old: 1\nz: 2\n'
+    expect(reconcileYaml(src, { a: { new: 1 }, z: 2 })).toBe('a:   # the a block\n  new: 1\nz: 2\n')
+  })
+
+  test('a mapping emptied on purpose stays as {}', () => {
+    expect(reconcileYaml('a:\n  b: 1\nc: 2\n', { a: {}, c: 2 })).toBe('a: {}\nc: 2\n')
+  })
+
+  test('a changed list is replaced whole; an unchanged one is not touched', () => {
+    const out = reconcileYaml(MACHINE, {
+      dirs: ['~/dev'],
+      agent: AGENT,
+      trust: { owners: ['me', 'you'] },
+    })
+    expect(out).toBe(
+      MACHINE.replace(
+        '  owners: [me]   # only me\n',
+        '  owners:   # only me\n    - me\n    - you\n',
+      ),
+    )
+  })
+
+  test('no difference gives the text back unchanged; undefined counts as absent', () => {
+    const same = { dirs: ['~/dev'], agent: AGENT, trust: { owners: ['me'] }, gone: undefined }
+    expect(reconcileYaml(MACHINE, same)).toBe(MACHINE)
+  })
+
+  test('strings that would read as other types are quoted, so they read back the same', () => {
+    expect(reconcileYaml('a: 1\n', { a: '1', b: 'true', c: null, d: '' })).toBe(
+      'a: "1"\nb: "true"\nc: null\nd: ""\n',
+    )
+  })
+
+  test('an empty or comment-only document gains the keys', () => {
+    expect(reconcileYaml('', { a: 1 })).toBe('a: 1\n')
+    expect(reconcileYaml('# head\n', { a: { b: 'x' } })).toBe('# head\na:\n  b: x\n')
+  })
+
+  test('every key removed leaves the comments that stood apart', () => {
+    expect(reconcileYaml('# head\n\na: 1\n', {})).toBe('# head\n\n')
+  })
+
+  test('a document that is not a mapping, or does not parse, throws', () => {
+    expect(() => reconcileYaml('- a\n', { a: 1 })).toThrow(/not a mapping/)
+    expect(() => reconcileYaml('a: [\n', { a: 1 })).toThrow()
+  })
+
+  test('an edit that cannot be made throws, naming why', () => {
+    const src = 'defaults: &d\n  a: 1\nservice:\n  <<: *d\n  mode: fast\n'
+    expect(() =>
+      reconcileYaml(src, { defaults: { a: 1 }, service: { '<<': { a: 1 }, mode: 'slow' } }),
+    ).toThrow(/anchor defined outside that block/)
+  })
+})
+
+describe('rewriteMigrated', () => {
+  test('edits when it can', () => {
+    expect(rewriteMigrated('# keep\na: 1\n', { a: 2 })).toEqual({
+      text: '# keep\na: 2\n',
+      rewrite: 'edited',
+    })
+  })
+
+  test('renders the document again when the edit cannot be made', () => {
+    const src = '# lost\ndefaults: &d\n  a: 1\nservice:\n  <<: *d\n  mode: fast\n'
+    const target = { defaults: { a: 1 }, service: { '<<': { a: 1 }, mode: 'slow' } }
+    const out = rewriteMigrated(src, target)
+    expect(out.rewrite).toBe('reserialized')
+    expect(out.text).not.toContain('# lost')
+    expect(parse(out.text)).toEqual(target)
+  })
+
+  test('renders the document again when yaml-splice refuses the edit', () => {
+    // yaml-splice matches keys case-insensitively, so editing `a` beside `A` is ambiguous.
+    const out = rewriteMigrated('# lost\nA: 1\na: 2\n', { A: 1, a: 3 })
+    expect(out.rewrite).toBe('reserialized')
+    expect(parse(out.text)).toEqual({ A: 1, a: 3 })
+  })
+
+  test('any other error is thrown, not hidden behind a re-render', () => {
+    // A step that leaves a value no JSON-shaped target can hold is a bug in the step.
+    expect(() => rewriteMigrated('# keep\na: 1\n', { a: 2n })).toThrow(TypeError)
   })
 })
