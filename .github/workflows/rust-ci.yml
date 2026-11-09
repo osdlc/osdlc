@@ -11,6 +11,13 @@
 # the other jobs skip when nothing under the Rust paths changed. `rust`
 # passes when every job it needs passed or was skipped.
 #
+# A draft pull request that pr-update.yml just updated (a push by
+# osdlc-release[bot]; `github.actor` is that pusher) runs none of the Rust
+# jobs: `changes` reports rust=false, so every job skips and `rust` still
+# reports success. A draft that a person pushes to runs as today. Marking the
+# pull request ready runs the jobs (`ready_for_review`). A push to main and a
+# manual run are never drafts and run as before.
+#
 # The toolchain is the pin in packages/rust/rust-toolchain.toml (with the
 # wasm32 target added in the `wasm` job), except in the `msrv` job (the
 # workspace `rust-version`) and the `minimal-versions` lockfile step (a dated
@@ -21,6 +28,7 @@ name: rust
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
   workflow_dispatch:
@@ -68,10 +76,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           EVENT: ${{ github.event_name }}
           PR: ${{ github.event.pull_request.number }}
+          DRAFT: ${{ github.event.pull_request.draft == true && github.actor == 'osdlc-release[bot]' }}
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.sha }}
         run: |
           set -euo pipefail
+          if [ "$EVENT" = pull_request ] && [ "$DRAFT" = true ]; then
+            echo "rust=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           files=""
           case "$EVENT" in
             pull_request)
