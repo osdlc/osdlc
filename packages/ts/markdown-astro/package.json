@@ -1,0 +1,95 @@
+{
+  "name": "@osdlc/markdown-astro",
+  "version": "0.7.1",
+  "description": "Brings Obsidian-vault markdown (wikilinks, embeds) into Astro content collections: rewrites embeds, copies assets, resolves wikilinks at build time",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/ts/markdown-astro"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/ts/markdown-astro#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "keywords": [
+    "obsidian",
+    "astro",
+    "wikilinks",
+    "embeds",
+    "markdown",
+    "content-collections",
+    "remark",
+    "vault"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./remark": {
+      "types": "./dist/remark-wikilinks.d.ts",
+      "default": "./dist/remark-wikilinks.js"
+    }
+  },
+  "bin": {
+    "markdown-astro": "./bin/markdown-astro.js"
+  },
+  "files": [
+    "dist/",
+    "bin/",
+    "README.md",
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE"
+  ],
+  "scripts": {
+    "build": "cli-tool-stamp-version --out src/version.generated.ts && tsc -p tsconfig.build.json",
+    "stamp-version": "cli-tool-stamp-version --out src/version.generated.ts",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "test": "vitest run",
+    "bench": "vitest bench --run",
+    "coverage": "vitest run --coverage",
+    "smoke": "node tests/smoke.mjs",
+    "prepublishOnly": "npm run clean && npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
+  },
+  "dependencies": {
+    "@osdlc/cli-tool": "workspace:^",
+    "@osdlc/frontmatter-lossless": "workspace:^",
+    "@osdlc/markdown-link": "workspace:^",
+    "@osdlc/markdown-render": "workspace:^",
+    "yaml": "catalog:"
+  },
+  "devDependencies": {
+    "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/tsconfig": "workspace:^",
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "rehype-stringify": "^10.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "remark-rehype": "^11.1.2",
+    "typescript": "catalog:",
+    "unified": "^11.0.5",
+    "vitest": "catalog:",
+    "zod": "catalog:"
+  },
+  "peerDependencies": {
+    "zod": "^4"
+  }
+}
