@@ -136,22 +136,21 @@ move; merged PRs drop off.
 | Order | PR | What | Why this order | Status |
 | --- | --- | --- | --- | --- |
 | 1 | [#747](https://github.com/osdlc/osdlc/pull/747) | codex.yml and cursor.yml callers | Clean and green now; first live run of codex-pr and cursor-pr; gate: no findings | waiting on your review since 06:56 UTC; set OPENAI_API_KEY and CURSOR_API_KEY before merging; mergeable |
-| 2 | [#741](https://github.com/osdlc/osdlc/pull/741) | Interrupting a host kills the agent: command-seam exports group tracking, agent-call registers the agent group, pr-update installs forwarding | Gate done after the rework (2 fixed); its node 22 check now fails, so look after #747 | waiting on your review since 07:00 UTC; verify (ubuntu, node 22) failing; 6 checks still running |
+| 2 | [#741](https://github.com/osdlc/osdlc/pull/741) | Interrupting a host kills the agent: command-seam exports group tracking, agent-call registers the agent group, pr-update installs forwarding | Gate done after the rework (2 fixed); the node 22 failure cleared on rerun | waiting on your review since 07:00 UTC; no failures; 2 macOS checks still running |
 | 3 | [#749](https://github.com/osdlc/osdlc/pull/749) | Shared reusable workflows for TypeScript package CI and release (adds a `ts-packages` gh-action) | From the shared-CI work, not this plan; listed because it edits `packages/gh-actions/README.md` | waiting on your review since 06:50 UTC; CI rerunning after the bot merged main (earlier failures gone) |
-| 4 | [#748](https://github.com/osdlc/osdlc/pull/748) | Move the package checks into `@osdlc/package-checks` | From the shared-CI work; touches agent-call only through its smoke test | waiting on your review since 06:38 UTC; CI rerunning after the bot merged main (earlier failures gone) |
+| 4 | [#748](https://github.com/osdlc/osdlc/pull/748) | Move the package checks into `@osdlc/package-checks` | From the shared-CI work; touches agent-call only through its smoke test | waiting on your review since 06:38 UTC; verify (ubuntu, node 22) failing again; 5 checks still running |
 
 ## PR tracker
 
-Checked 2026-11-09 16:17 UTC. A periodic check refreshes this table and the graph.
+Checked 2026-11-09 16:23 UTC. A periodic check refreshes this table and the graph.
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
-| [#750](https://github.com/osdlc/osdlc/pull/750) | feat(harness-knowledge): compiled harness facts, read by agent-call and detect-harness | draft | none | CI rerunning | another session's work in progress | this is the "harness-reference as agent-call's data" item |
 | [#749](https://github.com/osdlc/osdlc/pull/749) | ci: shared reusable workflows for TypeScript package CI and release | open | none | CI rerunning | waiting on your review (shared-CI work) | related; watch for gh-actions README conflicts |
-| [#748](https://github.com/osdlc/osdlc/pull/748) | package-checks: move the package checks into @osdlc/package-checks | open | none | CI rerunning | waiting on your review (shared-CI work) | related, not on this plan's path |
+| [#748](https://github.com/osdlc/osdlc/pull/748) | package-checks: move the package checks into @osdlc/package-checks | open | none | failing checks | verify (ubuntu, node 22) failing; waiting on your review (shared-CI work) | related, not on this plan's path |
 | [#747](https://github.com/osdlc/osdlc/pull/747) | ci: codex and cursor answer PR mentions | open | none | clean | waiting on your review; needs OPENAI_API_KEY and CURSOR_API_KEY | merge, then a live codex and cursor mention |
-| [#750](https://github.com/osdlc/osdlc/pull/750) | feat(harness-knowledge): compiled harness facts, read by agent-call and detect-harness | draft | none | checks running | waits on the skillwright harness-knowledge stack (osdlc/skillwright#97–#104) | phase 5 of the harness-knowledge plan; wires facts after the research lands |
-| [#741](https://github.com/osdlc/osdlc/pull/741) | fix: kill the agent's process group when its host is interrupted (command-seam, agent-call, pr-update) | open | none | CI rerunning | waiting on your review | rerun the failed job, merge |
+| [#750](https://github.com/osdlc/osdlc/pull/750) | feat(harness-knowledge): compiled harness facts, read by agent-call and detect-harness | draft | none | Windows tier 2 (node 24) failed on wayfinder timeouts, unrelated; rerun queued | waits on the skillwright stack merging (osdlc/skillwright#98, #100–#106); gate done (code review, codex) | phase 5 of the harness-knowledge plan; facts wired and consumer fixes in; re-sync from the release, then ready |
+| [#741](https://github.com/osdlc/osdlc/pull/741) | fix: kill the agent's process group when its host is interrupted (command-seam, agent-call, pr-update) | open | none | checks running | waiting on your review | merge once the macOS checks finish |
 | [#734](https://github.com/osdlc/osdlc/pull/734) | feat(gh-actions): codex-pr and cursor-pr, shared pr-common scripts, multi-marketplace plugins | merged | — | — | — | merged 2026-11-09; next: live test with caller workflows |
 | [#733](https://github.com/osdlc/osdlc/pull/733) | Version Packages (corpus-schema; unblocked the agent-call 0.10.0 publish) | merged | — | — | — | merged 2026-11-09; agent-call 0.10.0 on npm |
 | [#731](https://github.com/osdlc/osdlc/pull/731) | chore(conformance): drop markdown-tags from CATCHING_UP in the version PR | merged | — | — | — | merged into #726's branch 2026-11-09 |
