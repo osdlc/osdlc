@@ -134,12 +134,12 @@ move; merged PRs drop off.
 
 | Order | PR | What | Why this order | Status |
 | --- | --- | --- | --- | --- |
-| 1 | [#741](https://github.com/osdlc/osdlc/pull/741) | fix(pr-update): stop the repair agent when pr-update is interrupted | draft | none | CI running | pre-review gate after CI | merge |
-| [#734](https://github.com/osdlc/osdlc/pull/734) | codex-pr and cursor-pr actions; claude-pr moved onto shared pr-common scripts | Only PR waiting; gate done (5 fixed, code review clean) | waiting on your review since 04:10 UTC; behind main (conflict resolved by the bot's merge of main); not tested live |
+| 1 | [#734](https://github.com/osdlc/osdlc/pull/734) | codex-pr and cursor-pr actions; claude-pr moved onto shared pr-common scripts | Waiting longest; gate done (5 fixed, code review clean); unblocks the live codex/cursor test | waiting on your review since 04:10 UTC (over 2h; nudged 06:17); CI rerunning after the bot merged main; not tested live |
+| 2 | [#741](https://github.com/osdlc/osdlc/pull/741) | pr-update stops the repair agent on SIGINT/SIGTERM, exits 130 | Small; gate done (6 fixed, 5 declined with reasons); 354 tests pass | waiting on your review since 05:55 UTC; CI rerunning after the bot merged main |
 
 ## PR tracker
 
-Checked 2026-11-09 05:17 UTC. A periodic check refreshes this table and the graph.
+Checked 2026-11-09 06:17 UTC. A periodic check refreshes this table and the graph.
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
@@ -157,7 +157,7 @@ Checked 2026-11-09 05:17 UTC. A periodic check refreshes this table and the grap
 | [#713](https://github.com/osdlc/osdlc/pull/713) | docs(planning): plan coding agents in CI | merged | — | — | — | merged 2026-11-08 |
 | [#712](https://github.com/osdlc/osdlc/pull/712) | gh-actions: claude-setup, claude-pr-answer | closed | none  | —              | —                                                                    | closed 2026-11-08; branch kept as a starting point |
 | [#711](https://github.com/osdlc/osdlc/pull/711) | claude.yml: ANTHROPIC_API_KEY            | merged | none  | —              | —                                                                    | merged 2026-11-08        |
-| [#622](https://github.com/osdlc/osdlc/pull/622) | Proposal: transcripts in agent-call and observe | draft | none   | —              | —                                                                    | related to agent-call, not on this plan's path |
+| [#622](https://github.com/osdlc/osdlc/pull/622) | Proposal: transcripts in agent-call and observe | draft | none   | —              | CI: verify (ubuntu, node 22) failing | related to agent-call, not on this plan's path |
 | [#707](https://github.com/osdlc/osdlc/pull/707) | claude: hide full output again           | closed | none   | —              | —                                                                    | closed as moot 2026-11-08 |
 
 ## Principle
