@@ -8,7 +8,7 @@ The first release of `@osdlc/story-harness` on npm. It uses a component's static
 - `@osdlc/story-harness/browser`: `storyMetrics`, the in-page metrics hook for perf stories, and `seeded`, a deterministic PRNG.
 - `@osdlc/story-harness/playwright`: `defineStoryConfig`, `preparePage`, `openStory`, the perf helpers, and `budget`, `record` and `recordBrowser`, which write one report that every worker merges into. `openPerfStory`, `noLongTasks`, `paintedAt` and `responseEnd` are experimental.
 - `@osdlc/story-harness/runner`: `captureStories`, `captureCli`, `serveStatic` and `selectStories`.
-- Compiled ESM with `.d.ts`, Node 22 or newer. `@playwright/test` 1.62 or newer is a peer dependency. Licence `MIT OR Apache-2.0`.
+- Compiled ESM with `.d.ts`, Node 22 or newer. `@playwright/test` 1.62 or newer is a peer dependency, and `@osdlc/file-lock` its one runtime dependency. Licence `MIT OR Apache-2.0`.
 
 Changes since the last unpublished version in the history below. No earlier version was published, so the breaking ones cost no version bump:
 
@@ -20,5 +20,5 @@ Changes since the last unpublished version in the history below. No earlier vers
 - `openPerfStory` follows the newer metrics hook of a story that re-renders.
 - `story-shots --update` rewrites only the shots that no longer match, so an untouched story keeps its baseline byte for byte, and deletes the covered baselines it did not shoot. The image is pulled again when the cached one is for another platform.
 - `story-shots` checks a story's page errors before its shot, so `--update` never writes a crashed story's baseline; trims `--include` and `--exclude` items the same way when it prunes; hands what the container wrote back to the host user on Linux; and leaves a remote Docker context's endpoint alone.
-- A perf report keeps the date, CPU and load of the run's first writer, and a writer gives up after 30 s on a lock it cannot take. `defineStoryConfig` gives each run its own id (`STORY_PERF_RUN`), so a run never merges into a report an earlier run left, and a writer releases only its own lock.
+- A perf report keeps the date, CPU and load of the run's first writer, and a writer gives up after 30 s on a lock it cannot take. `defineStoryConfig` gives each run its own id (`STORY_PERF_RUN`), so a run never merges into a report an earlier run left, and a writer releases only its own lock. The report's lock is `@osdlc/file-lock`'s `withLock`, in place of the package's own, which closes a window where two workers could both hold it after a stale-lock takeover.
 - `story-shots` refuses a `--settle-ms` or `SHOT_WORKERS` that is not a whole number. It works around Docker Desktop's credential helper only for the first pull of the image, so `docker run` uses your own Docker config, proxies and context included. The container's npm cache is a named volume (`story-shots-npm-cache`), so only the first run downloads `@playwright/test`.

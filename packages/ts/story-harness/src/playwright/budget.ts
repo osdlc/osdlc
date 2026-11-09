@@ -8,20 +8,10 @@
  * parallel workers and a worker restarted after a failure keep each other's
  * values and verdicts.
  */
-import { randomUUID } from 'node:crypto'
-import {
-  existsSync,
-  linkSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  statSync,
-  type Stats,
-  writeFileSync,
-} from 'node:fs'
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { cpus, loadavg } from 'node:os'
 import { dirname, join } from 'node:path'
+import { LockTimeoutError, withLock } from '@osdlc/file-lock'
 import { expect } from '@playwright/test'
 
 export interface Verdict {
@@ -63,106 +53,8 @@ function readReport(outFile: string): PerfReport | undefined {
   }
 }
 
-/** A lock older than this was left by a worker that died holding it. */
-const STALE_LOCK_MS = 10_000
-/** Give up on the lock after this long, rather than spin forever. */
+/** Give up on the lock after this long, rather than wait forever. */
 const LOCK_DEADLINE_MS = 30_000
-
-const sleepSync = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
-
-/**
- * Remove `lock` only if it is still the file `seen` describes. The rename moves
- * one file, so two waiters cannot both take over the same stale lock. If a live
- * lock replaced the stale one after `seen` was read, it is put back. Without
- * hard links the put-back is a rename, which is skipped, with the same warning,
- * when a lock already exists at the path.
- *
- * Remaining race: between the rename and the put-back the lock path is empty,
- * so another waiter can take the lock while its holder is still live. Two
- * workers then hold it, and one merge can drop the other's perf values. The
- * lock guards only the perf report, so that is the whole cost; it is reported
- * with a warning.
- */
-export function removeStaleLock(
-  lock: string,
-  seen: { ino: number; dev: number; mtimeMs: number },
-  link: (existing: string, target: string) => void = linkSync,
-): boolean {
-  const aside = `${lock}.${process.pid}.${randomUUID()}`
-  try {
-    renameSync(lock, aside)
-  } catch {
-    return false // Another waiter moved it first, or its holder released it.
-  }
-  const moved = statSync(aside)
-  // The mtime check also catches a fresh lock that reused the stale one's inode.
-  if (moved.ino === seen.ino && moved.dev === seen.dev && moved.mtimeMs === seen.mtimeMs) {
-    rmSync(aside, { force: true })
-    return true
-  }
-  try {
-    link(aside, lock)
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') {
-      // No hard links on this filesystem: move the live lock back and wait,
-      // unless a waiter took the empty path meanwhile. A rename would then
-      // overwrite that new lock, so keep it and warn instead.
-      if (!existsSync(lock)) {
-        renameSync(aside, lock)
-        return false
-      }
-    }
-    console.warn(
-      `story-harness: ${lock} was taken while its holder was live; two workers may hold it and perf values may be lost`,
-    )
-  }
-  rmSync(aside, { force: true })
-  return false
-}
-
-/** Run `fn` while holding `<file>.lock`, so one process at a time reads, merges and writes. */
-function withLock(file: string, deadlineMs: number, fn: () => void): void {
-  const lock = `${file}.lock`
-  const token = `${process.pid}.${randomUUID()}`
-  const deadline = Date.now() + deadlineMs
-  for (;;) {
-    try {
-      // The token says whose lock it is, so a release never removes a lock
-      // another worker took over after judging this one stale.
-      writeFileSync(lock, token, { flag: 'wx' })
-      break
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
-      let seen: Stats | undefined
-      try {
-        seen = statSync(lock)
-      } catch {
-        // Released between the open and the stat.
-      }
-      if (seen && Date.now() - seen.mtimeMs > STALE_LOCK_MS) removeStaleLock(lock, seen)
-      if (Date.now() > deadline) {
-        throw new Error(
-          `story-harness: could not take ${lock} within ${deadlineMs / 1000} s; remove it if no run is writing the report`,
-        )
-      }
-      sleepSync(2)
-    }
-  }
-  try {
-    fn()
-  } finally {
-    releaseLock(lock, token)
-  }
-}
-
-/** Remove `lock` if it still holds `token`. */
-export function releaseLock(lock: string, token: string): void {
-  try {
-    if (readFileSync(lock, 'utf8') === token) rmSync(lock, { force: true })
-  } catch {
-    // Already gone: another worker took it over and released it.
-  }
-}
 
 const load = (): number[] => loadavg().map((v) => Number(v.toFixed(2)))
 
@@ -193,29 +85,41 @@ export function createPerfRecorder(options: PerfRecorderOptions = {}) {
   }
   mkdirSync(dirname(outFile), { recursive: true })
 
+  // Read, merge and write under `<outFile>.lock`, so one worker at a time does it.
+  const merge = () => {
+    const disk = readReport(outFile)
+    const sameRun = disk?.runId === runId ? disk : undefined
+    const report: PerfReport = {
+      // The run's first writer set the header; later workers keep it.
+      ...header,
+      ...(sameRun && {
+        mode: sameRun.mode,
+        date: sameRun.date,
+        cpu: sameRun.cpu,
+        loadBefore: sameRun.loadBefore,
+      }),
+      userAgent: own.userAgent || sameRun?.userAgent || '',
+      loadAfter: load(),
+      values: { ...sameRun?.values, ...own.values },
+      verdicts: { ...sameRun?.verdicts, ...own.verdicts },
+    }
+    // Write then rename, so a reader outside the lock never sees a half-written report.
+    const tmp = `${outFile}.${process.pid}.tmp`
+    writeFileSync(tmp, `${JSON.stringify(report, null, 2)}\n`)
+    renameSync(tmp, outFile)
+  }
   const write = () => {
-    withLock(outFile, lockDeadlineMs, () => {
-      const disk = readReport(outFile)
-      const sameRun = disk?.runId === runId ? disk : undefined
-      const report: PerfReport = {
-        // The run's first writer set the header; later workers keep it.
-        ...header,
-        ...(sameRun && {
-          mode: sameRun.mode,
-          date: sameRun.date,
-          cpu: sameRun.cpu,
-          loadBefore: sameRun.loadBefore,
-        }),
-        userAgent: own.userAgent || sameRun?.userAgent || '',
-        loadAfter: load(),
-        values: { ...sameRun?.values, ...own.values },
-        verdicts: { ...sameRun?.verdicts, ...own.verdicts },
-      }
-      // Write then rename, so a reader outside the lock never sees a half-written report.
-      const tmp = `${outFile}.${process.pid}.tmp`
-      writeFileSync(tmp, `${JSON.stringify(report, null, 2)}\n`)
-      renameSync(tmp, outFile)
-    })
+    try {
+      // A lock untouched for 10 s was left by a worker that died holding it,
+      // and is taken over.
+      withLock(`${outFile}.lock`, merge, { timeoutMs: lockDeadlineMs })
+    } catch (err) {
+      if (!(err instanceof LockTimeoutError)) throw err
+      throw new Error(
+        `story-harness: could not take ${err.path} within ${lockDeadlineMs / 1000} s; remove it if no run is writing the report`,
+        { cause: err },
+      )
+    }
   }
 
   return {

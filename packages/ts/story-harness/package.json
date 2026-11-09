@@ -70,6 +70,9 @@
     "lint": "oxlint .",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
   },
+  "dependencies": {
+    "@osdlc/file-lock": "workspace:^"
+  },
   "peerDependencies": {
     "@playwright/test": "^1.62.0"
   },
