@@ -117,7 +117,7 @@ flowchart LR
   class SETUP done
   class REV done
   class PERM,PROBE,CHECK,ANS,SPEC,MULTI next
-  class REL active
+  class REL external
   class CUR done
   class MCP,PUB,DATA,PIN,STRICT later
 ```
@@ -127,14 +127,15 @@ flowchart LR
 What is ready for your review, in the order to review it. Rewritten as PRs
 move; merged PRs drop off.
 
-Nothing is waiting on your review. Next for you: [#726](https://github.com/osdlc/osdlc/pull/726), the Version Packages PR, once it picks up #721 and #723 (it releases agent-call 0.10.0).
+Nothing is waiting on your review. [#726](https://github.com/osdlc/osdlc/pull/726), the Version Packages PR, now carries #721 and #723 (agent-call 0.10.0, plus corpus-schema 0.1.0 and markdown-tags 0.4.0), but its CI fails: `check:conformance` says "markdown-tags: listed in CATCHING_UP but its versions agree; remove it" (`scripts/conformance.ts:49`). That needs a one-line fix on main before #726 can merge.
 
 ## PR tracker
 
-Checked 2026-11-09 00:20 UTC. A periodic check refreshes this table and the graph.
+Checked 2026-11-09 01:20 UTC. A periodic check refreshes this table and the graph.
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
+| [#726](https://github.com/osdlc/osdlc/pull/726) | Version Packages (agent-call 0.10.0) | open | none | blocked | CI: markdown-tags still listed in CATCHING_UP | merge after the conformance fix |
 | [#721](https://github.com/osdlc/osdlc/pull/721) | feat(agent-call): enforce allow and deny tools on cursor | merged | — | — | — | merged 2026-11-09 |
 | [#723](https://github.com/osdlc/osdlc/pull/723) | fix(agent-call): follow-ups from the codex review of #715 | merged | — | — | — | merged 2026-11-09 |
 | [#716](https://github.com/osdlc/osdlc/pull/716) | feat(gh-actions): add the agent-setup action | merged | — | — | — | merged 2026-11-09 |
