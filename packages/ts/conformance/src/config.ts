@@ -3,7 +3,7 @@
  * Every key is optional.
  */
 
-import { DEFAULT_LIBRARY_ROOTS, type LibraryRoots } from './checks.ts'
+import { DEFAULT_LIBRARY_ROOTS, isObject, type LibraryRoots } from './checks.ts'
 
 /** The settings, with defaults filled in. */
 export interface ConformanceConfig {
@@ -31,9 +31,6 @@ export interface ConformanceConfig {
 
 const KEYS = ['libraries', 'catchingUp', 'unmigrated', 'skipScan']
 
-const isObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v)
-
 const isStringMap = (v: unknown): v is Record<string, string> =>
   isObject(v) && Object.values(v).every((x) => typeof x === 'string' && x.trim() !== '')
 
@@ -60,6 +57,10 @@ export function readConfig(raw: unknown): { config: ConformanceConfig } | { prob
     } else {
       for (const [language, dir] of Object.entries(libraries))
         config.libraries[language] = dir.replace(/\/+$/, '')
+      // A library's language is the root it is under, so neither root may hold the other.
+      const [ts, rust] = [config.libraries['ts']!, config.libraries['rust']!]
+      if (ts === rust || ts.startsWith(`${rust}/`) || rust.startsWith(`${ts}/`))
+        problems.push('config.json: libraries.ts and libraries.rust are separate directories')
     }
   }
   if (catchingUp !== undefined) {
