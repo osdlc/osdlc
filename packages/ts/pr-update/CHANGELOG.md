@@ -1,5 +1,11 @@
 # @osdlc/pr-update
 
+## 0.9.11
+
+### Patch Changes
+
+- 8aa9237: The merge strategy now writes the merge commit message `Merge <base> into <head>` with a body line naming the base sha, instead of git's default title that named the temporary local branch (`Merge remote-tracking branch 'origin/main' into pr-update/scratch-...`).
+
 ## 0.9.10
 
 ### Patch Changes
