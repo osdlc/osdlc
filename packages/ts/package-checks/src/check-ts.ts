@@ -112,6 +112,17 @@ function smokeFile(pkgDir: string): string | undefined {
   return existsSync(file) ? file : undefined
 }
 
+/**
+ * The report for a package that failed. A shape error lists one problem per
+ * line, and a failed command's message holds its stderr and stdout, so both
+ * are shown whole; any other error by its first line.
+ */
+export function failureLine(name: string, caught: unknown): string {
+  const err = caught as Error & { shape?: boolean }
+  const whole = err.shape === true || caught instanceof RunFailed
+  return `FAILED: ${name}: ${whole ? err.message : String(err.message).split('\n')[0]}`
+}
+
 /** Installs `tarball` into an empty project and loads each entry point the
  * way a Node consumer would. Code loads through `import()`. An entry with no
  * values passes if its `.d.ts` exports something. A JSON entry (a config
@@ -180,13 +191,16 @@ function cleanConsumer(
         console.log('consumer: loaded ' + spec)
       }
     `
-    process.stdout.write(
-      run('node', ['--input-type=module', '-e', probe(peers.map(peerName))], consumer),
-    )
+    // A file, not `node -e`, so a failure names a short command line.
+    const runProbe = (missing: string[]): void => {
+      writeFileSync(join(consumer, 'probe.mjs'), probe(missing))
+      process.stdout.write(run('node', ['probe.mjs'], consumer))
+    }
+    runProbe(peers.map(peerName))
     if (peers.length > 0) {
       run('npm', ['install', '--no-audit', '--no-fund', '--ignore-scripts', ...peers], consumer)
       console.log(`consumer: installed the optional peers ${peers.join(', ')}`)
-      process.stdout.write(run('node', ['--input-type=module', '-e', probe([])], consumer))
+      runProbe([])
     }
     const smoke = smokeFile(pkgDir)
     if (smoke) {
@@ -365,11 +379,8 @@ export function checkTsPackages(
       }
       cleanConsumer(pkg, pkgDir, tarball, packed)
     } catch (caught) {
-      const err = caught as Error & { shape?: boolean }
       failed++
-      // The shape problems are one per line; the other tools' output is long.
-      console.error(`FAILED: ${pkg.name}: ${err.shape ? err.message : err.message.split('\n')[0]}`)
-      if (caught instanceof RunFailed && caught.stdout) process.stdout.write(caught.stdout)
+      console.error(failureLine(pkg.name, caught))
     }
   }
   rmSync(out, { recursive: true, force: true })

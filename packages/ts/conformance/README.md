@@ -72,8 +72,9 @@ conformance write --reference ts          # run the generators and keep what the
   reference's version.
 - `--reference ts|rust` runs only the generators of families whose reference
   is that language.
-- `--families <path>` names another registry. Its directory holds the suites
-  and `config.json`.
+- `--families <path>` names another registry, inside the root. A relative
+  path is read from the root. Its directory holds the suites and
+  `config.json`.
 - `--root <dir>` is the repository root, by default the working directory.
 
 The exit code is 0 when everything passes, 1 on a problem, and 2 on a bad

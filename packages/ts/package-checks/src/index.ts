@@ -27,7 +27,7 @@ export {
   type Manifest,
   type Manifests,
 } from './affected.ts'
-export { checkTsPackages } from './check-ts.ts'
+export { checkTsPackages, failureLine } from './check-ts.ts'
 export {
   indexEntries,
   indexPath,

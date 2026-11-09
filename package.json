@@ -15,11 +15,11 @@
     "smoke": "pnpm -r --if-present run smoke",
     "lint": "pnpm -r --if-present run lint",
     "format:check": "pnpm -r --if-present run format:check",
-    "check:packages": "package-checks ts",
-    "check:crates": "package-checks rust",
-    "check:conformance": "conformance check",
+    "check:packages": "pnpm --filter '@osdlc/package-checks...' run build && package-checks ts",
+    "check:crates": "pnpm --filter '@osdlc/package-checks...' run build && package-checks rust",
+    "check:conformance": "pnpm --filter '@osdlc/conformance...' run build && conformance check",
     "typecheck:scripts": "tsc -p scripts/tsconfig.json && tsc -p bench/tsconfig.json",
-    "version-packages": "changeset version && pnpm -r --if-present run stamp-version && pnpm --filter @osdlc/wayfinder run build && pnpm --filter @osdlc/wayfinder run write:config-schema && conformance write --reference ts"
+    "version-packages": "changeset version && pnpm -r --if-present run stamp-version && pnpm --filter @osdlc/wayfinder --filter '@osdlc/conformance...' run build && pnpm --filter @osdlc/wayfinder run write:config-schema && conformance write --reference ts"
   },
   "devDependencies": {
     "@changesets/cli": "catalog:",

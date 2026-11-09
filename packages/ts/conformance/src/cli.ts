@@ -12,11 +12,12 @@
  *
  * `--reference ts|rust` limits the generators to the families whose reference
  * is that language. `--families <path>` names the registry, by default
- * packages/conformance/families.json. `--root <dir>` is the repository root,
+ * packages/conformance/families.json; a relative path is read from the root,
+ * and the file must be inside it. `--root <dir>` is the repository root,
  * by default the working directory.
  */
 
-import { resolve } from 'node:path'
+import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { parseArgs } from 'node:util'
 
 import { LANGUAGES } from './checks.ts'
@@ -53,7 +54,21 @@ export function main(argv: string[], io: CliIo = consoleIo): number {
     return 2
   }
   const root = resolve(values.root ?? process.cwd())
-  const options = { families: values.families, reference, run: io.run, log: io.out }
+  // The checks name files relative to the root, so the registry is too.
+  let families: string | undefined
+  if (values.families !== undefined) {
+    families = relative(root, resolve(root, values.families)).split(sep).join('/')
+    if (
+      families === '' ||
+      families.startsWith('../') ||
+      families === '..' ||
+      isAbsolute(families)
+    ) {
+      io.err(`--families must name a file inside --root, not ${values.families}\n${USAGE}`)
+      return 2
+    }
+  }
+  const options = { families, reference, run: io.run, log: io.out }
   try {
     // No checks first: a version bump writes the suites even when a check
     // fails, and the pull request it opens fails CI there instead.

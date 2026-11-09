@@ -157,6 +157,34 @@ test('--families names a registry elsewhere', () => {
   assert.equal(res.status, 0, res.lines.join('\n'))
 })
 
+test('an absolute --families is read as the same file under the root', () => {
+  const res = inRepo(
+    (put) => {
+      put('suites/families.json', JSON.stringify({ dirs: FAMILY }))
+      put('suites/dirs/README.md', '# dirs\n')
+      put('suites/dirs/suite.json', JSON.stringify(SUITE))
+      put('packages/ts/dirs/tests/c.test.ts', "readSuite('../../../../suites/dirs/suite.json')")
+      put('packages/rust/dirs/tests/c.rs', 'include_str!("../../../../suites/dirs/suite.json")')
+    },
+    (root) => {
+      const lines: string[] = []
+      const families = join(root, 'suites', 'families.json')
+      const status = main(['check', '--root', root, '--families', families], {
+        out: (l) => lines.push(l),
+        err: (l) => lines.push(l),
+      })
+      const outside = main(['check', '--root', root, '--families', join(root, '..', 'f.json')], {
+        out: (l) => lines.push(l),
+        err: (l) => lines.push(l),
+      })
+      return { status, outside, lines }
+    },
+  )
+  assert.equal(res.status, 0, res.lines.join('\n'))
+  assert.equal(res.outside, 2)
+  assert.match(res.lines.join('\n'), /--families must name a file inside --root/)
+})
+
 test('a bad command line exits 2 with the usage', () => {
   const lines: string[] = []
   const io = { out: (l: string) => lines.push(l), err: (l: string) => lines.push(l) }
