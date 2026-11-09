@@ -172,7 +172,8 @@ and fails if a suite changes, which catches a change to the reference whose
 expected values were not regenerated. It first builds each TypeScript
 reference and the workspace libraries it depends on, since a generator
 imports them through their `dist/`. CI runs it for the TypeScript
-references in `packages-ci.yml` and for the Rust references in `rust-ci.yml`.
+references in `ts-packages-ci.yml`, which `packages-ci.yml` calls, and for
+the Rust references in `rust-ci.yml`.
 
 ## Exemptions
 

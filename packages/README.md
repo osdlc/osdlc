@@ -21,7 +21,9 @@ of them.
 - TypeScript libraries are published to npm from CI with
   [Changesets](https://changesets.dev). `.github/workflows/packages-publish.yml`
   publishes through npm trusted publishing, with provenance, so no npm token
-  is stored. Only a new library's placeholder version is published by hand
+  is stored. It calls the shared release workflow,
+  `.github/workflows/ts-packages-release.yml`, which other repositories call
+  too ([`packages/gh-actions/ts-packages`](gh-actions/ts-packages/)). Only a new library's placeholder version is published by hand
   (see below).
 - Each published npm version gets a git tag and a GitHub release named
   `<package>@<version>`, for example `@osdlc/command-seam@0.4.0`. The sdlc
@@ -453,12 +455,16 @@ conformance check are packages, `@osdlc/package-checks` and
 scripts run their commands. The libraries themselves still support Node 22.
 
 `.github/workflows/packages-ci.yml` runs these and the smoke checks on Linux
-and macOS, on Node 22 and 24, and `pnpm run check:packages` on Node 24 only.
+and macOS, on Node 22, 24 and 26, and the package checks on Node 24 only. It
+does so by calling the shared CI workflow,
+`.github/workflows/ts-packages-ci.yml`, whose jobs report as
+`packages / changes` and `packages / verify (<os>, node <n>)`.
 On a pull request it checks only the libraries the pull request changed and
 the ones that depend on them. `package-checks affected` picks them. It
 lists the shared files that make it check every library, and the root
 `package-checks.json` adds this repository's own. path-guard also runs on
-Windows. The `verify` jobs always report, so they are the checks to require.
+Windows. The `packages / verify` jobs always report, so they are the checks
+to require.
 The libraries that start programs or resolve paths also run on Windows as
 tier 2 (`.github/workflows/packages-windows-tier2.yml`). Tier 2 reports, but
 never fails a pull request or blocks a release.

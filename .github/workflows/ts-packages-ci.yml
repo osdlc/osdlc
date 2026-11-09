@@ -1,0 +1,222 @@
+# Checks a pnpm workspace of TypeScript packages: the shared CI for every
+# repository that publishes packages the way osdlc/osdlc does. Call it from a
+# workflow of your own; packages/gh-actions/ts-packages/README.md shows how.
+# osdlc/osdlc's packages-ci.yml calls it too.
+#
+# `changes` picks the packages to check with `package-checks affected`
+# (@osdlc/package-checks): on a pull request, the packages it changed and the
+# packages that depend on them; on any other event, every package. The
+# repository's package-checks.json says which files are shared. It also checks
+# the conformance suites with `conformance check` (@osdlc/conformance), unless
+# `conformance` is false. Both commands come from the caller's root
+# devDependencies, so the caller pins their versions in its lockfile.
+#
+# `verify` runs a matrix of `os` and `node`. Each leg installs, builds the
+# picked packages and their workspace dependencies, then runs their
+# typecheck, check:extra, test, smoke, lint and format:check scripts, each
+# only where a package defines it. The `main-node` legs also pack the picked
+# packages and run publint and attw over them (`package-checks ts`), and the
+# `main-node` leg on the first OS regenerates the TypeScript-referenced
+# conformance suites and fails if one changes. The `verify` jobs always run
+# and report, so a ruleset can require them; only their steps narrow.
+#
+# Every action is pinned to a commit SHA; the comment names its release.
+name: ts-packages-ci
+
+on:
+  workflow_call:
+    inputs:
+      os:
+        description: JSON array of runner labels for the verify matrix.
+        type: string
+        default: '["ubuntu-latest", "macos-latest"]'
+      node:
+        description: JSON array of Node versions for the verify matrix.
+        type: string
+        default: '["22", "24"]'
+      main-node:
+        description: >-
+          The Node version that also runs the tarball checks, and on the first
+          OS the conformance regeneration. `changes` runs on it too.
+        type: string
+        default: '24'
+      conformance:
+        description: Check and regenerate the conformance suites.
+        type: boolean
+        default: true
+      tooling-build:
+        description: >-
+          Shell run before `package-checks` or `conformance` is used. Leave it
+          empty when they come from npm; a repository that builds them in its
+          own workspace builds them here.
+        type: string
+        default: ''
+      repo-checks:
+        description: Shell run in `changes` after the install, for checks of the repository itself.
+        type: string
+        default: ''
+    outputs:
+      packages:
+        description: JSON array of the picked package folders.
+        value: ${{ jobs.changes.outputs.packages }}
+      filter:
+        description: pnpm --filter flags for the picked packages.
+        value: ${{ jobs.changes.outputs.filter }}
+      build:
+        description: pnpm --filter flags for the picked packages and their workspace dependencies.
+        value: ${{ jobs.changes.outputs.build }}
+      dirs:
+        description: The picked package folders, space-separated.
+        value: ${{ jobs.changes.outputs.dirs }}
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.pick.outputs.packages }}
+      filter: ${{ steps.pick.outputs.filter }}
+      build: ${{ steps.pick.outputs.build }}
+      dirs: ${{ steps.pick.outputs.dirs }}
+    env:
+      TOOLING_BUILD: ${{ inputs.tooling-build }}
+      REPO_CHECKS: ${{ inputs.repo-checks }}
+    steps:
+      # A pull request checks out its merge commit. Depth 2 brings in its
+      # first parent, the base branch, which `affected` diffs against.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ inputs.main-node }}
+
+      # Reads the pnpm version from `packageManager` in the root package.json.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      # Only the root project and the workspace packages it depends on: the
+      # two commands are root devDependencies.
+      - name: Install the root dependencies
+        run: |
+          root="$(node -p "require('./package.json').name")"
+          pnpm install --frozen-lockfile --ignore-scripts --filter "$root..."
+
+      - name: Build the tooling
+        if: inputs.tooling-build != ''
+        run: eval "$TOOLING_BUILD"
+
+      - name: Check the repository
+        if: inputs.repo-checks != ''
+        run: eval "$REPO_CHECKS"
+
+      - name: Check the conformance suites
+        if: inputs.conformance
+        run: pnpm exec conformance check
+
+      - name: Pick the packages to check
+        id: pick
+        env:
+          EVENT: ${{ github.event_name }}
+        run: pnpm exec package-checks affected
+
+  verify:
+    name: verify (${{ matrix.os }}, node ${{ matrix.node }})
+    needs: changes
+    # Runs even when `changes` failed, so a required check fails instead of
+    # being skipped.
+    if: ${{ !cancelled() }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.os) }}
+        node: ${{ fromJSON(inputs.node) }}
+    env:
+      FILTER: ${{ needs.changes.outputs.filter }}
+      BUILD: ${{ needs.changes.outputs.build }}
+      DIRS: ${{ needs.changes.outputs.dirs }}
+      PICKED: ${{ needs.changes.outputs.packages != '[]' }}
+      MAIN: ${{ matrix.node == inputs.main-node }}
+      FIRST: ${{ matrix.os == fromJSON(inputs.os)[0] }}
+      TOOLING_BUILD: ${{ inputs.tooling-build }}
+    steps:
+      - name: The package pick ran
+        if: needs.changes.result != 'success'
+        run: |
+          echo "::error::the changes job ended with: ${{ needs.changes.result }}"
+          exit 1
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      # Not narrowed: a frozen install checks the lockfile for the whole
+      # workspace.
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # $FILTER and $BUILD are several flags, so they are left unquoted.
+      # Build first: typecheck and test resolve the workspace packages through
+      # their dist/.
+      - name: Build
+        if: env.PICKED == 'true'
+        run: pnpm $BUILD --if-present run build
+
+      # The Build step above builds only the picked packages, so the tooling
+      # is built here, for the two steps that use it.
+      - name: Build the tooling
+        if: inputs.tooling-build != '' && env.MAIN == 'true' && (env.PICKED == 'true' || (inputs.conformance && env.FIRST == 'true'))
+        run: eval "$TOOLING_BUILD"
+
+      # Every suite whose reference is TypeScript, picked or not: a generator
+      # that writes different bytes means expected values went stale. The
+      # generators run the packages' sources, so one leg is enough, and the
+      # command builds what they import.
+      - name: Regenerate the conformance suites
+        if: inputs.conformance && env.MAIN == 'true' && env.FIRST == 'true'
+        run: pnpm exec conformance check --regenerate --reference ts
+
+      - name: Typecheck
+        if: env.PICKED == 'true'
+        run: pnpm $FILTER --if-present run typecheck
+
+      # A package opts into extra checks by defining a `check:extra` script
+      # (for example a typecheck under an older TypeScript). The shared shape
+      # pins `typecheck`, so package-specific checks go here instead.
+      - name: Package-specific checks
+        if: env.PICKED == 'true'
+        run: pnpm $FILTER --if-present run check:extra
+
+      - name: Test
+        if: env.PICKED == 'true'
+        run: pnpm $FILTER --no-bail --if-present run test
+
+      - name: Smoke the built packages under Node
+        if: env.PICKED == 'true'
+        run: pnpm $FILTER --if-present run smoke
+
+      - name: Lint
+        if: env.PICKED == 'true'
+        run: pnpm $FILTER --if-present run lint
+
+      - name: Format check
+        if: env.PICKED == 'true'
+        run: pnpm $FILTER --if-present run format:check
+
+      # Packs every package, so a picked one can install its siblings from
+      # local tarballs, but checks only the picked ones. They read the same
+      # packed files on every Node, so only the main-node legs run them.
+      - name: Pack, publint, attw
+        if: env.PICKED == 'true' && env.MAIN == 'true'
+        run: pnpm exec package-checks ts $DIRS
