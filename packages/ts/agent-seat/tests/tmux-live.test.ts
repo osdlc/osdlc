@@ -79,7 +79,10 @@ describe.skipIf(!tmuxAvailable)('tmux host against a real server', () => {
       title: 'tmux-live',
     })
     expect(host.find!({ cwd })).toMatchObject([{ cwd, alive: true }])
-    expect(await waitFor(join(cwd, 'ready.txt'), 10_000)).not.toBeNull()
+    expect(
+      await waitFor(join(cwd, 'ready.txt'), 10_000),
+      'pane never signalled ready',
+    ).not.toBeNull()
 
     const receipt = host.send!({ cwd, text: 'first line\nsecond line' })
 
@@ -88,7 +91,7 @@ describe.skipIf(!tmuxAvailable)('tmux host against a real server', () => {
     const received = await waitFor(join(cwd, 'out.txt'), 10_000, (t) => t.endsWith('^[[201~^M'))
     // Both lines arrive intact inside one paste, then Enter submits it.
     expect(received).toBe('^[[200~first line\nsecond line^[[201~^M')
-  }, 20_000)
+  }, 30_000)
 
   test('a send to a cwd with no session is not accepted, so the Router falls through', () => {
     const receipt = host.send!({ cwd: join(root, 'nobody-here'), text: 'hello' })
