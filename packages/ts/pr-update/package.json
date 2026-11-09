@@ -66,6 +66,7 @@
     "@osdlc/command-seam": "workspace:^",
     "@osdlc/config-layers": "workspace:^",
     "@osdlc/etag-write": "workspace:^",
+    "@osdlc/ref-lease": "workspace:^",
     "@osdlc/result": "workspace:^",
     "@osdlc/trust-repo": "workspace:^",
     "@osdlc/typed-git": "workspace:^",

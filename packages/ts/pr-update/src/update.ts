@@ -416,7 +416,10 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
     repairOn: effectiveCfg.repair.on,
     onRebaseConflict: effectiveCfg.on_rebase_conflict,
     confirmPush,
+    lease: writes ? env.ports.lease : undefined,
   }
+  // Records too old to matter go before this run writes new ones. A rehearsal writes nothing.
+  if (writes) attempts?.prune?.()
   const results: UpdateResult[] = []
   for (const [path, group] of groups) {
     const git = new Git(path, { runner: env.git })
@@ -425,11 +428,17 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
       ...(await updateAll(git, group, settings, env.ports.runVerb, {
         apply: writes,
         worktreeRoot,
+        onSkip: (s) => skipped.push(s),
+        // Recorded as each PR finishes, so a run killed part-way (a job timeout) keeps what it
+        // learned about the PRs it had already done.
+        onResult: (r) => {
+          if (writes && attempts !== undefined) recordAttempt(attempts, r)
+        },
       })),
     )
   }
-  // A rehearsal cannot repair, so its failures say nothing about a real run.
-  if (writes && attempts !== undefined) recordAttempts(attempts, results)
+  // A rehearsal cannot repair, so its failures say nothing about a real run, and `writes`
+  // keeps it from recording any.
 
   const local = new Map<number, LocalCheckout>()
   if (writes && args.branch !== undefined) {
@@ -463,15 +472,13 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
   }
 }
 
-/** Record each failure under its key; forget a PR target once it updates, pushed or not. */
-function recordAttempts(store: AttemptStore, results: readonly UpdateResult[]): void {
-  for (const r of results) {
-    const { status } = r.outcome
-    if (status === 'updated' || status === 'up-to-date') store.clear(r.repo, r.head, r.base)
-    else {
-      const key = attemptKey(r)
-      if (key !== null) store.recordFailure(key, describeOutcome(r.outcome))
-    }
+/** Record this PR's failure under its key; forget a PR target once it updates, pushed or not. */
+function recordAttempt(store: AttemptStore, r: UpdateResult): void {
+  const { status } = r.outcome
+  if (status === 'updated' || status === 'up-to-date') store.clear(r.repo, r.head, r.base)
+  else {
+    const key = attemptKey(r)
+    if (key !== null) store.recordFailure(key, describeOutcome(r.outcome))
   }
 }
 

@@ -195,6 +195,16 @@ status gives `ok`, and the agent's final line gives the note. All presets share
 one prompt, `repairPrompt(req)`, which states what the repair may and may not
 do. A library host that runs its own agent can reuse it.
 
+The agent runs in a worktree of the PR's branch, whose content its author controls, so each
+preset keeps that branch from steering it. `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN` and
+`GITHUB_ENTERPRISE_TOKEN` are set empty in the agent's environment, for every agent. For `claude`
+the call also passes `--setting-sources user` and an empty strict MCP set, so the branch's
+`.claude/settings.json` (hooks, permissions, env), `.claude/settings.local.json` and `.mcp.json`
+do not load. agent-call has no equivalent switch for `codex`, `cursor` or `pi`, so for those only
+the token scrub applies: a branch's own project config for them (`.cursor/`, `.codex/`, `.pi/`)
+may still load. In CI, prefer `claude`, or a `repair.command` you wrote yourself. A
+`repair.command` is a shell command of yours and gets the parent environment unchanged.
+
 An agent reads the repository and can run tools, so a `repair.agent` (like a
 `repair.command`) read from the project file needs trust (see Config).
 `--repair-agent` and `--repair-command` on the command line are your own
@@ -229,10 +239,68 @@ do not check it out. A new commit on either branch changes the key, so the next 
 again. A PR whose head or base sha is unknown has no key and is never skipped. An `updated` or
 `up-to-date` result clears the record for that head and base. Entries older than 30 days are dropped.
 
+Each PR's record is written as soon as that PR finishes (a failure recorded, or an `updated` result
+clearing it), not after the whole batch, so a run killed by a job timeout keeps what it learned.
+
 `--retry-failed` attempts recorded PRs anyway and still records new failures.
 `max_failed_attempts: 0` turns the check off. A rehearsal reads the record but
 never writes it. It cannot call the repair, so its failures say nothing about a
 real run.
+
+### Sharing the record and a lock through refs on the remote
+
+By default the record is per machine. A CI job and a laptop, or two CI runs, each know only their
+own failures, and can update the same branch at once. With
+
+```yaml
+pr_update:
+  attempts:
+    store: git-ref
+```
+
+the record lives on the `--remote` (default `origin`) as refs, and `update --apply` also takes a
+lease on each head branch while it updates it. `@osdlc/ref-lease` does every write as a
+compare-and-swap (`push --force-with-lease`), so the remote decides who wins a race. The lease
+is on whenever the store is `git-ref` and never otherwise; there is no separate switch.
+
+| Ref | Holds |
+|---|---|
+| `refs/pr-update/attempts/<head>--<hash>` | `{ "entries": [...] }`, the file store's JSON, one ref per repo, head and base branch |
+| `refs/pr-update/lock/<head>--<hash>` | `{ holder, pr, startedAt, expiresAt }`, the lease on one head branch |
+
+`<head>` is the branch name with every character outside `A-Za-z0-9_-` turned into `_` and cut to
+60 characters, and `<hash>` is 10 hex digits of the exact name (and, for attempts, the repo and base
+branch), so any branch name gives a valid ref name and two names never collide. `attempts.ref_prefix`
+(default `refs/pr-update/`; must start with `refs/` and stay out of `refs/heads`, `refs/tags` and
+`refs/remotes`) moves both namespaces.
+
+Records are read with one fetch of `<ref_prefix>attempts/` per run. A write that loses its
+compare-and-swap reads the ref again and applies the same change to what it finds (up to five
+times), so two runs that fail the same PR at once both count. Entries older than 30 days are
+deleted at the start of an `--apply` run (a ref whose entries are all old is removed). A rehearsal
+reads the record, never writes it and never takes a lease.
+
+The lease: before checking a PR out, the run creates the lock ref, or replaces it when its
+`expiresAt` is past or it names this same holder (a crashed earlier run of this holder). The holder
+is `github-run-<GITHUB_RUN_ID>` when that is set, else `<hostname>:<pid>`. A PR whose lease another
+live holder has is skipped, with the reason `another pr-update run is updating this branch
+(<holder>)`, and its failure is not recorded. The lease is deleted after the push, in a `finally`,
+pinned to the commit this run wrote, so a lease that expired and was taken over is never deleted
+from under its new holder. Nothing renews a lease: one left by a killed run lasts until
+`lease.ttl_seconds` (default `repair.timeout_seconds` plus 600, or 1800 without a repair timeout),
+so set it longer than your slowest PR update.
+
+```sh
+git ls-remote origin 'refs/pr-update/*'                       # what is recorded and who holds what
+git fetch origin 'refs/pr-update/*:refs/pr-update/*'          # read them locally
+git show refs/pr-update/lock/<name>:lease.json                # one payload
+git push origin --delete refs/pr-update/attempts/<name>       # forget one PR target's record
+git push origin --delete refs/pr-update/lock/<name>           # break a stuck lease
+```
+
+Some hosts accept only `refs/heads` and `refs/tags` from a push (a ruleset or a server hook). Such a
+remote refuses these refs, and the run stops with an error that names the remote and this setting.
+Set `attempts.store: file` there. The file store is the default, so nothing changes until you opt in.
 
 ## Seeing a force-push before it happens
 
@@ -303,6 +371,10 @@ section prefix means `pr_update.<key>`: `pr-update config set strategy merge`
 equals `pr-update config set pr_update.strategy merge`, and every answer
 prints the qualified key.
 
+A standalone run also reads `attempts.store` (`file` or `git-ref`, default `file`),
+`attempts.ref_prefix` (default `refs/pr-update/`) and `lease.ttl_seconds` (default derived, see
+above). A host that embeds the package supplies `Ports.attempts` and `Ports.lease` instead.
+
 Five values name a command, or an agent that can run tools, that the tool will
 start: `lockfile_install`, `resolvers[].run`, `repair.command`, `repair.agent`
 and `test_command`. When one is set in the project file (and not overridden in
@@ -341,13 +413,15 @@ confirmation:
 | `resolveVerifyVerbs({ which, trust })` | The trust-gated verb list `verify: check` or `verify: test` runs before a push |
 | `generators` (optional) | In-process rebuild steps, each with `claims(path)` and `run(worktree)` |
 | `repair(req)` (optional) | The last step, async: edit the worktree to fix a `conflict` or `verify-failed` |
-| `attempts` (optional) | The failed-update record: `get(key)`, `recordFailure(key, reason)`, `clear(repo, head, base)` |
+| `attempts` (optional) | The failed-update record: `get(key)`, `recordFailure(key, reason)`, `clear(repo, head, base)`, and optionally `prune()` |
+| `lease` (optional) | `acquire({ head, pr })` returns `{ ok: true, release }` or `{ ok: false, holder }`; taken around each PR's update in an `--apply` run |
 | `confirmPush(preview)` (optional) | Under `confirmPush: true`, whether to make one rebase force-push; the terminal prompt when absent |
 
 `standalonePorts(cfg, projectRoot)` gives a `pr-update` CLI run defaults for the three required ports
 (locate, runVerb, resolveVerifyVerbs) and for repair and attempts.
 It builds `repair` from `repair.agent` or `repair.command`, stores attempts in
-`<projectRoot>/.pr-update/attempts/` (`fileAttemptStore`), answers `verify: test` with
+`<projectRoot>/.pr-update/attempts/` (`fileAttemptStore`), or, with `attempts.store: git-ref`, as
+refs on the `--remote` (`refAttemptStore`) with a per-branch `lease` (`refBranchLease`), answers `verify: test` with
 `test_command`, and refuses `verify: check`. A standalone run has no host registry to look up
 `check` in, so set `verify: 'none'`, or embed this package as a library and supply real ports.
 `commandRepair(command, timeoutSeconds)` and `agentRepair(agent, options)` are the command and

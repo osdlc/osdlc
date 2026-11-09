@@ -39,11 +39,15 @@ export {
 } from './repair/agents.ts'
 export { commandRepair, standalonePorts } from './defaults.ts'
 export { attemptFile, attemptsDir, fileAttemptStore, listAttempts } from './update/attempts.ts'
+export { refAttemptStore, type RefAttemptStore } from './update/ref-attempts.ts'
+export { refBranchLease, defaultLeaseTtlSeconds } from './update/lease.ts'
+export { attemptRef, lockRef, DEFAULT_REF_PREFIX } from './update/ref-names.ts'
 export { formatPreview, terminalConfirmPush } from './update/confirm.ts'
 export type {
   AttemptKey,
   AttemptRecord,
   AttemptStore,
+  BranchLease,
   ConfirmPush,
   Generator,
   Ports,

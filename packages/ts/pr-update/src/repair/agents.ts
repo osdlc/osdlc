@@ -54,14 +54,42 @@ const ADAPTERS: Record<RepairAgent, () => AgentAdapter> = {
   pi: () => piAdapter(),
 }
 
+/** Host tokens a repair agent must not inherit. Empty overrides the parent's value. */
+const SCRUBBED_ENV: Record<string, string> = {
+  GH_TOKEN: '',
+  GITHUB_TOKEN: '',
+  GH_ENTERPRISE_TOKEN: '',
+  GITHUB_ENTERPRISE_TOKEN: '',
+}
+
+/**
+ * Claude reads `.claude/settings.json` (hooks, permissions, env), `.claude/settings.local.json`
+ * and `.mcp.json` from the working directory. `--setting-sources user` drops the project and
+ * local sources; an empty strict MCP set drops `.mcp.json`. The other agents have no such flag
+ * in agent-call, so for them only the environment is scrubbed.
+ */
+const CLAUDE_ISOLATION: Pick<AgentCallSpec, 'extraArgs' | 'mcp'> = {
+  extraArgs: ['--setting-sources', 'user'],
+  mcp: { servers: {}, strict: true },
+}
+
 /** The agent-call spec for one repair: shared prompt, edit-only permissions, worktree, timeout. */
-export function repairCallSpec(req: RepairRequest, opts: AgentRepairOptions = {}): AgentCallSpec {
+export function repairCallSpec(
+  req: RepairRequest,
+  opts: AgentRepairOptions = {},
+  agent?: RepairAgent,
+): AgentCallSpec {
   return {
     prompt: repairPrompt(req),
     permissions: { mode: 'edits' },
     cwd: req.worktree,
     // A repair is one-off; leave no session log behind where the CLI allows it.
     session: { persist: false },
+    // The worktree is the PR branch's own content, which its author controls. Keep credentials
+    // out of the agent's environment (an empty value overrides the inherited one), and for
+    // claude keep that branch's project settings, hooks and MCP servers from loading.
+    env: SCRUBBED_ENV,
+    ...(agent === 'claude' ? CLAUDE_ISOLATION : {}),
     ...(opts.model ? { model: opts.model } : {}),
     ...(opts.timeoutSeconds ? { timeoutMs: opts.timeoutSeconds * 1000 } : {}),
   }
@@ -73,7 +101,7 @@ export function planRepair(
   req: RepairRequest,
   opts: AgentRepairOptions = {},
 ): PlannedCall {
-  return planCall(ADAPTERS[agent](), repairCallSpec(req, opts))
+  return planCall(ADAPTERS[agent](), repairCallSpec(req, opts, agent))
 }
 
 /** The last non-empty line of `text`, cut to a note's size. */
@@ -94,7 +122,7 @@ export function agentRepair(
   return async (req) => {
     let result: AgentResult
     try {
-      result = await call(ADAPTERS[agent](), repairCallSpec(req, opts))
+      result = await call(ADAPTERS[agent](), repairCallSpec(req, opts, agent))
     } catch (e) {
       // agent-call rejects for a call it could not plan or set up (bad spec, temp
       // directory failure); see callAgent's @throws.

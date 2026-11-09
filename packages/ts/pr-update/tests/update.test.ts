@@ -576,6 +576,46 @@ describe('runUpdate — failed attempts', () => {
     expect((await update({}, opts)).results.map((r) => r.number)).toEqual([1])
   })
 
+  test("each PR's record is written when that PR finishes, not after the batch", async () => {
+    branchOff('clean', { 'clean.txt': 'c\n' })
+    commitOn('main', { 'later.txt': 'l\n' })
+    const events: string[] = []
+    const real = fileAttemptStore(file)
+    await update(
+      {},
+      {
+        branches: ['topic', 'clean'],
+        ports: {
+          attempts: {
+            get: real.get,
+            recordFailure: (k, r) => {
+              events.push(`record ${k.head}`)
+              real.recordFailure(k, r)
+            },
+            clear: (repo, head, base) => {
+              events.push(`clear ${head}`)
+              real.clear(repo, head, base)
+            },
+          },
+          lease: {
+            acquire: ({ head }) => {
+              events.push(`start ${head}`)
+              return { ok: true, release: () => events.push(`end ${head}`) }
+            },
+          },
+        },
+      },
+    )
+    expect(events).toEqual([
+      'start topic',
+      'end topic',
+      'record topic',
+      'start clean',
+      'end clean',
+      'clear clean',
+    ])
+  })
+
   test('AC-6: a rehearsal or a dry run leaves the attempts unchanged', async () => {
     await update()
     const before = JSON.stringify(listAttempts(file))

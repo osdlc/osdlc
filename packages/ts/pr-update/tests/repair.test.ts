@@ -81,6 +81,30 @@ describe('the presets, planned and not run', () => {
     },
   )
 
+  test('every agent runs without the host tokens', () => {
+    for (const agent of REPAIR_AGENTS) {
+      const planned = planRepair(agent, request())
+      for (const k of [
+        'GH_TOKEN',
+        'GITHUB_TOKEN',
+        'GH_ENTERPRISE_TOKEN',
+        'GITHUB_ENTERPRISE_TOKEN',
+      ]) {
+        expect(planned.env[k], `${agent} ${k}`).toBe('')
+      }
+    }
+  })
+
+  test('claude does not load the branch project settings, hooks or MCP servers', () => {
+    const argv = planRepair('claude', request()).argv
+    const at = argv.indexOf('--setting-sources')
+    expect(argv[at + 1]).toBe('user')
+    expect(argv).toContain('--mcp-config')
+    expect(argv).toContain('--strict-mcp-config')
+    // The other agents have no such flag in agent-call.
+    expect(planRepair('codex', request()).argv).not.toContain('--setting-sources')
+  })
+
   test('no model and no timeout leave both unset', () => {
     const spec = repairCallSpec(request())
     expect(spec.model).toBeUndefined()

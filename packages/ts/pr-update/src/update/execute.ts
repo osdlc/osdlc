@@ -48,6 +48,7 @@ import {
 
 import type {
   ConfirmPush,
+  BranchLease,
   Generator,
   PushPreview,
   Repair,
@@ -116,6 +117,8 @@ export interface UpdateSettings {
   repairOn?: readonly RepairKind[] | undefined
   /** Asked before each rebase force-push. False leaves the branch alone. */
   confirmPush?: ConfirmPush | undefined
+  /** Taken around each PR's update when `apply` is set. See `Ports.lease`. */
+  lease?: BranchLease | undefined
   /**
    * What a rebase does when the fixed resolvers cannot clear a stop: `merge`
    * (the default) retries the PR as a merge, and `fail` reports it.
@@ -800,7 +803,13 @@ export async function updateAll(
   targets: readonly UpdateTarget[],
   settings: UpdateSettings,
   runVerb: RunVerb,
-  opts: { apply: boolean; worktreeRoot: string; onResult?: (r: UpdateResult) => void },
+  opts: {
+    apply: boolean
+    worktreeRoot: string
+    onResult?: (r: UpdateResult) => void
+    /** Receives each PR left alone because another run holds its branch's lease. */
+    onSkip?: (s: { number: number; head: string; reason: string }) => void
+  },
 ): Promise<UpdateResult[]> {
   const results: UpdateResult[] = []
   if (targets.length === 0) return results
@@ -811,10 +820,27 @@ export async function updateAll(
   const wt = git.at(opts.worktreeRoot)
   try {
     for (const target of targets) {
-      const outcome = await updateOne(wt, target, settings, runVerb, {
-        apply: opts.apply,
-        worktree: opts.worktreeRoot,
-      })
+      // A rehearsal never takes a lease: it pushes nothing.
+      const grant = opts.apply
+        ? settings.lease?.acquire({ head: target.head, pr: target.number })
+        : undefined
+      if (grant !== undefined && !grant.ok) {
+        opts.onSkip?.({
+          number: target.number,
+          head: target.head,
+          reason: `another pr-update run is updating this branch (${grant.holder})`,
+        })
+        continue
+      }
+      let outcome: UpdateOutcome
+      try {
+        outcome = await updateOne(wt, target, settings, runVerb, {
+          apply: opts.apply,
+          worktree: opts.worktreeRoot,
+        })
+      } finally {
+        grant?.release()
+      }
       const ran = 'strategyFallback' in outcome ? 'merge' : target.strategy
       const result = { ...target, strategy: ran, outcome }
       results.push(result)

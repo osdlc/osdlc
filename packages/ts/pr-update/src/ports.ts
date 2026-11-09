@@ -9,7 +9,7 @@
  * step, called only when no fixed rule resolved the problem. The conflict
  * repair is offered only on a merge (a rebase falls back to a merge first). A
  * verify repair runs for either strategy. The optional `attempts` port records
- * failed updates across runs, and `confirmPush` asks before each rebase
+ * failed updates across runs, an optional `lease` port locks each head branch while it is updated, and `confirmPush` asks before each rebase
  * force-push. A standalone run (see `defaults.ts`) supplies simple versions of
  * the same ports that work with any host.
  */
@@ -85,6 +85,20 @@ export interface AttemptStore {
   recordFailure: (key: AttemptKey, reason: string) => void
   /** Forget the record for this PR target (head into base). */
   clear: (repo: string, head: string, base: string) => void
+  /** Drop records too old to matter. Called once per `--apply` run, before records are written. */
+  prune?: (() => void) | undefined
+}
+
+/** The outcome of asking for a branch's update lease. */
+export type LeaseGrant = { ok: true; release: () => void } | { ok: false; holder: string }
+
+/**
+ * A lock on one head branch, so two runs do not update it at once. `acquire` never throws for a
+ * lease someone else holds; it returns `{ ok: false, holder }` and the PR is skipped. `release`
+ * must not throw.
+ */
+export interface BranchLease {
+  acquire: (req: { head: string; pr: number }) => LeaseGrant
 }
 
 /** What a rebase force-push is about to do to one PR branch. */
@@ -123,6 +137,11 @@ export interface Ports {
   repair?: Repair | undefined
   /** Absent means failures are not recorded and no PR is skipped for past failures. */
   attempts?: AttemptStore | undefined
+  /**
+   * Taken around each PR's update in an `--apply` run. A PR whose lease another run holds is
+   * skipped. Absent means no locking; a rehearsal never takes it.
+   */
+  lease?: BranchLease | undefined
   /**
    * Asked before each rebase force-push when the run sets `confirmPush`.
    * Absent means `runUpdate` asks with `terminalConfirmPush`.

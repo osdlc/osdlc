@@ -818,6 +818,9 @@ importers:
       '@osdlc/etag-write':
         specifier: workspace:^
         version: link:../etag-write
+      '@osdlc/ref-lease':
+        specifier: workspace:^
+        version: link:../ref-lease
       '@osdlc/result':
         specifier: workspace:^
         version: link:../result

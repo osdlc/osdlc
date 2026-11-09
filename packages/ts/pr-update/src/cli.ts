@@ -312,6 +312,7 @@ function runEnv(
     agent: null,
     command: null,
   },
+  remote = 'origin',
 ): UpdateEnv {
   // Both run in the project, so a bare name runs only from an absolute PATH entry.
   const git = seams.git ?? spawnRunner('git', { absolutePathOnly: true })
@@ -334,7 +335,7 @@ function runEnv(
       override: layers.merged.code_host.override,
     }),
     cfg,
-    ports: standalonePorts(cfg, projectRoot),
+    ports: standalonePorts(cfg, projectRoot, remote),
   }
 }
 
@@ -537,10 +538,16 @@ async function runUpdateCommand(
   }
   const unready = checkStart(ctx, layers, seams, v)
   if (unready !== null) return failWith(ctx, unready, { name: 'pr-update' })
-  const env: UpdateEnv = runEnv(ctx, layers, seams, {
-    agent: v.repairAgent ?? null,
-    command: v.repairCommand ?? null,
-  })
+  const env: UpdateEnv = runEnv(
+    ctx,
+    layers,
+    seams,
+    {
+      agent: v.repairAgent ?? null,
+      command: v.repairCommand ?? null,
+    },
+    v.remote,
+  )
   let out
   try {
     out = await runUpdate(
