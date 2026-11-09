@@ -178,12 +178,19 @@ Two lists in `scripts/conformance.ts`, which shrink to nothing as migration
 finishes:
 
 - `CATCHING_UP` names a family whose implementations do not share
-  major.minor yet, with the work that brings them level.
+  major.minor yet, with the work that brings them level. A pending
+  changeset (`.changeset/*.md`) that takes the TypeScript package level
+  counts: the family passes on `main` and on the release pull request that
+  applies the changeset, and needs no entry. A changeset that pulls a
+  family that is level now apart fails, unless the same pull request bumps
+  the crate too or adds a `CATCHING_UP` entry.
 - `UNMIGRATED` names a library whose tests still read the other language's
   fixtures, until its family moves here. A binding that reads the crate it
   is built from (`@osdlc/yaml-splice`) stays on it, since it is not a family.
 
-The check fails when an entry in either list is no longer needed.
+The check fails when an entry in either list is no longer needed; a
+`CATCHING_UP` entry is stale once the versions agree, now or after the
+pending changesets.
 
 ## Migration
 
