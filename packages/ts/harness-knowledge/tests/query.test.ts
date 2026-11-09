@@ -7,7 +7,7 @@ test('fact returns an object value stated at moderate strength or better', () =>
 })
 
 test('fact skips weak values, missing values and unknown harnesses', () => {
-  expect(fact('claude-code', 'skills/project-dirs')).toBeUndefined()
-  expect(fact('claude-code', 'cli/binary')).toBeUndefined()
+  expect(fact('claude-code', 'mcp/config-file')).toBeUndefined() // weak
+  expect(fact('codex', 'instructions/claude-md')).toBeUndefined() // not stated
   expect(fact('no-such-harness', 'cli/binary')).toBeUndefined()
 })
