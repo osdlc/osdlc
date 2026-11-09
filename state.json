@@ -137,9 +137,9 @@
       "line": 226,
       "title": "Tokens::none says a whitespace-only-once-decoded token arrives empty; a %20 token arrives intact as a header and as the server-set cookie",
       "comment": "https://github.com/osdlc/osdlc/pull/704#discussion_r4509294659",
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "b240e6b543db367074cccb09f05704636677a204"
     },
     {
       "id": "r7-1",
