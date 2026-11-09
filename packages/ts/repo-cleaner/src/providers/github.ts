@@ -23,7 +23,8 @@ export const PR_LIMIT = 300
 
 /**
  * A provider over `gh pr list`. `gh` picks the repository from the checkout's
- * remotes, so `target` is not consulted.
+ * remotes, so `target` is not consulted. A listing `gh` fails, such as one for
+ * a repository the signed-in account cannot see, throws with `gh`'s reason.
  */
 export function githubProvider(gh: Gh): PrProvider {
   return {

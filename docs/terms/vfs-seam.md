@@ -6,9 +6,9 @@ The crate that holds the `Vfs` file-access trait and its backends, so the same c
 
 ## In code
 
-`packages/rust/vfs-seam`: `Vfs`, `Metadata`, `NativeVfs`, `MemVfs`, `PreviewVfs`, `Clock`, `SystemClock`, `FixedClock`, `VfsError`, `ns_to_ms`, `ns_to_ms_f64`.
+`packages/rust/vfs-seam`: `Vfs`, `Metadata`, `NativeVfs`, `MemVfs`, `PreviewVfs`, `Clock`, `SystemClock`, `FixedClock`, `VfsError`, `ns_to_ms`, `ns_to_ms_f64`, `ms_f64_to_ns`.
 
-`Metadata::modified_ns` is a file's modification time in nanoseconds since the epoch. `Metadata::modified_ms_f64` gives the fractional milliseconds node reports as `mtimeMs`, computed as node computes it.
+`Metadata::modified_ns` is a file's modification time in nanoseconds since the epoch. `Metadata::modified_ms_f64` gives the fractional milliseconds node reports as `mtimeMs`, computed as node computes it. `ms_f64_to_ns` turns an `mtimeMs` from a JS host back into nanoseconds.
 
 ## Not to be confused with
 

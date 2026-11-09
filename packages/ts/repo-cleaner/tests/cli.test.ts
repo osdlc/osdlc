@@ -4,7 +4,7 @@
  * with a bare remote.
  */
 
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   chmodSync,
   existsSync,
@@ -107,6 +107,23 @@ describe('arguments', () => {
     expect(run(['clean', '--help'], tempDir()).code).toBe(0)
     expect(run(['plan', '--help'], tempDir()).code).toBe(0)
     expect(run(['cache', '--help'], tempDir()).code).toBe(0)
+  })
+
+  test('with no target, a subdirectory of a checkout sweeps that checkout (#680)', () => {
+    const fx = buildFixture()
+    const inner = join(fx.root, 'src', 'lib')
+    mkdirSync(inner, { recursive: true })
+    writeFileSync(join(inner, 'index.ts'), 'export {}\n')
+    sh(fx.root, ['add', '-A'])
+    sh(fx.root, ['commit', '-q', '-m', 'add src'])
+    const res = run(['--format', 'json'], inner)
+    expect(res.code).toBe(0)
+    const out = JSON.parse(res.out) as {
+      repos: { repo: { root: string } }[]
+      unresolved: unknown[]
+    }
+    expect(out.repos.map((r) => r.repo.root)).toEqual([realpathSync(fx.root)])
+    expect(out.unresolved).toEqual([])
   })
 
   test('a malformed command exits 2', () => {
@@ -937,6 +954,92 @@ describe('clean', () => {
     expect(branchRefs(fx.bare)).not.toContain(BRANCH)
   })
 
+  /**
+   * A fixture with a second merged branch pushed, so a step follows the gone
+   * one, and `BRANCH` already deleted on the remote (as a forge does after
+   * merge); the tracking ref stays until a prune.
+   */
+  function buildGoneFixture(): Fixture {
+    const fx = buildFixture()
+    sh(fx.root, ['branch', 'feat/t', 'main'])
+    sh(fx.root, ['push', '-q', 'origin', 'feat/t'])
+    sh(fx.bare, ['update-ref', '-d', `refs/heads/${BRANCH}`])
+    return fx
+  }
+
+  // `clean` asks the remote itself before deleting on it, so an offline plan's
+  // stale tracking refs never decide a remote step.
+  test('offline, a remote branch the remote already deleted is skipped as gone, and the run goes on', () => {
+    const fx = buildGoneFixture()
+    const res = run(['clean', ...REMOTE, '--only', 'remote', '--yes', '--format', 'json'], fx.root)
+    expect(res.code).toBe(0)
+    const out = JSON.parse(res.out) as { receipt: Receipt; summary: unknown }
+    expect(out.receipt.status).toBe('complete')
+    expect(out.receipt.dropped).toContainEqual(
+      expect.objectContaining({ row: `remote:origin/${BRANCH}`, reason: 'gone' }),
+    )
+    expect(out.receipt.steps.map((s) => s.row)).not.toContain(`remote:origin/${BRANCH}`)
+    expect(branchRefs(fx.bare)).not.toContain('feat/t')
+    expect(out.summary).toMatchObject({ deleted: { remote: 1 }, gone: 0 })
+  })
+
+  test('offline, the preview asks the remote too: a dry run shows the gone branch skipped', () => {
+    const fx = buildGoneFixture()
+    const res = run(['clean', ...REMOTE, '--only', 'remote', '--dry-run'], fx.root)
+    expect(res.code).toBe(0)
+    expect(res.out).toMatch(new RegExp(`skip +remote:origin/${BRANCH}\\n +gone`))
+    expect(res.out).toContain('would delete: 1 remote branch')
+    expect(res.out).toContain('skipped 1, not deleted: 1 gone')
+  })
+
+  test('offline, a remote that cannot be asked refuses even a dry run, naming the repository', () => {
+    const fx = buildGoneFixture()
+    sh(fx.root, ['config', 'remote.origin.uploadpack', '/bin/false'])
+    for (const mode of ['--dry-run', '--yes']) {
+      const res = run(['clean', ...REMOTE, '--only', 'remote', mode], fx.root)
+      expect(res.code).not.toBe(0)
+      expect(res.err).toContain(realpathSync(fx.root))
+      expect(res.err).toMatch(/`git ls-remote origin` failed .*nothing was run/)
+    }
+    expect(branchRefs(fx.bare)).toContain('feat/t')
+  })
+
+  test('offline, a remote branch pushed to since the last fetch is skipped, and the run goes on', () => {
+    const fx = buildFixture()
+    sh(fx.root, ['branch', 'feat/t', 'main'])
+    sh(fx.root, ['push', '-q', 'origin', 'feat/t'])
+    // Another clone pushes to BRANCH; this clone's tracking ref is now stale.
+    const other = join(tempDir(), 'other')
+    sh(dirname(other), ['clone', '-q', '-b', BRANCH, fx.bare, other])
+    sh(other, ['commit', '-q', '--allow-empty', '-m', 'more'])
+    sh(other, ['push', '-q', 'origin', BRANCH])
+    const res = run(['clean', ...REMOTE, '--only', 'remote', '--yes', '--format', 'json'], fx.root)
+    expect(res.code).toBe(0)
+    const out = JSON.parse(res.out) as { receipt: Receipt }
+    expect(out.receipt.status).toBe('complete')
+    // Judged on its new tip, it is no longer a plain delete, so it is skipped.
+    expect(out.receipt.dropped.map((d) => d.row)).toContain(`remote:origin/${BRANCH}`)
+    expect(out.receipt.steps.map((s) => s.row)).not.toContain(`remote:origin/${BRANCH}`)
+    expect(branchRefs(fx.bare)).toContain(BRANCH)
+    expect(branchRefs(fx.bare)).not.toContain('feat/t')
+  })
+
+  for (const mode of ['offline', 'online'] as const) {
+    test(`${mode}, a spared remote branch that is gone at the run refuses it`, () => {
+      const fx = buildFixture()
+      const spare = `remote:origin/${BRANCH}`
+      const plan = join(tempDir(), 'p.json')
+      const sweepFlags = mode === 'offline' ? REMOTE : ['--remote', '--provider', 'none']
+      expect(run(['plan', ...sweepFlags, '--only', 'remote', '-o', plan], fx.root).code).toBe(0)
+      // The branch is deleted on the remote after the plan.
+      sh(fx.bare, ['update-ref', '-d', `refs/heads/${BRANCH}`])
+      const res = run(['clean', '--plan', plan, '--yes', '--spare', spare], fx.root)
+      // The run's re-check asks the remote, so it sees the branch gone before any step.
+      expect(res.code).not.toBe(0)
+      expect(res.err).toContain(`spared ${spare} is no longer on the remote; refusing to run`)
+    })
+  }
+
   test('a row that turns into a review row while the question waits is dropped, not run', () => {
     const fx = buildFixture()
     sh(fx.root, ['branch', 'extra', 'main'])
@@ -1529,5 +1632,154 @@ describe('branch mode', () => {
     const res = run(['--branch', 'main'], fx.root)
     expect(res.code).toBe(2)
     expect(res.err).toContain('default branch')
+  })
+})
+
+/** `text` as a literal inside a regular expression. */
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+describe('a pull request listing that fails (#653)', () => {
+  /** The remote branch was dropped as needing confirm-open-pr, and is still on the remote. */
+  function expectKeptForConfirmOpenPr(fx: Fixture, receipt: Receipt): void {
+    expect(receipt.dropped).toContainEqual(
+      expect.objectContaining({
+        row: `remote:origin/${BRANCH}`,
+        reason: 'not-allowed',
+        detail: 'needs confirm-open-pr',
+      }),
+    )
+    expect(sh(fx.root, ['ls-remote', '--heads', 'origin', BRANCH])).not.toBe('')
+  }
+  /** Put `script` on PATH as `gh` for the duration of `fn`. */
+  function withGh<T>(script: string, fn: () => T): T {
+    const bin = tempDir()
+    writeFileSync(join(bin, 'gh'), script)
+    chmodSync(join(bin, 'gh'), 0o755)
+    vi.stubEnv('PATH', `${bin}:${process.env['PATH'] ?? ''}`)
+    try {
+      return fn()
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  }
+  /** A `gh` that is installed and signed in, but whose every listing fails with `stderr`. */
+  const withFailingGh = <T>(stderr: string, fn: () => T): T =>
+    withGh(
+      `#!/bin/sh\ncase "$1" in --version|auth) exit 0;; esac\nprintf '%b' '${stderr}' >&2\nexit 1\n`,
+      fn,
+    )
+  const GH = ['--remote', '--offline', '--provider', 'github', '--no-progress']
+  // An escape sequence in the provider's output must not reach the terminal.
+  const STDERR = '\\033[31mboom: no such repository\\n'
+
+  test('every output names the failure, with terminal controls stripped', () => {
+    const fx = buildFixture()
+    withFailingGh(STDERR, () => {
+      const commands = run([...GH, '--format', 'commands'], fx.root)
+      expect(commands.code).toBe(0)
+      expect(commands.err).toMatch(
+        // The sweep names the repository by its real path (macOS: /var is /private/var).
+        new RegExp(
+          `^repo-cleaner: ${escapeRegExp(realpathSync(fx.root))}: Listing PRs with \`gh pr list\` failed \\(.*boom`,
+          'm',
+        ),
+      )
+      expect(commands.err).not.toContain('\x1b')
+
+      const summary = run([...GH, '--format', 'summary'], fx.root)
+      expect(summary.out).toContain('note: Listing PRs with `gh pr list` failed')
+
+      const planFile = join(tempDir(), 'p.json')
+      const plan = run(['plan', ...GH, '-o', planFile], fx.root)
+      expect(plan.code).toBe(0)
+      expect(plan.err).toContain('repo-cleaner plan: ')
+      expect(plan.err).toContain('Listing PRs with `gh pr list` failed')
+
+      // A saved plan's re-check sweeps again, and says what it judged without.
+      const dry = run(['clean', '--plan', planFile, '--dry-run'], fx.root)
+      expect(dry.code).toBe(0)
+      expect(dry.err).toContain('repo-cleaner clean: ')
+      expect(dry.err).toContain('Listing PRs with `gh pr list` failed')
+      expect(dry.err).not.toContain('\x1b')
+    })
+  })
+
+  test('clean reports every swept repository, one with nothing to run included', () => {
+    const fx = buildFixture()
+    // A second repository with only its default branch: nothing in it is selected.
+    const pair = makeBareAndWorker()
+    cleanups.push(pair.cleanup)
+    const bare = pair.worker.dir
+    sh(bare, ['commit', '--allow-empty', '-m', 'initial'])
+    sh(bare, ['push', '-q', '-u', 'origin', 'main'])
+    withFailingGh(STDERR, () => {
+      const res = run(['clean', ...GH, '--dry-run', '--format', 'json', fx.root, bare], fx.root)
+      expect(res.code).toBe(0)
+      const out = JSON.parse(res.out) as { notes: { repo: string; note: string }[] }
+      expect(out.notes.map((n) => n.repo).sort()).toEqual(
+        [realpathSync(fx.root), realpathSync(bare)].sort(),
+      )
+      // A local bare remote names no forge, so the note says how to stop asking.
+      expect(out.notes[0]?.note).toContain('Pass `--provider none` if this remote has no PRs.')
+      for (const dir of [fx.root, bare]) {
+        expect(res.err).toContain(`repo-cleaner clean: ${realpathSync(dir)}: Listing PRs`)
+      }
+      // Each repository's note once: a dry run never reaches the run's re-check.
+      expect(res.err.split('\n').filter((l) => l.includes(realpathSync(bare)))).toHaveLength(1)
+    })
+  })
+
+  test("a listing failure that only the run's own re-check meets is printed, and drops the row", () => {
+    const fx = buildFixture()
+    // A gh whose first listing (the sweep's) answers and every later one fails.
+    const script = (count: string): string =>
+      [
+        '#!/bin/sh',
+        'case "$1" in --version|auth) exit 0;; esac',
+        `n=$(cat '${count}' 2>/dev/null || echo 0); n=$((n + 1)); echo $n > '${count}'`,
+        `if [ "$n" -eq 1 ]; then echo '[]'; exit 0; fi`,
+        "echo 'boom: rate limited' >&2",
+        'exit 1',
+        '',
+      ].join('\n')
+    const count = join(tempDir(), 'listings')
+    withGh(script(count), () => {
+      const res = run(['clean', ...GH, '--yes', '--format', 'json'], fx.root)
+      expect(res.code).toBe(0)
+      expect(Number(readFileSync(count, 'utf-8'))).toBeGreaterThan(1)
+      const lines = res.err.split('\n').filter((l) => l.includes('Listing PRs'))
+      expect(lines).toHaveLength(1)
+      expect(lines[0]).toContain('rate limited')
+      // The preview's listing answered, so only the run's re-check can drop the row.
+      const out = JSON.parse(res.out) as { receipt: Receipt }
+      expectKeptForConfirmOpenPr(fx, out.receipt)
+    })
+  })
+
+  test('with gh signed out, a remote branch is not deleted without confirm-open-pr', () => {
+    const fx = buildFixture()
+    // Installed, but every other call, `auth status` included, fails.
+    withGh('#!/bin/sh\ncase "$1" in --version) exit 0;; esac\nexit 1\n', () => {
+      const res = run(['clean', ...GH, '--yes', '--format', 'json'], fx.root)
+      expect(res.code).toBe(0)
+      expect(res.err).toContain('Could not check for open PRs: `gh` is not signed in')
+      const out = JSON.parse(res.out) as { receipt: Receipt }
+      expectKeptForConfirmOpenPr(fx, out.receipt)
+    })
+  })
+
+  test('a remote branch with no known PR is not deleted without confirm-open-pr', () => {
+    const fx = buildFixture()
+    withFailingGh(STDERR, () => {
+      const res = run(['clean', ...GH, '--yes', '--format', 'json'], fx.root)
+      expect(res.code).toBe(0)
+      // The preview and the run both re-check and both find the listing failed;
+      // the note is printed once.
+      expect(res.err.split('\n').filter((l) => l.includes('Listing PRs'))).toHaveLength(1)
+      const out = JSON.parse(res.out) as { receipt: Receipt }
+      expectKeptForConfirmOpenPr(fx, out.receipt)
+    })
   })
 })

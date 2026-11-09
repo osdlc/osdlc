@@ -38,7 +38,7 @@ Five layers. The first that matches wins. `<NAME>` is the tool name upper-cased
 |---|---|---|
 | env | `<NAME>_HOME` names a checkout by absolute path | never. An explicit value always applies; a relative one is ignored |
 | cwd | the spec sets `cwdLayer: true` and the cwd is inside a checkout of this tool | the spec leaves `cwdLayer` unset, a suppressor is set, or `<NAME>_CWD_DEV=0` |
-| link | `<config>/<name>/home` names a checkout | a suppressor is set |
+| link | `<config>/<name>/home` names a checkout (or, with `onDeadLink: 'newest-surviving'`, names one that is gone and an earlier one survives) | a suppressor is set |
 | project | the spec sets `packageName` and a project above the cwd has that package in its `node_modules` | the spec sets `projectLayer: false`, a suppressor is set, or `<NAME>_PROJECT=0` |
 | local | none of the above | never |
 
@@ -83,6 +83,18 @@ error. Deleting a linked checkout must not break the installed tool. A layer
 naming the launcher's own checkout resolves to `local`, so a link to the
 installed checkout never re-execs itself.
 
+A tool that would rather keep its developers on development code sets
+`onDeadLink: 'newest-surviving'` in its spec. Then, when the link names a
+checkout that is gone (a deleted worktree), the link layer runs the newest
+checkout that `dev link` or `dev use` selected before and that is still a
+checkout, and says so in its `running` line. Only a dead link falls back: with
+no link at all (`dev off`) the install runs, and a suppressor turns the
+fall-back off with the rest of the layer. The default, `'local'`, skips the
+layer as above. The link file is not rewritten: it keeps naming the dead
+checkout, `dev status` marks it invalid and shows what runs instead, and the
+next `dev link` or `dev use` replaces it. `--where` in the process that runs
+names the link layer, as for a live link.
+
 A suppressor is an environment variable whose presence turns off the cwd,
 link and project layers. A tool that a host program runs names the host's root
 variable, so a machine-wide link never silently changes which code the host
@@ -119,6 +131,17 @@ Two files live under `<config>/<name>/` (or the `stateDir`):
 The `home` file is a bare path rather than JSON because a bash launcher reads
 it before any runtime exists.
 
+A spec with `onDeadLink: 'newest-surviving'` keeps a third file there,
+`candidates`, for the same reason: the checkouts to fall back to, newest first,
+one absolute path per line. `dev link` and `dev use` rebuild it from the
+history each time (one line per checkout, at most 32), so the links made
+before the tool turned the option on count too. A checkout that is gone stays
+listed, because a worktree is often added again at the same path; `dev off`
+leaves the file as it is. `resolve()` and the bash launcher both walk this
+file, never `history.jsonl`, and both skip a line that is not an absolute path.
+A missing or unreadable file reads as an empty list. A tool without the option
+never writes it.
+
 ## The spec
 
 ```ts
@@ -133,6 +156,7 @@ export const SPEC: ToolSpec = validateSpec({
   aliases: ['ty'],         // extra PATH names
   packageName: '@example/tooly', // optional: package.json name a checkout must have
   cwdLayer: false,        // optional: true runs a checkout above the cwd
+  onDeadLink: 'local',    // optional: 'newest-surviving' falls back to an earlier checkout
   suppressors: [],        // env vars whose presence turns off cwd + link
   vendorDirs: { vendor: 'com.example', envVars: envVars('EXAMPLE') }, // where state lives
   stateDir: '~/.tooly',   // optional: the state's default in place of <config>/tooly

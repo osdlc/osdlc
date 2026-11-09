@@ -1,0 +1,290 @@
+{
+  "doc": "agent-ci-review-1",
+  "updated": "2026-11-08T18:37:14.909Z",
+  "verdict": "approved",
+  "comments": [],
+  "choices": {
+    "q-strict": {
+      "selected": [
+        "accept-list"
+      ],
+      "note": "where is the strict being applied? and this is bc claude/cursor don't really implement a 'read-only' mode on the filesystem? ultimately we may plug in automatically sandbox execution where we could run the again in a read only filesystem, but can't we significantly lock down the built-in harness sandboxes?",
+      "at": "2026-11-08T18:36:02.321Z",
+      "replies": [
+        {
+          "id": "c45e166e-83af-4bc6-b802-212cd7848865",
+          "from": "agent",
+          "text": "Where strict is applied: only in the new agent-call run CLI (#715, src/cli/main.ts:103). After agent-call plans the command line and before it spawns the agent, it reads the plan's notes. Each note is tagged native, approximated, emulated or dropped, and strict refuses the call on any approximated or dropped one. The library itself never refuses.\n\nWhy read-only counts as approximated: agent-call maps read-only to a mode, not to a filesystem sandbox. claude --permission-mode plan and cursor --mode ask both withhold edit tools by the harness's own policy. Nothing at the OS level stops a write. codex --sandbox read-only is different: it is an OS sandbox (seatbelt or landlock), so it counts as native.\n\nCan we lock the built-in harnesses down much further? Yes, by combining controls each one already has:\n- claude: --disallowedTools for Edit, Write, NotebookEdit and Bash (or only the Bash patterns that write), --allowedTools for Read, Grep and Glob, and Claude Code's Bash sandbox (filesystem and network limits) enabled through --settings. The deny list is enforced by the harness, not the model.\n- cursor: --mode ask plus .cursor/cli.json denying Write(**) and Shell(*). I tested both on 2026.10.19, and the denies held even with --force. --sandbox enabled adds an OS sandbox with no network.\n- codex: already OS-level.\n\nThat suggests a better answer than the three options on the page: make agent-call's read-only mapping the strongest combination each harness offers (tool denies, plus the harness sandbox where there is one), and back each mapping with a harness-reference permissions fact and a probe. Mappings that become exact turn native, and strict passes without an accept list. An accept list stays useful for the approximations that remain.\n\nRunning the agent in a read-only filesystem container later sits on top of this and doesn't replace it. Want me to replace the q-strict options with: (a) strengthen the mappings and back them with facts (recommended), (b) an accept list, (c) both?",
+          "at": "2026-11-08T18:29:08.922Z",
+          "revision": 1,
+          "by": {
+            "model": "claude-opus-5-5",
+            "harness": "claude-code"
+          }
+        },
+        {
+          "id": "f6f532fd379373ee0ca4b1db",
+          "from": "reviewer",
+          "text": "yes, but in short term - if we say run in strict mode and the harness doesn't actually implement it I think we fail so the caller can decide whether to relax right? you'll have to illustrate what you mean with a better answer as I'm confused",
+          "at": "2026-11-08T18:33:22.216Z",
+          "sent": "2026-11-08T18:33:22.216Z"
+        },
+        {
+          "id": "4a598b92-dec7-4b40-be7a-fdf4a020fbc1",
+          "from": "agent",
+          "text": "Yes. Short term, that's exactly what #715 already does: strict fails, and the caller decides whether to relax by setting strict: false. Nothing needs changing for that.\n\nLet me illustrate the longer-term point with claude and the same spec, permissions: { mode: read-only }.\n\nToday, agent-call turns read-only into:\n  claude -p --permission-mode plan\nand marks it approximated, because plan mode is a mode, not something the harness enforces. With strict: true, the call fails (exit 3). Your only way to relax is strict: false, which also stops strict from catching anything else.\n\nLater, agent-call would turn the same read-only into:\n  claude -p --permission-mode plan --disallowedTools Edit,Write,NotebookEdit,Bash --settings '{\"sandbox\":{...}}'\nThe harness enforces each of those flags: the tools are gone, and Bash is either gone or sandboxed. A harness-reference fact and a probe confirm it. Then agent-call can mark read-only on claude as native, and strict: true passes, because read-only is now actually enforced.\n\nFor cursor, the same idea: --mode ask plus a .cursor/cli.json denying Write(**) and Shell(*), which I tested to hold.\n\nSo the better answer is about making agent-call's mappings stronger. It doesn't change how strict behaves. Strict stays 'fail if not really enforced'; the work is making more things really enforced.\n\nThe accept list was a middle step: a way to relax one field, say 'read-only may be approximated', without turning strict off for everything. It's optional.\n\nSuggested answer for q-strict: keep strict as built now (fail, caller relaxes), and strengthen the mappings once the permissions facts land. Add the accept list only if strict: false proves too blunt.",
+          "at": "2026-11-08T18:33:38.259Z",
+          "revision": 1,
+          "by": {
+            "model": "claude-opus-5-5",
+            "harness": "claude-code"
+          }
+        },
+        {
+          "id": "593032ad82d1ed0648f7c71a",
+          "from": "reviewer",
+          "text": "yes that sounds good, we can backlog the later stronger enforcement right?",
+          "at": "2026-11-08T18:35:58.924Z",
+          "sent": "2026-11-08T18:35:58.924Z"
+        },
+        {
+          "id": "66d4b358e303866ac2faa7ae",
+          "from": "reviewer",
+          "text": "where is the strict being applied? and this is bc claude/cursor don't really implement a 'read-only' mode on the filesystem? ultimately we may plug in automatically sandbox execution where we could run the again in a read only filesystem, but can't we significantly lock down the built-in harness sandboxes?",
+          "at": "2026-11-08T18:36:04.857Z",
+          "sent": "2026-11-08T18:36:04.857Z"
+        },
+        {
+          "id": "0cf67047-7ac1-48f2-8a48-38f2f6f12c81",
+          "from": "agent",
+          "text": "Yes. It's backlogged in docs/planning/agent-ci.md, pushed to #717, as a grey 'later' node that depends on the permissions facts: enforced read-only mappings (claude tool denies plus the Bash sandbox, cursor --mode ask plus .cursor/cli.json) so strict passes. Moving claude.yml onto the spec no longer waits on it; that run can use strict: false for now. The review section records the decision: keep strict as built. Pick any option on this question to close it; the recorded decision is what counts.",
+          "at": "2026-11-08T18:36:17.706Z",
+          "revision": 1,
+          "by": {
+            "model": "claude-opus-5-5",
+            "harness": "claude-code"
+          }
+        }
+      ],
+      "hash": "304d89ab579c",
+      "revision": 1,
+      "tab": "ee159ee0d9ba5cc25a4d5186",
+      "sent": "2026-11-08T18:36:04.857Z"
+    },
+    "q-maxturns": {
+      "selected": [
+        "add"
+      ],
+      "at": "2026-11-08T18:28:45.032Z",
+      "hash": "6a02a3c84a7e",
+      "revision": 1,
+      "tab": "ee159ee0d9ba5cc25a4d5186",
+      "sent": "2026-11-08T18:37:14.909Z"
+    },
+    "q-cursor-allow": {
+      "selected": [
+        "agent-call"
+      ],
+      "note": "this is just to allow passing in a call with yaml spec?",
+      "at": "2026-11-08T18:29:19.334Z",
+      "sent": "2026-11-08T18:29:20.905Z",
+      "hash": "64bb29bbf878",
+      "revision": 1,
+      "tab": "ee159ee0d9ba5cc25a4d5186",
+      "replies": [
+        {
+          "id": "57c59ac7-3fdd-4a9d-b29b-e3e097e44535",
+          "from": "agent",
+          "text": "No, it isn't about YAML. The YAML spec is only one way to fill in agent-call's permissions. This change sits in the library's cursor adapter, so it applies to every caller: library code such as pr-update and agent-seat, and the run CLI alike.\n\nThe problem it solves: cursor has no command-line flag for tool allow and deny rules. Today, when any caller sets permissions.allowTools or denyTools for cursor, agent-call drops them and says so in the notes. Cursor only reads those rules from a file (.cursor/cli.json in the workspace, or ~/.cursor/cli-config.json). If the adapter writes that file for the length of the call, the fields become real on cursor, the same as --allowedTools on claude.\n\nTwo costs to know about:\n1. It writes into the agent's working directory (the checkout) and restores the old file afterwards. Two calls running at once in the same checkout would collide, so the adapter must refuse that, or lock.\n2. If the run crashes before the restore, the file is left behind. A finally block covers normal errors but not a kill -9.\n\nThe other place for the rules is the user-level ~/.cursor/cli-config.json, but cursor keeps account state under ~/.cursor, so swapping that file is riskier. I'd keep it workspace-level.",
+          "at": "2026-11-08T18:29:35.413Z",
+          "revision": 1,
+          "by": {
+            "model": "claude-opus-5-5",
+            "harness": "claude-code"
+          }
+        }
+      ]
+    },
+    "q-yaml": {
+      "selected": [
+        "keep"
+      ],
+      "note": "this is just to allow passing in a call with yaml spec?",
+      "at": "2026-11-08T18:29:28.126Z",
+      "sent": "2026-11-08T18:29:28.807Z",
+      "hash": "74cf53dd3422",
+      "revision": 1,
+      "tab": "ee159ee0d9ba5cc25a4d5186",
+      "replies": [
+        {
+          "id": "dc4d875d-80c9-4cf6-879b-bf15b299e6b3",
+          "from": "agent",
+          "text": "Yes, for this one. The yaml package only parses a spec file written in YAML. The CLI reads JSON specs with Node's built-in parser, and the library never loads yaml.\n\nI chose YAML because the spec is reviewed in GitHub like a workflow file: it allows comments (why a tool is allowed, why a model was picked), multi-line prompt text, and less punctuation noise in a diff.\n\nIf one dependency matters more than that, the CLI could accept JSON only and the yaml dependency goes away. The spec would then be .json with no comments. Your choice (keep it) stands unless you'd rather have JSON only.",
+          "at": "2026-11-08T18:29:49.566Z",
+          "revision": 1,
+          "by": {
+            "model": "claude-opus-5-5",
+            "harness": "claude-code"
+          }
+        },
+        {
+          "id": "e8ac966cf7dab9fc40a6b548",
+          "from": "reviewer",
+          "text": "yeah, I'm good with the cli supporting yaml",
+          "at": "2026-11-08T18:36:33.918Z",
+          "sent": "2026-11-08T18:36:33.918Z"
+        },
+        {
+          "id": "6f24cabc-c96b-4b71-825a-79924f44b03d",
+          "from": "agent",
+          "text": "Noted: the CLI keeps YAML support, and yaml stays a CLI-only dependency of @osdlc/agent-call. Nothing changes on #715.",
+          "at": "2026-11-08T18:36:41.137Z",
+          "revision": 1,
+          "by": {
+            "model": "claude-opus-5-5",
+            "harness": "claude-code"
+          }
+        }
+      ]
+    },
+    "q-cursor-tarball": {
+      "selected": [
+        "tarball"
+      ],
+      "note": "where is this pinned tarball? are we maintaining it or its on cursor's site?",
+      "at": "2026-11-08T18:33:59.258Z",
+      "replies": [
+        {
+          "id": "92583d0e-ba24-4e40-8660-bd927b250247",
+          "from": "agent",
+          "text": "It's on Cursor's own download server, and we don't host or maintain anything. The URL is https://downloads.cursor.com/lab/<build>/<os>/<arch>/agent-cli-package.tar.gz, for example .../lab/2026.11.05-86047df/linux/x64/agent-cli-package.tar.gz. Cursor's official installer (cursor.com/install) downloads from that same URL. It just always uses the newest build id, which is written into the script, and gives you no way to ask for another.\n\nWhat 'pinned' means here: agent-setup writes a specific build id into the URL instead of taking whatever the installer currently says. All we maintain is that build id, the default in setup.sh, plus the SHA-256 of each tarball (linux and darwin, x64 and arm64). The fixes now going into #716 check those hashes, so a changed file is refused.\n\nRisks: Cursor could stop serving old builds, or change the URL layout. The test workflow on #716 would catch either one. Bumping the version means changing the build id and the four hashes.",
+          "at": "2026-11-08T18:30:16.673Z",
+          "revision": 1,
+          "by": {
+            "model": "claude-opus-5-5",
+            "harness": "claude-code"
+          }
+        },
+        {
+          "id": "f49619fc17e7817622f6d084",
+          "from": "reviewer",
+          "text": "where is this pinned tarball? are we maintaining it or its on cursor's site?",
+          "at": "2026-11-08T18:36:04.857Z",
+          "sent": "2026-11-08T18:36:04.857Z"
+        },
+        {
+          "id": "c8229048-7a9b-4c8c-ad21-1be9ef07ae4b",
+          "from": "agent",
+          "text": "Answered in the reply above: the tarball is on Cursor's own download server, and we maintain only the build id and its four SHA-256 hashes. Your choice, the pinned tarball, is recorded.",
+          "at": "2026-11-08T18:36:30.655Z",
+          "revision": 1,
+          "by": {
+            "model": "claude-opus-5-5",
+            "harness": "claude-code"
+          }
+        }
+      ],
+      "hash": "1ca34a3462db",
+      "revision": 1,
+      "tab": "ee159ee0d9ba5cc25a4d5186",
+      "sent": "2026-11-08T18:36:04.857Z"
+    },
+    "q-publish": {
+      "selected": [
+        "release-first"
+      ],
+      "at": "2026-11-08T18:30:34.810Z",
+      "hash": "6004d66fc336",
+      "revision": 1,
+      "tab": "ee159ee0d9ba5cc25a4d5186",
+      "sent": "2026-11-08T18:37:14.909Z"
+    },
+    "q-marketplaces": {
+      "selected": [
+        "keep"
+      ],
+      "note": "can you explain further what this means - what is skillwright trying to do here with a remote marketplace name?",
+      "at": "2026-11-08T18:35:08.941Z",
+      "replies": [
+        {
+          "id": "45175556-2273-4bc0-8f9c-b7261bb623ab",
+          "from": "agent",
+          "text": "What the name is: a plugin id is plugin@marketplace, as in craft@osdlc. 'osdlc' is the name the marketplace declares in its own manifest, inside the osdlc/marketplace repo (for claude, .claude-plugin/marketplace.json, \"name\": \"osdlc\"). To install, the harness first registers the marketplace by URL, then installs craft@osdlc, and that @osdlc has to match the manifest's name.\n\nWhat skillwright does: skillwright harness install was built for marketplaces that skillwright builds itself from a local vault. It takes the marketplace's name from that vault (the vault folder's name, or the name in its skillwright.md) and never opens the remote repo to read the manifest. Then it runs the harness's own commands: claude plugin marketplace add <url>, then claude plugin install craft@<name>; on codex, codex plugin add craft@<name>. agent-setup builds an empty vault named after the marketplace, so skillwright works out the right name. That's why the input needs name=url: we tell skillwright the name it can't discover. A wrong name makes the install fail.\n\nTwo better options than keeping it:\n1. agent-setup reads the name itself: a shallow git clone of the marketplace, then jq .name on its manifest. The input becomes just a URL, and skillwright needs no change.\n2. For a remote marketplace that is already built, skillwright mostly just passes commands through, with a fake vault. Its value here is one command that works the same on claude, codex and pi. If that isn't worth the extra binary, agent-setup could call each harness's plugin commands directly, as claude-setup did in #712. skillwright would still own building marketplaces from vaults.\n\nMy recommendation now: option 1 (read the name, URL-only input), and keep skillwright for the cross-harness install. Revisit option 2 if skillwright's vault requirement keeps forcing workarounds.",
+          "at": "2026-11-08T18:31:21.412Z",
+          "revision": 1,
+          "by": {
+            "model": "claude-opus-5-5",
+            "harness": "claude-code"
+          }
+        },
+        {
+          "id": "63c8ee9c8062f0551d369590",
+          "from": "reviewer",
+          "text": "can you explain further what this means - what is skillwright trying to do here with a remote marketplace name?",
+          "at": "2026-11-08T18:36:04.857Z",
+          "sent": "2026-11-08T18:36:04.857Z"
+        },
+        {
+          "id": "3926f45c-2785-42df-b0d3-1ea1d09d34b1",
+          "from": "agent",
+          "text": "Answered in the reply above. You chose 'Keep it'. My updated recommendation there was to let agent-setup read the name from the marketplace's manifest, so the input becomes just the URL. Should I make that change on #716, or keep name=url as chosen?",
+          "at": "2026-11-08T18:36:30.867Z",
+          "revision": 1,
+          "by": {
+            "model": "claude-opus-5-5",
+            "harness": "claude-code"
+          }
+        }
+      ],
+      "hash": "00e240e47745",
+      "revision": 1,
+      "tab": "ee159ee0d9ba5cc25a4d5186",
+      "sent": "2026-11-08T18:36:04.857Z"
+    },
+    "q-release": {
+      "selected": [
+        "workflow"
+      ],
+      "at": "2026-11-08T18:31:29.455Z",
+      "hash": "24eddbaba97c",
+      "revision": 1,
+      "tab": "ee159ee0d9ba5cc25a4d5186",
+      "sent": "2026-11-08T18:37:14.909Z"
+    },
+    "q-cursor-plugins": {
+      "selected": [
+        "error"
+      ],
+      "at": "2026-11-08T18:31:19.533Z",
+      "hash": "f21d2054555f",
+      "revision": 1,
+      "tab": "ee159ee0d9ba5cc25a4d5186",
+      "sent": "2026-11-08T18:37:14.909Z"
+    }
+  },
+  "seen": {
+    "q-strict": "304d89ab579c",
+    "q-maxturns": "6a02a3c84a7e",
+    "q-cursor-allow": "64bb29bbf878",
+    "q-yaml": "74cf53dd3422",
+    "q-cursor-tarball": "1ca34a3462db",
+    "q-cursor-plugins": "f21d2054555f",
+    "q-release": "24eddbaba97c",
+    "q-marketplaces": "00e240e47745",
+    "q-publish": "6004d66fc336"
+  },
+  "seenReplies": {
+    "dc4d875d-80c9-4cf6-879b-bf15b299e6b3": "2026-11-08T18:29:54.101Z",
+    "92583d0e-ba24-4e40-8660-bd927b250247": "2026-11-08T18:30:19.204Z",
+    "57c59ac7-3fdd-4a9d-b29b-e3e097e44535": "2026-11-08T18:31:06.006Z",
+    "c45e166e-83af-4bc6-b802-212cd7848865": "2026-11-08T18:31:38.023Z",
+    "4a598b92-dec7-4b40-be7a-fdf4a020fbc1": "2026-11-08T18:33:45.578Z",
+    "45175556-2273-4bc0-8f9c-b7261bb623ab": "2026-11-08T18:34:07.129Z",
+    "c8229048-7a9b-4c8c-ad21-1be9ef07ae4b": "2026-11-08T18:36:39.124Z",
+    "6f24cabc-c96b-4b71-825a-79924f44b03d": "2026-11-08T18:36:43.348Z",
+    "3926f45c-2785-42df-b0d3-1ea1d09d34b1": "2026-11-08T18:36:50.938Z",
+    "0cf67047-7ac1-48f2-8a48-38f2f6f12c81": "2026-11-08T18:37:09.116Z"
+  },
+  "finished": "2026-11-08T18:37:14.909Z",
+  "agentReadAt": "2026-11-08T18:37:21.436Z"
+}
