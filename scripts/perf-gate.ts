@@ -48,7 +48,7 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
 
-/** A benchmark median may grow by this fraction before the gate fails. */
+/** A benchmark's best-round figure may grow by this fraction before the gate fails. */
 export const THRESHOLD = 0.15;
 /** The label that lets a deliberate slowdown through. */
 export const ACCEPT_LABEL = "perf-accepted";
@@ -167,15 +167,6 @@ export function accepted(
   return reason.length >= MIN_REASON
     ? { ok: true, reason }
     : { ok: false, reason: null };
-}
-
-/** The median of `values`, which must not be empty. */
-export function median(values: number[]): number {
-  const s = [...values].sort((a, b) => a - b);
-  const mid = s.length >> 1;
-  return s.length % 2
-    ? (s[mid] as number)
-    : ((s[mid - 1] as number) + (s[mid] as number)) / 2;
 }
 
 /** The best (smallest) of `values`, which must not be empty. */
@@ -362,8 +353,12 @@ function runPackage(
   return parseCriterion(p.name, target);
 }
 
-/** The markdown table of the rows. */
-export function table(rows: Row[], threshold = THRESHOLD): string {
+/** The markdown table of the rows; `confirming` says whether a confirmation pass can run. */
+export function table(
+  rows: Row[],
+  threshold = THRESHOLD,
+  confirming = true,
+): string {
   const fmt = (v: number | null): string =>
     v === null
       ? "-"
@@ -371,7 +366,7 @@ export function table(rows: Row[], threshold = THRESHOLD): string {
         ? `${v.toFixed(2)} ms`
         : `${(v * 1000).toFixed(1)} us`;
   const lines = [
-    `Best round's median per iteration, head against base; a gated benchmark fails above +${Math.round(threshold * 100)}% in the first pass and again in the confirmation pass.`,
+    `Best round's median per iteration, head against base; a gated benchmark fails above +${Math.round(threshold * 100)}% ${confirming ? " in the first pass and again in the confirmation pass" : ""}.`,
     "",
     "| benchmark | base | head | change | |",
     "| --- | ---: | ---: | ---: | --- |",
@@ -473,7 +468,7 @@ export function main(argv: string[]): number {
       if (side === "head" || hasBenches(p)) build(roots[side], p);
   }
   type Samples = Map<string, number[]>;
-  /** Run `rounds` rounds of `packages`; each round's median per benchmark, by side. */
+  /** Run `count` rounds of `packages`; each round's median per benchmark, by side. */
   const measure = (
     packages: BenchPackage[],
     count: number,
@@ -536,7 +531,7 @@ export function main(argv: string[]): number {
       compare(reduce(confirmSamples.base), reduce(confirmSamples.head)),
     );
   }
-  const text = table(rows);
+  const text = table(rows, THRESHOLD, confirmRounds > 0);
   console.log(text);
   if (outDir) {
     mkdirSync(outDir, { recursive: true });

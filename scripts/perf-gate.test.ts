@@ -12,7 +12,6 @@ import {
   confirmed,
   discover,
   main,
-  median,
   packagesOf,
   parseCriterion,
   parseVitest,
@@ -57,10 +56,6 @@ test("compare: 15% is the line", () => {
   });
 });
 
-test("median", () => {
-  assert.equal(median([3, 1, 2]), 2);
-  assert.equal(median([4, 1, 2, 3]), 2.5);
-});
 
 test("accepted needs the label and a stated reason", () => {
   const body =
@@ -195,6 +190,8 @@ test("table: ms or us, and the sign of the change", () => {
   assert.match(t, /\| a \| 2\.00 ms \| 3\.00 ms \| \+50\.0% \| slower \|/);
   assert.match(t, /\| b \| 2\.0 us \| 1\.0 us \| -50\.0% \| faster \|/);
   assert.match(t, /\| c \| - \| 1\.00 ms \|  \| new \|/);
+  assert.match(t, /confirmation pass/);
+  assert.doesNotMatch(table([], 0.15, false), /confirmation pass/);
 });
 
 test("main rejects malformed arguments with exit code 2", () => {
