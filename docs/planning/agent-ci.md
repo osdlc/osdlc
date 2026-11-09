@@ -127,7 +127,7 @@ flowchart LR
 What is ready for your review, in the order to review it. Rewritten as PRs
 move; merged PRs drop off.
 
-Nothing is waiting on your review. [#726](https://github.com/osdlc/osdlc/pull/726), the Version Packages PR, now carries #721 and #723 (agent-call 0.10.0, plus corpus-schema 0.1.0 and markdown-tags 0.4.0), but its CI fails: `check:conformance` says "markdown-tags: listed in CATCHING_UP but its versions agree; remove it" (`scripts/conformance.ts:49`). That needs a one-line fix on main before #726 can merge.
+Nothing is waiting on your review. [#726](https://github.com/osdlc/osdlc/pull/726), the Version Packages PR, now carries #721 and #723 (agent-call 0.10.0, plus corpus-schema 0.1.0 and markdown-tags 0.4.0), but its CI fails: `check:conformance` says "markdown-tags: listed in CATCHING_UP but its versions agree; remove it" (`scripts/conformance.ts:49`). [#731](https://github.com/osdlc/osdlc/pull/731) (draft) removes the entry on #726's branch; merge #731, then #726.
 
 ## PR tracker
 
@@ -135,7 +135,8 @@ Checked 2026-11-09 01:20 UTC. A periodic check refreshes this table and the grap
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
-| [#726](https://github.com/osdlc/osdlc/pull/726) | Version Packages (agent-call 0.10.0) | open | none | blocked | CI: markdown-tags still listed in CATCHING_UP | merge after the conformance fix |
+| [#731](https://github.com/osdlc/osdlc/pull/731) | chore(conformance): drop markdown-tags from CATCHING_UP in the version PR | draft | none | — | pre-review gate | merge into #726's branch, then #726 |
+| [#726](https://github.com/osdlc/osdlc/pull/726) | Version Packages (agent-call 0.10.0) | open | none | blocked | CI: markdown-tags still listed in CATCHING_UP | merge after #731 |
 | [#721](https://github.com/osdlc/osdlc/pull/721) | feat(agent-call): enforce allow and deny tools on cursor | merged | — | — | — | merged 2026-11-09 |
 | [#723](https://github.com/osdlc/osdlc/pull/723) | fix(agent-call): follow-ups from the codex review of #715 | merged | — | — | — | merged 2026-11-09 |
 | [#716](https://github.com/osdlc/osdlc/pull/716) | feat(gh-actions): add the agent-setup action | merged | — | — | — | merged 2026-11-09 |
