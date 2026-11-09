@@ -34,6 +34,7 @@ import { join } from 'node:path'
 
 import { z } from 'zod'
 
+import { forwardedSignal } from '@osdlc/command-seam'
 import { Git } from '@osdlc/typed-git'
 
 import {
@@ -313,8 +314,6 @@ export type UpdateOutput = z.infer<typeof output>
 /** Everything a run needs beyond the args and the config. */
 export interface UpdateEnv extends SurveyEnv {
   ports: Ports
-  /** Aborted on interrupt: the update starts no further PR. */
-  signal?: AbortSignal | undefined
 }
 
 /**
@@ -427,14 +426,13 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
       ...(await updateAll(git, group, settings, env.ports.runVerb, {
         apply: writes,
         worktreeRoot,
-        signal: env.signal,
       })),
     )
   }
   // A rehearsal cannot repair, so its failures say nothing about a real run. An
   // interrupted run records nothing: its last PR may have failed only because it
   // was stopped, and a recorded failure would skip that PR on the next run.
-  if (writes && attempts !== undefined && env.signal?.aborted !== true) {
+  if (writes && attempts !== undefined && forwardedSignal() === undefined) {
     recordAttempts(attempts, results)
   }
 

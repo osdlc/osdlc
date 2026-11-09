@@ -45,7 +45,7 @@ import { atomicWrite } from '@osdlc/etag-write'
 import { EXIT, defineCli, failWith, failureOf, renderError, type CliContext } from '@osdlc/cli-tool'
 import { defineApp, type App } from '@osdlc/cli-tool/command'
 import { trustCommand, type TrustService } from '@osdlc/cli-tool/trust-command'
-import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
+import { forwardedExitCode, spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 import { describe, type Failure } from '@osdlc/result'
 import { Git } from '@osdlc/typed-git'
 import { CONFIG_INVALID_EXIT, ConfigInvalidError, type ConfigFileSpec } from '@osdlc/config-layers'
@@ -334,13 +334,9 @@ function runEnv(
       override: layers.merged.code_host.override,
     }),
     cfg,
-    ports: standalonePorts(cfg, projectRoot, ctx.signal),
-    signal: ctx.signal,
+    ports: standalonePorts(cfg, projectRoot),
   }
 }
-
-/** Exit status when SIGINT or SIGTERM stopped the run; matches agent-call. */
-const EXIT_INTERRUPTED = 130
 
 /** Check the run's tools, remote and code host before any PR is listed. */
 function checkStart(
@@ -606,7 +602,9 @@ async function runUpdateCommand(
       failure,
     })),
   })
-  if (ctx.signal?.aborted === true) return EXIT_INTERRUPTED
+  // A forwarded signal stopped the run: exit 128 + its number, as forwarding itself would.
+  const interrupted = forwardedExitCode()
+  if (interrupted !== undefined) return interrupted
   if (listingFailure !== null) return listingFailure
   return out.counts.conflict > 0 || out.counts.failed > 0 ? EXIT.error : EXIT.ok
 }

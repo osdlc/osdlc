@@ -2,4 +2,4 @@
 "@osdlc/pr-update": patch
 ---
 
-SIGINT and SIGTERM now stop the repair agent. `pr-update` passes an abort signal to the agent call, starts no further repair or PR update once it fires, and exits 130 like `agent-call run`. Before, an interrupted run left the spawned agent running.
+`pr-update update` now installs `@osdlc/command-seam`'s process-group signal forwarding. SIGINT, SIGTERM or SIGHUP while the repair agent runs kills the agent's group, starts no further repair or PR update, records no failed attempt for the interrupted run, and exits `128 + signal` (130 for SIGINT, 143 for SIGTERM). A second signal is SIGKILL. Before, an interrupted run left the spawned agent running. `survey` is unchanged. Between agent runs (git and `gh` steps, the verify command) pr-update holds no process group, so a signal there ends it as before.

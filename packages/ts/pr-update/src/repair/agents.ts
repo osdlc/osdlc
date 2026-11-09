@@ -27,6 +27,7 @@ import {
   type AgentResult,
   type PlannedCall,
 } from '@osdlc/agent-call'
+import { forwardedSignal } from '@osdlc/command-seam'
 
 import type { Repair, RepairRequest } from '../ports.ts'
 import type { RepairAgent } from './names.ts'
@@ -40,16 +41,10 @@ export interface AgentRepairOptions {
   model?: string | null | undefined
   /** Kill the agent after this long; null or unset means no limit. */
   timeoutSeconds?: number | null | undefined
-  /** Aborted to stop the agent (its process group is killed) and to start no further repair. */
-  signal?: AbortSignal | undefined
 }
 
 /** Runs one agent call; tests substitute a fake so no real agent ever starts. */
-export type CallAgent = (
-  adapter: AgentAdapter,
-  spec: AgentCallSpec,
-  options?: { signal?: AbortSignal | undefined },
-) => Promise<AgentResult>
+export type CallAgent = (adapter: AgentAdapter, spec: AgentCallSpec) => Promise<AgentResult>
 
 const ADAPTERS: Record<RepairAgent, () => AgentAdapter> = {
   claude: () => claudeAdapter(),
@@ -98,10 +93,11 @@ export function agentRepair(
   call: CallAgent = callAgent,
 ): Repair {
   return async (req) => {
-    if (opts.signal?.aborted === true) return { ok: false, note: `${agent}: interrupted` }
+    // The host got SIGINT/SIGTERM/SIGHUP and is stopping: agent-call would refuse to start it.
+    if (forwardedSignal() !== undefined) return { ok: false, note: `${agent}: interrupted` }
     let result: AgentResult
     try {
-      result = await call(ADAPTERS[agent](), repairCallSpec(req, opts), { signal: opts.signal })
+      result = await call(ADAPTERS[agent](), repairCallSpec(req, opts))
     } catch (e) {
       // agent-call rejects for a call it could not plan or set up (bad spec, temp
       // directory failure); see callAgent's @throws.

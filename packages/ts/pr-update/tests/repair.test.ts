@@ -4,7 +4,7 @@
  * against a fake `callAgent`.
  */
 
-import { describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import type { AgentResult } from '@osdlc/agent-call'
 
@@ -17,6 +17,11 @@ import {
 } from '../src/repair/agents.ts'
 import { repairPrompt } from '../src/repair/prompt.ts'
 import type { RepairRequest } from '../src/ports.ts'
+import { forwarded } from './support-signal.ts'
+
+vi.mock('@osdlc/command-seam', async (original) =>
+  (await import('./support-signal.ts')).mockForwarding(original),
+)
 
 const request = (patch: Partial<RepairRequest> = {}): RepairRequest => ({
   kind: 'conflict',
@@ -140,31 +145,27 @@ describe('agentRepair result mapping', () => {
   })
 })
 
-describe('agentRepair interrupt signal', () => {
+describe('agentRepair after a forwarded signal', () => {
   const ok = { ok: true, text: 'done', exitCode: 0, durationMs: 1 } as AgentResult
-
-  test('passes the signal to the agent call', async () => {
-    const ctl = new AbortController()
-    let seen: AbortSignal | undefined
-    const fake: CallAgent = async (_a, _s, options) => {
-      seen = options?.signal
-      return ok
-    }
-    await agentRepair('claude', { signal: ctl.signal }, fake)(request())
-    expect(seen).toBe(ctl.signal)
+  afterEach(() => {
+    forwarded.signal = undefined
   })
 
-  test('an already aborted signal starts no agent', async () => {
-    const ctl = new AbortController()
-    ctl.abort()
+  test('starts no agent once the host is stopping', async () => {
+    forwarded.signal = 'SIGINT'
     let called = false
     const fake: CallAgent = async () => {
       called = true
       return ok
     }
-    const res = await agentRepair('claude', { signal: ctl.signal }, fake)(request())
+    const res = await agentRepair('claude', {}, fake)(request())
     expect(called).toBe(false)
     expect(res.ok).toBe(false)
     expect(res.note).toContain('interrupted')
+  })
+
+  test('runs the agent when no signal was forwarded', async () => {
+    const fake: CallAgent = async () => ok
+    expect((await agentRepair('claude', {}, fake)(request())).ok).toBe(true)
   })
 })
