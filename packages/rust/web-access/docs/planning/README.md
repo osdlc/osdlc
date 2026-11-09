@@ -39,8 +39,8 @@ Each entry has a `state`. A decision is `proposed`, `accepted` or
   connection
 - [T-02](tasks/T-02-per-device-tokens.md): Per-device tokens that can be
   revoked
-- [T-03](tasks/T-03-end-connections-when-a-grant-is-withdrawn.md): End open
-  connections when a grant is withdrawn
+- [T-03](tasks/T-03-end-connections-when-a-grant-is-withdrawn.md): End a
+  withdrawn grant's connections at once, and only those
 - [T-04](tasks/T-04-session-cookie.md): A per-browser session in the cookie,
   not the token
 - [T-05](tasks/T-05-serve-and-runtime-edge-cases.md): Edge cases in `serve`

@@ -322,10 +322,21 @@ let options = ServeOptions {
 };
 ```
 
-`stop()` stops accepting connections, releases the ports, and waits up to five
-seconds for the server to wind down. A connection that is already open, such as
-a stream or a WebSocket, is not ended by `stop()`: it runs until it closes. See
-[Security model](#security-model).
+`stop()` stops accepting connections and waits up to five seconds for requests in
+flight. Then it closes every connection still open, streams and WebSockets
+included, and releases the ports.
+
+Three more options in `ServeOptions`, for an app behind a proxy or with longer
+sessions:
+
+| Option | What it does |
+|---|---|
+| `public_hosts` | Names of a TLS-terminating proxy in front of the app (`app.example.dev`). Each is allowed as a `Host`; only its `https://` origin is allowed, and only on a request for that name; the cookie gets `Secure`. The token is still required. |
+| `admin_public_only` | The admin token gives `admin` only on a request whose `Host` is a public name, and `full` anywhere else. A guard against a mis-pasted admin link, not proof of how a request arrived. |
+| `cookie_max_age` | Make the share cookie last this long instead of a browser session. The admin cookie stays a session cookie. |
+
+An admin link sets its own cookie, `web_access_admin_<port>`, so opening a full
+link afterwards does not replace it.
 
 ## Using the guard without `serve`
 
@@ -453,7 +464,6 @@ What it does not protect against, and what to do instead:
 |---|---|---|
 | Plain HTTP | Someone who can read the network traffic can read the token. | Use it only on networks you trust, or behind TLS (for example a VPN or Tailscale Serve). |
 | Cookies are not kept apart by port | Browsers send a host's cookies to every port on it. Another server on the same address can read `web_access_20015`. The port in the name only stops two servers overwriting each other's cookie. | Do not run untrusted servers on the same address as a shared app, especially with admin on. |
-| Open connections survive a revoke | Turning sharing or admin off, or rotating a token, stops new requests. A WebSocket or stream already open keeps going until it closes. | Close long-lived connections yourself when the grant they were opened with is withdrawn. |
 | Reverse proxies | Behind a proxy on the same machine, every request comes from loopback, so every request is `WebLocal`. | Do not put a proxy in front, or turn `loopback_open` off and do not trust `WebLocal`. |
 | Windows file permissions | Token files get no owner-only mode. | Keep the token directory in the user's profile, such as under `%LOCALAPPDATA%`. |
 | One token per grant | Every device shares the same token, so you cannot revoke one device. | Rotate the token, which signs every device out. |
@@ -475,8 +485,8 @@ keep no cookies between visits. The header form (`x-web-access-token`) works for
 scripts; for people, open the link in the system browser.
 
 **How do I sign every device out?** Rotate the grant's token:
-`runtime.rotate(Grant::Full)`. Open WebSockets are not closed by that; see the
-security model.
+`runtime.rotate(Grant::Full)`. The server restarts, and open connections are
+closed within about six seconds.
 
 **Can I use my own header name?** Not yet. The header is `x-web-access-token`
 (`web_access::guard::TOKEN_HEADER`).

@@ -22,12 +22,9 @@ expect.
   returns `Ok` and leaves the token files as they are while sharing is
   disabled, so a link that leaked keeps working once sharing is turned on
   again. Rotate the files even while sharing is off.
-- **The host list is taken once.** With `Listen::AllInterfaces`, the allowed
-  `Host` list is built from the interfaces present when the server starts, so
-  an address that appears later is refused with 421, although the docs say
-  "present and future". IPv6 link-local addresses cannot be used at all,
-  because a zone id does not survive in a `Host` header. Rebuild the list when
-  the interfaces change, or document the limit.
+- **IPv6 link-local addresses cannot be used.** A zone id does not survive in
+  a `Host` header, so a link-local address never matches the allowlist. Allow
+  it, or document the limit.
 
 ## Done when
 

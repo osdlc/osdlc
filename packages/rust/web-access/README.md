@@ -23,7 +23,12 @@ before the app's own handlers see it.
 - **Permissions.** Your table of routes and what each needs, checked against the
   context and the grant.
 - **Server.** `serve` binds every address the config names, wraps your router in
-  the guard and returns a handle with the share links and `stop()`.
+  the guard and returns a handle with the share links and `stop()`, which
+  closes every open connection.
+- **Behind a proxy.** Name the public host of a TLS-terminating proxy in
+  `ServeOptions::public_hosts`: it is allowed as a `Host`, only its `https://`
+  origin is allowed, and the cookie gets `Secure`. `admin_public_only` keeps the
+  admin grant to that name.
 - **Sharing runtime.** `SharingRuntime` applies a stored config, restarts the
   server when it changes, rotates tokens and reports a status for a settings
   page.
@@ -172,10 +177,10 @@ origins can be reported to a callback (`GuardState::with_on_denied`), at most
   there can read the token. The port in the name only keeps two servers from
   overwriting each other's cookie. Do not run untrusted servers on the same
   address as a shared app, above all with admin access on.
-- Turning sharing off, turning admin off or rotating a token stops new
-  requests, but a connection that is already open (a stream or a WebSocket)
-  keeps running until it closes. Close long-lived connections yourself when the
-  grant they were opened with is withdrawn.
+- Turning sharing off, turning admin off or rotating a token restarts the
+  server, and `stop()` closes every connection still open, streams and
+  WebSockets included, after a grace period of about five seconds. A device
+  whose grant was withdrawn loses its open socket then, not at once.
 - On Windows, token files get no owner-only mode. Keep the token directory in
   the user's own profile (for example under `%LOCALAPPDATA%`), where the
   default permissions keep other users out.

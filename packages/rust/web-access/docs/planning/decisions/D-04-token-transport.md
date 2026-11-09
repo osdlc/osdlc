@@ -17,8 +17,13 @@ created: 2026-11-07
   answers with a small page that moves to the same URL without the token.
 - After that the browser presents the cookie. A script or another program
   presents the `x-web-access-token` header instead.
+- An admin link sets its own cookie, `web_access_admin_<port>`, so opening a
+  full link afterwards does not replace it. The share cookie is a session
+  cookie unless the app sets `cookie_max_age`; the admin cookie always is.
 - The token travels over plain HTTP. That is accepted for networks the user
-  trusts, and the README says so.
+  trusts, and the README says so. Behind a TLS-terminating proxy, the app names
+  the proxy's public hosts (`public_hosts`): the cookie set on a request for
+  such a name carries `Secure`, and only its `https://` origin is allowed.
 
 ## Why
 

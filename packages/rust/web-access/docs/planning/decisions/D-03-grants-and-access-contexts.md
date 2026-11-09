@@ -41,6 +41,8 @@ created: 2026-11-07
 
 - Behind a reverse proxy every request looks local. The README says not to use
   the crate there.
-- A connection opened under a grant keeps running after the grant is
-  withdrawn, until it closes. [T-03](../tasks/T-03-end-connections-when-a-grant-is-withdrawn.md)
-  tracks ending it.
+- Withdrawing a grant restarts the server, and `stop` closes every open
+  connection after its grace period, so a withdrawn grant's socket ends within
+  about six seconds, and so do the others.
+  [T-03](../tasks/T-03-end-connections-when-a-grant-is-withdrawn.md) tracks
+  ending only the withdrawn grant's, at once.

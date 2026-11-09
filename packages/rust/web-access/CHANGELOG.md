@@ -19,6 +19,25 @@ contexts, a route permission table, and a server that can be stopped.
   cross-origin request the guard lets through.
 - `WebAccessStatus::stopped(&config)`, the status of a config with no server
   running.
+- Serving behind a TLS-terminating proxy: `ServeOptions::public_hosts` and
+  `GuardState::with_public_hosts` name the public hosts. Each is allowed as a
+  `Host`, only its `https://` origin is allowed (and only on a request for that
+  name), and the share cookie carries `Secure` there. `guard::PublicHost` marks
+  such a request, `origin_matches_public_host` is the Origin check for it, and
+  `normalize_public_host` is the rule applied to each name.
+- `ServeOptions::admin_public_only` and `GuardState::with_admin_over_public_only`
+  (off by default): the admin token confers `admin` only on a request whose
+  `Host` is a public name, and `full` anywhere else; its link sets no cookie on
+  another name. A guard against a mis-pasted link, not proof of how a request
+  arrived.
+- `ServeOptions::cookie_max_age` and `GuardState::with_cookie_max_age`: a share
+  cookie that outlives the browser session. The admin cookie stays a session
+  cookie.
+- An admin link sets its own cookie, `web_access_admin_<port>`
+  (`guard::admin_cookie_name`), so opening a full link afterwards does not
+  replace it. `is_cookie_name` accepts both names.
+- With a wildcard bind, the `Host` allowlist also admits an interface address
+  that appears after the server started, on the bound port.
 - Examples: `serve_with_token`, `guard_and_policy`, `tokens_on_disk`,
   `sharing_runtime` and `local_origins`.
 
@@ -51,16 +70,18 @@ contexts, a route permission table, and a server that can be stopped.
 - Breaking: `serve` refuses `Listen::Interfaces` with no address
   (`ServeError::NoAddress`); it used to report the server as running with
   nothing bound.
-- Breaking: `guard::COOKIE_PREFIX` is no longer public. Use `cookie_name` and
-  `is_cookie_name`.
+- Breaking: `guard::COOKIE_PREFIX` and `guard::ADMIN_COOKIE_PREFIX` are no
+  longer public. Use `cookie_name`, `admin_cookie_name` and `is_cookie_name`.
 - `is_local_authority` and `is_local_origin` accept any letter case and refuse
   a port that is not 1 to 5 digits, so `localhost:3000.evil.com` and
   `[::1].evil.com` are not local.
 - `share_url` and the share cookie percent-encode characters of the token
   outside `A-Z a-z 0-9 - . _ ~`, and the guard decodes them, so a token with
   `;` or a space works. A minted token has no such character.
-- `ServerHandle::stop` waits one grace period in total, not one per listener.
-  Its docs now say that it does not end connections already open.
+- `ServerHandle::stop` waits one grace period for requests in flight, then
+  closes every connection still open, streams and WebSockets included. So
+  turning sharing or admin off, or rotating a token, ends the open sockets of
+  the withdrawn grant too.
 - `Tokens` and its entries leave the tokens out of their `Debug` output.
 - The crate uses axum without its default features (`http1` and `tokio`
   only), so it no longer pulls in axum's JSON, form, query or tracing support.

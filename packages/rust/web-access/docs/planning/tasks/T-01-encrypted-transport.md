@@ -16,8 +16,9 @@ warning.
 
 ## Proposed
 
-- Document running the app on loopback behind a tunnel that terminates TLS,
-  such as Tailscale Serve, so the crate needs no change for that path.
+- Document running the app behind a proxy or tunnel that terminates TLS, such
+  as Tailscale Serve. The crate already supports it: `public_hosts` names the
+  proxy's hosts, and the cookie set on a request for one carries `Secure`.
 - Then let `serve` take a certificate and key the app provides, and listen
   with TLS. A self-signed certificate comes after that.
 - When TLS is on, set `Secure` on the share cookie.

@@ -85,8 +85,8 @@ fn persist(dir: &Path, file_name: &str, token: &str) -> io::Result<()> {
 }
 
 /// The persisted token in `dir`, or a freshly minted one written there. An
-/// empty or whitespace-only file counts as absent. An existing file is
-/// chmod'ed to 0600 on Unix.
+/// empty or whitespace-only file counts as absent; a file that cannot be read
+/// (or is not UTF-8) is an error. An existing file is chmod'ed to 0600 on Unix.
 ///
 /// # Errors
 ///
@@ -106,6 +106,8 @@ pub fn load_or_mint(dir: &Path) -> io::Result<String> {
 pub fn load_or_mint_named(dir: &Path, file_name: &str) -> io::Result<String> {
     check_file_name(file_name)?;
     let path = dir.join(file_name);
+    // Only a missing file is absent. Any other read error is returned, so an
+    // unreadable token is never silently replaced.
     match std::fs::read_to_string(&path) {
         Ok(existing) => {
             #[cfg(unix)]
@@ -120,8 +122,6 @@ pub fn load_or_mint_named(dir: &Path, file_name: &str) -> io::Result<String> {
             }
         }
         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-        // Unreadable (permissions, not UTF-8, a directory): report it rather
-        // than overwrite a token that links may already carry.
         Err(e) => return Err(e),
     }
     let token = mint()?;
@@ -342,6 +342,31 @@ mod tests {
     }
 
     #[test]
+    fn an_unreadable_token_file_is_an_error_not_a_new_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = token_path(dir.path());
+        std::fs::write(&p, b"\xff\xfe not utf-8\n").unwrap();
+        assert!(load_or_mint(dir.path()).is_err());
+        assert_eq!(std::fs::read(&p).unwrap(), b"\xff\xfe not utf-8\n");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_token_file_without_read_permission_is_an_error_not_a_new_token() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let p = token_path(dir.path());
+        std::fs::write(&p, "kept\n").unwrap();
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o200)).unwrap();
+        if std::fs::read(&p).is_ok() {
+            return; // root reads anything; the case cannot be staged.
+        }
+        assert!(load_or_mint(dir.path()).is_err());
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o600)).unwrap();
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), "kept\n");
+    }
+
+    #[test]
     fn empty_file_is_reminted() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(token_path(dir.path()), "  \n").unwrap();
@@ -357,17 +382,5 @@ mod tests {
             assert!(rotate_named(dir.path(), bad).is_err(), "{bad:?}");
         }
         assert!(load_or_mint_named(dir.path(), "app-token").is_ok());
-    }
-
-    #[test]
-    fn an_unreadable_token_file_is_an_error_not_a_new_token() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(token_path(dir.path()), [0xff, 0xfe, 0x00]).unwrap();
-        assert!(load_or_mint(dir.path()).is_err());
-        // The file is left as it was.
-        assert_eq!(
-            std::fs::read(token_path(dir.path())).unwrap(),
-            [0xff, 0xfe, 0x00]
-        );
     }
 }
