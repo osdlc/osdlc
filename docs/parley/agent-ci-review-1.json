@@ -1,0 +1,236 @@
+{
+  "id": "agent-ci-review-1",
+  "title": "Agents in CI: API and architecture review 1",
+  "summary": "The dependencies and public interfaces of agent-call run (#715) and agent-setup (#716), and the decisions they need before either merges.",
+  "created": "2026-11-08",
+  "revision": 1,
+  "repo": {
+    "remote": "https://github.com/osdlc/osdlc",
+    "commit": "876fe65b"
+  },
+  "blocks": [
+    {
+      "id": "problem",
+      "type": "prose",
+      "title": "What this review gates",
+      "text": "Two pieces of the plan in `docs/planning/agent-ci.md` (#713) are built and up as drafts:\n\n- **#715 `agent-call run`**: a command-line tool for `@osdlc/agent-call`. It reads a spec file, builds the prompt, runs one agent call and prints the result as JSON. Its tests pass, and one real claude call through it worked ($0.004).\n- **#716 `agent-setup`**: a composite action that installs a pinned claude, codex or cursor CLI and, optionally, plugins through skillwright. A real-runner test passed for all three harnesses; on claude, `craft@osdlc` shows as installed.\n\nThe constraint: the next pieces (`agent-pr-answer`, and moving `claude.yml` onto a spec) build on these interfaces. Changing an interface after something depends on it costs more, so the decisions come first. Each question below has a recommendation."
+    },
+    {
+      "id": "deps",
+      "type": "prose",
+      "title": "Dependencies as built",
+      "text": "Each arrow means \"uses\":\n\n- **agent-setup** (action) → the harness installers (claude's install script, npm for codex, cursor's build tarball) and the **skillwright** 0.7.0 binary for plugins. It does not use agent-call.\n- **agent-pr-answer** (action, not built) → the **agent-call** CLI, run with `npx @osdlc/agent-call@<pinned> run`.\n- **agent-call** → `@osdlc/command-seam` (as before) and now `yaml`, which only the CLI entry imports. The library's exports are unchanged.\n- **skillwright** → tradecraft-core → agent-adapt. These are Rust, in the skillwright repo.\n- **harness-reference** is not used by any code at runtime. agent-call and agent-adapt each keep their own copy of the facts, and only tradecraft-core's tests check against it.\n\nThe direction holds. Facts sit at the bottom, then the file-level tools (skillwright over agent-adapt), then agent-call for one call, and the actions on top. Nothing points back down: agent-call doesn't use skillwright or agent-adapt, and the libraries don't use the actions.\n\nThe gaps are below: one dependency, three spec fields, and four action interface details."
+    },
+    {
+      "id": "run-api",
+      "type": "prose",
+      "title": "agent-call run, as built (#715)",
+      "text": "```\nagent-call run <spec.yml|json> [--agent id] [--root dir] [--input name=value|name=@file]... [--explain] [--dry-run]\n```\n\n- **Spec:** it reads the spec's `run:` section: `agent`, `model`, `strict`, `permissions` (`mode`, `allowTools`, `denyTools`), `prompt` parts (`file`, `text` with `{{input}}`, `input`) and `context` (`file`, or `input` from `name=@path`). Unknown keys are errors.\n- **Agent choice:** `--agent` overrides `run.agent`, which overrides `setup.harness`.\n- **Paths:** `file:` paths stay inside `--root`; this is a lexical check that doesn't follow symlinks. The agent runs in the current directory.\n- **Output:** stdout is the normalized result as JSON. Exit codes: 0 ok, 1 agent error, 2 usage error, 3 strict refusal.\n- **`--explain` / `--dry-run`:** print the argv, env var names and every note, each tagged native, approximated, emulated or dropped.\n- **`strict: true`:** refuses the call on any approximated or dropped note."
+    },
+    {
+      "id": "setup-api",
+      "type": "prose",
+      "title": "agent-setup, as built (#716)",
+      "text": "- **Inputs:**\n  - `harness`: claude, codex or cursor.\n  - `version`: empty means the default for the harness: claude 2.1.319, codex 0.162.0, cursor `2026.11.05-86047df`.\n  - `marketplaces`: one per line, as `name=https-url [ref]`.\n  - `plugins`: one per line, as `plugin@marketplace`.\n  - `skillwright-version`: default 0.7.0.\n- **Output:** `cli-path`.\n- **cursor:** its installer always installs the latest build, so the action downloads the pinned build's tarball from `downloads.cursor.com`, the URL cursor's installer uses.\n- **Plugins:** `skillwright harness install <harness> --git-url <url> --vault <empty dir> --path <dir>/out --plugin <p> --yes`. skillwright needs a vault even for a remote marketplace. For claude it rejects a ref. For cursor it only registers the marketplace.\n- **Testing:** `DRY_RUN=1` prints the commands instead of running them. `.github/workflows/agent-setup-test.yml` runs the action for real."
+    },
+    {
+      "id": "decide-call",
+      "type": "question",
+      "questions": [
+        {
+          "id": "q-strict",
+          "about": "run-api",
+          "prompt": "strict refuses read-only on claude and cursor, which both approximate it. How should a spec run strict?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "accept-list",
+              "title": "The spec lists the approximations it accepts",
+              "detail": "Recommended. Add `strict: { accept: [permissions.mode] }`. Anything not listed still refuses. Reviewers see exactly which approximations the spec takes, and `--explain` shows what each one becomes on each harness."
+            },
+            {
+              "id": "exact-from-facts",
+              "title": "Make the mappings exact first",
+              "detail": "Once harness-reference has `permissions/` facts, upgrade the mappings the facts show are real read-only modes (cursor `--mode ask` blocked writes and shell in I2) to native. Correct, but strict stays unusable until the facts land."
+            },
+            {
+              "id": "dropped-only",
+              "title": "strict refuses only dropped fields",
+              "detail": "Simple, but an approximation can be weaker than it looks, and this hides that."
+            }
+          ],
+          "recommended": "accept-list"
+        },
+        {
+          "id": "q-maxturns",
+          "about": "run-api",
+          "prompt": "Should agent-call's call spec gain a turn limit?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "add",
+              "title": "Yes: add limits.maxTurns to AgentCallSpec",
+              "detail": "Recommended. On claude it maps natively to `--max-turns`. Elsewhere it is dropped, and the dropped note says so. It caps cost in CI, where the old workflow used `--max-turns 30`."
+            },
+            {
+              "id": "cli-only",
+              "title": "No: drop it from the spec",
+              "detail": "Rely on the job timeout instead. Keeps the library unchanged."
+            }
+          ],
+          "recommended": "add"
+        },
+        {
+          "id": "q-cursor-allow",
+          "about": "run-api",
+          "prompt": "Who writes cursor's .cursor/cli.json allow and deny rules, which hold even with --force (I2)?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "agent-call",
+              "title": "agent-call, for the length of the call",
+              "detail": "Recommended. The rules are the call's permissions, so they belong with the call. agent-call writes the file before spawning and restores whatever was there after. allowTools and denyTools on cursor become native. agent-call already writes cursor's MCP config to a temp file."
+            },
+            {
+              "id": "setup",
+              "title": "agent-setup, from the spec",
+              "detail": "Files are the setup layer's job. But the action would then read the run half of the spec, and agent-call would still report the field as dropped."
+            },
+            {
+              "id": "none",
+              "title": "Leave it dropped",
+              "detail": "Rely on `--mode ask` alone on cursor."
+            }
+          ],
+          "recommended": "agent-call"
+        },
+        {
+          "id": "q-yaml",
+          "about": "deps",
+          "prompt": "agent-call gains yaml as a second runtime dependency, imported only by the CLI. Keep it there?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "keep",
+              "title": "Keep the CLI in @osdlc/agent-call",
+              "detail": "Recommended. One package to pin in actions (`npx @osdlc/agent-call@x run`). yaml is in the workspace catalog and library imports never load it."
+            },
+            {
+              "id": "split",
+              "title": "A separate @osdlc/agent-call-cli package",
+              "detail": "Keeps the library at one dependency, at the cost of a second package to version and release."
+            }
+          ],
+          "recommended": "keep"
+        }
+      ]
+    },
+    {
+      "id": "decide-setup",
+      "type": "question",
+      "questions": [
+        {
+          "id": "q-cursor-tarball",
+          "about": "setup-api",
+          "prompt": "Install cursor from the pinned build tarball, since its installer cannot pin?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "tarball",
+              "title": "Yes, the pinned tarball",
+              "detail": "Recommended. Reproducible runs, and it uses the URL cursor's own installer uses. Risk: cursor could change that URL layout; the test workflow would catch it."
+            },
+            {
+              "id": "installer",
+              "title": "No, the official installer at latest",
+              "detail": "Always current, never reproducible: a run can change behaviour without any change in the repo."
+            }
+          ],
+          "recommended": "tarball"
+        },
+        {
+          "id": "q-cursor-plugins",
+          "about": "setup-api",
+          "prompt": "When plugins are requested on cursor, which skillwright cannot install, should agent-setup fail or warn?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "error",
+              "title": "Fail",
+              "detail": "Recommended. A run that silently lacks its skills answers differently. A spec that wants cursor without plugins can leave the list empty."
+            },
+            {
+              "id": "warn",
+              "title": "Warn and continue",
+              "detail": "Lets one shared spec run on all three harnesses, with skills missing on cursor."
+            }
+          ],
+          "recommended": "error"
+        },
+        {
+          "id": "q-release",
+          "about": "setup-api",
+          "prompt": "How should the shared v1 tag for packages/gh-actions be released?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "by-hand",
+              "title": "By hand for now",
+              "detail": "Recommended. Only osdlc calls these actions, and it calls them by path (`./packages/gh-actions/...`), so no tag is needed yet. Add a release workflow when the actions move to `osdlc/actions`."
+            },
+            {
+              "id": "workflow",
+              "title": "A release workflow now",
+              "detail": "Tags `gh-actions/vX.Y.Z` and moves `v1` on each release."
+            }
+          ],
+          "recommended": "by-hand"
+        },
+        {
+          "id": "q-marketplaces",
+          "about": "setup-api",
+          "prompt": "Keep the marketplaces input as `name=url [ref]`?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "keep",
+              "title": "Keep it",
+              "detail": "Recommended. skillwright cannot read a remote marketplace's name, and the name has to match the `@marketplace` in plugin ids. One line per marketplace stays readable."
+            },
+            {
+              "id": "skillwright-fix",
+              "title": "Teach skillwright to read the name",
+              "detail": "Then the input is just the URL. Needs a skillwright change and release first."
+            }
+          ],
+          "recommended": "keep"
+        }
+      ]
+    },
+    {
+      "id": "decide-next",
+      "type": "question",
+      "questions": [
+        {
+          "id": "q-publish",
+          "about": "deps",
+          "prompt": "agent-pr-answer needs the agent-call CLI from npm. Release agent-call with the CLI before building agent-pr-answer?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "release-first",
+              "title": "Yes: merge #715 with these decisions, release, then build",
+              "detail": "Recommended. The action pins a published version, the same way it would for any caller."
+            },
+            {
+              "id": "build-from-source",
+              "title": "No: build agent-call from the checkout inside the action",
+              "detail": "No release needed, but the action then needs pnpm and the monorepo, so it only works inside osdlc."
+            }
+          ],
+          "recommended": "release-first"
+        }
+      ]
+    }
+  ]
+}

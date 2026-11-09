@@ -1,0 +1,149 @@
+{
+  "about": "Cases for the push outcome: what a compare-and-swap push's per-ref result means. `flag` is git push --porcelain's status character for the ref; `rejection` is the reason kind read from git's reason text (null unless flag is '!'), as @osdlc/typed-git reads it: that reading is typed-git's and is tested there. `keepsSha` is true when the write expected the sha it pushes. Every implementation of the protocol maps each case to `expected`. `op` is for reading only.",
+  "cases": [
+    {
+      "name": "create succeeds",
+      "op": "create",
+      "flag": "*",
+      "rejection": null,
+      "keepsSha": false,
+      "expected": "ok"
+    },
+    {
+      "name": "replace succeeds (forced update)",
+      "op": "replace",
+      "flag": "+",
+      "rejection": null,
+      "keepsSha": false,
+      "expected": "ok"
+    },
+    {
+      "name": "replace succeeds (fast-forward)",
+      "op": "replace",
+      "flag": " ",
+      "rejection": null,
+      "keepsSha": false,
+      "expected": "ok"
+    },
+    {
+      "name": "delete succeeds",
+      "op": "delete",
+      "flag": "-",
+      "rejection": null,
+      "keepsSha": false,
+      "expected": "ok"
+    },
+    {
+      "name": "create of a ref already at the same sha",
+      "op": "create",
+      "flag": "=",
+      "rejection": null,
+      "keepsSha": false,
+      "expected": "cas-failed"
+    },
+    {
+      "name": "replace that keeps the sha it expected",
+      "op": "replace",
+      "flag": "=",
+      "rejection": null,
+      "keepsSha": true,
+      "expected": "ok"
+    },
+    {
+      "name": "replace from a wrong sha to the sha the ref already holds",
+      "op": "replace",
+      "flag": "=",
+      "rejection": null,
+      "keepsSha": false,
+      "expected": "cas-failed"
+    },
+    {
+      "name": "lease check lost before anything was sent",
+      "op": "replace",
+      "flag": "!",
+      "rejection": "stale",
+      "keepsSha": false,
+      "expected": "cas-failed"
+    },
+    {
+      "name": "create of a ref that exists",
+      "op": "create",
+      "flag": "!",
+      "rejection": "stale",
+      "keepsSha": false,
+      "expected": "cas-failed"
+    },
+    {
+      "name": "race lost at the authority: ref created first",
+      "op": "create",
+      "flag": "!",
+      "rejection": "already-exists",
+      "keepsSha": false,
+      "expected": "cas-failed"
+    },
+    {
+      "name": "race lost at the authority: ref moved or deleted",
+      "op": "replace",
+      "flag": "!",
+      "rejection": "lock-failed",
+      "keepsSha": false,
+      "expected": "cas-failed"
+    },
+    {
+      "name": "delete raced by another writer",
+      "op": "delete",
+      "flag": "!",
+      "rejection": "lock-failed",
+      "keepsSha": false,
+      "expected": "cas-failed"
+    },
+    {
+      "name": "non-fast-forward",
+      "op": "replace",
+      "flag": "!",
+      "rejection": "non-fast-forward",
+      "keepsSha": false,
+      "expected": "cas-failed"
+    },
+    {
+      "name": "remote hook declined",
+      "op": "create",
+      "flag": "!",
+      "rejection": "hook-declined",
+      "keepsSha": false,
+      "expected": "git-failed"
+    },
+    {
+      "name": "ref path clash at the authority",
+      "op": "create",
+      "flag": "!",
+      "rejection": "ref-conflict",
+      "keepsSha": false,
+      "expected": "git-failed"
+    },
+    {
+      "name": "tag already exists",
+      "op": "create",
+      "flag": "!",
+      "rejection": "tag-exists",
+      "keepsSha": false,
+      "expected": "git-failed"
+    },
+    {
+      "name": "another ref of an atomic push failed",
+      "op": "replace",
+      "flag": "!",
+      "rejection": "atomic-failed",
+      "keepsSha": false,
+      "expected": "git-failed"
+    },
+    {
+      "name": "anything unrecognised",
+      "op": "replace",
+      "flag": "!",
+      "rejection": "other",
+      "keepsSha": false,
+      "expected": "git-failed"
+    }
+  ]
+}

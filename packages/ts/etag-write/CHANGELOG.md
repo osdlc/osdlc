@@ -1,5 +1,11 @@
 # @osdlc/etag-write
 
+## 0.3.1
+
+### Patch Changes
+
+- 9f5a029: The README points to `@osdlc/file-lock` for files that several processes rewrite: take the lock, then `writeCas` or `atomicWrite` inside it. The code does not change.
+
 ## 0.3.0
 
 ### Minor Changes

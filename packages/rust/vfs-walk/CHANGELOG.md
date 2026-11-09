@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.1](https://github.com/osdlc/osdlc/compare/vfs-walk/v0.2.0...vfs-walk/v0.2.1) - 2026-11-08
+
+### Other
+
+- updated the following local packages: vfs-seam
+
 ## [0.2.0] - 2026-11-04
 
 Built on `vfs-seam` 0.2, whose modification times are nanoseconds.

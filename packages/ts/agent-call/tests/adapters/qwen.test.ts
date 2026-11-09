@@ -171,6 +171,12 @@ describe('qwen plan', () => {
     expect(supportOf(planned.notes, 'plugins')).toBe('dropped')
   })
 
+  test('limits.maxTurns is --max-session-turns', () => {
+    const planned = adapter.plan({ prompt: 'x', limits: { maxTurns: 4 } })
+    expect(planned.argv).toEqual(['qwen', '--output-format', 'json', '--max-session-turns', '4'])
+    expect(supportOf(planned.notes, 'limits.maxTurns')).toBe('native')
+  })
+
   test('cwd and env go on the planned call', () => {
     const planned = adapter.plan({ prompt: 'x', cwd: '/w', env: { OPENAI_MODEL: 'm' } })
     expect(planned.cwd).toBe('/w')

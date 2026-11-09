@@ -1,0 +1,37 @@
+# Mention @claude in a pull request comment, an inline review comment or a
+# review and Claude replies on the pull request. A comment that starts with
+# `@claude review [focus]` gets a /craft:code-review of the pull request
+# instead. The work is the claude-pr action (packages/gh-actions/claude-pr);
+# this file only says when it runs and with what.
+#
+# Only sksizer can trigger it: the job's `if` checks the author before a
+# runner starts. The action is taken from main, never from the pull request,
+# so a pull request cannot change what runs with the API key.
+name: claude
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+
+permissions: {}
+
+jobs:
+  claude:
+    if: >-
+      (github.event.comment.user.login || github.event.review.user.login) == 'sksizer'
+      && contains(github.event.comment.body || github.event.review.body, '@claude')
+      && (github.event_name != 'issue_comment' || github.event.issue.pull_request)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: osdlc/osdlc/packages/gh-actions/claude-pr@main
+        with:
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}

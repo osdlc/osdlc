@@ -160,6 +160,10 @@ function planAntigravity(command: readonly string[], spec: AgentCallSpec): Plann
     note(notes, 'budgetUsd', 'dropped', 'antigravity has no budget cap flag')
   }
 
+  if (spec.limits?.maxTurns !== undefined) {
+    note(notes, 'limits.maxTurns', 'dropped', 'antigravity has no turn limit flag')
+  }
+
   argv.push(...(spec.extraArgs ?? []))
 
   // The prompt is the value of -p, so it travels in argv, not stdin. The schema
