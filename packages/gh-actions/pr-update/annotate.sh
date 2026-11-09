@@ -137,7 +137,7 @@ while IFS=$'\t' read -r n outcome; do
       ;;
     updated | up-to-date)
       if [ "$outcome" = updated ] && [ "$COMMENT_CONFLICTS" = true ] && [ "$n" != "$PR_NUMBER" ] &&
-        jq -e -L "$here" --argjson n "$n" 'include "rows"; rows[] | select(.number == $n and .pushed and (.repaired | length) > 0)' "$REPORT" >/dev/null; then
+        jq -e -L "$here" --argjson n "$n" 'include "rows"; rows[] | select(.number == $n and .pushed and ([.repaired[] | select(.kind == "conflict")] | length) > 0)' "$REPORT" >/dev/null; then
         comment_repair "$n"
       fi
       if [ -n "$CONFLICT_LABEL" ] && grep -qx "$n" "$LABELED"; then
