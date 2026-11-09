@@ -13,9 +13,9 @@
       "line": 82,
       "title": "ready wait and output wait can exhaust the test timeout",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "8e5da1f54a95ddc8903e7b4bd4d7389911263167"
     },
     {
       "id": "r1-2",
