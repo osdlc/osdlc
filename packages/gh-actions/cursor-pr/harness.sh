@@ -58,7 +58,3 @@ JSON
   fi
   return "$status"
 }
-
-harness_auth_failed() {
-  jq -e '.auth_failed == true' "$RESULT" > /dev/null 2>&1
-}

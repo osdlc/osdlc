@@ -6,6 +6,7 @@
 #                              environment (also $RESULT, $MAX_TURNS, $MODEL); write
 #                              the JSON result to $RESULT; return the CLI's exit status
 #   harness_auth_failed        succeed when $RESULT shows an authentication failure
+#                              (default: .auth_failed == true in the result JSON)
 #   harness_review_intro BASE  the words after "by running" in the review prompt
 # and may set HARNESS_OFFLINE=1 (the agent cannot reach gh, so the pull request
 # text and diff are written to files) and define harness_prompt_suffix (text
@@ -15,6 +16,10 @@ set -e  # no pipefail: `grep -q` may close a pipe early, as in the workflow it c
 : "${AGENT:?AGENT is required}" "${HARNESS_SH:?HARNESS_SH is required}" "${KEY_VAR:?KEY_VAR is required}"
 # shellcheck source=/dev/null
 . "$HARNESS_SH"
+# Default for harnesses whose result JSON carries auth_failed.
+if [ "$(type -t harness_auth_failed)" != function ]; then
+  harness_auth_failed() { jq -e '.auth_failed == true' "$RESULT" > /dev/null 2>&1; }
+fi
 rm -f "$RESULT"
 ctx="${RUNNER_TEMP:-/tmp}/$AGENT-pr-context"
 if [ "$MODE" = review ] || [ "${HARNESS_OFFLINE:-}" = 1 ]; then
