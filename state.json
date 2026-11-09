@@ -156,9 +156,9 @@
       "line": null,
       "title": "ShareUrls and WebAccessStatus derive Debug and print every share link, token included",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "0281208ac15b295fbbe667533c820a73a10c0a94"
     }
   ]
 }
