@@ -49,14 +49,23 @@ before a runner starts or the key is in reach.
 
 ## Inputs
 
-| Input | Default | |
-|---|---|---|
-| `anthropic-api-key` | required | One key, or several separated by spaces, commas or newlines. Tried in order; only an authentication failure moves on, with a warning naming the dead key's position. To rotate, set the secret to `new old`, later `new`. |
-| `github-token` | `github.token` | Reads the pull request and posts the comment. |
-| `claude-code-version` | `2.1.319` | |
-| `marketplace-url` | the osdlc marketplace | |
-| `plugins` | `craft@osdlc` | Space separated. Review mode needs craft. |
-| `max-turns` | `60` | |
+| Input                 | Default               |                                                                                                                                                                                                                                                                                                      |
+| --------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `anthropic-api-key`   | required              | One key, or several separated by spaces, commas or newlines. Tried in order; only an authentication failure moves on, with a warning naming the dead key's position. To rotate, set the secret to `new old`, later `new`.                                                                            |
+| `github-token`        | `github.token`        | Reads the pull request and posts the comment.                                                                                                                                                                                                                                                        |
+| `claude-code-version` | `2.1.319`             |                                                                                                                                                                                                                                                                                                      |
+| `marketplace-url`     | the osdlc marketplace | The one marketplace `plugins` come from. Ignored when `marketplaces` is set.                                                                                                                                                                                                                         |
+| `marketplaces`        | empty                 | Several marketplaces, one per line, as `name=https-git-url` with an optional ` ref`, in agent-setup's format. When set it **wins** over `marketplace-url`: agent-setup installs Claude Code and the plugins from them (claude cannot pin a ref), and every entry in `plugins` must name one of them. |
+| `plugins`             | `craft@osdlc`         | `plugin@marketplace`, separated by spaces or newlines. Review mode needs craft.                                                                                                                                                                                                                      |
+| `max-turns`           | `60`                  |                                                                                                                                                                                                                                                                                                      |
+
+## Shared scripts
+
+The mention filter, the key loop, the prompt, the comment and the markers live
+in [`../pr-common`](../pr-common/), shared with
+[`codex-pr`](../codex-pr/) and [`cursor-pr`](../cursor-pr/). This folder keeps
+`install.sh` and `harness.sh`, which runs `claude -p` once with one key and
+says whether the failure was an authentication failure.
 
 ## Pinning
 
