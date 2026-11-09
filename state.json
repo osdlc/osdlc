@@ -123,9 +123,9 @@
       "line": 585,
       "title": "canonical claims one form for every value that can reach a token, but delimiter truncation in a raw cookie or link (and + from form encoding) reaches a token with a different canonical form",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "458a32c2"
     },
     {
       "id": "r6-2",
