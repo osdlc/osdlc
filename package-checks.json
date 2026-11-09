@@ -5,7 +5,6 @@
   ],
   "shared": [
     "^\\.github/workflows/packages-ci\\.yml$",
-    "^\\.github/workflows/ts-packages-ci\\.yml$",
     "^\\.github/workflows/packages-windows-tier2\\.yml$",
     "^scripts/bounded-run(\\.test)?\\.ts$",
     "^packages/ts/package-checks/",
