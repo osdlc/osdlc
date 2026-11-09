@@ -450,8 +450,8 @@ The repo tooling needs Node 24 or newer (`engines.node` in the root
 directly by stripping the types, with no build step, so write them in erasable
 syntax only (no `enum`, `namespace` or parameter properties).
 `pnpm run typecheck:scripts` checks them. The package checks and the
-conformance check are packages, `@osdlc/package-checks` and
-`@osdlc/conformance`; `pnpm run build:tooling` builds both, and the root
+conformance-suites check are packages, `@osdlc/package-checks` and
+`@osdlc/conformance-suites`; `pnpm run build:tooling` builds both, and the root
 scripts run their commands. The libraries themselves still support Node 22.
 
 `.github/workflows/packages-ci.yml` runs these and the smoke checks on Linux
