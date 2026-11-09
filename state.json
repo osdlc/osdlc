@@ -4,9 +4,6 @@
   "head": "612747e166ca43f73f6399551e5d16c0dff66cd1",
   "base": "8aa9237fb10c5320baa18d4cfbf3a4d710989b73",
   "round": 1,
-  "claim": {
-    "owner": "Mac.local:rv-k3x9qa",
-    "at": "2026-11-09T06:25:33.334Z"
-  },
+  "claim": null,
   "findings": []
 }
