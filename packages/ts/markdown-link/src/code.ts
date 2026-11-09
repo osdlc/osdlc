@@ -159,7 +159,8 @@ class Fences {
       this.containers.length === 0 &&
       (start >= lineEnd || !opensBlock(s.charCodeAt(start)))
     ) {
-      this.paragraph = start < lineEnd
+      // A lone CR is the blank line of a CRLF file.
+      this.paragraph = start < lineEnd && !(lineEnd - start === 1 && s.charCodeAt(start) === CR)
       return 'outside'
     }
     const end = lineEnd > start && s.charCodeAt(lineEnd - 1) === CR ? lineEnd - 1 : lineEnd

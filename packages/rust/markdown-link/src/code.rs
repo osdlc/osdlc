@@ -287,7 +287,8 @@ impl Fences {
                 Some(b' ' | b'\t' | b'>' | b'-' | b'*' | b'+' | b'0'..=b'9' | b'`' | b'~')
             )
         {
-            self.paragraph = !line.is_empty();
+            // A lone `\r` is the blank line of a CRLF file.
+            self.paragraph = !line.is_empty() && line != b"\r";
             return FenceLine::Outside;
         }
         let line = line.strip_suffix(b"\r").unwrap_or(line);

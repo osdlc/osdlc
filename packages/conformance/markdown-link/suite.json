@@ -577,6 +577,16 @@
           }
         },
         {
+          "name": "a_crlf_blank_line_ends_a_paragraph",
+          "input": {
+            "source": "para\r\n\r\n2. ```\r\n   [[a]]\r\n   ```\r\n[[b]]\r\n"
+          },
+          "expect": {
+            "commonmark": "para\r\n\r\n       \n         \n       \n[[b]]\r\n",
+            "skill_export": "para\r\n\r\n2. ```\r\n   [[a]]\r\n       \n      \n"
+          }
+        },
+        {
           "name": "empty_bullet_does_not_interrupt_a_paragraph",
           "input": {
             "source": "Text\n*\n[[a]]\n"
