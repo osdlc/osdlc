@@ -2,8 +2,9 @@
 
 **Status: in force, version 0.** Accepted 2026-11-05. It is rewritten in place while it is at
 version 0. It was first called markdown-db, and its [design review](../../../docs/parley/markdown-db-v0.json)
-keeps that name. The spec lives in osdlc while it is young, beside its
-[conformance cases](README.md), and moves to a repository of its own once it is stable.
+keeps that name. It lives here, beside its [conformance cases](README.md), until
+[osdlc/markdown](https://github.com/osdlc/markdown) has its own release setup; then it moves there
+with its cases and the TypeScript package.
 
 ## Purpose
 

@@ -12,8 +12,8 @@ records. Level 2 gives every type a schema. [SPEC.md](SPEC.md) states the format
 | ---------------------------------- | ---------- | --------------------------- |
 | `@osdlc/corpus-schema` (reference) | TypeScript | `packages/ts/corpus-schema` |
 
-The spec lives in osdlc while it is young. Once it is stable it moves to a repository of its own,
-with this suite and its corpora.
+The spec lives here until [osdlc/markdown](https://github.com/osdlc/markdown) has its own release
+setup. Then it moves there, with this suite, its corpora and the TypeScript package.
 
 ## The suite
 
