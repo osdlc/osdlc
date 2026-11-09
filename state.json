@@ -4,10 +4,7 @@
   "head": "70946ec026b4844fa70d96b6bfd676ed7794079c",
   "base": "ab1aa2162af61286ee6ede93619dd7528eba0c4b",
   "round": 2,
-  "claim": {
-    "owner": "Mac.local:claude-q7m2xr",
-    "at": "2026-11-09T02:56:21.308Z"
-  },
+  "claim": null,
   "findings": [
     {
       "id": "r1-1",
