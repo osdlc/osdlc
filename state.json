@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "pr": 704,
-  "head": "5f44bdf41d01587a27aac18bf7e51b49f0a0afa3",
+  "head": "b3989b2918ba1e607d7a0f111c129d1f2da412a8",
   "base": "b0a6e9cde619e567f5f3cd24a3650d6e840bb39d",
-  "round": 3,
+  "round": 4,
   "claim": {
     "owner": "Mac.local:unknown-q7m2xd",
     "at": "2026-11-09T02:35:38.583Z"
@@ -63,6 +63,50 @@
       "status": "fixed",
       "reason": null,
       "fixedIn": "5f44bdf41d01587a27aac18bf7e51b49f0a0afa3"
+    },
+    {
+      "id": "r4-1",
+      "round": 4,
+      "path": "packages/rust/web-access/CHANGELOG.md",
+      "line": 12,
+      "title": "Breaking change to a published 0.4.1 crate without a 0.5.0 version bump",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r4-2",
+      "round": 4,
+      "path": "packages/rust/web-access/src/guard.rs",
+      "line": 267,
+      "title": "push still accepts the same token twice with different grants; find gives the higher grant",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r4-3",
+      "round": 4,
+      "path": "packages/rust/web-access/README.md",
+      "line": 142,
+      "title": "New paragraph splits the ordered list; item 7 is absorbed into it",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r4-4",
+      "round": 4,
+      "path": "packages/rust/web-access/src/guard.rs",
+      "line": 574,
+      "title": "fully_decoded stops at a non-UTF-8 decode, so the stated invariant does not hold for such tokens",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
     }
   ]
 }
