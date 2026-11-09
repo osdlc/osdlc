@@ -1,7 +1,7 @@
 {
   "family": "corpus-schema",
   "reference": "ts",
-  "referenceVersion": "0.1.0",
+  "referenceVersion": "0.2.0",
   "sections": {
     "validate": {
       "description": "Validate one corpus, without --fix. `input.corpus` is a corpus folder relative to this file's folder. `expect` holds the `<file>: <field>` prefix of each error and of each warning, with the file relative to the corpus root: the text of a problem line up to its second `: `. Each list is sorted by UTF-16 code unit and holds each prefix once. An implementation passes a case when its two sets of prefixes match these. Message text and order are not compared.",
