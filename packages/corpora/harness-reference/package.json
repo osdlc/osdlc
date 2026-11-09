@@ -10,7 +10,7 @@
   "scripts": {
     "validate": "pnpm run validate:alpha && pnpm run validate:beta",
     "validate:alpha": "node src/alpha/validate.ts",
-    "validate:beta": "markdown-db validate corpora/beta",
+    "validate:beta": "corpus-schema validate corpora/beta",
     "capture": "node src/beta/capture.ts",
     "write-schema": "node src/alpha/validate.ts --write-schema",
     "test": "node --test src/*/*.test.ts",
@@ -19,7 +19,7 @@
     "check": "pnpm run validate && pnpm run test && pnpm run typecheck && pnpm run generate"
   },
   "dependencies": {
-    "@osdlc/markdown-db": "workspace:*",
+    "@osdlc/corpus-schema": "^0.2.0",
     "yaml": "2.9.1",
     "zod": "4.4.3"
   },

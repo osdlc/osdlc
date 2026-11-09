@@ -7,12 +7,12 @@ add questions about how harnesses behave, and claims that cite evidence.
 Every value is backed by an upstream page: the vendor's site, docs, repository, license file or
 release list. Our own research notes are never the evidence.
 
-The corpus follows [markdown-db](../../../docs/standards/S-GFFY-markdown-db.md). It is data only.
-The validator is the [`@osdlc/markdown-db`](../../../packages/ts/markdown-db/README.md) package.
+The corpus follows [corpus-schema](https://github.com/osdlc/osdlc/blob/main/packages/conformance/corpus-schema/SPEC.md). It is data only.
+The validator is the [`@osdlc/corpus-schema`](https://www.npmjs.com/package/@osdlc/corpus-schema) package from npm.
 
 ## Layout
 
-- `markdown-db.md`: the root file. Its frontmatter marks the folder as a corpus; its body is the
+- `corpus-schema.md`: the root file. Its frontmatter marks the folder as a corpus; its body is the
   front page.
 - `harnesses/`: the `harnesses` type. One record per harness, named after the product as the vendor
   writes it, such as `Claude Code.md`.
@@ -78,10 +78,10 @@ Evidence is append-only: a correction, or a later look that finds something else
 From `harness-reference/`:
 
 ```sh
-pnpm run validate:beta   # markdown-db validate corpora/beta
+pnpm run validate:beta   # corpus-schema validate corpora/beta
 pnpm run check           # every corpus: validate, test, typecheck, generate
 ```
 
 The validator checks each record against its schema, its id, and every link in it: `successor` and
 `fork_of` must link to a harness, `sources` and `reference` to a reference record.
-`pnpm exec markdown-db validate --fix corpora/beta` rewrites any wikilinks as relative links first.
+`pnpm exec corpus-schema validate --fix corpora/beta` rewrites any wikilinks as relative links first.

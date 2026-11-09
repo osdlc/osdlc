@@ -6,7 +6,7 @@ hook and MCP formats, and their CLI session surface. Every value has a date and 
 generator turns the record into static HTML pages.
 
 The record is kept in `corpora/`: `alpha`, an OKF bundle with its own validator, and `beta`, a
-[markdown-db](../docs/standards/S-GFFY-markdown-db.md) corpus.
+[corpus-schema](https://github.com/osdlc/osdlc/blob/main/packages/conformance/corpus-schema/SPEC.md) corpus.
 
 - `corpora/alpha/`: the alpha corpus, the first prototype. New subjects and facts go here until
   beta can hold subjects and facts; then alpha is frozen and its facts move to beta.
@@ -20,7 +20,7 @@ The record is kept in `corpora/`: `alpha`, an OKF bundle with its own validator,
 - `schema/alpha/`: JSON Schemas generated from `src/alpha/schema.ts`, for other tools.
 - `src/beta/`: `capture`, which writes evidence records from a fetched page, and tests of the beta
   corpus. The corpus is checked by the
-  [`@osdlc/markdown-db`](../packages/ts/markdown-db/README.md) validator, a workspace package.
+  [`@osdlc/corpus-schema`](https://www.npmjs.com/package/@osdlc/corpus-schema) validator, a published package.
 
 ## The alpha corpus
 
@@ -137,8 +137,8 @@ pnpm run write-schema   # rewrite schema/alpha/*.json after changing src/alpha/s
 pnpm run capture ...    # write a beta evidence record; see corpora/beta/README.md
 ```
 
-CI runs `pnpm run check` when anything under `harness-reference/` or `packages/ts/markdown-db/`
-changes (`.github/workflows/harness-reference.yml`).
+CI runs `pnpm run check` when anything under `harness-reference/`, the workflow file
+(`.github/workflows/harness-reference.yml`) or `pnpm-lock.yaml` changes.
 
 `generate` writes `index.html` (the current state, one table per category; each cell lists every
 observation still in force), a page per harness and

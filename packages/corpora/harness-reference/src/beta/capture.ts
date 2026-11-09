@@ -2,7 +2,7 @@
  * `capture`: fetch a page, check that a quote occurs on it, and write an evidence record to the
  * beta corpus, adding the page's reference record when it has none. The schemas in
  * corpora/beta/references/ and corpora/beta/evidence/ hold the rules; this checks the result with
- * the markdown-db validator and removes what it wrote if the corpus no longer validates.
+ * the corpus-schema validator and removes what it wrote if the corpus no longer validates.
  */
 import { existsSync, mkdirSync, readdirSync, rmdirSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path'
@@ -16,7 +16,7 @@ import {
   idProblem,
   markdownLink,
   validateCorpus,
-} from '@osdlc/markdown-db'
+} from '@osdlc/corpus-schema'
 import { stringify } from 'yaml'
 
 /** The kinds evidence.schema.md requires a reference for (its if/then); keep the two in step. */

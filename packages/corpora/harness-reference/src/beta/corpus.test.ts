@@ -5,7 +5,7 @@ import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:f
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
-import { validateCorpus } from '@osdlc/markdown-db'
+import { validateCorpus } from '@osdlc/corpus-schema'
 
 const beta = resolve(import.meta.dirname, '../../corpora/beta')
 

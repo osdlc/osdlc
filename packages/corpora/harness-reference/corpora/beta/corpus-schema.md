@@ -1,5 +1,6 @@
 ---
-markdown-db: 0
+corpus-schema: 0
+level: 2
 ---
 
 # Harness reference, beta
