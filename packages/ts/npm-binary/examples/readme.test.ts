@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 
 import { spawnRunner } from '@osdlc/command-seam'
-import { afterAll, expect, test } from 'vitest'
+import { afterAll, beforeAll, expect, test } from 'vitest'
 
 import {
   binaryExt,
@@ -56,7 +56,7 @@ writeFileSync(
   built,
   [
     '#!/bin/sh',
-    'if [ "$1" = stop-launcher ]; then kill -TERM "$PPID"; exec sleep 5; fi',
+    'if [ "$1" = stop-launcher ]; then kill -TERM "$PPID"; exec sleep 30; fi',
     'echo "tool got: $*"',
     'exit 7',
   ].join('\n'),
@@ -156,6 +156,11 @@ const install = (() => {
   }
 })()
 
+// npm pack is slow on a loaded CI runner, so it runs once here, with room.
+beforeAll(() => {
+  if (posixHost) install()
+}, 60_000)
+
 test.skipIf(!posixHost)(
   'installed, the launcher runs the binary and passes its exit code through',
   () => {
@@ -175,9 +180,11 @@ test.skipIf(!posixHost)(
     const started = Date.now()
     const result = spawnRunner(process.execPath).run([install(), 'stop-launcher'], { cwd: out })
     expect(result.signal).toBe('SIGTERM')
-    // The binary would sleep 5 s if the launcher had not forwarded the signal.
-    expect(Date.now() - started).toBeLessThan(4000)
+    // The binary would sleep 30 s if the launcher had not forwarded the signal,
+    // and keep the output pipes open that long; a forwarded one ends it at once.
+    expect(Date.now() - started).toBeLessThan(20_000)
   },
+  40_000,
 )
 
 test("cargo's target directory comes from cargo metadata", () => {
