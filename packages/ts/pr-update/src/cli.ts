@@ -599,6 +599,7 @@ async function runUpdateCommand(
       slug: repo,
       measurable: false,
       fetched: false,
+      cycles: [],
       failure,
     })),
   })

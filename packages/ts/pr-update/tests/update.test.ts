@@ -11,6 +11,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { isatty } from 'node:tty'
 
 import type { CodeHost, CodeHostPrDetail } from '@osdlc/code-host'
@@ -24,6 +25,7 @@ import { attemptsDir, fileAttemptStore, listAttempts } from '../src/update/attem
 import type { UpdateResult } from '../src/update/execute.ts'
 import {
   applyStrategyOverride,
+  prKey,
   renderUpdateText,
   runUpdate,
   selectTargets,
@@ -93,9 +95,9 @@ function row(patch: Record<string, unknown> = {}) {
   }
 }
 
-function report(rows: ReturnType<typeof row>[]): SurveyReport {
+function report(rows: ReturnType<typeof row>[], cycles: number[] = []): SurveyReport {
   return {
-    repos: [],
+    repos: [{ slug: 'o/r', measurable: true, fetched: true, cycles }],
     prs: rows as SurveyReport['prs'],
     cycles: [],
     counts: {
@@ -150,7 +152,9 @@ describe('selectTargets', () => {
       [2],
     )
     expect(targets.map((t) => t.number)).toEqual([2])
-    expect(skipped).toEqual([{ number: 1, head: 'topic', reason: 'not selected by --pr/--branch' }])
+    expect(skipped).toEqual([
+      { repo: 'o/r', number: 1, head: 'topic', reason: 'not selected by --pr/--branch' },
+    ])
   })
 
   test('--pr naming a number the survey never reported still shows up, in skipped', () => {
@@ -158,14 +162,15 @@ describe('selectTargets', () => {
     // closed `--pr` number outside that set must still appear in the result.
     const { targets, skipped } = selectTargets(report([row({ number: 1 })]), [1, 999])
     expect(targets.map((t) => t.number)).toEqual([1])
-    expect(skipped).toEqual([{ number: 999, head: '', reason: 'not found in survey' }])
+    expect(skipped).toEqual([{ repo: null, number: 999, head: '', reason: 'not found in survey' }])
   })
 
   test('a PR in a base/head cycle is reported in skipped, not lost or "not found"', () => {
-    const cyclic = { ...report([row({ number: 1 })]), cycles: [3, 4] }
+    const cyclic = report([row({ number: 1 })], [3, 4])
+    const reason = 'in a base/head cycle; no stack order to update it in'
     expect(selectTargets(cyclic, []).skipped).toEqual([
-      { number: 3, head: '', reason: 'in a base/head cycle; no stack order to update it in' },
-      { number: 4, head: '', reason: 'in a base/head cycle; no stack order to update it in' },
+      { repo: 'o/r', number: 3, head: '', reason },
+      { repo: 'o/r', number: 4, head: '', reason },
     ])
     const scoped = selectTargets(cyclic, [3]).skipped
     expect(scoped.find((s) => s.number === 3)!.reason).toContain('base/head cycle')
@@ -179,6 +184,70 @@ describe('selectTargets', () => {
     expect(unfiltered.targets.length + unfiltered.skipped.length).toBe(rows.length)
     const filtered = selectTargets(report(rows), [2])
     expect(filtered.targets.length + filtered.skipped.length).toBe(rows.length)
+  })
+})
+
+describe('selectTargets — several repositories holding the same PR number', () => {
+  /** Two repositories, `a/x` and `b/y`, each with an actionable PR 1. */
+  function twoRepos(cycles: { a?: number[]; b?: number[] } = {}): SurveyReport {
+    return {
+      ...report([row({ repo: 'a/x', head: 'ax' }), row({ repo: 'b/y', head: 'by' })]),
+      repos: [
+        { slug: 'a/x', measurable: true, fetched: true, cycles: cycles.a ?? [] },
+        { slug: 'b/y', measurable: true, fetched: true, cycles: cycles.b ?? [] },
+      ],
+    }
+  }
+
+  test('both are targets, each naming its own repository', () => {
+    const { targets } = selectTargets(twoRepos(), [])
+    expect(targets.map((t) => [t.repo, t.number])).toEqual([
+      ['a/x', 1],
+      ['b/y', 1],
+    ])
+  })
+
+  test('a bare --pr number selects that PR in every repository', () => {
+    expect(selectTargets(twoRepos(), [1]).targets.map((t) => t.repo)).toEqual(['a/x', 'b/y'])
+  })
+
+  test("a prKey selects one repository's PR and skips the other, naming its repository", () => {
+    const { targets, skipped } = selectTargets(twoRepos(), [prKey('b/y', 1)])
+    expect(targets.map((t) => t.repo)).toEqual(['b/y'])
+    expect(skipped).toEqual([
+      { repo: 'a/x', number: 1, head: 'ax', reason: 'not selected by --pr/--branch' },
+    ])
+  })
+
+  test('a cycle in one repository is not hidden by a row with its number in another', () => {
+    // `a/x` lists PR 1 as a row; in `b/y`, PR 1 is in a base/head cycle.
+    const { targets, skipped } = selectTargets(
+      { ...twoRepos({ b: [1] }), prs: [row({ repo: 'a/x', head: 'ax' })] as SurveyReport['prs'] },
+      [],
+    )
+    expect(targets.map((t) => t.repo)).toEqual(['a/x'])
+    expect(skipped).toEqual([
+      {
+        repo: 'b/y',
+        number: 1,
+        head: '',
+        reason: 'in a base/head cycle; no stack order to update it in',
+      },
+    ])
+  })
+
+  test('a --pr number found in either repository is not "not found"', () => {
+    const report2: SurveyReport = {
+      ...twoRepos(),
+      prs: [
+        row({ repo: 'a/x', number: 1 }),
+        row({ repo: 'b/y', number: 2 }),
+      ] as SurveyReport['prs'],
+    }
+    const { skipped } = selectTargets(report2, [2])
+    expect(skipped).toEqual([
+      { repo: 'a/x', number: 1, head: 'topic', reason: 'not selected by --pr/--branch' },
+    ])
   })
 })
 
@@ -227,6 +296,7 @@ describe('toResult', () => {
 describe('renderUpdateText', () => {
   type Result = UpdateOutput['results'][number]
   const res = (patch: Partial<Result>): Result => ({
+    repo: 'o/r',
     number: 1,
     head: 'topic',
     base: 'main',
@@ -247,7 +317,7 @@ describe('renderUpdateText', () => {
         res({ number: 3, status: 'failed', pushed: false, detail: 'boom' }),
         res({ number: 4, status: 'conflict', pushed: false, detail: 'needs a human' }),
       ],
-      skipped: [{ number: 5, head: 'other', reason: 'already up to date' }],
+      skipped: [{ repo: 'o/r', number: 5, head: 'other', reason: 'already up to date' }],
       counts,
     })
     expect(text.split('\n')).toEqual([
@@ -260,6 +330,24 @@ describe('renderUpdateText', () => {
       '',
       'PR-UPDATE: updated=1 up-to-date=0 conflict=1 failed=1 skipped=1',
       '',
+    ])
+  })
+
+  test('names the repository once the report spans more than one', () => {
+    const text = renderUpdateText({
+      applied: true,
+      results: [res({}), res({ repo: 'x/y', detail: 'boom', status: 'failed', pushed: false })],
+      skipped: [
+        { repo: 'x/y', number: 2, head: 'other', reason: 'already up to date' },
+        { repo: null, number: 9, head: '', reason: 'not found in survey' },
+      ],
+      counts,
+    })
+    expect(text.split('\n').slice(0, 4)).toEqual([
+      '✓ o/r#1  rebase  topic  updated',
+      '✗ x/y#1  rebase  topic  boom',
+      '- x/y#2  other  already up to date',
+      '- #9    not found in survey',
     ])
   })
 
@@ -329,12 +417,12 @@ describe('runUpdate — the Ports contract', () => {
   })
 
   test.each(['check', 'test'] as const)(
-    "verify: %s calls resolveVerifyVerbs exactly once, naming it, with this run's trust flag",
+    'verify: %s with no repository surveyed never asks resolveVerifyVerbs',
     async (which) => {
-      const seen: { which: string; trust: boolean }[] = []
+      let calls = 0
       const ports = fakePorts({
-        resolveVerifyVerbs: async (opts) => {
-          seen.push(opts)
+        resolveVerifyVerbs: async () => {
+          calls += 1
           return ['just ci']
         },
       })
@@ -349,7 +437,7 @@ describe('runUpdate — the Ports contract', () => {
           ports,
         },
       )
-      expect(seen).toEqual([{ which, trust: true }])
+      expect(calls).toBe(0)
     },
   )
 
@@ -543,6 +631,7 @@ describe('runUpdate — failed attempts', () => {
     expect(second.results).toEqual([])
     expect(second.skipped).toEqual([
       {
+        repo: 'o/r',
         number: 1,
         head: 'topic',
         reason: 'failed 1 time(s) at this head and base; waiting for either to move',
@@ -689,5 +778,121 @@ describe('runUpdate — a located repository', () => {
     expect(other.worker.git.isAncestor(other.worker.git.resolveRef('origin/main')!, after)).toBe(
       true,
     )
+  })
+})
+
+describe('runUpdate — two repositories that each hold a PR 1', () => {
+  let a: ReturnType<typeof makeBareAndWorker>
+  let b: ReturnType<typeof makeBareAndWorker>
+  let root: ReturnType<typeof makeBareAndWorker>
+
+  /** A repository whose `topic` branch is one commit behind `main`. */
+  function behindTopic(): ReturnType<typeof makeBareAndWorker> {
+    const fx = makeBareAndWorker({ initialBranch: 'main' })
+    const { git } = fx.worker
+    fx.worker.commit('initial', { 'README.md': 'fixture\n' })
+    git.push('origin', 'main')
+    git.checkout('main', { branch: 'topic' })
+    fx.worker.commit('topic work', { 'a.txt': 'a\n' })
+    git.push('origin', 'topic')
+    git.checkout('main')
+    fx.worker.commit('main moves', { 'b.txt': 'b\n' })
+    git.push('origin', 'main')
+    git.fetch('origin')
+    return fx
+  }
+
+  beforeEach(() => {
+    a = behindTopic()
+    b = behindTopic()
+    // The project root has no parseable remote, so only the named
+    // repositories are surveyed.
+    root = makeBareAndWorker({ initialBranch: 'main' })
+  })
+  afterEach(() => {
+    for (const fx of [a, b, root]) fx.cleanup()
+  })
+
+  async function run(ports: Partial<Ports>) {
+    const checkout: Record<string, string> = { 'a/x': a.worker.dir, 'b/y': b.worker.dir }
+    const real = spawnRunner('git')
+    const git: CommandRunner = {
+      run: (argv, opts) => real.run(argv, { ...opts, env: { ...IDENTITY, ...opts.env } }),
+    }
+    const pr1 = (slug: string): CodeHostPrDetail => {
+      const fx = slug === 'a/x' ? a : b
+      return {
+        number: 1,
+        title: 'topic',
+        url: `https://github.com/${slug}/pull/1`,
+        baseRef: 'main',
+        headRef: 'topic',
+        headSha: fx.worker.git.resolveRef('origin/topic')!,
+        isDraft: false,
+        labels: [],
+        reviewCount: 0,
+        isCrossRepository: false,
+      }
+    }
+    return runUpdate(
+      { ...ARGS, repo: ['a/x', 'b/y'], apply: true, strategy: 'merge' },
+      {
+        projectRoot: root.worker.dir,
+        dryRun: false,
+        git,
+        gh: UNREACHABLE_GH,
+        codeHost: ({ slug }) =>
+          ({ listPrDetails: () => ({ ok: true, value: [pr1(slug)] }) }) as unknown as CodeHost,
+        cfg: cfg({ verify: 'check' }),
+        ports: fakePorts({ locate: (slug) => checkout[slug] ?? null, ...ports }),
+      },
+    )
+  }
+
+  test('each result names its repository', async () => {
+    const out = await run({})
+    expect(out.results.map((r) => [r.repo, r.number, r.status])).toEqual([
+      ['a/x', 1, 'updated'],
+      ['b/y', 1, 'updated'],
+    ])
+  })
+
+  test('verify verbs are resolved once per repository, naming it and its checkout, and run there', async () => {
+    const asked: { which: string; trust: boolean; repo: string; checkout: string }[] = []
+    const ran: { verb: string; cwd: string }[] = []
+    const out = await run({
+      resolveVerifyVerbs: async (opts) => {
+        asked.push(opts)
+        return opts.repo === 'a/x' ? ['make check'] : ['cargo test']
+      },
+      runVerb: (verb, cwd) => {
+        ran.push({ verb, cwd })
+        return { exitCode: 0, stdout: '', stderr: '' }
+      },
+    })
+    expect(asked).toEqual([
+      { which: 'check', trust: false, repo: 'a/x', checkout: a.worker.dir },
+      { which: 'check', trust: false, repo: 'b/y', checkout: b.worker.dir },
+    ])
+    expect(ran.map((r) => r.verb)).toEqual(['make check', 'cargo test'])
+    expect(ran[0]!.cwd.startsWith(join(a.worker.dir, '.pr-update'))).toBe(true)
+    expect(ran[1]!.cwd.startsWith(join(b.worker.dir, '.pr-update'))).toBe(true)
+    expect(out.counts.updated).toBe(2)
+  })
+
+  test('a list refused for one repository stops the run before either is pushed', async () => {
+    const heads = [a, b].map((fx) => fx.worker.git.resolveRef('origin/topic'))
+    await expect(
+      run({
+        resolveVerifyVerbs: async ({ repo }) => {
+          if (repo === 'b/y') throw new Error('b/y is not trusted')
+          return ['make check']
+        },
+      }),
+    ).rejects.toThrow('b/y is not trusted')
+    for (const [i, fx] of [a, b].entries()) {
+      fx.worker.git.fetch('origin')
+      expect(fx.worker.git.resolveRef('origin/topic')).toBe(heads[i])
+    }
   })
 })

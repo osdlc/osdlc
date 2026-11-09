@@ -205,8 +205,13 @@ consent and need no trust. They override whatever the config names.
 `verify` decides what must pass before an updated branch is pushed. `none`
 (the default) leaves it to CI on the PR. `check` and `test` run a verb list in
 the update worktree, and a failure blocks the push. The host resolves that
-list through `Ports.resolveVerifyVerbs({ which, trust })`. A standalone run
-has no list for `check`, and runs `test` from `test_command`:
+list through `Ports.resolveVerifyVerbs({ which, trust, repo, checkout })`. It
+is asked once for each repository the run surveyed in a local checkout, named
+by `repo` (`owner/name`) and `checkout` (its path), so repositories that build
+differently (`make`, a package manager, `cargo`) can each get their own list.
+Every call comes before the first update, so a list refused for one repository
+stops the run before anything is pushed. A standalone run has no list for
+`check`, and runs `test` from `test_command`:
 
 ```yaml
 # pr-update.local.yaml
@@ -256,8 +261,12 @@ some other way than the terminal.
 of it. Any report left by an earlier run is removed first, so a file that is
 there belongs to this run. It is written whenever the run produced a result,
 on a clean exit and on a conflict or failure alike. Each PR's entry carries its
-`status`, the `strategy` that ran, `strategyFallback`, `repaired`, `conflicts`
-and `localCheckout`, so a host can act on each outcome without parsing text. A
+`repo` (`owner/name`), `status`, the `strategy` that ran, `strategyFallback`,
+`repaired`, `conflicts` and `localCheckout`, so a host can act on each outcome
+without parsing text. Each `skipped` entry carries its `repo` too, which is null
+only for a `--pr` number no surveyed repository has. A PR number alone is
+ambiguous once a run spans several repositories, and the text output then names
+each PR as `owner/name#N`. A
 run that throws writes `{ "error": "<message>" }` instead. A run refused before
 it starts (a flag usage error, or no trust) writes none.
 
@@ -338,7 +347,7 @@ confirmation:
 |---|---|
 | `locate(slug)` | Where `owner/name` is checked out on this machine, or `null` |
 | `runVerb(verb, cwd)` | Run one shell verb, for resolvers and verify |
-| `resolveVerifyVerbs({ which, trust })` | The trust-gated verb list `verify: check` or `verify: test` runs before a push |
+| `resolveVerifyVerbs({ which, trust, repo, checkout })` | The trust-gated verb list `verify: check` or `verify: test` runs before a push, asked once per repository |
 | `generators` (optional) | In-process rebuild steps, each with `claims(path)` and `run(worktree)` |
 | `repair(req)` (optional) | The last step, async: edit the worktree to fix a `conflict` or `verify-failed` |
 | `attempts` (optional) | The failed-update record: `get(key)`, `recordFailure(key, reason)`, `clear(repo, head, base)` |

@@ -873,7 +873,7 @@ describe('renderSurveyText', () => {
 
   test('prints the notes, the cycle line and the counts line', () => {
     const text = renderSurveyText({
-      repos: [{ slug: 'o/r', measurable: true, fetched: true }],
+      repos: [{ slug: 'o/r', measurable: true, fetched: true, cycles: [7, 8] }],
       prs: [
         { ...base, number: 1, head: 'root' },
         {

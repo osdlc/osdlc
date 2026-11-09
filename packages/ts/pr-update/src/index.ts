@@ -53,6 +53,7 @@ export type {
   RepairRequest,
   RepairResult,
   RunVerb,
+  VerifyVerbsRequest,
   VerifyWhich,
 } from './ports.ts'
 
@@ -95,6 +96,7 @@ export {
 export {
   applyStrategyOverride,
   attemptKey,
+  prKey,
   renderUpdateText,
   runUpdate,
   selectTargets,
@@ -107,6 +109,7 @@ export {
   result as updateResultSchema,
   type FailedAttemptPolicy,
   type LocalCheckout,
+  type PrSelector,
   type SkippedPr,
   type UpdateArgs,
   type UpdateEnv,

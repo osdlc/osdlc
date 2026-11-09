@@ -26,8 +26,14 @@
  *     `--retry-failed` attempts it anyway.
  *
  * `verify: check` or `verify: test` runs the `verifyVerbs` that
- * `ports.resolveVerifyVerbs` returns before a push. Whether a verb list from
+ * `ports.resolveVerifyVerbs` returns before a push. It is asked once per
+ * repository, naming the repository and its checkout, so a run over several
+ * repositories can verify each with its own commands. Whether a verb list from
  * the project may run is the host's decision, made in that port.
+ *
+ * A PR number names a PR only within one repository. Two repositories in one
+ * run can both hold a PR 1, so every result and skip carries its `repo`, and
+ * the run keys its own bookkeeping by repository and number together.
  */
 
 import { join } from 'node:path'
@@ -58,9 +64,26 @@ import type { PrUpdateConfig } from './config.ts'
 
 /** A row the run left alone, and the reason, so no row is dropped without a word. */
 export interface SkippedPr {
+  /**
+   * `owner/name`. Null only for a `--pr` number that no surveyed repository
+   * reported, which belongs to no one repository.
+   */
+  repo: string | null
   number: number
   head: string
   reason: string
+}
+
+/**
+ * Which PRs a run is limited to. A number selects that PR in every
+ * repository of the run, as `--pr` does. A `prKey` string selects one PR of
+ * one repository.
+ */
+export type PrSelector = number | string
+
+/** `owner/name#number`: one PR of one repository, unambiguous across a run. */
+export function prKey(repo: string, number: number): string {
+  return `${repo}#${number}`
 }
 
 /** The failed-attempt key for a target, or null when either sha is unknown. */
@@ -87,24 +110,34 @@ export interface FailedAttemptPolicy {
  * `skipped` entry instead of disappearing. A PR that disappeared from the
  * report would be the worst outcome, because the reader would assume it was
  * fine.
+ *
+ * A PR is identified by repository and number together. In a run over
+ * several repositories, two of them can each hold a PR 1, and both must be
+ * reported.
  */
 export function selectTargets(
   report: SurveyReport,
-  only: readonly number[],
+  only: readonly PrSelector[],
   policy: FailedAttemptPolicy = { maxFailedAttempts: 0, retryFailed: false },
 ): { targets: UpdateTarget[]; skipped: SkippedPr[] } {
   const store = policy.retryFailed || policy.maxFailedAttempts === 0 ? undefined : policy.attempts
-  const wanted = new Set(only)
-  const seen = new Set<number>()
+  const wantedNumbers = new Set(only.filter((s): s is number => typeof s === 'number'))
+  const wantedKeys = new Set(only.filter((s): s is string => typeof s === 'string'))
+  const scoped = only.length > 0
+  const selected = (repo: string, number: number): boolean =>
+    !scoped || wantedNumbers.has(number) || wantedKeys.has(prKey(repo, number))
+  const seen = new Set<string>()
+  const seenNumbers = new Set<number>()
   const targets: UpdateTarget[] = []
   const skipped: SkippedPr[] = []
 
   for (const row of report.prs) {
-    seen.add(row.number)
+    seen.add(prKey(row.repo, row.number))
+    seenNumbers.add(row.number)
     const note = (reason: string): void => {
-      skipped.push({ number: row.number, head: row.head, reason })
+      skipped.push({ repo: row.repo, number: row.number, head: row.head, reason })
     }
-    if (wanted.size > 0 && !wanted.has(row.number)) {
+    if (!selected(row.repo, row.number)) {
       // `note`, not a bare `continue`. A PR outside this run's `--pr` scope is
       // still a row the survey reported, and every surveyed PR must land in
       // `targets` or `skipped`.
@@ -137,21 +170,26 @@ export function selectTargets(
   }
   // A PR in a base/head cycle has no row, because it has no place in the
   // stack order. It is still a PR the survey listed, so it is reported here.
-  for (const number of report.cycles) {
-    if (seen.has(number)) continue
-    seen.add(number)
-    const reason =
-      wanted.size > 0 && !wanted.has(number)
-        ? 'not selected by --pr/--branch'
-        : 'in a base/head cycle; no stack order to update it in'
-    skipped.push({ number, head: '', reason })
+  for (const { slug: repo, cycles } of report.repos) {
+    for (const number of cycles) {
+      const key = prKey(repo, number)
+      if (seen.has(key)) continue
+      seen.add(key)
+      seenNumbers.add(number)
+      const reason = selected(repo, number)
+        ? 'in a base/head cycle; no stack order to update it in'
+        : 'not selected by --pr/--branch'
+      skipped.push({ repo, number, head: '', reason })
+    }
   }
   // A `--pr` number the survey never reported (a typo, or a PR that closed
   // between the survey and this run) never reaches `note()` in the loop above,
   // which sees only `report.prs`. Add it here, so every number this run was
-  // asked about is reported.
-  for (const number of wanted) {
-    if (!seen.has(number)) skipped.push({ number, head: '', reason: 'not found in survey' })
+  // asked about is reported. It names no repository, because none has it.
+  for (const number of wantedNumbers) {
+    if (!seenNumbers.has(number)) {
+      skipped.push({ repo: null, number, head: '', reason: 'not found in survey' })
+    }
   }
   return { targets, skipped }
 }
@@ -192,6 +230,9 @@ export const input = z.object({
 })
 
 export const result = z.object({
+  repo: z
+    .string()
+    .describe('`owner/name`. A PR number alone is ambiguous in a run over several repositories.'),
   number: z.number(),
   head: z.string(),
   base: z.string(),
@@ -231,7 +272,17 @@ export const output = z.object({
   applied: z.boolean().describe('False when this was a rehearsal.'),
   results: z.array(result).describe('One per PR acted on, in the order applied.'),
   skipped: z
-    .array(z.object({ number: z.number(), head: z.string(), reason: z.string() }))
+    .array(
+      z.object({
+        repo: z
+          .string()
+          .nullable()
+          .describe('`owner/name`; null only for a `--pr` number no surveyed repository has.'),
+        number: z.number(),
+        head: z.string(),
+        reason: z.string(),
+      }),
+    )
     .describe('PRs deliberately not acted on. Every surveyed PR is here or in `results`.'),
   repoFailures: z
     .array(repoFailure.extend({ repo: z.string() }))
@@ -251,6 +302,7 @@ export const output = z.object({
 /** Map one executor result to the `result` schema. Exported for tests. */
 export function toResult(r: UpdateResult, localCheckout?: LocalCheckout): z.infer<typeof result> {
   return {
+    repo: r.repo,
     number: r.number,
     head: r.head,
     base: r.base,
@@ -377,11 +429,15 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
   const report = runSurvey(args, { ...env, cfg: effectiveCfg })
   const attempts = env.ports.attempts
   // Branch mode names its PR by head branch. The survey has already narrowed
-  // the report to it and its stack parents.
-  const only =
+  // the report to it and its stack parents. The match is by repository and
+  // number, so a same-numbered PR in another repository is not swept in.
+  const only: PrSelector[] =
     args.branch === undefined
       ? args.pr
-      : [...args.pr, ...report.prs.filter((r) => r.head === args.branch).map((r) => r.number)]
+      : [
+          ...args.pr,
+          ...report.prs.filter((r) => r.head === args.branch).map((r) => prKey(r.repo, r.number)),
+        ]
   const { targets, skipped } = selectTargets(report, only, {
     attempts,
     maxFailedAttempts: effectiveCfg.max_failed_attempts,
@@ -392,25 +448,42 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
 
   // Each repository's PRs are updated in that repository's own checkout, the
   // one the survey measured them in.
-  const located = targets.length === 0 ? [] : surveyTargets(args, env).targets
+  const located = surveyTargets(args, env).targets
   const pathOf = new Map(located.map((t) => [t.slug, t.path ?? env.projectRoot]))
-  const groups = new Map<string, UpdateTarget[]>()
+  const groups = new Map<string, { path: string; targets: UpdateTarget[] }>()
   for (const t of targets) {
-    const path = pathOf.get(t.repo) ?? env.projectRoot
-    groups.set(path, [...(groups.get(path) ?? []), t])
+    const group = groups.get(t.repo)
+    if (group !== undefined) group.targets.push(t)
+    else groups.set(t.repo, { path: pathOf.get(t.repo) ?? env.projectRoot, targets: [t] })
   }
   const runId = `${process.pid}.${Date.now()}`
-  // Resolve once here, not inside `updateAll`'s per-PR loop.
+  // Once per repository, not inside `updateAll`'s per-PR loop. All of them
+  // before any update, so a list the host refuses for one repository stops
+  // the run before anything in any repository is pushed. And every surveyed
+  // checkout, not only those with a PR to update, so a missing or refused
+  // list is reported on every run, not first on the run that needs it.
   const verify = effectiveCfg.verify
-  const verifyVerbs =
-    verify === 'none'
-      ? []
-      : await env.ports.resolveVerifyVerbs({ which: verify, trust: args.trust })
+  const verifyVerbsOf = new Map<string, readonly string[]>()
+  if (verify !== 'none') {
+    const toAsk = new Map<string, string>()
+    for (const { slug, measurable, failure } of report.repos) {
+      const checkout = pathOf.get(slug)
+      if (measurable && failure === undefined && checkout !== undefined) toAsk.set(slug, checkout)
+    }
+    // Every repository with a PR to update is asked, so none is pushed
+    // unverified for want of a list.
+    for (const [repo, { path }] of groups) if (!toAsk.has(repo)) toAsk.set(repo, path)
+    for (const [repo, checkout] of toAsk) {
+      verifyVerbsOf.set(
+        repo,
+        await env.ports.resolveVerifyVerbs({ which: verify, trust: args.trust, repo, checkout }),
+      )
+    }
+  }
   const settings = {
     remote: args.remote,
     resolvers: effectiveCfg.resolvers,
     lockfileInstall: effectiveCfg.lockfile_install,
-    verifyVerbs,
     generators: env.ports.generators,
     repair: env.ports.repair,
     repairOn: effectiveCfg.repair.on,
@@ -418,11 +491,12 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
     confirmPush,
   }
   const results: UpdateResult[] = []
-  for (const [path, group] of groups) {
+  for (const [repo, { path, targets: group }] of groups) {
     const git = new Git(path, { runner: env.git })
     const worktreeRoot = join(path, '.pr-update', runId)
+    const verifyVerbs = verifyVerbsOf.get(repo) ?? []
     results.push(
-      ...(await updateAll(git, group, settings, env.ports.runVerb, {
+      ...(await updateAll(git, group, { ...settings, verifyVerbs }, env.ports.runVerb, {
         apply: writes,
         worktreeRoot,
       })),
@@ -431,16 +505,17 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
   // A rehearsal cannot repair, so its failures say nothing about a real run.
   if (writes && attempts !== undefined) recordAttempts(attempts, results)
 
-  const local = new Map<number, LocalCheckout>()
+  const local = new Map<string, LocalCheckout>()
   if (writes && args.branch !== undefined) {
     // Branch mode names a branch of the checkout at the project root.
     const git = new Git(env.projectRoot, { runner: env.git })
-    const key = (t: UpdateTarget): string => `${t.repo}#${t.number}`
-    const atRoot = new Set((groups.get(env.projectRoot) ?? []).map(key))
+    const atRoot = new Set(
+      [...groups].filter(([, g]) => g.path === env.projectRoot).map(([repo]) => repo),
+    )
     for (const r of results) {
-      if (!atRoot.has(key(r))) continue
+      if (!atRoot.has(r.repo)) continue
       const synced = syncLocalCheckout(git, r)
-      if (synced !== undefined) local.set(r.number, synced)
+      if (synced !== undefined) local.set(prKey(r.repo, r.number), synced)
     }
   }
 
@@ -450,7 +525,7 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
   )
   return {
     applied: writes,
-    results: results.map((r) => toResult(r, local.get(r.number))),
+    results: results.map((r) => toResult(r, local.get(prKey(r.repo, r.number)))),
     skipped,
     ...(failedRepos.length > 0 ? { repoFailures: failedRepos } : {}),
     counts: {
@@ -475,12 +550,22 @@ function recordAttempts(store: AttemptStore, results: readonly UpdateResult[]): 
   }
 }
 
-/** Render an update report as the same text `pr-update update` prints. */
+/**
+ * Render an update report as the same text `pr-update update` prints.
+ *
+ * A PR is shown as `#N` while the report names one repository, and as
+ * `owner/name#N` once it names more than one, where `#N` alone is ambiguous.
+ */
 export function renderUpdateText(out: UpdateOutput): string {
   const lines: string[] = []
+  const repos = new Set<string>()
+  for (const r of out.results) repos.add(r.repo)
+  for (const s of out.skipped) if (s.repo !== null) repos.add(s.repo)
+  const label = (repo: string | null, number: number): string =>
+    repos.size > 1 && repo !== null ? prKey(repo, number) : `#${number}`
   for (const r of out.results) {
     const mark = r.status === 'updated' ? (r.pushed ? '✓' : '·') : r.status === 'failed' ? '✗' : '!'
-    lines.push(`${mark} #${r.number}  ${r.strategy}  ${r.head}  ${r.detail}`)
+    lines.push(`${mark} ${label(r.repo, r.number)}  ${r.strategy}  ${r.head}  ${r.detail}`)
     if (r.localCheckout !== undefined) {
       lines.push(
         `    checkout: ${r.localCheckout.updated ? 'moved' : 'left'} — ${r.localCheckout.detail}`,
@@ -488,7 +573,7 @@ export function renderUpdateText(out: UpdateOutput): string {
     }
   }
   for (const s of out.skipped) {
-    lines.push(`- #${s.number}  ${s.head}  ${s.reason}`)
+    lines.push(`- ${label(s.repo, s.number)}  ${s.head}  ${s.reason}`)
   }
   const c = out.counts
   const mode = out.applied ? 'PR-UPDATE' : 'PR-UPDATE (rehearsal — nothing pushed)'

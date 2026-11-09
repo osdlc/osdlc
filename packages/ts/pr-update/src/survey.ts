@@ -543,6 +543,11 @@ export const output = z.object({
         slug: z.string(),
         measurable: z.boolean(),
         fetched: z.boolean(),
+        cycles: z
+          .array(z.number())
+          .describe(
+            "This repository's PR numbers in a base/head cycle. The top-level `cycles` lists every repository's together.",
+          ),
         failure: repoFailure
           .optional()
           .describe(
@@ -684,6 +689,7 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
         slug: target.slug,
         measurable,
         fetched: false,
+        cycles: [],
         failure: {
           kind: error.kind,
           message: error.message,
@@ -729,7 +735,7 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
       measurable,
       remote: args.remote,
     })
-    repos.push({ slug: target.slug, measurable, fetched })
+    repos.push({ slug: target.slug, measurable, fetched, cycles })
     allRows.push(...rows)
     allCycles.push(...cycles)
   }
