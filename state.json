@@ -13,9 +13,9 @@
       "line": 251,
       "title": "level now but unlevel after pending changesets passes on main",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "70946ec026b4844fa70d96b6bfd676ed7794079c"
     },
     {
       "id": "r1-2",
