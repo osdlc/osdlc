@@ -1,12 +1,20 @@
 /**
  * The two files devlink keeps per tool, in the config home of the tool's
- * standalone tier (`<config>/<name>/`, under the `xdg` convention):
+ * standalone tier (`<config>/<name>/`, under the `xdg` convention), or in the
+ * directory the spec's `stateDir` names (`~/.tooly/`):
  *
  *   home             the active link: one absolute checkout path, or absent.
  *                    A bash launcher reads it with `cat`, which is why it is a
  *                    bare path and not JSON.
  *   history.jsonl    every link / use / off event, one JSON object per line,
  *                    append-only. `history` and `use #n` are views over it.
+ *
+ * A spec that sets `onDeadLink: 'newest-surviving'` keeps a third file there:
+ *
+ *   candidates       the checkouts `link` and `use` selected, newest first, one
+ *                    absolute path per line, rewritten whole on each. When the
+ *                    link names a checkout that is gone, `resolve` and the bash
+ *                    launcher (with `read`) run the first one that survives.
  *
  * It is config rather than durable state. The user sets and clears it on
  * purpose, and losing it loses only the link. The launcher reads the `home`
@@ -18,7 +26,8 @@ import { dirname, join } from 'node:path'
 
 import { atomicWrite } from '@osdlc/etag-write'
 import { systemDirs, type TieredDirs } from '@osdlc/config-layers/dirs'
-import type { ToolSpec } from './spec.ts'
+import { homeDir } from '@osdlc/tiered-dirs'
+import { stateDirSegments, type ToolSpec } from './spec.ts'
 
 /**
  * The name of the file that holds the active link.
@@ -30,6 +39,12 @@ export const HOME_FILE = 'home'
  * @experimental
  */
 export const HISTORY_FILE = 'history.jsonl'
+/**
+ * The name of the file that lists the checkouts to fall back to, newest
+ * first, for a spec with `onDeadLink: 'newest-surviving'`.
+ * @experimental
+ */
+export const CANDIDATES_FILE = 'candidates'
 
 /**
  * The kinds of change the history records: `link`, `use` and `off`.
@@ -64,7 +79,8 @@ export interface StateOptions {
    * The directories to resolve against. Defaults to `spec.vendorDirs` on the
    * running system. Tests inject a rooted one so files go under a temp dir.
    * The bash launcher cannot see this option. To move the state for real
-   * use, set the vendor's `<P>_CONFIG_DIR` or `<P>_ROOT`, which both read.
+   * use, set the vendor's `<P>_CONFIG_DIR` or `<P>_ROOT`, which both read,
+   * or the spec's `stateDir`. When given, `stateDir` is not read.
    */
   dirs?: TieredDirs
   /**
@@ -76,19 +92,53 @@ export interface StateOptions {
 }
 
 /**
+ * Pinned to `xdg`: `<PREFIX>_CONVENTION` must not move the file away from
+ * where the bash launcher reads it.
+ */
+const XDG_PINNED = { convention: 'xdg', conventionFromEnv: false } as const
+
+/**
  * `<config>/<name>` for this tool, under the `xdg` convention:
  * `${XDG_CONFIG_HOME:-~/.config}/<name>` on Linux and macOS, `%APPDATA%\<name>`
- * on Windows. The vendor's `<P>_CONFIG_DIR` and `<P>_ROOT` move it, and the
- * bash launcher reads them too, so it reads the same path.
+ * on Windows. A spec that sets `stateDir` (`~/.tooly`) replaces that default
+ * with the directory under the user's home. The vendor's `<P>_CONFIG_DIR` and
+ * `<P>_ROOT` move it either way, and the bash launcher reads them too, so it
+ * reads the same path.
+ *
+ * Given `opts.dirs`, the state is that tree's config home and `stateDir` is
+ * not read. In a test runner process, tiered-dirs' per-process test root
+ * wins over `stateDir` as it wins over the `xdg` default, so a test never
+ * touches the user's real link.
  *
  * @experimental
  */
 export function stateDir(spec: ToolSpec, opts: StateOptions = {}): string {
-  // Pinned: `<PREFIX>_CONVENTION` must not move the file away from where the
-  // bash launcher reads it.
-  const dirs =
-    opts.dirs ?? systemDirs(spec.vendorDirs, { convention: 'xdg', conventionFromEnv: false })
-  return dirs.standalone(spec.name).config().path
+  if (opts.dirs !== undefined) return opts.dirs.standalone(spec.name).config().path
+  const segments = stateDirSegments(spec)
+  // Resolved even when `stateDir` is set, so a relative override and
+  // `<P>_REQUIRE_OVERRIDE` throw as they do without it.
+  const config = systemDirs(spec.vendorDirs, XDG_PINNED).standalone(spec.name).config().path
+  if (segments === null) return config
+  const vars = spec.vendorDirs.envVars
+  // An empty value counts as unset, as in tiered-dirs and the launcher.
+  if (process.env[vars.dirs.config] || process.env[vars.root]) return config
+  if (testRootApplied(spec, config)) return config
+  return join(homeDir(), ...segments)
+}
+
+/**
+ * Whether `config`, resolved with neither the config nor the root variable
+ * set, came from tiered-dirs' test root. Resolving again without the test
+ * root gives a different path, or throws (`<P>_REQUIRE_OVERRIDE`, or no
+ * home), only when it did.
+ */
+function testRootApplied(spec: ToolSpec, config: string): boolean {
+  try {
+    const outside = systemDirs(spec.vendorDirs, { ...XDG_PINNED, testRoot: false })
+    return outside.standalone(spec.name).config().path !== config
+  } catch {
+    return true
+  }
 }
 
 /**
@@ -210,4 +260,50 @@ function isHistoryEvent(value: unknown): value is HistoryEvent {
     (v['event'] === 'link' || v['event'] === 'use' || v['event'] === 'off') &&
     (typeof v['checkout'] === 'string' || v['checkout'] === null)
   )
+}
+
+/**
+ * The path of the file that lists the checkouts to fall back to when the link
+ * is dead.
+ * @experimental
+ */
+export function candidatesPath(spec: ToolSpec, opts: StateOptions = {}): string {
+  return join(stateDir(spec, opts), CANDIDATES_FILE)
+}
+
+/**
+ * The fall-back checkouts on disk, newest first: each non-empty line, as
+ * written. Empty when the file is absent or unreadable, as `readActive` is, so
+ * a bad state path never breaks `resolve`. Lines are not trimmed, because the
+ * bash launcher's `read -r` does not trim them either.
+ * @experimental
+ */
+export function readCandidates(spec: ToolSpec, opts: StateOptions = {}): string[] {
+  let text: string
+  try {
+    text = readFileSync(candidatesPath(spec, opts), 'utf-8')
+  } catch {
+    return []
+  }
+  return text.split('\n').filter((line) => line.length > 0)
+}
+
+/**
+ * Replace the fall-back list with `checkouts`, newest first, one per line.
+ * Atomic, so the launcher never reads half a list. Throws for a path with a
+ * line break, which one line per path cannot hold.
+ * @experimental
+ */
+export function writeCandidates(
+  spec: ToolSpec,
+  checkouts: readonly string[],
+  opts: StateOptions = {},
+): void {
+  const bad = checkouts.find((c) => /[\n\r]/.test(c))
+  if (bad !== undefined) {
+    throw new Error(`devlink: a candidate path cannot hold a line break: ${JSON.stringify(bad)}`)
+  }
+  const path = candidatesPath(spec, opts)
+  mkdirSync(dirname(path), { recursive: true })
+  atomicWrite(path, checkouts.map((c) => `${c}\n`).join(''))
 }

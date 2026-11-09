@@ -8,7 +8,7 @@ The crate that models a corpus, a folder of markdown notes and the files they li
 
 `packages/rust/markdown-corpus`: `Corpus::load` and `Corpus::try_load`, `LoadOptions`, `LinkGraph`, `FrontmatterIndex`, `Edge`, `EdgeKind`, `TagLexer`, `read_note` and `read_note_with` (`SplitMode`). Extracted from determined's `determined-notes`. First named `markdown-vault`.
 
-Each cache walks with a `markdown-vault-fs` `WalkOptions` the caller can replace (`LoadOptions::link_walk` and `frontmatter_walk`, or `with_walk`): roots, dot files, pruned folders, symlink refusal, read errors and the caller's own [excluded files](excluded-files.md). The link graph's default walk keeps excluded files, so links into them resolve; the frontmatter index's default leaves them out. `LinkGraph::with_snapshot` lends paths and notes from one lock hold.
+Each cache walks with a `markdown-vault-fs` `WalkOptions` the caller can replace (`LoadOptions::link_walk` and `frontmatter_walk`, or `with_walk`): roots, dot files, pruned folders, symlink refusal, read errors (skipped, reported in `unreadable()`, or fatal) and the caller's own [excluded files](excluded-files.md). The link graph's default walk keeps excluded files, so links into them resolve; the frontmatter index's default leaves them out. `LinkGraph::with_snapshot` lends paths and notes from one lock hold, and `LinkGraph::with_list_only` lists notes it never reads.
 
 ## Not to be confused with
 

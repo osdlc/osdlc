@@ -30,6 +30,11 @@ A decision is named for its topic, not numbered. Each has a `state`.
   judged
 - [List truncation](decisions/lists-report-truncation.md): a list says when its
   limit cut it short
+- [GraphQL partial answers and page cap](decisions/graphql-partial-and-page-cap.md):
+  `partial: true` reads `{ data, errors }` per page; no `maxPages`, callers page
+  themselves
 - [Runtimes and package contents](decisions/runtimes-and-package-contents.md)
 - [First version and API](decisions/first-version-and-api.md): first version
   0.5.0, API signed off
+- [Bundle size](decisions/bundle-size.md): small tools use verb functions and
+  `runVerb`, not `Gh`, measured

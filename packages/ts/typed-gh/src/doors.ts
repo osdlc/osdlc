@@ -42,11 +42,12 @@ import type { GhVerb } from './verbs.ts'
  * Read the result of running `verb` as the methods that throw do.
  *
  * A checked verb has already thrown on a non-zero exit (the runner is
- * {@link runCheckedGh}). A probe (`installed`, `authStatus`, `api`) carries its
- * failure in its value. A read that exited non-zero throws the classified
- * failure, unless the verb's `absent` says gh's answer was "there is no such
- * thing", which `parse` turns into `null`. A read that exited 0 but parsed to `null`
- * could not be read completely, and throws.
+ * {@link runCheckedGh}). A probe (`installed`, `authStatus`, `api`, `raw`)
+ * carries its failure in its value. A read that exited non-zero throws the
+ * classified failure, unless the verb's `absent` says the result is still an
+ * answer: gh's "there is no such thing", which `parse` turns into `null`, or a
+ * partial `graphql` response. A read that exited 0 but parsed to `null` could
+ * not be read completely, and throws.
  *
  * A result flagged `outputIncomplete` throws for every verb but a probe, as
  * typed-git's `gate` does: gh exited, but the runner stopped reading at the
@@ -63,7 +64,7 @@ export function settle<T>(verb: GhVerb<T>, result: CommandResult, binary: string
     ? result.outputIncomplete === true
     : runFailed(result, (r) => verb.absent?.(r) === true)
   if (failed) throw ghFailureError(new CommandFailed(verb.argv, result, binary))
-  // A non-zero exit that got this far is gh's "there is no such thing".
+  // A non-zero exit that got this far is an answer the verb's `absent` accepted.
   if (verb.checked || result.exitCode !== 0) return verb.parse(result)
   const value = verb.parse(result)
   if (value === null) {
@@ -133,17 +134,39 @@ type Triable<C> = Omit<
   | 'hostname'
 >
 
+/**
+ * A method's call signatures as `[args, return]` pairs: its last two when it
+ * is overloaded (`graphql` is, on its `partial` option), and its one
+ * signature twice when it is not. The types below map each pair, so `try` and
+ * `soft` keep both of a method's overloads.
+ */
+type Signatures<F> = F extends {
+  (...a: infer A1): infer R1
+  (...a: infer A2): infer R2
+}
+  ? [[A1, R1], [A2, R2]]
+  : never
+
 /** Every synchronous client method, returning a `Result<T, GhFailure>`. */
 export type TriedSync<C> = {
-  [K in keyof Triable<C>]: Triable<C>[K] extends (...a: infer A) => infer R
-    ? (...a: A) => Result<R, GhFailure>
+  [K in keyof Triable<C>]: Signatures<Triable<C>[K]> extends [
+    [infer A1 extends unknown[], infer R1],
+    [infer A2 extends unknown[], infer R2],
+  ]
+    ? { (...a: A1): Result<R1, GhFailure>; (...a: A2): Result<R2, GhFailure> }
     : never
 }
 
 /** Every awaitable client method, promising a `Result<T, GhFailure>`. */
 export type TriedAsync<C> = {
-  [K in keyof Triable<C>]: Triable<C>[K] extends (...a: infer A) => Promise<infer R>
-    ? (...a: A) => Promise<Result<R, GhFailure>>
+  [K in keyof Triable<C>]: Signatures<Triable<C>[K]> extends [
+    [infer A1 extends unknown[], Promise<infer R1>],
+    [infer A2 extends unknown[], Promise<infer R2>],
+  ]
+    ? {
+        (...a: A1): Promise<Result<R1, GhFailure>>
+        (...a: A2): Promise<Result<R2, GhFailure>>
+      }
     : never
 }
 
@@ -175,8 +198,11 @@ type OrNull<R> = R extends Promise<infer U> ? Promise<U | null> : R | null
 
 /** Each queried method again, returning `null` instead of throwing. One type for both clients. */
 export type Soft<C> = {
-  [K in SoftMethod & keyof C]: C[K] extends (...a: infer A) => infer R
-    ? (...a: A) => OrNull<R>
+  [K in SoftMethod & keyof C]: Signatures<C[K]> extends [
+    [infer A1 extends unknown[], infer R1],
+    [infer A2 extends unknown[], infer R2],
+  ]
+    ? { (...a: A1): OrNull<R1>; (...a: A2): OrNull<R2> }
     : never
 }
 

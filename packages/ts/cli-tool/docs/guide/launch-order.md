@@ -206,7 +206,7 @@ project's `node_modules` copy, which is itself.
 |---|---|---|---|---|
 | 1 | env | `TOOL_HOME=<absolute checkout path>` | unset it; a relative path is ignored | that checkout's source entry under bun |
 | 2 | cwd | the spec sets `cwdLayer: true` and you stand inside a checkout | `TOOL_CWD_DEV=0`, a suppressor, or the spec leaves it off (the default) | that checkout's source entry under bun |
-| 3 | link | `tool dev link <checkout>` | `tool dev off`, or a suppressor | the linked checkout's source entry under bun |
+| 3 | link | `tool dev link <checkout>` | `tool dev off`, or a suppressor | the linked checkout's source entry under bun; when it is gone and the spec sets `onDeadLink: 'newest-surviving'`, the newest earlier checkout that survives |
 | 4 | project | the spec sets `packageName` and a project above the cwd has it in `node_modules` | `TOOL_PROJECT=0`, `projectLayer: false` in the spec, or a suppressor | the package's `bin` file under node (or bun, when its `#!` line says bun), run by its path |
 | 5 | local | none of the above | never | this copy |
 
@@ -319,11 +319,15 @@ There are two ways to write one:
    - `launcher`: the bin, relative to the checkout.
    - `vendorDirs`: where the link file and history live, and the variables
      that move them (`{ vendor, envVars: envVars('TOOL') }`).
+   - `stateDir`, only if the tool keeps its state under its own directory
+     (`'~/.tool'`) rather than `~/.config/tool`. The variables still move it.
    - `aliases`, if the tool has other command names.
    - `suppressors`: variables a host program sets (such as a plugin root) so
      that your link never changes the code it runs.
    - `cwdLayer`: leave it off unless working inside the checkout without a
      link is a daily need.
+   - `onDeadLink`: leave it off (`'local'`) so a deleted checkout runs the
+     install; `'newest-surviving'` runs the newest earlier checkout instead.
 2. **Call runMain with the hook** in the bin's module:
    `await runMain(main, { name, version: VERSION, devlink: devlinkHook(SPEC) })`.
 3. **Stamp the version.** Add `"stamp-version": "cli-tool-stamp-version"`,

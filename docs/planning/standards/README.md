@@ -16,3 +16,7 @@ order they were written in, and that order says nothing about how they relate.
 | [S-document-features-as-added](./S-document-features-as-added.md) | A feature is documented in its library when it is added | review |
 
 The enforcing scripts live in [`scripts/`](../../../scripts/).
+
+A format that libraries implement is a spec, not a standard here. It lives with its conformance
+cases in `packages/conformance/<family>/SPEC.md`, such as the
+[corpus-schema spec](../../../packages/conformance/corpus-schema/SPEC.md).

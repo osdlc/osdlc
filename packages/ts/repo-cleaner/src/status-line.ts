@@ -15,9 +15,9 @@ const STEP_TEXT: Record<SweepProgress['step'], string> = {
   discover: 'reading the repository',
   fetch: 'fetching',
   prs: 'listing pull requests (gh)',
-  worktrees: 'checking worktrees',
-  'local-branches': 'checking local branches',
-  'remote-branches': 'checking remote branches',
+  worktree: 'checking worktrees',
+  branch: 'checking local branches',
+  remote: 'checking remote branches',
 }
 
 /** `~/x` for a path under the home directory. */
@@ -48,9 +48,9 @@ export function describeSweep(p: SweepProgress, home: string = homedir()): strin
   return `${where}${text}${count} · ${tilde(p.repo, home)}`
 }
 
-/** An apply step as one line, e.g. `deleting ██████░░░░ 3/7: delete-remote origin/feat/x`. */
+/** A run's step as one line, e.g. `deleting ██████░░░░ 3/7: delete-remote remote:origin/feat/x`. */
 export function describeStep(index: number, total: number, step: Step): string {
-  const what = step.row === null ? step.repo : step.row.id
+  const what = step.row
   return `deleting ${progressBar(index, total)} ${index + 1}/${total}: ${step.action} ${what}`
 }
 

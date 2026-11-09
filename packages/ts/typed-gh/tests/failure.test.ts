@@ -9,6 +9,7 @@ import { describe as suite, expect, expectTypeOf, test } from 'vitest'
 import { describe } from '@osdlc/result'
 
 import {
+  AsyncGh,
   classifyGhFailure,
   CommandFailed,
   Gh,
@@ -201,6 +202,24 @@ suite('types', () => {
     const gh = new Gh('/x')
     expectTypeOf(gh.soft.prList).returns.toEqualTypeOf<ReturnType<Gh['prList']> | null>()
     expectTypeOf(gh.prList).returns.not.toBeNullable()
+  })
+
+  test("try and soft keep each method's parameters", () => {
+    const gh = new Gh('/x')
+    const agh = new AsyncGh('/x')
+    expectTypeOf(gh.try.prView).parameters.toEqualTypeOf<Parameters<Gh['prView']>>()
+    expectTypeOf(gh.soft.issueView).parameters.toEqualTypeOf<Parameters<Gh['issueView']>>()
+    expectTypeOf(agh.try.prList).parameters.toEqualTypeOf<Parameters<AsyncGh['prList']>>()
+    expectTypeOf(agh.soft.prView).parameters.toEqualTypeOf<Parameters<AsyncGh['prView']>>()
+    // A method with no parameters keeps none.
+    expectTypeOf(gh.try.installed).parameters.toEqualTypeOf<[]>()
+    expectTypeOf(agh.try.installed).parameters.toEqualTypeOf<[]>()
+    // @ts-expect-error a boolean is not a PR ref
+    expectTypeOf(gh.try.prView).toBeCallableWith(true)
+    // @ts-expect-error issueView takes a number and options, no third argument
+    expectTypeOf(gh.soft.issueView).toBeCallableWith(1, {}, 2)
+    // @ts-expect-error installed takes no arguments
+    expectTypeOf(gh.try.installed).toBeCallableWith(1)
   })
 })
 

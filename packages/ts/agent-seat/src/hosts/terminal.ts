@@ -1,0 +1,52 @@
+/**
+ * The current terminal: run it right here and wait for it.
+ *
+ * An interactive process is the one thing that must NOT be captured — it
+ * owns the TTY until the person leaves it — so this runs through the command
+ * seam's STREAMING door (`streamRunner`; stdio fully
+ * inherited, resolves to `{exitCode}`) rather than a capture door. `req.argv`
+ * names a different binary on every call, so the injected dependency is a
+ * runner FACTORY — `(binary) => StreamRunner`, the same shape `streamRunner`
+ * itself has — not a runner bound to one binary the way `hosts/tmux.ts` and
+ * `hosts/cmux.ts` inject theirs (their binary, `tmux`/`cmux`, is fixed).
+ */
+
+import { streamRunner, type StreamRunner } from '@osdlc/command-seam'
+
+import type { CommandRequest, Host, SessionRequest } from '../contract.ts'
+import { onPath } from '../contract.ts'
+import { wrapperSession } from '../harness.ts'
+
+/**
+ * The current-terminal host: runs the command right here with inherited stdio and waits for it.
+ * Needs no binary or app, runs on every platform, and is always available.
+ */
+export function makeTerminalHost(
+  opts: { streamRunner?: ((binary: string) => StreamRunner) | undefined } = {},
+): Host {
+  const makeRunner = opts.streamRunner ?? streamRunner
+  const terminal = (req: CommandRequest): number => {
+    const [bin, ...rest] = req.argv
+    if (bin === undefined) throw new Error('empty argv')
+    if (!onPath(bin)) throw new Error(`'${bin}' is not on PATH`)
+    return makeRunner(bin).run(rest, { cwd: req.cwd }).exitCode
+  }
+  return {
+    name: 'terminal',
+    platforms: 'all',
+    available() {
+      return true
+    },
+    terminal,
+    // `terminal` returns only once the agent exited, so the session-id lookup looks once. The
+    // host's own `terminal` part runs, so a host spread from this one with another
+    // `terminal` opens the session through that one.
+    session(req: SessionRequest) {
+      const run = this.terminal ?? terminal
+      return wrapperSession((r) => run.call(this, r), req, { hostWaited: true })
+    },
+  }
+}
+
+/** The production terminal host — `streamRunner` as its runner factory. */
+export const terminalHost: Host = makeTerminalHost()

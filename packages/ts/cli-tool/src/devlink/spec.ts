@@ -16,8 +16,8 @@ import { envStem as stemOf, type VendorDirs } from '@osdlc/config-layers/dirs'
 export interface ToolSpec {
   /**
    * The command name, such as `tooly`. It is the PATH name `install` writes,
-   * the standalone segment the state lives under (`<config>/<name>/`),
-   * and the stem of every environment variable.
+   * the standalone segment the state lives under (`<config>/<name>/`, unless
+   * {@link stateDir} moves it), and the stem of every environment variable.
    */
   name: string
   /**
@@ -51,6 +51,19 @@ export interface ToolSpec {
    */
   projectLayer?: boolean
   /**
+   * What the link layer does when the link names a directory that is no
+   * longer a checkout (a deleted worktree). `'local'`, the default, skips the
+   * layer, so the project layer or the install runs: a deleted checkout must
+   * not break the installed tool. `'newest-surviving'` first tries the other
+   * checkouts `dev link` and `dev use` selected before, newest first, and
+   * runs the first that is still a checkout, so deleting one worktree keeps
+   * the developer on development code. Only that falls back: an unset link
+   * (`dev off`) still runs the install. The list is the plain-text
+   * `candidates` file beside the link, which `resolve` and the bash launcher
+   * both walk.
+   */
+  onDeadLink?: 'local' | 'newest-surviving'
+  /**
    * The source entry to run under Bun inside a selected checkout, relative to
    * the checkout root. Defaults to {@link marker}.
    */
@@ -77,14 +90,29 @@ export interface ToolSpec {
   /**
    * Whose config home the state lives in: the vendor and its override
    * variables. The bash launcher reads the same path: the vendor's
-   * `<P>_CONFIG_DIR`, then `<P>_ROOT`, then the `xdg` default (it always uses
-   * the `xdg` convention and ignores `<P>_CONVENTION`). A relative value of
-   * the one in use reads no link. The launcher reads only those two: a
+   * `<P>_CONFIG_DIR`, then `<P>_ROOT`, then {@link stateDir} when set, else
+   * the `xdg` default (it always uses the `xdg` convention and ignores
+   * `<P>_CONVENTION`). A relative value of the one in use reads no link.
+   * The launcher reads only those two: a
    * relative override of another kind (such as `<P>_CACHE_DIR`), or
    * `<P>_REQUIRE_OVERRIDE`, makes `dev link` throw but does not stop the
    * launcher following a link written before.
    */
   vendorDirs: VendorDirs
+  /**
+   * Where the state lives when no override variable moves it, in place of
+   * the `xdg` default: a directory under the user's home, written `~/` and
+   * then one or more segments, such as `~/.tooly`. It is the directory that
+   * holds the `home` and `history.jsonl` files; `<name>` is not appended. The
+   * vendor's `<P>_CONFIG_DIR` and `<P>_ROOT` still win and still place the
+   * state at `<dir>/<name>` and `<root>/config/<name>`. `XDG_CONFIG_HOME` is
+   * not read when this is set. The bash launcher bakes the same path in.
+   *
+   * Each segment is letters, digits, `.`, `_` and `-`, and not `.` or `..`.
+   * `validateSpec` and `renderLauncher` refuse anything else. A function of
+   * the home directory is not accepted, because the launcher could not run it.
+   */
+  stateDir?: string
 }
 
 /**
@@ -214,6 +242,15 @@ export function validateSpec(spec: ToolSpec): ToolSpec {
       throw new Error(`devlink: alias must be a single path segment, got ${JSON.stringify(alias)}`)
     }
   }
+  if (
+    spec.onDeadLink !== undefined &&
+    spec.onDeadLink !== 'local' &&
+    spec.onDeadLink !== 'newest-surviving'
+  ) {
+    throw new Error(
+      `devlink: onDeadLink must be 'local' or 'newest-surviving', got ${JSON.stringify(spec.onDeadLink)}`,
+    )
+  }
   for (const [field, value] of [
     ['marker', spec.marker],
     ['entry', spec.entry ?? spec.marker],
@@ -235,5 +272,28 @@ export function validateSpec(spec: ToolSpec): ToolSpec {
   if (spec.packageName !== undefined && spec.packageName.length === 0) {
     throw new Error('devlink: packageName must not be empty')
   }
+  stateDirSegments(spec)
   return spec
+}
+
+/**
+ * The segments of `spec.stateDir` below the home directory (`~/.tooly` →
+ * `['.tooly']`), or null when the spec does not set it. Throws for a value
+ * that is not `~/` and then safe segments: the bash launcher puts it inside a
+ * double-quoted string, so `$`, quotes and backslashes must never reach it.
+ * @internal
+ */
+export function stateDirSegments(spec: ToolSpec): string[] | null {
+  const value = spec.stateDir
+  if (value === undefined) return null
+  const segments = value.startsWith('~/') ? value.slice(2).split('/') : []
+  if (
+    segments.length === 0 ||
+    segments.some((s) => s === '.' || s === '..' || !/^[A-Za-z0-9._-]+$/.test(s))
+  ) {
+    throw new Error(
+      `devlink: stateDir must be ~/ and then a relative path of letters, digits, '.', '_' and '-', got ${JSON.stringify(value)}`,
+    )
+  }
+  return segments
 }

@@ -13,7 +13,7 @@
 
 import { spawnRunnerAsync, type AsyncCommandRunner, type CommandResult } from '@osdlc/command-seam'
 
-import { runCheckedGhAsync, softAsync, triedAsync, type Soft, type TriedAsync } from './doors.ts'
+import { softAsync, triedAsync, type Soft, type TriedAsync } from './doors.ts'
 import { runVerbAsync } from './run.ts'
 import { ownerRepoSlug, parseOwnerRepo, parsePrRef } from './repo.ts'
 import type { IssueRow, Label, OwnerRepo, PrSearchHit, PullRequest, Repository } from './types.ts'
@@ -134,12 +134,12 @@ export class AsyncGh {
    * `.at(dir)` first.
    */
   raw(argv: string[], opts: AsyncCallOptions = {}): Promise<CommandResult> {
-    return this.runner.run(argv, { cwd: this.cwd, ...opts })
+    return this.exec(v.raw(argv), opts)
   }
 
   /** Run any `gh` call. Rejects with the classified failure on a non-zero exit. Adds no `--repo`, as {@link AsyncGh.raw}. */
   rawChecked(argv: string[], opts: AsyncCallOptions = {}): Promise<CommandResult> {
-    return runCheckedGhAsync(this.runner, argv, { cwd: this.cwd, ...opts })
+    return this.exec(v.rawChecked(argv), opts)
   }
 
   /** Run one verb from the table, checked or unchecked as the verb says. */
@@ -238,15 +238,26 @@ export class AsyncGh {
   }
 
   /**
-   * A GraphQL query. Resolves to each page's `data`. Rejects on a failed or partial result. See `Gh.graphql`.
+   * A GraphQL query. Resolves to each page's `data`. Rejects on a failed or partial result.
+   * With `partial: true`, resolves to each page's `data` with its `errors`. See `Gh.graphql`.
    *
    * @experimental
    */
   async graphql(
     query: string,
+    variables: Record<string, v.GraphqlVariable> | undefined,
+    opts: v.GraphqlPartialOptions & AsyncCallOptions,
+  ): Promise<v.GraphqlPage[]>
+  async graphql(
+    query: string,
+    variables?: Record<string, v.GraphqlVariable>,
+    opts?: v.GraphqlOptions & AsyncCallOptions,
+  ): Promise<unknown[]>
+  async graphql(
+    query: string,
     variables: Record<string, v.GraphqlVariable> = {},
-    opts: v.GraphqlOptions & AsyncCallOptions = {},
-  ): Promise<unknown[]> {
+    opts: (v.GraphqlOptions | v.GraphqlPartialOptions) & AsyncCallOptions = {},
+  ): Promise<unknown[] | v.GraphqlPage[]> {
     return this.read(v.graphql(query, variables, opts, this.target), opts)
   }
 
