@@ -134,11 +134,12 @@ move; merged PRs drop off.
 
 | Order | PR | What | Why this order | Status |
 | --- | --- | --- | --- | --- |
-| 1 | [#734](https://github.com/osdlc/osdlc/pull/734) | codex-pr and cursor-pr actions; claude-pr moved onto shared pr-common scripts | Only PR waiting; gate done (5 fixed, code review clean) | waiting on your review since 04:10 UTC; behind main (conflict resolved by the bot's merge of main); not tested live |
+| 1 | [#741](https://github.com/osdlc/osdlc/pull/741) | fix(pr-update): stop the repair agent when pr-update is interrupted | draft | none | CI running | pre-review gate after CI | merge |
+| [#734](https://github.com/osdlc/osdlc/pull/734) | codex-pr and cursor-pr actions; claude-pr moved onto shared pr-common scripts | Only PR waiting; gate done (5 fixed, code review clean) | waiting on your review since 04:10 UTC; behind main (conflict resolved by the bot's merge of main); not tested live |
 
 ## PR tracker
 
-Checked 2026-11-09 04:17 UTC. A periodic check refreshes this table and the graph.
+Checked 2026-11-09 05:17 UTC. A periodic check refreshes this table and the graph.
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
@@ -252,8 +253,8 @@ approved on 2026-11-08. Decisions:
 
 - `pr-update` (`packages/ts/pr-update/src/repair/agents.ts:97`) calls
   `callAgent` with no signal, so interrupting it leaves the agent running.
-  Follow-up from [#723](https://github.com/osdlc/osdlc/pull/723): one shared
-  interrupt helper for every host that calls `callAgent`.
+  Follow-up from [#723](https://github.com/osdlc/osdlc/pull/723); fixed by
+  [#741](https://github.com/osdlc/osdlc/pull/741) (draft). It is the only other caller.
 
 ## PR process
 
