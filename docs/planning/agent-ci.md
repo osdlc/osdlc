@@ -58,15 +58,15 @@ flowchart LR
     RUN["PR 715: run CLI with maxTurns, merged"]
     CHECK["Check permission rows against the facts"]
     STRICT["Backlog: enforced read-only mappings (claude tool denies + sandbox, cursor cli.json) so strict passes"]
-    CUR["PR 721: cursor allow and deny via .cursor/cli.json"]
+    CUR["PR 721: cursor allow and deny via .cursor/cli.json, merged"]
     REV["PR 724 + 727: claude-pr action, @claude review"]
-    REL["Release agent-call with the run CLI and maxTurns"]
+    REL["Release agent-call 0.10.0: PR 726 (Version Packages)"]
   end
   subgraph gate["Gate"]
     ARCH["API and architecture review 1: approved"]
   end
   subgraph acts["CI glue · packages/gh-actions"]
-    SETUP["PR 716: agent-setup and release workflow"]
+    SETUP["PR 716: agent-setup and release workflow, merged"]
     ANS["agent-pr-answer: prefetch, run, post"]
   end
   subgraph roll["Rollout"]
@@ -114,11 +114,11 @@ flowchart LR
   classDef later fill:#8a93a3,stroke:#6b7384,color:#ffffff
   class W710,P711,P707,P712,PLAN,PARLEY,PLANPR,ARCH,RUN done
   class UP yours
-  class SETUP blocked
+  class SETUP done
   class REV done
   class PERM,PROBE,CHECK,ANS,SPEC,MULTI next
   class REL active
-  class CUR blocked
+  class CUR done
   class MCP,PUB,DATA,PIN,STRICT later
 ```
 
@@ -127,21 +127,17 @@ flowchart LR
 What is ready for your review, in the order to review it. Rewritten as PRs
 move; merged PRs drop off.
 
-| Order | PR | What | Why this order | Status |
-| --- | --- | --- | --- | --- |
-| 1 | [#721](https://github.com/osdlc/osdlc/pull/721) | agent-call: cursor allow and deny via `.cursor/cli.json` | Waiting longest; the live Claude review's four findings are fixed and answered | waiting on your review since 20:41 UTC (over 2h; nudged 23:17); CI green; behind main |
-| 2 | [#723](https://github.com/osdlc/osdlc/pull/723) | agent-call `run`: forward SIGINT and SIGTERM, exit 130 when interrupted | Small; ships in the same agent-call release as #721 | waiting on your review since 22:12 UTC; CI green; behind main |
-| 3 | [#716](https://github.com/osdlc/osdlc/pull/716) | `agent-setup` action and `gh-actions release` workflow | Independent of agent-call; needed before `agent-pr-answer` | waiting on your review since 23:03 UTC; CI green; behind main |
+Nothing is waiting on your review. Next for you: [#726](https://github.com/osdlc/osdlc/pull/726), the Version Packages PR, once it picks up #721 and #723 (it releases agent-call 0.10.0).
 
 ## PR tracker
 
-Checked 2026-11-08 23:17 UTC. A periodic check refreshes this table and the graph.
+Checked 2026-11-09 00:20 UTC. A periodic check refreshes this table and the graph.
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
-| [#721](https://github.com/osdlc/osdlc/pull/721) | feat(agent-call): enforce allow and deny tools on cursor | open | none | behind main | waiting on your review | merge |
-| [#723](https://github.com/osdlc/osdlc/pull/723) | fix(agent-call): follow-ups from the codex review of #715 | open | none | behind main | waiting on your review | merge |
-| [#716](https://github.com/osdlc/osdlc/pull/716) | feat(gh-actions): add the agent-setup action | open | none | behind main | waiting on your review | merge |
+| [#721](https://github.com/osdlc/osdlc/pull/721) | feat(agent-call): enforce allow and deny tools on cursor | merged | — | — | — | merged 2026-11-09 |
+| [#723](https://github.com/osdlc/osdlc/pull/723) | fix(agent-call): follow-ups from the codex review of #715 | merged | — | — | — | merged 2026-11-09 |
+| [#716](https://github.com/osdlc/osdlc/pull/716) | feat(gh-actions): add the agent-setup action | merged | — | — | — | merged 2026-11-09 |
 | [#727](https://github.com/osdlc/osdlc/pull/727) | feat(gh-actions): claude-pr action; claude.yml calls it | merged | — | — | — | merged into #724's branch 2026-11-08 |
 | [#724](https://github.com/osdlc/osdlc/pull/724) | ci(claude): claude-pr action with @claude review, key list and done markers | merged | — | — | — | merged 2026-11-08 |
 | [#715](https://github.com/osdlc/osdlc/pull/715) | feat(agent-call): agent-call run command | merged | — | — | — | merged 2026-11-08 |
