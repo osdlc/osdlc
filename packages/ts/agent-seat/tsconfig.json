@@ -1,0 +1,12 @@
+{
+  // Typechecks the source and tests. The build has its own include.
+  // Workspace siblings resolve through `exports` to their built `dist/`, so
+  // run the build before the typecheck.
+  "extends": "@osdlc/tsconfig/node-lib",
+  "compilerOptions": {
+    // The source runs under Node's type stripping in tests and smoke runs,
+    // which rejects enums and parameter properties.
+    "erasableSyntaxOnly": true
+  },
+  "include": ["src", "tests", "examples", "vitest.config.ts"]
+}

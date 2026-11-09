@@ -15,3 +15,7 @@ order they were written in, and that order says nothing about how they relate.
 | [S-conformance-suites](./S-conformance-suites.md) | A library family's implementations share one conformance suite | `pnpm run check:conformance` |
 
 The enforcing scripts live in [`scripts/`](../../../scripts/).
+
+A format that libraries implement is a spec, not a standard here. It lives with its conformance
+cases in `packages/conformance/<family>/SPEC.md`, such as the
+[corpus-schema spec](../../../packages/conformance/corpus-schema/SPEC.md).

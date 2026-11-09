@@ -187,6 +187,10 @@ function planDroid(command: readonly string[], spec: AgentCallSpec): PlannedCall
     note(notes, 'budgetUsd', 'dropped', 'droid has no budget cap flag')
   }
 
+  if (spec.limits?.maxTurns !== undefined) {
+    note(notes, 'limits.maxTurns', 'dropped', 'droid has no turn limit flag')
+  }
+
   argv.push(...(spec.extraArgs ?? []))
 
   // droid exec reads the prompt from stdin when no positional prompt is

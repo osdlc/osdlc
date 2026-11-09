@@ -109,6 +109,23 @@ describe('arguments', () => {
     expect(run(['cache', '--help'], tempDir()).code).toBe(0)
   })
 
+  test('with no target, a subdirectory of a checkout sweeps that checkout (#680)', () => {
+    const fx = buildFixture()
+    const inner = join(fx.root, 'src', 'lib')
+    mkdirSync(inner, { recursive: true })
+    writeFileSync(join(inner, 'index.ts'), 'export {}\n')
+    sh(fx.root, ['add', '-A'])
+    sh(fx.root, ['commit', '-q', '-m', 'add src'])
+    const res = run(['--format', 'json'], inner)
+    expect(res.code).toBe(0)
+    const out = JSON.parse(res.out) as {
+      repos: { repo: { root: string } }[]
+      unresolved: unknown[]
+    }
+    expect(out.repos.map((r) => r.repo.root)).toEqual([realpathSync(fx.root)])
+    expect(out.unresolved).toEqual([])
+  })
+
   test('a malformed command exits 2', () => {
     const fx = buildFixture()
     const cwd = tempDir()
