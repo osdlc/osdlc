@@ -45,9 +45,11 @@
 //! Both walks are the caller's to change ([`LoadOptions::link_walk`],
 //! [`LoadOptions::frontmatter_walk`], or `with_walk` on each cache): the
 //! roots walked, dot files, pruned folders such as `node_modules`, refused
-//! symlinks, propagated read errors, and excluded files of the caller's own
+//! symlinks, read errors ([`Errors`]), and excluded files of the caller's own
 //! as [`Hide::Rules`]. [`Corpus::try_load`] returns a walk error that
-//! [`Corpus::load`] would leave as an empty cache.
+//! [`Corpus::load`] would leave as an empty cache. Under [`Errors::Report`]
+//! a load keeps going past a folder it cannot list or a note it cannot read,
+//! and [`Corpus::unreadable`] names each one.
 //!
 //! ```
 //! use markdown_corpus::{Corpus, LoadOptions};
@@ -79,7 +81,7 @@ pub use links::{
 };
 pub use markdown_link::{BodyLink, LinkIndex, RawLink, ResolveError};
 pub use markdown_vault_fs;
-pub use markdown_vault_fs::walk::{Hide, WalkError, WalkOptions};
+pub use markdown_vault_fs::walk::{Errors, Hide, WalkError, WalkOptions};
 pub use note::{Note, SplitMode, note_title, read_note, read_note_with, split_with};
 pub use tags::{NoTags, TagCount, TagLexer, census};
 pub use vfs_seam;

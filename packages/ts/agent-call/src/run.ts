@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './adapters/types.js'
 import type { Conversation } from './conversation.js'
 import { TMP_TOKEN, type PlannedCall } from './plan.js'
+import { applyProjectFile } from './project-files.js'
 import { spawnCollect } from './spawn.js'
 import type { AgentCallSpec } from './spec.js'
 
@@ -237,11 +238,23 @@ async function execute(
       throw new Error(`temp file name ${JSON.stringify(file.name)} is not a plain file name`)
     }
   }
-  let tempDir: string | undefined
-  if (planned.tempFiles.length > 0) {
-    tempDir = await mkdtemp(join(tmpdir(), 'agent-call-'))
+  const restores: Array<() => Promise<void>> = []
+  const restoreAll = async (): Promise<void> => {
+    for (const restore of restores.splice(0).reverse()) await restore()
   }
   try {
+    for (const edit of planned.projectFiles ?? []) {
+      restores.push(await applyProjectFile(planned.cwd ?? process.cwd(), edit))
+    }
+  } catch (err) {
+    await restoreAll()
+    return { stdout: '', stderr: errorMessage(err), exitCode: null, durationMs: 0, timedOut: false }
+  }
+  let tempDir: string | undefined
+  try {
+    if (planned.tempFiles.length > 0) {
+      tempDir = await mkdtemp(join(tmpdir(), 'agent-call-'))
+    }
     if (tempDir !== undefined) {
       for (const file of planned.tempFiles) {
         await writeFile(join(tempDir, file.name), file.content, 'utf8')
@@ -282,8 +295,12 @@ async function execute(
     }
     return raw
   } finally {
-    if (tempDir !== undefined) {
-      await rm(tempDir, { recursive: true, force: true })
+    try {
+      if (tempDir !== undefined) {
+        await rm(tempDir, { recursive: true, force: true })
+      }
+    } finally {
+      await restoreAll()
     }
   }
 }

@@ -68,7 +68,12 @@ assert_eq!(corpus.resolve("Alpha", "Home.md").as_deref(), Some("Alpha.md"));
   walks content notes only. Both are yours to change in `LoadOptions`
   (`link_walk`, `frontmatter_walk`): roots, dot files, pruned folders such as
   `node_modules`, refused symlinks, read errors and your own excluded files.
-  `Corpus::try_load` returns a walk error instead of skipping it.
+  `Corpus::try_load` returns a walk error instead of skipping it. Under
+  `Errors::Report` a load keeps going past a folder it cannot list or a note
+  it cannot read, and `Corpus::unreadable` names each one.
+- **Listed, not read.** `LinkGraph::with_list_only` lists the notes it picks
+  (under dot-named folders, say) as files a link resolves to, without
+  reading them.
 - **Frontmatter.** Notes split strictly by default. `SplitMode::Lenient`
   also takes a block with blank lines before it or spaces after a fence.
 - **Edges.** Each edge is a link, an embed or a frontmatter reference.

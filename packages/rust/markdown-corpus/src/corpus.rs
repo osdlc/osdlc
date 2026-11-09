@@ -1,7 +1,7 @@
 //! [`Corpus`]: the link graph and the frontmatter index over one corpus root,
 //! loaded in one call.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -122,7 +122,10 @@ impl Corpus {
     /// real clock walks again; [`Corpus::apply_changes`] works straight away.
     /// A walk error (only possible when a walk in `opts` refuses symlinks or
     /// propagates errors) leaves that cache empty; [`Corpus::try_load`]
-    /// returns it instead.
+    /// returns it instead. A walk that reports errors
+    /// ([`Errors::Report`](markdown_vault_fs::walk::Errors::Report)) loads
+    /// what it can and keeps what it could not read in
+    /// [`Corpus::unreadable`].
     pub fn load(vfs: &dyn Vfs, root: impl Into<PathBuf>, opts: LoadOptions) -> Corpus {
         let corpus = Corpus::empty(root, opts);
         corpus.refresh_now(vfs, &FixedClock::new(0));
@@ -130,8 +133,9 @@ impl Corpus {
     }
 
     /// [`Corpus::load`] that fails on the first walk error: a folder that
-    /// cannot be listed or a file that cannot be statted, when a walk
-    /// propagates errors, or a symlink, when a walk refuses them.
+    /// cannot be listed, a file that cannot be statted or a note that cannot
+    /// be read, when a walk propagates errors, or a symlink, when a walk
+    /// refuses them.
     pub fn try_load(
         vfs: &dyn Vfs,
         root: impl Into<PathBuf>,
@@ -220,6 +224,22 @@ impl Corpus {
         self.frontmatter.apply_changes(vfs, &self.root, rels);
     }
 
+    /// What either cache could not read, under a walk that reports errors:
+    /// [`LinkGraph::unreadable`], then each path only
+    /// [`FrontmatterIndex::unreadable`] has. Empty when neither walk
+    /// reports errors.
+    pub fn unreadable(&self) -> Vec<Arc<VfsError>> {
+        let mut all = self.links.unreadable();
+        let known: HashSet<PathBuf> = all.iter().map(|e| e.path().to_path_buf()).collect();
+        all.extend(
+            self.frontmatter
+                .unreadable()
+                .into_iter()
+                .filter(|e| !known.contains(e.path())),
+        );
+        all
+    }
+
     /// Every file a link can resolve to, notes and attachments.
     pub fn paths(&self) -> Vec<String> {
         self.links.paths()
@@ -288,7 +308,7 @@ impl Corpus {
 #[cfg(test)]
 mod tests {
     use markdown_vault_fs::HideRules;
-    use markdown_vault_fs::walk::{Hide, Visibility};
+    use markdown_vault_fs::walk::{Errors, Hide, Visibility};
     use vfs_seam::MemVfs;
 
     use super::*;
@@ -479,7 +499,7 @@ mod tests {
     fn try_load_returns_the_walk_error_load_leaves_empty() {
         let d = MemVfs::new();
         let strict = WalkOptions {
-            propagate_errors: true,
+            errors: Errors::Propagate,
             ..FrontmatterIndex::default_walk()
         };
         let opts = LoadOptions::default().with_frontmatter_walk(strict);
@@ -609,6 +629,38 @@ mod tests {
         assert!(v.note("Alpha.md").is_none());
         // Without a stale mark, a refresh inside the TTL does not walk.
         assert_eq!(v.refresh(&d, &c).links.removed, 0);
+    }
+
+    #[test]
+    fn a_reporting_load_keeps_going_and_names_what_it_could_not_read() {
+        let d = corpus_fs();
+        let alpha = PathBuf::from("/v/Alpha.md");
+        let locked = crate::links::hooks::StatHook::unreadable(&d, alpha.clone());
+        let opts = LoadOptions::default()
+            .with_link_walk(WalkOptions {
+                errors: Errors::Report,
+                ..LinkGraph::default_walk()
+            })
+            .with_frontmatter_walk(WalkOptions {
+                errors: Errors::Report,
+                ..FrontmatterIndex::default_walk()
+            });
+        let v = Corpus::load(&locked, "/v", opts);
+        assert_eq!(v.paths(), ["Alpha.md", "Bad.md", "Home.md"]);
+        assert_eq!(v.backlinks("Alpha.md").total, 1);
+        // Both caches met it; it is named once.
+        let named: Vec<PathBuf> = v.unreadable().iter().map(|e| e.path().into()).collect();
+        assert_eq!(named, [alpha]);
+        // An apply that reads it makes the next refresh walk both caches
+        // and clear it.
+        v.apply_changes(&d, &["Alpha.md".to_string()]);
+        v.refresh(&d, &FixedClock::new(0));
+        assert!(v.unreadable().is_empty());
+        assert!(
+            Corpus::load(&locked, "/v", LoadOptions::default())
+                .unreadable()
+                .is_empty()
+        );
     }
 
     #[test]
