@@ -99,7 +99,7 @@ optional; the defaults are osdlc's rules (`OSDLC`).
 | `tsDir`          | `packages/ts`                        | The TypeScript packages' folder                                       |
 | `configPackages` | `[]`                                 | Packages that ship config and no code, by folder name                 |
 | `catalog`        | `true`                               | A dependency the pnpm catalog pins must be written `catalog:`         |
-| `rootLintConfig` | `.oxlintrc.json`                     | The root lint config every package uses; `null` for no rule           |
+| `rootLintConfig` | `.oxlintrc.json`                     | The root lint config; a package may not keep its own. `null`: no rule |
 | `rustWorkspace`  | `packages/rust`                      | The Cargo workspace folder                                            |
 | `families`       | `packages/conformance/families.json` | The conformance registry `affected` reads                             |
 | `shared`         | `[]`                                 | More path patterns that make `affected` pick every package            |

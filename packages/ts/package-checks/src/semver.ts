@@ -35,7 +35,7 @@ import { indexEntries, publishesToCratesIo, type CargoMetadata } from './crates-
 import { capture, stream } from './run.ts'
 
 /** `[major, minor, patch]` of a version. */
-type Version = [number, number, number]
+export type Version = [number, number, number]
 
 /** A version's parts, or null when it is not X.Y.Z. */
 function parse(v: string): Version | null {
@@ -158,27 +158,43 @@ export async function semverCheck(
         source = `git tag ${pkg.name}/v${show(baseline)}`
       }
     }
-    if (status === 0) {
-      row({ baseline: `${show(baseline)} (${source})`, result: 'pass: no breaking change found' })
-    } else if (status === 100) {
-      // 100 means a semver violation. Other codes mean the check could not run.
-      row({
-        baseline: `${show(baseline)} (${source})`,
-        result: `fail: breaking, set ${show(required)}`,
-      })
-      problems.push(
-        `${pkg.name} has a breaking change against ${show(baseline)} (${source}). ` +
-          `Set \`version = "${show(required)}"\` in its Cargo.toml in this pull request.`,
-      )
-    } else {
-      row({
-        baseline: `${show(baseline)} (${source})`,
-        result: `error: cargo semver-checks exited ${status}`,
-      })
-      problems.push(`cargo semver-checks could not check ${pkg.name} (exit ${status}).`)
-    }
+    const outcome = semverOutcome(status, pkg.name, baseline, source)
+    row(outcome)
+    if (outcome.problem !== undefined) problems.push(outcome.problem)
   }
   return { rows, problems }
+}
+
+/**
+ * What a `cargo semver-checks` exit `status` means for crate `name`, checked
+ * against `baseline` from `source`: 0 passes, 100 is a breaking change, and
+ * any other code (1 when the command did not run at all) means the check
+ * could not run. A breaking change or a failed check comes with the problem
+ * that fails the run.
+ */
+export function semverOutcome(
+  status: number,
+  name: string,
+  baseline: Version,
+  source: string,
+): { baseline: string; result: string; problem?: string } {
+  const from = `${show(baseline)} (${source})`
+  if (status === 0) return { baseline: from, result: 'pass: no breaking change found' }
+  if (status === 100) {
+    const required = show(nextBreaking(baseline))
+    return {
+      baseline: from,
+      result: `fail: breaking, set ${required}`,
+      problem:
+        `${name} has a breaking change against ${from}. ` +
+        `Set \`version = "${required}"\` in its Cargo.toml in this pull request.`,
+    }
+  }
+  return {
+    baseline: from,
+    result: `error: cargo semver-checks exited ${status}`,
+    problem: `cargo semver-checks could not check ${name} (exit ${status}).`,
+  }
 }
 
 /** The report as a markdown table. */

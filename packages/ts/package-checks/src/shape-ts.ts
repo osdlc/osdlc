@@ -33,7 +33,8 @@
  *   - A third-party dependency listed in pnpm-workspace.yaml's `catalog:` is
  *     written `catalog:`. The packed manifest has no `catalog:` or
  *     `workspace:` range left.
- *   - No per-package .oxlintrc.json: the one at the repository root applies.
+ *   - No per-package copy of the root lint config (`rootLintConfig`): the one
+ *     at the repository root applies.
  *   - The config packages (`configPackages`; osdlc's are tsconfig and
  *     prettier-config) ship no code, so they are exempt from the build, test,
  *     src, examples and smoke rules, and instead are ESM with an `exports`
@@ -491,7 +492,13 @@ export function configPackageProblems(pkg: PackageJson, files: string[]): string
 /** The settings {@link conventionProblems} reads. */
 export type ConventionSettings = Pick<
   typeof OSDLC,
-  'author' | 'baseEngine' | 'configPackages' | 'catalog' | 'license' | 'licenseFiles'
+  | 'author'
+  | 'baseEngine'
+  | 'configPackages'
+  | 'catalog'
+  | 'license'
+  | 'licenseFiles'
+  | 'rootLintConfig'
 >
 
 /**
@@ -538,9 +545,11 @@ export function conventionProblems({
     ...gitignoreProblems(gitignore),
     ...(settings.catalog ? catalogProblems(pkg, catalog) : []),
   ]
-  if (files.includes('.oxlintrc.json')) {
+  const lintConfig =
+    settings.rootLintConfig === null ? null : posix.basename(settings.rootLintConfig)
+  if (lintConfig !== null && files.includes(lintConfig)) {
     problems.push(
-      '.oxlintrc.json: delete it; the one at the repository root applies to every package',
+      `${lintConfig}: delete it; the one at the repository root applies to every package`,
     )
   }
   if (config) problems.push(...configPackageProblems(pkg, files))

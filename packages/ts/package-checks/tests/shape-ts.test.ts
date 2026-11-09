@@ -426,6 +426,20 @@ test('the settings change the author, licence, engine and catalog rules', () => 
   )
 })
 
+test('P15: the per-package lint rule follows rootLintConfig', () => {
+  const files = [...FILES, '.oxlintrc.json', 'biome.json']
+  const none = conventionProblems({ ...code, files, settings: { ...OSDLC, rootLintConfig: null } })
+  assert.deepEqual(none, [])
+  const biome = conventionProblems({
+    ...code,
+    files,
+    settings: { ...OSDLC, rootLintConfig: 'biome.json' },
+  })
+  assert.deepEqual(biome, [
+    'biome.json: delete it; the one at the repository root applies to every package',
+  ])
+})
+
 test('P15: a per-package .oxlintrc.json fails', () => {
   const problems = conventionProblems({ ...code, files: [...FILES, '.oxlintrc.json'] })
   assert.equal(problems.length, 1)

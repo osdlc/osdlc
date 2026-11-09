@@ -2,7 +2,10 @@
 # that packages/ts/yaml-splice/ commits, on
 # every pull request and push to main. It also runs when the markdown-contract corpus changes,
 # because the markdown-contract crate's tests read it, and when a conformance suite under
-# packages/conformance/ changes, because the crates' tests read those.
+# packages/conformance/ changes, because the crates' tests read those. The
+# crate checks are @osdlc/package-checks, so it also runs when that package,
+# command-seam (which it runs commands through), the root package-checks.json,
+# package.json, lockfile or pnpm-workspace.yaml changes.
 #
 # The workflow always runs, so its final `rust` job always reports. That job
 # is the one to require in the "Protect main" ruleset. A workflow-level
@@ -88,7 +91,7 @@ jobs:
               files='*'
               ;;
           esac
-          if [ "$files" = '*' ] || grep -qE '^(packages/rust/|packages/conformance/|packages/ts/conformance/|packages/ts/yaml-splice/wasm/|packages/ts/markdown-contract/corpus/|\.github/workflows/(rust-ci|release-plz)\.yml$|\.github/actions/rust-|scripts/crates-io-|packages/ts/package-checks/)' <<<"$files"; then
+          if [ "$files" = '*' ] || grep -qE '^(packages/rust/|packages/conformance/|packages/ts/conformance/|packages/ts/yaml-splice/wasm/|packages/ts/markdown-contract/corpus/|\.github/workflows/(rust-ci|release-plz)\.yml$|\.github/actions/rust-|scripts/crates-io-|packages/ts/package-checks/|packages/ts/command-seam/|(package-checks\.json|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$)' <<<"$files"; then
             echo "rust=true" >> "$GITHUB_OUTPUT"
           else
             echo "rust=false" >> "$GITHUB_OUTPUT"
