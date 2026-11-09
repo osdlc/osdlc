@@ -126,9 +126,9 @@
       "line": 585,
       "title": "canonical claims one form for every value that can reach a token, but delimiter truncation in a raw cookie or link (and + from form encoding) reaches a token with a different canonical form",
       "comment": "https://github.com/osdlc/osdlc/pull/704#discussion_r4509294652",
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "b240e6b543db367074cccb09f05704636677a204"
     },
     {
       "id": "r6-2",
