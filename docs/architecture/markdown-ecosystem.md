@@ -143,8 +143,8 @@ As an image: [markdown-ecosystem-after.svg](img/markdown-ecosystem-after.svg).
 | `markdown-contract` | 0.3, not published                                  | 0.4, published; heading and block selection from skillwright                            |
 | `markdown-relink`   | 0.1, its own scan                                   | 0.2, facts from `markdown-corpus`; plans read through `vfs-seam`                        |
 
-`markdown-tags` is still in the dev repo, so `markdown-corpus` takes a
-`TagLexer` instead of depending on it.
+`markdown-tags` now lives here too (the crate and `@osdlc/markdown-tags`).
+`markdown-corpus` still takes a `TagLexer` instead of depending on it.
 
 ## Since osdlc#618
 

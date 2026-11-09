@@ -55,15 +55,17 @@ export function forgeTarget(url: string | null): ForgeTarget {
 }
 
 /**
- * The provider `choice` names for `target`. `auto` reads the host: one with
- * `gitlab` in its name is GitLab, any other is GitHub, which is what the sweep
- * did before providers existed (`gh` answers nothing for a host it does not
- * know). `none` is no provider.
+ * The provider `choice` names for `target`. `auto` reads the host: none, for
+ * a remote that names no host (a local path or `file://`), which cannot have
+ * pull requests; one with `gitlab` in its name is GitLab; any other is
+ * GitHub, which is what the sweep did before providers existed (`gh` answers
+ * nothing for a host it does not know). `none` is no provider.
  */
 export function chooseProvider(choice: ProviderChoice, target: ForgeTarget): ProviderName | null {
   if (choice === 'none') return null
   if (choice !== 'auto') return choice
-  return target.host !== null && target.host.includes('gitlab') ? 'gitlab' : 'github'
+  if (target.host === null) return null
+  return target.host.includes('gitlab') ? 'gitlab' : 'github'
 }
 
 /** The chosen provider for a repository, probed; null for none. */

@@ -1,5 +1,44 @@
 # @osdlc/pr-update
 
+## 0.9.10
+
+### Patch Changes
+
+- Updated dependencies [3a8af1e]
+- Updated dependencies [3d4a6d7]
+- Updated dependencies [6422022]
+  - @osdlc/agent-call@0.10.0
+
+## 0.9.9
+
+### Patch Changes
+
+- a148598: Fixed: `pr-update config set` and `config unset` no longer overwrite an edit saved in an editor while they ran. They write with a compare-and-swap against the text they edited, and when the file changed in between they leave it as it is and exit 1 with code `config-conflict`.
+- Updated dependencies [a148598]
+- Updated dependencies [0703abd]
+- Updated dependencies [2d0e130]
+  - @osdlc/config-layers@0.9.0
+  - @osdlc/cli-tool@0.18.0
+  - @osdlc/trust-repo@0.5.5
+  - @osdlc/code-host@0.7.9
+
+## 0.9.8
+
+### Patch Changes
+
+- Updated dependencies [25ccd9e]
+  - @osdlc/typed-git@0.13.0
+  - @osdlc/code-host@0.7.8
+  - @osdlc/trust-repo@0.5.4
+
+## 0.9.7
+
+### Patch Changes
+
+- Updated dependencies [25c1c72]
+  - @osdlc/cli-tool@0.17.0
+  - @osdlc/code-host@0.7.7
+
 ## 0.9.6
 
 ### Patch Changes

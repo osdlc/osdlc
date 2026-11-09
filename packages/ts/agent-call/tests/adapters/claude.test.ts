@@ -58,9 +58,12 @@ describe('claude plan', () => {
       context: { dirs: ['/tmp/a', '/tmp/b'], text: 'background info' },
       session: { id: 'u-u-i-d', persist: false },
       budgetUsd: 2.5,
+      limits: { maxTurns: 7 },
       extraArgs: ['--verbose'],
     })
     const joined = planned.argv.join(' ')
+    expect(joined).toContain('--max-turns 7')
+    expect(planned.notes.find((n) => n.field === 'limits.maxTurns')?.support).toBe('native')
     expect(joined).toContain('--model opus')
     expect(joined).toContain('--effort high')
     expect(adapter.plan({ prompt: 'x', effort: 'xhigh' }).argv.join(' ')).toContain(

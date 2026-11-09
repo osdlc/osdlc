@@ -8,18 +8,19 @@
  * covers everything under it — including a per-owner or per-client
  * directory — without listing any of them.
  *
- * Nothing here fans out on its own. A caller that passes no entries gets no
- * repositories, and the CLI's bare invocation sweeps the checkout it is
- * standing in.
+ * A caller that passes no entries gets no repositories. `sweep` with no
+ * targets passes the directory it stands in, which resolves like any other
+ * entry; when that finds nothing in a directory the checkout around it tracks,
+ * `sweep` widens it to that checkout.
  */
 
-import { statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { isAbsolute, join, resolve as resolvePath } from 'node:path'
 
 import { checkoutRoot, scanForCheckouts, type Git } from '@osdlc/typed-git'
 
 import { emptyScan, type ScanStats, type UnresolvedEntry } from './types.ts'
+import { isDir } from './util.ts'
 
 export interface ResolveOptions {
   /** Base for a relative entry. Defaults to the process's cwd. */
@@ -46,14 +47,6 @@ export function expandTilde(path: string, home: string = homedir()): string {
   if (path === '~') return home
   if (path.startsWith('~/')) return join(home, path.slice(2))
   return path
-}
-
-function isDir(path: string): boolean {
-  try {
-    return statSync(path).isDirectory()
-  } catch {
-    return false
-  }
 }
 
 /** True iff `dir` is itself the root of a checkout — main or linked worktree. */

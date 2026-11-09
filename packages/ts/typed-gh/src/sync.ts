@@ -19,7 +19,7 @@
 
 import { spawnRunner, type CommandResult, type CommandRunner } from '@osdlc/command-seam'
 
-import { runCheckedGh, softSync, triedSync, type Soft, type TriedSync } from './doors.ts'
+import { softSync, triedSync, type Soft, type TriedSync } from './doors.ts'
 import { runVerb } from './run.ts'
 import * as v from './verbs.ts'
 import type {
@@ -174,12 +174,12 @@ export class Gh {
    * `.at(dir)` first.
    */
   raw(argv: string[], opts: { timeoutMs?: number | undefined } = {}): CommandResult {
-    return this.runner.run(argv, { cwd: this.cwd, ...opts })
+    return this.exec(v.raw(argv), opts.timeoutMs)
   }
 
   /** Run any `gh` call. Throws the classified failure on a non-zero exit. Adds no `--repo`, as {@link Gh.raw}. */
   rawChecked(argv: string[], opts: { timeoutMs?: number | undefined } = {}): CommandResult {
-    return runCheckedGh(this.runner, argv, { cwd: this.cwd, ...opts })
+    return this.exec(v.rawChecked(argv), opts.timeoutMs)
   }
 
   /** Run one verb from the table, checked or unchecked as the verb says. */
@@ -307,15 +307,27 @@ export class Gh {
 
   /**
    * A GraphQL query. Returns each page's `data`. Throws on a failed or partial
-   * result. `soft.graphql` gives null. See the `graphql` verb.
+   * result. `soft.graphql` gives null. With `partial: true`, returns each
+   * page's `data` with its `errors`, and throws only when there is no data to
+   * read. See the `graphql` verb.
    *
    * @experimental
    */
   graphql(
     query: string,
+    variables: Record<string, v.GraphqlVariable> | undefined,
+    opts: v.GraphqlPartialOptions & { timeoutMs?: number | undefined },
+  ): v.GraphqlPage[]
+  graphql(
+    query: string,
+    variables?: Record<string, v.GraphqlVariable>,
+    opts?: v.GraphqlOptions & { timeoutMs?: number | undefined },
+  ): unknown[]
+  graphql(
+    query: string,
     variables: Record<string, v.GraphqlVariable> = {},
-    opts: v.GraphqlOptions & { timeoutMs?: number | undefined } = {},
-  ): unknown[] {
+    opts: (v.GraphqlOptions | v.GraphqlPartialOptions) & { timeoutMs?: number | undefined } = {},
+  ): unknown[] | v.GraphqlPage[] {
     return this.read(v.graphql(query, variables, opts, this.target), opts.timeoutMs)
   }
 

@@ -7,11 +7,11 @@
  * their own runner all use the same definitions and the same parsing.
  *
  * `checked` marks a verb the runner throws for on a non-zero exit, with
- * stderr. That is every mutation, and `prDiff`, which is a read. Other
- * queries run unchecked, and `parse` turns a failure into `null`, which is
- * what `soft` returns. The clients' methods that throw read them through
- * `settle` (see `doors.ts`) instead. There a failure throws, except where the
- * verb declares `absent` or is a `probe`.
+ * stderr. That is every mutation, `prDiff`, which is a read, and
+ * `rawChecked`. Other queries run unchecked, and `parse` turns a failure into
+ * `null`, which is what `soft` returns. The clients' methods that throw read
+ * them through `settle` (see `doors.ts`) instead. There a failure throws,
+ * except where the verb declares `absent` or is a `probe`.
  */
 
 import { notAnOption, stderrOrError, type CommandResult } from '@osdlc/command-seam'
@@ -29,11 +29,12 @@ function noSuch(thing: Thing): (r: CommandResult) => boolean {
 /** One `gh` invocation: what to run, and how to read what came back. */
 export interface GhVerb<T> {
   argv: string[]
-  /** True for every mutation and for `prDiff`: throw on a non-zero exit instead of parsing. */
+  /** True for every mutation, `prDiff` and `rawChecked`: throw on a non-zero exit instead of parsing. */
   checked: boolean
   /**
    * True when the call only reads and changes nothing on GitHub. Every query
-   * is read-only, and so is `prDiff`. No mutation is. A caller that
+   * is read-only, and so is `prDiff`. No mutation is, and neither are `raw`
+   * and `rawChecked`, whose argv the library cannot judge. A caller that
    * keeps an allowlist of safe calls can check this before running a verb.
    */
   readOnly: boolean
@@ -45,17 +46,20 @@ export interface GhVerb<T> {
    */
   env?: Record<string, string> | undefined
   /**
-   * True for a read whose failure is part of its answer. `installed`,
-   * `authStatus` and `api` return what `parse` makes of any result, from the
-   * plain method and from `try`; they have no soft form. Other reads throw
-   * from the plain method when gh exits non-zero.
+   * True for a call whose failure is part of its answer. `installed`,
+   * `authStatus`, `api` and `raw` return what `parse` makes of any result,
+   * from the plain method and from `try`; they have no soft form. Other reads
+   * throw from the plain method when gh exits non-zero.
    */
   probe?: boolean | undefined
   /**
-   * For a read of one thing: whether a non-zero result means GitHub has no such
-   * thing (`prView`, `issueView`, `repoView`). The plain method then returns
-   * what `parse` makes of it, `null`, because a missing item is an answer.
-   * Other non-zero results fail the call.
+   * Whether a non-zero result is still an answer. For a read of one thing, it
+   * says GitHub has no such thing (`prView`, `issueView`, `repoView`), and
+   * `parse` makes `null` of it, because a missing item is an answer. For
+   * `graphql` with `partial`, it says gh exited 1 over a response that
+   * carries `errors` alongside its `data`, and `parse` reads the pages. The
+   * plain method returns what `parse` makes of it. Other non-zero results
+   * fail the call.
    */
   absent?: ((result: CommandResult) => boolean) | undefined
   parse(result: CommandResult): T
@@ -648,9 +652,136 @@ export interface GraphqlOptions {
   /**
    * Follow every page (`--paginate --slurp`). The query must take
    * `$endCursor: String` and select `pageInfo { hasNextPage endCursor }` on
-   * the one connection it pages through. gh follows only that connection.
+   * the one connection it pages through. gh follows only that connection, to
+   * its end. There is no page cap: to stop early, page yourself (see the
+   * README's "Reading every page").
    */
   paginate?: boolean | undefined
+  /**
+   * Unset or `false`: a page with `errors` fails the call. Pass
+   * {@link GraphqlPartialOptions} to read partial pages instead.
+   */
+  partial?: false | undefined
+}
+
+/**
+ * Options for {@link graphql} that read a partial answer: each page's `data`
+ * with the `errors` that came with it.
+ *
+ * @experimental
+ */
+export interface GraphqlPartialOptions extends Omit<GraphqlOptions, 'partial'> {
+  /**
+   * Return each page as a {@link GraphqlPage}, so a page whose `data` came
+   * back with `errors` is still read. GitHub answers this way when part of a
+   * query fails: an aliased pull request that was deleted is `null` in
+   * `data`, and an error names its path.
+   */
+  partial: true
+}
+
+/**
+ * One entry of a GraphQL response's `errors`.
+ *
+ * @experimental
+ */
+export interface GraphqlError {
+  /** What GitHub said went wrong. `''` when the error had no message. */
+  readonly message: string
+  /** GitHub's error type, such as `NOT_FOUND` or `FORBIDDEN`. `null` when it gave none. */
+  readonly type: string | null
+  /**
+   * Where in `data` the error happened: field names (an alias, when the
+   * query used one) and list indexes, from the root. Empty when the error
+   * names no path, as one about the whole query does.
+   */
+  readonly path: readonly (string | number)[]
+}
+
+/**
+ * One page of a partial {@link graphql} answer: the page's `data`, and the
+ * `errors` that came with it. `errors` is empty for a page that came back
+ * whole. A field the errors name is `null` in `data`.
+ *
+ * @experimental
+ */
+export interface GraphqlPage {
+  readonly data: unknown
+  readonly errors: readonly GraphqlError[]
+}
+
+/** One `errors` entry, read leniently: a string is its message, anything else counts with none. */
+function readGraphqlError(entry: unknown): GraphqlError {
+  if (typeof entry === 'string') return { message: entry, type: null, path: [] }
+  if (entry === null || typeof entry !== 'object') return { message: '', type: null, path: [] }
+  const rec = entry as Record<string, unknown>
+  const path = rec['path']
+  const wellFormed =
+    Array.isArray(path) && path.every((p) => typeof p === 'string' || typeof p === 'number')
+  return {
+    message: typeof rec['message'] === 'string' ? rec['message'] : '',
+    type: typeof rec['type'] === 'string' ? rec['type'] : null,
+    path: wellFormed ? (path as (string | number)[]) : [],
+  }
+}
+
+/**
+ * A page's `errors`. None when the field is missing or `null`. gh counts a
+ * string as an error, as an array of entries is, so both are read here.
+ */
+function readGraphqlErrors(errors: unknown): GraphqlError[] {
+  if (errors === undefined || errors === null) return []
+  return Array.isArray(errors) ? errors.map(readGraphqlError) : [readGraphqlError(errors)]
+}
+
+/**
+ * True when anything in `value` says `hasNextPage: true`. gh's own test for
+ * another page reads the first `pageInfo` it meets. This one reads every
+ * `hasNextPage`, so it says yes whenever gh would have, and sometimes when it
+ * would not have.
+ */
+function mentionsNextPage(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(mentionsNextPage)
+  if (value === null || typeof value !== 'object') return false
+  const rec = value as Record<string, unknown>
+  if (rec['hasNextPage'] === true) return true
+  return Object.values(rec).some(mentionsNextPage)
+}
+
+/**
+ * Read `gh api graphql` output as partial pages, or `null` when it is no
+ * answer. Every page must be an object whose `data` is an object.
+ *
+ * gh exits 1 when a response carries `errors`, after printing it. So a
+ * non-zero exit is an answer only when the last page has errors, which is
+ * why gh stopped. Any other non-zero exit is a failure that left some output
+ * behind, such as earlier pages before a network error. With `paginate`, gh
+ * also stops at the first page with errors. When that page says there was a
+ * next one, the pages after it were never fetched, so the answer is short and
+ * is not read.
+ */
+function readPartialPages(r: CommandResult, paginate: boolean): GraphqlPage[] | null {
+  let body: unknown
+  try {
+    body = JSON.parse(r.stdout)
+  } catch {
+    return null
+  }
+  const pages = paginate ? body : [body]
+  if (!Array.isArray(pages)) return null
+  const out: GraphqlPage[] = []
+  for (const page of pages) {
+    if (page === null || typeof page !== 'object') return null
+    const rec = page as Record<string, unknown>
+    if (rec['data'] === null || typeof rec['data'] !== 'object') return null
+    out.push({ data: rec['data'], errors: readGraphqlErrors(rec['errors']) })
+  }
+  if (r.exitCode !== 0) {
+    const last = out.at(-1)
+    if (last === undefined || last.errors.length === 0) return null
+    if (paginate && mentionsNextPage(last.data)) return null
+  }
+  return out
 }
 
 /**
@@ -680,6 +811,16 @@ function writesOrStreams(document: string): boolean {
  * carries `errors` or lacks `data`. A partial answer counts as a failure. Read one
  * connection across the pages with {@link nodesAt}.
  *
+ * With `partial: true` ({@link GraphqlPartialOptions}), returns each page as
+ * a {@link GraphqlPage}, its `data` with its `errors`, so a batch of aliased
+ * lookups keeps the ones that worked. gh exits 1 for a response with
+ * `errors`; the verb declares that result an answer (`absent`), so the
+ * methods that throw return it. It is still null when the output did not
+ * parse, a page has no `data` object, gh failed for another reason, or
+ * `paginate` stopped at a page with errors that says it has a next page. gh
+ * stops at the first page with errors, so the pages after it were never
+ * fetched.
+ *
  * A {@link fromTarget} variable is filled from the target's repo, or by gh
  * from the clone. A plain string is sent as written. A document holding any mutation or
  * subscription throws `RangeError`, as does a variable named `query` or
@@ -690,10 +831,28 @@ function writesOrStreams(document: string): boolean {
  */
 export function graphql(
   query: string,
-  variables: Record<string, GraphqlVariable> = {},
-  opts: GraphqlOptions = {},
+  variables: Record<string, GraphqlVariable> | undefined,
+  opts: GraphqlPartialOptions,
   target?: GhTarget,
-): GhVerb<unknown[] | null> {
+): GhVerb<GraphqlPage[] | null>
+export function graphql(
+  query: string,
+  variables?: Record<string, GraphqlVariable>,
+  opts?: GraphqlOptions,
+  target?: GhTarget,
+): GhVerb<unknown[] | null>
+export function graphql(
+  query: string,
+  variables: Record<string, GraphqlVariable> | undefined,
+  opts: GraphqlOptions | GraphqlPartialOptions,
+  target?: GhTarget,
+): GhVerb<unknown[] | GraphqlPage[] | null>
+export function graphql(
+  query: string,
+  variables: Record<string, GraphqlVariable> = {},
+  opts: GraphqlOptions | GraphqlPartialOptions = {},
+  target?: GhTarget,
+): GhVerb<unknown[] | GraphqlPage[] | null> {
   checkTarget(target)
   if (writesOrStreams(query)) {
     throw new RangeError('graphql: only queries are allowed; send a mutation through raw')
@@ -728,6 +887,24 @@ export function graphql(
     }
   }
   argv.push('-f', `query=${query}`)
+  if (opts.partial === true) {
+    // `settle` calls `absent` and then `parse` on the same result, so each
+    // result's output is parsed once and kept here.
+    const read = new WeakMap<CommandResult, GraphqlPage[] | null>()
+    const pagesOf = (r: CommandResult): GraphqlPage[] | null => {
+      if (!read.has(r)) read.set(r, readPartialPages(r, paginate))
+      return read.get(r) ?? null
+    }
+    return {
+      argv,
+      checked: false,
+      readOnly: true,
+      // A response with errors exits 1. When it still holds the pages, it is
+      // the answer, not a failure.
+      absent: (r) => pagesOf(r) !== null,
+      parse: pagesOf,
+    }
+  }
   return {
     argv,
     checked: false,
@@ -761,23 +938,65 @@ export function graphql(
  * null, or any page lacks the path or a `nodes` array, so a page that came
  * back short is never read as fewer rows.
  *
+ * With `{ partial: true }`, it reads the {@link GraphqlPage}s of a partial
+ * `graphql` call. It follows `path` into each page's `data`, and returns the
+ * joined `nodes` with every error of every page, as {@link PartialNodes}. A
+ * node that failed is `null` among the nodes, and its error's `path` names
+ * it. It is null on the same terms as the plain form: a connection that is
+ * itself `null` because of an error has no nodes to give, and the errors are
+ * on the pages.
+ *
  * @experimental
  */
-export function nodesAt(pages: unknown[] | null, path: readonly string[]): unknown[] | null {
+export function nodesAt(
+  pages: readonly GraphqlPage[] | null,
+  path: readonly string[],
+  opts: { partial: true },
+): PartialNodes | null
+export function nodesAt(pages: readonly unknown[] | null, path: readonly string[]): unknown[] | null
+export function nodesAt(
+  pages: readonly unknown[] | null,
+  path: readonly string[],
+  opts: { partial?: boolean | undefined } = {},
+): unknown[] | PartialNodes | null {
   if (pages === null) return null
-  const out: unknown[] = []
+  const partial = opts.partial === true
+  const nodes: unknown[] = []
+  const errors: GraphqlError[] = []
   for (const page of pages) {
     let at: unknown = page
+    if (partial) {
+      if (page === null || typeof page !== 'object') return null
+      const { data, errors: pageErrors } = page as Partial<GraphqlPage>
+      if (!Array.isArray(pageErrors)) return null
+      // Read each entry as `graphql` does, so a hand-built page cannot pass
+      // a malformed error through as a GraphqlError.
+      errors.push(...(pageErrors as unknown[]).map(readGraphqlError))
+      at = data
+    }
     for (const key of path) {
       if (at === null || typeof at !== 'object') return null
       at = (at as Record<string, unknown>)[key]
     }
     if (at === null || typeof at !== 'object') return null
-    const nodes = (at as Record<string, unknown>)['nodes']
-    if (!Array.isArray(nodes)) return null
-    out.push(...nodes)
+    const found = (at as Record<string, unknown>)['nodes']
+    if (!Array.isArray(found)) return null
+    nodes.push(...found)
   }
-  return out
+  return partial ? { nodes, errors } : nodes
+}
+
+/**
+ * One connection's nodes across partial {@link graphql} pages, and the errors
+ * that came with them. What {@link nodesAt} returns with `{ partial: true }`.
+ *
+ * @experimental
+ */
+export interface PartialNodes {
+  /** The joined `nodes`. A node GitHub could not resolve is `null`. */
+  readonly nodes: unknown[]
+  /** Every error of every page, in page order, including any outside `path`. */
+  readonly errors: readonly GraphqlError[]
 }
 
 /** Split one header block off the front of `text`: the block, and what follows its blank line. */
@@ -1471,6 +1690,29 @@ export function createReview(
       }
     },
   }
+}
+
+// ── raw calls ───────────────────────────────────────────────────────────────
+
+/**
+ * Any `gh` call, as a verb whose value is the `CommandResult`, whatever the
+ * exit code: `Gh.raw` as data. It adds no `--repo` and no host, so put them
+ * in `argv`. It is a `probe`, so `runVerb` returns a failed or cut-short
+ * result rather than throwing, and it is not `readOnly`, since the library
+ * cannot tell what `argv` does.
+ */
+export function raw(argv: readonly string[]): GhVerb<CommandResult> {
+  return { argv: [...argv], checked: false, readOnly: false, probe: true, parse: (r) => r }
+}
+
+/**
+ * {@link raw}, checked: `Gh.rawChecked` as data. `runVerb` returns the
+ * `CommandResult` when gh exits 0 with its whole output, and otherwise throws
+ * a `FailureError` carrying the classified `GhFailure`. So a tool that runs
+ * one call the verb table lacks needs no `Gh` for it.
+ */
+export function rawChecked(argv: readonly string[]): GhVerb<CommandResult> {
+  return { argv: [...argv], checked: true, readOnly: false, parse: (r) => r }
 }
 
 // ── helpers over the parsed rows ────────────────────────────────────────────
