@@ -30,6 +30,10 @@ osdlc/osdlc calls both workflows from its own `packages-ci.yml` and
   `package-checks ts` checks the shape, and the root `package-checks.json`
   sets this repository's rules over osdlc's defaults (see the
   package-checks README).
+- A root `package-checks.json` whose `shared` list names the workflow that
+  calls `ts-packages-ci.yml`, so a pull request that only moves its pin
+  checks every package:
+  `{ "shared": ["^\\.github/workflows/packages-ci\\.yml$"] }`.
 - Root devDependencies `@osdlc/package-checks`, `@changesets/cli` and, with
   conformance suites, `@osdlc/conformance`.
 - With conformance suites: `packages/conformance/families.json`, and
@@ -135,11 +139,10 @@ by default.
 | `environment`     | `release-plz`               | The environment that holds `RELEASE_PLZ_APP_PRIVATE_KEY`.          |
 | `version-prepare` | empty                       | Shell run after the install, before `version-script`.              |
 | `version-script`  | `pnpm run version-packages` | One command, run without a shell, that versions the packages.      |
-| `packages-dir`    | `packages/ts`               | The folder whose packages must already be on npm.                  |
 | `npm-version`     | `11.19.1`                   | The npm that publishes. Trusted publishing needs 11.5.1 or later.  |
 
-The pack job refuses to go on while any package is not on npm yet, and names
-it.
+The pack job refuses to go on while any package in `tsDir` (from
+`package-checks.json`) is not on npm yet, and names it.
 
 ## Versioning
 

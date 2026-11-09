@@ -43,10 +43,6 @@ on:
           runs `changeset version` and whatever must follow it.
         type: string
         default: pnpm run version-packages
-      packages-dir:
-        description: The folder of the packages, one per subfolder.
-        type: string
-        default: packages/ts
       npm-version:
         description: The npm that publishes. Trusted publishing needs 11.5.1 or later.
         type: string
@@ -135,8 +131,6 @@ jobs:
       contents: read
     outputs:
       pack-dir-artifact-id: ${{ steps.pack.outputs.pack-dir-artifact-id }}
-    env:
-      PACKAGES_DIR: ${{ inputs.packages-dir }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -153,11 +147,19 @@ jobs:
         run: pnpm install --frozen-lockfile --ignore-scripts
 
       # Trusted publishing cannot create a package: the owner stages each new
-      # one first with `package-checks stage`.
+      # one first with `package-checks stage`. The packages' folder is
+      # `tsDir` from package-checks.json, as for the other checks.
       - name: Refuse a package that is not on npm yet
         run: |
           set -euo pipefail
-          for manifest in "$PACKAGES_DIR"/*/package.json; do
+          shopt -s nullglob
+          dir="$(node -p "(() => { try { return require('./package-checks.json').tsDir } catch {} })() ?? 'packages/ts'")"
+          manifests=("$dir"/*/package.json)
+          if [ "${#manifests[@]}" -eq 0 ]; then
+            echo "::error::no packages in $dir, the tsDir of package-checks.json"
+            exit 1
+          fi
+          for manifest in "${manifests[@]}"; do
             name="$(node -p "const p = require('./$manifest'); p.private ? '' : p.name")"
             [ -n "$name" ] || continue
             if ! err="$(npm view "$name" name 2>&1 >/dev/null)"; then
