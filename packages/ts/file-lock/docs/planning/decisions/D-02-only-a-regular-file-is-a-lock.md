@@ -9,19 +9,25 @@ created: 2026-11-09
 
 ## Decision
 
-- Every read of a lock, marker or release name opens the path with
-  `O_NOFOLLOW` and `O_NONBLOCK`, then checks with `fstat` on that descriptor
-  that it is a regular file before reading. The opening lives in one module,
-  `src/lock-file.ts`.
+- Every read of a lock, marker or release name first checks with `lstat` that
+  the path is a regular file, so a non-file is never opened. It then opens
+  with `O_NOFOLLOW`, `O_NONBLOCK` and `O_NOCTTY`, and checks with `fstat` on
+  that descriptor, in case the path was replaced in between. A failed open is
+  judged by looking at the path again, not by its error code, which differs
+  between systems. The opening lives in one module, `src/lock-file.ts`.
 - Anything else at the lock path is not a lock this package wrote. A claim,
   and so `withLock`, throws `NotALockError` with the path and a `kind` of
   `symlink`, `directory` or `other`. `touchLock`, `updateLock` and
   `releaseLock` answer `false` and leave it alone.
 - A claim retries only when the lock vanished between the link and the read
-  (`ENOENT`). Every other read error is thrown.
+  (`ENOENT`, or `EPERM` for a file being deleted on Windows). Every other read
+  error is thrown.
+- A non-file at a stale lock's takeover marker name is a `NotALockError` too,
+  naming the marker: it would block every takeover of that lock.
 - `claimLock` and `withLock` take a `mode`, applied exactly with `fchmod`
-  before the content is written. `updateLock` copies the lock's mode onto its
-  replacement. Without `mode`, nothing changes.
+  before the content is written. It must include `0o400`, or it throws a
+  `RangeError`. `updateLock` copies the lock's mode onto its replacement.
+  Without `mode`, nothing changes.
 - `touchLock` sets the time through the descriptor it read the token from.
 
 ## Why
@@ -49,6 +55,7 @@ created: 2026-11-09
   minor one.
 - Only the last path component is checked. The directories above the lock are
   trusted, as before.
-- Windows has no `O_NOFOLLOW` in Node, so the open follows a symlink there.
-  The package is not tested on Windows.
+- Windows has no `O_NOFOLLOW` in Node, so a symlink swapped in between the
+  `lstat` and the open is followed there, and `touchLock` sets the time by
+  path. The package is not tested on Windows.
 - A Rust twin held to the same protocol must refuse a non-file the same way.

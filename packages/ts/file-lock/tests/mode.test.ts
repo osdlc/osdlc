@@ -2,7 +2,7 @@
  * The lock file's permission bits: set exactly by `mode`, whatever the umask,
  * and kept for the lock's whole life. Without `mode`, a new file's default.
  */
-import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -65,8 +65,12 @@ describe.skipIf(!POSIX)('mode', () => {
     expect(seen).toBe(0o600)
   })
 
-  test('an invalid mode throws before anything is written', () => {
-    expect(() => claimLock(lock, {}, { ...never, mode: -1 })).toThrow()
-    expect(() => statSync(lock)).toThrow(/ENOENT/)
-  })
+  test.each([-1, 1.5, 0o10000, 0o000, 0o200, 0o044])(
+    'mode %o is refused before anything is written: the owner must be able to read the lock',
+    (mode) => {
+      expect(() => claimLock(lock, {}, { ...never, mode })).toThrow(RangeError)
+      expect(() => withLock(lock, () => 0, { mode })).toThrow(RangeError)
+      expect(readdirSync(dir)).toEqual([])
+    },
+  )
 })

@@ -112,17 +112,20 @@ changing under every attempt, or it is stale and another claimant's takeover
 is still in progress. Try again shortly. The directory must exist; any error other than "already held" is
 thrown.
 
-The held lock is opened without following a symlink and without blocking, and
-read only if it is a regular file. Anything else at the path, a symlink, a
+The held lock is read only if it is a regular file: `lstat` checks that before
+it is opened, and `fstat` again after. Anything else at the path, a symlink, a
 directory (such as one left by an older mkdir-based lock), a FIFO or a socket,
 throws a `NotALockError` at once, with the `path` and its `kind`: `symlink`,
-`directory` or `other`. `isStale` never sees it, and a symlink's target is
-never read.
+`directory` or `other`. `isStale` never sees it, a symlink is never followed,
+and a FIFO or device is never opened. So does a non-file at a stale lock's
+takeover marker name, since it would block every takeover of that lock.
 
 `mode` sets the lock file's permission bits, such as `0o600` for a lock only
 its owner can read. It is applied exactly, so the umask does not narrow it, and
-the lock keeps it through updates, takeovers and the release. Without it the
-file gets `0o666` less the umask, as any new file does.
+the lock keeps it through updates, takeovers and the release. It must include
+`0o400`: a lock its owner cannot read could never be checked or released, so
+such a mode throws a `RangeError` before anything is written. Without `mode`
+the file gets `0o666` less the umask, as any new file does.
 
 The content is read back unchecked, cast to the type you name, so a rule should
 check the type of each field it reads. A lock written by another program
@@ -245,10 +248,12 @@ withLock(`${path}.lock`, () => {
   reaper's. If another claimant then replaces the lock, the paused reaper can
   remove the new lock when it resumes. A pause of 10 s inside a few
   microseconds of work is the only way in.
-- **Symlinks at the lock path are not followed.** The lock is opened with
-  `O_NOFOLLOW`, and `touchLock` sets the time through the descriptor it read
-  the token from, so neither reads nor touches a file the lock path points
-  elsewhere to. On Windows, which has no `O_NOFOLLOW`, the open follows links.
+- **Symlinks at the lock path are not followed.** The path is checked with
+  `lstat`, then opened with `O_NOFOLLOW`, and `touchLock` sets the time through
+  the descriptor it read the token from, so nothing reads or touches a file the
+  lock path points elsewhere to. On Windows, which has no `O_NOFOLLOW`, only
+  the `lstat` check guards this, so a symlink swapped in just after it is
+  followed.
 - **Keep locks in directories only their users can write.** The marker's name
   comes from the lock's content, so anyone who can write the directory can
   create it and hold off a takeover for 10 s at a time. Anyone who can write
@@ -294,7 +299,8 @@ The experimental exports:
 Node.js 22 or later, ESM only. Bun works too, through the compiled `dist/`.
 The tests run on Linux and macOS. Windows is not tested: `pidAlive` relies on
 signal 0, the takeover relies on hard links and ctime, and Node has no
-`O_NOFOLLOW` there, so a symlink at the lock path is followed.
+`O_NOFOLLOW` there, so a symlink swapped in at the lock path between the
+`lstat` check and the open is followed.
 
 ## Licence
 

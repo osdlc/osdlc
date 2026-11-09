@@ -15,9 +15,9 @@ below closes a race that a simpler lock file gets wrong.
                                  full content, token included
 2. link   x.lock.new-<token> → x.lock
       ok      → we hold the lock
-      EEXIST  → something is there: open it without following a symlink or
-                blocking, check it is a regular file, read it and ask the
-                staleness rule
+      EEXIST  → something is there: check it is a regular file, open it
+                without following a symlink or blocking, read it and ask
+                the staleness rule
 3. remove x.lock.new-<token>
 ```
 
@@ -30,9 +30,12 @@ guess by its age. With link, the lock appears with its content already in it.
 
 ## What can be at the lock path
 
-When the link fails, step 2 opens what is there with `O_NOFOLLOW` and
-`O_NONBLOCK`, then checks with `fstat` on that same descriptor that it is a
-regular file. Only then is a byte read.
+When the link fails, step 2 checks with `lstat` that what is there is a
+regular file, so a symlink is never followed and a FIFO or device is never
+opened. It then opens the file with `O_NOFOLLOW` and `O_NONBLOCK` and checks
+the descriptor with `fstat`, in case the path was replaced between the two.
+Only then is a byte read. If the open fails, the path is looked at again
+rather than judged by the error code, which differs between systems.
 
 | At `x.lock` | What the claim does |
 |---|---|
@@ -40,12 +43,14 @@ regular file. Only then is a byte read.
 | nothing (released since the link failed) | tries the link again |
 | a symlink | throws `NotALockError`, kind `symlink`; the target is never opened |
 | a directory, such as one an older mkdir-based lock left | throws `NotALockError`, kind `directory` |
-| a FIFO, socket or device | throws `NotALockError`, kind `other`; opening a FIFO without `O_NONBLOCK` would wait forever for a writer |
+| a FIFO, socket or device | throws `NotALockError`, kind `other`; it is never opened, and opening a FIFO to read would wait for a writer |
 | a file it cannot read | throws the error, such as `EACCES` |
 
 Only "nothing there" means try again. Anything else that is not a lock file is
 an error the caller can see, rather than a claim that keeps coming back
-`{ ok: false, holder: null }` as if a takeover were in progress.
+`{ ok: false, holder: null }` as if a takeover were in progress. The same goes
+for a non-file at a stale lock's marker name (below), which would otherwise
+block every takeover of that lock.
 
 ## Takeover: only one reaper, and only the lock that was judged
 
@@ -157,7 +162,7 @@ then throw LockTimeoutError(path, last holder seen)
 - **No shared (reader) locks**, and the kernel does not release the lock when a
   process dies: the staleness rule does that.
 - **Windows is not tested.** `pidAlive` relies on signal 0, and takeover on
-  hard links and ctime. Node has no `O_NOFOLLOW` there, so a symlink at the
-  lock path is followed.
+  hard links and ctime. Node has no `O_NOFOLLOW` there, so a symlink swapped in
+  between the `lstat` check and the open is followed.
 - **Only the last component is checked.** A symlink at the lock path is
   refused, but the directories above it are trusted.

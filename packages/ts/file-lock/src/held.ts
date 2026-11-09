@@ -26,9 +26,16 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto'
-import { futimesSync, linkSync, lstatSync, renameSync, rmSync } from 'node:fs'
+import { futimesSync, linkSync, renameSync, rmSync, utimesSync } from 'node:fs'
 
-import { createLockFile, inspectLock, type LockFile, NotALockError, readLock } from './lock-file.ts'
+import {
+  createLockFile,
+  inspectLock,
+  type LockFile,
+  lstatRegular,
+  NotALockError,
+  readLock,
+} from './lock-file.ts'
 
 /**
  * What a lock file holds: the fields its owner recorded, and the claim's token.
@@ -124,7 +131,8 @@ export function markerFor(path: string, raw: string): string {
  *
  * Something other than a regular file at `path` (a symlink, a directory, a
  * FIFO) throws `NotALockError`: it is never read, and `isStale` never sees it.
- * Any other error but "already held" is thrown too.
+ * So does one at the takeover marker's name, which would otherwise block every
+ * takeover of a stale lock. Any other error but "already held" is thrown too.
  */
 export function claimLock<F extends object>(
   path: string,
@@ -171,7 +179,7 @@ export function prepareClaim<F extends object>(
         try {
           held = readHeld<F>(path)
         } catch (err) {
-          if (isGone(err)) continue // released between the link and the read: claim again
+          if (isGone(err) || isDeletePending(err)) continue // released between the link and the read: claim again
           throw err // not a lock file, or unreadable
         }
         if (!isStale(held)) return { ok: false, holder: held }
@@ -213,11 +221,19 @@ function takeOver(path: string, seen: HeldLock<object>): void {
   }
 }
 
+/**
+ * Remove a marker left by a reaper that died. A non-file at the marker's name
+ * would block every takeover of this lock for good, so it is reported as a
+ * `NotALockError` rather than retried.
+ */
 function clearDeadMarker(marker: string): void {
   try {
     // lstat: the marker's own ctime, never a symlink target's.
-    if (Date.now() - lstatSync(marker).ctimeMs >= MARKER_STALE_MS) rmSync(marker, { force: true })
-  } catch {
+    if (Date.now() - lstatRegular(marker).ctimeMs >= MARKER_STALE_MS) {
+      rmSync(marker, { force: true })
+    }
+  } catch (err) {
+    if (err instanceof NotALockError) throw err
     // Gone meanwhile.
   }
 }
@@ -225,6 +241,11 @@ function clearDeadMarker(marker: string): void {
 /** True for "the file is not there": the one error the token calls report as `false` rather than throw. */
 function isGone(err: unknown): boolean {
   return (err as NodeJS.ErrnoException).code === 'ENOENT'
+}
+
+/** On Windows, a lock being deleted by a release cannot be opened (`EPERM`) until the delete completes. */
+function isDeletePending(err: unknown): boolean {
+  return process.platform === 'win32' && (err as NodeJS.ErrnoException).code === 'EPERM'
 }
 
 /** True for an error that means "this is not your lock": gone, or not a lock file at all. */
@@ -244,7 +265,10 @@ export function touchLock(path: string, token: string): boolean {
     return inspectLock(path, (file, fd) => {
       if (parse(file.raw)?.token !== token) return false
       const now = new Date()
-      futimesSync(fd, now, now)
+      // A read-only handle cannot set times on Windows, which has no
+      // O_NOFOLLOW to protect anyway; elsewhere, touch the inode that was read.
+      if (process.platform === 'win32') utimesSync(path, now, now)
+      else futimesSync(fd, now, now)
       return true
     })
   } catch (err) {

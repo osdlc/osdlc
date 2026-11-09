@@ -1,9 +1,11 @@
 /**
  * The one place the package opens or creates a lock file. Every read of a lock,
- * marker or release name goes through {@link inspectLock}, which opens the path
- * without following a symlink and without blocking, then checks on that same
- * descriptor that it is a regular file before reading a byte. A claim's temp
- * file is created exclusively, with its mode set before any content is written.
+ * marker or release name goes through {@link inspectLock}. It checks with
+ * `lstat` that the path is a regular file before opening it, so a symlink is
+ * never followed and a FIFO or device is never opened. It then opens without
+ * following a symlink or blocking, and checks the descriptor again, in case the
+ * path was replaced between the two. A claim's temp file is created
+ * exclusively, with its mode set before any content is written.
  */
 
 import {
@@ -25,8 +27,8 @@ export type NotALockKind = 'symlink' | 'directory' | 'other'
 /**
  * Something other than a regular file is at the lock path: a symlink, a
  * directory (such as one left by an older mkdir-based lock), a FIFO, a socket
- * or a device. It cannot be a lock this package wrote, and it is never opened
- * for reading, so a symlink's target is not read and a FIFO cannot block.
+ * or a device. It cannot be a lock this package wrote. It is never read, a
+ * symlink is never followed, and a FIFO or device is never opened.
  */
 export class NotALockError extends Error {
   /** The path that holds something other than a lock file. */
@@ -50,46 +52,53 @@ export interface LockFile {
   mode: number
 }
 
-// Absent on Windows, where the open follows links as before.
-const NO_FOLLOW = constants.O_NOFOLLOW ?? 0
-const NO_BLOCK = constants.O_NONBLOCK ?? 0
-const READ_FLAGS = constants.O_RDONLY | NO_FOLLOW | NO_BLOCK
+// O_NOFOLLOW and O_NONBLOCK are absent on Windows, where the lstat check
+// alone stands between the open and a symlink swapped in after it.
+const READ_FLAGS =
+  constants.O_RDONLY |
+  (constants.O_NOFOLLOW ?? 0) |
+  (constants.O_NONBLOCK ?? 0) |
+  (constants.O_NOCTTY ?? 0)
 
-/**
- * Open `path` for reading, refusing anything but a regular file. Returns the
- * descriptor and its stat. Errors other than "not a file" are thrown as they come.
- */
-function openRegular(path: string): { fd: number; stat: Stats } {
-  let fd: number
-  try {
-    fd = openSync(path, READ_FLAGS)
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code
-    // O_NOFOLLOW on a symlink fails with ELOOP (EMLINK on FreeBSD). ELOOP also
-    // means a loop in a parent directory, so check the last component itself.
-    if ((code === 'ELOOP' || code === 'EMLINK') && isSymlink(path)) {
-      throw new NotALockError(path, 'symlink')
-    }
-    // A UNIX socket cannot be opened as a file.
-    if (code === 'ENXIO') throw new NotALockError(path, 'other')
-    throw err
-  }
-  let stat: Stats
-  try {
-    stat = fstatSync(fd)
-    if (!stat.isFile()) throw new NotALockError(path, stat.isDirectory() ? 'directory' : 'other')
-  } catch (err) {
-    closeSync(fd)
-    throw err
-  }
-  return { fd, stat }
+function kindOf(stat: Stats): NotALockKind {
+  if (stat.isSymbolicLink()) return 'symlink'
+  return stat.isDirectory() ? 'directory' : 'other'
 }
 
-function isSymlink(path: string): boolean {
-  try {
-    return lstatSync(path).isSymbolicLink()
-  } catch {
-    return false
+/**
+ * The stat of the regular file at `path`, read without following a symlink.
+ * Throws {@link NotALockError} for anything else there, and the `lstat` error
+ * (`ENOENT`) when nothing is.
+ */
+export function lstatRegular(path: string): Stats {
+  const stat = lstatSync(path)
+  if (!stat.isFile()) throw new NotALockError(path, kindOf(stat))
+  return stat
+}
+
+/** Open the regular file at `path` for reading. Returns the descriptor and its stat. */
+function openRegular(path: string): { fd: number; stat: Stats } {
+  for (let attempt = 0; ; attempt++) {
+    lstatRegular(path)
+    let fd: number
+    try {
+      fd = openSync(path, READ_FLAGS)
+    } catch (err) {
+      // Replaced between the lstat and the open. Systems report a symlink met by
+      // O_NOFOLLOW, or a socket, with different codes (ELOOP, EMLINK, EFTYPE,
+      // ENXIO, EOPNOTSUPP), so look at the path again rather than trust the code.
+      if (attempt === 0 && (err as NodeJS.ErrnoException).code !== 'ENOENT') continue
+      throw err
+    }
+    let stat: Stats
+    try {
+      stat = fstatSync(fd)
+      if (!stat.isFile()) throw new NotALockError(path, kindOf(stat))
+    } catch (err) {
+      closeSync(fd)
+      throw err
+    }
+    return { fd, stat }
   }
 }
 
@@ -119,16 +128,29 @@ export function readLock(path: string): LockFile {
  * created owner-only and set to exactly `mode` before the content is written,
  * so the umask does not apply and the content is never more readable than
  * asked. Without it, the file gets `0o666` less the umask, as any new file does.
+ * On any failure, closing included, the file is removed.
  */
 export function createLockFile(path: string, data: string, mode?: number): void {
+  if (mode !== undefined) checkMode(mode)
   const fd = openSync(path, 'wx', mode === undefined ? 0o666 : 0o600)
   try {
-    if (mode !== undefined) fchmodSync(fd, mode)
-    writeFileSync(fd, data)
+    try {
+      if (mode !== undefined) fchmodSync(fd, mode)
+      writeFileSync(fd, data)
+    } finally {
+      closeSync(fd)
+    }
   } catch (err) {
-    closeSync(fd)
     rmSync(path, { force: true })
     throw err
   }
-  closeSync(fd)
+}
+
+/** A lock its owner cannot read could never be checked, touched or released, so `mode` must include `0o400`. */
+function checkMode(mode: number): void {
+  if (!Number.isInteger(mode) || mode < 0 || mode > 0o7777 || (mode & 0o400) === 0) {
+    throw new RangeError(
+      `mode ${String(mode)} is not a file mode the lock's owner can read: use permission bits from 0 to 0o7777 that include 0o400`,
+    )
+  }
 }

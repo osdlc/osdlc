@@ -32,7 +32,7 @@ import {
   type NotALockKind,
 } from '../src/index.ts'
 
-import { age, POSIX } from './helpers.ts'
+import { age, DEAD_PID, markerFor, POSIX } from './helpers.ts'
 
 let dir: string
 let lock: string
@@ -128,5 +128,24 @@ describe.skipIf(!POSIX)('a symlink at the lock path', () => {
     expect(() => claimLock(lock, {}, { isStale: () => false })).toThrow(
       `not a lock file: ${lock} is a symlink`,
     )
+  })
+})
+
+describe.skipIf(!POSIX)('a directory at the takeover marker name', () => {
+  test('claimLock throws NotALockError naming the marker instead of retrying for ever', () => {
+    const raw = JSON.stringify({ pid: DEAD_PID, token: 'dead' })
+    writeFileSync(lock, raw)
+    const marker = markerFor(lock, raw)
+    mkdirSync(marker)
+    let error: unknown
+    try {
+      claimLock(lock, {}, { isStale: () => true })
+    } catch (err) {
+      error = err
+    }
+    expect(error).toBeInstanceOf(NotALockError)
+    expect(error).toMatchObject({ path: marker, kind: 'directory' })
+    // The stale lock is left for someone to clear the obstruction.
+    expect(readFileSync(lock, 'utf-8')).toBe(raw)
   })
 })
