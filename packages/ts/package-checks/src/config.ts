@@ -118,7 +118,8 @@ export function readConfig(raw: unknown): PackageChecksConfig {
   if (!isObject(raw)) throw new Error(`${CONFIG_FILE} is not an object`)
   const problems: string[] = []
   for (const [key, value] of Object.entries(raw)) {
-    const valid = KEYS[key as keyof PackageChecksConfig]
+    // Own keys only: `toString` or `__proto__` would otherwise find Object.prototype.
+    const valid = Object.hasOwn(KEYS, key) ? KEYS[key as keyof PackageChecksConfig] : undefined
     if (valid === undefined) problems.push(`${CONFIG_FILE}: unknown key ${key}`)
     else if (!valid(value)) problems.push(`${CONFIG_FILE}: ${key} has the wrong type`)
   }

@@ -35,6 +35,13 @@ test('unknown keys and wrong types are refused, each named', () => {
   assert.throws(() => readConfig([]), /is not an object/)
 })
 
+test('a key named after an Object.prototype member is unknown', () => {
+  for (const key of ['toString', 'constructor', '__proto__']) {
+    const raw = JSON.parse(`{"${key}": {}}`) as unknown
+    assert.throws(() => readConfig(raw), new RegExp(`unknown key ${key}$`))
+  }
+})
+
 test('loadConfig reads package-checks.json at the root', () => {
   const root = mkdtempSync(join(tmpdir(), 'package-checks-config-'))
   try {
