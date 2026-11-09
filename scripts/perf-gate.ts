@@ -240,7 +240,7 @@ export function confirmed(
 
 /** The `<lang>:<package>` of each benchmark id, without repeats. */
 export function packagesOf(ids: string[]): Set<string> {
-  return new Set(ids.map((id) => id.slice(0, id.indexOf("/"))));
+  return new Set(ids.map((id) => id.split("/", 1)[0] as string));
 }
 
 /** `<id> -> ms` from a vitest JSON report (reporter=json) of one package. */
@@ -377,14 +377,10 @@ export function table(rows: Row[], threshold = THRESHOLD): string {
     "| --- | ---: | ---: | ---: | --- |",
   ];
   for (const r of rows) {
-    const change =
-      r.ratio === null
-        ? ""
-        : `${r.ratio >= 1 ? "+" : ""}${((r.ratio - 1) * 100).toFixed(1)}%`;
-    const again =
-      r.confirm === undefined
-        ? ""
-        : ` (again ${r.confirm >= 1 ? "+" : ""}${((r.confirm - 1) * 100).toFixed(1)}%)`;
+    const pct = (x: number): string =>
+      `${x >= 1 ? "+" : ""}${((x - 1) * 100).toFixed(1)}%`;
+    const change = r.ratio === null ? "" : pct(r.ratio);
+    const again = r.confirm === undefined ? "" : ` (again ${pct(r.confirm)})`;
     lines.push(
       `| ${r.id} | ${fmt(r.base)} | ${fmt(r.head)} | ${change} | ${r.status === "ok" ? "" : r.status}${again} |`,
     );
@@ -489,10 +485,10 @@ export function main(argv: string[]): number {
       head: new Map<string, number[]>(),
     };
     for (let round = 0; round < count; round++) {
-      const order =
-        (round % 2 === 0) === (firstSide === "base")
-          ? (["base", "head"] as const)
-          : (["head", "base"] as const);
+      const sides = firstSide === "base" ? ["base", "head"] : ["head", "base"];
+      const order = (round % 2 === 0 ? sides : [...sides].reverse()) as (
+        "base" | "head"
+      )[];
       for (const p of packages) {
         for (const side of order) {
           if (side === "base" && !hasBenches(p)) continue;
