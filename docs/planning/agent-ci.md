@@ -60,7 +60,7 @@ flowchart LR
     STRICT["Backlog: enforced read-only mappings (claude tool denies + sandbox, cursor cli.json) so strict passes"]
     CUR["PR 721: cursor allow and deny via .cursor/cli.json, merged"]
     REV["PR 724 + 727: claude-pr action, @claude review"]
-    REL["Release agent-call 0.10.0: PR 726, merged"]
+    REL["Release agent-call 0.10.0: PR 726 merged, publish waits on PR 733"]
   end
   subgraph gate["Gate"]
     ARCH["API and architecture review 1: approved"]
@@ -117,7 +117,7 @@ flowchart LR
   class SETUP done
   class REV done
   class PERM,PROBE,CHECK,ANS,SPEC,MULTI next
-  class REL done
+  class REL blocked
   class CUR done
   class MCP,PUB,DATA,PIN,STRICT later
 ```
@@ -127,16 +127,17 @@ flowchart LR
 What is ready for your review, in the order to review it. Rewritten as PRs
 move; merged PRs drop off.
 
-Nothing is waiting on your review. The release PR [#726](https://github.com/osdlc/osdlc/pull/726) merged at 03:12 UTC; `packages-publish` is publishing agent-call 0.10.0. Next: `agent-pr-answer`.
+Nothing is waiting on your review. [#726](https://github.com/osdlc/osdlc/pull/726) merged, but [#729](https://github.com/osdlc/osdlc/pull/729) left a changeset on main, so `packages-publish` ran in version mode and published nothing (npm still has agent-call 0.9.0). Merge [#733](https://github.com/osdlc/osdlc/pull/733), the new Version Packages PR (corpus-schema only, CI green): with no changesets left, the next run publishes every version not yet on npm, agent-call 0.10.0 included.
 
 ## PR tracker
 
-Checked 2026-11-09 03:17 UTC. A periodic check refreshes this table and the graph.
+Checked 2026-11-09 03:40 UTC. A periodic check refreshes this table and the graph.
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
+| [#733](https://github.com/osdlc/osdlc/pull/733) | Version Packages (corpus-schema; unblocks the agent-call 0.10.0 publish) | open | none | clean | waiting on you to merge | merge |
 | [#731](https://github.com/osdlc/osdlc/pull/731) | chore(conformance): drop markdown-tags from CATCHING_UP in the version PR | merged | — | — | — | merged into #726's branch 2026-11-09 |
-| [#726](https://github.com/osdlc/osdlc/pull/726) | Version Packages (agent-call 0.10.0) | merged | — | — | — | merged 2026-11-09; publish running |
+| [#726](https://github.com/osdlc/osdlc/pull/726) | Version Packages (agent-call 0.10.0) | merged | — | — | — | merged 2026-11-09; publish waits on #733 |
 | [#721](https://github.com/osdlc/osdlc/pull/721) | feat(agent-call): enforce allow and deny tools on cursor | merged | — | — | — | merged 2026-11-09 |
 | [#723](https://github.com/osdlc/osdlc/pull/723) | fix(agent-call): follow-ups from the codex review of #715 | merged | — | — | — | merged 2026-11-09 |
 | [#716](https://github.com/osdlc/osdlc/pull/716) | feat(gh-actions): add the agent-setup action | merged | — | — | — | merged 2026-11-09 |
