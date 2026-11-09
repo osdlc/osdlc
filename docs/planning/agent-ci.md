@@ -99,6 +99,7 @@ flowchart LR
   ANS --> SPEC
   SPEC --> MULTI
   CUR --> MULTI
+  CHECK --> MULTI
   REV -.-> ANS
   REV --> HPR
   HPR -.-> ANS
@@ -119,7 +120,7 @@ flowchart LR
   class UP yours
   class SETUP done
   class REV done
-  class HPR external
+  class HPR blocked
   class PERM,PROBE,CHECK,ANS,SPEC,MULTI next
   class REL done
   class CUR done
@@ -133,7 +134,7 @@ move; merged PRs drop off.
 
 | Order | PR | What | Why this order | Status |
 | --- | --- | --- | --- | --- |
-| 1 | [#734](https://github.com/osdlc/osdlc/pull/734) | codex-pr and cursor-pr actions; claude-pr moved onto shared pr-common scripts | Only PR waiting; gate done (5 fixed, code review clean) | waiting on your review since 04:10 UTC; now conflicts with main (needs a rebase); not tested live |
+| 1 | [#734](https://github.com/osdlc/osdlc/pull/734) | codex-pr and cursor-pr actions; claude-pr moved onto shared pr-common scripts | Only PR waiting; gate done (5 fixed, code review clean) | waiting on your review since 04:10 UTC; behind main (conflict resolved by the bot's merge of main); not tested live |
 
 ## PR tracker
 
@@ -141,7 +142,7 @@ Checked 2026-11-09 04:17 UTC. A periodic check refreshes this table and the grap
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
-| [#734](https://github.com/osdlc/osdlc/pull/734) | feat(gh-actions): codex-pr and cursor-pr, shared pr-common scripts, multi-marketplace plugins | open | none | conflicting | merge conflict with main | resolve conflict, then merge; then add caller workflows |
+| [#734](https://github.com/osdlc/osdlc/pull/734) | feat(gh-actions): codex-pr and cursor-pr, shared pr-common scripts, multi-marketplace plugins | open | none | behind main | waiting on your review | merge, then add caller workflows |
 | [#733](https://github.com/osdlc/osdlc/pull/733) | Version Packages (corpus-schema; unblocked the agent-call 0.10.0 publish) | merged | — | — | — | merged 2026-11-09; agent-call 0.10.0 on npm |
 | [#731](https://github.com/osdlc/osdlc/pull/731) | chore(conformance): drop markdown-tags from CATCHING_UP in the version PR | merged | — | — | — | merged into #726's branch 2026-11-09 |
 | [#726](https://github.com/osdlc/osdlc/pull/726) | Version Packages (agent-call 0.10.0) | merged | — | — | — | merged 2026-11-09; published after #733 |
