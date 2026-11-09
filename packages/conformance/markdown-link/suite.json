@@ -579,11 +579,11 @@
         {
           "name": "empty_bullet_does_not_interrupt_a_paragraph",
           "input": {
-            "source": "Text\n-\n[[a]]\n"
+            "source": "Text\n*\n[[a]]\n"
           },
           "expect": {
-            "commonmark": "Text\n-\n[[a]]\n",
-            "skill_export": "Text\n-\n[[a]]\n"
+            "commonmark": "Text\n*\n[[a]]\n",
+            "skill_export": "Text\n*\n[[a]]\n"
           }
         },
         {
