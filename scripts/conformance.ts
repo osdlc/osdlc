@@ -206,28 +206,55 @@ export function majorMinor(version: string): string {
 
 const BUMPS = ['patch', 'minor', 'major']
 
-/** `version` after a `bump` (patch, minor or major) of its release. */
+/**
+ * `version` after a `bump` (patch, minor or major) of its release. A major bump
+ * of a 0.x version gives 1.0.0, as changesets does. Prerelease versions throw.
+ */
 export function bumpVersion(version: string, bump: string): string {
-  const [major, minor, patch] = version.split(/[.-]/).map(Number) as [number, number, number]
+  if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error(`${version}: prerelease versions are not supported by this check`)
+  const [major, minor, patch] = version.split('.').map(Number) as [number, number, number]
   if (bump === 'major') return `${major + 1}.0.0`
   if (bump === 'minor') return `${major}.${minor + 1}.0`
   return `${major}.${minor}.${patch + 1}`
 }
 
+const FRONT_LINE = /^(["']?)([^"'\s:]+)\1\s*:\s*(patch|minor|major)\s*(?:#.*)?$/
+
 /**
- * The highest bump each package has in the changesets, from the text of the
- * .changeset/*.md files: frontmatter lines of `"<package>": patch|minor|major`.
- * config.json uses no fixed or linked groups and the repository is not in
- * pre mode, so a package's release is its own highest bump.
+ * The highest bump each package has in the changesets, from `[file, text]` of
+ * the .changeset/*.md files: frontmatter lines of `"<package>": patch|minor|major`,
+ * with an optional trailing `# comment`. A frontmatter line that does not parse
+ * throws, naming the file. Valid only while config.json has no fixed or linked
+ * groups, no ignore and no pre mode (see {@link configProblems}), so a
+ * package's release is its own highest bump.
  */
-export function pendingBumps(changesets: string[]): Map<string, string> {
+export function pendingBumps(changesets: Array<[string, string]>): Map<string, string> {
   const out = new Map<string, string>()
-  for (const text of changesets) {
-    const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1] ?? ''
-    for (const m of front.matchAll(/^\s*["']?([^"':\s]+)["']?\s*:\s*(patch|minor|major)\s*$/gm)) {
-      const [, name, bump] = m as unknown as [string, string, string]
+  for (const [file, text] of changesets) {
+    const front = /^---[ \t]*\r?\n([\s\S]*?)^---[ \t]*$/m.exec(text)?.[1] ?? ''
+    for (const raw of front.split(/\r?\n/)) {
+      const line = raw.trim()
+      if (line === '' || line.startsWith('#')) continue
+      const m = FRONT_LINE.exec(line)
+      if (m === null) throw new Error(`${file}: cannot parse the frontmatter line ${JSON.stringify(line)}`)
+      const [, , name, bump] = m as unknown as [string, string, string, string]
       const have = out.get(name)
       if (have === undefined || BUMPS.indexOf(bump) > BUMPS.indexOf(have)) out.set(name, bump)
+    }
+  }
+  return out
+}
+
+/** Problems with .changeset/config.json (or pre.json) that pendingBumps does not model. */
+export function configProblems(config: unknown, hasPre: boolean): string[] {
+  const out: string[] = []
+  if (hasPre) out.push('.changeset/pre.json exists (pre mode); the version check does not support it')
+  if (isObject(config)) {
+    for (const key of ['fixed', 'linked', 'ignore']) {
+      const v = config[key]
+      if (Array.isArray(v) ? v.length > 0 : v !== undefined) {
+        out.push(`.changeset/config.json sets ${key}; the version check does not support it`)
+      }
     }
   }
   return out
@@ -236,7 +263,8 @@ export function pendingBumps(changesets: string[]): Map<string, string> {
 /**
  * Problems with the versions of one family's implementations. `released` is
  * each implementation's version once the pending changesets are applied, where
- * it differs from `versions`; the family is level if either agrees.
+ * it differs from `versions`; the family must be level now and after them, or
+ * be listed in `catchingUp`.
  */
 export function versionProblems(
   family: string,
@@ -246,15 +274,22 @@ export function versionProblems(
 ): string[] {
   const level = (v: Record<string, string>): boolean => new Set(Object.values(v).map(majorMinor)).size <= 1
   const listed = catchingUp[family] !== undefined
-  if (level(versions)) return listed ? [`${family}: listed in CATCHING_UP but its versions agree; remove it`] : []
+  const moved = Object.keys(versions).filter((d) => released[d] !== versions[d])
+  const bumped = moved.map((d) => `${d} ${versions[d]} -> ${released[d]}`).join(', ')
+  const show = (v: Record<string, string>): string => Object.entries(v).map(([d, x]) => `${d} ${x}`).join(', ')
+  if (level(versions)) {
+    if (level(released)) return listed ? [`${family}: listed in CATCHING_UP but its versions agree; remove it`] : []
+    if (listed) return []
+    return [`${family}: implementations share major.minor now, but the pending changesets would push them apart (${bumped}); level the bumps or add a CATCHING_UP entry`]
+  }
   if (level(released)) {
     return listed
-      ? [`${family}: listed in CATCHING_UP but the pending changesets level it (${Object.entries(released).map(([d, v]) => `${d} ${v}`).join(', ')}); remove it`]
+      ? [`${family}: listed in CATCHING_UP but the pending changesets level it (${show(released)}); remove it`]
       : []
   }
   if (listed) return []
-  const list = Object.entries(versions).map(([dir, v]) => `${dir} ${v}`)
-  return [`${family}: implementations do not share major.minor: ${list.join(', ')}, and the pending changesets do not level them`]
+  const tail = moved.length > 0 ? `, and the pending changesets do not level them (${bumped})` : ''
+  return [`${family}: implementations do not share major.minor: ${show(versions)}${tail}`]
 }
 
 /**
@@ -317,13 +352,24 @@ export function checkRepo(root: string): string[] {
   if (problems.length > 0) return problems
   const families = raw as Record<string, Family>
   const changesetDir = join(root, '.changeset')
-  const bumps = pendingBumps(
-    existsSync(changesetDir)
-      ? readdirSync(changesetDir)
-          .filter((n) => n.endsWith('.md') && n !== 'README.md')
-          .map((n) => readFileSync(join(changesetDir, n), 'utf8'))
-      : [],
+  const configFile = join(changesetDir, 'config.json')
+  const configProblem = configProblems(
+    existsSync(configFile) ? (JSON.parse(readFileSync(configFile, 'utf8')) as unknown) : null,
+    existsSync(join(changesetDir, 'pre.json')),
   )
+  if (configProblem.length > 0) return configProblem
+  let bumps: Map<string, string>
+  try {
+    bumps = pendingBumps(
+      existsSync(changesetDir)
+        ? readdirSync(changesetDir)
+            .filter((n) => n.endsWith('.md') && n !== 'README.md')
+            .map((n): [string, string] => [`.changeset/${n}`, readFileSync(join(changesetDir, n), 'utf8')])
+        : [],
+    )
+  } catch (e) {
+    return [(e as Error).message]
+  }
 
   for (const [name, f] of Object.entries(families)) {
     const dir = join(base, name)
@@ -357,14 +403,18 @@ export function checkRepo(root: string): string[] {
       const named = suiteReaders(new Map([[impl.dir, testSources(root, impl.dir)]])).get(impl.dir)
       if (named?.has(name) !== true) problems.push(`${name}: no test under ${impl.dir}/tests names packages/conformance/${name}/`)
     }
-    const released = Object.fromEntries(
-      f.implementations.flatMap((i) => {
-        const v = versions[i.dir]
-        const bump = i.language === 'ts' ? bumps.get(i.name) : undefined
-        return v === undefined ? [] : [[i.dir, bump === undefined ? v : bumpVersion(v, bump)]]
-      }),
-    )
-    problems.push(...versionProblems(name, versions, released))
+    try {
+      const released = Object.fromEntries(
+        f.implementations.flatMap((i) => {
+          const v = versions[i.dir]
+          const bump = i.language === 'ts' ? bumps.get(i.name) : undefined
+          return v === undefined ? [] : [[i.dir, bump === undefined ? v : bumpVersion(v, bump)]]
+        }),
+      )
+      problems.push(...versionProblems(name, versions, released))
+    } catch (e) {
+      problems.push(`${name}: ${(e as Error).message}`)
+    }
   }
 
   const listed = new Map<string, Set<string>>()

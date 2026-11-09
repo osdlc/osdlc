@@ -14,6 +14,7 @@ import {
   checkRepo,
   generatorBuildFilters,
   majorMinor,
+  configProblems,
   pendingBumps,
   readsAcross,
   registryProblems,
@@ -148,7 +149,7 @@ test('implementations share major.minor', () => {
   assert.equal(majorMinor('1.12.3'), '1.12')
   assert.deepEqual(versionProblems('dirs', { a: '0.4.1', b: '0.4.0' }), [])
   assert.deepEqual(versionProblems('dirs', { a: '0.5.0', b: '0.4.0' }), [
-    'dirs: implementations do not share major.minor: a 0.5.0, b 0.4.0, and the pending changesets do not level them',
+    'dirs: implementations do not share major.minor: a 0.5.0, b 0.4.0',
   ])
 })
 
@@ -159,7 +160,7 @@ test('a pending changeset that levels a family counts as level', () => {
   assert.deepEqual(versionProblems('f', now, after, none), [])
   assert.deepEqual(versionProblems('f', after, after, none), [])
   assert.deepEqual(versionProblems('f', now, now, none), [
-    'f: implementations do not share major.minor: ts 0.3.0, rs 0.4.0, and the pending changesets do not level them',
+    'f: implementations do not share major.minor: ts 0.3.0, rs 0.4.0',
   ])
   // a listed entry is stale once the versions agree, now or after the changesets
   assert.deepEqual(versionProblems('f', now, now, { f: 'x' }), [])
@@ -172,10 +173,38 @@ test('a pending changeset that levels a family counts as level', () => {
 test('pending changesets give each package its highest bump', () => {
   const a = `---\n'@x/a': patch\n"@x/b": minor\n---\n\nText: minor\n`
   const b = `---\n'@x/a': major\n---\n\nbody\n`
-  assert.deepEqual([...pendingBumps([a, b, 'no frontmatter'])], [['@x/a', 'major'], ['@x/b', 'minor']])
+  const bumps = (...t: string[]) => [...pendingBumps(t.map((x, i): [string, string] => [`c${i}.md`, x]))]
+  assert.deepEqual(bumps(a, b, 'no frontmatter'), [['@x/a', 'major'], ['@x/b', 'minor']])
+  assert.deepEqual(bumps('---\n"@x/a": patch\n---\n'), [['@x/a', 'patch']])
+  assert.deepEqual(bumps('---\n---\n\nempty\n'), [])
+  assert.deepEqual(bumps('---\n"@x/a": minor # why\n---\n'), [['@x/a', 'minor']])
+  assert.throws(() => bumps('---\n"@x/a": minor, really\n---\n'), /c0\.md: cannot parse the frontmatter line/)
+  assert.throws(() => bumps('---\n"@x/a": none\n---\n'), /cannot parse/)
+  assert.equal(bumpVersion('0.3.2', 'major'), '1.0.0')
+  assert.equal(bumpVersion('1.3.2', 'major'), '2.0.0')
+  assert.throws(() => bumpVersion('0.3.0-beta.1', 'minor'), /prerelease versions are not supported by this check/)
   assert.equal(bumpVersion('0.3.2', 'minor'), '0.4.0')
   assert.equal(bumpVersion('0.3.2', 'patch'), '0.3.3')
   assert.equal(bumpVersion('0.3.2', 'major'), '1.0.0')
+})
+
+test('a family level now must stay level after the pending changesets', () => {
+  const now = { ts: '0.4.0', rs: '0.4.0' }
+  const after = { ts: '0.5.0', rs: '0.4.0' }
+  assert.deepEqual(versionProblems('f', now, after, {}), [
+    'f: implementations share major.minor now, but the pending changesets would push them apart (ts 0.4.0 -> 0.5.0); level the bumps or add a CATCHING_UP entry',
+  ])
+  assert.deepEqual(versionProblems('f', now, after, { f: 'x' }), [])
+  assert.deepEqual(versionProblems('f', now, { ts: '0.4.1', rs: '0.4.0' }, {}), [])
+})
+
+test('config.json features the version check does not model are errors', () => {
+  assert.deepEqual(configProblems({ fixed: [], linked: [], ignore: [] }, false), [])
+  assert.deepEqual(configProblems({ fixed: [['a', 'b']], ignore: ['c'] }, true), [
+    '.changeset/pre.json exists (pre mode); the version check does not support it',
+    '.changeset/config.json sets fixed; the version check does not support it',
+    '.changeset/config.json sets ignore; the version check does not support it',
+  ])
 })
 
 test('suite readers and cross-language reads are found in test sources', () => {
@@ -240,6 +269,47 @@ test('a changeset on the TypeScript package levels a family that differs now', (
   )
 })
 
+test('a repository check rejects what it cannot model', () => {
+  const behind = (put: Put) => put('packages/rust/dirs/Cargo.toml', '[package]\nname = "dirs"\nversion = "0.3.0"\n')
+  assert.deepEqual(repo((put) => put('.changeset/bad.md', "---\n'@x/dirs': sideways\n---\n")), [
+    '.changeset/bad.md: cannot parse the frontmatter line "\'@x/dirs\': sideways"',
+  ])
+  assert.deepEqual(repo((put) => put('.changeset/pre.json', '{}')), [
+    '.changeset/pre.json exists (pre mode); the version check does not support it',
+  ])
+  assert.deepEqual(
+    repo((put) => {
+      put('packages/ts/dirs/package.json', JSON.stringify({ name: '@x/dirs', version: '0.2.0-beta.1' }))
+      put('.changeset/dirs.md', "---\n'@x/dirs': minor\n---\n")
+    }),
+    ['dirs: 0.2.0-beta.1: prerelease versions are not supported by this check'],
+  )
+  // a changeset naming an unrelated package changes nothing
+  assert.deepEqual(
+    repo((put) => {
+      behind(put)
+      put('.changeset/other.md', "---\n'@x/other': minor\n---\n")
+    }),
+    ['dirs: implementations do not share major.minor: packages/ts/dirs 0.2.3, packages/rust/dirs 0.3.0'],
+  )
+  // a patch does not level a family that differs by minor; major on 0.x goes to 1.0.0
+  const named = (bump: string) => (put: Put) => {
+    behind(put)
+    put('.changeset/dirs.md', `---\n'@x/dirs': ${bump}\n---\n`)
+  }
+  assert.equal(repo(named('patch')).length, 1)
+  assert.match(repo(named('patch'))[0]!, /pending changesets do not level them \(packages\/ts\/dirs 0\.2\.3 -> 0\.2\.4\)/)
+  assert.match(repo(named('major'))[0]!, /0\.2\.3 -> 1\.0\.0/)
+  // level now, then unlevelled by a changeset
+  assert.match(
+    repo((put) => {
+      put('packages/ts/dirs/package.json', JSON.stringify({ name: '@x/dirs', version: '0.2.3' }))
+      put('.changeset/dirs.md', "---\n'@x/dirs': minor # why\n---\n")
+    })[0]!,
+    /share major\.minor now, but the pending changesets would push them apart \(packages\/ts\/dirs 0\.2\.3 -> 0\.3\.0\)/,
+  )
+})
+
 test('a repository check finds an unread suite, an unlisted reader, version drift and a stray fixture read', () => {
   assert.deepEqual(
     repo((put) => {
@@ -253,7 +323,7 @@ test('a repository check finds an unread suite, an unlisted reader, version drif
   )
   assert.deepEqual(
     repo((put) => put('packages/rust/dirs/Cargo.toml', '[package]\nname = "dirs"\nversion = "0.3.0"\n')),
-    ['dirs: implementations do not share major.minor: packages/ts/dirs 0.2.3, packages/rust/dirs 0.3.0, and the pending changesets do not level them'],
+    ['dirs: implementations do not share major.minor: packages/ts/dirs 0.2.3, packages/rust/dirs 0.3.0'],
   )
   assert.deepEqual(
     repo((put) => put('packages/ts/stray/tests/x.test.ts', "'../../../rust/stray/tests/fixtures/parity.json'")),
