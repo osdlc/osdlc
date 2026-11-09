@@ -12,8 +12,8 @@ records. Level 2 gives every type a schema. [SPEC.md](SPEC.md) states the format
 | ---------------------------------- | ---------- | --------------------------- |
 | `@osdlc/corpus-schema` (reference) | TypeScript | `packages/ts/corpus-schema` |
 
-The spec lives in osdlc while it is young. Once it is stable it moves to a repository of its own,
-with this suite and its corpora.
+The spec lives here until [osdlc/markdown](https://github.com/osdlc/markdown) has its own release
+setup. Then it moves there, with this suite, its corpora and the TypeScript package.
 
 ## The suite
 
@@ -35,4 +35,6 @@ to write its `expect`. Never write `expect` by hand.
 parse.
 
 `corpora/level-*` cover the root file's `level` key, and `corpora/reserved-keys` the reserved keys
-`dialect` and `profiles`.
+`dialect` and `profiles`. `corpora/folder-record-*` cover record folders: a record with a script, a
+query and a CSV beside it, a folder with no record file, a record folder inside another, and a
+record file in a format the corpus does not allow.
