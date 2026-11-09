@@ -14,6 +14,7 @@ import {
   bumpVersion,
   configProblems,
   generatorBuildFilters,
+  isObject,
   pendingBumps,
   readsAcross,
   registryProblems,
@@ -33,9 +34,6 @@ export interface RepoOptions {
   /** The families file, relative to the root. Its directory holds the suites and config.json. */
   families?: string | undefined
 }
-
-const isObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v)
 
 /** The suites directory relative to the root, with `/`. */
 function suitesDir(options: RepoOptions): string {

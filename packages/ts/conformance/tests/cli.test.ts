@@ -37,7 +37,7 @@ function runStamping(args: string[], edit: (put: Put) => void = () => {}): Ran {
       const calls: string[] = []
       const run: Run = (command, argv, cwd) => {
         calls.push(`${cwd.slice(root.length) || '/'}: ${[command, ...argv].join(' ')}`)
-        const file = join(cwd, '../conformance/dirs/suite.json')
+        const file = join(root, 'packages/conformance/dirs/suite.json')
         writeFileSync(
           file,
           JSON.stringify({ ...JSON.parse(readFileSync(file, 'utf8')), referenceVersion: '9.9.9' }),
@@ -72,6 +72,14 @@ test('--regenerate fails on a suite its generator changed, naming the generator'
     res.out,
     /packages\/conformance\/dirs\/suite\.json: its generator changed it; run `cargo run -p dirs --example conformance-write` and commit the result/,
   )
+})
+
+test('a Rust generator runs in the libraries.rust folder config.json names', () => {
+  const res = runStamping(['write', '--reference', 'rust'], (put) => {
+    put('packages/conformance/config.json', JSON.stringify({ libraries: { rust: 'libs/rust/' } }))
+  })
+  assert.equal(res.status, 0, res.out)
+  assert.deepEqual(res.calls, ['/libs/rust: cargo run -p dirs --example conformance-write'])
 })
 
 test('--regenerate --reference ts runs no Rust generator', () => {

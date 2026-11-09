@@ -29,7 +29,8 @@ export const DEFAULT_LIBRARY_ROOTS: LibraryRoots = { ts: 'packages/ts', rust: 'p
 const CASE_KEYS = ['name', 'input', 'expect', 'error', 'platforms', 'skip', 'tolerance']
 const PLATFORMS = ['unix', 'windows']
 
-const isObject = (v: unknown): v is Record<string, unknown> =>
+/** A plain object: not null and not an array. */
+export const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 
 /** The generator command S-conformance-suites fixes for a reference. */
