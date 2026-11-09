@@ -7,7 +7,7 @@ import { deepFreeze } from '../freeze.ts'
 import { protoSafeRecord as record } from '../record.ts'
 import { isEffortLevel, TOOL_ID_PATTERN, TRAITS, unknownEffortMessage } from '../ref.ts'
 import type { MappingPolicy } from './query.ts'
-import type { CatalogueLayer } from './types.ts'
+import { PROVIDER_KINDS, type CatalogueLayer } from './types.ts'
 
 /** An environment variable name: `key_env` names the variable, never holds a key. */
 export const KEY_ENV_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/
@@ -190,7 +190,7 @@ const toolFields = {
 
 const providerFields = {
   kind: z
-    .enum(['anthropic', 'openai', 'google', 'ollama', 'lmstudio', 'openai-compatible'])
+    .enum(PROVIDER_KINDS)
     .optional()
     .describe('The API the provider speaks. Required for a provider the snapshot lacks.'),
   endpoint: z.url().optional().describe('Base URL of the API.'),

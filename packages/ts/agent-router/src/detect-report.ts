@@ -6,24 +6,13 @@
 // name and whether it is set.
 import { z } from 'zod'
 
-import type { ProviderKind, Trait } from './catalogue/types.ts'
+import { PROVIDER_KINDS, type Trait } from './catalogue/types.ts'
 import { TRAITS } from './ref.ts'
-
-const PROVIDER_KINDS = [
-  'anthropic',
-  'openai',
-  'google',
-  'ollama',
-  'lmstudio',
-  'openai-compatible',
-] as const
 
 // Both lists must stay the catalogue's own: a missing member fails to compile.
 type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
 const traitsMatch: Exact<(typeof TRAITS)[number], Trait> = true
-const kindsMatch: Exact<(typeof PROVIDER_KINDS)[number], ProviderKind> = true
 void traitsMatch
-void kindsMatch
 
 /** `true` or `false` when the probe could tell; `'unknown'` when it could not. */
 const TriState = z.union([z.boolean(), z.literal('unknown')])

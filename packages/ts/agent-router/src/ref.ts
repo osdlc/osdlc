@@ -7,10 +7,10 @@ import { err, ok, type Result } from '@osdlc/result'
  * A model tier, a capability class a reference can name in place of a model: `fast`, `standard` or
  * `max`.
  */
-export type Tier = 'fast' | 'standard' | 'max'
+export type Tier = (typeof TIERS)[number]
 
 /** Every {@link Tier}, from the least to the most capable. */
-export const TIERS: readonly Tier[] = deepFreeze(['fast', 'standard', 'max'])
+export const TIERS = deepFreeze(['fast', 'standard', 'max'] as const)
 
 /** Whether `s` is one of the {@link TIERS}. */
 export function isTier(s: string): s is Tier {

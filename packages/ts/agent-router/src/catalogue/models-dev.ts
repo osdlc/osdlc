@@ -126,8 +126,8 @@ export type ModelsDevRows = {
 /**
  * The model rows of every provider in `providers` that models.dev lists, local
  * runtimes excepted. Only kept models (`kept`), and of those only the ones
- * with a plain id and a release date that is an ISO date no later than
- * `today` (`YYYY-MM-DD`, default the current UTC day); the rest, and any row
+ * with a plain id and, when it has one, a release date that is an ISO date no
+ * later than `today` (`YYYY-MM-DD`, default the current UTC day); the rest, and any row
  * too malformed to map, are `rejected`. A dated id (`claude-haiku-4-5-20251001`) whose undated base is a
  * row becomes an alias of the base. `prior` (keyed `provider/id`) supplies
  * what models.dev lacks, per {@link modelsDevRow}.

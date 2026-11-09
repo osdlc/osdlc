@@ -9,7 +9,7 @@ reviews. The main entry is pure and browser-safe. Matches the Rust `agent-router
 
 **Added**
 
-- A [guide](docs/guide/getting-started.md) from the problem to a chosen launch, with tested examples.
+- A [guide](https://github.com/osdlc/osdlc/blob/main/packages/ts/agent-router/docs/guide/getting-started.md) from the problem to a chosen launch, with tested examples.
 - `isEffortLevel`, `modelProblem` and `MAX_SIZE`.
 
 **Changed**

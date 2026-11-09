@@ -23,9 +23,9 @@
  * runtimes (ollama, lmstudio) get no rows: what they hold is per machine.
  *
  * The row mapping is the package's `modelsDevRows`, which a host's own
- * refresh can use too: kept are models whose output is text only and that call
- * tools or embed, and a dated id (`claude-haiku-4-5-20251001`) whose undated
- * base is listed becomes an alias of the base.
+ * refresh can use too; its `kept` says which models stay (text output, and
+ * image output). A dated id (`claude-haiku-4-5-20251001`) whose undated base
+ * is listed becomes an alias of the base.
  *
  * Release tooling, so it lives in `scripts/` and is not shipped. No
  * shell-out. Exit 0 with the diff (or

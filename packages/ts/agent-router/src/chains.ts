@@ -7,7 +7,7 @@ import type { CatalogueQuery } from './catalogue/query.ts'
 import type { Model, Sourced } from './catalogue/types.ts'
 import { deepFreeze } from './freeze.ts'
 import { protoSafeRecord } from './record.ts'
-import { modelProblem, TOOL_ID_PATTERN, type Tier, type Trait } from './ref.ts'
+import { modelProblem, TIERS, TOOL_ID_PATTERN, type Tier, type Trait } from './ref.ts'
 
 /** Tool order in a chain when `router.chains.order` does not set one. */
 export const DEFAULT_CHAIN_ORDER: readonly string[] = deepFreeze([
@@ -23,7 +23,7 @@ export const DEFAULT_CHAIN_ORDER: readonly string[] = deepFreeze([
 export type Pins = Record<string, string>
 
 /** The shape of a pin key: a tool id, a `/` and a tier, as in `claude/max`. */
-export const PIN_KEY_PATTERN = /^[a-z][a-z0-9-]*\/(fast|standard|max)$/
+export const PIN_KEY_PATTERN = new RegExp(`^[a-z][a-z0-9-]*/(${TIERS.join('|')})$`)
 
 /**
  * Schema for {@link Pins}: `tool/tier` keys (see {@link PIN_KEY_PATTERN}) mapped to a model name a

@@ -90,9 +90,18 @@ export type Tool = {
   verify?: string[] | undefined
 }
 
+/** Every {@link ProviderKind}: the APIs a provider can speak. The schemas build their enums from it. */
+export const PROVIDER_KINDS = [
+  'anthropic',
+  'openai',
+  'google',
+  'ollama',
+  'lmstudio',
+  'openai-compatible',
+] as const
+
 /** The API a provider speaks. */
-export type ProviderKind =
-  'anthropic' | 'openai' | 'google' | 'ollama' | 'lmstudio' | 'openai-compatible'
+export type ProviderKind = (typeof PROVIDER_KINDS)[number]
 
 /**
  * A model provider: its id, the kind of API it speaks, an optional endpoint and the name of its

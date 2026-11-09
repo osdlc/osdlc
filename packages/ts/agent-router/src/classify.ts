@@ -15,7 +15,7 @@ export const UNCLASSIFIED = 'unclassified'
 /** Where the classifier puts a model: a {@link Tier}, or `unclassified` when no rule places it. */
 export type Placement = Tier | typeof UNCLASSIFIED
 
-const PlacementSchema = z.enum(['fast', 'standard', 'max', UNCLASSIFIED])
+const PlacementSchema = z.enum([...TIERS, UNCLASSIFIED])
 const ProviderSchema = z.string().regex(TOOL_ID_PATTERN, 'must be a lower-case identifier')
 const THRESHOLD = /^(<=|>=|<|>)(\d+(?:\.\d+)?)b$/i
 const ThresholdSchema = z

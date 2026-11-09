@@ -26,3 +26,13 @@ test('the README Stability list is exactly the @experimental exports', () => {
   expect(documented.length).toBeGreaterThan(0)
   expect([...readmeExperimental()].sort()).toEqual(documented)
 })
+
+// D-02: the optional config-layers peer is a range written by hand. A Changesets rewrite that
+// drops the 0.9 line would break hosts on it in a patch, so the Version Packages PR fails here.
+test('the config-layers peer range still admits 0.9.0', () => {
+  const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as {
+    peerDependencies?: Record<string, string>
+  }
+  const range = manifest.peerDependencies?.['@osdlc/config-layers'] ?? ''
+  expect(range.split('||').map((r) => r.trim())).toContain('^0.9.0')
+})

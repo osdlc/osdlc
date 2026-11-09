@@ -22,9 +22,11 @@ created: 2026-11-07
   entry that starts with `Breaking:`.
 - `@osdlc/config-layers` is an optional peer at a range written by hand (`^0.9.0`). Changesets
   leaves it alone while a config-layers release stays in range
-  (`onlyUpdatePeerDependentsWhenOutOfRange` in `.changeset/config.json`). A config-layers release
-  that leaves the range needs an agent-router minor changeset that widens it by hand
-  (`^0.9.0 || ^0.10.0`), so a host on the older line is not broken by a patch.
+  (`onlyUpdatePeerDependentsWhenOutOfRange` in `.changeset/config.json`). A release that leaves
+  the range would still give this package an automatic patch that rewrites the range, so the pull
+  request that takes config-layers past `^0.9` also widens the range here by hand
+  (`^0.9.0 || ^0.10.0`) with an agent-router minor changeset. `tests/stability.test.ts` fails if
+  the range stops admitting 0.9.0, which stops a Version Packages pull request that rewrote it.
 - A minor release may add a member to a union of codes or names, such as `AVAILABILITY_REASONS`,
   `PROFILE_SKIP_REASONS`, a validity code or `TRAITS`. A `switch` over one of these needs a
   `default` arm.
