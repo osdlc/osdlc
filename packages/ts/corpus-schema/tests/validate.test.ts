@@ -222,6 +222,76 @@ describe('types and records', () => {
     assert.equal(run().records.get('notes')?.size, 2)
   })
 
+  test('a folder holding a record named after it is one record, and owns its other files', () => {
+    put(
+      'notes/Survey/Survey.md',
+      note('', '[script](run.py), [results](out/results.csv), [other](../Pilot/data.csv)\n'),
+    )
+    put('notes/Survey/run.py', 'print(1)\n')
+    put('notes/Survey/out/results.csv', 'a,b\n1,2\n')
+    // Neither would pass the notes schema as a record.
+    put('notes/Survey/method.md', '---\nstep: 1\n---\n')
+    put('notes/Survey/out/raw.json', '[1, 2]\n')
+    put('notes/Pilot/Pilot.yaml', 'name: Pilot\n')
+    put('notes/Pilot/data.csv', 'x\n')
+    const { errors, records, files } = run()
+    assert.deepEqual(errors, [])
+    assert.deepEqual([...(records.get('notes')?.keys() ?? [])].sort(), [
+      'Note A',
+      'Pilot',
+      'Survey',
+    ])
+    assert.equal(files.get('notes')?.get('Survey'), 'notes/Survey/Survey.md')
+  })
+
+  test('a record file in a format the corpus does not allow still makes a record folder', () => {
+    put('corpus-schema.md', '---\ncorpus-schema: 0\n---\n')
+    rmSync(join(dir, 'notes/notes.schema.json'))
+    rmSync(join(dir, 'tags'), { recursive: true })
+    rmSync(join(dir, 'cards'), { recursive: true })
+    put('notes/notes.schema.md', '---\nrequired: [name]\n---\n')
+    put('notes/Survey/Survey.json', '{"name": "Survey"}\n')
+    put('notes/Survey/method.md', '---\nstep: 1\n---\n')
+    assert.deepEqual(errors(), [
+      "notes/Survey/Survey.json: format: json is not in the corpus's formats",
+    ])
+  })
+
+  test('a folder record id clashes with a file record of the same name', () => {
+    put('notes/Survey/Survey.md', note())
+    put('notes/survey.md', note())
+    assert.ok(has(errors(), 'id: "survey" is also notes/Survey/Survey.md'))
+  })
+
+  test('a folder with no record named after it is a plain folder', () => {
+    put('notes/Survey/run.py', 'print(1)\n')
+    put('notes/Survey/method.md', '---\nstep: 1\n---\n')
+    put('notes/Survey/survey.md', note())
+    const report = run()
+    assert.ok(has(report.errors, 'notes/Survey/method.md: name: required'))
+    assert.ok(report.records.get('notes')?.has('survey'))
+  })
+
+  test('a record folder inside a record folder fails, and its files belong to the outer one', () => {
+    put('notes/Survey/Survey.md', note())
+    put('notes/Survey/Pilot/Pilot.md', '---\nstep: 1\n---\n')
+    put('notes/Survey/deep/Wave/Wave.md', '---\nstep: 2\n---\n')
+    const report = run()
+    assert.deepEqual(report.errors, [
+      'notes/Survey/Pilot: (folder): a record folder must not sit inside record folder notes/Survey',
+      'notes/Survey/deep/Wave: (folder): a record folder must not sit inside record folder notes/Survey',
+    ])
+    assert.equal(report.records.get('notes')?.size, 2)
+  })
+
+  test('a type folder inside a record folder fails', () => {
+    put('notes/Survey/Survey.md', note())
+    put('notes/Survey/steps/steps.schema.md', '---\n---\n')
+    assert.ok(
+      has(errors(), 'notes/Survey/steps: (folder): a type folder must not sit inside type notes'),
+    )
+  })
+
   test('an empty body passes', () => {
     put('notes/Note A.md', note('', ''))
     assert.deepEqual(errors(), [])
@@ -397,6 +467,17 @@ describe('ids', () => {
 })
 
 describe('x-ref', () => {
+  test('an x-ref to a record folder links to its record file, not the folder or its files', () => {
+    put('notes/Survey/Survey.md', note())
+    put('notes/Survey/run.py', 'print(1)\n')
+    put('notes/Note B.md', note('partner: "[Survey](Survey/Survey.md)"\n'))
+    assert.deepEqual(errors(), [])
+    put('notes/Note B.md', note('partner: "[Survey](Survey/)"\n'))
+    assert.ok(has(errors(), 'partner: notes/Survey is not a notes record'))
+    put('notes/Note B.md', note('partner: "[run](Survey/run.py)"\n'))
+    assert.ok(has(errors(), 'partner: notes/Survey/run.py is not a notes record'))
+  })
+
   test('a link to a record of the type passes', () => {
     put('notes/Note B.md', note('partner: "[Note A](Note%20A.md)"\n'))
     assert.deepEqual(errors(), [])

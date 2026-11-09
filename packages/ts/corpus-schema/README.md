@@ -31,6 +31,33 @@ alone, `npx @osdlc/corpus-schema validate <folder>`.
 
 ESM only. Node.js 22 or later.
 
+## A corpus
+
+```text
+evidence/
+├── corpus-schema.md                the root file: `corpus-schema: 0`
+├── harnesses/
+│   ├── harnesses.schema.md         the type "harnesses" and its JSON Schema
+│   ├── Claude Code.md              a record, id "Claude Code"
+│   └── google/
+│       └── Gemini CLI.md           records may sit at any depth
+└── methods/
+    ├── methods.schema.yaml
+    └── Survey/                     a record folder
+        ├── Survey.md               the record, id "Survey"
+        ├── count.py                these belong to the record
+        ├── query.sql
+        └── results/counts.csv
+```
+
+A record folder is a folder in a type folder that holds a record named after it, such as
+`methods/Survey/Survey.md`. It lets a record keep its own files beside it: here, the script, the
+query and the CSV results of the method the record describes. Its other files are not records and
+are not checked. The record links to them with relative links, such as
+`[the counts](results/counts.csv)`, and those links are checked. A record folder inside another
+one is an error. A folder with no record named after it, such as `harnesses/google/`, is a plain
+folder of records.
+
 ## Command line
 
 ```sh

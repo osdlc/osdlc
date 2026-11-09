@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/markdown-tags",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Inline #tag lexing for Markdown note bodies in three dialects: Obsidian's rule (the default), a Unicode one that scans code, and an ASCII one. The TypeScript twin of the markdown-tags Rust crate, held to it by a shared conformance suite.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
