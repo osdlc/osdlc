@@ -133,7 +133,7 @@ move; merged PRs drop off.
 
 | Order | PR | What | Why this order | Status |
 | --- | --- | --- | --- | --- |
-| 1 | [#734](https://github.com/osdlc/osdlc/pull/734) | codex-pr and cursor-pr actions; claude-pr moved onto shared pr-common scripts | Only PR waiting; gate done (5 fixed, code review clean) | waiting on your review since 05:00 UTC; behind main; not tested live |
+| 1 | [#734](https://github.com/osdlc/osdlc/pull/734) | codex-pr and cursor-pr actions; claude-pr moved onto shared pr-common scripts | Only PR waiting; gate done (5 fixed, code review clean) | waiting on your review since 04:10 UTC; behind main; not tested live |
 
 ## PR tracker
 
