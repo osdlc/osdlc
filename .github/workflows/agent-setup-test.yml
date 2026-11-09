@@ -14,6 +14,12 @@ on:
 
 permissions: {}
 
+# A newer push to the same pull request cancels this workflow's older run,
+# whose result no longer matters.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   dry-run:
     runs-on: ubuntu-latest
