@@ -90,9 +90,9 @@
       "line": 142,
       "title": "New paragraph splits the ordered list; item 7 is absorbed into it",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "7d4d5a9a49c23228aa8b9e4c76e4b8cc63000697"
     },
     {
       "id": "r4-4",
