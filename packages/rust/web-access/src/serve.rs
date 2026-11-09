@@ -20,6 +20,7 @@ use crate::config::{Listen, WebAccessConfig};
 use crate::guard::{GuardPolicy, GuardState, HostIps, OnDenied, Tokens, guard};
 use crate::interfaces::interfaces;
 use crate::permissions::RouteRule;
+use crate::token::Token;
 
 /// How long `stop` waits for in-flight requests (a stream may never end on its
 /// own) before it closes their connections.
@@ -169,11 +170,10 @@ pub enum ServeError {
     },
 }
 
-/// `http://<ip>:<port>/?token=<token>`; an IPv6 address is bracketed, and any
-/// character of the token outside `A-Z a-z 0-9 - . _ ~` is percent-encoded
-/// (a minted token has none).
-pub fn share_url(addr: SocketAddr, token: &str) -> String {
-    format!("http://{addr}/?token={}", crate::guard::encode_token(token))
+/// `http://<ip>:<port>/?token=<token>`; an IPv6 address is bracketed. A
+/// [`Token`] needs no escaping, so the link carries it as written.
+pub fn share_url(addr: SocketAddr, token: &Token) -> String {
+    format!("http://{addr}/?token={token}")
 }
 
 /// A running server. Dropping it without `stop` stops accepting new
@@ -203,7 +203,7 @@ impl ServerHandle {
     }
 
     /// [`Self::share_urls`] carrying `token`, e.g. the read-only one.
-    pub fn share_urls_for(&self, token: &str) -> Vec<String> {
+    pub fn share_urls_for(&self, token: &Token) -> Vec<String> {
         self.share_addrs
             .iter()
             .map(|a| share_url(*a, token))
@@ -479,6 +479,12 @@ mod tests {
     use super::*;
     use crate::guard::Denial;
 
+    const TOK: &str = "tok-0123456789abcdefghijklmnopqrstu";
+
+    fn tok(text: &str) -> Token {
+        Token::parse(text).unwrap()
+    }
+
     fn cfg(listen: Listen) -> WebAccessConfig {
         WebAccessConfig {
             enabled: true,
@@ -516,7 +522,7 @@ mod tests {
         assert!(matches!(err, ServeError::TokenRequired));
         let ips = Listen::Interfaces(vec!["192.168.1.5".parse().unwrap()]);
         assert!(matches!(
-            serve(router(), &cfg(ips), Tokens::full_only(String::new()))
+            serve(router(), &cfg(ips), Tokens::full_only(None))
                 .await
                 .err(),
             Some(ServeError::TokenRequired)
@@ -584,17 +590,13 @@ mod tests {
                 axum::body::Body::from_stream(first.chain(futures_util::stream::pending()))
             }),
         );
-        let handle = serve(
-            app,
-            &cfg(Listen::Loopback),
-            Tokens::full_only("tok".to_owned()),
-        )
-        .await
-        .unwrap();
+        let handle = serve(app, &cfg(Listen::Loopback), Tokens::full_only(tok(TOK)))
+            .await
+            .unwrap();
         let addr = handle.addrs()[0];
         let mut s = TcpStream::connect(addr).await.unwrap();
         let req =
-            format!("GET /stream HTTP/1.1\r\nHost: {addr}\r\nx-web-access-token: tok\r\n\r\n");
+            format!("GET /stream HTTP/1.1\r\nHost: {addr}\r\nx-web-access-token: {TOK}\r\n\r\n");
         s.write_all(req.as_bytes()).await.unwrap();
         let mut buf = vec![0u8; 4096];
         let mut seen = String::new();
@@ -662,17 +664,13 @@ mod tests {
                 .unwrap()
         };
         let app = Router::new().route("/up", get(upgrade));
-        let handle = serve(
-            app,
-            &cfg(Listen::Loopback),
-            Tokens::full_only("tok".to_owned()),
-        )
-        .await
-        .unwrap();
+        let handle = serve(app, &cfg(Listen::Loopback), Tokens::full_only(tok(TOK)))
+            .await
+            .unwrap();
         let addr = handle.addrs()[0];
         let mut s = TcpStream::connect(addr).await.unwrap();
         let req = format!(
-            "GET /up HTTP/1.1\r\nHost: {addr}\r\nx-web-access-token: tok\r\n\
+            "GET /up HTTP/1.1\r\nHost: {addr}\r\nx-web-access-token: {TOK}\r\n\
              Connection: upgrade\r\nUpgrade: echo\r\n\r\n"
         );
         s.write_all(req.as_bytes()).await.unwrap();
@@ -760,18 +758,23 @@ mod tests {
         let handle = serve(
             router(),
             &cfg(Listen::Loopback),
-            Tokens::full_only("tok".to_owned()),
+            Tokens::full_only(tok(TOK)),
         )
         .await
         .unwrap();
         let addr = handle.addrs()[0];
-        assert_eq!(handle.share_urls(), [format!("http://{addr}/?token=tok")]);
+        assert_eq!(handle.share_urls(), [format!("http://{addr}/?token={TOK}")]);
         assert!(
             raw_get(addr, &addr.to_string(), "")
                 .await
                 .starts_with("HTTP/1.1 401")
         );
-        let ok = raw_get(addr, &addr.to_string(), "x-web-access-token: tok\r\n").await;
+        let ok = raw_get(
+            addr,
+            &addr.to_string(),
+            &format!("x-web-access-token: {TOK}\r\n"),
+        )
+        .await;
         assert!(ok.starts_with("HTTP/1.1 200"), "{ok}");
         handle.stop().await;
     }
@@ -790,7 +793,7 @@ mod tests {
         let handle = serve_opts(
             router(),
             &cfg(Listen::Loopback),
-            Tokens::full_only("tok".to_owned()),
+            Tokens::full_only(tok(TOK)),
             opts,
         )
         .await
@@ -806,17 +809,18 @@ mod tests {
         let handle = serve(
             router(),
             &cfg(Listen::AllInterfaces),
-            Tokens::full_only("tok".to_owned()),
+            Tokens::full_only(tok(TOK)),
         )
         .await
         .unwrap();
-        assert_eq!(handle.share_urls_for("tok"), handle.share_urls());
+        assert_eq!(handle.share_urls_for(&tok(TOK)), handle.share_urls());
         assert!(handle.share_urls().iter().all(|u| !u.contains("0.0.0.0")));
+        let other = Token::mint().unwrap();
         assert!(
             handle
-                .share_urls_for("other")
+                .share_urls_for(&other)
                 .iter()
-                .all(|u| u.ends_with("?token=other"))
+                .all(|u| u.ends_with(&format!("?token={other}")))
         );
         handle.stop().await;
     }
@@ -831,7 +835,7 @@ mod tests {
         let handle = serve_with_ips(
             router(),
             &cfg(Listen::AllInterfaces),
-            Tokens::full_only("tok".to_owned()),
+            Tokens::full_only(tok(TOK)),
             ServeOptions::default(),
             Arc::new(move || list.lock().unwrap().clone()),
         )
@@ -839,7 +843,7 @@ mod tests {
         .unwrap();
         let port = handle.addrs()[0].port();
         let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
-        let tok = "x-web-access-token: tok\r\n";
+        let tok = &format!("x-web-access-token: {TOK}\r\n");
         let new_host = format!("10.0.0.7:{port}");
         let get = raw_get(addr, &new_host, tok).await;
         assert!(
@@ -870,27 +874,18 @@ mod tests {
     }
 
     #[test]
-    fn share_url_percent_encodes_the_token() {
+    fn share_url_carries_the_token_as_written() {
         assert_eq!(
-            share_url("192.168.1.5:80".parse().unwrap(), "a b&c#d;e%f+g"),
-            "http://192.168.1.5:80/?token=a%20b%26c%23d%3Be%25f%2Bg"
-        );
-        // A minted base64url token is left as it is.
-        assert_eq!(
-            share_url("192.168.1.5:80".parse().unwrap(), "aZ09-_"),
-            "http://192.168.1.5:80/?token=aZ09-_"
+            share_url("192.168.1.5:80".parse().unwrap(), &tok(TOK)),
+            format!("http://192.168.1.5:80/?token={TOK}")
         );
     }
 
     #[test]
     fn share_url_brackets_ipv6() {
         assert_eq!(
-            share_url("192.168.1.5:80".parse().unwrap(), "t"),
-            "http://192.168.1.5:80/?token=t"
-        );
-        assert_eq!(
-            share_url("[::1]:80".parse().unwrap(), "t"),
-            "http://[::1]:80/?token=t"
+            share_url("[::1]:80".parse().unwrap(), &tok(TOK)),
+            format!("http://[::1]:80/?token={TOK}")
         );
     }
 }

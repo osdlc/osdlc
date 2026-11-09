@@ -13,9 +13,11 @@ before the app's own handlers see it.
 
 - **Config.** `WebAccessConfig { enabled, listen, port, admin }`, serde
   camelCase, off and on loopback by default.
-- **Tokens.** 32 random bytes, base64url, kept in a directory you choose (file
-  mode 0600 on Unix). A full token, a view-only token, and an admin token that
-  exists only while admin access is on.
+- **Tokens.** A `Token` type that holds only a well-formed token: at least 32
+  characters of `A-Z a-z 0-9 - _`. Minted ones are 32 random bytes, base64url,
+  kept in a directory you choose (file mode 0600 on Unix). A full token, a
+  view-only token, and an admin token that exists only while admin access is
+  on.
 - **Guard.** An axum middleware: `Host` allowlist, `Origin` check, path
   normalisation, token from a cookie, a header or a share link, and a grant
   (`read`, `full` or `admin`) and an access context (local or remote) on every
@@ -77,7 +79,7 @@ loopback without one.
 
 ```rust
 use axum::{Router, routing::get};
-use web_access::{Listen, Tokens, WebAccessConfig, serve, token};
+use web_access::{Listen, Tokens, WebAccessConfig, serve, token::Token};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -90,7 +92,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         admin: false,
     };
     // Or token::load_or_mint(dir) to keep the token across restarts.
-    let secret = token::mint()?;
+    let secret = Token::mint()?;
     let server = serve(app, &config, Tokens::full_only(secret)).await?;
 
     // Hand this link to another device: http://<ip>:<port>/?token=<token>
@@ -113,6 +115,8 @@ The examples run with `cargo run --example <name>`:
   permission table in front of your own router, and what each grant may do.
 - [`tokens_on_disk`](examples/tokens_on_disk.rs): token files, rotation and an
   override.
+- [`mint_token`](examples/mint_token.rs): print a new token, for an override
+  or a token file.
 - [`sharing_runtime`](examples/sharing_runtime.rs): a settings page's view of
   sharing: turn it on, rotate a token, turn it off.
 - [`local_origins`](examples/local_origins.rs): the local-origin helpers and
@@ -142,13 +146,25 @@ Every request, whatever its method, passes these checks in order:
    or open a WebSocket, else 403 `{"error":"read_only"}`, unless a read-safe
    rule names the route.
 
-A link or cookie value matches a token as written or percent-decoded once; the
-header matches as written, less the surrounding spaces and tabs the HTTP parser
-strips. `Tokens::with` refuses two tokens that differ only in percent-encoding
-(`a b` and `a%20b`) or in leading or trailing whitespace (`a ` and `a`),
-whatever their grants: the share link of one would carry the other, or the
-parser would turn one into the other. It also refuses the same token with two
-different grants, since the higher grant would win.
+## Tokens
+
+Only a `Token` can join a `Tokens` set, and a `Token` is built only by
+`Token::mint()` or `Token::parse(text)`. `parse` accepts at least 32 characters
+of `A-Z a-z 0-9 - _` and nothing else, so a token needs no escaping: a link, a
+cookie and a header all carry it as written. A minted token (43 characters of
+base64url) and a 64-character hex digest both pass.
+
+The token files and an override must hold a token too. A file that holds
+anything else (edited by hand, or emptied) is an error naming the file, and the
+server does not start; the file is left as it is. To fix it, delete the file and
+a new token is minted on the next start. An override, such as an environment
+variable read with `token::override_from_env`, that is set but is not a token is
+an error naming the variable. `cargo run -p web-access --example mint_token`
+prints a new token, as does `Token::mint()?.to_string()`. No error ever shows the
+token text.
+
+`Tokens::with` refuses the same token at two different grants, since the
+higher grant would win. The same token at the same grant is ignored.
 
 A request that passes carries its `AccessContext` (`webLocal` or `webRemote`)
 and its `Grant` in the request extensions. Both are axum extractors, and both

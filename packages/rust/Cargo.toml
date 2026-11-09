@@ -50,8 +50,6 @@ hyper-util = { version = "0.1.10", default-features = false, features = ["tokio"
 if-addrs = "0.13"
 # js-sys 0.3.103 is the release that pairs with wasm-bindgen 0.2.126.
 js-sys = "0.3.103"
-# web-access percent-encodes share-link tokens. 2.3 is what axum 0.8 needs.
-percent-encoding = "2.3"
 # 1.8 is the first regex that reads the `\/` escape in a contract pattern.
 regex = "1.8"
 saphyr-parser = "0.0.11"

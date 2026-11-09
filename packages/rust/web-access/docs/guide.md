@@ -219,8 +219,16 @@ runnable version.
 
 ## Tokens
 
-A token is 32 random bytes from the operating system, written as 43 base64url
-characters. The `token` module keeps them in files in a directory you choose:
+A token is a `Token`. It is built only by `Token::mint()`, which gives 32
+random bytes from the operating system written as 43 base64url characters, or
+by `Token::parse(text)`, which accepts at least 32 characters of
+`A-Z a-z 0-9 - _` and nothing else (`token::MIN_TOKEN_LEN`). 32 characters
+hold at least 128 bits of a random secret even in hex, so a 64-character hex
+digest passes too. None of those characters needs escaping, so a share link, a
+cookie and a header all carry a token exactly as written. `Display` and
+`as_str` give the text; `Debug` leaves it out.
+
+The `token` module keeps tokens in files in a directory you choose:
 
 | File | Token | Exists |
 |---|---|---|
@@ -230,13 +238,14 @@ characters. The `token` module keeps them in files in a directory you choose:
 
 ```rust
 use std::path::Path;
-use web_access::token;
+use web_access::token::{self, TokenError};
 
-fn tokens(dir: &Path) -> std::io::Result<()> {
+fn tokens(dir: &Path) -> Result<(), TokenError> {
     let full = token::load_or_mint(dir)?;        // minted once, then read back
     let read = token::load_or_mint_read(dir)?;   // its own file
     let new_full = token::rotate(dir)?;          // old full links stop working
-    let pinned = token::resolve(dir, Some("set-by-env"))?; // an override wins
+    let set = token::override_from_env("APP_TOKEN")?; // None when unset or empty
+    let pinned = token::resolve(dir, set)?;      // an override wins
     let _ = (full, read, new_full, pinned);
     Ok(())
 }
@@ -244,44 +253,39 @@ fn tokens(dir: &Path) -> std::io::Result<()> {
 
 - On Unix each file is created with mode 0600 before anything is written to it,
   and written through a temporary file that is renamed into place.
-- A file that is empty counts as missing and is minted again. A file that cannot
-  be read is an error; the crate never quietly replaces a token links may carry.
-- `token::mint()` gives a token that is never written anywhere, for a secret that
-  lives as long as the process.
+- A file that does not hold a token (edited by hand, emptied, or only
+  whitespace) is `TokenError::BadFile`, naming the file. The file is left as it
+  is and nothing is minted over it: delete it and a new token is minted on the
+  next start. A file that cannot be read is `TokenError::Io`. The crate never
+  quietly replaces a token links may carry.
+- An override that is set but is not a token is `TokenError::BadOverride`,
+  naming where it came from. `token::parse_override(name, value)` does the same
+  for a value you read yourself.
+- No `TokenError` holds token text.
+- `Token::mint()` alone gives a token that is never written anywhere, for a
+  secret that lives as long as the process.
+  `cargo run -p web-access --example mint_token` prints one.
 
-`Tokens` is what a running guard accepts:
+`Tokens` is what a running guard accepts. Only a `Token` can join it:
 
 ```rust
-use web_access::{Grant, Tokens, TokensError};
+use web_access::{Grant, Tokens, token::Token};
 
 let tokens = Tokens::none()
-    .with("read-token", Grant::Read)?
-    .with("full-token", Grant::Full)?;
+    .with(Token::mint()?, Grant::Read)?
+    .with(Token::mint()?, Grant::Full)?;
 // Shorthand for one full token:
-let one = Tokens::full_only("full-token".to_owned());
-# Ok::<(), TokensError>(())
+let one = Tokens::full_only(Token::mint()?);
+# Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-Blank tokens are ignored: empty ones, and ones that are only whitespace once
-percent-decoded. Tokens are compared in constant time. If a request
-presents tokens for two grants (header and cookie), the higher grant wins.
-
-A `?token=` link or cookie value matches a token as written or percent-decoded
-once; the header matches as written. The HTTP parser strips spaces and tabs
-around a header value, and each cookie pair is trimmed, so `a ` sent as a
-header or cookie arrives as `a`. A share link carries the token
-percent-encoded, so two tokens that differ only in percent-encoding, such as
-`a b` and `a%20b`, would let one token's link reach the other: the link for
-`a b` carries `a%20b`. `with` refuses such a token with
-`TokensError::Collision`, whatever the two grants. The comparison decodes
-bytes and does not need UTF-8, so `%FF%41` and `%FFA` collide too. It then
-trims leading and trailing whitespace, so `a ` and `a`, or `a%20` and `a`,
-collide as well. `with`
-also refuses a token already in the set with a different grant, with
-`TokensError::Duplicate`: the higher grant would win, so the lower token's
-link would carry the higher grant. The same token with the same grant is
-ignored. `SharingRuntime` reports either as `RuntimeError::Tokens` without
-starting. Minted tokens never collide.
+Tokens are compared in constant time. If a request presents tokens for two
+grants (header and cookie), the higher grant wins. `with` refuses a token
+already in the set with a different grant, with `TokensError::Duplicate`: the
+higher grant would win, so the lower token's link would carry the higher
+grant. The same token with the same grant is ignored. `SharingRuntime` reports
+a duplicate as `RuntimeError::Tokens` and a bad token file as
+`RuntimeError::Token`, without starting.
 
 ## Serving: `serve` and `ServerHandle`
 
@@ -290,7 +294,7 @@ and starts serving.
 
 ```rust
 use axum::{Router, routing::get};
-use web_access::{Listen, Tokens, WebAccessConfig, serve, token};
+use web_access::{Listen, Tokens, WebAccessConfig, serve, token::Token};
 
 async fn share() -> Result<(), Box<dyn std::error::Error>> {
     let config = WebAccessConfig {
@@ -300,7 +304,7 @@ async fn share() -> Result<(), Box<dyn std::error::Error>> {
         admin: false,
     };
     let app = Router::new().route("/", get(|| async { "hello" }));
-    let server = serve(app, &config, Tokens::full_only(token::mint()?)).await?;
+    let server = serve(app, &config, Tokens::full_only(Token::mint()?)).await?;
 
     for link in server.share_urls() {
         println!("{link}"); // one per network address of this machine
@@ -356,16 +360,17 @@ If you run your own server, put the guard in front of your router yourself.
 ```rust
 use std::sync::Arc;
 use axum::{Router, middleware::from_fn_with_state, routing::get};
-use web_access::{GuardPolicy, GuardState, Tokens, guard::guard};
+use web_access::{GuardPolicy, GuardState, Tokens, guard::guard, token::Token};
 
 let state = Arc::new(GuardState::new(
-    Tokens::full_only("full-token".to_owned()),
+    Tokens::full_only(Token::mint()?),
     ["192.168.1.5:20015".to_owned(), "localhost:20015".to_owned()],
     GuardPolicy::default(),
 ));
 let app: Router = Router::new()
     .route("/", get(|| async { "hello" }))
     .layer(from_fn_with_state(state, guard));
+# Ok::<(), std::io::Error>(())
 ```
 
 - The second argument is the `Host` allowlist: `host:port` values, compared

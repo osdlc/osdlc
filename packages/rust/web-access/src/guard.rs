@@ -17,25 +17,24 @@
 //!    the normalised path; read-safe rules match the raw path.
 //! 4. A loopback peer passes with [`Grant::Full`] when
 //!    [`GuardPolicy::loopback_open`] is set.
-//! 5. A `GET` carrying a valid `?token=` (as written or percent-decoded; the
-//!    cookie is stored percent-encoded) sets the cookie to that token and
+//! 5. A `GET` carrying a valid `?token=` sets the cookie to that token and
 //!    answers with a small page that moves to the same URL without the
 //!    parameter (a `Refresh` header and a `<meta>` refresh, not a 303), so the
 //!    token never stays in the address bar, history or a `Referer`. The move
 //!    starts from this origin, so the `SameSite=Strict` cookie is sent even
 //!    when the link was opened from another site. It wins over any cookie, so
-//!    opening another share link replaces it. [`Tokens`] never holds two
-//!    tokens that differ only in percent-encoding or surrounding whitespace,
-//!    so a value cannot match one token as written and another decoded.
+//!    opening another share link replaces it.
 //! 6. Otherwise this port's `web_access_<port>` cookie ([`cookie_name`]) or
 //!    the `x-web-access-token` header must equal one of the [`Tokens`]
-//!    (constant-time compare against every entry), else 401. The HTTP parser
-//!    strips spaces and tabs around a header value, and each cookie pair is
-//!    trimmed. If header and cookies match different entries, the highest
-//!    [`Grant`] wins.
+//!    (constant-time compare against every entry), else 401. If header and
+//!    cookies match different entries, the highest [`Grant`] wins.
 //! 7. A [`Grant::Read`] request with a non-safe method, or a protocol upgrade,
 //!    is 403 `read_only` unless a [`GuardState::with_read_safe`] rule names the
 //!    route.
+//!
+//! Every token is a [`Token`], whose characters (`A-Z a-z 0-9 - _`) need no
+//! escaping, so a token is compared, put in a link and set in a cookie exactly
+//! as written.
 //!
 //! A passing request carries its [`AccessContext`] and [`Grant`] in the request
 //! extensions (see [`crate::context`]).
@@ -60,6 +59,7 @@ use crate::context::{AccessContext, Grant};
 use crate::origin::is_webview_origin;
 use crate::permissions::{RouteRule, normalize_path};
 use crate::response::{json_response, refuse};
+use crate::token::Token;
 
 /// What every share-cookie name starts with; [`cookie_name`] appends the port.
 const COOKIE_PREFIX: &str = "web_access_";
@@ -156,24 +156,14 @@ impl DenialBudget {
     }
 }
 
-/// One accepted token. Its `Debug` leaves the token out.
-#[derive(Clone)]
+/// One accepted token.
+#[derive(Debug, Clone)]
 struct Entry {
-    token: String,
+    token: Token,
     grant: Grant,
     /// Who it was issued to; for audit once tokens are per device.
     #[allow(dead_code)]
     label: Option<String>,
-}
-
-impl std::fmt::Debug for Entry {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Entry")
-            .field("token", &"<redacted>")
-            .field("grant", &self.grant)
-            .field("label", &self.label)
-            .finish()
-    }
 }
 
 /// Why [`Tokens::with`] or [`Tokens::with_label`] refused a token. It never
@@ -181,20 +171,6 @@ impl std::fmt::Debug for Entry {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum TokensError {
-    /// The added token and one already in the set differ only in
-    /// percent-encoding, such as `a b` and `a%20b`, so the share link of one
-    /// would carry the other, or only in leading or trailing whitespace, such
-    /// as `a ` and `a`, which the header and cookie parsers strip. Raised even
-    /// when the two grants are equal.
-    #[error(
-        "a {added:?} token and a {existing:?} token differ only in percent-encoding or surrounding whitespace; use tokens that are not variants of each other"
-    )]
-    Collision {
-        /// The grant of the token already in the set.
-        existing: Grant,
-        /// The grant of the token being added.
-        added: Grant,
-    },
     /// The added token is already in the set with a different grant. The
     /// guard gives a token its highest grant, so the lower one would grant
     /// the higher. The same token with the same grant is ignored.
@@ -212,47 +188,38 @@ pub enum TokensError {
 /// The accepted tokens, each with the grant it confers. They are fixed for the
 /// life of a [`GuardState`]: rotating a token means building a new state.
 ///
-/// No two distinct tokens in a set differ only in percent-encoding or
-/// surrounding whitespace (see [`TokensError::Collision`]), and no token is in
-/// it twice (see [`TokensError::Duplicate`]); [`Self::with`] refuses such a
-/// token, so every guard, `serve` and `SharingRuntime` included, starts only
-/// with a set that has neither.
+/// Only a [`Token`] can join a set, and no token is in it with two grants
+/// (see [`TokensError::Duplicate`]).
 #[derive(Debug, Clone, Default)]
 pub struct Tokens(Vec<Entry>);
 
 impl Tokens {
-    /// No tokens. Blank tokens are dropped: an empty one would match an empty
-    /// header or cookie, and one that is only whitespace once percent-decoded
-    /// arrives empty as a header or cookie, whose parsers strip it.
+    /// No tokens.
     pub fn none() -> Self {
         Self::default()
     }
 
-    /// One [`Grant::Full`] token, or none for `None`. A single token cannot
-    /// collide, so this cannot fail.
-    pub fn full_only(token: impl Into<Option<String>>) -> Self {
+    /// One [`Grant::Full`] token, or none for `None`.
+    pub fn full_only(token: impl Into<Option<Token>>) -> Self {
         match token.into() {
-            Some(t) if !is_blank(&t) => Self(vec![Entry {
-                token: t,
+            Some(token) => Self(vec![Entry {
+                token,
                 grant: Grant::Full,
                 label: None,
             }]),
-            _ => Self::none(),
+            None => Self::none(),
         }
     }
 
-    /// Add `token` with `grant`. A blank token, or one already in the set with
-    /// the same grant, is ignored.
+    /// Add `token` with `grant`. A token already in the set with the same
+    /// grant is ignored.
     ///
     /// # Errors
     ///
-    /// [`TokensError::Collision`] when `token` and a different token already
-    /// in the set differ only in percent-encoding or in leading or trailing
-    /// whitespace, whatever their grants.
     /// [`TokensError::Duplicate`] when `token` is already in the set with a
     /// different grant.
-    pub fn with(self, token: impl Into<String>, grant: Grant) -> Result<Self, TokensError> {
-        self.push(token.into(), grant, None)
+    pub fn with(self, token: Token, grant: Grant) -> Result<Self, TokensError> {
+        self.push(token, grant, None)
     }
 
     /// [`Self::with`], naming who the token was issued to.
@@ -265,30 +232,27 @@ impl Tokens {
     /// As [`Self::with`].
     pub fn with_label(
         self,
-        token: impl Into<String>,
+        token: Token,
         grant: Grant,
         label: impl Into<String>,
     ) -> Result<Self, TokensError> {
-        self.push(token.into(), grant, Some(label.into()))
+        self.push(token, grant, Some(label.into()))
     }
 
-    /// The one place a token joins a set, so every set is checked.
     fn push(
         mut self,
-        token: String,
+        token: Token,
         grant: Grant,
         label: Option<String>,
     ) -> Result<Self, TokensError> {
-        if is_blank(&token) {
-            return Ok(self);
-        }
-        let canon = canonical(&token);
-        if let Some(e) = self.0.iter().find(|e| canonical(&e.token) == canon) {
-            let (existing, added) = (e.grant, grant);
-            return match (e.token == token, existing == added) {
-                (true, true) => Ok(self),
-                (true, false) => Err(TokensError::Duplicate { existing, added }),
-                (false, _) => Err(TokensError::Collision { existing, added }),
+        if let Some(e) = self.0.iter().find(|e| e.token == token) {
+            return if e.grant == grant {
+                Ok(self)
+            } else {
+                Err(TokensError::Duplicate {
+                    existing: e.grant,
+                    added: grant,
+                })
             };
         }
         self.0.push(Entry {
@@ -299,7 +263,7 @@ impl Tokens {
         Ok(self)
     }
 
-    /// True when no token was added (blank tokens are never added).
+    /// True when no token was added.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -307,41 +271,23 @@ impl Tokens {
     /// The token to put in a share link: the first full one, else the first.
     /// An admin token is never picked over a full one, so the default link
     /// never carries a shell credential.
-    pub fn share_token(&self) -> Option<&str> {
+    pub fn share_token(&self) -> Option<&Token> {
         let pick = self.0.iter().find(|e| e.grant == Grant::Full);
-        pick.or(self.0.first()).map(|e| e.token.as_str())
+        pick.or(self.0.first()).map(|e| &e.token)
     }
 
-    /// The entry equal to `presented`; the highest grant if several are.
-    /// Compares against every entry, so timing does not reveal which one
-    /// matched. `ct_eq` returns early on a length mismatch, so a token's length
-    /// can leak (minted tokens are all the same length).
-    fn find(&self, presented: &str) -> Option<&Entry> {
-        let mut found: Option<&Entry> = None;
+    /// The grant of the entry equal to `presented`; the highest if several
+    /// are. Compares against every entry, so timing does not reveal which one
+    /// matched. `ct_eq` returns early on a length mismatch, so a token's
+    /// length can leak.
+    fn grant_for(&self, presented: &str) -> Option<Grant> {
+        let mut found: Option<Grant> = None;
         for entry in &self.0 {
-            if bool::from(presented.as_bytes().ct_eq(entry.token.as_bytes()))
-                && found.is_none_or(|f| entry.grant > f.grant)
-            {
-                found = Some(entry);
+            if bool::from(presented.as_bytes().ct_eq(entry.token.as_str().as_bytes())) {
+                found = found.max(Some(entry.grant));
             }
         }
         found
-    }
-
-    fn grant_for(&self, presented: &str) -> Option<Grant> {
-        self.find(presented).map(|e| e.grant)
-    }
-
-    /// [`Self::find`] for a `?token=` or cookie value, as written and
-    /// percent-decoded. The raw match keeps a link or cookie written before
-    /// tokens were encoded working for a hand-set token holding a literal
-    /// `%XX`. [`Self::push`] refuses any set where the two could match
-    /// different entries; should one slip through, the lower grant wins.
-    fn find_encoded(&self, raw: &str) -> Option<&Entry> {
-        match (self.find(raw), self.find(&decode_token(raw))) {
-            (Some(r), Some(d)) => Some(if d.grant < r.grant { d } else { r }),
-            (r, d) => r.or(d),
-        }
     }
 }
 
@@ -546,9 +492,9 @@ pub fn origin_matches_host(origin: &str, host: &str) -> bool {
     origin_authority(origin).is_some_and(|o| o == normalize_authority(host, 80))
 }
 
-/// Every cookie named `name`, still encoded (see [`encode_token`]): another
-/// app on the same host can set a stale one (cookies are not port-isolated),
-/// so the first must not shadow a valid one.
+/// Every cookie named `name`: another app on the same host can set a stale
+/// one (cookies are not port-isolated), so the first must not shadow a valid
+/// one.
 fn cookie_values<'a>(req: &'a Request<Body>, name: &'a str) -> impl Iterator<Item = &'a str> + 'a {
     req.headers()
         .get_all(header::COOKIE)
@@ -559,74 +505,7 @@ fn cookie_values<'a>(req: &'a Request<Body>, name: &'a str) -> impl Iterator<Ite
         .filter_map(move |(k, v)| (k == name).then_some(v))
 }
 
-/// Everything but the URL-unreserved characters `A-Z a-z 0-9 - . _ ~`.
-const TOKEN_ESCAPES: &percent_encoding::AsciiSet = &percent_encoding::NON_ALPHANUMERIC
-    .remove(b'-')
-    .remove(b'.')
-    .remove(b'_')
-    .remove(b'~');
-
-/// `token` with every character outside `A-Z a-z 0-9 - . _ ~` percent-encoded,
-/// so it is safe in a URL query and in a cookie value. A minted token has no
-/// such character, so it is unchanged.
-pub(crate) fn encode_token(token: &str) -> String {
-    percent_encoding::utf8_percent_encode(token, TOKEN_ESCAPES).to_string()
-}
-
-/// [`encode_token`] reversed. A value that does not decode to UTF-8 is kept as
-/// written.
-fn decode_token(raw: &str) -> String {
-    percent_encoding::percent_decode_str(raw)
-        .decode_utf8()
-        .map_or_else(|_| raw.to_owned(), |t| t.into_owned())
-}
-
-/// [`fully_decoded`] without leading or trailing ASCII whitespace: one form
-/// for every value that can reach the same token. hyper's header parser strips
-/// spaces and tabs around a header value and [`cookie_values`] trims each
-/// pair, so `a ` sent as a header or cookie arrives as `a`. Whitespace bytes
-/// are not hex digits, so they never take part in a `%XX` escape: trimming a
-/// value before decoding it does not change its canonical form.
-fn canonical(token: &str) -> Vec<u8> {
-    fully_decoded(token).trim_ascii().to_vec()
-}
-
-/// True for a token with an empty [`canonical`] form: empty, or only
-/// whitespace once percent-decoded. [`Tokens`] drops it.
-fn is_blank(token: &str) -> bool {
-    canonical(token).is_empty()
-}
-
-/// `token` percent-decoded as bytes until it stops changing. The decode does
-/// not require UTF-8, so `%FF%41` and `%FFA` both give the bytes `FF 41`.
-/// [`Tokens::push`] refuses two distinct tokens with the same result, after
-/// [`canonical`] trims it.
-///
-/// The guard matches a link or cookie value as written and decoded once, and
-/// the header as written (after the parser strips surrounding whitespace). A
-/// share link carries `encode_token(t)`, so its holder knows `t` and can
-/// present it, its encodings or its decodings on any path.
-/// Read `a b` with Admin `a%20b` is the plain case: the Read link carries the
-/// Admin token, which works as a header, a cookie or as `?token=a%2520b`.
-/// Checking only "one decodes or encodes to the other" would cover that, but
-/// not a chain (`a b`, `a%2520b`) or a guess at which characters to escape
-/// (`%61b`, `a%62`). Everything reachable either way has the same fully
-/// decoded form: `encode_token(x)` decodes to `x`, and [`decode_token`] either
-/// gives the byte-level decode or keeps the value. Equal forms are an
-/// equivalence, so checking each new token against the set is enough. Each
-/// decode that changes the value shortens it, so the loop ends.
-fn fully_decoded(token: &str) -> Vec<u8> {
-    let mut cur = token.as_bytes().to_vec();
-    loop {
-        let next: Vec<u8> = percent_encoding::percent_decode(&cur).collect();
-        if next == cur {
-            return cur;
-        }
-        cur = next;
-    }
-}
-
-/// The raw (still encoded) value of `?token=` and the query with that
+/// The value of `?token=`, as written, and the query with that
 /// parameter removed; `None` when the query has no `token` parameter.
 pub(crate) fn split_token_param(query: &str) -> Option<(&str, String)> {
     let is_token = |p: &&str| *p == "token" || p.starts_with("token=");
@@ -755,7 +634,7 @@ async fn check(state: &GuardState, req: Request<Body>, next: Next) -> Response {
     if method == Method::GET
         && let Some((tok, rest)) = req.uri().query().and_then(split_token_param)
     {
-        if let Some(entry) = state.tokens.find_encoded(tok) {
+        if state.tokens.grant_for(tok).is_some() {
             // Exactly one leading slash: browsers read `//host` as a
             // protocol-relative, off-origin redirect.
             let safe = format!("/{}", path.trim_start_matches('/'));
@@ -764,10 +643,8 @@ async fn check(state: &GuardState, req: Request<Body>, next: Next) -> Response {
             } else {
                 format!("{safe}?{rest}")
             };
-            // Encoded, so a token with `;` or a control character cannot break
-            // the header.
-            let value = encode_token(&entry.token);
-            let set_cookie = format!("{cookie}={value}; HttpOnly; SameSite=Strict; Path=/");
+            // `tok` equals a `Token`, so it holds nothing that breaks the header.
+            let set_cookie = format!("{cookie}={tok}; HttpOnly; SameSite=Strict; Path=/");
             return bounce(&location, &set_cookie);
         }
         presented_wrong = true;
@@ -781,7 +658,7 @@ async fn check(state: &GuardState, req: Request<Body>, next: Next) -> Response {
     let mut grant = header_tok.and_then(|t| state.tokens.grant_for(t));
     for t in cookie_values(&req, &cookie) {
         presented_wrong = true;
-        grant = grant.max(state.tokens.find_encoded(t).map(|e| e.grant));
+        grant = grant.max(state.tokens.grant_for(t));
     }
     if let Some(grant) = grant {
         return state.admit(req, context, grant, next).await;
@@ -805,12 +682,16 @@ mod tests {
 
     use super::*;
 
-    const TOKEN: &str = "s3cret-token";
+    const TOKEN: &str = "s3cret-token-0123456789abcdefghij";
     const HOST: &str = "192.168.1.5:3000";
+
+    fn tok(text: &str) -> Token {
+        Token::parse(text).unwrap()
+    }
 
     fn app(policy: GuardPolicy, on_denied: Option<Arc<AtomicUsize>>) -> Router {
         let mut state = GuardState::new(
-            Tokens::full_only(TOKEN.to_owned()),
+            Tokens::full_only(tok(TOKEN)),
             ["localhost:3000".to_owned(), HOST.to_owned()],
             policy,
         );
@@ -883,14 +764,17 @@ mod tests {
 
     #[tokio::test]
     async fn valid_cookie_passes() {
-        let c = [("cookie", "a=b; web_access_3000=s3cret-token; c=d")];
+        let c = [(
+            "cookie",
+            "a=b; web_access_3000=s3cret-token-0123456789abcdefghij; c=d",
+        )];
         let res = status(app(GuardPolicy::default(), None), req("GET", "/", LAN, &c)).await;
         assert_eq!(res.status(), StatusCode::OK);
     }
 
     #[tokio::test]
     async fn token_query_sets_cookie_and_redirects_without_the_token() {
-        let uri = "/?a=1&token=s3cret-token&b=2";
+        let uri = "/?a=1&token=s3cret-token-0123456789abcdefghij&b=2";
         let res = status(app(GuardPolicy::default(), None), req("GET", uri, LAN, &[])).await;
         let loc = bounce_target(&res);
         assert_eq!(loc, "/?a=1&b=2");
@@ -898,7 +782,7 @@ mod tests {
         assert!(!res.headers().contains_key(header::LOCATION));
         assert!(!loc.contains("token"));
         let cookie = res.headers()[header::SET_COOKIE].to_str().unwrap();
-        assert!(cookie.starts_with("web_access_3000=s3cret-token"));
+        assert!(cookie.starts_with("web_access_3000=s3cret-token-0123456789abcdefghij"));
         assert!(cookie.contains("HttpOnly"));
         assert!(cookie.contains("SameSite=Strict"));
         assert_eq!(res.headers()[header::REFERRER_POLICY], "no-referrer");
@@ -908,7 +792,7 @@ mod tests {
     async fn token_query_with_no_other_params_redirects_to_the_bare_path() {
         let res = status(
             app(GuardPolicy::default(), None),
-            req("GET", "/?token=s3cret-token", LAN, &[]),
+            req("GET", "/?token=s3cret-token-0123456789abcdefghij", LAN, &[]),
         )
         .await;
         assert_eq!(bounce_target(&res), "/");
@@ -918,7 +802,12 @@ mod tests {
     async fn token_redirect_never_leaves_the_origin() {
         let res = status(
             app(GuardPolicy::default(), None),
-            req("GET", "//evil.example/?token=s3cret-token", LAN, &[]),
+            req(
+                "GET",
+                "//evil.example/?token=s3cret-token-0123456789abcdefghij",
+                LAN,
+                &[],
+            ),
         )
         .await;
         assert_eq!(bounce_target(&res), "/evil.example/");
@@ -928,7 +817,12 @@ mod tests {
     async fn backslash_path_is_refused_before_the_token_redirect() {
         let res = status(
             app(GuardPolicy::default(), None),
-            req("GET", "/\\evil.example/?token=s3cret-token", LAN, &[]),
+            req(
+                "GET",
+                "/\\evil.example/?token=s3cret-token-0123456789abcdefghij",
+                LAN,
+                &[],
+            ),
         )
         .await;
         assert_eq!(res.status(), StatusCode::BAD_REQUEST);
@@ -948,7 +842,7 @@ mod tests {
     async fn any_matching_cookie_passes_even_after_a_stale_one() {
         let c = [(
             "cookie",
-            "web_access_3000=stale; web_access_3000=s3cret-token",
+            "web_access_3000=stale; web_access_3000=s3cret-token-0123456789abcdefghij",
         )];
         let res = status(app(GuardPolicy::default(), None), req("GET", "/", LAN, &c)).await;
         assert_eq!(res.status(), StatusCode::OK);
@@ -957,7 +851,7 @@ mod tests {
     #[tokio::test]
     async fn empty_token_behaves_as_no_token() {
         let state = GuardState::new(
-            Tokens::full_only(String::new()),
+            Tokens::full_only(None),
             [HOST.to_owned()],
             GuardPolicy::default(),
         );
@@ -988,15 +882,15 @@ mod tests {
         assert_eq!(res.status(), StatusCode::OK);
     }
 
-    const READ_TOKEN: &str = "view-only-token";
+    const READ_TOKEN: &str = "view-only-token-0123456789abcdefg";
 
     /// Echoes the grant and context the handler sees; POST /x is a mutation,
     /// POST /q a read-only query.
     fn two_token_app(policy: GuardPolicy) -> Router {
         let state = GuardState::new(
             Tokens::none()
-                .with(READ_TOKEN, Grant::Read)
-                .and_then(|t| t.with(TOKEN, Grant::Full))
+                .with(tok(READ_TOKEN), Grant::Read)
+                .and_then(|t| t.with(tok(TOKEN), Grant::Full))
                 .unwrap(),
             [HOST.to_owned()],
             policy,
@@ -1105,7 +999,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let full = token::load_or_mint(dir.path()).unwrap();
         let read = token::load_or_mint_read(dir.path()).unwrap();
-        let tokens = |full: &str, read: &str| {
+        let tokens = |full: Token, read: Token| {
             Tokens::none()
                 .with(read, Grant::Read)
                 .and_then(|t| t.with(full, Grant::Full))
@@ -1121,16 +1015,19 @@ mod tests {
             |app: Router, tok: &str| status(app, req("GET", "/", LAN, &[(TOKEN_HEADER, tok)]));
         let rotated = token::rotate_read(dir.path()).unwrap();
         let app = app(tokens(
-            &token::load_or_mint(dir.path()).unwrap(),
-            &token::load_or_mint_read(dir.path()).unwrap(),
+            token::load_or_mint(dir.path()).unwrap(),
+            token::load_or_mint_read(dir.path()).unwrap(),
         ));
-        assert_eq!(get_with(app.clone(), &full).await.status(), StatusCode::OK);
         assert_eq!(
-            get_with(app.clone(), &rotated).await.status(),
+            get_with(app.clone(), full.as_str()).await.status(),
             StatusCode::OK
         );
         assert_eq!(
-            get_with(app, &read).await.status(),
+            get_with(app.clone(), rotated.as_str()).await.status(),
+            StatusCode::OK
+        );
+        assert_eq!(
+            get_with(app, read.as_str()).await.status(),
             StatusCode::UNAUTHORIZED
         );
     }
@@ -1209,12 +1106,12 @@ mod tests {
         );
     }
 
-    const ADMIN_TOKEN: &str = "admin-token";
+    const ADMIN_TOKEN: &str = "admin-token-0123456789abcdefghijk";
 
     fn admin_app(admin_on: bool) -> Router {
-        let mut tokens = Tokens::full_only(TOKEN.to_owned());
+        let mut tokens = Tokens::full_only(tok(TOKEN));
         if admin_on {
-            tokens = tokens.with(ADMIN_TOKEN, Grant::Admin).unwrap();
+            tokens = tokens.with(tok(ADMIN_TOKEN), Grant::Admin).unwrap();
         }
         let state = GuardState::new(tokens, [HOST.to_owned()], GuardPolicy::default());
         let who = |g: Grant| async move { format!("{g:?}") };
@@ -1231,10 +1128,8 @@ mod tests {
         let res = status(admin_app(false), req("GET", "/", LAN, &h)).await;
         assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
         // Admin outranks full when both are presented, and is not read-only.
-        let both = [
-            (TOKEN_HEADER, TOKEN),
-            ("cookie", "web_access_3000=admin-token"),
-        ];
+        let c = format!("web_access_3000={ADMIN_TOKEN}");
+        let both = [(TOKEN_HEADER, TOKEN), ("cookie", c.as_str())];
         let res = status(admin_app(true), req("GET", "/", LAN, &both)).await;
         assert_eq!(body(res).await, "Admin");
     }
@@ -1242,10 +1137,10 @@ mod tests {
     #[test]
     fn the_default_share_token_is_never_the_admin_one() {
         let t = Tokens::none()
-            .with(ADMIN_TOKEN, Grant::Admin)
-            .and_then(|t| t.with(TOKEN, Grant::Full))
+            .with(tok(ADMIN_TOKEN), Grant::Admin)
+            .and_then(|t| t.with(tok(TOKEN), Grant::Full))
             .unwrap();
-        assert_eq!(t.share_token(), Some(TOKEN));
+        assert_eq!(t.share_token().map(Token::as_str), Some(TOKEN));
     }
 
     #[tokio::test]
@@ -1319,7 +1214,12 @@ mod tests {
     async fn token_query_does_not_bootstrap_on_post() {
         let res = status(
             app(GuardPolicy::default(), None),
-            req("POST", "/x?token=s3cret-token", LAN, &[]),
+            req(
+                "POST",
+                "/x?token=s3cret-token-0123456789abcdefghij",
+                LAN,
+                &[],
+            ),
         )
         .await;
         assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
@@ -1532,7 +1432,12 @@ mod tests {
     async fn the_landing_page_escapes_the_target_and_is_not_cached() {
         let res = status(
             app(GuardPolicy::default(), None),
-            req("GET", "/a%22b?x=%3C&token=s3cret-token", LAN, &[]),
+            req(
+                "GET",
+                "/a%22b?x=%3C&token=s3cret-token-0123456789abcdefghij",
+                LAN,
+                &[],
+            ),
         )
         .await;
         assert_eq!(bounce_target(&res), "/a%22b?x=%3C");
@@ -1542,142 +1447,29 @@ mod tests {
         assert!(!html.contains("token"), "{html}");
     }
 
+    /// The share link carries the token as written, and the cookie it sets
+    /// holds the same text and admits the next request.
     #[tokio::test]
-    async fn a_percent_encoded_link_token_is_decoded() {
+    async fn a_share_link_sets_the_token_as_written_and_the_cookie_admits() {
+        let token = Token::mint().unwrap();
         let state = GuardState::new(
-            Tokens::full_only("a&b#c d".to_owned()),
+            Tokens::full_only(token.clone()),
             [HOST.to_owned()],
             GuardPolicy::default(),
         );
         let app = Router::new()
             .route("/", get(|| async { "ok" }))
             .layer(axum::middleware::from_fn_with_state(Arc::new(state), guard));
-        let url = crate::share_url("192.168.1.5:3000".parse().unwrap(), "a&b#c d");
-        let path_and_query = url.strip_prefix("http://192.168.1.5:3000").unwrap();
-        assert_eq!(path_and_query, "/?token=a%26b%23c%20d");
-        let res = status(app, req("GET", path_and_query, LAN, &[])).await;
+        let link = crate::share_url("192.168.1.5:3000".parse().unwrap(), &token);
+        let path = link.strip_prefix("http://192.168.1.5:3000").unwrap();
+        assert_eq!(path, format!("/?token={token}"));
+        let res = status(app.clone(), req("GET", path, LAN, &[])).await;
         assert_eq!(bounce_target(&res), "/");
-    }
-
-    /// A link or cookie written before tokens were percent-encoded carries a
-    /// hand-set token raw; one holding `%41` must still match itself.
-    #[tokio::test]
-    async fn a_raw_link_and_cookie_for_a_token_holding_a_percent_still_work() {
-        const RAW: &str = "ab%41cdef-hand-set";
-        let app = || {
-            let state = GuardState::new(
-                Tokens::full_only(RAW.to_owned()),
-                [HOST.to_owned()],
-                GuardPolicy::default(),
-            );
-            Router::new()
-                .route("/", get(|| async { "ok" }))
-                .layer(axum::middleware::from_fn_with_state(Arc::new(state), guard))
-        };
-        let link = format!("/?token={RAW}");
-        let res = status(app(), req("GET", &link, LAN, &[])).await;
-        assert_eq!(bounce_target(&res), "/");
-        // The cookie it sets is the encoded token.
         let set = res.headers()[header::SET_COOKIE].to_str().unwrap();
-        assert!(
-            set.starts_with("web_access_3000=ab%2541cdef-hand-set;"),
-            "{set}"
-        );
-        let cookie = format!("{}={RAW}", cookie_name(3000));
-        let res = status(app(), req("GET", "/", LAN, &[("cookie", &cookie)])).await;
+        let pair = set.split(';').next().unwrap();
+        assert_eq!(pair, format!("web_access_3000={token}"));
+        let res = status(app, req("GET", "/", LAN, &[("cookie", pair)])).await;
         assert_eq!(res.status(), StatusCode::OK);
-    }
-
-    /// Hand-set tokens `a b` and `a%20b` collide: the Read link for `a b`
-    /// carries `a%20b`, the other token byte for byte, which would work as a
-    /// header, a cookie or re-encoded as `?token=a%2520b`. So the set is
-    /// refused, in both orders and with equal grants.
-    #[test]
-    fn tokens_differing_only_in_percent_encoding_are_refused() {
-        let pairs = [
-            ("a b", "a%20b"),
-            ("a b", "a%2520b"),
-            ("%61b", "a%62"),
-            ("ab", "%61b"),
-            ("%FF%41", "%FFA"),
-        ];
-        for (x, y) in pairs {
-            assert_collides(x, y);
-        }
-        // Tokens that only share a decoded prefix pass.
-        assert!(
-            Tokens::none()
-                .with("a b", Grant::Read)
-                .and_then(|t| t.with("a%20bc", Grant::Admin))
-                .is_ok()
-        );
-    }
-
-    /// Both orders of `x` and `y`, with grants Read/Admin, Admin/Read and
-    /// Full/Full, are refused as a collision whose message names neither.
-    fn assert_collides(x: &str, y: &str) {
-        for (first, second) in [(x, y), (y, x)] {
-            for (g1, g2) in [
-                (Grant::Read, Grant::Admin),
-                (Grant::Admin, Grant::Read),
-                (Grant::Full, Grant::Full),
-            ] {
-                let err = Tokens::none()
-                    .with(first, g1)
-                    .and_then(|t| t.with_label(second, g2, "phone"))
-                    .unwrap_err();
-                assert_eq!(
-                    err,
-                    TokensError::Collision {
-                        existing: g1,
-                        added: g2
-                    },
-                    "{first:?} then {second:?}"
-                );
-                assert!(!err.to_string().contains(first), "{err}");
-                assert!(!err.to_string().contains(second), "{err}");
-            }
-        }
-    }
-
-    /// hyper's header parser strips spaces and tabs around a header value and
-    /// the cookie parser trims each pair, so Read `x9q ` sent as written
-    /// arrives as Admin `x9q`. Tokens that differ only in leading or trailing
-    /// whitespace, raw or percent-encoded, are refused; inner whitespace still
-    /// tells two tokens apart.
-    #[test]
-    fn tokens_differing_only_in_surrounding_whitespace_are_refused() {
-        let pairs = [
-            ("x9q ", "x9q"),
-            (" x9q", "x9q"),
-            ("x9q\t", "x9q"),
-            ("\tx9q", "x9q"),
-            (" x9q\t", "x9q"),
-            ("x9q%20", "x9q"),
-            ("x9q%2520", "x9q"),
-            ("%09x9q", "x9q"),
-            ("x9q%20", "x9q "),
-        ];
-        for (x, y) in pairs {
-            assert_collides(x, y);
-        }
-        assert!(
-            Tokens::none()
-                .with("x9q", Grant::Read)
-                .and_then(|t| t.with("x 9q", Grant::Admin))
-                .is_ok()
-        );
-    }
-
-    /// A token that is only whitespace, raw or percent-encoded, is blank and
-    /// dropped like an empty one.
-    #[test]
-    fn whitespace_only_tokens_are_dropped() {
-        for blank in ["", " ", "\t", " \t ", "%20", "%09%20", "%2520"] {
-            let set = Tokens::none().with(blank, Grant::Admin).unwrap();
-            assert!(set.is_empty(), "{blank:?}");
-            assert!(Tokens::full_only(blank.to_owned()).is_empty(), "{blank:?}");
-        }
     }
 
     /// The guard gives a token its highest grant, so the same token added as
@@ -1685,10 +1477,11 @@ mod tests {
     /// refused in both orders; the same token with the same grant is ignored.
     #[test]
     fn the_same_token_with_two_grants_is_refused() {
+        let x = Token::mint().unwrap();
         for (g1, g2) in [(Grant::Read, Grant::Admin), (Grant::Admin, Grant::Read)] {
             let err = Tokens::none()
-                .with("x9q", g1)
-                .and_then(|t| t.with_label("x9q", g2, "phone"))
+                .with(x.clone(), g1)
+                .and_then(|t| t.with_label(x.clone(), g2, "phone"))
                 .unwrap_err();
             assert_eq!(
                 err,
@@ -1697,41 +1490,21 @@ mod tests {
                     added: g2
                 }
             );
-            assert!(!err.to_string().contains("x9q"), "{err}");
+            assert!(!err.to_string().contains(x.as_str()), "{err}");
         }
         let set = Tokens::none()
-            .with("x9q", Grant::Read)
-            .and_then(|t| t.with("x9q", Grant::Read))
+            .with(x.clone(), Grant::Read)
+            .and_then(|t| t.with(x.clone(), Grant::Read))
             .unwrap();
         assert_eq!(set.0.len(), 1);
-        assert_eq!(set.grant_for("x9q"), Some(Grant::Read));
-    }
-
-    /// The second line of defence, reached only with a set built around
-    /// [`Tokens::push`]: a value whose raw and decoded forms match different
-    /// entries gets the lower grant, in both orders.
-    #[test]
-    fn find_encoded_gives_the_lower_grant_when_raw_and_decoded_disagree() {
-        let entry = |token: &str, grant| Entry {
-            token: token.to_owned(),
-            grant,
-            label: None,
-        };
-        for (spaced, percent) in [(Grant::Read, Grant::Admin), (Grant::Full, Grant::Read)] {
-            let set = Tokens(vec![entry("a b", spaced), entry("a%20b", percent)]);
-            let got = set.find_encoded("a%20b").map(|e| e.grant);
-            assert_eq!(got, Some(spaced.min(percent)));
-            // The encoded `a%20b` matches only that token, at its own grant.
-            let got = set.find_encoded("a%2520b").map(|e| e.grant);
-            assert_eq!(got, Some(percent));
-        }
+        assert_eq!(set.grant_for(x.as_str()), Some(Grant::Read));
     }
 
     /// A guard on `HOST` with a wildcard bind on :3000 whose interface list
     /// holds 10.0.0.7; `calls` counts how often the list is read.
     fn live_host_app(calls: Arc<AtomicUsize>) -> Router {
         let state = GuardState::new(
-            Tokens::full_only(TOKEN.to_owned()),
+            Tokens::full_only(tok(TOKEN)),
             [HOST.to_owned()],
             GuardPolicy::default(),
         )
@@ -1768,7 +1541,16 @@ mod tests {
         let res = status(app(), req_on("GET", "/", LIVE, &h)).await;
         assert_eq!(res.status(), StatusCode::OK);
         // Its share link sets this port's cookie.
-        let res = status(app(), req_on("GET", "/?token=s3cret-token", LIVE, &[])).await;
+        let res = status(
+            app(),
+            req_on(
+                "GET",
+                "/?token=s3cret-token-0123456789abcdefghij",
+                LIVE,
+                &[],
+            ),
+        )
+        .await;
         let set = res.headers()[header::SET_COOKIE].to_str().unwrap();
         assert!(set.starts_with("web_access_3000="), "{set}");
         // Its own Origin passes a mutation; another address's does not.
@@ -1788,7 +1570,7 @@ mod tests {
     #[tokio::test]
     async fn a_wildcard_read_safe_rule_matches_an_encoded_name_below_it() {
         let state = GuardState::new(
-            Tokens::none().with(READ_TOKEN, Grant::Read).unwrap(),
+            Tokens::none().with(tok(READ_TOKEN), Grant::Read).unwrap(),
             [HOST.to_owned()],
             GuardPolicy::default(),
         )
@@ -1802,27 +1584,6 @@ mod tests {
         // The prefix itself must be spelled as the rule spells it.
         let res = status(app, req("POST", "/n%6ftes/a", LAN, &h)).await;
         assert_eq!(res.status(), StatusCode::FORBIDDEN);
-    }
-
-    #[tokio::test]
-    async fn a_token_with_cookie_breaking_characters_round_trips_through_the_cookie() {
-        let token = "ab;c d\u{7f}";
-        let state = GuardState::new(
-            Tokens::full_only(token.to_owned()),
-            [HOST.to_owned()],
-            GuardPolicy::default(),
-        );
-        let app = Router::new()
-            .route("/", get(|| async { "ok" }))
-            .layer(axum::middleware::from_fn_with_state(Arc::new(state), guard));
-        let link = crate::share_url("192.168.1.5:3000".parse().unwrap(), token);
-        let path = link.strip_prefix("http://192.168.1.5:3000").unwrap();
-        let res = status(app.clone(), req("GET", path, LAN, &[])).await;
-        let set = res.headers()[header::SET_COOKIE].to_str().unwrap();
-        let pair = set.split(';').next().unwrap();
-        assert_eq!(pair, "web_access_3000=ab%3Bc%20d%7F");
-        let res = status(app, req("GET", "/", LAN, &[("cookie", pair)])).await;
-        assert_eq!(res.status(), StatusCode::OK);
     }
 
     #[tokio::test]
@@ -1861,12 +1622,12 @@ mod tests {
 
     #[test]
     fn debug_output_never_shows_a_token() {
-        let tokens = Tokens::full_only("s3cret".to_owned())
-            .with("r3ad", Grant::Read)
+        let tokens = Tokens::full_only(tok(TOKEN))
+            .with(tok(READ_TOKEN), Grant::Read)
             .unwrap();
         let shown = format!("{tokens:?}");
         assert!(
-            !shown.contains("s3cret") && !shown.contains("r3ad"),
+            !shown.contains(TOKEN) && !shown.contains(READ_TOKEN),
             "{shown}"
         );
         assert!(shown.contains("Full"), "{shown}");

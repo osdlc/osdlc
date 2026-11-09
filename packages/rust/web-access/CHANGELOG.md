@@ -7,30 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `token::Token`: a token that is always well formed. It is built only by
+  `Token::mint()` (32 random bytes, base64url) or `Token::parse`, which accepts
+  at least `token::MIN_TOKEN_LEN` (32) characters of `A-Z a-z 0-9 - _` and
+  nothing else, so minted tokens and 64-character hex digests pass. `Display`
+  and `as_str` give the text, `Debug` leaves it out, and equality compares in
+  constant time.
+- `token::TokenError`, which never holds token text: `Malformed`, `BadFile`
+  (names the file), `BadOverride` (names the override) and `Io`.
+- `token::override_from_env` and `token::parse_override`, which read an
+  override and refuse one that is set but is not a token.
+- The `mint_token` example prints a new token.
+
 ### Changed
 
+- Breaking: tokens must be well formed; hand-set tokens of any other form are
+  refused. Only a `Token` can join a `Tokens` set: `Tokens::with`,
+  `Tokens::with_label` and `Tokens::full_only` take a `Token`, and
+  `Tokens::share_token` returns one. A token file or override that holds
+  anything else, an empty or whitespace-only file included, is an error naming
+  the file or variable, and `SharingRuntime` does not start; the file is left
+  as it is. Before, an empty file was minted over, and any text was a token.
+- Breaking: the `token` file helpers (`load_or_mint*`, `resolve*`,
+  `rotate*`) return `Result<Token, TokenError>`, and `resolve` and
+  `SharingRuntime::with_full_token_override` take an `Option<Token>`.
+  `RuntimeError::Token` holds a `TokenError`. `share_url` and
+  `ServerHandle::share_urls_for` take a `&Token`.
+- Breaking: `token::mint` is removed; use `Token::mint`.
 - Breaking: `Tokens::with` and `Tokens::with_label` return
-  `Result<Tokens, TokensError>`. They refuse a token that differs from one
-  already in the set only in percent-encoding, such as `a b` and `a%20b`,
-  whatever the two grants, with `TokensError::Collision`. `SharingRuntime`
-  reports such a set, from hand-set token files or an override, as
-  `RuntimeError::Tokens` and does not start. Before, the share link for `a b`
-  carried `a%20b`, the other token byte for byte, so its holder reached the
-  other token's grant through the `x-web-access-token` header, a cookie, or a
-  re-encoded `?token=a%2520b`. The comparison decodes bytes without
-  requiring UTF-8, so `%FF%41` and `%FFA` collide too. They also refuse a
-  token already in the set with a different grant, with
-  `TokensError::Duplicate`: the guard gives a token its highest grant, so
-  matching hand-set read and admin files made the Read link grant Admin. The
-  same token with the same grant is ignored. Chain with `?` or `and_then`;
-  `Tokens::full_only` still cannot fail.
-- Breaking: `Tokens::with` and `Tokens::with_label` also refuse, with
-  `TokensError::Collision`, two tokens that differ only in leading or trailing
-  whitespace, raw or percent-encoded, such as `a ` and `a` or `a%20` and `a`.
-  The HTTP parser strips spaces and tabs around a header value and cookie
-  pairs are trimmed, so the holder of a Read `a ` sending it as written
-  reached an Admin `a`. A token that is only whitespace once percent-decoded
-  is now blank and dropped, as an empty one is.
+  `Result<Tokens, TokensError>`. They refuse a token already in the set with a
+  different grant, with `TokensError::Duplicate`: the guard gives a token its
+  highest grant, so matching read and admin files made the Read link grant
+  Admin. The same token with the same grant is ignored. Chain with `?` or
+  `and_then`; `Tokens::full_only` cannot fail.
+- A share link carries the token as written, and a `?token=` or cookie value
+  is compared as written. A token needs no escaping, so nothing is
+  percent-encoded or decoded any more.
 
 ### Fixed
 
@@ -44,11 +58,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   answered 421 until sharing was restarted. `serve` rereads the interface
   list at most every two seconds. Share links still list the addresses present
   at start.
-- A `?token=` link or cookie value is matched as written as well as
-  percent-decoded, so a raw link or cookie for a hand-set token holding a
-  literal `%XX` still works. A set where the raw and the decoded value could
-  match two different tokens is refused (see Changed); should one be built
-  anyway, the lower grant wins.
 
 ## [0.4.1] - 2026-11-07
 
