@@ -178,7 +178,7 @@ jobs:
               .[$i + 1:] as $older
               | ($older | map(.conclusion == "cancelled") | index(false)) as $k
               | $older[0:($k // ($older | length))] as $burst
-              | if ($burst | length) > 0 then $burst[-1].createdAt else .[$i].createdAt end
+              | (($burst | last) // .[$i]).createdAt
             end
           JQ
           )"
