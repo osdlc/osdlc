@@ -368,7 +368,7 @@ export function machineConfigFile<S extends z.ZodTypeAny>(
  */
 function followLinks(file: string): string {
   let at = file
-  // The kernel's own limit on a chain of links; a loop past it fails in the write.
+  // The kernel's own limit on a chain of links.
   for (let hops = 0; hops < 40; hops++) {
     try {
       if (!lstatSync(at).isSymbolicLink()) return at
@@ -377,7 +377,8 @@ function followLinks(file: string): string {
     }
     at = resolve(dirname(at), readlinkSync(at))
   }
-  return at
+  // A rename onto `at` would replace a link in the chain, so refuse rather than return it.
+  throw Object.assign(new Error(`too many levels of symbolic links: ${file}`), { code: 'ELOOP' })
 }
 
 /** The file's bytes, or `null` when it does not exist. Any other read error is thrown. */

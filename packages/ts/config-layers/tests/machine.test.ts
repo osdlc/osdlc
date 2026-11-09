@@ -283,6 +283,35 @@ describe('write', () => {
     },
   )
 
+  test.skipIf(process.platform === 'win32')(
+    'without an etag, a dangling link creates its target and no .bak',
+    () => {
+      const real = join(sb.root, 'real.yaml')
+      const link = join(sb.root, 'link.yaml')
+      symlinkSync(real, link)
+      process.env[sb.machine.env] = link
+      sb.machine.write('repos: [/x]\n')
+      expect(lstatSync(link).isSymbolicLink()).toBe(true)
+      expect(readFileSync(real, 'utf-8')).toBe('repos: [/x]\n')
+      expect(existsSync(`${real}.bak`)).toBe(false)
+    },
+  )
+
+  test.skipIf(process.platform === 'win32')(
+    'a symlink loop throws and leaves both links in place, with or without an etag',
+    () => {
+      const a = join(sb.root, 'a.yaml')
+      const link = join(sb.root, 'link.yaml')
+      symlinkSync(a, link)
+      symlinkSync(link, a)
+      process.env[sb.machine.env] = link
+      expect(() => sb.machine.write('repos: [/x]\n')).toThrow(/too many levels/)
+      expect(() => sb.machine.write('repos: [/x]\n', { etag: null })).toThrow(/too many levels/)
+      expect(lstatSync(link).isSymbolicLink()).toBe(true)
+      expect(lstatSync(a).isSymbolicLink()).toBe(true)
+    },
+  )
+
   test('returns the etag of what it wrote', () => {
     expect(sb.machine.write('repos: [/x]\n')).toBe(etag('repos: [/x]\n'))
   })
