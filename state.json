@@ -125,10 +125,10 @@
       "path": "packages/rust/web-access/src/guard.rs",
       "line": 585,
       "title": "canonical claims one form for every value that can reach a token, but delimiter truncation in a raw cookie or link (and + from form encoding) reaches a token with a different canonical form",
-      "comment": null,
-      "status": "fixed",
+      "comment": "https://github.com/osdlc/osdlc/pull/704#discussion_r4509294652",
+      "status": "open",
       "reason": null,
-      "fixedIn": "458a32c2"
+      "fixedIn": null
     },
     {
       "id": "r6-2",
@@ -136,10 +136,10 @@
       "path": "packages/rust/web-access/src/guard.rs",
       "line": 226,
       "title": "Tokens::none says a whitespace-only-once-decoded token arrives empty; a %20 token arrives intact as a header and as the server-set cookie",
-      "comment": null,
-      "status": "fixed",
+      "comment": "https://github.com/osdlc/osdlc/pull/704#discussion_r4509294659",
+      "status": "open",
       "reason": null,
-      "fixedIn": "458a32c2"
+      "fixedIn": null
     }
   ]
 }
