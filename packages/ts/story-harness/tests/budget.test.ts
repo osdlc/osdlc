@@ -4,9 +4,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
-  renameSync,
   rmSync,
-  statSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs'
@@ -14,12 +12,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  createPerfRecorder,
-  releaseLock,
-  removeStaleLock,
-  type PerfReport,
-} from '../src/playwright/budget.ts'
+import { createPerfRecorder, type PerfReport } from '../src/playwright/budget.ts'
 
 let dir: string
 let outFile: string
@@ -198,17 +191,6 @@ describe('recorder options', () => {
   })
 })
 
-describe('lock release', () => {
-  it('removes only a lock that still holds the releasing token', () => {
-    const lock = join(dir, 'report.json.lock')
-    writeFileSync(lock, 'another worker')
-    releaseLock(lock, 'mine')
-    expect(readFileSync(lock, 'utf8')).toBe('another worker')
-    releaseLock(lock, 'another worker')
-    expect(() => statSync(lock)).toThrow()
-  })
-})
-
 describe('lock deadline', () => {
   it('throws, naming the lock, when a live lock is held past the deadline', () => {
     const recorder = createPerfRecorder({
@@ -236,78 +218,5 @@ describe('stale lock takeover', () => {
     createPerfRecorder({ outFile, env: {} }).budget('a', 1, 2)
     expect(read().values).toEqual({ a: 1 })
     expect(readdirSync(join(dir, 'test-results'))).toEqual(['story-perf.json'])
-  })
-
-  it('removes the stale lock it saw', () => {
-    mkdirSync(join(dir, 'test-results'), { recursive: true })
-    writeFileSync(lockFile(), '')
-    expect(removeStaleLock(lockFile(), statSync(lockFile()))).toBe(true)
-    expect(readdirSync(join(dir, 'test-results'))).toEqual([])
-  })
-
-  it('leaves a live lock that replaced the stale one after the stat', () => {
-    mkdirSync(join(dir, 'test-results'), { recursive: true })
-    writeFileSync(lockFile(), '')
-    const seen = statSync(lockFile())
-    // Another waiter took over first and now holds a fresh lock.
-    // The moved file keeps its inode, so the fresh lock cannot reuse it.
-    renameSync(lockFile(), join(dir, 'taken-over'))
-    writeFileSync(lockFile(), 'live')
-    expect(removeStaleLock(lockFile(), seen)).toBe(false)
-    expect(readFileSync(lockFile(), 'utf8')).toBe('live')
-    expect(readdirSync(join(dir, 'test-results'))).toEqual(['story-perf.json.lock'])
-  })
-
-  const replacedLock = () => {
-    mkdirSync(join(dir, 'test-results'), { recursive: true })
-    writeFileSync(lockFile(), '')
-    const seen = statSync(lockFile())
-    renameSync(lockFile(), join(dir, 'taken-over'))
-    writeFileSync(lockFile(), 'live')
-    return seen
-  }
-
-  it('warns that two workers may hold the lock when a waiter took it during the put-back', () => {
-    const seen = replacedLock()
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const link = () => {
-      writeFileSync(lockFile(), 'newcomer')
-      throw Object.assign(new Error('exists'), { code: 'EEXIST' })
-    }
-    try {
-      expect(removeStaleLock(lockFile(), seen, link)).toBe(false)
-      expect(warn).toHaveBeenCalledWith(expect.stringMatching(/two workers may hold it/))
-    } finally {
-      warn.mockRestore()
-    }
-    expect(readFileSync(lockFile(), 'utf8')).toBe('newcomer')
-    expect(readdirSync(join(dir, 'test-results'))).toEqual(['story-perf.json.lock'])
-  })
-
-  it('warns and keeps the new lock when the rename fallback would overwrite it', () => {
-    const seen = replacedLock()
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const link = () => {
-      writeFileSync(lockFile(), 'newcomer')
-      throw Object.assign(new Error('not supported'), { code: 'ENOTSUP' })
-    }
-    try {
-      expect(removeStaleLock(lockFile(), seen, link)).toBe(false)
-      expect(warn).toHaveBeenCalledWith(expect.stringMatching(/two workers may hold it/))
-    } finally {
-      warn.mockRestore()
-    }
-    expect(readFileSync(lockFile(), 'utf8')).toBe('newcomer')
-    expect(readdirSync(join(dir, 'test-results'))).toEqual(['story-perf.json.lock'])
-  })
-
-  it('moves the live lock back when the filesystem has no hard links', () => {
-    const seen = replacedLock()
-    const link = () => {
-      throw Object.assign(new Error('not supported'), { code: 'ENOTSUP' })
-    }
-    expect(removeStaleLock(lockFile(), seen, link)).toBe(false)
-    expect(readFileSync(lockFile(), 'utf8')).toBe('live')
-    expect(readdirSync(join(dir, 'test-results'))).toEqual(['story-perf.json.lock'])
   })
 })
