@@ -50,6 +50,13 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same pull request cancels this workflow's older run,
+# whose result no longer matters. Other events get a group of their own, so a
+# push to main or a call from another workflow is never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   changes:
     runs-on: ubuntu-latest

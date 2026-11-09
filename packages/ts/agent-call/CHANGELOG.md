@@ -1,5 +1,16 @@
 # @osdlc/agent-call
 
+## 0.10.0
+
+### Minor Changes
+
+- 3a8af1e: cursor: `permissions.allowTools` and `permissions.denyTools` now take effect. The adapter maps tool names (`Read`, `Edit`, `Bash(git:*)`, `mcp__server__tool`, cursor-form rules) to cursor permission rules and writes them to `.cursor/cli.json` in the working directory for the length of the call, then restores the original file. Existing `permissions.deny` entries in the file are kept and the call's denies are added; the call's `allow` replaces the file's. A second cursor call in the same directory is refused while one runs; a stale lock from a killed run is recovered. `PlannedCall.projectFiles` shows the planned file edit. Unmappable names are dropped with a note.
+- 3d4a6d7: Add an `agent-call run` command that runs one call from a YAML or JSON spec file: prompt parts from files, text with `{{input}}` placeholders and `--input` values, context files, `--explain` and `--dry-run`, and a `strict` mode that refuses approximated or dropped fields. Paths are confined to `--root`. The library import is unchanged; the package gains a second runtime dependency, `yaml`, loaded only by the command. The spec gains `limits.maxTurns`, a turn limit: native on claude (`--max-turns`) and qwen (`--max-session-turns`), dropped with a note elsewhere. `run.maxTurns` in a spec file maps to it.
+
+### Patch Changes
+
+- 6422022: Make `agent-call run` forward SIGINT and SIGTERM to the agent run, so interrupting the command kills the agent's process group instead of leaving it running. An interrupted run exits 130.
+
 ## 0.9.0
 
 ### Minor Changes
