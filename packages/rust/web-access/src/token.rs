@@ -226,9 +226,9 @@ fn persist(dir: &Path, file_name: &str, token: &Token) -> io::Result<()> {
 /// # Errors
 ///
 /// [`TokenError::BadFile`] when the file holds anything but a token
-/// (surrounding whitespace aside), an empty file included; the file is left
-/// as it is. [`TokenError::Io`] when the directory or file cannot be created,
-/// read or written.
+/// (surrounding whitespace aside), an empty file included, or bytes that are
+/// not UTF-8; the file is left as it is. [`TokenError::Io`] when the
+/// directory or file cannot be created, read or written.
 pub fn load_or_mint(dir: &Path) -> Result<Token, TokenError> {
     load_or_mint_named(dir, TOKEN_FILE)
 }
@@ -257,8 +257,13 @@ pub fn load_or_mint_named(dir: &Path, file_name: &str) -> Result<Token, TokenErr
             return Token::parse(existing.trim()).map_err(|_| TokenError::BadFile { path });
         }
         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-        // Unreadable (permissions, not UTF-8, a directory): report it rather
-        // than overwrite a token that links may already carry.
+        // `InvalidData` is `read_to_string` rejecting non-UTF-8 bytes: bad
+        // content, so `BadFile` like any other malformed file.
+        Err(e) if e.kind() == io::ErrorKind::InvalidData => {
+            return Err(TokenError::BadFile { path });
+        }
+        // Unreadable (permissions, a directory): report it rather than
+        // overwrite a token that links may already carry.
         Err(e) => return Err(e.into()),
     }
     let token = Token::mint()?;
@@ -602,10 +607,13 @@ mod tests {
     }
 
     #[test]
-    fn an_unreadable_token_file_is_an_error_not_a_new_token() {
+    fn a_non_utf8_token_file_is_a_bad_file_not_a_new_token() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(token_path(dir.path()), [0xff, 0xfe, 0x00]).unwrap();
-        assert!(matches!(load_or_mint(dir.path()), Err(TokenError::Io(_))));
+        assert!(matches!(
+            load_or_mint(dir.path()),
+            Err(TokenError::BadFile { .. })
+        ));
         // The file is left as it was.
         assert_eq!(
             std::fs::read(token_path(dir.path())).unwrap(),

@@ -48,6 +48,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- A token file whose bytes are not UTF-8 is now `TokenError::BadFile`, like
+  any other malformed file. Before, it was `TokenError::Io`, so a caller that
+  falls back to an ephemeral token on `Io` did so for a bad file.
 - `ShareUrls` and `WebAccessStatus` no longer print the token in `Debug`: each
   share link shows `token=<redacted>`.
 - `ServerHandle::stop` now ends connections that are still open, such as a
