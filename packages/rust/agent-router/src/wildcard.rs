@@ -12,8 +12,11 @@ use crate::resolve::{ResolveContext, Resolved, resolve_ref};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum WildcardSkipReason {
+    /// Not an agent model: an embedding or image-output model, or one without the `agent` trait.
     NotAgent,
+    /// The model lacks a trait the wildcard asks for.
     MissingTrait,
+    /// The candidate does not resolve (an effort the tool lacks).
     Unresolved,
 }
 
@@ -29,11 +32,16 @@ impl From<ChainSkipReason> for WildcardSkipReason {
 /// A candidate a wildcard passed over: why, as a code, and what failed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WildcardSkip {
+    /// The candidate reference, as text.
     pub text: String,
+    /// Why the candidate was passed over.
     pub reason: WildcardSkipReason,
+    /// What failed, in words.
     pub detail: String,
 }
 
+/// The result of expanding a wildcard: its resolved candidates in chain
+/// order, and the candidates passed over.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
 pub struct Expansion {
     /// The candidates, resolved, in chain order.

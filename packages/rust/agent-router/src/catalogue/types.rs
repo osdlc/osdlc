@@ -325,7 +325,7 @@ pub struct Model {
     /// Other names for the model.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub aliases: Option<Vec<String>>,
-    /// The model family (`claude-opus`, say), which classifier rules match.
+    /// The model family, which classifier rules match.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub family: Option<String>,
     /// The release day, `YYYY-MM-DD`; the newest model heads a tier.

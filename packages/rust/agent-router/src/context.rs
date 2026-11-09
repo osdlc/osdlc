@@ -15,7 +15,9 @@ use crate::catalogue::CatalogueQuery;
 /// JSON: a number, or the string `"max"`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Ctx {
+    /// At least this many tokens.
     Tokens(u64),
+    /// The largest the model offers on its tool.
     Max,
 }
 
@@ -108,8 +110,10 @@ const CLAUDE_DEFAULT_CONTEXT: u64 = 200_000;
 /// Claude Code's one context variant, `[1m]`: the most a size can ask of it.
 const CLAUDE_LONG_CONTEXT: u64 = 1_000_000;
 
+/// Request options carrying a context size, as Ollama takes it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NumCtx {
+    /// The context size in tokens.
     pub num_ctx: u64,
 }
 
@@ -205,16 +209,22 @@ pub fn context_args(
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum ContextCheck {
+    /// The requirement is met, or cannot be checked.
     Ok {
+        /// The size the entry runs with, in tokens; absent when nothing asks for one.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         context: Option<u64>,
+        /// Set when the catalogue knows no size for the model, so the requirement is not checked.
         unchecked: bool,
     },
     /// `message` says how far the model falls short.
     Skip {
+        /// How far the model falls short.
         message: String,
     },
+    /// The entry asks for more than its model offers anywhere.
     Error {
+        /// How far the request exceeds the model.
         message: String,
     },
 }

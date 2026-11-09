@@ -16,9 +16,13 @@ use crate::reference::{TIERS, Tier, Trait};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Placement {
+    /// The fast tier.
     Fast,
+    /// The standard tier.
     Standard,
+    /// The max tier.
     Max,
+    /// No rule places the model, or a rule leaves it out on purpose.
     Unclassified,
 }
 
@@ -36,7 +40,9 @@ impl From<Tier> for Placement {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum OneOrMany {
+    /// A single provider id.
     One(String),
+    /// Several provider ids.
     Many(Vec<String>),
 }
 
@@ -49,10 +55,13 @@ impl OneOrMany {
     }
 }
 
+/// A model id glob and the tier it places a matching model in.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MatchRule {
+    /// The model id glob; `*` matches any run.
     pub id: String,
+    /// Where a matching model is placed.
     pub tier: Placement,
 }
 
@@ -60,10 +69,13 @@ pub struct MatchRule {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ByParameters {
+    /// The threshold for the fast tier.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fast: Option<String>,
+    /// The threshold for the standard tier.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub standard: Option<String>,
+    /// The threshold for the max tier.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max: Option<String>,
 }
@@ -84,14 +96,19 @@ impl ByParameters {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClassifyRule {
+    /// The provider or providers the rule applies to; every provider when omitted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<OneOrMany>,
+    /// Model family to tier, or `unclassified`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub families: Option<IndexMap<String, Placement>>,
+    /// Model id globs to tier, first match wins.
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "match")]
     pub matches: Option<Vec<MatchRule>>,
+    /// Tier by parameter count read off the model id (`qwen3:4b`), tried fast first.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub by_parameters: Option<ByParameters>,
+    /// The rule matches only models that carry every one of these traits.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub require_traits: Option<Vec<Trait>>,
 }

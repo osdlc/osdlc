@@ -15,14 +15,20 @@ use crate::validity::{
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Origin {
+    /// A tier mapped to the tool's model for it.
     Tier {
+        /// The tier the reference named.
         tier: Tier,
+        /// Set when `router.pins` sets the tool's model for the tier.
         #[serde(skip_serializing_if = "std::ops::Not::not")]
         pinned: bool,
     },
+    /// A model named in the reference.
     Name {
+        /// The name as written.
         name: String,
     },
+    /// No model named: the tool's default.
     Default,
 }
 
@@ -31,20 +37,32 @@ pub enum Origin {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Check {
+    /// The reference passes.
     Ok,
+    /// The reference stays, with a warning to surface.
     Warning {
+        /// What the warning is about.
         code: ValidityWarningCode,
+        /// A human-readable explanation.
         message: String,
     },
+    /// The walk passes the entry over.
     Skip {
+        /// Why the entry is passed over.
         code: ValiditySkipCode,
+        /// A human-readable explanation.
         message: String,
     },
 }
 
+/// A reference resolved against the catalogue: the tool, the concrete model
+/// (a tier made concrete), the effort to run with, and the catalogue check
+/// that rode along.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Resolved {
+    /// The tool id.
     pub tool: String,
+    /// The concrete model; absent when the reference names none.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     /// The effort to run with: the one asked for, or the level `effort_adjusted` moved it to.
@@ -66,7 +84,9 @@ pub struct Resolved {
     pub context_unchecked: bool,
     /// `format_ref` of the original reference, with the effort as asked for.
     pub text: String,
+    /// How the model was found.
     pub from: Origin,
+    /// The catalogue check of the reference.
     pub check: Check,
 }
 
@@ -76,12 +96,19 @@ pub struct Resolved {
 pub enum ResolveErrorKind {
     /// A wildcard names no one tool: only a profile walk expands it.
     Wildcard,
+    /// The tool is not a known tool.
     UnknownTool,
+    /// The tool has no model for the tier.
     NoTierEntry,
+    /// The tool does not serve the model's provider.
     ProviderNotServed,
+    /// The tool serves the model's provider but does not offer the model.
     ModelNotOffered,
+    /// The effort is more than one step from any level the tool and model accept.
     UnsupportedEffort,
+    /// An effort that is not one of `EFFORT_LEVELS`.
     UnknownEffort,
+    /// Only with `strict`: a model the catalogue does not know.
     UnknownModel,
 }
 
@@ -103,15 +130,22 @@ impl From<ValidityErrorCode> for ResolveErrorKind {
 /// `unsupported-effort`, `hint` (the nearest valid reference) for the others that have one.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ResolveError {
+    /// What kind of failure.
     pub kind: ResolveErrorKind,
+    /// The reference's tool.
     pub tool: String,
+    /// The reference's model, when it names one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// A human-readable explanation.
     pub message: String,
+    /// For `unsupported-effort`: the effort asked for.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effort: Option<String>,
+    /// For `unsupported-effort`: the levels the tool and model accept.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub supported: Option<Vec<String>>,
+    /// The nearest valid reference, when the catalogue knows one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hint: Option<String>,
 }
@@ -128,6 +162,7 @@ pub struct ResolveContext<'a> {
 }
 
 impl<'a> ResolveContext<'a> {
+    /// A context over `catalogue`, with no closed tool set and `strict` unset.
     pub fn new(catalogue: &'a CatalogueQuery) -> Self {
         ResolveContext {
             catalogue,

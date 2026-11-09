@@ -15,9 +15,13 @@ use crate::reference::{Ref, RefParseError, parse_ref};
 pub const BUILTIN_PROFILES: &[(&str, &[&str])] =
     &[("default", &["*/standard"]), ("small", &["*/fast"])];
 
+/// A parsed profile: the references to try in `order`, an optional `host`,
+/// and an optional minimum `context` in tokens.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Profile {
+    /// The references to try, in order.
     pub order: Vec<Ref>,
+    /// The host the profile names; kept for the caller, not read by the walk.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub host: Option<String>,
     /// `context:` in tokens: an entry whose model cannot reach it is skipped.
@@ -25,19 +29,28 @@ pub struct Profile {
     pub context: Option<u64>,
 }
 
+/// Why a profile did not parse: the wrong shape, a reference that did not
+/// parse, or a bad `context` size.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum ProfileError {
     /// The wrong shape. The message is this crate's own, not zod's.
     InvalidShape {
+        /// A human-readable explanation.
         message: String,
     },
+    /// A reference that did not parse.
     InvalidRef {
+        /// The index of the entry in `order`.
         index: usize,
+        /// Why the reference did not parse.
         error: RefParseError,
+        /// A human-readable explanation.
         message: String,
     },
+    /// A bad `context` size.
     InvalidContext {
+        /// A human-readable explanation.
         message: String,
     },
 }

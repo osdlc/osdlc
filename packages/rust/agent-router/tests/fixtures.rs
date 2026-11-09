@@ -7,8 +7,6 @@
 use std::fs;
 use std::path::PathBuf;
 
-use serde::Deserialize;
-use serde_json::{Map, Value, json};
 use agent_router::binding::{Binding, resolve_binding};
 use agent_router::catalogue::{MachineCatalogue, SnapshotLayer};
 use agent_router::catalogue::{SchemaError, derive_offerings};
@@ -35,6 +33,8 @@ use agent_router::{
     CatalogueLayer, CatalogueQuery, LayerOptions, MappingPolicy, Ref, layer_catalogue,
     query_catalogue,
 };
+use serde::Deserialize;
+use serde_json::{Map, Value, json};
 
 fn ts_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../ts/agent-router")

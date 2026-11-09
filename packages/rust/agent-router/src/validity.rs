@@ -14,10 +14,15 @@ use crate::reference::{Ref, Tier, format_ref, is_effort_level, unknown_effort_me
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ValidityErrorCode {
+    /// The tool is not a known tool.
     UnknownTool,
+    /// The tool has no model for the tier.
     NoTierEntry,
+    /// The tool does not serve the model's provider.
     ProviderNotServed,
+    /// The tool serves the model's provider but does not offer the model.
     ModelNotOffered,
+    /// The effort is more than one step from any level the tool and model accept.
     UnsupportedEffort,
     /// An effort that is not one of `EFFORT_LEVELS` (`parse_ref` refuses it too).
     UnknownEffort,
@@ -29,7 +34,9 @@ pub enum ValidityErrorCode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ValidityWarningCode {
+    /// A model the catalogue does not know.
     UnknownModel,
+    /// A deprecated model, which still runs.
     DeprecatedModel,
 }
 
@@ -37,23 +44,37 @@ pub enum ValidityWarningCode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ValiditySkipCode {
+    /// A withdrawn model.
     WithdrawnModel,
 }
 
+/// The outcome of checking a reference against the catalogue: `Ok`, a
+/// `Warning` to surface, a `Skip` that passes the entry over, or an `Error`
+/// that makes the reference invalid everywhere.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Validity {
+    /// The reference passes.
     Ok,
+    /// The reference stays, with a warning to surface.
     Warning {
+        /// What the warning is about.
         code: ValidityWarningCode,
+        /// A human-readable explanation.
         message: String,
     },
+    /// The entry is passed over here and now.
     Skip {
+        /// Why the entry is passed over.
         code: ValiditySkipCode,
+        /// A human-readable explanation.
         message: String,
     },
+    /// The reference is invalid everywhere.
     Error {
+        /// What failed.
         code: ValidityErrorCode,
+        /// A human-readable explanation, naming the hint when there is one.
         message: String,
         /// The nearest valid reference, when the catalogue knows one (`claude/sonnet` for `codex/sonnet`).
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -64,6 +85,8 @@ pub enum Validity {
     },
 }
 
+/// Options for [`check_ref`]: `strict` makes an unknown model an error, and
+/// `known_tools` closes the set of tool ids.
 #[derive(Debug, Clone, Copy, Default, Serialize)]
 pub struct CheckContext<'a> {
     /// `router.strict`: an unknown model is an error, not a warning. A

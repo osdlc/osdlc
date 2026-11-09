@@ -32,14 +32,23 @@ use crate::wildcard::{WildcardSkipReason, entry_traits_miss, expand_wildcard};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum AvailabilityReason {
+    /// The tool is not installed.
     NotInstalled,
+    /// The tool is not signed in.
     NotSignedIn,
+    /// The tool is over its usage budget.
     OverBudget,
+    /// The tool is cooling down after a rate limit.
     CoolingDown,
+    /// The local runtime is unreachable.
     ProviderUnreachable,
+    /// The local runtime lacks the model.
     ModelNotPresent,
+    /// The launcher cannot launch the entry.
     NotLaunchable,
+    /// The entry is on a tool other than the one a session runs.
     OtherTool,
+    /// The tool may not run on an untrusted fork's tree.
     UntrustedFork,
 }
 
@@ -59,8 +68,11 @@ pub const AVAILABILITY_REASONS: &[AvailabilityReason] = &[
 /// What the caller's callback answers for one resolved entry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Availability {
+    /// The entry is available.
     Ok,
+    /// The entry is unavailable, and why.
     Unavailable {
+        /// Why the entry is unavailable.
         reason: AvailabilityReason,
         /// What failed, for the trace; never a secret's value.
         detail: Option<String>,
@@ -73,20 +85,35 @@ pub enum Availability {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ProfileSkipReason {
+    /// The tool is not installed.
     NotInstalled,
+    /// The tool is not signed in.
     NotSignedIn,
+    /// The tool is over its usage budget.
     OverBudget,
+    /// The tool is cooling down after a rate limit.
     CoolingDown,
+    /// The local runtime is unreachable.
     ProviderUnreachable,
+    /// The local runtime lacks the model.
     ModelNotPresent,
+    /// The launcher cannot launch the entry.
     NotLaunchable,
+    /// The entry is on a tool other than the one a session runs.
     OtherTool,
+    /// The tool may not run on an untrusted fork's tree.
     UntrustedFork,
+    /// A wildcard candidate that is not an agent model.
     NotAgent,
+    /// A candidate that lacks a trait the entry asks for.
     MissingTrait,
+    /// A wildcard candidate that does not resolve.
     Unresolved,
+    /// The model is withdrawn.
     WithdrawnModel,
+    /// The model cannot reach the entry's context on its tool.
     BelowContext,
+    /// A wildcard that expands to nothing.
     NoCandidate,
     /// The author rule's step 1. Reserved: this walk has no author rule.
     AuthorTool,
@@ -113,6 +140,7 @@ pub const PROFILE_SKIP_REASONS: &[ProfileSkipReason] = &[
 ];
 
 impl ProfileSkipReason {
+    /// The reason's code, as the trace and JSON spell it.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::NotInstalled => "not-installed",
@@ -193,6 +221,7 @@ impl From<ValiditySkipCode> for ProfileSkipReason {
 
 /// What the entries resolve against, plus the walk's input: the availability callback.
 pub struct ChooseContext<'a> {
+    /// The catalogue, known tools and strictness the entries resolve against.
     pub resolve: ResolveContext<'a>,
     /// Asked per entry, with the entry's resolved `context`. It answers availability only; context
     /// skips come from the walk.
@@ -202,7 +231,9 @@ pub struct ChooseContext<'a> {
 /// One reason a profile cannot be used. `entry` is the offending text.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ProfileEntryError {
+    /// The offending entry's text.
     pub entry: String,
+    /// What is wrong with it.
     pub message: String,
     /// Present when the entry failed to resolve.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -214,9 +245,12 @@ pub struct ProfileEntryError {
 /// `detail` is what failed, when known.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ProfileSkip {
+    /// The entry's text: a wildcard's candidate, or the wildcard itself when it expands to nothing.
     #[serde(rename = "ref")]
     pub ref_: String,
+    /// The reason, as a code.
     pub reason: ProfileSkipReason,
+    /// What failed, when known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
 }
@@ -245,10 +279,14 @@ pub fn skip_reason_text(reason: ProfileSkipReason, detail: Option<&str>) -> Stri
     }
 }
 
+/// What [`choose_from_profile`] decided. Every kind carries the `skipped`
+/// entries, a `trace` with a line per entry considered, and a one-line `summary`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Choice {
+    /// The entry to run.
     Chosen {
+        /// The chosen entry, resolved.
         resolved: Box<Resolved>,
         /// Set when no entry was usable except cooling ones and the first of those was taken anyway.
         #[serde(rename = "allCooling", skip_serializing_if = "std::ops::Not::not")]
@@ -256,19 +294,31 @@ pub enum Choice {
         /// The catalogue's warnings about the chosen entry: an unknown or deprecated
         /// model, an effort moved one step, a context it cannot check.
         warnings: Vec<String>,
+        /// The entries passed over, and why.
         skipped: Vec<ProfileSkip>,
+        /// A line per entry considered.
         trace: Vec<String>,
+        /// The decision in one line.
         summary: String,
     },
+    /// Nothing was available.
     None {
+        /// The entries passed over, and why.
         skipped: Vec<ProfileSkip>,
+        /// A line per entry considered.
         trace: Vec<String>,
+        /// The decision in one line.
         summary: String,
     },
+    /// The profile holds entries the catalogue refuses.
     Invalid {
+        /// Why each refused entry cannot be used.
         errors: Vec<ProfileEntryError>,
+        /// The entries passed over, and why.
         skipped: Vec<ProfileSkip>,
+        /// A line per entry considered.
         trace: Vec<String>,
+        /// The decision in one line.
         summary: String,
     },
 }

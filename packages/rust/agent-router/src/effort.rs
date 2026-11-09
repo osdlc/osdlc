@@ -6,10 +6,13 @@ use serde::{Deserialize, Serialize};
 /// `EFFORT_LEVELS` from `@osdlc/agent-call/models`, least to most reasoning.
 pub const EFFORT_LEVELS: &[&str] = &["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 
+/// Which way a resolve moved an effort on the effort scale.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Direction {
+    /// One step more reasoning.
     Up,
+    /// One step less reasoning.
     Down,
 }
 
@@ -18,14 +21,18 @@ pub enum Direction {
 pub struct EffortAdjustment {
     /// The effort the reference asked for.
     pub requested: String,
+    /// `Up` is one step more reasoning, `Down` one step less.
     pub direction: Direction,
     /// The effort the resolve used.
     pub used: String,
 }
 
+/// The effort to run with, and how it moved when it is not the one asked for.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AdjustedEffort {
+    /// The effort to run with.
     pub effort: String,
+    /// How the effort moved; absent when the asked-for effort is supported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub adjusted: Option<EffortAdjustment>,
 }

@@ -19,8 +19,11 @@ use crate::effort::EFFORT_LEVELS;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Tier {
+    /// The fast tier, the least capable.
     Fast,
+    /// The standard tier.
     Standard,
+    /// The max tier, the most capable.
     Max,
 }
 
@@ -28,6 +31,7 @@ pub enum Tier {
 pub const TIERS: &[Tier] = &[Tier::Fast, Tier::Standard, Tier::Max];
 
 impl Tier {
+    /// The tier's word, as a reference writes it.
     pub fn as_str(self) -> &'static str {
         match self {
             Tier::Fast => "fast",
@@ -48,10 +52,15 @@ impl Tier {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Trait {
+    /// Served by a local runtime.
     Local,
+    /// Calls tools.
     Agent,
+    /// An embedding model.
     Embedding,
+    /// Reasons before answering.
     Reasoning,
+    /// Has a long context window.
     LongContext,
     /// Accepts image input.
     Vision,
@@ -71,6 +80,7 @@ pub const TRAITS: &[Trait] = &[
 ];
 
 impl Trait {
+    /// The trait's name, as a qualifier writes it.
     pub fn as_str(self) -> &'static str {
         match self {
             Trait::Local => "local",
@@ -83,6 +93,7 @@ impl Trait {
         }
     }
 
+    /// The trait a name names, or `None`.
     pub fn parse(s: &str) -> Option<Trait> {
         TRAITS.iter().copied().find(|t| t.as_str() == s)
     }
@@ -97,8 +108,10 @@ pub const WILDCARD: &str = "*";
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Qualifiers {
+    /// At least this much context; `max` asks for the largest the model offers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ctx: Option<Ctx>,
+    /// The traits a tier or wildcard filters to.
     pub traits: Vec<Trait>,
 }
 
@@ -107,16 +120,21 @@ pub struct Qualifiers {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Ref {
+    /// The tool id, or the wildcard `*`.
     pub tool: String,
+    /// A model name or a tier word.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// The `[...]` group, when the reference has one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub qualifiers: Option<Qualifiers>,
+    /// The effort after `@`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effort: Option<String>,
 }
 
 impl Ref {
+    /// A reference to `tool` alone, with no model, qualifiers or effort.
     pub fn tool(tool: &str) -> Ref {
         Ref {
             tool: tool.to_string(),
@@ -127,21 +145,30 @@ impl Ref {
     }
 }
 
+/// Why a reference failed to parse; [`RefParseError`] carries one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RefParseErrorKind {
+    /// The reference is empty.
     EmptyRef,
+    /// The tool is empty.
     EmptyTool,
+    /// The tool is not a tool id or `*`.
     InvalidTool,
+    /// The model after `/` is empty.
     EmptyModel,
+    /// The effort after `@` is empty.
     EmptyEffort,
     /// An effort that is not one of `EFFORT_LEVELS` (`@hgih`).
     UnknownEffort,
     /// A model that starts with `-` (a CLI would read it as a flag) or holds a control or
     /// invisible character.
     InvalidModel,
+    /// The reference contains whitespace.
     Whitespace,
+    /// The `[...]` group is malformed or misplaced, or names an unknown qualifier.
     InvalidQualifiers,
+    /// A qualifier appears twice.
     DuplicateQualifier,
     /// A tool's own bracket (`opus[1m]`, `[context=1m]`); the message gives the reference form.
     NativeBracket,
@@ -151,11 +178,16 @@ pub enum RefParseErrorKind {
     WildcardNeedsTier,
 }
 
+/// A reference that did not parse: the `kind` of failure, the offending
+/// `text`, and a `message` that quotes it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[error("{message}")]
 pub struct RefParseError {
+    /// The kind of failure.
     pub kind: RefParseErrorKind,
+    /// The offending text.
     pub text: String,
+    /// A human-readable explanation that quotes the text.
     pub message: String,
 }
 
@@ -167,7 +199,9 @@ pub fn is_wildcard(r: &Ref) -> bool {
 /// Whether a ref's model is a tier word or a concrete name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelKind {
+    /// A tier word.
     Tier,
+    /// A concrete model name.
     Name,
 }
 
@@ -184,6 +218,7 @@ pub fn model_kind(r: &Ref) -> Option<ModelKind> {
 /// Tool ids are lower-case identifiers: `^[a-z][a-z0-9-]*$`.
 pub const TOOL_ID_PATTERN: &str = "^[a-z][a-z0-9-]*$";
 
+/// Whether `s` is a valid tool id, that is, matches [`TOOL_ID_PATTERN`].
 pub fn is_tool_id(s: &str) -> bool {
     let mut chars = s.chars();
     matches!(chars.next(), Some('a'..='z'))
@@ -467,6 +502,8 @@ pub fn format_qualifiers(q: &Qualifiers) -> String {
     }
 }
 
+/// A reference as text, `tool/model[qualifiers]@effort`, with the qualifiers
+/// in canonical order: `ctx` first, then traits sorted.
 pub fn format_ref(r: &Ref) -> String {
     let mut out = r.tool.clone();
     if let Some(model) = &r.model {

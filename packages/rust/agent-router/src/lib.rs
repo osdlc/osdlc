@@ -12,7 +12,7 @@
 //!
 //! The tier and trait sets are the single enums [`Tier`] and [`Trait`]; a new
 //! trait is one variant, its name in `Trait::as_str` and its place in `TRAITS` (see
-//! [`reference`]); a new tier also needs `TIERS` and a `classify::Placement` variant.
+//! [`reference`](mod@reference)); a new tier also needs `TIERS` and a `classify::Placement` variant.
 
 pub mod binding;
 pub mod catalogue;

@@ -22,16 +22,22 @@ pub const ROUTING_KEYS: [&str; 6] = [
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RoutingWhen {
+    /// The workflow.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workflow: Option<String>,
+    /// The stage.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stage: Option<String>,
+    /// The task's complexity.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub complexity: Option<String>,
+    /// The task's impact.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub impact: Option<String>,
+    /// The task's autonomy.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub autonomy: Option<String>,
+    /// The tags; a rule holds when the request carries any one it lists.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tags: Option<Vec<String>>,
 }
@@ -50,8 +56,11 @@ impl RoutingWhen {
     }
 }
 
+/// A routing rule: the `when` conditions and the name of the `profile` a
+/// matching request resolves through.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RoutingRule {
+    /// The conditions a request must meet.
     pub when: RoutingWhen,
     /// The profile a matching request resolves through.
     pub profile: String,
@@ -66,20 +75,30 @@ pub type RouteRequest = RoutingWhen;
 /// `complexity`, say). A key left out takes any non-empty string.
 pub type RoutingVocabulary = HashMap<String, Vec<String>>;
 
+/// Why a `routing:` section did not parse: the wrong shape, or a `when`
+/// value outside the caller's vocabulary.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum RoutingError {
     /// The wrong shape. The message is this crate's own, not zod's.
     InvalidShape {
+        /// The index of the rule at fault, when the shape error is in one.
         #[serde(skip_serializing_if = "Option::is_none")]
         index: Option<usize>,
+        /// A human-readable explanation.
         message: String,
     },
+    /// A `when` value outside its key's vocabulary.
     InvalidValue {
+        /// The index of the rule.
         index: usize,
+        /// The `when` key.
         key: String,
+        /// The value the rule gave.
         value: String,
+        /// The values the key may hold.
         valid: Vec<String>,
+        /// A human-readable explanation.
         message: String,
     },
 }
@@ -212,7 +231,9 @@ fn holds(when: &RoutingWhen, request: &RouteRequest) -> bool {
 /// A rule that matched, with its index.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RuleMatch<'a> {
+    /// The rule's index.
     pub index: usize,
+    /// The rule.
     pub rule: &'a RoutingRule,
 }
 
@@ -250,7 +271,9 @@ fn covers(broad: &RoutingWhen, narrow: &RoutingWhen) -> bool {
 /// A rule that can never match, and the first earlier rule that matches every request it does.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Shadowed {
+    /// The index of the rule that can never match.
     pub index: usize,
+    /// The index of the first earlier rule that matches every request it does.
     pub by: usize,
 }
 
