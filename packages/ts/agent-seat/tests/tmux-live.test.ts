@@ -69,20 +69,23 @@ describe.skipIf(!tmuxAvailable)('tmux host against a real server', () => {
       // Ask for bracketed paste (as a TUI does), then record each byte with control
       // characters made visible. Raw mode, so the pasted newline arrives as a newline and Enter is ^M.
       // Only a real paste is wrapped in ^[[200~ ... ^[[201~; per-line send-keys is not.
-      // `ready.txt` is written once the terminal is set up: a paste sent before is neither wrapped
-      // (tmux wraps only for a pane that asked) nor read in raw mode, so the test waits for it.
+      // A paste sent before the terminal is set up is neither wrapped (tmux wraps only for a pane
+      // that asked) nor read in raw mode, so the test waits for the `pane-ready` marker on screen.
       argv: [
         'bash',
         '-c',
-        `printf '\\033[?2004h'; stty raw -echo; echo ready > ready.txt; while IFS= read -r -n1 -d '' c; do printf %s "$c" | cat -v >> out.txt; done`,
+        `printf '\\033[?2004h'; stty raw -echo; printf pane-ready; while IFS= read -r -n1 -d '' c; do printf %s "$c" | cat -v >> out.txt; done`,
       ],
       title: 'tmux-live',
     })
     expect(host.find!({ cwd })).toMatchObject([{ cwd, alive: true }])
-    expect(
-      await waitFor(join(cwd, 'ready.txt'), 10_000),
-      'pane never signalled ready',
-    ).not.toBeNull()
+    // tmux parses pane output in order, so once the marker is on screen it has applied ESC[?2004h.
+    // A file written by the pane would only show the bytes reached the pty, not that tmux read them.
+    const deadline = Date.now() + 10_000
+    while (!host.capture!({ cwd })?.includes('pane-ready') && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 50))
+    }
+    expect(host.capture!({ cwd }), 'pane never signalled ready').toContain('pane-ready')
 
     const receipt = host.send!({ cwd, text: 'first line\nsecond line' })
 
