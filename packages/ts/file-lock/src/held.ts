@@ -26,9 +26,9 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto'
-import { futimesSync, linkSync, renameSync, rmSync, statSync } from 'node:fs'
+import { futimesSync, linkSync, lstatSync, renameSync, rmSync } from 'node:fs'
 
-import { createLockFile, inspectLock, NotALockError, readLock } from './lock-file.ts'
+import { createLockFile, inspectLock, type LockFile, NotALockError, readLock } from './lock-file.ts'
 
 /**
  * What a lock file holds: the fields its owner recorded, and the claim's token.
@@ -215,7 +215,8 @@ function takeOver(path: string, seen: HeldLock<object>): void {
 
 function clearDeadMarker(marker: string): void {
   try {
-    if (Date.now() - statSync(marker).ctimeMs >= MARKER_STALE_MS) rmSync(marker, { force: true })
+    // lstat: the marker's own ctime, never a symlink target's.
+    if (Date.now() - lstatSync(marker).ctimeMs >= MARKER_STALE_MS) rmSync(marker, { force: true })
   } catch {
     // Gone meanwhile.
   }
@@ -270,20 +271,19 @@ export function updateLock<F extends object>(
   token: string,
   update: (content: LockContent<F>) => F,
 ): boolean {
-  let current: { content: LockContent<F> | null; mode: number }
+  let file: LockFile
   try {
-    const file = readLock(path)
-    current = { content: parse<F>(file.raw), mode: file.mode }
+    file = readLock(path)
   } catch (err) {
     if (isNotOurs(err)) return false // released or taken over
     throw err
   }
-  const { content, mode } = current
+  const content = parse<F>(file.raw)
   if (content === null || content.token !== token) return false
   const next = serialize(update(content), token)
   const tmp = `${path}.new-${randomUUID()}`
   try {
-    createLockFile(tmp, next, mode)
+    createLockFile(tmp, next, file.mode)
     renameSync(tmp, path)
     return true
   } catch (err) {

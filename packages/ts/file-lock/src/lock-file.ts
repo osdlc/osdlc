@@ -15,6 +15,7 @@ import {
   openSync,
   readFileSync,
   rmSync,
+  type Stats,
   writeFileSync,
 } from 'node:fs'
 
@@ -54,8 +55,11 @@ const NO_FOLLOW = constants.O_NOFOLLOW ?? 0
 const NO_BLOCK = constants.O_NONBLOCK ?? 0
 const READ_FLAGS = constants.O_RDONLY | NO_FOLLOW | NO_BLOCK
 
-/** Open `path` for reading, refusing anything but a regular file. Errors other than "not a file" are thrown as they come. */
-function openRegular(path: string): number {
+/**
+ * Open `path` for reading, refusing anything but a regular file. Returns the
+ * descriptor and its stat. Errors other than "not a file" are thrown as they come.
+ */
+function openRegular(path: string): { fd: number; stat: Stats } {
   let fd: number
   try {
     fd = openSync(path, READ_FLAGS)
@@ -70,14 +74,15 @@ function openRegular(path: string): number {
     if (code === 'ENXIO') throw new NotALockError(path, 'other')
     throw err
   }
+  let stat: Stats
   try {
-    const stat = fstatSync(fd)
+    stat = fstatSync(fd)
     if (!stat.isFile()) throw new NotALockError(path, stat.isDirectory() ? 'directory' : 'other')
   } catch (err) {
     closeSync(fd)
     throw err
   }
-  return fd
+  return { fd, stat }
 }
 
 function isSymlink(path: string): boolean {
@@ -95,9 +100,8 @@ function isSymlink(path: string): boolean {
  * open error (`ENOENT`, `EACCES`) otherwise.
  */
 export function inspectLock<T>(path: string, use: (file: LockFile, fd: number) => T): T {
-  const fd = openRegular(path)
+  const { fd, stat } = openRegular(path)
   try {
-    const stat = fstatSync(fd)
     const raw = readFileSync(fd, 'utf-8')
     return use({ raw, mtimeMs: stat.mtimeMs, mode: stat.mode & 0o7777 }, fd)
   } finally {

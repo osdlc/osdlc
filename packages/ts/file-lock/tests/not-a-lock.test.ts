@@ -32,9 +32,7 @@ import {
   type NotALockKind,
 } from '../src/index.ts'
 
-import { age } from './helpers.ts'
-
-const POSIX = process.platform !== 'win32'
+import { age, POSIX } from './helpers.ts'
 
 let dir: string
 let lock: string
@@ -80,23 +78,14 @@ describe.skipIf(!POSIX).each(cases)('a $planted at the lock path', ({ planted, k
 
   test(`claimLock throws NotALockError (${kind}) and the rule never sees it`, () => {
     let judged = false
-    const claim = (): unknown =>
-      claimLock(
-        lock,
-        { pid: process.pid },
-        {
-          isStale: () => {
-            judged = true
-            return true
-          },
-        },
-      )
-    expect(claim).toThrow(NotALockError)
+    let error: unknown
     try {
-      claim()
+      claimLock(lock, { pid: process.pid }, { isStale: () => (judged = true) })
     } catch (err) {
-      expect(err).toMatchObject({ name: 'NotALockError', path: lock, kind })
+      error = err
     }
+    expect(error).toBeInstanceOf(NotALockError)
+    expect(error).toMatchObject({ path: lock, kind })
     expect(judged).toBe(false)
   })
 

@@ -10,9 +10,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 
 import { claimLock, releaseLock, touchLock, updateLock, withLock } from '../src/index.ts'
 
-import { age, DEAD_PID } from './helpers.ts'
-
-const POSIX = process.platform !== 'win32'
+import { age, claimed, DEAD_PID, never, POSIX } from './helpers.ts'
 
 let dir: string
 let lock: string
@@ -23,12 +21,6 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
 const modeOf = (path: string): number => statSync(path).mode & 0o7777
-const never = { isStale: (): boolean => false }
-
-function claimed(claim: ReturnType<typeof claimLock>): string {
-  if (!claim.ok) throw new Error('expected the claim to succeed')
-  return claim.token
-}
 
 describe.skipIf(!POSIX)('mode', () => {
   test("without mode, the lock gets a new file's default: 0o666 less the umask", () => {
