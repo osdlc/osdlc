@@ -134,15 +134,19 @@ move; merged PRs drop off.
 
 | Order | PR | What | Why this order | Status |
 | --- | --- | --- | --- | --- |
-| 1 | [#741](https://github.com/osdlc/osdlc/pull/741) | Interrupting a host kills the agent: command-seam exports group tracking, agent-call registers the agent group, pr-update installs forwarding | Gate done after the rework (2 fixed); 3 packages, tests pass | waiting on your review since 07:00 UTC; CI running |
-| 2 | [#747](https://github.com/osdlc/osdlc/pull/747) | codex.yml and cursor.yml callers | First live run of codex-pr and cursor-pr; gate: no findings | waiting on your review since 06:56 UTC; set OPENAI_API_KEY and CURSOR_API_KEY before merging; CI running |
+| 1 | [#741](https://github.com/osdlc/osdlc/pull/741) | Interrupting a host kills the agent: command-seam exports group tracking, agent-call registers the agent group, pr-update installs forwarding | Gate done after the rework (2 fixed); 3 packages, tests pass | waiting on your review since 07:00 UTC; behind main; CI rerunning |
+| 2 | [#747](https://github.com/osdlc/osdlc/pull/747) | codex.yml and cursor.yml callers | First live run of codex-pr and cursor-pr; gate: no findings | waiting on your review since 06:56 UTC; set OPENAI_API_KEY and CURSOR_API_KEY before merging; behind main; CI rerunning |
+| 3 | [#749](https://github.com/osdlc/osdlc/pull/749) | Shared reusable workflows for TypeScript package CI and release (adds a `ts-packages` gh-action) | From the shared-CI work, not this plan; listed because it edits `packages/gh-actions/README.md` | waiting on your review since 06:50 UTC; checks unstable (pending) |
+| 4 | [#748](https://github.com/osdlc/osdlc/pull/748) | Move the package checks into `@osdlc/package-checks` | From the shared-CI work; touches agent-call only through its smoke test | waiting on your review since 06:38 UTC; checks unstable (pending) |
 
 ## PR tracker
 
-Checked 2026-11-09 06:40 UTC. A periodic check refreshes this table and the graph.
+Checked 2026-11-09 07:17 UTC. A periodic check refreshes this table and the graph.
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
+| [#749](https://github.com/osdlc/osdlc/pull/749) | ci: shared reusable workflows for TypeScript package CI and release | open | none | checks pending | waiting on your review (shared-CI work) | related; watch for gh-actions README conflicts |
+| [#748](https://github.com/osdlc/osdlc/pull/748) | package-checks: move the package checks into @osdlc/package-checks | open | none | checks pending | waiting on your review (shared-CI work) | related, not on this plan's path |
 | [#747](https://github.com/osdlc/osdlc/pull/747) | ci: codex and cursor answer PR mentions | open | none | CI running | waiting on your review; needs OPENAI_API_KEY and CURSOR_API_KEY | merge, then a live codex and cursor mention |
 | [#741](https://github.com/osdlc/osdlc/pull/741) | fix: kill the agent's process group when its host is interrupted (command-seam, agent-call, pr-update) | open | none | CI running | waiting on your review | merge |
 | [#734](https://github.com/osdlc/osdlc/pull/734) | feat(gh-actions): codex-pr and cursor-pr, shared pr-common scripts, multi-marketplace plugins | merged | — | — | — | merged 2026-11-09; next: live test with caller workflows |
