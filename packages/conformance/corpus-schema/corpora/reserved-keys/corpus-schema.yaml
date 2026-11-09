@@ -1,0 +1,4 @@
+corpus-schema: 0
+dialect: obsidian
+profiles: [reading-list]
+flavour: plain

@@ -470,6 +470,13 @@ pub fn strip_code_with(text: &str, rules: CodeRules) -> String {
             spans.line(line);
         }
         if bytes[offset] == b'`' {
+            if rules == CodeRules::CommonMark && escaped(bytes, offset) {
+                // A `\`` outside a span is a literal backtick, so a run opens at
+                // the next one. Inside a span a `\` is literal, so a close is
+                // never escaped.
+                offset += 1;
+                continue;
+            }
             let (run, close) = spans.close(offset);
             offset = match close {
                 Some(close) => {
@@ -484,6 +491,16 @@ pub fn strip_code_with(text: &str, rules: CodeRules) -> String {
     }
     out.push_str(&text[written_up_to..]);
     out
+}
+
+/// Whether the byte at `at` follows an odd run of `\`: a backslash escape.
+fn escaped(bytes: &[u8], at: usize) -> bool {
+    let run = bytes[..at]
+        .iter()
+        .rev()
+        .take_while(|b| **b == b'\\')
+        .count();
+    run % 2 == 1
 }
 
 #[cfg(test)]

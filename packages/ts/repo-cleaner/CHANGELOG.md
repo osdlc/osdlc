@@ -1,5 +1,20 @@
 # @osdlc/repo-cleaner
 
+## 0.20.1
+
+### Patch Changes
+
+- Updated dependencies [0703abd]
+- Updated dependencies [61b12ce]
+  - @osdlc/cli-tool@0.18.0
+  - @osdlc/typed-gh@0.17.0
+
+## 0.20.0
+
+### Minor Changes
+
+- 9171850: Run with no target from a subdirectory of a checkout, `repo-cleaner` now sweeps that checkout instead of finding nothing and exiting 10. It widens only when the search below finds no checkout and the checkout around tracks files in the directory, so `~/Developer` under a home directory kept in git still sweeps the checkouts below it. A subdirectory named as a target is read as written, as before.
+
 ## 0.19.1
 
 ### Patch Changes
