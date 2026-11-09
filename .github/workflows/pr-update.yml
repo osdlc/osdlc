@@ -169,9 +169,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # Only runs created inside the cap window matter: a burst that old waits nothing.
           # A failed lookup falls back to the plain wait, so it never skips update.
+          cutoff="$(date -u -d "$DEBOUNCE_MAX_MINUTES minutes ago" +%Y-%m-%dT%H:%M:%SZ)"
           runs="$(gh run list -R "$GITHUB_REPOSITORY" --workflow pr-update.yml --event push \
-            --limit 100 --json databaseId,createdAt,conclusion)" || runs='[]'
+            --created ">=$cutoff" --limit 100 --json databaseId,createdAt,conclusion)" || runs='[]'
           start="$(jq -r --argjson self "$GITHUB_RUN_ID" -f /dev/stdin --argjson runs "$runs" -n <<'JQ'
           $runs | sort_by(.createdAt) | reverse
           | (map(.databaseId) | index($self)) as $i
