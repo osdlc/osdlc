@@ -46,9 +46,9 @@
       "line": 580,
       "title": "empty-bullet case does not test the rule its name states",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "a74a18e6b7ef440ecb2832e90b5302ed5024aa69"
     }
   ]
 }
