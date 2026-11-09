@@ -43,7 +43,7 @@ published version breaks.
   classify families) refuse a `__proto__` key. It used to be dropped silently.
 - The shipped snapshot and the built-in tables (`SNAPSHOT_LAYER`, `BUILTIN_CATALOGUE`,
   `BUILTIN_QUERY`, `BUILTIN_PROFILES`, `BUILTIN_CLASSIFY_RULES`, `DEFAULT_CHAIN_ORDER`, `TIERS`,
-  `TRAITS`, `AVAILABILITY_REASONS`, `PROFILE_SKIP_REASONS`, `ROUTING_KEYS`, `HEADLESS_SLOTS`) are
+  `TRAITS`, `AVAILABILITY_REASONS`, `PROFILE_SKIP_REASONS`) are
   deep-frozen, `effortsFor` returns a copy, and a query freezes its `chainOrder` and `pins`. One
   caller could change them for every other.
 - The `./config` subpath and the detection report schemas are experimental. The README lists

@@ -72,9 +72,11 @@
     "@osdlc/prettier-config": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
     "@types/node": "catalog:",
+    "@types/semver": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "oxlint": "catalog:",
     "prettier": "catalog:",
+    "semver": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:",
     "zod": "catalog:"

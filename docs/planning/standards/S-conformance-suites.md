@@ -202,6 +202,7 @@ and points here.
 | Family               | Implementations             | Fixture today                                                                       | Reference |
 | -------------------- | --------------------------- | ----------------------------------------------------------------------------------- | --------- |
 | agent-call           | TS, Rust `osdlc-agent-call` | `rust/osdlc-agent-call/tests/fixtures/parity.json`                                  | TS        |
+| agent-router         | TS, Rust                    | `ts/agent-router/fixtures/` (T-05 moves it)                                         | TS        |
 | cli-tool             | TS, Rust `osdlc-cli-tool`   | `rust/osdlc-cli-tool/tests/fixtures/parity.json`                                    | TS        |
 | code-host            | TS, Rust                    | `rust/code-host/tests/fixtures/parity.json`                                         | TS        |
 | color                | TS, Rust `srgb-color`       | `rust/srgb-color/tests/fixtures/parity.json`                                        | TS        |
@@ -224,7 +225,6 @@ and points here.
 | repo-cleaner         | TS, Rust                    | `rust/repo-cleaner/tests/fixtures/parity.json`                                      | TS        |
 | system-model         | TS, Rust                    | `rust/system-model/tests/fixtures/parity.json`                                      | TS        |
 | tiered-dirs          | TS, Rust                    | moved: `conformance/tiered-dirs/suite.json`                                         | TS        |
-| tool-router          | TS, Rust                    | `rust/tool-router/tests/fixtures/parity.json`                                       | TS        |
 | trust-repo           | TS, Rust                    | `rust/trust-repo/tests/fixtures/parity.json`                                        | TS        |
 | typed-gh             | TS, Rust                    | `rust/typed-gh/tests/fixtures/parity.json`                                          | TS        |
 | typed-git            | TS, Rust                    | `rust/typed-git/tests/fixtures/parity.json`                                         | TS        |

@@ -151,6 +151,11 @@ so a model either finds is known to both, follow one writer rule:
 
 A reader takes no lock: the rename is atomic.
 
+In TypeScript, use `withLock` from `@osdlc/file-lock` for the lock and `atomicWrite` from
+`@osdlc/etag-write` for step 4's temp file and rename, rather than writing your own: a plain
+`O_EXCL` create can leave an empty lock, and deleting a lock that looks stale can delete a fresh
+one, which `withLock` guards against.
+
 A higher layer replaces a field of a row; `serves` adds instead, so `opencode: { serves: [corp] }`
 adds a provider. The row takes the winning layer's `source` and `observed_at`, and `fields` keeps
 the provenance of every field. A merged row missing a required field (a tool's `serves`,

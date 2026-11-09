@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { satisfies } from 'semver'
 import { expect, test } from 'vitest'
 
 import { experimentalExports, root } from './experimental-exports.ts'
@@ -34,5 +35,5 @@ test('the config-layers peer range still admits 0.9.0', () => {
     peerDependencies?: Record<string, string>
   }
   const range = manifest.peerDependencies?.['@osdlc/config-layers'] ?? ''
-  expect(range.split('||').map((r) => r.trim())).toContain('^0.9.0')
+  expect(satisfies('0.9.0', range)).toBe(true)
 })

@@ -78,7 +78,6 @@ entry drops a tier's image models without a trace row, and a pinned image model 
   accept and reject cases.
 - `layer_catalogue` reports a row whose values do not fit the row type as a `problems` entry; the
   TypeScript passes it through.
-- Sizes are `u64`; a size beyond `u64` is not a size (the TypeScript accepts it as a float).
 - Numbers: sizes are `u64`, so `ctx=9007199254740993k` or `ctx=99999999999999999999k` (which the
   TypeScript rounds to a float) is not a size here. Schema integers (`context.default`/`max`,
   `version`) must be JSON integers: `200000.0` and `1e6` pass zod's `.int()` but not serde's `u64`,
@@ -91,7 +90,8 @@ entry drops a tier's image models without a trace row, and a pinned image model 
   picks under `prefer_alias` and the order of alias problems. Contrived, not mirrored.
 - Policy values are unvalidated: `ClassifyRule`, `MappingPolicy` and `Pins` are plain serde, so a
   rule with no `families`/`match`/`by_parameters`, `provider: []`, a bad threshold or an empty pin
-  is accepted (an empty pin yields an entry with `native_name: ""`). `query_catalogue` takes them
+  is accepted (an empty pin yields an entry with `native_name: ""`, and a pin a CLI would read as
+  a flag, such as `--yolo`, becomes the `native_name` as written). `query_catalogue` takes them
   as given; the TypeScript rejects them in `RouterConfigSchema`.
 - A malformed merged row (for example an unknown `status` such as `beta`) is dropped with a
   `problems` entry, where the TypeScript keeps it as current. Snapshot and machine layers are

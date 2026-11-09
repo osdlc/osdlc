@@ -15,15 +15,19 @@ this repository, so the Rust crate no longer reads the TypeScript package's dire
 ## Today
 
 `scripts/emit-fixtures.ts` writes `fixtures/` in this package, and the Rust crate's
-`tests/fixtures.rs` reads it there. `scripts/conformance.ts` lists the crate in `UNMIGRATED` for
-that reason, and the Rust workflow runs when `packages/ts/agent-router/fixtures/` changes.
+`tests/fixtures.rs` reads it there, as well as `src/catalogue/snapshot.json` (the shipped
+snapshot, which some vectors name as a layer and one test parses through the Rust schema).
+`scripts/conformance.ts` lists the crate in `UNMIGRATED` for that reason, and the Rust workflow
+runs when either path changes.
 
 ## Approach
 
 1. Add an `agent-router` family to `packages/conformance/families.json`, TypeScript as the
    reference, with a `conformance:write` script that writes the suite.
 2. Point both test suites at the suite, and drop `fixtures/`, `check:extra` and the crate's entry
-   in `UNMIGRATED` and in the Rust workflow's path list.
+   in `UNMIGRATED`.
+3. Decide how the crate reaches the snapshot: a copy in the suite, written by the generator, or
+   the TypeScript path kept. Keep the Rust workflow's snapshot path for as long as it reads it.
 
 ## Acceptance criteria
 
