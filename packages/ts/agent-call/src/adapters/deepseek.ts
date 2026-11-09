@@ -1,3 +1,5 @@
+import { resolve } from 'node:path'
+
 import {
   CONVERSATION_SCHEMA,
   type Conversation,
@@ -248,12 +250,12 @@ function planDeepseek(command: readonly string[], spec: AgentCallSpec): PlannedC
 
   const dirs = spec.context?.dirs ?? []
   if (dirs.length > 0) {
-    for (const dir of dirs) argv.push('--add-dir', dir)
+    for (const dir of dirs) argv.push('--add-dir', resolve(spec.cwd ?? process.cwd(), dir))
     note(
       notes,
       'context.dirs',
       'native',
-      '--add-dir (a physical absolute path; applies under workspace-write)',
+      '--add-dir (relative dirs resolved against cwd; applies under workspace-write)',
     )
   }
 

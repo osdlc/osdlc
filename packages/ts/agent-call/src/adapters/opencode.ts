@@ -25,12 +25,14 @@ export interface OpencodeAdapterOptions extends CommandOptions {
   /**
    * The installed opencode version. From 2.0.0 `opencode run` has no
    * `--variant` flag and the effort goes in the model string as
-   * `provider/model#variant`. Without a version the 1.x `--variant` flag is used.
+   * `provider/model#variant`. A bare semver such as `2.2.6` (a leading `v` is
+   * accepted). Without a version, or with one that does not parse, the 1.x
+   * `--variant` flag is used.
    */
   version?: string | undefined
 }
 
-const MAJOR = /^v?(\d+)\./
+const MAJOR = /^v?(\d+)(?:\.|$)/
 
 /** Whether `version` is opencode 2.0.0 or later. */
 function variantInModelString(version: string | undefined): boolean {
@@ -91,10 +93,13 @@ function planOpencode(
     }
   }
 
+  const modelHasVariant = spec.model?.includes('#') === true
   if (spec.model !== undefined) {
     argv.push(
       '--model',
-      variantInModel && spec.effort !== undefined ? `${spec.model}#${spec.effort}` : spec.model,
+      variantInModel && spec.effort !== undefined && !modelHasVariant
+        ? `${spec.model}#${spec.effort}`
+        : spec.model,
     )
     if (!spec.model.includes('/')) {
       note(
@@ -110,10 +115,12 @@ function planOpencode(
     note(
       notes,
       'effort',
-      spec.model === undefined ? 'dropped' : 'approximated',
+      spec.model === undefined || modelHasVariant ? 'dropped' : 'approximated',
       spec.model === undefined
         ? 'opencode 2.x takes the effort as a #variant suffix on --model; without a model there is nothing to suffix'
-        : 'opencode 2.x has no --variant flag; sent as the #variant suffix of --model (values depend on the model)',
+        : modelHasVariant
+          ? 'the model already names a #variant; the effort is not appended'
+          : 'opencode 2.x has no --variant flag; sent as the #variant suffix of --model (values depend on the model)',
     )
   } else if (spec.effort !== undefined) {
     argv.push('--variant', spec.effort)

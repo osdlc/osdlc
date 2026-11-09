@@ -13,6 +13,7 @@ import { describe, expect, test } from 'vitest'
 // package (tests/exports.test.ts pins its dependencies), it only checks itself
 // against the sibling package in this workspace.
 import { fact, loadKnowledge } from '../../harness-knowledge/src/index.js'
+import { opencodeAdapter } from '../src/adapters/opencode.js'
 import { adapterFor } from '../src/registry.js'
 import type { AgentName } from '../src/spec.js'
 import type { AgentCallSpec } from '../src/spec.js'
@@ -307,8 +308,15 @@ describe('flags the adapters emit', () => {
     expect(hasRun(planned('opencode', { effort: 'high' }).argv, ['--variant', 'high'])).toBe(true)
     const v2 = fact(h, 'cli/effort', { version: '2.2.6' })
     expect(v2?.['argv']).toEqual(['--model', '{provider/model}#{level}'])
-    const p = adapterFor('opencode', {}) // default stays 1.x; the version option selects 2.x
-    expect(p.binary).toBe('opencode')
+    const template = strings(v2?.['argv'])
+    const model = template[1]!.replace('{provider/model}', 'anthropic/m').replace('{level}', 'high')
+    const argv = opencodeAdapter({ version: '2.2.6' }).plan({
+      prompt: 'x',
+      model: 'anthropic/m',
+      effort: 'high',
+    }).argv
+    expect(hasRun(argv, [template[0]!, model])).toBe(true)
+    expect(argv).not.toContain('--variant')
   })
 
   test('antigravity: output format, effort, continue, dirs, edits mode', () => {
@@ -370,9 +378,11 @@ describe('flags the adapters emit', () => {
     expect(note).toContain('danger-full-access')
     expect(note).not.toContain('read-only')
     expect(String(fact(h, 'instructions/system-prompt-flag')?.['note'])).toContain('{{cwd}}')
-    expect(
-      JSON.stringify(planned('deepseek', { appendSystemPrompt: 'a' }).tempFiles),
-    ).not.toContain('{{cwd}}')
+    for (const spec of [{ appendSystemPrompt: 'a' }, { systemPrompt: 's' }]) {
+      const file = planned('deepseek', spec).tempFiles.find((f) => f.name === 'dsh-patch.yml')
+      expect(file, 'the overlay patch').toBeDefined()
+      expect(file!.content).not.toContain('{{cwd}}')
+    }
   })
 })
 

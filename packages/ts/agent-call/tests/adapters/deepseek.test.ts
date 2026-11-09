@@ -185,6 +185,11 @@ describe('deepseek plan', () => {
     expect(noteFor(planned, 'context.dirs')?.support).toBe('native')
   })
 
+  test('relative extra dirs are resolved against cwd', () => {
+    const planned = adapter.plan({ prompt: 'x', cwd: '/repo', context: { dirs: ['../shared'] } })
+    expect(planned.argv).toContain('/shared')
+  })
+
   test('tool rules, continueLast, session pinning, persist and budget are dropped', () => {
     const planned = adapter.plan({
       prompt: 'x',
