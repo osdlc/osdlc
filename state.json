@@ -70,7 +70,7 @@
       "path": "packages/rust/web-access/CHANGELOG.md",
       "line": 12,
       "title": "Breaking change to a published 0.4.1 crate without a 0.5.0 version bump",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/704#discussion_r4508986433",
       "status": "fixed",
       "reason": null,
       "fixedIn": "7d4d5a9a49c23228aa8b9e4c76e4b8cc63000697"
@@ -81,7 +81,7 @@
       "path": "packages/rust/web-access/src/guard.rs",
       "line": 267,
       "title": "push still accepts the same token twice with different grants; find gives the higher grant",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/704#discussion_r4508986441",
       "status": "fixed",
       "reason": null,
       "fixedIn": "7d4d5a9a49c23228aa8b9e4c76e4b8cc63000697"
@@ -92,7 +92,7 @@
       "path": "packages/rust/web-access/README.md",
       "line": 142,
       "title": "New paragraph splits the ordered list; item 7 is absorbed into it",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/704#discussion_r4508986442",
       "status": "fixed",
       "reason": null,
       "fixedIn": "7d4d5a9a49c23228aa8b9e4c76e4b8cc63000697"
@@ -103,7 +103,7 @@
       "path": "packages/rust/web-access/src/guard.rs",
       "line": 574,
       "title": "fully_decoded stops at a non-UTF-8 decode, so the stated invariant does not hold for such tokens",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/704#discussion_r4508986444",
       "status": "fixed",
       "reason": null,
       "fixedIn": "7d4d5a9a49c23228aa8b9e4c76e4b8cc63000697"
