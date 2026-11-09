@@ -1,0 +1,96 @@
+name: codex-pr
+description: >-
+  Answers @codex on a pull request with the Codex CLI, or reviews the pull
+  request with the craft code-review skill when the comment starts with
+  "@codex review". Posts the result as a comment ending in a done or failed
+  marker.
+author: osdlc
+
+inputs:
+  openai-api-key:
+    description: >-
+      OpenAI API key (passed to codex exec as CODEX_API_KEY), or several separated by spaces, commas or newlines; tried in
+      order, moving on only after an authentication failure.
+    required: true
+  github-token:
+    description: Token for gh (read the pull request, post the comment).
+    default: ${{ github.token }}
+  codex-version:
+    description: Codex CLI version to install (agent-setup's pinned default).
+    default: 0.162.0
+  model:
+    description: Model name for the CLI. Empty means the CLI's default.
+    default: ""
+  marketplaces:
+    description: >-
+      Plugin marketplaces, one per line, as `name=https-git-url` with an
+      optional ` ref` (agent-setup's format).
+    default: "osdlc=https://github.com/osdlc/marketplace.git"
+  plugins:
+    description: >-
+      Plugins to install, plugin@marketplace, space or newline separated. Review mode needs craft.
+    default: "craft@osdlc"
+
+runs:
+  using: composite
+  steps:
+    # The caller's `if` can only test for the text "@codex"; this drops code
+    # blocks, inline code and quoted lines, and the rest is skipped unless a
+    # mention is left.
+    - id: mention
+      shell: bash
+      env:
+        AGENT: codex
+        REQUEST: ${{ github.event.comment.body || github.event.review.body }}
+      run: '"$GITHUB_ACTION_PATH/../pr-common/mention.sh"'
+
+    - if: steps.mention.outputs.real == '1'
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        fetch-depth: 0
+        token: ${{ inputs.github-token }}
+
+    - if: steps.mention.outputs.real == '1'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        PR: ${{ github.event.issue.number || github.event.pull_request.number }}
+      run: gh pr checkout "$PR"
+
+    - if: steps.mention.outputs.real == '1'
+      shell: bash
+      env:
+        HARNESS: codex
+        VERSION: ${{ inputs.codex-version }}
+        MARKETPLACES: ${{ inputs.marketplaces }}
+        PLUGINS: ${{ inputs.plugins }}
+      run: '"$GITHUB_ACTION_PATH/../pr-common/install-agent.sh"'
+
+    - if: steps.mention.outputs.real == '1'
+      shell: bash
+      env:
+        AGENT: codex
+        HARNESS_SH: ${{ github.action_path }}/harness.sh
+        KEY_VAR: OPENAI_API_KEY
+        GH_TOKEN: ${{ inputs.github-token }}
+        KEYS: ${{ inputs.openai-api-key }}
+        MODEL: ${{ inputs.model }}
+        MODE: ${{ steps.mention.outputs.mode }}
+        RESULT: ${{ runner.temp }}/codex-pr-result.json
+        REPO: ${{ github.repository }}
+        PR: ${{ github.event.issue.number || github.event.pull_request.number }}
+        REQUEST: ${{ github.event.comment.body || github.event.review.body }}
+        SOURCE_URL: ${{ github.event.comment.html_url || github.event.review.html_url }}
+      run: '"$GITHUB_ACTION_PATH/../pr-common/ask.sh"'
+
+    - if: always() && steps.mention.outputs.real == '1'
+      shell: bash
+      env:
+        AGENT: codex
+        GH_TOKEN: ${{ inputs.github-token }}
+        PR: ${{ github.event.issue.number || github.event.pull_request.number }}
+        REPO: ${{ github.repository }}
+        MODE: ${{ steps.mention.outputs.mode }}
+        RESULT: ${{ runner.temp }}/codex-pr-result.json
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: '"$GITHUB_ACTION_PATH/../pr-common/post.sh"'
