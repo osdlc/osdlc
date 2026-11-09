@@ -1,7 +1,7 @@
 {
   "family": "config-layers",
   "reference": "ts",
-  "referenceVersion": "0.8.1",
+  "referenceVersion": "0.9.0",
   "sections": {
     "value_is_set": {
       "description": "Whether a value counts as set. `input.value` is the value; `input.missing: true` passes no value at all (Rust `None`, TypeScript `undefined`). `expect.set` is the answer.",
