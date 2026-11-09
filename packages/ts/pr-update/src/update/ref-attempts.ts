@@ -28,9 +28,7 @@ import { Git } from '@osdlc/typed-git'
 
 import type { AttemptKey, AttemptRecord, AttemptStore } from '../ports.ts'
 import { isEntry, MAX_AGE_MS, type Entry } from './attempts.ts'
-import { attemptRef, attemptsPrefix, DEFAULT_REF_PREFIX } from './ref-names.ts'
-
-const MAX_CAS_ATTEMPTS = 5
+import { attemptRef, attemptsPrefix, DEFAULT_REF_PREFIX, MAX_CAS_ATTEMPTS } from './ref-names.ts'
 
 export interface RefAttemptStoreOptions {
   /** The git remote (name or URL) that holds the refs. */

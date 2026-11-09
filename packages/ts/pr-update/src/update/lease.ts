@@ -28,9 +28,7 @@ import {
 
 import type { BranchLease, LeaseGrant } from '../ports.ts'
 import { withRefHint } from './ref-attempts.ts'
-import { DEFAULT_REF_PREFIX, lockRef } from './ref-names.ts'
-
-const MAX_CAS_ATTEMPTS = 5
+import { DEFAULT_REF_PREFIX, lockRef, MAX_CAS_ATTEMPTS } from './ref-names.ts'
 
 export interface LeasePayload {
   holder: string
@@ -83,8 +81,7 @@ export function refBranchLease(opts: RefBranchLeaseOptions): BranchLease {
   /** The lease's current sha and payload; payload null when it cannot be read. */
   const read = (ref: string): { sha: string; payload: LeasePayload | null } | null => {
     try {
-      const got = fetchRef(remote, ref, { ...gitOpts, decode })
-      return got
+      return fetchRef(remote, ref, { ...gitOpts, decode })
     } catch (e) {
       if (e instanceof RefNotFound) return null
       if (e instanceof PayloadUnreadable) return { sha: e.sha, payload: null }
@@ -98,11 +95,10 @@ export function refBranchLease(opts: RefBranchLeaseOptions): BranchLease {
       for (let attempt = 1; attempt <= MAX_CAS_ATTEMPTS; attempt++) {
         const current = read(ref)
         const t = now()
-        const live =
-          current?.payload != null &&
-          Date.parse(current.payload.expiresAt) > t.getTime() &&
-          current.payload.holder !== holder
-        if (live) return { ok: false, holder: current!.payload!.holder }
+        const held = current?.payload
+        if (held != null && held.holder !== holder && Date.parse(held.expiresAt) > t.getTime()) {
+          return { ok: false, holder: held.holder }
+        }
         const payload: LeasePayload = {
           holder,
           pr,

@@ -13,6 +13,9 @@ import { createHash } from 'node:crypto'
 /** The default prefix under which everything this package writes to a remote lives. */
 export const DEFAULT_REF_PREFIX = 'refs/pr-update/'
 
+/** Compare-and-swap tries before a write or lease gives up. */
+export const MAX_CAS_ATTEMPTS = 5
+
 function encode(readable: string, hashed: string): string {
   const safe = readable.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 60)
   const hash = createHash('sha256').update(hashed).digest('hex').slice(0, 10)
