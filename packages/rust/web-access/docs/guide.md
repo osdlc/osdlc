@@ -283,7 +283,7 @@ let one = Tokens::full_only(Token::mint()?);
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-Tokens are compared in constant time. If a request presents tokens for two
+Tokens are compared in time that does not depend on their contents. If a request presents tokens for two
 grants (header and cookie), the higher grant wins. So `with` refuses a token
 that is already in the set with a different grant, with
 `TokensError::Duplicate`. Otherwise the link for the lower grant would carry

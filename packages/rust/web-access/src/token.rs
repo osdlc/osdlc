@@ -34,7 +34,8 @@ pub fn token_path(dir: &Path) -> PathBuf {
 /// header.
 ///
 /// `Display` and [`Token::as_str`] give the secret. `Debug` hides it.
-/// Equality compares in constant time.
+/// Comparing two tokens takes the same time whatever their contents. Only a
+/// difference in length ends the compare early.
 #[derive(Clone)]
 pub struct Token(String);
 

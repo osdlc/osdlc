@@ -14,7 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   base64url. `parse` accepts at least `token::MIN_TOKEN_LEN` (32) characters of
   `A-Z a-z 0-9 - _` and nothing else. Minted tokens and 64-character hex
   digests both pass. `Display` and `as_str` give the text. `Debug` hides it.
-  Equality compares in constant time.
+  Comparing two tokens takes the same time whatever their contents. Only a
+  difference in length ends the compare early.
 - `token::TokenError`. It never holds token text. Its variants are
   `Malformed`, `BadFile` (names the file), `BadOverride` (names the override)
   and `Io`.
