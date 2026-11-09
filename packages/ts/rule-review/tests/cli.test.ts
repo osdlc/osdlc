@@ -185,8 +185,14 @@ describe('rule-review interruption', () => {
       await withPath(bin, async () => {
         const pending = run(['-C', root])
 
-        await waitFor('the fake agent to write its pid', () => existsSync(pidFile))
-        const pid = Number(readFileSync(pidFile, 'utf8').trim())
+        // The shell creates the file before it writes to it, so wait for a
+        // whole line: an empty read would give pid 0, and `kill(0)` signals
+        // the test's own process group, which is always alive.
+        let pid = 0
+        await waitFor('the fake agent to write its pid', () => {
+          pid = readPid(pidFile)
+          return pid > 0
+        })
         const added = process.listeners('SIGTERM').filter((l) => !before.has(l))
         expect(added).toHaveLength(1)
         for (const listener of added) (listener as (s: NodeJS.Signals) => void)('SIGTERM')
@@ -289,6 +295,13 @@ async function waitFor(what: string, check: () => boolean, ceilingMs = 10_000): 
     if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`)
     await new Promise((r) => setTimeout(r, 20))
   }
+}
+
+/** The pid in `file` once a whole line is written, else 0. */
+function readPid(file: string): number {
+  if (!existsSync(file)) return 0
+  const m = /^(\d+)\n/.exec(readFileSync(file, 'utf8'))
+  return m === null ? 0 : Number(m[1])
 }
 
 function alive(pid: number): boolean {
