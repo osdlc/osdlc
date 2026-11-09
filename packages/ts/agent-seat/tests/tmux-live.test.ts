@@ -69,14 +69,17 @@ describe.skipIf(!tmuxAvailable)('tmux host against a real server', () => {
       // Ask for bracketed paste (as a TUI does), then record each byte with control
       // characters made visible. Raw mode, so the pasted newline arrives as a newline and Enter is ^M.
       // Only a real paste is wrapped in ^[[200~ ... ^[[201~; per-line send-keys is not.
+      // `ready.txt` is written once the terminal is set up: a paste sent before is neither wrapped
+      // (tmux wraps only for a pane that asked) nor read in raw mode, so the test waits for it.
       argv: [
         'bash',
         '-c',
-        `printf '\\033[?2004h'; stty raw -echo; while IFS= read -r -n1 -d '' c; do printf %s "$c" | cat -v >> out.txt; done`,
+        `printf '\\033[?2004h'; stty raw -echo; echo ready > ready.txt; while IFS= read -r -n1 -d '' c; do printf %s "$c" | cat -v >> out.txt; done`,
       ],
       title: 'tmux-live',
     })
     expect(host.find!({ cwd })).toMatchObject([{ cwd, alive: true }])
+    expect(await waitFor(join(cwd, 'ready.txt'), 10_000)).not.toBeNull()
 
     const receipt = host.send!({ cwd, text: 'first line\nsecond line' })
 
