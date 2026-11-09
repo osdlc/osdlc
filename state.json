@@ -38,9 +38,9 @@
       "line": null,
       "title": "paragraph-interrupt edges missing from suite",
       "comment": "https://github.com/osdlc/osdlc/pull/728#pullrequestreview-5820242590",
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "b8f6d7ff497b7561fa5f317667ea32a2dabdb1ca"
     },
     {
       "id": "r3-1",
