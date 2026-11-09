@@ -411,8 +411,7 @@ async function integrateAndPush(
       const baseSha = git.resolveRef(base)
       outcome = git.merge(base, {
         message:
-          mergeTitle(target) +
-          (baseSha === null ? '' : `\n\nBase: ${target.base} at ${baseSha}`),
+          mergeTitle(target) + (baseSha === null ? '' : `\n\nBase: ${target.base} at ${baseSha}`),
       })
     } catch (e) {
       git.try.mergeAbort()
