@@ -18,6 +18,10 @@ Every payload rule is a callback: `claim` takes `build`, `isLive` and `isMine`, 
 caller's decoded value to the caller's functions and writes what they return. A payload that cannot
 be read counts as not live, and `change` sees it as `null`.
 
+This amends D-01 only above the five operations: each operation stays one attempt and reports a
+lost swap as `CasFailed`. The helpers retry by calling them again, a bounded number of times, and
+throw `CasFailed` when every pass lost. A caller that wants another policy uses the operations.
+
 `renew`, listing and release-with-archive stay recipes: they are one call, or depend on policy.
 
 ## Why

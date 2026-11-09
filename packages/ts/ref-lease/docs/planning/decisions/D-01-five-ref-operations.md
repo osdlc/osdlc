@@ -27,7 +27,8 @@ Every write to the authority is one of three compare-and-swaps, and every read o
   to write. The ref existed, so the create lost.
 - `fetchNamespace` prunes, so local copies of refs the authority deleted go too. Use it to read many
   leases at once; use `fetchRef` for one.
-- Each call is one attempt. A lost compare-and-swap is reported, not retried: whether to retry
+- Each of the five operations is one attempt. A lost compare-and-swap is reported, not retried (the
+  `claim`, `updateWithRetry` helpers layered on them do retry, bounded; see D-08): whether to retry
   depends on what the caller reads next. The one retry is local, for a fetch that collides with
   another process on a local ref lock, which clears in milliseconds.
 - A successful write also moves the local copy of the ref (the mirror), guarded so it never
