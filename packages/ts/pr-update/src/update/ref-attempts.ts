@@ -5,7 +5,7 @@
  * One ref per repo, head branch and base branch, the same grouping the file store uses per file.
  * The ref's commit holds `{ entries }`, the file store's JSON, written with `@osdlc/ref-lease`.
  * Every write is a compare-and-swap. A lost swap re-reads the ref and applies the change again to
- * what is there now, up to {@link MAX_CAS_ATTEMPTS} times, so two runs that fail the same PR at
+ * what is there now (`updateWithRetry`, up to {@link MAX_CAS_ATTEMPTS} times), so two runs that fail the same PR at
  * once both count. Records are read with one `fetchNamespace` the first time the store is used,
  * then served from that read and from this store's own writes.
  *
@@ -13,17 +13,7 @@
  * a `GitFailed` that names the setting to fall back to (`attempts.store: file`).
  */
 
-import {
-  buildLeaseCommit,
-  casCreate,
-  casDelete,
-  casReplace,
-  CasFailed,
-  fetchNamespace,
-  fetchRef,
-  GitFailed,
-  RefNotFound,
-} from '@osdlc/ref-lease'
+import { fetchNamespace, GitFailed, updateWithRetry } from '@osdlc/ref-lease'
 import { Git } from '@osdlc/typed-git'
 
 import type { AttemptKey, AttemptRecord, AttemptStore } from '../ports.ts'
@@ -76,11 +66,22 @@ function sameKey(a: AttemptKey, b: AttemptKey): boolean {
   )
 }
 
+/** The ref's payload: the file store's `{ entries }`. */
+interface Payload {
+  entries: Entry[]
+}
+
+function entriesOf(value: unknown): Entry[] {
+  const entries = (value as { entries?: unknown } | null)?.entries
+  return Array.isArray(entries) ? entries.filter(isEntry) : []
+}
+
+const decode = (value: unknown): Payload => ({ entries: entriesOf(value) })
+
 function parseEntries(text: string | null): Entry[] {
   if (text === null) return []
   try {
-    const entries = (JSON.parse(text) as { entries?: unknown }).entries
-    return Array.isArray(entries) ? entries.filter(isEntry) : []
+    return entriesOf(JSON.parse(text))
   } catch {
     return []
   }
@@ -120,51 +121,27 @@ export function refAttemptStore(opts: RefAttemptStoreOptions): RefAttemptStore {
     return entries.filter((e) => Date.parse(e.at) >= cutoff)
   }
 
-  /** Re-read one ref from the remote after a lost swap. */
-  const refresh = (ref: string): void => {
-    const groups = load()
-    try {
-      const got = fetchRef(remote, ref, gitOpts)
-      groups.set(ref, { sha: got.sha, entries: readEntries(got.sha) })
-    } catch (e) {
-      if (e instanceof RefNotFound) groups.delete(ref)
-      else throw withRefHint(e, remote)
-    }
-  }
-
   /**
-   * Apply `change` to the ref's entries and write the result, again from a fresh read each time
-   * the swap is lost. `change` returning an empty list deletes the ref.
+   * Apply `change` to the ref's fresh entries and write the result. `@osdlc/ref-lease` re-reads
+   * and calls `change` again after a lost swap, so a concurrent record is merged, not lost. An
+   * empty result deletes the ref.
    */
   const update = (ref: string, change: (entries: Entry[]) => Entry[]): void => {
     const groups = load()
-    for (let attempt = 1; ; attempt++) {
-      const current = groups.get(ref) ?? null
-      const next = change(fresh(current?.entries ?? []))
-      try {
-        if (next.length === 0) {
-          if (current !== null) casDelete(remote, ref, current.sha, gitOpts)
-          groups.delete(ref)
-          return
-        }
-        const sha = buildLeaseCommit(
-          { entries: next },
-          { ...gitOpts, parentSha: current?.sha ?? null },
-        )
-        if (current === null) casCreate(remote, ref, sha, gitOpts)
-        else casReplace(remote, ref, current.sha, sha, gitOpts)
-        groups.set(ref, { sha, entries: next })
-        return
-      } catch (e) {
-        if (!(e instanceof CasFailed)) throw withRefHint(e, remote)
-        if (attempt >= MAX_CAS_ATTEMPTS) {
-          throw new Error(
-            `attempt record ${ref} kept changing under this run (${MAX_CAS_ATTEMPTS} swaps lost)`,
-            { cause: e },
-          )
-        }
-        refresh(ref)
-      }
+    try {
+      const out = updateWithRetry<Payload>(
+        remote,
+        ref,
+        (current) => {
+          const next = change(fresh(current?.payload.entries ?? []))
+          return next.length === 0 ? null : { entries: next }
+        },
+        { ...gitOpts, decode, attempts: MAX_CAS_ATTEMPTS },
+      )
+      if (out.kind === 'written') groups.set(ref, { sha: out.sha, entries: out.payload.entries })
+      else groups.delete(ref)
+    } catch (e) {
+      throw withRefHint(e, remote)
     }
   }
 
