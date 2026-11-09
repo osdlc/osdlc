@@ -34,7 +34,8 @@ die() { echo "pr-update: $*" >&2; exit 1; }
 case "$STRATEGY" in merge | rebase) ;; *) die "strategy must be merge or rebase, not '$STRATEGY'" ;; esac
 case "$REPAIR_AGENT" in "" | claude | codex | cursor | pi) ;; *) die "repair-agent must be claude, codex, cursor, pi or empty" ;; esac
 [[ "$REPAIR_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]] || die "repair-timeout-seconds must be a positive integer"
-# The key is for the repair agent only; keep it out of every other process.
+# The key is for pr-update and its repair agent only; select-prs.sh and
+# annotate.sh run without it. An empty key is removed so the agent sees none.
 [ -n "${ANTHROPIC_API_KEY:-}" ] || unset ANTHROPIC_API_KEY
 
 mkdir -p "$tmp"
@@ -42,7 +43,7 @@ rm -f "$report"
 export PR_NUMBER
 
 OUT_DIR="$tmp" SKIP_LABEL="${SKIP_LABEL:-}" CONFLICT_LABEL="${CONFLICT_LABEL:-}" \
-  INCLUDE_DRAFTS="$INCLUDE_DRAFTS" "$here/select-prs.sh"
+  INCLUDE_DRAFTS="$INCLUDE_DRAFTS" env -u ANTHROPIC_API_KEY "$here/select-prs.sh"
 eligible="$(wc -l <"$tmp/eligible.txt" | tr -d ' ')"
 excluded="$(wc -l <"$tmp/excluded.tsv" | tr -d ' ')"
 echo "pr-update: $eligible PR(s) to update, $excluded excluded"
@@ -50,7 +51,7 @@ echo "pr-update: $eligible PR(s) to update, $excluded excluded"
 annotate() {
   REPORT="$report" EXCLUDED="$tmp/excluded.tsv" LABELED="$tmp/labeled.txt" \
     CONFLICT_LABEL="${CONFLICT_LABEL:-}" COMMENT_CONFLICTS="${COMMENT_CONFLICTS:-true}" \
-    APPLY="$APPLY" REPAIR_AGENT="$REPAIR_AGENT" "$here/annotate.sh" ||
+    APPLY="$APPLY" REPAIR_AGENT="$REPAIR_AGENT" env -u ANTHROPIC_API_KEY "$here/annotate.sh" ||
     echo "::warning::could not label or comment on the PRs (does the token have pull requests and issues write?)"
 }
 
@@ -82,8 +83,11 @@ if [ "$INCLUDE_DRAFTS" = true ] || [ -n "$PR_NUMBER" ]; then cmd+=(--drafts); el
 [ -z "$REPAIR_AGENT" ] || cmd+=(--repair-agent "$REPAIR_AGENT")
 while IFS= read -r n; do cmd+=(--pr "$n"); done <"$tmp/eligible.txt"
 if [ -n "$EXTRA_ARGS" ]; then
-  # shellcheck disable=SC2206 # split on whitespace on purpose
+  # Split on whitespace only: no glob expansion of the words.
+  set -f
+  # shellcheck disable=SC2206
   cmd+=($EXTRA_ARGS)
+  set +f
 fi
 
 if [ -n "$REPAIR_AGENT" ]; then
