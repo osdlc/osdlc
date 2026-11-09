@@ -7,10 +7,13 @@ import { test } from "node:test";
 import {
   type BenchPackage,
   accepted,
+  best,
   compare,
+  confirmed,
   discover,
   main,
   median,
+  packagesOf,
   parseCriterion,
   parseVitest,
   pick,
@@ -222,5 +225,90 @@ test("main stops early when no package with benchmarks is affected", () => {
     assert.equal(main([root, root, "--rounds", "1"]), 0);
   } finally {
     console.log = log;
+  }
+});
+
+test("best: the least disturbed round, so one noisy round cannot fail the gate", () => {
+  assert.equal(best([1.4, 1, 1.3]), 1);
+  // Base ran a noisy round and head a quiet one: pooled medians would call
+  // this +20%, best rounds see no change.
+  const rows = compare(
+    new Map([["a", best([1, 1.2, 1.2])]]),
+    new Map([["a", best([1.02, 1.03, 1.02])]]),
+  );
+  assert.equal(rows[0]?.status, "ok");
+  // A real slowdown moves every round, the best one included.
+  const slow = compare(
+    new Map([["a", best([1, 1.05, 1.02])]]),
+    new Map([["a", best([1.3, 1.35, 1.31])]]),
+  );
+  assert.equal(slow[0]?.status, "slower");
+});
+
+test("confirmed: a suspect fails only when the confirmation pass is over the line too", () => {
+  const first = compare(
+    new Map([
+      ["p/a", 1],
+      ["p/b", 1],
+      ["p/c", 1],
+      ["p/d", 1],
+    ]),
+    new Map([
+      ["p/a", 1.3],
+      ["p/b", 1.3],
+      ["p/c", 1.3],
+      ["p/d", 1.05],
+    ]),
+  );
+  const again = compare(
+    new Map([
+      ["p/a", 1],
+      ["p/b", 1],
+      ["p/d", 1],
+    ]),
+    new Map([
+      ["p/a", 1.28],
+      ["p/b", 1.02],
+      ["p/d", 1.3],
+    ]),
+  );
+  const by = Object.fromEntries(confirmed(first, again).map((r) => [r.id, r]));
+  assert.equal(by["p/a"]?.status, "slower");
+  assert.ok(Math.abs((by["p/a"]?.confirm ?? 0) - 1.28) < 1e-9);
+  // Over once, back in line the second time: noise.
+  assert.equal(by["p/b"]?.status, "unconfirmed");
+  // Not measured again: stays a failure.
+  assert.equal(by["p/c"]?.status, "slower");
+  // Only the first pass decides a benchmark that was not a suspect.
+  assert.equal(by["p/d"]?.status, "ok");
+  assert.equal(by["p/d"]?.confirm, undefined);
+});
+
+test("packagesOf names the packages of benchmark ids; table shows the confirmation", () => {
+  assert.deepEqual(
+    [...packagesOf(["ts:a/x/y", "ts:a/x/z", "rust:a/g/h"])],
+    ["ts:a", "rust:a"],
+  );
+  const t = table([
+    {
+      id: "a",
+      base: 1,
+      head: 1.3,
+      ratio: 1.3,
+      confirm: 1.02,
+      status: "unconfirmed",
+    },
+  ]);
+  assert.match(t, /\| unconfirmed \(again \+2\.0%\) \|/);
+});
+
+test("main rejects a bad --confirm-rounds", () => {
+  const err = console.error;
+  console.error = () => {};
+  try {
+    assert.equal(main(["base", "head", "--confirm-rounds", "-1"]), 2);
+    assert.equal(main(["base", "head", "--confirm-rounds", "x"]), 2);
+  } finally {
+    console.error = err;
   }
 });

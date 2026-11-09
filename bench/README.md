@@ -9,9 +9,12 @@ corpus, and a CI job compares each pull request with its base.
 `.github/workflows/perf-gate.yml` runs on every pull request. It runs the
 benchmarks of the packages the change touches, and of the packages that depend
 on them, on the base commit and on the head commit in the same job, three
-rounds each, alternating sides. A benchmark's figure for a side is the median
-over rounds of the median each round reports. The job fails when a benchmark's
-head figure is more than 15% above its base figure.
+rounds each, alternating sides. A benchmark's figure for a side is its best
+round: the minimum over rounds of the median each round reports (runner noise
+only adds time). A benchmark whose head figure is more than 15% above its base
+figure is a suspect; the packages with a suspect run three more rounds in the
+opposite order, and the job fails only for a suspect that is over 15% again.
+A benchmark over the line in the first pass only is reported as `unconfirmed`.
 
 - A benchmark that exists only on the head is new; it has no baseline and is
   not gated until it is on the base.
