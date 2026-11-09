@@ -92,8 +92,8 @@ KEY = [("osdlc", "osdlc"), ("dev", "dev"), ("ont", "rust-ontogen"), ("sw", "skil
 TARGET_KEY = [("md", "markdown")] + KEY
 
 
-def key(y, repos):
-    out, x = [f'<text class="cs" x="{X0}" y="{y + 4}">Repo:</text>'], X0 + 40
+def key(y, repos, label="Repo:"):
+    out, x = [f'<text class="cs" x="{X0}" y="{y + 4}">{label}</text>'], X0 + 40
     for repo, name in repos:
         out.append(f'<g class="chip r-{repo}"><circle cx="{x}" cy="{y}" r="4.5" class="dot"/></g>'
                    f'<text class="cs" x="{x + 8}" y="{y + 4}">{name}</text>')

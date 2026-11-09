@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 550" width="880" font-family="system-ui, -apple-system, Segoe UI, sans-serif" role="img" aria-label="Level, dialect and profiles, with a root file example"><style>
+.bg{fill:#fbfaf7} .band{fill:#f0eee8}
+.rl{font-size:15px;font-weight:650;fill:#1d1d1b} .rs{font-size:12px;fill:#5d5d58}
+.lang{font-size:10.5px;font-weight:700;letter-spacing:.06em;fill:#5d5d58}
+.chip rect{fill:#ffffff;stroke-width:1.5} .chip.later rect{fill:none;stroke-dasharray:5 4}
+.cn{font-size:13px;font-weight:650;fill:#1d1d1b} .cs{font-size:11px;fill:#5d5d58}
+.r-osdlc rect{stroke:#2f855a} .r-osdlc .dot{fill:#2f855a}
+.r-md rect{stroke:#b83280} .r-md .dot{fill:#b83280}
+.r-dev rect{stroke:#2b6cb0} .r-dev .dot{fill:#2b6cb0}
+.r-ont rect{stroke:#6b46c1} .r-ont .dot{fill:#6b46c1}
+.r-sw rect{stroke:#c05621} .r-sw .dot{fill:#c05621}
+.fb rect{fill:#fde8e8;stroke:#c53030} .fb text{font-size:10.5px;font-weight:700;fill:#c53030}
+.dup{stroke:#c53030;stroke-width:1.6;stroke-dasharray:4 3}
+.edge{fill:none;stroke:#5d5d58;stroke-width:1.4} .ahp{fill:#5d5d58}
+.lvl rect{fill:#ffffff;stroke:#d8d5cc} .prof rect{fill:#fde7c8;stroke:#b8741a}
+.tie{stroke:#b8741a;stroke-width:1.6;fill:none}
+.task rect{stroke-width:1.6} .tt{font-size:11.5px;font-weight:650;fill:#1d1d1b}
+.tn{fill:#1d1d1b} .tnt{font-size:10.5px;font-weight:700;fill:#fbfaf7}
+.t-done rect{fill:#ffffff;stroke:#2f855a} .t-done .tn{fill:#2f855a}
+.t-doing rect{fill:#ffffff;stroke:#2b6cb0} .t-doing .tn{fill:#2b6cb0}
+.t-owner rect{fill:#fde7c8;stroke:#b8741a} .t-owner .tn{fill:#b8741a}
+.t-todo rect{fill:#ffffff;stroke:#d8d5cc} .t-todo .tn{fill:#5d5d58}
+.group{fill:none;stroke:#d8d5cc;stroke-width:1.4;stroke-dasharray:5 4} .gt{font-size:11.5px;font-weight:650;fill:#5d5d58}
+@media (prefers-color-scheme: dark) {
+.bg{fill:#16161a} .band{fill:#222227}
+.rl{font-size:15px;font-weight:650;fill:#ececea} .rs{font-size:12px;fill:#a3a39d}
+.lang{font-size:10.5px;font-weight:700;letter-spacing:.06em;fill:#a3a39d}
+.chip rect{fill:#2b2b31;stroke-width:1.5} .chip.later rect{fill:none;stroke-dasharray:5 4}
+.cn{font-size:13px;font-weight:650;fill:#ececea} .cs{font-size:11px;fill:#a3a39d}
+.r-osdlc rect{stroke:#68d391} .r-osdlc .dot{fill:#68d391}
+.r-md rect{stroke:#f687b3} .r-md .dot{fill:#f687b3}
+.r-dev rect{stroke:#63b3ed} .r-dev .dot{fill:#63b3ed}
+.r-ont rect{stroke:#b794f4} .r-ont .dot{fill:#b794f4}
+.r-sw rect{stroke:#f6ad55} .r-sw .dot{fill:#f6ad55}
+.fb rect{fill:#3b1d1d;stroke:#fc8181} .fb text{font-size:10.5px;font-weight:700;fill:#fc8181}
+.dup{stroke:#fc8181;stroke-width:1.6;stroke-dasharray:4 3}
+.edge{fill:none;stroke:#a3a39d;stroke-width:1.4} .ahp{fill:#a3a39d}
+.lvl rect{fill:#2b2b31;stroke:#3a3a40} .prof rect{fill:#3d2f1c;stroke:#f6ad55}
+.tie{stroke:#f6ad55;stroke-width:1.6;fill:none}
+.task rect{stroke-width:1.6} .tt{font-size:11.5px;font-weight:650;fill:#ececea}
+.tn{fill:#ececea} .tnt{font-size:10.5px;font-weight:700;fill:#16161a}
+.t-done rect{fill:#2b2b31;stroke:#68d391} .t-done .tn{fill:#68d391}
+.t-doing rect{fill:#2b2b31;stroke:#63b3ed} .t-doing .tn{fill:#63b3ed}
+.t-owner rect{fill:#3d2f1c;stroke:#f6ad55} .t-owner .tn{fill:#f6ad55}
+.t-todo rect{fill:#2b2b31;stroke:#3a3a40} .t-todo .tn{fill:#a3a39d}
+.group{fill:none;stroke:#3a3a40;stroke-width:1.4;stroke-dasharray:5 4} .gt{font-size:11.5px;font-weight:650;fill:#a3a39d}
+}</style><rect class="bg" width="440" height="550"/><style>
+.r-ext rect{stroke:#8a8a84} .r-ext .dot{fill:#8a8a84}
+.lnum{font-size:12px;font-weight:700;fill:#5d5d58}
+.lvl.opt rect{stroke-dasharray:5 4}
+.code rect{fill:#ffffff;stroke:#d8d5cc} .code text{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;fill:#1d1d1b}
+@media (prefers-color-scheme: dark) {
+.r-ext rect{stroke:#a0a09a} .r-ext .dot{fill:#a0a09a}
+.lnum{font-size:12px;font-weight:700;fill:#a3a39d}
+.lvl.opt rect{stroke-dasharray:5 4}
+.code rect{fill:#2b2b31;stroke:#3a3a40} .code text{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;fill:#ececea}
+}</style><defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0L10,5L0,10z" class="ahp"/></marker></defs><text class="rl" x="16" y="26">Three settings on a corpus</text><text class="rs" x="16" y="44">Each answers a different question. Proposal.</text><g class="code"><rect x="16" y="58" width="408" height="142" rx="8"/><text x="30" y="80"># corpus-schema.yaml</text><text x="30" y="98">corpus-schema: 0</text><text x="30" y="116">level: 2</text><text x="30" y="134">dialect: obsidian</text><text x="30" y="152">extends:</text><text x="30" y="170">  org: &quot;github:acme/org-corpus@4f2a9c1&quot;</text><text x="30" y="188">  claims: &quot;npm:@osdlc/corpus-profile-claims@0.1&quot;</text></g><text class="rl" x="16" y="218">Level</text><text class="rs" x="68" y="218">how much it declares</text><g class="lvl"><rect x="16" y="230" width="130" height="48" rx="8"/></g><text class="cn" x="28" y="251">Level 0</text><text class="cs" x="28" y="268">nothing</text><g class="lvl"><rect x="154" y="230" width="130" height="48" rx="8"/></g><text class="cn" x="166" y="251">Level 1</text><text class="cs" x="166" y="268">root file, folders, ids</text><path class="edge" d="M147,254 L153,254" marker-end="url(#ah)"/><g class="lvl"><rect x="292" y="230" width="130" height="48" rx="8"/></g><text class="cn" x="304" y="251">Level 2</text><text class="cs" x="304" y="268">a schema per type</text><path class="edge" d="M285,254 L291,254" marker-end="url(#ah)"/><text class="rl" x="16" y="306">Dialect</text><text class="rs" x="80" y="306">syntax beyond the baseline</text><g class="lvl"><rect x="16" y="318" width="200" height="48" rx="8"/></g><text class="cn" x="28" y="339">baseline</text><text class="cs" x="28" y="356">every tool; wikilinks warn</text><g class="lvl opt"><rect x="224" y="318" width="200" height="48" rx="8"/></g><text class="cn" x="236" y="339">obsidian</text><text class="cs" x="236" y="356">wikilinks, embeds, no warning</text><text class="rl" x="16" y="394">Extends</text><text class="rs" x="82" y="394">whose types and records it uses</text><g class="prof"><rect x="16" y="406" width="190" height="48" rx="8"/></g><text class="cn" x="28" y="427">claims</text><text class="cs" x="28" y="444">a profile: types only</text><g class="prof"><rect x="234" y="406" width="190" height="48" rx="8"/></g><text class="cn" x="246" y="427">acceptance testing</text><text class="cs" x="246" y="444">+ build, commit, environment</text><path class="edge" d="M232,430 L208,430" marker-end="url(#ah)"/><text class="cs" x="16" y="472">acceptance testing builds on claims:</text><text class="cs" x="16" y="488">it adds, it never loosens.</text><g class="lvl"><rect x="234" y="488" width="190" height="48" rx="8"/></g><text class="cn" x="246" y="509">your corpus</text><text class="cs" x="246" y="526">its own types + parents</text><path class="edge" d="M329,486 L329,456" marker-end="url(#ah)"/><text class="cs" x="16" y="518">So a record valid under acceptance</text><text class="cs" x="16" y="534">testing is also valid under claims.</text></svg>
