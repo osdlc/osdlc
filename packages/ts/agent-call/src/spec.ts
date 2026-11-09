@@ -150,6 +150,17 @@ export interface AgentCallSpec {
   context?: ContextSpec | undefined
   output?: OutputSpec | undefined
   session?: SessionSpec | undefined
+  /** Caps on how much work the agent may do in one call. */
+  limits?:
+    | {
+        /**
+         * Most agent turns for the call (claude `--max-turns`, qwen
+         * `--max-session-turns`). The other built-in adapters have no turn
+         * limit flag and record it as dropped.
+         */
+        maxTurns?: number | undefined
+      }
+    | undefined
   /** Hard dollar cap where supported (claude `--max-budget-usd`). */
   budgetUsd?: number | undefined
   /** Working directory for the agent process. */

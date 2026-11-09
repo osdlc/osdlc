@@ -8,7 +8,7 @@
  * fetches them over the network one comparison at a time, which made a sweep
  * of a few hundred branches take minutes instead of seconds. It is kept
  * rather than thrown away so a plan written from it can be applied later: the
- * plan names the clone's directory, and `apply` re-sweeps and pushes deletes
+ * plan names the clone's directory, and `clean` re-sweeps and pushes deletes
  * from there. A later run reuses it, and the sweep's fetch brings it up to
  * date.
  */

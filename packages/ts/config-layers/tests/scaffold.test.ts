@@ -95,6 +95,24 @@ describe('scaffoldYaml — header, records and the local template', () => {
     expect(y).toContain('# flag: true')
     expect(y).not.toMatch(/^flag:/m)
   })
+
+  test('version writes a live version line under the header, in both templates', () => {
+    expect(scaffoldYaml(SYNTH, ['# h'], { version: 3 }).startsWith('# h\n\nversion: 3\n\n')).toBe(
+      true,
+    )
+    const local = scaffoldLocalYaml(SYNTH, ['# l'], { version: 3 })
+    expect(local.startsWith('# l\n\nversion: 3\n\n')).toBe(true)
+    expect(local).toContain('# flag: true')
+  })
+
+  test('a null or absent version writes no version line', () => {
+    expect(scaffoldYaml(SYNTH, ['# h'], { version: null })).toBe(scaffoldYaml(SYNTH, ['# h']))
+    expect(scaffoldYaml(SYNTH, ['# h'])).not.toMatch(/^version:/m)
+  })
+
+  test.each([0, 1.5, Number.NaN])('a version of %s throws', (version) => {
+    expect(() => scaffoldYaml(SYNTH, [], { version })).toThrow(/integer of at least 1/)
+  })
 })
 
 describe('starterYaml', () => {
@@ -141,6 +159,15 @@ describe('starterYaml', () => {
     })
     expect(y).not.toMatch(/^flows:/m)
     expect(y).toContain('# flows: {}')
+  })
+
+  test('version writes a live version line between the header and the first banner', () => {
+    const y = starterYaml(SCHEMA, {
+      header: ['# start'],
+      categories: vocabulary.spec.categories,
+      version: 2,
+    })
+    expect(y.startsWith('# start\n\nversion: 2\n\n# ── core')).toBe(true)
   })
 })
 

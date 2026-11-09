@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 
 import { cursorAdapter } from '../../src/adapters/cursor.js'
 import type { RawProcessOutput } from '../../src/adapters/types.js'
+import { mapCursorTool } from '../../src/adapters/cursor-permissions.js'
 import { TMP_TOKEN } from '../../src/plan.js'
 
 const adapter = cursorAdapter()
@@ -101,13 +102,34 @@ describe('cursor plan', () => {
     ])
   })
 
-  test('tool rules are dropped', () => {
+  test('tool rules become a .cursor/cli.json permissions edit', () => {
     const planned = adapter.plan({
       prompt: 'x',
-      permissions: { allowTools: ['Shell(git)'], denyTools: ['Shell(rm)'] },
+      permissions: { allowTools: ['Read'], denyTools: ['Write', 'Bash'] },
     })
+    expect(planned.projectFiles).toEqual([
+      {
+        path: '.cursor/cli.json',
+        key: 'permissions',
+        value: { allow: ['Read(**)'], deny: ['Write(**)', 'Shell(*)'] },
+        merge: expect.any(Function),
+        preview: expect.stringContaining('"Shell(*)"'),
+      },
+    ])
+    expect(noteFor(planned, 'permissions.allowTools')?.support).toBe('native')
+    expect(
+      planned.notes.filter((n) => n.field === 'permissions.denyTools').map((n) => n.support),
+    ).toEqual(['native', 'approximated'])
+  })
+
+  test('no tool rules, no project file', () => {
+    expect(adapter.plan({ prompt: 'x' }).projectFiles).toBeUndefined()
+  })
+
+  test('unmappable entries are dropped with a note and write nothing', () => {
+    const planned = adapter.plan({ prompt: 'x', permissions: { allowTools: ['Teleport'] } })
     expect(noteFor(planned, 'permissions.allowTools')?.support).toBe('dropped')
-    expect(noteFor(planned, 'permissions.denyTools')?.support).toBe('dropped')
+    expect(planned.projectFiles).toBeUndefined()
   })
 
   test('context: files and text in the prompt, dirs via --add-dir', () => {
@@ -492,5 +514,38 @@ describe('cursor output that is not an envelope', () => {
       expect(parsed.isError).toBe(true)
       expect(parsed.errorDetail).toContain('no parseable envelope')
     }
+  })
+})
+
+describe('cursor tool mapping', () => {
+  test.each([
+    ['Read', 'allow', 'Read(**)', 'native'],
+    ['Read(src/**)', 'allow', 'Read(src/**)', 'native'],
+    ['Grep', 'deny', 'Read(**)', 'approximated'],
+    ['Glob', 'allow', 'Read(**)', 'approximated'],
+    ['Write', 'deny', 'Write(**)', 'native'],
+    ['Edit', 'deny', 'Write(**)', 'approximated'],
+    ['Edit(docs/**)', 'deny', 'Write(docs/**)', 'approximated'],
+    ['Bash', 'deny', 'Shell(*)', 'approximated'],
+    ['Bash(git:*)', 'allow', 'Shell(git)', 'approximated'],
+    ['Bash(git *)', 'allow', 'Shell(git)', 'approximated'],
+    ['Bash(git push:*)', 'deny', 'Shell(git)', 'approximated'],
+    ['WebFetch(domain:docs.rs)', 'allow', 'WebFetch(docs.rs)', 'approximated'],
+    ['mcp__db__query', 'allow', 'Mcp(db:query)', 'approximated'],
+    ['mcp__db', 'deny', 'Mcp(db:*)', 'approximated'],
+    ['Shell(rm)', 'deny', 'Shell(rm)', 'native'],
+  ] as const)('%s (%s) -> %s', (entry, kind, rule, support) => {
+    expect(mapCursorTool(entry, kind)).toMatchObject({ rule, support })
+  })
+
+  test.each([
+    ['Bash(git push:*)', 'allow'],
+    ['WebSearch', 'deny'],
+    ['Grep(src)', 'allow'],
+    ['not a tool!', 'deny'],
+  ] as const)('%s (%s) is dropped', (entry, kind) => {
+    const m = mapCursorTool(entry, kind)
+    expect(m.support).toBe('dropped')
+    expect(m.rule).toBeUndefined()
   })
 })

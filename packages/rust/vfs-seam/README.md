@@ -20,6 +20,7 @@ in memory, or a JavaScript object behind a wasm bridge.
 - `Metadata`: a file's size and its modification time in nanoseconds, which
   is exact and compares exactly. `modified_ms_f64` turns it into the
   fractional milliseconds node reports as `mtimeMs`, with node's arithmetic.
+  `ms_f64_to_ns` goes the other way, for a JS host that is given `mtimeMs`.
 - `PreviewVfs`: wraps another `Vfs`, reads through it, and captures writes,
   renames and removals instead of doing them. A dry run reports what it
   captured.

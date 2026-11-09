@@ -64,6 +64,7 @@ export {
   type RemoteEvidence,
   type RemoteRow,
   type RepoInfo,
+  type RepoNote,
   type RepoSweep,
   type Risk,
   type Row,

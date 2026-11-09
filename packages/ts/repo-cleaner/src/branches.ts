@@ -37,6 +37,8 @@ import {
   type Risk,
   type RowFields,
 } from './types.ts'
+import { prsUnchecked } from './prs.ts'
+import { errorText } from './util.ts'
 
 /**
  * Five fields in one pass, so a repository costs one `for-each-ref`. The full
@@ -47,7 +49,7 @@ const LOCAL_FORMAT =
 
 /**
  * True when merged `pr` proves `tip` landed: it targeted the default branch
- * and its head commit is `tip`. Fork PRs never reach here; `fetchPrs` drops
+ * and its head commit is `tip`. Fork PRs never reach here; the provider drops
  * them. A PR with no reported head counts as `head-moved`.
  */
 function prCapturesTip(pr: PRInfo, tip: string, repo: RepoInfo): true | PrEvidenceGap {
@@ -76,10 +78,13 @@ export function recordPr(
   return verdict === true ? { landed: true, gap: null } : { landed: false, gap: verdict }
 }
 
-/** Why a branch has no PR, naming where the sweep looked. */
+/** Why a branch has no PR, naming where the sweep looked, or why it could not. */
 function noPrSentence(repo: RepoInfo): string {
   const provider = repo.provider
   if (provider === null) return 'No PR lookup (no provider).'
+  // The provider's own error is in the repository's note, not on every row.
+  const unchecked = prsUnchecked(provider)
+  if (unchecked !== null) return `No ${provider.noun} lookup (${unchecked.why}).`
   return `No ${provider.noun} found via \`${provider.listing}\`.`
 }
 
@@ -103,11 +108,18 @@ export function mergedFact(e: {
   return e.landed || e.ancestor || e.patchLanded
 }
 
-/** What deleting a branch needs: its unlanded commits, and its open PR. */
-function branchRisks(unmerged: boolean, pr: PRInfo | undefined): Risk[] {
+/**
+ * What deleting a branch needs: its unlanded commits, and its open PR.
+ *
+ * @param prUnknown No PR is known for the branch, and open PRs could not be
+ *   checked: the provider's CLI is missing or signed out, or its listing
+ *   failed. A remote branch is then treated as having an open PR: deleting a
+ *   PR's head branch closes the PR, and nothing here can say there is none.
+ */
+function branchRisks(unmerged: boolean, pr: PRInfo | undefined, prUnknown = false): Risk[] {
   return risksFor({
     'abandon-unmerged': unmerged,
-    'confirm-open-pr': pr?.state === 'OPEN',
+    'confirm-open-pr': pr?.state === 'OPEN' || prUnknown,
   })
 }
 
@@ -288,28 +300,110 @@ function classifyLocalBranch(opts: {
 
 // ── remote branches ────────────────────────────────────────────────────────
 
+/** Remote branch rows, and the repository note when their tips had to come from disk. */
+export interface RemoteBranches {
+  rows: RemoteRow[]
+  /**
+   * Why the tips are not the remote's own: a live listing failed and they
+   * came from disk, or offline there were none on disk. Null otherwise.
+   */
+  note: string | null
+}
+
+/**
+ * Remote branches, judged. With `live` the tips are the remote's own, read
+ * with `ls-remote`, which also sees branches a narrowed fetch refspec leaves
+ * out: after a fetch, and in `clean`'s re-check, which must see the remote as
+ * it is before deleting on it. Without it, as `--offline` asks of the report
+ * and `plan`, they are the remote-tracking refs on disk
+ * (`refs/remotes/<remote>/`), and the remote is not contacted.
+ *
+ * A live listing that fails is not "the remote has no branches" and not a
+ * reason to lose the repository's other rows: the tips come from disk
+ * instead, and each row and the returned note say so. With `strict` (`clean`'s
+ * re-check when nothing was fetched) the refs on disk are what the re-check
+ * is there to replace, so a failed listing throws instead.
+ */
 export function gatherRemoteBranches(
   repo: RepoInfo,
   prs: Map<string, PRInfo>,
   localBranchNames: ReadonlySet<string>,
   git: Git,
-  only?: string,
-  tick?: (done: number, total: number) => void,
-): RemoteRow[] {
-  if (repo.remote === null) return []
-  // Default door: an unreachable remote throws rather than rendering as "the
-  // remote has no branches". `[]` here means the remote really has none.
-  const pattern = only === undefined ? undefined : `refs/heads/${only}`
-  const rows = git.at(repo.root).lsRemote(repo.remote, pattern, { heads: true })
-  const items: RemoteRow[] = []
-  for (const [i, { sha, ref }] of rows.entries()) {
-    tick?.(i, rows.length)
-    if (!ref.startsWith('refs/heads/')) continue
-    const name = ref.slice('refs/heads/'.length)
-    if (only !== undefined && name !== only) continue
-    items.push(classifyRemoteBranch({ name, sha, repo, prs, localBranchNames, git }))
+  opts: {
+    live: boolean
+    strict?: boolean | undefined
+    only?: string | undefined
+    tick?: ((done: number, total: number) => void) | undefined
+  },
+): RemoteBranches {
+  const remote = repo.remote
+  if (remote === null) return { rows: [], note: null }
+  const { only, tick } = opts
+  let tips: Array<{ name: string; sha: string }> | null = null
+  let note: string | null = null
+  if (opts.live) {
+    const pattern = only === undefined ? undefined : `refs/heads/${only}`
+    const listed = git.at(repo.root).try.lsRemote(remote, pattern, { heads: true })
+    if (listed.ok) {
+      tips = listed.value.flatMap(({ sha, ref }) =>
+        ref.startsWith('refs/heads/') ? [{ name: ref.slice('refs/heads/'.length), sha }] : [],
+      )
+    } else if (opts.strict === true) {
+      throw new Error(
+        `\`git ls-remote ${remote}\` failed (${errorText(listed.error)}); clean deletes on a remote only after asking it, so nothing was run`,
+      )
+    } else {
+      note = `\`git ls-remote ${remote}\` failed (${errorText(listed.error)}); remote branches are read from the remote-tracking refs on disk.`
+    }
   }
-  return items
+  if (tips === null) {
+    tips = trackingTips(repo.root, remote, git, only)
+    // A fetched remote has at least its default branch on disk; none at all
+    // means it was never fetched, or its refs live somewhere else.
+    if (!opts.live && tips.length === 0 && only === undefined) {
+      note = `No remote-tracking refs for \`${remote}\` on disk, so no remote branches to judge; fetch it once, or drop \`--offline\`.`
+    }
+  }
+
+  const items: RemoteRow[] = []
+  for (const [i, { name, sha }] of tips.entries()) {
+    tick?.(i, tips.length)
+    if (only !== undefined && name !== only) continue
+    const row = classifyRemoteBranch({ name, sha, repo, prs, localBranchNames, git })
+    if (note !== null) {
+      row.notes.push(
+        `Tip read from \`refs/remotes/${remote}/${name}\` on disk: \`git ls-remote\` failed.`,
+      )
+    }
+    items.push(row)
+  }
+  return { rows: items, note }
+}
+
+/**
+ * `remote`'s branches as its remote-tracking refs on disk record them, under
+ * the default `refs/remotes/<remote>/` layout. The symbolic `HEAD` is not a
+ * branch.
+ */
+function trackingTips(
+  root: string,
+  remote: string,
+  git: Git,
+  only: string | undefined,
+): Array<{ name: string; sha: string }> {
+  const prefix = `refs/remotes/${remote}/`
+  const at = git.at(root)
+  // Git allows `/` in a remote's name: `origin/mirror`'s refs sit under
+  // `refs/remotes/origin/` too, and are not `origin`'s branches.
+  const nested = at
+    .remotes()
+    .filter((r) => r.startsWith(`${remote}/`))
+    .map((r) => `refs/remotes/${r}/`)
+  return at.refs(only === undefined ? prefix : `${prefix}${only}`).flatMap(({ sha, ref }) => {
+    if (nested.some((p) => ref.startsWith(p))) return []
+    const name = ref.slice(prefix.length)
+    return name === 'HEAD' ? [] : [{ name, sha }]
+  })
 }
 
 function classifyRemoteBranch(opts: {
@@ -336,16 +430,16 @@ function classifyRemoteBranch(opts: {
     return row({ verdict: 'keep', action: null, why: 'default branch' })
 
   const remoteMain = landedRef(repo)
-  // `soft`: `sha` comes from `ls-remote`, so the clone may never have fetched
-  // it, and `remoteMain` may not exist either. Both exit 128; this row renders
-  // "cannot tell" as false.
+  // `soft`: `sha` may come from `ls-remote`, so the clone may never have
+  // fetched it, and `remoteMain` may not exist either. Both exit 128; this row
+  // renders "cannot tell" as false.
   const isAncestor = git.at(repo.root).soft.isAncestor(sha, remoteMain)
   evidence.ancestorOfRemoteMain = isAncestor
 
   const pr = prs.get(branch)
   const { landed, gap } = recordPr(evidence, pr, sha, repo)
-  // `sha` came from `ls-remote` and may not be in this clone; the check then
-  // finds nothing and the branch stays unlanded.
+  // A `sha` from `ls-remote` may not be in this clone; the check then finds
+  // nothing and the branch stays unlanded.
   const patch: Landing | null = landed || isAncestor ? null : judgeLanding(repo, sha, pr, gap, git)
   if (patch !== null) recordLanding(evidence, patch)
   const patchLanded = patch !== null && patch.check !== null
@@ -356,10 +450,25 @@ function classifyRemoteBranch(opts: {
     const counted = git.at(repo.root).try.aheadBehind(remoteMain, sha)
     evidence.uniqueCommits = counted.ok ? counted.value.ahead : null
   }
-  const risks = branchRisks(unmerged, pr)
+  const status = repo.provider
+  // `--provider none` is a choice that this remote has no forge; anything else
+  // that left PRs unchecked means one could be open.
+  const unchecked = status === null || pr !== undefined ? null : prsUnchecked(status)
+  const unknownPr =
+    status === null || unchecked === null
+      ? null
+      : `Whether it has an open ${status.noun} is unknown (${unchecked.why}), so deleting it needs confirm-open-pr.`
+  const risks = branchRisks(unmerged, pr, unknownPr !== null)
   const commands = repo.remote === null ? [] : [remoteDeleteCommand(repo.remote, branch, sha)]
   const deletes = (why: string): RemoteRow =>
-    row({ verdict: 'delete', action: 'delete', why, commands, risks })
+    row({
+      verdict: 'delete',
+      action: 'delete',
+      why,
+      commands,
+      risks,
+      notes: unknownPr === null ? [] : [unknownPr],
+    })
 
   if (pr && landed) return deletes(`PR #${pr.number} merged (auto-delete didn't fire)`)
   if (isAncestor) return deletes(`fully merged into ${remoteMain}`)
@@ -373,7 +482,7 @@ function classifyRemoteBranch(opts: {
   }
 
   const notes = [`Remote branch \`${name}\` is not an ancestor of \`${remoteMain}\`.`]
-  notes.push(pr ? `Associated PR #${pr.number} is ${pr.state}.` : 'No PR found.')
+  notes.push(pr ? `Associated PR #${pr.number} is ${pr.state}.` : (unknownPr ?? noPrSentence(repo)))
   if (pr && gap) notes.push(gapSentence(pr, gap, repo))
   const unmatched = patch === null ? null : unmatchedSentence(patch, repo)
   if (unmatched !== null) notes.push(unmatched)
