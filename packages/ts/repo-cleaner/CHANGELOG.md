@@ -1,5 +1,39 @@
 # @osdlc/repo-cleaner
 
+## 0.20.1
+
+### Patch Changes
+
+- Updated dependencies [0703abd]
+- Updated dependencies [61b12ce]
+  - @osdlc/cli-tool@0.18.0
+  - @osdlc/typed-gh@0.17.0
+
+## 0.20.0
+
+### Minor Changes
+
+- 9171850: Run with no target from a subdirectory of a checkout, `repo-cleaner` now sweeps that checkout instead of finding nothing and exiting 10. It widens only when the search below finds no checkout and the checkout around tracks files in the directory, so `~/Developer` under a home directory kept in git still sweeps the checkouts below it. A subdirectory named as a target is read as written, as before.
+
+## 0.19.1
+
+### Patch Changes
+
+- bfac1ae: The note that suggests `--provider none` now names what the provider lists ("if this remote has no PRs", or "no merge requests" for GitLab) instead of "if this remote has no forge", and the README drops "forge" the same way.
+
+## 0.19.0
+
+### Minor Changes
+
+- b1c3209: A lookup that fails now costs its evidence, not the repository. See "When a lookup fails" in the README.
+  
+  - A pull request listing that fails, such as `gh pr list` for a repository the account cannot see, no longer turns the repository into an error with no rows. Its rows are judged on git evidence, `RepoInfo.provider.listError` says why, and the repository carries a note.
+  - While open pull requests cannot be checked (the listing failed, or `gh`/`glab` is missing or signed out), deleting a remote branch with no known PR needs `confirm-open-pr`, since deleting an open PR's head branch closes it. `--provider none` asks nothing and gates nothing.
+  - `--offline` reads remote branches from the remote-tracking refs on disk, as documented, instead of calling `git ls-remote`. After a fetch, an `ls-remote` that fails falls back to those refs. A failed fetch still fails the repository.
+  - `clean`'s re-check, and its preview, read the remote's tips with `ls-remote`, so an offline plan's stale tracking refs never decide a delete: a branch the remote already deleted, or pushed past, is skipped, and a spared one refuses the run. If that `ls-remote` fails, the run is refused before anything runs. A branch deleted between the re-check and the push is reported gone, not a failure (`Step.gone`, `RunSummary.gone`).
+  - `--provider auto` asks no provider for a remote that names no host, such as a local path, which can have no pull requests.
+  - New in the library: `RepoSweep.notes`, `Preview.notes`, `RunOptions.onNotes` and the `RepoNote` type. A `PrProvider` reports a failure by returning null or by throwing.
+
 ## 0.18.0
 
 ### Minor Changes

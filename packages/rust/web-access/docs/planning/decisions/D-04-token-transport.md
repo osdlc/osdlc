@@ -1,0 +1,43 @@
+---
+id: D-04
+type: decision
+state: accepted
+created: 2026-11-07
+---
+
+# D-04: How the token travels
+
+## Decision
+
+- A token is 32 random bytes, base64url, minted from the operating system's
+  random source and kept in a file in a directory the app chooses, created
+  owner-only (0600) on Unix.
+- A share link is `http://<address>:<port>/?token=<token>`. Opening it sets an
+  `HttpOnly; SameSite=Strict; Path=/` cookie named `web_access_<port>` and
+  answers with a small page that moves to the same URL without the token.
+- After that the browser presents the cookie. A script or another program
+  presents the `x-web-access-token` header instead.
+- The token travels over plain HTTP. That is accepted for networks the user
+  trusts, and the README says so.
+
+## Why
+
+- A link is the simplest way to hand access to a phone: scan or tap it.
+- The landing page, not a 303, moves to the clean URL. A `SameSite=Strict`
+  cookie is not sent on a redirect of a navigation another site started, so
+  with a 303 a link opened from a chat or mail page landed on 401. A refresh
+  is a new navigation started by the app's own page, so the cookie goes with
+  it.
+- Removing the token from the URL keeps it out of the address bar, the
+  history and any `Referer`.
+- The port in the cookie name stops two servers on one address from
+  overwriting each other's cookie. It does not keep the cookie from them:
+  browsers send a host's cookies to every port on it. The README warns about
+  this.
+
+## Consequences
+
+- Another server on the same host can read the cookie.
+  [T-04](../tasks/T-04-session-cookie.md) tracks a per-browser session id that
+  would limit what such a leak exposes.
+- Encryption comes later: [T-01](../tasks/T-01-encrypted-transport.md).

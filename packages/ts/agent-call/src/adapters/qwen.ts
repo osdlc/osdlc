@@ -193,6 +193,11 @@ function planQwen(command: readonly string[], spec: AgentCallSpec): PlannedCall 
     )
   }
 
+  if (spec.limits?.maxTurns !== undefined) {
+    argv.push('--max-session-turns', String(spec.limits.maxTurns))
+    note(notes, 'limits.maxTurns', 'native', '--max-session-turns')
+  }
+
   argv.push(...(spec.extraArgs ?? []))
 
   // qwen reads the prompt from stdin when no positional is given, and expands

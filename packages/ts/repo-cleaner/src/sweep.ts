@@ -11,7 +11,7 @@ import { existsSync, realpathSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
 
 import type { CommandRunner } from '@osdlc/command-seam'
-import { Git } from '@osdlc/typed-git'
+import { Git, checkoutRoot } from '@osdlc/typed-git'
 import { Gh } from '@osdlc/typed-gh'
 
 import {
@@ -23,10 +23,10 @@ import {
 import { discoverRepo } from './discover.ts'
 import type { Annotate } from './hooks.ts'
 import { defaultProcessProbe, type ProcessProbe } from './processes.ts'
-import { fetchPrs } from './prs.ts'
+import { lookupPrs, prsUnchecked } from './prs.ts'
 import { PROVIDER_CHOICES, providers, type ProviderChoice } from './providers/index.ts'
 import { defaultCacheDir, ensureMirror, isRemoteUrl, redactUrl } from './remote-mirror.ts'
-import { expandTilde, resolveEntries } from './resolve.ts'
+import { expandTilde, resolveEntries, type Resolution } from './resolve.ts'
 import {
   KINDS,
   RepoCleanerError,
@@ -35,6 +35,7 @@ import {
   findDuplicateCheckouts,
   type Kind,
   type PRInfo,
+  type RepoInfo,
   type RepoSweep,
   type Row,
   type Sweep,
@@ -42,6 +43,7 @@ import {
   type SweptWith,
   type WorktreeRow,
 } from './types.ts'
+import { errorText } from './util.ts'
 import { gatherWorktrees } from './worktrees.ts'
 
 /** Runners and the process probe: what a test or a host injects. */
@@ -190,9 +192,21 @@ export function sweptWith(
 }
 
 /**
+ * Whether the checkout `dir` is in tracks any file under it. True as well when
+ * git cannot say: then widening to that checkout reports why it cannot be
+ * read, which says more than "no git checkouts under it".
+ */
+function tracksFilesIn(dir: string, git: Git): boolean {
+  const listed = git.at(dir).try.lsFiles({ cached: true })
+  return !listed.ok || listed.value.length > 0
+}
+
+/**
  * Sweep `targets`: checkouts, directories to search for checkouts, or remote
  * URLs (swept through a clone kept in `cacheDir`, remote branches only). No
- * target sweeps the checkout at `cwd`.
+ * targets means `[cwd]`, resolved the same way, except that a `cwd` where the
+ * search finds no checkout, and whose checkout tracks files in it, sweeps
+ * that checkout.
  *
  * Never throws for a repository it cannot read: that one comes back with
  * `error` set, because a fan-out must not end on its first bad entry. Throws a
@@ -217,14 +231,28 @@ export function sweep(targets: readonly string[], opts: SweepOptions = {}): Swee
       }
     }
   }
-  const resolution =
+  const resolveOpts = {
+    git: new Git(cwd, { runner: opts.git }),
+    baseDir: cwd,
+    ...(opts.onWarn === undefined ? {} : { onWarn: opts.onWarn }),
+  }
+  let resolution: Resolution =
     entries.length === 0
       ? { repos: [], unresolved: [], scan: emptyScan() }
-      : resolveEntries(entries, {
-          git: new Git(cwd, { runner: opts.git }),
-          baseDir: cwd,
-          ...(opts.onWarn === undefined ? {} : { onWarn: opts.onWarn }),
-        })
+      : resolveEntries(entries, resolveOpts)
+  // With no target, a directory the checkout around it tracks files in means
+  // that checkout, as it does for git itself. The search comes first, and a
+  // directory the checkout tracks nothing in is not part of it: a home
+  // directory kept in git does not track ~/Developer, so a search there that
+  // finds nothing is reported as it is. So is a search that found checkouts
+  // it could not read.
+  const around =
+    targets.length === 0 && resolution.repos.length === 0 && resolution.scan.checkoutsFound === 0
+      ? checkoutRoot(cwd)
+      : null
+  if (around !== null && around !== resolve(cwd) && tracksFilesIn(cwd, resolveOpts.git)) {
+    resolution = resolveEntries([around], resolveOpts)
+  }
   if (branch !== undefined && resolution.repos.length > 1) {
     throw new RepoCleanerError(
       'conflict',
@@ -257,12 +285,48 @@ export function sweep(targets: readonly string[], opts: SweepOptions = {}): Swee
   }
 }
 
+/**
+ * The repository's note about its pull request lookup, or null when the
+ * provider answered or nothing hangs on it. A failed listing is always noted;
+ * a CLI that is missing or signed out only when a remote branch could be
+ * deleted on its account, which then needs confirm-open-pr.
+ */
+function providerNote(
+  repo: RepoInfo,
+  kinds: ReadonlySet<Kind>,
+  choice: ProviderChoice,
+): string | null {
+  const status = repo.provider
+  const unchecked = status === null ? null : prsUnchecked(status)
+  // With no remote there is no remote branch to gate and no forge to point
+  // at; the local rows already say the lookup failed.
+  if (status === null || unchecked === null || repo.remote === null) return null
+  // A local remote names no forge, and `auto` asks GitHub for any host that
+  // is not GitLab's, so a host that is not a forge lands here too. github.com
+  // is a forge: there the cause is access, not the provider.
+  const hint =
+    status.host === null ||
+    (choice === 'auto' && status.name === 'github' && status.host !== 'github.com')
+      ? ` Pass \`--provider none\` if this remote has no ${status.noun}s.`
+      : ''
+  if (unchecked.kind === 'list-failed') {
+    return `Listing ${status.noun}s with \`${status.listing}\` failed (${status.listError}); judged on git evidence alone.${hint}`
+  }
+  if (!kinds.has('remote')) return null
+  const fix =
+    unchecked.kind === 'not-installed'
+      ? `Install \`${status.tool}\``
+      : `Sign in to \`${status.tool}\``
+  return `Could not check for open ${status.noun}s: ${unchecked.why}, so deleting a remote branch needs confirm-open-pr. ${fix}, or pass \`--allow confirm-open-pr\` once you have checked.${hint}`
+}
+
 function errorSweep(path: string, err: unknown): RepoSweep {
   return {
     path,
     repo: null,
     rows: [],
     counts: countRows([]),
+    notes: [],
     error: err instanceof Error ? err.message : String(err),
   }
 }
@@ -273,6 +337,13 @@ interface RepoSweepOptions extends Runners {
   against?: string | undefined
   provider: ProviderChoice
   fetch: boolean
+  /**
+   * Read remote tips with `ls-remote` even without a fetch: `clean`'s
+   * re-check, which must not delete on the strength of a stale tracking ref.
+   * Without a fetch, a failed `ls-remote` then fails the repository rather
+   * than fall back to those refs.
+   */
+  liveRemoteTips?: boolean | undefined
   branch?: string | undefined
   /** Only the worktree at this path; for {@link inspectWorktree}. */
   worktree?: string | undefined
@@ -287,6 +358,12 @@ interface RepoSweepOptions extends Runners {
  * {@link sweep} does for each. The engine `check` and `run` re-sweep with.
  * Never throws for a repository it cannot read; throws a `conflict` for a
  * `branch` that is the default branch.
+ *
+ * A failed fetch fails the repository. A lookup that only adds evidence does
+ * not: a remote whose branches `ls-remote` cannot list is read from the
+ * remote-tracking refs the fetch just wrote, and a provider whose listing
+ * fails leaves no pull request evidence. Each is a sentence in `notes`, and
+ * every row is judged on the evidence that is left.
  */
 export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
   const kinds = new Set<Kind>(opts.only)
@@ -343,23 +420,32 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
     const fetched = git
       .at(repo.root)
       .try.fetch(repo.remote, undefined, { prune: true, quiet: true, noWriteFetchHead: true })
+    // Unlike the lookups below, a failed fetch fails the repository: every
+    // row, local ones included, would be judged against a default branch
+    // older than the one asked for.
     if (!fetched.ok) {
       return {
-        ...errorSweep(
-          path,
-          new Error(`fetch failed: ${fetched.error.detail || fetched.error.message}`),
-        ),
+        ...errorSweep(path, new Error(`fetch failed: ${errorText(fetched.error)}`)),
         repo,
       }
     }
     repo = { ...repo, fetched: true }
   }
 
+  const notes: string[] = []
   try {
     const status = repo.provider ?? null
     if (status?.authenticated === true) report('prs', undefined, undefined, status.tool)
-    const prs =
-      status === null ? new Map<string, PRInfo>() : fetchPrs(repo, known[status.name], only)
+    let prs = new Map<string, PRInfo>()
+    if (status !== null) {
+      const looked = lookupPrs(repo, known[status.name], only)
+      prs = looked.prs
+      if (looked.error !== null) {
+        repo = { ...repo, provider: { ...status, listError: looked.error } }
+      }
+      const note = providerNote(repo, kinds, opts.provider)
+      if (note !== null) notes.push(note)
+    }
     const rows: Row[] = []
 
     // Worktrees are gathered whenever local branches are, even if they are not
@@ -402,17 +488,24 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
     }
 
     if (kinds.has('remote')) {
-      rows.push(...gatherRemoteBranches(repo, prs, localBranchNames, git, only, ticker('remote')))
+      const remote = gatherRemoteBranches(repo, prs, localBranchNames, git, {
+        live: repo.fetched || opts.liveRemoteTips === true,
+        strict: opts.liveRemoteTips === true && !repo.fetched,
+        only,
+        tick: ticker('remote'),
+      })
+      rows.push(...remote.rows)
+      if (remote.note !== null) notes.push(remote.note)
     }
 
     const annotated =
       opts.annotate === undefined
         ? rows
         : holdFreedBranches(opts.annotate(repo, rows).map(blockedHasNoAction), only !== undefined)
-    return { path, repo, rows: annotated, counts: countRows(annotated), error: null }
+    return { path, repo, rows: annotated, counts: countRows(annotated), notes, error: null }
   } catch (err) {
     if (err instanceof RepoCleanerError) throw err
-    return { ...errorSweep(path, err), repo }
+    return { ...errorSweep(path, err), repo, notes }
   }
 }
 
