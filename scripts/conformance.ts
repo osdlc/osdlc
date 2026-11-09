@@ -28,10 +28,11 @@
 //     referenceVersion and sections, each case with a name, an input, and
 //     exactly one of expect and error.
 //   - Each implementation's tests/ names the family's suite path.
-//   - The implementations share major.minor, now or once the pending
-//     changesets (.changeset/*.md) are applied, unless the family is in
-//     CATCHING_UP below. The release pull request applies them, so a family a
-//     changeset levels passes on main and on that pull request.
+//   - The implementations share major.minor once the pending changesets
+//     (.changeset/*.md) are applied, unless the family is in CATCHING_UP
+//     below; a family level now must stay level. The release pull request
+//     applies them, so a family a changeset levels passes on main and on that
+//     pull request.
 //   - Every library whose tests read a suite under packages/conformance/ is
 //     listed for that family, and no TypeScript library reads a crate's
 //     fixtures (or a crate a TypeScript library's) unless it is in UNMIGRATED.
@@ -204,35 +205,39 @@ export function majorMinor(version: string): string {
   return version.split('.').slice(0, 2).join('.')
 }
 
-const BUMPS = ['patch', 'minor', 'major']
+const BUMPS = ['none', 'patch', 'minor', 'major']
 
 /**
- * `version` after a `bump` (patch, minor or major) of its release. A major bump
+ * `version` after a `bump` (none, patch, minor or major) of its release. A major bump
  * of a 0.x version gives 1.0.0, as changesets does. Prerelease versions throw.
  */
 export function bumpVersion(version: string, bump: string): string {
   if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error(`${version}: prerelease versions are not supported by this check`)
   const [major, minor, patch] = version.split('.').map(Number) as [number, number, number]
+  if (bump === 'none') return version
   if (bump === 'major') return `${major + 1}.0.0`
   if (bump === 'minor') return `${major}.${minor + 1}.0`
   return `${major}.${minor}.${patch + 1}`
 }
 
-const FRONT_LINE = /^(["']?)([^"'\s:]+)\1\s*:\s*(patch|minor|major)\s*(?:#.*)?$/
+const FRONTMATTER = /^\s*---[ \t]*\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|$)/
+
+const FRONT_LINE = /^(["']?)([^"'\s:]+)\1\s*:\s*(none|patch|minor|major)\s*(?:#.*)?$/
 
 /**
  * The highest bump each package has in the changesets, from `[file, text]` of
- * the .changeset/*.md files: frontmatter lines of `"<package>": patch|minor|major`,
- * with an optional trailing `# comment`. A frontmatter line that does not parse
- * throws, naming the file. Valid only while config.json has no fixed or linked
+ * the .changeset/*.md files: frontmatter lines of `"<package>": none|patch|minor|major`,
+ * with an optional trailing `# comment`. A file without frontmatter at its start,
+ * or with a frontmatter line that does not parse, throws, naming the file. Valid only while config.json has no fixed or linked
  * groups, no ignore and no pre mode (see {@link configProblems}), so a
  * package's release is its own highest bump.
  */
 export function pendingBumps(changesets: Array<[string, string]>): Map<string, string> {
   const out = new Map<string, string>()
   for (const [file, text] of changesets) {
-    const front = /^---[ \t]*\r?\n([\s\S]*?)^---[ \t]*$/m.exec(text)?.[1] ?? ''
-    for (const raw of front.split(/\r?\n/)) {
+    const m0 = FRONTMATTER.exec(text)
+    if (m0 === null) throw new Error(`${file}: no frontmatter at the start of the file`)
+    for (const raw of (m0[1] ?? '').split(/\r?\n/)) {
       const line = raw.trim()
       if (line === '' || line.startsWith('#')) continue
       const m = FRONT_LINE.exec(line)
