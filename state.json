@@ -46,9 +46,9 @@
       "line": null,
       "title": "no tests for patch, major on 0.x, unrelated, empty or overshoot changesets",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "70946ec026b4844fa70d96b6bfd676ed7794079c"
     }
   ]
 }
