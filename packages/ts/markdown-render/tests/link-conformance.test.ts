@@ -4,7 +4,7 @@
  * body the plugins must tokenize the same links the case file lists: each
  * wikilink's target, heading, block and alias, and each embed's target.
  *
- * The cases are the `parse` entries with a `body`. The renderer reads
+ * The cases are the suite's `body` section. The renderer reads
  * `[[#Heading]]` as a link to its own note, so it runs the cases under
  * `selfLinks`; the cases that only differ in an option the renderer does not
  * take (comments skipped, the skill-export code rules) are left out, and so are
@@ -21,26 +21,32 @@ import { remarkEscapes, remarkUnescape } from '../src/plugins/escapes.ts'
 
 interface BodyCase {
   name: string
-  body: string
-  options?: { selfLinks?: boolean; skipHtmlComments?: boolean; codeRules?: string }
-  links: {
-    kind: 'wikilink' | 'embed' | 'markdown'
-    target: string
-    heading?: string | null
-    block?: string | null
-    alias: string | null
-  }[]
+  input: {
+    body: string
+    options?: { self_links?: boolean; skip_html_comments?: boolean; code_rules?: string }
+  }
+  expect: {
+    links: {
+      kind: 'wikilink' | 'embed' | 'markdown'
+      target: string
+      heading?: string | null
+      block?: string | null
+      alias: string | null
+    }[]
+  }
 }
 
-// The case file belongs to the Rust crate and its TypeScript twin.
+// The shared suite of the markdown-link family, `packages/conformance/markdown-link/suite.json`.
+// The renderer is a reader of it: it runs the body cases without implementing the family.
+// A case that sets an option the renderer does not take is left out.
 const cases = (
   JSON.parse(
-    readFileSync(
-      new URL('../../../rust/markdown-link/tests/fixtures/conformance.json', import.meta.url),
-      'utf8',
-    ),
-  ) as { parse: (BodyCase | { name: string })[] }
-).parse.filter((c): c is BodyCase => 'body' in c)
+    readFileSync(new URL('../../../conformance/markdown-link/suite.json', import.meta.url), 'utf8'),
+  ) as { sections: { body: { cases: BodyCase[] } } }
+).sections.body.cases.filter((c) => {
+  const o = c.input.options
+  return !o?.skip_html_comments && (o?.code_rules ?? 'commonmark') === 'commonmark'
+})
 
 /** Cases the renderer answers differently, and why. */
 const SKIPPED: Record<string, string> = {
@@ -64,6 +70,15 @@ const SKIPPED: Record<string, string> = {
   abandoned_only_code_in_the_target:
     'code in a target is not plain text, so the link stays literal',
   empty_targets_are_dropped: 'the renderer links `[[|alias]]` to its own note',
+  escaped_bang_before_an_empty_link: 'the renderer links `[[|alias]]` to its own note',
+  backtick_run_cut_by_a_cell_boundary:
+    'without a delimiter row the line is a paragraph, and remark reads the code span',
+  pipe_inside_backticks_still_ends_the_cell:
+    'without a delimiter row the line is a paragraph, and remark reads the code span',
+  table_row_in_a_list_item:
+    'without a delimiter row the line is a paragraph, and remark reads the code span',
+  table_row_in_a_block_quote:
+    'without a delimiter row the line is a paragraph, and remark reads the code span',
 }
 
 interface Found {
@@ -110,8 +125,8 @@ for (const c of cases) {
   const skipped = SKIPPED[c.name]
   const run = skipped === undefined ? test : test.skip
   run(c.name, () => {
-    const found = render(c.body)
-    const wikilinks = c.links
+    const found = render(c.input.body)
+    const wikilinks = c.expect.links
       .filter((l) => l.kind === 'wikilink')
       .map((l) => ({
         target: l.target,
@@ -120,6 +135,8 @@ for (const c of cases) {
         alias: l.alias,
       }))
     expect(found.wikilinks).toEqual(wikilinks)
-    expect(found.embeds).toEqual(c.links.filter((l) => l.kind === 'embed').map((l) => l.target))
+    expect(found.embeds).toEqual(
+      c.expect.links.filter((l) => l.kind === 'embed').map((l) => l.target),
+    )
   })
 }
