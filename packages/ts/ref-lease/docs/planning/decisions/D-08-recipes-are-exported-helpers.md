@@ -24,6 +24,14 @@ throw `CasFailed` when every pass lost. A caller that wants another policy uses 
 
 `renew`, listing and release-with-archive stay recipes: they are one call, or depend on policy.
 
+Two more generic parts follow the same rule. `refKey(prefix, key)` makes a safe, readable ref name
+for any string (sanitized, cut, with a short sha256 of the key so distinct keys never collide).
+`refStore<T>` is a keyed store of records, one ref per key under a prefix: `load` fetches the
+namespace once, `get` and `entries` read that view, `update` is `updateWithRetry` that keeps the
+view in sync, and `prune(isStale)` deletes a record only after reading it again and only at the sha
+it read (`release`). `decode`, `change` and `isStale` are the caller's, so the payload is still the
+caller's (D-04). The store owns everything under its prefix.
+
 ## Why
 
 Two callers (a lock and a record store) wrote the same read, decide, swap, read-again loop, and the

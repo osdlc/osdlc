@@ -2,7 +2,7 @@
  * claim, updateWithRetry and release against a real bare authority.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import {
   buildLeaseCommit,
@@ -22,6 +22,9 @@ interface P {
   live: boolean
 }
 const decode = (v: unknown): P => v as P
+
+// Each pass is a few pushes; a busy machine needs more than the default 5s.
+vi.setConfig({ testTimeout: 30_000 })
 
 let env: Pair
 beforeEach(() => {

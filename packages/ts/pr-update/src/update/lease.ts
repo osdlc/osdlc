@@ -12,11 +12,15 @@
 import { randomUUID } from 'node:crypto'
 import { hostname } from 'node:os'
 
-import { CasFailed, claim, release } from '@osdlc/ref-lease'
+import { CasFailed, claim, refKey, release } from '@osdlc/ref-lease'
 
 import type { BranchLease, LeaseGrant } from '../ports.ts'
-import { withRefHint } from './ref-attempts.ts'
-import { DEFAULT_REF_PREFIX, lockRef, MAX_CAS_ATTEMPTS } from './ref-names.ts'
+import { DEFAULT_REF_PREFIX, MAX_CAS_ATTEMPTS, withRefHint } from './ref-attempts.ts'
+
+/** The ref holding the update lease of one head branch. */
+export function lockRef(refPrefix: string, head: string): string {
+  return refKey(`${refPrefix.replace(/\/+$/, '')}/lock/`, head)
+}
 
 export interface LeasePayload {
   holder: string

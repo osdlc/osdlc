@@ -259,7 +259,7 @@ pr_update:
 ```
 
 the record lives on the `--remote` (default `origin`) as refs, and `update --apply` also takes a
-lease on each head branch while it updates it. `@osdlc/ref-lease` does every write as a
+lease on each head branch while it updates it. `@osdlc/ref-lease` (`refStore`, `claim`, `refKey`) does every write as a
 compare-and-swap (`push --force-with-lease`), so the remote decides who wins a race. The lease
 is on whenever the store is `git-ref` and never otherwise; there is no separate switch.
 

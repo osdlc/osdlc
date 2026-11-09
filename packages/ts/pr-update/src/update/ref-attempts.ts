@@ -1,24 +1,40 @@
 /**
- * The failed-attempt record on git refs at a remote, so runs on different machines (CI jobs, a
- * laptop and a server) share it.
+ * The failed-attempt record on refs at a remote, so runs on different machines (CI jobs, a laptop
+ * and a server) share it.
  *
  * One ref per repo, head branch and base branch, the same grouping the file store uses per file.
- * The ref's commit holds `{ entries }`, the file store's JSON, written with `@osdlc/ref-lease`.
- * Every write is a compare-and-swap. A lost swap re-reads the ref and applies the change again to
- * what is there now (`updateWithRetry`, up to {@link MAX_CAS_ATTEMPTS} times), so two runs that fail the same PR at
- * once both count. Records are read with one `fetchNamespace` the first time the store is used,
- * then served from that read and from this store's own writes.
+ * The ref's commit holds `{ entries }`, the file store's JSON. `@osdlc/ref-lease`'s `refStore`
+ * does the ref names, the one fetch per run, the compare-and-swap writes with a re-read after a
+ * lost swap (so two runs that fail the same PR at once both count) and the guarded delete. This
+ * file holds only pr-update's record format, its merge rule and its stale rule.
  *
  * A remote that accepts only `refs/heads` and `refs/tags` refuses these writes. That surfaces as
  * a `GitFailed` that names the setting to fall back to (`attempts.store: file`).
  */
 
-import { fetchNamespace, GitFailed, updateWithRetry } from '@osdlc/ref-lease'
-import { Git } from '@osdlc/typed-git'
+import { GitFailed, refKey, refStore } from '@osdlc/ref-lease'
 
 import type { AttemptKey, AttemptRecord, AttemptStore } from '../ports.ts'
 import { isEntry, MAX_AGE_MS, type Entry } from './attempts.ts'
-import { attemptRef, attemptsPrefix, DEFAULT_REF_PREFIX, MAX_CAS_ATTEMPTS } from './ref-names.ts'
+
+/** The default prefix under which everything this package writes to a remote lives. */
+export const DEFAULT_REF_PREFIX = 'refs/pr-update/'
+
+/** Compare-and-swap tries before a write or lease gives up. */
+export const MAX_CAS_ATTEMPTS = 5
+
+/** The namespace of attempt records under `refPrefix`. */
+export function attemptsPrefix(refPrefix: string): string {
+  return `${refPrefix.replace(/\/+$/, '')}/attempts/`
+}
+
+/** The record key of one PR target: repo, head and base branch. */
+const targetKey = (repo: string, head: string, base: string): string => `${repo}\0${head}\0${base}`
+
+/** The ref holding the failed-attempt record of one PR target, under an attempts prefix. */
+export function attemptRef(prefix: string, repo: string, head: string, base: string): string {
+  return refKey(prefix, targetKey(repo, head, base), `${repo}__${head}`)
+}
 
 export interface RefAttemptStoreOptions {
   /** The git remote (name or URL) that holds the refs. */
@@ -51,11 +67,6 @@ export function withRefHint(e: unknown, remote: string): unknown {
   })
 }
 
-interface Group {
-  sha: string
-  entries: Entry[]
-}
-
 function sameKey(a: AttemptKey, b: AttemptKey): boolean {
   return (
     a.repo === b.repo &&
@@ -71,112 +82,69 @@ interface Payload {
   entries: Entry[]
 }
 
-function entriesOf(value: unknown): Entry[] {
+function decode(value: unknown): Payload {
   const entries = (value as { entries?: unknown } | null)?.entries
-  return Array.isArray(entries) ? entries.filter(isEntry) : []
-}
-
-const decode = (value: unknown): Payload => ({ entries: entriesOf(value) })
-
-function parseEntries(text: string | null): Entry[] {
-  if (text === null) return []
-  try {
-    return entriesOf(JSON.parse(text))
-  } catch {
-    return []
-  }
+  return { entries: Array.isArray(entries) ? entries.filter(isEntry) : [] }
 }
 
 export function refAttemptStore(opts: RefAttemptStoreOptions): RefAttemptStore {
-  const { remote, cwd } = opts
-  const prefix = opts.prefix ?? attemptsPrefix(DEFAULT_REF_PREFIX)
+  const { remote } = opts
   const now = opts.now ?? (() => new Date())
-  const repo = new Git(cwd)
-  const gitOpts = { cwd }
-  /** ref -> its state at the remote as far as this store knows. */
-  let cache: Map<string, Group> | null = null
-
-  const readEntries = (sha: string): Entry[] => {
-    const shown = repo.try.showAtRev(sha, 'lease.json')
-    return shown.ok ? parseEntries(shown.value) : []
-  }
-
-  const load = (): Map<string, Group> => {
-    if (cache !== null) return cache
-    const loaded = new Map<string, Group>()
+  const store = refStore<Payload>({
+    remote,
+    cwd: opts.cwd,
+    prefix: opts.prefix ?? attemptsPrefix(DEFAULT_REF_PREFIX),
+    decode,
+    attempts: MAX_CAS_ATTEMPTS,
+    label: (key) => {
+      const [repo, head] = key.split('\0')
+      return `${repo}__${head}`
+    },
+  })
+  const hint = <R>(run: () => R): R => {
     try {
-      const refs = fetchNamespace(remote, prefix, gitOpts)
-      for (const [ref, sha] of Object.entries(refs)) {
-        loaded.set(ref, { sha, entries: readEntries(sha) })
-      }
+      return run()
     } catch (e) {
       throw withRefHint(e, remote)
     }
-    cache = loaded
-    return loaded
   }
-
   const fresh = (entries: readonly Entry[]): Entry[] => {
     const cutoff = now().getTime() - MAX_AGE_MS
     return entries.filter((e) => Date.parse(e.at) >= cutoff)
   }
 
-  /**
-   * Apply `change` to the ref's fresh entries and write the result. `@osdlc/ref-lease` re-reads
-   * and calls `change` again after a lost swap, so a concurrent record is merged, not lost. An
-   * empty result deletes the ref.
-   */
-  const update = (ref: string, change: (entries: Entry[]) => Entry[]): void => {
-    const groups = load()
-    try {
-      const out = updateWithRetry<Payload>(
-        remote,
-        ref,
-        (current) => {
-          const next = change(fresh(current?.payload.entries ?? []))
-          return next.length === 0 ? null : { entries: next }
-        },
-        { ...gitOpts, decode, attempts: MAX_CAS_ATTEMPTS },
-      )
-      if (out.kind === 'written') groups.set(ref, { sha: out.sha, entries: out.payload.entries })
-      else groups.delete(ref)
-    } catch (e) {
-      throw withRefHint(e, remote)
-    }
-  }
-
   return {
     get(key): AttemptRecord | null {
-      const ref = attemptRef(prefix, key.repo, key.head, key.base)
-      const hit = load()
-        .get(ref)
-        ?.entries.find((e) => sameKey(e, key))
+      const hit = hint(() => store.get(targetKey(key.repo, key.head, key.base)))?.entries.find(
+        (e) => sameKey(e, key),
+      )
       return hit === undefined ? null : { failures: hit.failures, reason: hit.reason, at: hit.at }
     },
     recordFailure(key, reason) {
-      update(attemptRef(prefix, key.repo, key.head, key.base), (entries) => {
-        const prior = entries.find((e) => sameKey(e, key))
-        const rest = entries.filter((e) => e.base !== key.base)
-        rest.push({
-          ...key,
-          failures: (prior?.failures ?? 0) + 1,
-          reason,
-          at: now().toISOString(),
-        })
-        return rest
-      })
+      hint(() =>
+        store.update(targetKey(key.repo, key.head, key.base), (current) => {
+          const entries = fresh(current?.entries ?? [])
+          const prior = entries.find((e) => sameKey(e, key))
+          const rest = entries.filter((e) => e.base !== key.base)
+          rest.push({
+            ...key,
+            failures: (prior?.failures ?? 0) + 1,
+            reason,
+            at: now().toISOString(),
+          })
+          return { entries: rest }
+        }),
+      )
     },
-    clear(repoSlug, head, base) {
-      const ref = attemptRef(prefix, repoSlug, head, base)
-      if (!load().has(ref)) return
-      update(ref, () => [])
+    clear(repo, head, base) {
+      const key = targetKey(repo, head, base)
+      if (hint(() => store.get(key)) === null) return
+      hint(() => store.update(key, () => null))
     },
     prune() {
-      // A ref whose entries are all stale is deleted (`update` hands over only the fresh ones, read
-      // again after a lost swap, so a record refreshed meanwhile survives); a mixed one is trimmed by its next write.
-      for (const [ref, g] of [...load()]) {
-        if (fresh(g.entries).length === 0) update(ref, (entries) => entries)
-      }
+      // A ref whose entries are all stale is deleted, unless it was refreshed since it was loaded;
+      // a mixed one is trimmed by its next write.
+      hint(() => store.prune((p) => fresh(p.entries).length === 0))
     },
   }
 }

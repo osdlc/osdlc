@@ -15,7 +15,8 @@ import type { AttemptKey, BranchLease } from '../../src/ports.ts'
 import { updateAll, type UpdateTarget } from '../../src/update/execute.ts'
 import { defaultHolder, refBranchLease } from '../../src/update/lease.ts'
 import { refAttemptStore } from '../../src/update/ref-attempts.ts'
-import { attemptRef, lockRef } from '../../src/update/ref-names.ts'
+import { attemptRef } from '../../src/update/ref-attempts.ts'
+import { lockRef } from '../../src/update/lease.ts'
 
 const KEY: AttemptKey = { repo: 'o/r', head: 'topic', headOid: 'h1', base: 'main', baseOid: 'b1' }
 const DAY = 24 * 60 * 60 * 1000

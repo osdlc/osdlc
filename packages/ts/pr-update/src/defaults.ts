@@ -21,8 +21,7 @@ import type { Ports, Repair } from './ports.ts'
 import { agentRepair } from './repair/agents.ts'
 import { attemptsDir, fileAttemptStore } from './update/attempts.ts'
 import { defaultLeaseTtlSeconds, refBranchLease } from './update/lease.ts'
-import { refAttemptStore } from './update/ref-attempts.ts'
-import { attemptsPrefix } from './update/ref-names.ts'
+import { attemptsPrefix, refAttemptStore } from './update/ref-attempts.ts'
 
 // Both run in a PR worktree, so `sh` comes only from an absolute PATH entry:
 // a relative entry would resolve inside the PR's own files.

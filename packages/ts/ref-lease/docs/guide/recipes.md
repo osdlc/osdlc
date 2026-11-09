@@ -194,6 +194,24 @@ function updateLease(
 The attempts are bounded (`attempts`, default 5) and the last `CasFailed` is thrown. Under heavy
 contention on one lease, pass `backoffMs(attempt)` to wait between attempts, with some jitter.
 
+## A keyed store of records
+
+For one record per key (per branch, per job) rather than one lease, `refStore` keeps a ref per key
+under a prefix you own. `refKey(prefix, key)` names the ref: the key with unsafe characters
+replaced by `_`, cut to 60 characters, then `--` and 10 hex digits of the key's sha256, so any
+string is a valid ref name and two keys never share one.
+
+```ts
+const store = refStore<Lease>({ remote: 'origin', prefix: 'refs/my-tool/jobs/', decode })
+store.update('nightly/build', (current) => ({ holder: 'a', expiresAt: '...' })) // null = delete
+store.get('nightly/build') // from one fetch of the prefix, kept in sync by this store's writes
+store.prune((lease) => new Date(lease.expiresAt) < new Date()) // re-reads before each delete
+```
+
+`update` is `updateWithRetry`, so concurrent updates on one key each see the other's result.
+`prune` deletes a record only if it is still stale when read again, and only at the sha it read.
+`load()` is one `fetchNamespace`; the view does not see other writers until a new store loads.
+
 ## Before the first write
 
 If anything on the authority created a literal ref at the namespace path itself (`refs/locks`), git
