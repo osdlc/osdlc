@@ -1,0 +1,13 @@
+import { expect, test } from 'vitest'
+
+import { fact } from '../src/index.js'
+
+test('fact returns an object value stated at moderate strength or better', () => {
+  expect(fact('codex', 'skills/user-dirs')).toMatchObject({ dirs: ['~/.agents/skills'] })
+})
+
+test('fact skips weak values, missing values and unknown harnesses', () => {
+  expect(fact('claude-code', 'skills/project-dirs')).toBeUndefined()
+  expect(fact('claude-code', 'cli/binary')).toBeUndefined()
+  expect(fact('no-such-harness', 'cli/binary')).toBeUndefined()
+})
