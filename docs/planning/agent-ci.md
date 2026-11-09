@@ -137,18 +137,18 @@ move; merged PRs drop off.
 | --- | --- | --- | --- | --- |
 | 1 | [#747](https://github.com/osdlc/osdlc/pull/747) | codex.yml and cursor.yml callers | Clean and green now; first live run of codex-pr and cursor-pr; gate: no findings | waiting on your review since 06:56 UTC; set OPENAI_API_KEY and CURSOR_API_KEY before merging; mergeable |
 | 2 | [#741](https://github.com/osdlc/osdlc/pull/741) | Interrupting a host kills the agent: command-seam exports group tracking, agent-call registers the agent group, pr-update installs forwarding | Gate done after the rework (2 fixed); the node 22 failure cleared on rerun | waiting on your review since 07:00 UTC; no failures; 2 macOS checks still running |
-| 3 | [#749](https://github.com/osdlc/osdlc/pull/749) | Shared reusable workflows for TypeScript package CI and release (adds a `ts-packages` gh-action) | From the shared-CI work, not this plan; listed because it edits `packages/gh-actions/README.md` | waiting on your review since 06:50 UTC (over 2h; nudged 17:17); CI failing: packages verify on ubuntu node 22 and 26 |
-| 4 | [#748](https://github.com/osdlc/osdlc/pull/748) | Move the package checks into `@osdlc/package-checks` | From the shared-CI work; touches agent-call only through its smoke test | waiting on your review since 06:38 UTC (over 2h; nudged 17:17); CI failing: verify on ubuntu node 22 and 26, macOS node 26 |
+| 3 | [#749](https://github.com/osdlc/osdlc/pull/749) | Shared reusable workflows for TypeScript package CI and release (adds a `ts-packages` gh-action) | From the shared-CI work, not this plan; listed because it edits `packages/gh-actions/README.md` | waiting on your review since 06:50 UTC (over 2h; nudged 17:17); CI green |
+| 4 | [#748](https://github.com/osdlc/osdlc/pull/748) | Move the package checks into `@osdlc/package-checks` | From the shared-CI work; touches agent-call only through its smoke test | waiting on your review since 06:38 UTC (over 2h; nudged 17:17); CI green |
 | 5 | [#760](https://github.com/osdlc/osdlc/pull/760) | pr-update: one PR identity across repositories, per-repository verify, `--restack` | From the pr-update work, not this plan; listed because it touches agent-call or gh-actions paths | waiting on your review since 18:30 UTC; CI green; behind main |
 
 ## PR tracker
 
-Checked 2026-11-09 22:17 UTC. A periodic check refreshes this table and the graph.
+Checked 2026-11-09 23:17 UTC. A periodic check refreshes this table and the graph.
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
-| [#749](https://github.com/osdlc/osdlc/pull/749) | ci: shared reusable workflows for TypeScript package CI and release | open | none | failing checks | CI failing: packages verify (shared-CI work) | related; watch for gh-actions README conflicts |
-| [#748](https://github.com/osdlc/osdlc/pull/748) | package-checks: move the package checks into @osdlc/package-checks | open | none | failing checks | CI failing: verify on ubuntu and macOS (shared-CI work) | related, not on this plan's path |
+| [#749](https://github.com/osdlc/osdlc/pull/749) | ci: shared reusable workflows for TypeScript package CI and release | open | none | clean | waiting on your review (shared-CI work) | related; watch for gh-actions README conflicts |
+| [#748](https://github.com/osdlc/osdlc/pull/748) | package-checks: move the package checks into @osdlc/package-checks | open | none | clean | waiting on your review (shared-CI work) | related, not on this plan's path |
 | [#747](https://github.com/osdlc/osdlc/pull/747) | ci: codex and cursor answer PR mentions | open | none | behind main | waiting on your review; needs OPENAI_API_KEY and CURSOR_API_KEY | merge, then a live codex and cursor mention |
 | [#760](https://github.com/osdlc/osdlc/pull/760) | pr-update: one PR identity across repositories, per-repository verify, --restack | open | none | behind main | waiting on your review (pr-update work) | related |
 | [#759](https://github.com/osdlc/osdlc/pull/759) | ci(pr-update): run once a night instead of on every push to main | merged | — | — | — | merged 2026-11-09; ends the CI storms from merges to main |
