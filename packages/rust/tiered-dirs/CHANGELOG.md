@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.8](https://github.com/osdlc/osdlc/compare/tiered-dirs/v0.3.7...tiered-dirs/v0.3.8) - 2026-11-10
+
+### Other
+
+- update Cargo.toml dependencies
+
 ## [0.3.7](https://github.com/osdlc/osdlc/compare/tiered-dirs/v0.3.6...tiered-dirs/v0.3.7) - 2026-10-28
 
 ### Other
