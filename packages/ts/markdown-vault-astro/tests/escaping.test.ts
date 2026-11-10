@@ -98,6 +98,9 @@ test('missing and relation spans survive a pipeline that disallows raw html', ()
       .use(rehypeStringify)
       .processSync('[[rel]] and [[gone]]'),
   )
-  assert.match(html, /<span class="wikilink" data-wikilink="rel" data-collection="a&#x22;b">rel<\/span>/)
+  assert.match(
+    html,
+    /<span class="wikilink" data-wikilink="rel" data-collection="a&#x22;b">rel<\/span>/,
+  )
   assert.match(html, /class="wikilink wikilink-missing"/)
 })
