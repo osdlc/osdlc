@@ -1,5 +1,36 @@
 # @osdlc/pr-update
 
+## 0.10.0
+
+### Minor Changes
+
+- cb8eafc: **Breaking:** `survey` and `update` identify every PR by repository and number, in one shape whether a run covers one repository or several (#753).
+  
+  - Each `update` `results` and `skipped` entry carries `repo` (`owner/name`) next to `number`.
+  - Text output always names a PR `owner/name#N`, the form GitHub links, in one repository or several. The survey table's `PR` column holds it, and the separate `REPO` column is gone. The base/head cycle line names its PRs the same way.
+  - `--pr` accepts `owner/name#N` as well as a bare number. A bare number still selects that PR in every repository of the run. A key names one PR of one repository, which must be in the run: a key for any other repository is a usage error (exit `2`).
+  - `slug` is renamed `repo` everywhere: each survey `repos[]` entry, `RepoTarget`, and the target `SurveyEnv.codeHost` receives (`{ cwd, repo }`).
+  - `update` output carries `repos`, the same entries `survey` reports, and no longer has `repoFailures`. A repository that could not be listed has `failure` set on its `repos` entry, as in `survey`.
+  - Base/head cycles are listed on each `repos[]` entry as `cycles`. The top-level `cycles` is gone.
+  - A `--pr` selector no surveyed PR matched is listed in the new `notFound` (`#N` or `owner/name#N`), with a `notFound` count, and is no longer a `skipped` entry. Every `skipped` entry is a surveyed PR with a `repo`.
+  - `Ports.resolveVerifyVerbs` receives `repo` and `checkout` (that repository's local checkout) along with `which` and `trust`, so repositories that build differently can each get their own list. It is called once for each repository the run surveyed in a local checkout, all before the first update, so a list refused for one repository stops the run before anything is pushed. A port that ignores the new fields keeps working. A direct call must pass them.
+  - New: `update --restack` (input `restack`) updates a whole stack in one run, parent first. A PR blocked only because its parent is behind is updated right after that parent, onto the head the parent just got, and a rebase replays only its own commits (`rebase --onto <parent's new head> <parent's old head>`), not its parent's old ones. A rehearsal builds each level on the one below and pushes nothing. A child goes up only onto a parent that was pushed: one held back by a conflict, a failure or a declined push is skipped with the reason. With `--pr` or `--branch`, the named PRs' stack ancestors are updated too. A restacked result carries `restackedOnto`, and every `updated` outcome records `builtOid`. See D-0002.
+  - `prKey`, `parsePrKey`, `selectorLabel`, `PrSelector` and `surveyRepoSchema` are exported. `selectTargets` takes `PrSelector`s and returns `notFound` as well.
+  - Fixed: in a run over several repositories, PRs were matched by number alone. A PR in a base/head cycle in one repository was dropped when another repository had a PR with that number. In branch mode, a PR with the same number in another repository was selected too, and could be given the local checkout note meant for the branch's PR. A scoped run no longer runs a full `git fetch` in a repository where nothing was selected.
+
+### Patch Changes
+
+- e1a5941: `pr-update update` now installs `@osdlc/command-seam`'s process-group signal forwarding. SIGINT, SIGTERM or SIGHUP while the repair agent runs kills the agent's group, starts no further repair or PR update, records no failed attempt for the interrupted run, and exits `128 + signal` (130 for SIGINT, 143 for SIGTERM). A second signal is SIGKILL. Before, an interrupted run left the spawned agent running. `survey` is unchanged. Between agent runs (git and `gh` steps, the verify command) pr-update holds no process group, so a signal there ends it as before.
+- Updated dependencies [e1a5941]
+- Updated dependencies [e1a5941]
+- Updated dependencies [cb8eafc]
+  - @osdlc/agent-call@0.11.0
+  - @osdlc/command-seam@0.15.0
+  - @osdlc/typed-git@0.14.0
+  - @osdlc/cli-tool@0.18.2
+  - @osdlc/code-host@0.7.11
+  - @osdlc/trust-repo@0.5.6
+
 ## 0.9.12
 
 ### Patch Changes

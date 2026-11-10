@@ -21,6 +21,8 @@ They are never reused.
 
 - [D-0001](decisions/D-0001-engine-hosts-and-one-judgement-seam.md): pr-update
   is a host-neutral update engine with one judgement seam
+- [D-0002](decisions/D-0002-restack-a-whole-stack-in-one-run.md): restack a
+  whole stack in one run, opt-in
 
 ## Backlog
 
