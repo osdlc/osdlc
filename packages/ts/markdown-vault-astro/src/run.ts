@@ -7,7 +7,8 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs'
-import { basename, dirname, join, resolve } from 'node:path'
+import { homedir } from 'node:os'
+import { basename, dirname, join, parse, resolve } from 'node:path'
 import {
   ASSET_MANIFEST,
   assetManifestReader,
@@ -78,16 +79,32 @@ function reachesInto(dir: string, file: string): boolean {
 }
 
 /**
- * Refuse `--clean` when deleting `dst` would delete notes in `src`: the two are
- * the same or nested once links are resolved, or a file the walk of `src`
- * reaches lives inside `dst`.
+ * Refuse `--clean` when deleting `dst` would delete more than the collection:
+ * notes in `src` (the two are the same or nested once links are resolved, or a
+ * file the walk of `src` reaches lives inside `dst`), or a directory that is,
+ * or contains, the vault, the Astro project, an asset directory, the working
+ * directory, the home directory or a filesystem root, or that is a git root.
  */
-function assertCleanSafe(src: string, dst: string): void {
+function assertCleanSafe(config: MarkdownVaultAstroConfig, src: string, dst: string): void {
   const realSrc = realish(src)
   const realDst = realish(dst)
   const nested = isInside(realSrc, realDst) || isInside(realDst, realSrc)
   if (nested || (existsSync(src) && walkFiles(src).some((f) => reachesInto(realDst, f.full)))) {
     throw new Error(`--clean refused: ${src} and ${dst} are the same or nested (links resolved)`)
+  }
+  const protectedDirs = [
+    config.vault,
+    config.astroRoot,
+    resolve(config.astroRoot, config.assets.publicDir),
+    resolve(config.vault, config.assets.vaultDir),
+    process.cwd(),
+    homedir(),
+  ].map(realish)
+  const guarded = protectedDirs.some((p) => isInside(realDst, p))
+  if (guarded || realDst === parse(realDst).root || existsSync(join(realDst, '.git'))) {
+    throw new Error(
+      `--clean refused: ${dst} is, or contains, the vault, the Astro project, an asset directory, the working directory or the home directory`,
+    )
   }
 }
 
@@ -134,7 +151,7 @@ function run(config: MarkdownVaultAstroConfig, direction: Direction, opts: RunOp
   if (opts.clean && !opts.dryRun) {
     for (const col of config.collections) {
       const [src, dst] = collectionDirs(config, direction, col)
-      assertCleanSafe(src, dst)
+      assertCleanSafe(config, src, dst)
     }
   }
 

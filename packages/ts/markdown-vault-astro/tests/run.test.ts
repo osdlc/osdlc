@@ -1,6 +1,14 @@
-import { afterEach, test, vi } from 'vitest'
+import { afterEach, describe, test, vi } from 'vitest'
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { ASSET_MANIFEST } from '../src/assets.ts'
@@ -144,6 +152,7 @@ test('exportVault brings back the media files of embeds the transform left in pl
 
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.unstubAllEnvs()
 })
 
 const cleanConfig = (root: string) => ({
@@ -276,4 +285,94 @@ test('--clean checks every collection before it deletes anything', () => {
     existsSync(join(astroRoot, 'src/content/notes/keep.md')),
     'first collection was cleaned',
   )
+})
+
+describe('--clean refuses a destination broader than the collection', () => {
+  const setup = (collection: { vaultDir: string; contentDir: string }, vaultRel = 'a/vault') => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'oa-run-')))
+    const vault = join(root, vaultRel)
+    mkdirSync(join(vault, 'Notes'), { recursive: true })
+    mkdirSync(join(root, 'other'), { recursive: true })
+    writeFileSync(join(vault, 'Notes', 'a.md'), 'a\n')
+    writeFileSync(join(root, 'other', 'b.md'), 'b\n')
+    mkdirSync(join(root, 'a/site/public/_media'), { recursive: true })
+    writeFileSync(join(vault, 'precious.txt'), 'p')
+    return {
+      root,
+      vault,
+      config: {
+        ...site(vault, join(root, 'a/site')),
+        collections: [{ name: 'notes', ...collection }],
+      },
+    }
+  }
+
+  test('a vaultDir of `.` on export would delete the whole vault', () => {
+    const { vault, config } = setup({ vaultDir: '.', contentDir: 'src/content/notes' })
+    mkdirSync(join(config.astroRoot, 'src/content/notes'), { recursive: true })
+    writeFileSync(join(config.astroRoot, 'src/content/notes/n.md'), 'n\n')
+    assert.throws(() => exportVault(config, { clean: true }), /--clean refused/)
+    assert.ok(existsSync(join(vault, 'precious.txt')))
+    assert.ok(existsSync(join(vault, 'Notes', 'a.md')))
+  })
+
+  test('a contentDir of `.` on transform would delete the Astro project', () => {
+    const { config } = setup({ vaultDir: '../../other', contentDir: '.' })
+    writeFileSync(join(config.astroRoot, 'package.json'), '{}')
+    assert.throws(() => transform(config, { clean: true }), /--clean refused/)
+    assert.ok(existsSync(join(config.astroRoot, 'package.json')))
+  })
+
+  test('a destination that contains the vault', () => {
+    const { vault, config } = setup({ vaultDir: '../../other', contentDir: '..' })
+    assert.throws(() => transform(config, { clean: true }), /--clean refused/)
+    assert.ok(existsSync(join(vault, 'precious.txt')))
+  })
+
+  test('a destination that contains the public asset directory', () => {
+    const { config } = setup({ vaultDir: '../../other', contentDir: 'public' })
+    assert.throws(() => transform(config, { clean: true }), /--clean refused/)
+    assert.ok(existsSync(join(config.astroRoot, 'public/_media')))
+  })
+
+  test('a destination that is a git root', () => {
+    const { config } = setup({ vaultDir: '../../other', contentDir: 'src/content/notes' })
+    const dst = join(config.astroRoot, 'src/content/notes')
+    mkdirSync(join(dst, '.git'), { recursive: true })
+    assert.throws(() => transform(config, { clean: true }), /--clean refused/)
+    assert.ok(existsSync(join(dst, '.git')))
+  })
+
+  test('a destination that is the home directory', () => {
+    const { root, config } = setup({ vaultDir: '../../other', contentDir: '../../home' })
+    mkdirSync(join(root, 'home'), { recursive: true })
+    vi.stubEnv('HOME', join(root, 'home'))
+    vi.stubEnv('USERPROFILE', join(root, 'home'))
+    writeFileSync(join(root, 'home', 'mine.txt'), 'm')
+    assert.throws(() => transform(config, { clean: true }), /--clean refused/)
+    assert.ok(existsSync(join(root, 'home', 'mine.txt')))
+  })
+
+  test('a destination that is the working directory', () => {
+    const { root, config } = setup({ vaultDir: '../../other', contentDir: '../../cwd' })
+    mkdirSync(join(root, 'cwd'), { recursive: true })
+    writeFileSync(join(root, 'cwd', 'mine.txt'), 'm')
+    vi.spyOn(process, 'cwd').mockReturnValue(join(root, 'cwd'))
+    assert.throws(() => transform(config, { clean: true }), /--clean refused/)
+    assert.ok(existsSync(join(root, 'cwd', 'mine.txt')))
+  })
+
+  test('a plain collection folder inside the vault still cleans', () => {
+    const { vault, config } = setup({ vaultDir: '../../other', contentDir: 'src/content/notes' })
+    const exp = {
+      ...config,
+      collections: [{ name: 'notes', vaultDir: 'Notes', contentDir: 'src/content/notes' }],
+    }
+    transform(exp, { clean: true })
+    writeFileSync(join(vault, 'Notes', 'stale.md'), 's\n')
+    exportVault(exp, { clean: true })
+    assert.ok(!existsSync(join(vault, 'Notes', 'stale.md')))
+    assert.ok(existsSync(join(vault, 'Notes', 'a.md')))
+    assert.ok(existsSync(join(vault, 'precious.txt')))
+  })
 })
