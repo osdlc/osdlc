@@ -275,8 +275,6 @@ describe('a PDF embed href', () => {
     expect(
       toVueProps({ className: ['markdown-embed', 'markdown-embed-pdf'], href: blob }).href,
     ).toBeUndefined()
-    expect(toVueProps({ href: blob }, { assetHref: true }).href).toBe(blob)
-    expect(toVueProps({ href: 'javascript:alert(1)' }, { assetHref: true }).href).toBeUndefined()
   })
 })
 

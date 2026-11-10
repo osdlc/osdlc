@@ -193,25 +193,14 @@ const LINK_ATTRS = new Set(['href', 'xlink:href', 'action', 'formaction'])
 const ASSET_ATTRS = new Set(['src', 'poster'])
 
 /** Is this attribute allowed to reach the DOM? `srcdoc` is markup; a URL must pass its scheme check. */
-function attrAllowed(name: string, value: unknown, assetHref: boolean): boolean {
+function attrAllowed(name: string, value: unknown): boolean {
   if (name === 'srcdoc') return false
   // An array value is joined into one string by `toVueProps`, so it is checked as that string.
   const text = Array.isArray(value) ? value.join(' ') : value
   if (typeof text !== 'string') return true
-  if (assetHref && name === 'href') return isSafeAssetUrl(text)
   if (LINK_ATTRS.has(name)) return isSafeLinkPath(text)
   if (ASSET_ATTRS.has(name)) return isSafeAssetUrl(text)
   return true
-}
-
-/** Options for {@link toVueProps}. */
-export interface ToVuePropsOptions {
-  /**
-   * Check `href` as an asset URL (which admits `blob:`) instead of as a link. For an element the
-   * caller built around a host's `assetUrl` answer, such as a PDF embed; never for note content,
-   * whose class names a note can forge.
-   */
-  assetHref?: boolean
 }
 
 /**
@@ -227,7 +216,6 @@ export interface ToVuePropsOptions {
  */
 export function toVueProps(
   properties: Record<string, unknown> | undefined,
-  { assetHref = false }: ToVuePropsOptions = {},
 ): Record<string, unknown> {
   const props: Record<string, unknown> = {}
   if (!properties) return props
@@ -235,7 +223,7 @@ export function toVueProps(
     if (value === undefined || value === null || value === false) continue
     if (EVENT_HANDLER.test(key)) continue
     const name = attrName(key)
-    if (!attrAllowed(name, value, assetHref)) continue
+    if (!attrAllowed(name, value)) continue
     if (name === 'class') {
       props.class = Array.isArray(value) ? value.join(' ') : String(value)
     } else if (Array.isArray(value)) {

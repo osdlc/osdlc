@@ -35,7 +35,6 @@ export {
   classList,
   type ComponentMap,
   type HastNode,
-  type ToVuePropsOptions,
   type RenderContext,
 } from './render.ts'
 

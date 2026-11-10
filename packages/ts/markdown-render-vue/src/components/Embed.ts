@@ -27,7 +27,7 @@ import {
   type PropType,
 } from 'vue'
 import type { Element } from 'hast'
-import { toVueProps, type HastNode, type ToVuePropsOptions } from '../render.ts'
+import { toVueProps, type HastNode } from '../render.ts'
 import {
   EmbedAncestorsKey,
   EmbedBudgetKey,
@@ -204,12 +204,11 @@ export const Embed = defineComponent({
     const chainKey = () => ancestors.join('\u0000')
     watch([target, path, heading, blockId, kind, funded, chainKey], load, { immediate: true })
 
-    /** A shared hast builder's element as a VNode. */
-    const vnode = (el: Element, options?: ToVuePropsOptions) => {
+    /** A shared hast builder's element as a VNode; `trusted` props are set after the walker's checks. */
+    const vnode = (el: Element, trusted: Record<string, unknown> = {}) => {
+      const props = { ...toVueProps(el.properties), ...trusted }
       const text = el.children.map((child) => (child.type === 'text' ? child.value : ''))
-      return text.length
-        ? h(el.tagName, toVueProps(el.properties, options), text.join(''))
-        : h(el.tagName, toVueProps(el.properties, options))
+      return text.length ? h(el.tagName, props, text.join('')) : h(el.tagName, props)
     }
 
     /**
@@ -319,14 +318,14 @@ export const Embed = defineComponent({
       if (isMediaKind(kind.value)) {
         const src = mediaSrc()
         if (!src) return placeholder('missing-attachment')
-        return vnode(
-          embedMedia(kind.value, src, target.value, display.value, {
-            extra: carried(),
-            fragment: heading.value,
-          }),
-          // A PDF embed's href is `src`, which passed `isSafeAssetUrl` in `mediaSrc`.
-          { assetHref: true },
-        )
+        const el = embedMedia(kind.value, src, target.value, display.value, {
+          extra: carried(),
+          fragment: heading.value,
+        })
+        // A PDF embed's href is `src` (plus a page fragment), which passed `isSafeAssetUrl` in
+        // `mediaSrc`. The walker checks every href as a link, which refuses the blob: URLs a host
+        // serves attachments as, so it is set here instead.
+        return vnode(el, el.tagName === 'a' ? { href: el.properties.href } : {})
       }
 
       switch (state.value) {
