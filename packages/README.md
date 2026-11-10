@@ -212,7 +212,7 @@ Developed here, in this repository:
 - `packages/ts/markdown-render-vue` (`@osdlc/markdown-render-vue` on npm, Vue 3
   components over `@osdlc/markdown-render`: `<MarkdownRender>` and the
   `NoteSource` context)
-- `packages/ts/markdown-astro` (`@osdlc/markdown-astro` on npm, brings
+- `packages/ts/markdown-vault-astro` (`@osdlc/markdown-vault-astro` on npm, brings
   Obsidian-vault markdown, wikilinks and embeds, into Astro content collections:
   a vault-to-content transform, a remark plugin and a CLI)
 - `packages/ts/path-guard` (`@osdlc/path-guard` on npm, a path containment

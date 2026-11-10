@@ -7,7 +7,7 @@
  * an alias carrying markup (`[[Note|the *key* idea]]`), which remark has
  * already parsed into an `emphasis` node. Resolution is injected rather than
  * baked against any content source, so the same tokenizer serves the live
- * vault, a build, and tests. `@osdlc/markdown-astro`'s build-time plugin
+ * vault, a build, and tests. `@osdlc/markdown-vault-astro`'s build-time plugin
  * delegates to it with an Astro-collection resolver.
  *
  * Before the scan, {@link mergeShortcutReferences} undoes the one parse that

@@ -2,7 +2,7 @@
  * How a `<markdown-embed>` renders, as pure functions over hast.
  *
  * `remarkEmbeds` only records an embed; a host renders it. This package's
- * Vue `Embed` component and the Astro build (`@osdlc/markdown-astro`)
+ * Vue `Embed` component and the Astro build (`@osdlc/markdown-vault-astro`)
  * are two such hosts, and both call these, so the size and alt rules, the
  * element per media kind, the placeholders and the guard order exist once.
  * Each builder returns a hast element: the Astro build splices it into its
