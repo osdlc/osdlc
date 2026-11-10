@@ -56,11 +56,6 @@
       "id": "files",
       "label": "1. Files",
       "summary": "Walking folders, reading files and writing them safely. It does not know what Markdown is."
-    },
-    {
-      "id": "tooling",
-      "label": "Shared tooling",
-      "summary": "Not a layer in the architecture: the shared osdlc CI, release and check tools the packages are built with."
     }
   ],
   "repos": [
@@ -1072,7 +1067,8 @@
         "Today it walks the folder and checks links itself (problem F8). Task 14 makes it read the corpus model instead.",
         "Near target: open osdlc/markdown#9 moves it here with the same npm name, and open osdlc/markdown#10 builds and releases it with the shared osdlc workflows. Until those land, releases go out from osdlc/osdlc.",
         "On the osdlc/markdown#9 branch its osdlc dependencies change from workspace:^ to npm ranges (^1.1.2 and ^0.8.1).",
-        "validate --fix exists today. Task 29 proposes a sync command, and task 34 adds a move verb."
+        "osdlc/markdown builds and releases it with the shared osdlc workflows, ts-packages-ci and ts-packages-release (task 21).",
+        "validate --fix exists today. Task 29 adds the corpus-schema sync command: it writes a read-only copy of inherited records into a generated folder, such as _inherited/org/, so Obsidian and GitHub links resolve. The validator then checks that the copy matches the pinned parent. Task 34 adds a move verb."
       ],
       "tasks": [
         1,
@@ -1141,37 +1137,6 @@
       ],
       "tasks": [
         32
-      ],
-      "links": []
-    },
-    {
-      "id": "corpus-schema-sync",
-      "name": "corpus-schema sync",
-      "kind": "tool",
-      "language": "ts",
-      "layer": "corpus-schema",
-      "states": [
-        "target"
-      ],
-      "repo": {
-        "present": null,
-        "target": "osdlc/markdown"
-      },
-      "path": {
-        "present": null,
-        "target": "packages/ts/corpus-schema"
-      },
-      "status": "proposal",
-      "version": null,
-      "registry": null,
-      "twin": null,
-      "purpose": "A proposed command that writes a read-only copy of inherited records into a generated folder, such as _inherited/org/, so Obsidian and GitHub links resolve.",
-      "notes": [
-        "Part of the proposal for sharing across corpora. The validator would check that the copy matches the pinned parent.",
-        "It is a command of @osdlc/corpus-schema, not a separate package."
-      ],
-      "tasks": [
-        29
       ],
       "links": []
     },
@@ -1863,259 +1828,6 @@
       ],
       "tasks": [],
       "links": []
-    },
-    {
-      "id": "conformance-suites",
-      "name": "@osdlc/conformance-suites",
-      "kind": "tool",
-      "language": "ts",
-      "layer": "tooling",
-      "states": [
-        "present",
-        "target"
-      ],
-      "repo": {
-        "present": "osdlc/osdlc",
-        "target": "osdlc/osdlc"
-      },
-      "path": {
-        "present": "packages/ts/conformance-suites",
-        "target": "packages/ts/conformance-suites"
-      },
-      "status": "published",
-      "version": "0.1.0",
-      "registry": "https://www.npmjs.com/package/@osdlc/conformance-suites",
-      "twin": null,
-      "purpose": "Checks the shared test cases of library families: one set of cases that every implementation, in each language, runs. Reads packages/conformance/families.json.",
-      "notes": [
-        "Moved out of osdlc/osdlc's scripts in osdlc/osdlc#746. 0.1.0 reached npm on 2026-11-09."
-      ],
-      "tasks": [
-        21
-      ],
-      "links": [
-        {
-          "label": "osdlc/osdlc#746",
-          "url": "https://github.com/osdlc/osdlc/pull/746"
-        }
-      ]
-    },
-    {
-      "id": "package-checks",
-      "name": "@osdlc/package-checks",
-      "kind": "tool",
-      "language": "ts",
-      "layer": "tooling",
-      "states": [
-        "present",
-        "target"
-      ],
-      "repo": {
-        "present": "osdlc/osdlc",
-        "target": "osdlc/osdlc"
-      },
-      "path": {
-        "present": "packages/ts/package-checks",
-        "target": "packages/ts/package-checks"
-      },
-      "status": "in-progress",
-      "version": "0.0.1-stage",
-      "registry": "https://www.npmjs.com/package/@osdlc/package-checks",
-      "twin": null,
-      "purpose": "Checks a repo of TypeScript and Rust packages: package shape, the packed tarball in a clean consumer, breaking changes, and which packages a pull request affects.",
-      "notes": [
-        "Moved out of osdlc/osdlc's scripts in osdlc/osdlc#748. 0.1.0 is on osdlc main (Version Packages, #762), but npm had only the 0.0.1-stage placeholder when checked; the publish run was still going.",
-        "osdlc/markdown#10 fails CI until 0.1.0 is on npm."
-      ],
-      "tasks": [
-        21
-      ],
-      "links": [
-        {
-          "label": "osdlc/osdlc#748",
-          "url": "https://github.com/osdlc/osdlc/pull/748"
-        }
-      ]
-    },
-    {
-      "id": "ts-packages-ci",
-      "name": "ts-packages-ci.yml",
-      "kind": "workflow",
-      "language": "yaml",
-      "layer": "tooling",
-      "states": [
-        "present",
-        "target"
-      ],
-      "repo": {
-        "present": "osdlc/osdlc",
-        "target": "osdlc/osdlc"
-      },
-      "path": {
-        "present": ".github/workflows/ts-packages-ci.yml",
-        "target": ".github/workflows/ts-packages-ci.yml"
-      },
-      "status": "published",
-      "version": null,
-      "registry": null,
-      "twin": null,
-      "purpose": "A reusable CI workflow for a pnpm workspace of TypeScript packages: picks the changed packages, builds, tests, lints, checks the packed tarballs and the conformance suites.",
-      "notes": [
-        "Merged in osdlc/osdlc#749. osdlc/osdlc's own packages-ci.yml calls it too.",
-        "It runs package-checks and conformance-suites from the calling repo's root devDependencies."
-      ],
-      "tasks": [
-        21
-      ],
-      "links": [
-        {
-          "label": "osdlc/osdlc#749",
-          "url": "https://github.com/osdlc/osdlc/pull/749"
-        }
-      ]
-    },
-    {
-      "id": "ts-packages-release",
-      "name": "ts-packages-release.yml",
-      "kind": "workflow",
-      "language": "yaml",
-      "layer": "tooling",
-      "states": [
-        "present",
-        "target"
-      ],
-      "repo": {
-        "present": "osdlc/osdlc",
-        "target": "osdlc/osdlc"
-      },
-      "path": {
-        "present": ".github/workflows/ts-packages-release.yml",
-        "target": ".github/workflows/ts-packages-release.yml"
-      },
-      "status": "published",
-      "version": null,
-      "registry": null,
-      "twin": null,
-      "purpose": "A reusable release workflow: opens the Changesets Version Packages pull request, or publishes the versions not on npm yet, with npm trusted publishing.",
-      "notes": [
-        "Merged in osdlc/osdlc#749. npm's trusted publisher names the caller's workflow file, so the caller must keep its file name."
-      ],
-      "tasks": [
-        21
-      ],
-      "links": [
-        {
-          "label": "osdlc/osdlc#749",
-          "url": "https://github.com/osdlc/osdlc/pull/749"
-        }
-      ]
-    },
-    {
-      "id": "markdown-packages-ci",
-      "name": "osdlc/markdown packages-ci.yml",
-      "kind": "workflow",
-      "language": "yaml",
-      "layer": "tooling",
-      "states": [
-        "target"
-      ],
-      "repo": {
-        "present": null,
-        "target": "osdlc/markdown"
-      },
-      "path": {
-        "present": null,
-        "target": ".github/workflows/packages-ci.yml"
-      },
-      "status": "in-progress",
-      "version": null,
-      "registry": null,
-      "twin": null,
-      "purpose": "This repo's package CI. In osdlc/markdown#10 it is a thin caller of ts-packages-ci on Ubuntu and macOS, Node 22 and 24.",
-      "notes": [
-        "osdlc/markdown#9 adds a temporary version; #10 (stacked on #9) replaces it with the caller.",
-        "Its uses: line is pinned to an osdlc/osdlc branch commit with a TODO to repin once osdlc/osdlc#749 merges. #749 has merged.",
-        "The #10 description names a different pin commit (e33cc25) than the branch (ecf430c)."
-      ],
-      "tasks": [
-        21
-      ],
-      "links": [
-        {
-          "label": "osdlc/markdown#9",
-          "url": "https://github.com/osdlc/markdown/pull/9"
-        },
-        {
-          "label": "osdlc/markdown#10",
-          "url": "https://github.com/osdlc/markdown/pull/10"
-        }
-      ]
-    },
-    {
-      "id": "markdown-packages-publish",
-      "name": "osdlc/markdown packages-publish.yml",
-      "kind": "workflow",
-      "language": "yaml",
-      "layer": "tooling",
-      "states": [
-        "target"
-      ],
-      "repo": {
-        "present": null,
-        "target": "osdlc/markdown"
-      },
-      "path": {
-        "present": null,
-        "target": ".github/workflows/packages-publish.yml"
-      },
-      "status": "in-progress",
-      "version": null,
-      "registry": null,
-      "twin": null,
-      "purpose": "This repo's release workflow, added in osdlc/markdown#10: on a push to main it runs packages-ci, then ts-packages-release.",
-      "notes": [
-        "Owner steps after it merges: point @osdlc/corpus-schema's npm trusted publisher at this repo and this file."
-      ],
-      "tasks": [
-        21
-      ],
-      "links": [
-        {
-          "label": "osdlc/markdown#10",
-          "url": "https://github.com/osdlc/markdown/pull/10"
-        }
-      ]
-    },
-    {
-      "id": "markdown-examples-ci",
-      "name": "osdlc/markdown examples.yml",
-      "kind": "workflow",
-      "language": "yaml",
-      "layer": "tooling",
-      "states": [
-        "present",
-        "target"
-      ],
-      "repo": {
-        "present": "osdlc/markdown",
-        "target": "osdlc/markdown"
-      },
-      "path": {
-        "present": ".github/workflows/examples.yml",
-        "target": ".github/workflows/examples.yml"
-      },
-      "status": "published",
-      "version": null,
-      "registry": null,
-      "twin": null,
-      "purpose": "Checks the example corpora under profiles/ with the published validator: the claims example must pass with no warnings, and each broken test record must fail with its one expected error.",
-      "notes": [
-        "It runs @osdlc/corpus-schema@^0.2.0 from npm with npx, so the move in osdlc/markdown#9 needs no change here."
-      ],
-      "tasks": [
-        4
-      ],
-      "links": []
     }
   ],
   "edges": [
@@ -2520,15 +2232,6 @@
       "note": "Task 32: built on the markdown-corpus crate."
     },
     {
-      "from": "corpus-schema-sync",
-      "to": "corpus-schema",
-      "kind": "depends",
-      "states": [
-        "target"
-      ],
-      "note": "A command inside the validator package."
-    },
-    {
       "from": "claims-example",
       "to": "corpus-schema-spec",
       "kind": "implements",
@@ -2537,25 +2240,6 @@
         "target"
       ],
       "note": "A valid level-2 corpus."
-    },
-    {
-      "from": "markdown-examples-ci",
-      "to": "claims-example",
-      "kind": "validates",
-      "states": [
-        "present",
-        "target"
-      ]
-    },
-    {
-      "from": "markdown-examples-ci",
-      "to": "corpus-schema",
-      "kind": "depends",
-      "states": [
-        "present",
-        "target"
-      ],
-      "note": "Runs @osdlc/corpus-schema@^0.2.0 from npm."
     },
     {
       "from": "corpus-profile-claims",
@@ -3260,95 +2944,6 @@
         "target"
       ],
       "note": "The code ontogen generates for its Markdown backend uses markdown-store; the ontogen crate itself does not list it."
-    },
-    {
-      "from": "ts-packages-ci",
-      "to": "package-checks",
-      "kind": "depends",
-      "states": [
-        "present",
-        "target"
-      ],
-      "note": "It runs them from the calling repo's root devDependencies."
-    },
-    {
-      "from": "ts-packages-ci",
-      "to": "conformance-suites",
-      "kind": "depends",
-      "states": [
-        "present",
-        "target"
-      ],
-      "note": "It runs them from the calling repo's root devDependencies."
-    },
-    {
-      "from": "ts-packages-release",
-      "to": "package-checks",
-      "kind": "depends",
-      "states": [
-        "present",
-        "target"
-      ],
-      "note": "Reads the packages folder through package-checks and refuses a package not yet on npm."
-    },
-    {
-      "from": "markdown-packages-ci",
-      "to": "ts-packages-ci",
-      "kind": "depends",
-      "states": [
-        "target"
-      ]
-    },
-    {
-      "from": "markdown-packages-ci",
-      "to": "package-checks",
-      "kind": "dev-depends",
-      "states": [
-        "target"
-      ],
-      "note": "Root devDependencies of osdlc/markdown at ^0.1.0 (osdlc/markdown#10)."
-    },
-    {
-      "from": "markdown-packages-ci",
-      "to": "conformance-suites",
-      "kind": "dev-depends",
-      "states": [
-        "target"
-      ],
-      "note": "Root devDependencies of osdlc/markdown at ^0.1.0 (osdlc/markdown#10)."
-    },
-    {
-      "from": "markdown-packages-ci",
-      "to": "corpus-schema",
-      "kind": "validates",
-      "states": [
-        "target"
-      ]
-    },
-    {
-      "from": "markdown-packages-ci",
-      "to": "corpus-schema-spec",
-      "kind": "validates",
-      "states": [
-        "target"
-      ],
-      "note": "Runs the conformance check over the spec family."
-    },
-    {
-      "from": "markdown-packages-publish",
-      "to": "ts-packages-release",
-      "kind": "depends",
-      "states": [
-        "target"
-      ]
-    },
-    {
-      "from": "markdown-packages-publish",
-      "to": "markdown-packages-ci",
-      "kind": "depends",
-      "states": [
-        "target"
-      ]
     },
     {
       "from": "markdown-link-dev-copy",
