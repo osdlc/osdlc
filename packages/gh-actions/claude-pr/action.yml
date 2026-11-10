@@ -2,8 +2,9 @@ name: claude-pr
 description: >-
   Answers @claude on a pull request with Claude Code, or reviews the pull
   request with /craft:code-review when the comment starts with
-  "@claude review". Posts the result as a comment ending in a done or failed
-  marker.
+  "@claude review". Runs any installed skill from "@claude /<plugin>:<skill>"
+  (read-only, or with --apply it commits and pushes the changes). Posts the
+  result as a comment ending in a done or failed marker.
 author: osdlc
 
 inputs:
@@ -36,6 +37,19 @@ inputs:
   max-turns:
     description: Claude's turn limit.
     default: "60"
+  push-token:
+    description: >-
+      Token used only to push the commit that "--apply" makes to the pull
+      request branch (a GitHub App token, so CI runs on the push; the
+      GITHUB_TOKEN does not start workflows). Never given to the agent. Empty:
+      "--apply" is refused with a comment and everything else works.
+    default: ""
+  git-user-name:
+    description: Author name of the "--apply" commit.
+    default: github-actions[bot]
+  git-user-email:
+    description: Author email of the "--apply" commit.
+    default: 41898282+github-actions[bot]@users.noreply.github.com
 
 runs:
   using: composite
@@ -77,6 +91,7 @@ runs:
       env:
         AGENT: claude
         HARNESS_SH: ${{ github.action_path }}/harness.sh
+        HAS_PUSH_TOKEN: ${{ inputs.push-token != '' }}
         KEY_VAR: ANTHROPIC_API_KEY
         GH_TOKEN: ${{ inputs.github-token }}
         KEYS: ${{ inputs.anthropic-api-key }}
@@ -89,6 +104,22 @@ runs:
         SOURCE_URL: ${{ github.event.comment.html_url || github.event.review.html_url }}
       run: '"$GITHUB_ACTION_PATH/../pr-common/ask.sh"'
 
+    # --apply: the action, not the agent, commits and pushes. The push token is
+    # only in this step's environment, never in the agent's.
+    - if: steps.mention.outputs.real == '1' && steps.mention.outputs.mode == 'skill' && steps.mention.outputs.apply == '1'
+      shell: bash
+      env:
+        AGENT: claude
+        GH_TOKEN: ${{ inputs.github-token }}
+        PUSH_TOKEN: ${{ inputs.push-token }}
+        GIT_USER_NAME: ${{ inputs.git-user-name }}
+        GIT_USER_EMAIL: ${{ inputs.git-user-email }}
+        RESULT: ${{ runner.temp }}/claude-pr-result.json
+        REPO: ${{ github.repository }}
+        PR: ${{ github.event.issue.number || github.event.pull_request.number }}
+        REQUEST: ${{ github.event.comment.body || github.event.review.body }}
+      run: '"$GITHUB_ACTION_PATH/../pr-common/apply.sh" push'
+
     - if: always() && steps.mention.outputs.real == '1'
       shell: bash
       env:
@@ -97,6 +128,7 @@ runs:
         PR: ${{ github.event.issue.number || github.event.pull_request.number }}
         REPO: ${{ github.repository }}
         MODE: ${{ steps.mention.outputs.mode }}
+        REQUEST: ${{ github.event.comment.body || github.event.review.body }}
         RESULT: ${{ runner.temp }}/claude-pr-result.json
         RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       run: '"$GITHUB_ACTION_PATH/../pr-common/post.sh"'

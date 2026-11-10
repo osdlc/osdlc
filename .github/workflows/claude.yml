@@ -4,6 +4,14 @@
 # instead. The work is the claude-pr action (packages/gh-actions/claude-pr);
 # this file only says when it runs and with what.
 #
+# `@claude /<plugin>:<skill> [args]` runs any installed skill and posts its output;
+# add `--apply` and the action commits the changes and pushes them to the pull
+# request branch with a GitHub App token (osdlc-release, the release-plz
+# environment's secrets, as in pr-update.yml). The release-plz environment only
+# deploys from main, and only issue_comment runs are on main (inline review
+# comments and reviews run on refs/pull/N/merge), so the push token exists only
+# in the second job; the first one covers the other two events, read-only.
+#
 # Only sksizer can trigger it: the job's `if` checks the author before a
 # runner starts. The action is taken from main, never from the pull request,
 # so a pull request cannot change what runs with the API key.
@@ -20,11 +28,13 @@ on:
 permissions: {}
 
 jobs:
+  # Inline review comments and reviews: no environment, so no push token; a
+  # skill runs read-only and `--apply` is refused with a comment.
   claude:
     if: >-
       (github.event.comment.user.login || github.event.review.user.login) == 'sksizer'
       && contains(github.event.comment.body || github.event.review.body, '@claude')
-      && (github.event_name != 'issue_comment' || github.event.issue.pull_request)
+      && github.event_name != 'issue_comment'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -35,3 +45,36 @@ jobs:
       - uses: osdlc/osdlc/packages/gh-actions/claude-pr@main
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+  # Comments on the pull request conversation: in the release-plz environment
+  # (main only) to mint the push token. If the token cannot be minted the step
+  # is skipped over and the action runs read-only.
+  claude-comment:
+    if: >-
+      (github.event.comment.user.login || github.event.review.user.login) == 'sksizer'
+      && contains(github.event.comment.body || github.event.review.body, '@claude')
+      && github.event_name == 'issue_comment'
+      && github.event.issue.pull_request
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: release-plz
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Get a GitHub App token
+        id: app-token
+        continue-on-error: true
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.RELEASE_PLZ_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}
+          permission-contents: write
+
+      - uses: osdlc/osdlc/packages/gh-actions/claude-pr@main
+        with:
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          push-token: ${{ steps.app-token.outputs.token }}
+          git-user-name: osdlc-release[bot]
+          git-user-email: osdlc-release[bot]@users.noreply.github.com
