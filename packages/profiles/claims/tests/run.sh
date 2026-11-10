@@ -14,17 +14,11 @@
 # profile's corpus is copied beside the cases.
 #
 # The validator is this repository's corpus-schema, built first. Set
-# CORPUS_SCHEMA to run another one.
+# CORPUS_SCHEMA to run another one (see validator.sh).
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
-validate() {
-  if [ -n "${CORPUS_SCHEMA:-}" ]; then
-    $CORPUS_SCHEMA validate "$1"
-  else
-    node "$here/../../../packages/ts/corpus-schema/bin/corpus-schema.js" validate "$1"
-  fi
-}
+. "$here/validator.sh"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 cp -R "$here/../corpus" "$work/corpus"

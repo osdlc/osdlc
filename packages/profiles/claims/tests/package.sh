@@ -15,18 +15,12 @@
 # - a fixture document without `publisher` fails, a rule the fixture adds.
 #
 # The validator is this repository's corpus-schema, built first. Set
-# CORPUS_SCHEMA to run another one.
+# CORPUS_SCHEMA to run another one (see validator.sh).
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
 package_dir=$(cd "$here/.." && pwd)
-validate() {
-  if [ -n "${CORPUS_SCHEMA:-}" ]; then
-    $CORPUS_SCHEMA validate "$1"
-  else
-    node "$here/../../../packages/ts/corpus-schema/bin/corpus-schema.js" validate "$1"
-  fi
-}
+. "$here/validator.sh"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
@@ -52,14 +46,15 @@ else
 fi
 
 # Runs the validator on $1 and passes when it exits $2 and its output holds
-# $3. With no $3, the output must hold no warning.
+# $3, as its one error. With no $3, the output must hold no warning.
 check() {
   status=0
   out=$(validate "$1" 2>&1) || status=$?
   if [ "$status" -ne "$2" ]; then
     fail "$4 (exit $status, expected $2)"
-  elif [ -n "$3" ] && ! printf '%s\n' "$out" | grep -qF "$3"; then
-    fail "$4 (expected: $3)"
+  elif [ -n "$3" ] && ! { printf '%s\n' "$out" | grep -qF "$3" &&
+    printf '%s\n' "$out" | grep -qF "$(basename "$1"): 1 error(s)"; }; then
+    fail "$4 (expected one error: $3)"
   elif [ -z "$3" ] && printf '%s\n' "$out" | grep -q '^warning:'; then
     fail "$4 (a warning)"
   else
