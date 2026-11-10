@@ -12,6 +12,10 @@ created: 2026-11-07
 - A token is 32 random bytes, base64url, minted from the operating system's
   random source and kept in a file in a directory the app chooses, created
   owner-only (0600) on Unix.
+- Every accepted token is a `Token`: at least 32 characters of
+  `A-Z a-z 0-9 - _`. It travels as written in a link, a cookie and a header,
+  with no escaping. Tokens are never free text. A token file or override that
+  holds anything else is an error at startup.
 - A share link is `http://<address>:<port>/?token=<token>`. Opening it sets an
   `HttpOnly; SameSite=Strict; Path=/` cookie named `web_access_<port>` and
   answers with a small page that moves to the same URL without the token.
