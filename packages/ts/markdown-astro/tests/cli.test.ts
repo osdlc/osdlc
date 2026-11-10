@@ -73,7 +73,7 @@ describe('markdown-astro check', () => {
     if (asset) writeFileSync(join(root, 'vault', '_attachments', 'pic.png'), 'x')
     writeFileSync(
       join(root, 'markdown-astro.config.yaml'),
-      'vault: vault\nassets:\n  publicDir: public/_media\n  publicBase: /_media\n  vaultDir: _attachments\ncollections:\n  - name: notes\n    vaultDir: Notes\n    contentDir: src/content/notes\n',
+      'vault: vault\nfrontmatterAssets: [cover]\nassets:\n  publicDir: public/_media\n  publicBase: /_media\n  vaultDir: _attachments\ncollections:\n  - name: notes\n    vaultDir: Notes\n    contentDir: src/content/notes\n',
     )
     return join(root, 'markdown-astro.config.yaml')
   }
@@ -82,6 +82,11 @@ describe('markdown-astro check', () => {
     const r = run('check', '-q', '-c', site('![[gone.png]]\n', false))
     expect(r.code).toBe(1)
     expect(r.err).toContain('missing assets (1): gone.png')
+  })
+
+  test('a missing frontmatter asset fails too', () => {
+    const r = run('check', '-q', '-c', site('---\ncover: gone.png\n---\nbody\n', false))
+    expect(r.code).toBe(1)
   })
 
   test('exits 0 when every asset exists', () => {

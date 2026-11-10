@@ -34,8 +34,8 @@ export interface FileRewriteResult {
 
 /**
  * The string a frontmatter scalar's raw text holds, or `null` when it holds no
- * string to rewrite: a YAML null, a quoted value YAML cannot read, or a block scalar header (`|`, `>-`). A quoted
- * value is read with YAML rules, so escapes and a trailing comment are handled.
+ * string to rewrite: a YAML null, a quoted value YAML cannot read, or a block
+ * scalar header (`|`, `>-`). A quoted value is read with YAML rules, so escapes and a trailing comment are handled.
  * An unquoted value is taken as written minus a trailing ` # comment`, so an
  * unquoted `[[img.png]]` stays a wikilink rather than a YAML flow sequence.
  */

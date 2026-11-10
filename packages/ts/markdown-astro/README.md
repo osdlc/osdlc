@@ -103,7 +103,7 @@ with its own vault lookup passes its answer as the option.
 ```sh
 markdown-astro transform      # vault  ->  src/content  (build input)
 markdown-astro export-vault   # src/content  ->  vault   (one-time canonicalisation)
-markdown-astro check          # dry run: resolve everything, write nothing
+markdown-astro check          # dry run: resolve everything, write nothing; exits 1 if assets are missing
 ```
 
 Options: `-c, --config <path>`, `--vault <dir>`, `--clean`, `-q, --quiet`, `--version`.
