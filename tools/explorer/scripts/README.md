@@ -8,7 +8,9 @@ run it from `tools/explorer/` and commit the JSON with the records:
 pnpm build-data
 ```
 
-It validates the records with `@osdlc/corpus-schema` first. Then it checks the rules that the
+It validates the records with `@osdlc/corpus-schema` first: the copy in `packages/ts/corpus-schema/`,
+built by `tools/build-corpus-schema.sh`, which knows `extends`. It reads the task status labels
+from the planning profile's task schema, which the local one extends. Then it checks the rules that the
 validator does not. Each problem is one line on stderr, and nothing is written. Run twice on the
 same records, it writes the same bytes. `tests/build-data.test.mjs` has a case for each rule.
 

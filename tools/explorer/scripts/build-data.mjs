@@ -1,8 +1,8 @@
 // Builds data/ecosystem.json and data/plan.json from the plan's records in docs/planning.
 // Usage: node scripts/build-data.mjs [--corpus <dir>] [--out <dir>]
-// The corpus is validated with @osdlc/corpus-schema first. Each problem, from the validator or from
-// a rule it cannot check, is one line on stderr, and then nothing is written. See
-// docs/planning/README.md.
+// The corpus is validated first with @osdlc/corpus-schema, the repo's own build, which knows
+// extends. Each problem, from the validator or from a rule it cannot check, is one line on stderr,
+// and then nothing is written. See docs/planning/README.md.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, posix, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -81,8 +81,36 @@ function readCorpus(corpus, root) {
   for (const type of ['tasks', 'milestones', 'components', 'layers', 'repos', 'overlaps', 'datasets'])
     if (ofType[type] === undefined) problems.push(`${label}/${type}: (folder): missing type`)
   if (problems.length > 0) return { problems }
-  const taskSchema = parse(split(readFileSync(join(corpus, 'tasks/tasks.schema.md'), 'utf8')).frontmatter)
-  return { label, problems, byPath, ofType, taskSchema }
+  let taskSchemas
+  try {
+    taskSchemas = schemaChain(corpus, 'tasks')
+  } catch (e) {
+    return { problems: [`${label}/tasks/tasks.schema.md: x-extends: ${e.message}`] }
+  }
+  return { label, problems, byPath, ofType, taskSchemas }
+}
+
+/**
+ * The schemas of a type and of each type up its `x-extends` chain, nearest first. A prefix is
+ * followed through the root file's `extends`, which must give a path. The validator has already
+ * checked the chain.
+ */
+function schemaChain(corpus, type) {
+  const frontmatter = (file) => parse(split(readFileSync(file, 'utf8')).frontmatter)
+  const chain = []
+  for (let dir = corpus, name = type; name !== undefined; ) {
+    const schema = frontmatter(join(dir, name, `${name}.schema.md`))
+    chain.push(schema)
+    const [prefix, base] = (schema['x-extends'] ?? '').split('/', 2)
+    if (base === undefined) name = prefix || undefined
+    else {
+      const source = frontmatter(join(dir, 'corpus-schema.md')).extends[prefix]
+      if (!/^\.\.?\//.test(source)) throw new Error(`build-data reads a parent by path only, not ${source}`)
+      dir = resolve(dir, source)
+      name = base
+    }
+  }
+  return chain
 }
 
 /** Link lookups over a validated corpus. A link that names no record of the type adds a problem. */
@@ -113,7 +141,7 @@ function linker({ byPath }, problems) {
 }
 
 function buildPlan(corpus, problems, { refId, refs }) {
-  const { ofType, label, taskSchema } = corpus
+  const { ofType, label, taskSchemas } = corpus
   const tasksDir = `${label}/tasks`
   const numberOf = new Map(ofType.tasks.map((t) => [t.id, t.data.number]))
   for (const t of ofType.tasks)
@@ -168,7 +196,9 @@ function buildPlan(corpus, problems, { refId, refs }) {
     if (states.size > 0 && [...states].every((s) => s === 'done')) return 'done'
     return states.has('doing') || states.has('done') ? 'doing' : 'todo'
   }
-  const labels = (field) => taskSchema.properties[field].oneOf.map((v) => ({ id: v.const, label: v.title }))
+  // The nearest schema that gives the field its values: `status` comes from the profile.
+  const labels = (field) =>
+    taskSchemas.find((s) => s.properties?.[field]?.oneOf).properties[field].oneOf.map((v) => ({ id: v.const, label: v.title }))
 
   return {
     asOf: ofType.datasets.find((d) => d.id === 'plan')?.data.as_of,

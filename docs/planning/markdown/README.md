@@ -14,12 +14,21 @@ when.
 Each folder below is a type. Its `<type>.schema.md` file lists the fields a record has, and says
 what each one means.
 
+Tasks, milestones and decisions build on the
+[planning profile](../../profiles/planning/README.md), a corpus with only types. The root file
+names it under `extends` with the prefix `plan`, and each of the three schemas names its profile
+type with `x-extends`, such as `x-extends: plan/tasks`. A record passes the local schema and the
+profile's. The other types are this plan's own, because they describe this ecosystem.
+
 - [tasks](tasks/tasks.schema.md): one piece of work. The file name is the task number and a short
-  name, such as `27 Org corpora.md`. The body is the task's plan.
+  name, such as `27 Org corpora.md`. The body is the task's plan. It adds `detail` and `type` to
+  the profile's task.
 - [milestones](milestones/milestones.schema.md): a goal that a group of tasks reaches. The body is
-  the goal. Its schema says how a milestone's status follows from its tasks.
+  the goal. It adds `beeline` to the profile's milestone. The profile's
+  [milestone schema](../../profiles/planning/milestones/milestones.schema.md) says how a
+  milestone's status follows from its tasks.
 - [decisions](decisions/decisions.schema.md): a choice the plan made, or one still open. The body
-  states it and why.
+  states it and why. It is the profile's decision type, as it is.
 - [components](components/components.schema.md): a package, crate, spec, profile, corpus or app,
   where it lives today (`present`) and in the plan's end state (`target`), and what it depends on.
   The body is its purpose, then a `## Notes` list.
@@ -36,8 +45,9 @@ with `x-ref`, and the validator checks that it points at a record of the right t
 ## Add a task
 
 1. Pick the next free number. Copy a task file and name the copy `<number> <short name>.md`.
-2. Fill in the fields that [tasks.schema.md](tasks/tasks.schema.md) lists. `after` holds the tasks
-   it waits on.
+2. Fill in the fields that [tasks.schema.md](tasks/tasks.schema.md) and the profile's
+   [task schema](../../profiles/planning/tasks/tasks.schema.md) list. `after` holds the tasks it
+   waits on.
 3. Write the plan in the body: what the task does, and what it waits on.
 4. Add a link to the task under `tasks` in its milestone's record, at the point where the work
    comes.
@@ -62,14 +72,20 @@ To record that two components do some of the same job, add an overlap record nam
 
 ## Check and build
 
-Validate the folder from the repo root:
+The plan uses `extends`, which `@osdlc/corpus-schema` 0.2.0 on npm does not know. So it is
+checked with this repo's own corpus-schema, in `packages/ts/corpus-schema/`. Build it, then
+validate the folder, from the repo root:
 
 ```sh
-npx --yes @osdlc/corpus-schema@^0.2.0 validate docs/planning
+sh tools/build-corpus-schema.sh
+node packages/ts/corpus-schema/bin/corpus-schema.js validate docs/planning
 ```
 
+Validating the plan also validates the profile, as its parent.
+
 The explorer's data, `tools/explorer/data/ecosystem.json` and `plan.json`, is built from these
-records. After you change a record, run this in `tools/explorer/` and commit the JSON with it:
+records. The explorer links to the same built corpus-schema. After you change a record, run this
+in `tools/explorer/` and commit the JSON with it:
 
 ```sh
 pnpm build-data

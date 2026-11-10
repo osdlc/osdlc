@@ -22,7 +22,7 @@
     "vue": "3.5.45"
   },
   "devDependencies": {
-    "@osdlc/corpus-schema": "^0.2.0",
+    "@osdlc/corpus-schema": "link:../../packages/ts/corpus-schema",
     "@types/node": "26.6.6",
     "@vitejs/plugin-vue": "6.0.10",
     "@vue/tsconfig": "0.9.1",

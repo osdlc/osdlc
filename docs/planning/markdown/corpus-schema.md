@@ -1,6 +1,8 @@
 ---
 corpus-schema: 0
 level: 2
+extends:
+  plan: ../../profiles/planning
 ---
 
 # The markdown ecosystem plan, as records

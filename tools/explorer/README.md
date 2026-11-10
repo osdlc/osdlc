@@ -11,6 +11,7 @@ the URL:
 ## Run it
 
 ```sh
+sh ../build-corpus-schema.sh
 pnpm install --ignore-workspace
 pnpm dev
 ```
@@ -18,6 +19,10 @@ pnpm dev
 Open the address Vite prints. The explorer is its own package, with its own lockfile, so it is not
 part of the repo's pnpm workspace. `--ignore-workspace` keeps pnpm from installing the workspace
 instead.
+
+The first line builds this repo's corpus-schema in `packages/ts/corpus-schema/`. The explorer's
+`@osdlc/corpus-schema` is a `link:` to that folder, because the plan uses `extends` and the 0.2.0
+on npm does not know it. Run the line again after corpus-schema changes.
 
 ### Components
 
@@ -81,7 +86,7 @@ pnpm build-data
 ```
 
 [scripts/build-data.mjs](scripts/build-data.mjs) validates the records with `@osdlc/corpus-schema`,
-checks the rules the validator can't, and writes `data/ecosystem.json` and `data/plan.json`. Their
+the linked copy from this repo, checks the rules the validator can't, and writes `data/ecosystem.json` and `data/plan.json`. Their
 shapes and rules are in [data/SCHEMA.md](data/SCHEMA.md) and [data/PLAN-SCHEMA.md](data/PLAN-SCHEMA.md).
 CI fails when the committed JSON differs from what the records build.
 
@@ -106,7 +111,8 @@ pnpm typecheck
 pnpm test
 ```
 
-CI runs these, `pnpm build` and `pnpm build-data`, in `.github/workflows/planning.yml`.
+CI runs these, `pnpm build` and `pnpm build-data`, in `.github/workflows/planning.yml`. It builds
+corpus-schema with `tools/build-corpus-schema.sh` first.
 
 The graph and plan logic is plain TypeScript under `src/model/`, with tests under `tests/`: the
 work view's dependency lists, milestone dependencies, next up, progress and layout are in

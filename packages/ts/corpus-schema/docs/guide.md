@@ -586,8 +586,10 @@ package already has dialects in this sense.
 ### Profiles
 
 A profile is a shared, versioned set of types that many corpora can follow: a parent corpus that
-holds types and no records. The first one will be the claims profile, for statements backed by
-evidence. Its design is in [the plan](ecosystem-plan.md). It is not published as a package yet.
+holds types and no records. This repo has two drafts, neither published as a package yet. The
+claims profile is for statements backed by evidence, and its design is in
+[the plan](ecosystem-plan.md). The [planning profile](../profiles/planning/README.md) holds tasks,
+milestones and decisions, and this repo's plan extends it by path.
 
 - A corpus names its profiles in the root file under `extends:`, each under a short prefix. The
   prefix is always required, so adding a second profile later breaks nothing. An unknown prefix is

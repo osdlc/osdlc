@@ -1,5 +1,5 @@
-// The checks in scripts/build-data.mjs. Each case copies docs/planning, breaks one rule, and expects
-// the problem that names it.
+// The checks in scripts/build-data.mjs. Each case copies docs/planning and the profile it extends,
+// breaks one rule, and expects the problem that names it.
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -8,6 +8,7 @@ import { buildData } from '../scripts/build-data.mjs'
 
 const repo = resolve(import.meta.dirname, '../../..')
 const planning = join(repo, 'docs/planning')
+const profile = join(repo, 'profiles/planning')
 const temp = mkdtempSync(join(tmpdir(), 'build-data-'))
 afterAll(() => rmSync(temp, { recursive: true, force: true }))
 
@@ -15,8 +16,9 @@ let n = 0
 /** Problems found after `change` edits a fresh copy of the corpus. */
 function problemsAfter(change) {
   const root = join(temp, String(n++))
-  const corpus = join(root, 'planning')
+  const corpus = join(root, 'docs/planning')
   cpSync(planning, corpus, { recursive: true })
+  cpSync(profile, join(root, 'profiles/planning'), { recursive: true })
   const edit = (file, from, to) => {
     const path = join(corpus, file)
     const text = readFileSync(path, 'utf8')
