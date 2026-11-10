@@ -171,6 +171,9 @@ In practice:
   else needs its own resolver.
 - markdown-vault and vault-graph-core become one TypeScript corpus model, the twin of the Rust
   markdown-corpus crate.
+- markdown-relink becomes markdown-reshape, with a TypeScript twin. It changes how notes are
+  arranged without changing what they say: move, rename, split, merge, and extract a thread of
+  linked notes into its own folder or corpus.
 - The spec has levels 0 to 2. Its validator reads the corpus model instead of walking the folder
   itself.
 - Types can come from parent corpora, such as profiles. There is one format for defining types, not
