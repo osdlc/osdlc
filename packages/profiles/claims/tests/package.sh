@@ -1,9 +1,9 @@
 #!/bin/sh
 # Checks the profile as npm ships it.
 #
-# The script packs the package with npm, unpacks the tarball into a temporary
-# node_modules/@osdlc/corpus-profile-claims/, and copies package/fixture/
-# beside it. The fixture names the profile by its package name, so the
+# The script packs the package with pnpm, as the release does, unpacks the
+# tarball into a temporary node_modules/@osdlc/corpus-profile-claims/, and
+# copies package/fixture/ beside it. The fixture names the profile by its package name, so the
 # validator finds it as Node finds a package, through the "corpus" field.
 #
 # Checks:
@@ -33,10 +33,10 @@ fail() {
 }
 
 # Pack and unpack.
-tarball=$(cd "$package_dir" && npm pack --silent --pack-destination "$work")
+(cd "$package_dir" && pnpm pack --pack-destination "$work" >/dev/null)
 installed="$work/node_modules/@osdlc/corpus-profile-claims"
 mkdir -p "$installed"
-tar -xzf "$work/$tarball" -C "$installed" --strip-components=1
+tar -xzf "$work"/*.tgz -C "$installed" --strip-components=1
 
 if [ -f "$installed/corpus/corpus-schema.md" ] &&
   [ ! -e "$installed/example" ] && [ ! -e "$installed/tests" ]; then

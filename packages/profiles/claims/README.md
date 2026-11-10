@@ -310,8 +310,8 @@ record to the example, and runs the validator. An error case passes when the val
 exactly one error, the expected one. A warning case passes when the validator exits 0 and prints
 the expected warning.
 
-[tests/package.sh](tests/package.sh) checks the package as npm ships it. It packs the package,
-unpacks it into a temporary `node_modules/`, and validates
+[tests/package.sh](tests/package.sh) checks the package as npm ships it. It packs the package
+with pnpm, as the release does, unpacks it into a temporary `node_modules/`, and validates
 [tests/package/fixture/](tests/package/fixture/), a small corpus that names the profile by its
 package name. It also checks that the tarball holds no example or tests, and that a rule of the
 profile and a rule the fixture adds both still apply.
