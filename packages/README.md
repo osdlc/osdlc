@@ -207,6 +207,15 @@ Developed here, in this repository:
   relative markdown link parsing with spans, and the code lexer that keeps
   links in code out; the TypeScript implementation of the parsing half of the
   `markdown-link` crate)
+- `packages/ts/markdown-render` (`@osdlc/markdown-render` on npm, markdown to
+  HTML on unified and remark for CommonMark, GFM and the Obsidian extensions,
+  with injected link resolution and sanitized output; framework-free)
+- `packages/ts/markdown-render-vue` (`@osdlc/markdown-render-vue` on npm, Vue 3
+  components over `@osdlc/markdown-render`: `<MarkdownRender>` and the
+  `NoteSource` context)
+- `packages/ts/markdown-vault-astro` (`@osdlc/markdown-vault-astro` on npm, brings
+  Obsidian-vault markdown, wikilinks and embeds, into Astro content collections:
+  a vault-to-content transform, a remark plugin and a CLI)
 - `packages/ts/path-guard` (`@osdlc/path-guard` on npm, a path containment
   guard: lexical validation, then a symlink-aware proof that a path stays
   inside its root; the TypeScript implementation of the `path-guard` crate)

@@ -1,7 +1,7 @@
 {
   "family": "markdown-link",
   "reference": "rust",
-  "referenceVersion": "0.9.0",
+  "referenceVersion": "0.9.1",
   "sections": {
     "code": {
       "description": "Blank fenced and inline code in `source`. `expect.commonmark` is `strip_code`'s output, `expect.skill_export` the output under the skill-export rules. Both keep the number of characters, so offsets here count characters. Under CommonMark a fence is found inside a list item or a block quote (a fence indented to the item's content column opens, and it ends with its container), a backtick after an odd run of `\\` is literal, and a code span in a table row (a line starting with `|`) stays in its cell: a `|` not escaped as `\\|` ends the cell. Skill-export knows no containers, does not honour the escape and does not cut a row.",

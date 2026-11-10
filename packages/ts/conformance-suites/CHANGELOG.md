@@ -1,5 +1,15 @@
 # @osdlc/conformance-suites
 
+## 0.2.0
+
+### Minor Changes
+
+- 258384e: A family in `families.json` may list `readers`: libraries whose tests read the suite but that are not twins of the reference. They are checked for language, folder and a test that names the suite, but not for a matching version, and a library that reads a suite may be listed as an implementation or as a reader.
+
+### Patch Changes
+
+- 258384e: `registryProblems` now reports a reader listed twice in a family (by `dir` or by `name`) and a reader that is also an implementation of the same family. Before, a copy-pasted entry passed and the library was checked twice.
+
 ## 0.1.1
 
 ### Patch Changes
