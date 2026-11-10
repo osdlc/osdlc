@@ -125,6 +125,30 @@ test('a repository check finds an unread suite, an unlisted reader, version drif
   )
 })
 
+test('a repository check finds a reader that is missing, an implementation too, or does not read the suite', () => {
+  const withReaders = (readers: unknown[]) => (put: Put) =>
+    put('packages/conformance/families.json', JSON.stringify({ dirs: { ...FAMILY, readers } }))
+  const view = { language: 'ts', dir: 'packages/ts/view', name: '@x/view' }
+  assert.deepEqual(repo(withReaders([view])), ['dirs: packages/ts/view does not exist'])
+  assert.deepEqual(
+    repo((put) => {
+      withReaders([view])(put)
+      put('packages/ts/view/tests/x.test.ts', 'nothing here')
+    }),
+    ['dirs: no test under packages/ts/view/tests names packages/conformance/dirs/'],
+  )
+  assert.deepEqual(
+    repo((put) => {
+      withReaders([view])(put)
+      put('packages/ts/view/tests/x.test.ts', "'../../../conformance/dirs/suite.json'")
+    }),
+    [],
+  )
+  assert.deepEqual(repo(withReaders([FAMILY.implementations[0]])), [
+    'dirs: packages/ts/dirs is both an implementation and a reader',
+  ])
+})
+
 test('a family with one implementation needs a SPEC.md', () => {
   const one = (put: Put) => {
     put(

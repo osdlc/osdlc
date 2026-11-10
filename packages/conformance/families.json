@@ -36,7 +36,8 @@
     "implementations": [
       { "language": "rust", "dir": "packages/rust/markdown-link", "name": "markdown-link" },
       { "language": "ts", "dir": "packages/ts/markdown-link", "name": "@osdlc/markdown-link" }
-    ]
+    ],
+    "readers": [{ "language": "ts", "dir": "packages/ts/markdown-render", "name": "@osdlc/markdown-render" }]
   },
   "markdown-tags": {
     "reference": "rust",
@@ -44,7 +45,8 @@
     "implementations": [
       { "language": "rust", "dir": "packages/rust/markdown-tags", "name": "markdown-tags" },
       { "language": "ts", "dir": "packages/ts/markdown-tags", "name": "@osdlc/markdown-tags" }
-    ]
+    ],
+    "readers": [{ "language": "ts", "dir": "packages/ts/markdown-render", "name": "@osdlc/markdown-render" }]
   },
   "path-guard": {
     "reference": "ts",

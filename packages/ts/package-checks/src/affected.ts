@@ -12,7 +12,8 @@
  * of the same name, and `rustTwinNames` maps a crate to a package with another
  * name. A change under the suites folder `<families dir>/<family>/`, or under
  * any implementation of a family the registry lists, counts for each
- * TypeScript implementation of that family. Every package is checked on any
+ * TypeScript implementation and reader of that family; a change under a reader
+ * alone does not run the others. Every package is checked on any
  * other event, when a shared file changed (see {@link sharedPatterns}), or
  * when the diff fails.
  *
@@ -31,8 +32,8 @@ import { dirname, join } from 'node:path'
 import { DEFAULT_SHARED, OSDLC, type PackageChecksConfig } from './config.ts'
 import { capture } from './run.ts'
 
-/** Each family's implementation folders, by family. */
-export type Families = Map<string, string[]>
+/** Each family's implementation and reader folders, by family. */
+export type Families = Map<string, { implementations: string[]; readers: string[] }>
 
 /** The parts of a package.json these rules read. */
 export interface Manifest {
@@ -67,10 +68,16 @@ export function readFamilies(root: string, settings: AffectedSettings = OSDLC): 
   if (!existsSync(file)) return new Map()
   const raw = JSON.parse(readFileSync(file, 'utf8')) as Record<
     string,
-    { implementations: { dir: string }[] }
+    { implementations: { dir: string }[]; readers?: { dir: string }[] }
   >
   return new Map(
-    Object.entries(raw).map(([name, f]) => [name, f.implementations.map((i) => i.dir)]),
+    Object.entries(raw).map(([name, f]) => [
+      name,
+      {
+        implementations: f.implementations.map((i) => i.dir),
+        readers: (f.readers ?? []).map((r) => r.dir),
+      },
+    ]),
   )
 }
 
@@ -137,9 +144,12 @@ export function pick({
   )
   const out = new Set<string>()
   for (const file of files) {
-    for (const [family, dirs] of families) {
-      if (file.startsWith(`${suites}/${family}/`) || dirs.some((d) => file.startsWith(`${d}/`))) {
-        for (const d of dirs) if (manifests.has(d)) out.add(d)
+    for (const [family, { implementations, readers }] of families) {
+      if (
+        file.startsWith(`${suites}/${family}/`) ||
+        implementations.some((d) => file.startsWith(`${d}/`))
+      ) {
+        for (const d of [...implementations, ...readers]) if (manifests.has(d)) out.add(d)
       }
     }
     const m = library.exec(file)
