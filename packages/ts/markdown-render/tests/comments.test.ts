@@ -8,6 +8,7 @@
 
 import { describe, expect, test } from 'vitest'
 import { html } from './helpers.ts'
+import { remarkComments, type MdNode } from '../src/index.ts'
 
 describe('%% comments spanning more than one paragraph', () => {
   test('a comment opened and closed in different paragraphs hides all of them', async () => {
@@ -139,6 +140,42 @@ describe('what the document-order scan costs', () => {
     const out = await html(doc)
     expect(performance.now() - start).toBeLessThan(3000)
     expect(out).toBe('')
+  })
+})
+
+describe('comment removal grows linearly with the note', () => {
+  /** N paragraphs, each one text node; `pair` decides what the texts hold. */
+  const tree = (n: number, text: (i: number) => string): MdNode => ({
+    type: 'root',
+    children: Array.from({ length: n }, (_, i) => ({
+      type: 'paragraph',
+      children: [{ type: 'text', value: text(i) }],
+    })),
+  })
+
+  /** Cost of one pass over `n` paragraphs, best of several windows of equal total volume. */
+  const cost = (n: number, total: number, text: (i: number) => string): number => {
+    const run = remarkComments()
+    const passes = total / n
+    let best = Infinity
+    for (let rep = 0; rep < 5; rep++) {
+      const trees = Array.from({ length: passes }, () => tree(n, text))
+      const start = performance.now()
+      for (const t of trees) run(t)
+      best = Math.min(best, performance.now() - start)
+    }
+    return best
+  }
+
+  // Equal volume per rung: linear holds the ratio near 1, quadratic reads ~10.
+  test.each([
+    ['whole comments in one text node each', () => '%%x%%'],
+    ['comments straddling two paragraphs', (i: number) => (i % 2 === 0 ? '%% a' : 'b %%')],
+  ])('%s', (_name, text) => {
+    cost(200, 2000, text)
+    const small = cost(500, 5000, text)
+    const large = cost(5000, 5000, text)
+    expect(large).toBeLessThan(small * 3)
   })
 })
 

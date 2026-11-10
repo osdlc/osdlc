@@ -99,48 +99,68 @@ function findSpans(tree: MdNode): Span[] {
   return spans
 }
 
-/** The chain of nodes from the root down to `target`, or `null` if absent. */
-function pathTo(node: MdNode, target: MdNode): MdNode[] | null {
-  if (node === target) return [node]
-  for (const child of node.children ?? []) {
-    const below = pathTo(child, target)
-    if (below) return [node, ...below]
+/** Every node's parent, built in one pass so no endpoint searches the tree from the root. */
+function parentsOf(tree: MdNode): Map<MdNode, MdNode> {
+  const parents = new Map<MdNode, MdNode>()
+  const stack: MdNode[] = [tree]
+  while (stack.length) {
+    const node = stack.pop() as MdNode
+    for (const child of node.children ?? []) {
+      parents.set(child, node)
+      stack.push(child)
+    }
   }
-  return null
+  return parents
+}
+
+/** Add `node` and its ancestors to `into`, stopping at the first one already there. */
+function addAncestry(parents: Map<MdNode, MdNode>, node: MdNode, into: Set<MdNode>): void {
+  for (let at: MdNode | undefined = node; at && !into.has(at); at = parents.get(at)) into.add(at)
 }
 
 /**
- * Delete every node lying strictly between `from` and `to` in document order.
- * `to === null` deletes everything after `from`. The two endpoints themselves
- * are kept — the caller has already trimmed their text.
+ * Delete every node lying strictly between the endpoints of each cross-node
+ * span, in one walk of the tree. The endpoints themselves are kept — the
+ * caller has already trimmed their text. A span with `to === null` deletes
+ * everything after its `from`.
  */
-function removeBetween(root: MdNode, from: MdNode, to: MdNode | null): void {
-  const fromPath = new Set<MdNode>(pathTo(root, from) ?? [])
-  const toPath = new Set<MdNode>(to ? (pathTo(root, to) ?? []) : [])
-  const spine = new Set<MdNode>([...fromPath, ...toPath])
+function removeSpans(root: MdNode, spans: Span[], parents: Map<MdNode, MdNode>): void {
+  const opens = new Set<MdNode>()
+  const closes = new Set<MdNode>()
+  const spine = new Set<MdNode>()
+  for (const { from, to } of spans) {
+    if (to && to.node === from.node) continue
+    opens.add(from.node)
+    addAncestry(parents, from.node, spine)
+    if (to) {
+      closes.add(to.node)
+      addAncestry(parents, to.node, spine)
+    }
+  }
+  if (!opens.size) return
 
-  let state: 'before' | 'inside' | 'after' = 'before'
+  let inside = false
 
   const walk = (parent: MdParent) => {
     const kept: MdNode[] = []
     for (const child of parent.children) {
-      if (child === from) {
-        state = 'inside'
-        kept.push(child)
-      } else if (to && child === to) {
-        state = 'after'
+      if (opens.has(child) || closes.has(child)) {
+        // A node can close one span and open the next.
+        if (closes.has(child)) inside = false
+        if (opens.has(child)) inside = true
         kept.push(child)
       } else if (spine.has(child)) {
         // An ancestor of an endpoint: keep the branch, and let the recursion
         // find the endpoint inside it and flip the state there.
+        const before = inside
         if (Array.isArray(child.children)) walk(child as MdParent)
-        // A link that only one marker is inside cannot stay: its destination
+        // A link with only one marker inside it cannot stay: its destination
         // would publish what the comment hides. Its surviving text stays.
-        const half = fromPath.has(child) !== toPath.has(child) || (!to && fromPath.has(child))
+        const half = before || inside
         if ((child.type === 'link' || child.type === 'linkReference') && half) {
           kept.push(...((child.children ?? []) as MdNode[]))
         } else kept.push(child)
-      } else if (state !== 'inside') {
+      } else if (!inside) {
         kept.push(child)
       }
     }
@@ -158,10 +178,11 @@ export function remarkComments() {
     const spans = findSpans(tree)
     // Only an ancestor of a span's endpoint can be left empty: every other
     // node is either kept whole or removed whole.
+    const parents = parentsOf(tree)
     const touched = new Set<MdNode>()
     for (const { from, to } of spans) {
-      for (const node of pathTo(tree, from.node) ?? []) touched.add(node)
-      if (to) for (const node of pathTo(tree, to.node) ?? []) touched.add(node)
+      addAncestry(parents, from.node, touched)
+      if (to) addAncestry(parents, to.node, touched)
     }
     for (let index = spans.length - 1; index >= 0; index--) {
       const { from, to } = spans[index] as Span
@@ -172,8 +193,8 @@ export function remarkComments() {
       }
       from.node.value = opening.slice(0, from.offset)
       if (to) to.node.value = String(to.node.value ?? '').slice(to.offset)
-      removeBetween(tree, from.node, to?.node ?? null)
     }
+    removeSpans(tree, spans, parents)
 
     // Drop the nodes the strip emptied out, and no others.
     if (!touched.size) return
