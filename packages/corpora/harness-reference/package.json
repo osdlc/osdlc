@@ -15,6 +15,7 @@
     "import-alpha": "node src/beta/import-alpha.ts",
     "lint": "node src/beta/lint.ts",
     "compile": "node src/compile/compile.ts",
+    "compile:embed": "node src/compile/compile.ts --commit main --no-schema --slice ../packages/rust/tradecraft-core/data/embedded-slice.json --out ../packages/rust/tradecraft-core/data",
     "write-schema": "node src/alpha/validate.ts --write-schema",
     "test": "node --test src/*/*.test.ts",
     "typecheck": "tsc -p tsconfig.json",

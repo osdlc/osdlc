@@ -1,8 +1,16 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { describe, test } from 'node:test'
 
 import { semverOrder } from '../alpha/load.ts'
-import { compareScopes, compareSemver, inRange, isCalendarDate, validVersion } from './versions.ts'
+import {
+  compareScopes,
+  compareSemver,
+  inRange,
+  isCalendarDate,
+  validVersion,
+  type Versioning,
+} from './versions.ts'
 
 describe('validVersion', () => {
   test('accepts semver as the spec spells it', () => {
@@ -73,4 +81,20 @@ test('compareScopes orders no limit first, then by since, then model', () => {
   assert.equal(compareScopes(s('1.10.0'), s('1.9.0'), 'semver'), 1)
   assert.equal(compareScopes(s('1.0.0', 'a'), s('1.0.0', 'b'), 'semver'), -1)
   assert.equal(compareScopes(s('1.0.0'), s('1.0.0'), 'semver'), 0)
+})
+
+describe('shared version cases', () => {
+  const cases = JSON.parse(
+    readFileSync(new URL('./version-cases.json', import.meta.url), 'utf8'),
+  ) as {
+    valid: [Versioning, string, boolean][]
+    semverOrder: [string, string, number][]
+  }
+  test('validity', () => {
+    for (const [versioning, v, ok] of cases.valid)
+      assert.equal(validVersion(v, versioning), ok, `${versioning} ${v}`)
+  })
+  test('semver order', () => {
+    for (const [a, b, o] of cases.semverOrder) assert.equal(compareSemver(a, b), o, `${a} ${b}`)
+  })
 })

@@ -15,7 +15,8 @@ export function isCalendarDate(v: string): boolean {
   const m = DATE.exec(v)
   if (m === null) return false
   const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])]
-  const t = new Date(Date.UTC(y, mo - 1, d))
+  const t = new Date(0)
+  t.setUTCFullYear(y, mo - 1, d)
   return t.getUTCFullYear() === y && t.getUTCMonth() === mo - 1 && t.getUTCDate() === d
 }
 
