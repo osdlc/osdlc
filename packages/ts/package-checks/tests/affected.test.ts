@@ -82,7 +82,7 @@ test('the settings move the package folders and the registry', () => {
     rustWorkspace: 'crates',
     families: 'suites/families.json',
   }
-  const families = new Map([['dirs', ['libs/twin']]])
+  const families = new Map([['dirs', { implementations: ['libs/twin'], readers: [] }]])
   const at = (files: string[]) =>
     pick({ event: 'pull_request', files, manifests: moved, families, settings })
   assert.deepEqual(at(['libs/lib/a.ts']), ['libs/app', 'libs/lib'])
@@ -107,12 +107,23 @@ test('a build also takes the workspace dependencies', () => {
   ])
 })
 
-test('a family links its implementations and its suite', () => {
-  const families = new Map([['dirs', ['packages/ts/twin', 'packages/rust/rusty-dirs']]])
+test('a family links its implementations, its readers and its suite', () => {
+  const families = new Map([
+    [
+      'dirs',
+      {
+        implementations: ['packages/ts/twin', 'packages/rust/rusty-dirs'],
+        readers: ['packages/ts/app'],
+      },
+    ],
+  ])
   const fam = (files: string[]) => pick({ event: 'pull_request', files, manifests, families })
-  assert.deepEqual(fam(['packages/conformance/dirs/suite.json']), ['packages/ts/twin'])
-  assert.deepEqual(fam(['packages/conformance/dirs/README.md']), ['packages/ts/twin'])
-  assert.deepEqual(fam(['packages/rust/rusty-dirs/src/lib.rs']), ['packages/ts/twin'])
+  const both = ['packages/ts/app', 'packages/ts/twin']
+  assert.deepEqual(fam(['packages/conformance/dirs/suite.json']), both)
+  assert.deepEqual(fam(['packages/conformance/dirs/README.md']), both)
+  assert.deepEqual(fam(['packages/rust/rusty-dirs/src/lib.rs']), both)
+  // A change under a reader alone does not run the implementations.
+  assert.deepEqual(fam(['packages/ts/app/a.ts']), ['packages/ts/app'])
   assert.deepEqual(fam(['packages/conformance/other/suite.json']), [])
   assert.deepEqual(fam(['packages/conformance/families.json']), ALL)
 })

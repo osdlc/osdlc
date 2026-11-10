@@ -56,6 +56,40 @@ test('the registry names its reference, its generator and its implementations', 
   ])
 })
 
+test('readers are listed with a language, dir and name', () => {
+  const reader = { language: 'ts', dir: 'packages/ts/view', name: '@x/view' }
+  assert.deepEqual(registryProblems({ dirs: { ...FAMILY, readers: [reader] } }), [])
+  assert.deepEqual(registryProblems({ dirs: { ...FAMILY, readers: [{ dir: 'x' }] } }), [
+    'dirs: reader 0 needs language, dir and name',
+  ])
+  assert.deepEqual(registryProblems({ dirs: { ...FAMILY, readers: 'x' } }), [
+    'dirs: readers is a list',
+  ])
+  assert.deepEqual(
+    registryProblems({ dirs: { ...FAMILY, readers: [{ ...reader, dir: 'packages/rust/view' }] } }),
+    ['dirs: reader packages/rust/view is not under packages/ts/'],
+  )
+})
+
+test('a reader is listed once and is not also an implementation', () => {
+  const reader = { language: 'ts', dir: 'packages/ts/view', name: '@x/view' }
+  assert.deepEqual(registryProblems({ dirs: { ...FAMILY, readers: [reader, reader] } }), [
+    'dirs: reader packages/ts/view is listed twice',
+    'dirs: reader name @x/view is listed twice',
+  ])
+  assert.deepEqual(
+    registryProblems({
+      dirs: { ...FAMILY, readers: [reader, { ...reader, dir: 'packages/ts/other' }] },
+    }),
+    ['dirs: reader name @x/view is listed twice'],
+  )
+  const implementation = (FAMILY.implementations as { dir: string }[])[0]!.dir
+  assert.deepEqual(
+    registryProblems({ dirs: { ...FAMILY, readers: [{ ...reader, dir: implementation }] } }),
+    [`dirs: ${implementation} is both an implementation and a reader`],
+  )
+})
+
 test('regenerating builds each TypeScript reference and what it depends on, not a Rust one', () => {
   const rust = {
     reference: 'rust',
