@@ -249,7 +249,7 @@ A twin can have extras the other doesn't need. It just has to pass the shared ca
 | Render, edit, sites | dev | osdlc |
 | Typed records from Rust | markdown-store in rust-ontogen | on the shared parts; where it lives is an open question |
 
-The order of the moves is in the [plan](ecosystem-plan.md#all-the-work).
+The order of the moves is in the plan's [tasks and milestones](planning/README.md).
 
 ## Open questions
 

@@ -6,9 +6,7 @@ shows SVGs through <img>, so the colours follow the viewer's OS colour
 scheme, not the GitHub theme setting.
 """
 import html
-import json
 import pathlib
-import re
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 OUT = ROOT / "docs" / "diagrams"
@@ -41,15 +39,7 @@ def rules(c):
 .dup{{stroke:{c['bad']};stroke-width:1.6;stroke-dasharray:4 3}}
 .edge{{fill:none;stroke:{c['mut']};stroke-width:1.4}} .ahp{{fill:{c['mut']}}}
 .lvl rect{{fill:{c['chip']};stroke:{c['line']}}} .prof rect{{fill:{c['accbg']};stroke:{c['acc']}}}
-.tie{{stroke:{c['acc']};stroke-width:1.6;fill:none}}
-.task rect{{stroke-width:1.6}} .tt{{font-size:11.5px;font-weight:650;fill:{c['fg']}}}
-.tn{{fill:{c['fg']}}} .tnt{{font-size:10.5px;font-weight:700;fill:{c['bg']}}}
-.t-done rect{{fill:{c['chip']};stroke:{c['osdlc']}}} .t-done .tn{{fill:{c['osdlc']}}}
-.t-doing rect{{fill:{c['chip']};stroke:{c['dev']}}} .t-doing .tn{{fill:{c['dev']}}}
-.t-owner rect{{fill:{c['accbg']};stroke:{c['acc']}}} .t-owner .tn{{fill:{c['acc']}}}
-.t-todo rect{{fill:{c['chip']};stroke:{c['line']}}} .t-todo .tn{{fill:{c['mut']}}}
-.task.supporting rect{{stroke-dasharray:4 3}} .sup{{font-size:9px;font-style:italic;fill:{c['mut']}}}
-.group{{fill:none;stroke:{c['line']};stroke-width:1.4;stroke-dasharray:5 4}} .gt{{font-size:11.5px;font-weight:650;fill:{c['mut']}}}"""
+.tie{{stroke:{c['acc']};stroke-width:1.6;fill:none}}"""
 
 
 def svg(body, height, label):
@@ -182,221 +172,6 @@ TARGET = [
 ]
 
 
-
-# The task graph. Status: done, doing, owner (waiting on the owner), todo.
-# Each task: title, detail, status, milestone id, the ids of the tasks that must come first, and its type.
-# Type: functional changes what the ecosystem is or does; supporting builds, checks, releases or documents it.
-# `after` matches the "After N" text in docs/ecosystem-plan.md; a task can wait on one in another milestone.
-TASKS = {
-    1: ("corpus-schema", "rename, levels", "done", "m-docs", [], "functional"),
-    2: ("Record folders", "osdlc PR 729", "done", "m-docs", [1], "functional"),
-    3: ("Publish 0.2.0", "on npm", "done", "m-docs", [2], "supporting"),
-    4: ("Claims example", "profiles/claims", "done", "m-evidence", [3], "functional"),
-    5: ("Project writes", "evidence as records", "todo", "m-evidence", [3, 4, 22], "functional"),
-    6: ("x-warn", "soft schema rules", "todo", "m-spec", [3], "functional"),
-    7: ("Obsidian", "dialect: wikilinks", "todo", "m-spec", [3], "functional"),
-    8: ("Use npm", "skillwright, root file", "done", "m-evidence", [3], "functional"),
-    9: ("Extends", "package or path", "todo", "m-npm", [3, 21], "functional"),
-    10: ("Store layout", "markdown-store", "todo", "m-model", [3], "functional"),
-    11: ("Link resolver", "after PRs 649, 651", "todo", "m-model", [], "functional"),
-    12: ("One TS model", "vault + graph", "todo", "m-model", [11], "functional"),
-    13: ("Switch users", "query, astro, apps", "todo", "m-model", [12], "functional"),
-    14: ("Validator", "reads model; needs 3", "todo", "m-model", [3, 12], "functional"),
-    15: ("Query layer", "one, on the model", "todo", "m-query", [12], "functional"),
-    16: ("JSON / SQLite", "after query layer", "todo", "m-query", [15], "functional"),
-    17: ("Render/sites", "PRs 719 720", "doing", "m-render", [], "functional"),
-    18: ("This plan", "markdown PR 4", "done", "m-docs", [], "supporting"),
-    19: ("Point repos", "here, after 18", "todo", "m-docs", [18], "supporting"),
-    20: ("Arch doc", "markdown PR 5", "done", "m-docs", [], "supporting"),
-    21: ("Release here", "markdown PR 10", "doing", "m-release", [3], "functional"),
-    22: ("Capture", "writes study results", "todo", "m-evidence", [26], "functional"),
-    26: ("Adopt claims", "harness-reference", "done", "m-evidence", [4, 8], "functional"),
-    27: ("Org corpora", "inherit records", "todo", "m-npm", [9], "functional"),
-    28: ("Refine, waive", "local vs inherited", "todo", "m-sharing", [27], "functional"),
-    29: ("Sync", "_inherited copy", "todo", "m-npm", [27], "functional"),
-    30: ("Org principles", "first real case", "todo", "m-sharing", [27, 28, 35], "functional"),
-    23: ("Claims profile", "npm package", "todo", "m-npm", [21, 36], "functional"),
-    33: ("Spec details", "YAML, format, codes", "todo", "m-spec", [3], "functional"),
-    34: ("Ids and move", "slug ids, move verb", "todo", "m-spec", [3], "functional"),
-    31: ("Nested x-ref", "any depth; after 3, 4", "todo", "m-spec", [3, 4], "functional"),
-    32: ("Rust validator", "after 12 and 14", "todo", "m-model", [12, 14], "functional"),
-    24: ("Name overrides", "own folder names", "todo", "m-sharing", [23], "functional"),
-    25: ("Testing profile", "extends claims", "todo", "m-sharing", [23, 24], "functional"),
-    35: ("Example pair", "org + project, CI", "todo", "m-npm", [23, 29, 36], "functional"),
-    36: ("Release 0.3.0", "corpus-schema", "todo", "m-npm", [9, 21, 27, 29], "supporting"),
-    37: ("Use extends", "harness-reference", "todo", "m-npm", [23, 26, 36], "functional"),
-}
-
-# Milestones, in order: id, title, goal, member task ids. Status comes from the tasks.
-MILESTONES = [
-    ("m-release", "Release from osdlc/markdown",
-     "This repo publishes corpus-schema with its own release setup.", [21]),
-    ("m-npm", "Upstream corpora over npm",
-     "A corpus builds on parent corpora that arrive as npm packages, pinned by a lockfile.",
-     [9, 27, 29, 36, 23, 35, 37]),
-    ("m-evidence", "The evidence project writes records",
-     "The evidence project keeps its evidence as claims records, checked by the validator.",
-     [4, 8, 26, 22, 5]),
-    ("m-model", "One corpus model",
-     "One TypeScript corpus model and link resolver, used by the validator, the store and the apps.",
-     [10, 11, 12, 13, 14, 32]),
-    ("m-query", "Query and build",
-     "One query layer over the corpus model, and a JSON and SQLite build.", [15, 16]),
-    ("m-sharing", "Sharing, the rest",
-     "Refine and waive, a real org principles corpus, name overrides and the testing profile.",
-     [28, 30, 24, 25]),
-    ("m-spec", "Spec hardening",
-     "The spec gains soft rules, the Obsidian dialect, nested x-ref, error codes and stable ids.",
-     [6, 7, 31, 33, 34]),
-    ("m-render", "Render and sites", "The render, edit and site packages move to osdlc.", [17]),
-    ("m-docs", "Plan and docs",
-     "The spec is renamed and published, and the plan and architecture are written and linked.",
-     [1, 2, 3, 18, 19, 20]),
-]
-TYPES = [("functional", "Functional"), ("supporting", "Supporting")]
-AS_OF = "2026-11-09"
-assert all(t[5] in dict(TYPES) for t in TASKS.values())
-assert all(n in TASKS and all(d in TASKS for d in t[4]) for n, t in TASKS.items())
-assert sorted(n for *_, ids in MILESTONES for n in ids) == sorted(TASKS)
-assert all(TASKS[n][3] == m for m, *_, ids in MILESTONES for n in ids)
-
-
-def milestone_status(ids):
-    states = {TASKS[n][2] for n in ids}
-    if states == {"done"}:
-        return "done"
-    return "doing" if states & {"doing", "done"} else "todo"
-
-
-STATUS = [("done", "done"), ("doing", "in progress"), ("owner", "waiting on owner"), ("todo", "not started")]
-
-
-def task_graph():
-    tw, th, pitch = 132, 46, 78
-    cols = [14, 154, 294]
-    top = 68
-
-    def at(r, c):
-        return cols[c], top + r * pitch
-
-    def node(n, x, y):
-        t, sub, st, *_, ty = TASKS[n]
-        sup = ty == "supporting"
-        tag = f'<text x="{x + tw - 7}" y="{y + 43}" text-anchor="end" class="sup">support</text>' if sup else ""
-        return (f'<g class="task t-{st}{" supporting" if sup else ""}"><rect x="{x}" y="{y}" width="{tw}" height="{th}" rx="8"/>'
-                f'<circle cx="{x + 13}" cy="{y + 16}" r="9" class="tn"/>'
-                f'<text x="{x + 13}" y="{y + 19.5}" text-anchor="middle" class="tnt">{n}</text>'
-                f'<text x="{x + 26}" y="{y + 20}" class="tt">{esc(t)}</text>'
-                f'<text x="{x + 9}" y="{y + 37}" class="cs">{esc(sub)}</text>{tag}</g>')
-
-    def edge(x1, y1, x2, y2):
-        my = (y1 + y2) / 2
-        return f'<path class="edge" d="M{x1},{y1} C{x1},{my} {x2},{my} {x2},{y2 - 5}" marker-end="url(#ah)"/>'
-
-    out = [ARROW]
-    x = X0
-    for st, name in STATUS:
-        out.append(f'<g class="task t-{st}"><rect x="{x}" y="6" width="12" height="12" rx="3"/></g>'
-                   f'<text class="cs" x="{x + 17}" y="16">{name}</text>')
-        x += 30 + len(name) * 6.1
-    out.append(f'<g class="task t-todo supporting"><rect x="{X0}" y="26" width="12" height="12" rx="3"/></g>'
-               f'<text class="cs" x="{X0 + 17}" y="36">dashed outline: supporting work (build, release, docs)</text>')
-    for c, name in enumerate(["EVIDENCE PROJECT", "THE SPEC", "CORPUS MODEL"]):
-        out.append(f'<text class="lang" x="{cols[c] + 2}" y="58">{name}</text>')
-    cx = lambda c: cols[c] + tw / 2
-    place = {4: (3, 0), 1: (0, 1), 11: (0, 2), 2: (1, 1), 12: (1, 2), 3: (2, 1)}
-    edges = [(1, 2), (11, 12), (2, 3), (3, 4)]
-    # groups: (column, first row, title, members, fed by)
-    groups = [(1, 3, "After 0.2.0", [6, 7, 8, 10, 33, 34, 31, 21, 9], 3),
-              (2, 2, "After the TS model", [13, 15, 16, 14, 32], 12)]
-    gpitch = 62
-    bodies = []
-    node_pos = []
-    bottom = 0
-    for c, r, title, members, src in groups:
-        gx, gy = cols[c] - 3, top + r * pitch - 4
-        gh = 24 + len(members) * gpitch
-        out.append(f'<rect class="group" x="{gx}" y="{gy}" width="{tw + 6}" height="{gh}" rx="10"/>'
-                   f'<text class="gt" x="{gx + 10}" y="{gy + 16}">{esc(title)}</text>')
-        for i, n in enumerate(members):
-            bodies.append(node(n, cols[c], gy + 24 + i * gpitch))
-            node_pos.append((gy + 24 + i * gpitch, n))
-        sx, sy = at(*place[src])
-        out.append(edge(sx + tw / 2, sy + th, cx(c), gy))
-        bottom = max(bottom, gy + gh)
-    # arrows inside the TS-model box: 15 -> 16 and 14 -> 32
-    ys_all = {n: g_y for g_y, n in node_pos}
-    for a, b in ((15, 16), (14, 32)):
-        out.append(edge(cx(2), ys_all[a] + th, cx(2), ys_all[b]))
-    # evidence column: 26, 22 and 5 sit below 4, with 26 level with task 9
-    ys = {n: g_y for g_y, n in node_pos}
-    y9 = ys[9]
-    ev = {26: y9, 22: y9 + pitch, 5: y9 + 2 * pitch}
-    x4, y4 = at(*place[4])
-    chain_nodes = [4, 26, 22, 5]
-    ev_y = {4: y4, **ev}
-    for n in (26, 22, 5):
-        bodies.append(node(n, cols[0], ev_y[n]))
-    for n1, n2 in zip(chain_nodes, chain_nodes[1:]):
-        out.append(edge(cx(0), ev_y[n1] + th, cx(0), ev_y[n2]))
-    # 21 feeds 9 inside the box
-    out.append(edge(cx(1), ys[21] + th, cx(1), ys[9]))
-    # 8 feeds 26 from the side of its box
-    sx, sy = cols[1] - 3, ys[8] + th / 2
-    out.append(f'<path class="edge" d="M{sx},{sy} C{sx - 40},{sy} {cols[0] + 100},{sy} {cols[0] + 100},{y9 - 5}" marker-end="url(#ah)"/>')
-    # 4 feeds 31 down the gap between the columns
-    x4r, y4r = cols[0] + tw, at(*place[4])[1] + th / 2
-    out.append(f'<path class="edge" d="M{x4r},{y4r} C{x4r + 4},{y4r + 20} {x4r + 4},{ys[31] + th / 2 - 20} {cols[1] - 3},{ys[31] + th / 2}" marker-end="url(#ah)"/>')
-    # inheritance tasks: below the other groups, fed by 9
-    gx, gy = cols[0] - 3, max(bottom, ev_y[5] + th) + 20
-    rows = [gy + 24, gy + 104, gy + 184]
-    gh = rows[2] + th + 14 - gy
-    out.append(f'<rect class="group" x="{gx}" y="{gy}" width="{cols[1] + tw + 3 - gx}" height="{gh}" rx="10"/>'
-               f'<text class="gt" x="{gx + 10}" y="{gy + 16}">After 9</text>')
-    for n, c, ny in ((27, 1, rows[0]), (28, 1, rows[1]), (29, 0, rows[1]), (36, 0, rows[2])):
-        bodies.append(node(n, cols[c], ny))
-    out.append(edge(cx(1), rows[0] + th, cx(1), rows[1]))
-    out.append(edge(cx(1), rows[0] + th, cx(0), rows[1]))
-    out.append(edge(cx(0), rows[1] + th, cx(0), rows[2]))
-    out.append(edge(cx(1), y9 + th, cx(1), gy))
-    # tasks that wait on the 0.3.0 release: profile chain, example pair, harness-reference
-    gy2 = gy + gh + 20
-    rows2 = [gy2 + 24, gy2 + 104, gy2 + 184]
-    gh2 = rows2[2] + th + 14 - gy2
-    out.append(f'<rect class="group" x="{gx}" y="{gy2}" width="{cols[2] + tw + 3 - gx}" height="{gh2}" rx="10"/>'
-               f'<text class="gt" x="{gx + 10}" y="{gy2 + 16}">After 0.3.0</text>')
-    for n, c, ny in ((23, 1, rows2[0]), (37, 0, rows2[1]), (35, 1, rows2[1]), (24, 2, rows2[1]),
-                     (30, 1, rows2[2]), (25, 2, rows2[2])):
-        bodies.append(node(n, cols[c], ny))
-    out.append(edge(cx(0), rows[2] + th, cx(1), gy2))
-    out.append(edge(cx(1), rows2[0] + th, cx(0), rows2[1]))
-    out.append(edge(cx(1), rows2[0] + th, cx(1), rows2[1]))
-    out.append(edge(cx(1), rows2[0] + th, cx(2), rows2[1]))
-    out.append(edge(cx(2), rows2[1] + th, cx(2), rows2[2]))
-    out.append(edge(cx(1), rows2[1] + th, cx(1), rows2[2]))
-    # 28 feeds 30 down the gap between the middle and last columns
-    xr, ya, yt = cols[1] + tw, rows[1] + th / 2, rows2[2]
-    out.append(f'<path class="edge" d="M{xr},{ya} C{xr + 8},{ya} {xr + 8},{yt - 25} {xr - 12},{yt - 5}" marker-end="url(#ah)"/>')
-    bottom = gy2 + gh2
-    for a, b in edges:
-        (ax, ay), (bx, by) = at(*place[a]), at(*place[b])
-        out.append(edge(ax + tw / 2, ay + th, bx + tw / 2, by))
-    for n, (r, c) in place.items():
-        out.append(node(n, *at(r, c)))
-    out.extend(bodies)
-    y = bottom + 22
-    band_h = 32 + 2 * th + 12 + 14  # label, two rows, gap, bottom padding
-    out.append(f'<rect class="band" x="6" y="{y}" width="{W - 12}" height="{band_h}" rx="10"/>'
-               f'<text class="lang" x="{X0}" y="{y + 20}">SEPARATE WORK</text>')
-    r0 = y + 32
-    out.append(node(18, cols[0], r0))
-    out.append(f'<line class="edge" x1="{cols[0] + tw + 1}" y1="{r0 + th / 2}" x2="{cols[1] - 2}" y2="{r0 + th / 2}" marker-end="url(#ah)"/>')
-    out.append(node(19, cols[1], r0))
-    out.append(node(20, cols[2], r0))
-    out.append(node(17, cols[0], r0 + th + 12))
-    return svg("".join(out), y + band_h + 8, "The task graph, with status and what must come first")
-
-
 def resolvers():
     rows = [("markdown-vault", "own shortest-path rule", "dev"),
             ("vault-graph-core", "port of the Rust LinkIndex", "dev"),
@@ -442,66 +217,13 @@ def levels_profiles():
     return svg("".join(out), y + 22, "Levels 0 to 2, and profiles that supply level-2 types")
 
 
-def plan_texts():
-    """Each task's paragraph from the plan's "All the work" list, as plain text with links kept."""
-    lines = (ROOT / "docs" / "ecosystem-plan.md").read_text(encoding="utf-8").split("\n")
-    start = next(i for i, l in enumerate(lines) if l.startswith("## All the work"))
-    out, cur = {}, None
-    for l in lines[start:]:
-        m = re.match(r"- \*\*(\d+)\. ", l)
-        if m:
-            cur = int(m.group(1))
-            out[cur] = []
-        elif cur is not None and (l.startswith("**") or l.startswith("We will track")):
-            cur = None
-        if cur is not None:
-            out[cur].append(l)
-    texts = {}
-    for n, ls in out.items():
-        paras, buf = [], []
-        for l in ls:
-            if not l.strip():
-                paras.append(buf); buf = []; paras.append(None)
-            elif re.match(r"\s*- ", l) and buf:
-                paras.append(buf); buf = [l.strip()]
-            else:
-                buf.append(l.strip())
-        paras.append(buf)
-        text = []
-        for p in paras:
-            if p is None:
-                text.append("")
-            elif p:
-                text.append(" ".join(p))
-        t = "\n".join(text).replace("**", "")
-        t = re.sub(r"\n{3,}", "\n\n", t).strip()
-        texts[n] = re.sub(r"^\d+\. ", "", t.replace("- ", "", 1) if t.startswith("- ") else t)
-    return texts
-
-
-def tasks_json():
-    texts = plan_texts()
-    doc = {
-        "asOf": AS_OF,
-        "statuses": [{"id": i, "label": l} for i, l in STATUS],
-        "types": [{"id": i, "label": l} for i, l in TYPES],
-        "milestones": [{"id": m, "title": t, "goal": g, "status": milestone_status(ids), "tasks": ids}
-                       for m, t, g, ids in MILESTONES],
-        "tasks": [{"id": n, "title": t, "detail": d, "status": st, "milestone": m, "type": ty, "after": sorted(af),
-                   "text": texts[n]} for n, (t, d, st, m, af, ty) in sorted(TASKS.items())],
-    }
-    return json.dumps(doc, indent=2, ensure_ascii=False) + "\n"
-
-
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     files = {
-        "tasks.svg": task_graph(),
         "present.svg": layers(PRESENT, "Present state by layer", TARGET_KEY),
         "resolvers.svg": resolvers(),
         "levels-profiles.svg": levels_profiles(),
         "target.svg": layers(TARGET, "Target state by layer", TARGET_KEY),
-        "tasks.json": tasks_json(),
     }
     for name, text in files.items():
         (OUT / name).write_text(text, encoding="utf-8")

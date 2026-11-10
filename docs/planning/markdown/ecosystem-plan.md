@@ -28,48 +28,27 @@ building toward is in [the architecture](architecture.md).
 
 ## The work
 
-This graph shows all the work we know about. The numbers match the list in
-[All the work](#all-the-work) below. An arrow means "must come first". A dashed box means every task
-in it waits on the task whose arrow points at the box. Arrows from some finished tasks are left
-out where they would cross the page. The order for the npm work is in
-[the milestone](#milestone-upstream-corpora-over-npm).
-
-![The task graph, with the status of each task](diagrams/tasks.svg)
+The tasks, milestones and decisions are records in [planning/](planning/README.md), one Markdown
+file each. A task's file, such as [27 Org corpora](planning/tasks/27%20Org%20corpora.md), holds its
+status, its milestone, the tasks that must come first, and its plan. The ecosystem explorer in
+`tools/explorer/` shows the tasks and the components they change as graphs. Its data is built from
+the records.
 
 Each task is one of two kinds. **Functional** work changes what the ecosystem is or does: spec
 rules, packages, crates, profiles, corpora, examples, and other repos adopting them. **Supporting**
 work builds, checks, releases or documents those things without changing them: publishing a
-version, the plan and architecture docs, and pointing repos here. Supporting tasks have a dashed
-outline in the graph and "(supporting)" in the list. The kind is also in
-[diagrams/tasks.json](diagrams/tasks.json).
+version, the plan and architecture docs, and pointing repos here.
 
-## Milestones
-
-Every task belongs to one milestone. Each task's "After" text and milestone are also in
-[diagrams/tasks.json](diagrams/tasks.json), which `tools/diagrams/build.py` writes. A milestone is
-done when all its tasks are done, in progress when any task is in progress or done, and not started
-otherwise. In order:
-
-- **Release from osdlc/markdown** (task 21). This repo publishes corpus-schema with its own release
-  setup. In progress.
-- **Upstream corpora over npm** (tasks 9, 27, 29, 36, 23, 35, 37). A corpus builds on parent corpora
-  that arrive as npm packages. [Its steps](#milestone-upstream-corpora-over-npm) are below. Not
-  started. It waits on the release milestone for task 21.
-- **The evidence project writes records** (tasks 4, 8, 26, 22, 5). In progress.
-- **One corpus model** (tasks 10, 11, 12, 13, 14, 32). Not started.
-- **Query and build** (tasks 15, 16). Not started.
-- **Sharing, the rest** (tasks 28, 30, 24, 25). Refine and waive, a real org principles corpus, name
-  overrides and the testing profile. Not started.
-- **Spec hardening** (tasks 6, 7, 31, 33, 34). Not started.
-- **Render and sites** (task 17). In progress.
-- **Plan and docs** (tasks 1, 2, 3, 18, 19, 20). In progress: task 19 is not done.
+Every task belongs to one milestone. A milestone is done when all its tasks are done, in progress
+when any task is in progress or done, and not started otherwise. The order of the npm work is in
+[the milestone](#milestone-upstream-corpora-over-npm).
 
 ## First: unlock the evidence project
 
 Another project is waiting on one thing. It needs a format for keeping evidence and research as
 structured records. It will collect evidence, observations and test material, such as scripts,
 queries and CSV results, as records with their files. Most of this exists already, so this comes
-before the rest of the plan. It is tasks 1 to 5, 22 and 26, in the first columns of the graph.
+before the rest of the plan. It is tasks 1 to 5, 22 and 26.
 
 - **1. Rename to corpus-schema.** Done. The package and spec are now `@osdlc/corpus-schema` on osdlc
   main, with the command `corpus-schema` and the root file `corpus-schema.md` (or `.yaml`,
@@ -333,53 +312,8 @@ name overrides (task 24).
 
 ## Decisions
 
-### Decided
-
-- **D1. The word for a folder of notes is corpus.** It follows from D2, which keeps "corpus" as the
-  level-0 word. The vault names in our packages move to corpus over time.
-- **D2. The spec's name is corpus-schema** (decided 2026-11-08). The package is
-  `@osdlc/corpus-schema`, the command is `corpus-schema`, and the root file is `corpus-schema.md`
-  (or `.yaml`, `.json`). It says what the spec adds: a schema on top of a corpus. A level-0 corpus
-  simply has no schema file.
-- **D3. The TypeScript corpus model is called markdown-corpus**, the same as its Rust twin. The
-  markdown-corpus crate keeps its name.
-- **D4. Types are plain JSON Schema** (decided 2026-11-09). A type builds on another with
-  `x-extends: <prefix>/<type>`, or a local type name. A record must pass every schema up the chain
-  (`allOf`). A child can add or tighten rules, never loosen them. Packs could compile to JSON Schema
-  later.
-- **D6. The spec has a level 0.** The merged SPEC.md defines it: a corpus that declares nothing,
-  whose relative links must resolve.
-- **D7. When to publish** (decided 2026-11-09). `@osdlc/corpus-schema` 0.2.0 was published, with
-  record folders. There is no 0.1.0 on npm (see task 3).
-- **D8. The evidence types follow VA-Spec** (decided 2026-11-08). VA-Spec is GA4GH's Variant
-  Annotation spec. It is a JSON Schema model for claims backed by evidence. We use its model, its
-  type names and its field names: Statement, Evidence Line, Study Result, Method, Document and
-  Contribution. Study results have no `focus` or `harness` field. What a study result is about comes
-  from the statements that cite it, because one observation can support statements about several
-  things. Other words come later as name overrides (task 24).
-
-  We looked at other standards for the same idea. Assurance cases name the same parts claim,
-  argument and evidence: ISO/IEC/IEEE 15026-2, OMG SACM and GSN. OASIS OSLC Quality Management
-  covers tests and test results. None of them has a JSON Schema for the whole chain. Their words
-  feed the name overrides and the testing profile.
-- **D9. Record folders are in the first published version, 0.2.0.** The JSON/SQLite build is later work.
-- **D10. The profile is called claims** (decided 2026-11-08). The folder is `profiles/claims/`, the npm
-  package is `@osdlc/corpus-profile-claims` and the root-file prefix is `claims`. "Claims" is the
-  plain word for statements backed by evidence. It doesn't clash with a type name, as "evidence"
-  would. "va-spec" would read as genomics to anyone outside that field.
-
-- **D11. Upstream corpora travel as npm packages** (decided 2026-11-09). A parent corpus or profile
-  is an npm package or a local folder. `package.json` holds the range and the lockfile pins it. Git
-  dependencies cover private org corpora with no registry. The spec stays independent of npm: it
-  says each parent resolves to a folder that holds a corpus. corpus-schema has two resolvers, a
-  package name and a relative path.
-- **D12. Inherited records come in as a committed copy** (decided 2026-11-09).
-  `corpus-schema sync` copies each parent into `_inherited/<prefix>/`. The validator checks the copy
-  against the installed parent and says to run `corpus-schema sync` when they differ.
-
-### Still open
-
-- **D5. What "db" means.** The query layer, or nothing until we build one.
+Each decision is a record in [planning/decisions/](planning/decisions/decisions.schema.md), with
+its reasons. D1 to D12 are decided, except D5, what "db" means, which is still open.
 
 ### Names we considered
 
@@ -387,172 +321,3 @@ corpus-spec and corpora-spec named the document more than the tool, and the plur
 mistype. markdown-corpus was already the Rust crate's name. markdown-records fit only the record
 levels. markdown-db, the old name, sounds like a database, and other projects with that name are
 databases.
-
-## All the work
-
-The numbers match the task graph at the top. "After" says what must come first.
-
-**The spec and the evidence project**
-
-- **1. Rename to corpus-schema**, with the levels in the spec text:
-  [osdlc/osdlc#725](https://github.com/osdlc/osdlc/pull/725). Done.
-- **2. Record folders** in corpus-schema:
-  [osdlc/osdlc#729](https://github.com/osdlc/osdlc/pull/729). After 1. Done: merged on 2026-11-09.
-- **3. Publish the first version.** (supporting) Done: `@osdlc/corpus-schema` 0.2.0 is on npm, published on
-  2026-11-09. The first version is 0.2.0 because a release race made record folders a second minor
-  bump: [osdlc/osdlc#726](https://github.com/osdlc/osdlc/pull/726) cut 0.1.0, which was never
-  published, and [osdlc/osdlc#733](https://github.com/osdlc/osdlc/pull/733) made 0.2.0. After 2.
-- **4. Example claims corpus**, in this repo at `profiles/claims/example/`. A valid level-2 corpus
-  with the VA-Spec types `documents`, `study-results`, `methods` and `statements`, their schemas,
-  and a few records that show the whole chain. After 3.
-  - A statement holds its proposition (subject, predicate, object) and its evidence lines. Each
-    line names study results, says whether it supports or disputes the statement, and how strongly.
-  - Contribution (who, when, what role) is a field on records, not a type of its own.
-  - `profiles/claims/README.md` maps each type to VA-Spec and says what we leave out and why. Check
-    it against VA-Spec's published schemas.
-  - CI validates the example with `@osdlc/corpus-schema` from npm.
-  - People copy it with `npx degit osdlc/markdown/profiles/claims/example <dir>`. No npm package is
-    needed yet.
-
-  - Until task 31, a statement's evidence lines are plain relative links with a pattern check, not
-    `x-ref`.
-
-  Done: [osdlc/markdown#6](https://github.com/osdlc/markdown/pull/6).
-- **26. harness-reference adopts the claims types.** Copy the type folders from the example and move
-  harness-reference's records over: `references` becomes `documents` (they live today in
-  [osdlc/skillwright#74](https://github.com/osdlc/skillwright/pull/74)), `evidence` becomes
-  `study-results`, and the `harness` field is dropped. After 4 and 8. Done:
-  [osdlc/skillwright#97](https://github.com/osdlc/skillwright/pull/97).
-- **22. Capture writes study results.** harness-reference's capture command writes VA-Spec study
-  results, with a contribution. After 26.
-- **5. The evidence project writes records.** It copies the types from the example. After 3, 4 and
-  22.
-- **6. x-warn**: a schema can mark a rule as a warning instead of an error. After 3.
-- **7. The Obsidian dialect**: wikilinks without a warning, able to reach beyond the corpus, and
-  embeds. After 3.
-- **8. skillwright uses the npm package.** harness-reference switches from its `workspace:*` copy of
-  markdown-db to `@osdlc/corpus-schema` and renames its root file to `corpus-schema.md`. After 3.
-  Done: [osdlc/skillwright#95](https://github.com/osdlc/skillwright/pull/95), which also deleted
-  skillwright's copy.
-- **9. Parents: `extends` and `x-extends`.** In the milestone, step 2. D4 is decided, so the work
-  is to build it in the validator. A corpus names its parents in the root file. `extends` maps a
-  prefix to a source. The source is a package name, found the way Node finds packages from the
-  corpus folder, or a relative path that starts with `./` or `../`. Parents load transitively, a
-  cycle is an error, and the prefix is always required. A type says which type it builds on with
-  `x-extends: claims/statements`, or `x-extends: <local type>` for a type in the same corpus. A
-  record must pass its own schema and the schema of every type above it. A child may add rules and
-  tighten them, never loosen them. A type has one parent at first. This task also covers cross-corpus
-  `x-ref` and the rule that a local record can't reuse an inherited record's id (see
-  [Sharing across corpora](#sharing-across-corpora)). It no longer waits on
-  [sksizer/dev#4069](https://github.com/sksizer/dev/pull/4069): types are plain JSON Schema, so
-  moving model-schema to osdlc is separate work. After 3 and 21.
-- **23. The claims profile.** In the milestone, step 5. The example from task 4 is already in the
-  right place. The profile's types are open: a proposition's object can be any JSON value, and
-  consumers add their own kinds. This follows the downstream review in
-  [osdlc/markdown#8](https://github.com/osdlc/markdown/issues/8). This task adds the profile
-  wrapper, a corpus with only types, and publishes it as `@osdlc/corpus-profile-claims`, versioned,
-  from this repo. Corpora then list it by package name under `extends` in their root file and use
-  `x-extends` instead of holding full copies. harness-reference and the evidence project switch
-  over. After 21 and 36: publishing from this repo needs its release setup, and the profile is
-  checked with a corpus-schema that knows `extends`. It no longer waits on 31. The profile can ship
-  with its statements using relative links and a pattern check for evidence lines. When 31 lands,
-  a new profile version switches them to `x-ref`. If the copies start to drift before then, we could
-  release the profile from osdlc/osdlc first.
-- **24. Name overrides.** A corpus can give a profile's types its own folder names and map each one
-  to its type with `x-extends`. Field names stay the profile's, so tools and exports work
-  everywhere. Write down one tested word set from assurance cases: claim, argument, evidence and
-  source. After 23.
-- **25. An acceptance-testing profile** that extends claims. Requirements or acceptance criteria are
-  what statements are about. Tests are methods. Test runs are study results, kept as record folders
-  with their scripts, queries and CSV results. Pass and fail are the direction. Words come from OSLC
-  QM and the ISTQB glossary. After 23 and 24.
-- **27. Corpus inheritance.** In the milestone, step 2. A parent named under `extends` can bring its
-  records, not just its types. A corpus sees the parent's types and records read-only, next to its
-  own records. A parent is an npm package (a version range plus the lockfile pin), a git dependency
-  for a private org corpus, or a local folder. Loading is transitive. A parent update arrives when
-  the lockfile changes. After 9. See [Sharing across corpora](#sharing-across-corpora).
-- **28. Refine and waive.** A local record can say `refines` (a local version that narrows an
-  inherited record) or `waives` (it doesn't apply here, with a reason). A local record with the same
-  type and id as an inherited one is an error unless it says `refines`. After 27. Still a
-  proposal.
-- **29. `corpus-schema sync`.** In the milestone, step 3. It writes a read-only, committed copy of
-  each parent corpus into `_inherited/<prefix>/`, including the parent's own `_inherited/`, so
-  Obsidian and GitHub links resolve. The validator skips that folder when it looks for local
-  records, treats a link into it as a link to the parent's record, and says "run corpus-schema
-  sync" when the copy differs from the installed parent. After 27.
-- **30. An org principles corpus.** The first real case: one shared principles corpus that project
-  corpora extend, refine and waive. Task 35 is its start. After 27, 28 and 35. Sync (task 29)
-  helps here but is not required.
-- **31. Nested x-ref.** corpus-schema v0 allows `x-ref` only on top-level fields and the items of
-  top-level arrays. The claims example needs it inside each statement's evidence lines
-  (`hasEvidenceItems`). Allow `x-ref` at any depth in a schema, then switch the example's evidence
-  items from relative links with a pattern check to `x-ref`. After 3 and 4. It is not part of the
-  npm milestone. The claims profile ships first with the pattern check, and a later profile version
-  uses `x-ref`.
-- **33. Spec: YAML 1.2, format, error codes.** The spec says that YAML 1.2 applies, so an unquoted
-  date stays a string, and that JSON Schema `format` is asserted. The TypeScript validator already
-  asserts it through ajv-formats. This task also defines stable error codes for validator messages,
-  so consumers such as agent-call can rely on them. After 3.
-- **34. Stable ids and a move verb.** A profile can require slug ids with a separate `title`. A
-  `move` or `rename` verb rewrites every link to a record. SPEC.md lists it as deferred. After 3. It
-  should land before outside systems depend on ids.
-- **35. The example pair.** In the milestone, step 6. Check in an org corpus with records (a few
-  principles) and a project corpus that extends both the claims profile and the org corpus, by
-  package name and by path. The project's local records cite inherited ones. CI installs the
-  parents, runs `corpus-schema sync` and validates both corpora. This is the start of task 30. After
-  23, 29 and 36.
-- **36. Release corpus-schema 0.3.0.** (supporting) In the milestone, step 4. The first version with `extends`,
-  `x-extends`, cross-corpus `x-ref` and `sync`, published from this repo with its release setup.
-  After 9, 21, 27 and 29.
-- **37. harness-reference uses `extends`.** In the milestone, step 7. Follow-up to task 26:
-  harness-reference stops copying the claims type folders. It installs
-  `@osdlc/corpus-profile-claims`, lists it under `extends` and marks its types with `x-extends`.
-  After 23, 26 and 36.
-- **10. markdown-store on the shared parts**, writing the spec's layout. After 3.
-
-**The corpus model**
-
-- **11. Teach markdown-link to resolve links.** Land
-  [osdlc/osdlc#649](https://github.com/osdlc/osdlc/pull/649) and then
-  [#651](https://github.com/osdlc/osdlc/pull/651), which is stacked on it. Then add a TypeScript
-  resolver taken from vault-graph-core's copy of the Rust one, with shared cases. Can start now.
-- **12. One TypeScript corpus model**, markdown-corpus: markdown-vault and vault-graph-core merged into
-  osdlc on top of markdown-link's resolver. After 11.
-- **13. Switch the users** to the new model and resolver: markdown-vault-query, markdown-astro, and
-  determined (its vault-graph app and its graph and notes experiences). They also move off dev's
-  private copy of markdown-link. After 12.
-- **14. The validator reads the corpus model** instead of walking the folder itself. After 3 and 12.
-- **32. A Rust validator.** It runs the same conformance cases as the TypeScript validator, built on
-  the markdown-corpus crate. The architecture already mentions it. After 12 and 14.
-- **15. One query layer.** Move markdown-vault-query to osdlc on top of the corpus model. After 12 and
-  D5.
-- **16. The JSON/SQLite build**: write every valid record to JSON files and a SQLite file. After 15.
-
-**Separate work**
-
-- **17. Finish moving the render, edit and site packages**:
-  [osdlc/osdlc#719](https://github.com/osdlc/osdlc/pull/719) and
-  [#720](https://github.com/osdlc/osdlc/pull/720), then markdown-editor and markdown-ui. Rename
-  the vault words to corpus. In progress.
-- **18. This plan** (supporting): [osdlc/markdown#4](https://github.com/osdlc/markdown/pull/4). Done.
-- **19. Point other repos here** (supporting): osdlc/osdlc, sksizer/dev, osdlc/skillwright and sksizer/rust-ontogen
-  get the note in [pointing-here.md](pointing-here.md). After 18.
-- **20. The architecture doc** (supporting): [osdlc/markdown#5](https://github.com/osdlc/markdown/pull/5). Done.
-
-**Moving packages here**
-
-- **21. Release setup here, then move corpus-schema.** Give this repo its own release setup:
-  Changesets, a publish workflow with npm trusted publishing, package checks, the conformance
-  check, a CI matrix and shared configs. Then move `@osdlc/corpus-schema` and its spec family from
-  osdlc/osdlc into this repo as its first package. The npm name stays the same. After 3. Other
-  markdown packages follow the same path later. SPEC.md says the spec moves to osdlc/markdown
-  once this repo has its own release setup. This task is that move, so SPEC.md needs updating when
-  it happens. In progress. [osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9) has merged: it moved the
-  package and its spec family here, with their history, and updated SPEC.md.
-  [osdlc/markdown#10](https://github.com/osdlc/markdown/pull/10) switches the CI and release to
-  the shared workflows and checks from osdlc/osdlc
-  ([osdlc/osdlc#749](https://github.com/osdlc/osdlc/pull/749)). It waits for those to merge and
-  for `@osdlc/package-checks` and `@osdlc/conformance-suites` 0.1.0 on npm. Until then, releases still
-  go out from osdlc/osdlc.
-
-We will track each task as an issue in this repo.
