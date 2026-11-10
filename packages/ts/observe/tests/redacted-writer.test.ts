@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, statSync } from 'node:fs'
+import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -151,6 +151,42 @@ test('a class-instance line keeps its envelope fields, as a literal does', async
         output: 'pushed with [REDACTED:github]',
       },
     ])
+  } finally {
+    rmSync(dir2, { recursive: true, force: true })
+  }
+})
+
+test('lines land in call order when the calls are not awaited one by one', async () => {
+  // The first line takes longer to redact than the second.
+  const lint = async (text: string) => {
+    if (text.includes('slow')) await new Promise((done) => setTimeout(done, 50))
+    return []
+  }
+  const slowFirst = createRedactor({ env: {}, lint })
+  const dir2 = mkdtempSync(join(tmpdir(), 'observe-redacted-order-'))
+  try {
+    const out = join(dir2, 'log.jsonl')
+    await Promise.all([
+      appendRedactedJsonl(out, { kind: 'a', note: 'slow-to-redact-text-here' }, slowFirst),
+      appendRedactedJsonl(out, { kind: 'b', note: 'fast' }, slowFirst),
+      appendRedactedJsonl(join(dir2, '.', 'log.jsonl'), { kind: 'c', note: 'fast' }, slowFirst),
+    ])
+    expect((readJsonl(out) as { kind: string }[]).map((l) => l.kind)).toEqual(['a', 'b', 'c'])
+  } finally {
+    rmSync(dir2, { recursive: true, force: true })
+  }
+})
+
+test('a failed write does not stop the next one to the same path', async () => {
+  const dir2 = mkdtempSync(join(tmpdir(), 'observe-redacted-fail-'))
+  try {
+    const blocker = join(dir2, 'logs')
+    writeFileSync(blocker, '') // a file where the log's directory should be
+    const file = join(blocker, 'log.jsonl')
+    await expect(appendRedactedJsonl(file, { kind: 'a' }, r)).rejects.toThrow()
+    rmSync(blocker)
+    await appendRedactedJsonl(file, { kind: 'b' }, r)
+    expect(readJsonl(file)).toEqual([{ kind: 'b' }])
   } finally {
     rmSync(dir2, { recursive: true, force: true })
   }

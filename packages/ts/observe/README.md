@@ -326,7 +326,9 @@ const found: TaggedProcess[] | null = scanTaggedProcesses(ps, { platform: 'darwi
   `RedactionRange` is what the `lint` stand-in returns.
 - **Writer.** `appendRedactedJsonl(path, line, redactor)` redacts every field
   of `line` but the envelope's own (`v`, `ts`, `kind`, `writer`, `source`,
-  `session`, `run`, `subject`), then appends it as `appendJsonl` does.
+  `session`, `run`, `subject`), then appends it as `appendJsonl` does. Lines
+  reach a file in the order of the calls, even when they are not awaited one
+  by one.
 - **Patterns.** `redactPatternProblem(regex)` says why an extra pattern would be
   refused: it does not compile, or it has a shape that backtracks
   catastrophically. It loads nothing, so a config loader can call it.

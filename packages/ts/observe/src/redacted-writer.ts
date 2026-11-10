@@ -4,6 +4,8 @@
  * `appendJsonl`.
  */
 
+import { resolve } from 'node:path'
+
 import { LogEnvelopeSchema } from './envelope.ts'
 import { mergeRedactions, type Redactions, type Redactor } from './redactor.ts'
 import { appendJsonl, type AppendOptions } from './writer.ts'
@@ -44,9 +46,10 @@ const CONVERTED = [Map, Set, Error, Date, String, Number, Boolean, BigInt]
  * {@link Redactor.redactJson} converts it. Returns what was replaced, by rule,
  * so the caller can count or report it; the matched text is never returned.
  *
- * Await each call before the next to the same file: redaction takes longer
- * for some lines than others, so calls left running together can append
- * their lines in a different order from the calls.
+ * Lines reach a file in the order of the calls in this process, even when
+ * the calls are not awaited one by one: redaction takes longer for some
+ * lines than others, so each call redacts at once but waits for the calls
+ * before it to the same path to write first.
  *
  * @throws The file system's error when the directory or file cannot be created
  * or written. The redactor itself never throws.
@@ -57,10 +60,38 @@ export async function appendRedactedJsonl(
   redactor: Redactor,
   options: AppendOptions = {},
 ): Promise<Redactions> {
+  const redacted = redactLine(line, redactor)
+  // Awaited below; this only keeps an early rejection from being reported as unhandled.
+  redacted.catch(() => undefined)
+  const key = resolve(path)
+  const write = (pending.get(key) ?? Promise.resolve()).then(async () => {
+    const { out, redactions } = await redacted
+    appendJsonl(path, out, options)
+    return redactions
+  })
+  // The next call waits for this write, whether it succeeds or throws.
+  const settled = write.then(
+    () => undefined,
+    () => undefined,
+  )
+  pending.set(key, settled)
+  void settled.then(() => {
+    if (pending.get(key) === settled) pending.delete(key)
+  })
+  return write
+}
+
+/** The last write queued for each resolved path, so lines land in call order. */
+const pending = new Map<string, Promise<void>>()
+
+/** `line` redacted for {@link appendRedactedJsonl}: what to write, and what was replaced. */
+async function redactLine(
+  line: unknown,
+  redactor: Redactor,
+): Promise<{ out: unknown; redactions: Redactions }> {
   if (!isFieldRecord(line)) {
     const { value, redactions } = await redactor.redactJson(line)
-    appendJsonl(path, value, options)
-    return redactions
+    return { out: value, redactions }
   }
   // The envelope's keys first, then the redacted rest, in the line's own order within each.
   const envelope: [string, unknown][] = []
@@ -82,6 +113,5 @@ export async function appendRedactedJsonl(
   mergeRedactions(redactions, restRedactions)
   // A failed pass returns the fail-closed string, not an object: the line then keeps the envelope alone.
   const fields = value !== null && typeof value === 'object' ? value : {}
-  appendJsonl(path, { ...Object.fromEntries(envelope), ...fields }, options)
-  return redactions
+  return { out: { ...Object.fromEntries(envelope), ...fields }, redactions }
 }
