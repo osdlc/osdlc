@@ -300,6 +300,12 @@ describe('forged routing signals', () => {
     expect(host.querySelector('a.wikilink')).toBeNull()
   })
 
+  test('a hand-written PDF embed link keeps no blob: href', async () => {
+    const host = await forged('<a class="markdown-embed-pdf" href="blob:https://x/1">x</a>')
+    expect(host.querySelector('a[href^="blob:"]')).toBeNull()
+    expect(host.textContent).toContain('x')
+  })
+
   test('a hand-written tag anchor never reaches TagAnchor', async () => {
     const host = await forged('<a class="tag" data-tag="forged">label</a>')
     expect(routed).toEqual([])
