@@ -257,6 +257,16 @@ export function benchFilter(lang: "ts" | "rust", ids: string[]): string {
   return `^(?:${[...names].sort().map(escapeRegex).join("|")})$`;
 }
 
+/** Benchmark ids by their `<lang>:<package>`. */
+export function groupByPackage(ids: string[]): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const id of ids) {
+    const key = id.split("/", 1)[0] as string;
+    out.set(key, [...(out.get(key) ?? []), id]);
+  }
+  return out;
+}
+
 /** The `<lang>:<package>` of each benchmark id, without repeats. */
 export function packagesOf(ids: string[]): Set<string> {
   return new Set(ids.map((id) => id.split("/", 1)[0] as string));
@@ -574,11 +584,7 @@ export function main(argv: string[]): number {
       `perf gate: over the threshold in ${[...suspects].join(", ")}; skipping the confirmation pass, the slowdown is accepted`,
     );
   } else if (suspects.size > 0 && confirmRounds > 0) {
-    const only = new Map<string, string[]>();
-    for (const id of suspectIds) {
-      const key = id.split("/", 1)[0] as string;
-      only.set(key, [...(only.get(key) ?? []), id]);
-    }
+    const only = groupByPackage(suspectIds);
     console.log(
       `perf gate: over the threshold in ${suspectIds.length} benchmark(s) of ${[...suspects].join(", ")}; confirming ${confirmRounds} rounds`,
     );

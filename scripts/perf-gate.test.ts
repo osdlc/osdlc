@@ -12,6 +12,7 @@ import {
   compare,
   confirmed,
   discover,
+  groupByPackage,
   main,
   packagesOf,
   parseCriterion,
@@ -337,4 +338,14 @@ test("benchFilter selects exactly the suspects, with regex syntax escaped", () =
   assert.ok(new RegExp(ts).test("scanBodyWith"));
   assert.ok(!new RegExp(ts).test("scanBodyWith2"));
   assert.ok(!new RegExp(ts).test("ab"));
+});
+
+test("groupByPackage gives each package only its own suspects", () => {
+  assert.deepEqual(
+    [...groupByPackage(["ts:a/x/y", "rust:a/g/h", "ts:a/x/z"])],
+    [
+      ["ts:a", ["ts:a/x/y", "ts:a/x/z"]],
+      ["rust:a", ["rust:a/g/h"]],
+    ],
+  );
 });

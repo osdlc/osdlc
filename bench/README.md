@@ -77,7 +77,7 @@ test("inlineTags", ({ bench }) =>
   }));
 ```
 
-Each case is gated as `ts:<package>/<test title>/<case>`. Keep a test title free of `/` (a case name may have one): the confirmation filter reads the title as the first segment after the package.
+Each case is gated as `ts:<package>/<test title>/<case>`. Keep a test title free of `/` (a case name may have one) and register the test at the top level, not inside a `describe`: the confirmation filter reads the title as the first segment after the package.
 
 Rust: add `criterion = { workspace = true }` to `[dev-dependencies]`, a
 `[[bench]]` with `harness = false`, and `benches/<name>.rs` that reads the
