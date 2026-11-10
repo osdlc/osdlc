@@ -125,7 +125,7 @@ flowchart LR
   class REL done
   class CUR done
   class MCP,PUB,PIN,STRICT later
-  class DATA blocked
+  class DATA external
 ```
 
 ## Review queue
@@ -135,7 +135,7 @@ move; merged PRs drop off.
 
 | Order | PR | What | Why this order | Status |
 | --- | --- | --- | --- | --- |
-| 1 | [#750](https://github.com/osdlc/osdlc/pull/750) | feat(harness-knowledge): compiled harness facts, read by agent-call and detect-harness | Marked ready at 09:51 UTC; the only PR waiting on your review | waiting on your review since 09:51 UTC; main merged in at 16:49 UTC, CI running |
+| 1 | [#750](https://github.com/osdlc/osdlc/pull/750) | feat(harness-knowledge): compiled harness facts, read by agent-call and detect-harness | Marked ready at 09:51 UTC; the only PR waiting on your review | waiting on your review since 09:51 UTC; behind main again; macOS verify still queued |
 | 2 | [#764](https://github.com/osdlc/osdlc/pull/764) | feat(gh-actions): run any skill from a PR comment, read-only or with `--apply` | Next to be ready, after 750 | draft: needs your choice of how `--apply` changes land and the `pr-agent` environment, then the gate reruns; CI green; behind main again |
 
 ## PR tracker
