@@ -292,8 +292,13 @@ requests here.
 2. When the pull request merges, `packages-publish.yml` opens or updates one
    "Version Packages" pull request. It bumps each library's version and
    writes its CHANGELOG from the pending changesets. The root
-   `version-packages` script does this, then rewrites the checked-in files
-   that name a version, such as wayfinder's `schema/config.json`.
+   `version-packages` script does this, then runs
+   `pnpm install --lockfile-only`, then rewrites the checked-in files that
+   name a version, such as wayfinder's `schema/config.json`. The lockfile
+   step is needed because `changeset version` rewrites the version ranges
+   that packages use for each other, and the Version Packages pull request's
+   `pnpm install --frozen-lockfile` fails if `pnpm-lock.yaml` still holds the
+   old ranges.
 3. The osdlc-release GitHub App opens the Version Packages pull request, so
    its checks start on their own. Merge it when `test` and `verify` pass.
 4. On that merge, `packages-publish.yml` runs the full `verify` matrix and
