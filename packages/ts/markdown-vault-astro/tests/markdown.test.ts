@@ -527,3 +527,13 @@ test('flow, anchored, aliased and tagged frontmatter values stay byte-identical'
     }
   }
 })
+
+test('an embed alias that ends in a backslash still makes an image', () => {
+  // `![C:\](url)` is not an image: `\]` escapes the bracket. The alt is escaped going out and read back.
+  const astro = rewriteFile('![[img.png|C:\\]] and after\n', toAstro).text
+  assert.equal(astro, '![C:\\\\](/_media/img.png) and after\n')
+  assert.equal(rewriteFile(astro, toVault).text, '![[img.png|C:\\]] and after\n')
+  const two = rewriteFile('![[img.png|a\\\\]]\n', toAstro).text
+  assert.equal(two, '![a\\\\\\\\](/_media/img.png)\n')
+  assert.equal(rewriteFile(two, toVault).text, '![[img.png|a\\\\]]\n')
+})

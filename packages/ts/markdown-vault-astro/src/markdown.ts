@@ -21,7 +21,12 @@ import type { AssetIndex } from './assets.ts'
  */
 
 /** Standard markdown image: `![alt](src "title")`. `d` reports the alt's span. */
-const MD_IMAGE_RE = /!\[([^\]]*)\]\(\s*([^)\s]+)(?:\s+"[^"]*")?\s*\)/g
+const MD_IMAGE_RE = /!\[((?:\\.|[^[\]\\])*)\]\(\s*([^()\s]+)(?:\s+"[^"]*")?\s*\)/g
+
+/** Escape the characters that end or open an image's alt text. */
+const escapeAlt = (alt: string): string => alt.replace(/[\\[\]]/g, '\\$&')
+/** Undo {@link escapeAlt}. */
+const unescapeAlt = (alt: string): string => alt.replace(/\\([\\[\]])/g, '$1')
 
 /**
  * `body` with fenced and inline code blanked to spaces, at the same UTF-16
@@ -125,7 +130,7 @@ export function embedsToImages(body: string, publicBase: string, index: AssetInd
     // `embedSize` reads the last `|` part, so `|300` and `|Caption|300` both stay.
     if (kind !== 'image' || embedSize(link.alias ?? undefined)) continue
     const alt = displayText(body.slice(link.start, link.end))
-    out += `${body.slice(last, link.start)}![${alt}](${assetUrl(base, ref.outSub)})`
+    out += `${body.slice(last, link.start)}![${escapeAlt(alt)}](${assetUrl(base, ref.outSub)})`
     last = link.end
   }
   return { body: out + body.slice(last), copies, missing, assets }
@@ -225,7 +230,7 @@ export function imagesToEmbeds(
     // The src holds no spaces, so none of it was masked; the alt may hold a
     // code span, so it is read from the body.
     const start = m.index!
-    const alt = body.slice(start + 2, start + 2 + m[1]!.length)
+    const alt = unescapeAlt(body.slice(start + 2, start + 2 + m[1]!.length))
     const decoded = decodePath(m[2]!)
     if (!decoded.startsWith(base + '/')) continue
     const sub = decoded.slice(base.length + 1)

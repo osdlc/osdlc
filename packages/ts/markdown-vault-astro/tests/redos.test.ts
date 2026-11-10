@@ -178,3 +178,28 @@ test('redos: a very long field is scanned within the budget', () => {
   }
   assert.ok(performance.now() - start < BUDGET_MS)
 })
+
+/** Best of three timings of one export (Astro -> vault) rewrite of a note body. */
+function timeExport(body: string): number {
+  let best = Infinity
+  for (let i = 0; i < 3; i++) {
+    const start = performance.now()
+    rewriteFile(body, { direction: 'toVault', publicBase: '/_media', frontmatterAssets: [] })
+    best = Math.min(best, performance.now() - start)
+  }
+  return best
+}
+
+test('redos: export-vault image scan is linear in unclosed image openers', () => {
+  // `[^\]]*` used to cross `![` and newlines, so each opener rescanned the rest.
+  // Quadrupling the input must cost about 4x, not 16x; the ratio is compared
+  // with a floor so a fast first pass cannot flake it.
+  for (const unit of ['![', '![a](', '![a](x "', '![a\n']) {
+    const small = timeExport(unit.repeat(20_000))
+    const large = timeExport(unit.repeat(80_000))
+    assert.ok(
+      large < Math.max(small, 20) * 8,
+      `${JSON.stringify(unit)}: ${small.toFixed(1)}ms -> ${large.toFixed(1)}ms for 4x the input`,
+    )
+  }
+})
