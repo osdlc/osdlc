@@ -25,7 +25,7 @@
  * ordinary source.
  */
 
-import { visit } from 'unist-util-visit'
+import { visit, SKIP } from 'unist-util-visit'
 import type { MdNode, MdParent } from './util.ts'
 
 const DELIMITER = '%%'
@@ -198,12 +198,20 @@ export function remarkComments() {
 
     // Drop the nodes the strip emptied out, and no others.
     if (!touched.size) return
+    // Collected first and filtered once per parent: splicing each one out of a
+    // long sibling list would be quadratic in the list.
+    const dropped = new Set<MdNode>()
+    const parentsWithDrops = new Set<MdParent>()
     visit(tree as never, (node: MdNode, index: number | undefined, parent: MdParent) => {
       if (index === undefined || !parent) return
       if (!touched.has(node) || !PRUNE_WHEN_EMPTY.has(node.type)) return
       if (!isEmptyish(node)) return
-      parent.children.splice(index, 1)
-      return index
+      dropped.add(node)
+      parentsWithDrops.add(parent)
+      return SKIP
     })
+    for (const parent of parentsWithDrops) {
+      parent.children = parent.children.filter((child) => !dropped.has(child))
+    }
   }
 }
