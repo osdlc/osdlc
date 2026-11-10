@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { afterEach, beforeEach, describe, test } from 'node:test'
 
+import { spawnSync } from 'node:child_process'
 import {
   cpSync,
   existsSync,
@@ -26,6 +27,7 @@ import {
   notePath,
   plan,
   writePlan,
+  diffPlan,
 } from './import-alpha.ts'
 import { lint } from './lint.ts'
 
@@ -188,13 +190,99 @@ describe('mapping', () => {
     assert.ok(p.files.get(file)!.includes('Claude%20Code%20overview.md'))
   })
 
+  test('a latest-cardinality subject chains sightings, and unknown versioning drops since', () => {
+    // The real corpus owns Pi's sightings already, which would pin their names.
+    for (const f of readdirSync(join(dir, 'statements/Pi')))
+      if (f.startsWith('Pi Version seen')) rmSync(join(dir, 'statements/Pi', f))
+    const ctx = context([
+      fact('meta/version-seen', {
+        observations: [
+          obs({ value: { version: '7.0.0' }, since: '7.0.0', observed: '2026-01-01' }),
+          obs({ value: { version: '7.1.0' }, since: '7.1.0', observed: '2026-02-01' }),
+        ],
+      }),
+      fact('meta/version-seen', {
+        harness: 'amp',
+        conceptId: 'facts/amp/meta/version-seen',
+        observations: [obs({ value: { version: '9' }, since: '9', observed: '2026-01-01' })],
+      }),
+    ])
+    ctx.dataset.subjects.push({
+      id: 'meta/version-seen',
+      category: 'meta',
+      title: 'Version seen',
+      description: 'A version.',
+      order: 3,
+    } as never)
+    ctx.categories.add('meta')
+    const p = plan(ctx)
+    const text = (name: string): string => p.files.get(name) ?? ''
+    assert.match(text('statements/Pi/Pi Version seen 7.0.0.md'), /status: superseded/)
+    assert.match(text('statements/Pi/Pi Version seen 7.1.0.md'), /status: current/)
+    assert.match(text('statements/Pi/Pi Version seen 7.1.0.md'), /supersedes: .*7\.0\.0/)
+    assert.match(text('statements/Pi/Pi Version seen 7.1.0.md'), /observed: 2026-02-01/)
+    assert.match(text('statements/Amp/Amp Version seen 9.md'), /Dropped `since: 9`/)
+  })
+
+  test('a seed yields to an existing subject record, and open-only latest facts still import', () => {
+    const subject = {
+      id: 'meta/version-seen',
+      category: 'meta',
+      title: 'Version seen',
+      description: 'A version.',
+      order: 3,
+    }
+    const run = (facts: unknown[], card?: string) => {
+      const file = join(dir, 'subjects/meta/Version seen.md')
+      const text = readFileSync(file, 'utf8')
+      const bare = text.replace(/^cardinality: .*\n/mu, '')
+      writeFileSync(
+        file,
+        card === undefined ? bare : bare.replace(/^(category: .*\n)/mu, `$1cardinality: ${card}\n`),
+      )
+      for (const f of readdirSync(join(dir, 'statements/Pi')))
+        if (f.startsWith('Pi Version seen')) rmSync(join(dir, 'statements/Pi', f))
+      const ctx = context(facts)
+      ctx.dataset.subjects.push(subject as never)
+      ctx.categories.add('meta')
+      return plan(ctx)
+    }
+    const sightings = [
+      fact('meta/version-seen', {
+        observations: [
+          obs({ value: { version: '7.0.0' }, observed: '2026-01-01' }),
+          obs({ value: { version: '7.1.0' }, observed: '2026-02-01' }),
+        ],
+      }),
+    ]
+    // The record says `one`, or nothing: a seed does not override it.
+    for (const card of ['one', undefined]) {
+      const p = run(sightings, card)
+      assert.equal(p.files.has('statements/Pi/Pi Version seen 7.0.0.md'), false)
+      assert.equal(p.counts['statements superseded'], undefined)
+    }
+    // The record says `latest`.
+    assert.equal(run(sightings, 'latest').counts['statements superseded'], 1)
+    // An open-only fact still yields its open statement.
+    const open = run(
+      [
+        fact('meta/version-seen', {
+          observations: [],
+          open: [{ question: 'Which version?', observed: '2026-04-01', source: 'doc' }],
+        }),
+      ],
+      'latest',
+    )
+    assert.equal(open.counts['statements open'], 1)
+  })
+
   test('skips a fact whose harness has no beta record, with a warning', () => {
     const p = plan(
-      context([fact('zz/thing', { harness: 'agent-skills', observations: [obs({})] })]),
+      context([fact('zz/thing', { harness: 'no-such-harness', observations: [obs({})] })]),
     )
     assert.equal(p.counts['facts skipped'], 1)
     assert.equal(p.counts['statements'], undefined)
-    assert.match(p.warnings[0] ?? '', /agent-skills has no beta record/)
+    assert.match(p.warnings[0] ?? '', /no-such-harness has no beta record/)
   })
 })
 
@@ -222,12 +310,12 @@ describe('cli import', () => {
   test('regenerating the committed cli import changes nothing', () => {
     const first = importAlpha(new Set(['cli']), dir)
     assert.deepEqual(first.changed, [])
+    // Records edited since the import may differ; none may be missing or retired.
+    assert.deepEqual([first.diff.add, first.diff.remove], [[], []])
     assert.deepEqual(first.plan.warnings, [])
     assert.equal(first.plan.counts['statements'], 30)
     assert.equal(first.plan.counts['study-results'], 30)
     assert.equal(first.plan.counts['facts'], 30)
-    const second = importAlpha(new Set(['cli']), dir)
-    assert.deepEqual(second.changed, [])
   })
 
   test('is byte-identical from an empty corpus, and the result validates and lints', () => {
@@ -244,7 +332,7 @@ describe('cli import', () => {
         cpSync(join(BETA, t, `${t}.schema.md`), join(fresh, t, `${t}.schema.md`))
       for (const f of ['corpus-schema.md', 'README.md']) cpSync(join(BETA, f), join(fresh, f))
       cpSync(join(BETA, 'harnesses'), join(fresh, 'harnesses'), { recursive: true })
-      const r = importAlpha(new Set(['cli']), fresh)
+      const r = importAlpha(new Set(['cli']), fresh, undefined, { write: true })
       assert.ok(r.changed.length > 60)
       const beta = loadBeta(fresh)
       // Documents the corpus cites that only the full corpus holds are missing here, so only the
@@ -253,12 +341,26 @@ describe('cli import', () => {
         beta.report.errors.filter((e) => !e.startsWith('harnesses/')),
         [],
       )
-      // Subjects are the exception: the committed ones were tidied by hand.
-      for (const rel of r.changed.filter((f) => !f.startsWith('subjects/'))) {
-        const committed = join(BETA, rel)
-        assert.equal(readFileSync(join(fresh, rel), 'utf8'), readFileSync(committed, 'utf8'), rel)
+      // Committed records may have been edited since the import, so byte-for-byte reproduction is
+      // checked against a second fresh run instead.
+      const again = mkdtempSync(join(tmpdir(), 'harness-reference-fresh-'))
+      try {
+        cpSync(fresh, again, { recursive: true })
+        for (const rel of r.changed) rmSync(join(again, rel), { force: true })
+        assert.deepEqual(
+          importAlpha(new Set(['cli']), again, undefined, { write: true }).changed.sort(),
+          [...r.changed].sort(),
+        )
+        for (const rel of r.changed)
+          assert.equal(
+            readFileSync(join(again, rel), 'utf8'),
+            readFileSync(join(fresh, rel), 'utf8'),
+            rel,
+          )
+      } finally {
+        rmSync(again, { recursive: true, force: true })
       }
-      assert.deepEqual(importAlpha(new Set(['cli']), fresh).changed, [])
+      assert.deepEqual(importAlpha(new Set(['cli']), fresh, undefined, { write: true }).changed, [])
     } finally {
       rmSync(fresh, { recursive: true, force: true })
     }
@@ -320,7 +422,7 @@ const ctxFor = (categories: string[], ds: Dataset, root = dir): Context => ({
 })
 const run = (categories: string[], ds: Dataset, root = dir) => {
   const p = plan(ctxFor(categories, ds, root))
-  writePlan(root, p)
+  writePlan(root, p, { force: true })
   return p
 }
 describe('identity and scope', () => {
@@ -539,5 +641,75 @@ describe('identity and scope', () => {
     assert.match(p.warnings.join('\n'), /not in the alpha corpus/)
     assert.equal(existsSync(join(dir, 'statements/Pi/Pi Thing.md')), false)
     assert.ok(p.removed.includes('statements/Pi/Pi Thing.md'))
+  })
+
+  describe('report-only by default', () => {
+    const FORK = 'statements/Claude Code/Claude Code Fork a session.md'
+    // The copied corpus carries research edits to imported records; reset the cli import so
+    // these tests see only the edit each one makes.
+    beforeEach(() => {
+      importAlpha(new Set(['cli']), dir, undefined, { force: true })
+    })
+    const edit = (): string => {
+      const file = join(dir, FORK)
+      writeFileSync(file, readFileSync(file, 'utf8').replace('strength: strong', 'strength: weak'))
+      return readFileSync(file, 'utf8')
+    }
+
+    test('a hand-edited record is reported and left alone', () => {
+      const text = edit()
+      const r = importAlpha(new Set(['cli']), dir)
+      assert.deepEqual(r.changed, [])
+      assert.deepEqual(r.diff, { add: [], overwrite: [FORK], remove: [] })
+      assert.equal(readFileSync(join(dir, FORK), 'utf8'), text)
+      // --write adds new files only, so it leaves the edit too.
+      assert.deepEqual(importAlpha(new Set(['cli']), dir, undefined, { write: true }).changed, [])
+      assert.equal(readFileSync(join(dir, FORK), 'utf8'), text)
+    })
+
+    test('the command exits 0 with edited records, and 1 with a pending add', () => {
+      edit()
+      const run = (): number =>
+        spawnSync(
+          process.execPath,
+          [join(import.meta.dirname, 'import-alpha.ts'), '--category', 'cli', '--beta', dir],
+          { encoding: 'utf8' },
+        ).status ?? -1
+      assert.equal(run(), 0)
+      rmSync(join(dir, FORK))
+      assert.equal(run(), 1)
+    })
+
+    test('a record that lost its frontmatter is reported, not overwritten', () => {
+      writeFileSync(join(dir, FORK), 'not a record\n')
+      const r = importAlpha(new Set(['cli']), dir, undefined, { write: true })
+      assert.deepEqual(r.diff.overwrite, [FORK])
+      assert.equal(readFileSync(join(dir, FORK), 'utf8'), 'not a record\n')
+    })
+
+    test('--write adds a missing file, --force overwrites', () => {
+      rmSync(join(dir, FORK))
+      assert.deepEqual(importAlpha(new Set(['cli']), dir, undefined, { write: true }).changed, [
+        FORK,
+      ])
+      edit()
+      const r = importAlpha(new Set(['cli']), dir, undefined, { force: true })
+      assert.deepEqual(r.changed, [FORK])
+      assert.match(readFileSync(join(dir, FORK), 'utf8'), /strength: strong/)
+    })
+
+    test('a retired record is removed only with force', () => {
+      const rel = 'statements/Pi/Pi Thing.md'
+      const ds = dataset([fact('zz/thing', { observations: [obs({})] })])
+      writePlan(dir, plan({ ...context([]), dataset: ds, beta: loadBeta(dir) }))
+      assert.ok(existsSync(join(dir, rel)))
+      const empty: Context = { ...context([]), dataset: dataset([]), beta: loadBeta(dir) }
+      const p = plan(empty)
+      assert.ok(diffPlan(dir, p).remove.includes(rel))
+      writePlan(dir, p)
+      assert.ok(existsSync(join(dir, rel)), 'kept')
+      writePlan(dir, p, { force: true })
+      assert.equal(existsSync(join(dir, rel)), false)
+    })
   })
 })

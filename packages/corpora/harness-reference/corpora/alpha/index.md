@@ -41,6 +41,8 @@ okf_version: "0.2"
   commands.
 - [CLI and sessions](categories/cli.md) - Headless runs, structured output, and session open,
   resume, fork and send.
+- [Permissions](categories/permissions.md) - Permission modes, tool allow and deny rules, and how a
+  headless run asks for approval.
 
 ## Facts
 

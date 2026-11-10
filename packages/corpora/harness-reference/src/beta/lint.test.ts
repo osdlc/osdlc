@@ -5,6 +5,8 @@ import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:f
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { Ajv2020 } from 'ajv/dist/2020.js'
+
 import { BETA, loadBeta } from './corpus.ts'
 import { lint } from './lint.ts'
 
@@ -143,5 +145,66 @@ describe('lint', () => {
   test('refuses a scope boundary that is not a real version', () => {
     edit(FORK, '  since: null', '  since: 1.0.0-01')
     assert.ok(problems().some((p) => p.includes('"1.0.0-01" is not a semver version')))
+  })
+
+  describe('a latest-cardinality subject', () => {
+    const PI = (v: string): string => `statements/Pi/Pi Version seen ${v}.md`
+    test('refuses a second current statement', () => {
+      edit(PI('0.99.1'), 'status: superseded', 'status: current')
+      assert.ok(problems().some((p) => p.includes('a latest subject has a second current')))
+    })
+
+    test('refuses a superseded statement nothing replaces', () => {
+      edit(
+        PI('1.1.0'),
+        /supersedes: .*\n/u.exec(readFileSync(join(dir, PI('1.1.0')), 'utf8'))![0],
+        '',
+      )
+      assert.ok(
+        problems().some(
+          (p) => p.startsWith(PI('0.99.1')) && p.includes('must be replaced by exactly one'),
+        ),
+      )
+    })
+
+    const setSupersedes = (v: string, target: string): void => {
+      const file = join(dir, PI(v))
+      const text = readFileSync(file, 'utf8')
+      const line = `supersedes: "[x](Pi%20Version%20seen%20${target}.md)"`
+      writeFileSync(
+        file,
+        /^supersedes: .*$/mu.test(text)
+          ? text.replace(/^supersedes: .*$/mu, line)
+          : text.replace(/^status: .*$/mu, (m) => `${m}\n${line}`),
+      )
+    }
+
+    test('refuses a statement replaced twice', () => {
+      setSupersedes('0.84.3', '0.99.1')
+      assert.ok(problems().some((p) => p.startsWith(PI('0.99.1')) && p.includes('found 2')))
+    })
+
+    test('reports a supersedes target that does not resolve, not a wrong count', () => {
+      setSupersedes('1.1.0', 'nowhere')
+      const found = problems()
+      assert.ok(
+        found.some((p) => p.startsWith(PI('1.1.0')) && p.includes('does not name a statement')),
+      )
+      assert.ok(!found.some((p) => p.includes('must be replaced by exactly one')))
+    })
+
+    test('refuses a loop', () => {
+      setSupersedes('0.84.1', '1.1.0')
+      assert.ok(problems().some((p) => p.includes('supersedes chain loops')))
+    })
+  })
+
+  test('cli/output-format needs formats only when supported', () => {
+    const subject = loadBeta(dir).get('subjects', 'Output format flag') as { valueSchema: object }
+    const ok = new Ajv2020({ strict: false }).compile(subject.valueSchema)
+    assert.ok(ok({ supported: false }))
+    assert.ok(ok({ supported: true, formats: [{ name: 'json', argv: ['--json'] }] }))
+    assert.ok(!ok({ supported: true }))
+    assert.ok(!ok({ supported: 'partial' }))
   })
 })

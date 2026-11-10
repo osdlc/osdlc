@@ -35,6 +35,7 @@ export function compile(beta: Beta, commit: string): Knowledge {
     slugOf.set(ref.file, slug)
     harnesses[slug] = {
       title: ref.id,
+      kind: data['kind'] === 'standard' ? 'standard' : 'harness',
       versioning: data['versioning'] as Versioning,
       ...(typeof data['cli'] === 'string' ? { cli: data['cli'] } : {}),
     }

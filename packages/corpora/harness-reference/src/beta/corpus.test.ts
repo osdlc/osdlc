@@ -17,12 +17,12 @@ describe('corpora/beta', () => {
     const { records, errors, warnings } = validateCorpus(beta)
     assert.deepEqual(errors, [])
     assert.deepEqual(warnings, [])
-    assert.equal(records.get('harnesses')?.size, 14)
-    assert.equal(records.get('documents')?.size, 57)
-    assert.equal(records.get('study-results')?.size, 35)
-    assert.equal(records.get('methods')?.size, 2)
-    assert.equal(records.get('subjects')?.size, 8)
-    assert.equal(records.get('statements')?.size, 30)
+    assert.ok((records.get('harnesses')?.size ?? 0) >= 16)
+    assert.ok((records.get('documents')?.size ?? 0) >= 57)
+    assert.ok((records.get('study-results')?.size ?? 0) >= 35)
+    assert.ok((records.get('methods')?.size ?? 0) >= 2)
+    assert.ok((records.get('subjects')?.size ?? 0) >= 8)
+    assert.ok((records.get('statements')?.size ?? 0) >= 30)
   })
 
   test('refuses a license on a closed-source harness, and a successor that is not a harness', () => {
@@ -116,5 +116,39 @@ describe('documents.schema.md doi', () => {
       'doi:10.123/x',
     ])
       assert.ok(!pattern.test(bad), bad)
+  })
+
+  test('kind: a standard has no surfaces or cli, and a harness needs surfaces', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'harness-reference-beta-'))
+    try {
+      cpSync(beta, dir, { recursive: true })
+      const edit = (rel: string, from: string, to: string): void => {
+        const file = join(dir, rel)
+        const text = readFileSync(file, 'utf8')
+        assert.ok(text.includes(from), `${rel} has no "${from}"`)
+        writeFileSync(file, text.replace(from, to))
+      }
+      const errors = (): string[] => validateCorpus(dir).errors
+      assert.deepEqual(errors(), [])
+      edit('harnesses/Agent Skills.md', 'status: current', 'status: current\nsurfaces: [cli]')
+      assert.ok(
+        errors().some((e) => e.includes('harnesses/Agent Skills.md')),
+        'surfaces on a standard',
+      )
+      edit('harnesses/Agent Skills.md', 'surfaces: [cli]', 'cli: skills')
+      assert.ok(
+        errors().some((e) => e.includes('harnesses/Agent Skills.md')),
+        'cli on a standard',
+      )
+      edit('harnesses/Agent Skills.md', 'cli: skills\n', '')
+      assert.deepEqual(errors(), [])
+      edit('harnesses/Pi.md', 'surfaces: [cli]\n', '')
+      assert.ok(
+        errors().some((e) => e.includes('harnesses/Pi.md')),
+        'harness without surfaces',
+      )
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

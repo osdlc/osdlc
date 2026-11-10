@@ -30,7 +30,7 @@ const k = (
 ): Knowledge => ({
   schema: 1,
   corpus: { repo: 'x/y', path: 'p', commit: 'sha' },
-  harnesses: { h: { title: 'H', versioning } },
+  harnesses: { h: { title: 'H', kind: 'harness', versioning } },
   subjects: {},
   values,
 })

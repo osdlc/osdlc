@@ -6,7 +6,7 @@ description: >-
   vendor writes it.
 type: object
 additionalProperties: false
-required: [slug, vendor, homepage, docs, open_source, surfaces, status, versioning, checked, sources]
+required: [slug, vendor, homepage, docs, open_source, status, versioning, checked, sources]
 properties:
   slug:
     description: >-
@@ -14,6 +14,11 @@ properties:
       file keys on it, so a rename of the record does not change it.
     type: string
     pattern: "^[a-z0-9][a-z0-9-]*$"
+  kind:
+    description: >-
+      Whether the record is a harness (a product that runs an agent) or a standard (a published
+      format that harnesses follow, such as Agent Skills). Omitted means harness.
+    enum: [harness, standard]
   vendor:
     description: The company or organization that makes it.
     type: string
@@ -39,7 +44,9 @@ properties:
     type: string
     minLength: 1
   surfaces:
-    description: "Where it runs: terminal, editor, desktop app or browser."
+    description: >-
+      Where it runs: terminal, editor, desktop app or browser. Required on a harness; a standard
+      runs nowhere, so it has none.
     type: array
     minItems: 1
     items: { enum: [cli, ide, desktop, web] }
@@ -66,11 +73,19 @@ properties:
     type: array
     minItems: 1
     items: { type: string, x-ref: documents }
-if:
-  properties: { open_source: { const: false } }
-  required: [open_source]
-then:
-  properties: { license: false }
+allOf:
+  - if:
+      properties: { open_source: { const: false } }
+      required: [open_source]
+    then:
+      properties: { license: false }
+  - if:
+      properties: { kind: { const: standard } }
+      required: [kind]
+    then:
+      properties: { surfaces: false, cli: false }
+    else:
+      required: [surfaces]
 $defs:
   https-url:
     type: string
@@ -96,4 +111,7 @@ says what it holds. The rules below are the ones a description does not say clea
   `"[Claude Code overview](../documents/Anthropic/Claude%20Code%20overview.md)"`. Add a document
   record first when a page has none.
 - `license` is allowed only when `open_source` is true.
+- `kind: standard` marks a published format that harnesses follow, such as Agent Skills. A standard
+  has no `surfaces` and no `cli`; a harness (the default) must have `surfaces`. A standard's
+  statements answer the same subjects as a harness's, as the baseline others compare against.
 - A record carries no `type` field. Its type comes from its folder.

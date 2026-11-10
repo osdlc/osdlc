@@ -93,6 +93,10 @@ export function lint(beta: Beta): string[] {
 
   // Statements.
   const statements = beta.all('statements')
+  const chains = new Map<
+    string,
+    { file: string; status?: string; target?: string; broken?: boolean }[]
+  >()
   const cells = new Map<string, { file: string; scope: Scope; versioning: Versioning }[]>()
   for (const { ref, data } of statements) {
     const harness = beta.resolve(ref.file, data['harness'])
@@ -181,11 +185,58 @@ export function lint(beta: Beta): string[] {
     if ((status === 'current' || status === 'disputed') && data['direction'] !== 'supports')
       bad(ref.file, `a ${status} statement must have direction supports`)
 
+    if (subjectData['cardinality'] === 'latest') {
+      const key = `${harness.file}|${subject.file}`
+      const list = chains.get(key) ?? []
+      const supersedes = data['supersedes']
+      const target = supersedes === undefined ? undefined : beta.resolve(ref.file, supersedes)?.file
+      if (supersedes !== undefined && target === undefined)
+        bad(ref.file, `supersedes ${String(supersedes)}, which does not name a statement`)
+      list.push({
+        file: ref.file,
+        status,
+        target,
+        broken: supersedes !== undefined && target === undefined,
+      })
+      chains.set(key, list)
+    }
+
     if (status === 'current' || status === 'disputed') {
       const key = `${harness.file}|${subject.file}|${scope.model ?? ''}`
       const list = cells.get(key) ?? []
       list.push({ file: ref.file, scope, versioning })
       cells.set(key, list)
+    }
+  }
+  // A latest-cardinality subject: one current statement per harness, and a superseded chain that
+  // is linear: each superseded statement is replaced by exactly one other, and there are no cycles.
+  for (const list of chains.values()) {
+    const current = list.filter((r) => r.status === 'current' || r.status === 'disputed')
+    for (const r of current.slice(1))
+      bad(r.file, `a latest subject has a second current statement besides ${current[0]!.file}`)
+    const replacedBy = new Map<string, string[]>()
+    for (const r of list)
+      if (r.target !== undefined)
+        replacedBy.set(r.target, [...(replacedBy.get(r.target) ?? []), r.file])
+    for (const r of list) {
+      const by = replacedBy.get(r.file) ?? []
+      if (r.status === 'superseded' && by.length !== 1 && !list.some((x) => x.broken))
+        bad(
+          r.file,
+          `a superseded statement of a latest subject must be replaced by exactly one statement, found ${by.length}`,
+        )
+      const seen = new Set<string>()
+      for (
+        let at: string | undefined = r.file;
+        at !== undefined;
+        at = list.find((x) => x.file === at)?.target
+      ) {
+        if (seen.has(at)) {
+          bad(r.file, 'its supersedes chain loops')
+          break
+        }
+        seen.add(at)
+      }
     }
   }
   for (const list of cells.values())

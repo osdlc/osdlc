@@ -26,7 +26,12 @@ export interface Knowledge {
   corpus: { repo: string; path: string; commit: string }
   harnesses: Record<
     string,
-    { title: string; versioning: 'semver' | 'date' | 'unknown'; cli?: string }
+    {
+      title: string
+      kind: 'harness' | 'standard'
+      versioning: 'semver' | 'date' | 'unknown'
+      cli?: string
+    }
   >
   subjects: Record<
     string,
@@ -63,9 +68,10 @@ export const KNOWLEDGE_SCHEMA = {
       additionalProperties: {
         type: 'object',
         additionalProperties: false,
-        required: ['title', 'versioning'],
+        required: ['title', 'kind', 'versioning'],
         properties: {
           title: { type: 'string', minLength: 1 },
+          kind: { enum: ['harness', 'standard'], default: 'harness' },
           versioning: { enum: ['semver', 'date', 'unknown'] },
           cli: { type: 'string', minLength: 1 },
         },
