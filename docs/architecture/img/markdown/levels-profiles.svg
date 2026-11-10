@@ -20,6 +20,7 @@
 .t-doing rect{fill:#ffffff;stroke:#2b6cb0} .t-doing .tn{fill:#2b6cb0}
 .t-owner rect{fill:#fde7c8;stroke:#b8741a} .t-owner .tn{fill:#b8741a}
 .t-todo rect{fill:#ffffff;stroke:#d8d5cc} .t-todo .tn{fill:#5d5d58}
+.task.supporting rect{stroke-dasharray:4 3} .sup{font-size:9px;font-style:italic;fill:#5d5d58}
 .group{fill:none;stroke:#d8d5cc;stroke-width:1.4;stroke-dasharray:5 4} .gt{font-size:11.5px;font-weight:650;fill:#5d5d58}
 @media (prefers-color-scheme: dark) {
 .bg{fill:#16161a} .band{fill:#222227}
@@ -43,5 +44,6 @@
 .t-doing rect{fill:#2b2b31;stroke:#63b3ed} .t-doing .tn{fill:#63b3ed}
 .t-owner rect{fill:#3d2f1c;stroke:#f6ad55} .t-owner .tn{fill:#f6ad55}
 .t-todo rect{fill:#2b2b31;stroke:#3a3a40} .t-todo .tn{fill:#a3a39d}
+.task.supporting rect{stroke-dasharray:4 3} .sup{font-size:9px;font-style:italic;fill:#a3a39d}
 .group{fill:none;stroke:#3a3a40;stroke-width:1.4;stroke-dasharray:5 4} .gt{font-size:11.5px;font-weight:650;fill:#a3a39d}
 }</style><rect class="bg" width="440" height="264"/><text class="rl" x="16" y="26">Levels and profiles: two separate axes</text><text class="rs" x="16" y="44">Levels: how much a corpus declares. Profiles: whose types it uses.</text><g class="lvl"><rect x="16" y="62" width="230" height="50" rx="8"/></g><text class="cn" x="28" y="83">2 · Typed</text><text class="cs" x="28" y="100">every type has a JSON Schema</text><g class="lvl"><rect x="16" y="122" width="230" height="50" rx="8"/></g><text class="cn" x="28" y="143">1 · Records</text><text class="cs" x="28" y="160">a root file, type folders, ids</text><g class="lvl"><rect x="16" y="182" width="230" height="50" rx="8"/></g><text class="cn" x="28" y="203">0 · Linked notes</text><text class="cs" x="28" y="220">declares nothing; any vault</text><g class="prof"><rect x="276" y="62" width="150" height="50" rx="8"/></g><text class="cn" x="288" y="83">claims profile</text><text class="cs" x="288" y="100">statements, study results</text><path class="tie" d="M276,87 C262,87 262,87 247,87"/><g class="prof"><rect x="276" y="122" width="150" height="50" rx="8"/></g><text class="cn" x="288" y="143">sdlc profile</text><text class="cs" x="288" y="160">today&#x27;s sdlc kinds</text><path class="tie" d="M276,147 C262,147 262,87 247,87"/><g class="prof"><rect x="276" y="182" width="150" height="50" rx="8"/></g><text class="cn" x="288" y="203">your profile</text><text class="cs" x="288" y="220">any shared set of types</text><path class="tie" d="M276,207 C262,207 262,87 247,87"/><text class="cs" x="16" y="252">A corpus can use several profiles, next to its own types.</text></svg>

@@ -48,6 +48,7 @@ def rules(c):
 .t-doing rect{{fill:{c['chip']};stroke:{c['dev']}}} .t-doing .tn{{fill:{c['dev']}}}
 .t-owner rect{{fill:{c['accbg']};stroke:{c['acc']}}} .t-owner .tn{{fill:{c['acc']}}}
 .t-todo rect{{fill:{c['chip']};stroke:{c['line']}}} .t-todo .tn{{fill:{c['mut']}}}
+.task.supporting rect{{stroke-dasharray:4 3}} .sup{{font-size:9px;font-style:italic;fill:{c['mut']}}}
 .group{{fill:none;stroke:{c['line']};stroke-width:1.4;stroke-dasharray:5 4}} .gt{{font-size:11.5px;font-weight:650;fill:{c['mut']}}}"""
 
 
@@ -183,46 +184,47 @@ TARGET = [
 
 
 # The task graph. Status: done, doing, owner (waiting on the owner), todo.
-# Each task: title, detail, status, milestone id, and the ids of the tasks that must come first.
+# Each task: title, detail, status, milestone id, the ids of the tasks that must come first, and its type.
+# Type: functional changes what the ecosystem is or does; supporting builds, checks, releases or documents it.
 # `after` matches the "After N" text in docs/ecosystem-plan.md; a task can wait on one in another milestone.
 TASKS = {
-    1: ("corpus-schema", "rename, levels", "done", "m-docs", []),
-    2: ("Record folders", "osdlc PR 729", "done", "m-docs", [1]),
-    3: ("Publish 0.2.0", "on npm", "done", "m-docs", [2]),
-    4: ("Claims example", "profiles/claims", "done", "m-evidence", [3]),
-    5: ("Project writes", "evidence as records", "todo", "m-evidence", [3, 4, 22]),
-    6: ("x-warn", "soft schema rules", "todo", "m-spec", [3]),
-    7: ("Obsidian", "dialect: wikilinks", "todo", "m-spec", [3]),
-    8: ("Use npm", "skillwright, root file", "done", "m-evidence", [3]),
-    9: ("Extends", "package or path", "todo", "m-npm", [3, 21]),
-    10: ("Store layout", "markdown-store", "todo", "m-model", [3]),
-    11: ("Link resolver", "after PRs 649, 651", "todo", "m-model", []),
-    12: ("One TS model", "vault + graph", "todo", "m-model", [11]),
-    13: ("Switch users", "query, astro, apps", "todo", "m-model", [12]),
-    14: ("Validator", "reads model; needs 3", "todo", "m-model", [3, 12]),
-    15: ("Query layer", "one, on the model", "todo", "m-query", [12]),
-    16: ("JSON / SQLite", "after query layer", "todo", "m-query", [15]),
-    17: ("Render/sites", "PRs 719 720", "doing", "m-render", []),
-    18: ("This plan", "markdown PR 4", "done", "m-docs", []),
-    19: ("Point repos", "here, after 18", "todo", "m-docs", [18]),
-    20: ("Arch doc", "markdown PR 5", "done", "m-docs", []),
-    21: ("Release here", "markdown PR 10", "doing", "m-release", [3]),
-    22: ("Capture", "writes study results", "todo", "m-evidence", [26]),
-    26: ("Adopt claims", "harness-reference", "done", "m-evidence", [4, 8]),
-    27: ("Org corpora", "inherit records", "todo", "m-npm", [9]),
-    28: ("Refine, waive", "local vs inherited", "todo", "m-sharing", [27]),
-    29: ("Sync", "_inherited copy", "todo", "m-npm", [27]),
-    30: ("Org principles", "first real case", "todo", "m-sharing", [27, 28, 35]),
-    23: ("Claims profile", "npm package", "todo", "m-npm", [21, 36]),
-    33: ("Spec details", "YAML, format, codes", "todo", "m-spec", [3]),
-    34: ("Ids and move", "slug ids, move verb", "todo", "m-spec", [3]),
-    31: ("Nested x-ref", "any depth; after 3, 4", "todo", "m-spec", [3, 4]),
-    32: ("Rust validator", "after 12 and 14", "todo", "m-model", [12, 14]),
-    24: ("Name overrides", "own folder names", "todo", "m-sharing", [23]),
-    25: ("Testing profile", "extends claims", "todo", "m-sharing", [23, 24]),
-    35: ("Example pair", "org + project, CI", "todo", "m-npm", [23, 29, 36]),
-    36: ("Release 0.3.0", "corpus-schema", "todo", "m-npm", [9, 21, 27, 29]),
-    37: ("Use extends", "harness-reference", "todo", "m-npm", [23, 26, 36]),
+    1: ("corpus-schema", "rename, levels", "done", "m-docs", [], "functional"),
+    2: ("Record folders", "osdlc PR 729", "done", "m-docs", [1], "functional"),
+    3: ("Publish 0.2.0", "on npm", "done", "m-docs", [2], "supporting"),
+    4: ("Claims example", "profiles/claims", "done", "m-evidence", [3], "functional"),
+    5: ("Project writes", "evidence as records", "todo", "m-evidence", [3, 4, 22], "functional"),
+    6: ("x-warn", "soft schema rules", "todo", "m-spec", [3], "functional"),
+    7: ("Obsidian", "dialect: wikilinks", "todo", "m-spec", [3], "functional"),
+    8: ("Use npm", "skillwright, root file", "done", "m-evidence", [3], "functional"),
+    9: ("Extends", "package or path", "todo", "m-npm", [3, 21], "functional"),
+    10: ("Store layout", "markdown-store", "todo", "m-model", [3], "functional"),
+    11: ("Link resolver", "after PRs 649, 651", "todo", "m-model", [], "functional"),
+    12: ("One TS model", "vault + graph", "todo", "m-model", [11], "functional"),
+    13: ("Switch users", "query, astro, apps", "todo", "m-model", [12], "functional"),
+    14: ("Validator", "reads model; needs 3", "todo", "m-model", [3, 12], "functional"),
+    15: ("Query layer", "one, on the model", "todo", "m-query", [12], "functional"),
+    16: ("JSON / SQLite", "after query layer", "todo", "m-query", [15], "functional"),
+    17: ("Render/sites", "PRs 719 720", "doing", "m-render", [], "functional"),
+    18: ("This plan", "markdown PR 4", "done", "m-docs", [], "supporting"),
+    19: ("Point repos", "here, after 18", "todo", "m-docs", [18], "supporting"),
+    20: ("Arch doc", "markdown PR 5", "done", "m-docs", [], "supporting"),
+    21: ("Release here", "markdown PR 10", "doing", "m-release", [3], "functional"),
+    22: ("Capture", "writes study results", "todo", "m-evidence", [26], "functional"),
+    26: ("Adopt claims", "harness-reference", "done", "m-evidence", [4, 8], "functional"),
+    27: ("Org corpora", "inherit records", "todo", "m-npm", [9], "functional"),
+    28: ("Refine, waive", "local vs inherited", "todo", "m-sharing", [27], "functional"),
+    29: ("Sync", "_inherited copy", "todo", "m-npm", [27], "functional"),
+    30: ("Org principles", "first real case", "todo", "m-sharing", [27, 28, 35], "functional"),
+    23: ("Claims profile", "npm package", "todo", "m-npm", [21, 36], "functional"),
+    33: ("Spec details", "YAML, format, codes", "todo", "m-spec", [3], "functional"),
+    34: ("Ids and move", "slug ids, move verb", "todo", "m-spec", [3], "functional"),
+    31: ("Nested x-ref", "any depth; after 3, 4", "todo", "m-spec", [3, 4], "functional"),
+    32: ("Rust validator", "after 12 and 14", "todo", "m-model", [12, 14], "functional"),
+    24: ("Name overrides", "own folder names", "todo", "m-sharing", [23], "functional"),
+    25: ("Testing profile", "extends claims", "todo", "m-sharing", [23, 24], "functional"),
+    35: ("Example pair", "org + project, CI", "todo", "m-npm", [23, 29, 36], "functional"),
+    36: ("Release 0.3.0", "corpus-schema", "todo", "m-npm", [9, 21, 27, 29], "supporting"),
+    37: ("Use extends", "harness-reference", "todo", "m-npm", [23, 26, 36], "functional"),
 }
 
 # Milestones, in order: id, title, goal, member task ids. Status comes from the tasks.
@@ -251,7 +253,9 @@ MILESTONES = [
      "The spec is renamed and published, and the plan and architecture are written and linked.",
      [1, 2, 3, 18, 19, 20]),
 ]
+TYPES = [("functional", "Functional"), ("supporting", "Supporting")]
 AS_OF = "2026-11-09"
+assert all(t[5] in dict(TYPES) for t in TASKS.values())
 assert all(n in TASKS and all(d in TASKS for d in t[4]) for n, t in TASKS.items())
 assert sorted(n for *_, ids in MILESTONES for n in ids) == sorted(TASKS)
 assert all(TASKS[n][3] == m for m, *_, ids in MILESTONES for n in ids)
@@ -270,18 +274,20 @@ STATUS = [("done", "done"), ("doing", "in progress"), ("owner", "waiting on owne
 def task_graph():
     tw, th, pitch = 132, 46, 78
     cols = [14, 154, 294]
-    top = 52
+    top = 68
 
     def at(r, c):
         return cols[c], top + r * pitch
 
     def node(n, x, y):
-        t, sub, st, *_ = TASKS[n]
-        return (f'<g class="task t-{st}"><rect x="{x}" y="{y}" width="{tw}" height="{th}" rx="8"/>'
+        t, sub, st, *_, ty = TASKS[n]
+        sup = ty == "supporting"
+        tag = f'<text x="{x + tw - 7}" y="{y + 43}" text-anchor="end" class="sup">support</text>' if sup else ""
+        return (f'<g class="task t-{st}{" supporting" if sup else ""}"><rect x="{x}" y="{y}" width="{tw}" height="{th}" rx="8"/>'
                 f'<circle cx="{x + 13}" cy="{y + 16}" r="9" class="tn"/>'
                 f'<text x="{x + 13}" y="{y + 19.5}" text-anchor="middle" class="tnt">{n}</text>'
                 f'<text x="{x + 26}" y="{y + 20}" class="tt">{esc(t)}</text>'
-                f'<text x="{x + 9}" y="{y + 37}" class="cs">{esc(sub)}</text></g>')
+                f'<text x="{x + 9}" y="{y + 37}" class="cs">{esc(sub)}</text>{tag}</g>')
 
     def edge(x1, y1, x2, y2):
         my = (y1 + y2) / 2
@@ -293,8 +299,10 @@ def task_graph():
         out.append(f'<g class="task t-{st}"><rect x="{x}" y="6" width="12" height="12" rx="3"/></g>'
                    f'<text class="cs" x="{x + 17}" y="16">{name}</text>')
         x += 30 + len(name) * 6.1
+    out.append(f'<g class="task t-todo supporting"><rect x="{X0}" y="26" width="12" height="12" rx="3"/></g>'
+               f'<text class="cs" x="{X0 + 17}" y="36">dashed outline: supporting work (build, release, docs)</text>')
     for c, name in enumerate(["EVIDENCE PROJECT", "THE SPEC", "CORPUS MODEL"]):
-        out.append(f'<text class="lang" x="{cols[c] + 2}" y="40">{name}</text>')
+        out.append(f'<text class="lang" x="{cols[c] + 2}" y="58">{name}</text>')
     cx = lambda c: cols[c] + tw / 2
     place = {4: (3, 0), 1: (0, 1), 11: (0, 2), 2: (1, 1), 12: (1, 2), 3: (2, 1)}
     edges = [(1, 2), (11, 12), (2, 3), (3, 4)]
@@ -476,10 +484,11 @@ def tasks_json():
     doc = {
         "asOf": AS_OF,
         "statuses": [{"id": i, "label": l} for i, l in STATUS],
+        "types": [{"id": i, "label": l} for i, l in TYPES],
         "milestones": [{"id": m, "title": t, "goal": g, "status": milestone_status(ids), "tasks": ids}
                        for m, t, g, ids in MILESTONES],
-        "tasks": [{"id": n, "title": t, "detail": d, "status": st, "milestone": m, "after": sorted(af),
-                   "text": texts[n]} for n, (t, d, st, m, af) in sorted(TASKS.items())],
+        "tasks": [{"id": n, "title": t, "detail": d, "status": st, "milestone": m, "type": ty, "after": sorted(af),
+                   "text": texts[n]} for n, (t, d, st, m, af, ty) in sorted(TASKS.items())],
     }
     return json.dumps(doc, indent=2, ensure_ascii=False) + "\n"
 

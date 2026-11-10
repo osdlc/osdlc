@@ -18,6 +18,16 @@
       "label": "not started"
     }
   ],
+  "types": [
+    {
+      "id": "functional",
+      "label": "Functional"
+    },
+    {
+      "id": "supporting",
+      "label": "Supporting"
+    }
+  ],
   "milestones": [
     {
       "id": "m-release",
@@ -136,6 +146,7 @@
       "detail": "rename, levels",
       "status": "done",
       "milestone": "m-docs",
+      "type": "functional",
       "after": [],
       "text": "Rename to corpus-schema, with the levels in the spec text: [osdlc/osdlc#725](https://github.com/osdlc/osdlc/pull/725). Done."
     },
@@ -145,6 +156,7 @@
       "detail": "osdlc PR 729",
       "status": "done",
       "milestone": "m-docs",
+      "type": "functional",
       "after": [
         1
       ],
@@ -156,10 +168,11 @@
       "detail": "on npm",
       "status": "done",
       "milestone": "m-docs",
+      "type": "supporting",
       "after": [
         2
       ],
-      "text": "Publish the first version. Done: `@osdlc/corpus-schema` 0.2.0 is on npm, published on 2026-11-09. The first version is 0.2.0 because a release race made record folders a second minor bump: [osdlc/osdlc#726](https://github.com/osdlc/osdlc/pull/726) cut 0.1.0, which was never published, and [osdlc/osdlc#733](https://github.com/osdlc/osdlc/pull/733) made 0.2.0. After 2."
+      "text": "Publish the first version. (supporting) Done: `@osdlc/corpus-schema` 0.2.0 is on npm, published on 2026-11-09. The first version is 0.2.0 because a release race made record folders a second minor bump: [osdlc/osdlc#726](https://github.com/osdlc/osdlc/pull/726) cut 0.1.0, which was never published, and [osdlc/osdlc#733](https://github.com/osdlc/osdlc/pull/733) made 0.2.0. After 2."
     },
     {
       "id": 4,
@@ -167,6 +180,7 @@
       "detail": "profiles/claims",
       "status": "done",
       "milestone": "m-evidence",
+      "type": "functional",
       "after": [
         3
       ],
@@ -178,6 +192,7 @@
       "detail": "evidence as records",
       "status": "todo",
       "milestone": "m-evidence",
+      "type": "functional",
       "after": [
         3,
         4,
@@ -191,6 +206,7 @@
       "detail": "soft schema rules",
       "status": "todo",
       "milestone": "m-spec",
+      "type": "functional",
       "after": [
         3
       ],
@@ -202,6 +218,7 @@
       "detail": "dialect: wikilinks",
       "status": "todo",
       "milestone": "m-spec",
+      "type": "functional",
       "after": [
         3
       ],
@@ -213,6 +230,7 @@
       "detail": "skillwright, root file",
       "status": "done",
       "milestone": "m-evidence",
+      "type": "functional",
       "after": [
         3
       ],
@@ -224,6 +242,7 @@
       "detail": "package or path",
       "status": "todo",
       "milestone": "m-npm",
+      "type": "functional",
       "after": [
         3,
         21
@@ -236,6 +255,7 @@
       "detail": "markdown-store",
       "status": "todo",
       "milestone": "m-model",
+      "type": "functional",
       "after": [
         3
       ],
@@ -247,6 +267,7 @@
       "detail": "after PRs 649, 651",
       "status": "todo",
       "milestone": "m-model",
+      "type": "functional",
       "after": [],
       "text": "Teach markdown-link to resolve links. Land [osdlc/osdlc#649](https://github.com/osdlc/osdlc/pull/649) and then [#651](https://github.com/osdlc/osdlc/pull/651), which is stacked on it. Then add a TypeScript resolver taken from vault-graph-core's copy of the Rust one, with shared cases. Can start now."
     },
@@ -256,6 +277,7 @@
       "detail": "vault + graph",
       "status": "todo",
       "milestone": "m-model",
+      "type": "functional",
       "after": [
         11
       ],
@@ -267,6 +289,7 @@
       "detail": "query, astro, apps",
       "status": "todo",
       "milestone": "m-model",
+      "type": "functional",
       "after": [
         12
       ],
@@ -278,6 +301,7 @@
       "detail": "reads model; needs 3",
       "status": "todo",
       "milestone": "m-model",
+      "type": "functional",
       "after": [
         3,
         12
@@ -290,6 +314,7 @@
       "detail": "one, on the model",
       "status": "todo",
       "milestone": "m-query",
+      "type": "functional",
       "after": [
         12
       ],
@@ -301,6 +326,7 @@
       "detail": "after query layer",
       "status": "todo",
       "milestone": "m-query",
+      "type": "functional",
       "after": [
         15
       ],
@@ -312,6 +338,7 @@
       "detail": "PRs 719 720",
       "status": "doing",
       "milestone": "m-render",
+      "type": "functional",
       "after": [],
       "text": "Finish moving the render, edit and site packages: [osdlc/osdlc#719](https://github.com/osdlc/osdlc/pull/719) and [#720](https://github.com/osdlc/osdlc/pull/720), then markdown-editor and markdown-ui. Rename the vault words to corpus. In progress."
     },
@@ -321,8 +348,9 @@
       "detail": "markdown PR 4",
       "status": "done",
       "milestone": "m-docs",
+      "type": "supporting",
       "after": [],
-      "text": "This plan: [osdlc/markdown#4](https://github.com/osdlc/markdown/pull/4). Done."
+      "text": "This plan (supporting): [osdlc/markdown#4](https://github.com/osdlc/markdown/pull/4). Done."
     },
     {
       "id": 19,
@@ -330,10 +358,11 @@
       "detail": "here, after 18",
       "status": "todo",
       "milestone": "m-docs",
+      "type": "supporting",
       "after": [
         18
       ],
-      "text": "Point other repos here: osdlc/osdlc, sksizer/dev, osdlc/skillwright and sksizer/rust-ontogen get the note in [pointing-here.md](pointing-here.md). After 18."
+      "text": "Point other repos here (supporting): osdlc/osdlc, sksizer/dev, osdlc/skillwright and sksizer/rust-ontogen get the note in [pointing-here.md](pointing-here.md). After 18."
     },
     {
       "id": 20,
@@ -341,8 +370,9 @@
       "detail": "markdown PR 5",
       "status": "done",
       "milestone": "m-docs",
+      "type": "supporting",
       "after": [],
-      "text": "The architecture doc: [osdlc/markdown#5](https://github.com/osdlc/markdown/pull/5). Done."
+      "text": "The architecture doc (supporting): [osdlc/markdown#5](https://github.com/osdlc/markdown/pull/5). Done."
     },
     {
       "id": 21,
@@ -350,6 +380,7 @@
       "detail": "markdown PR 10",
       "status": "doing",
       "milestone": "m-release",
+      "type": "functional",
       "after": [
         3
       ],
@@ -361,6 +392,7 @@
       "detail": "writes study results",
       "status": "todo",
       "milestone": "m-evidence",
+      "type": "functional",
       "after": [
         26
       ],
@@ -372,6 +404,7 @@
       "detail": "npm package",
       "status": "todo",
       "milestone": "m-npm",
+      "type": "functional",
       "after": [
         21,
         36
@@ -384,6 +417,7 @@
       "detail": "own folder names",
       "status": "todo",
       "milestone": "m-sharing",
+      "type": "functional",
       "after": [
         23
       ],
@@ -395,6 +429,7 @@
       "detail": "extends claims",
       "status": "todo",
       "milestone": "m-sharing",
+      "type": "functional",
       "after": [
         23,
         24
@@ -407,6 +442,7 @@
       "detail": "harness-reference",
       "status": "done",
       "milestone": "m-evidence",
+      "type": "functional",
       "after": [
         4,
         8
@@ -419,6 +455,7 @@
       "detail": "inherit records",
       "status": "todo",
       "milestone": "m-npm",
+      "type": "functional",
       "after": [
         9
       ],
@@ -430,6 +467,7 @@
       "detail": "local vs inherited",
       "status": "todo",
       "milestone": "m-sharing",
+      "type": "functional",
       "after": [
         27
       ],
@@ -441,6 +479,7 @@
       "detail": "_inherited copy",
       "status": "todo",
       "milestone": "m-npm",
+      "type": "functional",
       "after": [
         27
       ],
@@ -452,6 +491,7 @@
       "detail": "first real case",
       "status": "todo",
       "milestone": "m-sharing",
+      "type": "functional",
       "after": [
         27,
         28,
@@ -465,6 +505,7 @@
       "detail": "any depth; after 3, 4",
       "status": "todo",
       "milestone": "m-spec",
+      "type": "functional",
       "after": [
         3,
         4
@@ -477,6 +518,7 @@
       "detail": "after 12 and 14",
       "status": "todo",
       "milestone": "m-model",
+      "type": "functional",
       "after": [
         12,
         14
@@ -489,6 +531,7 @@
       "detail": "YAML, format, codes",
       "status": "todo",
       "milestone": "m-spec",
+      "type": "functional",
       "after": [
         3
       ],
@@ -500,6 +543,7 @@
       "detail": "slug ids, move verb",
       "status": "todo",
       "milestone": "m-spec",
+      "type": "functional",
       "after": [
         3
       ],
@@ -511,6 +555,7 @@
       "detail": "org + project, CI",
       "status": "todo",
       "milestone": "m-npm",
+      "type": "functional",
       "after": [
         23,
         29,
@@ -524,13 +569,14 @@
       "detail": "corpus-schema",
       "status": "todo",
       "milestone": "m-npm",
+      "type": "supporting",
       "after": [
         9,
         21,
         27,
         29
       ],
-      "text": "Release corpus-schema 0.3.0. In the milestone, step 4. The first version with `extends`, `x-extends`, cross-corpus `x-ref` and `sync`, published from this repo with its release setup. After 9, 21, 27 and 29."
+      "text": "Release corpus-schema 0.3.0. (supporting) In the milestone, step 4. The first version with `extends`, `x-extends`, cross-corpus `x-ref` and `sync`, published from this repo with its release setup. After 9, 21, 27 and 29."
     },
     {
       "id": 37,
@@ -538,6 +584,7 @@
       "detail": "harness-reference",
       "status": "todo",
       "milestone": "m-npm",
+      "type": "functional",
       "after": [
         23,
         26,

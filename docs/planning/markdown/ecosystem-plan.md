@@ -36,6 +36,13 @@ out where they would cross the page. The order for the npm work is in
 
 ![The task graph, with the status of each task](diagrams/tasks.svg)
 
+Each task is one of two kinds. **Functional** work changes what the ecosystem is or does: spec
+rules, packages, crates, profiles, corpora, examples, and other repos adopting them. **Supporting**
+work builds, checks, releases or documents those things without changing them: publishing a
+version, the plan and architecture docs, and pointing repos here. Supporting tasks have a dashed
+outline in the graph and "(supporting)" in the list. The kind is also in
+[diagrams/tasks.json](diagrams/tasks.json).
+
 ## Milestones
 
 Every task belongs to one milestone. Each task's "After" text and milestone are also in
@@ -391,7 +398,7 @@ The numbers match the task graph at the top. "After" says what must come first.
   [osdlc/osdlc#725](https://github.com/osdlc/osdlc/pull/725). Done.
 - **2. Record folders** in corpus-schema:
   [osdlc/osdlc#729](https://github.com/osdlc/osdlc/pull/729). After 1. Done: merged on 2026-11-09.
-- **3. Publish the first version.** Done: `@osdlc/corpus-schema` 0.2.0 is on npm, published on
+- **3. Publish the first version.** (supporting) Done: `@osdlc/corpus-schema` 0.2.0 is on npm, published on
   2026-11-09. The first version is 0.2.0 because a release race made record folders a second minor
   bump: [osdlc/osdlc#726](https://github.com/osdlc/osdlc/pull/726) cut 0.1.0, which was never
   published, and [osdlc/osdlc#733](https://github.com/osdlc/osdlc/pull/733) made 0.2.0. After 2.
@@ -494,7 +501,7 @@ The numbers match the task graph at the top. "After" says what must come first.
   package name and by path. The project's local records cite inherited ones. CI installs the
   parents, runs `corpus-schema sync` and validates both corpora. This is the start of task 30. After
   23, 29 and 36.
-- **36. Release corpus-schema 0.3.0.** In the milestone, step 4. The first version with `extends`,
+- **36. Release corpus-schema 0.3.0.** (supporting) In the milestone, step 4. The first version with `extends`,
   `x-extends`, cross-corpus `x-ref` and `sync`, published from this repo with its release setup.
   After 9, 21, 27 and 29.
 - **37. harness-reference uses `extends`.** In the milestone, step 7. Follow-up to task 26:
@@ -527,10 +534,10 @@ The numbers match the task graph at the top. "After" says what must come first.
   [osdlc/osdlc#719](https://github.com/osdlc/osdlc/pull/719) and
   [#720](https://github.com/osdlc/osdlc/pull/720), then markdown-editor and markdown-ui. Rename
   the vault words to corpus. In progress.
-- **18. This plan**: [osdlc/markdown#4](https://github.com/osdlc/markdown/pull/4). Done.
-- **19. Point other repos here**: osdlc/osdlc, sksizer/dev, osdlc/skillwright and sksizer/rust-ontogen
+- **18. This plan** (supporting): [osdlc/markdown#4](https://github.com/osdlc/markdown/pull/4). Done.
+- **19. Point other repos here** (supporting): osdlc/osdlc, sksizer/dev, osdlc/skillwright and sksizer/rust-ontogen
   get the note in [pointing-here.md](pointing-here.md). After 18.
-- **20. The architecture doc**: [osdlc/markdown#5](https://github.com/osdlc/markdown/pull/5). Done.
+- **20. The architecture doc** (supporting): [osdlc/markdown#5](https://github.com/osdlc/markdown/pull/5). Done.
 
 **Moving packages here**
 
