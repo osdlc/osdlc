@@ -16,7 +16,11 @@
 # pull_request checks start without an approval click; a pull request opened
 # with GITHUB_TOKEN would wait for one. The job runs in the caller's
 # `environment`, which holds the App's private key as the secret
-# RELEASE_PLZ_APP_PRIVATE_KEY.
+# RELEASE_PLZ_APP_PRIVATE_KEY. The caller must still pass that secret by name:
+# an environment secret the caller does not pass reads as an empty string
+# here, and the job that sets `environment` gets the environment's value for
+# one it does pass
+# (https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows).
 #
 # Every action is pinned to a commit SHA; the comment names its release.
 name: ts-packages-release
@@ -50,9 +54,9 @@ on:
     secrets:
       RELEASE_PLZ_APP_PRIVATE_KEY:
         description: >-
-          The App's private key. Leave it out when `environment` holds it: the
-          environment's secret is the one the job reads.
-        required: false
+          The App's private key. Pass it by name even when only `environment`
+          holds it; `version` then reads the environment's value.
+        required: true
 
 permissions: {}
 
