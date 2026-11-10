@@ -1,5 +1,5 @@
 /**
- * `@osdlc/markdown-render/vue` — the Vue 3 integration.
+ * `@osdlc/markdown-render-vue` — the Vue 3 integration.
  *
  * Vue is a peer dependency; the core entry (`@osdlc/markdown-render`) never
  * imports it, so SSR and build-time callers pay nothing for this module.

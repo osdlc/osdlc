@@ -7,7 +7,16 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   resolve: {
     // The examples import the package by name. Point the name at the source.
+    // The core resolves to its source too, so a fresh checkout needs no build first.
     alias: [
+      {
+        find: /^@osdlc\/markdown-render$/,
+        replacement: fileURLToPath(new URL('../markdown-render/src/index.ts', import.meta.url)),
+      },
+      {
+        find: /^@osdlc\/markdown-render\/shiki$/,
+        replacement: fileURLToPath(new URL('../markdown-render/src/shiki.ts', import.meta.url)),
+      },
       {
         find: /^@osdlc\/markdown-render-vue$/,
         replacement: fileURLToPath(new URL('./src/index.ts', import.meta.url)),

@@ -2,7 +2,7 @@
  * What routes an element to a live component — in one place, because two
  * passes read it and a drift between them is a security hole.
  *
- * `vue/render.ts`'s `routeKeys` turns a signal into an override key.
+ * `@osdlc/markdown-render-vue`'s `render.ts` `routeKeys` turns a signal into an override key.
  * `plugins/provenance.ts` strips every signal off an element the pipeline did
  * not produce. A note's raw HTML survives `rehype-raw` as real elements and
  * the sanitize schema deliberately allows the dialect's classes and `data-*`
