@@ -92,9 +92,10 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      # The version script below reads wayfinder's dist/.
-      - name: Build wayfinder
-        run: pnpm --filter '@osdlc/wayfinder...' run build
+      # The version script below reads wayfinder's dist/ and runs the
+      # conformance command, @osdlc/conformance-suites.
+      - name: Build wayfinder and the conformance command
+        run: pnpm --filter '@osdlc/wayfinder...' --filter '@osdlc/conformance-suites...' run build
 
       # `version-packages` runs `changeset version`, stamps each CLI's
       # src/version.generated.ts, rebuilds wayfinder, then rewrites its
