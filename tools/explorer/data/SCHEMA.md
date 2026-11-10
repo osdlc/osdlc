@@ -3,6 +3,11 @@
 The component data behind the explorer. One file, `ecosystem.json`, beside this note. The plan
 behind the Work view is `plan.json`, described in [PLAN-SCHEMA.md](PLAN-SCHEMA.md).
 
+Both files are generated. The source is the plan's records in
+[docs/planning/](../../../docs/planning/README.md): one component, layer, repo or overlap per file.
+Edit a record, not this file, then run `pnpm build-data` (see
+[scripts/README.md](../scripts/README.md)).
+
 It describes every component of the markdown ecosystem in two states: how things are today
 (`present`) and where the plan wants them (`target`). A component that exists in both states is one
 node. A component that only exists today is being retired. A component that only exists in the
@@ -20,11 +25,11 @@ target is planned.
   ],
   "nodes": [
     {
-      "id": "corpus-schema",            // stable, kebab-case, unique
+      "id": "corpus-schema-ts",         // stable, kebab-case, unique; the record's file name
       "name": "@osdlc/corpus-schema",   // the package or crate name as published, or a plain name
       "kind": "package",                // package | crate | spec | profile | corpus | tool | app | workflow
       "language": "ts",                 // ts | rust | yaml | markdown | none
-      "layer": "corpus-schema",         // a layers[].id
+      "layer": "spec",                  // a layers[].id
       "states": ["present", "target"],  // which states it exists in
       "repo": { "present": "osdlc/osdlc", "target": "osdlc/markdown" },  // null for a state it is absent from
       "path": { "present": "packages/ts/corpus-schema", "target": "packages/ts/corpus-schema" },
@@ -35,12 +40,13 @@ target is planned.
       "purpose": "One or two plain sentences: what it does and who uses it.",
       "notes": ["Short facts worth knowing: a move, a rename, an open question."],
       "tasks": [21, 32],                // ids of the plan.json tasks that change it
-      "links": [{ "label": "PR #9", "url": "https://github.com/osdlc/markdown/pull/9" }]
+      "links": [{ "label": "PR #9", "url": "https://github.com/osdlc/markdown/pull/9" }],
+      "source": "docs/planning/components/corpus-schema-ts.md"  // optional: repo-relative path of its record
     }
   ],
   "edges": [
     {
-      "from": "corpus-schema",          // the dependent
+      "from": "corpus-schema-ts",       // the dependent
       "to": "markdown-link",            // what it depends on, implements or extends
       "kind": "depends",                // depends | dev-depends | twin | implements | extends | validates | reads | overlaps
       "states": ["present", "target"],  // present only = goes away; target only = new

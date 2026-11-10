@@ -11,11 +11,13 @@ the URL:
 ## Run it
 
 ```sh
-pnpm install
+pnpm install --ignore-workspace
 pnpm dev
 ```
 
-Open the address Vite prints.
+Open the address Vite prints. The explorer is its own package, with its own lockfile, so it is not
+part of the repo's pnpm workspace. `--ignore-workspace` keeps pnpm from installing the workspace
+instead.
 
 ### Components
 
@@ -48,8 +50,8 @@ Open the address Vite prints.
 - **Milestones** shows one card per milestone with its goal, status and progress ("3 of 7 done").
   An arrow runs from a milestone to one that waits on it, because one of its tasks waits on one of
   the other's. A milestone sits right of everything it waits on.
-- **Tasks** shows each milestone as a band, in plan order, so the current beeline, which leads the
-  plan, is at the top. The view opens there. A task sits one column right of the furthest task it
+- **Tasks** shows each milestone as a band, in plan order. The view opens on the beeline
+  milestones, the ones the work is heading for now, marked `beeline: true` in their records. A task sits one column right of the furthest task it
   waits on, so arrows run left to right in the order the work can happen. The milestone's card
   sits just left of its first task. An arrow that skips over cards in its own row arcs over them.
   The fit button in the corner shows the whole map.
@@ -70,23 +72,23 @@ Open the address Vite prints.
 
 ## Edit the data
 
-The data is `data/ecosystem.json`. Its shape and rules are in [data/SCHEMA.md](data/SCHEMA.md).
-
-When `ecosystem.json` is missing, the app uses `data/fixture.json`, a small hand-written sample. The
-header says which file it loaded. If the data breaks a rule in SCHEMA.md, the header shows the
-problems.
-
-`pnpm test` also checks `ecosystem.json` against those rules, and checks that it lays out.
-
-The Work view's data is `data/plan.json`, a copy of the plan's `tasks.json`. Its shape and rules are
-in [data/PLAN-SCHEMA.md](data/PLAN-SCHEMA.md). To refresh it:
+The data is generated. The plan's records in [docs/planning/](../../docs/planning/README.md) are the
+source: one Markdown file per task, milestone, component, layer, repo and overlap. Edit a record,
+then rebuild the JSON and commit both:
 
 ```sh
-pnpm sync-plan                       # from ../../docs/diagrams/tasks.json
-pnpm sync-plan path/to/tasks.json
+pnpm build-data
 ```
 
-The header shows any rule the plan breaks, and `pnpm test` checks it too.
+[scripts/build-data.mjs](scripts/build-data.mjs) validates the records with `@osdlc/corpus-schema`,
+checks the rules the validator can't, and writes `data/ecosystem.json` and `data/plan.json`. Their
+shapes and rules are in [data/SCHEMA.md](data/SCHEMA.md) and [data/PLAN-SCHEMA.md](data/PLAN-SCHEMA.md).
+CI fails when the committed JSON differs from what the records build.
+
+When `ecosystem.json` is missing, the app uses `data/fixture.json`, a small hand-written sample. The
+header says which file it loaded. If the data breaks a rule in SCHEMA.md or PLAN-SCHEMA.md, the
+header shows the problems. `pnpm test` checks both files against those rules, checks that they lay
+out, and checks that they match the records.
 
 ## Build a static copy
 
@@ -103,6 +105,8 @@ host. `pnpm preview` serves it locally.
 pnpm typecheck
 pnpm test
 ```
+
+CI runs these, `pnpm build` and `pnpm build-data`, in `.github/workflows/planning.yml`.
 
 The graph and plan logic is plain TypeScript under `src/model/`, with tests under `tests/`: the
 work view's dependency lists, milestone dependencies, next up, progress and layout are in

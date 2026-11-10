@@ -173,7 +173,7 @@ function openTask(id: number) {
         <p v-else-if="!components.layout.value" class="app__message">Laying out the graph…</p>
       </template>
       <p v-else-if="!loadedPlan.found" class="app__message">
-        No <code>data/plan.json</code>. Run <code>pnpm sync-plan</code> to copy the plan in.
+        No <code>data/plan.json</code>. Run <code>pnpm build-data</code> to build it from the plan's records.
       </p>
       <!-- Each view keeps its pan, zoom and selection while the other is shown. -->
       <KeepAlive>

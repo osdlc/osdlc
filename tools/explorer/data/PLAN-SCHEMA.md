@@ -1,13 +1,9 @@
 # plan.json
 
 The plan behind the Work view: every milestone and task between the present state and the target.
-One file, `plan.json`, beside this note. `scripts/sync-plan.mjs` copies it from the plan's
-`tasks.json`:
-
-```sh
-node scripts/sync-plan.mjs                # from ../../docs/diagrams/tasks.json
-node scripts/sync-plan.mjs path/to/tasks.json
-```
+One file, `plan.json`, beside this note. It is generated: the source is the plan's task and
+milestone records in [docs/planning/](../../../docs/planning/README.md). Edit a record, not this
+file, then run `pnpm build-data` (see [scripts/README.md](../scripts/README.md)).
 
 ```jsonc
 {
@@ -18,14 +14,15 @@ node scripts/sync-plan.mjs path/to/tasks.json
   "types": [
     { "id": "functional", "label": "Functional" }   // functional | supporting
   ],
-  "milestones": [                        // in plan order: the current beeline first
+  "milestones": [                        // in plan order
     {
       "id": "m-npm",                     // stable, kebab-case, unique
       "title": "Upstream corpora over npm",
       "goal": "One or two plain sentences: what is true when it is done.",
-      "status": "todo",                  // a statuses[].id
+      "status": "todo",                  // a statuses[].id, derived from its tasks
+      "beeline": true,                   // true for the milestones the work is heading for now
       "tasks": [9, 27, 29],              // its task ids, in plan order
-      "source": "docs/plan/m-npm.md"     // optional: repo-relative path of its markdown record
+      "source": "docs/planning/milestones/m-npm.md"   // optional: repo-relative path of its record
     }
   ],
   "tasks": [
@@ -38,7 +35,7 @@ node scripts/sync-plan.mjs path/to/tasks.json
       "type": "functional",              // functional | supporting
       "after": [9],                      // ids of the tasks it waits on
       "text": "The plan paragraph, with [markdown links](https://example.com) and `code`.",
-      "source": "docs/plan/27.md"        // optional, as for milestones
+      "source": "docs/planning/tasks/27 Org corpora.md"   // optional, as for milestones
     }
   ]
 }
