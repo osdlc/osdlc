@@ -45,7 +45,7 @@ import { atomicWrite } from '@osdlc/etag-write'
 import { EXIT, defineCli, failWith, failureOf, renderError, type CliContext } from '@osdlc/cli-tool'
 import { defineApp, type App } from '@osdlc/cli-tool/command'
 import { trustCommand, type TrustService } from '@osdlc/cli-tool/trust-command'
-import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
+import { forwardedExitCode, spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 import { describe, type Failure } from '@osdlc/result'
 import { Git } from '@osdlc/typed-git'
 import { CONFIG_INVALID_EXIT, ConfigInvalidError, type ConfigFileSpec } from '@osdlc/config-layers'
@@ -56,7 +56,14 @@ import { loadConfigLayers } from './config-file.ts'
 import { standalonePorts } from './defaults.ts'
 import { gitMissingFailure, preflight, type WhichSeam } from './preflight.ts'
 import { REPAIR_AGENTS, REPAIR_AGENT_SUMMARIES, type RepairAgent } from './repair/names.ts'
-import { SurveyUsageError, renderSurveyText, repoFailuresOf, runSurvey } from './survey.ts'
+import {
+  SurveyUsageError,
+  parsePrKey,
+  renderSurveyText,
+  repoFailuresOf,
+  runSurvey,
+  type PrSelector,
+} from './survey.ts'
 import {
   EXIT_UNTRUSTED,
   prUpdateTrustStore,
@@ -113,14 +120,21 @@ function expandBranchFlag(argv: readonly string[], cwd: string): string[] | { er
   return out
 }
 
-function parsePrFlags(raw: readonly string[]): { numbers: number[] } | { error: string } {
-  const numbers: number[] = []
+/** `--pr` values: a PR number (every repository) or `owner/name#N` (one repository). */
+function parsePrFlags(raw: readonly string[]): { selectors: PrSelector[] } | { error: string } {
+  const selectors: PrSelector[] = []
   for (const text of raw) {
+    if (parsePrKey(text) !== null) {
+      selectors.push(text)
+      continue
+    }
     const n = parseIntFlag('pr', text)
-    if (typeof n !== 'number') return n
-    numbers.push(n)
+    if (typeof n !== 'number' || n < 1) {
+      return { error: `--pr must be a PR number or owner/name#N, got '${text}'` }
+    }
+    selectors.push(n)
   }
-  return { numbers }
+  return { selectors }
 }
 
 const BRANCH_HELP =
@@ -165,9 +179,9 @@ const surveyCli = defineCli({
     },
     pr: {
       kind: 'list',
-      valueName: 'n',
+      valueName: 'n|owner/name#n',
       default: [],
-      help: 'Only this PR and its stack parents; repeatable.',
+      help: 'Only this PR and its stack parents; repeatable. A number selects that PR in every repository of the run; owner/name#n one PR of one repository.',
     },
     branch: {
       kind: 'string',
@@ -229,7 +243,12 @@ const updateCli = defineCli({
       kind: 'boolean',
       help: 'Show the commits and diffstat and ask y/N before each force-push. Needs --apply and a terminal.',
     },
-    pr: { kind: 'list', valueName: 'n', default: [], help: 'Update only this PR; repeatable.' },
+    pr: {
+      kind: 'list',
+      valueName: 'n|owner/name#n',
+      default: [],
+      help: 'Update only this PR; repeatable. A number selects that PR in every repository of the run; owner/name#n one PR of one repository.',
+    },
     branch: {
       kind: 'string',
       valueName: 'name',
@@ -238,6 +257,10 @@ const updateCli = defineCli({
     trust: {
       kind: 'boolean',
       help: 'Treat this repo as trusted for this run (satisfies the trust gate on commands and agents the project file names).',
+    },
+    restack: {
+      kind: 'boolean',
+      help: "Update a whole stack in one run: a PR blocked on its parent is updated right after it, onto the parent's new head. With --pr or --branch, their stack ancestors are updated too.",
     },
     retryFailed: {
       kind: 'boolean',
@@ -394,7 +417,7 @@ function runSurveyCommand(argv: readonly string[], ctx: CliContext, seams: CliSe
     report = runSurvey(
       {
         ...(v.author !== undefined ? { author: v.author } : {}),
-        pr: prNumbers.numbers,
+        pr: prNumbers.selectors,
         ...(v.branch !== undefined ? { branch: v.branch } : {}),
         repo: v.repo,
         noFetch: !v.fetch,
@@ -553,10 +576,11 @@ async function runUpdateCommand(
         remote: v.remote,
         apply: v.apply,
         confirmPush: v.confirmPush,
-        pr: prNumbers.numbers,
+        pr: prNumbers.selectors,
         ...(v.branch !== undefined ? { branch: v.branch } : {}),
         trust: v.trust,
         retryFailed: v.retryFailed,
+        restack: v.restack,
         ...(v.strategy !== undefined ? { strategy: v.strategy } : {}),
       },
       env,
@@ -594,14 +618,10 @@ async function runUpdateCommand(
   // target was attempted and nothing was left half applied. But a conflict or
   // push failure left some PR not updated. A script that runs this in a loop
   // needs that in the exit code, not only in the JSON `counts`.
-  const listingFailure = reportRepoFailures(ctx, {
-    repos: (out.repoFailures ?? []).map(({ repo, ...failure }) => ({
-      slug: repo,
-      measurable: false,
-      fetched: false,
-      failure,
-    })),
-  })
+  const listingFailure = reportRepoFailures(ctx, out)
+  // A forwarded signal stopped the run: exit 128 + its number, as forwarding itself would.
+  const interrupted = forwardedExitCode()
+  if (interrupted !== undefined) return interrupted
   if (listingFailure !== null) return listingFailure
   return out.counts.conflict > 0 || out.counts.failed > 0 ? EXIT.error : EXIT.ok
 }

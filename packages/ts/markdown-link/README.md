@@ -68,8 +68,16 @@ bodyLinksSpanned('See [[Note#h|alias]] and `[[not a link]]`')
 
 - Code: `stripCode` blanks fenced and inline code to spaces, keeping every
   `\n` and the code point count, so links in code are not harvested.
-  `stripCodeWith(text, rules)` takes `'commonmark'` (the default) or
-  `'skill-export'`.
+  `stripCodeWith(text, rules)` takes `'commonmark'` (the default),
+  `'skill-export'` or `'none'`. `'commonmark'` finds a fence inside a list item
+  or a block quote, with the item's indent, and keeps a code span inside its
+  cell of a table row: a `|` not escaped as `\|` ends the cell, backticks or
+  not. A fence in a container ends, closed or not, with the container; a
+  line of a paragraph that is not indented to its list item ends the item
+  here, where CommonMark keeps it (lazy continuation is not tracked).
+  `'skill-export'` reads one line at a time and knows no containers. `'none'`
+  finds no code and returns the text unchanged: use it to scan a run of text
+  that a markdown parser, such as remark, has already taken the code out of.
 - One link: `parseInner` splits a wikilink body into target, heading, block
   (`#^id`), alias and, for an embed, size; `targetRange` is where the target
   sits in it. `parseInnerSelf` also reads a body with no target and a `#`
@@ -81,7 +89,8 @@ bodyLinksSpanned('See [[Note#h|alias]] and `[[not a link]]`')
   `'My Note'`, and a `%` that is not valid hex or UTF-8 stays as written.
 - A body: `bodyLinksSpanned` finds every wikilink, embed and relative markdown
   link, with its span; `bodyLinks` is the same scan without spans.
-  `bodyLinksSpannedWith(body, options)` takes `ScanOptions`: `codeRules`,
+  `bodyLinksSpannedWith(body, options)` takes `ScanOptions`: `codeRules`
+  (`'none'` turns code rules off),
   `skipHtmlComments` (links in `<!-- -->` are not links) and `selfLinks`
   (`[[#Heading]]` is a link with an empty target). The defaults are
   `bodyLinksSpanned`'s. `scanBodyWith(body, options)` returns those links
@@ -89,7 +98,10 @@ bodyLinksSpanned('See [[Note#h|alias]] and `[[not a link]]`')
   (`reason`, `embed`, `start`, `end`), so a caller can flag link syntax left
   in the text. The reasons (`AbandonReason`) are `'bracket'` (a `[` or `]`
   before `]]`), `'code'` (the target is only code), `'empty-target'` and
-  `'unclosed'`. Its result is a `BodyScan`.
+  `'unclosed'`. Its result is a `BodyScan`. A `!` after an odd run of `\` is
+  escaped: `\![[Note]]` is a `'wikilink'` whose span starts at the `[[`, so a
+  renderer shows a literal `!` and a normal link. `\\![[Note]]` is still an
+  embed.
 - Display text: `displayText` replaces each wikilink and embed with what a
   reader sees, its alias or else its target. An embed's `|300` or `|300x200`
   is a size, not text, so `![[img.png|300]]` shows `img.png`.
@@ -107,9 +119,9 @@ snake_case names. It also resolves links (`LinkIndex`, with `candidates` and
 `resolve_strict`), writes relative links (`relative_link`,
 `encode_uri_component`, `encode_uri_fragment`, `escape_label`), reads links in
 frontmatter and has smaller helpers, which this package does not have yet.
-Both suites read one case file,
-`packages/rust/markdown-link/tests/fixtures/conformance.json` in the
-repository, so they agree on every case in it.
+Both suites run one conformance suite,
+`packages/conformance/markdown-link/suite.json` in the repository, whose
+expected values the Rust crate writes, so they agree on every case in it.
 
 ## Stability
 

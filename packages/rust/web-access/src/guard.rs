@@ -4,8 +4,10 @@
 //! Every request, whatever its method (GET, SSE and static files included),
 //! must pass in this order:
 //!
-//! 1. The `Host` header is on the allowlist, else 421. This holds for loopback
-//!    peers too: it is what stops a DNS-rebinding page from reading the app.
+//! 1. The `Host` header is on the allowlist or, for a wildcard bind, is a
+//!    current interface IP on the bound port, else 421. This holds for
+//!    loopback peers too: it is what stops a DNS-rebinding page from reading
+//!    the app.
 //! 2. A mutating request, or a protocol upgrade such as a WebSocket handshake,
 //!    with an `Origin` header has an allowed Origin, else 403. An upgrade may
 //!    also come from a desktop webview's own origin (`tauri://localhost`,
@@ -30,6 +32,10 @@
 //!    is 403 `read_only` unless a [`GuardState::with_read_safe`] rule names the
 //!    route.
 //!
+//! Every token is a [`Token`]. Its characters (`A-Z a-z 0-9 - _`) need no
+//! escaping, so a token is compared, put in a link and set in a cookie exactly
+//! as written.
+//!
 //! A passing request carries its [`AccessContext`] and [`Grant`] in the request
 //! extensions (see [`crate::context`]).
 //!
@@ -38,7 +44,7 @@
 //! Every response carries `Referrer-Policy: no-referrer` and
 //! `X-Content-Type-Options: nosniff`.
 
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -53,6 +59,7 @@ use crate::context::{AccessContext, Grant};
 use crate::origin::is_webview_origin;
 use crate::permissions::{RouteRule, normalize_path};
 use crate::response::{json_response, refuse};
+use crate::token::Token;
 
 /// What every share-cookie name starts with; [`cookie_name`] appends the port.
 const COOKIE_PREFIX: &str = "web_access_";
@@ -149,76 +156,115 @@ impl DenialBudget {
     }
 }
 
-/// One accepted token. Its `Debug` leaves the token out.
-#[derive(Clone)]
+/// One accepted token.
+#[derive(Debug, Clone)]
 struct Entry {
-    token: String,
+    token: Token,
     grant: Grant,
     /// Who it was issued to; for audit once tokens are per device.
     #[allow(dead_code)]
     label: Option<String>,
 }
 
-impl std::fmt::Debug for Entry {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Entry")
-            .field("token", &"<redacted>")
-            .field("grant", &self.grant)
-            .field("label", &self.label)
-            .finish()
-    }
+/// Why [`Tokens::with`] or [`Tokens::with_label`] refused a token. It holds
+/// grants, never a token.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum TokensError {
+    /// The added token is already in the set with a different grant. The
+    /// guard gives a token its highest grant, so a link meant for the lower
+    /// grant would carry the higher one. The same token with the same grant is
+    /// ignored.
+    #[error(
+        "the same token was added as {existing:?} and as {added:?}; use a different token for each grant"
+    )]
+    Duplicate {
+        /// The grant of the token already in the set.
+        existing: Grant,
+        /// The grant it was added with again.
+        added: Grant,
+    },
 }
 
 /// The accepted tokens, each with the grant it confers. They are fixed for the
 /// life of a [`GuardState`]: rotating a token means building a new state.
+///
+/// Only a [`Token`] can join a set, and no token is in it with two grants
+/// (see [`TokensError::Duplicate`]).
 #[derive(Debug, Clone, Default)]
 pub struct Tokens(Vec<Entry>);
 
 impl Tokens {
-    /// No tokens. Empty tokens are dropped: one would match an empty header or
-    /// cookie.
+    /// No tokens.
     pub fn none() -> Self {
         Self::default()
     }
 
     /// One [`Grant::Full`] token, or none for `None`.
-    pub fn full_only(token: impl Into<Option<String>>) -> Self {
+    pub fn full_only(token: impl Into<Option<Token>>) -> Self {
         match token.into() {
-            Some(t) => Self::none().with(t, Grant::Full),
+            Some(token) => Self(vec![Entry {
+                token,
+                grant: Grant::Full,
+                label: None,
+            }]),
             None => Self::none(),
         }
     }
 
-    /// Add `token` with `grant`; blank tokens are ignored.
-    pub fn with(self, token: impl Into<String>, grant: Grant) -> Self {
-        self.push(token.into(), grant, None)
+    /// Add `token` with `grant`. A token already in the set with the same
+    /// grant is ignored.
+    ///
+    /// # Errors
+    ///
+    /// [`TokensError::Duplicate`] when `token` is already in the set with a
+    /// different grant.
+    pub fn with(self, token: Token, grant: Grant) -> Result<Self, TokensError> {
+        self.push(token, grant, None)
     }
 
     /// [`Self::with`], naming who the token was issued to.
     ///
     /// **Experimental.** The label is kept but not read yet; it is meant for
     /// per-device tokens, and its use may change in a patch release.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::with`].
     pub fn with_label(
         self,
-        token: impl Into<String>,
+        token: Token,
         grant: Grant,
         label: impl Into<String>,
-    ) -> Self {
-        self.push(token.into(), grant, Some(label.into()))
+    ) -> Result<Self, TokensError> {
+        self.push(token, grant, Some(label.into()))
     }
 
-    fn push(mut self, token: String, grant: Grant, label: Option<String>) -> Self {
-        if !token.is_empty() {
-            self.0.push(Entry {
-                token,
-                grant,
-                label,
-            });
+    fn push(
+        mut self,
+        token: Token,
+        grant: Grant,
+        label: Option<String>,
+    ) -> Result<Self, TokensError> {
+        if let Some(e) = self.0.iter().find(|e| e.token == token) {
+            return if e.grant == grant {
+                Ok(self)
+            } else {
+                Err(TokensError::Duplicate {
+                    existing: e.grant,
+                    added: grant,
+                })
+            };
         }
-        self
+        self.0.push(Entry {
+            token,
+            grant,
+            label,
+        });
+        Ok(self)
     }
 
-    /// True when no token was added (blank tokens are never added).
+    /// True when no token was added.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -226,29 +272,23 @@ impl Tokens {
     /// The token to put in a share link: the first full one, else the first.
     /// An admin token is never picked over a full one, so the default link
     /// never carries a shell credential.
-    pub fn share_token(&self) -> Option<&str> {
+    pub fn share_token(&self) -> Option<&Token> {
         let pick = self.0.iter().find(|e| e.grant == Grant::Full);
-        pick.or(self.0.first()).map(|e| e.token.as_str())
+        pick.or(self.0.first()).map(|e| &e.token)
     }
 
-    /// The entry equal to `presented`; the highest grant if several are.
-    /// Compares against every entry, so timing does not reveal which one
-    /// matched. `ct_eq` returns early on a length mismatch, so a token's length
-    /// can leak (minted tokens are all the same length).
-    fn find(&self, presented: &str) -> Option<&Entry> {
-        let mut found: Option<&Entry> = None;
+    /// The grant of the entry equal to `presented`. Tokens are unique in the
+    /// set, so at most one matches. Every entry is compared, so timing does
+    /// not show which one matched. `ct_eq` returns early when the lengths
+    /// differ, so timing can show a token's length.
+    fn grant_for(&self, presented: &str) -> Option<Grant> {
+        let mut found: Option<Grant> = None;
         for entry in &self.0 {
-            if bool::from(presented.as_bytes().ct_eq(entry.token.as_bytes()))
-                && found.is_none_or(|f| entry.grant > f.grant)
-            {
-                found = Some(entry);
+            if bool::from(presented.as_bytes().ct_eq(entry.token.as_str().as_bytes())) {
+                found = Some(entry.grant);
             }
         }
         found
-    }
-
-    fn grant_for(&self, presented: &str) -> Option<Grant> {
-        self.find(presented).map(|e| e.grant)
     }
 }
 
@@ -266,6 +306,7 @@ pub struct GuardState {
     tokens: Tokens,
     read_safe: Vec<RouteRule<()>>,
     allowed_hosts: Vec<String>,
+    live_hosts: Option<LiveHosts>,
     policy: GuardPolicy,
     on_denied: Option<Arc<OnDenied>>,
     denials: DenialBudget,
@@ -291,10 +332,38 @@ impl GuardState {
             tokens,
             read_safe: Vec::new(),
             allowed_hosts: hosts,
+            live_hosts: None,
             policy,
             on_denied: None,
             denials: DenialBudget::new(Instant::now()),
         }
+    }
+
+    /// Also allow a Host `<ip>:<port>` when a wildcard bind in `binds` has the
+    /// same port and address family, and `ips` lists `ip` at request time.
+    /// This serves an interface address the machine gains after start. `ips`
+    /// is called only for an IP Host that misses the allowlist and matches a
+    /// bind.
+    pub(crate) fn with_live_hosts(mut self, binds: Vec<SocketAddr>, ips: HostIps) -> Self {
+        self.live_hosts = Some(LiveHosts { binds, ips });
+        self
+    }
+
+    /// Whether a normalised `host:port` authority may be served.
+    fn host_allowed(&self, authority: &str) -> bool {
+        if self.allowed_hosts.iter().any(|h| h == authority) {
+            return true;
+        }
+        let Some(live) = &self.live_hosts else {
+            return false;
+        };
+        let Ok(addr) = authority.parse::<SocketAddr>() else {
+            return false;
+        };
+        live.binds
+            .iter()
+            .any(|b| b.port() == addr.port() && b.is_ipv4() == addr.is_ipv4())
+            && (live.ips)().contains(&addr.ip())
     }
 
     /// Routes a [`Grant::Read`] request may use with a non-safe method or a
@@ -365,6 +434,15 @@ impl GuardState {
     }
 }
 
+/// The host's interface IPs, listed when asked.
+pub(crate) type HostIps = Arc<dyn Fn() -> Vec<IpAddr> + Send + Sync>;
+
+/// See [`GuardState::with_live_hosts`].
+struct LiveHosts {
+    binds: Vec<SocketAddr>,
+    ips: HostIps,
+}
+
 /// `path` cut to at most [`MAX_RECORDED_PATH`] bytes on a char boundary, with
 /// a marker when something was dropped.
 fn clamp_path(path: &str) -> String {
@@ -416,50 +494,26 @@ pub fn origin_matches_host(origin: &str, host: &str) -> bool {
     origin_authority(origin).is_some_and(|o| o == normalize_authority(host, 80))
 }
 
-/// Every cookie named `name`, decoded (see [`encode_token`]): another app on
-/// the same host can set a stale one (cookies are not port-isolated), so the
-/// first must not shadow a valid one.
-fn cookie_values<'a>(req: &'a Request<Body>, name: &'a str) -> impl Iterator<Item = String> + 'a {
+/// Every cookie named `name`. Cookies are not kept apart by port, so another
+/// app on the same host can set a stale one. The first must not hide a valid
+/// one.
+fn cookie_values<'a>(req: &'a Request<Body>, name: &'a str) -> impl Iterator<Item = &'a str> + 'a {
     req.headers()
         .get_all(header::COOKIE)
         .iter()
         .filter_map(|v| v.to_str().ok())
         .flat_map(|v| v.split(';'))
         .filter_map(|pair| pair.trim().split_once('='))
-        .filter(move |(k, _)| *k == name)
-        .map(|(_, v)| decode_token(v))
+        .filter_map(move |(k, v)| (k == name).then_some(v))
 }
 
-/// Everything but the URL-unreserved characters `A-Z a-z 0-9 - . _ ~`.
-const TOKEN_ESCAPES: &percent_encoding::AsciiSet = &percent_encoding::NON_ALPHANUMERIC
-    .remove(b'-')
-    .remove(b'.')
-    .remove(b'_')
-    .remove(b'~');
-
-/// `token` with every character outside `A-Z a-z 0-9 - . _ ~` percent-encoded,
-/// so it is safe in a URL query and in a cookie value. A minted token has no
-/// such character, so it is unchanged.
-pub(crate) fn encode_token(token: &str) -> String {
-    percent_encoding::utf8_percent_encode(token, TOKEN_ESCAPES).to_string()
-}
-
-/// [`encode_token`] reversed. A value that does not decode to UTF-8 is kept as
-/// written.
-fn decode_token(raw: &str) -> String {
-    percent_encoding::percent_decode_str(raw)
-        .decode_utf8()
-        .map_or_else(|_| raw.to_owned(), |t| t.into_owned())
-}
-
-/// The value of `?token=`, percent-decoded, and the query with that parameter
-/// removed; `None` when the query has no `token` parameter. A value that does
-/// not decode to UTF-8 is kept as written.
-pub(crate) fn split_token_param(query: &str) -> Option<(String, String)> {
+/// The value of `?token=` as written, and the query without that parameter.
+/// `None` when the query has no `token` parameter.
+pub(crate) fn split_token_param(query: &str) -> Option<(&str, String)> {
     let is_token = |p: &&str| *p == "token" || p.starts_with("token=");
     // The last `token` wins, as browsers and form parsers read a repeated key.
     let raw = query.split('&').rfind(is_token)?;
-    let token = decode_token(raw.strip_prefix("token=").unwrap_or(""));
+    let token = raw.strip_prefix("token=").unwrap_or("");
     let rest: Vec<&str> = query
         .split('&')
         .filter(|p| !p.is_empty() && !is_token(p))
@@ -543,10 +597,8 @@ async fn check(state: &GuardState, req: Request<Body>, next: Next) -> Response {
         .and_then(|v| v.to_str().ok())
         .or_else(|| req.uri().authority().map(|a| a.as_str()));
     let authority = host.map(|h| normalize_authority(h, 80));
-    let allowed = authority
-        .as_ref()
-        .filter(|h| state.allowed_hosts.contains(h));
-    // The allowlisted port the browser reached us on names the cookie.
+    let allowed = authority.as_ref().filter(|h| state.host_allowed(h));
+    // The allowed port the browser reached us on names the cookie.
     let Some(cookie) = allowed.and_then(|h| authority_port(h)).map(cookie_name) else {
         state.deny(parts, DenialReason::BadHost);
         return refuse(StatusCode::MISDIRECTED_REQUEST, "host not allowed");
@@ -561,7 +613,7 @@ async fn check(state: &GuardState, req: Request<Body>, next: Next) -> Response {
         let origin = origin.to_str().ok();
         let ok = origin
             .and_then(origin_authority)
-            .is_some_and(|o| state.allowed_hosts.contains(&o))
+            .is_some_and(|o| state.host_allowed(&o))
             || (upgrade && origin.is_some_and(is_webview_origin));
         if !ok {
             state.deny(parts, DenialReason::ForeignOrigin);
@@ -584,7 +636,7 @@ async fn check(state: &GuardState, req: Request<Body>, next: Next) -> Response {
     if method == Method::GET
         && let Some((tok, rest)) = req.uri().query().and_then(split_token_param)
     {
-        if state.tokens.grant_for(&tok).is_some() {
+        if state.tokens.grant_for(tok).is_some() {
             // Exactly one leading slash: browsers read `//host` as a
             // protocol-relative, off-origin redirect.
             let safe = format!("/{}", path.trim_start_matches('/'));
@@ -593,10 +645,8 @@ async fn check(state: &GuardState, req: Request<Body>, next: Next) -> Response {
             } else {
                 format!("{safe}?{rest}")
             };
-            // Encoded, so a token with `;` or a control character cannot break
-            // the header; `cookie_values` decodes it.
-            let value = encode_token(&tok);
-            let set_cookie = format!("{cookie}={value}; HttpOnly; SameSite=Strict; Path=/");
+            // `tok` equals a `Token`, so it has no character that breaks the header.
+            let set_cookie = format!("{cookie}={tok}; HttpOnly; SameSite=Strict; Path=/");
             return bounce(&location, &set_cookie);
         }
         presented_wrong = true;
@@ -610,7 +660,7 @@ async fn check(state: &GuardState, req: Request<Body>, next: Next) -> Response {
     let mut grant = header_tok.and_then(|t| state.tokens.grant_for(t));
     for t in cookie_values(&req, &cookie) {
         presented_wrong = true;
-        grant = grant.max(state.tokens.grant_for(&t));
+        grant = grant.max(state.tokens.grant_for(t));
     }
     if let Some(grant) = grant {
         return state.admit(req, context, grant, next).await;
@@ -634,12 +684,16 @@ mod tests {
 
     use super::*;
 
-    const TOKEN: &str = "s3cret-token";
+    const TOKEN: &str = "s3cret-token-0123456789abcdefghij";
     const HOST: &str = "192.168.1.5:3000";
+
+    fn tok(text: &str) -> Token {
+        Token::parse(text).unwrap()
+    }
 
     fn app(policy: GuardPolicy, on_denied: Option<Arc<AtomicUsize>>) -> Router {
         let mut state = GuardState::new(
-            Tokens::full_only(TOKEN.to_owned()),
+            Tokens::full_only(tok(TOKEN)),
             ["localhost:3000".to_owned(), HOST.to_owned()],
             policy,
         );
@@ -712,14 +766,17 @@ mod tests {
 
     #[tokio::test]
     async fn valid_cookie_passes() {
-        let c = [("cookie", "a=b; web_access_3000=s3cret-token; c=d")];
+        let c = [(
+            "cookie",
+            "a=b; web_access_3000=s3cret-token-0123456789abcdefghij; c=d",
+        )];
         let res = status(app(GuardPolicy::default(), None), req("GET", "/", LAN, &c)).await;
         assert_eq!(res.status(), StatusCode::OK);
     }
 
     #[tokio::test]
     async fn token_query_sets_cookie_and_redirects_without_the_token() {
-        let uri = "/?a=1&token=s3cret-token&b=2";
+        let uri = "/?a=1&token=s3cret-token-0123456789abcdefghij&b=2";
         let res = status(app(GuardPolicy::default(), None), req("GET", uri, LAN, &[])).await;
         let loc = bounce_target(&res);
         assert_eq!(loc, "/?a=1&b=2");
@@ -727,7 +784,7 @@ mod tests {
         assert!(!res.headers().contains_key(header::LOCATION));
         assert!(!loc.contains("token"));
         let cookie = res.headers()[header::SET_COOKIE].to_str().unwrap();
-        assert!(cookie.starts_with("web_access_3000=s3cret-token"));
+        assert!(cookie.starts_with("web_access_3000=s3cret-token-0123456789abcdefghij"));
         assert!(cookie.contains("HttpOnly"));
         assert!(cookie.contains("SameSite=Strict"));
         assert_eq!(res.headers()[header::REFERRER_POLICY], "no-referrer");
@@ -737,7 +794,7 @@ mod tests {
     async fn token_query_with_no_other_params_redirects_to_the_bare_path() {
         let res = status(
             app(GuardPolicy::default(), None),
-            req("GET", "/?token=s3cret-token", LAN, &[]),
+            req("GET", "/?token=s3cret-token-0123456789abcdefghij", LAN, &[]),
         )
         .await;
         assert_eq!(bounce_target(&res), "/");
@@ -747,7 +804,12 @@ mod tests {
     async fn token_redirect_never_leaves_the_origin() {
         let res = status(
             app(GuardPolicy::default(), None),
-            req("GET", "//evil.example/?token=s3cret-token", LAN, &[]),
+            req(
+                "GET",
+                "//evil.example/?token=s3cret-token-0123456789abcdefghij",
+                LAN,
+                &[],
+            ),
         )
         .await;
         assert_eq!(bounce_target(&res), "/evil.example/");
@@ -757,7 +819,12 @@ mod tests {
     async fn backslash_path_is_refused_before_the_token_redirect() {
         let res = status(
             app(GuardPolicy::default(), None),
-            req("GET", "/\\evil.example/?token=s3cret-token", LAN, &[]),
+            req(
+                "GET",
+                "/\\evil.example/?token=s3cret-token-0123456789abcdefghij",
+                LAN,
+                &[],
+            ),
         )
         .await;
         assert_eq!(res.status(), StatusCode::BAD_REQUEST);
@@ -777,7 +844,7 @@ mod tests {
     async fn any_matching_cookie_passes_even_after_a_stale_one() {
         let c = [(
             "cookie",
-            "web_access_3000=stale; web_access_3000=s3cret-token",
+            "web_access_3000=stale; web_access_3000=s3cret-token-0123456789abcdefghij",
         )];
         let res = status(app(GuardPolicy::default(), None), req("GET", "/", LAN, &c)).await;
         assert_eq!(res.status(), StatusCode::OK);
@@ -786,7 +853,7 @@ mod tests {
     #[tokio::test]
     async fn empty_token_behaves_as_no_token() {
         let state = GuardState::new(
-            Tokens::full_only(String::new()),
+            Tokens::full_only(None),
             [HOST.to_owned()],
             GuardPolicy::default(),
         );
@@ -817,15 +884,16 @@ mod tests {
         assert_eq!(res.status(), StatusCode::OK);
     }
 
-    const READ_TOKEN: &str = "view-only-token";
+    const READ_TOKEN: &str = "view-only-token-0123456789abcdefg";
 
     /// Echoes the grant and context the handler sees; POST /x is a mutation,
     /// POST /q a read-only query.
     fn two_token_app(policy: GuardPolicy) -> Router {
         let state = GuardState::new(
             Tokens::none()
-                .with(READ_TOKEN, Grant::Read)
-                .with(TOKEN, Grant::Full),
+                .with(tok(READ_TOKEN), Grant::Read)
+                .and_then(|t| t.with(tok(TOKEN), Grant::Full))
+                .unwrap(),
             [HOST.to_owned()],
             policy,
         )
@@ -933,10 +1001,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let full = token::load_or_mint(dir.path()).unwrap();
         let read = token::load_or_mint_read(dir.path()).unwrap();
-        let tokens = |full: &str, read: &str| {
+        let tokens = |full: Token, read: Token| {
             Tokens::none()
                 .with(read, Grant::Read)
-                .with(full, Grant::Full)
+                .and_then(|t| t.with(full, Grant::Full))
+                .unwrap()
         };
         let app = |t| {
             let state = GuardState::new(t, [HOST.to_owned()], GuardPolicy::default());
@@ -948,16 +1017,19 @@ mod tests {
             |app: Router, tok: &str| status(app, req("GET", "/", LAN, &[(TOKEN_HEADER, tok)]));
         let rotated = token::rotate_read(dir.path()).unwrap();
         let app = app(tokens(
-            &token::load_or_mint(dir.path()).unwrap(),
-            &token::load_or_mint_read(dir.path()).unwrap(),
+            token::load_or_mint(dir.path()).unwrap(),
+            token::load_or_mint_read(dir.path()).unwrap(),
         ));
-        assert_eq!(get_with(app.clone(), &full).await.status(), StatusCode::OK);
         assert_eq!(
-            get_with(app.clone(), &rotated).await.status(),
+            get_with(app.clone(), full.as_str()).await.status(),
             StatusCode::OK
         );
         assert_eq!(
-            get_with(app, &read).await.status(),
+            get_with(app.clone(), rotated.as_str()).await.status(),
+            StatusCode::OK
+        );
+        assert_eq!(
+            get_with(app, read.as_str()).await.status(),
             StatusCode::UNAUTHORIZED
         );
     }
@@ -1036,12 +1108,12 @@ mod tests {
         );
     }
 
-    const ADMIN_TOKEN: &str = "admin-token";
+    const ADMIN_TOKEN: &str = "admin-token-0123456789abcdefghijk";
 
     fn admin_app(admin_on: bool) -> Router {
-        let mut tokens = Tokens::full_only(TOKEN.to_owned());
+        let mut tokens = Tokens::full_only(tok(TOKEN));
         if admin_on {
-            tokens = tokens.with(ADMIN_TOKEN, Grant::Admin);
+            tokens = tokens.with(tok(ADMIN_TOKEN), Grant::Admin).unwrap();
         }
         let state = GuardState::new(tokens, [HOST.to_owned()], GuardPolicy::default());
         let who = |g: Grant| async move { format!("{g:?}") };
@@ -1058,10 +1130,8 @@ mod tests {
         let res = status(admin_app(false), req("GET", "/", LAN, &h)).await;
         assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
         // Admin outranks full when both are presented, and is not read-only.
-        let both = [
-            (TOKEN_HEADER, TOKEN),
-            ("cookie", "web_access_3000=admin-token"),
-        ];
+        let c = format!("web_access_3000={ADMIN_TOKEN}");
+        let both = [(TOKEN_HEADER, TOKEN), ("cookie", c.as_str())];
         let res = status(admin_app(true), req("GET", "/", LAN, &both)).await;
         assert_eq!(body(res).await, "Admin");
     }
@@ -1069,9 +1139,10 @@ mod tests {
     #[test]
     fn the_default_share_token_is_never_the_admin_one() {
         let t = Tokens::none()
-            .with(ADMIN_TOKEN, Grant::Admin)
-            .with(TOKEN, Grant::Full);
-        assert_eq!(t.share_token(), Some(TOKEN));
+            .with(tok(ADMIN_TOKEN), Grant::Admin)
+            .and_then(|t| t.with(tok(TOKEN), Grant::Full))
+            .unwrap();
+        assert_eq!(t.share_token().map(Token::as_str), Some(TOKEN));
     }
 
     #[tokio::test]
@@ -1145,7 +1216,12 @@ mod tests {
     async fn token_query_does_not_bootstrap_on_post() {
         let res = status(
             app(GuardPolicy::default(), None),
-            req("POST", "/x?token=s3cret-token", LAN, &[]),
+            req(
+                "POST",
+                "/x?token=s3cret-token-0123456789abcdefghij",
+                LAN,
+                &[],
+            ),
         )
         .await;
         assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
@@ -1358,7 +1434,12 @@ mod tests {
     async fn the_landing_page_escapes_the_target_and_is_not_cached() {
         let res = status(
             app(GuardPolicy::default(), None),
-            req("GET", "/a%22b?x=%3C&token=s3cret-token", LAN, &[]),
+            req(
+                "GET",
+                "/a%22b?x=%3C&token=s3cret-token-0123456789abcdefghij",
+                LAN,
+                &[],
+            ),
         )
         .await;
         assert_eq!(bounce_target(&res), "/a%22b?x=%3C");
@@ -1368,27 +1449,130 @@ mod tests {
         assert!(!html.contains("token"), "{html}");
     }
 
+    /// The share link carries the token as written, and the cookie it sets
+    /// holds the same text and admits the next request.
     #[tokio::test]
-    async fn a_percent_encoded_link_token_is_decoded() {
+    async fn a_share_link_sets_the_token_as_written_and_the_cookie_admits() {
+        let token = Token::mint().unwrap();
         let state = GuardState::new(
-            Tokens::full_only("a&b#c d".to_owned()),
+            Tokens::full_only(token.clone()),
             [HOST.to_owned()],
             GuardPolicy::default(),
         );
         let app = Router::new()
             .route("/", get(|| async { "ok" }))
             .layer(axum::middleware::from_fn_with_state(Arc::new(state), guard));
-        let url = crate::share_url("192.168.1.5:3000".parse().unwrap(), "a&b#c d");
-        let path_and_query = url.strip_prefix("http://192.168.1.5:3000").unwrap();
-        assert_eq!(path_and_query, "/?token=a%26b%23c%20d");
-        let res = status(app, req("GET", path_and_query, LAN, &[])).await;
+        let link = crate::share_url("192.168.1.5:3000".parse().unwrap(), &token);
+        let path = link.strip_prefix("http://192.168.1.5:3000").unwrap();
+        assert_eq!(path, format!("/?token={token}"));
+        let res = status(app.clone(), req("GET", path, LAN, &[])).await;
         assert_eq!(bounce_target(&res), "/");
+        let set = res.headers()[header::SET_COOKIE].to_str().unwrap();
+        let pair = set.split(';').next().unwrap();
+        assert_eq!(pair, format!("web_access_3000={token}"));
+        let res = status(app, req("GET", "/", LAN, &[("cookie", pair)])).await;
+        assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    /// The guard gives a token its highest grant, so the same token added as
+    /// Read and as Admin would make the Read link an Admin credential. That is
+    /// refused in both orders. The same token with the same grant is ignored.
+    #[test]
+    fn the_same_token_with_two_grants_is_refused() {
+        let x = Token::mint().unwrap();
+        for (g1, g2) in [(Grant::Read, Grant::Admin), (Grant::Admin, Grant::Read)] {
+            let err = Tokens::none()
+                .with(x.clone(), g1)
+                .and_then(|t| t.with_label(x.clone(), g2, "phone"))
+                .unwrap_err();
+            assert_eq!(
+                err,
+                TokensError::Duplicate {
+                    existing: g1,
+                    added: g2
+                }
+            );
+            assert!(!err.to_string().contains(x.as_str()), "{err}");
+        }
+        let set = Tokens::none()
+            .with(x.clone(), Grant::Read)
+            .and_then(|t| t.with(x.clone(), Grant::Read))
+            .unwrap();
+        assert_eq!(set.0.len(), 1);
+        assert_eq!(set.grant_for(x.as_str()), Some(Grant::Read));
+    }
+
+    /// A guard on `HOST` with a wildcard bind on :3000. Its interface list
+    /// holds 10.0.0.7. `calls` counts how often the list is read.
+    fn live_host_app(calls: Arc<AtomicUsize>) -> Router {
+        let state = GuardState::new(
+            Tokens::full_only(tok(TOKEN)),
+            [HOST.to_owned()],
+            GuardPolicy::default(),
+        )
+        .with_live_hosts(
+            vec!["0.0.0.0:3000".parse().unwrap()],
+            Arc::new(move || {
+                calls.fetch_add(1, Ordering::SeqCst);
+                vec!["10.0.0.7".parse().unwrap()]
+            }),
+        );
+        Router::new()
+            .route("/", get(|| async { "ok" }).post(|| async { "posted" }))
+            .layer(axum::middleware::from_fn_with_state(Arc::new(state), guard))
+    }
+
+    fn req_on(method: &str, uri: &str, host: &str, extra: &[(&str, &str)]) -> Request<Body> {
+        let mut r = req(method, uri, LAN, extra);
+        r.headers_mut()
+            .insert(header::HOST, HeaderValue::from_str(host).unwrap());
+        r
+    }
+
+    #[tokio::test]
+    async fn a_live_interface_host_is_served_on_the_bound_port_only() {
+        const LIVE: &str = "10.0.0.7:3000";
+        let calls = Arc::new(AtomicUsize::new(0));
+        let app = || live_host_app(calls.clone());
+        let h = [(TOKEN_HEADER, TOKEN)];
+        // An allowlisted Host never reads the interface list.
+        let res = status(app(), req_on("GET", "/", HOST, &h)).await;
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+
+        let res = status(app(), req_on("GET", "/", LIVE, &h)).await;
+        assert_eq!(res.status(), StatusCode::OK);
+        // Its share link sets this port's cookie.
+        let res = status(
+            app(),
+            req_on(
+                "GET",
+                "/?token=s3cret-token-0123456789abcdefghij",
+                LIVE,
+                &[],
+            ),
+        )
+        .await;
+        let set = res.headers()[header::SET_COOKIE].to_str().unwrap();
+        assert!(set.starts_with("web_access_3000="), "{set}");
+        // Its own Origin passes a mutation; another address's does not.
+        let own = [(TOKEN_HEADER, TOKEN), ("origin", "http://10.0.0.7:3000")];
+        let res = status(app(), req_on("POST", "/", LIVE, &own)).await;
+        assert_eq!(res.status(), StatusCode::OK);
+        let foreign = [(TOKEN_HEADER, TOKEN), ("origin", "http://10.0.0.8:3000")];
+        let res = status(app(), req_on("POST", "/", LIVE, &foreign)).await;
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
+        // Another port, an address not on an interface, or a name is 421.
+        for host in ["10.0.0.7:3001", "10.0.0.8:3000", "evil.example:3000"] {
+            let res = status(app(), req_on("GET", "/", host, &h)).await;
+            assert_eq!(res.status(), StatusCode::MISDIRECTED_REQUEST, "{host}");
+        }
     }
 
     #[tokio::test]
     async fn a_wildcard_read_safe_rule_matches_an_encoded_name_below_it() {
         let state = GuardState::new(
-            Tokens::none().with(READ_TOKEN, Grant::Read),
+            Tokens::none().with(tok(READ_TOKEN), Grant::Read).unwrap(),
             [HOST.to_owned()],
             GuardPolicy::default(),
         )
@@ -1402,27 +1586,6 @@ mod tests {
         // The prefix itself must be spelled as the rule spells it.
         let res = status(app, req("POST", "/n%6ftes/a", LAN, &h)).await;
         assert_eq!(res.status(), StatusCode::FORBIDDEN);
-    }
-
-    #[tokio::test]
-    async fn a_token_with_cookie_breaking_characters_round_trips_through_the_cookie() {
-        let token = "ab;c d\u{7f}";
-        let state = GuardState::new(
-            Tokens::full_only(token.to_owned()),
-            [HOST.to_owned()],
-            GuardPolicy::default(),
-        );
-        let app = Router::new()
-            .route("/", get(|| async { "ok" }))
-            .layer(axum::middleware::from_fn_with_state(Arc::new(state), guard));
-        let link = crate::share_url("192.168.1.5:3000".parse().unwrap(), token);
-        let path = link.strip_prefix("http://192.168.1.5:3000").unwrap();
-        let res = status(app.clone(), req("GET", path, LAN, &[])).await;
-        let set = res.headers()[header::SET_COOKIE].to_str().unwrap();
-        let pair = set.split(';').next().unwrap();
-        assert_eq!(pair, "web_access_3000=ab%3Bc%20d%7F");
-        let res = status(app, req("GET", "/", LAN, &[("cookie", pair)])).await;
-        assert_eq!(res.status(), StatusCode::OK);
     }
 
     #[tokio::test]
@@ -1461,10 +1624,12 @@ mod tests {
 
     #[test]
     fn debug_output_never_shows_a_token() {
-        let tokens = Tokens::full_only("s3cret".to_owned()).with("r3ad", Grant::Read);
+        let tokens = Tokens::full_only(tok(TOKEN))
+            .with(tok(READ_TOKEN), Grant::Read)
+            .unwrap();
         let shown = format!("{tokens:?}");
         assert!(
-            !shown.contains("s3cret") && !shown.contains("r3ad"),
+            !shown.contains(TOKEN) && !shown.contains(READ_TOKEN),
             "{shown}"
         );
         assert!(shown.contains("Full"), "{shown}");

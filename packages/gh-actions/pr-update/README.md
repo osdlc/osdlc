@@ -15,8 +15,9 @@ schedule, a comment) is the caller's job; see
 ```yaml
 name: pr-update
 on:
-  push: { branches: [main] }
-  schedule: [{ cron: "17 */6 * * *" }]
+  # Once a night. Running on every push to main merges main into every open
+  # PR, and each of those pushes starts that PR's CI: one merge, a CI storm.
+  schedule: [{ cron: "0 9 * * *" }]
   workflow_dispatch:
 
 permissions: {}
