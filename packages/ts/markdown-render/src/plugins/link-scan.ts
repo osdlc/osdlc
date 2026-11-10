@@ -205,6 +205,17 @@ function align(source: string, from: number, to: number, value: string): Int32Ar
   return map
 }
 
+/**
+ * An exclusive source end offset that lands on an escaping backslash maps to the
+ * escaped character, past the sentinel `remarkEscapes` put before it. The link
+ * ended before that sentinel, so step back over it.
+ */
+function endInValue(value: string, end: number): number {
+  let e = end
+  while (e > 0 && value.charCodeAt(e - 1) === SENTINEL.charCodeAt(0)) e--
+  return e
+}
+
 /** Where a node's value sits in the frame its spans were found in. */
 interface View {
   value: string
@@ -361,7 +372,7 @@ export function tokenizeLinks(tree: MdNode, file: unknown, options: TokenizeOpti
         if (start < valueAt) continue
 
         if (span.end <= view.to) {
-          const end = view.toValue(span.end)
+          const end = endInValue(view.value, view.toValue(span.end))
           if (!shaped(view.value, start, end, open)) continue
           const built = options.build({ inner: view.value.slice(start + open.length, end - 2) })
           if (built === null) continue
@@ -452,7 +463,7 @@ function crossNodes(
     if (sibling.type === 'text' && typeof sibling.value === 'string' && span.end <= range[1]) {
       const closer = sourceView(sibling, doc, 'wikilink', true)
       if (!closer) return null
-      const end = closer.toValue(span.end)
+      const end = endInValue(closer.value, closer.toValue(span.end))
       if (end < 2 || !closer.value.startsWith(']]', end - 2)) return null
       const tailText = closer.value.slice(0, end - 2)
       const aliasNodes: MdNode[] = []
