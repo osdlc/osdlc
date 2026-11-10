@@ -423,8 +423,11 @@ The numbers match the task graph at the top. "After" says what must come first.
   markdown packages follow the same path later. SPEC.md says the spec moves to osdlc/markdown
   once this repo has its own release setup. This task is that move, so SPEC.md needs updating when
   it happens. In progress: [osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9) moves the
-  package and its spec family here, with their history, and updates SPEC.md. The CI, package
-  checks, conformance check and publish workflow come from shared pieces being extracted in
-  osdlc/osdlc. Until they land, releases still go out from osdlc/osdlc.
+  package and its spec family here, with their history, and updates SPEC.md.
+  [osdlc/markdown#10](https://github.com/osdlc/markdown/pull/10) switches the CI and release to
+  the shared workflows and checks from osdlc/osdlc
+  ([osdlc/osdlc#749](https://github.com/osdlc/osdlc/pull/749)). It waits for those to merge and
+  for `@osdlc/package-checks` and `@osdlc/conformance-suites` 0.1.0 on npm. Until then, releases still
+  go out from osdlc/osdlc.
 
 We will track each task as an issue in this repo.
