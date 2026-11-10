@@ -3,7 +3,7 @@
 ## History before the first public release
 
 These versions were never published. They are rebuilt from the git history.
-The first release of `@osdlc/story-harness` on npm is 0.3.5, and the entry for
+The first release of `@osdlc/story-harness` on npm is 0.4.0, and the entry for
 it is added above this section when it is released.
 
 ### [0.3.4] - 2026-11-05 (unpublished)

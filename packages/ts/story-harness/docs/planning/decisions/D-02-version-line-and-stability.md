@@ -1,7 +1,7 @@
 ---
 id: D-02
 type: decision
-state: proposed
+state: accepted
 created: 2026-11-07
 ---
 
@@ -9,10 +9,10 @@ created: 2026-11-07
 
 ## Decision
 
-- The first published version is `0.3.5`, the version the history reaches
-  when every change up to the move is counted under semver. The changes made
-  to get ready for the first release, breaking ones included, belong to that
-  version and cost no bump, because no version with the old API was public.
+- The first published version is `0.4.0` (owner's choice, 2026-11-10). The
+  history before the move reaches 0.3.4, and the changes made to get ready for
+  the first release include breaking ones, so it takes a minor bump, as
+  repo-cleaner's first release did. No earlier version was public.
 - The line stays 0.x. A minor version may break the API, and its changelog
   says what to change.
 - `openPerfStory`, `noLongTasks`, `paintedAt` and `responseEnd` are

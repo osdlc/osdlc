@@ -1,5 +1,5 @@
 ---
-"@osdlc/story-harness": patch
+"@osdlc/story-harness": minor
 ---
 
 The first release of `@osdlc/story-harness` on npm. It uses a component's static Storybook build as its test harness.
@@ -10,7 +10,7 @@ The first release of `@osdlc/story-harness` on npm. It uses a component's static
 - `@osdlc/story-harness/runner`: `captureStories`, `captureCli`, `serveStatic` and `selectStories`.
 - Compiled ESM with `.d.ts`, Node 22 or newer. `@playwright/test` 1.62 or newer is a peer dependency, and `@osdlc/file-lock` its one runtime dependency. Licence `MIT OR Apache-2.0`.
 
-Changes since the last unpublished version in the history below. No earlier version was published, so the breaking ones cost no version bump:
+Changes since the last unpublished version in the history below. Some are breaking, so the first release is a minor version, 0.4.0:
 
 - **Breaking:** the baseline check is the `story-shots` command, in place of a path to its script. The runner is one `./runner` entry (`captureStories`, `captureCli`, `serveStatic`, `selectStories`), in place of file paths. `createPerfRecorder` is no longer exported; `budget`, `record` and `recordBrowser` write the report.
 - **Breaking:** with several `themes` in the flat layout, `captureStories` writes `<name>--<theme>.png`; before, each theme overwrote the same file.
