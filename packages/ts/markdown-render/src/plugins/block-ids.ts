@@ -154,9 +154,6 @@ export function remarkBlockIds() {
         // With no block above it — or one that cannot carry an id — the marker
         // owns nothing, so it stays literal text.
         if (!previous || CANNOT_CARRY_ID.has(previous.type) || used.has(id)) return
-        // The block already holds an id: a second marker stays text instead of
-        // replacing it and vanishing.
-        if (previous.data?.hProperties?.id !== undefined) return
         used.add(id)
         attach(previous, id)
         parent.children.splice(index, 1)
