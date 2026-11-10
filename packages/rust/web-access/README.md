@@ -13,8 +13,10 @@ before the app's own handlers see it.
 
 - **Config.** `WebAccessConfig { enabled, listen, port, admin }`, serde
   camelCase, off and on loopback by default.
-- **Tokens.** 32 random bytes, base64url, kept in a directory you choose (file
-  mode 0600 on Unix). A full token, a view-only token, and an admin token that
+- **Tokens.** A `Token` type that holds only a well-formed token: at least 32
+  characters of `A-Z a-z 0-9 - _`. A minted token is 32 random bytes in
+  base64url. Tokens are kept in a directory you choose (file mode 0600 on
+  Unix). There is a full token, a view-only token, and an admin token that
   exists only while admin access is on.
 - **Guard.** An axum middleware: `Host` allowlist, `Origin` check, path
   normalisation, token from a cookie, a header or a share link, and a grant
@@ -77,7 +79,7 @@ loopback without one.
 
 ```rust
 use axum::{Router, routing::get};
-use web_access::{Listen, Tokens, WebAccessConfig, serve, token};
+use web_access::{Listen, Tokens, WebAccessConfig, serve, token::Token};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -90,7 +92,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         admin: false,
     };
     // Or token::load_or_mint(dir) to keep the token across restarts.
-    let secret = token::mint()?;
+    let secret = Token::mint()?;
     let server = serve(app, &config, Tokens::full_only(secret)).await?;
 
     // Hand this link to another device: http://<ip>:<port>/?token=<token>
@@ -113,6 +115,8 @@ The examples run with `cargo run --example <name>`:
   permission table in front of your own router, and what each grant may do.
 - [`tokens_on_disk`](examples/tokens_on_disk.rs): token files, rotation and an
   override.
+- [`mint_token`](examples/mint_token.rs): print a new token, for an override
+  or a token file.
 - [`sharing_runtime`](examples/sharing_runtime.rs): a settings page's view of
   sharing: turn it on, rotate a token, turn it off.
 - [`local_origins`](examples/local_origins.rs): the local-origin helpers and
@@ -122,8 +126,10 @@ The examples run with `cargo run --example <name>`:
 
 Every request, whatever its method, passes these checks in order:
 
-1. The `Host` header is on the allowlist, else 421. This holds for loopback
-   peers too: it is what stops a DNS-rebinding page from reading the app.
+1. The `Host` header is on the allowlist, else 421. With a wildcard bind, any
+   current interface address on the bound port also passes. This check holds
+   for loopback peers too: it is what stops a DNS-rebinding page from reading
+   the app.
 2. A mutating request, or a protocol upgrade such as a WebSocket handshake,
    that carries an `Origin` header has an allowed origin, else 403. An upgrade
    may also come from a desktop webview's own origin (`tauri://localhost`,
@@ -140,6 +146,26 @@ Every request, whatever its method, passes these checks in order:
 7. A `read` grant may not use a method other than `GET`, `HEAD` or `OPTIONS`,
    or open a WebSocket, else 403 `{"error":"read_only"}`, unless a read-safe
    rule names the route.
+
+## Tokens
+
+Only a `Token` can join a `Tokens` set. Only `Token::mint()` and
+`Token::parse(text)` build a `Token`. `parse` accepts at least 32 characters of
+`A-Z a-z 0-9 - _` and nothing else. A minted token (43 characters of base64url)
+and a 64-character hex digest both pass. A token never needs escaping, so a
+link, a cookie and a header all carry it as written.
+
+The token files and an override must hold a valid token too. A file that holds
+anything else, for example because it was edited by hand or emptied, is an
+error that names the file. The server does not start, and the file is left as
+it is. To fix it, delete the file. A new token is minted on the next start. An
+override that is set but is not a token is an error that names the variable.
+`token::override_from_env` reads an override from an environment variable. To
+make a new token, run `cargo run -p web-access --example mint_token` or call
+`Token::mint()?.to_string()`. No error ever shows the token text.
+
+`Tokens::with` refuses the same token at two different grants, because the
+higher grant would win. The same token at the same grant is ignored.
 
 A request that passes carries its `AccessContext` (`webLocal` or `webRemote`)
 and its `Grant` in the request extensions. Both are axum extractors, and both
@@ -172,10 +198,12 @@ origins can be reported to a callback (`GuardState::with_on_denied`), at most
   there can read the token. The port in the name only keeps two servers from
   overwriting each other's cookie. Do not run untrusted servers on the same
   address as a shared app, above all with admin access on.
-- Turning sharing off, turning admin off or rotating a token stops new
-  requests, but a connection that is already open (a stream or a WebSocket)
-  keeps running until it closes. Close long-lived connections yourself when the
-  grant they were opened with is withdrawn.
+- `stop()` ends connections that are still open, such as a stream or a
+  WebSocket. After a grace period, every further read and write on them fails.
+  `SharingRuntime` stops the server when sharing or admin is turned off or a
+  token is rotated. If you put the guard in your own server, an open
+  connection keeps running until it closes. Close long-lived connections
+  yourself when the grant they were opened with is withdrawn.
 - On Windows, token files get no owner-only mode. Keep the token directory in
   the user's own profile (for example under `%LOCALAPPDATA%`), where the
   default permissions keep other users out.
@@ -195,7 +223,7 @@ described above.
 This is a 0.x crate. Breaking changes are possible between minor versions and
 are listed in the [changelog](CHANGELOG.md).
 
-Every public item is stable within the 0.4 line, except these, which are
+Every public item is stable within the 0.5 line, except these, which are
 experimental and may change in a patch release:
 
 - `Tokens::with_label`

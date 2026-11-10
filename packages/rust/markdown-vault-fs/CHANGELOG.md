@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.1](https://github.com/osdlc/osdlc/compare/markdown-vault-fs/v0.6.0...markdown-vault-fs/v0.6.1) - 2026-11-10
+
+### Other
+
+- update Cargo.toml dependencies
+
 ## [0.6.0] - 2026-11-06
 
 A walk can keep going past what it cannot read and say what that was.
