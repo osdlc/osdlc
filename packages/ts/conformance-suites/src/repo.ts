@@ -130,7 +130,7 @@ export function checkRepo(root: string, options: RepoOptions = {}): string[] {
 
   const listed = new Map<string, Set<string>>()
   for (const [name, f] of Object.entries(families)) {
-    for (const i of f.implementations) {
+    for (const i of [...f.implementations, ...(f.readers ?? [])]) {
       if (!listed.has(i.dir)) listed.set(i.dir, new Set())
       listed.get(i.dir)!.add(name)
     }
@@ -210,6 +210,15 @@ function familyProblems(
     }
     problems.push(...suiteProblems(file, json, name, f.reference))
   }
+  for (const r of f.readers ?? []) {
+    if (f.implementations.some((i) => i.dir === r.dir))
+      problems.push(`${name}: ${r.dir} is both an implementation and a reader`)
+    if (!existsSync(join(root, r.dir))) {
+      problems.push(`${name}: ${r.dir} does not exist`)
+      continue
+    }
+    problems.push(...readsSuite(root, suites, name, r.dir))
+  }
   const versions: Record<string, string> = {}
   for (const impl of f.implementations) {
     if (!existsSync(join(root, impl.dir))) {
@@ -219,12 +228,7 @@ function familyProblems(
     const v = versionOf(root, impl)
     if (v === null) problems.push(`${name}: cannot read the version of ${impl.dir}`)
     else versions[impl.dir] = v
-    const named = suiteReaders(
-      new Map([[impl.dir, testSources(root, impl.dir)]]),
-      basename(suites),
-    ).get(impl.dir)
-    if (named?.has(name) !== true)
-      problems.push(`${name}: no test under ${impl.dir}/tests names ${suites}/${name}/`)
+    problems.push(...readsSuite(root, suites, name, impl.dir))
   }
   try {
     const released = Object.fromEntries(
@@ -239,6 +243,14 @@ function familyProblems(
     problems.push(`${name}: ${(e as Error).message}`)
   }
   return problems
+}
+
+/** The problem when no test under `dir` names the family's suite. */
+function readsSuite(root: string, suites: string, family: string, dir: string): string[] {
+  const named = suiteReaders(new Map([[dir, testSources(root, dir)]]), basename(suites)).get(dir)
+  return named?.has(family) === true
+    ? []
+    : [`${family}: no test under ${dir}/tests names ${suites}/${family}/`]
 }
 
 /** The suite files of one family, by name, with their contents. */

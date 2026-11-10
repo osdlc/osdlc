@@ -88,10 +88,10 @@ the standard.
   with expected values written by the reference implementation's generator.
   `pnpm run check:conformance` checks the suites with `@osdlc/conformance-suites`;
   `packages/conformance/config.json` holds its exemptions. `tiered-dirs`,
-  `config-layers`, `corpus-schema`, `frontmatter-lossless`, `intersect` and
-  `path-guard` are there. Until they move, `gfm-pipe-table` (the Rust implementation of
-  `@osdlc/gfm-table`) keeps `packages/rust/gfm-pipe-table/tests/fixtures/parity.json`,
-  `markdown-link` its crate's `tests/fixtures/conformance.json`, and
+  `config-layers`, `corpus-schema`, `frontmatter-lossless`, `intersect`,
+  `markdown-link`, `markdown-tags` and `path-guard` are there. Until they move,
+  `gfm-pipe-table` (the Rust implementation of `@osdlc/gfm-table`) keeps
+  `packages/rust/gfm-pipe-table/tests/fixtures/parity.json`, and
   `markdown-contract` runs the TypeScript package's `corpus/` directly.
   `etag-write` has no shared cases yet.
 - **Each language's idiom.** An implementation does not copy the other's names or
@@ -206,6 +206,15 @@ Developed here, in this repository:
   relative markdown link parsing with spans, and the code lexer that keeps
   links in code out; the TypeScript implementation of the parsing half of the
   `markdown-link` crate)
+- `packages/ts/markdown-render` (`@osdlc/markdown-render` on npm, markdown to
+  HTML on unified and remark for CommonMark, GFM and the Obsidian extensions,
+  with injected link resolution and sanitized output; framework-free)
+- `packages/ts/markdown-render-vue` (`@osdlc/markdown-render-vue` on npm, Vue 3
+  components over `@osdlc/markdown-render`: `<MarkdownRender>` and the
+  `NoteSource` context)
+- `packages/ts/markdown-vault-astro` (`@osdlc/markdown-vault-astro` on npm, brings
+  Obsidian-vault markdown, wikilinks and embeds, into Astro content collections:
+  a vault-to-content transform, a remark plugin and a CLI)
 - `packages/ts/path-guard` (`@osdlc/path-guard` on npm, a path containment
   guard: lexical validation, then a symlink-aware proof that a path stays
   inside its root; the TypeScript implementation of the `path-guard` crate)
@@ -292,8 +301,13 @@ requests here.
 2. When the pull request merges, `packages-publish.yml` opens or updates one
    "Version Packages" pull request. It bumps each library's version and
    writes its CHANGELOG from the pending changesets. The root
-   `version-packages` script does this, then rewrites the checked-in files
-   that name a version, such as wayfinder's `schema/config.json`.
+   `version-packages` script does this, then runs
+   `pnpm install --lockfile-only`, then rewrites the checked-in files that
+   name a version, such as wayfinder's `schema/config.json`. The lockfile
+   step is needed because `changeset version` rewrites the version ranges
+   that packages use for each other, and the Version Packages pull request's
+   `pnpm install --frozen-lockfile` fails if `pnpm-lock.yaml` still holds the
+   old ranges.
 3. The osdlc-release GitHub App opens the Version Packages pull request, so
    its checks start on their own. Merge it when `test` and `verify` pass.
 4. On that merge, `packages-publish.yml` runs the full `verify` matrix and

@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/conformance-suites",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Checks the conformance suites of library families: one set of cases that every implementation of a library, in each language, runs. A library and a `conformance-suites` command.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",

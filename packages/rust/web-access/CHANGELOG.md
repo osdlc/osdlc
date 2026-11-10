@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0](https://github.com/osdlc/osdlc/compare/web-access/v0.4.1...web-access/v0.5.0) - 2026-11-10
+
+### Fixed
+
+- *(web-access)* cut open connections on stop, admit new interface addresses ([#704](https://github.com/osdlc/osdlc/pull/704))
+
 ### Added
 
 - `token::Token`, a type that always holds a well-formed token. Only

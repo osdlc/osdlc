@@ -73,6 +73,13 @@ to the same behaviour by the same data.
   implementation's directory or the family's suite runs every implementation's
   tests.
 
+  A family may also list `readers`: libraries that run some of the family's
+  cases without implementing it, such as `@osdlc/markdown-render` reading the
+  markdown-tags suite. A reader has the same `language`, `dir` and `name`
+  fields. It is not an implementation: its version is not compared and it
+  cannot be the reference. CI runs a reader's tests when its family's suite
+  changes; a change to the reader alone runs only the reader.
+
 ### The reference and its generator
 
 - Each family names one reference implementation. It is TypeScript by
@@ -162,6 +169,9 @@ The `conformance-suites` command from
   a `SPEC.md`;
 - every suite file has the shape above;
 - each implementation's `tests/` names the family's suite path;
+- each reader exists, is not also an implementation, sits under `packages/ts/` or
+  `packages/rust/` as its language says, and its `tests/` names the family's
+  suite path;
 - the implementations share major.minor;
 - every `packages/ts/*` and `packages/rust/*` library whose tests read a suite
   is listed for that family, and no library's tests read the other
@@ -223,7 +233,7 @@ and points here.
 | intersect            | TS, Rust `glob-intersect`   | moved: `conformance/intersect/suite.json`                                           | TS        |
 | manifest-graph       | TS, Rust                    | `rust/manifest-graph/tests/fixtures/parity.json`                                    | TS        |
 | markdown-contract    | TS, Rust                    | `ts/markdown-contract/corpus/`, `rust/markdown-contract/tests/fixtures/parity.json` | TS        |
-| markdown-link        | Rust, TS                    | `rust/markdown-link/tests/fixtures/conformance.json`                                | Rust      |
+| markdown-link        | Rust, TS                    | moved: `conformance/markdown-link/suite.json`                                       | Rust      |
 | markdown-tags        | Rust, TS                    | moved: `conformance/markdown-tags/suite.json`                                       | Rust      |
 | observe              | TS, Rust `osdlc-observe`    | `rust/osdlc-observe/tests/fixtures/parity.json`                                     | TS        |
 | path-guard           | TS, Rust                    | moved: `conformance/path-guard/suite.json`                                          | TS        |

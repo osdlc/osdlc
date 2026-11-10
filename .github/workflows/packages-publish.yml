@@ -13,7 +13,8 @@
 # its `publish` job.
 #
 # The Version Packages pull request is opened as the osdlc-release GitHub App,
-# whose key is in the release-plz environment.
+# whose key is in the release-plz environment. The `release` job passes the
+# key by name; ts-packages-release.yml says why.
 name: packages-publish
 
 on:
@@ -42,10 +43,12 @@ jobs:
     uses: ./.github/workflows/ts-packages-release.yml
     with:
       app-client-id: Iv23liYTGAl78fzN8YWm
-      # `version-packages` runs `changeset version`, stamps each CLI's
+      # `version-packages` runs `changeset version`, refreshes pnpm-lock.yaml, stamps each CLI's
       # src/version.generated.ts, rebuilds wayfinder, then rewrites its
       # schema/config.json and its guide's `$schema` line for the new version,
       # and reruns the TypeScript-referenced conformance generators, since each
       # suite records its reference's version. It reads wayfinder's dist/ and
       # runs the conformance-suites command, so both are built first.
       version-prepare: pnpm --filter '@osdlc/wayfinder...' --filter '@osdlc/conformance-suites...' run build
+    secrets:
+      RELEASE_PLZ_APP_PRIVATE_KEY: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}

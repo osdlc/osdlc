@@ -11,6 +11,7 @@
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { isatty } from 'node:tty'
 
 import type { CodeHost, CodeHostPrDetail } from '@osdlc/code-host'
@@ -20,12 +21,13 @@ import { IDENTITY, makeBareAndWorker } from '@osdlc/typed-git/testing'
 import { forwarded } from './support-signal.ts'
 import { prUpdateConfigSchema, type PrUpdateConfig } from '../src/config.ts'
 import type { AttemptStore, Ports } from '../src/ports.ts'
-import type { SurveyReport } from '../src/survey.ts'
+import { prKey, type SurveyReport } from '../src/survey.ts'
 import { attemptsDir, fileAttemptStore, listAttempts } from '../src/update/attempts.ts'
-import type { UpdateResult } from '../src/update/execute.ts'
+import type { UpdateResult, UpdateTarget } from '../src/update/execute.ts'
 import {
   applyStrategyOverride,
   renderUpdateText,
+  restackTarget,
   runUpdate,
   selectTargets,
   toResult,
@@ -98,11 +100,10 @@ function row(patch: Record<string, unknown> = {}) {
   }
 }
 
-function report(rows: ReturnType<typeof row>[]): SurveyReport {
+function report(rows: ReturnType<typeof row>[], cycles: number[] = []): SurveyReport {
   return {
-    repos: [],
+    repos: [{ repo: 'o/r', measurable: true, fetched: true, cycles }],
     prs: rows as SurveyReport['prs'],
-    cycles: [],
     counts: {
       total: rows.length,
       upToDate: 0,
@@ -155,22 +156,30 @@ describe('selectTargets', () => {
       [2],
     )
     expect(targets.map((t) => t.number)).toEqual([2])
-    expect(skipped).toEqual([{ number: 1, head: 'topic', reason: 'not selected by --pr/--branch' }])
+    expect(skipped).toEqual([
+      { repo: 'o/r', number: 1, head: 'topic', reason: 'not selected by --pr/--branch' },
+    ])
   })
 
-  test('--pr naming a number the survey never reported still shows up, in skipped', () => {
-    // The loop in `selectTargets` visits only `report.prs`. A mistyped or
-    // closed `--pr` number outside that set must still appear in the result.
-    const { targets, skipped } = selectTargets(report([row({ number: 1 })]), [1, 999])
+  test('--pr naming a PR the survey never reported still shows up, in notFound', () => {
+    // The loops in `selectTargets` visit only what the survey listed. A
+    // mistyped or closed `--pr` selector must still appear in the result.
+    const { targets, skipped, notFound } = selectTargets(report([row({ number: 1 })]), [
+      1,
+      999,
+      'o/r#998',
+    ])
     expect(targets.map((t) => t.number)).toEqual([1])
-    expect(skipped).toEqual([{ number: 999, head: '', reason: 'not found in survey' }])
+    expect(skipped).toEqual([])
+    expect(notFound).toEqual(['#999', 'o/r#998'])
   })
 
   test('a PR in a base/head cycle is reported in skipped, not lost or "not found"', () => {
-    const cyclic = { ...report([row({ number: 1 })]), cycles: [3, 4] }
+    const cyclic = report([row({ number: 1 })], [3, 4])
+    const reason = 'in a base/head cycle; no stack order to update it in'
     expect(selectTargets(cyclic, []).skipped).toEqual([
-      { number: 3, head: '', reason: 'in a base/head cycle; no stack order to update it in' },
-      { number: 4, head: '', reason: 'in a base/head cycle; no stack order to update it in' },
+      { repo: 'o/r', number: 3, head: '', reason },
+      { repo: 'o/r', number: 4, head: '', reason },
     ])
     const scoped = selectTargets(cyclic, [3]).skipped
     expect(scoped.find((s) => s.number === 3)!.reason).toContain('base/head cycle')
@@ -184,6 +193,75 @@ describe('selectTargets', () => {
     expect(unfiltered.targets.length + unfiltered.skipped.length).toBe(rows.length)
     const filtered = selectTargets(report(rows), [2])
     expect(filtered.targets.length + filtered.skipped.length).toBe(rows.length)
+  })
+})
+
+describe('selectTargets — several repositories holding the same PR number', () => {
+  /** Two repositories, `a/x` and `b/y`, each with an actionable PR 1. */
+  function twoRepos(cycles: { a?: number[]; b?: number[] } = {}): SurveyReport {
+    return {
+      ...report([row({ repo: 'a/x', head: 'ax' }), row({ repo: 'b/y', head: 'by' })]),
+      repos: [
+        { repo: 'a/x', measurable: true, fetched: true, cycles: cycles.a ?? [] },
+        { repo: 'b/y', measurable: true, fetched: true, cycles: cycles.b ?? [] },
+      ],
+    }
+  }
+
+  test('both are targets, each naming its own repository', () => {
+    const { targets } = selectTargets(twoRepos(), [])
+    expect(targets.map((t) => [t.repo, t.number])).toEqual([
+      ['a/x', 1],
+      ['b/y', 1],
+    ])
+  })
+
+  test('a bare --pr number selects that PR in every repository', () => {
+    expect(selectTargets(twoRepos(), [1]).targets.map((t) => t.repo)).toEqual(['a/x', 'b/y'])
+  })
+
+  test("a prKey selects one repository's PR and skips the other, naming its repository", () => {
+    const { targets, skipped } = selectTargets(twoRepos(), [prKey('b/y', 1)])
+    expect(targets.map((t) => t.repo)).toEqual(['b/y'])
+    expect(skipped).toEqual([
+      { repo: 'a/x', number: 1, head: 'ax', reason: 'not selected by --pr/--branch' },
+    ])
+  })
+
+  test('a cycle in one repository is not hidden by a row with its number in another', () => {
+    // `a/x` lists PR 1 as a row; in `b/y`, PR 1 is in a base/head cycle.
+    const { targets, skipped } = selectTargets(
+      { ...twoRepos({ b: [1] }), prs: [row({ repo: 'a/x', head: 'ax' })] as SurveyReport['prs'] },
+      [],
+    )
+    expect(targets.map((t) => t.repo)).toEqual(['a/x'])
+    expect(skipped).toEqual([
+      {
+        repo: 'b/y',
+        number: 1,
+        head: '',
+        reason: 'in a base/head cycle; no stack order to update it in',
+      },
+    ])
+  })
+
+  test('a --pr number found in either repository is not "not found"', () => {
+    const report2: SurveyReport = {
+      ...twoRepos(),
+      prs: [
+        row({ repo: 'a/x', number: 1 }),
+        row({ repo: 'b/y', number: 2 }),
+      ] as SurveyReport['prs'],
+    }
+    const { skipped, notFound } = selectTargets(report2, [2])
+    expect(skipped).toEqual([
+      { repo: 'a/x', number: 1, head: 'topic', reason: 'not selected by --pr/--branch' },
+    ])
+    expect(notFound).toEqual([])
+  })
+
+  test('a key for one repository is not found when only the other has that number', () => {
+    expect(selectTargets(twoRepos(), [prKey('b/y', 2)]).notFound).toEqual(['b/y#2'])
   })
 })
 
@@ -232,6 +310,7 @@ describe('toResult', () => {
 describe('renderUpdateText', () => {
   type Result = UpdateOutput['results'][number]
   const res = (patch: Partial<Result>): Result => ({
+    repo: 'o/r',
     number: 1,
     head: 'topic',
     base: 'main',
@@ -241,10 +320,12 @@ describe('renderUpdateText', () => {
     detail: 'updated',
     ...patch,
   })
-  const counts = { updated: 1, upToDate: 0, conflict: 1, failed: 1, skipped: 1 }
+  const counts = { updated: 1, upToDate: 0, conflict: 1, failed: 1, skipped: 1, notFound: 0 }
+  const empty = { results: [], skipped: [], notFound: [], repos: [] }
 
   test('marks each status, prints checkout and skipped lines, and the counts', () => {
     const text = renderUpdateText({
+      ...empty,
       applied: true,
       results: [
         res({ localCheckout: { updated: true, detail: 'moved to abc' } }),
@@ -252,24 +333,55 @@ describe('renderUpdateText', () => {
         res({ number: 3, status: 'failed', pushed: false, detail: 'boom' }),
         res({ number: 4, status: 'conflict', pushed: false, detail: 'needs a human' }),
       ],
-      skipped: [{ number: 5, head: 'other', reason: 'already up to date' }],
+      skipped: [{ repo: 'o/r', number: 5, head: 'other', reason: 'already up to date' }],
       counts,
     })
     expect(text.split('\n')).toEqual([
-      '✓ #1  rebase  topic  updated',
+      '✓ o/r#1  rebase  topic  updated',
       '    checkout: moved — moved to abc',
-      '· #2  rebase  topic  would update',
-      '✗ #3  rebase  topic  boom',
-      '! #4  rebase  topic  needs a human',
-      '- #5  other  already up to date',
+      '· o/r#2  rebase  topic  would update',
+      '✗ o/r#3  rebase  topic  boom',
+      '! o/r#4  rebase  topic  needs a human',
+      '- o/r#5  other  already up to date',
       '',
       'PR-UPDATE: updated=1 up-to-date=0 conflict=1 failed=1 skipped=1',
       '',
     ])
   })
 
+  test('names every PR owner/name#N, in one repository or several, and lists what was not found', () => {
+    const text = renderUpdateText({
+      ...empty,
+      applied: true,
+      results: [res({}), res({ repo: 'x/y', detail: 'boom', status: 'failed', pushed: false })],
+      skipped: [{ repo: 'x/y', number: 2, head: 'other', reason: 'already up to date' }],
+      notFound: ['#9', 'x/y#8'],
+      counts: { ...counts, notFound: 2 },
+    })
+    expect(text.split('\n')).toEqual([
+      '✓ o/r#1  rebase  topic  updated',
+      '✗ x/y#1  rebase  topic  boom',
+      '- x/y#2  other  already up to date',
+      '? #9  no open PR in the surveyed repositories',
+      '? x/y#8  no open PR in the surveyed repositories',
+      '',
+      'PR-UPDATE: updated=1 up-to-date=0 conflict=1 failed=1 skipped=1 not-found=2',
+      '',
+    ])
+  })
+
+  test('a restacked PR names the parent it went onto', () => {
+    const text = renderUpdateText({
+      ...empty,
+      applied: true,
+      results: [res({ number: 2, head: 'child', restackedOnto: 1 })],
+      counts,
+    })
+    expect(text.split('\n')[0]).toBe('✓ o/r#2  rebase  child  updated  (restacked onto o/r#1)')
+  })
+
   test('a rehearsal says nothing was pushed', () => {
-    const text = renderUpdateText({ applied: false, results: [], skipped: [], counts })
+    const text = renderUpdateText({ ...empty, applied: false, counts })
     expect(text).toContain('PR-UPDATE (rehearsal — nothing pushed): updated=1')
   })
 })
@@ -293,6 +405,7 @@ const ARGS: UpdateArgs = {
   pr: [],
   trust: false,
   retryFailed: false,
+  restack: false,
 }
 
 const NO_REMOTE: CommandRunner = { run: () => ({ exitCode: 2, stdout: '', stderr: '' }) }
@@ -330,16 +443,23 @@ describe('runUpdate — the Ports contract', () => {
     })
     expect(calls).toBe(0)
     expect(out.applied).toBe(false)
-    expect(out.counts).toEqual({ updated: 0, upToDate: 0, conflict: 0, failed: 0, skipped: 0 })
+    expect(out.counts).toEqual({
+      updated: 0,
+      upToDate: 0,
+      conflict: 0,
+      failed: 0,
+      skipped: 0,
+      notFound: 0,
+    })
   })
 
   test.each(['check', 'test'] as const)(
-    "verify: %s calls resolveVerifyVerbs exactly once, naming it, with this run's trust flag",
+    'verify: %s with no repository surveyed never asks resolveVerifyVerbs',
     async (which) => {
-      const seen: { which: string; trust: boolean }[] = []
+      let calls = 0
       const ports = fakePorts({
-        resolveVerifyVerbs: async (opts) => {
-          seen.push(opts)
+        resolveVerifyVerbs: async () => {
+          calls += 1
           return ['just ci']
         },
       })
@@ -354,7 +474,7 @@ describe('runUpdate — the Ports contract', () => {
           ports,
         },
       )
-      expect(seen).toEqual([{ which, trust: true }])
+      expect(calls).toBe(0)
     },
   )
 
@@ -563,6 +683,7 @@ describe('runUpdate — failed attempts', () => {
     expect(second.results).toEqual([])
     expect(second.skipped).toEqual([
       {
+        repo: 'o/r',
         number: 1,
         head: 'topic',
         reason: 'failed 1 time(s) at this head and base; waiting for either to move',
@@ -699,7 +820,7 @@ describe('runUpdate — a located repository', () => {
         codeHost: () =>
           ({ listPrDetails: () => ({ ok: true, value: [detail] }) }) as unknown as CodeHost,
         cfg: cfg(),
-        ports: fakePorts({ locate: (slug) => (slug === 'x/y' ? other.worker.dir : null) }),
+        ports: fakePorts({ locate: (repo) => (repo === 'x/y' ? other.worker.dir : null) }),
       },
     )
     expect(out.results.map((r) => [r.number, r.status, r.pushed])).toEqual([[5, 'updated', true]])
@@ -709,5 +830,400 @@ describe('runUpdate — a located repository', () => {
     expect(other.worker.git.isAncestor(other.worker.git.resolveRef('origin/main')!, after)).toBe(
       true,
     )
+  })
+})
+
+describe('runUpdate — two repositories that each hold a PR 1', () => {
+  let a: ReturnType<typeof makeBareAndWorker>
+  let b: ReturnType<typeof makeBareAndWorker>
+  let root: ReturnType<typeof makeBareAndWorker>
+
+  /** A repository whose `topic` branch is one commit behind `main`. */
+  function behindTopic(): ReturnType<typeof makeBareAndWorker> {
+    const fx = makeBareAndWorker({ initialBranch: 'main' })
+    const { git } = fx.worker
+    fx.worker.commit('initial', { 'README.md': 'fixture\n' })
+    git.push('origin', 'main')
+    git.checkout('main', { branch: 'topic' })
+    fx.worker.commit('topic work', { 'a.txt': 'a\n' })
+    git.push('origin', 'topic')
+    git.checkout('main')
+    fx.worker.commit('main moves', { 'b.txt': 'b\n' })
+    git.push('origin', 'main')
+    git.fetch('origin')
+    return fx
+  }
+
+  beforeEach(() => {
+    a = behindTopic()
+    b = behindTopic()
+    // The project root has no parseable remote, so only the named
+    // repositories are surveyed.
+    root = makeBareAndWorker({ initialBranch: 'main' })
+  })
+  afterEach(() => {
+    for (const fx of [a, b, root]) fx.cleanup()
+  })
+
+  async function run(ports: Partial<Ports>) {
+    const checkout: Record<string, string> = { 'a/x': a.worker.dir, 'b/y': b.worker.dir }
+    const real = spawnRunner('git')
+    const git: CommandRunner = {
+      run: (argv, opts) => real.run(argv, { ...opts, env: { ...IDENTITY, ...opts.env } }),
+    }
+    const pr1 = (repo: string): CodeHostPrDetail => {
+      const fx = repo === 'a/x' ? a : b
+      return {
+        number: 1,
+        title: 'topic',
+        url: `https://github.com/${repo}/pull/1`,
+        baseRef: 'main',
+        headRef: 'topic',
+        headSha: fx.worker.git.resolveRef('origin/topic')!,
+        isDraft: false,
+        labels: [],
+        reviewCount: 0,
+        isCrossRepository: false,
+      }
+    }
+    return runUpdate(
+      { ...ARGS, repo: ['a/x', 'b/y'], apply: true, strategy: 'merge' },
+      {
+        projectRoot: root.worker.dir,
+        dryRun: false,
+        git,
+        gh: UNREACHABLE_GH,
+        codeHost: ({ repo }) =>
+          ({ listPrDetails: () => ({ ok: true, value: [pr1(repo)] }) }) as unknown as CodeHost,
+        cfg: cfg({ verify: 'check' }),
+        ports: fakePorts({ locate: (repo) => checkout[repo] ?? null, ...ports }),
+      },
+    )
+  }
+
+  test('each result names its repository', async () => {
+    const out = await run({})
+    expect(out.results.map((r) => [r.repo, r.number, r.status])).toEqual([
+      ['a/x', 1, 'updated'],
+      ['b/y', 1, 'updated'],
+    ])
+  })
+
+  test('verify verbs are resolved once per repository, naming it and its checkout, and run there', async () => {
+    const asked: { which: string; trust: boolean; repo: string; checkout: string }[] = []
+    const ran: { verb: string; cwd: string }[] = []
+    const out = await run({
+      resolveVerifyVerbs: async (opts) => {
+        asked.push(opts)
+        return opts.repo === 'a/x' ? ['make check'] : ['cargo test']
+      },
+      runVerb: (verb, cwd) => {
+        ran.push({ verb, cwd })
+        return { exitCode: 0, stdout: '', stderr: '' }
+      },
+    })
+    expect(asked).toEqual([
+      { which: 'check', trust: false, repo: 'a/x', checkout: a.worker.dir },
+      { which: 'check', trust: false, repo: 'b/y', checkout: b.worker.dir },
+    ])
+    expect(ran.map((r) => r.verb)).toEqual(['make check', 'cargo test'])
+    expect(ran[0]!.cwd.startsWith(join(a.worker.dir, '.pr-update'))).toBe(true)
+    expect(ran[1]!.cwd.startsWith(join(b.worker.dir, '.pr-update'))).toBe(true)
+    expect(out.counts.updated).toBe(2)
+  })
+
+  test('a list refused for one repository stops the run before either is pushed', async () => {
+    const heads = [a, b].map((fx) => fx.worker.git.resolveRef('origin/topic'))
+    await expect(
+      run({
+        resolveVerifyVerbs: async ({ repo }) => {
+          if (repo === 'b/y') throw new Error('b/y is not trusted')
+          return ['make check']
+        },
+      }),
+    ).rejects.toThrow('b/y is not trusted')
+    for (const [i, fx] of [a, b].entries()) {
+      fx.worker.git.fetch('origin')
+      expect(fx.worker.git.resolveRef('origin/topic')).toBe(heads[i])
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// restack: a whole stack in one run
+// ---------------------------------------------------------------------------
+
+describe('selectTargets — restack', () => {
+  // main <- #1 (behind) <- #2 <- #3: #2 and #3 are blocked on #1.
+  const stack = () =>
+    report([
+      row({ number: 1, head: 'g' }),
+      row({ number: 2, head: 'p', base: 'g', parent: 1, status: 'blocked', blockedBy: 1 }),
+      row({ number: 3, head: 'c', base: 'p', parent: 2, status: 'blocked', blockedBy: 1 }),
+    ])
+
+  test('without restack, blocked children wait for the next run', () => {
+    const { targets, skipped } = selectTargets(stack(), [])
+    expect(targets.map((t) => t.number)).toEqual([1])
+    expect(skipped.map((s) => s.reason)).toEqual(['blocked on #1', 'blocked on #1'])
+  })
+
+  test('with restack, each blocked child is a target after its parent, marked with it', () => {
+    const { targets, skipped } = selectTargets(stack(), [], undefined, { restack: true })
+    expect(targets.map((t) => [t.number, t.stackParent])).toEqual([
+      [1, undefined],
+      [2, 1],
+      [3, 2],
+    ])
+    expect(skipped).toEqual([])
+  })
+
+  test('a child whose parent is not a target stays blocked, and says why', () => {
+    const r = stack()
+    r.prs[0] = { ...r.prs[0]!, strategy: 'skip', strategyReason: 'fork' }
+    const { targets, skipped } = selectTargets(r, [], undefined, { restack: true })
+    expect(targets).toEqual([])
+    expect(skipped.map((s) => s.reason)).toEqual([
+      'fork',
+      'blocked on #1; parent #1 is not updated in this run',
+      'blocked on #1; parent #2 is not updated in this run',
+    ])
+  })
+
+  test('a scoped restack run takes the named PR with its stack ancestors', () => {
+    const scoped = selectTargets(stack(), [prKey('o/r', 2)], undefined, { restack: true })
+    expect(scoped.targets.map((t) => t.number)).toEqual([1, 2])
+    expect(scoped.skipped.map((s) => [s.number, s.reason])).toEqual([
+      [3, 'not selected by --pr/--branch'],
+    ])
+    const plain = selectTargets(stack(), [prKey('o/r', 2)])
+    expect(plain.targets).toEqual([])
+  })
+})
+
+describe('restackTarget', () => {
+  const child: UpdateTarget = {
+    repo: 'o/r',
+    number: 2,
+    head: 'p',
+    base: 'g',
+    headOid: 'p0',
+    baseOid: 'g0',
+    strategy: 'rebase',
+    stackParent: 1,
+  }
+  const parent = (outcome: UpdateResult['outcome']): UpdateResult => ({
+    repo: 'o/r',
+    number: 1,
+    head: 'g',
+    base: 'main',
+    headOid: 'g0',
+    baseOid: 'm0',
+    strategy: 'rebase',
+    outcome,
+  })
+  const policy = { maxFailedAttempts: 0, retryFailed: false }
+  const pushed = parent({
+    status: 'updated',
+    resolved: [],
+    pushed: true,
+    builtOid: 'g1',
+    pushedOid: 'g1',
+  })
+
+  test('goes onto the head the parent was pushed at, replaying from its old head', () => {
+    expect(restackTarget(child, [pushed], true, policy)).toEqual({
+      ...child,
+      baseOid: 'g1',
+      onto: { parent: 1, oid: 'g1', upstream: 'g0' },
+    })
+  })
+
+  test('a rehearsal goes onto the head the parent was built at', () => {
+    const built = parent({ status: 'updated', resolved: [], pushed: false, builtOid: 'g1' })
+    expect(restackTarget(child, [built], false, policy)).toMatchObject({
+      onto: { parent: 1, oid: 'g1', upstream: 'g0' },
+    })
+  })
+
+  test('a parent that was built but not pushed holds the child back in a run that writes', () => {
+    const declined = parent({
+      status: 'updated',
+      resolved: [],
+      pushed: false,
+      builtOid: 'g1',
+      declined: 'push declined',
+    })
+    expect(restackTarget(child, [declined], true, policy)).toBe(
+      'blocked on #1; parent #1 was not pushed (push declined)',
+    )
+  })
+
+  test('a parent that conflicted or failed holds the child back', () => {
+    const conflict = parent({ status: 'conflict', needsHuman: [] })
+    expect(restackTarget(child, [conflict], true, policy)).toBe(
+      'blocked on #1; parent #1 ended conflict',
+    )
+    expect(restackTarget(child, [], true, policy)).toBe('blocked on #1; parent #1 was not updated')
+  })
+
+  test('a parent that was already current leaves the child as surveyed', () => {
+    expect(restackTarget(child, [parent({ status: 'up-to-date' })], true, policy)).toBe(child)
+  })
+
+  test("a failure recorded at the child's new base holds it back", () => {
+    const attempts: AttemptStore = {
+      get: (key) => (key.baseOid === 'g1' ? { failures: 2, reason: 'x', at: '' } : null),
+      recordFailure: () => {},
+      clear: () => {},
+    }
+    const out = restackTarget(child, [pushed], true, {
+      attempts,
+      maxFailedAttempts: 2,
+      retryFailed: false,
+    })
+    expect(out).toBe('failed 2 time(s) at this head and base; waiting for either to move')
+  })
+})
+
+describe('runUpdate --restack — a three-level stack, against real git', () => {
+  // main <- g (#1) <- p (#2) <- c (#3), and main has moved on.
+  let fx: ReturnType<typeof makeBareAndWorker>
+  let calls: string[][]
+
+  function branch(name: string, from: string, files: Record<string, string>): void {
+    const { git } = fx.worker
+    git.checkout(from, { branch: name })
+    fx.worker.commit(`${name} work`, files)
+    git.push('origin', name)
+  }
+
+  beforeEach(() => {
+    fx = makeBareAndWorker({ initialBranch: 'main' })
+    const { git } = fx.worker
+    fx.worker.commit('initial', { 'README.md': 'fixture\n' })
+    git.push('origin', 'main')
+    branch('g', 'main', { 'g.txt': 'g\n' })
+    branch('p', 'g', { 'p.txt': 'p\n' })
+    branch('c', 'p', { 'c.txt': 'c\n' })
+    git.checkout('main')
+    fx.worker.commit('main moves', { 'm.txt': 'm\n' })
+    git.push('origin', 'main')
+    git.fetch('origin')
+  })
+  afterEach(() => fx.cleanup())
+
+  const tip = (name: string) => {
+    fx.worker.git.fetch('origin')
+    return fx.worker.git.resolveRef(`origin/${name}`)!
+  }
+
+  async function run(patch: Partial<UpdateArgs>, ports: Partial<Ports> = {}) {
+    calls = []
+    const real = spawnRunner('git')
+    const git: CommandRunner = {
+      run: (argv, opts) => {
+        calls.push(argv)
+        return real.run(argv, { ...opts, env: { ...IDENTITY, ...opts.env } })
+      },
+    }
+    const prs: CodeHostPrDetail[] = (
+      [
+        [1, 'g', 'main'],
+        [2, 'p', 'g'],
+        [3, 'c', 'p'],
+      ] as const
+    ).map(([number, head, base]) => ({
+      number,
+      title: head,
+      url: `https://github.com/o/r/pull/${number}`,
+      baseRef: base,
+      headRef: head,
+      headSha: fx.worker.git.resolveRef(`origin/${head}`)!,
+      isDraft: false,
+      labels: [],
+      reviewCount: 0,
+      isCrossRepository: false,
+    }))
+    return runUpdate(
+      { ...ARGS, repo: ['o/r'], restack: true, ...patch },
+      {
+        projectRoot: fx.worker.dir,
+        dryRun: false,
+        git,
+        gh: UNREACHABLE_GH,
+        codeHost: () =>
+          ({ listPrDetails: () => ({ ok: true, value: prs }) }) as unknown as CodeHost,
+        cfg: cfg(),
+        ports: fakePorts({ locate: () => fx.worker.dir, ...ports }),
+      },
+    )
+  }
+
+  test.each(['rebase', 'merge'] as const)(
+    "--apply --strategy %s updates every level in one run, each onto its parent's new head",
+    async (strategy) => {
+      const before = { g: tip('g'), p: tip('p'), c: tip('c') }
+      const out = await run({ apply: true, strategy })
+      expect(out.results.map((r) => [r.number, r.status, r.pushed, r.restackedOnto])).toEqual([
+        [1, 'updated', true, undefined],
+        [2, 'updated', true, 1],
+        [3, 'updated', true, 2],
+      ])
+      expect(out.skipped).toEqual([])
+      const { git } = fx.worker
+      const after = { g: tip('g'), p: tip('p'), c: tip('c') }
+      expect(git.isAncestor(tip('main'), after.g)).toBe(true)
+      expect(git.isAncestor(after.g, after.p)).toBe(true)
+      expect(git.isAncestor(after.p, after.c)).toBe(true)
+      expect(after).not.toEqual(before)
+      if (strategy === 'rebase') {
+        // Each child replays only its own commit, from its parent's old head.
+        expect(calls).toContainEqual(['rebase', '--onto', after.g, before.g])
+        expect(calls).toContainEqual(['rebase', '--onto', after.p, before.p])
+        expect(git.aheadBehind(after.p, after.c)).toEqual({ ahead: 1, behind: 0 })
+      }
+    },
+  )
+
+  test('a rehearsal builds every level on the one before and pushes nothing', async () => {
+    const before = { g: tip('g'), p: tip('p'), c: tip('c') }
+    const out = await run({ apply: false, strategy: 'rebase' })
+    expect(out.results.map((r) => [r.number, r.status, r.pushed, r.restackedOnto])).toEqual([
+      [1, 'updated', false, undefined],
+      [2, 'updated', false, 1],
+      [3, 'updated', false, 2],
+    ])
+    expect({ g: tip('g'), p: tip('p'), c: tip('c') }).toEqual(before)
+  })
+
+  test('without --restack, the children wait for the next run', async () => {
+    const out = await run({ apply: true, strategy: 'merge', restack: false })
+    expect(out.results.map((r) => r.number)).toEqual([1])
+    expect(out.skipped.map((s) => [s.number, s.reason])).toEqual([
+      [2, 'blocked on #1'],
+      [3, 'blocked on #1'],
+    ])
+  })
+
+  test('a declined parent push holds every level below it back', async () => {
+    const out = await run(
+      { apply: true, strategy: 'rebase', confirmPush: true },
+      { confirmPush: () => false },
+    )
+    expect(out.results.map((r) => [r.number, r.pushed])).toEqual([[1, false]])
+    expect(out.skipped.map((s) => [s.number, s.reason])).toEqual([
+      [2, 'blocked on #1; parent #1 was not pushed (push declined)'],
+      [3, 'blocked on #2; parent #2 was not updated'],
+    ])
+  })
+
+  test('--branch on the top PR restacks the whole stack under it', async () => {
+    const out = await run({ apply: true, strategy: 'merge', branch: 'c' })
+    expect(out.results.map((r) => [r.number, r.status])).toEqual([
+      [1, 'updated'],
+      [2, 'updated'],
+      [3, 'updated'],
+    ])
   })
 })

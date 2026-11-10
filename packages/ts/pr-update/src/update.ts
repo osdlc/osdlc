@@ -26,8 +26,14 @@
  *     `--retry-failed` attempts it anyway.
  *
  * `verify: check` or `verify: test` runs the `verifyVerbs` that
- * `ports.resolveVerifyVerbs` returns before a push. Whether a verb list from
+ * `ports.resolveVerifyVerbs` returns before a push. It is asked once per
+ * repository, naming the repository and its checkout, so a run over several
+ * repositories can verify each with its own commands. Whether a verb list from
  * the project may run is the host's decision, made in that port.
+ *
+ * A PR number names a PR only within one repository. Two repositories in one
+ * run can both hold a PR 1, so every result and skip carries its `repo`, and
+ * the run keys its own bookkeeping by repository and number together.
  */
 
 import { join } from 'node:path'
@@ -47,9 +53,12 @@ import {
 import {
   SCOPE_SHAPE,
   SurveyUsageError,
-  repoFailure,
+  prKey,
+  repoEntry,
   runSurvey,
+  selectorLabel,
   surveyTargets,
+  type PrSelector,
   type SurveyEnv,
   type SurveyReport,
 } from './survey.ts'
@@ -59,9 +68,19 @@ import type { PrUpdateConfig } from './config.ts'
 
 /** A row the run left alone, and the reason, so no row is dropped without a word. */
 export interface SkippedPr {
+  /** `owner/name`. */
+  repo: string
   number: number
   head: string
   reason: string
+}
+
+/** What `selectTargets` makes of a survey. */
+export interface Selection {
+  targets: UpdateTarget[]
+  skipped: SkippedPr[]
+  /** The `only` selectors no surveyed PR matched, as `selectorLabel` prints them. */
+  notFound: string[]
 }
 
 /** The failed-attempt key for a target, or null when either sha is unknown. */
@@ -70,6 +89,11 @@ export function attemptKey(
 ): AttemptKey | null {
   if (t.headOid === null || t.baseOid === null) return null
   return { repo: t.repo, head: t.head, headOid: t.headOid, base: t.base, baseOid: t.baseOid }
+}
+
+/** Whether a run updates a whole stack in one pass. See {@link selectTargets}. */
+export interface SelectOptions {
+  restack?: boolean | undefined
 }
 
 export interface FailedAttemptPolicy {
@@ -82,30 +106,50 @@ export interface FailedAttemptPolicy {
 /**
  * Split the survey into what this run will act on and what it will not.
  *
- * Every row lands in exactly one list. Every number `only` (`--pr`) named
+ * Every row lands in exactly one list. Every selector `only` (`--pr`) named
  * lands somewhere too, even one the survey never reported (a typo, or a PR
- * that closed between the survey and this run). Such a number gets a made-up
- * `skipped` entry instead of disappearing. A PR that disappeared from the
- * report would be the worst outcome, because the reader would assume it was
- * fine.
+ * that closed between the survey and this run). Such a selector is listed in
+ * `notFound` instead of disappearing. A PR that disappeared from the report
+ * would be the worst outcome, because the reader would assume it was fine.
+ *
+ * A PR is identified by repository and number together. In a run over
+ * several repositories, two of them can each hold a PR 1, and both must be
+ * reported.
+ *
+ * With `restack`, a `blocked` PR whose parent is a target is a target too,
+ * marked with `stackParent`: the run updates it after its parent, onto the
+ * head the parent got (see `runUpdate`). Its failed-attempt check waits until
+ * then, because its new base sha is not known before. A scoped restack run
+ * also selects the stack ancestors of each PR it names, since a PR cannot be
+ * restacked onto a parent the run leaves behind.
  */
 export function selectTargets(
   report: SurveyReport,
-  only: readonly number[],
+  only: readonly PrSelector[],
   policy: FailedAttemptPolicy = { maxFailedAttempts: 0, retryFailed: false },
-): { targets: UpdateTarget[]; skipped: SkippedPr[] } {
+  options: SelectOptions = {},
+): Selection {
   const store = policy.retryFailed || policy.maxFailedAttempts === 0 ? undefined : policy.attempts
-  const wanted = new Set(only)
-  const seen = new Set<number>()
+  const wantedNumbers = new Set(only.filter((s): s is number => typeof s === 'number'))
+  const wantedKeys = new Set(only.filter((s): s is string => typeof s === 'string'))
+  const scoped = only.length > 0
+  const named = (repo: string, number: number): boolean =>
+    !scoped || wantedNumbers.has(number) || wantedKeys.has(prKey(repo, number))
+  const ancestors = options.restack === true && scoped ? ancestorsOfNamed(report, named) : null
+  const selected = (repo: string, number: number): boolean =>
+    named(repo, number) || ancestors?.has(prKey(repo, number)) === true
+  const seen = new Set<string>()
+  const seenNumbers = new Set<number>()
   const targets: UpdateTarget[] = []
   const skipped: SkippedPr[] = []
 
   for (const row of report.prs) {
-    seen.add(row.number)
+    seen.add(prKey(row.repo, row.number))
+    seenNumbers.add(row.number)
     const note = (reason: string): void => {
-      skipped.push({ number: row.number, head: row.head, reason })
+      skipped.push({ repo: row.repo, number: row.number, head: row.head, reason })
     }
-    if (wanted.size > 0 && !wanted.has(row.number)) {
+    if (!selected(row.repo, row.number)) {
       // `note`, not a bare `continue`. A PR outside this run's `--pr` scope is
       // still a row the survey reported, and every surveyed PR must land in
       // `targets` or `skipped`.
@@ -116,8 +160,28 @@ export function selectTargets(
     // run, and this check narrows the type for the code after it.
     if (row.strategy !== 'rebase' && row.strategy !== 'merge') {
       note(row.strategyReason)
-    } else if (row.status === 'blocked') note(`blocked on #${row.blockedBy ?? '?'}`)
-    else if (row.status === 'unknown') note('drift could not be measured')
+    } else if (row.status === 'blocked') {
+      const parentIsTarget =
+        row.parent !== null && targets.some((t) => t.repo === row.repo && t.number === row.parent)
+      if (options.restack === true && parentIsTarget) {
+        targets.push({
+          repo: row.repo,
+          number: row.number,
+          head: row.head,
+          base: row.base,
+          headOid: row.headOid,
+          baseOid: row.baseOid,
+          strategy: row.strategy,
+          stackParent: row.parent!,
+        })
+      } else {
+        const why =
+          options.restack === true && row.parent !== null
+            ? `; parent #${row.parent} is not updated in this run`
+            : ''
+        note(`blocked on #${row.blockedBy ?? '?'}${why}`)
+      }
+    } else if (row.status === 'unknown') note('drift could not be measured')
     else if (row.status === 'up-to-date') note('already up to date')
     else {
       const target: UpdateTarget = {
@@ -138,23 +202,44 @@ export function selectTargets(
   }
   // A PR in a base/head cycle has no row, because it has no place in the
   // stack order. It is still a PR the survey listed, so it is reported here.
-  for (const number of report.cycles) {
-    if (seen.has(number)) continue
-    seen.add(number)
-    const reason =
-      wanted.size > 0 && !wanted.has(number)
-        ? 'not selected by --pr/--branch'
-        : 'in a base/head cycle; no stack order to update it in'
-    skipped.push({ number, head: '', reason })
+  for (const { repo, cycles } of report.repos) {
+    for (const number of cycles) {
+      const key = prKey(repo, number)
+      if (seen.has(key)) continue
+      seen.add(key)
+      seenNumbers.add(number)
+      const reason = selected(repo, number)
+        ? 'in a base/head cycle; no stack order to update it in'
+        : 'not selected by --pr/--branch'
+      skipped.push({ repo, number, head: '', reason })
+    }
   }
-  // A `--pr` number the survey never reported (a typo, or a PR that closed
-  // between the survey and this run) never reaches `note()` in the loop above,
-  // which sees only `report.prs`. Add it here, so every number this run was
-  // asked about is reported.
-  for (const number of wanted) {
-    if (!seen.has(number)) skipped.push({ number, head: '', reason: 'not found in survey' })
+  // A `--pr` selector the survey never reported (a typo, or a PR that closed
+  // between the survey and this run) never reaches `note()` in the loops
+  // above, which see only what the survey listed. Report it here, so every
+  // selector this run was asked about is accounted for.
+  const notFound = only
+    .filter((s) => (typeof s === 'number' ? !seenNumbers.has(s) : !seen.has(s)))
+    .map(selectorLabel)
+  return { targets, skipped, notFound: [...new Set(notFound)] }
+}
+
+/** The keys of every stack ancestor of a PR `named` selects. Rows come parent first. */
+function ancestorsOfNamed(
+  report: SurveyReport,
+  named: (repo: string, number: number) => boolean,
+): Set<string> {
+  const parentOf = new Map(report.prs.map((r) => [prKey(r.repo, r.number), r.parent]))
+  const out = new Set<string>()
+  for (const row of report.prs) {
+    if (!named(row.repo, row.number)) continue
+    let parent = row.parent
+    while (parent !== null && !out.has(prKey(row.repo, parent))) {
+      out.add(prKey(row.repo, parent))
+      parent = parentOf.get(prKey(row.repo, parent)) ?? null
+    }
   }
-  return { targets, skipped }
+  return out
 }
 
 export const input = z.object({
@@ -184,6 +269,12 @@ export const input = z.object({
     .describe(
       'Attempt PRs whose update already failed at their current head and base sha. New failures are still recorded.',
     ),
+  restack: z
+    .boolean()
+    .default(false)
+    .describe(
+      "Update a whole stack in one run. A PR blocked only because its parent is behind is updated right after that parent, onto the head the parent just got, instead of waiting for the next run. A rebase replays only its own commits (`rebase --onto`), not its parent's old ones. With --pr or --branch, the named PRs' stack ancestors are updated too.",
+    ),
   strategy: z
     .enum(['rebase', 'merge'])
     .optional()
@@ -193,6 +284,9 @@ export const input = z.object({
 })
 
 export const result = z.object({
+  repo: z
+    .string()
+    .describe('`owner/name`. A PR number alone is ambiguous in a run over several repositories.'),
   number: z.number(),
   head: z.string(),
   base: z.string(),
@@ -226,19 +320,36 @@ export const result = z.object({
     .describe(
       "Present in branch mode after a push: whether the working directory's checkout was moved to the pushed head, and why not when it was left alone.",
     ),
+  restackedOnto: z
+    .number()
+    .optional()
+    .describe(
+      'Present when a restack run updated this PR onto the head its parent (this PR number, same repository) got earlier in the run.',
+    ),
 })
 
 export const output = z.object({
   applied: z.boolean().describe('False when this was a rehearsal.'),
   results: z.array(result).describe('One per PR acted on, in the order applied.'),
   skipped: z
-    .array(z.object({ number: z.number(), head: z.string(), reason: z.string() }))
+    .array(
+      z.object({
+        repo: z.string().describe('`owner/name`.'),
+        number: z.number(),
+        head: z.string(),
+        reason: z.string(),
+      }),
+    )
     .describe('PRs deliberately not acted on. Every surveyed PR is here or in `results`.'),
-  repoFailures: z
-    .array(repoFailure.extend({ repo: z.string() }))
-    .optional()
+  notFound: z
+    .array(z.string())
     .describe(
-      'Repositories that could not be listed, in a run over several repositories; absent when none failed. The run still acted on the others.',
+      '`--pr` selectors no surveyed PR matched, as `#N` (a number no repository has) or `owner/name#N`: a typo, or a PR that closed.',
+    ),
+  repos: z
+    .array(repoEntry)
+    .describe(
+      "Repositories surveyed, as `survey` reports them. A repository's `failure` is set when it could not be listed; the run still acted on the others.",
     ),
   counts: z.object({
     updated: z.number(),
@@ -246,12 +357,14 @@ export const output = z.object({
     conflict: z.number(),
     failed: z.number(),
     skipped: z.number(),
+    notFound: z.number(),
   }),
 })
 
 /** Map one executor result to the `result` schema. Exported for tests. */
 export function toResult(r: UpdateResult, localCheckout?: LocalCheckout): z.infer<typeof result> {
   return {
+    repo: r.repo,
     number: r.number,
     head: r.head,
     base: r.base,
@@ -267,6 +380,7 @@ export function toResult(r: UpdateResult, localCheckout?: LocalCheckout): z.infe
       ? { repaired: r.outcome.repaired }
       : {}),
     ...(localCheckout === undefined ? {} : { localCheckout }),
+    ...(r.onto === undefined ? {} : { restackedOnto: r.onto.parent }),
   }
 }
 
@@ -378,40 +492,64 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
   const report = runSurvey(args, { ...env, cfg: effectiveCfg })
   const attempts = env.ports.attempts
   // Branch mode names its PR by head branch. The survey has already narrowed
-  // the report to it and its stack parents.
-  const only =
+  // the report to it and its stack parents. The match is by repository and
+  // number, so a same-numbered PR in another repository is not swept in.
+  const only: PrSelector[] =
     args.branch === undefined
       ? args.pr
-      : [...args.pr, ...report.prs.filter((r) => r.head === args.branch).map((r) => r.number)]
-  const { targets, skipped } = selectTargets(report, only, {
+      : [
+          ...args.pr,
+          ...report.prs.filter((r) => r.head === args.branch).map((r) => prKey(r.repo, r.number)),
+        ]
+  const policy: FailedAttemptPolicy = {
     attempts,
     maxFailedAttempts: effectiveCfg.max_failed_attempts,
     retryFailed: args.retryFailed,
+  }
+  const { targets, skipped, notFound } = selectTargets(report, only, policy, {
+    restack: args.restack,
   })
 
   const writes = wantsWrite(args, env.dryRun)
 
   // Each repository's PRs are updated in that repository's own checkout, the
   // one the survey measured them in.
-  const located = targets.length === 0 ? [] : surveyTargets(args, env).targets
-  const pathOf = new Map(located.map((t) => [t.slug, t.path ?? env.projectRoot]))
-  const groups = new Map<string, UpdateTarget[]>()
+  const located = surveyTargets(args, env).targets
+  const pathOf = new Map(located.map((t) => [t.repo, t.path ?? env.projectRoot]))
+  const groups = new Map<string, { path: string; targets: UpdateTarget[] }>()
   for (const t of targets) {
-    const path = pathOf.get(t.repo) ?? env.projectRoot
-    groups.set(path, [...(groups.get(path) ?? []), t])
+    const group = groups.get(t.repo)
+    if (group !== undefined) group.targets.push(t)
+    else groups.set(t.repo, { path: pathOf.get(t.repo) ?? env.projectRoot, targets: [t] })
   }
   const runId = `${process.pid}.${Date.now()}`
-  // Resolve once here, not inside `updateAll`'s per-PR loop.
+  // Once per repository, not inside `updateAll`'s per-PR loop. All of them
+  // before any update, so a list the host refuses for one repository stops
+  // the run before anything in any repository is pushed. And every surveyed
+  // checkout, not only those with a PR to update, so a missing or refused
+  // list is reported on every run, not first on the run that needs it.
   const verify = effectiveCfg.verify
-  const verifyVerbs =
-    verify === 'none'
-      ? []
-      : await env.ports.resolveVerifyVerbs({ which: verify, trust: args.trust })
+  const verifyVerbsOf = new Map<string, readonly string[]>()
+  if (verify !== 'none') {
+    const toAsk = new Map<string, string>()
+    for (const { repo, measurable, failure } of report.repos) {
+      const checkout = pathOf.get(repo)
+      if (measurable && failure === undefined && checkout !== undefined) toAsk.set(repo, checkout)
+    }
+    // Every repository with a PR to update is asked, so none is pushed
+    // unverified for want of a list.
+    for (const [repo, { path }] of groups) if (!toAsk.has(repo)) toAsk.set(repo, path)
+    for (const [repo, checkout] of toAsk) {
+      verifyVerbsOf.set(
+        repo,
+        await env.ports.resolveVerifyVerbs({ which: verify, trust: args.trust, repo, checkout }),
+      )
+    }
+  }
   const settings = {
     remote: args.remote,
     resolvers: effectiveCfg.resolvers,
     lockfileInstall: effectiveCfg.lockfile_install,
-    verifyVerbs,
     generators: env.ports.generators,
     repair: env.ports.repair,
     repairOn: effectiveCfg.repair.on,
@@ -419,13 +557,25 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
     confirmPush,
   }
   const results: UpdateResult[] = []
-  for (const [path, group] of groups) {
+  for (const [repo, { path, targets: group }] of groups) {
     const git = new Git(path, { runner: env.git })
     const worktreeRoot = join(path, '.pr-update', runId)
+    const verifyVerbs = verifyVerbsOf.get(repo) ?? []
     results.push(
-      ...(await updateAll(git, group, settings, env.ports.runVerb, {
+      ...(await updateAll(git, group, { ...settings, verifyVerbs }, env.ports.runVerb, {
         apply: writes,
         worktreeRoot,
+        prepare: (target, done) => {
+          const ready = restackTarget(target, done, writes, policy)
+          if (typeof ready !== 'string') return ready
+          skipped.push({
+            repo: target.repo,
+            number: target.number,
+            head: target.head,
+            reason: ready,
+          })
+          return null
+        },
       })),
     )
   }
@@ -436,36 +586,81 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
     recordAttempts(attempts, results)
   }
 
-  const local = new Map<number, LocalCheckout>()
+  const local = new Map<string, LocalCheckout>()
   if (writes && args.branch !== undefined) {
     // Branch mode names a branch of the checkout at the project root.
     const git = new Git(env.projectRoot, { runner: env.git })
-    const key = (t: UpdateTarget): string => `${t.repo}#${t.number}`
-    const atRoot = new Set((groups.get(env.projectRoot) ?? []).map(key))
+    const atRoot = new Set(
+      [...groups].filter(([, g]) => g.path === env.projectRoot).map(([repo]) => repo),
+    )
     for (const r of results) {
-      if (!atRoot.has(key(r))) continue
+      if (!atRoot.has(r.repo)) continue
       const synced = syncLocalCheckout(git, r)
-      if (synced !== undefined) local.set(r.number, synced)
+      if (synced !== undefined) local.set(prKey(r.repo, r.number), synced)
     }
   }
 
   const t = tally(results)
-  const failedRepos = report.repos.flatMap((r) =>
-    r.failure === undefined ? [] : [{ repo: r.slug, ...r.failure }],
-  )
   return {
     applied: writes,
-    results: results.map((r) => toResult(r, local.get(r.number))),
+    results: results.map((r) => toResult(r, local.get(prKey(r.repo, r.number)))),
     skipped,
-    ...(failedRepos.length > 0 ? { repoFailures: failedRepos } : {}),
+    notFound,
+    repos: report.repos,
     counts: {
       updated: t['updated'] ?? 0,
       upToDate: t['up-to-date'] ?? 0,
       conflict: t['conflict'] ?? 0,
       failed: t['failed'] ?? 0,
       skipped: skipped.length,
+      notFound: notFound.length,
     },
   }
+}
+
+/**
+ * A restack child, ready to run after its parent: onto the head the parent
+ * just got, or a reason it is held back. A target with no `stackParent` is
+ * returned unchanged.
+ *
+ * In a run that writes, the child goes only onto a parent that was pushed.
+ * A child pushed onto a head its parent's PR does not have would show the
+ * parent's new commits in its own diff. A rehearsal goes onto the parent's
+ * built head, which exists only in this run.
+ */
+export function restackTarget(
+  target: UpdateTarget,
+  done: readonly UpdateResult[],
+  writes: boolean,
+  policy: FailedAttemptPolicy,
+): UpdateTarget | string {
+  if (target.stackParent === undefined) return target
+  const parentNumber = target.stackParent
+  const parent = done.find((r) => r.repo === target.repo && r.number === parentNumber)
+  const label = `parent #${parentNumber}`
+  if (parent === undefined) return `blocked on #${parentNumber}; ${label} was not updated`
+  const o = parent.outcome
+  // A parent that turned out current never moved, so the child is
+  // measured against its base as the survey saw it.
+  if (o.status === 'up-to-date') return target
+  if (o.status !== 'updated') return `blocked on #${parentNumber}; ${label} ended ${o.status}`
+  if (writes && !o.pushed) {
+    return `blocked on #${parentNumber}; ${label} was not pushed (${o.declined ?? 'not pushed'})`
+  }
+  const oid = o.pushedOid ?? o.builtOid
+  if (oid === undefined) return `blocked on #${parentNumber}; ${label}'s new head is unknown`
+  const next: UpdateTarget = {
+    ...target,
+    baseOid: oid,
+    onto: { parent: parentNumber, oid, upstream: parent.headOid },
+  }
+  const store = policy.retryFailed || policy.maxFailedAttempts === 0 ? undefined : policy.attempts
+  const key = attemptKey(next)
+  const failures = store === undefined || key === null ? 0 : (store.get(key)?.failures ?? 0)
+  if (store !== undefined && failures >= policy.maxFailedAttempts) {
+    return `failed ${failures} time(s) at this head and base; waiting for either to move`
+  }
+  return next
 }
 
 /** Record each failure under its key; forget a PR target once it updates, pushed or not. */
@@ -480,12 +675,20 @@ function recordAttempts(store: AttemptStore, results: readonly UpdateResult[]): 
   }
 }
 
-/** Render an update report as the same text `pr-update update` prints. */
+/**
+ * Render an update report as the same text `pr-update update` prints.
+ *
+ * Every PR is shown as `owner/name#N`, whatever the number of repositories,
+ * so a run prints the same text with or without `--repo`, and each PR can be
+ * pasted back into `--pr` or into GitHub.
+ */
 export function renderUpdateText(out: UpdateOutput): string {
   const lines: string[] = []
   for (const r of out.results) {
     const mark = r.status === 'updated' ? (r.pushed ? '✓' : '·') : r.status === 'failed' ? '✗' : '!'
-    lines.push(`${mark} #${r.number}  ${r.strategy}  ${r.head}  ${r.detail}`)
+    const onto =
+      r.restackedOnto === undefined ? '' : `  (restacked onto ${prKey(r.repo, r.restackedOnto)})`
+    lines.push(`${mark} ${prKey(r.repo, r.number)}  ${r.strategy}  ${r.head}  ${r.detail}${onto}`)
     if (r.localCheckout !== undefined) {
       lines.push(
         `    checkout: ${r.localCheckout.updated ? 'moved' : 'left'} — ${r.localCheckout.detail}`,
@@ -493,13 +696,17 @@ export function renderUpdateText(out: UpdateOutput): string {
     }
   }
   for (const s of out.skipped) {
-    lines.push(`- #${s.number}  ${s.head}  ${s.reason}`)
+    lines.push(`- ${prKey(s.repo, s.number)}  ${s.head}  ${s.reason}`)
+  }
+  for (const selector of out.notFound) {
+    lines.push(`? ${selector}  no open PR in the surveyed repositories`)
   }
   const c = out.counts
   const mode = out.applied ? 'PR-UPDATE' : 'PR-UPDATE (rehearsal — nothing pushed)'
   lines.push(
     `\n${mode}: updated=${c.updated} up-to-date=${c.upToDate} ` +
-      `conflict=${c.conflict} failed=${c.failed} skipped=${c.skipped}`,
+      `conflict=${c.conflict} failed=${c.failed} skipped=${c.skipped}` +
+      (c.notFound > 0 ? ` not-found=${c.notFound}` : ''),
   )
   return `${lines.join('\n')}\n`
 }
