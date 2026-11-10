@@ -1,0 +1,92 @@
+/* Colour tokens. Light by default, dark under prefers-color-scheme. */
+:root {
+  color-scheme: light;
+  --bg: #f4f4f1;
+  --surface: #ffffff;
+  --surface-2: #f0f0ec;
+  --text: #1d1e20;
+  --muted: #5c6066;
+  --border: #d4d4ce;
+  --border-strong: #a9aaa4;
+  --accent: #2851c8;
+  --accent-soft: rgb(40 81 200 / 0.14);
+  --focus: #2851c8;
+
+  --band-a: rgb(30 40 60 / 0.035);
+  --band-b: rgb(30 40 60 / 0.075);
+  --band-label: #6b6f76;
+
+  --edge-both: #8b9099;
+  --removed: #b93a2c;
+  --removed-bg: #fbe9e6;
+  --added: #1d7a43;
+  --added-bg: #e3f4ea;
+  --match: #b7791f;
+  --overlap: #d9730d;
+  --overlap-bg: #fdf0e1;
+  --overlap-text: #8a4405;
+
+  /* Simple Icons brand colours; the dark set is lightened to keep 3:1 or more on the card. */
+  --logo-ts: #3178c6;
+  --logo-rust: #000000;
+  --logo-markdown: #000000;
+  --logo-yaml: #cb171e;
+
+  --repo-0: #3561d6;
+  --repo-1: #8a4fc4;
+  --repo-2: #d07a1f;
+  --repo-3: #13938a;
+  --repo-4: #c2477c;
+  --repo-5: #6c7a1e;
+  --repo-none: #9a9a9a;
+
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.08), 0 2px 6px rgb(0 0 0 / 0.05);
+  --radius: 8px;
+  --font: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #131417;
+    --surface: #1c1e22;
+    --surface-2: #24272c;
+    --text: #e8e8e5;
+    --muted: #a2a6ad;
+    --border: #353840;
+    --border-strong: #5a5e67;
+    --accent: #87a8ff;
+    --accent-soft: rgb(135 168 255 / 0.18);
+    --focus: #87a8ff;
+
+    --band-a: rgb(255 255 255 / 0.025);
+    --band-b: rgb(255 255 255 / 0.055);
+    --band-label: #9a9ea6;
+
+    --edge-both: #737882;
+    --removed: #ff8577;
+    --removed-bg: #3a201d;
+    --added: #63d692;
+    --added-bg: #16301f;
+    --match: #f0b44c;
+    --overlap: #ff9d42;
+    --overlap-bg: #3a2814;
+    --overlap-text: #ffc58a;
+
+    --logo-ts: #5b9bea;
+    --logo-rust: #e8e8e5;
+    --logo-markdown: #e8e8e5;
+    --logo-yaml: #f0565c;
+
+    --repo-0: #7c9cff;
+    --repo-1: #c08bf0;
+    --repo-2: #f0a35a;
+    --repo-3: #4fcfc4;
+    --repo-4: #f07fae;
+    --repo-5: #b5c35a;
+    --repo-none: #777;
+
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 2px 8px rgb(0 0 0 / 0.3);
+  }
+}
