@@ -77,7 +77,8 @@ export function registryProblems(
         for (const [n, r] of readers.entries()) {
           if (isObject(r)) {
             if (typeof r['dir'] === 'string') {
-              if (seenDirs.has(r['dir'])) problems.push(`${name}: reader ${r['dir']} is listed twice`)
+              if (seenDirs.has(r['dir']))
+                problems.push(`${name}: reader ${r['dir']} is listed twice`)
               else if (implementationDirs.has(r['dir']))
                 problems.push(`${name}: ${r['dir']} is both an implementation and a reader`)
               seenDirs.add(r['dir'])
