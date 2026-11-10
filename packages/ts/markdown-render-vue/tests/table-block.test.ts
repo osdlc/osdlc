@@ -321,6 +321,39 @@ describe('TableBlock', () => {
     expect(written[0]).toBe(['a,b,c', 'x,,y', 'p,q,r', ',s,t'].join('\r\n'))
   })
 
+  test('an unbounded colspan or rowspan copies in bounded time and size', async () => {
+    recordingClipboard()
+    const host = await mount({
+      source:
+        '<table><tbody>' +
+        '<tr><td colspan="5000000">wide</td><td>z</td></tr>' +
+        '<tr><td colspan="Infinity">inf</td></tr>' +
+        '<tr><td rowspan="999999999">tall</td><td>q</td></tr>' +
+        '</tbody></table>',
+    })
+    click(copyButton(host))
+    await flush()
+    const rows = written[0]!.split('\r\n')
+    expect(rows[0]!.split(',').length).toBe(1001) // 1000 columns for the wide cell, then z
+    expect(rows[1]!.split(',').length).toBe(1000)
+    expect(rows[2]!.startsWith('tall,q')).toBe(true)
+  })
+
+  test('copy keeps columns when a row is shorter than a rowspan above it', async () => {
+    recordingClipboard()
+    const host = await mount({
+      source:
+        '<table><tbody>' +
+        '<tr><td>a</td><td>b</td><td rowspan="2">c</td></tr>' +
+        '<tr><td>d</td></tr>' +
+        '<tr><td>e</td><td>f</td><td>g</td></tr>' +
+        '</tbody></table>',
+    })
+    click(copyButton(host))
+    await flush()
+    expect(written[0]).toBe(['a,b,c', 'd', 'e,f,g'].join('\r\n'))
+  })
+
   test('a cell copies what the reader sees: link text, code text, quotes escaped', async () => {
     recordingClipboard()
     const source = [

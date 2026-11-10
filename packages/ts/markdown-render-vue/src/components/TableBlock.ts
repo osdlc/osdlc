@@ -147,6 +147,20 @@ function tableSignature(node: HastNode): string {
   ])
 }
 
+/** The HTML limits on `colspan` and `rowspan`; a browser draws no more, so the copy writes no more. */
+const MAX_COLSPAN = 1000
+const MAX_ROWSPAN = 65534
+
+/**
+ * A span attribute as a whole number up to `max`. Unreadable and negative values
+ * are 1; 0 is kept when `zeroIsSpan` (`rowspan="0"` runs to the end of the group).
+ */
+function clampSpan(raw: unknown, max: number, zeroIsSpan: boolean): number {
+  const n = Math.trunc(Number(raw))
+  if (n === 0 && zeroIsSpan) return 0
+  return n >= 1 ? Math.min(max, n) : 1
+}
+
 export const TableBlock = defineComponent({
   name: 'TableBlock',
   props: {
@@ -255,9 +269,10 @@ export const TableBlock = defineComponent({
           for (const cell of rowCells(source[index]!)) {
             while (take());
             const column = fields.length
-            const colSpan = Math.max(1, Number(cell.properties?.colSpan) || 1)
+            const colSpan = clampSpan(cell.properties?.colSpan, MAX_COLSPAN, false)
             const rawRows = cell.properties?.rowSpan
-            const rowSpan = rawRows === undefined || rawRows === '' ? 1 : Number(rawRows)
+            const rowSpan =
+              rawRows === undefined || rawRows === '' ? 1 : clampSpan(rawRows, MAX_ROWSPAN, true)
             fields.push(cellText(cell))
             for (let k = 1; k < colSpan; k++) fields.push('')
             if (rowSpan === 0 || rowSpan > 1) {
@@ -266,6 +281,13 @@ export const TableBlock = defineComponent({
             }
           }
           while (take());
+          // A carried cell in a column this row never reached still used up one
+          // of its rows, or the rows below would shift left of it.
+          for (const [column, left] of carried) {
+            if (column < fields.length) continue
+            if (left <= 1) carried.delete(column)
+            else carried.set(column, left - 1)
+          }
           rows.push(fields)
         }
       }
