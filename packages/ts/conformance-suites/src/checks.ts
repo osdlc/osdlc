@@ -15,6 +15,8 @@ export interface Family {
   reference: string
   generator: string
   implementations: Implementation[]
+  /** Libraries that read the suite but are not twins: no version match is asked of them. */
+  readers?: Implementation[]
 }
 
 /** The languages a family may be written in. */
@@ -56,11 +58,52 @@ export function registryProblems(
       continue
     }
     const extra = Object.keys(f).filter(
-      (k) => !['reference', 'generator', 'implementations'].includes(k),
+      (k) => !['reference', 'generator', 'implementations', 'readers'].includes(k),
     )
     if (extra.length > 0) problems.push(`${name}: unknown keys ${extra.join(', ')}`)
     if (typeof f['generator'] !== 'string' || f['generator'] === '')
       problems.push(`${name}: no generator command`)
+    const readers = f['readers']
+    if (readers !== undefined) {
+      if (!Array.isArray(readers)) problems.push(`${name}: readers is a list`)
+      else {
+        const implementationDirs = new Set(
+          Array.isArray(f['implementations'])
+            ? f['implementations'].map((i: unknown) => (isObject(i) ? i['dir'] : undefined))
+            : [],
+        )
+        const seenDirs = new Set<unknown>()
+        const seenNames = new Set<unknown>()
+        for (const [n, r] of readers.entries()) {
+          if (isObject(r)) {
+            if (typeof r['dir'] === 'string') {
+              if (seenDirs.has(r['dir']))
+                problems.push(`${name}: reader ${r['dir']} is listed twice`)
+              else if (implementationDirs.has(r['dir']))
+                problems.push(`${name}: ${r['dir']} is both an implementation and a reader`)
+              seenDirs.add(r['dir'])
+            }
+            if (typeof r['name'] === 'string') {
+              if (seenNames.has(r['name']))
+                problems.push(`${name}: reader name ${r['name']} is listed twice`)
+              seenNames.add(r['name'])
+            }
+          }
+          const language = isObject(r) ? r['language'] : undefined
+          if (
+            !isObject(r) ||
+            typeof r['dir'] !== 'string' ||
+            typeof r['name'] !== 'string' ||
+            typeof language !== 'string' ||
+            !(LANGUAGES as readonly string[]).includes(language)
+          ) {
+            problems.push(`${name}: reader ${n} needs language, dir and name`)
+          } else if (!r['dir'].startsWith(`${roots[language]}/`)) {
+            problems.push(`${name}: reader ${r['dir']} is not under ${roots[language]}/`)
+          }
+        }
+      }
+    }
     const impls = f['implementations']
     if (!Array.isArray(impls) || impls.length === 0) {
       problems.push(`${name}: a family has at least one implementation`)
