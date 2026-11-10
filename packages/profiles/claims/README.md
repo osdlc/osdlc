@@ -3,11 +3,13 @@
 The claims profile is a set of record types for claims and the evidence behind them. A corpus that
 keeps research, test results or fact checks can use these types instead of inventing its own.
 
-This is the first draft. Profiles are not built yet: corpus-schema v0 has no way for a corpus to
-take its types from a shared package. For now a corpus copies the type folders it wants from
-[example/](example/). Later the same types become `@osdlc/corpus-profile-claims`, and a corpus
-names it in its root file with the prefix `claims`. Those are tasks 9 and 23 in the
-[ecosystem plan](https://github.com/osdlc/markdown/pull/4).
+This is the first draft. corpus-schema can now take types from a parent corpus: the root file's
+`extends` key names it, and a type builds on a parent's type with `x-extends` (see the
+[spec](../../packages/conformance/corpus-schema/SPEC.md)). The claims types are not published as a
+package yet, so for now a corpus copies the type folders it wants from [example/](example/), or
+extends a checkout of this folder by path. Later the same types become
+`@osdlc/corpus-profile-claims`, and a corpus names it in its root file with the prefix `claims`.
+That is task 23 in the [ecosystem plan](https://github.com/osdlc/markdown/pull/4).
 
 A few words used below:
 
@@ -321,20 +323,18 @@ The example statement
 `platform` field that the claims types do not define, and its proposition's object is
 `{ paths: [...] }`. It validates with no errors and no warnings.
 
-### Later: `x-extends` (proposed)
+### Building on the claims types with `x-extends`
 
-This part is a proposal. corpus-schema v0 does not support it, and the validator does not check
-it.
-
-Plan task 9 lets a type build on another type with `x-extends`. A type in your corpus names a
-claims type and adds fields to it. A record must pass its own schema and the parent's. A child type
+A type can build on another type with `x-extends`. A type in your corpus names a claims type and
+adds fields to it. A record must pass its own schema and the parent's. A child type
 may add rules and tighten them, but never loosen them. That is why the claims types are open: a
 closed parent would reject every field a child adds.
 
-harness-reference's claims type could then be this:
+Once the corpus names the claims types under `extends` with the prefix `claims`,
+harness-reference's claims type could be this:
 
 ```yaml
-x-extends: claims/Statement
+x-extends: claims/statements
 properties:
   harness: { type: string, x-ref: harnesses }
   subject: { type: string, x-ref: subjects }
