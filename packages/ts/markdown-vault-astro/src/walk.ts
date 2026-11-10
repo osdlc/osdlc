@@ -22,6 +22,11 @@ export function byCodeUnit(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0
 }
 
+/** True for a note path: `.md` in any case, the one rule for listing notes and keying them. */
+export function isMarkdown(rel: string): boolean {
+  return /\.md$/i.test(rel)
+}
+
 /** True when `path` is `root` or lies under it. */
 export function isInside(root: string, path: string): boolean {
   const rel = relative(resolve(root), resolve(path))

@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { basename } from './markdown.ts'
-import { byCodeUnit, walkFiles } from './walk.ts'
+import { noteBasename as basename } from '@osdlc/markdown-render/plugins'
+import { byCodeUnit, isMarkdown, walkFiles } from './walk.ts'
 
 interface AssetRef {
   /** Path of the asset relative to the vault root (the copy source). */
@@ -34,7 +34,7 @@ export function buildAssetIndex(vaultRoot: string, vaultAssetDir: string): Asset
 
   if (existsSync(vaultRoot)) {
     for (const { rel } of walkFiles(vaultRoot)) {
-      if (rel.endsWith('.md')) continue
+      if (isMarkdown(rel)) continue
       allPaths.add(rel)
       const key = basename(rel).toLowerCase()
       ;(byBasename.get(key) ?? byBasename.set(key, []).get(key)!).push(rel)
@@ -113,29 +113,48 @@ export function writeAssetManifest(file: string, assets: Map<string, string>): v
   renameSync(tmp, file)
 }
 
+/** How long a reader answers from memory before it stats the manifest again. */
+const MANIFEST_RECHECK_MS = 250
+
 /**
- * Look a media embed target up in the manifest. The file is re-read whenever
- * it changes, so a long-lived `astro dev` server sees media the transform
- * copies after it started. A missing manifest answers `null` for everything.
+ * Look a media embed target up in the manifest. The file is re-read when its
+ * mtime, size or inode changes (the writer renames into place, so a rewrite
+ * is a new inode even within one timestamp tick), so a long-lived `astro dev`
+ * server sees media the transform copies after it started. The file is stat'ed
+ * at most once per `recheckMs`, not once per lookup. A missing manifest
+ * answers `null` for everything.
  */
-export function assetManifestReader(file: string): (target: string) => string | null {
-  let loadedAt = -1
+export function assetManifestReader(
+  file: string,
+  { recheckMs = MANIFEST_RECHECK_MS }: { recheckMs?: number } = {},
+): (target: string) => string | null {
+  let loadedStamp = ''
+  let checkedAt = -Infinity
+  let present = false
   let assets: Record<string, string> = {}
   return (target) => {
-    let mtime: number
-    try {
-      mtime = statSync(file).mtimeMs
-    } catch {
-      return null
-    }
-    if (mtime !== loadedAt) {
+    const now = Date.now()
+    // `now < checkedAt` is a clock that stepped back: stat again.
+    if (!(now - checkedAt < recheckMs && now >= checkedAt)) {
+      checkedAt = now
       try {
-        assets = JSON.parse(readFileSync(file, 'utf8')) as Record<string, string>
-        loadedAt = mtime
+        const st = statSync(file)
+        present = true
+        const stamp = `${st.mtimeMs}:${st.size}:${st.ino}`
+        if (stamp !== loadedStamp) {
+          try {
+            assets = JSON.parse(readFileSync(file, 'utf8')) as Record<string, string>
+            loadedStamp = stamp
+          } catch {
+            assets = {} // unreadable now: answer nothing, and read again on the next check
+            loadedStamp = ''
+          }
+        }
       } catch {
-        assets = {} // unreadable now: answer nothing, and read again on the next lookup
+        present = false
       }
     }
+    if (!present) return null
     return Object.hasOwn(assets, target) ? (assets[target] ?? null) : null
   }
 }

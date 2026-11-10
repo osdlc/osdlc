@@ -1,4 +1,10 @@
-import { embedKind, embedSize, isMediaKind, splitFragment } from '@osdlc/markdown-render/plugins'
+import {
+  embedKind,
+  embedSize,
+  isMediaKind,
+  noteBasename as basename,
+  splitFragment,
+} from '@osdlc/markdown-render/plugins'
 import { bodyLinksSpanned, displayText, parseInner, stripCode } from '@osdlc/markdown-link'
 import type { AssetIndex } from './assets.ts'
 
@@ -43,8 +49,6 @@ function maskCode(body: string): string {
   }
   return out
 }
-
-const basename = (p: string): string => p.split(/[\\/]/).pop() ?? p
 
 /** A file copy the rewrite implies; paths are relative to direction-specific roots. */
 export interface CopyOp {
@@ -272,5 +276,3 @@ export function fmUrlToAsset(
   const sub = decoded.slice(base.length + 1)
   return { value: embeddable(sub) ? `[[${sub}]]` : value, asset: sub }
 }
-
-export { basename }

@@ -1,8 +1,9 @@
-import { test } from 'vitest'
+import { afterEach, test, vi } from 'vitest'
 import assert from 'node:assert/strict'
 import { chmodSync, mkdtempSync, mkdirSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { listMarkdown } from '../src/wikilink-ref.ts'
 import { assetManifestReader, buildAssetIndex, writeAssetManifest } from '../src/assets.ts'
 
 function vault(files: string[]): string {
@@ -72,7 +73,7 @@ test('.obsidian and other dot-dirs are skipped', () => {
 
 test('the asset manifest round-trips and is re-read when it changes', () => {
   const file = join(vault([]), '.markdown-vault-astro', 'assets.json')
-  const find = assetManifestReader(file)
+  const find = assetManifestReader(file, { recheckMs: 0 })
   assert.equal(find('clip.mp4'), null) // no manifest yet
   writeAssetManifest(file, new Map([['clip.mp4', 'media/clip.mp4']]))
   assert.equal(find('clip.mp4'), 'media/clip.mp4')
@@ -86,7 +87,7 @@ test('the asset manifest round-trips and is re-read when it changes', () => {
 test('an unreadable manifest answers nothing and is read again once it is fixed', () => {
   const file = join(mkdtempSync(join(tmpdir(), 'oa-manifest-')), 'assets.json')
   writeFileSync(file, '{ not json')
-  const find = assetManifestReader(file)
+  const find = assetManifestReader(file, { recheckMs: 0 })
   assert.equal(find('a.mp4'), null)
   writeFileSync(file, JSON.stringify({ 'a.mp4': 'a.mp4' }))
   utimesSync(file, new Date(), new Date(Date.now() - 5_000)) // an mtime that matches no earlier read
@@ -192,4 +193,44 @@ test('an _attachments asset keeps its full path when its flat path is taken', ()
   assert.equal(outSub('_attachments/images/a.png'), '_attachments/images/a.png')
   // No collision, so the flat path stays.
   assert.equal(outSub('b.png'), 'b.png')
+})
+
+afterEach(() => {
+  vi.useRealTimers()
+})
+
+test('a manifest rewritten within one mtime tick is still re-read', () => {
+  const file = join(vault([]), '.markdown-vault-astro', 'assets.json')
+  const find = assetManifestReader(file, { recheckMs: 0 })
+  const stamp = new Date('2026-01-01T00:00:00Z')
+  writeAssetManifest(file, new Map([['clip.mp4', 'a/clip.mp4']]))
+  utimesSync(file, stamp, stamp)
+  assert.equal(find('clip.mp4'), 'a/clip.mp4')
+  // Same mtime, different content: the writer renames a new file into place.
+  writeAssetManifest(file, new Map([['clip.mp4', 'b/longer/clip.mp4']]))
+  utimesSync(file, stamp, stamp)
+  assert.equal(find('clip.mp4'), 'b/longer/clip.mp4')
+})
+
+test('the manifest is stat-ed at most once per interval, not once per lookup', () => {
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
+  const file = join(vault([]), '.markdown-vault-astro', 'assets.json')
+  const find = assetManifestReader(file, { recheckMs: 1000 })
+  writeAssetManifest(file, new Map([['clip.mp4', 'one.mp4']]))
+  assert.equal(find('clip.mp4'), 'one.mp4')
+  writeAssetManifest(file, new Map([['clip.mp4', 'two.mp4']]))
+  utimesSync(file, new Date(), new Date(Date.now() + 5000))
+  assert.equal(find('clip.mp4'), 'one.mp4', 'a lookup inside the interval touched the disk')
+  vi.advanceTimersByTime(1001)
+  assert.equal(find('clip.mp4'), 'two.mp4')
+})
+
+test('a note named with an upper-case extension is a note, not an asset', () => {
+  const root = vault(['Notes/Note.MD', 'Notes/other.Md', 'pic.png'])
+  const idx = buildAssetIndex(root, '_attachments')
+  assert.equal(idx.resolve('Note.MD').resolved, false)
+  assert.equal(idx.resolve('other.Md').resolved, false)
+  assert.equal(idx.resolve('pic.png').resolved, true)
+  assert.deepEqual(listMarkdown(join(root, 'Notes')).sort(), ['Note.MD', 'other.Md'])
 })

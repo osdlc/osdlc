@@ -65,6 +65,9 @@ export { remarkDataLine } from './data-line.ts'
 export { rehypeCodeMeta } from './code-meta.ts'
 export { fenceLang } from './fence-lang.ts'
 
+// The vault-path basename, shared so a host does not keep its own copy.
+export { noteBasename } from '../paths.ts'
+
 export { setHProps, hastNode, type MdNode, type MdParent } from './util.ts'
 
 export type { LinkResolution, WikilinkResolver } from '../types.ts'

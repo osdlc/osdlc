@@ -2,7 +2,8 @@ import { existsSync } from 'node:fs'
 import { z } from 'zod'
 import type { WikilinkCollection } from './remark-wikilinks.ts'
 import { slugify } from './slug.ts'
-import { walkFiles } from './walk.ts'
+import { noteBasename } from '@osdlc/markdown-render/plugins'
+import { isMarkdown, walkFiles } from './walk.ts'
 
 /**
  * A single collection, indexed for resolution. `byKey` maps a normalised lookup
@@ -61,7 +62,7 @@ function lookup(col: IndexedCollection, p: string): string | undefined {
 /** List markdown files under `dir` as `/`-separated relative paths (see {@link walkFiles}). */
 export function listMarkdown(dir: string): string[] {
   return walkFiles(dir)
-    .filter((f) => f.rel.endsWith('.md'))
+    .filter((f) => isMarkdown(f.rel))
     .map((f) => f.rel)
 }
 
@@ -91,7 +92,7 @@ function indexCollection(
       add(pathKey(id), id) //   content-relative path: [[posts/some-file]]
       if (c.vaultDir) add(pathKey(`${c.vaultDir}/${id}`), id) // vault path
     }
-    for (const id of ids) add(pathKey(id.split('/').pop() ?? id), id) // bare name: [[some-file]]
+    for (const id of ids) add(pathKey(noteBasename(id)), id) // bare name: [[some-file]]
   }
   return { name: c.name, route: c.route, byKey }
 }
