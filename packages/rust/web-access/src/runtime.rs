@@ -14,9 +14,9 @@ use tokio::sync::Mutex;
 
 use crate::config::{Listen, WebAccessConfig};
 use crate::context::Grant;
-use crate::guard::Tokens;
+use crate::guard::{Tokens, TokensError};
 use crate::serve::{ServeError, ServeOptions, ServerHandle, serve_opts};
-use crate::token;
+use crate::token::{self, Token, TokenError};
 
 /// Where an app keeps its [`WebAccessConfig`].
 pub trait ConfigStore: Send + Sync {
@@ -44,9 +44,14 @@ pub enum RuntimeError {
     /// [`ConfigStore::save`] failed.
     #[error("saving web access config: {0}")]
     Save(String),
-    /// A token file could not be read or written.
+    /// A token file could not be read or written, or holds something other
+    /// than a token ([`TokenError::BadFile`]), so the server was not started.
     #[error("web-access token: {0}")]
-    Token(#[from] std::io::Error),
+    Token(#[from] TokenError),
+    /// The same token is set for two grants, so the server was not started.
+    /// Two token files, or a file and the override, hold the same text.
+    #[error("web-access tokens: {0}")]
+    Tokens(#[from] TokensError),
     /// The full token comes from an override, so it cannot be rotated.
     #[error("the full token is set by the environment and cannot be rotated")]
     TokenPinned,
@@ -70,7 +75,7 @@ pub enum RuntimeError {
 }
 
 /// Share links by what they grant. Each carries its token in `?token=`.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Clone, Default, PartialEq, Eq, Serialize)]
 #[non_exhaustive]
 pub struct ShareUrls {
     /// Links with the view-only token, one per reachable address.
@@ -84,7 +89,7 @@ pub struct ShareUrls {
 /// The settings UI's view: the stored config plus the server's state.
 /// `listen` keeps the crate's wire shape (`"loopback"`, `"allInterfaces"`,
 /// `{"interfaces": [...]}`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct WebAccessStatus {
@@ -104,6 +109,35 @@ pub struct WebAccessStatus {
     /// Why the server is not running, when it failed to start.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+}
+
+/// `Debug` hides the token value in each link, so `{:?}` never prints a
+/// credential.
+impl std::fmt::Debug for ShareUrls {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let redact = |urls: &[String]| urls.iter().map(|u| redact_token(u)).collect::<Vec<_>>();
+        f.debug_struct("ShareUrls")
+            .field("read", &redact(&self.read))
+            .field("full", &redact(&self.full))
+            .field("admin", &redact(&self.admin))
+            .finish()
+    }
+}
+
+/// `Debug` shows every field. The links inside `share_urls` hide their token,
+/// as in [`ShareUrls`].
+impl std::fmt::Debug for WebAccessStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WebAccessStatus")
+            .field("enabled", &self.enabled)
+            .field("listen", &self.listen)
+            .field("port", &self.port)
+            .field("admin", &self.admin)
+            .field("running", &self.running)
+            .field("share_urls", &self.share_urls)
+            .field("error", &self.error)
+            .finish()
+    }
 }
 
 impl WebAccessStatus {
@@ -155,9 +189,9 @@ struct Live {
 /// The tokens a server was started with; `admin` only while the config's
 /// `admin` is on.
 struct StartTokens {
-    full: String,
-    read: String,
-    admin: Option<String>,
+    full: Token,
+    read: Token,
+    admin: Option<Token>,
 }
 
 /// What the last apply left behind, readable without the apply lock.
@@ -180,7 +214,7 @@ pub struct SharingRuntime {
     token_dir: PathBuf,
     full_token_file: String,
     /// A full token set outside the files; wins over the file and is not rotatable.
-    full_token_override: Option<String>,
+    full_token_override: Option<Token>,
     /// Shortest `full_token_override` accepted on a bind beyond loopback.
     min_override_len: usize,
     /// Called once per start: a rebind builds a fresh router.
@@ -220,16 +254,18 @@ impl SharingRuntime {
         self
     }
 
-    /// Use `token` as the full token when it is non-blank (an env override);
-    /// nothing is written for it and [`Self::rotate`] refuses `Grant::Full`.
+    /// Use `token` as the full token when it is set. This is an env override,
+    /// read with [`token::override_from_env`]. Nothing is written for it, and
+    /// [`Self::rotate`] refuses `Grant::Full`.
     #[must_use]
-    pub fn with_full_token_override(mut self, token: Option<String>) -> Self {
-        self.full_token_override = token.filter(|t| !t.trim().is_empty());
+    pub fn with_full_token_override(mut self, token: Option<Token>) -> Self {
+        self.full_token_override = token;
         self
     }
 
     /// Refuse to listen beyond loopback while the overriding full token is
-    /// shorter than `len`: a hand-typed weak token is the only guard there.
+    /// shorter than `len`. Use it to require a longer override than
+    /// [`token::MIN_TOKEN_LEN`].
     #[must_use]
     pub fn with_min_override_len(mut self, len: usize) -> Self {
         self.min_override_len = len;
@@ -342,7 +378,7 @@ impl SharingRuntime {
                         full: handle.share_urls_for(&tokens.full),
                         admin: tokens
                             .admin
-                            .as_deref()
+                            .as_ref()
                             .map(|t| handle.share_urls_for(t))
                             .unwrap_or_default(),
                     };
@@ -361,7 +397,7 @@ impl SharingRuntime {
         &self,
         cfg: &WebAccessConfig,
     ) -> Result<(ServerHandle, StartTokens), RuntimeError> {
-        if let Some(t) = self.full_token_override.as_deref().map(str::trim)
+        if let Some(t) = self.full_token_override.as_ref().map(Token::as_str)
             && !cfg.listen.is_loopback_only()
             && t.len() < self.min_override_len
         {
@@ -373,7 +409,7 @@ impl SharingRuntime {
         let full = token::resolve_named(
             &self.token_dir,
             &self.full_token_file,
-            self.full_token_override.as_deref(),
+            self.full_token_override.clone(),
         )?;
         let read = token::load_or_mint_read(&self.token_dir)?;
         // Loaded only while admin is on: off, the guard never holds it, so
@@ -383,9 +419,9 @@ impl SharingRuntime {
         } else {
             None
         };
-        let mut tokens = Tokens::full_only(full.clone()).with(read.clone(), Grant::Read);
+        let mut tokens = Tokens::full_only(full.clone()).with(read.clone(), Grant::Read)?;
         if let Some(a) = &admin {
-            tokens = tokens.with(a.clone(), Grant::Admin);
+            tokens = tokens.with(a.clone(), Grant::Admin)?;
         }
         let handle = serve_opts((self.build_router)(), cfg, tokens, self.options.clone()).await?;
         Ok((handle, StartTokens { full, read, admin }))
@@ -409,6 +445,19 @@ fn strip_token(url: &str) -> String {
     match crate::guard::split_token_param(query) {
         Some((_, rest)) if rest.is_empty() => base.to_owned(),
         Some((_, rest)) => format!("{base}?{rest}"),
+        None => url.to_owned(),
+    }
+}
+
+/// `url` with the value of its `token` query parameter replaced by
+/// `<redacted>`.
+fn redact_token(url: &str) -> String {
+    let Some((base, query)) = url.split_once('?') else {
+        return url.to_owned();
+    };
+    match crate::guard::split_token_param(query) {
+        Some((_, rest)) if rest.is_empty() => format!("{base}?token=<redacted>"),
+        Some((_, rest)) => format!("{base}?token=<redacted>&{rest}"),
         None => url.to_owned(),
     }
 }
@@ -501,8 +550,18 @@ mod tests {
         let up = rt.set(cfg(true)).await.unwrap();
         let full = token::load_or_mint(dir.path()).unwrap();
         let read = token::load_or_mint_read(dir.path()).unwrap();
-        assert!(up.share_urls.full.iter().all(|u| token_of(u) == full));
-        assert!(up.share_urls.read.iter().all(|u| token_of(u) == read));
+        assert!(
+            up.share_urls
+                .full
+                .iter()
+                .all(|u| token_of(u) == full.as_str())
+        );
+        assert!(
+            up.share_urls
+                .read
+                .iter()
+                .all(|u| token_of(u) == read.as_str())
+        );
         assert!(!up.share_urls.read.is_empty());
         rt.set(cfg(false)).await.unwrap();
     }
@@ -539,13 +598,24 @@ mod tests {
         let rt = runtime(&dir, MemStore::default()).with_full_token_file("token");
         let up = rt.set(cfg(true)).await.unwrap();
         let on_disk = token::load_or_mint_named(dir.path(), "token").unwrap();
-        assert!(up.share_urls.full.iter().all(|u| token_of(u) == on_disk));
+        assert!(
+            up.share_urls
+                .full
+                .iter()
+                .all(|u| token_of(u) == on_disk.as_str())
+        );
         assert!(!dir.path().join(token::TOKEN_FILE).exists());
 
+        let env_tok = Token::mint().unwrap();
         let pinned =
-            runtime(&dir, MemStore::default()).with_full_token_override(Some("env-tok".into()));
+            runtime(&dir, MemStore::default()).with_full_token_override(Some(env_tok.clone()));
         let up = pinned.set(cfg(true)).await.unwrap();
-        assert!(up.share_urls.full.iter().all(|u| token_of(u) == "env-tok"));
+        assert!(
+            up.share_urls
+                .full
+                .iter()
+                .all(|u| token_of(u) == env_tok.as_str())
+        );
         assert!(matches!(
             pinned.rotate(Grant::Full).await,
             Err(RuntimeError::TokenPinned)
@@ -555,14 +625,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_blank_override_is_not_pinned_and_a_weak_one_is_refused_beyond_loopback() {
+    async fn an_override_shorter_than_the_minimum_is_refused_beyond_loopback() {
         let dir = tempfile::tempdir().unwrap();
-        let blank = runtime(&dir, MemStore::default()).with_full_token_override(Some("  ".into()));
-        assert!(blank.rotate(Grant::Full).await.is_ok(), "blank is unset");
-
+        let short = Token::parse(&"a".repeat(token::MIN_TOKEN_LEN)).unwrap();
         let weak = runtime(&dir, MemStore::default())
-            .with_full_token_override(Some("short".into()))
-            .with_min_override_len(32);
+            .with_full_token_override(Some(short))
+            .with_min_override_len(40);
         assert!(
             weak.set(cfg(true)).await.unwrap().running,
             "loopback accepts it"
@@ -571,7 +639,7 @@ mod tests {
         lan.listen = Listen::AllInterfaces;
         let status = weak.set(lan).await.unwrap();
         assert!(!status.running);
-        assert!(status.error.unwrap().contains("at least 32"));
+        assert!(status.error.unwrap().contains("at least 40"));
         weak.set(cfg(false)).await.unwrap();
     }
 
@@ -596,14 +664,19 @@ mod tests {
         let up = rt.set(cfg_admin()).await.unwrap();
         let admin = token::load_or_mint_admin(dir.path()).unwrap();
         assert!(!up.share_urls.admin.is_empty());
-        assert!(up.share_urls.admin.iter().all(|u| token_of(u) == admin));
+        assert!(
+            up.share_urls
+                .admin
+                .iter()
+                .all(|u| token_of(u) == admin.as_str())
+        );
         let full = token::load_or_mint(dir.path()).unwrap();
         assert_ne!(admin, full);
 
         let rotated = rt.rotate(Grant::Admin).await.unwrap();
         let admin2 = token_of(&rotated.share_urls.admin[0]).to_owned();
-        assert_ne!(admin2, admin);
-        assert_eq!(token_of(&rotated.share_urls.full[0]), full);
+        assert_ne!(admin2, admin.as_str());
+        assert_eq!(token_of(&rotated.share_urls.full[0]), full.as_str());
 
         let plain = rotated.without_tokens();
         assert!(plain.share_urls.admin.is_empty() && !plain.admin);
@@ -646,6 +719,44 @@ mod tests {
         let status = rt.rotate(Grant::Read).await.unwrap();
         assert!(!status.enabled && !status.running);
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+
+    /// A hand-edited token file stops the server from starting, names the
+    /// file, never shows its text, and is left as it was.
+    #[tokio::test]
+    async fn a_hand_edited_token_file_stops_the_server_from_starting() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(token::READ_TOKEN_FILE);
+        std::fs::write(&path, "my password\n").unwrap();
+        let rt = runtime(&dir, MemStore::default());
+        let status = rt.set(cfg(true)).await.unwrap();
+        assert!(status.enabled && !status.running);
+        assert!(status.share_urls.read.is_empty() && status.share_urls.full.is_empty());
+        let error = status.error.unwrap();
+        assert!(error.contains(&path.display().to_string()), "{error}");
+        assert!(!error.contains("my password"), "{error}");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "my password\n");
+        assert!(matches!(
+            rt.start(&cfg(true)).await.err(),
+            Some(RuntimeError::Token(TokenError::BadFile { .. }))
+        ));
+    }
+
+    /// Matching hand-set read and admin files would make the Read link an
+    /// Admin credential, so the set is refused.
+    #[tokio::test]
+    async fn the_same_hand_set_token_for_read_and_admin_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let same = Token::mint().unwrap().to_string();
+        std::fs::write(dir.path().join(token::READ_TOKEN_FILE), &same).unwrap();
+        std::fs::write(dir.path().join(token::ADMIN_TOKEN_FILE), &same).unwrap();
+        let rt = runtime(&dir, MemStore::default());
+        let status = rt.set(cfg_admin()).await.unwrap();
+        assert!(status.enabled && !status.running);
+        assert!(status.share_urls.read.is_empty() && status.share_urls.admin.is_empty());
+        let error = status.error.unwrap();
+        assert!(error.contains("Read") && error.contains("Admin"), "{error}");
+        assert!(!error.contains(&same), "{error}");
     }
 
     #[tokio::test]
@@ -723,5 +834,22 @@ mod tests {
         );
         assert_eq!(strip_token("http://h/?a=1&token=abc"), "http://h/?a=1");
         assert_eq!(strip_token("http://h/"), "http://h/");
+    }
+
+    #[test]
+    fn debug_output_holds_no_token() {
+        let urls = ShareUrls {
+            read: vec!["http://h:1/?token=readsecret".into()],
+            full: vec!["http://h:1/?a=1&token=fullsecret".into()],
+            admin: vec!["http://h:1/?token=adminsecret".into()],
+        };
+        let mut status = WebAccessStatus::stopped(&WebAccessConfig::default());
+        status.share_urls = urls.clone();
+        for out in [format!("{urls:?}"), format!("{status:?}")] {
+            for secret in ["readsecret", "fullsecret", "adminsecret"] {
+                assert!(!out.contains(secret), "{out}");
+            }
+            assert!(out.contains("<redacted>"), "{out}");
+        }
     }
 }
