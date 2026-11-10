@@ -39,16 +39,17 @@ import {
   useNoteSource,
   type WikilinkTarget,
 } from '../context.ts'
-import { sliceEmbed } from '../../slice.ts'
-import { isMediaKind } from '../../plugins/embeds.ts'
 import {
   embedBlocker,
   embedMedia,
   embedNoteProperties,
   embedPlaceholder,
   type EmbedPlaceholder,
-} from '../../plugins/embed-render.ts'
-import { isSafeAssetUrl, isSafeLinkPath } from '../../url.ts'
+  isMediaKind,
+  isSafeAssetUrl,
+  isSafeLinkPath,
+  sliceEmbed,
+} from '@osdlc/markdown-render'
 
 type EmbedState = 'idle' | 'loading' | 'ready' | 'missing' | 'cycle' | 'too-deep' | 'over-budget'
 

@@ -16,7 +16,7 @@
 import { h, type Component, type VNode } from 'vue'
 import type { Position } from 'unist'
 
-import { CLASS_ROUTES, FENCE_LANG_PROP, classNames } from '../routing-signals.ts'
+import { CLASS_ROUTES, FENCE_LANG_PROP, classNames } from '@osdlc/markdown-render'
 
 export interface HastNode {
   type: string

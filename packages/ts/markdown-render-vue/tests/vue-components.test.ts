@@ -15,9 +15,9 @@
 import { markdownVue, vue } from './setup-dom.ts'
 import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
 import type { App } from 'vue'
-import type { NoteSource } from '../src/vue/context.ts'
-import type { LinkResolution } from '../src/index.ts'
-import type * as MermaidSeam from '../src/mermaid.ts'
+import type { NoteSource } from '../src/context.ts'
+import type { LinkResolution } from '@osdlc/markdown-render'
+import type * as MermaidSeam from '@osdlc/markdown-render'
 
 const { createApp, defineComponent, h, provide, ref } = vue
 const {
@@ -28,7 +28,7 @@ const {
   MAX_EMBEDS_PER_DOCUMENT,
 } = markdownVue
 // The budget key is internal to the package: a host cannot provide its own.
-const { EmbedBudgetKey } = await import('../src/vue/context.ts')
+const { EmbedBudgetKey } = await import('../src/context.ts')
 
 // `renderMermaid` caches the mermaid module on first use, so mocking the
 // `mermaid` package here would be too late once a fence has drawn. Mocking the
@@ -43,7 +43,7 @@ let fakeMermaidOn = false
 let parkedRenders: Array<{ source: string; finish: (svg: string) => void }> | null = null
 const fakeRenderMermaid: typeof MermaidSeam.renderMermaid = async (source, theme) => {
   if (!fakeMermaidOn) {
-    const real = await vi.importActual<typeof MermaidSeam>('../src/mermaid.ts')
+    const real = await vi.importActual<typeof MermaidSeam>('@osdlc/markdown-render')
     return real.renderMermaid(source, theme)
   }
   if (parkedRenders) {
@@ -53,7 +53,7 @@ const fakeRenderMermaid: typeof MermaidSeam.renderMermaid = async (source, theme
   if (source.includes('BROKEN')) throw new Error('parse error')
   return `<svg data-source="${source}" data-theme="${theme}"></svg>`
 }
-vi.mock('../src/mermaid.ts', async (importOriginal) => ({
+vi.mock('@osdlc/markdown-render', async (importOriginal) => ({
   ...(await importOriginal<typeof MermaidSeam>()),
   // Looked up per call: the factory runs before the module body defines the fake.
   renderMermaid: (source: string, theme?: string) => fakeRenderMermaid(source, theme),

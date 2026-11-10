@@ -12,7 +12,7 @@
 
 import { defineComponent, h, onMounted, ref, watch, type PropType } from 'vue'
 import { hastNodeText, type HastNode } from '../render.ts'
-import { renderMermaid, type MermaidTheme } from '../../mermaid.ts'
+import { renderMermaid, type MermaidTheme } from '@osdlc/markdown-render'
 
 function sourceOf(node: HastNode): string {
   return hastNodeText(node).replace(/\n$/, '')

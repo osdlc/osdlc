@@ -7,7 +7,7 @@
 import { expect, test } from 'vitest'
 
 const vue = await import('vue')
-const { MarkdownRender, provideNoteSource } = await import('@osdlc/markdown-render/vue')
+const { MarkdownRender, provideNoteSource } = await import('@osdlc/markdown-render-vue')
 
 test('MarkdownRender renders a note with links resolved by the note source', async () => {
   const host = document.createElement('div')

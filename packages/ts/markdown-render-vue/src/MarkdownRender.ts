@@ -23,9 +23,12 @@ import {
 } from 'vue'
 import type { Root } from 'hast'
 
-import { createMarkdownProcessor, type MarkdownProcessor } from '../processor.ts'
-import { extractOutline } from '../outline.ts'
-import type { MarkdownRenderOptions } from '../types.ts'
+import {
+  createMarkdownProcessor,
+  extractOutline,
+  type MarkdownProcessor,
+  type MarkdownRenderOptions,
+} from '@osdlc/markdown-render'
 import { renderChildren, type ComponentMap } from './render.ts'
 import { renderHeadingSections } from './heading-sections.ts'
 import {

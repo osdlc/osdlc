@@ -10,9 +10,9 @@
 import { markdownVue, vue } from './setup-dom.ts'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import type { App, PropType, VNode } from 'vue'
-import type { ComponentMap, HastNode, RenderContext } from '../src/vue/render.ts'
-import type { NoteSource } from '../src/vue/context.ts'
-import type { LinkResolution } from '../src/index.ts'
+import type { ComponentMap, HastNode, RenderContext } from '../src/render.ts'
+import type { NoteSource } from '../src/context.ts'
+import type { LinkResolution } from '@osdlc/markdown-render'
 
 const { attrName, classList, matchOverride, routeKeys, toVueProps } = markdownVue
 

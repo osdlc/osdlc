@@ -2,8 +2,8 @@
  * `@osdlc/markdown-render` — an Obsidian-dialect markdown renderer built on
  * unified/remark.
  *
- * Framework-free: this entry never imports Vue. The Vue 3 integration lives at
- * `@osdlc/markdown-render/vue`.
+ * Framework-free: nothing here imports Vue. The Vue 3 components live in
+ * `@osdlc/markdown-render-vue`.
  *
  * The source passed in is a note *body* — frontmatter is framing, split off by
  * the caller, so the renderer never reads it.
@@ -11,6 +11,7 @@
 
 export {
   createMarkdownProcessor,
+  type MarkdownProcessor,
   renderToHast,
   renderToHtml,
   renderToHtmlSync,
@@ -128,6 +129,7 @@ export {
   isRoutingClass,
   stripRoutingSignals,
   CLASS_ROUTES,
+  classNames,
   FENCE_LANG_PROP,
   STRIPPED_CLASSES,
   type ClassRoute,

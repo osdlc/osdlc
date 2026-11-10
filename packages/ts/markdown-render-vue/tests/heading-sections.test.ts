@@ -4,8 +4,8 @@
  */
 
 import { describe, expect, test } from 'vitest'
-import { groupHeadingSections } from '../src/vue/heading-sections.ts'
-import type { HastNode } from '../src/vue/render.ts'
+import { groupHeadingSections } from '../src/heading-sections.ts'
+import type { HastNode } from '../src/render.ts'
 
 function heading(depth: number, text: string): HastNode {
   return {

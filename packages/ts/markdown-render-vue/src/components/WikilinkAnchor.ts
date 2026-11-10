@@ -10,8 +10,7 @@ import { defineComponent, h, type PropType } from 'vue'
 import type { HastNode } from '../render.ts'
 import { hastNodeText, toVueProps } from '../render.ts'
 import { useHandlers, type WikilinkTarget } from '../context.ts'
-import { isSafeLinkPath } from '../../url.ts'
-import type { LinkResolution } from '../../types.ts'
+import { isSafeLinkPath, type LinkResolution } from '@osdlc/markdown-render'
 
 /**
  * Rebuild the resolution the pipeline recorded on the anchor.

@@ -104,11 +104,11 @@ describe('pipeline', () => {
     expect(await html('')).toBe('')
   })
 
-  test('the core entry is framework-free — no module outside src/vue imports Vue', async () => {
+  test('the package is framework-free — no module imports Vue', async () => {
     const root = new URL('../src/', import.meta.url).pathname
     const offenders: string[] = []
     for (const relative of readdirSync(root, { recursive: true, encoding: 'utf8' })) {
-      if (!relative.endsWith('.ts') || relative.startsWith('vue/')) continue
+      if (!relative.endsWith('.ts')) continue
       const source = await readFile(`${root}${relative}`, 'utf8')
       if (/from ['"]vue['"]/.test(source)) offenders.push(relative)
     }

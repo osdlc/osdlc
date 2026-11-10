@@ -1,6 +1,6 @@
 # @osdlc/markdown-render
 
-Markdown to HTML and Vue 3 rendering on unified and remark, for CommonMark,
+Markdown to HTML on unified and remark, for CommonMark,
 GFM and the Obsidian extensions: wikilinks, embeds, callouts, tags, block ids,
 comments and highlights. Link resolution is injected, so the same renderer
 serves a live vault, a static build and tests, and the output is sanitized.
@@ -14,14 +14,14 @@ one.
 npm install @osdlc/markdown-render
 ```
 
-`vue` (for the `/vue` entry), `katex` (math) and `mermaid` (diagrams) are
-optional peer dependencies. Install the ones you use. Node 22 or later, and
-any modern browser for the `/vue` entry; the package is pure JavaScript with no
+`katex` (math) and `mermaid` (diagrams) are optional peer dependencies.
+Install the ones you use. Node 22 or later; the package is framework-free pure
+JavaScript with no
 filesystem, process or OS-specific code.
 
 ## Who it is for
 
-Programs that turn a markdown note into HTML or Vue nodes and must treat
+Programs that turn a markdown note into HTML or a hast tree and must treat
 `[[wikilinks]]`, `![[embeds]]`, callouts and `#tags` the way Obsidian does:
 note-reading views, static site and Astro builds, and previews beside an editor.
 
@@ -32,7 +32,7 @@ note-reading views, static site and Astro builds, and previews beside an editor.
   buys you nothing.
 - You only want `[[wikilinks]]` turned into links in an existing remark
   pipeline. A wikilink plugin alone fits better, or use this package's
-  `/plugins` entry, which carries the dialect plugins with no Vue and no Shiki.
+  `/plugins` entry, which carries the dialect plugins with no Shiki in the graph.
 - You need Obsidian's editor, Canvas or Bases views. This renders notes only.
 
 ## How it compares
@@ -62,7 +62,8 @@ tags in step.
   `splitMarkdownLink`, `splitMarkdownImage`, `remarkDataLine`, `hastText`,
   `CLASS_ROUTES`, `STRIPPED_CLASSES`, `FENCE_LANG_PROP`, `carriesRoutingSignal`,
   `isRoutingClass`, `stripRoutingSignals`, `ClassRoute`.
-- `/vue`: `defaultComponents`, `groupHeadingSections`, `renderHeadingSections`.
+
+For Vue 3 components over this renderer, see [`@osdlc/markdown-render-vue`](../markdown-render-vue).
 
 ## Dialect
 
@@ -122,11 +123,10 @@ to split off (the renderer never reads it).
 | --- | --- |
 | `@osdlc/markdown-render` | the processor (`renderToHtml`, `renderToHast`, …), the math and mermaid helpers, outline/slice/path utilities, the sanitize schema, and every dialect plugin |
 | `@osdlc/markdown-render/plugins` | the dialect plugins alone, plus what a host needs to render embeds itself (`sliceEmbed`, `MAX_EMBED_DEPTH`, `MAX_EMBEDS_PER_DOCUMENT`, and the shared embed rendering rules `embedSize`, `embedAlt`, `embedBlocker`, `embedPlaceholder`, `embedMedia`, `embedNoteProperties`) and the `LinkResolution`/`WikilinkResolver` types — for a host that assembles its own remark pipeline (an Astro build, a static exporter) |
-| `@osdlc/markdown-render/vue` | the Vue 3 components and the `NoteSource` context |
 | `@osdlc/markdown-render/shiki` | the Shiki code highlighter, loaded on demand |
 | `@osdlc/markdown-render/theme.css` | the `--markdown-*` theme contract |
 
-`./plugins` is Vue-free and Shiki-free: it omits `rehypeShiki` (and
+`./plugins` is Shiki-free: it omits `rehypeShiki` (and
 `RESERVED_FENCE_LANGS`, which configures it), so a bundle that imports it
 never carries a Shiki chunk. `rehypeCodeMeta` is included; it does not
 import Shiki. The root entry keeps re-exporting the same plugins; the two
@@ -147,15 +147,15 @@ every other plugin in the pipeline is sync.
 framework-free math and diagram seams. KaTeX and mermaid are imported lazily on
 first use; mermaid is initialized once per theme with ids from one sequence;
 `createMermaidRenderer` wraps a caller-supplied loader so tests and hosts can
-inject their own module. The Vue `MathBlock`/`MermaidBlock` are thin wrappers
-over these helpers, so a non-Vue host (e.g. an editor widget) shares the same
+inject their own module. `@osdlc/markdown-render-vue`'s `MathBlock`/`MermaidBlock` are thin wrappers
+over these helpers, so any other host (e.g. an editor widget) shares the same
 rendering.
 
 **Optional peers.** `katex` and `mermaid` are optional peer dependencies. A
 host that renders math or diagrams declares them itself in its own `package.json`. When one is absent its dynamic import rejects, the
 package logs one warning per process
 (`@osdlc/markdown-render: katex is not installed; math renders as source`), and
-the Vue blocks show the source instead of nothing: `<code
+the Vue blocks (in `@osdlc/markdown-render-vue`) show the source instead of nothing: `<code
 class="markdown-math-fallback">` for math, `<pre class="markdown-mermaid-fallback">`
 for a diagram.
 
@@ -243,7 +243,7 @@ Four things it does that the default schema does not:
   live component with fields it invented. The *enforce* pass strips them —
   `wikilink*`, `tag`, `callout*`, `math-inline`/`math-display`, `language-*`,
   `markdown-*`, and `data-lang` — from every element the pipeline did not stamp.
-  The table is `src/routing-signals.ts`, shared with the Vue router so the two
+  The table is `src/routing-signals.ts`, shared with the Vue router in `@osdlc/markdown-render-vue` so the two
   cannot drift. The consequence is deliberate: raw HTML spelling
   `<pre><code class="language-ts">` is not highlighted, and a raw
   `<div class="callout">` gets no callout chrome.
@@ -289,109 +289,7 @@ custom properties and switching themes never re-highlights.
 Fences with no language, an unknown language, or a reserved one (`mermaid`,
 `base`) render plain — those belong to block renderers.
 
-## Vue usage
-
-```ts
-import { MarkdownRender, provideNoteSource } from '@osdlc/markdown-render/vue'
-import '@osdlc/markdown-render/theme.css'
-// KaTeX users must also import 'katex/dist/katex.min.css' — it sizes the
-// glyphs, and `theme.css` alone will render math legibly but wrong.
-
-provideNoteSource({
-  resolveLink,
-  async loadNote(path) { return { body: await readNote(path) } },
-  assetUrl(target) { return `/vault-assets/${target}` },
-})
-```
-
-```vue
-<MarkdownRender
-  :source="body"
-  :note-path="path"
-  :components="{ 'lang:base': BasesBlock }"
-  @link-click="({ resolution }) => router.push(resolution.path)"
-  @link-hover="showPreviewPopover"
-  @tag-click="searchTag"
-  @task-toggle="({ line, checked }) => writeCheckbox(line, checked)"
-  @rendered="({ outline }) => (toc = outline)"
-/>
-```
-
-The hast tree is walked into VNodes with `h()` — never `v-html`. Overrides are
-routed by key, most specific first:
-
-`markdown-embed` · `lang:<fence-language>` · `math-inline` · `a.wikilink` ·
-`a.tag` · `div.callout` · `input.checkbox` · `<tagName>`
-
-The `components` prop merges over the built-ins, which is how a host injects a
-Bases block renderer for ` ```base ` fences, a custom link chip, or a different
-callout chrome. Every routed component receives the hast node as its `node` prop
-and its rendered children as the default slot. A map entry may also be
-`undefined`, which turns a built-in route back OFF — routing skips a falsy entry
-and falls through to the plain element.
-
-Two built-ins claim an ordinary HTML tag and give the block the chrome a reader
-wants on one.
-
-**`pre` → `CodeBlock`.** Every code fence gets a language label, a copy button
-and a per-block soft-wrap toggle, revealed on hover and on `:focus-within`. A
-fence is now
-`<div class="markdown-code-block"><div class="markdown-code-chrome">…</div><pre>…</pre>…</div>`,
-so a selector written as `.markdown-render > pre` no longer matches. The block's
-vertical margin lives on the wrapper and the `<pre>`'s is zeroed, because half
-the chrome bar hangs in that margin.
-
-**`table` → `TableBlock`.** Every table gets a click-to-sort header (ascending, then descending,
-then the document's own order back), a header that pins while a long body scrolls, and a copy button
-that writes RFC 4180 CSV in the order currently displayed. A table is now
-`<div class="markdown-table-block"><div class="markdown-table-chrome">…</div><table>…</table><span class="markdown-table-status">…</span></div>`;
-each `<th>` carries `aria-sort` and holds a `<button class="markdown-table-sort">` that takes its
-accessible name from the header content it wraps (never an `aria-label`, which would rename the
-`<th>` for every cell in the column), and the wrapper gains `markdown-table-scrolls` once the table
-overflows `--markdown-table-max-height`. A table with a `colspan` or `rowspan` gets the copy button
-but no sort controls: a span means the n-th header no longer names the n-th value in each row, and
-sorting the wrong column under a confident label is worse than not sorting. The wrapper adds no
-margin of its own, so a table short enough not to scroll occupies exactly the space it did before.
-All three are lenses: sort state is per-table and ephemeral (it resets when the table's source
-changes, not on a host redraw of the same source), a cell contributes its DISPLAY text to both the
-sort key and the CSV — a wikilink's label, not its target — and nothing is ever written back.
-Sorting permutes the rendered VNodes, so it cannot reach hast, let alone a file.
-
-Both are **opt-out**: `:components="{ pre: undefined, table: undefined }"`
-restores the bare elements. Do that anywhere the rendered note is decorative or
-non-interactive — a `role="tooltip"` hover card, say, where `pointer-events:
-none` hides the chrome from a mouse but leaves its buttons in the tab order.
-
-Chrome is Vue-only. It is never emitted into hast, so `renderToHtml`'s string
-output is byte-identical with or without it and the sanitizer's allowlist is
-unchanged. A fence claimed by a `lang:` route (`mermaid`, `math`, a host's
-`base`) keeps its own renderer and gets no chrome.
-
-`MermaidBlock` takes either `node` (the fence, as routed) or `source` (diagram
-text, for a host that has no hast node: `<MermaidBlock :source="code" theme="dark" />`).
-`theme` applies to both; when both are given, `source` is the text and `node`
-only supplies `data-line`. A mermaid error shows the source text in
-`<pre class="markdown-mermaid-fallback">` instead of the diagram.
-
-Rendering is asynchronous; the previous tree stays on screen until the next one
-is ready, and a monotonic render id drops stale results.
-
-`<Embed>` loads through `NoteSource.loadNote`, slices by heading or block
-id, and renders a nested `<MarkdownRender>`. Three guards bound it, and all
-three render a placeholder instead of throwing: an ancestor-path chain catches
-cycles (including indirect ones), a depth cap of 5 stops runaway nesting, and a
-document-wide budget of 128 transclusions stops runaway *width* — depth alone
-bounds nothing, since N embeds nested D deep is N^D loads with every one of them
-inside the cap. Media embeds are free of the budget: they neither load nor
-recurse, and render as `<img>`, `<video>`, `<audio>`, or — for a PDF — a link.
-
-`NoteSource.loadNote` receives a path that originated in note text, so an
-implementation must check it against its own store rather than concatenating it
-onto a root. The renderer refuses URL schemes it will not act on and hands the
-method nothing but its own pipeline's output, but it has no idea what a
-traversal means to your backing store.
-
-### Theming
+## Theming
 
 `theme.css` defines a `--markdown-*` variable contract with neutral light/dark
 fallbacks. Host themes set variables; they do not override selectors. Dark mode
@@ -429,13 +327,6 @@ contract. Both are geometry, so neither has a dark-mode value.
 - A bare URL inside `[[…]]` is claimed by GFM autolink literals during parse, so
   `[[https://example.com]]` is an ordinary link. Obsidian has no such syntax
   either.
-- `useNoteSource()` returns `undefined` when no host installed one; the renderer
-  still works, it just cannot resolve links or load embeds.
-- Task checkboxes render enabled (GFM emits them disabled). The component
-  reports `task-toggle` and reverts the DOM flip — the host owns the state, so
-  the rendered document stays a pure function of the source. Inside a
-  transclusion they stay disabled: `task-toggle` does not cross the embed
-  boundary, so a live box there would do nothing.
 - Heading and block ids are *not* prefixed with `user-content-`, and footnote
   ids carry `markdownRender_` — see *Sanitization* above.
 
@@ -446,12 +337,7 @@ pnpm test
 pnpm run typecheck
 ```
 
-Both commands work from this package, under Node. Vue components are mounted against jsdom:
-the component test files opt in with a `// @vitest-environment jsdom` docblock
-(jsdom replaces the global `URL`, which breaks the file-URL tests, so it is not
-the default), and `tests/setup-dom.ts` hands out Vue via a dynamic import
-because `@vue/runtime-dom` captures `document` at module-init time. Every test
-module that needs Vue takes it from there.
+Both commands work from this package, under Node.
 
 Mermaid's real drawing is verified in the app layer — it wants a browser — but
 the seam around it (`createMermaidRenderer`: once-per-theme init, one id

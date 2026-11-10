@@ -1,7 +1,7 @@
 {
   "extends": "@osdlc/tsconfig/vue",
   "compilerOptions": {
-    // A Vue 3 renderer for ES2022 hosts: the DOM, and JSX left for the bundler.
+    // A renderer for ES2022 hosts: the DOM (the mermaid seam), and no ambient types but node's.
     "target": "ES2022",
     "lib": ["ES2022", "DOM"],
     "types": ["node"]

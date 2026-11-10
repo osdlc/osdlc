@@ -21,7 +21,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 /** Renders parked by theme, so a test can settle draws out of turn. */
 const parked = vi.hoisted(() => new Map<string, () => void>())
 
-vi.mock('../src/mermaid.ts', () => ({
+vi.mock('@osdlc/markdown-render', () => ({
   async renderMermaid(source: string, theme = 'default') {
     const svg = `<svg data-theme="${theme}">${source}</svg>`
     if (!parked.has(theme)) return svg

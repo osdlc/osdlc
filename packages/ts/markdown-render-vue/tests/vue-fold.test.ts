@@ -243,7 +243,7 @@ describe('heading sections', () => {
     // A later plugin may append a node after `<section data-footnotes>`. The
     // footnotes still belong to the whole document, so folding the section
     // above them must not hide them, and the trailing node keeps its place.
-    const { renderHeadingSections } = await import('../src/vue/heading-sections.ts')
+    const { renderHeadingSections } = await import('../src/heading-sections.ts')
     const el = (tagName: string, properties: Record<string, unknown>, text?: string) => ({
       type: 'element',
       tagName,

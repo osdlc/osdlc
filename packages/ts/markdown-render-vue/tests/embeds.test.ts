@@ -3,8 +3,8 @@ import { markdownVue, vue } from './setup-dom.ts'
 import { afterEach, describe, expect, test } from 'vitest'
 import type { App } from 'vue'
 import { html, vaultResolver } from './helpers.ts'
-import { embedKind, isMediaKind, markdownSchema, type LinkResolution } from '../src/index.ts'
-import type { NoteSource } from '../src/vue/context.ts'
+import { embedKind, isMediaKind, markdownSchema, type LinkResolution } from '@osdlc/markdown-render'
+import type { NoteSource } from '../src/context.ts'
 
 const resolveLink = vaultResolver(['Note', 'Folder/Other', 'diagram.png'])
 

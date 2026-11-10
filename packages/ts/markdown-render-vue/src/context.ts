@@ -12,7 +12,7 @@ import type {
   LoadedNote,
   MarkdownRenderOptions,
   WikilinkResolver,
-} from '../types.ts'
+} from '@osdlc/markdown-render'
 import type { ComponentMap } from './render.ts'
 
 /** Everything the Vue layer needs from the host's vault. */
@@ -120,7 +120,7 @@ export const EmbedAncestorsKey: InjectionKey<readonly string[]> = Symbol(
 
 // The limits live with the embed plugin, which has no Vue in its graph, so a
 // host that renders embeds without Vue (the Astro build) applies the same ones.
-export { MAX_EMBED_DEPTH, MAX_EMBEDS_PER_DOCUMENT } from '../plugins/embeds.ts'
+export { MAX_EMBED_DEPTH, MAX_EMBEDS_PER_DOCUMENT } from '@osdlc/markdown-render'
 
 /**
  * The document-wide transclusion budget. Shared by the whole render tree.

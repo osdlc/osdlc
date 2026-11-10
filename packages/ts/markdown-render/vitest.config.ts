@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url'
 
 import { defineConfig } from 'vitest/config'
 
-// Vue component tests opt into jsdom per file (`// @vitest-environment jsdom`): jsdom
+// DOM tests opt into jsdom per file (`// @vitest-environment jsdom`): jsdom
 // replaces the global URL, which breaks `new URL(..., import.meta.url)` in the rest.
 export default defineConfig({
   resolve: {
@@ -15,10 +15,6 @@ export default defineConfig({
       {
         find: /^@osdlc\/markdown-render\/plugins$/,
         replacement: fileURLToPath(new URL('./src/plugins/index.ts', import.meta.url)),
-      },
-      {
-        find: /^@osdlc\/markdown-render\/vue$/,
-        replacement: fileURLToPath(new URL('./src/vue/index.ts', import.meta.url)),
       },
       {
         find: /^@osdlc\/markdown-render\/shiki$/,

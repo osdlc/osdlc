@@ -23,12 +23,4 @@ assert.match(html, /<markdown-embed/)
 assert.equal(typeof remarkWikilinks, 'function')
 assert.equal(typeof rehypeShiki, 'function')
 
-// `vue` is an optional peer: a clean install may not have it.
-try {
-  const vue = await import('@osdlc/markdown-render/vue')
-  assert.ok(vue.MarkdownRender)
-} catch (error) {
-  if (error?.code !== 'ERR_MODULE_NOT_FOUND') throw error
-}
-
 console.log('markdown-render smoke: OK')

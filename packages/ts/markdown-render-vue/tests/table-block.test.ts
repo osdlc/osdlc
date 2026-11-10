@@ -18,8 +18,8 @@
 import { markdownVue, vue } from './setup-dom.ts'
 import { afterEach, describe, expect, test } from 'vitest'
 import type { App } from 'vue'
-import { renderToHtml } from '../src/index.ts'
-import type { HastNode } from '../src/vue/render.ts'
+import { renderToHtml } from '@osdlc/markdown-render'
+import type { HastNode } from '../src/render.ts'
 
 const { createApp, defineComponent, h, ref } = vue
 const { MarkdownRender } = markdownVue
@@ -28,7 +28,7 @@ const { MarkdownRender } = markdownVue
 // safe here: `table-data.ts` pulls in Vue through
 // `render.ts`, and a static import of it would be hoisted above the DOM setup;
 // see `setup-dom.ts`.
-const { cellText, hasSpannedCells, sortRowOrder } = await import('../src/vue/table-data.ts')
+const { cellText, hasSpannedCells, sortRowOrder } = await import('../src/table-data.ts')
 
 let app: App | null = null
 

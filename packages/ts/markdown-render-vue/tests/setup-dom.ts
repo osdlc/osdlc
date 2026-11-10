@@ -11,4 +11,4 @@
 export const vue = await import('vue')
 
 /** The package's Vue entry, likewise. */
-export const markdownVue = await import('../src/vue/index.ts')
+export const markdownVue = await import('../src/index.ts')

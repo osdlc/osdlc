@@ -1,5 +1,5 @@
 /**
- * Pins the import graph: the main and Vue entries never reach Shiki. A
+ * Pins the import graph: the main entry never reaches Shiki. A
  * consumer that does not import `@osdlc/markdown-render/shiki` must ship no
  * Shiki chunk — hundreds of grammar files otherwise ride into every build.
  *
@@ -57,8 +57,8 @@ function shikiMentions(entries: string[]): string[] {
 }
 
 describe('import graph', () => {
-  test('the main and Vue entries reach no Shiki', () => {
-    expect(shikiMentions([src('index.ts'), src('vue/index.ts')])).toEqual([])
+  test('the main entry reaches no Shiki', () => {
+    expect(shikiMentions([src('index.ts')])).toEqual([])
   })
 
   test('the /shiki subpath does reach Shiki, so the check above can fail', () => {

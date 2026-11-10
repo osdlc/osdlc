@@ -1,7 +1,7 @@
 {
   "name": "@osdlc/markdown-render",
   "version": "0.7.0",
-  "description": "Markdown to HTML and Vue 3 rendering on unified and remark for CommonMark, GFM and the Obsidian extensions (wikilinks, embeds, callouts, tags, block ids, comments, highlights), with injected link resolution, sanitized output and Vue components. Every feature is a remark or rehype plugin.",
+  "description": "Markdown to HTML on unified and remark for CommonMark, GFM and the Obsidian extensions (wikilinks, embeds, callouts, tags, block ids, comments, highlights), with injected link resolution and sanitized output. Framework-free: every feature is a remark or rehype plugin. Vue components are in @osdlc/markdown-render-vue.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
   "repository": {
@@ -20,7 +20,6 @@
     "unified",
     "remark",
     "rehype",
-    "vue",
     "renderer",
     "typescript"
   ],
@@ -42,10 +41,6 @@
     "./plugins": {
       "types": "./dist/plugins/index.d.ts",
       "default": "./dist/plugins/index.js"
-    },
-    "./vue": {
-      "types": "./dist/vue/index.d.ts",
-      "default": "./dist/vue/index.js"
     },
     "./shiki": {
       "types": "./dist/shiki.d.ts",
@@ -76,7 +71,6 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
   },
   "dependencies": {
-    "@osdlc/gfm-table": "workspace:^",
     "@osdlc/markdown-tags": "workspace:^",
     "@osdlc/markdown-link": "workspace:^",
     "@types/hast": "^3.0.4",
@@ -96,8 +90,7 @@
   },
   "peerDependencies": {
     "katex": "^0.19.1",
-    "mermaid": "^11.12.2",
-    "vue": "^3.5"
+    "mermaid": "^11.12.2"
   },
   "peerDependenciesMeta": {
     "katex": {
@@ -105,15 +98,11 @@
     },
     "mermaid": {
       "optional": true
-    },
-    "vue": {
-      "optional": true
     }
   },
   "devDependencies": {
     "katex": "^0.19.1",
     "mermaid": "^11.12.2",
-    "vue": "^3.5.25",
     "@osdlc/prettier-config": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
     "@types/node": "catalog:",

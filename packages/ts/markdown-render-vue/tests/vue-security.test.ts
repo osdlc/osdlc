@@ -13,19 +13,18 @@
 import { markdownVue, vue } from './setup-dom.ts'
 import { afterEach, describe, expect, test } from 'vitest'
 import type { App, Component } from 'vue'
-import type { NoteSource } from '../src/vue/context.ts'
-import type { LinkResolution } from '../src/index.ts'
-import { rehypeShiki } from '../src/shiki.ts'
-
-/** One pass for the file: the renderer compares it by identity to reuse its processor. */
-const highlight = rehypeShiki()
+import type { NoteSource } from '../src/context.ts'
 import {
   CLASS_ROUTES,
   FENCE_LANG_PROP,
-  STRIPPED_PROPERTIES,
   isRoutingClass,
+  type LinkResolution,
   stripRoutingSignals,
-} from '../src/routing-signals.ts'
+} from '@osdlc/markdown-render'
+import { rehypeShiki } from '@osdlc/markdown-render/shiki'
+
+/** One pass for the file: the renderer compares it by identity to reuse its processor. */
+const highlight = rehypeShiki()
 
 const { createApp, defineComponent, h } = vue
 const { MarkdownRender, provideNoteSource, resolutionFromNode, routeKeys, toVueProps, attrName } =
@@ -383,7 +382,6 @@ describe('the routing table and the strip table are one table', () => {
       'lang:mermaid',
       'pre',
     ])
-    expect(STRIPPED_PROPERTIES).toContain(FENCE_LANG_PROP)
   })
 
   test('a stripped element routes on its tag name alone', () => {

@@ -10,13 +10,13 @@
 import { markdownVue, vue } from './setup-dom.ts'
 import { afterEach, describe, expect, vi, test } from 'vitest'
 import type { App } from 'vue'
-import * as math from '../src/math.ts'
-import * as mermaid from '../src/mermaid.ts'
-import type { HastNode } from '../src/vue/render.ts'
+import * as math from '@osdlc/markdown-render'
+import * as mermaid from '@osdlc/markdown-render'
+import type { HastNode } from '../src/render.ts'
 
 const { createApp, h } = vue
 const { MathBlock, MathInline, MermaidBlock } = markdownVue
-const { showMathSource } = await import('../src/vue/components/MathBlock.ts')
+const { showMathSource } = await import('../src/components/MathBlock.ts')
 
 let apps: App[] = []
 afterEach(() => {

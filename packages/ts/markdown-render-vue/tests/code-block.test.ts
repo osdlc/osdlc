@@ -13,7 +13,7 @@
 import { markdownVue, vue } from './setup-dom.ts'
 import { afterEach, describe, expect, test } from 'vitest'
 import type { App } from 'vue'
-import { renderToHtml } from '../src/index.ts'
+import { renderToHtml } from '@osdlc/markdown-render'
 
 const { createApp, defineComponent, h } = vue
 const { MarkdownRender } = markdownVue

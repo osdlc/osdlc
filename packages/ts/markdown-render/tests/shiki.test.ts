@@ -32,7 +32,7 @@ function findPre(node: TreeNode): TreeNode | undefined {
 /**
  * What the copy button would put on the clipboard.
  *
- * Mirrors `vue/components/CodeBlock.ts` exactly — `nodeText(pre)` with one
+ * Mirrors `CodeBlock.ts` in `@osdlc/markdown-render-vue` exactly — `nodeText(pre)` with one
  * trailing newline off — so the two sides of the highlighted/plain comparison
  * are the strings a reader actually gets.
  */

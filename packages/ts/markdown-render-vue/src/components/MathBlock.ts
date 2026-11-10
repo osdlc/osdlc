@@ -6,7 +6,7 @@
  */
 
 import { defineComponent, h, onMounted, ref, watch, type PropType } from 'vue'
-import { renderMath } from '../../math.ts'
+import { renderMath } from '@osdlc/markdown-render'
 import { hastNodeText, type HastNode } from '../render.ts'
 
 function latexOf(node: HastNode): string {

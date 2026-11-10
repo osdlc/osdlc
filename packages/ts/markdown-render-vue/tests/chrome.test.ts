@@ -16,8 +16,8 @@
 import { markdownVue, vue } from './setup-dom.ts'
 import { afterEach, describe, expect, test } from 'vitest'
 import type { App } from 'vue'
-import type { NoteSource } from '../src/vue/context.ts'
-import type { LinkResolution } from '../src/index.ts'
+import type { NoteSource } from '../src/context.ts'
+import type { LinkResolution } from '@osdlc/markdown-render'
 
 const { createApp, defineComponent, h } = vue
 const { MarkdownRender, provideNoteSource, RENDER_CHROME_SELECTOR } = markdownVue

@@ -398,7 +398,7 @@ importers:
         version: 6.0.3
       vitest:
         specifier: 'catalog:'
-        version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(jsdom@26.1.0)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
+        version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(jsdom@29.1.1)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
 
   packages/ts/corpus-schema:
     dependencies:
@@ -441,7 +441,7 @@ importers:
         version: 6.0.3
       vitest:
         specifier: 'catalog:'
-        version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(jsdom@26.1.0)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
+        version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(jsdom@29.1.1)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
 
   packages/ts/detect-harness:
     dependencies:
@@ -791,9 +791,6 @@ importers:
 
   packages/ts/markdown-render:
     dependencies:
-      '@osdlc/gfm-table':
-        specifier: workspace:^
-        version: link:../gfm-table
       '@osdlc/markdown-link':
         specifier: workspace:^
         version: link:../markdown-link
@@ -842,6 +839,55 @@ importers:
       unist-util-visit:
         specifier: ^5.0.0
         version: 5.1.0
+    devDependencies:
+      '@osdlc/prettier-config':
+        specifier: workspace:^
+        version: link:../prettier-config
+      '@osdlc/tsconfig':
+        specifier: workspace:^
+        version: link:../tsconfig
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.5
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 5.0.5(vitest@5.0.5)
+      jsdom:
+        specifier: ^26.0.0
+        version: 26.1.0
+      katex:
+        specifier: ^0.19.1
+        version: 0.19.1
+      mermaid:
+        specifier: ^11.12.2
+        version: 11.17.2
+      oxlint:
+        specifier: 'catalog:'
+        version: 1.88.0
+      prettier:
+        specifier: 'catalog:'
+        version: 3.9.6
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(jsdom@26.1.0)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
+
+  packages/ts/markdown-render-vue:
+    dependencies:
+      '@osdlc/gfm-table':
+        specifier: workspace:^
+        version: link:../gfm-table
+      '@osdlc/markdown-render':
+        specifier: workspace:^
+        version: link:../markdown-render
+      '@types/hast':
+        specifier: ^3.0.4
+        version: 3.0.5
+      '@types/unist':
+        specifier: ^3.0.3
+        version: 3.0.3
     devDependencies:
       '@osdlc/prettier-config':
         specifier: workspace:^
@@ -940,7 +986,7 @@ importers:
         version: 6.0.3
       vitest:
         specifier: 'catalog:'
-        version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(jsdom@26.1.0)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
+        version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(jsdom@29.1.1)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
 
   packages/ts/observe:
     dependencies:
@@ -1026,7 +1072,7 @@ importers:
         version: 6.0.3
       vitest:
         specifier: 'catalog:'
-        version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(jsdom@26.1.0)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
+        version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(jsdom@29.1.1)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
 
   packages/ts/path-guard:
     devDependencies:
