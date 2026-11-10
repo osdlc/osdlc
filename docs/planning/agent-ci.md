@@ -135,19 +135,19 @@ move; merged PRs drop off.
 
 | Order | PR | What | Why this order | Status |
 | --- | --- | --- | --- | --- |
-| 1 | [#760](https://github.com/osdlc/osdlc/pull/760) | pr-update: one PR identity across repositories, per-repository verify, `--restack` | From the pr-update work; the only PR still waiting | waiting on your review since 18:30 UTC; clean and green (conflict resolved) |
+| 1 | [#760](https://github.com/osdlc/osdlc/pull/760) | pr-update: one PR identity across repositories, per-repository verify, `--restack` | From the pr-update work; the only PR still waiting | waiting on your review since 18:30 UTC; green but behind main |
 
 ## PR tracker
 
-Checked 2026-11-10 02:17 UTC. A periodic check refreshes this table and the graph.
+Checked 2026-11-10 03:17 UTC. A periodic check refreshes this table and the graph.
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
 | [#749](https://github.com/osdlc/osdlc/pull/749) | ci: shared reusable workflows for TypeScript package CI and release | merged | — | — | — | merged 2026-11-10 (shared-CI work) |
 | [#748](https://github.com/osdlc/osdlc/pull/748) | package-checks: move the package checks into @osdlc/package-checks | merged | — | — | — | merged 2026-11-09 |
 | [#747](https://github.com/osdlc/osdlc/pull/747) | ci: codex and cursor answer PR mentions | merged | — | — | — | merged 2026-11-10; next: live codex and cursor mentions (needs OPENAI_API_KEY, CURSOR_API_KEY) |
-| [#764](https://github.com/osdlc/osdlc/pull/764) | feat(gh-actions): run any skill from a PR comment, read-only or with --apply | draft | none | clean | pre-review gate (draft) | new; touches gh-actions |
-| [#760](https://github.com/osdlc/osdlc/pull/760) | pr-update: one PR identity across repositories, per-repository verify, --restack | open | none | clean | waiting on your review (pr-update work) | related |
+| [#764](https://github.com/osdlc/osdlc/pull/764) | feat(gh-actions): run any skill from a PR comment, read-only or with --apply | draft | none | behind main; green | pre-review gate (draft) | new; touches gh-actions |
+| [#760](https://github.com/osdlc/osdlc/pull/760) | pr-update: one PR identity across repositories, per-repository verify, --restack | open | none | behind main; green | waiting on your review (pr-update work) | related |
 | [#759](https://github.com/osdlc/osdlc/pull/759) | ci(pr-update): run once a night instead of on every push to main | merged | — | — | — | merged 2026-11-09; ends the CI storms from merges to main |
 | [#750](https://github.com/osdlc/osdlc/pull/750) | feat(harness-knowledge): compiled harness facts, read by agent-call and detect-harness | draft | none | behind main; CI green | waits on the skillwright stack merging (osdlc/skillwright#98, #100–#106); gate done (code review, codex) | phase 5 of the harness-knowledge plan; facts wired and consumer fixes in; re-sync from the release, then ready |
 | [#741](https://github.com/osdlc/osdlc/pull/741) | fix: kill the agent's process group when its host is interrupted (command-seam, agent-call, pr-update) | merged | — | — | — | merged 2026-11-10; releases with the next Version Packages PR |
