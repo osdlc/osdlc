@@ -7,8 +7,10 @@ the direction before you spend time on it.
 Pull requests are taken. A good pull request:
 
 - changes one thing,
-- adds or updates a test, including a case in `tests/fixtures/conformance.json`
-  when link behaviour changes,
+- adds or updates a test, including a case in
+  `packages/conformance/markdown-link/suite.json` when link behaviour changes
+  (write its `input`, then run `cargo run -p markdown-link --example
+  conformance-write`),
 - updates `CHANGELOG.md` under "Unreleased",
 - builds and passes `cargo test` on the minimum Rust version in the README.
 

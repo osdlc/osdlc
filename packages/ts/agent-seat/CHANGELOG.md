@@ -1,5 +1,17 @@
 # @osdlc/agent-seat
 
+## 0.7.3
+
+### Patch Changes
+
+- Updated dependencies [e1a5941]
+- Updated dependencies [e1a5941]
+- Updated dependencies [cb8eafc]
+  - @osdlc/agent-call@0.11.0
+  - @osdlc/command-seam@0.15.0
+  - @osdlc/typed-git@0.14.0
+  - @osdlc/detect-harness@0.7.1
+
 ## 0.7.2
 
 ### Patch Changes

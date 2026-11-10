@@ -25,7 +25,7 @@ import {
   outcome,
   type CommandContext,
 } from '@osdlc/cli-tool/command'
-import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
+import { forwardedExitCode, spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 import { describe, type Failure } from '@osdlc/result'
 import { Git } from '@osdlc/typed-git'
 import { CONFIG_INVALID_EXIT, ConfigInvalidError, type ConfigFileSpec } from '@osdlc/config-layers'
@@ -38,9 +38,11 @@ import { REPAIR_AGENTS, REPAIR_AGENT_SUMMARIES, type RepairAgent } from './repai
 import {
   SurveyUsageError,
   output as surveyOutputSchema,
+  parsePrKey,
   renderSurveyText,
   repoFailuresOf,
   runSurvey,
+  type PrSelector,
 } from './survey.ts'
 import { EXIT_UNTRUSTED, untrustedMessage, withoutRepairChoice } from './trust.ts'
 import {
@@ -132,8 +134,16 @@ function parseIntFlag(name: string, raw: string): number {
   return n
 }
 
-function parsePrFlags(raw: readonly string[]): number[] {
-  return raw.map((text) => parseIntFlag('pr', text))
+/** `--pr` values: a PR number (every repository) or `owner/name#N` (one repository). */
+function parsePrFlags(raw: readonly string[]): PrSelector[] {
+  return raw.map((text) => {
+    if (parsePrKey(text) !== null) return text
+    const n = Number(text)
+    if (!Number.isInteger(n) || n < 1) {
+      throw new UsageError(`--pr must be a PR number or owner/name#N, got '${text}'`)
+    }
+    return n
+  })
 }
 
 /**
@@ -265,9 +275,9 @@ export function surveyCommand(seams: CliSeams) {
       ...scopeFlags('survey', 'Remote to fetch from and measure against.'),
       pr: {
         kind: 'list',
-        valueName: 'n',
+        valueName: 'n|owner/name#n',
         default: [],
-        help: 'Only this PR and its stack parents; repeatable.',
+        help: 'Only this PR and its stack parents; repeatable. A number selects that PR in every repository of the run; owner/name#n one PR of one repository.',
       },
     },
     exits: { 14: 'the config file is invalid or unreadable' },
@@ -372,10 +382,19 @@ export function updateCommand(seams: CliSeams) {
         kind: 'boolean',
         help: 'Show the commits and diffstat and ask y/N before each force-push. Needs --apply and a terminal.',
       },
-      pr: { kind: 'list', valueName: 'n', default: [], help: 'Update only this PR; repeatable.' },
+      pr: {
+        kind: 'list',
+        valueName: 'n|owner/name#n',
+        default: [],
+        help: 'Update only this PR; repeatable. A number selects that PR in every repository of the run; owner/name#n one PR of one repository.',
+      },
       trust: {
         kind: 'boolean',
         help: 'Treat this repo as trusted for this run (satisfies the trust gate on commands and agents the project file names).',
+      },
+      restack: {
+        kind: 'boolean',
+        help: "Update a whole stack in one run: a PR blocked on its parent is updated right after it, onto the parent's new head. With --pr or --branch, their stack ancestors are updated too.",
       },
       retryFailed: {
         kind: 'boolean',
@@ -481,6 +500,7 @@ export function updateCommand(seams: CliSeams) {
             ...(branch !== undefined ? { branch } : {}),
             trust: flags.trust,
             retryFailed: flags.retryFailed,
+            restack: flags.restack,
             ...(flags.strategy !== undefined ? { strategy: flags.strategy } : {}),
           },
           env,
@@ -507,16 +527,13 @@ export function updateCommand(seams: CliSeams) {
       // target was attempted and nothing was left half applied. But a conflict or
       // push failure left some PR not updated. A script that runs this in a loop
       // needs that in the exit code, not only in the JSON `counts`.
-      const listingFailure = reportRepoFailures(ctx, {
-        repos: (out.repoFailures ?? []).map(({ repo, ...failure }) => ({
-          slug: repo,
-          measurable: false,
-          fetched: false,
-          failure,
-        })),
-      })
+      const listingFailure = reportRepoFailures(ctx, out)
+      // A forwarded signal stopped the run: exit 128 + its number, as forwarding itself would.
+      const interrupted = forwardedExitCode()
       const exit =
-        listingFailure ?? (out.counts.conflict > 0 || out.counts.failed > 0 ? EXIT.error : EXIT.ok)
+        interrupted ??
+        listingFailure ??
+        (out.counts.conflict > 0 || out.counts.failed > 0 ? EXIT.error : EXIT.ok)
       return exit === EXIT.ok ? out : outcome(out, exit)
     },
     text: (out) => renderUpdateText(out),
