@@ -63,17 +63,7 @@
     "@types/unist": "^3.0.3"
   },
   "peerDependencies": {
-    "katex": "^0.19.1",
-    "mermaid": "^11.12.2",
     "vue": "^3.5"
-  },
-  "peerDependenciesMeta": {
-    "katex": {
-      "optional": true
-    },
-    "mermaid": {
-      "optional": true
-    }
   },
   "devDependencies": {
     "@osdlc/prettier-config": "workspace:^",
@@ -81,8 +71,6 @@
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "jsdom": "^26.0.0",
-    "katex": "^0.19.1",
-    "mermaid": "^11.12.2",
     "oxlint": "catalog:",
     "prettier": "catalog:",
     "typescript": "catalog:",

@@ -15,8 +15,9 @@ npm install @osdlc/markdown-render-vue @osdlc/markdown-render vue
 ```
 
 `vue` (^3.5) is a required peer dependency. `katex` (math) and `mermaid`
-(diagrams) are optional peers, resolved by `@osdlc/markdown-render`; install the
-ones you use. Node 22 or later for SSR and builds, and any modern browser at
+(diagrams) are optional peers of `@osdlc/markdown-render`, which loads them;
+this package never imports them, so install the ones you use beside the core.
+Node 22 or later for SSR and builds, and any modern browser at
 runtime.
 
 ## Who it is for
