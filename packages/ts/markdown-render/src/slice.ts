@@ -444,6 +444,8 @@ function headings(lines: string[], fenced: boolean[]): Heading[] {
       title,
       setext: true,
     })
+    // The underline is part of this heading, not a line to read again.
+    i++
   }
   return found
 }
