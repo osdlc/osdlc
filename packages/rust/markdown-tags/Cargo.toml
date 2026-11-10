@@ -1,6 +1,6 @@
 [package]
 name = "markdown-tags"
-version = "0.4.0"
+version = "0.4.1"
 edition.workspace = true
 rust-version.workspace = true
 description = "Inline #tag lexing for Markdown note bodies, in three dialects: Obsidian's rule (the default), a Unicode one that scans everything, and an ASCII one that skips code spans and fences and also accepts a tag after `(`."

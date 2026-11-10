@@ -1,0 +1,242 @@
+# Releases a pnpm workspace of TypeScript packages with Changesets: either the
+# Version Packages pull request, or the publish of the versions not on npm
+# yet. Call it from the repository's own `packages-publish.yml` on a push to
+# the default branch, after that workflow's checks pass;
+# packages/gh-actions/ts-packages/README.md shows how. osdlc/osdlc's
+# packages-publish.yml calls it too.
+#
+# npm auth is trusted publishing (OIDC) only, with provenance. npm checks the
+# calling workflow, not this one, so each package's trusted publisher on
+# npmjs.com names the caller's file, and the caller must keep that file name
+# (https://docs.npmjs.com/trusted-publishers, Troubleshooting). The calling
+# job must grant `id-token: write` and `contents: write`; `publish` is the
+# only job here that takes them.
+#
+# `version` opens the Version Packages pull request as a GitHub App, so its
+# pull_request checks start without an approval click; a pull request opened
+# with GITHUB_TOKEN would wait for one. The job runs in the caller's
+# `environment`, which holds the App's private key as the secret
+# RELEASE_PLZ_APP_PRIVATE_KEY. The caller passes that secret by name too; the
+# secret's description below says why.
+#
+# Every action is pinned to a commit SHA; the comment names its release.
+name: ts-packages-release
+
+on:
+  workflow_call:
+    inputs:
+      app-client-id:
+        description: Client ID of the GitHub App that opens the Version Packages pull request.
+        type: string
+        required: true
+      environment:
+        description: The environment that holds the App's key, RELEASE_PLZ_APP_PRIVATE_KEY.
+        type: string
+        default: release-plz
+      version-prepare:
+        description: Shell run after the install in `version`, before `version-script`.
+        type: string
+        default: ''
+      version-script:
+        description: >-
+          The command that versions the packages. The Changesets action runs it
+          without a shell, so it is one command, usually a root script that
+          runs `changeset version` and whatever must follow it.
+        type: string
+        default: pnpm run version-packages
+      npm-version:
+        description: The npm that publishes. Trusted publishing needs 11.5.1 or later.
+        type: string
+        default: 11.19.1
+    secrets:
+      RELEASE_PLZ_APP_PRIVATE_KEY:
+        description: >-
+          The App's private key. Pass it by name even when only `environment`
+          holds it; `version` then reads the environment's value. A reusable
+          workflow reads an environment secret the caller does not pass as an
+          empty string
+          (https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows).
+        required: true
+
+permissions: {}
+
+jobs:
+  select-mode:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      mode: ${{ steps.select-mode.outputs.mode }}
+      publish-plan-artifact-id: ${{ steps.select-mode.outputs.publish-plan-artifact-id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - id: select-mode
+        uses: changesets/action/select-mode@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
+
+  version:
+    needs: select-mode
+    if: needs.select-mode.outputs.mode == 'version'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+    env:
+      VERSION_PREPARE: ${{ inputs.version-prepare }}
+    steps:
+      # `required` only checks that the caller passes the secret, not that it
+      # has a value.
+      - name: Check the App key
+        env:
+          APP_KEY: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}
+          ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          if [ -z "$APP_KEY" ]; then
+            echo "::error::RELEASE_PLZ_APP_PRIVATE_KEY is empty. The caller must pass it by name under \`secrets:\`, and the $ENVIRONMENT environment must hold it."
+            exit 1
+          fi
+
+      - id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ inputs.app-client-id }}
+          private-key: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare
+        if: inputs.version-prepare != ''
+        run: eval "$VERSION_PREPARE"
+
+      - uses: changesets/action/version@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: ${{ inputs.version-script }}
+
+  pack:
+    needs: select-mode
+    if: needs.select-mode.outputs.mode == 'publish'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      pack-dir-artifact-id: ${{ steps.pack.outputs.pack-dir-artifact-id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Install
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build
+        run: pnpm -r --if-present run build
+
+      # Trusted publishing cannot create a package: the owner stages each new
+      # one first with `package-checks stage`. After the build, since a
+      # repository may build package-checks in its own workspace. The packages' folder is
+      # `tsDir`, read through package-checks, which refuses a bad
+      # package-checks.json.
+      - name: Refuse a package that is not on npm yet
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          dir="$(pnpm exec package-checks config tsDir)"
+          manifests=("$dir"/*/package.json)
+          if [ "${#manifests[@]}" -eq 0 ]; then
+            echo "::error::no packages in $dir, the tsDir of package-checks.json"
+            exit 1
+          fi
+          for manifest in "${manifests[@]}"; do
+            name="$(node -p "const p = require('./$manifest'); p.private ? '' : p.name")"
+            [ -n "$name" ] || continue
+            if ! err="$(npm view "$name" name 2>&1 >/dev/null)"; then
+              if grep -q E404 <<<"$err"; then
+                echo "::error::$name is not on npm yet. The owner stages it once with \`package-checks stage\`, which publishes a placeholder and adds its trusted publisher."
+              else
+                echo "::error::npm view $name failed: $err"
+              fi
+              exit 1
+            fi
+          done
+
+      - name: Pack, publint, attw
+        run: pnpm exec package-checks ts
+
+      - id: pack
+        uses: changesets/action/pack@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
+        with:
+          publish-plan-artifact-id: ${{ needs.select-mode.outputs.publish-plan-artifact-id }}
+
+  publish:
+    needs: pack
+    runs-on: ubuntu-latest
+    permissions:
+      # Tags and GitHub releases.
+      contents: write
+      # OIDC token for npm trusted publishing; provenance is attested with it.
+      id-token: write
+    env:
+      NPM_VERSION: ${{ inputs.npm-version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+
+      # pnpm 10 hands a tarball to `npm publish`, and trusted publishing needs
+      # npm 11.5.1 or later.
+      - name: Install npm
+        run: |
+          set -euo pipefail
+          npm install -g "npm@$NPM_VERSION"
+          echo "npm $(npm --version)"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - uses: changesets/action/publish@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
+        env:
+          NPM_CONFIG_PROVENANCE: 'true'
+        with:
+          pack-dir-artifact-id: ${{ needs.pack.outputs.pack-dir-artifact-id }}

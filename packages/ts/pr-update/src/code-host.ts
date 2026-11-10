@@ -13,7 +13,7 @@ import { FailureError } from '@osdlc/result'
 /** A `SurveyEnv.codeHost` factory that builds a `GithubCodeHost` over `gh`. */
 export function githubCodeHostFor(
   gh: CommandRunner,
-): (target: { cwd: string; slug: string }) => CodeHost {
+): (target: { cwd: string; repo: string }) => CodeHost {
   return (target) => new GithubCodeHost(target.cwd, { runner: gh })
 }
 
@@ -30,7 +30,7 @@ export function selectedCodeHostFor(deps: {
   gh: CommandRunner
   curl?: CommandRunner | undefined
   override: CodeHostName | null
-}): (target: { cwd: string; slug: string }) => CodeHost {
+}): (target: { cwd: string; repo: string }) => CodeHost {
   return (target) => {
     const selected = selectCodeHost(target.cwd, {
       git: deps.git,
