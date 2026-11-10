@@ -4,8 +4,7 @@
 # this, and so can you, from any folder.
 #
 # The root lockfile does not match the root package.json yet: the root devDependencies wait on
-# @osdlc/package-checks and @osdlc/conformance-suites 0.1.0, which are not on npm
-# (osdlc/markdown#10). So the install runs with them left out of package.json, and the lockfile
+# @osdlc/package-checks 0.1.0, which is not on npm (osdlc/markdown#10). So the install runs with them left out of package.json, and the lockfile
 # still pins corpus-schema's dependencies. Drop that step once the lockfile is refreshed.
 set -eu
 cd "$(dirname "$0")/.."
