@@ -18,8 +18,6 @@ const LANE_PAD = 14
 const HEAD_GAP = 40
 /** Room left of the first column for the headers of lanes that start there. */
 const LANE_GUTTER = LANE_HEAD_WIDTH + HEAD_GAP + 14
-/** The lanes the first view starts on: the first in plan order, the current beeline. */
-const START_LANES = 2
 const OVERVIEW_COLUMN = MILESTONE_WIDTH + 96
 // A wide row gap, so an arrow that skips a column shows as a line through the gap, not a stub.
 const OVERVIEW_ROW = MILESTONE_HEIGHT + 64
@@ -138,7 +136,9 @@ export function detailLayout(index: PlanIndex): WorkLayout {
     lanes.push({ id: milestone.id, x, y, width, height })
     y += height
   }
-  return { positions, lanes, start: startOf(index, positions, lanes.slice(0, START_LANES)) }
+  const beeline = new Set(index.plan.milestones.filter((m) => m.beeline).map((m) => m.id))
+  const startLanes = beeline.size > 0 ? lanes.filter((lane) => beeline.has(lane.id)) : lanes.slice(0, 1)
+  return { positions, lanes, start: startOf(index, positions, startLanes) }
 }
 
 /** The rectangle around the header and tasks of the given lanes. */
@@ -158,10 +158,11 @@ function startOf(index: PlanIndex, positions: Record<string, Point>, lanes: read
 
 /**
  * The overview: milestone cards only. A card's column is one right of the furthest milestone it
- * waits on; cards that share a column stack in plan order, so the beeline leads each column.
+ * waits on. Cards that share a column stack beeline milestones first, then in plan order.
  */
 export function overviewLayout(index: PlanIndex, deps: readonly MilestoneDep[]): WorkLayout {
-  const ids = index.plan.milestones.map((m) => m.id)
+  const milestones = index.plan.milestones
+  const ids = [...milestones.filter((m) => m.beeline), ...milestones.filter((m) => !m.beeline)].map((m) => m.id)
   const column = depths(ids, (id) => deps.filter((d) => d.to === id).map((d) => d.from))
   const used = new Map<number, number>()
   const positions: Record<string, Point> = {}

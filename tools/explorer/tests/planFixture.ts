@@ -18,7 +18,7 @@ export const rawPlan = {
     { id: 'supporting', label: 'Supporting' },
   ],
   milestones: [
-    { id: 'm-a', title: 'A first', goal: 'Do A.', status: 'todo', tasks: [4, 5] },
+    { id: 'm-a', title: 'A first', goal: 'Do A.', status: 'todo', beeline: true, tasks: [4, 5] },
     { id: 'm-b', title: 'B base', goal: 'Do B.', status: 'doing', tasks: [1, 2, 3], source: 'docs/plan/m-b.md' },
   ],
   tasks: [

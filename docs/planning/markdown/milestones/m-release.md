@@ -1,6 +1,7 @@
 ---
 title: Release from osdlc/markdown
 order: 1
+beeline: true
 tasks:
   - "[21 Release here](../tasks/21%20Release%20here.md)"
 ---

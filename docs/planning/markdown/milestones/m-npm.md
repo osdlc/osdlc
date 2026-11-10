@@ -1,6 +1,7 @@
 ---
 title: Upstream corpora over npm
 order: 2
+beeline: true
 tasks:
   - "[9 Extends](../tasks/9%20Extends.md)"
   - "[27 Org corpora](../tasks/27%20Org%20corpora.md)"

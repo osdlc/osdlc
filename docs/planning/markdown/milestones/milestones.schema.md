@@ -15,6 +15,11 @@ properties:
     description: Where the milestone comes in the plan. 1 comes first.
     type: integer
     minimum: 1
+  beeline:
+    description: >-
+      True for the milestones the work is heading for now. The explorer shows them first. Leave it
+      out for the others.
+    type: boolean
   tasks:
     description: The milestone's tasks, in the order the work goes.
     type: array

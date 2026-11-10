@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { milestoneDeps } from '../src/model/work'
+import { parsePlan } from '../src/model/plan'
+import { indexPlan, milestoneDeps } from '../src/model/work'
 import {
   LANE_HEAD_WIDTH,
   TASK_HEIGHT,
@@ -11,7 +12,7 @@ import {
   taskColumns,
   taskNodeId,
 } from '../src/model/workLayout'
-import { index } from './planFixture'
+import { index, rawPlan } from './planFixture'
 
 describe('depths', () => {
   it('is the longest prerequisite chain, and ends on a cycle', () => {
@@ -49,10 +50,17 @@ describe('detailLayout', () => {
     expect(layout.lanes[1]!.y).toBe(layout.lanes[0]!.y + layout.lanes[0]!.height)
   })
 
-  it('starts the first view on the first two lanes', () => {
+  it('starts the first view on the beeline lanes', () => {
     const start = layout.start!
     expect(start.y).toBe(layout.lanes[0]!.y)
-    expect(start.y + start.height).toBe(layout.lanes[1]!.y + layout.lanes[1]!.height)
+    expect(start.y + start.height).toBe(layout.lanes[0]!.y + layout.lanes[0]!.height)
+  })
+
+  it('starts on the first lane when no milestone is on the beeline', () => {
+    const plain = indexPlan(parsePlan({ ...rawPlan, milestones: rawPlan.milestones.map((m) => ({ ...m, beeline: false })) }).plan)
+    const start = detailLayout(plain).start!
+    const first = detailLayout(plain).lanes[0]!
+    expect([start.y, start.y + start.height]).toEqual([first.y, first.y + first.height])
   })
 })
 
@@ -60,6 +68,15 @@ describe('overviewLayout', () => {
   it('puts a milestone right of the ones it waits on', () => {
     const layout = overviewLayout(index, milestoneDeps(index))
     expect(layout.positions[milestoneNodeId('m-b')]!.x).toBeLessThan(layout.positions[milestoneNodeId('m-a')]!.x)
+  })
+
+  it('lifts beeline milestones to the top of their column', () => {
+    // No task waits across milestones, so both cards share the first column.
+    const tasks = rawPlan.tasks.map((t) => ({ ...t, after: [] }))
+    const milestones = [{ ...rawPlan.milestones[1]!, beeline: false }, { ...rawPlan.milestones[0]!, beeline: true }]
+    const flat = indexPlan(parsePlan({ ...rawPlan, tasks, milestones }).plan)
+    const layout = overviewLayout(flat, milestoneDeps(flat))
+    expect(layout.positions[milestoneNodeId('m-a')]!.y).toBeLessThan(layout.positions[milestoneNodeId('m-b')]!.y)
   })
 })
 

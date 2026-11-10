@@ -16,6 +16,8 @@ export interface PlanMilestone {
   title: string
   goal: string
   status: TaskStatus
+  /** True for the milestones the work is heading for now. The Work view opens on them. */
+  beeline: boolean
   /** Task ids in plan order. */
   tasks: number[]
   /** Repo-relative path of the milestone's markdown record, or null. */
@@ -41,7 +43,7 @@ export interface Plan {
   asOf: string
   statuses: PlanOption<TaskStatus>[]
   types: PlanOption<TaskType>[]
-  /** In plan order: the current beeline first. */
+  /** In plan order. */
   milestones: PlanMilestone[]
   tasks: PlanTask[]
 }
@@ -157,6 +159,7 @@ export function parsePlan(raw: unknown): { plan: Plan; problems: string[] } {
       title: text(entry.title, id),
       goal: text(entry.goal),
       status: isStatus(entry.status) ? entry.status : 'todo',
+      beeline: entry.beeline === true,
       tasks: ids(entry.tasks),
       source: typeof entry.source === 'string' ? entry.source : null,
     })

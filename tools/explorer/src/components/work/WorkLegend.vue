@@ -23,7 +23,7 @@ defineProps<{ level: WorkLevel }>()
       prerequisite done
     </span>
     <span class="legend__note">
-      <template v-if="level === 'detail'">Each band is a milestone, beeline first. Arrows run from a task to the task that waits on it; left to right is the order work can happen.</template>
+      <template v-if="level === 'detail'">Each band is a milestone, in plan order; the view opens on the beeline milestones. Arrows run from a task to the task that waits on it; left to right is the order work can happen.</template>
       <template v-else>Arrows run from a milestone to one that waits on it, because one of its tasks does.</template>
     </span>
   </div>
