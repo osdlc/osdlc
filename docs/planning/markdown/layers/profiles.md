@@ -1,5 +1,5 @@
 ---
-label: "5. Profiles (proposal)"
+label: "5. Profiles"
 order: 4
 ---
 

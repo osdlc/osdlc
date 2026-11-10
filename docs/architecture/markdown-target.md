@@ -76,8 +76,10 @@ Every note in a corpus at once.
 The spec, and the validator that checks a corpus against it.
 
 - It owns: the root file `corpus-schema.md` (or `.yaml` or `.json`) that marks a corpus, type folders,
-  record ids, record folders, JSON Schemas for types, links between types (`x-ref`), and the
-  `validate` and `validate --fix` commands.
+  record ids, record folders, JSON Schemas for types, links between types (`x-ref`), parent corpora
+  (`extends` in the root file and `x-extends` on a type), and the `validate`, `validate --fix` and
+  `sync` commands. `extends`, `x-extends` and `sync` come in the next release, 0.3.0 (the plan's
+  task 36), and are built in [#12](https://github.com/osdlc/markdown/pull/12).
 - It does not walk folders or resolve links itself. It reads the corpus model. (Today the validator
   still does its own walk. That changes in the plan.)
 - A record folder is a folder inside a type folder that holds a file with the folder's own name:
@@ -94,8 +96,8 @@ The spec, and the validator that checks a corpus against it.
 
 ### 5. Profiles
 
-Shared sets of types. The parent mechanism is decided (the plan's D11 and D4). Refine and waive are
-still proposals. The validator does not build any of this yet.
+Shared sets of types. The parent mechanism is decided (the plan's D11 and D4) and built for the
+next corpus-schema release, 0.3.0 (the plan's task 36). Refine and waive are still proposals.
 
 - A profile is a set of types and rules that many corpora can use. It is a corpus that has only
   types. A corpus can use more than one, next to its own types.
@@ -103,14 +105,14 @@ still proposals. The validator does not build any of this yet.
   a JSON Schema model for claims backed by evidence. Its types are Statement, Study Result, Method
   and Document. A statement holds its evidence lines, and Contribution is a field on records. It
   starts as an example corpus in this repo, `profiles/claims/example/`, with a README that maps each
-  type to VA-Spec. Until `extends` works, a corpus copies the type folders from the example. Then the
-  profile is published from this repo as the npm package `@osdlc/corpus-profile-claims`.
+  type to VA-Spec. Until 0.3.0 ships `extends`, a corpus copies the type folders from the example.
+  Then the profile is published from this repo as the npm package `@osdlc/corpus-profile-claims`.
 - A parent corpus, such as a profile or an org corpus, is an npm package or a local folder. A corpus
   names its parents in the root file under `extends`, which maps a short prefix to a source. A source
-  that starts with `./` or `../` is a path. Anything else is a package name, found the way Node finds
-  packages from the corpus folder. npm or pnpm installs it, `package.json` holds the version range
-  and the lockfile pins it. A private org corpus can be a git dependency, such as
-  `github:acme/principles#v3`, so it needs no registry. The spec does not depend on npm. It says only
+  that starts with `./` or `../` is a path from the corpus root. Anything else is a package name,
+  found the way Node finds packages from the corpus folder. npm or pnpm installs it, `package.json`
+  holds the version range and the lockfile pins it. A private org corpus can be a git dependency,
+  such as `github:acme/principles#v3`, so it needs no registry. The spec does not depend on npm. It says only
   that each parent resolves to a folder that holds a corpus.
 - Types are plain JSON Schema. A type builds on another with `x-extends`, for example
   `x-extends: claims/statements`. A record must pass its own schema and every schema above it. A
@@ -185,9 +187,10 @@ extends:
 ```
 
 As `corpus-schema.md`, the same keys go in YAML frontmatter between `---` lines. Today only
-`corpus-schema: 0` is required. Version 0 already has `level`. It treats `dialect` and `profiles` as reserved keys
-and only warns about them. The `extends` key replaces `profiles` (decided, not built yet). `profiles` stays reserved and
-unused. The `dialect` setting is still a proposal.
+`corpus-schema: 0` is required. Version 0 has `level`. `extends` comes in corpus-schema 0.3.0 (the
+plan's task 36), and needs `level: 2`. It replaces `profiles`, which stays reserved and unused.
+`dialect` is reserved too: a validator says it does not check it. The `dialect` setting is still a
+proposal.
 
 - The **level** says how much the corpus declares. Level 0 declares nothing: any folder of linked
   notes. Level 1 adds the root file, type folders, ids and record folders. Level 2 gives each type a
