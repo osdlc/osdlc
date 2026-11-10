@@ -1,8 +1,8 @@
 /**
  * Wikilink parsing that follows documented link-resolution conventions: the TypeScript twin of the `markdown-link`
  * crate's parsing half. Each function gives the same answer as its Rust
- * namesake. Both suites read the crate's case file,
- * `packages/rust/markdown-link/tests/fixtures/conformance.json`.
+ * namesake. Both run the family's conformance suite,
+ * `packages/conformance/markdown-link/suite.json`.
  *
  * Spans and ranges are UTF-16 offsets, so they index a JavaScript string.
  * The Rust crate reports byte offsets.

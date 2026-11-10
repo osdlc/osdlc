@@ -7,7 +7,7 @@
  * A file's version is its top-level integer `version` key; a file without one
  * is version 1. A step moves a document from one version to the next. It is
  * either a hand-written `run`, or a list of declarative moves built with
- * {@link defineMigrations}, or both.
+ * {@link defineMigrations}, with hand-written code before or after them.
  *
  * Every function here works on plain data, in memory. Writing the result back
  * without losing the file's comments is `reconcileYaml`'s job (`./edit.ts`).
@@ -52,7 +52,10 @@ export type MigrationPath = string | readonly string[]
  * One step for {@link defineMigrations}. The step goes from the previous
  * step's `to` (1 for the first) to `to`.
  *
- * `moves` run first, in order. Each `[from, to]` moves the value at `from` to
+ * `before`, when given, runs first, on the document as the previous step left
+ * it: a clean-up the moves depend on goes there.
+ *
+ * `moves` run next, in order. Each `[from, to]` moves the value at `from` to
  * `to`. When `to` is already set, that value wins: the one at `from` is
  * dropped, with a warning. When a segment on the way to `to` holds something
  * other than a mapping, the move cannot happen: `from` stays where it is, with
@@ -69,6 +72,10 @@ export type MigrationPath = string | readonly string[]
  */
 export interface MigrationStep {
   to: number
+  before?: (
+    raw: Record<string, unknown>,
+    warn: (message: string) => void,
+  ) => Record<string, unknown>
   moves?: readonly (readonly [from: MigrationPath, to: MigrationPath])[]
   pruneEmpty?: boolean
   run?: (raw: Record<string, unknown>, warn: (message: string) => void) => Record<string, unknown>
@@ -113,7 +120,7 @@ export function defineMigrations(steps: readonly MigrationStep[]): ConfigMigrati
       from,
       to: step.to,
       run(raw, warn) {
-        let next = raw
+        let next = step.before === undefined ? raw : step.before(raw, warn)
         for (const [a, b] of moves) next = applyMove(next, a, b, prune, warn)
         return step.run === undefined ? next : step.run(next, warn)
       },

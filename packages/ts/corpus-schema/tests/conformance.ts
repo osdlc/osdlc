@@ -10,7 +10,7 @@ import { validateCorpus } from '../src/index.ts'
 
 /** The family's folder: SPEC.md, suite.json and the corpora the cases name. */
 export const FAMILY_DIR = join(import.meta.dirname, '../../../conformance/corpus-schema')
-// Spelled out in full: scripts/conformance.ts looks for this path in the tests.
+// Spelled out in full: the conformance check looks for this path in the tests.
 export const SUITE_PATH = join(import.meta.dirname, '../../../conformance/corpus-schema/suite.json')
 
 /** The sections this package runs. */
