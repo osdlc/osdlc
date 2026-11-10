@@ -339,12 +339,10 @@ pub struct GuardState {
     tokens: Tokens,
     read_safe: Vec<RouteRule<()>>,
     allowed_hosts: Vec<String>,
-    /// Public names as `Host` authorities. Kept apart from `allowed_hosts`,
-    /// which is also the `Origin` allowlist.
+    /// Public names as `host:port` authorities. Kept apart from
+    /// `allowed_hosts`, which is also the `Origin` allowlist: a public name
+    /// passes as an Origin only over `https://`.
     public_hosts: Vec<String>,
-    /// The same names as `Origin` authorities. They match only an `https://`
-    /// Origin.
-    public_origins: Vec<String>,
     admin_public_only: bool,
     /// `Max-Age` of a non-admin share cookie; `None` is a session cookie.
     cookie_max_age: Option<Duration>,
@@ -375,7 +373,6 @@ impl GuardState {
             read_safe: Vec::new(),
             allowed_hosts: hosts,
             public_hosts: Vec::new(),
-            public_origins: Vec::new(),
             admin_public_only: false,
             cookie_max_age: None,
             live_hosts: None,
@@ -392,8 +389,8 @@ impl GuardState {
     ///
     /// A name without a port is allowed as a `Host` on ports 80 and 443; a
     /// name written with a port, on that port only. As an `Origin` it passes
-    /// only as `https://<name>` (with its port, if written), and only on a
-    /// request whose `Host` is a public name. On such a request the share
+    /// only over `https://` (`https://<name>`, or with its port if written),
+    /// and only on a request whose `Host` is a public name. On such a request the share
     /// cookie carries `Secure`, and the request carries [`PublicHost`].
     ///
     /// Names are kept as [`normalize_public_host`] gives them; the ones it
@@ -405,21 +402,15 @@ impl GuardState {
             let Some(n) = normalize_public_host(name.as_ref()) else {
                 continue;
             };
-            let (hosts, origin) = if has_port(&n) {
-                (vec![n.clone()], n)
+            let hosts = if has_port(&n) {
+                vec![n]
             } else {
-                (
-                    vec![format!("{n}:80"), format!("{n}:443")],
-                    format!("{n}:443"),
-                )
+                vec![format!("{n}:80"), format!("{n}:443")]
             };
             for h in hosts {
                 if !self.public_hosts.contains(&h) {
                     self.public_hosts.push(h);
                 }
-            }
-            if !self.public_origins.contains(&origin) {
-                self.public_origins.push(origin);
             }
         }
         self
@@ -449,14 +440,10 @@ impl GuardState {
         self
     }
 
-    /// `grant`, lowered to `Full` when an admin grant may not be used on this
-    /// `Host`.
-    fn effective_grant(&self, grant: Grant, public: bool) -> Grant {
-        if grant == Grant::Admin && self.admin_public_only && !public {
-            Grant::Full
-        } else {
-            grant
-        }
+    /// Whether a [`Grant::Admin`] may be used on a request whose `Host` is
+    /// (`public`) or is not a public name.
+    fn admin_allowed(&self, public: bool) -> bool {
+        public || !self.admin_public_only
     }
 
     /// Also allow a Host `<ip>:<port>` when a wildcard bind in `binds` has the
@@ -767,11 +754,9 @@ async fn check(state: &GuardState, mut req: Request<Body>, next: Next) -> Respon
         && let Some(origin) = req.headers().get(header::ORIGIN)
     {
         let origin = origin.to_str().ok();
-        let ok = origin.is_some_and(|o| {
-            origin_authority(o).is_some_and(|a| {
-                state.host_allowed(&a)
-                    || (public && is_https(o) && state.public_origins.contains(&a))
-            })
+        let public_https = public && origin.is_some_and(is_https);
+        let ok = origin.and_then(origin_authority).is_some_and(|a| {
+            state.host_allowed(&a) || (public_https && state.public_hosts.contains(&a))
         }) || (upgrade && origin.is_some_and(is_webview_origin));
         if !ok {
             state.deny(parts, DenialReason::ForeignOrigin);
@@ -795,8 +780,8 @@ async fn check(state: &GuardState, mut req: Request<Body>, next: Next) -> Respon
         && let Some((tok, rest)) = req.uri().query().and_then(split_token_param)
     {
         let link_grant = state.tokens.grant_for(tok);
-        // An admin token that would be lowered to Full here gets no cookie.
-        if let Some(g) = link_grant.filter(|g| state.effective_grant(*g, public) == *g) {
+        // An admin token that may not be used here gets no cookie.
+        if let Some(g) = link_grant.filter(|g| *g != Grant::Admin || state.admin_allowed(public)) {
             // Exactly one leading slash: browsers read `//host` as a
             // protocol-relative, off-origin redirect.
             let safe = format!("/{}", path.trim_start_matches('/'));
@@ -805,16 +790,19 @@ async fn check(state: &GuardState, mut req: Request<Body>, next: Next) -> Respon
             } else {
                 format!("{safe}?{rest}")
             };
-            let (name, max_age) = if g == Grant::Admin {
-                (&admin_cookie, None)
-            } else {
-                (&cookie, state.cookie_max_age)
-            };
-            let secure = if public { "; Secure" } else { "" };
-            let max_age = max_age.map_or(String::new(), |a| format!("; Max-Age={}", a.as_secs()));
             // `tok` equals a `Token`, so it has no character that breaks the header.
-            let set_cookie =
-                format!("{name}={tok}; HttpOnly; SameSite=Strict; Path=/{secure}{max_age}");
+            let name = if g == Grant::Admin {
+                &admin_cookie
+            } else {
+                &cookie
+            };
+            let mut set_cookie = format!("{name}={tok}; HttpOnly; SameSite=Strict; Path=/");
+            if public {
+                set_cookie.push_str("; Secure");
+            }
+            if let Some(age) = state.cookie_max_age.filter(|_| g != Grant::Admin) {
+                set_cookie.push_str(&format!("; Max-Age={}", age.as_secs()));
+            }
             return bounce(&location, &set_cookie);
         }
         presented_wrong = true;
@@ -833,7 +821,11 @@ async fn check(state: &GuardState, mut req: Request<Body>, next: Next) -> Respon
         }
     }
     if let Some(grant) = grant {
-        let grant = state.effective_grant(grant, public);
+        let grant = if grant == Grant::Admin && !state.admin_allowed(public) {
+            Grant::Full
+        } else {
+            grant
+        };
         return state.admit(req, context, grant, next).await;
     }
     presented_wrong |= header_tok.is_some();
@@ -954,7 +946,7 @@ mod tests {
         assert_eq!(res.headers()[header::CACHE_CONTROL], "no-store");
         assert!(!res.headers().contains_key(header::LOCATION));
         assert!(!loc.contains("token"));
-        let cookie = res.headers()[header::SET_COOKIE].to_str().unwrap();
+        let cookie = set_cookie(&res);
         assert!(cookie.starts_with("web_access_3000=s3cret-token-0123456789abcdefghij"));
         assert!(cookie.contains("HttpOnly"));
         assert!(cookie.contains("SameSite=Strict"));
@@ -1151,7 +1143,7 @@ mod tests {
         )
         .await;
         assert_eq!(res.status(), StatusCode::OK);
-        let cookie = res.headers()[header::SET_COOKIE].to_str().unwrap();
+        let cookie = set_cookie(&res);
         assert!(
             cookie.starts_with(&format!("web_access_3000={READ_TOKEN};")),
             "{cookie}"
@@ -1215,7 +1207,7 @@ mod tests {
             let r = req("GET", &uri, LAN, &[("cookie", &c)]);
             let res = status(two_token_app(GuardPolicy::default()), r).await;
             assert_eq!(res.status(), StatusCode::OK);
-            let set = res.headers()[header::SET_COOKIE].to_str().unwrap();
+            let set = set_cookie(&res);
             assert!(
                 set.starts_with(&format!("web_access_3000={want};")),
                 "{set}"
@@ -1276,7 +1268,7 @@ mod tests {
         // The bootstrap sets the cookie of the port the request came in on.
         let r = req("GET", &format!("/?token={TOKEN}"), LAN, &[]);
         let res = status(two_token_app(GuardPolicy::default()), r).await;
-        let set = res.headers()[header::SET_COOKIE].to_str().unwrap();
+        let set = set_cookie(&res);
         assert!(
             set.starts_with(&format!("web_access_3000={TOKEN};")),
             "{set}"
@@ -1642,7 +1634,7 @@ mod tests {
         assert_eq!(path, format!("/?token={token}"));
         let res = status(app.clone(), req("GET", path, LAN, &[])).await;
         assert_eq!(bounce_target(&res), "/");
-        let set = res.headers()[header::SET_COOKIE].to_str().unwrap();
+        let set = set_cookie(&res);
         let pair = set.split(';').next().unwrap();
         assert_eq!(pair, format!("web_access_3000={token}"));
         let res = status(app, req("GET", "/", LAN, &[("cookie", pair)])).await;
@@ -1728,7 +1720,7 @@ mod tests {
             ),
         )
         .await;
-        let set = res.headers()[header::SET_COOKIE].to_str().unwrap();
+        let set = set_cookie(&res);
         assert!(set.starts_with("web_access_3000="), "{set}");
         // Its own Origin passes a mutation; another address's does not.
         let own = [(TOKEN_HEADER, TOKEN), ("origin", "http://10.0.0.7:3000")];
@@ -1815,19 +1807,38 @@ mod tests {
 
     const PUBLIC: &str = "x.example.com";
 
+    /// `state` behind the guard: `GET /` answers with the grant, `POST /x`
+    /// with `posted`.
+    fn app_with(state: GuardState) -> Router {
+        let who = |g: Grant| async move { format!("{g:?}") };
+        Router::new()
+            .route("/", get(who))
+            .route("/x", post(|| async { "posted" }))
+            .layer(axum::middleware::from_fn_with_state(Arc::new(state), guard))
+    }
+
+    /// The full and admin tokens, on `HOST` and `localhost:3000`.
+    fn admin_state() -> GuardState {
+        GuardState::new(
+            Tokens::full_only(tok(TOKEN))
+                .with(tok(ADMIN_TOKEN), Grant::Admin)
+                .unwrap(),
+            ["localhost:3000".to_owned(), HOST.to_owned()],
+            GuardPolicy::default(),
+        )
+    }
+
     fn public_app(configured: bool) -> Router {
-        let mut state = GuardState::new(
+        let state = GuardState::new(
             Tokens::full_only(tok(TOKEN)),
             ["localhost:3000".to_owned()],
             GuardPolicy::default(),
         );
-        if configured {
-            state = state.with_public_hosts([PUBLIC]);
-        }
-        Router::new()
-            .route("/", get(|| async { "ok" }))
-            .route("/x", post(|| async { "posted" }))
-            .layer(axum::middleware::from_fn_with_state(Arc::new(state), guard))
+        app_with(if configured {
+            state.with_public_hosts([PUBLIC])
+        } else {
+            state
+        })
     }
 
     fn set_cookie(res: &Response) -> &str {
@@ -1933,9 +1944,7 @@ mod tests {
             GuardPolicy::default(),
         )
         .with_public_hosts(["x.example.com:8443"]);
-        let app = Router::new()
-            .route("/x", post(|| async { "posted" }))
-            .layer(axum::middleware::from_fn_with_state(Arc::new(state), guard));
+        let app = app_with(state);
         let post = |host: &'static str, origin: &'static str| {
             req_on(
                 "POST",
@@ -2021,7 +2030,7 @@ mod tests {
         }
         let state =
             GuardState::new(Tokens::none(), [], GuardPolicy::default()).with_public_hosts(bad);
-        assert!(state.public_hosts.is_empty() && state.public_origins.is_empty());
+        assert!(state.public_hosts.is_empty());
     }
 
     #[test]
@@ -2055,21 +2064,12 @@ mod tests {
     }
 
     fn admin_public_app(public_only: bool) -> Router {
-        let mut state = GuardState::new(
-            Tokens::full_only(tok(TOKEN))
-                .with(tok(ADMIN_TOKEN), Grant::Admin)
-                .unwrap(),
-            ["localhost:3000".to_owned(), HOST.to_owned()],
-            GuardPolicy::default(),
-        )
-        .with_public_hosts([PUBLIC]);
-        if public_only {
-            state = state.with_admin_over_public_only();
-        }
-        let who = |g: Grant| async move { format!("{g:?}") };
-        Router::new()
-            .route("/", get(who))
-            .layer(axum::middleware::from_fn_with_state(Arc::new(state), guard))
+        let state = admin_state().with_public_hosts([PUBLIC]);
+        app_with(if public_only {
+            state.with_admin_over_public_only()
+        } else {
+            state
+        })
     }
 
     #[tokio::test]
@@ -2102,21 +2102,14 @@ mod tests {
     async fn an_admin_link_on_a_private_host_sets_no_cookie_under_admin_over_public_only() {
         let denied = Arc::new(AtomicUsize::new(0));
         let n = denied.clone();
-        let state = GuardState::new(
-            Tokens::full_only(tok(TOKEN))
-                .with(tok(ADMIN_TOKEN), Grant::Admin)
-                .unwrap(),
-            [HOST.to_owned()],
-            GuardPolicy::default(),
-        )
-        .with_public_hosts([PUBLIC])
-        .with_admin_over_public_only()
-        .with_on_denied(move |_| {
-            n.fetch_add(1, Ordering::SeqCst);
-        });
-        let app = Router::new()
-            .route("/", get(|| async { "ok" }))
-            .layer(axum::middleware::from_fn_with_state(Arc::new(state), guard));
+        let app = app_with(
+            admin_state()
+                .with_public_hosts([PUBLIC])
+                .with_admin_over_public_only()
+                .with_on_denied(move |_| {
+                    n.fetch_add(1, Ordering::SeqCst);
+                }),
+        );
         let uri = format!("/?token={ADMIN_TOKEN}");
         let res = status(app.clone(), req_on("GET", &uri, HOST, &[])).await;
         assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
@@ -2163,19 +2156,7 @@ mod tests {
 
     #[tokio::test]
     async fn cookie_max_age_is_opt_in_and_never_applies_to_the_admin_cookie() {
-        let app = |age: Duration| {
-            let state = GuardState::new(
-                Tokens::full_only(tok(TOKEN))
-                    .with(tok(ADMIN_TOKEN), Grant::Admin)
-                    .unwrap(),
-                [HOST.to_owned()],
-                GuardPolicy::default(),
-            )
-            .with_cookie_max_age(age);
-            Router::new()
-                .route("/", get(|| async { "ok" }))
-                .layer(axum::middleware::from_fn_with_state(Arc::new(state), guard))
-        };
+        let app = |age: Duration| app_with(admin_state().with_cookie_max_age(age));
         let cookie_for = |app: Router, token: &str| {
             let r = req("GET", &format!("/?token={token}"), LAN, &[]);
             async move { set_cookie(&status(app, r).await).to_owned() }
@@ -2200,23 +2181,15 @@ mod tests {
     #[tokio::test]
     async fn a_live_interface_host_is_a_private_host() {
         const LIVE: &str = "10.0.0.7:3000";
-        let state = GuardState::new(
-            Tokens::full_only(tok(TOKEN))
-                .with(tok(ADMIN_TOKEN), Grant::Admin)
-                .unwrap(),
-            [HOST.to_owned()],
-            GuardPolicy::default(),
-        )
-        .with_public_hosts([PUBLIC])
-        .with_admin_over_public_only()
-        .with_live_hosts(
-            vec!["0.0.0.0:3000".parse().unwrap()],
-            Arc::new(|| vec!["10.0.0.7".parse().unwrap()]),
+        let app = app_with(
+            admin_state()
+                .with_public_hosts([PUBLIC])
+                .with_admin_over_public_only()
+                .with_live_hosts(
+                    vec!["0.0.0.0:3000".parse().unwrap()],
+                    Arc::new(|| vec!["10.0.0.7".parse().unwrap()]),
+                ),
         );
-        let who = |g: Grant| async move { format!("{g:?}") };
-        let app = Router::new()
-            .route("/", get(who).post(|| async { "posted" }))
-            .layer(axum::middleware::from_fn_with_state(Arc::new(state), guard));
         let h = [(TOKEN_HEADER, ADMIN_TOKEN)];
         let res = status(app.clone(), req_on("GET", "/", LIVE, &h)).await;
         assert_eq!(body(res).await, "Full");
@@ -2224,7 +2197,7 @@ mod tests {
         let res = status(app.clone(), req_on("GET", &link, LIVE, &[])).await;
         assert!(!set_cookie(&res).contains("Secure"));
         let post = [(TOKEN_HEADER, TOKEN), ("origin", "https://x.example.com")];
-        let res = status(app, req_on("POST", "/", LIVE, &post)).await;
+        let res = status(app, req_on("POST", "/x", LIVE, &post)).await;
         assert_eq!(res.status(), StatusCode::FORBIDDEN);
     }
 }
