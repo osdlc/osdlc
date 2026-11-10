@@ -5,7 +5,7 @@ proposition:
   object:
     file: ~/.cursor/cli-config.json
     format: JSON
-    scope: global; <project>/.cursor/cli.json holds permissions only
+    scope: global; .cursor/cli.json holds permissions only
     note: CURSOR_CONFIG_DIR moves the directory
 direction: supports
 strength: moderate

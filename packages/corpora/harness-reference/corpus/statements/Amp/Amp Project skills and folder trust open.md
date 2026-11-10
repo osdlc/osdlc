@@ -4,7 +4,7 @@ proposition:
   predicate: skills/project-trust
   object:
     open: &a1
-      - Do project skills in .agents/skills/ load only after the folder is trusted?
+      - Do project skills in .agents/skills load only after the folder is trusted?
 direction: neutral
 reportedIn:
   - "[Amp docs Skills](../../documents/ampcode.com/Amp%20docs%20Skills.md)"

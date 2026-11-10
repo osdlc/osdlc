@@ -3,7 +3,7 @@ proposition:
   subject: "[Kiro](../../harnesses/Kiro.md)"
   predicate: hooks/config
   object:
-    location: .kiro/hooks/*.json (project) and ~/.kiro/hooks/ (global, Kiro CLI V3)
+    location: .kiro/hooks/*.json (project) and ~/.kiro/hooks (global, Kiro CLI V3)
     kind: JSON config
 direction: supports
 strength: moderate

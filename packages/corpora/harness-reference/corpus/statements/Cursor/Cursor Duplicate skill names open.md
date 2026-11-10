@@ -4,7 +4,7 @@ proposition:
   predicate: skills/duplicate-names
   object:
     open: &a1
-      - What happens when two skills share a name, within one scope and across .agents/, .cursor/, .claude/ and .codex/ locations?
+      - What happens when two skills share a name, within one scope and across .agents, .cursor, .claude and .codex locations?
 direction: neutral
 reportedIn:
   - "[Cursor docs Agent Skills](../../documents/cursor.com/Cursor%20docs%20Agent%20Skills.md)"

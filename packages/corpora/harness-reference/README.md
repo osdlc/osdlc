@@ -13,9 +13,8 @@ corpus.
   `corpus/statements/statements.schema.md`. See [corpus/README.md](corpus/README.md).
 - `corpus/notes/`: research notes the corpus cites. They are narrative files, not records.
   Upstream docs and repositories are cited by their own URLs.
-- `probes/`: reproducible runs that back `run` study results. Five of the seven are also held as
-  methods in the corpus (`pi-package-install` and the fixtures it ships are copied there);
-  `plugin-layout` and `skill-symlink` are not. `probes/` is not validated.
+- `probes/`: reproducible runs that back `run` study results. Most are also held as methods in
+  the corpus (`corpus/methods/`). `probes/` is not validated.
 - `src/corpus/`: `capture`, which writes study results from a fetched page; `lint`, the rules that
   compare records; and tests. The corpus is checked by the
   [`@osdlc/corpus-schema`](https://www.npmjs.com/package/@osdlc/corpus-schema) validator, a

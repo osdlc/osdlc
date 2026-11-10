@@ -7,7 +7,7 @@ proposition:
     config_key: permissions.allow / permissions.deny
     syntax: Shell(cmd) Read(glob) Write(glob) WebFetch(domain) Mcp(server:tool)
     precedence: deny rules take precedence over allow rules
-    note: set in ~/.cursor/cli-config.json or <project>/.cursor/cli.json; no command-line flag
+    note: set in ~/.cursor/cli-config.json or .cursor/cli.json; no command-line flag
 direction: supports
 strength: moderate
 hasEvidenceLines:

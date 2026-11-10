@@ -32,6 +32,30 @@ function rank(value: unknown): number | undefined {
 
 const MACHINE_PATH = /(^|[\s'"=:(])(\/(Users|home)\/|~\/|\$\{?HOME\b)/u
 
+/** Non-canonical path spellings in one value string; the rules are in corpus/README.md "Paths in values". */
+export function pathSpellingIssues(text: string): string[] {
+  const found: string[] = []
+  if (/\$\{?HOME\b/u.test(text)) found.push('write $HOME as ~')
+  for (const raw of text.split(/\s+/u)) {
+    const word = raw.replace(/^[(`'"[]+/u, '').replace(/[`'",;:.?!)\]]+$/u, '')
+    if (!/^[.~$<]/u.test(word) || !word.includes('/')) continue
+    if (word.endsWith('/')) found.push(`drop the trailing slash in "${word}"`)
+    if (word.startsWith('./')) found.push(`drop the leading ./ in "${word}"`)
+    if (/^<(proj|project)>\//u.test(word)) found.push(`drop the project prefix in "${word}"`)
+    if (word.startsWith('<home>/')) found.push(`write <home>/ as ~/ in "${word}"`)
+  }
+  return found
+}
+
+/** Every string in a value, skipping `commands`, whose shell words keep their own spelling. */
+function valueStrings(v: unknown): string[] {
+  if (typeof v === 'string') return [v]
+  if (Array.isArray(v)) return v.flatMap(valueStrings)
+  if (v !== null && typeof v === 'object')
+    return Object.entries(v).flatMap(([k, x]) => (k === 'commands' ? [] : valueStrings(x)))
+  return []
+}
+
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
 const obj = (v: unknown): Record<string, unknown> =>
   v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {}
@@ -129,6 +153,9 @@ export function lint(corpus: LoadedCorpus): string[] {
         ref.file,
         `proposition.predicate must be the subject's slug "${String(subjectData['slug'])}"`,
       )
+
+    for (const text of valueStrings(prop['object']))
+      for (const issue of pathSpellingIssues(text)) bad(ref.file, `proposition.object: ${issue}`)
 
     if (status !== 'open') {
       const schema = obj(subjectData['valueSchema'])

@@ -6,7 +6,7 @@ proposition:
     documented: true
     supported: true
     kind: shell command hooks inside plugins
-    location: hooks/hooks.json in a plugin under ~/.agents/plugins/<name>/ or <project>/.agents/plugins/<name>/
+    location: hooks/hooks.json in a plugin under ~/.agents/plugins/<name> or .agents/plugins/<name>
     shell_hooks: true
 direction: supports
 strength: moderate

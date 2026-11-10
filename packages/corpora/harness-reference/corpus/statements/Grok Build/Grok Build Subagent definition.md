@@ -4,8 +4,8 @@ proposition:
   predicate: subagents/definition
   object:
     native: true
-    file_format: markdown files in .grok/agents/ or ~/.grok/agents/
-    location: .grok/agents/ and ~/.grok/agents/
+    file_format: markdown files in .grok/agents or ~/.grok/agents
+    location: .grok/agents and ~/.grok/agents
 direction: supports
 strength: moderate
 hasEvidenceLines:

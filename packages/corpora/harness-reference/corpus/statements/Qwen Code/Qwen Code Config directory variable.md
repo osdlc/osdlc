@@ -11,7 +11,7 @@ proposition:
       - settings
       - memory
       - skills
-    note: project-level .qwen/ directories are unaffected
+    note: project-level .qwen directories are unaffected
 direction: supports
 strength: strong
 hasEvidenceLines:

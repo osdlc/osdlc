@@ -5,7 +5,7 @@ proposition:
   object:
     supported: true
     persists_by_default: true
-    store: ~/.gemini/tmp/<project_hash>/chats/
+    store: ~/.gemini/tmp/<project_hash>/chats
     note: the default policy is to retain sessions for 30 days
 direction: supports
 strength: moderate

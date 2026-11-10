@@ -4,7 +4,7 @@ proposition:
   predicate: plugins/upgrade-retention
   object:
     open: &a1
-      - After an npm plugin upgrade, do old versions stay in ~/.cache/opencode/node_modules/?
+      - After an npm plugin upgrade, do old versions stay in ~/.cache/opencode/node_modules?
 direction: neutral
 reportedIn:
   - "[OpenCode docs Plugins](../../documents/opencode.ai/OpenCode%20docs%20Plugins.md)"

@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { Ajv2020 } from 'ajv/dist/2020.js'
 
 import { CORPUS_ROOT, loadCorpus } from './corpus.ts'
-import { lint } from './lint.ts'
+import { lint, pathSpellingIssues } from './lint.ts'
 
 const SESSION = 'statements/Claude Code/Claude Code Session environment.md'
 const FORK = 'statements/Claude Code/Claude Code Fork a session.md'
@@ -30,6 +30,32 @@ beforeEach(() => {
   cpSync(CORPUS_ROOT, dir, { recursive: true })
 })
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
+
+describe('pathSpellingIssues', () => {
+  test('flags each non-canonical spelling', () => {
+    for (const bad of [
+      '.claude/rules/',
+      './.agents/skills',
+      '<proj>/.agents/skills',
+      '<project>/.agents/skills',
+      '<home>/.agents/skills',
+      '$HOME/.agents/skills',
+      '${HOME}/.agents/skills',
+    ])
+      assert.equal(pathSpellingIssues(bad).length > 0, true, bad)
+  })
+
+  test('accepts canonical spellings', () => {
+    for (const ok of [
+      '.agents/skills',
+      '~/.agents/skills',
+      '$CODEX_HOME/skills',
+      '<repo_root>/x',
+      'a/b',
+    ])
+      assert.deepEqual(pathSpellingIssues(ok), [], ok)
+  })
+})
 
 describe('lint', () => {
   test('the corpus passes', () => {
@@ -295,5 +321,14 @@ describe('lint', () => {
     assert.ok(ok({ supported: true, formats: [{ name: 'json', argv: ['--json'] }] }))
     assert.ok(!ok({ supported: true }))
     assert.ok(!ok({ supported: 'partial' }))
+  })
+
+  test('refuses a non-canonical path in a statement value but not in commands', () => {
+    edit(
+      SESSION,
+      '    vars:\n      - CLAUDE_CODE_SESSION_ID\n      - CLAUDE_PID',
+      '    vars: ["$HOME/x/"]',
+    )
+    assert.ok(problems().some((p) => p.includes('write $HOME as ~')))
   })
 })

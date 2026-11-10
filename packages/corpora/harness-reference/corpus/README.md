@@ -75,6 +75,26 @@ supporting line, one step lower when a line disputes it. A reviewer may lower a 
 raise it past the rule. `lint` checks two parts of it: a line is no stronger than the best kind
 among its own evidence items, and a statement is no stronger than its strongest supporting line.
 
+### Paths in values
+
+A path in `proposition.object` is data, not a quote, so one location is spelled one way:
+
+- A project path is relative to the project root: `.agents/skills`, not `./.agents/skills`,
+  `<proj>/.agents/skills` or `<project>/.agents/skills`.
+- A home path starts with `~/`: `~/.agents/skills`, not `$HOME/.agents/skills` or
+  `<home>/.agents/skills`.
+- No trailing slash: `.claude/rules`, not `.claude/rules/`.
+- `$VAR` stays only where the harness itself names a variable, such as `$CODEX_HOME`. `$HOME` is
+  the exception: it is always written `~`.
+- A placeholder with its own meaning stays, such as `<repo_root>/`.
+- A setting that lists directories is not a directory. It gets its own key, such as
+  `dirs_setting`.
+
+`lint` flags a trailing slash, a leading `./`, a `<proj>/`, `<project>/` or `<home>/` prefix, and
+`$HOME`, on any word in a value string that starts with `.`, `~`, `$` or `<` and holds a `/`.
+Strings under a `commands` key are shell and keep their own spelling. Quotes in a statement's body
+keep the source's spelling.
+
 A listing that lacks an option, such as help text with no flag for it, is evidence of absence. It
 supports a `supported: false` value one step below its kind, since a listing can leave an option
 out: help text or source is moderate, docs weak.
