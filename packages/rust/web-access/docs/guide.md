@@ -112,7 +112,7 @@ one that fails answers the request.
 
 | # | Check | Fails with | Why it exists |
 |---|---|---|---|
-| 1 | `Host` is on the allowlist | 421 `host not allowed` | Stops DNS rebinding: a page on `evil.example` that points its name at `192.168.1.5` still sends `Host: evil.example`. |
+| 1 | `Host` is on the allowlist or, with a wildcard bind, is a current interface address on the bound port | 421 `host not allowed` | Stops DNS rebinding: a page on `evil.example` that points its name at `192.168.1.5` still sends `Host: evil.example`. |
 | 2 | A mutating request or a WebSocket upgrade with an `Origin` has an allowed origin | 403 `origin not allowed` | Stops another site from changing data, or opening a socket, through your browser. |
 | 3 | The path normalises | 400 `bad path` | Stops `/a/../admin` and `/a%2Fb` tricks from slipping past route rules. |
 | 4 | A loopback peer under `loopback_open` | passes with `full` | Lets the app's own window work with no token, when you allow it. |
@@ -219,8 +219,19 @@ runnable version.
 
 ## Tokens
 
-A token is 32 random bytes from the operating system, written as 43 base64url
-characters. The `token` module keeps them in files in a directory you choose:
+A token is a `Token`. Only two functions build one:
+
+- `Token::mint()` takes 32 random bytes from the operating system and writes
+  them as 43 base64url characters.
+- `Token::parse(text)` accepts at least 32 characters (`token::MIN_TOKEN_LEN`)
+  of `A-Z a-z 0-9 - _` and nothing else. Even in hex, 32 characters hold at
+  least 128 bits of a random secret. A 64-character hex digest passes.
+
+None of those characters needs escaping, so a share link, a cookie and a
+header all carry a token exactly as written. `Display` and `as_str` give the
+text. `Debug` hides it.
+
+The `token` module keeps tokens in files in a directory you choose:
 
 | File | Token | Exists |
 |---|---|---|
@@ -230,13 +241,14 @@ characters. The `token` module keeps them in files in a directory you choose:
 
 ```rust
 use std::path::Path;
-use web_access::token;
+use web_access::token::{self, TokenError};
 
-fn tokens(dir: &Path) -> std::io::Result<()> {
+fn tokens(dir: &Path) -> Result<(), TokenError> {
     let full = token::load_or_mint(dir)?;        // minted once, then read back
     let read = token::load_or_mint_read(dir)?;   // its own file
     let new_full = token::rotate(dir)?;          // old full links stop working
-    let pinned = token::resolve(dir, Some("set-by-env"))?; // an override wins
+    let set = token::override_from_env("APP_TOKEN")?; // None when unset or empty
+    let pinned = token::resolve(dir, set)?;      // an override wins
     let _ = (full, read, new_full, pinned);
     Ok(())
 }
@@ -244,25 +256,40 @@ fn tokens(dir: &Path) -> std::io::Result<()> {
 
 - On Unix each file is created with mode 0600 before anything is written to it,
   and written through a temporary file that is renamed into place.
-- A file that is empty counts as missing and is minted again. A file that cannot
-  be read is an error; the crate never quietly replaces a token links may carry.
-- `token::mint()` gives a token that is never written anywhere, for a secret that
-  lives as long as the process.
+- A file that does not hold a token is `TokenError::BadFile`, which names the
+  file. This covers a file edited by hand, emptied, holding only whitespace,
+  or holding bytes that are not UTF-8. The file is left as it is, and nothing
+  is minted over it. Delete it, and a new token is minted on the next start.
+- A file that cannot be read is `TokenError::Io`. The crate never quietly
+  replaces a token that links may carry.
+- An override that is set but is not a token is `TokenError::BadOverride`,
+  which names where it came from. `token::parse_override(name, value)` does
+  the same check for a value you read yourself.
+- No `TokenError` holds token text.
+- `Token::mint()` on its own gives a token that is never written anywhere. Use
+  it for a secret that lives only as long as the process.
+  `cargo run -p web-access --example mint_token` prints one.
 
-`Tokens` is what a running guard accepts:
+`Tokens` is what a running guard accepts. Only a `Token` can join it:
 
 ```rust
-use web_access::{Grant, Tokens};
+use web_access::{Grant, Tokens, token::Token};
 
 let tokens = Tokens::none()
-    .with("read-token", Grant::Read)
-    .with("full-token", Grant::Full);
+    .with(Token::mint()?, Grant::Read)?
+    .with(Token::mint()?, Grant::Full)?;
 // Shorthand for one full token:
-let one = Tokens::full_only("full-token".to_owned());
+let one = Tokens::full_only(Token::mint()?);
+# Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-Blank tokens are ignored. Tokens are compared in constant time. If a request
-presents tokens for two grants (header and cookie), the higher grant wins.
+Tokens are compared in time that does not depend on their contents. If a request presents tokens for two
+grants (header and cookie), the higher grant wins. So `with` refuses a token
+that is already in the set with a different grant, with
+`TokensError::Duplicate`. Otherwise the link for the lower grant would carry
+the higher one. The same token with the same grant is ignored.
+`SharingRuntime` reports a duplicate as `RuntimeError::Tokens` and a bad token
+file as `RuntimeError::Token`, and does not start.
 
 ## Serving: `serve` and `ServerHandle`
 
@@ -271,7 +298,7 @@ and starts serving.
 
 ```rust
 use axum::{Router, routing::get};
-use web_access::{Listen, Tokens, WebAccessConfig, serve, token};
+use web_access::{Listen, Tokens, WebAccessConfig, serve, token::Token};
 
 async fn share() -> Result<(), Box<dyn std::error::Error>> {
     let config = WebAccessConfig {
@@ -281,7 +308,7 @@ async fn share() -> Result<(), Box<dyn std::error::Error>> {
         admin: false,
     };
     let app = Router::new().route("/", get(|| async { "hello" }));
-    let server = serve(app, &config, Tokens::full_only(token::mint()?)).await?;
+    let server = serve(app, &config, Tokens::full_only(Token::mint()?)).await?;
 
     for link in server.share_urls() {
         println!("{link}"); // one per network address of this machine
@@ -322,9 +349,13 @@ let options = ServeOptions {
 };
 ```
 
-`stop()` stops accepting connections, releases the ports, and waits up to five
-seconds for the server to wind down. A connection that is already open, such as
-a stream or a WebSocket, is not ended by `stop()`: it runs until it closes. See
+`stop()` stops accepting connections and waits up to five seconds for
+in-flight requests to finish. Then every connection still open, such as a
+stream or a WebSocket, fails all further reads and writes. The ports are
+released. A stream is closed before `stop()` returns. An upgraded WebSocket
+belongs to its handler. The handler sees the error the next time it reads or
+writes, and then closes the socket. A handler waiting on a read is woken to
+see it. See
 [Security model](#security-model).
 
 ## Using the guard without `serve`
@@ -334,16 +365,17 @@ If you run your own server, put the guard in front of your router yourself.
 ```rust
 use std::sync::Arc;
 use axum::{Router, middleware::from_fn_with_state, routing::get};
-use web_access::{GuardPolicy, GuardState, Tokens, guard::guard};
+use web_access::{GuardPolicy, GuardState, Tokens, guard::guard, token::Token};
 
 let state = Arc::new(GuardState::new(
-    Tokens::full_only("full-token".to_owned()),
+    Tokens::full_only(Token::mint()?),
     ["192.168.1.5:20015".to_owned(), "localhost:20015".to_owned()],
     GuardPolicy::default(),
 ));
 let app: Router = Router::new()
     .route("/", get(|| async { "hello" }))
     .layer(from_fn_with_state(state, guard));
+# Ok::<(), std::io::Error>(())
 ```
 
 - The second argument is the `Host` allowlist: `host:port` values, compared
@@ -437,7 +469,7 @@ What the settings page shows comes from `WebAccessStatus`:
 | 403 | `origin not allowed` | A change or WebSocket from another site. | A page on another origin, or a dev server on another port. |
 | 403 | `{"error":"read_only"}` | A view-only token tried to change something. | A read link used for an edit. |
 | 403 | `{"error":"forbidden_in_context",...}` | Your `HostPolicy` refused it. | For example, a remote `full` grant reaching a terminal route. |
-| 421 | `host not allowed` | The `Host` header is not one the server answers to. | A new network address since the server started, or DNS rebinding. |
+| 421 | `host not allowed` | The `Host` header is not one the server answers to. | A host name the server does not know, another port, or DNS rebinding. |
 
 ## Security model
 
@@ -453,7 +485,7 @@ What it does not protect against, and what to do instead:
 |---|---|---|
 | Plain HTTP | Someone who can read the network traffic can read the token. | Use it only on networks you trust, or behind TLS (for example a VPN or Tailscale Serve). |
 | Cookies are not kept apart by port | Browsers send a host's cookies to every port on it. Another server on the same address can read `web_access_20015`. The port in the name only stops two servers overwriting each other's cookie. | Do not run untrusted servers on the same address as a shared app, especially with admin on. |
-| Open connections survive a revoke | Turning sharing or admin off, or rotating a token, stops new requests. A WebSocket or stream already open keeps going until it closes. | Close long-lived connections yourself when the grant they were opened with is withdrawn. |
+| Open connections survive a revoke in your own server | `serve`'s `stop()` ends open connections: their reads and writes fail. `SharingRuntime` stops the server when sharing or admin is turned off or a token is rotated. If you put the guard in your own server, an open WebSocket or stream keeps going until it closes. | Close long-lived connections yourself when the grant they were opened with is withdrawn. |
 | Reverse proxies | Behind a proxy on the same machine, every request comes from loopback, so every request is `WebLocal`. | Do not put a proxy in front, or turn `loopback_open` off and do not trust `WebLocal`. |
 | Windows file permissions | Token files get no owner-only mode. | Keep the token directory in the user's profile, such as under `%LOCALAPPDATA%`. |
 | One token per grant | Every device shares the same token, so you cannot revoke one device. | Rotate the token, which signs every device out. |
@@ -462,9 +494,11 @@ Report a vulnerability as [SECURITY.md](../SECURITY.md) says.
 
 ## Common questions
 
-**My phone gets 421 after I switched networks.** With `Listen::AllInterfaces`,
-the allowed hosts are the addresses the machine had when the server started.
-Restart sharing (with `SharingRuntime::set`) after the address changes.
+**My old link stopped working after I switched networks.** With
+`Listen::AllInterfaces`, the server answers on any address the machine has, on
+its port. A new address is served within about two seconds. But the share
+links list only the addresses the machine had when the server started. Restart
+sharing (with `SharingRuntime::set`) to get links for the new address.
 
 **My app's own window gets 401.** Either give it a token, or let loopback in with
 `GuardPolicy { loopback_open: true }`. `serve` does that for you only when there
@@ -475,8 +509,8 @@ keep no cookies between visits. The header form (`x-web-access-token`) works for
 scripts; for people, open the link in the system browser.
 
 **How do I sign every device out?** Rotate the grant's token:
-`runtime.rotate(Grant::Full)`. Open WebSockets are not closed by that; see the
-security model.
+`runtime.rotate(Grant::Full)`. That restarts the server, which also ends open
+streams and WebSockets. See the security model.
 
 **Can I use my own header name?** Not yet. The header is `x-web-access-token`
 (`web_access::guard::TOKEN_HEADER`).

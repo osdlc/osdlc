@@ -1,7 +1,7 @@
 // Runs the BUILT binary under Node. The unit tests run the TypeScript source,
 // so dist/ is compiled but never run anywhere else.
 //
-// `pnpm run smoke` runs it here. check-packages.ts copies it into a clean
+// `pnpm run smoke` runs it here. `package-checks ts` copies it into a clean
 // project that installed the tarball, so it must not import other repo files.
 // It is not a test-runner suite and is not in `files`.
 

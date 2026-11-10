@@ -1,5 +1,14 @@
 # @osdlc/typed-gh
 
+## 0.17.1
+
+### Patch Changes
+
+- Updated dependencies [e1a5941]
+- Updated dependencies [cb8eafc]
+  - @osdlc/command-seam@0.15.0
+  - @osdlc/typed-git@0.14.0
+
 ## 0.17.0
 
 ### Minor Changes
