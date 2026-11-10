@@ -53,15 +53,18 @@ export const MermaidBlock = defineComponent({
       const el = host.value
       if (!el) return
       const token = ++drawn
-      failed.value = false
       const source = text()
       if (source === '') {
+        failed.value = false
         el.textContent = ''
         return
       }
       try {
         const svg = await renderMermaid(source, props.theme)
         if (token !== drawn) return
+        // Cleared only now: after a failure the fallback stays up while the
+        // redraw is in flight, so the block is never blank while it waits.
+        failed.value = false
         // Mermaid-generated SVG, not note content — never the raw markdown.
         el.innerHTML = svg
       } catch {

@@ -23,6 +23,7 @@ const parked = vi.hoisted(() => new Map<string, () => void>())
 
 vi.mock('@osdlc/markdown-render', () => ({
   async renderMermaid(source: string, theme = 'default') {
+    if (theme === 'broken') throw new Error('mermaid failed')
     const svg = `<svg data-theme="${theme}">${source}</svg>`
     if (!parked.has(theme)) return svg
     return new Promise<string>((resolve) => parked.set(theme, () => resolve(svg)))
@@ -84,6 +85,25 @@ async function quiesce(): Promise<void> {
 }
 
 describe('MermaidBlock', () => {
+  test('a redraw after a failure keeps the fallback up until it succeeds', async () => {
+    const { host, theme } = mount()
+    await drawn(host, 'default')
+
+    theme.value = 'broken'
+    await quiesce()
+    expect(host.querySelector('.markdown-mermaid-fallback')).not.toBeNull()
+
+    // The redraw is parked: nothing is on the canvas yet, so the source text must stay.
+    parked.set('dark', () => {})
+    theme.value = 'dark'
+    await quiesce()
+    expect(host.querySelector('.markdown-mermaid-fallback')).not.toBeNull()
+
+    parked.get('dark')?.()
+    await drawn(host, 'dark')
+    expect(host.querySelector('.markdown-mermaid-fallback')).toBeNull()
+  })
+
   test('a theme change redraws the diagram', async () => {
     const { host, theme } = mount()
     await drawn(host, 'default')
