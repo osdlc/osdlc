@@ -317,6 +317,37 @@
       "source": "docs/planning/components/ontogen.md"
     },
     {
+      "id": "plan-corpus",
+      "name": "the ecosystem plan corpus",
+      "kind": "corpus",
+      "language": "markdown",
+      "layer": "apps",
+      "states": [
+        "target"
+      ],
+      "repo": {
+        "present": null,
+        "target": "osdlc/markdown"
+      },
+      "path": {
+        "present": null,
+        "target": "docs/planning"
+      },
+      "status": "in-progress",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "This plan's tasks, milestones and decisions, and the components it changes, kept as records. The explorer's data is built from it.",
+      "notes": [
+        "Its components, layers, repos, overlaps and datasets are its own types. They describe this ecosystem, so they stay out of the profile."
+      ],
+      "tasks": [
+        38
+      ],
+      "links": [],
+      "source": "docs/planning/components/plan-corpus.md"
+    },
+    {
       "id": "sdlc",
       "name": "sdlc (@sdlc/cli)",
       "kind": "app",
@@ -682,6 +713,38 @@
       ],
       "links": [],
       "source": "docs/planning/components/corpus-profile-claims.md"
+    },
+    {
+      "id": "corpus-profile-planning",
+      "name": "@osdlc/corpus-profile-planning",
+      "kind": "profile",
+      "language": "markdown",
+      "layer": "profiles",
+      "states": [
+        "target"
+      ],
+      "repo": {
+        "present": null,
+        "target": "osdlc/markdown"
+      },
+      "path": {
+        "present": null,
+        "target": "profiles/planning"
+      },
+      "status": "planned",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "Record types for a plan: tasks, milestones and decisions. A corpus names it under extends: and builds its own types on these with x-extends.",
+      "notes": [
+        "Private package. Not on npm. A corpus extends it by a path to the folder.",
+        "Its types are open, so a corpus can add fields. A corpus that wants a closed type lists the profile's fields as well as its own."
+      ],
+      "tasks": [
+        38
+      ],
+      "links": [],
+      "source": "docs/planning/components/corpus-profile-planning.md"
     },
     {
       "id": "model-schema",
@@ -2133,6 +2196,33 @@
       "note": "The code ontogen generates for its Markdown backend uses markdown-store; the ontogen crate itself does not list it."
     },
     {
+      "from": "plan-corpus",
+      "to": "corpus-schema-ts",
+      "kind": "dev-depends",
+      "states": [
+        "target"
+      ],
+      "note": "CI checks it with this repo's corpus-schema, which knows extends."
+    },
+    {
+      "from": "plan-corpus",
+      "to": "corpus-schema-spec",
+      "kind": "implements",
+      "states": [
+        "target"
+      ],
+      "note": "A valid level-2 corpus."
+    },
+    {
+      "from": "plan-corpus",
+      "to": "corpus-profile-planning",
+      "kind": "extends",
+      "states": [
+        "target"
+      ],
+      "note": "Its tasks and milestones add fields. Its decisions use the profile's type as it is."
+    },
+    {
       "from": "sdlc",
       "to": "etag-write",
       "kind": "depends",
@@ -2561,6 +2651,15 @@
     },
     {
       "from": "corpus-profile-claims",
+      "to": "corpus-schema-spec",
+      "kind": "implements",
+      "states": [
+        "target"
+      ],
+      "note": "A profile is a corpus that has only types."
+    },
+    {
+      "from": "corpus-profile-planning",
       "to": "corpus-schema-spec",
       "kind": "implements",
       "states": [

@@ -4,6 +4,7 @@ order: 2
 beeline: true
 tasks:
   - "[9 Extends](../tasks/9%20Extends.md)"
+  - "[38 Planning profile](../tasks/38%20Planning%20profile.md)"
   - "[27 Org corpora](../tasks/27%20Org%20corpora.md)"
   - "[29 Sync](../tasks/29%20Sync.md)"
   - "[36 Release 0.3.0](../tasks/36%20Release%200.3.0.md)"
