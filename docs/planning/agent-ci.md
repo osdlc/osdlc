@@ -125,7 +125,7 @@ flowchart LR
   class REL done
   class CUR done
   class MCP,PUB,PIN,STRICT later
-  class DATA external
+  class DATA blocked
 ```
 
 ## Review queue
@@ -135,22 +135,22 @@ move; merged PRs drop off.
 
 | Order | PR | What | Why this order | Status |
 | --- | --- | --- | --- | --- |
-| 1 | [#750](https://github.com/osdlc/osdlc/pull/750) | feat(harness-knowledge): compiled harness facts, read by agent-call and detect-harness | Marked ready at 09:51 UTC; the only PR waiting on your review | waiting on your review since 09:51 UTC; CI green; behind main (needs an update before merge) |
-| 2 | [#764](https://github.com/osdlc/osdlc/pull/764) | feat(gh-actions): run any skill from a PR comment, read-only or with `--apply` | Next to be ready, after 750 | draft: needs your choice of how `--apply` changes land and the `pr-agent` environment, then the gate reruns; CI green; behind main |
+| 1 | [#750](https://github.com/osdlc/osdlc/pull/750) | feat(harness-knowledge): compiled harness facts, read by agent-call and detect-harness | Marked ready at 09:51 UTC; the only PR waiting on your review | waiting on your review since 09:51 UTC; main merged in at 16:49 UTC, CI running |
+| 2 | [#764](https://github.com/osdlc/osdlc/pull/764) | feat(gh-actions): run any skill from a PR comment, read-only or with `--apply` | Next to be ready, after 750 | draft: needs your choice of how `--apply` changes land and the `pr-agent` environment, then the gate reruns; updated from main; CI rerunning |
 
 ## PR tracker
 
-Checked 2026-11-10 14:17 UTC. A periodic check refreshes this table and the graph.
+Checked 2026-11-10 17:17 UTC. A periodic check refreshes this table and the graph.
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
 | [#749](https://github.com/osdlc/osdlc/pull/749) | ci: shared reusable workflows for TypeScript package CI and release | merged | — | — | — | merged 2026-11-10 (shared-CI work) |
 | [#748](https://github.com/osdlc/osdlc/pull/748) | package-checks: move the package checks into @osdlc/package-checks | merged | — | — | — | merged 2026-11-09 |
 | [#747](https://github.com/osdlc/osdlc/pull/747) | ci: codex and cursor answer PR mentions | merged | — | — | — | merged 2026-11-10; next: live codex and cursor mentions (needs OPENAI_API_KEY, CURSOR_API_KEY) |
-| [#764](https://github.com/osdlc/osdlc/pull/764) | feat(gh-actions): run any skill from a PR comment, read-only or with --apply | draft | none | behind main; green | pre-review gate (draft) | new; touches gh-actions |
+| [#764](https://github.com/osdlc/osdlc/pull/764) | feat(gh-actions): run any skill from a PR comment, read-only or with --apply | draft | none | CI rerunning (merged main) | pre-review gate (draft) | new; touches gh-actions |
 | [#760](https://github.com/osdlc/osdlc/pull/760) | pr-update: one PR identity across repositories, per-repository verify, --restack | merged | — | — | — | merged 2026-11-10 (pr-update work) |
 | [#759](https://github.com/osdlc/osdlc/pull/759) | ci(pr-update): run once a night instead of on every push to main | merged | — | — | — | merged 2026-11-09; ends the CI storms from merges to main |
-| [#750](https://github.com/osdlc/osdlc/pull/750) | feat(harness-knowledge): compiled harness facts, read by agent-call and detect-harness | open | none | clean | waiting on your review | phase 5 of the harness-knowledge plan; data synced from skillwright release harness-knowledge-20261110-9db55cc; merge, then the changesets release publishes @osdlc/harness-knowledge |
+| [#750](https://github.com/osdlc/osdlc/pull/750) | feat(harness-knowledge): compiled harness facts, read by agent-call and detect-harness | open | none | CI rerunning (bot merged main) | waiting on your review | phase 5 of the harness-knowledge plan; data synced from skillwright release harness-knowledge-20261110-9db55cc; merge, then the changesets release publishes @osdlc/harness-knowledge |
 | [#741](https://github.com/osdlc/osdlc/pull/741) | fix: kill the agent's process group when its host is interrupted (command-seam, agent-call, pr-update) | merged | — | — | — | merged 2026-11-10; releases with the next Version Packages PR |
 | [#734](https://github.com/osdlc/osdlc/pull/734) | feat(gh-actions): codex-pr and cursor-pr, shared pr-common scripts, multi-marketplace plugins | merged | — | — | — | merged 2026-11-09; next: live test with caller workflows |
 | [#733](https://github.com/osdlc/osdlc/pull/733) | Version Packages (corpus-schema; unblocked the agent-call 0.10.0 publish) | merged | — | — | — | merged 2026-11-09; agent-call 0.10.0 on npm |
