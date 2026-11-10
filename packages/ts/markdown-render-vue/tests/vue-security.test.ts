@@ -263,6 +263,14 @@ describe('a PDF embed href', () => {
     )
   })
 
+  test('keeps the page fragment on a blob URL', async () => {
+    assetAnswer = 'blob:https://app.example/7d2'
+    const host = await mount({ source: '![[paper.pdf#page=3]]', notePath: '/vault/Host' })
+    expect(host.querySelector('a.markdown-embed-pdf')?.getAttribute('href')).toBe(
+      'blob:https://app.example/7d2#page=3',
+    )
+  })
+
   test('is refused when the host answers with a script URL', async () => {
     assetAnswer = 'javascript:alert(1)'
     const host = await mount({ source: '![[paper.pdf]]', notePath: '/vault/Host' })
