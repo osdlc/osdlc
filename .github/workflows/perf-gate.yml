@@ -1,9 +1,11 @@
 # The perf gate. On a pull request it runs the benchmarks of the packages the
 # change touches (and of the packages that depend on them) on the base and on
-# the head, in this one job, and fails when a gated benchmark's median is more
-# than THRESHOLD (scripts/perf-gate.ts) slower on the head. Both sides share
-# one runner, and their runs alternate, so the speed of the runner cancels out. bench/README.md says what
-# is gated and how a package adds a benchmark; scripts/perf-gate.ts is the gate.
+# the head, in this one job, and fails when a gated benchmark's best round is
+# more than THRESHOLD (scripts/perf-gate.ts) slower on the head, in a first
+# pass and again in a confirmation pass that reruns only the packages with a
+# suspect. Both sides share one runner, and their runs alternate, so the speed
+# of the runner cancels out. bench/README.md says what is gated and how a
+# package adds a benchmark; scripts/perf-gate.ts is the gate.
 #
 # A deliberate slowdown goes through with the `perf-accepted` label and a line
 # `Perf-accepted: <reason>` in the pull request body. The job reruns when the
@@ -101,7 +103,7 @@ jobs:
           PERF_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
         run: >-
           node scripts/perf-gate.ts "$RUNNER_TEMP/base" . --changed "$RUNNER_TEMP/changed.txt"
-          --rounds 3 --out "$RUNNER_TEMP/perf"
+          --rounds 3 --confirm-rounds 3 --out "$RUNNER_TEMP/perf"
 
       - name: Keep the numbers
         if: ${{ !cancelled() && steps.pick.outputs.any == 'true' }}
