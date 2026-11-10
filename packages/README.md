@@ -88,10 +88,10 @@ the standard.
   with expected values written by the reference implementation's generator.
   `pnpm run check:conformance` checks the suites with `@osdlc/conformance-suites`;
   `packages/conformance/config.json` holds its exemptions. `tiered-dirs`,
-  `config-layers`, `corpus-schema`, `frontmatter-lossless`, `intersect` and
-  `path-guard` are there. Until they move, `gfm-pipe-table` (the Rust implementation of
-  `@osdlc/gfm-table`) keeps `packages/rust/gfm-pipe-table/tests/fixtures/parity.json`,
-  `markdown-link` its crate's `tests/fixtures/conformance.json`, and
+  `config-layers`, `corpus-schema`, `frontmatter-lossless`, `intersect`,
+  `markdown-link`, `markdown-tags` and `path-guard` are there. Until they move,
+  `gfm-pipe-table` (the Rust implementation of `@osdlc/gfm-table`) keeps
+  `packages/rust/gfm-pipe-table/tests/fixtures/parity.json`, and
   `markdown-contract` runs the TypeScript package's `corpus/` directly.
   `etag-write` has no shared cases yet.
 - **Each language's idiom.** An implementation does not copy the other's names or

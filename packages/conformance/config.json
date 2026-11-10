@@ -5,7 +5,6 @@
   },
   "unmigrated": [
     "packages/ts/gfm-table",
-    "packages/ts/markdown-link",
     "packages/ts/yaml-splice",
     "packages/rust/markdown-contract"
   ],
