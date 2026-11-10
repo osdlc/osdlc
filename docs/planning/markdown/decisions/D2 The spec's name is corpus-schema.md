@@ -1,5 +1,4 @@
 ---
-number: 2
 title: "The spec's name is corpus-schema"
 status: decided
 decided: "2026-11-08"

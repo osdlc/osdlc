@@ -1,5 +1,4 @@
 ---
-number: 6
 title: The spec has a level 0
 status: decided
 ---

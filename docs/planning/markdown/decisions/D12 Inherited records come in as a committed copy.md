@@ -1,5 +1,4 @@
 ---
-number: 12
 title: Inherited records come in as a committed copy
 status: decided
 decided: "2026-11-09"

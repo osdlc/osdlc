@@ -1,5 +1,4 @@
 ---
-number: 1
 title: The word for a folder of notes is corpus
 status: decided
 ---

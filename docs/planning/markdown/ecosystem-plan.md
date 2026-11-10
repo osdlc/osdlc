@@ -30,18 +30,14 @@ building toward is in [the architecture](architecture.md).
 
 The tasks, milestones and decisions are records in [planning/](planning/README.md), one Markdown
 file each. A task's file, such as [27 Org corpora](planning/tasks/27%20Org%20corpora.md), holds its
-status, its milestone, the tasks that must come first, and its plan. The ecosystem explorer in
-`tools/explorer/` shows the tasks and the components they change as graphs. Its data is built from
-the records.
+status, its milestone, the tasks that must come first, and its plan. The
+[ecosystem explorer](../tools/explorer/README.md) shows the tasks and the components they change as
+graphs. Its data is built from the records.
 
-Each task is one of two kinds. **Functional** work changes what the ecosystem is or does: spec
-rules, packages, crates, profiles, corpora, examples, and other repos adopting them. **Supporting**
-work builds, checks, releases or documents those things without changing them: publishing a
-version, the plan and architecture docs, and pointing repos here.
-
-Every task belongs to one milestone. A milestone is done when all its tasks are done, in progress
-when any task is in progress or done, and not started otherwise. The order of the npm work is in
-[the milestone](#milestone-upstream-corpora-over-npm).
+Each task is functional or supporting work, and belongs to one milestone. The
+[task schema](planning/tasks/tasks.schema.md) says what each kind means, and the
+[milestone schema](planning/milestones/milestones.schema.md) says how a milestone's status follows
+from its tasks. The order of the npm work is in [the milestone](#milestone-upstream-corpora-over-npm).
 
 ## First: unlock the evidence project
 
@@ -313,7 +309,7 @@ name overrides (task 24).
 ## Decisions
 
 Each decision is a record in [planning/decisions/](planning/decisions/decisions.schema.md), with
-its reasons. D1 to D12 are decided, except D5, what "db" means, which is still open.
+its status and reasons.
 
 ### Names we considered
 

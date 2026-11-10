@@ -1,5 +1,4 @@
 ---
-number: 4
 title: Types are plain JSON Schema
 status: decided
 decided: "2026-11-09"

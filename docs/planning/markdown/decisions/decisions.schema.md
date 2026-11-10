@@ -3,16 +3,12 @@ $schema: https://json-schema.org/draft/2020-12/schema
 title: Decision
 description: >-
   A choice the plan made, or one still open. The record's id is "D", the number, a space and the
-  title, such as "D4 Types are plain JSON Schema".
+  title, such as "D4 Types are plain JSON Schema". The number never changes.
 type: object
 additionalProperties: false
 x-id-pattern: "^D[0-9]+ \\S"
-required: [number, title, status]
+required: [title, status]
 properties:
-  number:
-    description: The number after D. It never changes.
-    type: integer
-    minimum: 1
   title:
     type: string
     minLength: 1

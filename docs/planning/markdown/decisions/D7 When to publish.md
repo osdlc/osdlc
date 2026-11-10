@@ -1,5 +1,4 @@
 ---
-number: 7
 title: When to publish
 status: decided
 decided: "2026-11-09"

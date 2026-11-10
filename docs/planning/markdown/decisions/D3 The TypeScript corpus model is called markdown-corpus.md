@@ -1,5 +1,4 @@
 ---
-number: 3
 title: The TypeScript corpus model is called markdown-corpus
 status: decided
 ---

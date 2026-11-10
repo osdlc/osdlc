@@ -1,5 +1,4 @@
 ---
-number: 5
 title: "What \"db\" means"
 status: open
 ---

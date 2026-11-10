@@ -879,7 +879,7 @@ and can review. And `sync` has a fixed version to compare its copy against.
 ## What v0 does not do yet
 
 SPEC.md's Deferred section lists what v0 leaves out. Here it is with what the plan says about each
-item. The task numbers are in the [plan's work list](ecosystem-plan.md#all-the-work).
+item. The task numbers are the plan's [task records](planning/README.md).
 
 | Not in v0                                                        | Where it stands                                                                     |
 | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------- |

@@ -1,5 +1,4 @@
 ---
-number: 10
 title: The profile is called claims
 status: decided
 decided: "2026-11-08"

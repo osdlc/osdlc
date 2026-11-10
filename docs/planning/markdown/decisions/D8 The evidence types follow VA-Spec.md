@@ -1,5 +1,4 @@
 ---
-number: 8
 title: The evidence types follow VA-Spec
 status: decided
 decided: "2026-11-08"

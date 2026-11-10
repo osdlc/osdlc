@@ -1,5 +1,4 @@
 ---
-number: 11
 title: Upstream corpora travel as npm packages
 status: decided
 decided: "2026-11-09"
