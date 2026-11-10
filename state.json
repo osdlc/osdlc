@@ -4,10 +4,7 @@
   "head": "0aab0d1047ca896386f41c5e7e9f9b109ac08456",
   "base": "e7a4300cf1e7e2ec2d89fae9b6623e89acfc2b42",
   "round": 3,
-  "claim": {
-    "owner": "mbp:claude-r7k2qa",
-    "at": "2026-11-10T03:12:27.729Z"
-  },
+  "claim": null,
   "findings": [
     {
       "id": "r1-1",
