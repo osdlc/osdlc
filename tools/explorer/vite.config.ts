@@ -9,7 +9,7 @@ export default defineConfig({
   // ELK ships as one prebuilt 1.5 MB file; it already loads in its own chunk.
   build: { chunkSizeWarningLimit: 1600 },
   test: {
-    include: ['tests/**/*.test.ts'],
+    include: ['tests/**/*.test.ts', 'tests/**/*.test.mjs'],
     environment: 'node',
   },
 })
