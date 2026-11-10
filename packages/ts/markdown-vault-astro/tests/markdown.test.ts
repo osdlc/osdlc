@@ -501,3 +501,29 @@ test('a real asset field still rewrites beside a block scalar', () => {
   assert.equal(r.text, '---\ncover: "/_media/a.jpg"\ndesc: |\n  cover: a.jpg\n---\n')
   assert.equal(r.copies.length, 1)
 })
+
+test('flow, anchored, aliased and tagged frontmatter values stay byte-identical', () => {
+  const values = [
+    '[a.png, b.png]',
+    '{ file: a.png }',
+    '&a x.png',
+    '&anchor my photo.png',
+    '&a |',
+    '&a >-',
+    '*a',
+    '!!str x.png',
+    '!!str >-',
+    '!tag my photo.png',
+    '!!str "x.png"',
+  ]
+  for (const value of values) {
+    const tail = /[|>]-?$/.test(value) ? '  a.png\n' : ''
+    const src = `---\ncover: ${value}\n${tail}---\nbody\n`
+    for (const direction of [toAstro, toVault]) {
+      const r = rewriteFile(src, { ...direction, frontmatterAssets: ['cover'] })
+      assert.equal(r.text, src, `cover: ${value}`)
+      assert.deepEqual(r.copies, [])
+      assert.deepEqual(r.missing, [])
+    }
+  }
+})
