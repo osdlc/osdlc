@@ -1,6 +1,6 @@
 // Inputs that made a scanner slow or quadratic once. They are the regression
 // cases of markdown-link's linear-time test (tests/linear.test.ts) and of the
-// ReDoS tests that markdown-render and markdown-astro carry, written as data
+// ReDoS tests that markdown-render and markdown-vault-astro carry, written as data
 // so a benchmark can time each one. A scanner that is linear on them stays
 // near the same cost per byte as on the vault notes.
 

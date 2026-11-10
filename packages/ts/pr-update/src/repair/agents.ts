@@ -27,6 +27,7 @@ import {
   type AgentResult,
   type PlannedCall,
 } from '@osdlc/agent-call'
+import { forwardedSignal } from '@osdlc/command-seam'
 
 import type { Repair, RepairRequest } from '../ports.ts'
 import type { RepairAgent } from './names.ts'
@@ -120,6 +121,8 @@ export function agentRepair(
   call: CallAgent = callAgent,
 ): Repair {
   return async (req) => {
+    // The host got SIGINT/SIGTERM/SIGHUP and is stopping: agent-call would refuse to start it.
+    if (forwardedSignal() !== undefined) return { ok: false, note: `${agent}: interrupted` }
     let result: AgentResult
     try {
       result = await call(ADAPTERS[agent](), repairCallSpec(req, opts, agent))
@@ -128,6 +131,8 @@ export function agentRepair(
       // directory failure); see callAgent's @throws.
       return { ok: false, note: `${agent}: ${e instanceof Error ? e.message : String(e)}` }
     }
+    // Signalled during the call: even a clean agent exit must not be committed or pushed.
+    if (forwardedSignal() !== undefined) return { ok: false, note: `${agent}: interrupted` }
     const said = lastLine(result.text)
     if (result.ok) return { ok: true, note: said }
     const why = result.error === undefined ? '' : `${result.error.reason}: ${result.error.detail}`

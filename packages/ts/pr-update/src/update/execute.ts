@@ -37,7 +37,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 
-import { firstLine, isCommandFailed, stderrOrError } from '@osdlc/command-seam'
+import { firstLine, forwardedSignal, isCommandFailed, stderrOrError } from '@osdlc/command-seam'
 import {
   CommandFailed,
   Git,
@@ -103,6 +103,24 @@ export interface UpdateTarget {
   /** The base sha seen when the run started. Part of the failed-attempt key. */
   baseOid: string | null
   strategy: 'rebase' | 'merge'
+  /**
+   * Set on a stacked PR that a restack run updates after its parent: the
+   * parent's number. Such a target waits for its parent's outcome.
+   */
+  stackParent?: number | undefined
+  /**
+   * Set when the parent moved earlier in this run. The base is integrated
+   * from `oid`, the parent's new head, not from `<remote>/<base>`, which a
+   * rehearsal never moves. A rebase replays only the commits after
+   * `upstream`, the parent's head before the run, so the parent's old
+   * commits are left behind rather than replayed onto its new ones.
+   */
+  onto?: { parent: number; oid: string; upstream: string | null } | undefined
+}
+
+/** The ref a target's base is integrated from. */
+function baseRef(target: UpdateTarget, remote: string): string {
+  return target.onto?.oid ?? `${remote}/${target.base}`
 }
 
 export interface UpdateSettings {
@@ -147,6 +165,11 @@ export type UpdateOutcome =
       status: 'updated'
       resolved: PathPlan[]
       pushed: boolean
+      /**
+       * The sha the update built, pushed or not. A rehearsal restacks a
+       * child onto it, since the parent's remote branch never moves.
+       */
+      builtOid?: string
       /** The sha the PR branch was pushed at; set when `pushed`. */
       pushedOid?: string
       repaired?: Repaired[]
@@ -249,7 +272,7 @@ export async function updateOne(
   runVerb: RunVerb,
   opts: { apply: boolean; worktree: string },
 ): Promise<UpdateOutcome> {
-  const base = `${settings.remote}/${target.base}`
+  const base = baseRef(target, settings.remote)
   const head = `${settings.remote}/${target.head}`
 
   try {
@@ -289,6 +312,7 @@ export async function updateOne(
       // Each stop replays one commit. More stops than commits means git is
       // not making progress, and the loop would never end.
       maxStops: counts.ok ? counts.value.ahead + 1 : 1000,
+      upstream: target.onto?.upstream ?? undefined,
     })
     if (attempt.kind === 'failed') return { status: 'failed', reason: attempt.reason }
     if (attempt.kind === 'done') rebased = attempt.resolved
@@ -334,7 +358,7 @@ function rebaseThroughRungs(
   settings: UpdateSettings,
   runVerb: RunVerb,
   worktree: string,
-  limits: { maxStops: number },
+  limits: { maxStops: number; upstream?: string | undefined },
 ): RebaseAttempt {
   // However this ends, leave a clean tree on the branch, because the fallback
   // merge runs in this same worktree.
@@ -351,7 +375,11 @@ function rebaseThroughRungs(
   const resolved: PathPlan[] = []
   let outcome
   try {
-    outcome = git.rebase(base, { autostash: false, env: noHooksEnv() })
+    outcome = git.rebase(base, {
+      autostash: false,
+      env: noHooksEnv(),
+      ...(limits.upstream === undefined ? {} : { upstream: limits.upstream }),
+    })
   } catch (e) {
     return failed(`rebase ${base}: ${errorLine(e)}`)
   }
@@ -403,7 +431,7 @@ async function integrateAndPush(
   opts: { apply: boolean; worktree: string },
   rebased: PathPlan[] | null,
 ): Promise<UpdateOutcome> {
-  const base = `${settings.remote}/${target.base}`
+  const base = baseRef(target, settings.remote)
   const head = `${settings.remote}/${target.head}`
 
   let outcome
@@ -518,9 +546,11 @@ async function integrateAndPush(
     if (again !== null) return fail(`${again.summary} (after repair)`)
   }
 
-  if (!opts.apply) return { status: 'updated', resolved, pushed: false }
+  const built = git.resolveRef('HEAD')
+  const builtOid = built === null ? {} : { builtOid: built }
+  if (!opts.apply) return { status: 'updated', resolved, pushed: false, ...builtOid }
 
-  const extra = repaired.length > 0 ? { repaired } : {}
+  const extra = { ...builtOid, ...(repaired.length > 0 ? { repaired } : {}) }
   if (target.strategy === 'rebase' && settings.confirmPush !== undefined) {
     let preview
     try {
@@ -819,7 +849,14 @@ export async function updateAll(
     worktreeRoot: string
     onResult?: (r: UpdateResult) => void
     /** Receives each PR left alone because another run holds its branch's lease. */
-    onSkip?: (s: { number: number; head: string; reason: string }) => void
+    onSkip?: (s: { repo: string; number: number; head: string; reason: string }) => void
+    /**
+     * Called before each target, with the results so far: the target to
+     * run, possibly adjusted, or null to leave it out. A restack run uses it
+     * to integrate a child onto the head its parent just got, or to hold the
+     * child back when the parent was not updated.
+     */
+    prepare?: (target: UpdateTarget, done: readonly UpdateResult[]) => UpdateTarget | null
   },
 ): Promise<UpdateResult[]> {
   const results: UpdateResult[] = []
@@ -830,13 +867,18 @@ export async function updateAll(
   git.worktreeAdd(opts.worktreeRoot, { detach: true, startPoint: start })
   const wt = git.at(opts.worktreeRoot)
   try {
-    for (const target of targets) {
+    for (const planned of targets) {
+      // The host was signalled and is stopping: update no further PR.
+      if (forwardedSignal() !== undefined) break
+      const target = opts.prepare === undefined ? planned : opts.prepare(planned, results)
+      if (target === null) continue
       // A rehearsal never takes a lease: it pushes nothing.
       const grant = opts.apply
         ? settings.lease?.acquire({ head: target.head, pr: target.number })
         : undefined
       if (grant !== undefined && !grant.ok) {
         opts.onSkip?.({
+          repo: target.repo,
           number: target.number,
           head: target.head,
           reason: `another pr-update run is updating this branch (${grant.holder})`,

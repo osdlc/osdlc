@@ -13,6 +13,7 @@ import { expect, test } from 'vitest'
 import {
   forwardedExitCode,
   forwardedSignal,
+  groupStartRefusal,
   installGroupSignalForwarding,
   liveProcessGroups,
   managedProcessRunner,
@@ -161,6 +162,29 @@ for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) {
     20_000,
   )
 }
+
+test.skipIf(!posix)(
+  'a detached child the caller spawned and registered through the public API is killed with the host',
+  async () => {
+    const { host, ready } = await startHost(['--own-spawn'])
+    const exited = new Promise<number | null>((res) => host.on('exit', (code) => res(code)))
+    const { grandchild } = await ready
+    try {
+      expect(alive(grandchild)).toBe(true)
+      host.kill('SIGTERM')
+      expect(await exited).toBe(143)
+      expect(await gone(grandchild)).toBe(true)
+    } finally {
+      reap(grandchild)
+      host.kill('SIGKILL')
+    }
+  },
+  20_000,
+)
+
+test.skipIf(!posix)('groupStartRefusal is undefined until a signal has been forwarded', () => {
+  expect(groupStartRefusal()).toBeUndefined()
+})
 
 test.skipIf(!posix)(
   'an async group stays registered after the run settles, so SIGTERM still kills a background member',
