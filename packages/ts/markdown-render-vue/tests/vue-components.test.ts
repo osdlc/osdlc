@@ -140,12 +140,20 @@ async function mount(
  * Poll until `check` holds, rather than draining a fixed number of ticks: how
  * many rounds a nested embed chain needs is whatever the machine says today.
  */
-async function waitFor(check: () => boolean, what: string, ticks = 400): Promise<void> {
-  for (let i = 0; i < ticks; i++) {
+/**
+ * Polls `check` until it holds or `ms` of wall-clock time pass. The deadline is in time, not
+ * polls, because a loaded runner stretches each 2 ms sleep; on timeout the error carries the DOM.
+ */
+async function waitFor(check: () => boolean, what: string, ms = 4000): Promise<void> {
+  const deadline = performance.now() + ms
+  while (performance.now() < deadline) {
     if (check()) return
     await new Promise((resolve) => setTimeout(resolve, 2))
   }
-  throw new Error(`timed out waiting for ${what}`)
+  if (check()) return
+  throw new Error(
+    `timed out after ${ms} ms waiting for ${what}; body: ${document.body.innerHTML.slice(0, 2000)}`,
+  )
 }
 
 /** Wait for the asynchronous pipeline (and any nested embeds) to land. */
@@ -819,7 +827,7 @@ describe('Embed: runaway guards', () => {
       'the over-budget embed to claim the released charge',
     )
     expect(host.querySelector('.markdown-embed-over-budget')).toBeNull()
-  })
+  }, 15_000)
 })
 
 describe('Embed: block ids', () => {

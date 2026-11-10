@@ -167,7 +167,7 @@ describe('comment removal grows linearly with the note', () => {
     return best
   }
 
-  // Equal volume per rung: linear holds the ratio near 1, quadratic reads ~10.
+  // Equal volume per rung: linear holds the ratio near 1, quadratic reads ~10. CI has measured 3.1 on a linear pass.
   test.each([
     ['whole comments in one text node each', () => '%%x%%'],
     ['comments straddling two paragraphs', (i: number) => (i % 2 === 0 ? '%% a' : 'b %%')],
@@ -175,7 +175,7 @@ describe('comment removal grows linearly with the note', () => {
     cost(200, 2000, text)
     const small = cost(500, 5000, text)
     const large = cost(5000, 5000, text)
-    expect(large).toBeLessThan(small * 3)
+    expect(large).toBeLessThan(small * 5)
   })
 })
 
