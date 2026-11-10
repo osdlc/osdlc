@@ -26,5 +26,11 @@ def rows:
                  else "skipped" end),
         detail: .reason,
         conflicts: [], repaired: [],
-        blockedBy: ((.reason | capture("blocked on #(?<n>[0-9]+)")? // {n: null}) | .n) } ] )
+        blockedBy: ((.reason | capture("blocked on #(?<n>[0-9]+)")? // {n: null}) | .n) } ]
+    # pr-update 0.10 lists a --pr that matched no open PR in `notFound` (`#N` or
+    # `owner/name#N`); earlier versions put it in `skipped`.
+    + [ (.notFound // [])[] | capture("#(?<n>[0-9]+)$") | {
+        number: (.n | tonumber), head: "", strategy: null, strategyFallback: null,
+        pushed: false, outcome: "skipped", status: "skipped",
+        detail: "not found in survey", conflicts: [], repaired: [], blockedBy: null } ] )
   | sort_by(.number);

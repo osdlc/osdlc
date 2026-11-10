@@ -8,7 +8,8 @@ use axum::Router;
 use axum::routing::get;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use web_access::{Listen, Tokens, WebAccessConfig, guard::cookie_name, serve, token};
+use web_access::token::Token;
+use web_access::{Listen, Tokens, WebAccessConfig, guard::cookie_name, serve};
 
 /// Runs the example; `tests/examples.rs` runs it too.
 #[tokio::main]
@@ -24,7 +25,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     // A token that lives for this process only. `token::load_or_mint` keeps
     // one in a directory instead, so links survive a restart.
-    let secret = token::mint()?;
+    let secret = Token::mint()?;
     let server = serve(app, &config, Tokens::full_only(secret.clone())).await?;
     let addr = server.addrs()[0];
 
