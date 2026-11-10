@@ -46,10 +46,17 @@ packages/rust/<crate>/ Rust implementations, in a Cargo workspace at packages/ru
     "implementations": [
       { "language": "ts", "dir": "packages/ts/gfm-table", "name": "@acme/gfm-table" },
       { "language": "rust", "dir": "packages/rust/gfm-pipe-table", "name": "gfm-pipe-table" }
-    ]
+    ],
+    "readers": [{ "language": "ts", "dir": "packages/ts/gfm-view", "name": "@acme/gfm-view" }]
   }
 }
 ```
+
+`readers` is optional. It lists libraries whose tests read the suite but that
+are not twins of the reference: each is checked for language, dir under its
+language's root, and a test that names the suite, but no version match is asked
+of it. A library that reads a suite must be listed as an implementation or a
+reader.
 
 ## The command
 
