@@ -549,10 +549,10 @@ The numbers match the task graph at the top. "After" says what must come first.
   once this repo has its own release setup. This task is that move, so SPEC.md needs updating when
   it happens. In progress. [osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9) has merged: it moved the
   package and its spec family here, with their history, and updated SPEC.md.
-  [osdlc/markdown#10](https://github.com/osdlc/markdown/pull/10) switches the CI and release to
-  the shared workflows and checks from osdlc/osdlc
-  ([osdlc/osdlc#749](https://github.com/osdlc/osdlc/pull/749)). It waits for those to merge and
-  for `@osdlc/package-checks` and `@osdlc/conformance-suites` 0.1.0 on npm. Until then, releases still
-  go out from osdlc/osdlc.
+  [osdlc/markdown#10](https://github.com/osdlc/markdown/pull/10) has merged: CI and release use the
+  shared workflows and checks from osdlc/osdlc. The release still needs a repinned workflow, the App
+  key passed by name, a lockfile step, and `@osdlc/package-checks` on npm
+  ([osdlc/markdown#17](https://github.com/osdlc/markdown/pull/17)). Until then, releases still go out
+  from osdlc/osdlc.
 
 We will track each task as an issue in this repo.
