@@ -4,13 +4,12 @@
 # The work is the cursor-pr action (packages/gh-actions/cursor-pr); this file only
 # says when it runs and with what. See that action's README for its limits.
 #
-# `@cursor /<plugin>:<skill> [args]` runs any installed skill and posts its output;
-# add `--apply` and the action commits the changes and pushes them to the pull
-# request branch with a GitHub App token (osdlc-release, the release-plz
-# environment's secrets, as in pr-update.yml). The release-plz environment only
-# deploys from main, and only issue_comment runs are on main (inline review
-# comments and reviews run on refs/pull/N/merge), so the push token exists only
-# in the second job; the first one covers the other two events, read-only.
+# `@cursor /<plugin>:<skill> [args]` runs any installed skill and posts its output.
+# Add `--apply` and the agent may edit files: the first job (no environment, no
+# push token) turns its edits into a patch artifact, and the second job (the
+# pr-agent environment, which holds the osdlc-release App secrets) checks the
+# patch, applies it to a fresh checkout, commits and pushes it to the pull
+# request branch with an App token, so CI runs. See packages/gh-actions/pr-apply.
 #
 # Only sksizer can trigger it: the job's `if` checks the author before a
 # runner starts. The action is taken from main, never from the pull request,
@@ -28,41 +27,39 @@ on:
 permissions: {}
 
 jobs:
-  # Inline review comments and reviews: no environment, so no push token; a
-  # skill runs read-only and `--apply` is refused with a comment.
   cursor:
     if: >-
       (github.event.comment.user.login || github.event.review.user.login) == 'sksizer'
       && contains(github.event.comment.body || github.event.review.body, '@cursor')
-      && github.event_name != 'issue_comment'
+      && (github.event_name != 'issue_comment' || github.event.issue.pull_request)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
       pull-requests: write
       issues: write
+    outputs:
+      apply-patch: ${{ steps.agent.outputs.apply-patch }}
     steps:
-      - uses: osdlc/osdlc/packages/gh-actions/cursor-pr@main
+      - id: agent
+        uses: osdlc/osdlc/packages/gh-actions/cursor-pr@main
         with:
           cursor-api-key: ${{ secrets.CURSOR_API_KEY }}
 
-  # Comments on the pull request conversation: in the release-plz environment
-  # (main only) to mint the push token. If the token cannot be minted the step
-  # is skipped over and the action runs read-only.
-  cursor-comment:
-    if: >-
-      (github.event.comment.user.login || github.event.review.user.login) == 'sksizer'
-      && contains(github.event.comment.body || github.event.review.body, '@cursor')
-      && github.event_name == 'issue_comment'
-      && github.event.issue.pull_request
+  # Only for --apply runs that changed files. The agent never runs here.
+  cursor-push:
+    needs: cursor
+    if: needs.cursor.outputs.apply-patch == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    environment: release-plz
+    timeout-minutes: 10
+    environment: pr-agent
     permissions:
       contents: read
       pull-requests: write
       issues: write
     steps:
+      # If this fails (environment or secrets missing) the next step still runs
+      # and posts the agent's output with the reason nothing was pushed.
       - name: Get a GitHub App token
         id: app-token
         continue-on-error: true
@@ -72,9 +69,9 @@ jobs:
           private-key: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}
           permission-contents: write
 
-      - uses: osdlc/osdlc/packages/gh-actions/cursor-pr@main
+      - uses: osdlc/osdlc/packages/gh-actions/pr-apply@main
         with:
-          cursor-api-key: ${{ secrets.CURSOR_API_KEY }}
+          agent: cursor
           push-token: ${{ steps.app-token.outputs.token }}
           git-user-name: osdlc-release[bot]
           git-user-email: osdlc-release[bot]@users.noreply.github.com

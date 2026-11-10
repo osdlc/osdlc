@@ -37,19 +37,13 @@ inputs:
   max-turns:
     description: Claude's turn limit.
     default: "60"
-  push-token:
+
+outputs:
+  apply-patch:
     description: >-
-      Token used only to push the commit that "--apply" makes to the pull
-      request branch (a GitHub App token, so CI runs on the push; the
-      GITHUB_TOKEN does not start workflows). Never given to the agent. Empty:
-      "--apply" is refused with a comment and everything else works.
-    default: ""
-  git-user-name:
-    description: Author name of the "--apply" commit.
-    default: github-actions[bot]
-  git-user-email:
-    description: Author email of the "--apply" commit.
-    default: 41898282+github-actions[bot]@users.noreply.github.com
+      "true" when an --apply run changed files and uploaded the patch artifact
+      (name <agent>-pr-apply); the pr-apply action in a later job pushes it.
+    value: ${{ steps.patch.outputs.patch }}
 
 runs:
   using: composite
@@ -91,7 +85,6 @@ runs:
       env:
         AGENT: claude
         HARNESS_SH: ${{ github.action_path }}/harness.sh
-        HAS_PUSH_TOKEN: ${{ inputs.push-token != '' }}
         KEY_VAR: ANTHROPIC_API_KEY
         GH_TOKEN: ${{ inputs.github-token }}
         KEYS: ${{ inputs.anthropic-api-key }}
@@ -104,23 +97,31 @@ runs:
         SOURCE_URL: ${{ github.event.comment.html_url || github.event.review.html_url }}
       run: '"$GITHUB_ACTION_PATH/../pr-common/ask.sh"'
 
-    # --apply: the action, not the agent, commits and pushes. The push token is
-    # only in this step's environment, never in the agent's.
-    - if: steps.mention.outputs.real == '1' && steps.mention.outputs.mode == 'skill' && steps.mention.outputs.apply == '1'
+    # --apply: the agent job holds no push token. After the agent, its edits
+    # become a patch artifact; the pr-apply action in a separate job (environment
+    # pr-agent) validates and pushes it and posts the comment.
+    - id: patch
+      if: steps.mention.outputs.real == '1' && steps.mention.outputs.mode == 'skill' && steps.mention.outputs.apply == '1'
       shell: bash
       env:
         AGENT: claude
-        GH_TOKEN: ${{ inputs.github-token }}
-        PUSH_TOKEN: ${{ inputs.push-token }}
-        GIT_USER_NAME: ${{ inputs.git-user-name }}
-        GIT_USER_EMAIL: ${{ inputs.git-user-email }}
         RESULT: ${{ runner.temp }}/claude-pr-result.json
         REPO: ${{ github.repository }}
         PR: ${{ github.event.issue.number || github.event.pull_request.number }}
         REQUEST: ${{ github.event.comment.body || github.event.review.body }}
-      run: '"$GITHUB_ACTION_PATH/../pr-common/apply.sh" push'
+      run: '"$GITHUB_ACTION_PATH/../pr-common/apply.sh" patch'
 
-    - if: always() && steps.mention.outputs.real == '1'
+    - id: upload
+      if: steps.patch.outputs.patch == 'true'
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: claude-pr-apply
+        path: ${{ runner.temp }}/claude-pr-apply
+        retention-days: 7
+        if-no-files-found: error
+
+    # An --apply run with a patch is reported by the push job, which has the agent's output too.
+    - if: always() && steps.mention.outputs.real == '1' && steps.upload.outcome != 'success'
       shell: bash
       env:
         AGENT: claude

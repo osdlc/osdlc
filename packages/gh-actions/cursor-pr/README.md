@@ -57,10 +57,14 @@ please keep behaviour identical
 - **Read-only by default.** The skill runs, and its findings or proposed diff
   come back as a comment. The agent cannot edit, commit, push or comment.
 - **`--apply`** (a word in the first line's args; it is removed before the args
-  reach the skill) lets the agent edit files: the temporary `.cursor/cli.json` allows `Write(**)` (still denying `Shell(gh)`, `Shell(curl)`, `Shell(wget)`), `--mode ask` is dropped and `--force` is passed so the allowed tools run without a prompt nobody could answer. Afterwards the
-  **action**, not the agent, commits what changed and pushes it to the pull
-  request's branch (see the safety rules below). The comment says what changed
-  (diffstat and commit sha) or that nothing did.
+  reach the skill) lets the agent edit files: the temporary `.cursor/cli.json` allows `Write(**)` (still denying `Shell(gh)`, `Shell(curl)`, `Shell(wget)`), `--mode ask` is dropped and `--force` is passed so the allowed tools run without a prompt nobody could answer. Afterwards the agent job makes a patch
+  (`git diff --binary`) of the working tree and uploads it as the
+  `cursor-pr-apply` artifact. A **second job** in the `pr-agent` environment, which
+  never runs the agent, checks the patch and pushes it with a GitHub App token
+  (see [`pr-apply`](../pr-apply/)). That job posts the one comment: the agent's
+  output, the diffstat and commit sha, or why nothing was pushed. If the agent
+  changed nothing, the agent job posts its output and says so. On a failed agent
+  run the agent job posts the failure.
 - **Invocation.** Cursor has no plugin install, so the skill's `SKILL.md` is found on disk and inlined: `./.cursor/skills`, `~/.cursor/skills`, then this repository's `.cursor-plugin/packs/<plugin>/skills` (every pack for a bare `/skill`). The prompt is the "How you were called" block, then the skill text, then "Run the ... skill ... with the arguments: ...". If the skill is not found the comment lists every path tried and the agent is not run.
 - **How you were called.** One block, the same words for every harness: the
   harness, repo, PR number and title, base and head sha, headless (no human to
@@ -72,21 +76,15 @@ please keep behaviour identical
 
 ### `--apply` safety rules
 
-1. The pull request's head must be in the same repository (a fork is refused
-   before the agent runs).
-2. `push-token` must be set (a GitHub App token, so CI runs on the push); the
-   action never falls back to `GITHUB_TOKEN`, and refuses with a comment instead.
-3. Before pushing, `git rev-parse HEAD` must equal the pull request's current
-   `headRefOid`. A moved head, or a commit the agent made itself, is refused and
-   nothing is pushed. The push is a plain `git push origin HEAD:refs/heads/<head>`:
-   never forced, hooks off.
-4. The push token is only in the commit-and-push step's environment, never the
-   agent's. The agent's own `git config` is compared before pushing.
-5. The commit is `cursor: /<skill> <args> (requested in #<pr> comment)`, authored
-   by `git-user-name` / `git-user-email` (default `github-actions[bot]`), with no
-   trailers. Nothing changed means no commit and no push.
-6. The App's permissions bound what an applied change can touch (without
-   `workflows`, GitHub rejects a push that edits `.github/workflows`).
+The agent job has no environment, no push token and no App key. The push job
+(action [`pr-apply`](../pr-apply/), full rules there) uses a fresh checkout and
+only `git` and `gh`: it refuses a fork, a head that is the repository's default
+or the PR's base branch, a head that moved since the agent ran, and patches that
+touch `.github/`, `.git*`, paths outside the repository, symlinks, submodules or
+add an executable bit. It pushes only `HEAD:refs/heads/<PR head branch>`,
+never forced. The repository's own rules also protect main (PRs required, no
+force-push). If the `pr-agent` environment or its secrets are missing, the push
+job posts the agent's output and says nothing was pushed.
 
 ## Use
 
@@ -112,28 +110,25 @@ jobs:
           cursor-api-key: ${{ secrets.CURSOR_API_KEY }}
 ```
 
-To allow `--apply`, give the job a GitHub App token as `push-token` (see this
-repository's `.github/workflows/cursor.yml`: the `cursor-comment` job mints the
-osdlc-release token in the `release-plz` environment, which deploys from `main`
-only, so it covers `issue_comment` events; inline review comments and reviews
-run read-only).
+`--apply` needs the second job, as in this repository's
+`.github/workflows/cursor.yml`: `cursor-push` runs `needs: cursor` when the action's
+`apply-patch` output is `true`, with `environment: pr-agent`, mints the App
+token and calls `osdlc/osdlc/packages/gh-actions/pr-apply`. One setup for
+all three events. Without that job `--apply` still runs the agent but nothing is pushed.
 
 Keep the author check in the job's `if`: it stops other people's comments
 before a runner starts or the key is in reach.
 
 ## Inputs
 
-| Input            | Default                                                 |                                                                                                                                                                                          |
-| ---------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `cursor-api-key` | required                                                | One key, or several separated by spaces, commas or newlines. Tried in order; only an authentication failure moves on.                                                                    |
-| `github-token`   | `github.token`                                          | Reads the pull request and posts the comment.                                                                                                                                            |
-| `push-token`     | empty                                                   | Pushes the `--apply` commit (a GitHub App token, so CI runs). Never given to the agent. Empty: `--apply` is refused.                                                                     |
-| `git-user-name`  | `github-actions[bot]`                                   | Author name of the `--apply` commit.                                                                                                                                                     |
-| `git-user-email` | `41898282+github-actions[bot]@users.noreply.github.com` | Author email of the `--apply` commit.                                                                                                                                                    |
-| `cursor-version` | `2026.11.05-86047df`                                    | A full build id; agent-setup has its checksums built in.                                                                                                                                 |
-| `model`          | empty                                                   | Passed as `--model`. Empty is Cursor's default.                                                                                                                                          |
-| `marketplaces`   | empty                                                   | One per line, `name=https-git-url` (agent-setup's format). Cursor can register a marketplace, which may need `CURSOR_API_KEY` at install time; the action gives the install step no key. |
-| `plugins`        | empty                                                   | **Not supported on cursor**: agent-setup refuses a plugin there. Review mode inlines the craft code-review skill instead.                                                                |
+| Input            | Default              |                                                                                                                                                                                          |
+| ---------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cursor-api-key` | required             | One key, or several separated by spaces, commas or newlines. Tried in order; only an authentication failure moves on.                                                                    |
+| `github-token`   | `github.token`       | Reads the pull request and posts the comment.                                                                                                                                            |
+| `cursor-version` | `2026.11.05-86047df` | A full build id; agent-setup has its checksums built in.                                                                                                                                 |
+| `model`          | empty                | Passed as `--model`. Empty is Cursor's default.                                                                                                                                          |
+| `marketplaces`   | empty                | One per line, `name=https-git-url` (agent-setup's format). Cursor can register a marketplace, which may need `CURSOR_API_KEY` at install time; the action gives the install step no key. |
+| `plugins`        | empty                | **Not supported on cursor**: agent-setup refuses a plugin there. Review mode inlines the craft code-review skill instead.                                                                |
 
 ## Pinning
 

@@ -27,11 +27,12 @@ cat > "$T/bin/gh" <<'EOF'
 case "$1 $2" in
   "pr view")
     case "$*" in
+      *headRefOid*) printf '%s\t%s\t%s\t%s\t%s\n' "${FAKE_OWNER:-o}" "${FAKE_NAME:-r}" "${FAKE_REF:-feat}" "${FAKE_OID:-$(git rev-parse HEAD)}" "${FAKE_BASE:-main}" ;;
       *baseRefName*) echo main ;;
-      *headRefOid*) printf '%s\t%s\tfeat\t%s\n' "${FAKE_OWNER:-o}" "${FAKE_NAME:-r}" "${FAKE_OID:-$(git rev-parse HEAD)}" ;;
       *title*) echo "A title" ;;
       *) echo "PR description and comments" ;;
     esac ;;
+  "repo view") echo "${FAKE_DEFAULT:-main}" ;;
   "pr diff") echo "diff --git a/f b/f" ;;
   "pr comment")
     while [ $# -gt 0 ]; do
@@ -57,6 +58,10 @@ case "$ANTHROPIC_API_KEY" in
   leak*) echo "{\"is_error\":true,\"num_turns\":5,\"result\":\"oops\"}"; exit 1 ;;
 esac
 if [ -n "${FAKE_EDIT:-}" ]; then echo edited >> f; fi
+if [ -n "${FAKE_EDIT_PATH:-}" ]; then mkdir -p "$(dirname "$FAKE_EDIT_PATH")"; echo x > "$FAKE_EDIT_PATH"; fi
+if [ -n "${FAKE_EDIT_LINK:-}" ]; then ln -s /etc/passwd lnk; fi
+if [ -n "${FAKE_EDIT_EXEC:-}" ]; then echo x > run.sh; chmod +x run.sh; fi
+if [ -n "${FAKE_EDIT_SUB:-}" ]; then git init -q sub; git -C sub -c user.name=a -c user.email=a@b commit -q --allow-empty -m x; fi
 if [ -n "${FAKE_COMMIT:-}" ]; then git -c user.name=a -c user.email=a@b commit -qam sneaky; fi
 echo "{\"is_error\":false,\"num_turns\":3,\"result\":\"${FAKE_SAY:-claude says hi}\"}"
 EOF
@@ -82,6 +87,10 @@ echo '{"type":"thread.started","thread_id":"t"}'
 echo '{"type":"item.completed","item":{"type":"agent_message","text":"codex says hi"}}'
 echo '{"type":"turn.completed","usage":{}}'
 if [ -n "${FAKE_EDIT:-}" ]; then echo edited >> f; fi
+if [ -n "${FAKE_EDIT_PATH:-}" ]; then mkdir -p "$(dirname "$FAKE_EDIT_PATH")"; echo x > "$FAKE_EDIT_PATH"; fi
+if [ -n "${FAKE_EDIT_LINK:-}" ]; then ln -s /etc/passwd lnk; fi
+if [ -n "${FAKE_EDIT_EXEC:-}" ]; then echo x > run.sh; chmod +x run.sh; fi
+if [ -n "${FAKE_EDIT_SUB:-}" ]; then git init -q sub; git -C sub -c user.name=a -c user.email=a@b commit -q --allow-empty -m x; fi
 if [ -n "${FAKE_COMMIT:-}" ]; then git -c user.name=a -c user.email=a@b commit -qam sneaky; fi
 echo "${FAKE_SAY:-codex says hi}" > "$last"
 EOF
@@ -98,6 +107,10 @@ case "$CURSOR_API_KEY" in
   boom*) echo "Something broke"; exit 1 ;;
 esac
 if [ -n "${FAKE_EDIT:-}" ]; then echo edited >> f; fi
+if [ -n "${FAKE_EDIT_PATH:-}" ]; then mkdir -p "$(dirname "$FAKE_EDIT_PATH")"; echo x > "$FAKE_EDIT_PATH"; fi
+if [ -n "${FAKE_EDIT_LINK:-}" ]; then ln -s /etc/passwd lnk; fi
+if [ -n "${FAKE_EDIT_EXEC:-}" ]; then echo x > run.sh; chmod +x run.sh; fi
+if [ -n "${FAKE_EDIT_SUB:-}" ]; then git init -q sub; git -C sub -c user.name=a -c user.email=a@b commit -q --allow-empty -m x; fi
 if [ -n "${FAKE_COMMIT:-}" ]; then git -c user.name=a -c user.email=a@b commit -qam sneaky; fi
 echo "{\"type\":\"result\",\"is_error\":false,\"result\":\"${FAKE_SAY:-cursor says hi}\"}"
 EOF
@@ -120,8 +133,9 @@ echo ".cursor" >> "$T/repo/.git/info/exclude"
 BASE_HEAD="$(git -C "$T/repo" rev-parse HEAD)"
 # reset_repo: back to the checkout every run starts from, and the remote branch with it.
 reset_repo() {
+  rm -rf "$T/repo/sub"
   git -C "$T/repo" reset -q --hard "$BASE_HEAD"
-  git -C "$T/repo" clean -fdq
+  git -C "$T/repo" clean -ffdq
   git -C "$T/repo" push -q -f origin "$BASE_HEAD:refs/heads/feat"
 }
 
@@ -142,15 +156,37 @@ run() {
     cd "$T/repo" || exit 1
     export AGENT="$agent" HARNESS_SH="$gha/$agent-pr/harness.sh" KEY_VAR="$keyvar" KEYS="$keys" MODE="$mode" \
       MAX_TURNS=60 RESULT="$RUNNER_TEMP/$agent-pr-result.json" REPO=o/r PR=7 SOURCE_URL=http://x \
-      REQUEST="${4:-@$agent hi}" RUN_URL=http://run GH_TOKEN=tok HAS_PUSH_TOKEN="${HAS_PUSH_TOKEN-true}" \
-      PUSH_TOKEN="${PUSH_TOKEN-pushtok}" GIT_USER_NAME="github-actions[bot]" GIT_USER_EMAIL=bot@example.com
+      REQUEST="${4:-@$agent hi}" RUN_URL=http://run GH_TOKEN=tok GITHUB_OUTPUT="$FAKE_DIR/gh_out"
+    : > "$GITHUB_OUTPUT"
+    rm -rf "$T/artifact" "$T/runner2" "$T/push"
     "$here/ask.sh" > "$FAKE_DIR/ask.log" 2>&1
     echo $? > "$FAKE_DIR/status"
-    # The action's apply step: only for a successful skill run that asked for --apply.
+    # The action's patch step: only for a successful skill run that asked for --apply.
     if [ "$mode" = skill ] && [ "$(cat "$FAKE_DIR/status")" = 0 ] && printf '%s\n' "$REQUEST" | head -n 1 | grep -q -- ' --apply\( \|$\)'; then
-      "$here/apply.sh" push >> "$FAKE_DIR/ask.log" 2>&1 || echo 1 > "$FAKE_DIR/status"
+      "$here/apply.sh" patch >> "$FAKE_DIR/ask.log" 2>&1 || echo 1 > "$FAKE_DIR/status"
     fi
-    "$here/post.sh" >> "$FAKE_DIR/ask.log" 2>&1
+    if grep -q '^patch=true$' "$GITHUB_OUTPUT"; then
+      # upload-artifact, then the push job: a fresh clone-less checkout, no agent, the artifact only.
+      cp -R "$RUNNER_TEMP/$agent-pr-apply" "$T/artifact"
+      mkdir -p "$T/runner2" "$T/push"
+      cp -R "$T/artifact" "$T/runner2/$agent-pr-apply"
+      (
+        cd "$T/push" || exit 1
+        git init -q .
+        git remote add origin "$T/origin.git"
+        export RUNNER_TEMP="$T/runner2" PUSH_TOKEN="${PUSH_TOKEN-pushtok}" GIT_USER_NAME="osdlc-release[bot]" GIT_USER_EMAIL=bot@example.com
+        export FAKE_OID="${FAKE_OID:-$BASE_HEAD}"
+        for v in OWNER NAME REF BASE DEFAULT OID; do
+          pv="PUSH_FAKE_$v"
+          if [ -n "${!pv+x}" ]; then export "FAKE_$v=${!pv}"; fi
+        done
+        unset RESULT
+        "$here/apply.sh" push >> "$FAKE_DIR/ask.log" 2>&1 || echo 1 > "$FAKE_DIR/status"
+        RESULT="$RUNNER_TEMP/$agent-pr-apply/result.json" "$here/post.sh" >> "$FAKE_DIR/ask.log" 2>&1
+      )
+    else
+      "$here/post.sh" >> "$FAKE_DIR/ask.log" 2>&1
+    fi
   )
   status="$(cat "$FAKE_DIR/status")"
 }
@@ -311,7 +347,7 @@ for agent in claude codex cursor; do
   block_of $agent > "$T/block"
   check "$agent skill: fence outgrows backticks in the comment" grep -q -x -- '````' "$T/block"
 
-  # --apply with changes: the action commits and pushes
+  # --apply with changes: the agent job makes a patch, the push job commits and pushes
   FAKE_EDIT=1 run $agent skill good "$(skillreq $agent "$sk x --apply")"
   prompt_of $agent > "$T/prompt"
   block_of $agent > "$T/block"
@@ -319,12 +355,16 @@ for agent in claude codex cursor; do
   [ "$status" = 0 ] && ok "$agent apply: succeeds" || bad "$agent apply: succeeds"
   check "$agent apply: APPLY wording" grep -q -- '^- Mode: APPLY\. You may edit files in the working tree\. Do not run git commit, git push or post comments' "$T/block"
   check "$agent apply: --apply stripped from args" grep -q -- 'arguments: x$' "$T/block"
+  check "$agent apply: patch artifact" test -s "$T/artifact/patch"
+  check "$agent apply: artifact records head and paths" test "$(jq -c '[.head, .paths]' "$T/artifact/meta.json")" = "[\"$BASE_HEAD\",[\"f\"]]"
+  check "$agent apply: artifact carries the agent output" grep -q "$agent says hi" "$T/artifact/result.json"
   check "$agent apply: remote branch moved" test "$(remote_head)" != "$BASE_HEAD"
   check "$agent apply: one commit on the head" test "$(git -C "$T/origin.git" rev-list --count "$BASE_HEAD..feat")" = 1
   check "$agent apply: commit message" test "$(git -C "$T/origin.git" log -1 --format=%s feat)" = "$agent: /craft:code-review x (requested in #7 comment)"
-  check "$agent apply: author" test "$(git -C "$T/origin.git" log -1 --format='%an <%ae>' feat)" = "github-actions[bot] <bot@example.com>"
+  check "$agent apply: author" test "$(git -C "$T/origin.git" log -1 --format='%an <%ae>' feat)" = "osdlc-release[bot] <bot@example.com>"
   check "$agent apply: no trailers" test "$(git -C "$T/origin.git" log -1 --format=%b feat)" = ""
   check "$agent apply: header names both commits" grep -q "^\*\*$label ran /craft:code-review\*\* for [0-9a-f]\{7\} and pushed $(remote_head | cut -c1-7)\.\$" "$FAKE_DIR/posted"
+  check "$agent apply: the push job posts the agent output" grep -q "$agent says hi" "$FAKE_DIR/posted"
   check "$agent apply: marker head is the one covered" grep -q "^<!-- $agent-skill: done head=$BASE_HEAD -->\$" "$FAKE_DIR/posted"
   check "$agent apply: diffstat posted" grep -q ' f | 1 +' "$FAKE_DIR/posted"
   case $agent in
@@ -338,41 +378,67 @@ for agent in claude codex cursor; do
       check "cursor apply: gh and curl still denied" grep -q '"deny":\["Shell(gh)","Shell(curl)","Shell(wget)"\]' "$FAKE_DIR/cli.json" ;;
   esac
 
-  # --apply, nothing changed
+  # new files are in the patch too; a commit the agent made is squashed into the one commit
+  FAKE_COMMIT=1 FAKE_EDIT=1 FAKE_EDIT_PATH=docs/new.md run $agent skill good "$(skillreq $agent "$sk --apply")"
+  [ "$status" = 0 ] && [ "$(git -C "$T/origin.git" rev-list --count "$BASE_HEAD..feat")" = 1 ] && ok "$agent apply: agent commit and new file become one commit" || bad "$agent apply: agent commit and new file become one commit"
+  check "$agent apply: new file pushed" test "$(git -C "$T/origin.git" show feat:docs/new.md)" = x
+
+  # --apply, nothing changed: no artifact, no push job
   run $agent skill good "$(skillreq $agent "$sk --apply")"
   [ "$status" = 0 ] && ok "$agent apply: no changes succeeds" || bad "$agent apply: no changes succeeds"
+  check "$agent apply: no changes makes no artifact" test ! -e "$T/artifact"
   check "$agent apply: no changes pushes nothing" test "$(remote_head)" = "$BASE_HEAD"
   check "$agent apply: no changes is said" grep -q 'No files changed' "$FAKE_DIR/posted"
   check "$agent apply: no changes header has no push" bash -c "! grep -q 'and pushed' '$FAKE_DIR/posted'"
   check "$agent apply: no changes marker" grep -q "^<!-- $agent-skill: done head=" "$FAKE_DIR/posted"
 
-  # changes without --apply are never pushed
+  # changes without --apply make no patch and are never pushed
   FAKE_EDIT=1 run $agent skill good "$(skillreq $agent "$sk")"
   check "$agent skill: edits without --apply are not pushed" test "$(remote_head)" = "$BASE_HEAD"
+  check "$agent skill: edits without --apply make no artifact" test ! -e "$T/artifact"
 
-  # refusals
-  HAS_PUSH_TOKEN=false FAKE_EDIT=1 run $agent skill good "$(skillreq $agent "$sk --apply")"
-  [ "$status" != 0 ] && [ ! -e "$FAKE_DIR/keys" ] && ok "$agent apply: refused without push-token, agent not run" || bad "$agent apply: refused without push-token, agent not run"
-  check "$agent apply: no push-token comment" grep -q 'needs the push-token input' "$FAKE_DIR/posted"
-  check "$agent apply: no push-token marker" grep -q "^<!-- $agent-skill: failed head=" "$FAKE_DIR/posted"
-  check "$agent apply: no push-token pushes nothing" test "$(remote_head)" = "$BASE_HEAD"
+  # push job refusals; each keeps the agent output in the comment
+  refused() { # name, expected text
+    [ "$status" != 0 ] && ok "$agent apply: $1 refused" || bad "$agent apply: $1 refused"
+    check "$agent apply: $1 comment" grep -q -- "$2" "$FAKE_DIR/posted"
+    check "$agent apply: $1 keeps the agent output" grep -q "$agent says hi" "$FAKE_DIR/posted"
+    check "$agent apply: $1 pushes nothing" test "$(remote_head)" = "$BASE_HEAD"
+    check "$agent apply: $1 marker" grep -q "^<!-- $agent-skill: failed head=$BASE_HEAD -->" "$FAKE_DIR/posted"
+  }
+  PUSH_TOKEN= FAKE_EDIT=1 run $agent skill good "$(skillreq $agent "$sk --apply")"
+  refused "missing token or environment" 'no push token'
+  check "$agent apply: missing token names the environment" grep -q 'pr-agent' "$FAKE_DIR/posted"
+  PUSH_FAKE_OID=0000000000000000000000000000000000000000 FAKE_EDIT=1 run $agent skill good "$(skillreq $agent "$sk --apply")"
+  refused "moved head" 'branch moved since'
+  PUSH_FAKE_OWNER=someone-else FAKE_EDIT=1 run $agent skill good "$(skillreq $agent "$sk --apply")"
+  refused "fork (push job)" 'only works when the pull request.s branch is in o/r'
+  PUSH_FAKE_REF=main FAKE_EDIT=1 run $agent skill good "$(skillreq $agent "$sk --apply")"
+  refused "default branch (push job)" 'never pushes to the default or base branch'
+  PUSH_FAKE_BASE=feat FAKE_EDIT=1 run $agent skill good "$(skillreq $agent "$sk --apply")"
+  refused "base branch (push job)" 'never pushes to the default or base branch'
+  FAKE_EDIT_PATH=.github/workflows/x.yml run $agent skill good "$(skillreq $agent "$sk --apply")"
+  refused ".github path" 'a protected path (.github/workflows/x.yml)'
+  FAKE_EDIT_PATH=.gitmodules run $agent skill good "$(skillreq $agent "$sk --apply")"
+  refused ".git* path" 'a protected path (.gitmodules)'
+  FAKE_EDIT_PATH=pkg/.gitattributes run $agent skill good "$(skillreq $agent "$sk --apply")"
+  refused "nested .git* path" 'a protected path'
+  FAKE_EDIT_LINK=1 run $agent skill good "$(skillreq $agent "$sk --apply")"
+  refused "symlink" 'a symlink (lnk)'
+  FAKE_EDIT_EXEC=1 run $agent skill good "$(skillreq $agent "$sk --apply")"
+  refused "new executable" 'a new executable bit (run.sh)'
+  FAKE_EDIT_SUB=1 run $agent skill good "$(skillreq $agent "$sk --apply")"
+  refused "submodule" 'a submodule (sub)'
 
+  # the agent job refuses before the agent runs
   FAKE_OWNER=someone-else FAKE_EDIT=1 run $agent skill good "$(skillreq $agent "$sk --apply")"
   [ "$status" != 0 ] && [ ! -e "$FAKE_DIR/keys" ] && ok "$agent apply: fork refused, agent not run" || bad "$agent apply: fork refused, agent not run"
   check "$agent apply: fork comment" grep -q 'only works when the pull request.s branch is in o/r' "$FAKE_DIR/posted"
   check "$agent apply: fork pushes nothing" test "$(remote_head)" = "$BASE_HEAD"
   FAKE_OWNER=someone-else run $agent skill good "$(skillreq $agent "$sk")"
   [ "$status" = 0 ] && ok "$agent skill: a fork is fine read-only" || bad "$agent skill: a fork is fine read-only"
-
-  FAKE_OID=0000000000000000000000000000000000000000 FAKE_EDIT=1 run $agent skill good "$(skillreq $agent "$sk --apply")"
-  [ "$status" != 0 ] && ok "$agent apply: moved head refused" || bad "$agent apply: moved head refused"
-  check "$agent apply: moved head comment" grep -q 'branch moved since checkout' "$FAKE_DIR/posted"
-  check "$agent apply: moved head keeps the agent output" grep -q "$agent says hi" "$FAKE_DIR/posted"
-  check "$agent apply: moved head pushes nothing" test "$(remote_head)" = "$BASE_HEAD"
-  check "$agent apply: moved head marker" grep -q "^<!-- $agent-skill: failed head=" "$FAKE_DIR/posted"
-
-  FAKE_OID=$BASE_HEAD FAKE_COMMIT=1 FAKE_EDIT=1 run $agent skill good "$(skillreq $agent "$sk --apply")"
-  [ "$status" != 0 ] && [ "$(remote_head)" = "$BASE_HEAD" ] && ok "$agent apply: a commit made by the agent is not pushed" || bad "$agent apply: a commit made by the agent is not pushed"
+  FAKE_REF=main FAKE_EDIT=1 run $agent skill good "$(skillreq $agent "$sk --apply")"
+  [ "$status" != 0 ] && [ ! -e "$FAKE_DIR/keys" ] && ok "$agent apply: default branch head refused, agent not run" || bad "$agent apply: default branch head refused, agent not run"
+  check "$agent apply: default branch comment" grep -q 'never pushes to the default or base branch' "$FAKE_DIR/posted"
 
   # names
   run $agent skill good "$(skillreq $agent '/bad;name')"

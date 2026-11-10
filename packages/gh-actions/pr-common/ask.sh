@@ -30,7 +30,7 @@ if [ "$(type -t harness_auth_failed)" != function ]; then
 fi
 # shellcheck source=/dev/null
 . "$(dirname "$0")/skill-request.sh"
-rm -f "$RESULT" "${RUNNER_TEMP:-/tmp}/$AGENT-pr-pushed" "${RUNNER_TEMP:-/tmp}/$AGENT-pr-head" "${RUNNER_TEMP:-/tmp}/$AGENT-pr-gitconfig"
+rm -f "$RESULT" "${RUNNER_TEMP:-/tmp}/$AGENT-pr-pushed" "${RUNNER_TEMP:-/tmp}/$AGENT-pr-head"
 ctx="${RUNNER_TEMP:-/tmp}/$AGENT-pr-context"
 
 # refuse <reason>: the run is over before the agent starts; post.sh reports it.
@@ -79,9 +79,7 @@ if [ "$MODE" = skill ]; then
   git rev-parse HEAD > "${RUNNER_TEMP:-/tmp}/$AGENT-pr-head" 2> /dev/null || true
   [ -n "$SKILL_NAME" ] || refuse "\`${SKILL_TOKEN//[^A-Za-z0-9_.:\/-]/}\` is not a valid skill name. Use /<plugin>:<skill> or /<skill> (letters, digits, _ . - and one colon) as the first word after the mention. To ask a question that starts with a path, put some text before it."
   if [ "$SKILL_APPLY" = 1 ]; then
-    [ "${HAS_PUSH_TOKEN:-}" = true ] || refuse "--apply needs the push-token input (a GitHub App token, so CI runs on the push), and this workflow does not set one. Nothing was run. Run the skill without --apply to get its output as a comment."
     reason=$("$(dirname "$0")/apply.sh" check) || refuse "$reason"
-    git config --local --list > "${RUNNER_TEMP:-/tmp}/$AGENT-pr-gitconfig"
   fi
   if [ "$(type -t harness_skill_resolve)" = function ]; then
     SKILL_FILE=$(harness_skill_resolve "$SKILL_NAME") || refuse "$SKILL_FILE"
@@ -190,7 +188,7 @@ for key in "${keys[@]}"; do
   break
 done
 # The agent could have appended to GITHUB_ENV / GITHUB_PATH (a later step runs
-# with them, and the push step holds the push token): empty them before the step ends.
+# with them, and the later steps hold the job token): empty them before the step ends.
 for f in "${GITHUB_ENV:-}" "${GITHUB_PATH:-}" "${GITHUB_OUTPUT:-}" "${GITHUB_STATE:-}"; do
   if [ -n "$f" ] && [ -f "$f" ]; then : > "$f"; fi
 done
