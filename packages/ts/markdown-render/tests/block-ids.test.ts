@@ -11,6 +11,13 @@ describe('remarkBlockIds', () => {
     expect(out).toContain('A paragraph.')
   })
 
+  test('a second standalone marker after the same block stays text, not overwriting the first id', async () => {
+    const out = await html('para\n\n^a\n\n^b')
+    expect(out).toContain('data-block-id="a"')
+    expect(out).not.toContain('data-block-id="b"')
+    expect(out).toContain('^b')
+  })
+
   test('the marker text is removed with its leading space', async () => {
     const out = await html('A paragraph. ^abc')
     expect(out).toContain('>A paragraph.<')
