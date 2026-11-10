@@ -199,14 +199,14 @@ function timeExport(body: string): number {
 
 test('redos: export-vault image scan is linear in unclosed image openers', () => {
   // `[^\]]*` used to cross `![` and newlines, so each opener rescanned the rest.
-  // Eight times the input must cost about 8x, not 64x. The 24x bound leaves room for
-  // CI noise, which has measured 8.7x on a linear scan at a 4x size gap.
+  // Sixteen times the input must cost about 16x, not 256x. The 64x bound leaves room for
+  // CI noise, which has measured 32x on a linear scan at an 8x size gap.
   for (const unit of ['![', '![a](', '![a](x "', '![a\n']) {
-    const small = timeExport(unit.repeat(20_000))
+    const small = timeExport(unit.repeat(10_000))
     const large = timeExport(unit.repeat(160_000))
     assert.ok(
-      large < Math.max(small, 20) * 24,
-      `${JSON.stringify(unit)}: ${small.toFixed(1)}ms -> ${large.toFixed(1)}ms for 8x the input`,
+      large < Math.max(small, 20) * 64,
+      `${JSON.stringify(unit)}: ${small.toFixed(1)}ms -> ${large.toFixed(1)}ms for 16x the input`,
     )
   }
 })
