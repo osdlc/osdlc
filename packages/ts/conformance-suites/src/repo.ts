@@ -217,10 +217,9 @@ function familyProblems(
       problems.push(`${name}: ${r.dir} does not exist`)
       continue
     }
-    const named = suiteReaders(
-      new Map([[r.dir, testSources(root, r.dir)]]),
-      basename(suites),
-    ).get(r.dir)
+    const named = suiteReaders(new Map([[r.dir, testSources(root, r.dir)]]), basename(suites)).get(
+      r.dir,
+    )
     if (named?.has(name) !== true)
       problems.push(`${name}: no test under ${r.dir}/tests names ${suites}/${name}/`)
   }
