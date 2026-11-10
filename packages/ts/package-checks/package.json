@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/package-checks",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Checks for a repository of TypeScript and Rust packages: package shape, the packed tarball in a clean consumer, breaking changes and crate versions, the packages a pull request affects, and staging a new package on npm. A library and a `package-checks` command.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
