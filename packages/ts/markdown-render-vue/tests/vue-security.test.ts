@@ -419,6 +419,25 @@ describe('the hast walker', () => {
     })
   })
 
+  test('with sanitize off, code elements, script URLs and srcdoc never reach the DOM', async () => {
+    const host = await mount({
+      source: [
+        '<script>globalThis.__pwned = 1</script>',
+        '<iframe srcdoc="<b>x</b>" src="https://example.com"></iframe>',
+        '<object data="x"></object><embed src="x">',
+        '<a href="javascript:alert(1)">js</a>',
+        '<a href="https://example.com/ok">ok</a>',
+        '<img src="javascript:alert(1)" alt="i"><form action="javascript:alert(2)"></form>',
+      ].join('\n\n'),
+      options: { sanitize: false },
+    })
+    expect(host.querySelector('script, iframe, object, embed')).toBeNull()
+    expect(host.innerHTML).not.toContain('javascript:')
+    expect(host.innerHTML).not.toContain('srcdoc')
+    expect(host.querySelector('a[href="https://example.com/ok"]')).not.toBeNull()
+    expect((globalThis as Record<string, unknown>).__pwned).toBeUndefined()
+  })
+
   test('an inline handler cannot reach the DOM even with sanitize off', async () => {
     // `sanitize: false` is a documented option, and a host can hand the walker
     // hast it built itself. Neither may turn into a live listener.

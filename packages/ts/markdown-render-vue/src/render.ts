@@ -3,8 +3,10 @@
  *
  * Never `v-html`: the tree is walked into real VNodes with `h()`, which is what
  * makes component overrides possible at all (a `<markdown-embed>` becomes a
- * live component, not an inert element) and what keeps a sanitizer bypass from
- * turning into script execution.
+ * live component, not an inert element). It is also the last line of defence
+ * when the tree was not sanitized (`sanitize: false`, or a host-built hast): the
+ * walker refuses `on*` handlers, `javascript:`-style URLs, `srcdoc` and the
+ * elements that run or embed code (`script`, `iframe`, `object`, `embed`).
  *
  * Routing is table-driven and pure — {@link matchOverride} is unit-testable
  * without a DOM or a component instance. The table itself lives in
@@ -16,7 +18,13 @@
 import { h, type Component, type VNode } from 'vue'
 import type { Position } from 'unist'
 
-import { CLASS_ROUTES, FENCE_LANG_PROP, classNames } from '@osdlc/markdown-render'
+import {
+  CLASS_ROUTES,
+  FENCE_LANG_PROP,
+  classNames,
+  isSafeAssetUrl,
+  isSafeLinkPath,
+} from '@osdlc/markdown-render'
 
 export interface HastNode {
   type: string
@@ -177,6 +185,22 @@ export function attrName(key: string): string {
  */
 const EVENT_HANDLER = /^on/i
 
+/** Elements that run or embed code; Vue creates a `<script>` and the browser executes it. */
+const CODE_ELEMENTS = new Set(['script', 'iframe', 'object', 'embed', 'frame', 'frameset'])
+
+/** Attributes holding a URL a note could point at a script, by the check each needs. */
+const LINK_ATTRS = new Set(['href', 'xlink:href', 'action', 'formaction'])
+const ASSET_ATTRS = new Set(['src', 'poster'])
+
+/** Is this attribute allowed to reach the DOM? `srcdoc` is markup; a URL must pass its scheme check. */
+function attrAllowed(name: string, value: unknown): boolean {
+  if (name === 'srcdoc') return false
+  if (typeof value !== 'string') return true
+  if (LINK_ATTRS.has(name)) return isSafeLinkPath(value)
+  if (ASSET_ATTRS.has(name)) return isSafeAssetUrl(value)
+  return true
+}
+
 /**
  * hast properties → props for `h()`.
  *
@@ -197,6 +221,7 @@ export function toVueProps(
     if (value === undefined || value === null || value === false) continue
     if (EVENT_HANDLER.test(key)) continue
     const name = attrName(key)
+    if (!attrAllowed(name, value)) continue
     if (name === 'class') {
       props.class = Array.isArray(value) ? value.join(' ') : String(value)
     } else if (Array.isArray(value)) {
@@ -278,6 +303,7 @@ export function renderNode(
 ): VNode | string | null {
   if (node.type === 'text') return String(node.value ?? '')
   if (node.type !== 'element' || !node.tagName) return null
+  if (CODE_ELEMENTS.has(node.tagName.toLowerCase())) return null
 
   const line = numericLine(node) ?? context.line
   // In the else branch `line` is always a number — it differs from
