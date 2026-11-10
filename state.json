@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "pr": 765,
+  "head": null,
+  "base": null,
+  "round": 0,
+  "claim": {
+    "owner": "macminim4:claude-q7m2xa",
+    "at": "2026-11-10T02:18:21.631Z"
+  },
+  "findings": []
+}
