@@ -246,6 +246,7 @@ export const LOCATIONS: Readonly<Record<BuiltinHarnessId, HarnessLocations>> = {
       p('skills', 'user', 'dir', '{config}/skills'),
       p('skills', 'user', 'dir', knownAgentsSkillsDir('codex', '~/.agents/skills')),
       p('skills', 'project', 'dir', '{project}/.agents/skills'),
+      p('skills', 'project', 'dir', '{project}/.codex/skills'),
       p('instructions', 'user', 'file', '{config}/AGENTS.md'),
       p('instructions', 'user', 'file', '{config}/AGENTS.override.md'),
       p('instructions', 'project', 'file', '{project}/AGENTS.md'),
