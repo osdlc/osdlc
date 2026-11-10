@@ -170,8 +170,9 @@ jobs:
   # Playwright image on the runner's Docker.
   story-harness:
     name: story-harness (browser and Docker, ubuntu-latest, node 24)
-    needs: changes
-    if: contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/story-harness')
+    needs: packages
+    if: >-
+      !cancelled() && contains(fromJSON(needs.packages.outputs.packages || '[]'), 'packages/ts/story-harness')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
