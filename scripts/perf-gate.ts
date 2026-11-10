@@ -576,7 +576,7 @@ export function main(argv: string[]): number {
   } else if (suspects.size > 0 && confirmRounds > 0) {
     const only = new Map<string, string[]>();
     for (const id of suspectIds) {
-      const key = [...suspects].find((k) => id.startsWith(`${k}/`)) as string;
+      const key = id.split("/", 1)[0] as string;
       only.set(key, [...(only.get(key) ?? []), id]);
     }
     console.log(
@@ -625,10 +625,6 @@ export function main(argv: string[]): number {
   const unconfirmed = rows.filter((r) => r.status === "unconfirmed").length;
   if (unconfirmed > 0) {
     summary += `\n\n${unconfirmed} benchmark(s) were over the threshold once and not again; treated as runner noise.`;
-    console.log(summary.slice(text.length));
-  }
-  if (skippedConfirm) {
-    summary += `\n\nThe confirmation pass was skipped: the slowdown is accepted.`;
     console.log(summary.slice(text.length));
   }
   const shown = summary.length;
