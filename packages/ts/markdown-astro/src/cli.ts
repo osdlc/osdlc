@@ -1,4 +1,4 @@
-import { runMain } from '@osdlc/cli-tool'
+import { EXIT, runMain } from '@osdlc/cli-tool'
 import { devlinkHook } from '@osdlc/cli-tool/devlink'
 
 import { DEFAULT_CONFIG_NAME, loadConfig, resolveDefaultConfig } from './config.ts'
@@ -68,7 +68,7 @@ function report(stats: RunStats, dryRun: boolean): void {
   }
 }
 
-/** Run one command and return its exit code: 0 on success, 1 on a bad command line. */
+/** Run one command and return its exit code: 0 on success, 1 on a bad command line or, for `check`, missing assets. */
 function main(argv: readonly string[]): number {
   const args = parseArgs(argv)
   if (args.help || !args.command) {
@@ -95,9 +95,17 @@ function main(argv: readonly string[]): number {
     case 'export-vault':
       report(exportVault(config, { verbose, clean: args.clean }), false)
       break
-    case 'check':
-      report(transform(config, { verbose, dryRun: true }), true)
+    case 'check': {
+      const stats = transform(config, { verbose, dryRun: true })
+      report(stats, true)
+      if (stats.assetsMissing.length) {
+        console.error(
+          `markdown-astro: check failed, missing assets (${stats.assetsMissing.length}): ${stats.assetsMissing.join(', ')}`,
+        )
+        return EXIT.error
+      }
       break
+    }
   }
   return 0
 }

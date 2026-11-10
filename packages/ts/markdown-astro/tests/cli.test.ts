@@ -6,7 +6,7 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -61,5 +61,31 @@ describe('markdown-astro cli arguments', () => {
     const r = run('trnasform', '-c', join(CONFIG, 'missing.yaml'))
     expect(r.code).toBe(1)
     expect(r.err).toContain('Unknown command: trnasform')
+  })
+})
+
+describe('markdown-astro check', () => {
+  function site(note: string, asset: boolean): string {
+    const root = mkdtempSync(join(tmpdir(), 'markdown-astro-check-'))
+    mkdirSync(join(root, 'vault', 'Notes'), { recursive: true })
+    mkdirSync(join(root, 'vault', '_attachments'), { recursive: true })
+    writeFileSync(join(root, 'vault', 'Notes', 'a.md'), note)
+    if (asset) writeFileSync(join(root, 'vault', '_attachments', 'pic.png'), 'x')
+    writeFileSync(
+      join(root, 'markdown-astro.config.yaml'),
+      'vault: vault\nassets:\n  publicDir: public/_media\n  publicBase: /_media\n  vaultDir: _attachments\ncollections:\n  - name: notes\n    vaultDir: Notes\n    contentDir: src/content/notes\n',
+    )
+    return join(root, 'markdown-astro.config.yaml')
+  }
+
+  test('exits 1 and names the missing assets', () => {
+    const r = run('check', '-q', '-c', site('![[gone.png]]\n', false))
+    expect(r.code).toBe(1)
+    expect(r.err).toContain('missing assets (1): gone.png')
+  })
+
+  test('exits 0 when every asset exists', () => {
+    const r = run('check', '-q', '-c', site('![[pic.png]]\n', true))
+    expect(r.code).toBe(0)
   })
 })

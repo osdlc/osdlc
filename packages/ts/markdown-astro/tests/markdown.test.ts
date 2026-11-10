@@ -468,3 +468,36 @@ test('toVault: an image in code stays as written', () => {
     ['z.png', 'w.png'],
   )
 })
+
+test('frontmatter block scalars and other YAML structure stay byte-identical', () => {
+  const fm = [
+    'title: X',
+    'cover: |',
+    '  a.jpg',
+    '  cover: [[a.jpg]]',
+    'desc: >-',
+    '  cover: a.jpg',
+    '  b.jpg',
+    '',
+  ].join('\n')
+  for (const key of ['cover', 'desc']) {
+    for (const header of ['|', '|-', '>', '>-', '|2+']) {
+      const src = `---\n${key}: ${header}\n  a.jpg\n  b.png\n---\nbody\n`
+      const r = rewriteFile(src, { ...toAstro, frontmatterAssets: [key] })
+      assert.equal(r.text, src, `${key}: ${header}`)
+      assert.deepEqual(r.copies, [])
+      assert.deepEqual(r.missing, [])
+    }
+  }
+  const src = `---\n${fm}---\nbody\n`
+  const r = rewriteFile(src, { ...toAstro, frontmatterAssets: ['cover', 'desc'] })
+  assert.equal(r.text, src)
+  assert.deepEqual(r.copies, [])
+})
+
+test('a real asset field still rewrites beside a block scalar', () => {
+  const src = '---\ncover: "[[a.jpg]]"\ndesc: |\n  cover: a.jpg\n---\n'
+  const r = rewriteFile(src, { ...toAstro, frontmatterAssets: ['cover', 'desc'] })
+  assert.equal(r.text, '---\ncover: "/_media/a.jpg"\ndesc: |\n  cover: a.jpg\n---\n')
+  assert.equal(r.copies.length, 1)
+})

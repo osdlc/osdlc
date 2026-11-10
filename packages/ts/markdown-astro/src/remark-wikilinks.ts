@@ -162,6 +162,10 @@ export function remarkWikilinks(this: unknown, options: RemarkWikilinksOptions) 
     } satisfies AstroResolution
   }
 
+  /** The note being tokenized, for messages. */
+  let currentPath: string | undefined
+  const where = () => (currentPath ? ` in ${currentPath}` : '')
+
   const buildNode: NonNullable<TokenizerOptions['buildNode']> = ({ target, label, resolution }) => {
     // markdown-render tokenizes `[[]]`, `[[#Heading]]` and `[[|alias]]` (empty
     // target = same-note link); returning null keeps them literal text.
@@ -181,12 +185,12 @@ export function remarkWikilinks(this: unknown, options: RemarkWikilinksOptions) 
       // valid relation span — never a dangling ref.)
       if (danglingRefPolicy === 'error') {
         throw new Error(
-          `[markdown-astro] dangling wikilink-ref: "${target}" resolves to no content. ` +
+          `[markdown-astro] dangling wikilink-ref${where()}: "${target}" resolves to no content. ` +
             `Set danglingRefPolicy: 'warn' to degrade instead of failing the build.`,
         )
       }
       console.warn(
-        `[markdown-astro] dangling wikilink-ref: "${target}" resolves to no content; ` +
+        `[markdown-astro] dangling wikilink-ref${where()}: "${target}" resolves to no content; ` +
           `rendering a wikilink-missing span (danglingRefPolicy: 'warn').`,
       )
       return {
@@ -218,6 +222,7 @@ export function remarkWikilinks(this: unknown, options: RemarkWikilinksOptions) 
 
   const tokenize = tokenizeWikilinks({ resolveLink, buildNode })
   return (tree: Parameters<typeof tokenize>[0], file?: { path?: string; value?: unknown }) => {
+    currentPath = file?.path
     renderEmbeds(tree, file?.path ? resolvePath(file.path) : undefined, lookups, file)
     tokenize(tree, file)
   }

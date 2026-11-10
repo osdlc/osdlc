@@ -97,6 +97,24 @@ test("danglingRefPolicy 'error' throws on a missing target, naming the link", ()
   )
 })
 
+test("danglingRefPolicy 'error' names the note the link is in", () => {
+  const dir = fixture(['a.md'])
+  const cols = [{ name: 'posts', dir, vaultDir: 'Posts', route: '/posts/:slug' }]
+  const run = remarkWikilinks({
+    collections: cols,
+    warnOnCollision: false,
+    danglingRefPolicy: 'error',
+  })
+  const tree = {
+    type: 'root',
+    children: [{ type: 'paragraph', children: [{ type: 'text', value: '[[nope]]' }] }],
+  }
+  assert.throws(
+    () => run(tree, { path: '/site/src/content/posts/a.md' }),
+    /dangling wikilink-ref in \/site\/src\/content\/posts\/a\.md: "nope"/,
+  )
+})
+
 test("danglingRefPolicy 'warn' degrades a missing target to a wikilink-missing span", () => {
   const dir = fixture(['a.md'])
   const cols = [{ name: 'posts', dir, vaultDir: 'Posts', route: '/posts/:slug' }]

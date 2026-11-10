@@ -34,7 +34,7 @@ export interface FileRewriteResult {
 
 /**
  * The string a frontmatter scalar's raw text holds, or `null` when it holds no
- * string to rewrite: a YAML null, or a quoted value YAML cannot read. A quoted
+ * string to rewrite: a YAML null, a quoted value YAML cannot read, or a block scalar header (`|`, `>-`). A quoted
  * value is read with YAML rules, so escapes and a trailing comment are handled.
  * An unquoted value is taken as written minus a trailing ` # comment`, so an
  * unquoted `[[img.png]]` stays a wikilink rather than a YAML flow sequence.
@@ -50,6 +50,9 @@ function scalarValue(raw: string): string | null {
     }
   }
   const plain = t.replace(/\s+#.*$/, '')
+  // A block scalar header (`|`, `>-`, `|2+`) is YAML structure; the text
+  // under it is not an asset name.
+  if (/^[|>][+-]?\d?[+-]?$/.test(plain)) return null
   return /^(?:null|Null|NULL|~)$/.test(plain) ? null : plain
 }
 
