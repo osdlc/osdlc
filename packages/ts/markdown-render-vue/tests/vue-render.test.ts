@@ -14,6 +14,7 @@ import type { ComponentMap, HastNode, RenderContext } from '../src/render.ts'
 import type { NoteSource } from '../src/context.ts'
 import type { LinkResolution } from '@osdlc/markdown-render'
 
+import { numericLine } from '../src/render.ts'
 const { attrName, classList, matchOverride, routeKeys, toVueProps } = markdownVue
 
 const Stub = vue.defineComponent({ name: 'Stub', render: () => null })
@@ -67,6 +68,16 @@ describe('attrName', () => {
 })
 
 describe('toVueProps', () => {
+  test('an array-valued href is checked as the string it is joined into', () => {
+    expect(toVueProps({ href: ['javascript:alert(1)'] }).href).toBeUndefined()
+    expect(toVueProps({ href: ['https://example.com/'] }).href).toBe('https://example.com/')
+  })
+
+  test('an empty data-line is no line', () => {
+    expect(numericLine({ type: 'element', properties: { dataLine: '' } })).toBeUndefined()
+    expect(numericLine({ type: 'element', properties: { dataLine: '7' } })).toBe(7)
+  })
+
   test('class arrays join into a string', () => {
     expect(toVueProps({ className: ['wikilink', 'wikilink-missing'] }).class).toBe(
       'wikilink wikilink-missing',

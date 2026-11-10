@@ -527,6 +527,17 @@ describe('TableBlock', () => {
     expect(column(host, 0)).toEqual(['a', 'b'])
   })
 
+  test('a modified or non-primary click on a tag is left to the browser', async () => {
+    const seen: unknown[] = []
+    const host = await mount({ source: '#topic', onTagClick: (tag: unknown) => seen.push(tag) })
+    const tag = host.querySelector('a.tag')!
+    tag.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true }))
+    tag.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 1 }))
+    expect(seen).toEqual([])
+    tag.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    expect(seen).toEqual(['topic'])
+  })
+
   test('a <br> in a cell copies as a line break, not as run-together text', async () => {
     recordingClipboard()
     const host = await mount({

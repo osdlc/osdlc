@@ -195,9 +195,11 @@ const ASSET_ATTRS = new Set(['src', 'poster'])
 /** Is this attribute allowed to reach the DOM? `srcdoc` is markup; a URL must pass its scheme check. */
 function attrAllowed(name: string, value: unknown): boolean {
   if (name === 'srcdoc') return false
-  if (typeof value !== 'string') return true
-  if (LINK_ATTRS.has(name)) return isSafeLinkPath(value)
-  if (ASSET_ATTRS.has(name)) return isSafeAssetUrl(value)
+  // An array value is joined into one string by `toVueProps`, so it is checked as that string.
+  const text = Array.isArray(value) ? value.join(' ') : value
+  if (typeof text !== 'string') return true
+  if (LINK_ATTRS.has(name)) return isSafeLinkPath(text)
+  if (ASSET_ATTRS.has(name)) return isSafeAssetUrl(text)
   return true
 }
 
@@ -393,9 +395,10 @@ function sourceIdentity(node: HastNode): string | undefined {
   return undefined
 }
 
-function numericLine(node: HastNode): number | undefined {
+/** The `data-line` of a node as a number; `undefined` when absent, empty or not finite. */
+export function numericLine(node: HastNode): number | undefined {
   const raw = node.properties?.dataLine
-  if (raw === undefined || raw === null) return undefined
+  if (raw === undefined || raw === null || raw === '') return undefined
   const value = Number(raw)
   return Number.isFinite(value) ? value : undefined
 }

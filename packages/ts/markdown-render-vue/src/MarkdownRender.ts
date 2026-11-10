@@ -270,6 +270,7 @@ export const MarkdownRender = defineComponent({
         tree.value = next
         error.value = null
         await nextTick()
+        if (id !== renderId) return
         emit('rendered', { tree: next, outline: extractOutline(next) })
       } catch (cause) {
         if (id !== renderId) return

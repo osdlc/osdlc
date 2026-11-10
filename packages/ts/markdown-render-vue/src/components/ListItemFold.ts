@@ -41,7 +41,7 @@
  */
 
 import { defineComponent, h, inject, isVNode, type PropType, type VNodeArrayChildren } from 'vue'
-import { toVueProps, type HastNode } from '../render.ts'
+import { numericLine, toVueProps, type HastNode } from '../render.ts'
 import { useHandlers, FoldStateKey } from '../context.ts'
 
 const LIST_TAGS = new Set(['ul', 'ol'])
@@ -57,12 +57,6 @@ function hasNestedList(node: HastNode): boolean {
 /** A rendered slot child that is itself a `<ul>`/`<ol>` VNode. */
 function isNestedListVNode(child: VNodeArrayChildren[number]): boolean {
   return isVNode(child) && typeof child.type === 'string' && LIST_TAGS.has(child.type)
-}
-
-function sourceLine(node: HastNode): number | undefined {
-  const raw = node.properties?.dataLine
-  const value = Number(raw)
-  return raw !== undefined && raw !== null && Number.isFinite(value) ? value : undefined
 }
 
 export const ListItemFold = defineComponent({
@@ -81,7 +75,7 @@ export const ListItemFold = defineComponent({
       // stamps mdast blocks only) has no fold key, so a toggle there could
       // never report — no affordance rather than a dead one, the same rule
       // `heading-sections.ts` applies to a heading with no id.
-      const line = sourceLine(props.node)
+      const line = numericLine(props.node)
       if (!hasNestedList(props.node) || line === undefined) {
         return h('li', attrs, children)
       }
