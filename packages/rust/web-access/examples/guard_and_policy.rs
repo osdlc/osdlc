@@ -16,6 +16,7 @@ use axum::routing::{get, post};
 use serde::Serialize;
 use tower::ServiceExt;
 use web_access::guard::{TOKEN_HEADER, guard};
+use web_access::token::Token;
 use web_access::{
     AccessContext, Grant, GuardPolicy, GuardState, HostPolicy, RouteRule, Tokens, host_policy_layer,
 };
@@ -45,10 +46,14 @@ pub async fn main() {
             Permission::RunCommand,
         )],
     });
+    // Only a `Token` joins the set, and `with` refuses one token at two grants.
+    let mint = || Token::mint().expect("random source");
+    let (read, full, admin) = (mint(), mint(), mint());
     let tokens = Tokens::none()
-        .with("read-token", Grant::Read)
-        .with("full-token", Grant::Full)
-        .with("admin-token", Grant::Admin);
+        .with(read.clone(), Grant::Read)
+        .and_then(|t| t.with(full.clone(), Grant::Full))
+        .and_then(|t| t.with(admin.clone(), Grant::Admin))
+        .expect("distinct tokens");
     let state = Arc::new(GuardState::new(
         tokens,
         ["192.168.1.5:8080".to_owned()],
@@ -64,11 +69,11 @@ pub async fn main() {
         .layer(from_fn_with_state(policy, host_policy_layer::<Permission>))
         .layer(from_fn_with_state(state, guard));
 
-    let read_get = send(&app, Method::GET, "/", "read-token").await;
-    let read_post = send(&app, Method::POST, "/api/save", "read-token").await;
-    let full_post = send(&app, Method::POST, "/api/save", "full-token").await;
-    let full_run = send(&app, Method::POST, "/api/run", "full-token").await;
-    let admin_run = send(&app, Method::POST, "/api/run", "admin-token").await;
+    let read_get = send(&app, Method::GET, "/", &read).await;
+    let read_post = send(&app, Method::POST, "/api/save", &read).await;
+    let full_post = send(&app, Method::POST, "/api/save", &full).await;
+    let full_run = send(&app, Method::POST, "/api/run", &full).await;
+    let admin_run = send(&app, Method::POST, "/api/run", &admin).await;
 
     // A read token may look but not change anything.
     assert_eq!(read_get, StatusCode::OK);
@@ -86,13 +91,13 @@ pub async fn main() {
 }
 
 /// One request from a LAN peer, with the token in the header.
-async fn send(app: &Router, method: Method, path: &str, token: &str) -> StatusCode {
+async fn send(app: &Router, method: Method, path: &str, token: &Token) -> StatusCode {
     let peer: SocketAddr = "192.168.1.20:50000".parse().expect("peer address");
     let mut req = Request::builder()
         .method(method)
         .uri(path)
         .header("host", "192.168.1.5:8080")
-        .header(TOKEN_HEADER, token)
+        .header(TOKEN_HEADER, token.as_str())
         .body(Body::empty())
         .expect("request");
     // `serve` gets the peer address from the connection; here it is set by hand.

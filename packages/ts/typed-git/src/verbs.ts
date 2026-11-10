@@ -2956,10 +2956,18 @@ export function mergeAbort(): GitVerb<void> {
 export interface RebaseOptions {
   /** `--autostash` — shelve and restore a dirty tree around the replay. */
   autostash?: boolean | undefined
+  /**
+   * `--onto <onto> <upstream>`: replay only the commits after `upstream`
+   * (`upstream..HEAD`), not every commit `onto` lacks. Restacking a branch
+   * whose base was rewritten needs it: pass the base's old head, so the old
+   * base commits are left behind instead of replayed onto the new ones.
+   */
+  upstream?: string | undefined
 }
 
 /**
- * Replay the current branch onto `onto` (`git rebase`).
+ * Replay the current branch onto `onto` (`git rebase`, or
+ * `git rebase --onto <onto> <upstream>` with `upstream`).
  *
  * `absent: [1]` for the same reason as {@link merge}. An unknown ref exits
  * 128 here rather than 1, so this verb is the less ambiguous of the two —
@@ -2968,7 +2976,14 @@ export interface RebaseOptions {
 export function rebase(onto: string, opts: RebaseOptions = {}): GitVerb<RebaseOutcome> {
   const argv = ['rebase']
   if (opts.autostash) argv.push('--autostash')
-  argv.push(positional('rebase', 'onto', onto))
+  if (opts.upstream === undefined) argv.push(positional('rebase', 'onto', onto))
+  else {
+    argv.push(
+      '--onto',
+      positional('rebase', 'onto', onto),
+      positional('rebase', 'upstream', opts.upstream),
+    )
+  }
   const verb: GitVerb<RebaseOutcome> = {
     argv,
     env: C_LOCALE,

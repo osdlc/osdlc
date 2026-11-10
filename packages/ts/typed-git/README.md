@@ -799,7 +799,7 @@ other non-zero exit throws.
 | Method | git | Returns |
 | --- | --- | --- |
 | `merge(ref, { noFf, noCommit, ffOnly, message })` | `merge --no-edit` | `MergeOutcome` — with `ffOnly`, a merge that cannot fast-forward throws |
-| `rebase(onto, { autostash })` | `rebase` | `RebaseOutcome` |
+| `rebase(onto, { autostash, upstream })` | `rebase` (`--onto <onto> <upstream>` with `upstream`) | `RebaseOutcome` |
 | `rebaseContinue()` | `-c core.editor=true rebase --continue` | `RebaseOutcome` |
 | `mergeTree(ours, theirs, { mergeBase })` | `merge-tree --write-tree --name-only -z` | `MergeTreeOutcome` |
 | `lsFilesUnmerged()` | `ls-files -u -z` | `UnmergedEntry[]` — mode, sha, stage, path |

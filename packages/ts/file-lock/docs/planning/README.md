@@ -19,3 +19,4 @@ They are never reused. A decision is `proposed`, `accepted` or `superseded`.
 ## Decisions
 
 - [D-01](decisions/D-01-one-mechanism-two-shapes.md): One mechanism, two shapes
+- [D-02](decisions/D-02-only-a-regular-file-is-a-lock.md): Only a regular file is a lock
