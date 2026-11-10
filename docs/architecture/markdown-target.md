@@ -86,11 +86,11 @@ The spec, and the validator that checks a corpus against it.
   script, query and results this way. Record folders are part of level 1 and ship in the first published
   version. This is decided. The work is in [osdlc/osdlc#729](https://github.com/osdlc/osdlc/pull/729), merged on
   2026-11-09.
-- Packages: `@osdlc/corpus-schema` (TypeScript). It is on osdlc's main branch
-  ([osdlc/osdlc#725](https://github.com/osdlc/osdlc/pull/725) merged) and published. Its
-  first version on npm is 0.2.0. skillwright still has an older copy named `@osdlc/markdown-db`. Once this
-  repo has its own release setup, the package and its spec move here, with the same npm name. A Rust
-  validator comes later and runs the same tests (the plan's task 32).
+- Packages: `@osdlc/corpus-schema` (TypeScript), in this repo's `packages/ts/corpus-schema`, with its
+  spec and cases in `packages/conformance/corpus-schema`. It moved here from osdlc/osdlc in
+  [osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9), with the same npm name. Its first
+  version on npm is 0.2.0, published from osdlc/osdlc. skillwright still has an older copy named
+  `@osdlc/markdown-db`. A Rust validator comes later and runs the same tests (the plan's task 32).
 
 ### 5. Profiles (proposal)
 
@@ -204,8 +204,9 @@ same. osdlc keeps these cases in `packages/conformance/<name>/`, as its conforma
 describes. Each folder has a README, a SPEC.md when there is a format to state, and the cases. Every
 implementation runs them.
 
-- Already there: frontmatter-lossless, markdown-tags, config-layers, intersect, path-guard,
-  tiered-dirs, and the corpus-schema spec (TypeScript only for now).
+- Already there: frontmatter-lossless, markdown-tags, config-layers, intersect, path-guard and
+  tiered-dirs. The corpus-schema spec (TypeScript only for now) keeps the same layout in this repo's
+  `packages/conformance/corpus-schema/`.
 - Planned: markdown-link (with the resolver), markdown-corpus, markdown-contract and gfm-table, whose
   cases still live inside their packages.
 - yaml-splice is not a twin. It is one crate and its WebAssembly binding.
@@ -233,7 +234,7 @@ A twin can have extras the other doesn't need. It just has to pass the shared ca
 | Note parts | osdlc; dev also has a private copy of markdown-link | osdlc, used from npm and crates.io |
 | Corpus model, TypeScript | markdown-vault and vault-graph-core in dev | markdown-corpus in osdlc |
 | Corpus model, Rust | markdown-corpus in osdlc | the same |
-| corpus-schema | osdlc/osdlc main, not published; an older copy in skillwright | this repo, on npm |
+| corpus-schema | this repo, on npm; an older copy in skillwright | the same |
 | Profiles | model-schema and packs in dev (open PRs) | this repo |
 | Query | markdown-vault-query in dev | osdlc |
 | Render, edit, sites | dev | osdlc |

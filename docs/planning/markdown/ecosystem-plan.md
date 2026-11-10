@@ -90,7 +90,7 @@ the query layer (task 15).
 |---|---|---|
 | Render, edit, sites | markdown-render, markdown-editor, markdown-ui, markdown-astro (all in dev) | none |
 | Query and store | markdown-vault-query (dev) | markdown-store, ontogen (rust-ontogen) |
-| Types | model-schema and its packs (dev, open PRs); corpus-schema (osdlc) | none |
+| Types | model-schema and its packs (dev, open PRs); corpus-schema (this repo) | none |
 | Corpus model | markdown-vault, vault-graph-core (dev) | markdown-corpus, markdown-relink (osdlc) |
 | Note parts | markdown-link, frontmatter-lossless, markdown-contract, markdown-tags, gfm-table, yaml-splice (osdlc) | a twin of each (osdlc) |
 | Files | etag-write, path-guard (osdlc) | markdown-vault-fs, vfs-walk, vfs-seam, etag-write, path-guard (osdlc) |
@@ -422,6 +422,9 @@ The numbers match the task graph at the top. "After" says what must come first.
   osdlc/osdlc into this repo as its first package. The npm name stays the same. After 3. Other
   markdown packages follow the same path later. SPEC.md says the spec moves to osdlc/markdown
   once this repo has its own release setup. This task is that move, so SPEC.md needs updating when
-  it happens.
+  it happens. In progress: [osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9) moves the
+  package and its spec family here, with their history, and updates SPEC.md. The CI, package
+  checks, conformance check and publish workflow come from shared pieces being extracted in
+  osdlc/osdlc. Until they land, releases still go out from osdlc/osdlc.
 
 We will track each task as an issue in this repo.

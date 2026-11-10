@@ -135,7 +135,7 @@ PRESENT = [
      [("markdown-store", "typed CRUD, lossless", "ont", ("F6", "F7")), ("ontogen", "Rust structs → notes", "ont")]),
     ("Types", "what a record must hold",
      [("model-schema", "packs; dev, open PRs", "dev", ("F5",)), ("pack-intent, -sdlc", "sdlc's 14 kinds", "dev", ("F5",)),
-      ("corpus-schema", "validator, osdlc main", "osdlc", ("F5", "F8"))], []),
+      ("corpus-schema", "validator, on npm", "md", ("F5", "F8"))], []),
     ("Corpus model", "every note, link, backlink",
      [("markdown-vault", "scan + resolve + backlinks", "dev", ("F1", "F4")),
       ("vault-graph-core", "resolve + nodes/edges", "dev", ("F1", "F11"))],
@@ -202,7 +202,7 @@ TASKS = {
     18: ("This plan", "markdown PR 4", "owner"),
     19: ("Point repos", "here, after 18", "todo"),
     20: ("Arch doc", "markdown PR 5", "doing"),
-    21: ("Release here", "then move the spec", "todo"),
+    21: ("Release here", "markdown PR 9", "doing"),
     22: ("Capture", "writes study results", "todo"),
     26: ("Adopt claims", "harness-reference", "todo"),
     27: ("Extends", "parents, pinned", "todo"),
@@ -341,7 +341,7 @@ def resolvers():
     rows = [("markdown-vault", "own shortest-path rule", "dev"),
             ("vault-graph-core", "port of the Rust LinkIndex", "dev"),
             ("markdown-astro", "first match; embeds by name", "dev"),
-            ("corpus-schema", "own walk and link check", "osdlc"),
+            ("corpus-schema", "own walk and link check", "md"),
             ("markdown-store", "own [[id]] wikilink code", "ont")]
     out = [f'<text class="rl" x="{X0}" y="26">Who decides what a link points to</text>']
     y = 44
@@ -386,7 +386,7 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     files = {
         "tasks.svg": task_graph(),
-        "present.svg": layers(PRESENT, "Present state by layer"),
+        "present.svg": layers(PRESENT, "Present state by layer", TARGET_KEY),
         "resolvers.svg": resolvers(),
         "levels-profiles.svg": levels_profiles(),
         "target.svg": layers(TARGET, "Target state by layer", TARGET_KEY),
