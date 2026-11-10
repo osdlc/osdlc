@@ -172,7 +172,9 @@ for key in "${keys[@]}"; do
   tried=$((tried + 1))
   n=$tried
   set +e
-  KEY="$key" PROMPT="$prompt" SYSTEM_PROMPT="$system_prompt" APPLY="${SKILL_APPLY:-0}" harness_run
+  # The agent gets no path to the runner's file commands; they are emptied below too.
+  ( unset GITHUB_ENV GITHUB_PATH GITHUB_OUTPUT GITHUB_STATE
+    KEY="$key" PROMPT="$prompt" SYSTEM_PROMPT="$system_prompt" APPLY="${SKILL_APPLY:-0}" harness_run )
   status=$?
   set -e
   echo "key $n: exit $status"
@@ -186,6 +188,11 @@ for key in "${keys[@]}"; do
     continue
   fi
   break
+done
+# The agent could have appended to GITHUB_ENV / GITHUB_PATH (a later step runs
+# with them, and the push step holds the push token): empty them before the step ends.
+for f in "${GITHUB_ENV:-}" "${GITHUB_PATH:-}" "${GITHUB_OUTPUT:-}" "${GITHUB_STATE:-}"; do
+  if [ -n "$f" ] && [ -f "$f" ]; then : > "$f"; fi
 done
 if [ "$tried" -eq 0 ]; then
   jq -n --arg m "No $KEY_VAR secret is set" '{is_error: true, result: $m}' | tee "$RESULT"

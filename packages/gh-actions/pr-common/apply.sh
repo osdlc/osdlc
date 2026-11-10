@@ -19,6 +19,22 @@ here="$(dirname "$0")"
 parse_skill_request
 tmp="${RUNNER_TEMP:-/tmp}"
 
+# The agent may have written anything it can reach: files under $HOME (a git
+# or jq earlier on PATH, ~/.gitconfig) or GITHUB_ENV / GITHUB_PATH (ask.sh empties
+# those). This script runs with the push token in its environment, so for the
+# push step git reads no global or system config and PATH drops every entry under
+# $HOME, the checkout or the runner temp dir.
+if [ "$step" = push ]; then
+  export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_CONFIG_NOSYSTEM=1
+  clean=""
+  IFS=: read -r -a path_parts <<< "$PATH"
+  for d in "${path_parts[@]}"; do
+    case "$d" in "${HOME:-/nonexistent}"/*|"$PWD"/*|"$tmp"/*|"") continue ;; esac
+    clean="$clean${clean:+:}$d"
+  done
+  PATH="$clean"
+fi
+
 # Sets pr_owner pr_name pr_ref pr_oid, or prints the reason and exits 1.
 read_head() {
   local line
@@ -60,7 +76,10 @@ head=$(git rev-parse HEAD)
 if [ "$head" != "$pr_oid" ]; then
   fail "the pull request's head is ${pr_oid:0:7} but the checkout is at ${head:0:7}: the branch moved since checkout (or the agent committed). Re-run the comment on the current head."
 fi
-if [ -f "$tmp/$AGENT-pr-gitconfig" ] && [ "$(git config --local --list)" != "$(cat "$tmp/$AGENT-pr-gitconfig")" ]; then
+if [ ! -f "$tmp/$AGENT-pr-gitconfig" ]; then
+  fail "the git config snapshot taken before the agent ran is missing."
+fi
+if [ "$(git config --local --list)" != "$(cat "$tmp/$AGENT-pr-gitconfig")" ]; then
   fail "the agent changed the repository's git config."
 fi
 
@@ -71,9 +90,9 @@ fi
 
 : "${PUSH_TOKEN:?PUSH_TOKEN is required}" "${GIT_USER_NAME:?GIT_USER_NAME is required}" "${GIT_USER_EMAIL:?GIT_USER_EMAIL is required}"
 msg="$AGENT: /${SKILL_NAME}${SKILL_ARGS:+ $SKILL_ARGS} (requested in #$PR comment)"
-git add -A
+git add -A || fail "git add failed."
 git -c core.hooksPath=/dev/null -c commit.gpgsign=false -c user.name="$GIT_USER_NAME" -c user.email="$GIT_USER_EMAIL" \
-  commit -q --no-verify -m "$msg"
+  commit -q --no-verify -m "$msg" || fail "git commit failed."
 sha=$(git rev-parse HEAD)
 stat=$(git diff --stat "$head" "$sha")
 # The checkout step left the contents: read token in an http extraheader;
@@ -83,7 +102,7 @@ server="${GITHUB_SERVER_URL:-https://github.com}"
 if ! out=$(git -c core.hooksPath=/dev/null -c "http.$server/.extraheader=" -c credential.helper= \
   -c 'credential.helper=!f() { echo username=x-access-token; echo "password=$PUSH_TOKEN"; }; f' \
   push --no-verify origin "HEAD:refs/heads/$pr_ref" 2>&1); then
-  fail "git push was rejected: $(printf '%s' "$out" | tail -n 3 | sed "s/$PUSH_TOKEN/***/g")"
+  fail "git push was rejected: $(printf '%s' "$out" | tail -n 6 | sed "s/$PUSH_TOKEN/***/g")"
 fi
 printf '%s\n' "$sha" > "$tmp/$AGENT-pr-pushed"
 note "Pushed \`${sha:0:7}\` to \`$pr_ref\`:
