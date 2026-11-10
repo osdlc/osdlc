@@ -1,5 +1,14 @@
 # @osdlc/pr-update
 
+## 0.9.12
+
+### Patch Changes
+
+- Updated dependencies [65605cb]
+  - @osdlc/config-layers@0.10.0
+  - @osdlc/cli-tool@0.18.1
+  - @osdlc/code-host@0.7.10
+
 ## 0.9.11
 
 ### Patch Changes

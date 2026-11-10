@@ -9,9 +9,22 @@ corpus, and a CI job compares each pull request with its base.
 `.github/workflows/perf-gate.yml` runs on every pull request. It runs the
 benchmarks of the packages the change touches, and of the packages that depend
 on them, on the base commit and on the head commit in the same job, three
-rounds each, alternating sides. A benchmark's figure for a side is the median
-over rounds of the median each round reports. The job fails when a benchmark's
-head figure is more than 15% above its base figure.
+rounds each, alternating sides. A benchmark's figure for a side is its best
+round: the minimum over rounds of the median each round reports (runner noise
+only adds time). A benchmark whose head figure is more than 15% above its base
+figure is a suspect; only the suspects run again, `--confirm-rounds` more
+rounds (default 3) in the opposite order, and the job fails only for a suspect
+that is over 15% again. The rerun is narrowed with the runner's own name
+filter (criterion's regex after `--`; vitest's `-t`, which selects a test by
+its title, so the other cases of a suspect's test run too), which keeps it a
+small fraction of the first pass; rerunning whole packages did not fit the
+60-minute job timeout when three packages were suspect. When the pull request
+is accepted (below), the confirmation pass is skipped, since it could not change
+the outcome. A benchmark over the line in the first pass only is
+reported as `unconfirmed`. The confirmation is not redundant with the best
+round: a minimum is biased low, so one lucky-fast round on one side can fake a
+regression. The accepted trade-off is that a regression visible in only some
+rounds (GC pauses, cache effects) can hide behind the best round.
 
 - A benchmark that exists only on the head is new; it has no baseline and is
   not gated until it is on the base.
@@ -64,7 +77,7 @@ test("inlineTags", ({ bench }) =>
   }));
 ```
 
-Each case is gated as `ts:<package>/<test title>/<case>`.
+Each case is gated as `ts:<package>/<test title>/<case>`. Keep a test title free of `/` (a case name may have one) and register the test at the top level, not inside a `describe`: the confirmation filter reads the title as the first segment after the package.
 
 Rust: add `criterion = { workspace = true }` to `[dev-dependencies]`, a
 `[[bench]]` with `harness = false`, and `benches/<name>.rs` that reads the

@@ -1,5 +1,12 @@
 # @osdlc/cli-tool
 
+## 0.18.1
+
+### Patch Changes
+
+- Updated dependencies [65605cb]
+  - @osdlc/config-layers@0.10.0
+
 ## 0.18.0
 
 ### Minor Changes

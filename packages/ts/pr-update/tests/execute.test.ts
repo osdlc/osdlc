@@ -12,7 +12,7 @@
  * forward, the one branch the tests could not move.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { chmodSync, existsSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
@@ -21,6 +21,11 @@ import { Git } from '@osdlc/typed-git'
 import { makeBareAndWorker } from '@osdlc/typed-git/testing'
 
 import type { CommandResult } from '@osdlc/command-seam'
+import { forwarded } from './support-signal.ts'
+
+vi.mock('@osdlc/command-seam', async (original) =>
+  (await import('./support-signal.ts')).mockForwarding(original),
+)
 import type { Generator, PushPreview, Repair, RepairRequest, RepairResult } from '../src/ports.ts'
 import { toResult } from '../src/update.ts'
 import { noHooksEnv } from '../src/update/execute.ts'
@@ -1163,6 +1168,33 @@ describe('updateAll', () => {
     // Reported as each PR finishes, so a caller can show progress during a long run.
     expect(streamed).toEqual([1, 2])
     expect(tally(results)).toEqual({ updated: 1, 'up-to-date': 0, conflict: 1, failed: 0 })
+  })
+
+  test('a forwarded signal stops the run before the next PR is updated', async () => {
+    const { git } = fx.worker
+    for (const branch of ['a', 'b']) {
+      git.checkout('main', { branch })
+      fx.worker.commit(`${branch} work`, { [`${branch}.txt`]: `${branch}\n` })
+      git.push('origin', branch)
+    }
+    git.checkout('main')
+    git.fetch('origin')
+
+    const results = await updateAll(
+      git,
+      [target({ number: 1, head: 'a' }), target({ number: 2, head: 'b' })],
+      SETTINGS,
+      recorder(),
+      {
+        apply: true,
+        worktreeRoot: join(fx.worker.dir, '.pr-update', 'abort'),
+        onResult: () => {
+          forwarded.signal = 'SIGINT'
+        },
+      },
+    )
+    expect(results.map((r) => r.number)).toEqual([1])
+    forwarded.signal = undefined
   })
 
   test("untracked output one PR's verify left is not committed into the next PR", async () => {
