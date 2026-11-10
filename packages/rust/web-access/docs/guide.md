@@ -92,8 +92,8 @@ the Wi-Fi is `192.168.1.5`.
    browser keeps it until it is closed (some phone browsers keep sessions much
    longer). `ServeOptions::cookie_max_age` gives it a lifetime instead. An
    admin token's link sets its own cookie, `web_access_admin_<port>`, which is
-   always a session cookie. Opening the link again signs the browser in again; rotating the
-   token signs it out.
+   always a session cookie. Opening the link again signs the browser in again;
+   rotating the token signs it out.
 
 A script or another program skips the link and sends the header instead:
 
@@ -117,7 +117,7 @@ one that fails answers the request.
 | 1 | `Host` is on the allowlist, is a public name, or, with a wildcard bind, is a current interface address on the bound port | 421 `host not allowed` | Stops DNS rebinding: a page on `evil.example` that points its name at `192.168.1.5` still sends `Host: evil.example`. |
 | 2 | A mutating request or a WebSocket upgrade with an `Origin` has an allowed origin | 403 `origin not allowed` | Stops another site from changing data, or opening a socket, through your browser. |
 | 3 | The path normalises | 400 `bad path` | Stops `/a/../admin` and `/a%2Fb` tricks from slipping past route rules. |
-| 4 | A loopback peer under `loopback_open` | passes with `full` | Lets the app's own window work with no token, when you allow it. |
+| 4 | A loopback peer under `loopback_open`, on a `Host` that is not a public name | passes with `full` | Lets the app's own window work with no token, when you allow it. A proxy on the same machine is loopback too, so a public name always needs a token. |
 | 5 | `GET` with a valid `?token=` | 200 landing page | The share link (above). |
 | 6 | A valid token in the `web_access_<port>` or `web_access_admin_<port>` cookie or the `x-web-access-token` header | 401 `missing or wrong token` | The token check itself. |
 | 7 | A `read` grant uses only `GET`, `HEAD`, `OPTIONS` (and no WebSocket), or a read-safe route | 403 `{"error":"read_only"}` | View-only links stay view-only. A WebSocket can carry writes. |

@@ -19,7 +19,9 @@
 //!    segment, no `\` or encoded `/`. Deny rules ([`crate::HostPolicy`]) match
 //!    the normalised path; read-safe rules match the raw path.
 //! 4. A loopback peer passes with [`Grant::Full`] when
-//!    [`GuardPolicy::loopback_open`] is set.
+//!    [`GuardPolicy::loopback_open`] is set and the `Host` is not a public
+//!    name. A proxy on the same machine makes every peer loopback, so a
+//!    public name always needs a token.
 //! 5. A `GET` carrying a valid `?token=` sets the cookie to that token and
 //!    answers with a small page that moves to the same URL without the
 //!    parameter (a `Refresh` header and a `<meta>` refresh, not a 303), so the
@@ -31,8 +33,8 @@
 //!    opening a full or read link does not replace it. On a public name the
 //!    cookie carries `Secure`. [`GuardState::with_cookie_max_age`] gives a
 //!    non-admin cookie a lifetime. With
-//!    [`GuardState::with_admin_over_public_only`], an admin token on a `Host`
-//!    that is not a public name sets no cookie and is refused 401.
+//!    [`GuardState::with_admin_over_public_only`], an admin token's link on a
+//!    `Host` that is not a public name sets no cookie and is refused 401.
 //! 6. Otherwise this port's `web_access_<port>` cookie ([`cookie_name`]), its
 //!    `web_access_admin_<port>` cookie or the `x-web-access-token` header must
 //!    equal one of the [`Tokens`] (constant-time compare against every entry),
@@ -109,12 +111,28 @@ pub fn is_cookie_name(name: &str) -> bool {
 }
 
 /// A public host name as [`GuardState::with_public_hosts`] keeps it: trimmed
-/// and lowercased. `None` for a name it drops: blank, or holding a `/`, `@`
-/// or space (a scheme, path or userinfo). For a caller that must refuse a
-/// name rather than have it dropped.
+/// and lowercased, with a written port 80 or 443 dropped, since the proxy
+/// forwards those as a portless `Host`. `None` for a name it drops: blank,
+/// holding a `/`, `@` or whitespace (a scheme, path or userinfo), an IP
+/// address, or a port that is not a number from 1 to 65535. For a caller that
+/// must refuse a name rather than have it dropped.
 pub fn normalize_public_host(name: &str) -> Option<String> {
     let n = name.trim().to_ascii_lowercase();
-    (!n.is_empty() && !n.contains(['/', '@', ' '])).then_some(n)
+    let (host, port) = match n.rsplit_once(':') {
+        Some((h, p)) => (h, Some(p.parse::<u16>().ok().filter(|p| *p > 0)?)),
+        None => (n.as_str(), None),
+    };
+    let is_name = !host.is_empty()
+        && !host.contains(['/', '@', ':', '[', ']'])
+        && !host.contains(char::is_whitespace)
+        && host.parse::<IpAddr>().is_err();
+    if !is_name {
+        return None;
+    }
+    Some(match port {
+        Some(p) if p != 80 && p != 443 => format!("{host}:{p}"),
+        _ => host.to_owned(),
+    })
 }
 
 /// The port of a normalised `host:port` authority.
@@ -139,6 +157,9 @@ const MAX_RECORDED_PATH: usize = 256;
 pub enum DenialReason {
     /// A token was presented and did not match.
     WrongToken,
+    /// A valid admin token's share link was opened on a `Host` that is not a
+    /// public name, under [`GuardState::with_admin_over_public_only`].
+    AdminNotPublic,
     /// The `Host` header is not on the allowlist.
     BadHost,
     /// A mutating request or a protocol upgrade carried a disallowed `Origin`.
@@ -390,13 +411,15 @@ impl GuardState {
     /// A name without a port is allowed as a `Host` on ports 80 and 443; a
     /// name written with a port, on that port only. As an `Origin` it passes
     /// only over `https://` (`https://<name>`, or with its port if written),
-    /// and only on a request whose `Host` is a public name. On such a request the share
-    /// cookie carries `Secure`, and the request carries [`PublicHost`].
+    /// and only on a request whose `Host` is a public name. On such a request
+    /// the share cookie carries `Secure`, and the request carries
+    /// [`PublicHost`].
     ///
     /// Names are kept as [`normalize_public_host`] gives them; the ones it
-    /// drops are ignored. This widens only which names are served: a peer
-    /// that is not loopback still needs a token. The `Host` header is chosen
-    /// by the client, so a public name does not prove how a request arrived.
+    /// drops are ignored. This widens only which names are served: a request
+    /// for a public name needs a token, from a loopback peer too, since a
+    /// proxy on the same machine is one. The `Host` header is chosen by the
+    /// client, so a public name does not prove how a request arrived.
     pub fn with_public_hosts<S: AsRef<str>>(mut self, names: impl IntoIterator<Item = S>) -> Self {
         for name in names {
             let Some(n) = normalize_public_host(name.as_ref()) else {
@@ -440,10 +463,15 @@ impl GuardState {
         self
     }
 
-    /// Whether a [`Grant::Admin`] may be used on a request whose `Host` is
-    /// (`public`) or is not a public name.
-    fn admin_allowed(&self, public: bool) -> bool {
-        public || !self.admin_public_only
+    /// `grant` as honoured on a request whose `Host` is (`public`) or is not
+    /// a public name: [`Grant::Admin`] is lowered to [`Grant::Full`] off a
+    /// public name under [`Self::with_admin_over_public_only`].
+    fn effective_grant(&self, grant: Grant, public: bool) -> Grant {
+        if grant == Grant::Admin && self.admin_public_only && !public {
+            Grant::Full
+        } else {
+            grant
+        }
     }
 
     /// Also allow a Host `<ip>:<port>` when a wildcard bind in `binds` has the
@@ -586,16 +614,22 @@ fn has_port(authority: &str) -> bool {
 }
 
 /// Authority of an `Origin` value (`scheme://authority`), with the scheme's
-/// default port filled in. `None` for `null` or anything unparseable.
-fn origin_authority(origin: &str) -> Option<String> {
+/// default port filled in, and whether the scheme is `https`. `None` for
+/// `null` or anything unparseable.
+fn parse_origin(origin: &str) -> Option<(String, bool)> {
     let (scheme, rest) = origin.split_once("://")?;
     let authority = rest.split('/').next()?;
-    let default = match scheme.to_ascii_lowercase().as_str() {
-        "http" => 80,
-        "https" => 443,
+    let is_https = match scheme.to_ascii_lowercase().as_str() {
+        "http" => false,
+        "https" => true,
         _ => return None,
     };
-    (!authority.is_empty()).then(|| normalize_authority(authority, default))
+    let default = if is_https { 443 } else { 80 };
+    (!authority.is_empty()).then(|| (normalize_authority(authority, default), is_https))
+}
+
+fn origin_authority(origin: &str) -> Option<String> {
+    parse_origin(origin).map(|(a, _)| a)
 }
 
 /// True when `origin` names the same authority as the request's `Host`, both
@@ -617,14 +651,8 @@ pub struct PublicHost;
 /// the proxy forwards without a port: only an `https://` Origin matches, and a
 /// portless `Host` is on 443. Use it on a request that carries [`PublicHost`].
 pub fn origin_matches_public_host(origin: &str, host: &str) -> bool {
-    is_https(origin)
-        && origin_authority(origin).is_some_and(|o| o == normalize_authority(host, 443))
-}
-
-fn is_https(origin: &str) -> bool {
-    origin
-        .get(..8)
-        .is_some_and(|p| p.eq_ignore_ascii_case("https://"))
+    parse_origin(origin)
+        .is_some_and(|(o, is_https)| is_https && o == normalize_authority(host, 443))
 }
 
 /// Every cookie named `name`. Cookies are not kept apart by port, so another
@@ -754,9 +782,8 @@ async fn check(state: &GuardState, mut req: Request<Body>, next: Next) -> Respon
         && let Some(origin) = req.headers().get(header::ORIGIN)
     {
         let origin = origin.to_str().ok();
-        let public_https = public && origin.is_some_and(is_https);
-        let ok = origin.and_then(origin_authority).is_some_and(|a| {
-            state.host_allowed(&a) || (public_https && state.public_hosts.contains(&a))
+        let ok = origin.and_then(parse_origin).is_some_and(|(a, is_https)| {
+            state.host_allowed(&a) || (public && is_https && state.public_hosts.contains(&a))
         }) || (upgrade && origin.is_some_and(is_webview_origin));
         if !ok {
             state.deny(parts, DenialReason::ForeignOrigin);
@@ -770,7 +797,7 @@ async fn check(state: &GuardState, mut req: Request<Body>, next: Next) -> Respon
     }
 
     // 4. Loopback peer without a token.
-    if state.policy.loopback_open && context == AccessContext::WebLocal {
+    if state.policy.loopback_open && context == AccessContext::WebLocal && !public {
         return state.admit(req, context, Grant::Full, next).await;
     }
 
@@ -780,8 +807,14 @@ async fn check(state: &GuardState, mut req: Request<Body>, next: Next) -> Respon
         && let Some((tok, rest)) = req.uri().query().and_then(split_token_param)
     {
         let link_grant = state.tokens.grant_for(tok);
-        // An admin token that may not be used here gets no cookie.
-        if let Some(g) = link_grant.filter(|g| *g != Grant::Admin || state.admin_allowed(public)) {
+        // An admin link that may not be used here sets no cookie, and does
+        // not fall through to a cookie that would load the page with the
+        // admin token still in the URL.
+        if link_grant.is_some_and(|g| state.effective_grant(g, public) != g) {
+            state.deny(parts, DenialReason::AdminNotPublic);
+            return refuse(StatusCode::UNAUTHORIZED, "missing or wrong token");
+        }
+        if let Some(g) = link_grant {
             // Exactly one leading slash: browsers read `//host` as a
             // protocol-relative, off-origin redirect.
             let safe = format!("/{}", path.trim_start_matches('/'));
@@ -821,11 +854,7 @@ async fn check(state: &GuardState, mut req: Request<Body>, next: Next) -> Respon
         }
     }
     if let Some(grant) = grant {
-        let grant = if grant == Grant::Admin && !state.admin_allowed(public) {
-            Grant::Full
-        } else {
-            grant
-        };
+        let grant = state.effective_grant(grant, public);
         return state.admit(req, context, grant, next).await;
     }
     presented_wrong |= header_tok.is_some();
@@ -1881,6 +1910,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn loopback_open_does_not_cover_a_public_host() {
+        let state = GuardState::new(
+            Tokens::none(),
+            ["localhost:3000".to_owned()],
+            GuardPolicy {
+                loopback_open: true,
+            },
+        )
+        .with_public_hosts([PUBLIC]);
+        let app = app_with(state);
+        let on = |host: &str| {
+            let mut r = req("GET", "/", "127.0.0.1:50000", &[]);
+            r.headers_mut()
+                .insert(header::HOST, HeaderValue::from_str(host).unwrap());
+            r
+        };
+        let res = status(app.clone(), on("localhost:3000")).await;
+        assert_eq!(res.status(), StatusCode::OK);
+        let res = status(app, on(PUBLIC)).await;
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
     async fn only_the_https_origin_of_a_public_host_passes_and_only_on_that_host() {
         let post = |host: &'static str, origin: &'static str| {
             req_on(
@@ -2017,6 +2069,13 @@ mod tests {
             normalize_public_host(" X.Example.com ").as_deref(),
             Some("x.example.com")
         );
+        for (name, want) in [
+            ("x.example.com:443", "x.example.com"),
+            ("x.example.com:80", "x.example.com"),
+            ("x.example.com:8443", "x.example.com:8443"),
+        ] {
+            assert_eq!(normalize_public_host(name).as_deref(), Some(want), "{name}");
+        }
         let bad = [
             "",
             "  ",
@@ -2024,6 +2083,16 @@ mod tests {
             "a@b.dev",
             "x.example.com/p",
             "a b",
+            "a\tb",
+            "x.example.com:",
+            "x.example.com:abc",
+            "x.example.com:0",
+            "x.example.com:70000",
+            "fe80::1",
+            "[::1]",
+            "[::1]:443",
+            "192.168.1.5",
+            "192.168.1.5:3000",
         ];
         for b in bad {
             assert_eq!(normalize_public_host(b), None, "{b}");
@@ -2106,7 +2175,8 @@ mod tests {
             admin_state()
                 .with_public_hosts([PUBLIC])
                 .with_admin_over_public_only()
-                .with_on_denied(move |_| {
+                .with_on_denied(move |d| {
+                    assert_eq!(d.reason, DenialReason::AdminNotPublic);
                     n.fetch_add(1, Ordering::SeqCst);
                 }),
         );
@@ -2115,6 +2185,12 @@ mod tests {
         assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
         assert!(res.headers().get(header::SET_COOKIE).is_none());
         assert_eq!(denied.load(Ordering::SeqCst), 1);
+        // A valid full cookie does not load the page with the admin token
+        // still in the URL.
+        let full = format!("web_access_3000={TOKEN}");
+        let res = status(app.clone(), req_on("GET", &uri, HOST, &[("cookie", &full)])).await;
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(denied.load(Ordering::SeqCst), 2);
         // The full link on the same Host still works.
         let res = status(app, req_on("GET", &format!("/?token={TOKEN}"), HOST, &[])).await;
         assert_eq!(bounce_target(&res), "/");

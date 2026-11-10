@@ -13,16 +13,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `GuardState::with_public_hosts` and `ServeOptions::public_hosts`. Each name
   is an allowed `Host`. It is an allowed `Origin` only as `https://<name>`,
   and only on a request whose `Host` is a public name. A share cookie set on a
-  public name carries `Secure`. A peer that is not loopback still needs a
-  token.
+  public name carries `Secure`. A request for a public name needs a token,
+  even from a loopback peer under `loopback_open`.
 - `guard::PublicHost`, which the guard puts in the request extensions of a
   request whose `Host` is a public name, and `origin_matches_public_host`, the
   Origin check for a handler on such a request.
 - `guard::normalize_public_host`, the rule `with_public_hosts` keeps or drops
-  a name by.
+  a name by. It drops IP addresses and bad ports, and a written port 80 or
+  443.
+- `ServerHandle::public_share_urls_for`: `https://<name>/?token=` links for
+  the public names.
 - `GuardState::with_admin_over_public_only` and
   `ServeOptions::admin_public_only`: the admin token gives `Admin` only on a
-  public name and `Full` elsewhere, and its link sets no cookie there.
+  public name and `Full` elsewhere. Its link is refused there with 401, sets
+  no cookie, and is reported as `DenialReason::AdminNotPublic`. The runtime's
+  admin share links are then the `https://` links on the public names.
 - `GuardState::with_cookie_max_age` and `ServeOptions::cookie_max_age`: a
   `Max-Age` for the share cookie. The default is still a session cookie. The
   admin cookie never gets one.

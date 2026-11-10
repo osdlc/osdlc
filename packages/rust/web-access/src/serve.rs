@@ -17,7 +17,9 @@ use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
 use crate::config::{Listen, WebAccessConfig};
-use crate::guard::{GuardPolicy, GuardState, HostIps, OnDenied, Tokens, guard};
+use crate::guard::{
+    GuardPolicy, GuardState, HostIps, OnDenied, Tokens, guard, normalize_public_host,
+};
 use crate::interfaces::interfaces;
 use crate::permissions::RouteRule;
 use crate::token::Token;
@@ -183,6 +185,8 @@ pub struct ServerHandle {
     /// The addresses a peer can open, before a token is attached.
     share_addrs: Vec<SocketAddr>,
     share_urls: Vec<String>,
+    /// [`ServeOptions::public_hosts`] as [`normalize_public_host`] keeps them.
+    public_names: Vec<String>,
     stop_tx: watch::Sender<bool>,
     cut_tx: watch::Sender<bool>,
     tasks: Vec<JoinHandle<()>>,
@@ -207,6 +211,15 @@ impl ServerHandle {
         self.share_addrs
             .iter()
             .map(|a| share_url(*a, token))
+            .collect()
+    }
+
+    /// `https://<name>/?token=<token>` for each [`ServeOptions::public_hosts`]
+    /// name, as the browser opens it through the TLS proxy.
+    pub fn public_share_urls_for(&self, token: &Token) -> Vec<String> {
+        self.public_names
+            .iter()
+            .map(|n| format!("https://{n}/?token={token}"))
             .collect()
     }
 
@@ -426,6 +439,16 @@ async fn serve_with_ips(
         })
         .collect();
 
+    let mut public_names: Vec<String> = Vec::new();
+    for n in opts
+        .public_hosts
+        .iter()
+        .filter_map(|n| normalize_public_host(n))
+    {
+        if !public_names.contains(&n) {
+            public_names.push(n);
+        }
+    }
     let mut state = GuardState::new(tokens, hosts, policy)
         .with_read_safe(opts.read_safe)
         .with_public_hosts(&opts.public_hosts);
@@ -479,6 +502,7 @@ async fn serve_with_ips(
         addrs,
         share_addrs,
         share_urls,
+        public_names,
         stop_tx,
         cut_tx,
         tasks,
@@ -776,7 +800,7 @@ mod tests {
             .with(tok(ADMIN), crate::Grant::Admin)
             .unwrap();
         let opts = ServeOptions {
-            public_hosts: vec!["x.example.com".to_owned()],
+            public_hosts: vec!["X.example.com:443".to_owned(), "x.example.com".to_owned()],
             admin_public_only: true,
             cookie_max_age: Some(Duration::from_secs(60)),
             ..ServeOptions::default()
@@ -785,6 +809,10 @@ mod tests {
             .await
             .unwrap();
         let addr = handle.addrs()[0];
+        assert_eq!(
+            handle.public_share_urls_for(&tok(ADMIN)),
+            [format!("https://x.example.com/?token={ADMIN}")]
+        );
         let admin = format!("x-web-access-token: {ADMIN}\r\n");
         let res = raw_get(addr, "x.example.com", &admin).await;
         assert!(res.ends_with("Admin"), "{res}");

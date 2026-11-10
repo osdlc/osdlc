@@ -139,7 +139,8 @@ Every request, whatever its method, passes these checks in order:
 3. The path normalises, else 400: no `.` or `..` segment, no `\` and no
    encoded `/`.
 4. A loopback peer passes with the `full` grant when the policy's
-   `loopback_open` is set. `serve` sets it only when there are no tokens.
+   `loopback_open` is set, unless the `Host` is a public name. `serve` sets it
+   only when there are no tokens.
 5. A `GET` with a valid `?token=` sets the cookie and answers with a small
    page that moves to the same URL without the token, so the token does not
    stay in the address bar, the history or a `Referer`. An admin token sets
@@ -204,16 +205,19 @@ these in `ServeOptions`, or on a `GuardState` you build yourself:
 
 - `public_hosts` (`GuardState::with_public_hosts`): the public names. Each one
   is an allowed `Host`, and an allowed `Origin` only as `https://<name>` on a
-  request for a public name. The share cookie on a public name carries
-  `Secure`, and the request carries `PublicHost` in its extensions.
-  `origin_matches_public_host` is the Origin check for a handler on such a
-  request. `normalize_public_host` says whether a name is kept.
+  request for a public name. A request for a public name needs a token even
+  from loopback, so a proxy on the same machine is covered too. The share
+  cookie on a public name carries `Secure`, and the request carries
+  `PublicHost` in its extensions. `origin_matches_public_host` is the Origin
+  check for a handler on such a request. `normalize_public_host` says whether
+  a name is kept.
 - `admin_public_only` (`GuardState::with_admin_over_public_only`): the admin
-  token gives `admin` only on a public name and `full` anywhere else, and its
-  link sets no cookie there. This stops an admin link opened on a private
-  address from carrying a shell credential over plain HTTP. The `Host` header
-  is the client's, so this is not proof of how a request arrived. The token is
-  the control.
+  token gives `admin` only on a public name and `full` anywhere else. Its link
+  is refused there and sets no cookie, and the admin share links are
+  `https://<name>/?token=...` (`ServerHandle::public_share_urls_for`). This
+  stops an admin link opened on a private address from carrying a shell
+  credential over plain HTTP. The `Host` header is the client's, so this is
+  not proof of how a request arrived. The token is the control.
 - `cookie_max_age` (`GuardState::with_cookie_max_age`): a lifetime for the
   share cookie, so it outlives the browser session. The default is a session
   cookie. The admin cookie is always a session cookie.
