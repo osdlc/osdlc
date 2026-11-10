@@ -9,8 +9,15 @@
 # still pins corpus-schema's dependencies. Drop that step once the lockfile is refreshed.
 set -eu
 cd "$(dirname "$0")/.."
+# A backup left by a run that was killed holds the real package.json. Copying over it would lose it.
+if [ -e package.json.orig ]; then
+  echo "build-corpus-schema: package.json.orig exists; check it and move it back to package.json" >&2
+  exit 1
+fi
 cp package.json package.json.orig
 trap 'mv package.json.orig package.json' EXIT
+# dash skips the EXIT trap on a signal unless the signal exits the shell first.
+trap 'exit 130' INT TERM
 node -e 'const fs = require("fs"); const p = JSON.parse(fs.readFileSync("package.json")); delete p.devDependencies; fs.writeFileSync("package.json", JSON.stringify(p, null, 2) + "\n")'
 pnpm install --frozen-lockfile --filter @osdlc/corpus-schema
 pnpm --filter @osdlc/corpus-schema run build

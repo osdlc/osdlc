@@ -13,8 +13,8 @@ const temp = mkdtempSync(join(tmpdir(), 'build-data-'))
 afterAll(() => rmSync(temp, { recursive: true, force: true }))
 
 let n = 0
-/** Problems found after `change` edits a fresh copy of the corpus. */
-function problemsAfter(change) {
+/** The data built after `change` edits a fresh copy of the corpus and the profile. */
+function buildAfter(change) {
   const root = join(temp, String(n++))
   const corpus = join(root, 'docs/planning')
   cpSync(planning, corpus, { recursive: true })
@@ -26,9 +26,12 @@ function problemsAfter(change) {
     writeFileSync(path, text.replace(from, to))
   }
   const add = (file, text) => writeFileSync(join(corpus, file), text)
-  change({ edit, add })
-  return buildData(corpus, root).problems
+  change({ edit, add, root })
+  return buildData(corpus, root)
 }
+
+/** Problems found after `change` edits a fresh copy of the corpus. */
+const problemsAfter = (change) => buildAfter(change).problems
 
 const component = (id, language, states, twin) => `---
 name: ${id}
@@ -59,6 +62,28 @@ describe('build-data', () => {
     expect(release.beeline).toBe(true)
     expect(release.status).toBe('doing')
     expect(plan.milestones.find((m) => m.id === 'm-query').beeline).toBe(false)
+  })
+
+  it('reads the status labels from a profile schema in YAML', () => {
+    const { plan } = buildData(planning, repo)
+    const data = buildAfter(({ root }) => {
+      const dir = join(root, 'profiles/planning/tasks')
+      const text = readFileSync(join(dir, 'tasks.schema.md'), 'utf8')
+      writeFileSync(join(dir, 'tasks.schema.yaml'), text.split('---\n')[1])
+      rmSync(join(dir, 'tasks.schema.md'))
+    })
+    expect(data.problems).toEqual([])
+    expect(data.plan.statuses).toEqual(plan.statuses)
+  })
+
+  it('reads a parent by path only', () => {
+    const problems = problemsAfter(({ edit, root }) => {
+      cpSync(join(root, 'profiles/planning'), join(root, 'node_modules/@osdlc/corpus-profile-planning'), { recursive: true })
+      edit('corpus-schema.md', 'plan: ../../profiles/planning', 'plan: "@osdlc/corpus-profile-planning"')
+    })
+    expect(problems).toEqual([
+      'docs/planning/tasks/tasks.schema.md: x-extends: build-data reads a parent by path only, not @osdlc/corpus-profile-planning',
+    ])
   })
 
   it('passes on the validator problems', () => {

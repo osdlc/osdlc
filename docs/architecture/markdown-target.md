@@ -101,12 +101,13 @@ next corpus-schema release, 0.3.0 (the plan's task 36). Refine and waive are sti
 
 - A profile is a set of types and rules that many corpora can use. It is a corpus that has only
   types. A corpus can use more than one, next to its own types.
-- The first one is the claims profile. It follows VA-Spec, GA4GH's Variant Annotation spec, which is
-  a JSON Schema model for claims backed by evidence. Its types are Statement, Study Result, Method
-  and Document. A statement holds its evidence lines, and Contribution is a field on records. It
+- The claims profile follows VA-Spec, GA4GH's Variant Annotation spec, which is a JSON Schema model
+  for claims backed by evidence. Its types are Statement, Study Result, Method and Document. A statement holds its evidence lines, and Contribution is a field on records. It
   starts as an example corpus in this repo, `profiles/claims/example/`, with a README that maps each
   type to VA-Spec. Until 0.3.0 ships `extends`, a corpus copies the type folders from the example.
   Then the profile is published from this repo as the npm package `@osdlc/corpus-profile-claims`.
+- The planning profile, `profiles/planning/`, holds the task, milestone and decision types. This
+  repo's plan extends it by path. It is private and not on npm.
 - A parent corpus, such as a profile or an org corpus, is an npm package or a local folder. A corpus
   names its parents in the root file under `extends`, which maps a short prefix to a source. A source
   that starts with `./` or `../` is a path from the corpus root. Anything else is a package name,
@@ -247,7 +248,7 @@ A twin can have extras the other doesn't need. It just has to pass the shared ca
 | Corpus model, TypeScript | markdown-vault and vault-graph-core in dev | markdown-corpus in osdlc |
 | Corpus model, Rust | markdown-corpus in osdlc | the same |
 | corpus-schema | this repo; 0.2.0 is on npm | the same |
-| Profiles | model-schema and packs in dev (open PRs) | this repo |
+| Profiles | drafts in this repo; model-schema and packs in dev (open PRs) | this repo |
 | Query | markdown-vault-query in dev | osdlc |
 | Render, edit, sites | dev | osdlc |
 | Typed records from Rust | markdown-store in rust-ontogen | on the shared parts; where it lives is an open question |

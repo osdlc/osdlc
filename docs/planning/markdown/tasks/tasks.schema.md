@@ -33,10 +33,9 @@ properties:
 
 # Tasks
 
-One record per task. It builds on `plan/tasks`, the task type of the planning profile in
-`profiles/planning/`. The fields `number`, `title`, `status`, `milestone` and `after` come from
-there. This type adds `detail` and `type`, and makes `milestone` required. It lists the profile's
-fields as `true`, so `additionalProperties: false` admits them and nothing else.
+One record per task. The type builds on `plan/tasks`, the planning profile's task type in
+`profiles/planning/`. The profile's fields are listed as `true` so that
+`additionalProperties: false` admits them and nothing else.
 
 The body is the task's plan: what it does, what it waits on and where it stands. The task must also
 be listed in its milestone's `tasks`.

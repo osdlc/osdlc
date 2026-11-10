@@ -1,8 +1,8 @@
 // Builds data/ecosystem.json and data/plan.json from the plan's records in docs/planning.
 // Usage: node scripts/build-data.mjs [--corpus <dir>] [--out <dir>]
-// The corpus is validated first with @osdlc/corpus-schema, the repo's own build, which knows
-// extends. Each problem, from the validator or from a rule it cannot check, is one line on stderr,
-// and then nothing is written. See docs/planning/README.md.
+// The corpus is validated with @osdlc/corpus-schema first. Each problem, from the validator or from
+// a rule it cannot check, is one line on stderr, and then nothing is written. See
+// docs/planning/README.md.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, posix, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -96,15 +96,27 @@ function readCorpus(corpus, root) {
  * checked the chain.
  */
 function schemaChain(corpus, type) {
-  const frontmatter = (file) => parse(split(readFileSync(file, 'utf8')).frontmatter)
+  // The first of `names` in `dir`, as data: a Markdown file's frontmatter, or YAML or JSON.
+  const data = (dir, names) => {
+    for (const name of names) {
+      let text
+      try {
+        text = readFileSync(join(dir, name), 'utf8')
+      } catch {
+        continue
+      }
+      return parse(name.endsWith('.md') ? split(text).frontmatter : text)
+    }
+    throw new Error(`no ${names.join(', ')} in ${dir}`)
+  }
   const chain = []
   for (let dir = corpus, name = type; name !== undefined; ) {
-    const schema = frontmatter(join(dir, name, `${name}.schema.md`))
+    const schema = data(join(dir, name), ['.md', '.yaml', '.json'].map((ext) => `${name}.schema${ext}`))
     chain.push(schema)
     const [prefix, base] = (schema['x-extends'] ?? '').split('/', 2)
     if (base === undefined) name = prefix || undefined
     else {
-      const source = frontmatter(join(dir, 'corpus-schema.md')).extends[prefix]
+      const source = data(dir, ['corpus-schema.md', 'corpus-schema.yaml', 'corpus-schema.json']).extends[prefix]
       if (!/^\.\.?\//.test(source)) throw new Error(`build-data reads a parent by path only, not ${source}`)
       dir = resolve(dir, source)
       name = base

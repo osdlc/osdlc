@@ -86,9 +86,10 @@ pnpm build-data
 ```
 
 [scripts/build-data.mjs](scripts/build-data.mjs) validates the records with `@osdlc/corpus-schema`,
-the linked copy from this repo, checks the rules the validator can't, and writes `data/ecosystem.json` and `data/plan.json`. Their
-shapes and rules are in [data/SCHEMA.md](data/SCHEMA.md) and [data/PLAN-SCHEMA.md](data/PLAN-SCHEMA.md).
-CI fails when the committed JSON differs from what the records build.
+the linked copy from this repo. It checks the rules the validator can't, and writes
+`data/ecosystem.json` and `data/plan.json`. Their shapes and rules are in
+[data/SCHEMA.md](data/SCHEMA.md) and [data/PLAN-SCHEMA.md](data/PLAN-SCHEMA.md). CI fails when the
+committed JSON differs from what the records build.
 
 When `ecosystem.json` is missing, the app uses `data/fixture.json`, a small hand-written sample. The
 header says which file it loaded. If the data breaks a rule in SCHEMA.md or PLAN-SCHEMA.md, the

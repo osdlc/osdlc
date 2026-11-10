@@ -37,7 +37,8 @@ graphs. Its data is built from the records.
 Each task is functional or supporting work, and belongs to one milestone. The
 [task schema](planning/tasks/tasks.schema.md) says what each kind means, and the
 [milestone schema](../profiles/planning/milestones/milestones.schema.md) of the planning profile
-says how a milestone's status follows from its tasks. The order of the npm work is in [the milestone](#milestone-upstream-corpora-over-npm).
+says how a milestone's status follows from its tasks. The order of the npm work is in
+[the milestone](#milestone-upstream-corpora-over-npm).
 
 ## First: unlock the evidence project
 

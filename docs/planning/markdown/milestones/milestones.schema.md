@@ -21,9 +21,8 @@ properties:
 
 # Milestones
 
-One record per milestone. It builds on `plan/milestones`, the milestone type of the planning
-profile in `profiles/planning/`. The fields `title`, `order` and `tasks` come from there. The
-profile's type also says how a milestone's status follows from its tasks. This type adds `beeline`
-and an id pattern.
+One record per milestone. The type builds on `plan/milestones`, the planning profile's milestone
+type in `profiles/planning/`, which says how a milestone's status follows from its tasks. The
+profile's fields are listed as `true`, as in tasks.
 
 The body is the milestone's goal, in one or two sentences.

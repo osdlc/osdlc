@@ -78,10 +78,11 @@ validate the folder, from the repo root:
 
 ```sh
 sh tools/build-corpus-schema.sh
-node packages/ts/corpus-schema/bin/corpus-schema.js validate docs/planning
+node packages/ts/corpus-schema/bin/corpus-schema.js validate docs/planning profiles/planning
 ```
 
-Validating the plan also validates the profile, as its parent.
+The plan's report includes the profile's errors, but not its warnings, so the command names both
+folders.
 
 The explorer's data, `tools/explorer/data/ecosystem.json` and `plan.json`, is built from these
 records. The explorer links to the same built corpus-schema. After you change a record, run this
