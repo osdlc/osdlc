@@ -1,4 +1,5 @@
-/* Colour tokens. Light by default, dark under prefers-color-scheme. */
+/* Colour tokens. The system setting picks light or dark; data-theme on <html> overrides it.
+   The dark set appears twice: under the media query and under data-theme="dark". */
 :root {
   color-scheme: light;
   --bg: #f4f4f1;
@@ -16,7 +17,7 @@
   --band-b: rgb(30 40 60 / 0.075);
   --band-label: #6b6f76;
 
-  --edge-both: #8b9099;
+  --edge-both: #80858d;
   --removed: #b93a2c;
   --removed-bg: #fbe9e6;
   /* Card groups: twin green, kept blue, going away red (--removed), to make yellow (--added). */
@@ -35,10 +36,10 @@
   /* Work view: status and next up. Each comes with an icon or label, never colour alone. */
   --doing: #2f64d0;
   --doing-bg: #e1ebfb;
-  --owner: #b4530a;
+  --owner: #a34a08;
   --owner-bg: #fdebd9;
   --done: #1d7a43;
-  --next: #b7791f;
+  --next: #9a5f0c;
   --next-bg: #fdf3dc;
   --edge-strong: #4f535a;
 
@@ -64,7 +65,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     color-scheme: dark;
     --bg: #131417;
     --surface: #1c1e22;
@@ -120,4 +121,61 @@
 
     --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 2px 8px rgb(0 0 0 / 0.3);
   }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #131417;
+  --surface: #1c1e22;
+  --surface-2: #24272c;
+  --text: #e8e8e5;
+  --muted: #a2a6ad;
+  --border: #353840;
+  --border-strong: #5a5e67;
+  --accent: #87a8ff;
+  --accent-soft: rgb(135 168 255 / 0.18);
+  --focus: #87a8ff;
+
+  --band-a: rgb(255 255 255 / 0.025);
+  --band-b: rgb(255 255 255 / 0.055);
+  --band-label: #9a9ea6;
+
+  --edge-both: #737882;
+  --removed: #ff8577;
+  --removed-bg: #3a201d;
+  --twin: #63d692;
+  --twin-bg: #16301f;
+  --kept: #7fb0ff;
+  --kept-bg: #172a47;
+  --added: #e0b02e;
+  --added-bg: #3a3112;
+  --added-text: #e0b02e;
+  --match: #f0b44c;
+  --overlap: #b48cf0;
+  --overlap-bg: #2c2142;
+  --overlap-text: #d3b8f8;
+
+  --doing: #7fb0ff;
+  --doing-bg: #172a47;
+  --owner: #ffa45c;
+  --owner-bg: #3d2614;
+  --done: #63d692;
+  --next: #f0b44c;
+  --next-bg: #3a2f14;
+  --edge-strong: #b5b9c0;
+
+  --logo-ts: #5b9bea;
+  --logo-rust: #e8e8e5;
+  --logo-markdown: #e8e8e5;
+  --logo-yaml: #f0565c;
+
+  --repo-0: #f0f0ee;
+  --repo-1: #cfd2d6;
+  --repo-2: #aaaeb4;
+  --repo-3: #858a91;
+  --repo-4: #666b72;
+  --repo-5: #4d5158;
+  --repo-none: #3f4349;
+
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 2px 8px rgb(0 0 0 / 0.3);
 }

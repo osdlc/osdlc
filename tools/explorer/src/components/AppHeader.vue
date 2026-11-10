@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { APP_VIEW_LABEL, type AppView } from '../model/route'
+import { useTheme } from '../composables/useTheme'
+import ThemeToggle from './controls/ThemeToggle.vue'
 import ViewSwitch from './controls/ViewSwitch.vue'
 
 const props = defineProps<{
@@ -12,6 +14,7 @@ const props = defineProps<{
   problems: string[]
 }>()
 
+const { theme, cycle } = useTheme()
 const appView = defineModel<AppView>('appView', { required: true })
 
 const APP_VIEWS = (Object.keys(APP_VIEW_LABEL) as AppView[]).map((value) => ({ value, label: APP_VIEW_LABEL[value] }))
@@ -32,6 +35,7 @@ const problemText = computed(() => props.problems.join('\n'))
     </details>
     <div class="app-header__controls">
       <slot />
+      <ThemeToggle :theme="theme" @cycle="cycle" />
     </div>
   </header>
 </template>
