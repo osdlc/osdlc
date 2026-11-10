@@ -103,7 +103,7 @@ export const renderMermaid: (source: string, theme?: MermaidTheme) => Promise<st
     import('mermaid').then(
       (m) => m.default,
       (err: unknown) => {
-        warnMissingPeer('mermaid', 'diagrams render as source')
+        warnMissingPeer('mermaid', 'diagrams render as source', err)
         throw err
       },
     ),

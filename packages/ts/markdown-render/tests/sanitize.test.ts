@@ -537,3 +537,41 @@ describe('sanitize: input is pipeline-only too', () => {
     expect(out).toContain('checked')
   })
 })
+
+describe('a self-assembled pipeline: markdownSchema with the provenance pair', () => {
+  const hostile = '<div id="app" aria-labelledby="app">x</div><markdown-embed data-embed-path="/x">'
+
+  async function assemble(withProvenance: boolean): Promise<string> {
+    const [{ unified }, { default: remarkParse }, { default: remarkRehype }, rehypeRaw] =
+      await Promise.all([
+        import('unified'),
+        import('remark-parse'),
+        import('remark-rehype'),
+        import('rehype-raw'),
+      ])
+    const { default: rehypeSanitize } = await import('rehype-sanitize')
+    const { default: rehypeStringify } = await import('rehype-stringify')
+    const { pipelineProvenance } = await import('../src/plugins/index.ts')
+    const provenance = pipelineProvenance()
+    const processor = unified()
+      .use(remarkParse)
+      .use(remarkRehype, { allowDangerousHtml: true })
+      .use(withProvenance ? [provenance.mark] : [])
+      .use(rehypeRaw.default)
+      .use(withProvenance ? [provenance.enforce] : [])
+      .use(rehypeSanitize, markdownSchema)
+      .use(rehypeStringify)
+    return String(await processor.process(hostile))
+  }
+
+  test('with the pair, a note id is namespaced and a forged embed is dropped', async () => {
+    const out = await assemble(true)
+    expect(out).toContain('id="user-content-app"')
+    expect(out).not.toContain('id="app"')
+    expect(out).not.toContain('markdown-embed')
+  })
+
+  test('without it the schema alone leaves the id bare, which is why the pair is exported', async () => {
+    expect(await assemble(false)).toContain('id="app"')
+  })
+})

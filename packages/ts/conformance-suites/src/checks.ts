@@ -67,7 +67,28 @@ export function registryProblems(
     if (readers !== undefined) {
       if (!Array.isArray(readers)) problems.push(`${name}: readers is a list`)
       else {
+        const implementationDirs = new Set(
+          Array.isArray(f['implementations'])
+            ? f['implementations'].map((i: unknown) => (isObject(i) ? i['dir'] : undefined))
+            : [],
+        )
+        const seenDirs = new Set<unknown>()
+        const seenNames = new Set<unknown>()
         for (const [n, r] of readers.entries()) {
+          if (isObject(r)) {
+            if (typeof r['dir'] === 'string') {
+              if (seenDirs.has(r['dir']))
+                problems.push(`${name}: reader ${r['dir']} is listed twice`)
+              else if (implementationDirs.has(r['dir']))
+                problems.push(`${name}: ${r['dir']} is both an implementation and a reader`)
+              seenDirs.add(r['dir'])
+            }
+            if (typeof r['name'] === 'string') {
+              if (seenNames.has(r['name']))
+                problems.push(`${name}: reader name ${r['name']} is listed twice`)
+              seenNames.add(r['name'])
+            }
+          }
           const language = isObject(r) ? r['language'] : undefined
           if (
             !isObject(r) ||

@@ -111,3 +111,21 @@ describe('escaping changes nothing else', () => {
     expect(out).toMatch(/id="a-+b"/)
   })
 })
+
+describe('a link directly followed by an escape', () => {
+  test('a wikilink still links', async () => {
+    const out = await html('[[Note]]\\#x')
+    expect(out).toContain('data-wikilink="Note"')
+    expect(out).toContain('#x')
+  })
+
+  test('a wikilink with a formatted alias still links', async () => {
+    const out = await html('[[N|*x*]]\\#x')
+    expect(out).toContain('data-wikilink="N"')
+    expect(out).toContain('<em>x</em>')
+  })
+
+  test('an embed followed by an escape still embeds', async () => {
+    expect(await html('![[img.png]]\\!')).toContain('<markdown-embed')
+  })
+})

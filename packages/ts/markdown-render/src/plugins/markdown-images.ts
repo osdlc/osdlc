@@ -39,7 +39,7 @@
 import { visit } from 'unist-util-visit'
 import type { WikilinkResolver } from '../types.ts'
 import { ATTACHMENT_EXTENSIONS, noteExtension } from '../paths.ts'
-import { urlScheme } from '../url.ts'
+import { isSafeLinkPath, urlScheme } from '../url.ts'
 import { defaultResolver } from './wikilinks.ts'
 import { embedKind } from './embeds.ts'
 import { clearLinkFields, definitionUrls, destination, type MdNode } from './util.ts'
@@ -93,7 +93,11 @@ export function remarkMarkdownImages(options: RemarkMarkdownImagesOptions = {}) 
         dataEmbedKind: embedKind(target, {}, resolved.kind),
         dataResolvedKind: resolved.kind,
       }
-      if (resolved.kind !== 'missing' && resolved.path !== undefined) {
+      if (
+        resolved.kind !== 'missing' &&
+        resolved.path !== undefined &&
+        isSafeLinkPath(resolved.path)
+      ) {
         props.dataEmbedPath = resolved.path
       }
       // A markdown image's `alt` is the caption an author wrote, which is the

@@ -807,3 +807,17 @@ describe('headings the line scan must agree with the parser on', () => {
     expect(sliceByBlockId('Title ^x\n---\n\nbody', 'x')).toBe('Title\n---')
   })
 })
+
+describe('setext underline is not read again', () => {
+  test('an `===` underline followed by `---` is one heading', () => {
+    expect(sourceHeadings('Title\n===\n---\nbody')).toEqual([
+      expect.objectContaining({ heading: 'Title', depth: 1 }),
+    ])
+  })
+
+  test('a second `===` is not a phantom depth-1 heading', () => {
+    const md = 'Title\n===\n===\nbody\n# Next'
+    expect(sourceHeadings(md).map((h) => h.heading)).toEqual(['Title', 'Next'])
+    expect(sliceByHeading(md, 'Title')).not.toBe('')
+  })
+})

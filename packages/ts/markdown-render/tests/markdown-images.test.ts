@@ -119,3 +119,17 @@ describe('remarkMarkdownImages', () => {
     expect(out).toContain('<img src="https://example.com/a.png"')
   })
 })
+
+describe('hostile embed paths', () => {
+  test('a percent-encoded scheme never reaches data-embed-path', async () => {
+    const out = await html('![](javascript%3Aalert(1).png)')
+    expect(out).not.toContain('data-embed-path')
+  })
+
+  test('a wikilink embed whose resolver returns a scheme path drops it', async () => {
+    const out = await html('![[a.png]]', {
+      resolveLink: () => ({ kind: 'attachment', path: 'javascript:alert(1).png', display: 'a' }),
+    })
+    expect(out).not.toContain('data-embed-path')
+  })
+})

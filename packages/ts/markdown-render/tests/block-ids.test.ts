@@ -207,3 +207,29 @@ describe('remarkBlockIds', () => {
     expect(out).not.toContain('^abc')
   })
 })
+
+describe('CRLF notes', () => {
+  test('block ids behave the same as with LF', async () => {
+    const lf = await html('^a\n^b')
+    const crlf = await html('^a\r\n^b')
+    expect(crlf.replace(/\r/g, '')).toBe(lf)
+    expect(crlf).not.toContain('\r</p>')
+  })
+
+  test('an inline marker still anchors under CRLF', async () => {
+    expect(await html('first\r\nsecond ^abc\r\n')).toContain('id="abc"')
+  })
+})
+
+describe('duplicate block ids', () => {
+  test('a repeated marker stays literal; the first owns the id', async () => {
+    const out = await html('a ^x\n\nb ^x')
+    expect(out.match(/ id="x"/g)).toHaveLength(1)
+    expect(out).toContain('b ^x')
+  })
+
+  test('a repeated standalone marker stays literal', async () => {
+    const out = await html('a\n\n^x\n\nb\n\n^x')
+    expect(out.match(/ id="x"/g)).toHaveLength(1)
+  })
+})

@@ -14,6 +14,7 @@ import { tokenizeLinks, type FoundLink } from './link-scan.ts'
 import { isAudioPath, isImagePath, isPdfPath, isVideoPath } from '../paths.ts'
 import { hastNode, type MdNode, type MdParent } from './util.ts'
 import { unmaskEscaped } from './escapes.ts'
+import { isSafeLinkPath } from '../url.ts'
 
 export type EmbedKind = 'note' | 'image' | 'video' | 'audio' | 'pdf' | 'heading' | 'block'
 
@@ -119,7 +120,11 @@ export function remarkEmbeds(options: RemarkEmbedsOptions = {}) {
       dataEmbedKind: kind,
       dataResolvedKind: resolved.kind,
     }
-    if (resolved.kind !== 'missing' && resolved.path !== undefined) {
+    if (
+      resolved.kind !== 'missing' &&
+      resolved.path !== undefined &&
+      isSafeLinkPath(resolved.path)
+    ) {
       props.dataEmbedPath = resolved.path
     }
     if (fragment.heading) props.dataEmbedHeading = fragment.heading
