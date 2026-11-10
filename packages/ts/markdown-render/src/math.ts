@@ -39,7 +39,7 @@ export function loadKatex(): Promise<KatexModule> {
     (m) => m.default,
     (err: unknown) => {
       katexPromise = undefined
-      warnMissingPeer('katex', 'math renders as source')
+      warnMissingPeer('katex', 'math renders as source', err)
       throw err
     },
   )

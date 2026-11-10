@@ -7,8 +7,27 @@
 
 const warned = new Set<string>()
 
-export function warnMissingPeer(name: string, effect: string): void {
+/** Does `err` say the module is absent, as opposed to present but failing to load? */
+function isMissing(err: unknown): boolean {
+  const code = (err as { code?: unknown } | null)?.code
+  if (code === 'ERR_MODULE_NOT_FOUND' || code === 'MODULE_NOT_FOUND') return true
+  return /cannot find (package|module)|failed to resolve import/i.test(
+    err instanceof Error ? err.message : String(err ?? ''),
+  )
+}
+
+/**
+ * Warn once that a peer could not be imported. With no `err`, or an error that
+ * says the module is absent, it reports "not installed"; any other failure (a
+ * 404 on a chunk, a network error) reports the error instead, because that is
+ * the only diagnostic the host sees.
+ */
+export function warnMissingPeer(name: string, effect: string, err?: unknown): void {
   if (warned.has(name)) return
   warned.add(name)
-  console.warn(`@osdlc/markdown-render: ${name} is not installed; ${effect}`)
+  const why =
+    err === undefined || isMissing(err)
+      ? 'is not installed'
+      : `could not be loaded (${err instanceof Error ? err.message : String(err)})`
+  console.warn(`@osdlc/markdown-render: ${name} ${why}; ${effect}`)
 }
