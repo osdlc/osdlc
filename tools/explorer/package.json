@@ -9,7 +9,8 @@
     "build": "vue-tsc --build && vite build",
     "preview": "vite preview",
     "typecheck": "vue-tsc --build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "sync-plan": "node scripts/sync-plan.mjs"
   },
   "dependencies": {
     "@vue-flow/background": "1.3.2",

@@ -1,6 +1,7 @@
 # ecosystem.json
 
-The data behind the explorer. One file, `ecosystem.json`, beside this note.
+The component data behind the explorer. One file, `ecosystem.json`, beside this note. The plan
+behind the Work view is `plan.json`, described in [PLAN-SCHEMA.md](PLAN-SCHEMA.md).
 
 It describes every component of the markdown ecosystem in two states: how things are today
 (`present`) and where the plan wants them (`target`). A component that exists in both states is one
@@ -33,7 +34,7 @@ target is planned.
       "twin": "corpus-schema-rs",       // id of the same library in another language, or null
       "purpose": "One or two plain sentences: what it does and who uses it.",
       "notes": ["Short facts worth knowing: a move, a rename, an open question."],
-      "tasks": [21, 32],                // plan task numbers in docs/ecosystem-plan.md that change it
+      "tasks": [21, 32],                // ids of the plan.json tasks that change it
       "links": [{ "label": "PR #9", "url": "https://github.com/osdlc/markdown/pull/9" }]
     }
   ],
