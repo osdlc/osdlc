@@ -2,8 +2,9 @@
 // configuration guide's `$schema` line. Needs `dist/`. The URL follows the
 // version stamped into src/version.generated.ts, so after a version bump run
 // `pnpm run build` first. The root `version-packages` script does both after
-// `changeset version`; the version job in
-// .github/workflows/packages-publish.yml runs that script.
+// `changeset version`; the version job of
+// .github/workflows/ts-packages-release.yml, which packages-publish.yml calls,
+// runs that script.
 // tests/config-schema.test.ts fails when either file is stale.
 import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'

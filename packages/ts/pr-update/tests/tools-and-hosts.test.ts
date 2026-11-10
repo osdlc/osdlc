@@ -236,13 +236,20 @@ describe('a failed listing', () => {
       gh,
     })
     expect(r.code).toBe(EXIT_FAILURE.service)
-    expect(JSON.parse(readFileSync(file, 'utf8')).repoFailures).toEqual([
+    const { repos } = JSON.parse(readFileSync(file, 'utf8')) as { repos: unknown[] }
+    expect(repos).toEqual([
       {
         repo: 'x/y',
-        kind: 'not-authenticated',
-        message: 'gh is not signed in to GitHub.',
-        hint: 'Run `gh auth login`.',
+        measurable: false,
+        fetched: false,
+        cycles: [],
+        failure: {
+          kind: 'not-authenticated',
+          message: 'gh is not signed in to GitHub.',
+          hint: 'Run `gh auth login`.',
+        },
       },
+      { repo: 'o/a', measurable: false, fetched: false, cycles: [] },
     ])
   })
 

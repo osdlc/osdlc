@@ -1,8 +1,9 @@
 # GitHub Actions hosted in osdlc/osdlc
 
-Each folder under `packages/gh-actions/` is one composite GitHub Action. They
-may later move to a repository of their own for the GitHub Marketplace, which
-needs `action.yml` at a repository's root.
+Each folder under `packages/gh-actions/` is one composite GitHub Action,
+except the two named below the table. The actions may later move to a
+repository of their own for the GitHub Marketplace, which needs `action.yml`
+at a repository's root.
 
 | Action                        | What it does                                                              |
 | ----------------------------- | ------------------------------------------------------------------------- |
@@ -18,12 +19,26 @@ They find it as `$GITHUB_ACTION_PATH/../pr-common`, which works because a
 `uses:` of any action here checks out the whole repository. `pr-common/test.sh`
 tests all three against fake CLIs.
 
+[`ts-packages`](ts-packages/) is not an action either. It documents the two
+reusable workflows that check and release a pnpm workspace of TypeScript
+packages, `.github/workflows/ts-packages-ci.yml` and
+`ts-packages-release.yml`. GitHub runs a reusable workflow only from
+`.github/workflows/`. Its changelog puts them under the shared version.
+
 ## Using an action
 
 Reference it by path in this repository and pin the commit:
 
 ```yaml
 - uses: osdlc/osdlc/packages/gh-actions/agent-setup@<commit-sha> # gh-actions/v1
+```
+
+A reusable workflow is called the same way, from a job:
+
+```yaml
+jobs:
+  packages:
+    uses: osdlc/osdlc/.github/workflows/ts-packages-ci.yml@<commit-sha> # gh-actions/v1
 ```
 
 Inside this repository, call it by local path (`./packages/gh-actions/<name>`)
@@ -46,7 +61,8 @@ place a workflow would do this.
 
 ## Versioning
 
-All actions in this directory share one version. A release puts two tags on
+All actions in this directory, and the ts-packages workflows, share one
+version. A release puts two tags on
 one commit of the default branch: `gh-actions/v1.2.3`, created once, and
 `gh-actions/v1` for the major line, moved to each new release. Together they
 cover every action here. Callers pin the commit and name the tag in a
