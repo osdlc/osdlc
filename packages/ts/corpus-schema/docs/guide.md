@@ -2,7 +2,7 @@
 
 This guide explains corpus-schema in plain words: what it is, why we made it, how its levels work,
 why we chose what we chose, and where it is going. The rules themselves are in the spec,
-[SPEC.md](https://github.com/osdlc/osdlc/blob/main/packages/conformance/corpus-schema/SPEC.md).
+[SPEC.md](../packages/conformance/corpus-schema/SPEC.md).
 This guide explains the spec, but SPEC.md is the rule. Where the two differ, follow SPEC.md, and
 tell us so we can fix the guide.
 
@@ -10,8 +10,8 @@ Version 0 of the spec is in force. While it is at version 0 we rewrite it in pla
 this guide describe proposals from the [ecosystem plan](ecosystem-plan.md)
 ([osdlc/markdown#4](https://github.com/osdlc/markdown/pull/4)) and the
 [architecture](architecture.md) ([osdlc/markdown#5](https://github.com/osdlc/markdown/pull/5)).
-Those parts say "Proposed" and are not built. Everything else describes what is on osdlc main
-today.
+Those parts say "Proposed" and are not built. Everything else describes what is on main in
+this repository today.
 
 ## Contents
 
@@ -21,7 +21,7 @@ today.
 4. [Levels](#levels)
 5. [The rules in detail](#the-rules-in-detail)
 6. [Three settings: level, dialect and profiles](#three-settings-level-dialect-and-profiles)
-7. [Sharing across corpora (proposed)](#sharing-across-corpora-proposed)
+7. [Sharing across corpora](#sharing-across-corpora)
 8. [Why we decided what we did](#why-we-decided-what-we-did)
 9. [What v0 does not do yet](#what-v0-does-not-do-yet)
 10. [The plan for the spec](#the-plan-for-the-spec)
@@ -288,8 +288,9 @@ settings must be a mapping.
 | `id`            | no       | A stable handle for the corpus, such as `reading-list` or a UUID.               |
 | `formats`       | no       | The record formats the corpus allows. The default is `[md]`.                    |
 | `level`         | no       | `1` or `2`. Any other value is an error.                                        |
+| `extends`       | no       | The corpus's parents, by prefix. Needs `level: 2`. See Sharing across corpora.  |
 | `dialect`       | no       | Reserved for a later version. Not checked yet.                                  |
-| `profiles`      | no       | Reserved for a later version. Not checked yet.                                  |
+| `profiles`      | no       | Reserved and unused. `extends` replaces it.                                     |
 
 - `id` lets an app find its corpus after a user moves or renames the folder. The app scans for root
   files and picks the one with its id. Links never use `id`. Two corpora with the same `id` get a
@@ -490,7 +491,7 @@ corpus is still valid. The warnings in v0 are:
 | The root file has a key v0 does not know      | Later versions add keys.                                     |
 | Two corpora checked together share an `id`    | Each corpus is still valid on its own.                       |
 | A symbolic link inside a type folder          | It is not followed, so a record there is not checked.        |
-| A link, or a wikilink, that leaves the corpus | v0 does not define links between corpora yet.                |
+| A link, or a wikilink, that leaves the corpus | v0 defines links to parents only, through `_inherited/`.     |
 | A wikilink that resolves                      | It works, but it is not the canonical form.                  |
 | `--fix` could not rewrite a file's wikilinks  | The file is left as it was.                                  |
 
@@ -501,7 +502,7 @@ schema keyword, and an `x-ref` that leaves the corpus or points at the wrong typ
 
 ### The validate command
 
-v0 defines one verb.
+v0 defines two verbs, `validate` and `sync`.
 
 ```sh
 corpus-schema validate [--fix] <folder>...
@@ -522,6 +523,19 @@ corpus-schema validate [--fix] <folder>...
 | `1`       | A corpus has an error, a folder holds no corpus, or a folder cannot be read. |
 | `2`       | Bad usage: an unknown verb or option, or no folder.                          |
 
+### The sync command
+
+```sh
+corpus-schema sync [<folder>...]
+```
+
+- It writes `_inherited/<prefix>/` in every corpus at or below each folder, by default `.`: a
+  copy of each parent the root file names under `extends`. It removes stale files there.
+- It changes nothing outside `_inherited/`, and a second run changes nothing.
+- A corpus syncs after the corpora it extends, so a chain in one repository syncs in one run.
+- When a parent does not resolve, it writes nothing in that corpus and exits with code 1.
+- `validate` never writes the copy. It checks it, and says to run `sync` when it is stale.
+
 ### Writing records
 
 A tool that writes records changes only the keys it owns. It keeps key order, unknown keys,
@@ -529,33 +543,30 @@ comments and the body. In v0 a write replaces the whole file, and the last write
 
 ## Three settings: level, dialect and profiles
 
-A corpus says three separate things about itself in its root file. In v0 only the level works. The
-other two keys are reserved, and their design is a proposal.
+A corpus says three separate things about itself in its root file. In v0 the level and profiles
+work. The dialect is reserved, and its design is a proposal.
 
-| Setting  | It says                                    | In v0                                                      |
-| -------- | ------------------------------------------ | ---------------------------------------------------------- |
-| Level    | How much the corpus declares, from 0 to 2. | Built. `level: 1` or `level: 2`.                           |
-| Dialect  | Which syntax it uses beyond the baseline.  | Reserved key `dialect`. Warns that it is not checked yet.  |
-| Profiles | Which shared sets of types it uses.        | Reserved key `profiles`. Warns that it is not checked yet. |
+| Setting  | It says                                    | In v0                                                     |
+| -------- | ------------------------------------------ | --------------------------------------------------------- |
+| Level    | How much the corpus declares, from 0 to 2. | Built. `level: 1` or `level: 2`.                          |
+| Dialect  | Which syntax it uses beyond the baseline.  | Reserved key `dialect`. Warns that it is not checked yet. |
+| Profiles | Which shared sets of types it uses.        | Built, as parents under `extends`. `profiles` is unused.  |
 
 The settings are separate on purpose. A profile is not a higher level, and a dialect is not a
 profile. A level-2 corpus can use the claims profile, another profile and its own types all at
 once.
 
-Proposed. A root file that uses all three could look like this. The proposal names profiles under
-`extends:`, which would replace the reserved `profiles` key (see
-[Sharing across corpora](#sharing-across-corpora-proposed)).
+A root file that uses all three could look like this. Profiles are named under `extends:` (see
+[Sharing across corpora](#sharing-across-corpora)). `dialect` is proposed: in v0 it gets a warning
+that it is not checked, and nothing is read from it.
 
 ```yaml
 corpus-schema: 0
 level: 2
 dialect: obsidian
 extends:
-  claims: "npm:@osdlc/corpus-profile-claims@0.1"
+  claims: "@osdlc/corpus-profile-claims"
 ```
-
-Do not write this yet. In v0, `dialect` gets a warning that it is not checked, `extends` gets a
-warning that it is not a v0 key, and nothing is read from either.
 
 ### Dialects (proposed)
 
@@ -572,34 +583,35 @@ checks it. A tool that does not checks only the baseline, and says that it did. 
 CommonMark and GFM work: CommonMark is the baseline and GFM is an extension. Our own markdown-tags
 package already has dialects in this sense.
 
-### Profiles (proposed)
+### Profiles
 
-A profile would be a shared, versioned set of types that many corpora can follow. The first one is
-the claims profile, for statements backed by evidence. Its design is in
-[the plan](ecosystem-plan.md).
+A profile is a shared, versioned set of types that many corpora can follow: a parent corpus that
+holds types and no records. The first one will be the claims profile, for statements backed by
+evidence. Its design is in [the plan](ecosystem-plan.md). It is not published as a package yet.
 
-- A corpus would name its profiles in the root file, under a short prefix, with a version. The
-  prefix is always required, so adding a second profile later breaks nothing. An unknown prefix
-  would be an error.
-- A type would say which profile type it builds on with `x-extends`, for example
-  `x-extends: claims/StudyResult`.
-- A record would pass its own type's schema and the schema of every type above it.
-- A profile could extend another profile. It would add rules or tighten them, but never loosen
-  them. So a record that is valid under the child profile is also valid under the parent. VA-Spec
-  and FHIR profiles work this way.
-- A corpus could give a profile's types its own folder names, mapped to them with `x-extends`. Field
-  names would stay the profile's, so tools and exports work everywhere.
-
-Do not use `x-extends` yet. In v0 it is an unknown schema keyword, so the validator reports the
-schema as an error.
+- A corpus names its profiles in the root file under `extends:`, each under a short prefix. The
+  prefix is always required, so adding a second profile later breaks nothing. An unknown prefix is
+  an error.
+- A profile is an npm package or a folder. npm or pnpm installs it, `package.json` holds the range,
+  and the lockfile pins the version.
+- A type says which profile type it builds on with `x-extends`, for example
+  `x-extends: claims/study-results`.
+- A record passes its own type's schema and the schema of every type above it.
+- A profile can extend another profile. It adds rules or tightens them, but never loosens them. So
+  a record that is valid under the child profile is also valid under the parent. VA-Spec and FHIR
+  profiles work this way.
+- A corpus can give a profile's type its own folder name: a local `findings/` type can
+  `x-extends: claims/statements`. Field names stay the profile's, so tools and exports work
+  everywhere.
 
 Earlier drafts of the plan and the architecture wrote these as a `profiles:` prefix map and an
 `x-class` keyword. The newer proposal replaces both with `extends:` and `x-extends`. Some text in
 those documents may still use the older names while they are updated.
 
-## Sharing across corpora (proposed)
+## Sharing across corpora
 
-Proposed, not built. v0 does not define links between corpora at all.
+Corpus inheritance, type inheritance and `sync` are built. Refining and waiving inherited records
+is proposed.
 
 Some things belong to a whole organization, such as its engineering principles. Teams and projects
 need them in their own corpora, next to their local records. Sometimes a project needs a stricter
@@ -608,40 +620,48 @@ corpus, and a team corpus reach a project corpus, while the project can still se
 
 ### Corpus inheritance
 
-A root file would name parent corpora under `extends:`. Each entry maps a prefix to a parent,
-pinned to a commit or a version. A parent can also be a relative path.
+A root file names parent corpora under `extends:`. Each entry maps a prefix to a parent: a package
+name, or a relative path for corpora side by side in one repository. The corpus must be at level 2.
 
 ```yaml
 corpus-schema: 0
 level: 2
 extends:
-  org: "github:acme/org-corpus@4f2a9c1"
-  claims: "npm:@osdlc/corpus-profile-claims@0.1"
+  org: "acme-org-principles"
+  claims: "@osdlc/corpus-profile-claims"
+  team: "../team-rules"
 ```
 
-- The project would see the parent's types and records, read-only, plus its own records.
-- Inheritance is transitive. If the org corpus extends another corpus, the project sees that one
-  too.
-- A parent update arrives only when the project changes its pin.
+- A package is found the way Node.js finds one from the corpus folder. Its corpus is the package
+  folder, or the folder that a `"corpus"` field in its `package.json` names.
+- `package.json` holds each package's range and the lockfile pins it. A private corpus with no
+  registry can be a git dependency: `"acme-org-principles": "github:acme/org-principles#v3"`.
+- The project sees the parent's types and records, read-only, plus its own records.
+- Inheritance is transitive. Each parent's own `extends` resolves from the parent's folder. A cycle
+  is an error. A corpus names only its own parents' types, so to use a grandparent's type, extend
+  it too.
+- A parent update arrives only when the project changes its dependency and reinstalls.
 
 ### A profile is a corpus with only types
 
-Under this proposal a profile is a parent corpus that holds types and no records. So `extends:`
-covers both, and there is one mechanism. `extends:` would replace the reserved `profiles` key.
+A profile is a parent corpus that holds types and no records. So `extends:` covers both, and there
+is one mechanism. `extends:` replaces the reserved `profiles` key, which stays unused.
 
 ### Type inheritance
 
-A type would build on another type with `x-extends`. The value is a local type, or `<prefix>/<Type>`
-for a type in a parent corpus.
+A type builds on another type with `x-extends` at the root of its schema. The value is a local
+type, or `<prefix>/<type>` for a type in a parent corpus.
 
 - A record must pass its own schema and every ancestor's.
-- A child type can add rules or tighten them, never loosen them.
-- An `x-ref` to a parent type accepts records of its child types.
-- A type has one parent at first.
+- A child type can add rules or tighten them, never loosen them. A parent with
+  `additionalProperties: false` admits no new fields.
+- An `x-ref` to a type accepts records of the types that extend it, local or inherited.
+- A type has one parent.
 
-### Explicit blending
+### Explicit blending (proposed)
 
-A local record would relate to an inherited one on purpose, in one of three ways:
+A local record would relate to an inherited one on purpose, in one of three ways. `x-ref` works
+today. `refines` and `waives` are proposed.
 
 | How       | It means                                                        |
 | --------- | --------------------------------------------------------------- |
@@ -649,15 +669,20 @@ A local record would relate to an inherited one on purpose, in one of three ways
 | `refines` | The local record is a narrower, local version of it.            |
 | `waives`  | The inherited record does not apply here. A reason is required. |
 
-A local record with the same type and id as an inherited one is an error unless it says `refines`.
-Nothing is shadowed silently.
+A local record whose type extends an inherited type, with the id of a record of that type, is an
+error. `refines` will allow it on purpose. Nothing is shadowed silently.
 
 ### `corpus-schema sync`
 
-Inherited records live in another repository or package, not in the project's folder. So Obsidian
-and GitHub have no file to follow a link to. `corpus-schema sync` would write a read-only copy of
-the inherited records into a generated folder, such as `_inherited/org/`, so those links resolve.
-The validator would check that the copy matches the pin.
+Inherited records live in another package or folder, not in the project's folder. So Obsidian and
+GitHub have no file to follow a link to. `corpus-schema sync` writes a read-only copy of each
+parent into `_inherited/<prefix>/`, and the project commits it. A local record then links to
+`../_inherited/org/principles/Be%20Kind.md`, and the link resolves everywhere.
+
+- The validator resolves such a link in the installed parent. It checks that the copy matches the
+  installed parent, byte for byte, and says to run `corpus-schema sync` when it does not.
+- The validator finds no local types or records in `_inherited/`.
+- A corpus that uses a parent's types and never links to its records needs no copy.
 
 ### Example: org principles
 
@@ -668,16 +693,16 @@ The org keeps a principles corpus, with a `principles` type. A project extends i
 corpus-schema: 0
 level: 2
 extends:
-  org: "github:acme/org-principles@4f2a9c1"
+  org: "acme-org-principles" # in package.json: "github:acme/org-principles#v3"
 ```
 
-The project refines one principle that needs a stricter local form, and waives one that does not
+Under the proposal, the project refines one principle that needs a stricter local form, and waives one that does not
 apply, with a reason. A reviewer can then read the project's corpus and see which principles hold,
 which were narrowed, and which were set aside and why. When the org changes a principle, the
 project sees the change only after it moves its pin.
 
-The exact shape of a `refines` or `waives` record is not designed yet. The plan has the tasks in
-order: inheritance first, then refine and waive, then `sync`, then a real org principles corpus.
+The exact shape of a `refines` or `waives` record is not designed yet. In the plan, refine and
+waive come next, then a real org principles corpus.
 
 ## Why we decided what we did
 
@@ -717,8 +742,8 @@ that compiles to JSON Schema.
 The folder must be pure data, with every rule written in the corpus or in the spec, never only in
 code. JSON Schema is a written, language-neutral format, so a validator in any language checks a
 corpus the same way. Editors and other JSON Schema tools can read the `.json` and `.yaml` schema
-files. Whether profiles are written as packs or as plain JSON Schema files is still an open
-question in the plan (D4). The records' schemas are JSON Schema either way.
+files. Profiles are plain JSON Schema too, with `x-extends` between types (D4 in the plan). Packs
+can compile to JSON Schema later.
 
 ### Relative links, not wikilinks, in the baseline
 
@@ -787,8 +812,7 @@ own and are not read as records, so one mistake does not turn into a list of sch
 
 The records of the decision give no separate reason. What the rule allows: a type folder carries
 all of its own rules, so you can copy it into another corpus and it arrives complete. Two types can
-share a `$id` without clashing. Sharing types on purpose is the job of profiles, which are
-proposed.
+share a `$id` without clashing. Sharing types on purpose is the job of `extends` and `x-extends`.
 
 ### No database or query layer in the spec
 
@@ -836,30 +860,35 @@ which is still proposed and waits for the owner's sign-off. The package and the 
 release does not. The `<file>: <field>` part of a problem line is part of the contract, as the spec
 fixes it. The message text is not.
 
-### Inheritance is explicit: no silent shadowing (proposed)
+### Inheritance is explicit: no silent shadowing
 
 Others considered: letting a local record with the same id simply replace the inherited one.
 
 A reader of a project corpus should be able to tell what holds, what was narrowed and what was set
 aside, and why. That only works if the project says so. With silent shadowing, a local record could
-hide an org record and nobody would see it. So a local record cites, refines or waives an inherited
-one, and a same-id record without `refines` is an error.
+hide an org record and nobody would see it. So a local record cites an inherited one, and a same-id
+record is an error. The proposed `refines` and `waives` will let a record narrow or set aside an
+inherited one on purpose.
 
-### A profile is a types-only corpus (proposed)
+### A profile is a types-only corpus
 
 Others considered: profiles as their own thing, under their own `profiles:` key, beside a separate
 mechanism for inherited corpora.
 
 A profile is a parent corpus that happens to hold no records. Treating it that way gives one
-mechanism, `extends:`, for both, with one set of rules for pins, prefixes and type inheritance.
+mechanism, `extends:`, for both, with one set of rules for sources, prefixes and type inheritance.
 
-### Parents are pinned (proposed)
+### Parents travel as npm packages, pinned by the lockfile
 
-Others considered: following a parent's latest version.
+Others considered: following a parent's latest version, and a pin written in the root file, such
+as `github:acme/org-corpus@4f2a9c1`.
 
-The proposal does not record a longer reason. What a pin allows: a project's validation result does
-not change when someone edits the org corpus. An update arrives as a pin change that a person makes
-and can review. And `sync` has a fixed version to compare its copy against.
+A parent is an npm package or a local folder. npm or pnpm installs it, `package.json` holds the
+range, and the lockfile pins it. Git dependencies cover private corpora with no registry. The spec
+stays independent of npm: it says only that each parent resolves to a folder holding a corpus. What
+a pin allows: a project's validation result does not change when someone edits the org corpus. An
+update arrives as a dependency change that a person makes and can review. And `sync` has a fixed
+installed version to compare its copy against.
 
 ### Smaller choices from the first design review
 
@@ -883,9 +912,9 @@ item. The task numbers are the plan's [task records](planning/README.md).
 
 | Not in v0                                                        | Where it stands                                                                     |
 | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| Links between corpora                                            | Proposed: corpus inheritance with `extends:` and `sync`.                            |
+| Links between corpora, other than to a parent                    | Links to parents work through `extends:` and `sync`. Others are not in the plan.    |
+| Refining or waiving an inherited record                          | A task in the plan: `refines` and `waives`.                                         |
 | Dialects                                                         | Proposed: the baseline plus named dialects, `obsidian` first.                       |
-| Profiles                                                         | Proposed: types-only corpora named under `extends:`, with `x-extends`.              |
 | A schema rule that warns instead of failing (`x-warn`)           | A task in the plan, after the first release.                                        |
 | `x-ref` inside nested objects                                    | Needed for evidence lines inside a statement. Not yet a task in the plan.           |
 | Build targets: JSON, SQLite, Astro, Nuxt, Obsidian Bases views   | The JSON and SQLite build is a task after the query layer. The others have no task. |
@@ -906,14 +935,14 @@ The full plan is in [ecosystem-plan.md](ecosystem-plan.md), under review in
 spec. The plan numbers each task, and the numbers still change while the plan is edited, so this
 section describes tasks by what they do.
 
-Where it lives. The spec, its conformance cases and the TypeScript package are in osdlc/osdlc today,
-in `packages/conformance/corpus-schema/` and `packages/ts/corpus-schema/`. The rename from
+Where it lives. The spec, its conformance cases and the TypeScript package are in this repository,
+osdlc/markdown, in `packages/conformance/corpus-schema/` and `packages/ts/corpus-schema/`. The rename from
 markdown-db and the levels came in [osdlc/osdlc#725](https://github.com/osdlc/osdlc/pull/725), and
 record folders in [osdlc/osdlc#729](https://github.com/osdlc/osdlc/pull/729). The release pull
 request, [osdlc/osdlc#726](https://github.com/osdlc/osdlc/pull/726), cut 0.1.0, but it was never
 published. Record folders landed as a second minor bump, so the first version on npm is 0.2.0, from
-[osdlc/osdlc#733](https://github.com/osdlc/osdlc/pull/733). Once this repo, osdlc/markdown, has its own release setup, the spec,
-its cases and the package move here. The npm name stays the same.
+[osdlc/osdlc#733](https://github.com/osdlc/osdlc/pull/733). They then moved here, in
+[osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9). The npm name stayed the same.
 
 The evidence work comes first:
 
@@ -931,11 +960,11 @@ Then the spec grows:
 
 - `x-warn`: a schema can mark a rule as a warning instead of an error.
 - The Obsidian dialect.
-- Profiles: the validator learns `extends:` and `x-extends`. Then the claims types ship as a
+- Profiles: the validator reads `extends:` and `x-extends`. Next the claims types ship as a
   versioned npm package, `@osdlc/corpus-profile-claims`, and corpora name it instead of holding
   copies. Name overrides and an acceptance-testing profile build on it.
-- Corpus inheritance, then `refines` and `waives`, then `corpus-schema sync`, then a real org
-  principles corpus as the first case.
+- Corpus inheritance and `corpus-schema sync` are built. Next come `refines` and `waives`, then a
+  real org principles corpus as the first case.
 
 And the code under it changes:
 
@@ -1019,10 +1048,13 @@ The proposed `obsidian` dialect would make wikilinks normal, with no warning.
 
 ### How do I share types between corpora today?
 
-Copy the type folders. A type folder holds its own schema, so it arrives complete. A `$ref` from one
-type's schema to another type's schema does not resolve, so each copy must stand alone. Copies can
-drift apart, which is fine for one or two corpora. For the claims types, the example corpus in this
-repo is meant to be copied with `npx degit`. Profiles, which are proposed, would replace the copies.
+Extend a corpus that holds them. Name it under `extends:`, then build local types on its types with
+`x-extends`. A schema that holds only `x-extends: <prefix>/<type>` uses the type as it is.
+
+You can also copy the type folders. A type folder holds its own schema, so it arrives complete. A
+`$ref` from one type's schema to another type's schema does not resolve, so each copy must stand
+alone. Copies can drift apart. For the claims types, the example corpus in this repo is meant to be
+copied with `npx degit` until the claims profile is published as a package.
 
 ### Is there a Rust version?
 
@@ -1067,32 +1099,32 @@ jobs:
 ```
 
 Version 0.2.0 is on npm. For the current usage, check the
-[package README](https://github.com/osdlc/osdlc/tree/main/packages/ts/corpus-schema#readme). A
+[package README](../packages/ts/corpus-schema/README.md). A
 corpus's schemas run on its data, and a badly written `pattern` or `x-id-pattern` can take a very
 long time on some input. So validate a corpus you do not trust only with a time limit, such as the
 `timeout-minutes` above. Leave `--fix` out of CI checks: it rewrites files in place.
 
 ### How do org principles reach my project?
 
-Today, by copying: the project copies the org's type folders and the records it needs. Under the
-[proposal](#sharing-across-corpora-proposed), the project's root file names the org corpus under
-`extends:`, pinned to a commit or version. The project then sees the org's types and records,
-read-only, next to its own.
+The project's root file names the org corpus under `extends:`, as a package or a relative path (see
+[Sharing across corpora](#sharing-across-corpora)). The project then sees the org's types and
+records, read-only, next to its own. To link to the org's records, run `corpus-schema sync` and
+commit the copy.
 
 ### Can I override an org record?
 
-Not silently. Under the proposal, a local record with the same type and id as an inherited one is an
-error, unless it says `refines`. A refining record is a local, narrower version of the org record.
-If an org record does not apply, a local record `waives` it and gives a reason. You can also just
-cite it with `x-ref`.
+Not silently. A local record whose type extends the org's type, with the id of one of its records,
+is an error. You can cite the org record with `x-ref`. Under the proposal, a local record could
+also say `refines`, to be a local, narrower version of the org record, or `waives`, with a reason,
+when an org record does not apply.
 
 ### Why can't Obsidian see inherited records without sync?
 
-Inherited records would live in another repository or package, pinned to a version. They are not
-files in your folder, so Obsidian and GitHub have nothing to open when you follow a link to one.
-The proposed `corpus-schema sync` writes a read-only copy into a generated folder, such as
-`_inherited/org/`, so the links have real files to point at. The validator would check that the copy
-matches the pin, so it cannot quietly go stale.
+Inherited records live in another package or folder, pinned to a version. They are not files in
+your folder, so Obsidian and GitHub have nothing to open when you follow a link to one.
+`corpus-schema sync` writes a read-only copy into `_inherited/<prefix>/`, so the links have real
+files to point at. The validator checks that the copy matches the installed parent, so it cannot
+quietly go stale.
 
 ## Words used
 
@@ -1107,8 +1139,9 @@ matches the pin, so it cannot quietly go stale.
 | narrative      | Every other file in a corpus: READMEs, guides, attachments. The validator ignores it.                                             |
 | level          | How much a corpus declares. 0 is any folder of linked notes, 1 adds the root file and types, 2 gives every type a schema.         |
 | dialect        | A named flavor of note syntax on top of the baseline, such as `obsidian`. Reserved in v0.                                         |
-| profile        | A shared, versioned set of types that many corpora can use. Reserved in v0. The proposal makes it a corpus with only types.       |
-| `extends`      | Proposed root-file key that names parent corpora and profiles by prefix, each pinned to a version.                                |
+| profile        | A shared, versioned set of types that many corpora can use: a parent corpus with only types, named under `extends`.               |
+| `extends`      | The root-file key that names parent corpora and profiles by prefix, each a package name or a relative path.                       |
+| `_inherited/`  | The folder where `corpus-schema sync` keeps a read-only copy of each parent.                                                      |
 | `x-ref`        | A schema keyword that makes a field a typed link to a record of a named type, like a foreign key.                                 |
 | `x-id-pattern` | A schema keyword with a regular expression that every id in the type must match.                                                  |
-| `x-extends`    | Proposed schema keyword that makes a type build on another type, local or from a parent corpus.                                   |
+| `x-extends`    | A schema keyword that makes a type build on another type, local or from a parent corpus.                                          |
