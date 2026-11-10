@@ -24,8 +24,8 @@
 // `publish` field allows crates.io (unset, or a list that names `crates-io`).
 import { execFileSync } from 'node:child_process'
 import { appendFileSync } from 'node:fs'
-import { indexEntries, publishesToCratesIo } from './crates-io-index.ts'
-import type { CargoMetadata } from './crates-io-index.ts'
+import { indexEntries, publishesToCratesIo } from '@osdlc/package-checks'
+import type { CargoMetadata } from '@osdlc/package-checks'
 
 const manifest = process.argv[2]
 if (!manifest) {

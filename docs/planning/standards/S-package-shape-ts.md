@@ -55,9 +55,10 @@ each. This standard says what that shape is.
 
 ## Enforcement
 
-`scripts/package-shape-ts.ts` holds the checks, as functions over data that
-`scripts/check-packages.ts` reads from each package and from its packed
-tarball. `scripts/package-shape-ts.test.ts` tests them.
+[`@osdlc/package-checks`](../../../packages/ts/package-checks/README.md)
+holds the checks, as functions over data that `package-checks ts` reads from
+each package and from its packed tarball. The root `package-checks.json`
+names the config packages (`tsconfig`, `prettier-config`).
 
 ```sh
 pnpm run build

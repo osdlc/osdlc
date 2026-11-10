@@ -1,0 +1,16 @@
+{
+  "catchingUp": {
+    "tiered-dirs": "the Rust crate reaches 0.5.0 with the realign-small-twins work",
+    "config-layers": "the Rust crate gains the project-file migrations and compare-and-swap writes of osdlc#637"
+  },
+  "unmigrated": [
+    "packages/ts/gfm-table",
+    "packages/ts/markdown-link",
+    "packages/ts/yaml-splice",
+    "packages/rust/markdown-contract"
+  ],
+  "skipScan": {
+    "packages/ts/conformance-suites": "the checker's own tests hold suite paths and fixture paths as test data",
+    "packages/ts/package-checks": "its tests hold suite paths and fixture paths as test data"
+  }
+}
