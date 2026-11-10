@@ -185,12 +185,12 @@ TASKS = {
     1: ("corpus-schema", "rename, levels", "done"),
     2: ("Record folders", "osdlc PR 729", "done"),
     3: ("Publish 0.2.0", "on npm", "done"),
-    4: ("Claims example", "profiles/claims", "doing"),
+    4: ("Claims example", "profiles/claims", "done"),
     5: ("Project writes", "evidence as records", "todo"),
     6: ("x-warn", "soft schema rules", "todo"),
     7: ("Obsidian", "dialect: wikilinks", "todo"),
-    8: ("Use npm", "skillwright, root file", "todo"),
-    9: ("Profiles", "extends: types", "todo"),
+    8: ("Use npm", "skillwright, root file", "done"),
+    9: ("Extends", "package or path", "todo"),
     10: ("Store layout", "markdown-store", "todo"),
     11: ("Link resolver", "after PRs 649, 651", "todo"),
     12: ("One TS model", "vault + graph", "todo"),
@@ -199,24 +199,36 @@ TASKS = {
     15: ("Query layer", "one, on the model", "todo"),
     16: ("JSON / SQLite", "after query layer", "todo"),
     17: ("Render/sites", "PRs 719 720", "doing"),
-    18: ("This plan", "markdown PR 4", "owner"),
+    18: ("This plan", "markdown PR 4", "done"),
     19: ("Point repos", "here, after 18", "todo"),
-    20: ("Arch doc", "markdown PR 5", "doing"),
-    21: ("Release here", "markdown PR 9", "doing"),
+    20: ("Arch doc", "markdown PR 5", "done"),
+    21: ("Release here", "markdown PR 10", "doing"),
     22: ("Capture", "writes study results", "todo"),
-    26: ("Adopt claims", "harness-reference", "todo"),
-    27: ("Extends", "parents, pinned", "todo"),
+    26: ("Adopt claims", "harness-reference", "done"),
+    27: ("Org corpora", "inherit records", "todo"),
     28: ("Refine, waive", "local vs inherited", "todo"),
     29: ("Sync", "_inherited copy", "todo"),
     30: ("Org principles", "first real case", "todo"),
-    23: ("Claims profile", "after 9, 21, 31", "todo"),
+    23: ("Claims profile", "npm package", "todo"),
     33: ("Spec details", "YAML, format, codes", "todo"),
     34: ("Ids and move", "slug ids, move verb", "todo"),
     31: ("Nested x-ref", "any depth; after 3, 4", "todo"),
     32: ("Rust validator", "after 12 and 14", "todo"),
     24: ("Name overrides", "own folder names", "todo"),
     25: ("Testing profile", "extends claims", "todo"),
+    35: ("Example pair", "org + project, CI", "todo"),
+    36: ("Release 0.3.0", "corpus-schema", "todo"),
+    37: ("Use extends", "harness-reference", "todo"),
 }
+# What must come first, by task. A task can wait on one outside the 0.3.0 milestone.
+DEPS = {
+    2: [1], 3: [2], 4: [3], 5: [3, 4, 22], 6: [3], 7: [3], 8: [3], 9: [3, 21], 10: [3],
+    12: [11], 13: [12], 14: [3, 12], 15: [12], 16: [15], 19: [18], 21: [3], 22: [26],
+    23: [21, 36], 24: [23], 25: [23, 24], 26: [4, 8], 27: [9], 28: [27], 29: [27],
+    30: [27, 28, 35], 31: [3, 4], 32: [12, 14], 33: [3], 34: [3], 35: [23, 29, 36],
+    36: [9, 21, 27, 29], 37: [23, 26, 36],
+}
+assert all(n in TASKS and all(d in TASKS for d in ds) for n, ds in DEPS.items())
 STATUS = [("done", "done"), ("doing", "in progress"), ("owner", "waiting on owner"), ("todo", "not started")]
 
 
@@ -252,7 +264,7 @@ def task_graph():
     place = {4: (3, 0), 1: (0, 1), 11: (0, 2), 2: (1, 1), 12: (1, 2), 3: (2, 1)}
     edges = [(1, 2), (11, 12), (2, 3), (3, 4)]
     # groups: (column, first row, title, members, fed by)
-    groups = [(1, 3, "After 0.2.0", [6, 7, 8, 10, 33, 34, 21, 31, 9], 3),
+    groups = [(1, 3, "After 0.2.0", [6, 7, 8, 10, 33, 34, 31, 21, 9], 3),
               (2, 2, "After the TS model", [13, 15, 16, 14, 32], 12)]
     gpitch = 62
     bodies = []
@@ -284,40 +296,45 @@ def task_graph():
         bodies.append(node(n, cols[0], ev_y[n]))
     for n1, n2 in zip(chain_nodes, chain_nodes[1:]):
         out.append(edge(cx(0), ev_y[n1] + th, cx(0), ev_y[n2]))
+    # 21 feeds 9 inside the box
+    out.append(edge(cx(1), ys[21] + th, cx(1), ys[9]))
     # 8 feeds 26 from the side of its box
     sx, sy = cols[1] - 3, ys[8] + th / 2
     out.append(f'<path class="edge" d="M{sx},{sy} C{sx - 40},{sy} {cols[0] + 100},{sy} {cols[0] + 100},{y9 - 5}" marker-end="url(#ah)"/>')
     # 4 feeds 31 down the gap between the columns
     x4r, y4r = cols[0] + tw, at(*place[4])[1] + th / 2
     out.append(f'<path class="edge" d="M{x4r},{y4r} C{x4r + 4},{y4r + 20} {x4r + 4},{ys[31] + th / 2 - 20} {cols[1] - 3},{ys[31] + th / 2}" marker-end="url(#ah)"/>')
-    # profile chain: below the TS-model group in the last column, fed by 9, 21 and 31
-    gx, gy = cols[2] - 3, bottom + 20
-    cpitch = 66
-    gh = 24 + 3 * cpitch - 20
-    out.append(f'<rect class="group" x="{gx}" y="{gy}" width="{tw + 6}" height="{gh}" rx="10"/>'
-               f'<text class="gt" x="{gx + 10}" y="{gy + 16}">After profiles</text>')
-    chain = [(23, gy + 24), (24, gy + 24 + cpitch), (25, gy + 24 + 2 * cpitch)]
-    for n, ny in chain:
-        bodies.append(node(n, cols[2], ny))
-    for (_, y1), (_, y2) in zip(chain, chain[1:]):
-        out.append(edge(cols[2] + tw / 2, y1 + th, cols[2] + tw / 2, y2))
-    for n, tx in ((21, cols[2] + 100), (31, cols[2] + 70), (9, cols[2] + 40)):
-        sx, sy = cols[1] + tw, ys[n] + th / 2
-        out.append(f'<path class="edge" d="M{sx},{sy} C{sx + 40},{sy} {tx},{sy + 10} {tx},{gy - 5}" marker-end="url(#ah)"/>')
-    bottom1 = gy + gh
-    # inheritance tasks: below everything in the evidence and middle columns, fed by 9
+    # inheritance tasks: below the other groups, fed by 9
     gx, gy = cols[0] - 3, max(bottom, ev_y[5] + th) + 20
     rows = [gy + 24, gy + 104, gy + 184]
     gh = rows[2] + th + 14 - gy
     out.append(f'<rect class="group" x="{gx}" y="{gy}" width="{cols[1] + tw + 3 - gx}" height="{gh}" rx="10"/>'
                f'<text class="gt" x="{gx + 10}" y="{gy + 16}">After 9</text>')
-    for n, c, ny in ((27, 1, rows[0]), (28, 1, rows[1]), (29, 0, rows[1]), (30, 1, rows[2])):
+    for n, c, ny in ((27, 1, rows[0]), (28, 1, rows[1]), (29, 0, rows[1]), (36, 0, rows[2])):
         bodies.append(node(n, cols[c], ny))
     out.append(edge(cx(1), rows[0] + th, cx(1), rows[1]))
-    out.append(edge(cx(1), rows[1] + th, cx(1), rows[2]))
     out.append(edge(cx(1), rows[0] + th, cx(0), rows[1]))
+    out.append(edge(cx(0), rows[1] + th, cx(0), rows[2]))
     out.append(edge(cx(1), y9 + th, cx(1), gy))
-    bottom = max(bottom1, gy + gh)
+    # tasks that wait on the 0.3.0 release: profile chain, example pair, harness-reference
+    gy2 = gy + gh + 20
+    rows2 = [gy2 + 24, gy2 + 104, gy2 + 184]
+    gh2 = rows2[2] + th + 14 - gy2
+    out.append(f'<rect class="group" x="{gx}" y="{gy2}" width="{cols[2] + tw + 3 - gx}" height="{gh2}" rx="10"/>'
+               f'<text class="gt" x="{gx + 10}" y="{gy2 + 16}">After 0.3.0</text>')
+    for n, c, ny in ((23, 1, rows2[0]), (37, 0, rows2[1]), (35, 1, rows2[1]), (24, 2, rows2[1]),
+                     (30, 1, rows2[2]), (25, 2, rows2[2])):
+        bodies.append(node(n, cols[c], ny))
+    out.append(edge(cx(0), rows[2] + th, cx(1), gy2))
+    out.append(edge(cx(1), rows2[0] + th, cx(0), rows2[1]))
+    out.append(edge(cx(1), rows2[0] + th, cx(1), rows2[1]))
+    out.append(edge(cx(1), rows2[0] + th, cx(2), rows2[1]))
+    out.append(edge(cx(2), rows2[1] + th, cx(2), rows2[2]))
+    out.append(edge(cx(1), rows2[1] + th, cx(1), rows2[2]))
+    # 28 feeds 30 down the gap between the middle and last columns
+    xr, ya, yt = cols[1] + tw, rows[1] + th / 2, rows2[2]
+    out.append(f'<path class="edge" d="M{xr},{ya} C{xr + 8},{ya} {xr + 8},{yt - 25} {xr - 12},{yt - 5}" marker-end="url(#ah)"/>')
+    bottom = gy2 + gh2
     for a, b in edges:
         (ax, ay), (bx, by) = at(*place[a]), at(*place[b])
         out.append(edge(ax + tw / 2, ay + th, bx + tw / 2, by))

@@ -19,6 +19,8 @@ building toward is in [the architecture](architecture.md).
   record folder can't hold another record folder or a type folder.
 - A **profile** is a shared set of types that many corpora can use, such as a set of types for
   evidence. It is a corpus that has only types. A corpus can use more than one profile, next to its own types.
+- A **parent** is a corpus that another corpus builds on, named under `extends` in its root file. A
+  profile is a parent. So is an org's principles corpus.
 - A **dialect** is a named flavor of note syntax on top of a common baseline, such as Obsidian's
   wikilinks and embeds.
 - **Conformance cases** are shared test inputs and expected results. Every implementation of the
@@ -28,7 +30,9 @@ building toward is in [the architecture](architecture.md).
 
 This graph shows all the work we know about. The numbers match the list in
 [All the work](#all-the-work) below. An arrow means "must come first". A dashed box means every task
-in it waits on the task whose arrow points at the box.
+in it waits on the task whose arrow points at the box. Arrows from some finished tasks are left
+out where they would cross the page. The order for the npm work is in
+[the milestone](#milestone-upstream-corpora-over-npm).
 
 ![The task graph, with the status of each task](diagrams/tasks.svg)
 
@@ -59,10 +63,11 @@ before the rest of the plan. It is tasks 1 to 5, 22 and 26, in the first columns
   `profiles/claims/README.md` maps each type to VA-Spec and says what we leave out. CI checks the
   example with `@osdlc/corpus-schema` from npm. People copy it with
   `npx degit osdlc/markdown/profiles/claims/example <dir>`. We don't need an npm package for that
-  yet. In progress, in a separate pull request.
-- **26. harness-reference adopts the claims types.** harness-reference copies the type folders from
-  the example and moves its records over. `references` becomes `documents`, `evidence` becomes
-  `study-results`, and the `harness` field goes away. After 4 and 8.
+  yet. Done: it merged in [osdlc/markdown#6](https://github.com/osdlc/markdown/pull/6).
+- **26. harness-reference adopts the claims types.** Done. harness-reference copies the type folders
+  from the example and moves its records over. `references` becomes `documents`, `evidence` becomes
+  `study-results`, and the `harness` field goes away
+  ([osdlc/skillwright#97](https://github.com/osdlc/skillwright/pull/97)).
 - **22. Capture writes study results.** harness-reference has a capture command. It will write
   VA-Spec study results, each with a contribution (who, when and in what role). After 26.
 - **5. The project writes records.** It copies the types from the example and starts keeping its
@@ -70,12 +75,13 @@ before the rest of the plan. It is tasks 1 to 5, 22 and 26, in the first columns
 
 ### How the types reach other corpora
 
-The claims types will be shared in three steps, as the tools improve.
+The claims types reach other corpora in three steps, as the tools improve.
 
 1. Now: a corpus copies the type folders from the example.
-2. Task 9: the validator learns `extends:` and `x-extends`.
-3. Task 23: the types ship as an npm package, `@osdlc/corpus-profile-claims`. A corpus names it in
-   its root file under `extends:` and marks each type with `x-extends`, so it holds no copies.
+2. Task 9: the validator learns `extends` and `x-extends`, so a corpus can build on a parent that
+   is a folder.
+3. Task 23: the types ship as an npm package, `@osdlc/corpus-profile-claims`. A corpus lists it
+   under `extends` in its root file and marks each type with `x-extends`, so it holds no copies.
 
 Until step 3, copies can drift apart. That is fine for one or two corpora.
 
@@ -113,9 +119,9 @@ What is published:
 - The Rust corpus packages (markdown-corpus, markdown-relink, markdown-vault-fs) are on crates.io.
 - From rust-ontogen, ontogen 0.11.0, ontogen-core 0.8.0, ontogen-macros 0.2.0, ontogen-jsonapi
   0.3.0 and ontogen-ts 0.2.0 are on crates.io. markdown-store is `publish = false`.
-- Nothing from dev is published. corpus-schema 0.2.0 is on npm.
-- skillwright still has its own copy of the old markdown-db package. harness-reference uses it
-  through `workspace:*`.
+- Nothing from dev is published. corpus-schema 0.2.0 is on npm, and skillwright's harness-reference
+  uses it from there ([osdlc/skillwright#95](https://github.com/osdlc/skillwright/pull/95) removed
+  skillwright's own copy).
 
 ## What is wrong
 
@@ -163,7 +169,8 @@ In practice:
   markdown-corpus crate.
 - The spec has levels 0 to 2. Its validator reads the corpus model instead of walking the folder
   itself.
-- Types can come from profiles. There is one format for defining types, not two.
+- Types can come from parent corpora, such as profiles. There is one format for defining types, not
+  two: plain JSON Schema.
 - markdown-store writes the spec's layout and uses the shared note parts.
 - There is one query layer, built on the corpus model.
 
@@ -205,41 +212,96 @@ that the proposed decision D-ME8T would stretch "pack" to cover packs of entity 
 end up using the word for this too. Whether model-schema switches its word is an open question for
 [sksizer/dev#4069](https://github.com/sksizer/dev/pull/4069).
 
-### Proposal: sharing across corpora
-
-This is a proposal, not a decision, and it is not built.
+### Sharing across corpora
 
 Some things belong to a whole organization, such as its engineering principles. Teams and projects
-need them in their own corpora, next to local records, and may need to narrow them or set one aside.
-So a corpus can extend a parent corpus. The parent can extend another one, so org, team and project
-form a chain.
+need them in their own corpora, next to local records. So a corpus can extend a parent corpus. The
+parent can extend another one, so org, team and project form a chain. A profile is a parent that has
+only types.
 
-A project root file could look like this:
+The parts below marked decided are decisions D11, D4 and D12. They are not built yet: tasks 9, 27
+and 29 build them. The parts marked proposal are still open.
+
+**Parents are npm packages (decided, D11).** A parent is an npm package or a local folder. npm or
+pnpm installs it. `package.json` holds the version range and the lockfile pins the exact version, so a
+parent update arrives only when someone updates the lockfile. A private org corpus can be a git
+dependency, such as `"acme-principles": "github:acme/principles#v3"`, so it needs no registry.
+
+The spec stays independent of npm. It says that each parent resolves to a folder that holds a
+corpus. corpus-schema ships two resolvers: a package name, found the way Node finds packages from the
+corpus folder, and a relative path (`./` or `../`), for monorepos.
+
+A root file looks like this:
 
 ```yaml
+corpus-schema: 0
+level: 2
 extends:
-  org: "github:acme/org-corpus@4f2a9c1"
-  claims: "npm:@osdlc/corpus-profile-claims@0.1"
+  claims: "@osdlc/corpus-profile-claims"   # package name, resolved from this folder
+  org: "../org-principles"                 # or a relative path
 ```
 
-The project then sees the org's types and records, read-only, plus its own. A parent update arrives
-only when the project changes its pin.
+The rules (decided):
 
-- A profile is a parent corpus that has only types. So `extends:` replaces the `profiles` key that the
-  v0 spec reserves, and there is one mechanism.
-- A type builds on another type with `x-extends`. A record must pass its own schema and every
-  ancestor's. A child can add or tighten rules, never loosen them. An `x-ref` to a parent type
-  accepts child records.
-- A local record relates to an inherited one on purpose. It can cite it with `x-ref`, narrow it with
-  `refines`, or set it aside with `waives` and a reason. Two records with the same type and id are
-  an error unless one says `refines`. Nothing is shadowed silently.
-- `corpus-schema sync` writes a read-only copy of the inherited records into a generated folder,
-  such as `_inherited/org/`, so Obsidian and GitHub links resolve. The validator checks that the copy
-  matches the pin.
+1. `extends` maps a prefix to a source. A prefix is lowercase letters, digits and `-`. A source that
+   starts with `./` or `../` is a path from the corpus root. Anything else is a package name. A
+   package's corpus root is the package folder, or the folder named by a `corpus` field in its
+   `package.json`. The folder must hold a `corpus-schema.md`. `extends` needs level 2.
+2. Parents load transitively. Each parent's own `extends` resolves from the parent's folder. A cycle
+   is an error, and so is an unknown prefix anywhere.
+3. A parent's types are visible as `<prefix>/<type>`, read-only. A local type folder can use one as
+   it is, with a schema that holds only `x-extends: claims/statements`, or add fields. A type has
+   one parent for now.
+4. Types are plain JSON Schema (D4). A type builds on another with `x-extends`, using a parent type
+   or a local type name. A record must pass every schema up the chain, which is JSON Schema's
+   `allOf`. A child can add rules or tighten them, never loosen them.
+5. `x-ref: <prefix>/<type>` points at records of an inherited type. It also accepts local records
+   whose type `x-extends` that type. An `x-ref` to a local type accepts records of local types that
+   extend it.
+6. Inherited records are read-only. A local record whose type extends an inherited type and whose id
+   equals an inherited record's id is an error.
+7. The root key `profiles` stays reserved and unused. `extends` replaces the idea.
+
+**Inherited records come in as a committed copy (decided, D12).** `corpus-schema sync` copies each
+parent corpus into `_inherited/<prefix>/`: its root file, type folders and records, and its own
+`_inherited/`, so the chain carries through. The copy is committed. Relative links from local records
+then resolve in Obsidian and on GitHub. The validator skips `_inherited/` when it looks for local
+types and records. A link from a local record into `_inherited/<prefix>/` counts as a link to that
+parent's record. When the copy is missing or differs from the installed parent, the validator says so
+and names the fix: run `corpus-schema sync`. A corpus that only uses a parent's types and never links
+its records needs no copy.
+
+**Refine and waive (proposal).** A local record relates to an inherited one on purpose. It can cite
+it with `x-ref`, which is decided. It could also narrow it with `refines`, or set it aside with
+`waives` and a reason. Two records with the same type and id would be an error unless one says
+`refines`. Nothing is shadowed silently. This is task 28.
 
 For principles: the org keeps a principles corpus. A project extends it, refines a principle that
 needs a stricter local form, and waives one that doesn't apply, with a reason. A reviewer can then
 read the project's own corpus and see what holds and what was set aside.
+
+## Milestone: upstream corpora over npm
+
+The goal: a corpus can build on parent corpora that arrive as npm packages, with a lockfile pinning
+them. We work toward it in this order. Each step names its task numbers. A task here can wait on one
+outside the milestone, such as task 26.
+
+1. **Finish the release setup here (task 21).** osdlc/osdlc publishes `@osdlc/package-checks` 0.1.0.
+   [osdlc/markdown#10](https://github.com/osdlc/markdown/pull/10) gets its lockfile and leaves
+   draft, and merges. [osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9) has merged.
+2. **Spec and validator (tasks 9 and 27).** `extends` with both resolvers, transitive loading,
+   `x-extends`, cross-corpus `x-ref` and the id rule.
+3. **`corpus-schema sync` and the copy check (task 29).**
+4. **Release corpus-schema 0.3.0 (task 36).**
+5. **The claims profile as an npm package (task 23).** `@osdlc/corpus-profile-claims`, a corpus with
+   types only.
+6. **An example pair, checked in CI (task 35).** An org corpus with records, and a project corpus that
+   extends both the claims profile and the org corpus, with local records citing inherited ones. This
+   is the start of task 30.
+7. **harness-reference uses `extends` (task 37).** It stops holding copies of the claims types.
+
+Later in the same milestone: refine and waive (task 28), a real org principles corpus (task 30) and
+name overrides (task 24).
 
 ## Decisions
 
@@ -253,6 +315,10 @@ read the project's own corpus and see what holds and what was set aside.
   simply has no schema file.
 - **D3. The TypeScript corpus model is called markdown-corpus**, the same as its Rust twin. The
   markdown-corpus crate keeps its name.
+- **D4. Types are plain JSON Schema** (decided 2026-11-09). A type builds on another with
+  `x-extends: <prefix>/<type>`, or a local type name. A record must pass every schema up the chain
+  (`allOf`). A child can add or tighten rules, never loosen them. Packs could compile to JSON Schema
+  later.
 - **D6. The spec has a level 0.** The merged SPEC.md defines it: a corpus that declares nothing,
   whose relative links must resolve.
 - **D7. When to publish** (decided 2026-11-09). `@osdlc/corpus-schema` 0.2.0 was published, with
@@ -274,10 +340,17 @@ read the project's own corpus and see what holds and what was set aside.
   plain word for statements backed by evidence. It doesn't clash with a type name, as "evidence"
   would. "va-spec" would read as genomics to anyone outside that field.
 
+- **D11. Upstream corpora travel as npm packages** (decided 2026-11-09). A parent corpus or profile
+  is an npm package or a local folder. `package.json` holds the range and the lockfile pins it. Git
+  dependencies cover private org corpora with no registry. The spec stays independent of npm: it
+  says each parent resolves to a folder that holds a corpus. corpus-schema has two resolvers, a
+  package name and a relative path.
+- **D12. Inherited records come in as a committed copy** (decided 2026-11-09).
+  `corpus-schema sync` copies each parent into `_inherited/<prefix>/`. The validator checks the copy
+  against the installed parent and says to run `corpus-schema sync` when they differ.
+
 ### Still open
 
-- **D4. How types are defined.** Profiles written as packs, or plain JSON Schema files that packs
-  compile to.
 - **D5. What "db" means.** The query layer, or nothing until we build one.
 
 ### Names we considered
@@ -316,11 +389,12 @@ The numbers match the task graph at the top. "After" says what must come first.
   - Until task 31, a statement's evidence lines are plain relative links with a pattern check, not
     `x-ref`.
 
-  In progress, in a separate pull request.
+  Done: [osdlc/markdown#6](https://github.com/osdlc/markdown/pull/6).
 - **26. harness-reference adopts the claims types.** Copy the type folders from the example and move
   harness-reference's records over: `references` becomes `documents` (they live today in
   [osdlc/skillwright#74](https://github.com/osdlc/skillwright/pull/74)), `evidence` becomes
-  `study-results`, and the `harness` field is dropped. After 4 and 8.
+  `study-results`, and the `harness` field is dropped. After 4 and 8. Done:
+  [osdlc/skillwright#97](https://github.com/osdlc/skillwright/pull/97).
 - **22. Capture writes study results.** harness-reference's capture command writes VA-Spec study
   results, with a contribution. After 26.
 - **5. The evidence project writes records.** It copies the types from the example. After 3, 4 and
@@ -330,24 +404,32 @@ The numbers match the task graph at the top. "After" says what must come first.
   embeds. After 3.
 - **8. skillwright uses the npm package.** harness-reference switches from its `workspace:*` copy of
   markdown-db to `@osdlc/corpus-schema` and renames its root file to `corpus-schema.md`. After 3.
-- **9. Profiles.** Decide D4, then let a corpus take its level-2 types from profiles. model-schema
-  moves to osdlc. After 3 and [sksizer/dev#4069](https://github.com/sksizer/dev/pull/4069).
-  A corpus names its profiles in the root file. Its `extends` key maps a short prefix to a
-  parent corpus and its version. A profile is a parent corpus that has only types. For example,
-  `claims: "npm:@osdlc/corpus-profile-claims@0.1"`. A type says which type it builds on with
-  `x-extends: claims/StudyResult`, or `x-extends: <local type>` for a type in the same corpus. A
-  record must pass its own schema and the schema of every type above it. A child type may add rules
-  and tighten them, but never loosen them. A type has one parent at first. The prefix is always
-  required, so adding a second profile later breaks nothing. An unknown prefix is an error.
-- **23. The claims profile.** The example from task 4 is already in the right place. The profile's
-  types are open: a proposition's object can be any JSON value, and consumers add their own kinds.
-  This follows the downstream review in [osdlc/markdown#8](https://github.com/osdlc/markdown/issues/8). This task adds
-  the profile wrapper, a corpus with only types, and publishes it as
-  `@osdlc/corpus-profile-claims`, versioned, from this repo. Corpora then name it under `extends:`
-  in their root file and use `x-extends` instead of holding full copies. harness-reference and the
-  evidence project switch over. After 9, 21 and 31, because publishing from this repo needs its release
-  setup. If the copies start to drift before then, we could release the profile from osdlc/osdlc
-  first.
+  Done: [osdlc/skillwright#95](https://github.com/osdlc/skillwright/pull/95), which also deleted
+  skillwright's copy.
+- **9. Parents: `extends` and `x-extends`.** In the milestone, step 2. D4 is decided, so the work
+  is to build it in the validator. A corpus names its parents in the root file. `extends` maps a
+  prefix to a source. The source is a package name, found the way Node finds packages from the
+  corpus folder, or a relative path that starts with `./` or `../`. Parents load transitively, a
+  cycle is an error, and the prefix is always required. A type says which type it builds on with
+  `x-extends: claims/statements`, or `x-extends: <local type>` for a type in the same corpus. A
+  record must pass its own schema and the schema of every type above it. A child may add rules and
+  tighten them, never loosen them. A type has one parent at first. This task also covers cross-corpus
+  `x-ref` and the rule that a local record can't reuse an inherited record's id (see
+  [Sharing across corpora](#sharing-across-corpora)). It no longer waits on
+  [sksizer/dev#4069](https://github.com/sksizer/dev/pull/4069): types are plain JSON Schema, so
+  moving model-schema to osdlc is separate work. After 3 and 21.
+- **23. The claims profile.** In the milestone, step 5. The example from task 4 is already in the
+  right place. The profile's types are open: a proposition's object can be any JSON value, and
+  consumers add their own kinds. This follows the downstream review in
+  [osdlc/markdown#8](https://github.com/osdlc/markdown/issues/8). This task adds the profile
+  wrapper, a corpus with only types, and publishes it as `@osdlc/corpus-profile-claims`, versioned,
+  from this repo. Corpora then list it by package name under `extends` in their root file and use
+  `x-extends` instead of holding full copies. harness-reference and the evidence project switch
+  over. After 21 and 36: publishing from this repo needs its release setup, and the profile is
+  checked with a corpus-schema that knows `extends`. It no longer waits on 31. The profile can ship
+  with its statements using relative links and a pattern check for evidence lines. When 31 lands,
+  a new profile version switches them to `x-ref`. If the copies start to drift before then, we could
+  release the profile from osdlc/osdlc first.
 - **24. Name overrides.** A corpus can give a profile's types its own folder names and map each one
   to its type with `x-extends`. Field names stay the profile's, so tools and exports work
   everywhere. Write down one tested word set from assurance cases: claim, argument, evidence and
@@ -356,24 +438,29 @@ The numbers match the task graph at the top. "After" says what must come first.
   what statements are about. Tests are methods. Test runs are study results, kept as record folders
   with their scripts, queries and CSV results. Pass and fail are the direction. Words come from OSLC
   QM and the ISTQB glossary. After 23 and 24.
-- **27. Corpus inheritance.** `extends:` can also name a whole corpus, with its records, not just
-  types. The parent is pinned to a commit or version. A corpus sees the parent's types and records
-  read-only, next to its own records. It is transitive. A parent update arrives as an explicit pin
-  bump. After 9. See [Sharing across corpora](#proposal-sharing-across-corpora).
+- **27. Corpus inheritance.** In the milestone, step 2. A parent named under `extends` can bring its
+  records, not just its types. A corpus sees the parent's types and records read-only, next to its
+  own records. A parent is an npm package (a version range plus the lockfile pin), a git dependency
+  for a private org corpus, or a local folder. Loading is transitive. A parent update arrives when
+  the lockfile changes. After 9. See [Sharing across corpora](#sharing-across-corpora).
 - **28. Refine and waive.** A local record can say `refines` (a local version that narrows an
   inherited record) or `waives` (it doesn't apply here, with a reason). A local record with the same
-  type and id as an inherited one is an error unless it says `refines`. After 27.
-- **29. `corpus-schema sync`.** It writes a read-only copy of inherited records into a generated
-  folder, such as `_inherited/org/`, so Obsidian and GitHub links resolve. The validator checks that
-  the copy matches the pin. After 27.
+  type and id as an inherited one is an error unless it says `refines`. After 27. Still a
+  proposal.
+- **29. `corpus-schema sync`.** In the milestone, step 3. It writes a read-only, committed copy of
+  each parent corpus into `_inherited/<prefix>/`, including the parent's own `_inherited/`, so
+  Obsidian and GitHub links resolve. The validator skips that folder when it looks for local
+  records, treats a link into it as a link to the parent's record, and says "run corpus-schema
+  sync" when the copy differs from the installed parent. After 27.
 - **30. An org principles corpus.** The first real case: one shared principles corpus that project
-  corpora extend, refine and waive. After 27 and 28. Sync (task 29) helps here but is not
-  required.
+  corpora extend, refine and waive. Task 35 is its start. After 27, 28 and 35. Sync (task 29)
+  helps here but is not required.
 - **31. Nested x-ref.** corpus-schema v0 allows `x-ref` only on top-level fields and the items of
   top-level arrays. The claims example needs it inside each statement's evidence lines
   (`hasEvidenceItems`). Allow `x-ref` at any depth in a schema, then switch the example's evidence
-  items from relative links with a pattern check to `x-ref`. After 3 and 4, and before 23, since the
-  claims profile should ship with the final form.
+  items from relative links with a pattern check to `x-ref`. After 3 and 4. It is not part of the
+  npm milestone. The claims profile ships first with the pattern check, and a later profile version
+  uses `x-ref`.
 - **33. Spec: YAML 1.2, format, error codes.** The spec says that YAML 1.2 applies, so an unquoted
   date stays a string, and that JSON Schema `format` is asserted. The TypeScript validator already
   asserts it through ajv-formats. This task also defines stable error codes for validator messages,
@@ -381,6 +468,18 @@ The numbers match the task graph at the top. "After" says what must come first.
 - **34. Stable ids and a move verb.** A profile can require slug ids with a separate `title`. A
   `move` or `rename` verb rewrites every link to a record. SPEC.md lists it as deferred. After 3. It
   should land before outside systems depend on ids.
+- **35. The example pair.** In the milestone, step 6. Check in an org corpus with records (a few
+  principles) and a project corpus that extends both the claims profile and the org corpus, by
+  package name and by path. The project's local records cite inherited ones. CI installs the
+  parents, runs `corpus-schema sync` and validates both corpora. This is the start of task 30. After
+  23, 29 and 36.
+- **36. Release corpus-schema 0.3.0.** In the milestone, step 4. The first version with `extends`,
+  `x-extends`, cross-corpus `x-ref` and `sync`, published from this repo with its release setup.
+  After 9, 21, 27 and 29.
+- **37. harness-reference uses `extends`.** In the milestone, step 7. Follow-up to task 26:
+  harness-reference stops copying the claims type folders. It installs
+  `@osdlc/corpus-profile-claims`, lists it under `extends` and marks its types with `x-extends`.
+  After 23, 26 and 36.
 - **10. markdown-store on the shared parts**, writing the spec's layout. After 3.
 
 **The corpus model**
@@ -407,12 +506,10 @@ The numbers match the task graph at the top. "After" says what must come first.
   [osdlc/osdlc#719](https://github.com/osdlc/osdlc/pull/719) and
   [#720](https://github.com/osdlc/osdlc/pull/720), then markdown-editor and markdown-ui. Rename
   the vault words to corpus. In progress.
-- **18. This plan**: [osdlc/markdown#4](https://github.com/osdlc/markdown/pull/4). Waiting on the
-  owner.
+- **18. This plan**: [osdlc/markdown#4](https://github.com/osdlc/markdown/pull/4). Done.
 - **19. Point other repos here**: osdlc/osdlc, sksizer/dev, osdlc/skillwright and sksizer/rust-ontogen
   get the note in [pointing-here.md](pointing-here.md). After 18.
-- **20. The architecture doc**: [osdlc/markdown#5](https://github.com/osdlc/markdown/pull/5). In
-  progress.
+- **20. The architecture doc**: [osdlc/markdown#5](https://github.com/osdlc/markdown/pull/5). Done.
 
 **Moving packages here**
 
@@ -422,8 +519,8 @@ The numbers match the task graph at the top. "After" says what must come first.
   osdlc/osdlc into this repo as its first package. The npm name stays the same. After 3. Other
   markdown packages follow the same path later. SPEC.md says the spec moves to osdlc/markdown
   once this repo has its own release setup. This task is that move, so SPEC.md needs updating when
-  it happens. In progress: [osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9) moves the
-  package and its spec family here, with their history, and updates SPEC.md.
+  it happens. In progress. [osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9) has merged: it moved the
+  package and its spec family here, with their history, and updated SPEC.md.
   [osdlc/markdown#10](https://github.com/osdlc/markdown/pull/10) switches the CI and release to
   the shared workflows and checks from osdlc/osdlc
   ([osdlc/osdlc#749](https://github.com/osdlc/osdlc/pull/749)). It waits for those to merge and
