@@ -42,7 +42,8 @@ tool's browser view. The crate has no dependency on any desktop framework.
   can read the traffic can take it. Put the app behind TLS or a VPN, or do not
   share it.
 - **Behind a reverse proxy on the same machine.** The access context comes from
-  the peer address, so every proxied request looks local.
+  the peer address, so every proxied request looks local. A TLS proxy on
+  another machine is supported: see [Behind a TLS proxy](#behind-a-tls-proxy).
 - **For user accounts.** There are no users, passwords or sessions, only tokens
   with a grant. Use a session or login crate such as `tower-sessions` or
   `axum-login`.
@@ -126,23 +127,27 @@ The examples run with `cargo run --example <name>`:
 
 Every request, whatever its method, passes these checks in order:
 
-1. The `Host` header is on the allowlist, else 421. With a wildcard bind, any
-   current interface address on the bound port also passes. This check holds
-   for loopback peers too: it is what stops a DNS-rebinding page from reading
-   the app.
+1. The `Host` header is on the allowlist or is a public name, else 421. With a
+   wildcard bind, any current interface address on the bound port also
+   passes. This check holds for loopback peers too: it is what stops a
+   DNS-rebinding page from reading the app.
 2. A mutating request, or a protocol upgrade such as a WebSocket handshake,
    that carries an `Origin` header has an allowed origin, else 403. An upgrade
    may also come from a desktop webview's own origin (`tauri://localhost`,
-   `http(s)://tauri.localhost`).
+   `http(s)://tauri.localhost`). A public name passes only as an `https://`
+   origin, on a request for a public name.
 3. The path normalises, else 400: no `.` or `..` segment, no `\` and no
    encoded `/`.
 4. A loopback peer passes with the `full` grant when the policy's
    `loopback_open` is set. `serve` sets it only when there are no tokens.
 5. A `GET` with a valid `?token=` sets the cookie and answers with a small
    page that moves to the same URL without the token, so the token does not
-   stay in the address bar, the history or a `Referer`.
-6. Otherwise the `web_access_<port>` cookie or the `x-web-access-token` header
-   must hold one of the tokens, else 401.
+   stay in the address bar, the history or a `Referer`. An admin token sets
+   its own `web_access_admin_<port>` cookie, so opening a full or read link
+   does not replace it.
+6. Otherwise the `web_access_<port>` cookie, the `web_access_admin_<port>`
+   cookie or the `x-web-access-token` header must hold one of the tokens, else
+   401. If they hold different tokens, the highest grant wins.
 7. A `read` grant may not use a method other than `GET`, `HEAD` or `OPTIONS`,
    or open a WebSocket, else 403 `{"error":"read_only"}`, unless a read-safe
    rule names the route.
@@ -189,6 +194,29 @@ origins can be reported to a callback (`GuardState::with_on_denied`), at most
 - What each grant may do in each context is your app's choice: write a
   `HostPolicy` with a route table and an `allows` function, and install
   `host_policy_layer` inside the guard.
+
+## Behind a TLS proxy
+
+An app can run behind a reverse proxy that ends TLS on another machine, such as
+a hosting platform's edge. The proxy forwards the public `Host`, and the peer
+is the proxy, which is not loopback, so every request still needs a token. Set
+these in `ServeOptions`, or on a `GuardState` you build yourself:
+
+- `public_hosts` (`GuardState::with_public_hosts`): the public names. Each one
+  is an allowed `Host`, and an allowed `Origin` only as `https://<name>` on a
+  request for a public name. The share cookie on a public name carries
+  `Secure`, and the request carries `PublicHost` in its extensions.
+  `origin_matches_public_host` is the Origin check for a handler on such a
+  request. `normalize_public_host` says whether a name is kept.
+- `admin_public_only` (`GuardState::with_admin_over_public_only`): the admin
+  token gives `admin` only on a public name and `full` anywhere else, and its
+  link sets no cookie there. This stops an admin link opened on a private
+  address from carrying a shell credential over plain HTTP. The `Host` header
+  is the client's, so this is not proof of how a request arrived. The token is
+  the control.
+- `cookie_max_age` (`GuardState::with_cookie_max_age`): a lifetime for the
+  share cookie, so it outlives the browser session. The default is a session
+  cookie. The admin cookie is always a session cookie.
 
 ## Security notes
 

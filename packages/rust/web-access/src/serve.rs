@@ -274,6 +274,12 @@ pub struct ServeOptions {
     pub read_safe: Vec<RouteRule<()>>,
     /// See [`GuardState::with_on_denied`].
     pub on_denied: Option<Arc<OnDenied>>,
+    /// See [`GuardState::with_public_hosts`].
+    pub public_hosts: Vec<String>,
+    /// See [`GuardState::with_admin_over_public_only`].
+    pub admin_public_only: bool,
+    /// See [`GuardState::with_cookie_max_age`]. `None` keeps a session cookie.
+    pub cookie_max_age: Option<Duration>,
 }
 
 /// Bind every listen address and serve `router` behind [`guard`].
@@ -420,7 +426,15 @@ async fn serve_with_ips(
         })
         .collect();
 
-    let mut state = GuardState::new(tokens, hosts, policy).with_read_safe(opts.read_safe);
+    let mut state = GuardState::new(tokens, hosts, policy)
+        .with_read_safe(opts.read_safe)
+        .with_public_hosts(&opts.public_hosts);
+    if opts.admin_public_only {
+        state = state.with_admin_over_public_only();
+    }
+    if let Some(age) = opts.cookie_max_age {
+        state = state.with_cookie_max_age(age);
+    }
     let wildcards: Vec<SocketAddr> = addrs
         .iter()
         .copied()
@@ -752,6 +766,36 @@ mod tests {
         // Once it is stale the list is read again, so a new address shows up.
         assert_ne!(cache.get(t0 + Duration::from_secs(2)), first);
         assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn serve_options_reach_the_guard() {
+        const ADMIN: &str = "admin-0123456789abcdefghijklmnopqrstu";
+        let app = Router::new().route("/", get(|g: crate::Grant| async move { format!("{g:?}") }));
+        let tokens = Tokens::full_only(tok(TOK))
+            .with(tok(ADMIN), crate::Grant::Admin)
+            .unwrap();
+        let opts = ServeOptions {
+            public_hosts: vec!["x.example.com".to_owned()],
+            admin_public_only: true,
+            cookie_max_age: Some(Duration::from_secs(60)),
+            ..ServeOptions::default()
+        };
+        let handle = serve_opts(app, &cfg(Listen::Loopback), tokens, opts)
+            .await
+            .unwrap();
+        let addr = handle.addrs()[0];
+        let admin = format!("x-web-access-token: {ADMIN}\r\n");
+        let res = raw_get(addr, "x.example.com", &admin).await;
+        assert!(res.ends_with("Admin"), "{res}");
+        let res = raw_get(addr, &addr.to_string(), &admin).await;
+        assert!(res.ends_with("Full"), "{res}");
+        let link = format!(
+            "GET /?token={TOK} HTTP/1.1\r\nHost: x.example.com\r\nConnection: close\r\n\r\n"
+        );
+        let res = raw_request(addr, &link).await;
+        assert!(res.contains("; Secure; Max-Age=60\r\n"), "{res}");
+        handle.stop().await;
     }
 
     #[tokio::test]

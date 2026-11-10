@@ -19,6 +19,12 @@ created: 2026-11-07
   `https://tauri.localhost`.
 - A plain `GET` with a foreign `Origin` is left to the browser's CORS rules.
   `origin_matches_host` is there for a handler that must refuse one.
+- An app behind a TLS-terminating proxy on another machine lists its public
+  names (`with_public_hosts`). Each is an allowed `Host`. It is an allowed
+  `Origin` only as `https://<name>`, and only on a request whose `Host` is a
+  public name. The guard marks such a request with `PublicHost`.
+- `with_admin_over_public_only` gives the admin token `admin` only on a public
+  name, and `full` elsewhere.
 - The path must normalise, else 400. Deny rules match the normalised path. A
   read-safe rule, which lets a `read` grant use a non-safe method, matches the
   raw path instead.
@@ -29,6 +35,14 @@ created: 2026-11-07
 - The same-origin policy does not cover WebSocket handshakes, so without the
   upgrade check any page the user visits could open a socket with the
   loopback peer's `full` grant.
+- A proxy forwards the public name, not an address on the allowlist, so the
+  `Host` check would refuse every proxied request otherwise. The peer is the
+  proxy, not loopback, so the token is still required. A plain `http://`
+  origin of a public name is refused: the page is served over HTTPS.
+- The `Host` header is the client's, so a public name does not prove a request
+  came through the proxy. `with_admin_over_public_only` only stops an admin
+  link opened on a private address from carrying a shell credential over
+  plain HTTP. The admin token stays the control.
 - A desktop app's webview loads from its own origin and calls its own server
   on loopback, so the check would refuse it otherwise. No page a browser
   loads from the network can present those origins.
