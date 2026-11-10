@@ -74,9 +74,19 @@ host can embed the engine as a library and supply its own ports.
 ## One PR, or all of them
 
 With no scope, `update` works on every open PR in the repository, parent
-first. `--pr N` (repeatable) names PRs. `--branch [name]` names the PR whose
-head is that branch. A bare `--branch` means the branch checked out in the
-current directory. A branch with no open PR is a usage error (exit `2`).
+first. `--pr` (repeatable) names PRs: `--pr N` is PR `N` in every repository
+of the run, and `--pr owner/name#N` is PR `N` of that one repository, which
+must be in the run: named by `--repo`, or, with no `--repo`, the checkout's
+own repository.
+`--branch [name]` names the PR whose head is that branch. A bare `--branch`
+means the branch checked out in the current directory. A branch with no open
+PR, or a `--pr owner/name#N` for a repository outside the run, is a usage
+error (exit `2`).
+
+Every report names a PR `owner/name#N`, the form GitHub links and `--pr`
+accepts, whether the run covers one repository or several. A PR number alone
+is ambiguous once a run spans several repositories. In JSON, each PR carries
+`repo` (`owner/name`) and `number`, and each repository entry `repo`.
 
 A scoped run measures only what it needs. It lists PRs from the code host
 once, then fetches and runs `merge-tree` on just the named PRs and their stack
@@ -104,12 +114,46 @@ Being out of date passes down a stack. When PR A targets PR B's head branch, A
 is stacked on B. Updating A before B is wasted work, because A's base is about
 to move. `survey` builds the stack graph, sorts it parent first, and marks a
 child `blocked` on the nearest ancestor that is itself behind, however many
-levels up that ancestor is.
+levels up that ancestor is. By default `update` leaves a blocked child for the
+next run. `--restack` updates it in the same run, right after its parent (see
+below).
 
 A rebase is not always safe. `--force-with-lease` compares against the remote,
 so it does not notice a checkout holding commits nobody has pushed. Rebasing
 over that would lose the work with no warning. The `guards.unpushed_local`
 guard checks for this before every preference, and no override turns it off.
+
+## A whole stack in one run
+
+Without `--restack`, a stack of N levels takes N runs: each run updates the
+lowest PR that is behind and leaves the PRs above it `blocked`. With
+`--restack`, one run updates the whole stack, parent first:
+
+```sh
+pr-update update --restack --apply              # every stack in the repository
+pr-update update --restack --branch --apply     # the stack under the branch you are on
+```
+
+- A blocked PR whose parent is updated in the run is updated right after it,
+  onto the head the parent just got. A rebase replays only the PR's own
+  commits, with `git rebase --onto <parent's new head> <parent's old head>`,
+  so the parent's old commits are not replayed onto its new ones. The result
+  carries `restackedOnto` (the parent's number), and the text says
+  `(restacked onto owner/name#N)`.
+- A rehearsal (no `--apply`) builds each level on the one below it, in the
+  temporary worktree, and pushes nothing. It shows which levels would
+  conflict.
+- A child goes up only onto a parent that was pushed. If the parent conflicts,
+  fails, or its force-push is declined at `--confirm-push`, the child and
+  everything above it stay `blocked`, and `skipped` says which parent held
+  them back.
+- A blocked PR whose parent is not updated in the run (a guard skipped the
+  parent, say) stays `blocked`.
+- With `--pr` or `--branch`, the named PRs' stack ancestors are updated too,
+  since a PR cannot be restacked onto a parent the run leaves behind. PRs
+  above the named ones are not.
+- A failure recorded for the child (see below) is checked against its new base
+  sha, the head its parent just got.
 
 ## Conflicts, predicted before anything is checked out
 
@@ -205,8 +249,13 @@ consent and need no trust. They override whatever the config names.
 `verify` decides what must pass before an updated branch is pushed. `none`
 (the default) leaves it to CI on the PR. `check` and `test` run a verb list in
 the update worktree, and a failure blocks the push. The host resolves that
-list through `Ports.resolveVerifyVerbs({ which, trust })`. A standalone run
-has no list for `check`, and runs `test` from `test_command`:
+list through `Ports.resolveVerifyVerbs({ which, trust, repo, checkout })`. It
+is asked once for each repository the run surveyed in a local checkout, named
+by `repo` (`owner/name`) and `checkout` (its path), so repositories that build
+differently (`make`, a package manager, `cargo`) can each get their own list.
+Every call comes before the first update, so a list refused for one repository
+stops the run before anything is pushed. A standalone run has no list for
+`check`, and runs `test` from `test_command`:
 
 ```yaml
 # pr-update.local.yaml
@@ -256,9 +305,12 @@ some other way than the terminal.
 of it. Any report left by an earlier run is removed first, so a file that is
 there belongs to this run. It is written whenever the run produced a result,
 on a clean exit and on a conflict or failure alike. Each PR's entry carries its
-`status`, the `strategy` that ran, `strategyFallback`, `repaired`, `conflicts`
-and `localCheckout`, so a host can act on each outcome without parsing text. A
-run that throws writes `{ "error": "<message>" }` instead. A run refused before
+`repo` and `number`, `status`, the `strategy` that ran, `strategyFallback`,
+`repaired`, `conflicts` and `localCheckout`, so a host can act on each outcome
+without parsing text. `skipped` lists the PRs left alone, each with its `repo`,
+`number` and `reason`. `notFound` lists the `--pr` selectors no surveyed PR
+matched (`#N` or `owner/name#N`). `repos` lists the repositories surveyed,
+exactly as `survey` reports them. A run that throws writes `{ "error": "<message>" }` instead. A run refused before
 it starts (a flag usage error, or no trust) writes none.
 
 There is no interactive checklist. `--confirm-push` is the way to ask before a
@@ -336,9 +388,9 @@ confirmation:
 
 | Port | What it answers |
 |---|---|
-| `locate(slug)` | Where `owner/name` is checked out on this machine, or `null` |
+| `locate(repo)` | Where `owner/name` is checked out on this machine, or `null` |
 | `runVerb(verb, cwd)` | Run one shell verb, for resolvers and verify |
-| `resolveVerifyVerbs({ which, trust })` | The trust-gated verb list `verify: check` or `verify: test` runs before a push |
+| `resolveVerifyVerbs({ which, trust, repo, checkout })` | The trust-gated verb list `verify: check` or `verify: test` runs before a push, asked once per repository |
 | `generators` (optional) | In-process rebuild steps, each with `claims(path)` and `run(worktree)` |
 | `repair(req)` (optional) | The last step, async: edit the worktree to fix a `conflict` or `verify-failed` |
 | `attempts` (optional) | The failed-update record: `get(key)`, `recordFailure(key, reason)`, `clear(repo, head, base)` |
@@ -385,8 +437,8 @@ that cannot be built throws the same way, from `selectedCodeHostFor`.
 
 With several `--repo` targets, one repository that cannot be listed does not
 abort the others. Every repository is surveyed. The failed one is recorded on
-its `repos` entry (`failure: { kind, message, hint }`, and no PRs), listed under
-`repoFailures` in `update --report`, and printed on stderr as
+its `repos` entry (`failure: { kind, message, hint }`, and no PRs) in both
+`survey` and `update` output, and printed on stderr as
 `pr-update: <repo>: <message> <hint>`. The run then exits with the code of the
 first failure (a later one with a different code is printed but does not
 change it). With a single repository the failure is thrown.
@@ -445,7 +497,9 @@ full table.
   file is regenerated, not merged.
 - `git rerere` replays a recorded resolution. It is the first resolver.
 - Graphite `gt restack` and git-town `sync` restack a branch stack parent
-  first. The stack order and blocked children follow the same idea.
+  first. The stack order, blocked children and `--restack`
+  (`rebase --onto` the parent's new head) follow the same idea. See
+  [D-0002](docs/planning/decisions/D-0002-restack-a-whole-stack-in-one-run.md).
 
 ## Running from a checkout
 
