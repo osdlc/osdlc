@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { test } from 'node:test'
 
-import { BETA, loadBeta } from '../beta/corpus.ts'
+import { CORPUS_ROOT, loadCorpus } from '../corpus/corpus.ts'
 import { compile, readSlice, sliceKnowledge } from './compile.ts'
 
 const DATA = resolve(import.meta.dirname, '../../../packages/rust/tradecraft-core/data')
@@ -17,7 +17,7 @@ const EMBEDDED = resolve(DATA, 'harness-knowledge.json')
 const SLICE = resolve(DATA, 'embedded-slice.json')
 
 test('the copy tradecraft-core embeds is current', () => {
-  const expected = `${JSON.stringify(sliceKnowledge(compile(loadBeta(BETA), 'main'), readSlice(SLICE)))}\n`
+  const expected = `${JSON.stringify(sliceKnowledge(compile(loadCorpus(CORPUS_ROOT), 'main'), readSlice(SLICE)))}\n`
   assert.equal(
     readFileSync(EMBEDDED, 'utf8'),
     expected,

@@ -47,7 +47,7 @@ export const KNOWLEDGE_SCHEMA = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   title: 'Harness knowledge',
   description:
-    'Values about coding-agent harnesses, compiled from the harness-reference beta corpus. Each value links to the statement that sets it.',
+    'Values about coding-agent harnesses, compiled from the harness-reference corpus. Each value links to the statement that sets it.',
   type: 'object',
   additionalProperties: false,
   required: ['schema', 'corpus', 'harnesses', 'subjects', 'values'],

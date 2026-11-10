@@ -1,5 +1,5 @@
 /**
- * `compile`: read the beta corpus and write `harness-knowledge.json`, the one file tools look
+ * `compile`: read the corpus and write `harness-knowledge.json`, the one file tools look
  * values up in, and `harness-knowledge.schema.json`, its JSON Schema. Only `current` and
  * `disputed` statements that support their proposition go in; open and neutral statements are
  * not values. Each value carries a permalink to its statement at the corpus
@@ -11,26 +11,26 @@ import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { fileURLToPath } from 'node:url'
 
-import { type Beta, BETA, loadBeta } from '../beta/corpus.ts'
-import { lint } from '../beta/lint.ts'
-import { compareScopes, type Versioning } from '../beta/versions.ts'
+import { type LoadedCorpus, CORPUS_ROOT, loadCorpus } from '../corpus/corpus.ts'
+import { lint } from '../corpus/lint.ts'
+import { compareScopes, type Versioning } from '../corpus/versions.ts'
 import { KNOWLEDGE_SCHEMA, type Knowledge, type KnowledgeValue, type Scope } from './knowledge.ts'
 
 export const REPO = 'osdlc/skillwright'
-export const CORPUS_PATH = 'harness-reference/corpora/beta'
+export const CORPUS_PATH = 'harness-reference/corpus'
 const ROOT = resolve(import.meta.dirname, '../..')
 
 /** The URL of a corpus file at `commit`, which never moves. */
 export const permalink = (commit: string, file: string): string =>
   `https://github.com/${REPO}/blob/${commit}/${CORPUS_PATH}/${file.split('/').map(encodeURIComponent).join('/')}`
 
-export function compile(beta: Beta, commit: string): Knowledge {
-  const problems = [...beta.report.errors, ...lint(beta)]
+export function compile(corpus: LoadedCorpus, commit: string): Knowledge {
+  const problems = [...corpus.report.errors, ...lint(corpus)]
   if (problems.length > 0) throw new Error(`the corpus does not pass lint:\n${problems.join('\n')}`)
 
   const harnesses: Knowledge['harnesses'] = {}
   const slugOf = new Map<string, string>()
-  for (const { ref, data } of beta.all('harnesses')) {
+  for (const { ref, data } of corpus.all('harnesses')) {
     const slug = String(data['slug'])
     slugOf.set(ref.file, slug)
     harnesses[slug] = {
@@ -42,7 +42,7 @@ export function compile(beta: Beta, commit: string): Knowledge {
   }
   const subjects: Knowledge['subjects'] = {}
   const subjectSlug = new Map<string, string>()
-  for (const { ref, data } of beta.all('subjects')) {
+  for (const { ref, data } of corpus.all('subjects')) {
     const slug = String(data['slug'])
     subjectSlug.set(ref.file, slug)
     subjects[slug] = {
@@ -54,12 +54,12 @@ export function compile(beta: Beta, commit: string): Knowledge {
   }
 
   const values: KnowledgeValue[] = []
-  for (const { ref, data } of beta.all('statements')) {
+  for (const { ref, data } of corpus.all('statements')) {
     const status = data['status']
     if (status !== 'current' && status !== 'disputed') continue
     if (data['direction'] !== 'supports') continue
-    const harness = slugOf.get(beta.resolve(ref.file, data['harness'])?.file ?? '') as string
-    const subject = subjectSlug.get(beta.resolve(ref.file, data['subject'])?.file ?? '') as string
+    const harness = slugOf.get(corpus.resolve(ref.file, data['harness'])?.file ?? '') as string
+    const subject = subjectSlug.get(corpus.resolve(ref.file, data['subject'])?.file ?? '') as string
     const scope = data['scope'] as Scope
     values.push({
       harness,
@@ -176,7 +176,7 @@ function main(argv: string[]): number {
       slice: { type: 'string' },
     },
   })
-  const corpus = values.corpus === undefined ? BETA : resolve(values.corpus)
+  const corpus = values.corpus === undefined ? CORPUS_ROOT : resolve(values.corpus)
   const commit =
     values.commit ??
     execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim()
@@ -190,7 +190,7 @@ function main(argv: string[]): number {
     console.error(`warning: ${what}`)
   }
   try {
-    const full = compile(loadBeta(corpus), commit)
+    const full = compile(loadCorpus(corpus), commit)
     const knowledge =
       values.slice === undefined ? full : sliceKnowledge(full, readSlice(resolve(values.slice)))
     const outDir = resolve(values.out ?? join(ROOT, 'dist'))

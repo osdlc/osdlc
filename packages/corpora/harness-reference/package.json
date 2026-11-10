@@ -2,31 +2,25 @@
   "name": "harness-reference",
   "private": true,
   "type": "module",
-  "description": "A versioned, cited record of how coding-agent harnesses differ, kept as Markdown corpora, with their validators and the alpha page generator.",
+  "description": "A versioned, cited record of how coding-agent harnesses differ, kept as one Markdown corpus, with its tools.",
   "license": "MIT OR Apache-2.0",
   "engines": {
     "node": ">=24"
   },
   "scripts": {
-    "validate": "pnpm run validate:alpha && pnpm run validate:beta",
-    "validate:alpha": "node src/alpha/validate.ts",
-    "validate:beta": "corpus-schema validate corpora/beta",
-    "capture": "node src/beta/capture.ts",
-    "import-alpha": "node src/beta/import-alpha.ts",
-    "lint": "node src/beta/lint.ts",
+    "validate": "corpus-schema validate corpus",
+    "capture": "node src/corpus/capture.ts",
+    "lint": "node src/corpus/lint.ts",
     "compile": "node src/compile/compile.ts",
     "compile:embed": "node src/compile/compile.ts --commit main --no-schema --slice ../packages/rust/tradecraft-core/data/embedded-slice.json --out ../packages/rust/tradecraft-core/data",
-    "write-schema": "node src/alpha/validate.ts --write-schema",
     "test": "node --test src/*/*.test.ts",
     "typecheck": "tsc -p tsconfig.json",
-    "generate": "node src/alpha/generate.ts",
-    "check": "pnpm run validate && pnpm run lint && pnpm run test && pnpm run typecheck && pnpm run generate"
+    "check": "pnpm run validate && pnpm run lint && pnpm run test && pnpm run typecheck"
   },
   "dependencies": {
     "@osdlc/corpus-schema": "^0.2.0",
     "ajv": "8.20.0",
-    "yaml": "2.9.1",
-    "zod": "4.4.3"
+    "yaml": "2.9.1"
   },
   "devDependencies": {
     "@types/node": "catalog:",

@@ -8,7 +8,7 @@ import { join } from 'node:path'
 
 import { Ajv2020 } from 'ajv/dist/2020.js'
 
-import { BETA, loadBeta } from '../beta/corpus.ts'
+import { CORPUS_ROOT, loadCorpus } from '../corpus/corpus.ts'
 import { compile, dirtyFiles, permalink, sliceKnowledge, writeKnowledge } from './compile.ts'
 import { KNOWLEDGE_SCHEMA } from './knowledge.ts'
 import { lookup } from './lookup.ts'
@@ -19,13 +19,13 @@ const STATEMENT = 'statements/Claude Code/Claude Code Fork a session.md'
 let dir: string
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'harness-reference-compile-'))
-  cpSync(BETA, dir, { recursive: true })
+  cpSync(CORPUS_ROOT, dir, { recursive: true })
 })
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
 describe('sliceKnowledge', () => {
   test('keeps only the listed harnesses and subjects, without valueSchema', () => {
-    const full = compile(loadBeta(BETA), SHA)
+    const full = compile(loadCorpus(CORPUS_ROOT), SHA)
     const sliced = sliceKnowledge(full, { harnesses: ['claude-code'], subjects: ['cli/fork'] })
     assert.deepEqual(Object.keys(sliced.harnesses), ['claude-code'])
     assert.deepEqual(Object.keys(sliced.subjects), ['cli/fork'])
@@ -37,7 +37,7 @@ describe('sliceKnowledge', () => {
   })
 
   test('writes compact JSON on request', () => {
-    const sliced = sliceKnowledge(compile(loadBeta(BETA), SHA), {
+    const sliced = sliceKnowledge(compile(loadCorpus(CORPUS_ROOT), SHA), {
       harnesses: ['claude-code'],
       subjects: ['cli/fork'],
     })
@@ -51,11 +51,11 @@ describe('sliceKnowledge', () => {
 
 describe('compile', () => {
   test('writes the cli slice, validated against its own schema', () => {
-    const k = compile(loadBeta(BETA), SHA)
+    const k = compile(loadCorpus(CORPUS_ROOT), SHA)
     assert.equal(k.schema, 1)
     assert.deepEqual(k.corpus, {
       repo: 'osdlc/skillwright',
-      path: 'harness-reference/corpora/beta',
+      path: 'harness-reference/corpus',
       commit: SHA,
     })
     assert.ok(k.values.length >= 30)
@@ -72,23 +72,23 @@ describe('compile', () => {
   })
 
   test('each value links to its statement at the commit', () => {
-    const k = compile(loadBeta(BETA), SHA)
+    const k = compile(loadCorpus(CORPUS_ROOT), SHA)
     const v = k.values.find((x) => x.harness === 'claude-code' && x.subject === 'cli/session-env')
     assert.equal(
       v?.basis,
-      `https://github.com/osdlc/skillwright/blob/${SHA}/harness-reference/corpora/beta/statements/Claude%20Code/Claude%20Code%20Session%20environment.md`,
+      `https://github.com/osdlc/skillwright/blob/${SHA}/harness-reference/corpus/statements/Claude%20Code/Claude%20Code%20Session%20environment.md`,
     )
     assert.equal(
       permalink('c', 'a b/c.md'),
-      'https://github.com/osdlc/skillwright/blob/c/harness-reference/corpora/beta/a%20b/c.md',
+      'https://github.com/osdlc/skillwright/blob/c/harness-reference/corpus/a%20b/c.md',
     )
     assert.deepEqual(v?.value, { vars: ['CLAUDE_CODE_SESSION_ID', 'CLAUDE_PID'] })
     assert.equal(v?.strength, 'strong')
   })
 
   test('is deterministic and feeds lookup', () => {
-    const a = compile(loadBeta(BETA), SHA)
-    const b = compile(loadBeta(BETA), SHA)
+    const a = compile(loadCorpus(CORPUS_ROOT), SHA)
+    const b = compile(loadCorpus(CORPUS_ROOT), SHA)
     assert.equal(JSON.stringify(a), JSON.stringify(b))
     const found = lookup(a, 'pi', 'cli/headless')
     assert.deepEqual(found?.value, { flag: '-p/--print', note: 'text output by default' })
@@ -96,7 +96,7 @@ describe('compile', () => {
   })
 
   test('keeps disputed values flagged and leaves superseded and open ones out', () => {
-    const before = compile(loadBeta(dir), SHA).values.length
+    const before = compile(loadCorpus(dir), SHA).values.length
     const text = readFileSync(join(dir, STATEMENT), 'utf8')
     writeFileSync(join(dir, STATEMENT), text.replace('status: current', 'status: disputed'))
     const second = 'statements/Pi/Pi Fork a session.md'
@@ -106,7 +106,7 @@ describe('compile', () => {
         .replace('status: current', 'status: superseded')
         .replace('  until: null', '  until: 1.0.0'),
     )
-    const k = compile(loadBeta(dir), SHA)
+    const k = compile(loadCorpus(dir), SHA)
     const fork = k.values.find((v) => v.harness === 'claude-code' && v.subject === 'cli/fork')
     assert.equal(fork?.disputed, true)
     assert.equal(
@@ -124,7 +124,7 @@ describe('compile', () => {
         'direction: disputes',
       ),
     )
-    assert.throws(() => compile(loadBeta(dir), SHA), /must have direction supports/)
+    assert.throws(() => compile(loadCorpus(dir), SHA), /must have direction supports/)
   })
 
   test('an open, neutral statement is not a value', () => {
@@ -135,7 +135,7 @@ describe('compile', () => {
         .replace('direction: supports\nstrength: strong\n', 'direction: neutral\n')
         .replace('status: current', 'status: open\nopen:\n  - Does it?'),
     )
-    const k = compile(loadBeta(dir), SHA)
+    const k = compile(loadCorpus(dir), SHA)
     assert.equal(
       k.values.some((v) => v.harness === 'claude-code' && v.subject === 'cli/open-with-id'),
       false,
@@ -162,12 +162,12 @@ describe('compile', () => {
       join(dir, STATEMENT),
       readFileSync(join(dir, STATEMENT), 'utf8').replace('supported: true', 'supported: nope'),
     )
-    assert.throws(() => compile(loadBeta(dir), SHA), /does not pass lint/)
+    assert.throws(() => compile(loadCorpus(dir), SHA), /does not pass lint/)
   })
 
   test('writes the file and its schema', () => {
     const out = join(dir, 'out')
-    const files = writeKnowledge(out, compile(loadBeta(BETA), SHA))
+    const files = writeKnowledge(out, compile(loadCorpus(CORPUS_ROOT), SHA))
     assert.deepEqual(
       files.map((f) => f.slice(out.length + 1)),
       ['harness-knowledge.json', 'harness-knowledge.schema.json'],

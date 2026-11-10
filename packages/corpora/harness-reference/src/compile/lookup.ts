@@ -1,7 +1,7 @@
 /**
  * `lookup`: the value a harness has for a subject, from a compiled `harness-knowledge.json`.
  */
-import { inRange, validVersion } from '../beta/versions.ts'
+import { inRange, validVersion } from '../corpus/versions.ts'
 import type { Knowledge, KnowledgeValue, Strength } from './knowledge.ts'
 
 export interface LookupQuery {
