@@ -2,14 +2,15 @@
 # change touches (and of the packages that depend on them) on the base and on
 # the head, in this one job, and fails when a gated benchmark's best round is
 # more than THRESHOLD (scripts/perf-gate.ts) slower on the head, in a first
-# pass and again in a confirmation pass that reruns only the packages with a
-# suspect. Both sides share one runner, and their runs alternate, so the speed
-# of the runner cancels out. bench/README.md says what is gated and how a
+# pass and again in a confirmation pass that reruns only the suspect
+# benchmarks (a name filter per runner), and not at all for an accepted PR.
+# Both sides share one runner, and their runs alternate, so the speed of the
+# runner cancels out. bench/README.md says what is gated and how a
 # package adds a benchmark; scripts/perf-gate.ts is the gate.
 #
 # A deliberate slowdown goes through with the `perf-accepted` label and a line
-# `Perf-accepted: <reason>` in the pull request body. The job reruns when the
-# label or the body changes.
+# `Perf-accepted: <reason>` in the pull request body; the confirmation pass is
+# then skipped. The job reruns when the label or the body changes.
 #
 # The job always runs and reports, like the other checks, so it can be made a
 # required check; when no package with benchmarks is affected it stops after
