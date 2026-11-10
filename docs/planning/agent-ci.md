@@ -125,7 +125,7 @@ flowchart LR
   class REL done
   class CUR done
   class MCP,PUB,PIN,STRICT later
-  class DATA blocked
+  class DATA external
 ```
 
 ## Review queue
@@ -135,12 +135,12 @@ move; merged PRs drop off.
 
 | Order | PR | What | Why this order | Status |
 | --- | --- | --- | --- | --- |
-| 1 | [#750](https://github.com/osdlc/osdlc/pull/750) | feat(harness-knowledge): compiled harness facts, read by agent-call and detect-harness | Marked ready at 09:51 UTC; the only PR waiting on your review | waiting on your review since 09:51 UTC; clean and green |
+| 1 | [#750](https://github.com/osdlc/osdlc/pull/750) | feat(harness-knowledge): compiled harness facts, read by agent-call and detect-harness | Marked ready at 09:51 UTC; the only PR waiting on your review | waiting on your review since 09:51 UTC; CI green; behind main (needs an update before merge) |
 | 2 | [#764](https://github.com/osdlc/osdlc/pull/764) | feat(gh-actions): run any skill from a PR comment, read-only or with `--apply` | Next to be ready, after 750 | draft: needs your choice of how `--apply` changes land and the `pr-agent` environment, then the gate reruns; CI green; behind main |
 
 ## PR tracker
 
-Checked 2026-11-10 11:17 UTC. A periodic check refreshes this table and the graph.
+Checked 2026-11-10 14:17 UTC. A periodic check refreshes this table and the graph.
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
