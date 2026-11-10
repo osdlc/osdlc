@@ -19,10 +19,15 @@
 //     criterion's median). Runner noise (a busy neighbour, a throttled core)
 //     only ever adds time, so the best round is the least disturbed one; a
 //     real slowdown moves the best round too.
-//   - A benchmark over the threshold in that pass is a suspect. The packages
-//     with a suspect run again, --confirm-rounds rounds in the opposite
-//     order, and a suspect fails only when it is over the threshold again.
-//     A noise spike has to strike twice; a real slowdown does.
+//   - A benchmark over the threshold in that pass is a suspect. Only the
+//     suspects run again (the runner is given a filter that matches them and
+//     nothing else, so the pass costs a fraction of the first), --confirm-rounds
+//     rounds in the opposite order, and a suspect fails only when it is over
+//     the threshold again. A noise spike has to strike twice; a real slowdown
+//     does. The vitest filter selects a test (the title before the case), so a
+//     suspect case brings the other cases of its test along.
+//   - When the PR is accepted (below), the confirmation pass is skipped: its
+//     result could not change the outcome.
 //   - Both sides time the corpus of the head: bench/corpus/ is copied over
 //     the base's, so a PR that changes the corpus is still compared on equal
 //     input.
@@ -229,6 +234,29 @@ export function confirmed(
   });
 }
 
+/** Escape the characters a regular expression treats as syntax. */
+function escapeRegex(s: string): string {
+  return s.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+}
+
+/**
+ * The name filter that selects exactly the benchmarks `ids` (all of one
+ * package) and no others, in the runner's own syntax. For criterion, an
+ * anchored alternation of the full ids, matched against `<group>/<function>`.
+ * For vitest (`-t`), an anchored alternation of the test titles: `-t` selects
+ * a test, not a case within it, and a case name may hold `/` where a title
+ * does not, so the title is the first segment after the package.
+ */
+export function benchFilter(lang: "ts" | "rust", ids: string[]): string {
+  const names = new Set(
+    ids.map((id) => {
+      const rest = id.slice(id.indexOf("/") + 1);
+      return lang === "ts" ? (rest.split("/", 1)[0] as string) : rest;
+    }),
+  );
+  return `^(?:${[...names].sort().map(escapeRegex).join("|")})$`;
+}
+
 /** The `<lang>:<package>` of each benchmark id, without repeats. */
 export function packagesOf(ids: string[]): Set<string> {
   return new Set(ids.map((id) => id.split("/", 1)[0] as string));
@@ -324,7 +352,9 @@ function runPackage(
   p: BenchPackage,
   corpusFile: string,
   scratch: string,
+  only: string[] | null,
 ): Medians {
+  const filter = only && benchFilter(p.lang, only);
   if (p.lang === "ts") {
     const out = join(
       scratch,
@@ -339,6 +369,7 @@ function runPackage(
         "--run",
         "--reporter=json",
         `--outputFile=${out}`,
+        ...(filter ? ["-t", filter] : []),
       ],
       join(root, "packages/ts", p.name),
     );
@@ -347,9 +378,19 @@ function runPackage(
   const rustRoot = join(root, "packages/rust");
   const target = join(rustRoot, "target", "criterion");
   rmSync(target, { recursive: true, force: true });
-  sh("cargo", ["bench", "-p", p.name, "--benches", "--locked"], rustRoot, {
-    OSDLC_BENCH_CORPUS: corpusFile,
-  });
+  sh(
+    "cargo",
+    [
+      "bench",
+      "-p",
+      p.name,
+      "--benches",
+      "--locked",
+      ...(filter ? ["--", filter] : []),
+    ],
+    rustRoot,
+    { OSDLC_BENCH_CORPUS: corpusFile },
+  );
   return parseCriterion(p.name, target);
 }
 
@@ -474,6 +515,7 @@ export function main(argv: string[]): number {
     count: number,
     firstSide: "base" | "head",
     label: string,
+    only: Map<string, string[]> | null = null,
   ): { base: Samples; head: Samples } => {
     const got = {
       base: new Map<string, number[]>(),
@@ -490,7 +532,13 @@ export function main(argv: string[]): number {
           console.log(
             `${label} ${round + 1}/${count}: ${side} ${p.lang}:${p.name}`,
           );
-          const medians = runPackage(roots[side], p, corpusFile, scratch);
+          const medians = runPackage(
+            roots[side],
+            p,
+            corpusFile,
+            scratch,
+            only?.get(`${p.lang}:${p.name}`) ?? null,
+          );
           // An empty report would otherwise read as "no benchmarks, nothing slower".
           if (medians.size === 0)
             throw new Error(
@@ -512,12 +560,27 @@ export function main(argv: string[]): number {
   const samples = measure(picked, rounds, "base", "round");
   let rows = compare(reduce(samples.base), reduce(samples.head));
   let confirmSamples: { base: Samples; head: Samples } | null = null;
-  const suspects = packagesOf(
-    rows.filter((r) => r.status === "slower").map((r) => r.id),
-  );
-  if (suspects.size > 0 && confirmRounds > 0) {
+  const suspectIds = rows.filter((r) => r.status === "slower").map((r) => r.id);
+  const suspects = packagesOf(suspectIds);
+  const labels = (process.env["PERF_LABELS"] ?? "")
+    .split(",")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const verdict = accepted(labels, process.env["PERF_BODY"] ?? "");
+  const skippedConfirm =
+    suspects.size > 0 && confirmRounds > 0 && verdict.ok;
+  if (skippedConfirm) {
     console.log(
-      `perf gate: over the threshold in ${[...suspects].join(", ")}; confirming ${confirmRounds} rounds`,
+      `perf gate: over the threshold in ${[...suspects].join(", ")}; skipping the confirmation pass, the slowdown is accepted`,
+    );
+  } else if (suspects.size > 0 && confirmRounds > 0) {
+    const only = new Map<string, string[]>();
+    for (const id of suspectIds) {
+      const key = [...suspects].find((k) => id.startsWith(`${k}/`)) as string;
+      only.set(key, [...(only.get(key) ?? []), id]);
+    }
+    console.log(
+      `perf gate: over the threshold in ${suspectIds.length} benchmark(s) of ${[...suspects].join(", ")}; confirming ${confirmRounds} rounds`,
     );
     // The opposite order from the first pass, so neither side always goes first.
     confirmSamples = measure(
@@ -525,13 +588,14 @@ export function main(argv: string[]): number {
       confirmRounds,
       "head",
       "confirm",
+      only,
     );
     rows = confirmed(
       rows,
       compare(reduce(confirmSamples.base), reduce(confirmSamples.head)),
     );
   }
-  const text = table(rows, THRESHOLD, confirmRounds > 0);
+  const text = table(rows, THRESHOLD, confirmRounds > 0 && !skippedConfirm);
   console.log(text);
   if (outDir) {
     mkdirSync(outDir, { recursive: true });
@@ -556,16 +620,15 @@ export function main(argv: string[]): number {
   }
 
   const slower = rows.filter((r) => r.status === "slower");
-  const labels = (process.env["PERF_LABELS"] ?? "")
-    .split(",")
-    .map((l) => l.trim())
-    .filter(Boolean);
-  const verdict = accepted(labels, process.env["PERF_BODY"] ?? "");
   let summary = text;
   let code = 0;
   const unconfirmed = rows.filter((r) => r.status === "unconfirmed").length;
   if (unconfirmed > 0) {
     summary += `\n\n${unconfirmed} benchmark(s) were over the threshold once and not again; treated as runner noise.`;
+    console.log(summary.slice(text.length));
+  }
+  if (skippedConfirm) {
+    summary += `\n\nThe confirmation pass was skipped: the slowdown is accepted.`;
     console.log(summary.slice(text.length));
   }
   const shown = summary.length;

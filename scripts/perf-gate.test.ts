@@ -7,6 +7,7 @@ import { test } from "node:test";
 import {
   type BenchPackage,
   accepted,
+  benchFilter,
   best,
   compare,
   confirmed,
@@ -308,4 +309,32 @@ test("main rejects a bad --confirm-rounds", () => {
   } finally {
     console.error = err;
   }
+});
+
+test("benchFilter selects exactly the suspects, with regex syntax escaped", () => {
+  // criterion: the full id after the crate, anchored.
+  const rs = benchFilter("rust", [
+    "rust:markdown-tags/inline_tags obsidian/vault",
+    "rust:markdown-tags/inline_tags obsidian/slow/redos-1.6k (x)",
+  ]);
+  assert.equal(
+    rs,
+    "^(?:inline_tags obsidian/slow/redos-1\\.6k \\(x\\)|inline_tags obsidian/vault)$",
+  );
+  const re = new RegExp(rs);
+  assert.ok(re.test("inline_tags obsidian/vault"));
+  assert.ok(re.test("inline_tags obsidian/slow/redos-1.6k (x)"));
+  assert.ok(!re.test("inline_tags obsidian/vault2"));
+  assert.ok(!re.test("inline_tags obsidian/largest-note"));
+  assert.ok(!re.test("inline_tags obsidian/slow/redos-1x6k (x)"));
+  // vitest: the test title only, once however many cases are suspect.
+  const ts = benchFilter("ts", [
+    "ts:markdown-link/scanBodyWith/vault",
+    "ts:markdown-link/scanBodyWith/slow/failed-md-link-open",
+    "ts:markdown-link/a+b/vault",
+  ]);
+  assert.equal(ts, "^(?:a\\+b|scanBodyWith)$");
+  assert.ok(new RegExp(ts).test("scanBodyWith"));
+  assert.ok(!new RegExp(ts).test("scanBodyWith2"));
+  assert.ok(!new RegExp(ts).test("ab"));
 });
