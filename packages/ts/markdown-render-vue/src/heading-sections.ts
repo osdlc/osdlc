@@ -155,11 +155,11 @@ export function renderHeadingSections(
 }
 
 /** `key`, or `key~n` for its nth repeat among siblings (as `childKey` does). */
-function uniqueKey(used: Map<string, number>, key: string | number): string | number {
+function uniqueKey(used: Map<string, number>, key: string | number): string {
   const k = String(key)
   const n = used.get(k) ?? 0
   used.set(k, n + 1)
-  return n === 0 ? key : `${k}~${n}`
+  return n === 0 ? k : `${k}~${n}`
 }
 
 function isFootnotes(node: HastNode): boolean {
