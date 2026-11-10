@@ -1,0 +1,123 @@
+/* Colour tokens. Light by default, dark under prefers-color-scheme. */
+:root {
+  color-scheme: light;
+  --bg: #f4f4f1;
+  --surface: #ffffff;
+  --surface-2: #f0f0ec;
+  --text: #1d1e20;
+  --muted: #5c6066;
+  --border: #d4d4ce;
+  --border-strong: #a9aaa4;
+  --accent: #2851c8;
+  --accent-soft: rgb(40 81 200 / 0.14);
+  --focus: #2851c8;
+
+  --band-a: rgb(30 40 60 / 0.035);
+  --band-b: rgb(30 40 60 / 0.075);
+  --band-label: #6b6f76;
+
+  --edge-both: #8b9099;
+  --removed: #b93a2c;
+  --removed-bg: #fbe9e6;
+  /* Card groups: twin green, kept blue, going away red (--removed), to make yellow (--added). */
+  --twin: #1d7a43;
+  --twin-bg: #dff3e6;
+  --kept: #2f64d0;
+  --kept-bg: #e1ebfb;
+  --added: #a67600;
+  --added-bg: #fbf0c2;
+  --added-text: #7a5600;
+  --match: #b7791f;
+  --overlap: #7e3fc4;
+  --overlap-bg: #f1e8fb;
+  --overlap-text: #5b2a96;
+
+  /* Work view: status and next up. Each comes with an icon or label, never colour alone. */
+  --doing: #2f64d0;
+  --doing-bg: #e1ebfb;
+  --owner: #b4530a;
+  --owner-bg: #fdebd9;
+  --done: #1d7a43;
+  --next: #b7791f;
+  --next-bg: #fdf3dc;
+  --edge-strong: #4f535a;
+
+  /* Simple Icons brand colours; the dark set is lightened to keep 3:1 or more on the card. */
+  --logo-ts: #3178c6;
+  --logo-rust: #000000;
+  --logo-markdown: #000000;
+  --logo-yaml: #cb171e;
+
+  /* Repo stripes are greys so they never read as a card group colour. */
+  --repo-0: #1f2225;
+  --repo-1: #45494f;
+  --repo-2: #6a6f76;
+  --repo-3: #8e9298;
+  --repo-4: #aeb1b6;
+  --repo-5: #c8cacd;
+  --repo-none: #dcdcd7;
+
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.08), 0 2px 6px rgb(0 0 0 / 0.05);
+  --radius: 8px;
+  --font: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #131417;
+    --surface: #1c1e22;
+    --surface-2: #24272c;
+    --text: #e8e8e5;
+    --muted: #a2a6ad;
+    --border: #353840;
+    --border-strong: #5a5e67;
+    --accent: #87a8ff;
+    --accent-soft: rgb(135 168 255 / 0.18);
+    --focus: #87a8ff;
+
+    --band-a: rgb(255 255 255 / 0.025);
+    --band-b: rgb(255 255 255 / 0.055);
+    --band-label: #9a9ea6;
+
+    --edge-both: #737882;
+    --removed: #ff8577;
+    --removed-bg: #3a201d;
+    --twin: #63d692;
+    --twin-bg: #16301f;
+    --kept: #7fb0ff;
+    --kept-bg: #172a47;
+    --added: #e0b02e;
+    --added-bg: #3a3112;
+    --added-text: #e0b02e;
+    --match: #f0b44c;
+    --overlap: #b48cf0;
+    --overlap-bg: #2c2142;
+    --overlap-text: #d3b8f8;
+
+    --doing: #7fb0ff;
+    --doing-bg: #172a47;
+    --owner: #ffa45c;
+    --owner-bg: #3d2614;
+    --done: #63d692;
+    --next: #f0b44c;
+    --next-bg: #3a2f14;
+    --edge-strong: #b5b9c0;
+
+    --logo-ts: #5b9bea;
+    --logo-rust: #e8e8e5;
+    --logo-markdown: #e8e8e5;
+    --logo-yaml: #f0565c;
+
+    --repo-0: #f0f0ee;
+    --repo-1: #cfd2d6;
+    --repo-2: #aaaeb4;
+    --repo-3: #858a91;
+    --repo-4: #666b72;
+    --repo-5: #4d5158;
+    --repo-none: #3f4349;
+
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 2px 8px rgb(0 0 0 / 0.3);
+  }
+}

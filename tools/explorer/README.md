@@ -1,0 +1,115 @@
+# Markdown ecosystem explorer
+
+An interactive graph of the markdown ecosystem. It has two views, switched at the top and kept in
+the URL:
+
+- **Components** shows every package, crate, spec and tool, what each one uses, and how that
+  changes between today (`present`) and the plan's end state (`target`).
+- **Work** maps the plan's milestones and tasks: all the work between the present state and the
+  target, and what waits on what.
+
+## Run it
+
+```sh
+pnpm install
+pnpm dev
+```
+
+Open the address Vite prints.
+
+### Components
+
+- **Present**, **Target** and **Compare** switch the view. Compare shows both states and marks what
+  goes away and what is new. Nodes never move when you switch.
+- Click a node or an edge to see its details. Click empty canvas, or press Esc, to clear it.
+- Tab moves through the nodes and Enter selects one.
+- The URL holds the selected node (`#node=<id>`), so you can link to it.
+- A card's plan tasks are links: each opens that task in the Work view.
+- The filters narrow the graph by language, kind and repo. Search highlights matching nodes.
+- Card fill and border show what the component is, in every view: green for a twin pair, blue for a
+  component kept without a twin, red (dashed, "going away") for one that exists only today, and
+  yellow ("new") for one that exists only in the target. Red and yellow win over green and blue when
+  the whole card is in one state. New edges are yellow, going-away edges are red and dashed, edges in
+  both states are grey. The left stripe is the repo, in greys.
+- Each card shows its language as a logo in the top-right corner: TypeScript, Rust, Markdown or YAML.
+- A twin pair, the same library in TypeScript and Rust, is one card with both logos. The data keeps
+  two nodes; only the view merges them. Edges to either member attach to the card. When the two
+  differ, a small badge on one logo says so: `+` new, `−` going away, `⇢` moves repo on its own.
+  The detail panel shows each member's facts, and each linked node says which member it is from.
+  A link to either member's id (`#node=<id>`) opens the card.
+- The Relations toggles show or hide groups of edges: dependencies (depends, dev-depends), structure
+  (implements, extends, validates, reads) and overlaps. They hide edges only, never cards.
+- An overlap is duplication: two components that do some of the same job. It is drawn as a dotted
+  violet line with no arrow and a "≈" tag, and each card it touches shows a small "≈". The "≈ N
+  overlaps" button in the header shows only the overlaps; click it again to show everything.
+
+### Work
+
+- **Milestones** shows one card per milestone with its goal, status and progress ("3 of 7 done").
+  An arrow runs from a milestone to one that waits on it, because one of its tasks waits on one of
+  the other's. A milestone sits right of everything it waits on.
+- **Tasks** shows each milestone as a band, in plan order, so the current beeline, which leads the
+  plan, is at the top. The view opens there. A task sits one column right of the furthest task it
+  waits on, so arrows run left to right in the order the work can happen. The milestone's card
+  sits just left of its first task. An arrow that skips over cards in its own row arcs over them.
+  The fit button in the corner shows the whole map.
+- A task card shows its number, title, detail line and status. Not started is grey with an empty
+  circle, in progress has a thick blue outline and a half circle, done is faded with a filled
+  check, and waiting on the owner has an orange "you" marker. Supporting work has a dashed outline
+  and a "support" label. Colour is never the only signal.
+- A solid dark arrow still holds work up. A faded dashed arrow comes from a task that is done.
+- **Next up** highlights the tasks that are not done and wait only on done tasks. The filters
+  narrow by status, milestone and type; Functional and Supporting are both on at first.
+- Click a task to see its plan paragraph, what it waits on, what it unblocks, and the components it
+  changes. A component link opens that card in the Components view. Click a milestone, in either
+  level, to see its goal, progress, tasks by status, and the milestones it waits on and that wait
+  on it.
+- Tab, Enter and Esc work as in the Components view.
+- The URL holds the view, the level and the selection: `#view=work&task=27`,
+  `#view=work&milestone=m-npm`, `#view=work&level=overview`.
+
+## Edit the data
+
+The data is `data/ecosystem.json`. Its shape and rules are in [data/SCHEMA.md](data/SCHEMA.md).
+
+When `ecosystem.json` is missing, the app uses `data/fixture.json`, a small hand-written sample. The
+header says which file it loaded. If the data breaks a rule in SCHEMA.md, the header shows the
+problems.
+
+`pnpm test` also checks `ecosystem.json` against those rules, and checks that it lays out.
+
+The Work view's data is `data/plan.json`, a copy of the plan's `tasks.json`. Its shape and rules are
+in [data/PLAN-SCHEMA.md](data/PLAN-SCHEMA.md). To refresh it:
+
+```sh
+pnpm sync-plan                       # from ../../docs/diagrams/tasks.json
+pnpm sync-plan path/to/tasks.json
+```
+
+The header shows any rule the plan breaks, and `pnpm test` checks it too.
+
+## Build a static copy
+
+```sh
+pnpm build
+```
+
+The site goes to `dist/`, which git ignores. The data is built in, so `dist/` works on any static
+host. `pnpm preview` serves it locally.
+
+## Checks
+
+```sh
+pnpm typecheck
+pnpm test
+```
+
+The graph and plan logic is plain TypeScript under `src/model/`, with tests under `tests/`: the
+work view's dependency lists, milestone dependencies, next up, progress and layout are in
+`work.ts` and `workLayout.ts`, and the cross-links between the views in `crossLinks.ts`. The Vue
+components under `src/components/` only draw what it returns.
+
+## Credits
+
+The language logos are from [Simple Icons](https://simpleicons.org) 15.0.0, released under CC0 1.0.
+Simple Icons lists the Rust logo under CC BY-SA 4.0.
