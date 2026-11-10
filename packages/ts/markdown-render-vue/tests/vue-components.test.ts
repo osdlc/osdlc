@@ -253,6 +253,23 @@ describe('MarkdownRender', () => {
     expect(host.querySelector('.callout-content')?.textContent).toContain('secret body')
   })
 
+  test('a link in a foldable callout title does not fold it, and sits outside the button', async () => {
+    const host = await mount({ source: '> [!note]+ See [docs](https://example.com)\n> body' })
+    const link = host.querySelector('.callout a') as HTMLElement
+    expect(link).not.toBeNull()
+    expect(host.querySelector('button a')).toBeNull()
+    link.addEventListener('click', (e) => e.preventDefault())
+    link.click()
+    await new Promise((resolve) => setTimeout(resolve, 2))
+    expect(host.querySelector('.callout-content')?.textContent).toContain('body')
+    expect(host.querySelector('.callout')?.className).toContain('is-open')
+
+    // The rest of the title row, and the button, still fold it.
+    ;(host.querySelector('.callout-fold-toggle') as HTMLElement).click()
+    await new Promise((resolve) => setTimeout(resolve, 2))
+    expect(host.querySelector('.callout-content')).toBeNull()
+  })
+
   test('a foldable callout re-reads its fold marker when the source changes', async () => {
     const host = document.createElement('div')
     document.body.appendChild(host)

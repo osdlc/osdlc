@@ -57,19 +57,36 @@ export const Callout = defineComponent({
       if (foldable.value) classes.push('is-foldable', open.value ? 'is-open' : 'is-collapsed')
       props_.class = classes.join(' ')
 
+      // The title can hold links, and a link inside a `<button>` is invalid
+      // HTML and, worse, folds the callout when followed. So the button is a
+      // sibling of the title, as in `HeadingSectionFold`; a click anywhere on
+      // the row but on a link toggles, and the button gives keyboards and
+      // assistive tech their control. The inline style overrides the theme's
+      // block-wide button so the title stays on the arrow's line.
+      const toggle = (event: Event) => {
+        if ((event.target as Element | null)?.closest?.('a')) return
+        open.value = !open.value
+      }
+
       return h('div', props_, [
         foldable.value
           ? h(
-              'button',
+              'div',
               {
-                type: 'button',
-                class: 'callout-fold-toggle',
-                'aria-expanded': String(open.value),
-                onClick: () => {
-                  open.value = !open.value
-                },
+                class: 'callout-head',
+                style: 'display:flex;align-items:baseline',
+                onClick: toggle,
               },
-              [title],
+              [
+                h('button', {
+                  type: 'button',
+                  class: 'callout-fold-toggle',
+                  style: 'display:inline-block;width:auto',
+                  'aria-expanded': String(open.value),
+                  'aria-label': open.value ? 'Collapse callout' : 'Expand callout',
+                }),
+                title,
+              ],
             )
           : title,
         ...(open.value ? rest : []),
