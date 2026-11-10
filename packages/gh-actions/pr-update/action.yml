@@ -57,6 +57,11 @@ inputs:
   include-drafts:
     description: Update draft PRs too, true or false.
     default: "true"
+  include-bots:
+    description: >-
+      Update PRs authored by a bot too, true or false. Off by default: release-plz,
+      Changesets and similar rebuild and force-push their own branches on every merge.
+    default: "false"
   dry-run:
     description: true measures and reports but pushes, labels and comments nothing.
     default: "false"
@@ -96,7 +101,7 @@ outputs:
     description: PRs pr-update left alone (blocked, a recorded failure, an unpushed local branch).
     value: ${{ steps.run.outputs.skipped }}
   excluded:
-    description: PRs excluded before the run (skip label, fork, draft).
+    description: PRs excluded before the run (skip label, fork, draft, bot author).
     value: ${{ steps.run.outputs.excluded }}
 
 runs:
@@ -152,6 +157,7 @@ runs:
         CONFLICT_LABEL: ${{ inputs.conflict-label }}
         COMMENT_CONFLICTS: ${{ inputs.comment-conflicts }}
         INCLUDE_DRAFTS: ${{ inputs.include-drafts }}
+        INCLUDE_BOTS: ${{ inputs.include-bots }}
         APPLY: ${{ inputs.dry-run == 'true' && 'false' || 'true' }}
         FAIL_ON_CONFLICT: ${{ inputs.fail-on-conflict }}
         EXTRA_ARGS: ${{ inputs.extra-args }}

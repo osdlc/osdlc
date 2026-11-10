@@ -383,6 +383,11 @@ function rebaseThroughRungs(
   return { kind: 'done', resolved }
 }
 
+/** Title of the merge commit, clean or repaired: names the PR's branches. */
+function mergeTitle(target: UpdateTarget): string {
+  return `Merge ${target.base} into ${target.head}`
+}
+
 /**
  * Finish an update whose rebase is already done (`rebased`) or merge the base
  * in now, then verify and push.
@@ -401,7 +406,13 @@ async function integrateAndPush(
   let outcome
   if (rebased === null) {
     try {
-      outcome = git.merge(base)
+      // The merge runs on a temporary local branch, so git's default title
+      // would name that branch. Name the PR's own branches instead.
+      const baseSha = git.resolveRef(base)
+      outcome = git.merge(base, {
+        message:
+          mergeTitle(target) + (baseSha === null ? '' : `\n\nBase: ${target.base} at ${baseSha}`),
+      })
     } catch (e) {
       git.try.mergeAbort()
       return { status: 'failed', reason: `merge ${base}: ${errorLine(e)}` }
@@ -466,7 +477,7 @@ async function integrateAndPush(
       // See `rebaseThroughRungs` for why the pathspec is `.`.
       git.add(['.'])
       git.commit({
-        message: `Merge ${target.base} into ${target.head}`,
+        message: mergeTitle(target),
         body:
           repaired.length > 0
             ? 'Conflicts resolved by rebuilding the generated artifacts and the repair.'

@@ -253,6 +253,11 @@ Developed here, in this repository:
   and terminal UI: a CSS sheet for light and dark, ANSI codes at the
   detected color level, color detection, and helpers for printing untrusted
   text)
+- `packages/ts/npm-binary` (`@osdlc/npm-binary` on npm, ships a compiled
+  binary through npm as one launcher package plus one `os`/`cpu`-gated package
+  per platform: platform names, the two `package.json` shapes, a
+  dependency-free Node launcher, platform-first publishing and cargo's target
+  directory)
 - `packages/ts/repo-cleaner` (`@osdlc/repo-cleaner` on npm, a tool and library
   that finds the branches, worktrees and remote branches that have been merged
   and can go away, with the evidence and the command for each, and applies an
