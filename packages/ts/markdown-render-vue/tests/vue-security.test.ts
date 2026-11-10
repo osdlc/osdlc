@@ -269,14 +269,14 @@ describe('a PDF embed href', () => {
     expect(host.querySelector('a[href^="javascript"]')).toBeNull()
   })
 
-  test('does not open blob URLs to an ordinary link', () => {
-    expect(toVueProps({ href: 'blob:https://app.example/7d2' }).href).toBeUndefined()
+  test('does not open blob URLs to a link, even one a note dresses as a PDF embed', () => {
+    const blob = 'blob:https://app.example/7d2'
+    expect(toVueProps({ href: blob }).href).toBeUndefined()
     expect(
-      toVueProps({
-        className: ['markdown-embed', 'markdown-embed-pdf'],
-        href: 'blob:https://app.example/7d2',
-      }).href,
-    ).toBe('blob:https://app.example/7d2')
+      toVueProps({ className: ['markdown-embed', 'markdown-embed-pdf'], href: blob }).href,
+    ).toBeUndefined()
+    expect(toVueProps({ href: blob }, { assetHref: true }).href).toBe(blob)
+    expect(toVueProps({ href: 'javascript:alert(1)' }, { assetHref: true }).href).toBeUndefined()
   })
 })
 

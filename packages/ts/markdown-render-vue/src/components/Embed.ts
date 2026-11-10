@@ -27,7 +27,7 @@ import {
   type PropType,
 } from 'vue'
 import type { Element } from 'hast'
-import { toVueProps, type HastNode } from '../render.ts'
+import { toVueProps, type HastNode, type ToVuePropsOptions } from '../render.ts'
 import {
   EmbedAncestorsKey,
   EmbedBudgetKey,
@@ -205,11 +205,11 @@ export const Embed = defineComponent({
     watch([target, path, heading, blockId, kind, funded, chainKey], load, { immediate: true })
 
     /** A shared hast builder's element as a VNode. */
-    const vnode = (el: Element) => {
+    const vnode = (el: Element, options?: ToVuePropsOptions) => {
       const text = el.children.map((child) => (child.type === 'text' ? child.value : ''))
       return text.length
-        ? h(el.tagName, toVueProps(el.properties), text.join(''))
-        : h(el.tagName, toVueProps(el.properties))
+        ? h(el.tagName, toVueProps(el.properties, options), text.join(''))
+        : h(el.tagName, toVueProps(el.properties, options))
     }
 
     /**
@@ -324,6 +324,8 @@ export const Embed = defineComponent({
             extra: carried(),
             fragment: heading.value,
           }),
+          // A PDF embed's href is `src`, which passed `isSafeAssetUrl` in `mediaSrc`.
+          { assetHref: true },
         )
       }
 
