@@ -20,8 +20,8 @@
 //     only ever adds time, so the best round is the least disturbed one; a
 //     real slowdown moves the best round too.
 //   - A benchmark over the threshold in that pass is a suspect. Only the
-//     suspects run again (the runner is given a filter that matches them and
-//     nothing else, so the pass costs a fraction of the first), --confirm-rounds
+//     suspects run again (the runner is given a name filter for them, so the
+//     pass costs a fraction of the first), --confirm-rounds
 //     rounds in the opposite order, and a suspect fails only when it is over
 //     the threshold again. A noise spike has to strike twice; a real slowdown
 //     does. The vitest filter selects a test (the title before the case), so a
@@ -240,8 +240,9 @@ function escapeRegex(s: string): string {
 }
 
 /**
- * The name filter that selects exactly the benchmarks `ids` (all of one
- * package) and no others, in the runner's own syntax. For criterion, an
+ * The name filter that selects the benchmarks `ids` (all of one package), in
+ * the runner's own syntax: for criterion exactly those ids, for vitest every
+ * case of their tests. For criterion, an
  * anchored alternation of the full ids, matched against `<group>/<function>`.
  * For vitest (`-t`), an anchored alternation of the test titles: `-t` selects
  * a test, not a case within it, and a case name may hold `/` where a title
