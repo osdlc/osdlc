@@ -125,7 +125,7 @@ flowchart LR
   class REL done
   class CUR done
   class MCP,PUB,PIN,STRICT later
-  class DATA active
+  class DATA blocked
 ```
 
 ## Review queue
@@ -135,11 +135,12 @@ move; merged PRs drop off.
 
 | Order | PR | What | Why this order | Status |
 | --- | --- | --- | --- | --- |
-| 1 | [#764](https://github.com/osdlc/osdlc/pull/764) | feat(gh-actions): run any skill from a PR comment, read-only or with `--apply` | Next to be ready; nothing else waits on you | draft: needs your choice of how `--apply` changes land and the `pr-agent` environment, then the gate reruns; CI green; behind main |
+| 1 | [#750](https://github.com/osdlc/osdlc/pull/750) | feat(harness-knowledge): compiled harness facts, read by agent-call and detect-harness | Marked ready at 09:51 UTC; the only PR waiting on your review | waiting on your review since 09:51 UTC; CI running (perf gate) |
+| 2 | [#764](https://github.com/osdlc/osdlc/pull/764) | feat(gh-actions): run any skill from a PR comment, read-only or with `--apply` | Next to be ready, after 750 | draft: needs your choice of how `--apply` changes land and the `pr-agent` environment, then the gate reruns; CI green; behind main |
 
 ## PR tracker
 
-Checked 2026-11-10 04:17 UTC. A periodic check refreshes this table and the graph.
+Checked 2026-11-10 10:17 UTC. A periodic check refreshes this table and the graph.
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
@@ -149,7 +150,7 @@ Checked 2026-11-10 04:17 UTC. A periodic check refreshes this table and the grap
 | [#764](https://github.com/osdlc/osdlc/pull/764) | feat(gh-actions): run any skill from a PR comment, read-only or with --apply | draft | none | behind main; green | pre-review gate (draft) | new; touches gh-actions |
 | [#760](https://github.com/osdlc/osdlc/pull/760) | pr-update: one PR identity across repositories, per-repository verify, --restack | merged | — | — | — | merged 2026-11-10 (pr-update work) |
 | [#759](https://github.com/osdlc/osdlc/pull/759) | ci(pr-update): run once a night instead of on every push to main | merged | — | — | — | merged 2026-11-09; ends the CI storms from merges to main |
-| [#750](https://github.com/osdlc/osdlc/pull/750) | feat(harness-knowledge): compiled harness facts, read by agent-call and detect-harness | draft | none | behind main; CI green | waits on the skillwright stack merging (osdlc/skillwright#98, #100–#106); gate done (code review, codex) | phase 5 of the harness-knowledge plan; facts wired and consumer fixes in; re-sync from the release, then ready |
+| [#750](https://github.com/osdlc/osdlc/pull/750) | feat(harness-knowledge): compiled harness facts, read by agent-call and detect-harness | open | none | mergeable; CI running (perf gate) | waiting on your review (marked ready 2026-11-10 09:51 UTC) | phase 5 of the harness-knowledge plan; facts wired and consumer fixes in |
 | [#741](https://github.com/osdlc/osdlc/pull/741) | fix: kill the agent's process group when its host is interrupted (command-seam, agent-call, pr-update) | merged | — | — | — | merged 2026-11-10; releases with the next Version Packages PR |
 | [#734](https://github.com/osdlc/osdlc/pull/734) | feat(gh-actions): codex-pr and cursor-pr, shared pr-common scripts, multi-marketplace plugins | merged | — | — | — | merged 2026-11-09; next: live test with caller workflows |
 | [#733](https://github.com/osdlc/osdlc/pull/733) | Version Packages (corpus-schema; unblocked the agent-call 0.10.0 publish) | merged | — | — | — | merged 2026-11-09; agent-call 0.10.0 on npm |
