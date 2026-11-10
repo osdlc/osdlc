@@ -8,25 +8,28 @@ defineProps<{ view: ViewMode }>()
 <template>
   <div class="legend">
     <span class="legend__title">Legend</span>
-    <ul v-if="view === 'compare'" class="legend__list">
-      <li><span class="swatch swatch--both" />In both states</li>
+    <ul class="legend__list">
+      <li><span class="swatch swatch--twin" />Twin pair</li>
+      <li><span class="swatch swatch--kept" />Kept</li>
       <li><span class="swatch swatch--removed">−</span>Going away</li>
-      <li><span class="swatch swatch--added">+</span>New</li>
+      <li><span class="swatch swatch--added">+</span>To make</li>
       <li><span class="badge">⇢ moves</span>Changes repo</li>
-      <li>
-        <svg class="line" viewBox="0 0 36 8" aria-hidden="true"><line x1="0" y1="4" x2="36" y2="4" class="line--both" /></svg>
-        Edge in both
-      </li>
-      <li>
-        <svg class="line" viewBox="0 0 36 8" aria-hidden="true"><line x1="0" y1="4" x2="36" y2="4" class="line--removed" /></svg>
-        Edge going away
-      </li>
-      <li>
-        <svg class="line" viewBox="0 0 36 8" aria-hidden="true"><line x1="0" y1="4" x2="36" y2="4" class="line--added" /></svg>
-        New edge
-      </li>
+      <template v-if="view === 'compare'">
+        <li>
+          <svg class="line" viewBox="0 0 36 8" aria-hidden="true"><line x1="0" y1="4" x2="36" y2="4" class="line--both" /></svg>
+          Edge in both
+        </li>
+        <li>
+          <svg class="line" viewBox="0 0 36 8" aria-hidden="true"><line x1="0" y1="4" x2="36" y2="4" class="line--removed" /></svg>
+          Edge going away
+        </li>
+        <li>
+          <svg class="line" viewBox="0 0 36 8" aria-hidden="true"><line x1="0" y1="4" x2="36" y2="4" class="line--added" /></svg>
+          New edge
+        </li>
+      </template>
     </ul>
-    <span v-else class="legend__note">Showing the {{ VIEW_LABEL[view].toLowerCase() }} state only. Switch to Compare to see what changes.</span>
+    <span v-if="view !== 'compare'" class="legend__note">Showing the {{ VIEW_LABEL[view].toLowerCase() }} state only. Switch to Compare to see edge changes.</span>
     <span class="legend__item">
       <svg class="line" viewBox="0 0 36 8" aria-hidden="true"><line x1="2" y1="4" x2="34" y2="4" class="line--overlap" /></svg>
       <span class="badge badge--overlap">≈</span>Overlap: two things do some of the same job (no arrow)
@@ -82,6 +85,16 @@ defineProps<{ view: ViewMode }>()
   line-height: 1;
 }
 
+.swatch--twin {
+  border-color: var(--twin);
+  background: var(--twin-bg);
+}
+
+.swatch--kept {
+  border-color: var(--kept);
+  background: var(--kept-bg);
+}
+
 .swatch--removed {
   border-style: dashed;
   border-color: var(--removed);
@@ -92,7 +105,7 @@ defineProps<{ view: ViewMode }>()
 .swatch--added {
   border-color: var(--added);
   background: var(--added-bg);
-  color: var(--added);
+  color: var(--added-text);
 }
 
 .badge {

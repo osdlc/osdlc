@@ -44,7 +44,7 @@ const label = computed(() => CHANGE_LABEL[props.change])
 
 .change-tag--added {
   border-color: var(--added);
-  color: var(--added);
+  color: var(--added-text);
   background: var(--added-bg);
 }
 </style>

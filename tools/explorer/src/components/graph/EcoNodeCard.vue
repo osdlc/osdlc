@@ -23,7 +23,7 @@ const SIDES: { side: HandleSide; position: Position }[] = [
 const logos = computed(() => props.data.members.filter((member) => member.logo !== null))
 const label = computed(() => cardLabel(props.data))
 const cardClasses = computed(() => [
-  `card--${props.data.change}`,
+  `card--${props.data.category}`,
   {
     'card--twin': props.data.members.length > 1,
     'is-selected': props.data.selected,
@@ -35,6 +35,9 @@ const cardStyle = computed(() => ({
   '--repo': props.data.repoIndex < 0 ? 'var(--repo-none)' : `var(--repo-${props.data.repoIndex % 6})`,
   '--logos': String(logos.value.length),
 }))
+const tagChange = computed(() =>
+  props.data.category === 'going-away' ? 'removed' : props.data.category === 'to-make' ? 'added' : null,
+)
 const overlapTitle = computed(() =>
   props.data.overlaps === 1 ? 'Overlaps with 1 other node' : `Overlaps with ${props.data.overlaps} other nodes`,
 )
@@ -62,7 +65,7 @@ const overlapTitle = computed(() =>
       <span v-if="data.overlaps > 0" class="card__overlap" :title="overlapTitle">
         <span aria-hidden="true">≈</span><span class="visually-hidden">{{ overlapTitle }}</span>
       </span>
-      <ChangeTag v-if="data.change !== 'both'" :change="data.change" class="card__change" />
+      <ChangeTag v-if="tagChange" :change="tagChange" class="card__change" />
     </div>
     <div v-if="data.move" class="card__move" :title="`Moves from ${data.move.from} to ${data.move.to}`">
       <span aria-hidden="true">⇢</span> moves: {{ data.move.from }} → {{ data.move.to }}
@@ -103,13 +106,24 @@ const overlapTitle = computed(() =>
   background: var(--repo);
 }
 
-.card--removed {
+/* Card colour groups: twin pair, kept, going away, to make. Dashes and a tag back up the last two. */
+.card--twin {
+  border-color: var(--twin);
+  background: var(--twin-bg);
+}
+
+.card--kept {
+  border-color: var(--kept);
+  background: var(--kept-bg);
+}
+
+.card--going-away {
   border-style: dashed;
   border-color: var(--removed);
   background: var(--removed-bg);
 }
 
-.card--added {
+.card--to-make {
   border-color: var(--added);
   background: var(--added-bg);
 }

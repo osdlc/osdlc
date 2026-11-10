@@ -19,12 +19,18 @@
   --edge-both: #8b9099;
   --removed: #b93a2c;
   --removed-bg: #fbe9e6;
-  --added: #1d7a43;
-  --added-bg: #e3f4ea;
+  /* Card groups: twin green, kept blue, going away red (--removed), to make yellow (--added). */
+  --twin: #1d7a43;
+  --twin-bg: #dff3e6;
+  --kept: #2f64d0;
+  --kept-bg: #e1ebfb;
+  --added: #a67600;
+  --added-bg: #fbf0c2;
+  --added-text: #7a5600;
   --match: #b7791f;
-  --overlap: #d9730d;
-  --overlap-bg: #fdf0e1;
-  --overlap-text: #8a4405;
+  --overlap: #7e3fc4;
+  --overlap-bg: #f1e8fb;
+  --overlap-text: #5b2a96;
 
   /* Simple Icons brand colours; the dark set is lightened to keep 3:1 or more on the card. */
   --logo-ts: #3178c6;
@@ -32,13 +38,14 @@
   --logo-markdown: #000000;
   --logo-yaml: #cb171e;
 
-  --repo-0: #3561d6;
-  --repo-1: #8a4fc4;
-  --repo-2: #d07a1f;
-  --repo-3: #13938a;
-  --repo-4: #c2477c;
-  --repo-5: #6c7a1e;
-  --repo-none: #9a9a9a;
+  /* Repo stripes are greys so they never read as a card group colour. */
+  --repo-0: #1f2225;
+  --repo-1: #45494f;
+  --repo-2: #6a6f76;
+  --repo-3: #8e9298;
+  --repo-4: #aeb1b6;
+  --repo-5: #c8cacd;
+  --repo-none: #dcdcd7;
 
   --shadow: 0 1px 2px rgb(0 0 0 / 0.08), 0 2px 6px rgb(0 0 0 / 0.05);
   --radius: 8px;
@@ -67,25 +74,30 @@
     --edge-both: #737882;
     --removed: #ff8577;
     --removed-bg: #3a201d;
-    --added: #63d692;
-    --added-bg: #16301f;
+    --twin: #63d692;
+    --twin-bg: #16301f;
+    --kept: #7fb0ff;
+    --kept-bg: #172a47;
+    --added: #e0b02e;
+    --added-bg: #3a3112;
+    --added-text: #e0b02e;
     --match: #f0b44c;
-    --overlap: #ff9d42;
-    --overlap-bg: #3a2814;
-    --overlap-text: #ffc58a;
+    --overlap: #b48cf0;
+    --overlap-bg: #2c2142;
+    --overlap-text: #d3b8f8;
 
     --logo-ts: #5b9bea;
     --logo-rust: #e8e8e5;
     --logo-markdown: #e8e8e5;
     --logo-yaml: #f0565c;
 
-    --repo-0: #7c9cff;
-    --repo-1: #c08bf0;
-    --repo-2: #f0a35a;
-    --repo-3: #4fcfc4;
-    --repo-4: #f07fae;
-    --repo-5: #b5c35a;
-    --repo-none: #777;
+    --repo-0: #f0f0ee;
+    --repo-1: #cfd2d6;
+    --repo-2: #aaaeb4;
+    --repo-3: #858a91;
+    --repo-4: #666b72;
+    --repo-5: #4d5158;
+    --repo-none: #3f4349;
 
     --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 2px 8px rgb(0 0 0 / 0.3);
   }

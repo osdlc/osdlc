@@ -3,6 +3,26 @@ import type { DisplayNode } from './twins'
 import type { Change, EcoNode, Language, Repo, State, ViewMode } from './types'
 import { CHANGE_LABEL, changeOf, languageName, movesRepo, repoInView, repoLabel } from './view'
 
+/**
+ * The card's colour group. A card present in only one state is going away or to make, which wins
+ * over twin; a twin card with one new member still spans both states, so it stays a twin.
+ */
+export type CardCategory = 'twin' | 'kept' | 'going-away' | 'to-make'
+
+export function categoryOf(node: DisplayNode): CardCategory {
+  const change = changeOf(node.states)
+  if (change === 'removed') return 'going-away'
+  if (change === 'added') return 'to-make'
+  return node.members.length > 1 ? 'twin' : 'kept'
+}
+
+export const CATEGORY_LABEL: Record<CardCategory, string> = {
+  twin: 'twin pair',
+  kept: 'kept',
+  'going-away': 'going away',
+  'to-make': 'to make',
+}
+
 export type Logo = 'typescript' | 'rust' | 'markdown' | 'yaml'
 
 const LOGO: Record<Language, Logo | null> = {
@@ -33,6 +53,7 @@ export interface CardFace {
   kind: string
   members: CardMember[]
   change: Change
+  category: CardCategory
   repo: string
   /** Index of the repo in `repos`, for its colour stripe; -1 when unknown. */
   repoIndex: number
@@ -91,6 +112,7 @@ export function cardFace(node: DisplayNode, view: ViewMode, repos: readonly Repo
       badge: memberBadge(member, shown, change, view, repos),
     })),
     change,
+    category: categoryOf(node),
     repo: memberRepos.map((id) => repoLabel(repos, id)).join(' / '),
     repoIndex: repo === null ? -1 : repoIds.indexOf(repo),
     move: moving

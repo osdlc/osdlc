@@ -18,6 +18,11 @@ Open the address Vite prints.
 - Tab moves through the nodes and Enter selects one.
 - The URL holds the selected node (`#node=<id>`), so you can link to it.
 - The filters narrow the graph by language, kind and repo. Search highlights matching nodes.
+- Card fill and border show what the component is, in every view: green for a twin pair, blue for a
+  component kept without a twin, red (dashed, "going away") for one that exists only today, and
+  yellow ("new") for one that exists only in the target. Red and yellow win over green and blue when
+  the whole card is in one state. New edges are yellow, going-away edges are red and dashed, edges in
+  both states are grey. The left stripe is the repo, in greys.
 - Each card shows its language as a logo in the top-right corner: TypeScript, Rust, Markdown or YAML.
 - A twin pair, the same library in TypeScript and Rust, is one card with both logos. The data keeps
   two nodes; only the view merges them. Edges to either member attach to the card. When the two
@@ -27,7 +32,7 @@ Open the address Vite prints.
 - The Relations toggles show or hide groups of edges: dependencies (depends, dev-depends), structure
   (implements, extends, validates, reads) and overlaps. They hide edges only, never cards.
 - An overlap is duplication: two components that do some of the same job. It is drawn as a dotted
-  amber line with no arrow and a "≈" tag, and each card it touches shows a small "≈". The "≈ N
+  violet line with no arrow and a "≈" tag, and each card it touches shows a small "≈". The "≈ N
   overlaps" button in the header shows only the overlaps; click it again to show everything.
 
 ## Edit the data

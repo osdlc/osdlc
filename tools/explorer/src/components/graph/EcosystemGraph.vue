@@ -82,7 +82,7 @@ function onKeydown(event: KeyboardEvent) {
 }
 
 function minimapClass(node: GraphNode<CardData>) {
-  return `minimap-node--${node.data.change}`
+  return `minimap-node--${node.data.category}`
 }
 </script>
 
@@ -166,7 +166,7 @@ function minimapClass(node: GraphNode<CardData>) {
   stroke-width: 3;
 }
 
-/* Overlaps: amber, dotted, no arrowhead and a ≈ tag, so colour is not the only signal. */
+/* Overlaps: violet, dotted, no arrowhead and a ≈ tag, so colour is not the only signal. */
 .graph :deep(.eco-edge--overlap .vue-flow__edge-path) {
   stroke: var(--overlap);
   stroke-width: 3;
@@ -236,11 +236,19 @@ function minimapClass(node: GraphNode<CardData>) {
   fill: var(--border-strong);
 }
 
-.graph :deep(.minimap-node--removed) {
+.graph :deep(.minimap-node--twin) {
+  fill: var(--twin);
+}
+
+.graph :deep(.minimap-node--kept) {
+  fill: var(--kept);
+}
+
+.graph :deep(.minimap-node--going-away) {
   fill: var(--removed);
 }
 
-.graph :deep(.minimap-node--added) {
+.graph :deep(.minimap-node--to-make) {
   fill: var(--added);
 }
 </style>

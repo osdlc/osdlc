@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cardFace, titleOf } from '../src/model/card'
+import { cardFace, categoryOf, titleOf } from '../src/model/card'
 import { parseEcosystem } from '../src/model/data'
 import { displayEdgeIdOf, groupTwins } from '../src/model/twins'
 import { edgeId } from '../src/model/types'
@@ -112,5 +112,39 @@ describe('twin cards', () => {
   it('shows both versions only when they differ', () => {
     expect(cardFace(cardOf('markdown-link'), 'compare', fixture.repos).versions).toBe('0.3.0 / 0.5.0')
     expect(cardFace(cardOf('markdown-corpus-ts'), 'present', fixture.repos).versions).toBeNull()
+  })
+})
+
+describe('categoryOf', () => {
+  it('colours a twin pair as twin', () => {
+    expect(categoryOf(cardOf('markdown-link'))).toBe('twin')
+  })
+
+  it('keeps a twin green when only one member is new', () => {
+    expect(node('corpus-schema-rs').states).toEqual(['target'])
+    expect(categoryOf(cardOf('corpus-schema'))).toBe('twin')
+    // A pair whose members sit in different states still spans both.
+    expect(categoryOf(cardOf('markdown-corpus-ts'))).toBe('twin')
+  })
+
+  it('calls a node with no twin in both states kept', () => {
+    expect(categoryOf(cardOf('etag-write'))).toBe('kept')
+  })
+
+  it('calls a present-only card going away and a target-only card to make', () => {
+    expect(categoryOf(cardOf('markdown-db'))).toBe('going-away')
+    expect(categoryOf({ ...cardOf('etag-write'), states: ['target'] })).toBe('to-make')
+  })
+
+  it('lets going away and to make win over twin when the whole card is in one state', () => {
+    const pair = cardOf('markdown-link')
+    expect(categoryOf({ ...pair, states: ['present'] })).toBe('going-away')
+    expect(categoryOf({ ...pair, states: ['target'] })).toBe('to-make')
+  })
+
+  it('applies in every view', () => {
+    const face = (view: 'present' | 'target' | 'compare') => cardFace(cardOf('markdown-db'), view, graph.repos).category
+    expect(face('present')).toBe('going-away')
+    expect(face('compare')).toBe('going-away')
   })
 })
