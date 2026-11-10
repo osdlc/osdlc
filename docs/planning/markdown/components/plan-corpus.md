@@ -9,6 +9,9 @@ repo_target: "[osdlc/markdown](../repos/osdlc-markdown.md)"
 path_target: docs/planning
 tasks:
   - "[38 Planning profile](../tasks/38%20Planning%20profile.md)"
+links:
+  - "[osdlc/markdown#13](https://github.com/osdlc/markdown/pull/13)"
+  - "[osdlc/markdown#14](https://github.com/osdlc/markdown/pull/14)"
 implements_new:
   - "[corpus-schema-spec](corpus-schema-spec.md)"
 extends_new:

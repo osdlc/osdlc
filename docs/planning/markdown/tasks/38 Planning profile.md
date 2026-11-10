@@ -1,7 +1,7 @@
 ---
 number: 38
 title: Planning profile
-detail: plan types as a profile
+detail: markdown PR 14
 status: doing
 type: functional
 milestone: "[m-npm](../milestones/m-npm.md)"
@@ -14,4 +14,5 @@ in `profiles/planning/`, a corpus with only types. This plan's corpus names it u
 builds its own types on the profile's with `x-extends`. Tasks and milestones add fields, and
 decisions use the profile's type as it is. The components, layers, repos, overlaps and datasets
 stay local: they describe this ecosystem. CI checks the plan with this repo's corpus-schema, which
-knows `extends`. The profile is private and not on npm. After 9.
+knows `extends`. The profile is private and not on npm. After 9. In progress in
+[osdlc/markdown#14](https://github.com/osdlc/markdown/pull/14).
