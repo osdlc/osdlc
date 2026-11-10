@@ -64,7 +64,7 @@ next describe 0.14; 0.15 adds decisions 1, 2 and 10.
 - Under Deno nothing hands off.
 
 **Who uses it.** In osdlc: `way`, `pr-update`, `repo-cleaner`, `markdown-contract`. In dev: `dfv`,
-`dev-ports`, `diffkit`, `manifest-graph`, `markdown-astro`, `markdown-vault-query`, the six vault
+`dev-ports`, `diffkit`, `manifest-graph`, `markdown-vault-astro`, `markdown-vault-query`, the six vault
 apps (`mail-sync`, `todo-sync`, `vault-digest`, `vault-engine`, `vault-graph`, `vault-triage`),
 `family` and `sdlc`.
 

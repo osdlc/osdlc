@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.1](https://github.com/osdlc/osdlc/compare/markdown-corpus/v0.3.0...markdown-corpus/v0.3.1) - 2026-11-10
+
+### Other
+
+- updated the following local packages: frontmatter-lossless, yaml-splice, markdown-vault-fs, markdown-link
+
 ## [0.3.0] - 2026-11-06
 
 A load can keep going past a folder it cannot list or a note it cannot
