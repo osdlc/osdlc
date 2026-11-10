@@ -42,7 +42,10 @@ osdlc/osdlc calls both workflows from its own `packages-ci.yml` and
   `conformance: false`.
 - For the release: a `.changeset/config.json`, and a root `version-packages`
   script that runs `changeset version` and then anything that must follow,
-  such as `conformance-suites write --reference ts`.
+  such as `conformance-suites write --reference ts`. Run
+  `pnpm install --lockfile-only` right after `changeset version`: it rewrites
+  dependency ranges, and the Version Packages PR fails `--frozen-lockfile`
+  without a refreshed lockfile.
 - For the release: a GitHub App installed on the repository with contents
   and pull-requests write, its client ID, and an environment (by default
   `release-plz`) that holds its private key as `RELEASE_PLZ_APP_PRIVATE_KEY`.
