@@ -154,6 +154,14 @@ export function renderHeadingSections(
   return out
 }
 
+/** `key`, or `key~n` for its nth repeat among siblings (as `childKey` does). */
+function uniqueKey(used: Map<string, number>, key: string | number): string | number {
+  const k = String(key)
+  const n = used.get(k) ?? 0
+  used.set(k, n + 1)
+  return n === 0 ? key : `${k}~${n}`
+}
+
 function isFootnotes(node: HastNode): boolean {
   return (
     node.type === 'element' &&
@@ -173,6 +181,9 @@ function renderSections(
   fold: HeadingFoldContext,
 ): Array<VNode | string> {
   const out: Array<VNode | string> = []
+  // Sibling folds need distinct keys; two headings sharing an id (`## A` twice
+  // with the slugger off, or raw HTML) would otherwise patch each other.
+  const used = new Map<string, number>()
   groupHeadingSections(children).forEach((section, index) => {
     if (!section.heading) {
       out.push(...renderChildren(section.body, context))
@@ -191,7 +202,7 @@ function renderSections(
     // persist as a fold that never folds anything.
     const open = !id || !fold.folded.has(id)
     const props: FoldProps = {
-      key: id || key,
+      key: uniqueKey(used, id || key),
       heading: headingVNode,
       open,
       // Toggling always flips `open`, so the state the click PRODUCES —

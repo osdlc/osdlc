@@ -125,3 +125,18 @@ describe('groupHeadingSections', () => {
     expect(groupHeadingSections([text])).toEqual([{ body: [text] }])
   })
 })
+
+describe('renderHeadingSections keys', () => {
+  test('two headings with the same id get distinct fold keys', async () => {
+    const { renderHeadingSections } = await import('../src/heading-sections.ts')
+    const same = [heading(2, 'a'), p('one'), heading(2, 'a'), p('two'), heading(2, 'a')]
+    const vnodes = renderHeadingSections(
+      same,
+      { components: {} },
+      { folded: new Set(), onToggle: () => {} },
+    )
+    const keys = vnodes.map((v) => (typeof v === 'string' ? v : v.key))
+    expect(keys).toEqual(['a', 'a~1', 'a~2'])
+    expect(new Set(keys).size).toBe(keys.length)
+  })
+})
