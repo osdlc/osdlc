@@ -43,7 +43,7 @@ jobs:
     uses: ./.github/workflows/ts-packages-release.yml
     with:
       app-client-id: Iv23liYTGAl78fzN8YWm
-      # `version-packages` runs `changeset version`, stamps each CLI's
+      # `version-packages` runs `changeset version`, refreshes pnpm-lock.yaml, stamps each CLI's
       # src/version.generated.ts, rebuilds wayfinder, then rewrites its
       # schema/config.json and its guide's `$schema` line for the new version,
       # and reruns the TypeScript-referenced conformance generators, since each
