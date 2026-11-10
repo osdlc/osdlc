@@ -117,6 +117,6 @@ export interface OutlineEntry {
   depth: number
   /** Flattened heading text. */
   text: string
-  /** Slug id, matching the rendered element's `id`. */
+  /** Slug id, matching the rendered element's `id`; empty when the heading has no slug (`# !!!`) and so no anchor. */
   id: string
 }

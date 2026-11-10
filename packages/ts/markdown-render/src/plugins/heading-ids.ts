@@ -60,7 +60,12 @@ export function remarkHeadingIds() {
       if (typeof existing === 'string' && existing) return
       // Trim first: a stripped comment or trailing marker must not change the
       // slug a `#heading` link was written against.
-      setHProps(node, { id: slugger.slug(nodeText(node).trim()) })
+      const text = nodeText(node).trim()
+      // A heading with nothing to slug (`# !!!`) has no anchor; an empty `id`
+      // would be a link target nothing can name. The shared slugger is not
+      // consulted either, as it numbers empty slugs (`-1`).
+      if (!new GithubSlugger().slug(text)) return
+      setHProps(node, { id: slugger.slug(text) })
     })
   }
 }

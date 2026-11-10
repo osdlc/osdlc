@@ -127,3 +127,17 @@ describe('extractOutline', () => {
     expect(extractOutline(await renderToHast('just text'))).toEqual([])
   })
 })
+
+describe('headings without a slug', () => {
+  test('get no id attribute rather than an empty one', async () => {
+    for (const md of ['#', '# !!!']) {
+      const out = await html(md)
+      expect(out).not.toContain('id=')
+    }
+  })
+
+  test('the outline entry carries an empty id, and later empty headings add no numbering', async () => {
+    const tree = await renderToHast('# !!!\n\n# ???\n\n# Real')
+    expect(extractOutline(tree).map((e) => e.id)).toEqual(['', '', 'real'])
+  })
+})

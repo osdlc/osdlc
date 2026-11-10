@@ -138,6 +138,10 @@ function tightItems(tree: MdNode): Set<MdNode> {
 /** Remark plugin: lift `^block-id` markers onto their block. */
 export function remarkBlockIds() {
   return (tree: MdNode) => {
+    // An id names one element. The first marker for an id owns it; a repeat
+    // stays literal text rather than minting a second element with that id.
+    const used = new Set<string>()
+
     // Standalone `^id` paragraphs attach to the preceding block.
     visit(
       tree as never,
@@ -149,7 +153,8 @@ export function remarkBlockIds() {
         const previous = parent.children[index - 1]
         // With no block above it — or one that cannot carry an id — the marker
         // owns nothing, so it stays literal text.
-        if (!previous || CANNOT_CARRY_ID.has(previous.type)) return
+        if (!previous || CANNOT_CARRY_ID.has(previous.type) || used.has(id)) return
+        used.add(id)
         attach(previous, id)
         parent.children.splice(index, 1)
         return index
@@ -175,9 +180,9 @@ export function remarkBlockIds() {
       const match = BLOCK_ID_RE.exec(last.value.slice(lineStart))
       const id = match?.[1]
       if (!match || id === undefined) return
-      const rest = last.value.slice(0, lineStart + match.index).replace(/[ \t\n]+$/, '')
+      const rest = last.value.slice(0, lineStart + match.index).replace(/[ \t\r\n]+$/, '')
       // Marker lines with nothing else above them own nothing either.
-      if (rest && rest.split('\n').every((line) => STANDALONE_BLOCK_ID_RE.test(line))) return
+      if (rest && rest.split(/\r?\n/).every((line) => STANDALONE_BLOCK_ID_RE.test(line))) return
       // A title that is nothing but the marker would be emptied; keep it literal.
       if (title && !rest && title.children?.length === 1) return
       // A tight item's paragraph is unwrapped into the `<li>`, so the item owns
@@ -185,6 +190,8 @@ export function remarkBlockIds() {
       // ending in its paragraph took the marker when it was visited.
       const owner = node.type === 'paragraph' && parent && tight.has(parent) ? parent : node
       if (owner !== node && owner.data?.hProperties?.id !== undefined) return
+      if (used.has(id)) return
+      used.add(id)
       last.value = rest
       attach(owner, id)
     })
