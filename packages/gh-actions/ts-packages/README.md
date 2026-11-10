@@ -125,7 +125,17 @@ jobs:
     uses: osdlc/osdlc/.github/workflows/ts-packages-release.yml@<commit-sha> # gh-actions/v1
     with:
       app-client-id: <the App's client ID>
+    secrets:
+      RELEASE_PLZ_APP_PRIVATE_KEY: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}
 ```
+
+Pass `RELEASE_PLZ_APP_PRIVATE_KEY` by name even though only the environment
+holds it. A reusable workflow reads an environment secret the caller does not
+pass as an empty string, and the job that sets `environment` gets the
+environment's value for one it does pass
+([GitHub docs](https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows)).
+The workflow marks the secret required, so a caller that leaves it out fails
+before any job starts.
 
 npm checks the workflow that starts the run, not the reusable workflow that
 runs `npm publish`, and both need `id-token: write`
