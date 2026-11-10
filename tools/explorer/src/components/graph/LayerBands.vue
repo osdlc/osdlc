@@ -17,7 +17,7 @@ function bandStyle(band: Band) {
 <template>
   <div class="bands" aria-hidden="true">
     <div v-for="band in bands" :key="band.id" class="band" :style="bandStyle(band)">
-      <div class="band__label" :style="{ width: `${BAND_GUTTER - 24}px` }">
+      <div v-if="band.label" class="band__label" :style="{ width: `${BAND_GUTTER - 24}px` }">
         <strong>{{ band.label }}</strong>
         <span class="band__summary">{{ band.summary }}</span>
       </div>

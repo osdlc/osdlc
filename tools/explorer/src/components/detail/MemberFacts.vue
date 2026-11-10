@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { logoOf } from '../../model/card'
+import { planTaskRefs } from '../../model/crossLinks'
+import type { PlanTask } from '../../model/plan'
 import type { EcoNode, Ecosystem, State } from '../../model/types'
 import { STATES } from '../../model/types'
 import { changeOf, languageLabel, languageName, movesRepo, repoLabel } from '../../model/view'
@@ -8,15 +10,21 @@ import ChangeTag from '../ChangeTag.vue'
 import LanguageLogo from '../LanguageLogo.vue'
 
 /** One node's facts. On a twin card there is one of these per member, each with its own heading. */
-const props = defineProps<{ node: EcoNode; eco: Ecosystem; heading: boolean }>()
+const props = defineProps<{
+  node: EcoNode
+  eco: Ecosystem
+  heading: boolean
+  planTasks: ReadonlyMap<number, PlanTask>
+}>()
 
-const PLAN_URL = 'https://github.com/osdlc/markdown/blob/main/docs/ecosystem-plan.md'
+const emit = defineEmits<{ selectTask: [id: number] }>()
 const STATE_LABEL: Record<State, string> = { present: 'Present', target: 'Target' }
 
 const change = computed(() => changeOf(props.node.states))
 const logo = computed(() => logoOf(props.node.language))
 const layer = computed(() => props.eco.layers.find((l) => l.id === props.node.layer)?.label ?? props.node.layer)
 const moves = computed(() => movesRepo(props.node))
+const tasks = computed(() => planTaskRefs(props.node.tasks, props.planTasks))
 const places = computed(() =>
   STATES.map((state) => {
     const repoId = props.node.repo[state]
@@ -87,9 +95,20 @@ const places = computed(() =>
 
     <div v-if="node.tasks.length > 0">
       <h4 class="section-title">Plan tasks</h4>
-      <p class="tasks">
-        <a v-for="task in node.tasks" :key="task" :href="PLAN_URL" target="_blank" rel="noopener">Task {{ task }}</a>
-      </p>
+      <ul class="tasks">
+        <li v-for="item in tasks" :key="item.id">
+          <button
+            v-if="item.task"
+            type="button"
+            class="tasks__link"
+            :title="`Show task ${item.id} in the Work view`"
+            @click="emit('selectTask', item.id)"
+          >
+            <span class="tasks__number">{{ item.id }}</span> {{ item.task.title }}
+          </button>
+          <span v-else class="tasks__missing">Task {{ item.id }} (not in the plan)</span>
+        </li>
+      </ul>
     </div>
 
     <div v-if="node.links.length > 0">
@@ -218,7 +237,40 @@ const places = computed(() =>
 .tasks {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 12px;
+  gap: 4px 6px;
   margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tasks__link {
+  padding: 1px 8px 1px 2px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--accent);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.tasks__link:hover {
+  border-color: var(--accent);
+}
+
+.tasks__number {
+  display: inline-block;
+  min-width: 22px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+  text-align: center;
+}
+
+.tasks__missing {
+  color: var(--muted);
+  font-size: 12.5px;
 }
 </style>

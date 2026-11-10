@@ -5,6 +5,7 @@ import type { MilestoneDep, PlanIndex, Progress } from './work'
 import { isNextUp, progressOf, taskLinks } from './work'
 import type { VisibleWork } from './workFilters'
 import {
+  COLUMN,
   LANE_HEAD_HEIGHT,
   LANE_HEAD_WIDTH,
   MILESTONE_HEIGHT,
@@ -60,6 +61,11 @@ export interface WorkEdgeSpec {
   class: string
   /** True when every prerequisite behind the edge is done, so it no longer holds anything up. */
   satisfied: boolean
+  /**
+   * True for a task link that skips over cards in its own row. It arcs over the row, top to top,
+   * so it does not run hidden behind the cards between and read as part of a chain.
+   */
+  arc: boolean
 }
 
 export interface WorkFlowInput {
@@ -183,6 +189,7 @@ export function toWorkFlow(input: WorkFlowInput): { nodes: WorkNodeSpec[]; edges
         target: milestoneNodeId(dep.to),
         class: edgeClass(focus, id, satisfied),
         satisfied,
+        arc: false,
       })
     }
     return { nodes, edges }
@@ -234,12 +241,15 @@ export function toWorkFlow(input: WorkFlowInput): { nodes: WorkNodeSpec[]; edges
     if (!placed(taskNodeId(from.id)) || !placed(taskNodeId(to.id))) continue
     const id = taskEdgeId(from.id, to.id)
     const satisfied = from.status === 'done'
+    const a = layout.positions[taskNodeId(from.id)]!
+    const b = layout.positions[taskNodeId(to.id)]!
     edges.push({
       id,
       source: taskNodeId(from.id),
       target: taskNodeId(to.id),
-      class: edgeClass(focus, id, satisfied, from.milestone === to.milestone ? [] : ['is-cross']),
+      class: edgeClass(focus, id, satisfied),
       satisfied,
+      arc: a.y === b.y && b.x - a.x > COLUMN,
     })
   }
   return { nodes, edges }

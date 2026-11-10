@@ -1,38 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import type { Selection } from '../../model/flow'
-import { titleOf } from '../../model/card'
-import { isOverlap, overlapLabel } from '../../model/relations'
-import type { DisplayGraph } from '../../model/twins'
-import { edgeId, type EcoEdge, type Ecosystem, type ViewMode } from '../../model/types'
-import EdgeDetail from './EdgeDetail.vue'
-import NodeDetail from './NodeDetail.vue'
-
-const props = defineProps<{
-  eco: Ecosystem
-  graph: DisplayGraph
-  view: ViewMode
-  selection: Selection
-}>()
+/** The side panel, or a bottom sheet on a narrow screen. The current view fills its body. */
+defineProps<{ heading: string }>()
 
 const open = defineModel<boolean>('open', { required: true })
-
-const emit = defineEmits<{
-  selectNode: [id: string]
-  selectEdge: [id: string]
-}>()
-
-const card = computed(() =>
-  props.selection?.type === 'node' ? (props.graph.nodes.find((n) => n.id === props.selection?.id) ?? null) : null,
-)
-const edge = computed(() =>
-  props.selection?.type === 'edge' ? (props.graph.edges.find((e) => edgeId(e) === props.selection?.id) ?? null) : null,
-)
-const edgeHeading = (e: EcoEdge) => (isOverlap(e) ? overlapLabel(e) : `${e.kind} edge`)
-const heading = computed(() => {
-  if (card.value) return titleOf(card.value.members).title
-  return edge.value ? edgeHeading(edge.value) : 'Details'
-})
 </script>
 
 <template>
@@ -51,21 +21,7 @@ const heading = computed(() => {
       </button>
     </div>
     <div v-show="open" id="detail-panel-body" class="panel__body">
-      <NodeDetail
-        v-if="card"
-        :key="card.id"
-        :card="card"
-        :eco="eco"
-        :graph="graph"
-        :view="view"
-        @select-node="emit('selectNode', $event)"
-        @select-edge="emit('selectEdge', $event)"
-      />
-      <EdgeDetail v-else-if="edge" :edge="edge" :graph="graph" @select-node="emit('selectNode', $event)" />
-      <div v-else class="panel__empty">
-        <p>Click a node or an edge to see its details.</p>
-        <p>Tab moves through the nodes, Enter selects one, and Esc clears the selection.</p>
-      </div>
+      <slot />
     </div>
   </aside>
 </template>
@@ -112,14 +68,6 @@ const heading = computed(() => {
   flex: 1;
   overflow-y: auto;
   padding: 14px 16px 24px;
-}
-
-.panel__empty {
-  color: var(--muted);
-}
-
-.panel__empty p {
-  margin: 0 0 8px;
 }
 
 /* Collapsed on a wide screen: a thin rail with the toggle. */

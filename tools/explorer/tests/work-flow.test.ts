@@ -57,9 +57,14 @@ describe('toWorkFlow, detailed level', () => {
       taskNodeId(3),
     ])
     expect(flow.edges).toHaveLength(4)
-    const cross = flow.edges.find((e) => e.id === taskEdgeId(3, 4))!
-    expect(cross.class).toContain('is-cross')
     expect(flow.edges.find((e) => e.id === taskEdgeId(1, 2))!.satisfied).toBe(true)
+  })
+
+  it('arcs a link that skips over a card in its own row', () => {
+    // 1 -> 3 skips 2, which sits between them in the same row.
+    const flow = toWorkFlow(input())
+    expect(flow.edges.find((e) => e.id === taskEdgeId(1, 3))!.arc).toBe(true)
+    expect(flow.edges.find((e) => e.id === taskEdgeId(2, 3))!.arc).toBe(false)
   })
 
   it('focuses a selected task with what it waits on and unblocks', () => {

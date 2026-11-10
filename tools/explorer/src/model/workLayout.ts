@@ -10,12 +10,16 @@ export const LANE_HEAD_HEIGHT = 124
 export const MILESTONE_WIDTH = 288
 export const MILESTONE_HEIGHT = 136
 
-const COLUMN = TASK_WIDTH + 48
+export const COLUMN = TASK_WIDTH + 48
 const ROW_GAP = 14
 const ROW = TASK_HEIGHT + ROW_GAP
 const LANE_PAD = 14
-/** Room left of the first column for the lane headers. */
-const LANE_GUTTER = LANE_HEAD_WIDTH + 40
+/** Space between a lane header and the lane's first task. */
+const HEAD_GAP = 40
+/** Room left of the first column for the headers of lanes that start there. */
+const LANE_GUTTER = LANE_HEAD_WIDTH + HEAD_GAP + 14
+/** The lanes the first view starts on: the first in plan order, the current beeline. */
+const START_LANES = 2
 const OVERVIEW_COLUMN = MILESTONE_WIDTH + 96
 const OVERVIEW_ROW = MILESTONE_HEIGHT + 28
 
@@ -79,14 +83,24 @@ export interface Lane {
   height: number
 }
 
+export interface Rect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 export interface WorkLayout {
   positions: Record<string, Point>
   lanes: Lane[]
+  /** Where the first view starts: the cards of the first lanes. Null to fit everything. */
+  start: Rect | null
 }
 
 /**
- * The detailed level: one lane per milestone in plan order, the header at its left. Tasks sit in
- * their column; tasks of one lane that share a column stack in the milestone's task order. A task
+ * The detailed level: one lane per milestone in plan order. Tasks sit in their column; tasks of one
+ * lane that share a column stack in the milestone's task order. The milestone header sits just
+ * left of the lane's first task, so a lane reads as starting where its work can start. A task
  * whose milestone is unknown has no lane and is not placed.
  */
 export function detailLayout(index: PlanIndex): WorkLayout {
@@ -114,12 +128,31 @@ export function detailLayout(index: PlanIndex): WorkLayout {
     for (const task of tasks) {
       positions[taskNodeId(task.id)] = { x: (columns.get(task.id) ?? 0) * COLUMN, y: top + (rowOf.get(task.id) ?? 0) * ROW }
     }
-    positions[milestoneNodeId(milestone.id)] = { x: x + 14, y: y + LANE_PAD + (inner - LANE_HEAD_HEIGHT) / 2 }
+    const firstColumn = Math.min(lastColumn, ...tasks.map((task) => columns.get(task.id) ?? 0))
+    positions[milestoneNodeId(milestone.id)] = {
+      x: firstColumn * COLUMN - HEAD_GAP - LANE_HEAD_WIDTH,
+      y: y + LANE_PAD + (inner - LANE_HEAD_HEIGHT) / 2,
+    }
     const height = inner + 2 * LANE_PAD
     lanes.push({ id: milestone.id, x, y, width, height })
     y += height
   }
-  return { positions, lanes }
+  return { positions, lanes, start: startOf(index, positions, lanes.slice(0, START_LANES)) }
+}
+
+/** The rectangle around the header and tasks of the given lanes. */
+function startOf(index: PlanIndex, positions: Record<string, Point>, lanes: readonly Lane[]): Rect | null {
+  const boxes = lanes.flatMap((lane) => [
+    { at: positions[milestoneNodeId(lane.id)], width: LANE_HEAD_WIDTH, height: LANE_HEAD_HEIGHT },
+    ...(index.tasksOf.get(lane.id) ?? []).map((t) => ({ at: positions[taskNodeId(t.id)], width: TASK_WIDTH, height: TASK_HEIGHT })),
+  ])
+  const placed = boxes.filter((box): box is { at: Point; width: number; height: number } => box.at !== undefined)
+  if (placed.length === 0) return null
+  const x = Math.min(...placed.map((b) => b.at.x))
+  const right = Math.max(...placed.map((b) => b.at.x + b.width))
+  const top = Math.min(...lanes.map((l) => l.y))
+  const bottom = Math.max(...lanes.map((l) => l.y + l.height))
+  return { x, y: top, width: right - x, height: bottom - top }
 }
 
 /**
@@ -137,11 +170,11 @@ export function overviewLayout(index: PlanIndex, deps: readonly MilestoneDep[]):
     used.set(c, row + 1)
     positions[milestoneNodeId(id)] = { x: c * OVERVIEW_COLUMN, y: row * OVERVIEW_ROW }
   }
-  return { positions, lanes: [] }
+  return { positions, lanes: [], start: null }
 }
 
 /** The rectangle around every lane, or around every placed card when there are no lanes. */
-export function workBounds(layout: WorkLayout, size: { width: number; height: number }) {
+export function workBounds(layout: WorkLayout, size: { width: number; height: number }): Rect | null {
   if (layout.lanes.length > 0) {
     const x = Math.min(...layout.lanes.map((l) => l.x))
     const y = Math.min(...layout.lanes.map((l) => l.y))

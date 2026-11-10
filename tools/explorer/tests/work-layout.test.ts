@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { milestoneDeps } from '../src/model/work'
 import {
+  LANE_HEAD_WIDTH,
   TASK_HEIGHT,
   depths,
   detailLayout,
@@ -41,9 +42,17 @@ describe('detailLayout', () => {
         expect(at(task.id).y).toBeGreaterThanOrEqual(lane.y)
         expect(at(task.id).y + TASK_HEIGHT).toBeLessThanOrEqual(lane.y + lane.height)
       }
-      expect(layout.positions[milestoneNodeId(lane.id)]!.x).toBeLessThan(0)
+      const head = layout.positions[milestoneNodeId(lane.id)]!
+      expect(head.x).toBeGreaterThanOrEqual(lane.x)
+      for (const task of index.tasksOf.get(lane.id)!) expect(head.x + LANE_HEAD_WIDTH).toBeLessThan(at(task.id).x)
     }
     expect(layout.lanes[1]!.y).toBe(layout.lanes[0]!.y + layout.lanes[0]!.height)
+  })
+
+  it('starts the first view on the first two lanes', () => {
+    const start = layout.start!
+    expect(start.y).toBe(layout.lanes[0]!.y)
+    expect(start.y + start.height).toBe(layout.lanes[1]!.y + layout.lanes[1]!.height)
   })
 })
 

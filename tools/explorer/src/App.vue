@@ -1,74 +1,119 @@
 <script setup lang="ts">
-import { computed, reactive, shallowRef, watch } from 'vue'
+import { computed, shallowRef, watch } from 'vue'
 import AppHeader from './components/AppHeader.vue'
 import FilterBar from './components/controls/FilterBar.vue'
 import GraphLegend from './components/controls/GraphLegend.vue'
+import OverlapsToggle from './components/controls/OverlapsToggle.vue'
+import ViewSwitch from './components/controls/ViewSwitch.vue'
+import ComponentDetail from './components/detail/ComponentDetail.vue'
 import DetailPanel from './components/detail/DetailPanel.vue'
 import EcosystemGraph from './components/graph/EcosystemGraph.vue'
-import { useLayout } from './composables/useLayout'
+import WorkDetail from './components/work/WorkDetail.vue'
+import WorkFilterBar from './components/work/WorkFilterBar.vue'
+import WorkGraph from './components/work/WorkGraph.vue'
+import WorkLegend from './components/work/WorkLegend.vue'
+import { useComponentsView } from './composables/useComponentsView'
+import { useHashRoute } from './composables/useHashRoute'
+import { useKeydown } from './composables/useKeydown'
 import { useMediaQuery } from './composables/useMediaQuery'
-import { useSelection } from './composables/useSelection'
+import { useWorkView } from './composables/useWorkView'
 import { loadData } from './loadData'
-import { cardMatchesQuery, emptyFilters, facetsOf, visibleGraph } from './model/filters'
-import { toFlow } from './model/flow'
-import { RELATIONS, overlapsInView } from './model/relations'
-import { groupTwins } from './model/twins'
+import { loadPlan } from './loadPlan'
+import { WORK_LEVEL_LABEL, type AppView, type Route, type WorkLevel } from './model/route'
+import { displayIdFor } from './model/twins'
 import type { ViewMode } from './model/types'
+import { VIEW_LABEL } from './model/view'
 
 const { source, eco, problems } = loadData()
-const facets = facetsOf(eco)
-const graph = groupTwins(eco)
+const loadedPlan = loadPlan()
 
-const view = shallowRef<ViewMode>('compare')
-const filters = reactive(emptyFilters())
+const appView = shallowRef<AppView>('components')
 const compact = useMediaQuery('(max-width: 760px)')
 const panelOpen = shallowRef(!compact.value)
 
 const PANEL_WIDTH = 360
 const TOP_HEIGHT = 150
-const { layout, error } = useLayout(graph, () => {
+const components = useComponentsView(eco, () => {
   const width = window.innerWidth - (compact.value ? 0 : PANEL_WIDTH)
   const height = Math.max(200, window.innerHeight - TOP_HEIGHT)
   return Math.min(2.5, Math.max(0.6, width / height))
 })
-const { selection, reveal, selectNode, selectEdge, clear } = useSelection(graph)
+const work = useWorkView(loadedPlan.plan)
+const planTasks = work.index.task
+
+const STATE_OPTIONS = (Object.keys(VIEW_LABEL) as ViewMode[]).map((value) => ({ value, label: VIEW_LABEL[value] }))
+const LEVEL_OPTIONS = (['overview', 'detail'] as WorkLevel[]).map((value) => ({ value, label: WORK_LEVEL_LABEL[value] }))
+
+const header = computed(() =>
+  appView.value === 'components'
+    ? { source, sample: source === 'fixture.json', asOf: eco.asOf }
+    : { source: loadedPlan.found ? 'plan.json' : 'no plan.json', sample: false, asOf: loadedPlan.plan.asOf },
+)
+const allProblems = [...problems, ...loadedPlan.problems.map((problem) => `plan.json: ${problem}`)]
 
 // A new selection, from the graph, the panel or the URL, opens the panel.
 watch(
-  () => (selection.value ? `${selection.value.type}:${selection.value.id}` : null),
+  () => {
+    const selected = appView.value === 'components' ? components.selection.value : work.selection.value
+    return selected ? `${appView.value}:${selected.type}:${selected.id}` : null
+  },
   (key) => {
     if (key !== null) panelOpen.value = true
   },
 )
 
-const visible = computed(() => visibleGraph(graph, view.value, filters))
-const matchCount = computed(
-  () => visible.value.nodes.filter((node) => cardMatchesQuery(node, filters.query, view.value)).length,
-)
-const flow = computed(() =>
-  layout.value
-    ? toFlow({
-        graph,
-        nodes: visible.value.nodes,
-        edges: visible.value.edges,
-        positions: layout.value.positions,
-        view: view.value,
-        selection: selection.value,
-        query: filters.query,
-      })
-    : { nodes: [], edges: [] },
-)
-const overlapCount = computed(() => overlapsInView(eco, view.value).length)
-const onlyOverlaps = computed(() => filters.relations.length === 1 && filters.relations[0] === 'overlaps')
+const heading = computed(() => (appView.value === 'components' ? components.heading.value : work.heading.value))
 
-function toggleOnlyOverlaps() {
-  filters.relations = onlyOverlaps.value ? [...RELATIONS] : ['overlaps']
+function currentRoute(): Route {
+  if (appView.value === 'components') {
+    const selected = components.selection.value
+    return { view: 'components', node: selected?.type === 'node' ? selected.id : null }
+  }
+  const selected = work.selection.value
+  return {
+    view: 'work',
+    level: work.level.value,
+    task: selected?.type === 'task' ? selected.id : null,
+    milestone: selected?.type === 'milestone' ? selected.id : null,
+  }
 }
 
-const revealId = computed(() => (selection.value?.type === 'node' ? selection.value.id : null))
+function applyRoute(route: Route) {
+  appView.value = route.view
+  if (route.view === 'components') {
+    const id = route.node === null ? null : displayIdFor(components.graph, route.node)
+    if (id !== null) components.selectNode(id, { reveal: true })
+    else if (components.selection.value?.type === 'node') components.clear()
+    return
+  }
+  work.level.value = route.level
+  if (route.task !== null) work.selectTask(route.task, { reveal: true })
+  else if (route.milestone !== null) work.selectMilestone(route.milestone, { reveal: true })
+  else work.clear()
+}
 
-function onSelectNode(id: string, fromPanel = false) {
-  selectNode(id, { reveal: fromPanel })
+useHashRoute(currentRoute, applyRoute)
+
+useKeydown((event) => {
+  if (event.key !== 'Escape') return
+  if (appView.value === 'components') components.clear()
+  else work.clear()
+})
+
+function onSelectComponent(id: string, fromPanel = false) {
+  components.selectNode(id, { reveal: fromPanel })
+}
+
+/** From a task's "Components it changes": show that card in the Components view. */
+function openComponent(id: string) {
+  appView.value = 'components'
+  components.selectNode(id, { reveal: true })
+}
+
+/** From a component's plan tasks: show that task in the Work view. */
+function openTask(id: number) {
+  appView.value = 'work'
+  work.selectTask(id, { reveal: true })
 }
 </script>
 
@@ -76,57 +121,112 @@ function onSelectNode(id: string, fromPanel = false) {
   <div class="app" :class="{ 'is-panel-open': panelOpen }">
     <div class="app__top">
       <AppHeader
-        v-model:view="view"
-        :source="source"
-        :as-of="eco.asOf"
-        :problems="problems"
-        :overlap-count="overlapCount"
-        :only-overlaps="onlyOverlaps"
-        @toggle-only-overlaps="toggleOnlyOverlaps"
-      />
+        v-model:app-view="appView"
+        :source="header.source"
+        :sample="header.sample"
+        :as-of="header.asOf"
+        :problems="allProblems"
+      >
+        <template v-if="appView === 'components'">
+          <OverlapsToggle
+            v-if="components.overlapCount.value > 0"
+            :count="components.overlapCount.value"
+            :pressed="components.onlyOverlaps.value"
+            @toggle="components.toggleOnlyOverlaps"
+          />
+          <ViewSwitch v-model="components.mode.value" label="Which state to show" :options="STATE_OPTIONS" />
+        </template>
+        <ViewSwitch v-else v-model="work.level.value" label="How much to show" :options="LEVEL_OPTIONS" />
+      </AppHeader>
       <details class="app__tools" :open="!compact">
         <summary class="app__tools-toggle">Filters and legend</summary>
-        <div class="app__tools-body">
+        <div v-if="appView === 'components'" class="app__tools-body">
           <FilterBar
-            v-model:query="filters.query"
-            v-model:languages="filters.languages"
-            v-model:kinds="filters.kinds"
-            v-model:repo-ids="filters.repos"
-            v-model:relations="filters.relations"
-            :facets="facets"
+            v-model:query="components.filters.query"
+            v-model:languages="components.filters.languages"
+            v-model:kinds="components.filters.kinds"
+            v-model:repo-ids="components.filters.repos"
+            v-model:relations="components.filters.relations"
+            :facets="components.facets"
             :repos="eco.repos"
-            :match-count="matchCount"
+            :match-count="components.matchCount.value"
           />
-          <GraphLegend :view="view" />
+          <GraphLegend :view="components.mode.value" />
+        </div>
+        <div v-else class="app__tools-body">
+          <WorkFilterBar
+            v-model:statuses="work.filters.statuses"
+            v-model:milestones="work.filters.milestones"
+            v-model:types="work.filters.types"
+            v-model:next-up="work.filters.nextUp"
+            :facets="work.facets"
+            :index="work.index"
+            :next-up-count="work.nextUp.size"
+          />
+          <WorkLegend :level="work.level.value" />
         </div>
       </details>
     </div>
     <main class="app__graph">
-      <p v-if="error" class="app__message">The layout failed: {{ error }}</p>
-      <p v-else-if="!layout" class="app__message">Laying out the graph…</p>
-      <EcosystemGraph
-        v-else
-        :nodes="flow.nodes"
-        :edges="flow.edges"
-        :bands="layout.bands"
-        :reveal-id="revealId"
-        :reveal-token="reveal"
-        :compact="compact"
-        @select-node="onSelectNode"
-        @select-edge="selectEdge"
-        @clear="clear"
-      />
+      <template v-if="appView === 'components'">
+        <p v-if="components.error.value" class="app__message">The layout failed: {{ components.error.value }}</p>
+        <p v-else-if="!components.layout.value" class="app__message">Laying out the graph…</p>
+      </template>
+      <p v-else-if="!loadedPlan.found" class="app__message">
+        No <code>data/plan.json</code>. Run <code>pnpm sync-plan</code> to copy the plan in.
+      </p>
+      <!-- Each view keeps its pan, zoom and selection while the other is shown. -->
+      <KeepAlive>
+        <EcosystemGraph
+          v-if="appView === 'components' && components.layout.value"
+          :nodes="components.flow.value.nodes"
+          :edges="components.flow.value.edges"
+          :bands="components.layout.value.bands"
+          :reveal-id="components.revealId.value"
+          :reveal-token="components.reveal.value"
+          :compact="compact"
+          @select-node="onSelectComponent"
+          @select-edge="components.selectEdge"
+          @clear="components.clear"
+        />
+        <WorkGraph
+          v-else-if="appView === 'work' && loadedPlan.found"
+          :level="work.level.value"
+          :nodes="work.flow.value.nodes"
+          :edges="work.flow.value.edges"
+          :lanes="work.layout.value.lanes"
+          :bounds="work.bounds.value"
+          :reveal-id="work.revealId.value"
+          :reveal-token="work.reveal.value"
+          :compact="compact"
+          @select-node="work.selectNode"
+          @clear="work.clear"
+        />
+      </KeepAlive>
     </main>
-    <DetailPanel
-      v-model:open="panelOpen"
-      class="app__panel"
-      :eco="eco"
-      :graph="graph"
-      :view="view"
-      :selection="selection"
-      @select-node="onSelectNode($event, true)"
-      @select-edge="selectEdge"
-    />
+    <DetailPanel v-model:open="panelOpen" class="app__panel" :heading="heading">
+      <ComponentDetail
+        v-if="appView === 'components'"
+        :eco="eco"
+        :graph="components.graph"
+        :view="components.mode.value"
+        :selection="components.selection.value"
+        :plan-tasks="planTasks"
+        @select-node="onSelectComponent($event, true)"
+        @select-edge="components.selectEdge"
+        @select-task="openTask"
+      />
+      <WorkDetail
+        v-else
+        :index="work.index"
+        :deps="work.deps"
+        :graph="components.graph"
+        :selection="work.selection.value"
+        @select-task="work.selectTask($event, { reveal: true })"
+        @select-milestone="work.selectMilestone($event, { reveal: true })"
+        @select-component="openComponent"
+      />
+    </DetailPanel>
   </div>
 </template>
 

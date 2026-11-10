@@ -4,17 +4,25 @@ import { titleOf } from '../../model/card'
 import { neighboursOf } from '../../model/neighbours'
 import type { DisplayGraph, DisplayNode } from '../../model/twins'
 import { isTwinCard } from '../../model/twins'
+import type { PlanTask } from '../../model/plan'
 import type { Ecosystem, ViewMode } from '../../model/types'
 import { changeOf } from '../../model/view'
 import ChangeTag from '../ChangeTag.vue'
 import MemberFacts from './MemberFacts.vue'
 import NeighbourList from './NeighbourList.vue'
 
-const props = defineProps<{ card: DisplayNode; eco: Ecosystem; graph: DisplayGraph; view: ViewMode }>()
+const props = defineProps<{
+  card: DisplayNode
+  eco: Ecosystem
+  graph: DisplayGraph
+  view: ViewMode
+  planTasks: ReadonlyMap<number, PlanTask>
+}>()
 
 const emit = defineEmits<{
   selectNode: [id: string]
   selectEdge: [id: string]
+  selectTask: [id: number]
 }>()
 
 const twin = computed(() => isTwinCard(props.card))
@@ -36,7 +44,15 @@ const neighbours = computed(() => neighboursOf(props.graph, props.card.id, props
       A twin pair: the same library in TypeScript and Rust, drawn as one card. Each one's facts are below.
     </p>
 
-    <MemberFacts v-for="member in card.members" :key="member.id" :node="member" :eco="eco" :heading="twin" />
+    <MemberFacts
+      v-for="member in card.members"
+      :key="member.id"
+      :node="member"
+      :eco="eco"
+      :heading="twin"
+      :plan-tasks="planTasks"
+      @select-task="emit('selectTask', $event)"
+    />
 
     <NeighbourList
       v-if="neighbours.overlaps.length > 0"

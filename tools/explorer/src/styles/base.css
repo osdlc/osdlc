@@ -41,3 +41,12 @@ button {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* The panel's hint when nothing is selected. */
+.panel-empty {
+  color: var(--muted);
+}
+
+.panel-empty p {
+  margin: 0 0 8px;
+}

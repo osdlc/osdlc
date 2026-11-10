@@ -1,6 +1,6 @@
 import type { Change, EcoEdge, ViewMode } from './types'
 import { edgeId } from './types'
-import { cardFace, changeInView, type CardFace } from './card'
+import { cardFace, changeInView, titleOf, type CardFace } from './card'
 import type { HandleSide, Point } from './layout'
 import { edgeHandles } from './layout'
 import { cardMatchesQuery } from './filters'
@@ -163,4 +163,17 @@ export function toFlow(input: FlowInput): { nodes: FlowNodeSpec[]; edges: FlowEd
   })
 
   return { nodes, edges }
+}
+
+/** The panel heading for a Components selection. */
+export function componentHeading(graph: DisplayGraph, selection: Selection): string {
+  if (selection?.type === 'node') {
+    const card = graph.nodes.find((node) => node.id === selection.id)
+    return card ? titleOf(card.members).title : 'Details'
+  }
+  if (selection?.type === 'edge') {
+    const edge = graph.edges.find((e) => edgeId(e) === selection.id)
+    if (edge) return isOverlap(edge) ? overlapLabel(edge) : `${edge.kind} edge`
+  }
+  return 'Details'
 }

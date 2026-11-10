@@ -32,6 +32,16 @@
   --overlap-bg: #f1e8fb;
   --overlap-text: #5b2a96;
 
+  /* Work view: status and next up. Each comes with an icon or label, never colour alone. */
+  --doing: #2f64d0;
+  --doing-bg: #e1ebfb;
+  --owner: #b4530a;
+  --owner-bg: #fdebd9;
+  --done: #1d7a43;
+  --next: #b7791f;
+  --next-bg: #fdf3dc;
+  --edge-strong: #4f535a;
+
   /* Simple Icons brand colours; the dark set is lightened to keep 3:1 or more on the card. */
   --logo-ts: #3178c6;
   --logo-rust: #000000;
@@ -85,6 +95,15 @@
     --overlap: #b48cf0;
     --overlap-bg: #2c2142;
     --overlap-text: #d3b8f8;
+
+    --doing: #7fb0ff;
+    --doing-bg: #172a47;
+    --owner: #ffa45c;
+    --owner-bg: #3d2614;
+    --done: #63d692;
+    --next: #f0b44c;
+    --next-bg: #3a2f14;
+    --edge-strong: #b5b9c0;
 
     --logo-ts: #5b9bea;
     --logo-rust: #e8e8e5;

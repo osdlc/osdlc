@@ -1,23 +1,24 @@
-<script setup lang="ts">
-import type { ViewMode } from '../../model/types'
-import { VIEW_LABEL } from '../../model/view'
+<script setup lang="ts" generic="T extends string">
+/** A row of buttons of which exactly one is pressed. */
+defineProps<{
+  label: string
+  options: readonly { value: T; label: string }[]
+}>()
 
-const view = defineModel<ViewMode>({ required: true })
-
-const MODES: ViewMode[] = ['present', 'target', 'compare']
+const selected = defineModel<T>({ required: true })
 </script>
 
 <template>
-  <div class="view-switch" role="group" aria-label="Which state to show">
+  <div class="view-switch" role="group" :aria-label="label">
     <button
-      v-for="mode in MODES"
-      :key="mode"
+      v-for="option in options"
+      :key="option.value"
       type="button"
       class="view-switch__option"
-      :aria-pressed="view === mode"
-      @click="view = mode"
+      :aria-pressed="selected === option.value"
+      @click="selected = option.value"
     >
-      {{ VIEW_LABEL[mode] }}
+      {{ option.label }}
     </button>
   </div>
 </template>
