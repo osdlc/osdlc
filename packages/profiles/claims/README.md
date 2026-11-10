@@ -1,25 +1,79 @@
-# The claims profile
+# @osdlc/corpus-profile-claims
 
 The claims profile is a set of record types for claims and the evidence behind them. A corpus that
 keeps research, test results or fact checks can use these types instead of inventing its own.
 
-This is the first draft. corpus-schema can now take types from a parent corpus: the root file's
-`extends` key names it, and a type builds on a parent's type with `x-extends` (see the
-[spec](../../packages/conformance/corpus-schema/SPEC.md)). The claims types are not published as a
-package yet, so for now a corpus copies the type folders it wants from [example/](example/), or
-extends a checkout of this folder by path. Later the same types become
-`@osdlc/corpus-profile-claims`, and a corpus names it in its root file with the prefix `claims`.
-That is task 23 in the [ecosystem plan](https://github.com/osdlc/markdown/pull/4).
+The profile is a corpus that holds types and no records. It ships as the npm package
+`@osdlc/corpus-profile-claims`. A corpus names it under `extends` in its root file, with the prefix
+`claims`, and builds its own types on the profile's types with `x-extends`. The
+[corpus-schema spec](../../packages/conformance/corpus-schema/SPEC.md) defines both keys.
 
 A few words used below:
 
 - A corpus is a folder of Markdown notes. A corpus-schema corpus has a root file,
-  `corpus-schema.md`, and one folder per type of record. See the
-  [corpus-schema spec](https://github.com/osdlc/osdlc/blob/main/packages/conformance/corpus-schema/SPEC.md).
+  `corpus-schema.md`, and one folder per type of record.
 - A record is one note in a type folder. Its YAML frontmatter is its data, and the type's JSON
   Schema checks it.
 - A record folder is a record that keeps its own files beside it, such as a script and a CSV:
   `<type>/<Name>/<Name>.md`.
+- A profile is a parent corpus that holds only types. A corpus that extends it sees each type as
+  `<prefix>/<type>`, such as `claims/statements`.
+
+## Install
+
+```sh
+npm install --save-dev @osdlc/corpus-profile-claims
+# or
+pnpm add -D @osdlc/corpus-profile-claims
+```
+
+Install it in the folder that holds your corpus, or in any folder above it. The validator finds the
+package the way Node.js does. The package's `"corpus"` field names its corpus folder, `corpus/`.
+
+You need a corpus-schema validator that reads `extends`: `@osdlc/corpus-schema` 0.3.0 or later.
+
+## Use it
+
+Name the profile in your corpus's root file. `extends` needs level 2:
+
+```yaml
+---
+corpus-schema: 0
+level: 2
+extends:
+  claims: "@osdlc/corpus-profile-claims"
+---
+```
+
+Then add a type folder for each claims type you want. A schema that holds only `x-extends` uses
+the profile's type as it is. `statements/statements.schema.md`:
+
+```markdown
+---
+x-extends: claims/statements
+---
+
+# Statements
+```
+
+Keep the profile's folder names, `documents`, `methods`, `study-results` and `statements`, unless
+you have a reason not to. A typed link in the profile, such as a statement's `specifiedBy`
+(`x-ref: methods`), accepts a record of any local type that extends the named type, whatever its
+folder is called. One rule does need the name: each evidence item must point into a folder named
+`study-results` (see departure 4 below).
+
+To add fields to a type, list them beside `x-extends`. See
+[Adding your own kinds](#adding-your-own-kinds).
+
+Validate as usual:
+
+```sh
+npx --yes @osdlc/corpus-schema@^0.3.0 validate my-corpus
+```
+
+Your corpus does not need a copy of the profile in `_inherited/`. The profile has no records to
+link to. If you run `corpus-schema sync`, it writes one, and the validator then checks that the
+copy matches the installed package.
 
 ## Where the types come from
 
@@ -49,7 +103,8 @@ direction comes from the ACMG 2015 profile in the same release,
 
 ## The types
 
-There are four type folders. Four more VA-Spec classes live inside them as nested objects.
+There are four type folders, in [corpus/](corpus/). Four more VA-Spec classes live inside them as
+nested objects.
 
 | Folder          | VA-Spec class | Holds                                                       |
 | --------------- | ------------- | ----------------------------------------------------------- |
@@ -186,8 +241,8 @@ A contribution has `contributor` (an Agent with `name` and `agentType`), `activi
 10. `agentType` is limited to `person`, `organization` and `software`. VA-Spec recommends these
     three but takes any text.
 11. The contribution schema is copied into both the study-results and statements schemas.
-    corpus-schema v0 keeps each type's schema apart, so one cannot `$ref` another. A profile will
-    define it once.
+    corpus-schema v0 keeps each type's schema apart, so one cannot `$ref` another. The copies stay
+    until a schema can share a definition with another.
 12. Records are open. VA-Spec closes Document, Method, Statement, EvidenceLine, Contribution and
     Agent, and gives each an `extensions` list for anything else. Its abstract classes, Proposition
     and StudyResult, stay open so that its own profiles can add fields. Here the four record types,
@@ -196,10 +251,12 @@ A contribution has `contributor` (an Agent with `name` and `agentType`), `activi
 
 ## The example
 
-[example/](example/) is a valid level-2 corpus. It checks a claim about a made-up command line
-tool, fernlog: that version 2.3 reads its config file from `~/.config/fernlog/config.toml`. It
-also checks a narrower form of the same claim, for Linux only, and a claim that lists the config
-paths for each platform.
+[example/](example/) is a valid level-2 corpus. It extends the profile by the path `../corpus`, so
+its type schemas hold only `x-extends`. The example is not part of the npm package.
+
+It checks a claim about a made-up command line tool, fernlog: that version 2.3 reads its config
+file from `~/.config/fernlog/config.toml`. It also checks a narrower form of the same claim, for
+Linux only, and a claim that lists the config paths for each platform.
 
 - A document: the tool's README.
 - A method: a probe that tries each config path in turn.
@@ -230,10 +287,12 @@ type of record it points at. Typed links from nested fields need `x-ref` inside 
 which is plan task 31. Until then, typed links go in top-level fields, and evidence items use the
 pattern described in departure 4.
 
-Check it with the validator, from the root of this repository:
+Check the profile and the example from the root of this repository. CI uses the repository's own
+validator, since the published 0.2.x does not read `extends`:
 
 ```sh
-npx --yes @osdlc/corpus-schema@^0.2.0 validate profiles/claims/example
+pnpm --filter @osdlc/corpus-schema run build
+node packages/ts/corpus-schema/bin/corpus-schema.js validate profiles/claims/corpus profiles/claims/example
 ```
 
 ## The tests
@@ -246,31 +305,26 @@ Its `expected-error.txt` holds the error the validator must print. One case,
 that leaves the corpus gets only a warning. The tests sit outside `example/`, so a copy of the
 example has no broken records in it.
 
-Run them from the root of this repository:
+For each case, [tests/run.sh](tests/run.sh) copies the profile's corpus and the example, adds the
+record to the example, and runs the validator. An error case passes when the validator reports
+exactly one error, the expected one. A warning case passes when the validator exits 0 and prints
+the expected warning.
+
+[tests/package.sh](tests/package.sh) checks the package as npm ships it. It packs the package,
+unpacks it into a temporary `node_modules/`, and validates
+[tests/package/fixture/](tests/package/fixture/), a small corpus that names the profile by its
+package name. It also checks that the tarball holds no example or tests, and that a rule of the
+profile and a rule the fixture adds both still apply.
+
+Run both after building the validator, from this folder:
 
 ```sh
-sh profiles/claims/tests/run.sh
+npm test
 ```
 
-For each case the script copies the example, adds the record, and runs the validator. An error
-case passes when the validator reports exactly one error, the expected one. A warning case passes
-when the validator exits 0 and prints the expected warning. CI runs the script after it checks the
+Each script uses `packages/ts/corpus-schema` from this repository. Set `CORPUS_SCHEMA` to the
+command of another validator to run that one instead. CI runs both scripts after it checks the
 example.
-
-## Copy the types
-
-To start a new corpus from the example:
-
-```sh
-npx degit osdlc/markdown/profiles/claims/example my-corpus
-```
-
-Or copy the folder by hand. Then delete the example records and keep the four schema files.
-Rewrite the front page in `corpus-schema.md` too, since its links point at the example records.
-
-To add the types to a corpus you already have, copy the type folders you want, each with its
-`<type>.schema.md`, next to your own types. Keep the folder names and field names as they are
-here. Giving the types other names is task 24 in the plan.
 
 ## Adding your own kinds
 
@@ -305,18 +359,19 @@ The proposition's `object` takes any JSON value except null. In YAML, `object:` 
 it reads as null, so allowing null would let a claim with a missing value pass. To claim that
 something has no value, write an empty list, an empty object, `false`, or a word such as `none`.
 
-### Today: copy the types and add to them
+### Add to the types
 
-Copy the type folders into your corpus, as [Copy the types](#copy-the-types) says. Then:
+Extend the profile, as [Use it](#use-it) says. Then:
 
-- Add your fields to your copy of a type's schema, so the validator checks them. A field you leave
-  out of the schema is still allowed, but nothing checks it.
+- Add your fields to your type's schema, beside `x-extends`, so the validator checks them. A field
+  you leave out of the schema is still allowed, but nothing checks it.
 - Add your own types, such as `harnesses` or `subjects`, as folders beside the claims types. A
   top-level field can point at them with `x-ref`.
 - Keep the field names the claims types use. If you add a field that VA-Spec defines and the claims
   types leave out, such as `score`, give it VA-Spec's meaning.
-- For strict checking, add `additionalProperties: false` to your copies once they list your
-  fields. Your copy is yours to close.
+- For strict checking, close your type with `additionalProperties: false`. Your schema is checked
+  on its own, beside the profile's, so it must list every field it allows, the profile's fields
+  too. `title: true` is enough for a field the profile already checks.
 
 The example statement
 [fernlog config path on Linux](example/statements/fernlog%20config%20path%20on%20Linux.md) has a
@@ -330,8 +385,7 @@ adds fields to it. A record must pass its own schema and the parent's. A child t
 may add rules and tighten them, but never loosen them. That is why the claims types are open: a
 closed parent would reject every field a child adds.
 
-Once the corpus names the claims types under `extends` with the prefix `claims`,
-harness-reference's claims type could be this:
+With the profile named under `extends` as `claims`, harness-reference's claims type could be this:
 
 ```yaml
 x-extends: claims/statements
@@ -342,8 +396,7 @@ properties:
 ```
 
 `harness` and `subject` are top-level fields here, so they can be typed links. A typed link inside
-the proposition needs `x-ref` in nested objects, which is plan task 31. After task 23 the claims
-types ship as `@osdlc/corpus-profile-claims`, and a corpus no longer holds copies.
+the proposition needs `x-ref` in nested objects, which is plan task 31.
 
 ### What stays in your corpus
 
@@ -355,3 +408,8 @@ These belong to the corpus that uses the claims types, not to the types:
   shape it takes for a given subject is a rule of your domain.
 - Rules across records, such as "a `model` field only on subjects marked `model_dependent`". A
   schema checks one record at a time, so these need a script of your own.
+
+## Licence
+
+`MIT OR Apache-2.0`, at your option. See [LICENSE-MIT](./LICENSE-MIT) and
+[LICENSE-APACHE](./LICENSE-APACHE).

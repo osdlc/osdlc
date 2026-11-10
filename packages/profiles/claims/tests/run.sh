@@ -10,12 +10,24 @@
 #   must exit 0 and print this text.
 #
 # For each case the script copies the example corpus, adds the record, and runs
-# the validator.
+# the validator. The example extends the profile by the path ../corpus, so the
+# profile's corpus is copied beside the cases.
+#
+# The validator is this repository's corpus-schema, built first. Set
+# CORPUS_SCHEMA to run another one.
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
+validate() {
+  if [ -n "${CORPUS_SCHEMA:-}" ]; then
+    $CORPUS_SCHEMA validate "$1"
+  else
+    node "$here/../../../packages/ts/corpus-schema/bin/corpus-schema.js" validate "$1"
+  fi
+}
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
+cp -R "$here/../corpus" "$work/corpus"
 
 failed=0
 for case_dir in "$here"/cases/*/; do
@@ -26,7 +38,7 @@ for case_dir in "$here"/cases/*/; do
   rm -f "$corpus/expected-error.txt" "$corpus/expected-warning.txt"
 
   status=0
-  out=$(npx --yes @osdlc/corpus-schema@^0.2.0 validate "$corpus" 2>&1) || status=$?
+  out=$(validate "$corpus" 2>&1) || status=$?
 
   if [ -f "$case_dir/expected-error.txt" ]; then
     expected=$(cat "$case_dir/expected-error.txt")

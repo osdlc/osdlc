@@ -1,6 +1,8 @@
 ---
 corpus-schema: 0
 level: 2
+extends:
+  claims: ../corpus
 ---
 
 # Claims example
@@ -23,6 +25,8 @@ the paths fernlog reads on each platform, as a list of objects.
 The two test runs sit in subfolders, `study-results/linux/` and `study-results/macos/`. A subfolder
 groups records. It is not part of their ids.
 
-The types follow GA4GH's Variant Annotation Specification (VA-Spec). The
+The four types come from the claims profile. The root file names it under `extends` by the path
+`../corpus`, and each type's schema holds only `x-extends`. The types follow GA4GH's Variant
+Annotation Specification (VA-Spec). The
 [mapping note](https://github.com/osdlc/markdown/blob/main/profiles/claims/README.md) says which of
 its classes and fields each type takes.
