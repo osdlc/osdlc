@@ -5,7 +5,7 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 
-import type { CargoDependency, CargoMetadata, CargoPackage, IndexEntry } from './crates-io-index.ts'
+import type { CargoDependency, CargoMetadata, CargoPackage, IndexEntry } from '@osdlc/package-checks'
 import { heldBackPackages, unpublishedPatch } from './crates-io-unpublished-patch.ts'
 
 const pkg = (
