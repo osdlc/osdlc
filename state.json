@@ -1,12 +1,24 @@
 {
   "schema": 1,
   "pr": 765,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "732683e02bf6765f3973e59110737754322d49b5",
+  "base": "15697829d64dfece2d809ddbfb61d4923d49cdb2",
+  "round": 1,
   "claim": {
     "owner": "macminim4:claude-q7m2xa",
     "at": "2026-11-10T02:18:21.631Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "scripts/perf-gate.ts",
+      "line": 570,
+      "title": "Skip-confirmation path and per-package suspect grouping in main are untested",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
