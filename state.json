@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "pr": 720,
-  "head": "3dafcd6417463cb9ceff7e725bc9768c03492484",
-  "base": "4ed89f4a5444f355af4f77601debb7de99fde73c",
-  "round": 2,
+  "head": "0aab0d1047ca896386f41c5e7e9f9b109ac08456",
+  "base": "e7a4300cf1e7e2ec2d89fae9b6623e89acfc2b42",
+  "round": 3,
   "claim": {
     "owner": "mbp:claude-r7k2qa",
     "at": "2026-11-10T03:12:27.729Z"
@@ -30,6 +30,28 @@
       "status": "fixed",
       "reason": null,
       "fixedIn": "3dafcd6417463cb9ceff7e725bc9768c03492484"
+    },
+    {
+      "id": "r3-1",
+      "round": 3,
+      "path": "packages/ts/markdown-astro/src/walk.ts",
+      "line": 13,
+      "title": "walkFiles docblock sits above SKIPPABLE",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r3-2",
+      "round": 3,
+      "path": "packages/ts/markdown-astro/src/config.ts",
+      "line": 102,
+      "title": "asset settings are used before they are validated",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
     }
   ]
 }
