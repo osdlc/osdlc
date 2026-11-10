@@ -123,6 +123,13 @@ describe('remarkWikilinks', () => {
     }
   })
 
+  test('an empty `[[]]` after an escaped bang stays literal text', async () => {
+    const out = await html('a \\![[]] b', { notePath: 'Self.md' })
+    expect(out).not.toContain('<a')
+    expect(out).not.toContain('<img')
+    expect(out).toContain('![[]]')
+  })
+
   test('an empty link whose blank alias carries markup stays literal too', async () => {
     // A visible alias still links to the current note; a blank one has nothing
     // to show, so it must not become an empty anchor through the straddle pass.

@@ -67,10 +67,10 @@ const SKIPPED: Record<string, string> = {
     'code in a target is not plain text, so the link stays literal',
   alias_keeps_code_inside_it: 'an alias that crosses nodes is read as plain text, code marks gone',
   self_links_option_reads_a_bare_fragment: 'the renderer links `[[|alias]]` to its own note',
+  empty_targets_are_dropped:
+    'the case holds `[[|alias]]`, which the renderer links to its own note; `[[]]` and `[[ ]]` stay text',
   abandoned_only_code_in_the_target:
     'code in a target is not plain text, so the link stays literal',
-  empty_targets_are_dropped: 'the renderer links `[[|alias]]` to its own note',
-  escaped_bang_before_an_empty_link: 'the renderer links `[[|alias]]` to its own note',
   backtick_run_cut_by_a_cell_boundary:
     'without a delimiter row the line is a paragraph, and remark reads the code span',
   pipe_inside_backticks_still_ends_the_cell:
@@ -99,6 +99,8 @@ function render(body: string): Found {
     .use(remarkEscapes)
     .use(remarkWikilinks, {
       buildNode: (link) => {
+        // The default builder leaves `[[]]` as text; a link with nothing in it is no link.
+        if (!link.target && !link.heading && !link.blockId && !link.alias) return null
         found.wikilinks.push({
           target: link.target,
           heading: link.heading,
