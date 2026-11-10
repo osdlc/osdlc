@@ -55,14 +55,15 @@ test('a quote and an ampersand in a PDF or audio name are escaped', () => {
 
 test('a quote, tag or collection name with a quote is escaped in the wikilink spans', () => {
   const missing = render('[[x" onmouseover="alert(1)]]')
-  assert.ok(!missing.includes('" onmouseover="'))
+  // The quote lands in the span's text, never inside a tag.
+  assert.doesNotMatch(missing, /<span[^>]*" onmouseover="/)
   assert.match(missing, /wikilink-missing/)
 })
 
 test('a collection name with a quote is escaped in a resolved relation span', () => {
   writeFileSync(join(dir, 'note.md'), '# note\n')
   const html = render('[[note]]')
-  assert.match(html, /data-collection="a&quot;b"/)
+  assert.match(html, /data-collection="a&#x22;b"/)
   assert.ok(!html.includes('data-collection="a"b"'))
 })
 
@@ -81,4 +82,22 @@ test('an alias with markup still links when the processor passes the source file
   )
   assert.match(html, /wikilink/)
   assert.ok(!html.includes('[['))
+})
+
+test('missing and relation spans survive a pipeline that disallows raw html', () => {
+  writeFileSync(join(dir, 'rel.md'), '# rel\n')
+  const html = String(
+    unified()
+      .use(remarkParse)
+      .use(remarkWikilinks, {
+        collections: [{ name: 'a"b', dir, route: null }],
+        warnOnCollision: false,
+        danglingRefPolicy: 'warn',
+      })
+      .use(remarkRehype)
+      .use(rehypeStringify)
+      .processSync('[[rel]] and [[gone]]'),
+  )
+  assert.match(html, /<span class="wikilink" data-wikilink="rel" data-collection="a&#x22;b">rel<\/span>/)
+  assert.match(html, /class="wikilink wikilink-missing"/)
 })

@@ -5,6 +5,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { remarkWikilinks } from '../src/remark-wikilinks.ts'
 
+/** The span a wikilink node becomes, as markup, for matching. */
+function spanHtml(n: any): string {
+  assert.equal(n.data?.hName, 'span')
+  const p = n.data.hProperties
+  return `<span class="${p.className.join(' ')}" data-wikilink="${p['data-wikilink']}">${n.value}</span>`
+}
+
 /** Build a throwaway content tree and return the collection dir. */
 function fixture(files: string[]): string {
   const root = mkdtempSync(join(tmpdir(), 'oa-wl-'))
@@ -48,7 +55,7 @@ test('resolves bare name and vault-relative path to the same route', () => {
   assert.equal(resolveLink('nested', cols).url, '/posts/sub/nested')
   assert.equal(resolveLink('00/posts/sub/nested', cols).url, '/posts/sub/nested')
   // a path that matches neither bare name nor the real vault path does NOT resolve:
-  assert.equal(resolveLink('posts/some-file', cols).type, 'html')
+  assert.equal(resolveLink('posts/some-file', cols).data?.hName, 'span')
 })
 
 test('label defaults to the last path segment unless aliased', () => {
@@ -62,17 +69,17 @@ test('route:null collection renders a relation span, not a link', () => {
   const dir = fixture(['erasmus.md'])
   const cols = [{ name: 'people', dir, vaultDir: 'People', route: null }]
   const node = resolveLink('erasmus', cols)
-  assert.equal(node.type, 'html')
-  assert.match(node.value, /class="wikilink"/)
-  assert.doesNotMatch(node.value, /wikilink-missing/)
+  assert.equal(node.data?.hName, 'span')
+  assert.match(spanHtml(node), /class="wikilink"/)
+  assert.doesNotMatch(spanHtml(node), /wikilink-missing/)
 })
 
 test('unresolved target renders a missing span', () => {
   const dir = fixture(['a.md'])
   const cols = [{ name: 'posts', dir, vaultDir: 'Posts', route: '/posts/:slug' }]
   const node = resolveLink('does-not-exist', cols)
-  assert.equal(node.type, 'html')
-  assert.match(node.value, /wikilink-missing/)
+  assert.equal(node.data?.hName, 'span')
+  assert.match(spanHtml(node), /wikilink-missing/)
 })
 
 test('collection order decides ambiguous bare names; path link disambiguates', () => {
@@ -85,7 +92,7 @@ test('collection order decides ambiguous bare names; path link disambiguates', (
   // bare [[Ada]] -> posts wins (listed first) -> a link
   assert.equal(resolveLink('Ada', cols).url, '/posts/ada')
   // explicit vault path to people -> relation span
-  assert.equal(resolveLink('People/ada', cols).type, 'html')
+  assert.equal(resolveLink('People/ada', cols).data?.hName, 'span')
 })
 
 test("danglingRefPolicy 'error' throws on a missing target, naming the link", () => {
@@ -122,8 +129,8 @@ test("danglingRefPolicy 'warn' degrades a missing target to a wikilink-missing s
   assert.doesNotThrow(() => {
     node = resolveLink('does-not-exist', cols, { danglingRefPolicy: 'warn' })
   })
-  assert.equal(node.type, 'html')
-  assert.match(node.value, /wikilink-missing/)
+  assert.equal(node.data?.hName, 'span')
+  assert.match(spanHtml(node), /wikilink-missing/)
 })
 
 test('a routed link is a plain mdast link node with only the wikilink class', () => {
@@ -204,10 +211,10 @@ test('className option renames the class on relation and missing spans', () => {
   const dir = fixture(['a.md'])
   const cols = [{ name: 'people', dir, vaultDir: 'People', route: null }]
   const relation = resolveLink('a', cols, { className: 'wl' })
-  assert.equal(relation.type, 'html')
-  assert.match(relation.value, /class="wl"/)
+  assert.equal(relation.data?.hName, 'span')
+  assert.match(spanHtml(relation), /class="wl"/)
   const missing = resolveLink('nope', cols, { className: 'wl' })
-  assert.match(missing.value, /class="wl wl-missing"/)
+  assert.match(spanHtml(missing), /class="wl wl-missing"/)
 })
 
 test('a whitespace-only target stays literal text', () => {

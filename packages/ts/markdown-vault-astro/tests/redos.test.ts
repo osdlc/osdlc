@@ -14,6 +14,13 @@ import { remarkWikilinks } from '../src/remark-wikilinks.ts'
 import { rewriteFile } from '../src/rewrite.ts'
 import type { AssetIndex } from '../src/assets.ts'
 
+/** The span a wikilink node becomes, as markup, for matching. */
+function spanHtml(n: any): string {
+  assert.equal(n.data?.hName, 'span')
+  const p = n.data.hProperties
+  return `<span class="${p.className.join(' ')}" data-wikilink="${p['data-wikilink']}">${n.value}</span>`
+}
+
 /** Wall-clock ceiling for one scan of a pathological note. */
 const BUDGET_MS = 500
 
@@ -136,9 +143,9 @@ test('redos: padding inside a well-formed link is still trimmed off', () => {
   }
   run(tree)
   const node = tree.children[0].children[0]
-  assert.equal(node.type, 'html')
-  assert.match(node.value, /data-wikilink="note"/)
-  assert.match(node.value, />Alias</)
+  assert.equal(node.data?.hName, 'span')
+  assert.match(spanHtml(node), /data-wikilink="note"/)
+  assert.match(spanHtml(node), />Alias</)
 })
 
 test('redos: padding inside a well-formed embed is still trimmed off', () => {

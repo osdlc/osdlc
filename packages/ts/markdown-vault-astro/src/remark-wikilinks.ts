@@ -86,12 +86,13 @@ interface AstroResolution extends LinkResolution {
   href: string | null
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
+/**
+ * A `<span>` as a text node carrying `hName`: remark-rehype builds it as an
+ * element, so it is escaped by the serializer and survives a pipeline that
+ * disallows raw html or sanitizes it.
+ */
+function span(label: string, hProperties: Record<string, unknown>) {
+  return { type: 'text' as const, value: label, data: { hName: 'span', hProperties } }
 }
 
 /**
@@ -193,16 +194,14 @@ export function remarkWikilinks(this: unknown, options: RemarkWikilinksOptions) 
         `[markdown-vault-astro] dangling wikilink-ref${where()}: "${target}" resolves to no content; ` +
           `rendering a wikilink-missing span (danglingRefPolicy: 'warn').`,
       )
-      return {
-        type: 'html',
-        value: `<span class="${escapeHtml(className)} ${escapeHtml(className)}-missing" data-wikilink="${escapeHtml(r.id)}">${escapeHtml(label)}</span>`,
-      }
+      return span(label, { className: [className, `${className}-missing`], 'data-wikilink': r.id })
     }
     // Resolved but route-less: a valid relation span (not dangling).
-    return {
-      type: 'html',
-      value: `<span class="${escapeHtml(className)}" data-wikilink="${escapeHtml(r.id)}" data-collection="${escapeHtml(r.collection)}">${escapeHtml(label)}</span>`,
-    }
+    return span(label, {
+      className: [className],
+      'data-wikilink': r.id,
+      'data-collection': r.collection,
+    })
   }
 
   const dirs = new Map(options.collections.map((c) => [c.name, c.dir]))
