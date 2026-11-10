@@ -105,6 +105,11 @@ export function loadConfig(
     vaultDir: raw.assets?.vaultDir ?? '_attachments',
   }
 
+  for (const key of ['publicDir', 'publicBase', 'vaultDir'] as const) {
+    if (typeof assets[key] !== 'string')
+      throw new Error(`markdown-astro config: assets.${key} must be a string in ${abs}`)
+  }
+
   if (!assets.publicBase.replace(/\/+$/, '')) {
     throw new Error(`markdown-astro config: assets.publicBase must not be \`/\` or empty in ${abs}`)
   }

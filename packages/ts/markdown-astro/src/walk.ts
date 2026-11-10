@@ -10,17 +10,6 @@ export interface WalkedFile {
   full: string
 }
 
-/**
- * List the regular files under `root`, skipping dot entries. Every symlink is
- * stat'ed: one that resolves to a directory is followed, one that resolves to
- * a regular file is listed, and a dangling or other link is skipped. Each real
- * directory is walked once, so a loop ends and a folder reachable through two
- * links is listed under the first path that reached it (entries are visited
- * in name order, so that is the same on every machine). A file reachable
- * through two paths is listed once. A folder that cannot be read for want of
- * permission is skipped; any other I/O error is thrown, so a caller never
- * acts on a partial listing.
- */
 const SKIPPABLE = new Set(['ENOENT', 'EACCES', 'EPERM'])
 const DANGLING = new Set(['ENOENT', 'ENOTDIR', 'ELOOP', 'EACCES', 'EPERM'])
 
@@ -39,6 +28,17 @@ export function isInside(root: string, path: string): boolean {
   return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
 }
 
+/**
+ * List the regular files under `root`, skipping dot entries. Every symlink is
+ * stat'ed: one that resolves to a directory is followed, one that resolves to
+ * a regular file is listed, and a dangling or other link is skipped. Each real
+ * directory is walked once, so a loop ends and a folder reachable through two
+ * links is listed under the first path that reached it (entries are visited
+ * in name order, so that is the same on every machine). A file reachable
+ * through two paths is listed once. A folder that cannot be read for want of
+ * permission is skipped; any other I/O error is thrown, so a caller never
+ * acts on a partial listing.
+ */
 export function walkFiles(root: string): WalkedFile[] {
   const out: WalkedFile[] = []
   const visited = new Set<string>()

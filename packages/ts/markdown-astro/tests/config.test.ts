@@ -162,3 +162,13 @@ test('rejects a publicBase of `/`, which would match every absolute path', () =>
   )
   assert.throws(() => loadConfig(path), /publicBase/)
 })
+
+test('names the config file when an assets setting is not a string', () => {
+  const dir = site([])
+  const path = join(dir, DEFAULT_CONFIG_NAME)
+  writeFileSync(
+    path,
+    'assets: {publicBase: 123}\ncollections:\n  - {name: n, vaultDir: N, contentDir: c}\n',
+  )
+  assert.throws(() => loadConfig(path), /assets\.publicBase must be a string in .*markdown-astro/s)
+})
