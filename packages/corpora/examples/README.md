@@ -24,7 +24,7 @@ committed, so the links resolve on GitHub and in Obsidian.
 From the root of this repository, build the validator, install fernlog's parent, and validate:
 
 ```sh
-pnpm --filter @osdlc/corpus-schema run build
+sh tools/build-corpus-schema.sh
 (cd examples/fernlog && pnpm install --ignore-workspace --frozen-lockfile)
 node packages/ts/corpus-schema/bin/corpus-schema.js validate examples
 sh examples/test.sh
