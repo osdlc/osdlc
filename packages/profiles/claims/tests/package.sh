@@ -15,12 +15,13 @@
 # - a fixture document without `publisher` fails, a rule the fixture adds.
 #
 # The validator is this repository's corpus-schema, built first. Set
-# CORPUS_SCHEMA to run another one (see validator.sh).
+# CORPUS_SCHEMA to run another one (see tools/validator.sh).
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
 package_dir=$(cd "$here/.." && pwd)
-. "$here/validator.sh"
+repo=$(cd "$here/../../.." && pwd)
+. "$repo/tools/validator.sh"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
