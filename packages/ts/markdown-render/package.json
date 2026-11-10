@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/markdown-render",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Markdown to HTML on unified and remark for CommonMark, GFM and the Obsidian extensions (wikilinks, embeds, callouts, tags, block ids, comments, highlights), with injected link resolution and sanitized output. Framework-free: every feature is a remark or rehype plugin. Vue components are in @osdlc/markdown-render-vue.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
