@@ -5,7 +5,7 @@
  * it), so sanitization is not optional on the untrusted path — it is the only
  * thing standing between a note and script execution. The schema extends
  * `rehype-sanitize`'s GitHub-derived default *minimally*: the dialect's own
- * classes and `data-*` attributes, task-list checkboxes, `id` on flow elements,
+ * classes and `data-*` attributes, task-list checkboxes, `id` on any element,
  * `<mark>`, and the `<markdown-embed>` custom element. Everything the default
  * strips — `<script>`, event handlers, `javascript:` URLs, `data:` iframes —
  * keeps being stripped, and `className` is widened by *pattern* rather than
@@ -158,5 +158,12 @@ function buildSchema(): Schema {
 /**
  * Schema for the Obsidian dialect. Exported so hosts can extend it further
  * (`{...markdownSchema, tagNames: [...]}`) rather than disabling sanitization.
+ *
+ * It is not a complete defence on its own. It leaves `id` bare and allows
+ * `<markdown-embed>` and the routing classes, which is safe only because
+ * `pipelineProvenance().enforce` has already namespaced a note's ids and
+ * stripped what a note forged. A host assembling its own pipeline puts
+ * `mark` before `rehype-raw`, `enforce` right after it, and this schema after
+ * that.
  */
 export const markdownSchema: Schema = buildSchema()

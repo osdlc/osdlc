@@ -111,6 +111,7 @@ export { remarkTags, type RemarkTagsOptions } from './plugins/tags.ts'
 export { remarkMark } from './plugins/mark.ts'
 export { remarkBlockIds, BLOCK_ID_RE } from './plugins/block-ids.ts'
 export { remarkComments } from './plugins/comments.ts'
+export { pipelineProvenance } from './plugins/provenance.ts'
 // A host assembling its own pipeline needs both halves, and needs them to
 // bracket the tokenizers — without them escaped syntax activates.
 export { remarkEscapes, remarkUnescape } from './plugins/escapes.ts'

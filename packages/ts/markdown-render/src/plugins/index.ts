@@ -58,6 +58,10 @@ export { remarkEscapes, remarkUnescape } from './escapes.ts'
 export { remarkHeadingIds, nodeText } from './heading-ids.ts'
 export { remarkDataLine } from './data-line.ts'
 
+// `markdownSchema` is only safe alongside this pair: it leaves `id` bare on the
+// strength of `enforce` having namespaced a note's ids first.
+export { pipelineProvenance } from './provenance.ts'
+
 // Fence metadata. `fenceLang` lives in its own shiki-free module, so the pass
 // a self-assembling host needs for `data-line`/`data-lang` on the `<pre>` is
 // in the graph while Shiki stays out. `RESERVED_FENCE_LANGS` deliberately does NOT follow: it
