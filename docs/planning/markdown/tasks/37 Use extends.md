@@ -11,6 +11,6 @@ after:
   - "[36 Release 0.3.0](36%20Release%200.3.0.md)"
 ---
 
-harness-reference uses `extends`. In the milestone, step 7. Follow-up to task 26: harness-reference
-stops copying the claims type folders. It installs `@osdlc/corpus-profile-claims`, lists it under
-`extends` and marks its types with `x-extends`. After 23, 26 and 36.
+harness-reference uses `extends`. Follow-up to task 26: harness-reference stops copying the claims
+type folders. It installs `@osdlc/corpus-profile-claims`, lists it under `extends` and marks its
+types with `x-extends`. After 23, 26 and 36.

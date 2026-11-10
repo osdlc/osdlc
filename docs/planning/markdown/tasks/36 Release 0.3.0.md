@@ -12,6 +12,6 @@ after:
   - "[29 Sync](29%20Sync.md)"
 ---
 
-Release corpus-schema 0.3.0. (supporting) In the milestone, step 4. The first version with
-`extends`, `x-extends`, cross-corpus `x-ref` and `sync`, published from this repo with its release
-setup. After 9, 21, 27 and 29.
+Release corpus-schema 0.3.0. (supporting) The first version with `extends`, `x-extends`,
+cross-corpus `x-ref` and `sync`, published from this repo with its release setup. After 9, 21, 27
+and 29.

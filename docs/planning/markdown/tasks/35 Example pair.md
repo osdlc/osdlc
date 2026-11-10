@@ -11,7 +11,7 @@ after:
   - "[36 Release 0.3.0](36%20Release%200.3.0.md)"
 ---
 
-The example pair. In the milestone, step 6. Check in an org corpus with records (a few principles)
-and a project corpus that extends both the claims profile and the org corpus, by package name and by
-path. The project's local records cite inherited ones. CI installs the parents, runs `corpus-schema
-sync` and validates both corpora. This is the start of task 30. After 23, 29 and 36.
+The example pair. Check in an org corpus with records (a few principles) and a project corpus that
+extends both the claims profile and the org corpus, by package name and by path. The project's local
+records cite inherited ones. CI installs the parents, runs `corpus-schema sync` and validates both
+corpora. This is the start of task 30. After 23, 29 and 36.
