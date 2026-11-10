@@ -36,6 +36,27 @@ out where they would cross the page. The order for the npm work is in
 
 ![The task graph, with the status of each task](diagrams/tasks.svg)
 
+## Milestones
+
+Every task belongs to one milestone. Each task's "After" text and milestone are also in
+[diagrams/tasks.json](diagrams/tasks.json), which `tools/diagrams/build.py` writes. A milestone is
+done when all its tasks are done, in progress when any task is in progress or done, and not started
+otherwise. In order:
+
+- **Release from osdlc/markdown** (task 21). This repo publishes corpus-schema with its own release
+  setup. In progress.
+- **Upstream corpora over npm** (tasks 9, 27, 29, 36, 23, 35, 37). A corpus builds on parent corpora
+  that arrive as npm packages. [Its steps](#milestone-upstream-corpora-over-npm) are below. Not
+  started. It waits on the release milestone for task 21.
+- **The evidence project writes records** (tasks 4, 8, 26, 22, 5). In progress.
+- **One corpus model** (tasks 10, 11, 12, 13, 14, 32). Not started.
+- **Query and build** (tasks 15, 16). Not started.
+- **Sharing, the rest** (tasks 28, 30, 24, 25). Refine and waive, a real org principles corpus, name
+  overrides and the testing profile. Not started.
+- **Spec hardening** (tasks 6, 7, 31, 33, 34). Not started.
+- **Render and sites** (task 17). In progress.
+- **Plan and docs** (tasks 1, 2, 3, 18, 19, 20). In progress: task 19 is not done.
+
 ## First: unlock the evidence project
 
 Another project is waiting on one thing. It needs a format for keeping evidence and research as
@@ -376,7 +397,7 @@ The numbers match the task graph at the top. "After" says what must come first.
   published, and [osdlc/osdlc#733](https://github.com/osdlc/osdlc/pull/733) made 0.2.0. After 2.
 - **4. Example claims corpus**, in this repo at `profiles/claims/example/`. A valid level-2 corpus
   with the VA-Spec types `documents`, `study-results`, `methods` and `statements`, their schemas,
-  and a few records that show the whole chain.
+  and a few records that show the whole chain. After 3.
   - A statement holds its proposition (subject, predicate, object) and its evidence lines. Each
     line names study results, says whether it supports or disputes the statement, and how strongly.
   - Contribution (who, when, what role) is a field on records, not a type of its own.

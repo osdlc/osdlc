@@ -6,7 +6,9 @@ shows SVGs through <img>, so the colours follow the viewer's OS colour
 scheme, not the GitHub theme setting.
 """
 import html
+import json
 import pathlib
+import re
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 OUT = ROOT / "docs" / "diagrams"
@@ -181,54 +183,87 @@ TARGET = [
 
 
 # The task graph. Status: done, doing, owner (waiting on the owner), todo.
+# Each task: title, detail, status, milestone id, and the ids of the tasks that must come first.
+# `after` matches the "After N" text in docs/ecosystem-plan.md; a task can wait on one in another milestone.
 TASKS = {
-    1: ("corpus-schema", "rename, levels", "done"),
-    2: ("Record folders", "osdlc PR 729", "done"),
-    3: ("Publish 0.2.0", "on npm", "done"),
-    4: ("Claims example", "profiles/claims", "done"),
-    5: ("Project writes", "evidence as records", "todo"),
-    6: ("x-warn", "soft schema rules", "todo"),
-    7: ("Obsidian", "dialect: wikilinks", "todo"),
-    8: ("Use npm", "skillwright, root file", "done"),
-    9: ("Extends", "package or path", "todo"),
-    10: ("Store layout", "markdown-store", "todo"),
-    11: ("Link resolver", "after PRs 649, 651", "todo"),
-    12: ("One TS model", "vault + graph", "todo"),
-    13: ("Switch users", "query, astro, apps", "todo"),
-    14: ("Validator", "reads model; needs 3", "todo"),
-    15: ("Query layer", "one, on the model", "todo"),
-    16: ("JSON / SQLite", "after query layer", "todo"),
-    17: ("Render/sites", "PRs 719 720", "doing"),
-    18: ("This plan", "markdown PR 4", "done"),
-    19: ("Point repos", "here, after 18", "todo"),
-    20: ("Arch doc", "markdown PR 5", "done"),
-    21: ("Release here", "markdown PR 10", "doing"),
-    22: ("Capture", "writes study results", "todo"),
-    26: ("Adopt claims", "harness-reference", "done"),
-    27: ("Org corpora", "inherit records", "todo"),
-    28: ("Refine, waive", "local vs inherited", "todo"),
-    29: ("Sync", "_inherited copy", "todo"),
-    30: ("Org principles", "first real case", "todo"),
-    23: ("Claims profile", "npm package", "todo"),
-    33: ("Spec details", "YAML, format, codes", "todo"),
-    34: ("Ids and move", "slug ids, move verb", "todo"),
-    31: ("Nested x-ref", "any depth; after 3, 4", "todo"),
-    32: ("Rust validator", "after 12 and 14", "todo"),
-    24: ("Name overrides", "own folder names", "todo"),
-    25: ("Testing profile", "extends claims", "todo"),
-    35: ("Example pair", "org + project, CI", "todo"),
-    36: ("Release 0.3.0", "corpus-schema", "todo"),
-    37: ("Use extends", "harness-reference", "todo"),
+    1: ("corpus-schema", "rename, levels", "done", "m-docs", []),
+    2: ("Record folders", "osdlc PR 729", "done", "m-docs", [1]),
+    3: ("Publish 0.2.0", "on npm", "done", "m-docs", [2]),
+    4: ("Claims example", "profiles/claims", "done", "m-evidence", [3]),
+    5: ("Project writes", "evidence as records", "todo", "m-evidence", [3, 4, 22]),
+    6: ("x-warn", "soft schema rules", "todo", "m-spec", [3]),
+    7: ("Obsidian", "dialect: wikilinks", "todo", "m-spec", [3]),
+    8: ("Use npm", "skillwright, root file", "done", "m-evidence", [3]),
+    9: ("Extends", "package or path", "todo", "m-npm", [3, 21]),
+    10: ("Store layout", "markdown-store", "todo", "m-model", [3]),
+    11: ("Link resolver", "after PRs 649, 651", "todo", "m-model", []),
+    12: ("One TS model", "vault + graph", "todo", "m-model", [11]),
+    13: ("Switch users", "query, astro, apps", "todo", "m-model", [12]),
+    14: ("Validator", "reads model; needs 3", "todo", "m-model", [3, 12]),
+    15: ("Query layer", "one, on the model", "todo", "m-query", [12]),
+    16: ("JSON / SQLite", "after query layer", "todo", "m-query", [15]),
+    17: ("Render/sites", "PRs 719 720", "doing", "m-render", []),
+    18: ("This plan", "markdown PR 4", "done", "m-docs", []),
+    19: ("Point repos", "here, after 18", "todo", "m-docs", [18]),
+    20: ("Arch doc", "markdown PR 5", "done", "m-docs", []),
+    21: ("Release here", "markdown PR 10", "doing", "m-release", [3]),
+    22: ("Capture", "writes study results", "todo", "m-evidence", [26]),
+    26: ("Adopt claims", "harness-reference", "done", "m-evidence", [4, 8]),
+    27: ("Org corpora", "inherit records", "todo", "m-npm", [9]),
+    28: ("Refine, waive", "local vs inherited", "todo", "m-sharing", [27]),
+    29: ("Sync", "_inherited copy", "todo", "m-npm", [27]),
+    30: ("Org principles", "first real case", "todo", "m-sharing", [27, 28, 35]),
+    23: ("Claims profile", "npm package", "todo", "m-npm", [21, 36]),
+    33: ("Spec details", "YAML, format, codes", "todo", "m-spec", [3]),
+    34: ("Ids and move", "slug ids, move verb", "todo", "m-spec", [3]),
+    31: ("Nested x-ref", "any depth; after 3, 4", "todo", "m-spec", [3, 4]),
+    32: ("Rust validator", "after 12 and 14", "todo", "m-model", [12, 14]),
+    24: ("Name overrides", "own folder names", "todo", "m-sharing", [23]),
+    25: ("Testing profile", "extends claims", "todo", "m-sharing", [23, 24]),
+    35: ("Example pair", "org + project, CI", "todo", "m-npm", [23, 29, 36]),
+    36: ("Release 0.3.0", "corpus-schema", "todo", "m-npm", [9, 21, 27, 29]),
+    37: ("Use extends", "harness-reference", "todo", "m-npm", [23, 26, 36]),
 }
-# What must come first, by task. A task can wait on one outside the 0.3.0 milestone.
-DEPS = {
-    2: [1], 3: [2], 4: [3], 5: [3, 4, 22], 6: [3], 7: [3], 8: [3], 9: [3, 21], 10: [3],
-    12: [11], 13: [12], 14: [3, 12], 15: [12], 16: [15], 19: [18], 21: [3], 22: [26],
-    23: [21, 36], 24: [23], 25: [23, 24], 26: [4, 8], 27: [9], 28: [27], 29: [27],
-    30: [27, 28, 35], 31: [3, 4], 32: [12, 14], 33: [3], 34: [3], 35: [23, 29, 36],
-    36: [9, 21, 27, 29], 37: [23, 26, 36],
-}
-assert all(n in TASKS and all(d in TASKS for d in ds) for n, ds in DEPS.items())
+
+# Milestones, in order: id, title, goal, member task ids. Status comes from the tasks.
+MILESTONES = [
+    ("m-release", "Release from osdlc/markdown",
+     "This repo publishes corpus-schema with its own release setup.", [21]),
+    ("m-npm", "Upstream corpora over npm",
+     "A corpus builds on parent corpora that arrive as npm packages, pinned by a lockfile.",
+     [9, 27, 29, 36, 23, 35, 37]),
+    ("m-evidence", "The evidence project writes records",
+     "The evidence project keeps its evidence as claims records, checked by the validator.",
+     [4, 8, 26, 22, 5]),
+    ("m-model", "One corpus model",
+     "One TypeScript corpus model and link resolver, used by the validator, the store and the apps.",
+     [10, 11, 12, 13, 14, 32]),
+    ("m-query", "Query and build",
+     "One query layer over the corpus model, and a JSON and SQLite build.", [15, 16]),
+    ("m-sharing", "Sharing, the rest",
+     "Refine and waive, a real org principles corpus, name overrides and the testing profile.",
+     [28, 30, 24, 25]),
+    ("m-spec", "Spec hardening",
+     "The spec gains soft rules, the Obsidian dialect, nested x-ref, error codes and stable ids.",
+     [6, 7, 31, 33, 34]),
+    ("m-render", "Render and sites", "The render, edit and site packages move to osdlc.", [17]),
+    ("m-docs", "Plan and docs",
+     "The spec is renamed and published, and the plan and architecture are written and linked.",
+     [1, 2, 3, 18, 19, 20]),
+]
+AS_OF = "2026-11-09"
+assert all(n in TASKS and all(d in TASKS for d in t[4]) for n, t in TASKS.items())
+assert sorted(n for *_, ids in MILESTONES for n in ids) == sorted(TASKS)
+assert all(TASKS[n][3] == m for m, *_, ids in MILESTONES for n in ids)
+
+
+def milestone_status(ids):
+    states = {TASKS[n][2] for n in ids}
+    if states == {"done"}:
+        return "done"
+    return "doing" if states & {"doing", "done"} else "todo"
+
+
 STATUS = [("done", "done"), ("doing", "in progress"), ("owner", "waiting on owner"), ("todo", "not started")]
 
 
@@ -241,7 +276,7 @@ def task_graph():
         return cols[c], top + r * pitch
 
     def node(n, x, y):
-        t, sub, st = TASKS[n]
+        t, sub, st, *_ = TASKS[n]
         return (f'<g class="task t-{st}"><rect x="{x}" y="{y}" width="{tw}" height="{th}" rx="8"/>'
                 f'<circle cx="{x + 13}" cy="{y + 16}" r="9" class="tn"/>'
                 f'<text x="{x + 13}" y="{y + 19.5}" text-anchor="middle" class="tnt">{n}</text>'
@@ -399,6 +434,56 @@ def levels_profiles():
     return svg("".join(out), y + 22, "Levels 0 to 2, and profiles that supply level-2 types")
 
 
+def plan_texts():
+    """Each task's paragraph from the plan's "All the work" list, as plain text with links kept."""
+    lines = (ROOT / "docs" / "ecosystem-plan.md").read_text(encoding="utf-8").split("\n")
+    start = next(i for i, l in enumerate(lines) if l.startswith("## All the work"))
+    out, cur = {}, None
+    for l in lines[start:]:
+        m = re.match(r"- \*\*(\d+)\. ", l)
+        if m:
+            cur = int(m.group(1))
+            out[cur] = []
+        elif cur is not None and (l.startswith("**") or l.startswith("We will track")):
+            cur = None
+        if cur is not None:
+            out[cur].append(l)
+    texts = {}
+    for n, ls in out.items():
+        paras, buf = [], []
+        for l in ls:
+            if not l.strip():
+                paras.append(buf); buf = []; paras.append(None)
+            elif re.match(r"\s*- ", l) and buf:
+                paras.append(buf); buf = [l.strip()]
+            else:
+                buf.append(l.strip())
+        paras.append(buf)
+        text = []
+        for p in paras:
+            if p is None:
+                text.append("")
+            elif p:
+                text.append(" ".join(p))
+        t = "\n".join(text).replace("**", "")
+        t = re.sub(r"\n{3,}", "\n\n", t).strip()
+        texts[n] = re.sub(r"^\d+\. ", "", t.replace("- ", "", 1) if t.startswith("- ") else t)
+    return texts
+
+
+def tasks_json():
+    texts = plan_texts()
+    doc = {
+        "asOf": AS_OF,
+        "statuses": [{"id": i, "label": l} for i, l in STATUS],
+        "milestones": [{"id": m, "title": t, "goal": g, "status": milestone_status(ids), "tasks": ids}
+                       for m, t, g, ids in MILESTONES],
+        "tasks": [{"id": n, "title": t, "detail": d, "status": st, "milestone": m, "after": sorted(af),
+                   "text": texts[n]} for n, (t, d, st, m, af) in sorted(TASKS.items())],
+    }
+    return json.dumps(doc, indent=2, ensure_ascii=False) + "\n"
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     files = {
@@ -407,6 +492,7 @@ def main():
         "resolvers.svg": resolvers(),
         "levels-profiles.svg": levels_profiles(),
         "target.svg": layers(TARGET, "Target state by layer", TARGET_KEY),
+        "tasks.json": tasks_json(),
     }
     for name, text in files.items():
         (OUT / name).write_text(text, encoding="utf-8")
