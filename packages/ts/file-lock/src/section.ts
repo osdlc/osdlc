@@ -25,6 +25,8 @@ export interface LockOptions {
   timeoutMs?: number | undefined
   /** Pause between attempts, in milliseconds. Default 5. */
   retryMs?: number | undefined
+  /** Permission bits for the lock file, such as `0o600`, set exactly as in `claimLock`. Default: `0o666` less the umask. */
+  mode?: number | undefined
 }
 
 /** {@link withLock} waited `timeoutMs` and the lock stayed held. */
@@ -63,13 +65,20 @@ function sleepSync(ms: number): void {
  * the taker's lock alone, and that loss is not reported. Keep `staleMs` far
  * above the longest section, or pass an `isStale` rule that does not guess by
  * age, such as `holderGone`.
+ *
+ * Something other than a regular file at `path` (a symlink, a directory, a
+ * FIFO) throws `NotALockError` at once rather than waiting out `timeoutMs`.
  */
 export function withLock<T>(path: string, fn: () => T, options: LockOptions = {}): T {
   const { staleMs = 10_000, timeoutMs = 30_000, retryMs = 5 } = options
   const isStale = options.isStale ?? untouchedFor<SectionHolder>(staleMs)
   const deadline = Date.now() + timeoutMs
   // The temp file is written once; each retry only tries the link again.
-  const prepared = prepareClaim<SectionHolder>(path, { pid: process.pid }, { isStale })
+  const prepared = prepareClaim<SectionHolder>(
+    path,
+    { pid: process.pid },
+    { isStale, mode: options.mode },
+  )
   let claim: LockClaim<SectionHolder>
   try {
     claim = prepared.attempt()

@@ -73,6 +73,13 @@ to the same behaviour by the same data.
   implementation's directory or the family's suite runs every implementation's
   tests.
 
+  A family may also list `readers`: libraries that run some of the family's
+  cases without implementing it, such as `@osdlc/markdown-render` reading the
+  markdown-tags suite. A reader has the same `language`, `dir` and `name`
+  fields. It is not an implementation: its version is not compared and it
+  cannot be the reference. CI runs a reader's tests when its family's suite
+  changes; a change to the reader alone runs only the reader.
+
 ### The reference and its generator
 
 - Each family names one reference implementation. It is TypeScript by
@@ -150,7 +157,9 @@ version.
 
 ## Enforcement
 
-`scripts/conformance.ts`, run by `pnpm run check:conformance`, checks:
+The `conformance-suites` command from
+[`@osdlc/conformance-suites`](../../../packages/ts/conformance-suites/README.md), run by
+`pnpm run check:conformance` (`conformance-suites check`), checks:
 
 - every family in `families.json` names its reference among its
   implementations, the generator command above, and at least one
@@ -161,37 +170,45 @@ version.
   a `SPEC.md`;
 - every suite file has the shape above;
 - each implementation's `tests/` names the family's suite path;
+- each reader exists, is not also an implementation, sits under `packages/ts/` or
+  `packages/rust/` as its language says, and its `tests/` names the family's
+  suite path;
 - the implementations share major.minor;
 - every `packages/ts/*` and `packages/rust/*` library whose tests read a suite
   is listed for that family, and no library's tests read the other
   language's fixtures directly.
 
-`node scripts/conformance.ts --regenerate` also runs each family's generator
+`conformance-suites check --regenerate` also runs each family's generator
 and fails if a suite changes, which catches a change to the reference whose
 expected values were not regenerated. It first builds each TypeScript
 reference and the workspace libraries it depends on, since a generator
 imports them through their `dist/`. CI runs it for the TypeScript
-references in `packages-ci.yml` and for the Rust references in `rust-ci.yml`.
+references in `ts-packages-ci.yml`, which `packages-ci.yml` calls, and for
+the Rust references in `rust-ci.yml`.
 
 ## Exemptions
 
-Two lists in `scripts/conformance.ts`, which shrink to nothing as migration
-finishes:
+Two lists in `packages/conformance/config.json`, which shrink to nothing as
+migration finishes:
 
-- `CATCHING_UP` names a family whose implementations do not share
+- `catchingUp` names a family whose implementations do not share
   major.minor yet, with the work that brings them level. A pending
   changeset (`.changeset/*.md`) that takes the TypeScript package level
   counts: the family passes on `main` and on the release pull request that
   applies the changeset, and needs no entry. A changeset that pulls a
   family that is level now apart fails, unless the same pull request bumps
-  the crate too or adds a `CATCHING_UP` entry.
-- `UNMIGRATED` names a library whose tests still read the other language's
+  the crate too or adds a `catchingUp` entry.
+- `unmigrated` names a library whose tests still read the other language's
   fixtures, until its family moves here. A binding that reads the crate it
   is built from (`@osdlc/yaml-splice`) stays on it, since it is not a family.
 
 The check fails when an entry in either list is no longer needed; a
-`CATCHING_UP` entry is stale once the versions agree, now or after the
+`catchingUp` entry is stale once the versions agree, now or after the
 pending changesets.
+
+A third list, `skipScan`, names a library whose tests are not scanned for
+suite paths at all, with the reason. `@osdlc/conformance-suites` is on it: its own
+tests hold suite paths as test data.
 
 ## Migration
 
@@ -218,7 +235,7 @@ and points here.
 | intersect            | TS, Rust `glob-intersect`   | moved: `conformance/intersect/suite.json`                                           | TS        |
 | manifest-graph       | TS, Rust                    | `rust/manifest-graph/tests/fixtures/parity.json`                                    | TS        |
 | markdown-contract    | TS, Rust                    | `ts/markdown-contract/corpus/`, `rust/markdown-contract/tests/fixtures/parity.json` | TS        |
-| markdown-link        | Rust, TS                    | `rust/markdown-link/tests/fixtures/conformance.json`                                | Rust      |
+| markdown-link        | Rust, TS                    | moved: `conformance/markdown-link/suite.json`                                       | Rust      |
 | markdown-tags        | Rust, TS                    | moved: `conformance/markdown-tags/suite.json`                                       | Rust      |
 | observe              | TS, Rust `osdlc-observe`    | `rust/osdlc-observe/tests/fixtures/parity.json`                                     | TS        |
 | path-guard           | TS, Rust                    | moved: `conformance/path-guard/suite.json`                                          | TS        |
