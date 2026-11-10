@@ -120,6 +120,12 @@ export function loadConfig(
     throw new Error(`markdown-vault-astro config: no \`collections\` defined in ${abs}`)
   }
   validateConfig(raw, abs)
+  if (
+    raw.frontmatterAssets !== undefined &&
+    (!Array.isArray(raw.frontmatterAssets) || raw.frontmatterAssets.some((k) => typeof k !== 'string'))
+  ) {
+    throw new Error(`markdown-vault-astro config: frontmatterAssets must be a list of keys in ${abs}`)
+  }
   rejectNestedDirs(raw.collections, 'vaultDir', vault, abs)
   rejectNestedDirs(raw.collections, 'contentDir', astroRoot, abs)
 

@@ -51,6 +51,16 @@ describe('loadConfig collection dirs', () => {
     assert.throws(load(collections), message)
   })
 
+  test('rejects a non-list frontmatterAssets', () => {
+    const dir = site([])
+    const path = join(dir, DEFAULT_CONFIG_NAME)
+    writeFileSync(
+      path,
+      'frontmatterAssets: cover\ncollections:\n  - {name: n, vaultDir: n, contentDir: c}\n',
+    )
+    assert.throws(() => loadConfig(path), /frontmatterAssets must be a list of keys/)
+  })
+
   test('rejects an unknown danglingRefPolicy', () => {
     const dir = site([])
     const path = join(dir, DEFAULT_CONFIG_NAME)
