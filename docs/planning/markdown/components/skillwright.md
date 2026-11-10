@@ -11,8 +11,11 @@ repo_present: "[osdlc/skillwright](../repos/osdlc-skillwright.md)"
 path_present: packages/rust/skillwright
 repo_target: "[osdlc/skillwright](../repos/osdlc-skillwright.md)"
 path_target: packages/rust/skillwright
-depends:
+depends_going:
   - "[markdown-relink](markdown-relink.md)"
+depends_new:
+  - "[markdown-reshape-rs](markdown-reshape-rs.md)"
+depends:
   - "[markdown-corpus-rs](markdown-corpus-rs.md)"
   - "[yaml-splice-rs](yaml-splice-rs.md)"
   - "[path-guard-rs](path-guard-rs.md)"

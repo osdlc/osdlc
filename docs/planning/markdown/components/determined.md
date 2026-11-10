@@ -23,15 +23,20 @@ depends:
   - "[path-guard](path-guard.md)"
   - "[markdown-contract-vendored](markdown-contract-vendored.md)"
 depends_new:
+  - "[markdown-reshape-rs](markdown-reshape-rs.md)"
   - "[markdown-corpus](markdown-corpus.md)"
   - "[markdown-link](markdown-link.md)"
   - "[markdown-tags](markdown-tags.md)"
 depends_going:
+  - "[markdown-relink](markdown-relink.md)"
   - "[markdown-vault](markdown-vault.md)"
   - "[vault-graph-core](vault-graph-core.md)"
   - "[markdown-tags-dev-copy](markdown-tags-dev-copy.md)"
   - "[markdown-link-dev-copy](markdown-link-dev-copy.md)"
 edge_notes:
+  - edge: depends_new
+    to: "[markdown-reshape-rs](markdown-reshape-rs.md)"
+    note: Through its Rust backend. Task 39 switches it from markdown-relink.
   - edge: depends_new
     to: "[markdown-corpus](markdown-corpus.md)"
     note: Task 13 switches its vault-graph app and graph and notes experiences.

@@ -1200,28 +1200,30 @@
       "language": "rust",
       "layer": "corpus-model",
       "states": [
-        "present",
-        "target"
+        "present"
       ],
       "repo": {
         "present": "osdlc/osdlc",
-        "target": "osdlc/osdlc"
+        "target": null
       },
       "path": {
         "present": "packages/rust/markdown-relink",
-        "target": "packages/rust/markdown-relink"
+        "target": null
       },
-      "status": "published",
+      "status": "retiring",
       "version": "0.4.0",
       "registry": "https://crates.io/crates/markdown-relink",
       "twin": null,
-      "purpose": "Moves or renames a note and rewrites the links that point at it, as a plan you can review before it is applied.",
+      "purpose": "Moves or renames a note and rewrites the links that point at it, as a plan you can review before it is applied.\n\nThe plan renames it markdown-reshape. This crate retires under the old name.",
       "notes": [
+        "Renamed to markdown-reshape-rs, the same library under the new name (task 39). The owner deprecates this crate on crates.io once the new name is published.",
         "Its code still says vault (VaultFacts).",
         "Open release PR osdlc/osdlc#730 would bump it to 0.4.1.",
         "Open osdlc/osdlc#651 also touches it."
       ],
-      "tasks": [],
+      "tasks": [
+        39
+      ],
       "links": [
         {
           "label": "osdlc/osdlc#651",
@@ -1229,6 +1231,79 @@
         }
       ],
       "source": "docs/planning/components/markdown-relink.md"
+    },
+    {
+      "id": "markdown-reshape-rs",
+      "name": "markdown-reshape",
+      "kind": "crate",
+      "language": "rust",
+      "layer": "corpus-model",
+      "states": [
+        "target"
+      ],
+      "repo": {
+        "present": null,
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": null,
+        "target": "packages/rust/markdown-reshape"
+      },
+      "status": "planned",
+      "version": null,
+      "registry": null,
+      "twin": "markdown-reshape-ts",
+      "purpose": "Changes how notes are arranged without changing what they say, as a plan you can review before it is applied. Its operations are move, rename, split, merge and extract.",
+      "notes": [
+        "It is markdown-relink under a new name: the same library, renamed (task 39). The old record, markdown-relink, is present only and retiring.",
+        "The path is the old folder renamed. osdlc/osdlc's `packages/rust/<name>` layout gives it.",
+        "Reshape means a change to how notes are arranged, not to what they say. It is the plain word for refactor.",
+        "Move relocates a note and the links follow. This is what relink does today. Rename is a move within a folder.",
+        "Split turns one note into several and redirects each link to the right piece (task 41). Merge makes links to any merged note point to the result (task 41).",
+        "Extract pulls one thread out of the graph into its own folder or corpus (task 42). The thread is a note and what it links to, followed to some depth or by type. Links inside it are kept. Links leaving it are rewritten or flagged. The result could be a new corpus that `extends` the original.",
+        "Its code still says vault (VaultFacts). Task 39 renames those terms.",
+        "Consumers to switch: skillwright and the determined notes app, which uses it through its Rust backend."
+      ],
+      "tasks": [
+        39,
+        41,
+        42
+      ],
+      "links": [],
+      "source": "docs/planning/components/markdown-reshape-rs.md"
+    },
+    {
+      "id": "markdown-reshape-ts",
+      "name": "@osdlc/markdown-reshape",
+      "kind": "package",
+      "language": "ts",
+      "layer": "corpus-model",
+      "states": [
+        "target"
+      ],
+      "repo": {
+        "present": null,
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": null,
+        "target": "packages/ts/markdown-reshape"
+      },
+      "status": "planned",
+      "version": null,
+      "registry": null,
+      "twin": "markdown-reshape-rs",
+      "purpose": "The planned TypeScript twin of markdown-reshape-rs: move, rename, split, merge and extract over a corpus of notes.",
+      "notes": [
+        "The Rust crate depends on markdown-vault-fs and vfs-seam. There is no TypeScript port of either yet, so this package has no edge for them.",
+        "Two ways to provide TypeScript: port the crate, or build it to WebAssembly, as yaml-splice-wasm does for yaml-splice. Task 40 holds the open question.",
+        "The path follows osdlc/osdlc's `packages/ts/<name>` layout. The plan does not give one."
+      ],
+      "tasks": [
+        40
+      ],
+      "links": [],
+      "source": "docs/planning/components/markdown-reshape-ts.md"
     },
     {
       "id": "markdown-vault",
@@ -2136,6 +2211,15 @@
     },
     {
       "from": "determined",
+      "to": "markdown-reshape-rs",
+      "kind": "depends",
+      "states": [
+        "target"
+      ],
+      "note": "Through its Rust backend. Task 39 switches it from markdown-relink."
+    },
+    {
+      "from": "determined",
       "to": "markdown-corpus",
       "kind": "depends",
       "states": [
@@ -2160,6 +2244,14 @@
         "target"
       ],
       "note": "Its private copies go away in the target."
+    },
+    {
+      "from": "determined",
+      "to": "markdown-relink",
+      "kind": "depends",
+      "states": [
+        "present"
+      ]
     },
     {
       "from": "determined",
@@ -2434,15 +2526,6 @@
     },
     {
       "from": "skillwright",
-      "to": "markdown-relink",
-      "kind": "depends",
-      "states": [
-        "present",
-        "target"
-      ]
-    },
-    {
-      "from": "skillwright",
       "to": "markdown-corpus-rs",
       "kind": "depends",
       "states": [
@@ -2536,6 +2619,22 @@
         "target"
       ],
       "note": "Through its tradecraft-core crate."
+    },
+    {
+      "from": "skillwright",
+      "to": "markdown-reshape-rs",
+      "kind": "depends",
+      "states": [
+        "target"
+      ]
+    },
+    {
+      "from": "skillwright",
+      "to": "markdown-relink",
+      "kind": "depends",
+      "states": [
+        "present"
+      ]
     },
     {
       "from": "markdown-astro",
@@ -2960,8 +3059,7 @@
       "to": "markdown-link-rs",
       "kind": "depends",
       "states": [
-        "present",
-        "target"
+        "present"
       ]
     },
     {
@@ -2969,8 +3067,7 @@
       "to": "markdown-corpus-rs",
       "kind": "depends",
       "states": [
-        "present",
-        "target"
+        "present"
       ]
     },
     {
@@ -2978,8 +3075,7 @@
       "to": "markdown-vault-fs",
       "kind": "depends",
       "states": [
-        "present",
-        "target"
+        "present"
       ]
     },
     {
@@ -2987,8 +3083,7 @@
       "to": "vfs-seam",
       "kind": "depends",
       "states": [
-        "present",
-        "target"
+        "present"
       ]
     },
     {
@@ -2996,8 +3091,7 @@
       "to": "etag-write-rs",
       "kind": "depends",
       "states": [
-        "present",
-        "target"
+        "present"
       ]
     },
     {
@@ -3005,7 +3099,95 @@
       "to": "yaml-splice-rs",
       "kind": "depends",
       "states": [
-        "present",
+        "present"
+      ]
+    },
+    {
+      "from": "markdown-reshape-rs",
+      "to": "markdown-reshape-ts",
+      "kind": "twin",
+      "states": [
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-reshape-rs",
+      "to": "markdown-link-rs",
+      "kind": "depends",
+      "states": [
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-reshape-rs",
+      "to": "markdown-corpus-rs",
+      "kind": "depends",
+      "states": [
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-reshape-rs",
+      "to": "markdown-vault-fs",
+      "kind": "depends",
+      "states": [
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-reshape-rs",
+      "to": "vfs-seam",
+      "kind": "depends",
+      "states": [
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-reshape-rs",
+      "to": "etag-write-rs",
+      "kind": "depends",
+      "states": [
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-reshape-rs",
+      "to": "yaml-splice-rs",
+      "kind": "depends",
+      "states": [
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-reshape-ts",
+      "to": "markdown-link",
+      "kind": "depends",
+      "states": [
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-reshape-ts",
+      "to": "markdown-corpus",
+      "kind": "depends",
+      "states": [
+        "target"
+      ],
+      "note": "In place of the Rust corpus crate."
+    },
+    {
+      "from": "markdown-reshape-ts",
+      "to": "etag-write",
+      "kind": "depends",
+      "states": [
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-reshape-ts",
+      "to": "yaml-splice",
+      "kind": "depends",
+      "states": [
         "target"
       ]
     },

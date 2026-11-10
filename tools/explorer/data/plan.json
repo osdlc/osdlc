@@ -76,7 +76,7 @@
     {
       "id": "m-model",
       "title": "One corpus model",
-      "goal": "One TypeScript corpus model and link resolver, used by the validator, the store and the apps.",
+      "goal": "One TypeScript corpus model and link resolver, used by the validator, the store and the apps. It also renames markdown-relink to markdown-reshape, adds its TypeScript twin, and adds split, merge and extract.",
       "status": "todo",
       "beeline": false,
       "tasks": [
@@ -85,7 +85,11 @@
         12,
         13,
         14,
-        32
+        32,
+        39,
+        40,
+        41,
+        42
       ],
       "source": "docs/planning/milestones/m-model.md"
     },
@@ -660,6 +664,57 @@
       ],
       "text": "The planning profile. Tasks, milestones and decisions become a profile, `@osdlc/corpus-profile-planning` in `profiles/planning/`, a corpus with only types. This plan's corpus names it under `extends` and builds its own types on the profile's with `x-extends`. Tasks and milestones add fields, and decisions use the profile's type as it is. The components, layers, repos, overlaps and datasets stay local: they describe this ecosystem. CI checks the plan with this repo's corpus-schema, which knows `extends`. The profile is private and not on npm. After 9. In progress in [osdlc/markdown#14](https://github.com/osdlc/markdown/pull/14).",
       "source": "docs/planning/tasks/38 Planning profile.md"
+    },
+    {
+      "id": 39,
+      "title": "Rename relink",
+      "detail": "markdown-reshape",
+      "status": "todo",
+      "milestone": "m-model",
+      "type": "functional",
+      "after": [],
+      "text": "Rename the markdown-relink crate to markdown-reshape. Reshape means changing how notes are arranged without changing what they say. Steps:\n\n- Publish the crate under the new name.\n- Deprecate markdown-relink on crates.io. This is an owner step.\n- Rename the vault terms in its code, such as `VaultFacts`.\n- Switch the determined notes app, which uses it through its Rust backend, and skillwright.",
+      "source": "docs/planning/tasks/39 Rename relink.md"
+    },
+    {
+      "id": 40,
+      "title": "Reshape in TS",
+      "detail": "@osdlc/markdown-reshape",
+      "status": "todo",
+      "milestone": "m-model",
+      "type": "functional",
+      "after": [
+        12,
+        39
+      ],
+      "text": "The TypeScript twin, `@osdlc/markdown-reshape`, built on markdown-corpus. After 39 and 12.\n\nOpen question: a TypeScript port, or a WebAssembly build of the crate, as yaml-splice-wasm does for yaml-splice? A port needs TypeScript versions of markdown-vault-fs and vfs-seam, which do not exist yet. A WebAssembly build avoids that.",
+      "source": "docs/planning/tasks/40 Reshape in TS.md"
+    },
+    {
+      "id": 41,
+      "title": "Split and merge",
+      "detail": "markdown-reshape",
+      "status": "todo",
+      "milestone": "m-model",
+      "type": "functional",
+      "after": [
+        39
+      ],
+      "text": "Add split and merge to markdown-reshape. Split turns one note into several and redirects each link to the right piece. Merge makes links to any of the merged notes point to the result. After 39.",
+      "source": "docs/planning/tasks/41 Split and merge.md"
+    },
+    {
+      "id": 42,
+      "title": "Extract",
+      "detail": "markdown-reshape",
+      "status": "todo",
+      "milestone": "m-model",
+      "type": "functional",
+      "after": [
+        41
+      ],
+      "text": "Add extract to markdown-reshape. It pulls one thread out of the graph: a note and what it links to, followed to some depth or by type. The thread is copied or moved into its own folder or corpus. Links inside it are kept. Links leaving it are rewritten or flagged. After 41.\n\nOpen questions:\n\n- What is the stopping rule: depth, link type or the corpus boundary?\n- Can the result be a new corpus that `extends` the source?",
+      "source": "docs/planning/tasks/42 Extract.md"
     }
   ]
 }
