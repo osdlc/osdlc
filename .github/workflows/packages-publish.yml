@@ -14,8 +14,7 @@
 #
 # The Version Packages pull request is opened as the osdlc-release GitHub App,
 # whose key is in the release-plz environment. The `release` job passes the
-# key by name, since a reusable workflow reads an environment secret the
-# caller does not pass as an empty string.
+# key by name; ts-packages-release.yml says why.
 name: packages-publish
 
 on:

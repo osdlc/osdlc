@@ -16,11 +16,8 @@
 # pull_request checks start without an approval click; a pull request opened
 # with GITHUB_TOKEN would wait for one. The job runs in the caller's
 # `environment`, which holds the App's private key as the secret
-# RELEASE_PLZ_APP_PRIVATE_KEY. The caller must still pass that secret by name:
-# an environment secret the caller does not pass reads as an empty string
-# here, and the job that sets `environment` gets the environment's value for
-# one it does pass
-# (https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows).
+# RELEASE_PLZ_APP_PRIVATE_KEY. The caller passes that secret by name too; the
+# secret's description below says why.
 #
 # Every action is pinned to a commit SHA; the comment names its release.
 name: ts-packages-release
@@ -55,7 +52,10 @@ on:
       RELEASE_PLZ_APP_PRIVATE_KEY:
         description: >-
           The App's private key. Pass it by name even when only `environment`
-          holds it; `version` then reads the environment's value.
+          holds it; `version` then reads the environment's value. A reusable
+          workflow reads an environment secret the caller does not pass as an
+          empty string
+          (https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows).
         required: true
 
 permissions: {}
@@ -96,6 +96,18 @@ jobs:
     env:
       VERSION_PREPARE: ${{ inputs.version-prepare }}
     steps:
+      # `required` only checks that the caller passes the secret, not that it
+      # has a value.
+      - name: Check the App key
+        env:
+          APP_KEY: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}
+          ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          if [ -z "$APP_KEY" ]; then
+            echo "::error::RELEASE_PLZ_APP_PRIVATE_KEY is empty. The caller must pass it by name under \`secrets:\`, and the $ENVIRONMENT environment must hold it."
+            exit 1
+          fi
+
       - id: app-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
