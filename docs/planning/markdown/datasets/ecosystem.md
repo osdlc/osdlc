@@ -1,6 +1,10 @@
 ---
-as_of: "2026-11-09"
+as_of: "2026-11-10"
 sources:
+  - >-
+    Rechecked 2026-11-10: osdlc/markdown main (3c8f6fe) and open PRs #12, #15 and #16; osdlc/osdlc
+    PRs #767, #773 and #774; npm versions of @osdlc/package-checks and @osdlc/conformance-suites.
+    Other facts below are as of 2026-11-09.
   - >-
     osdlc/markdown main (de5bb97): docs/architecture.md, docs/ecosystem-plan.md,
     docs/corpus-schema.md, tools/diagrams/build.py, tools/diagrams/architecture.py,

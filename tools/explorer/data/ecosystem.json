@@ -1,6 +1,7 @@
 {
-  "asOf": "2026-11-09",
+  "asOf": "2026-11-10",
   "sources": [
+    "Rechecked 2026-11-10: osdlc/markdown main (3c8f6fe) and open PRs #12, #15 and #16; osdlc/osdlc PRs #767, #773 and #774; npm versions of @osdlc/package-checks and @osdlc/conformance-suites. Other facts below are as of 2026-11-09.",
     "osdlc/markdown main (de5bb97): docs/architecture.md, docs/ecosystem-plan.md, docs/corpus-schema.md, tools/diagrams/build.py, tools/diagrams/architecture.py, profiles/claims/, .github/workflows/examples.yml",
     "osdlc/markdown open PRs #9 (move corpus-schema, 1ad5a95) and #10 (shared CI, 4548e92)",
     "osdlc/osdlc main (c4886b06): packages/ts/*/package.json, packages/rust/Cargo.toml and each crate's Cargo.toml, packages/conformance/families.json, .github/workflows/ts-packages-ci.yml and ts-packages-release.yml",
@@ -668,8 +669,9 @@
       "notes": [
         "The types follow GA4GH's VA-Spec 1.1.0 (decision D8). profiles/claims/README.md maps each type and field to VA-Spec.",
         "Merged in osdlc/markdown#6. The plan still calls task 4 in progress.",
-        "People copy it with npx degit osdlc/markdown/profiles/claims/example. It is not on a registry.",
+        "Until osdlc/markdown#15 merges, people copy it with npx degit osdlc/markdown/profiles/claims/example. After it, the example holds no type copies, so the profile package is the thing to extend. It is not on a registry.",
         "profiles/claims/tests/ holds broken records that must fail with one expected error each.",
+        "Its CI builds this repo's corpus-schema, because the published 0.2.x does not read extends.",
         "Until task 31, evidence items are relative links with a pattern check, not x-ref."
       ],
       "tasks": [
@@ -685,6 +687,10 @@
         {
           "label": "osdlc/markdown#8 (issue)",
           "url": "https://github.com/osdlc/markdown/issues/8"
+        },
+        {
+          "label": "osdlc/markdown#15",
+          "url": "https://github.com/osdlc/markdown/pull/15"
         }
       ],
       "source": "docs/planning/components/claims-example.md"
@@ -706,21 +712,26 @@
         "present": null,
         "target": "profiles/claims"
       },
-      "status": "proposal",
+      "status": "in-progress",
       "version": null,
       "registry": null,
       "twin": null,
       "purpose": "The claims types published as a versioned profile, so a corpus names it under extends: and marks its types with x-extends instead of copying them.",
       "notes": [
         "Decision D10 fixed the name, the folder and the prefix claims. The architecture still marks the profiles layer a proposal, and its open questions ask whether to adopt profiles.",
-        "Task 23 publishes it from this repo, after tasks 9, 21 and 31. If copies drift first, it could be released from osdlc/osdlc.",
-        "Not on npm."
+        "Built in osdlc/markdown#15 as package 0.1.0 at profiles/claims. The four type schemas are in its corpus/ folder, which package.json names with \"corpus\". The claims example extends it.",
+        "Not published. Publishing needs profiles/* in the workspace and the owner staging the npm name once. package-checks does not check a package with no code."
       ],
       "tasks": [
         23,
         24
       ],
-      "links": [],
+      "links": [
+        {
+          "label": "osdlc/markdown#15",
+          "url": "https://github.com/osdlc/markdown/pull/15"
+        }
+      ],
       "source": "docs/planning/components/corpus-profile-claims.md"
     },
     {
@@ -759,6 +770,44 @@
         }
       ],
       "source": "docs/planning/components/corpus-profile-planning.md"
+    },
+    {
+      "id": "fernlog-example",
+      "name": "fernlog example corpus",
+      "kind": "corpus",
+      "language": "markdown",
+      "layer": "profiles",
+      "states": [
+        "target"
+      ],
+      "repo": {
+        "present": null,
+        "target": "osdlc/markdown"
+      },
+      "path": {
+        "present": null,
+        "target": "examples/fernlog"
+      },
+      "status": "in-progress",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "A project corpus for a made-up tool. It extends the claims profile and the example org principles. Its decisions and statements cite inherited principles. CI installs the parents, runs corpus-schema sync and validates both corpora.",
+      "notes": [
+        "Built in osdlc/markdown#16, not merged. It holds a committed _inherited/ copy of both parents.",
+        "examples/test.sh breaks one thing at a time and checks each case fails with its one expected error.",
+        "It is the start of task 30."
+      ],
+      "tasks": [
+        35
+      ],
+      "links": [
+        {
+          "label": "osdlc/markdown#16",
+          "url": "https://github.com/osdlc/markdown/pull/16"
+        }
+      ],
+      "source": "docs/planning/components/fernlog-example.md"
     },
     {
       "id": "model-schema",
@@ -832,6 +881,43 @@
       ],
       "links": [],
       "source": "docs/planning/components/org-principles-corpus.md"
+    },
+    {
+      "id": "org-principles-example",
+      "name": "org principles example corpus",
+      "kind": "corpus",
+      "language": "markdown",
+      "layer": "profiles",
+      "states": [
+        "target"
+      ],
+      "repo": {
+        "present": null,
+        "target": "osdlc/markdown"
+      },
+      "path": {
+        "present": null,
+        "target": "examples/org-principles"
+      },
+      "status": "in-progress",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "An example organisation's principles: a corpus with one type and three records. The fernlog example extends it by path.",
+      "notes": [
+        "Built in osdlc/markdown#16, not merged.",
+        "An example, not the shared org corpus. That one is the org principles corpus (task 30)."
+      ],
+      "tasks": [
+        35
+      ],
+      "links": [
+        {
+          "label": "osdlc/markdown#16",
+          "url": "https://github.com/osdlc/markdown/pull/16"
+        }
+      ],
+      "source": "docs/planning/components/org-principles-example.md"
     },
     {
       "id": "sdlc-packs",
@@ -2655,13 +2741,13 @@
       "note": "A valid level-2 corpus."
     },
     {
-      "from": "corpus-profile-claims",
-      "to": "claims-example",
-      "kind": "depends",
+      "from": "claims-example",
+      "to": "corpus-profile-claims",
+      "kind": "extends",
       "states": [
         "target"
       ],
-      "note": "Task 23 wraps the example's types as a corpus with only types."
+      "note": "By the path ../corpus. Its four schemas hold only x-extends: claims/<type> (osdlc/markdown#15)."
     },
     {
       "from": "corpus-profile-claims",
@@ -2682,12 +2768,48 @@
       "note": "A profile is a corpus that has only types."
     },
     {
+      "from": "fernlog-example",
+      "to": "corpus-schema-spec",
+      "kind": "implements",
+      "states": [
+        "target"
+      ],
+      "note": "A valid level-2 corpus."
+    },
+    {
+      "from": "fernlog-example",
+      "to": "corpus-profile-claims",
+      "kind": "extends",
+      "states": [
+        "target"
+      ],
+      "note": "By the package name, installed with a file dependency on profiles/claims."
+    },
+    {
+      "from": "fernlog-example",
+      "to": "org-principles-example",
+      "kind": "extends",
+      "states": [
+        "target"
+      ],
+      "note": "By the path ../org-principles."
+    },
+    {
       "from": "org-principles-corpus",
       "to": "corpus-schema-spec",
       "kind": "implements",
       "states": [
         "target"
       ]
+    },
+    {
+      "from": "org-principles-example",
+      "to": "corpus-schema-spec",
+      "kind": "implements",
+      "states": [
+        "target"
+      ],
+      "note": "A valid level-2 corpus with one type, principles, and three records."
     },
     {
       "from": "sdlc-packs",
