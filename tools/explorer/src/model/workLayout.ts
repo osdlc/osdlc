@@ -21,7 +21,8 @@ const LANE_GUTTER = LANE_HEAD_WIDTH + HEAD_GAP + 14
 /** The lanes the first view starts on: the first in plan order, the current beeline. */
 const START_LANES = 2
 const OVERVIEW_COLUMN = MILESTONE_WIDTH + 96
-const OVERVIEW_ROW = MILESTONE_HEIGHT + 28
+// A wide row gap, so an arrow that skips a column shows as a line through the gap, not a stub.
+const OVERVIEW_ROW = MILESTONE_HEIGHT + 64
 
 export function taskNodeId(id: number): string {
   return `task-${id}`

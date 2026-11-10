@@ -25,6 +25,8 @@ const props = defineProps<{
    * shows the top-left of `bounds` at this zoom instead, and the fit button still shows it all.
    */
   minFitZoom?: number
+  /** Where a revealed node lands: the middle of the view, or its left edge. */
+  revealAlign?: 'center' | 'start'
 }>()
 
 const emit = defineEmits<{
@@ -46,7 +48,11 @@ function reveal() {
   const width = Number(target.width ?? 0)
   const height = Number(target.height ?? 0)
   const zoom = Math.max(viewport.value.zoom, 0.8)
-  setCenter(target.position.x + width / 2, target.position.y + height / 2, { zoom, duration: 300 })
+  const x =
+    props.revealAlign === 'start'
+      ? target.position.x - 24 / zoom + dimensions.value.width / (2 * zoom)
+      : target.position.x + width / 2
+  setCenter(x, target.position.y + height / 2, { zoom, duration: 300 })
 }
 
 // Fit once, after the first nodes are measured; later changes keep the user's pan and zoom.

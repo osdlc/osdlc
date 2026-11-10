@@ -4,7 +4,7 @@ import { computed } from 'vue'
 import type { Band } from '../../model/layout'
 import type { WorkLevel } from '../../model/route'
 import type { MilestoneCardData, TaskCardData, WorkEdgeSpec, WorkNodeSpec } from '../../model/workFlow'
-import type { Lane } from '../../model/workLayout'
+import { parseWorkNodeId, type Lane } from '../../model/workLayout'
 import GraphCanvas from '../graph/GraphCanvas.vue'
 import ArcEdge from './ArcEdge.vue'
 import LayerBands from '../graph/LayerBands.vue'
@@ -49,6 +49,11 @@ const flowEdges = computed<Edge[]>(() =>
   })),
 )
 
+// A lane header goes to the left edge, so its lane's tasks are in view to its right.
+const revealAlign = computed(() =>
+  props.level === 'detail' && props.revealId !== null && parseWorkNodeId(props.revealId)?.type === 'milestone' ? 'start' : 'center',
+)
+
 // Lanes reuse the layer bands; the milestone header node is their label.
 const bands = computed<Band[]>(() => props.lanes.map((lane) => ({ ...lane, label: '', summary: '' })))
 
@@ -70,7 +75,8 @@ function minimapClass(node: GraphNode) {
     :reveal-token="revealToken"
     :compact="compact"
     :minimap-class="minimapClass"
-    :min-fit-zoom="0.8"
+    :min-fit-zoom="level === 'detail' ? 0.8 : undefined"
+    :reveal-align="revealAlign"
     @select-node="emit('selectNode', $event)"
     @clear="emit('clear')"
   >
