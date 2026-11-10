@@ -447,9 +447,14 @@ format (a JSON envelope or an event stream), so metadata is captured.
   process groups. On Windows the group kill fails and the call falls back to
   killing the direct child, so a grandchild process can outlive a timeout.
 - **Interrupts:** the agent runs in its own process group, so Ctrl+C or a kill
-  of the host does not reach it. The package installs no exit handlers. A host
-  that can be interrupted must pass a `signal` to `callAgent` and abort it from
-  its own SIGINT/SIGTERM handler, or the agent keeps running.
+  of the host does not reach it. The group is registered with
+  `@osdlc/command-seam`: a host that calls `installGroupSignalForwarding()` once
+  has SIGINT, SIGTERM and SIGHUP kill the agent's group, and exits
+  `128 + signal`. After that signal a new call starts no agent and resolves
+  `ok: false` with reason `spawn-failed`. Forwarding acts only while an agent
+  is running. A host without it must pass a `signal` to `callAgent` and abort
+  it from its own SIGINT/SIGTERM handler, or the agent keeps running. The
+  package installs no signal handlers of its own.
 
 ## Security
 

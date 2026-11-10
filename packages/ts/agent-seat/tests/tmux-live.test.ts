@@ -42,22 +42,24 @@ afterAll(() => {
   if (saved.tmux !== undefined) process.env.TMUX = saved.tmux
 })
 
+/** The file's text once `done` accepts it, else the last text read (null if never written). */
 async function waitFor(
   path: string,
   timeoutMs: number,
-  done: (text: string) => boolean = () => true,
+  done: (text: string) => boolean,
 ): Promise<string | null> {
   const deadline = Date.now() + timeoutMs
+  let last: string | null = null
   while (Date.now() < deadline) {
     try {
-      const text = readFileSync(path, 'utf8')
-      if (text !== '' && done(text)) return text
+      last = readFileSync(path, 'utf8')
+      if (done(last)) return last
     } catch {
       // not written yet
     }
     await sleep(100)
   }
-  return null
+  return last
 }
 
 describe.skipIf(!tmuxAvailable)('tmux host against a real server', () => {
@@ -66,15 +68,16 @@ describe.skipIf(!tmuxAvailable)('tmux host against a real server', () => {
     mkdirSync(cwd, { recursive: true })
     host.terminal!({
       cwd,
-      // Ask for bracketed paste (as a TUI does), then record each byte with control
-      // characters made visible. Raw mode, so the pasted newline arrives as a newline and Enter is ^M.
-      // Only a real paste is wrapped in ^[[200~ ... ^[[201~; per-line send-keys is not.
+      // Ask for bracketed paste (as a TUI does), then record every byte as it arrives.
+      // Only a real paste is wrapped in ESC[200~ ... ESC[201~; per-line send-keys is not.
       // A paste sent before the terminal is set up is neither wrapped (tmux wraps only for a pane
       // that asked) nor read in raw mode, so the test waits for the `pane-ready` marker on screen.
+      // `dd` keeps the raw mode. Bash's `read -n1` turns CR-to-NL translation on while it waits,
+      // so a CR would be recorded as CR or as NL depending on when it arrived.
       argv: [
         'bash',
         '-c',
-        `printf '\\033[?2004h'; stty raw -echo; printf pane-ready; while IFS= read -r -n1 -d '' c; do printf %s "$c" | cat -v >> out.txt; done`,
+        `printf '\\033[?2004h'; stty raw -echo; printf pane-ready; exec dd bs=1 of=out.txt 2>/dev/null`,
       ],
       title: 'tmux-live',
     })
@@ -91,9 +94,10 @@ describe.skipIf(!tmuxAvailable)('tmux host against a real server', () => {
 
     // tmux has no delivery acknowledgement: accepted, never acked.
     expect(receipt).toEqual({ accepted: true, ack: false })
-    const received = await waitFor(join(cwd, 'out.txt'), 10_000, (t) => t.endsWith('^[[201~^M'))
-    // Both lines arrive intact inside one paste, then Enter submits it.
-    expect(received).toBe('^[[200~first line\nsecond line^[[201~^M')
+    const received = await waitFor(join(cwd, 'out.txt'), 10_000, (t) => t.endsWith('\x1b[201~\r'))
+    // Both lines arrive inside one paste, then Enter (CR) submits it. tmux sends the newline
+    // as CR, as a terminal does for a paste.
+    expect(received).toBe('\x1b[200~first line\rsecond line\x1b[201~\r')
   }, 30_000)
 
   test('a send to a cwd with no session is not accepted, so the Router falls through', () => {
