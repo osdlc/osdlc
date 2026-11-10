@@ -209,15 +209,16 @@ these in `ServeOptions`, or on a `GuardState` you build yourself:
   from loopback, so a proxy on the same machine is covered too. The share
   cookie on a public name carries `Secure`, and the request carries
   `PublicHost` in its extensions. `origin_matches_public_host` is the Origin
-  check for a handler on such a request. `normalize_public_host` says whether
-  a name is kept.
+  check for a handler on such a request. `serve` refuses to start on a name
+  `normalize_public_host` drops, such as `https://app.example.com`.
 - `admin_public_only` (`GuardState::with_admin_over_public_only`): the admin
-  token gives `admin` only on a public name and `full` anywhere else. Its link
-  is refused there and sets no cookie, and the admin share links are
-  `https://<name>/?token=...` (`ServerHandle::public_share_urls_for`). This
-  stops an admin link opened on a private address from carrying a shell
-  credential over plain HTTP. The `Host` header is the client's, so this is
-  not proof of how a request arrived. The token is the control.
+  token gives `admin` only on a public name and `full` anywhere else. It
+  needs at least one public name. Its link is refused off a public name and
+  sets no cookie, and the admin share links are `https://<name>/?token=...`
+  (`ServerHandle::public_share_urls_for`). This stops an admin link opened on
+  a private address from carrying a shell credential over plain HTTP. The
+  `Host` header is the client's, so this is not proof of how a request
+  arrived. The token is the control.
 - `cookie_max_age` (`GuardState::with_cookie_max_age`): a lifetime for the
   share cookie, so it outlives the browser session. The default is a session
   cookie. The admin cookie is always a session cookie.

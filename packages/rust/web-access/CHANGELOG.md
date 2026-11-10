@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   443.
 - `ServerHandle::public_share_urls_for`: `https://<name>/?token=` links for
   the public names.
+- `ServeError::BadPublicHost` and
+  `ServeError::AdminPublicOnlyWithoutPublicHosts`: `serve` refuses to start
+  on a public name `normalize_public_host` drops, or on `admin_public_only`
+  with no public name.
 - `GuardState::with_admin_over_public_only` and
   `ServeOptions::admin_public_only`: the admin token gives `Admin` only on a
   public name and `Full` elsewhere. Its link is refused there with 401, sets
