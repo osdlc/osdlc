@@ -18,8 +18,11 @@ Its own types:
 
 - [decisions](decisions/decisions.schema.md): design decisions. Each one cites the org principles
   it follows, through `x-ref: org/principles`.
-- [documents](documents/documents.schema.md), [study-results](study-results/study-results.schema.md)
-  and [statements](statements/statements.schema.md): the claims profile's types, used as they are.
+- [documents](documents/documents.schema.md) and
+  [study-results](study-results/study-results.schema.md): the claims profile's types, used as they
+  are.
+- [statements](statements/statements.schema.md): the claims profile's statements, plus a `follows`
+  link to an org principle.
 
 Start with the decision
 [Read config from the XDG folder](decisions/Read%20config%20from%20the%20XDG%20folder.md). It

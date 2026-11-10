@@ -26,12 +26,12 @@ From the root of this repository, build the validator, install fernlog's parent,
 ```sh
 sh tools/build-corpus-schema.sh
 (cd examples/fernlog && pnpm install --ignore-workspace --frozen-lockfile)
-node packages/ts/corpus-schema/bin/corpus-schema.js validate examples
+sh tools/validate-strict.sh examples
 sh examples/test.sh
 ```
 
-`test.sh` checks that the validator catches a stale `_inherited/` copy and a `follows` link to the
-wrong type.
+`test.sh` checks that the validator catches a stale copy of either parent, and a `follows` or
+`checkedBy` link to the wrong type.
 
 ## After a parent changes
 

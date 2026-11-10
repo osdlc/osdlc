@@ -3,25 +3,14 @@
 #
 # The script copies examples/, with fernlog's installed node_modules/, to a
 # temporary folder, breaks one thing at a time, and runs the validator on
-# fernlog:
-#
-# - an org principle changes after the last sync, so fernlog's copy in
-#   _inherited/org/ is stale;
-# - a decision's `follows` links to a document, not an org principle.
-#
-# Each case must fail with its one expected error. Install fernlog's
+# fernlog. Each case must fail with its one expected error. Install fernlog's
 # dependencies and build the validator first. Set CORPUS_SCHEMA to run another
-# validator.
+# validator (see tools/validator.sh).
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
-validate() {
-  if [ -n "${CORPUS_SCHEMA:-}" ]; then
-    $CORPUS_SCHEMA validate "$1"
-  else
-    node "$here/../packages/ts/corpus-schema/bin/corpus-schema.js" validate "$1"
-  fi
-}
+repo=$(cd "$here/.." && pwd)
+. "$repo/tools/validator.sh"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
@@ -54,5 +43,17 @@ check follows-a-document \
     "fernlog/decisions/Read config from the XDG folder.md" >decision.md &&
     mv decision.md "fernlog/decisions/Read config from the XDG folder.md"' \
   'follows: documents/fernlog README.md is not a org/principles record'
+
+# The package parent's copy is checked as the path parent's is, though no
+# record links into it.
+check stale-package-copy \
+  'echo "One more line." >>fernlog/_inherited/claims/statements/statements.schema.md' \
+  '_inherited/claims/statements/statements.schema.md: (copy): differs from the installed parent; run corpus-schema sync'
+
+check checked-by-a-document \
+  'sed "s#\.\./statements/fernlog%20config%20path\.md#../documents/fernlog%20README.md#" \
+    "fernlog/decisions/Read config from the XDG folder.md" >decision.md &&
+    mv decision.md "fernlog/decisions/Read config from the XDG folder.md"' \
+  'checkedBy: documents/fernlog README.md is not a claims/statements record'
 
 exit "$failed"
