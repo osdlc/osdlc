@@ -1,5 +1,15 @@
 # @osdlc/markdown-render
 
+## 0.8.0
+
+### Minor Changes
+
+- 258384e: First release. Markdown to HTML on unified and remark for CommonMark, GFM and the Obsidian extensions: wikilinks, embeds, callouts, tags, block ids, comments and highlights, with injected link resolution, and a sanitizing pipeline. Framework-free: the Vue components are in `@osdlc/markdown-render-vue`. Entries: `.`, `./plugins`, `./shiki` and `./theme.css`. `package.json` was set to 0.7.0 by hand so the package starts at 0.8.0.
+  
+  The wikilink and embed plugins find links with `@osdlc/markdown-link`'s body scanner and place them by source offset. A text node is no longer scanned by a regex, so there is no 512-character field cap and no skipped 100 000-character node. Pass the source to `processor.run(tree, { value: source })` when running a processor from `createMarkdownProcessor` by hand. Breaking against the unpublished 0.5 to 0.7 line: `WIKILINK_RE`, `EMBED_RE`, `FIELD_MAX`, `MAX_SCAN_LENGTH`, `CALLOUT_RE` and `STANDALONE_BLOCK_ID_RE` are no longer exported, and neither are the Vue context keys, `EmbedBudget` and copy-action pieces; in `@osdlc/markdown-render-vue` `nodeText` is `hastNodeText`, and the `LoadedNote` alias and the `Schema` re-export are gone. The pieces with no known user outside the package are marked `@experimental`. `katex` is `^0.19.1`.
+  
+  Hardening in the same release: `data-embed-path` is written only for a path that passes the link-scheme check; `pipelineProvenance` is exported from `.` and `./plugins` and the `markdownSchema` doc says the schema is meant to run after its `enforce`; a heading with no slug (`# !!!`) gets no `id` (the outline entry's `id` is then empty); a repeated `^block-id` stays literal text; block ids read CRLF notes like LF ones; and a failed `katex` or `mermaid` import reports its error unless the module is absent.
+
 ## History before the first public release
 
 These versions were never published. They are rebuilt from the git history.
