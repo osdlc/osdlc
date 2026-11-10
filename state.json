@@ -16,9 +16,9 @@
       "line": 570,
       "title": "Skip-confirmation path and per-package suspect grouping in main are untested",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "3fcda1b2f6889b0d4d07df78a9e3f8fc16194c19"
     }
   ]
 }
