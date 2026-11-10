@@ -37,7 +37,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 
-import { firstLine, isCommandFailed, stderrOrError } from '@osdlc/command-seam'
+import { firstLine, forwardedSignal, isCommandFailed, stderrOrError } from '@osdlc/command-seam'
 import {
   CommandFailed,
   Git,
@@ -863,6 +863,8 @@ export async function updateAll(
   const wt = git.at(opts.worktreeRoot)
   try {
     for (const planned of targets) {
+      // The host was signalled and is stopping: update no further PR.
+      if (forwardedSignal() !== undefined) break
       const target = opts.prepare === undefined ? planned : opts.prepare(planned, results)
       if (target === null) continue
       const outcome = await updateOne(wt, target, settings, runVerb, {

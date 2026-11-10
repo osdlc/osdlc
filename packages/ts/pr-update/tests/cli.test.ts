@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, test } from 'vitest'
+import { afterAll, describe, expect, test, vi } from 'vitest'
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -10,6 +10,11 @@ import { makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { PR_UPDATE_CONFIG_FILE, main } from '../src/cli.ts'
 import { FIXTURE_REMOTE, fakeTools } from './support.ts'
+import { forwarded } from './support-signal.ts'
+
+vi.mock('@osdlc/command-seam', async (original) =>
+  (await import('./support-signal.ts')).mockForwarding(original),
+)
 
 const PR_UPDATE_CONFIG_FILE_NAME = PR_UPDATE_CONFIG_FILE.name
 
@@ -94,6 +99,19 @@ describe('pr-update update with verify: test', () => {
 
   test('accepts test_command as the verify list', async () => {
     const { dir, env } = project('pr_update:\n  verify: test\n  test_command: make test\n')
+    expect(await main(['update'], captureContext({ cwd: dir, env }), fakeTools)).toBe(EXIT.ok)
+  })
+
+  test('a run stopped by a forwarded signal exits 128 + the signal, and an unsignalled one exits 0', async () => {
+    const { dir, env } = project('pr_update:\n  verify: test\n  test_command: make test\n')
+    try {
+      forwarded.signal = 'SIGINT'
+      expect(await main(['update'], captureContext({ cwd: dir, env }), fakeTools)).toBe(130)
+      forwarded.signal = 'SIGTERM'
+      expect(await main(['update'], captureContext({ cwd: dir, env }), fakeTools)).toBe(143)
+    } finally {
+      forwarded.signal = undefined
+    }
     expect(await main(['update'], captureContext({ cwd: dir, env }), fakeTools)).toBe(EXIT.ok)
   })
 

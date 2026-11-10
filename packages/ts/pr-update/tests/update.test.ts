@@ -9,7 +9,7 @@
  * argument, at the right time.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { isatty } from 'node:tty'
@@ -18,6 +18,7 @@ import type { CodeHost, CodeHostPrDetail } from '@osdlc/code-host'
 import { spawnRunner, type CommandResult, type CommandRunner } from '@osdlc/command-seam'
 import { IDENTITY, makeBareAndWorker } from '@osdlc/typed-git/testing'
 
+import { forwarded } from './support-signal.ts'
 import { prUpdateConfigSchema, type PrUpdateConfig } from '../src/config.ts'
 import type { AttemptStore, Ports } from '../src/ports.ts'
 import { prKey, type SurveyReport } from '../src/survey.ts'
@@ -34,6 +35,10 @@ import {
   type UpdateArgs,
   type UpdateOutput,
 } from '../src/update.ts'
+
+vi.mock('@osdlc/command-seam', async (original) =>
+  (await import('./support-signal.ts')).mockForwarding(original),
+)
 
 function cfg(patch: Record<string, unknown> = {}): PrUpdateConfig {
   return { ...prUpdateConfigSchema.parse({}), ...patch } as PrUpdateConfig
@@ -532,6 +537,7 @@ describe('runUpdate — failed attempts', () => {
   let fx: ReturnType<typeof makeBareAndWorker>
   let gitCalls: string[][]
   let file: string
+  let onGit: ((argv: string[]) => void) | undefined
 
   /** Real git with a pinned identity, recording every argv. */
   function recordingGit(): CommandRunner {
@@ -539,6 +545,7 @@ describe('runUpdate — failed attempts', () => {
     return {
       run: (argv, opts) => {
         gitCalls.push(argv)
+        onGit?.(argv)
         return real.run(argv, { ...opts, env: { ...IDENTITY, ...opts.env } })
       },
     }
@@ -618,7 +625,20 @@ describe('runUpdate — failed attempts', () => {
     commitOn('main', { 'shared.txt': 'main\n' })
     file = attemptsDir(fx.worker.dir)
   })
-  afterEach(() => fx.cleanup())
+  afterEach(() => {
+    forwarded.signal = undefined
+    onGit = undefined
+    fx.cleanup()
+  })
+
+  test('an interrupted run records no failed attempt', async () => {
+    onGit = (argv) => {
+      if (argv[0] === 'merge' || argv[0] === 'rebase') forwarded.signal = 'SIGINT'
+    }
+    const out = await update()
+    expect(out.results.map((r) => r.status)).toEqual(['conflict'])
+    expect(existsSync(file)).toBe(false)
+  })
 
   test('a declined push reaches the port, leaves the branch, and records no failure', async () => {
     branchOff('clean', { 'c.txt': 'c\n' })

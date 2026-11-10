@@ -45,7 +45,7 @@ import { atomicWrite } from '@osdlc/etag-write'
 import { EXIT, defineCli, failWith, failureOf, renderError, type CliContext } from '@osdlc/cli-tool'
 import { defineApp, type App } from '@osdlc/cli-tool/command'
 import { trustCommand, type TrustService } from '@osdlc/cli-tool/trust-command'
-import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
+import { forwardedExitCode, spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 import { describe, type Failure } from '@osdlc/result'
 import { Git } from '@osdlc/typed-git'
 import { CONFIG_INVALID_EXIT, ConfigInvalidError, type ConfigFileSpec } from '@osdlc/config-layers'
@@ -619,6 +619,9 @@ async function runUpdateCommand(
   // push failure left some PR not updated. A script that runs this in a loop
   // needs that in the exit code, not only in the JSON `counts`.
   const listingFailure = reportRepoFailures(ctx, out)
+  // A forwarded signal stopped the run: exit 128 + its number, as forwarding itself would.
+  const interrupted = forwardedExitCode()
+  if (interrupted !== undefined) return interrupted
   if (listingFailure !== null) return listingFailure
   return out.counts.conflict > 0 || out.counts.failed > 0 ? EXIT.error : EXIT.ok
 }
