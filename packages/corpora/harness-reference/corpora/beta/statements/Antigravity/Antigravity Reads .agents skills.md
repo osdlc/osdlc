@@ -5,21 +5,32 @@ proposition:
   object:
     supported: true
 direction: supports
-strength: weak
+strength: moderate
 hasEvidenceLines:
   - hasEvidenceItems:
       - "[2026-10-09 Antigravity Reads .agents skills](../../study-results/Antigravity/2026-10-09%20Antigravity%20Reads%20.agents%20skills.md)"
     directionOfEvidenceProvided: supports
     strengthOfEvidenceProvided: weak
     description: third-party observed 2026-10-09.
+  - hasEvidenceItems:
+      - "[2026-11-09 migration skills paths](../../study-results/Antigravity/2026-11-09%20migration%20skills%20paths.md)"
+    directionOfEvidenceProvided: supports
+    strengthOfEvidenceProvided: moderate
+    description: docs observed 2026-11-09.
 reportedIn:
   - "[Harness comparison](../../documents/skillwright/Harness%20comparison.md)"
+  - "[Antigravity docs CLI migration](../../documents/antigravity.google/Antigravity%20docs%20CLI%20migration.md)"
 contributions:
   - contributor:
       name: harness-reference import
       agentType: software
     activityType: created
     date: 2026-10-09T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T12:00:00Z
 harness: "[Antigravity](../../harnesses/Antigravity.md)"
 subject: "[Reads .agents skills](../../subjects/skills/Reads%20.agents%20skills.md)"
 scope:

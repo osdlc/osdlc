@@ -28,6 +28,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-10-29T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T07:53:54Z
 harness: "[Claude Code](../../harnesses/Claude%20Code.md)"
 subject: "[Plugin skill runtime name](../../subjects/skills/Plugin%20skill%20runtime%20name.md)"
 scope:

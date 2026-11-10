@@ -25,26 +25,37 @@ valueSchema:
             description: The format, such as text, json, stream-json or jsonl.
             type: string
           argv:
-            description: >-
-              The full arguments to add for this format, such as ["--output-format","stream-json","--verbose"]
-              or the standalone switch ["--json"]. Empty when it is the default and needs no argument.
+            description: The full arguments to add for this format, such as
+              ["--output-format","stream-json","--verbose"] or the standalone switch ["--json"].
+              Empty when it is the default and needs no argument.
             type: array
             items:
               type: string
-        required: [name, argv]
+        required:
+          - name
+          - argv
         additionalProperties: true
     note:
       description: A caveat the other keys do not carry.
       type: string
+    basis:
+      description: "How an answer of false or absent is known: stated in the docs, left out of the help
+        text, or never mentioned."
+      enum:
+        - documented
+        - omitted-from-help
+        - undocumented
   if:
     properties:
       supported:
         enum:
           - true
           - partial
-    required: [supported]
+    required:
+      - supported
   then:
-    required: [formats]
+    required:
+      - formats
   additionalProperties: true
 ---
 

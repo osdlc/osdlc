@@ -30,6 +30,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-10-01T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T12:00:00Z
 harness: "[Codex CLI](../../harnesses/Codex%20CLI.md)"
 subject: "[User skill directories](../../subjects/skills/User%20skill%20directories.md)"
 scope:

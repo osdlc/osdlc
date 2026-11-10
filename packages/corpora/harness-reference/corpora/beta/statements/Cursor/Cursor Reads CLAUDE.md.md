@@ -13,6 +13,11 @@ hasEvidenceLines:
     directionOfEvidenceProvided: supports
     strengthOfEvidenceProvided: moderate
     description: docs observed 2026-10-01.
+  - hasEvidenceItems:
+      - "[2026-11-09 Cursor docs claude md](../../study-results/Cursor/2026-11-09%20Cursor%20docs%20claude%20md.md)"
+    directionOfEvidenceProvided: supports
+    strengthOfEvidenceProvided: moderate
+    description: "CLI docs: AGENTS.md and CLAUDE.md at the project root are applied as rules."
 reportedIn:
   - "[Cursor CLI overview](../../documents/Anysphere/Cursor%20CLI%20overview.md)"
 contributions:
@@ -21,6 +26,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-10-01T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T12:00:00Z
 harness: "[Cursor](../../harnesses/Cursor.md)"
 subject: "[Reads CLAUDE.md](../../subjects/instructions/Reads%20CLAUDE.md.md)"
 scope:
@@ -33,3 +43,5 @@ imported_from: fact:instructions/claude-md@cursor#scope-[null,null,null]
 ---
 
 Imported from `facts/cursor/instructions/claude-md.md`.
+
+Rechecked 2026-11-09 against the installed CLI and vendor docs.

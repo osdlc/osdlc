@@ -49,7 +49,7 @@ valueSchema:
                 - macos
                 - linux
                 - windows
-          note: &a1
+          note: &a2
             description: A caveat the other keys do not carry.
             type: string
         required:
@@ -61,7 +61,14 @@ valueSchema:
     uninstall:
       description: How to remove it.
       type: string
-    note: *a1
+    note: *a2
+    basis:
+      description: "How an answer of false or absent is known: stated in the docs, left out of the help
+        text, or never mentioned."
+      enum:
+        - documented
+        - omitted-from-help
+        - undocumented
   additionalProperties: true
 ---
 

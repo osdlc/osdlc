@@ -23,5 +23,11 @@ valueSchema:
     sources:
       description: What can be installed.
       type: string
+    installs_in_app_only:
+      description: Whether installs happen only in the app, the CLI managing marketplaces alone.
+      type: boolean
+    plugin_url_flag:
+      description: The flag that loads a plugin from a URL.
+      type: string
   additionalProperties: true
 ---

@@ -29,6 +29,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-11-04T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T12:00:00Z
 harness: "[Pi](../../harnesses/Pi.md)"
 subject: "[How the agent loads a skill](../../subjects/skills/How%20the%20agent%20loads%20a%20skill.md)"
 scope:
@@ -36,10 +41,12 @@ scope:
   until: null
   platform: []
   model: null
-status: disputed
+status: superseded
 imported_from: fact:skills/agent-loading@pi#scope-[null,null,null]
 ---
 
 Imported from `facts/pi/skills/agent-loading.md`.
 
 The observations disagree on: mechanism. The latest value is kept.
+
+Superseded 2026-11-09 by a statement with a source-cited value. The earlier object is unchanged.

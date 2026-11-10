@@ -1,7 +1,8 @@
 ---
 slug: skills/bundled-files
 category: skills
-description: Whether files beside SKILL.md (scripts, references, assets) load into context without being asked for.
+description: Whether files beside SKILL.md (scripts, references, assets) load into context without
+  being asked for.
 valueSchema:
   description: The value of a statement about this subject. Other keys are allowed.
   type: object
@@ -49,5 +50,12 @@ valueSchema:
       type:
         - boolean
         - string
+    basis:
+      description: "How an answer of false or absent is known: stated in the docs, left out of the help
+        text, or never mentioned."
+      enum:
+        - documented
+        - omitted-from-help
+        - undocumented
   additionalProperties: true
 ---

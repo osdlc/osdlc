@@ -11,18 +11,18 @@ proposition:
       - .codex/skills
     nested: true
 direction: supports
-strength: weak
+strength: moderate
 hasEvidenceLines:
-  - hasEvidenceItems:
-      - "[2026-08-08 Cursor Project skill directories](../../study-results/Cursor/2026-08-08%20Cursor%20Project%20skill%20directories.md)"
-    directionOfEvidenceProvided: disputes
-    strengthOfEvidenceProvided: weak
-    description: third-party observed 2026-08-08; its value differs from the latest.
   - hasEvidenceItems:
       - "[2026-10-01 Cursor Project skill directories](../../study-results/Cursor/2026-10-01%20Cursor%20Project%20skill%20directories.md)"
     directionOfEvidenceProvided: supports
     strengthOfEvidenceProvided: moderate
     description: docs observed 2026-10-01.
+  - hasEvidenceItems:
+      - "[2026-11-09 Cursor docs skill dirs](../../study-results/Cursor/2026-11-09%20Cursor%20docs%20skill%20dirs.md)"
+    directionOfEvidenceProvided: supports
+    strengthOfEvidenceProvided: moderate
+    description: Skill directories table.
 reportedIn:
   - "[Harness comparison](../../documents/skillwright/Harness%20comparison.md)"
   - "[Cursor docs Agent Skills](../../documents/cursor.com/Cursor%20docs%20Agent%20Skills.md)"
@@ -32,6 +32,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-10-01T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T12:00:00Z
 harness: "[Cursor](../../harnesses/Cursor.md)"
 subject: "[Project skill directories](../../subjects/skills/Project%20skill%20directories.md)"
 scope:
@@ -39,10 +44,10 @@ scope:
   until: null
   platform: []
   model: null
-status: disputed
+status: current
 imported_from: fact:skills/project-dirs@cursor#scope-[null,null,null]
 ---
 
 Imported from `facts/cursor/skills/project-dirs.md`.
 
-The observations disagree on: dirs. The latest value is kept.
+Rechecked 2026-11-09 against the installed CLI and vendor docs.

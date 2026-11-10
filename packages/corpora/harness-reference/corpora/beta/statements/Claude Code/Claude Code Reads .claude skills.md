@@ -6,13 +6,18 @@ proposition:
     supported: true
     role: native
 direction: supports
-strength: weak
+strength: moderate
 hasEvidenceLines:
   - hasEvidenceItems:
       - "[2026-08-08 Claude Code Reads .claude skills](../../study-results/Claude%20Code/2026-08-08%20Claude%20Code%20Reads%20.claude%20skills.md)"
     directionOfEvidenceProvided: supports
     strengthOfEvidenceProvided: weak
     description: third-party observed 2026-08-08.
+  - hasEvidenceItems:
+      - "[2026-11-09 docs skills personal](../../study-results/Claude%20Code/2026-11-09%20docs%20skills%20personal.md)"
+    directionOfEvidenceProvided: supports
+    strengthOfEvidenceProvided: moderate
+    description: Personal skills are read from ~/.claude/skills.
 reportedIn:
   - "[Harness comparison](../../documents/skillwright/Harness%20comparison.md)"
 contributions:
@@ -21,6 +26,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-08-08T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T07:53:54Z
 harness: "[Claude Code](../../harnesses/Claude%20Code.md)"
 subject: "[Reads .claude skills](../../subjects/skills/Reads%20.claude%20skills.md)"
 scope:

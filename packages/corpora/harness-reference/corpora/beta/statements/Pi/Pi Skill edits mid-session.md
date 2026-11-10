@@ -13,6 +13,11 @@ hasEvidenceLines:
     directionOfEvidenceProvided: supports
     strengthOfEvidenceProvided: moderate
     description: docs observed 2026-11-04.
+  - hasEvidenceItems:
+      - "[2026-11-09 Pi skills reload](../../study-results/Pi/2026-11-09%20Pi%20skills%20reload.md)"
+    directionOfEvidenceProvided: supports
+    strengthOfEvidenceProvided: moderate
+    description: "Skills page: /reload."
 reportedIn:
   - "[Pi docs Skills (main at d57c2d2)](../../documents/github.com/Pi%20docs%20Skills%20%28main%20at%20d57c2d2%29.md)"
 contributions:
@@ -21,6 +26,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-11-04T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T12:00:00Z
 harness: "[Pi](../../harnesses/Pi.md)"
 subject: "[Skill edits mid-session](../../subjects/skills/Skill%20edits%20mid-session.md)"
 scope:
@@ -33,3 +43,5 @@ imported_from: fact:skills/live-reload@pi#scope-[null,null,null]
 ---
 
 Imported from `facts/pi/skills/live-reload.md`.
+
+Rechecked 2026-11-09 against the installed pi 1.5.0 and the v1.5.0 source tree.

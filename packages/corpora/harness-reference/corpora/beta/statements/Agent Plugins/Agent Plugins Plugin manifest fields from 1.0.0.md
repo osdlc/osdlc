@@ -97,6 +97,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-11-05T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T12:00:00Z
 harness: "[Agent Plugins](../../harnesses/Agent%20Plugins.md)"
 subject: "[Plugin manifest fields](../../subjects/plugins/Plugin%20manifest%20fields.md)"
 scope:

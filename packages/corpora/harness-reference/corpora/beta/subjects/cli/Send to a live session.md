@@ -22,6 +22,16 @@ valueSchema:
       type: string
     supported:
       description: true, false, or "partial" where only some sessions can be reached.
-      enum: [true, false, partial]
+      enum:
+        - true
+        - false
+        - partial
+    basis:
+      description: "How an answer of false or absent is known: stated in the docs, left out of the help
+        text, or never mentioned."
+      enum:
+        - documented
+        - omitted-from-help
+        - undocumented
   additionalProperties: true
 ---

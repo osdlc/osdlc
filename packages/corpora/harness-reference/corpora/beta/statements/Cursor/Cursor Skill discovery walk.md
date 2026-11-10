@@ -15,10 +15,10 @@ hasEvidenceLines:
     strengthOfEvidenceProvided: moderate
     description: docs observed 2026-11-04.
   - hasEvidenceItems:
-      - "[2026-11-04 Cursor Skill discovery walk 2](../../study-results/Cursor/2026-11-04%20Cursor%20Skill%20discovery%20walk%202.md)"
+      - "[2026-11-09 Cursor docs skill nested](../../study-results/Cursor/2026-11-09%20Cursor%20docs%20skill%20nested.md)"
     directionOfEvidenceProvided: supports
     strengthOfEvidenceProvided: moderate
-    description: docs observed 2026-11-04.
+    description: The skills root is walked recursively.
 reportedIn:
   - "[Cursor docs Agent Skills](../../documents/cursor.com/Cursor%20docs%20Agent%20Skills.md)"
 contributions:
@@ -27,6 +27,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-11-04T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T12:00:00Z
 harness: "[Cursor](../../harnesses/Cursor.md)"
 subject: "[Skill discovery walk](../../subjects/skills/Skill%20discovery%20walk.md)"
 scope:
@@ -44,3 +49,5 @@ Imported from `facts/cursor/skills/discovery-walk.md`.
 
 Open questions:
 - Are skill folders in parent directories above the working directory found, and are symlinked skill folders followed?
+
+Rechecked 2026-11-09 against the installed CLI and vendor docs.

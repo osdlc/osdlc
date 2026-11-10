@@ -22,6 +22,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-10-01T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T07:53:54Z
 harness: "[Claude Code](../../harnesses/Claude%20Code.md)"
 subject: "[Version seen](../../subjects/meta/Version%20seen.md)"
 scope:
@@ -29,7 +34,7 @@ scope:
   until: null
   platform: []
   model: null
-status: current
+status: superseded
 supersedes: "[Claude Code Version seen 2.1.283](Claude%20Code%20Version%20seen%202.1.283.md)"
 imported_from: fact:meta/version-seen@claude-code#sighting-3
 ---

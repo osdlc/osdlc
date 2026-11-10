@@ -33,6 +33,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-11-04T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T12:00:00Z
 harness: "[Cursor](../../harnesses/Cursor.md)"
 subject: "[How the agent loads a skill](../../subjects/skills/How%20the%20agent%20loads%20a%20skill.md)"
 scope:
@@ -52,3 +57,5 @@ Imported from `facts/cursor/skills/agent-loading.md`.
 Open questions:
 - Whether the CLI (cursor-agent) loads skills and plugins the way the IDE does.
 - What mechanism loads the SKILL.md body when the agent picks a skill (a tool call or a file read)?
+
+Rechecked 2026-11-09 against the installed CLI and vendor docs. Whether the CLI loads skills the way the IDE does stays open.

@@ -95,6 +95,78 @@ describe('lint', () => {
     )
   })
 
+  test('refuses a statement that supersedes itself', () => {
+    edit(
+      SESSION,
+      'status: current',
+      'status: current\nsupersedes: "[x](Claude%20Code%20Session%20environment.md)"',
+    )
+    assert.ok(problems().some((p) => p === `${SESSION}: supersedes links to itself`))
+  })
+
+  test('says so when a supersedes link names a file that is not a statement', () => {
+    edit(SESSION, 'status: current', 'status: current\nsupersedes: "[x](../../harnesses/Pi.md)"')
+    const found = problems().filter((p) => p.endsWith('not a statement'))
+    assert.equal(found.length, 1, found.join('\n'))
+    assert.ok(found[0]!.startsWith(`${SESSION}: supersedes `))
+    assert.match(found[0]!, /which is a harnesses record, not a statement/)
+  })
+
+  describe('strength by rule', () => {
+    const RUN = 'study-results/Claude Code/2026-10-10 Claude Code Session environment.md'
+    const strength = (list: string[]): string[] =>
+      list.filter((p) => p.includes('strength') || p.includes('evidence kinds'))
+
+    test('passes a docs result held at moderate, and a run held at strong', () => {
+      assert.deepEqual(strength(problems()), [])
+      edit(RUN, 'kind: run', 'kind: docs')
+      edit(SESSION, 'strength: strong', 'strength: moderate')
+      edit(SESSION, 'strengthOfEvidenceProvided: strong', 'strengthOfEvidenceProvided: moderate')
+      assert.deepEqual(problems(), [])
+    })
+
+    test('refuses an evidence line stronger than its evidence kinds allow', () => {
+      edit(RUN, 'kind: run', 'kind: docs')
+      edit(SESSION, 'strength: strong', 'strength: moderate')
+      const found = strength(problems())
+      assert.deepEqual(found, [
+        `${SESSION}: evidence line is strong, but its evidence kinds allow at most moderate`,
+      ])
+    })
+
+    test('refuses a statement stronger than its strongest supporting line', () => {
+      edit(SESSION, 'strengthOfEvidenceProvided: strong', 'strengthOfEvidenceProvided: moderate')
+      assert.deepEqual(strength(problems()), [
+        `${SESSION}: strength strong is above its strongest supporting evidence line (moderate)`,
+      ])
+    })
+
+    test('caps a line at its evidence kinds before comparing the statement to it', () => {
+      edit(RUN, 'kind: run', 'kind: docs')
+      assert.ok(
+        strength(problems()).includes(
+          `${SESSION}: strength strong is above its strongest supporting evidence line (moderate)`,
+        ),
+      )
+    })
+
+    test('refuses a strength with no supporting evidence line', () => {
+      const file = join(dir, SESSION)
+      writeFileSync(
+        file,
+        readFileSync(file, 'utf8').replaceAll(
+          'directionOfEvidenceProvided: supports',
+          'directionOfEvidenceProvided: disputes',
+        ),
+      )
+      assert.ok(
+        strength(problems()).includes(
+          `${SESSION}: strength strong has no supporting evidence line`,
+        ),
+      )
+    })
+  })
+
   test('refuses a run whose method does not list the harness', () => {
     edit(
       'study-results/Claude Code/2026-10-10 Claude Code Session environment.md',
@@ -167,10 +239,10 @@ describe('lint', () => {
       )
     })
 
-    const setSupersedes = (v: string, target: string): void => {
+    const setSupersedesLink = (v: string, href: string): void => {
       const file = join(dir, PI(v))
       const text = readFileSync(file, 'utf8')
-      const line = `supersedes: "[x](Pi%20Version%20seen%20${target}.md)"`
+      const line = `supersedes: "[x](${href})"`
       writeFileSync(
         file,
         /^supersedes: .*$/mu.test(text)
@@ -178,6 +250,23 @@ describe('lint', () => {
           : text.replace(/^status: .*$/mu, (m) => `${m}\n${line}`),
       )
     }
+    const setSupersedes = (v: string, target: string): void =>
+      setSupersedesLink(v, `Pi%20Version%20seen%20${target}.md`)
+    // lint's own reports only: the validator also refuses a link to a record of another type.
+    const supersedesProblems = (v: string): string[] =>
+      lint(loadBeta(dir)).filter((p) => p.startsWith(`${PI(v)}: supersedes`))
+
+    test('reports a self-link once', () => {
+      setSupersedes('1.1.0', '1.1.0')
+      assert.deepEqual(supersedesProblems('1.1.0'), [`${PI('1.1.0')}: supersedes links to itself`])
+    })
+
+    test('reports a link to a record that is not a statement once', () => {
+      setSupersedesLink('1.1.0', '../../harnesses/Pi.md')
+      const found = supersedesProblems('1.1.0')
+      assert.equal(found.length, 1, found.join('\n'))
+      assert.match(found[0]!, /which is a harnesses record, not a statement/)
+    })
 
     test('refuses a statement replaced twice', () => {
       setSupersedes('0.84.3', '0.99.1')

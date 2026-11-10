@@ -29,6 +29,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-11-04T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T12:00:00Z
 harness: "[Agent Skills](../../harnesses/Agent%20Skills.md)"
 subject: "[Skills in context at startup](../../subjects/skills/Skills%20in%20context%20at%20startup.md)"
 scope:

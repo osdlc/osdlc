@@ -39,30 +39,19 @@ import {
   type Beta,
   canonicalJson,
   createdBy,
+  KIND_STRENGTH,
   link,
   loadBeta,
   normalizeUrl,
   record,
+  type Strength,
+  STRENGTHS,
 } from './corpus.ts'
 import { compareScopes, type Versioning } from './versions.ts'
 
 export const IMPORTER = 'harness-reference import'
 const REPO_BLOB = 'https://github.com/osdlc/skillwright/blob/main/'
 const NOTES_PREFIX = `${REPO_BLOB}harness-reference/corpora/alpha/sources/`
-
-type Strength = 'strong' | 'moderate' | 'weak'
-const STRENGTHS: Strength[] = ['weak', 'moderate', 'strong']
-/** The strength rule: the best evidence kind on a supporting line sets the line's strength. */
-export const KIND_STRENGTH: Record<string, Strength> = {
-  run: 'strong',
-  source: 'strong',
-  'help-text': 'strong',
-  docs: 'moderate',
-  changelog: 'moderate',
-  issue: 'weak',
-  'third-party': 'weak',
-  inferred: 'weak',
-}
 
 /**
  * Subjects whose alpha facts record one observation per sighting, so the beta record keeps only

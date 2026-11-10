@@ -39,6 +39,20 @@ valueSchema:
     note:
       description: A caveat the other keys do not carry.
       type: string
+    levels_by_model:
+      description: The accepted levels per model, lowest first, keyed by model name or pattern.
+      type: object
+      additionalProperties:
+        type: array
+        items:
+          type: string
+    basis:
+      description: "How an answer of false or absent is known: stated in the docs, left out of the help
+        text, or never mentioned."
+      enum:
+        - documented
+        - omitted-from-help
+        - undocumented
   additionalProperties: true
 ---
 

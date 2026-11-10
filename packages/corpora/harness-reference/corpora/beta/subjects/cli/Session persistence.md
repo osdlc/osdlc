@@ -37,6 +37,21 @@ valueSchema:
     note:
       description: A caveat the other keys do not carry.
       type: string
+    resumable_by_id:
+      description: Whether a session can be resumed by id even when runs are not saved by default.
+      type: boolean
+    persist_argv:
+      description: The arguments that turn saving on, where saving is off by default.
+      type: array
+      items:
+        type: string
+    basis:
+      description: "How an answer of false or absent is known: stated in the docs, left out of the help
+        text, or never mentioned."
+      enum:
+        - documented
+        - omitted-from-help
+        - undocumented
   additionalProperties: true
 ---
 

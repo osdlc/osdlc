@@ -37,6 +37,27 @@ valueSchema:
     note:
       description: A caveat the other keys do not carry.
       type: string
+    obtained_by:
+      description: "How a caller learns the id when it cannot assign one: a flag, a command or an event."
+      enum:
+        - flag
+        - command
+        - event
+    command:
+      description: The command that creates or returns an id, when obtained_by is command.
+      type: array
+      items:
+        type: string
+    creates_on_missing:
+      description: Whether naming an id that does not exist creates a session with it.
+      type: boolean
+    basis:
+      description: "How an answer of false or absent is known: stated in the docs, left out of the help
+        text, or never mentioned."
+      enum:
+        - documented
+        - omitted-from-help
+        - undocumented
   additionalProperties: true
 ---
 

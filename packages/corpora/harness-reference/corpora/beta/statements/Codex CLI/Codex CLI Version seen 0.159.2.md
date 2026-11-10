@@ -22,6 +22,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-10-01T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T12:00:00Z
 harness: "[Codex CLI](../../harnesses/Codex%20CLI.md)"
 subject: "[Version seen](../../subjects/meta/Version%20seen.md)"
 scope:
@@ -29,7 +34,7 @@ scope:
   until: null
   platform: []
   model: null
-status: current
+status: superseded
 supersedes: "[Codex CLI Version seen 0.155.1](Codex%20CLI%20Version%20seen%200.155.1.md)"
 imported_from: fact:meta/version-seen@codex#sighting-3
 ---
@@ -37,3 +42,5 @@ imported_from: fact:meta/version-seen@codex#sighting-3
 Imported from `facts/codex/meta/version-seen.md`, observation 3.
 
 The latest sighting is the current statement; an older one is superseded by the next.
+
+Superseded by [Codex CLI Version seen 0.162.0](Codex%20CLI%20Version%20seen%200.162.0.md), which checks the value against 0.162.0.

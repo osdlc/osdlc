@@ -59,7 +59,7 @@ describe('compile', () => {
       commit: SHA,
     })
     assert.ok(k.values.length >= 30)
-    assert.equal(Object.keys(k.harnesses).length, 16)
+    assert.equal(Object.keys(k.harnesses).length, 17)
     assert.equal(k.harnesses['claude-code']?.kind, 'harness')
     assert.equal(k.harnesses['agent-skills']?.kind, 'standard')
     assert.equal(k.harnesses['claude-code']?.title, 'Claude Code')

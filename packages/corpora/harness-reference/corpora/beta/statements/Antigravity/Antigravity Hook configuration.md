@@ -20,6 +20,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-10-09T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: superseded
+    date: 2026-11-09T12:00:00Z
 harness: "[Antigravity](../../harnesses/Antigravity.md)"
 subject: "[Hook configuration](../../subjects/hooks/Hook%20configuration.md)"
 scope:
@@ -27,7 +32,7 @@ scope:
   until: null
   platform: []
   model: null
-status: current
+status: superseded
 imported_from: fact:hooks/config@antigravity#scope-[null,null,null]
 ---
 

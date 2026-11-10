@@ -680,6 +680,48 @@ describe('identity and scope', () => {
       assert.equal(run(), 1)
     })
 
+    test('the command exits 1 when a retirement is pending', () => {
+      const run = (): { status: number; out: string } => {
+        const r = spawnSync(
+          process.execPath,
+          [join(import.meta.dirname, 'import-alpha.ts'), '--category', 'cli', '--beta', dir],
+          { encoding: 'utf8' },
+        )
+        return { status: r.status ?? -1, out: r.stdout }
+      }
+      assert.equal(run().status, 0)
+      const stale = 'statements/Claude Code/Claude Code Stale.md'
+      writeFileSync(
+        join(dir, stale),
+        readFileSync(join(dir, FORK), 'utf8').replace(
+          /^imported_from: .*$/mu,
+          'imported_from: fact:cli/gone@claude-code#scope-[null,null,null]',
+        ),
+      )
+      const after = run()
+      assert.equal(after.status, 1)
+      assert.match(after.out, new RegExp(`would remove \\(needs --force\\): ${stale}`, 'u'))
+      assert.equal(existsSync(join(dir, stale)), true, 'report-only leaves it')
+    })
+
+    test('a changed fixture copy is listed, does not fail, and is left alone', () => {
+      const fixture = 'methods/pi package install/fixture/with-manifest/package.json'
+      importAlpha(new Set(['plugins']), dir, undefined, { force: true })
+      const file = join(dir, fixture)
+      writeFileSync(file, '{"edited":true}\n')
+      const r = importAlpha(new Set(['plugins']), dir)
+      assert.deepEqual(r.changed, [])
+      assert.deepEqual(r.diff, { add: [], overwrite: [fixture], remove: [] })
+      assert.equal(readFileSync(file, 'utf8'), '{"edited":true}\n')
+      const cli = spawnSync(
+        process.execPath,
+        [join(import.meta.dirname, 'import-alpha.ts'), '--category', 'plugins', '--beta', dir],
+        { encoding: 'utf8' },
+      )
+      assert.equal(cli.status, 0)
+      assert.match(cli.stdout, /edited since import, left alone .*package\.json/u)
+    })
+
     test('a record that lost its frontmatter is reported, not overwritten', () => {
       writeFileSync(join(dir, FORK), 'not a record\n')
       const r = importAlpha(new Set(['cli']), dir, undefined, { write: true })

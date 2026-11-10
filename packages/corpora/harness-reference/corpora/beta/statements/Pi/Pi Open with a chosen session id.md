@@ -14,6 +14,11 @@ hasEvidenceLines:
     directionOfEvidenceProvided: supports
     strengthOfEvidenceProvided: strong
     description: help-text observed 2026-09-25.
+  - hasEvidenceItems:
+      - "[2026-11-09 Pi help session-id fork](../../study-results/Pi/2026-11-09%20Pi%20help%20session-id%20fork.md)"
+    directionOfEvidenceProvided: supports
+    strengthOfEvidenceProvided: strong
+    description: --session-id in --help.
 reportedIn:
   - "[pi harness notes for a dispatcher](../../documents/skillwright/pi%20harness%20notes%20for%20a%20dispatcher.md)"
 contributions:
@@ -22,6 +27,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-09-25T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T12:00:00Z
 harness: "[Pi](../../harnesses/Pi.md)"
 subject: "[Open with a chosen session id](../../subjects/cli/Open%20with%20a%20chosen%20session%20id.md)"
 scope:
@@ -34,3 +44,5 @@ imported_from: fact:cli/open-with-id@pi#scope-[null,null,null]
 ---
 
 Imported from `facts/pi/cli/open-with-id.md`.
+
+Rechecked 2026-11-09 against the installed pi 1.5.0.

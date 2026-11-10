@@ -15,6 +15,11 @@ hasEvidenceLines:
     directionOfEvidenceProvided: supports
     strengthOfEvidenceProvided: moderate
     description: docs observed 2026-10-01.
+  - hasEvidenceItems:
+      - "[2026-11-09 Cursor docs plugin manifests](../../study-results/Cursor/2026-11-09%20Cursor%20docs%20plugin%20manifests.md)"
+    directionOfEvidenceProvided: supports
+    strengthOfEvidenceProvided: moderate
+    description: Cursor Plugins use .cursor-plugin/plugin.json.
 reportedIn:
   - "[Cursor docs Plugins](../../documents/cursor.com/Cursor%20docs%20Plugins.md)"
 contributions:
@@ -23,6 +28,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-10-01T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T12:00:00Z
 harness: "[Cursor](../../harnesses/Cursor.md)"
 subject: "[Plugin manifest](../../subjects/plugins/Plugin%20manifest.md)"
 scope:
@@ -40,3 +50,5 @@ Imported from `facts/cursor/plugins/manifest.md`.
 
 Open questions:
 - Whether custom component paths in the manifest replace or add to the default directories.
+
+Rechecked 2026-11-09 against the installed CLI and vendor docs.

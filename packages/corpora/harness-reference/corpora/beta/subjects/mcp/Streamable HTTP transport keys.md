@@ -24,5 +24,12 @@ valueSchema:
     type:
       description: The `type` value that selects it.
       type: string
+    basis:
+      description: "How an answer of false or absent is known: stated in the docs, left out of the help
+        text, or never mentioned."
+      enum:
+        - documented
+        - omitted-from-help
+        - undocumented
   additionalProperties: true
 ---

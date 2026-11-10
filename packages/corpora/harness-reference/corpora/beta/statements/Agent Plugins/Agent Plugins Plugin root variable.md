@@ -19,18 +19,24 @@ hasEvidenceLines:
     strengthOfEvidenceProvided: moderate
     description: docs observed 2026-11-04.
   - hasEvidenceItems:
-      - "[2026-11-04 Agent Plugins Plugin root variable 2](../../study-results/Agent%20Plugins/2026-11-04%20Agent%20Plugins%20Plugin%20root%20variable%202.md)"
+      - "[2026-11-09 spec plugin root expansion](../../study-results/Agent%20Plugins/2026-11-09%20spec%20plugin%20root%20expansion.md)"
     directionOfEvidenceProvided: supports
-    strengthOfEvidenceProvided: moderate
-    description: docs observed 2026-11-04.
+    strengthOfEvidenceProvided: strong
+    description: source observed 2026-11-09.
 reportedIn:
   - "[Agent Plugins Specification](../../documents/agent-plugins.org/Agent%20Plugins%20Specification.md)"
+  - "[Agent Plugins Specification 1.0.0](../../documents/github.com/Agent%20Plugins%20Specification%201.0.0.md)"
 contributions:
   - contributor:
       name: harness-reference import
       agentType: software
     activityType: created
     date: 2026-11-04T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T12:00:00Z
 harness: "[Agent Plugins](../../harnesses/Agent%20Plugins.md)"
 subject: "[Plugin root variable](../../subjects/skills/Plugin%20root%20variable.md)"
 scope:

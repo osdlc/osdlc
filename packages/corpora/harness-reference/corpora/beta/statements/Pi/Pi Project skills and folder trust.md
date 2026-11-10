@@ -28,6 +28,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-11-04T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T12:00:00Z
 harness: "[Pi](../../harnesses/Pi.md)"
 subject: "[Project skills and folder trust](../../subjects/skills/Project%20skills%20and%20folder%20trust.md)"
 scope:
@@ -40,3 +45,5 @@ imported_from: fact:skills/project-trust@pi#scope-[null,null,null]
 ---
 
 Imported from `facts/pi/skills/project-trust.md`.
+
+Rechecked 2026-11-09 against the installed pi 1.5.0 and the v1.5.0 source tree.

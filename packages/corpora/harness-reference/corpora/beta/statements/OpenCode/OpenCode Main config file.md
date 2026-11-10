@@ -14,6 +14,11 @@ hasEvidenceLines:
     directionOfEvidenceProvided: supports
     strengthOfEvidenceProvided: weak
     description: third-party observed 2026-08-08.
+  - hasEvidenceItems:
+      - "[2026-11-09 OpenCode Global config docs](../../study-results/OpenCode/2026-11-09%20OpenCode%20Global%20config%20docs.md)"
+    directionOfEvidenceProvided: supports
+    strengthOfEvidenceProvided: moderate
+    description: config docs for 2.2.6 name ~/.config/opencode/opencode.json.
 reportedIn:
   - "[Harness comparison](../../documents/skillwright/Harness%20comparison.md)"
 contributions:
@@ -22,6 +27,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-08-08T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T12:00:00Z
 harness: "[OpenCode](../../harnesses/OpenCode.md)"
 subject: "[Main config file](../../subjects/config/Main%20config%20file.md)"
 scope:

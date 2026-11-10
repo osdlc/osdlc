@@ -4,8 +4,10 @@ A cited record of coding-agent harnesses, in the shape of the
 [claims profile](https://github.com/osdlc/markdown/pull/6) (VA-Spec 1.1.0): what each harness is,
 and claims about how it behaves, each with the evidence behind it.
 
-The corpus follows [corpus-schema](https://github.com/osdlc/osdlc/blob/main/packages/conformance/corpus-schema/SPEC.md). It is data only.
-The validator is the [`@osdlc/corpus-schema`](https://www.npmjs.com/package/@osdlc/corpus-schema) package from npm.
+The corpus follows
+[corpus-schema](https://github.com/osdlc/osdlc/blob/main/packages/conformance/corpus-schema/SPEC.md).
+It is data only. The validator is the
+[`@osdlc/corpus-schema`](https://www.npmjs.com/package/@osdlc/corpus-schema) package from npm.
 
 ## Layout
 
@@ -67,7 +69,12 @@ statement is linked from the one that replaced it, in `supersedes`.
 Strength follows the evidence: a run, source or help-text line is strong, docs or a changelog
 moderate, and an issue, third-party page or inference weak. The statement takes its strongest
 supporting line, one step lower when a line disputes it. A reviewer may lower a strength, never
-raise it past the rule.
+raise it past the rule. `lint` checks two parts of it: a line is no stronger than the best kind
+among its own evidence items, and a statement is no stronger than its strongest supporting line.
+
+A listing that lacks an option, such as help text with no flag for it, is evidence of absence. It
+supports a `supported: false` value one step below its kind, since a listing can leave an option
+out: help text or source is moderate, docs weak.
 
 Imported statements cite the alpha research notes as documents, so some strong values still rest
 on a note. Replace the note with the upstream page as study results are captured.
@@ -91,9 +98,9 @@ stays on a record as provenance.
 `import-alpha` is report-only by default. It builds its plan and prints what it would write,
 overwrite and remove, and which existing records differ from its output. A record that differs
 has been edited since the import: it is listed and does not fail the run. It exits 1 only when a
-file is missing or a record would be retired, and 0 otherwise. `--write` adds files that do not exist yet and never touches an
-existing file. `--force` writes, overwrites and removes everything in the plan, discarding hand
-edits.
+file is missing or a record would be retired, and 0 otherwise. `--write` adds files that do not
+exist yet and never touches an existing file. `--force` writes, overwrites and removes everything
+in the plan, discarding hand edits.
 
 ## Recording a study result
 
@@ -150,7 +157,9 @@ what a schema cannot:
 - `scope.since` and `scope.until` are absent when the harness's `versioning` is `unknown`, are
   spelled as that versioning says, and are in order.
 - At most one `current` statement covers any version of a harness, subject, platform and model.
-- A `supersedes` target has status `superseded`.
+- A `supersedes` link names another statement, and that statement has status `superseded`.
+- A line is no stronger than its evidence kinds allow, and a statement no stronger than its strongest
+  supporting line.
 - Every evidence link is a study result about the same harness.
 - A `run` study result links a method that lists its harness, and a command names no home
   directory.

@@ -13,6 +13,10 @@ hasEvidenceLines:
     directionOfEvidenceProvided: supports
     strengthOfEvidenceProvided: weak
     description: third-party observed 2026-08-08.
+  - hasEvidenceItems:
+      - "[2026-11-09 changelog agents-md](../../study-results/Claude%20Code/2026-11-09%20changelog%20agents-md.md)"
+    directionOfEvidenceProvided: neutral
+    description: AGENTS.md support was added in 2.1.277, so the earlier value held before that version.
 reportedIn:
   - "[Harness comparison](../../documents/skillwright/Harness%20comparison.md)"
 contributions:
@@ -21,14 +25,19 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-08-08T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T07:53:54Z
 harness: "[Claude Code](../../harnesses/Claude%20Code.md)"
 subject: "[Reads AGENTS.md](../../subjects/instructions/Reads%20AGENTS.md.md)"
 scope:
   since: null
-  until: null
+  until: 2.1.277
   platform: []
   model: null
-status: current
+status: superseded
 imported_from: fact:instructions/agents-md@claude-code#scope-[null,null,null]
 ---
 

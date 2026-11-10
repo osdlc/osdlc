@@ -31,6 +31,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-10-01T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T12:00:00Z
 harness: "[Pi](../../harnesses/Pi.md)"
 subject: "[Plugin install](../../subjects/plugins/Plugin%20install.md)"
 scope:
@@ -38,7 +43,7 @@ scope:
   until: null
   platform: []
   model: null
-status: disputed
+status: superseded
 open:
   - What is the shape of a `packages` entry for a local install (a string, or an object with `source`), and is a relative entry read against the settings file's folder or the folder `pi install` ran in?
 imported_from: fact:plugins/install@pi#scope-[null,null,null]
@@ -50,3 +55,5 @@ The observations disagree on: commands. The latest value is kept.
 
 Open questions:
 - What is the shape of a `packages` entry for a local install (a string, or an object with `source`), and is a relative entry read against the settings file's folder or the folder `pi install` ran in?
+
+Superseded 2026-11-09 by a statement with a source-cited value. The earlier object is unchanged.

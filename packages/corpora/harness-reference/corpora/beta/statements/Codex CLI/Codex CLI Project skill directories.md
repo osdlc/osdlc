@@ -29,6 +29,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-10-01T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T12:00:00Z
 harness: "[Codex CLI](../../harnesses/Codex%20CLI.md)"
 subject: "[Project skill directories](../../subjects/skills/Project%20skill%20directories.md)"
 scope:
@@ -36,10 +41,12 @@ scope:
   until: null
   platform: []
   model: null
-status: disputed
+status: superseded
 imported_from: fact:skills/project-dirs@codex#scope-[null,null,null]
 ---
 
 Imported from `facts/codex/skills/project-dirs.md`.
 
 The observations disagree on: dirs. The latest value is kept.
+
+Superseded by [Codex CLI Project skill directories 0.162.0](Codex%20CLI%20Project%20skill%20directories%200.162.0.md), which checks the value against 0.162.0.

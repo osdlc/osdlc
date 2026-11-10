@@ -20,5 +20,10 @@ valueSchema:
       type: string
     stdin:
       type: string
+    argv:
+      description: The full argument list, one element per argument, with placeholders such as {prompt} or {id}.
+      type: array
+      items:
+        type: string
   additionalProperties: true
 ---

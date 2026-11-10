@@ -40,6 +40,18 @@ valueSchema:
     note:
       description: A caveat the other keys do not carry.
       type: string
+    set_by:
+      description: "Which process sets the marker: the harness itself, or only the commands it runs."
+      enum:
+        - harness
+        - child-commands
+    basis:
+      description: "How an answer of false or absent is known: stated in the docs, left out of the help
+        text, or never mentioned."
+      enum:
+        - documented
+        - omitted-from-help
+        - undocumented
   additionalProperties: true
 ---
 

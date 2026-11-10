@@ -22,6 +22,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-10-09T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T12:00:00Z
 harness: "[Pi](../../harnesses/Pi.md)"
 subject: "[Version seen](../../subjects/meta/Version%20seen.md)"
 scope:
@@ -29,7 +34,7 @@ scope:
   until: null
   platform: []
   model: null
-status: current
+status: superseded
 supersedes: "[Pi Version seen 0.99.1](Pi%20Version%20seen%200.99.1.md)"
 imported_from: fact:meta/version-seen@pi#sighting-4
 ---

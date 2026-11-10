@@ -21,6 +21,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-08-08T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T12:00:00Z
 harness: "[Cursor](../../harnesses/Cursor.md)"
 subject: "[Main config file](../../subjects/config/Main%20config%20file.md)"
 scope:
@@ -28,7 +33,7 @@ scope:
   until: null
   platform: []
   model: null
-status: current
+status: superseded
 imported_from: fact:config/main-file@cursor#scope-[null,null,null]
 ---
 

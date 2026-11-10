@@ -15,5 +15,12 @@ valueSchema:
     supported:
       description: Whether CLAUDE.md is read.
       type: boolean
+    basis:
+      description: "How an answer of false or absent is known: stated in the docs, left out of the help
+        text, or never mentioned."
+      enum:
+        - documented
+        - omitted-from-help
+        - undocumented
   additionalProperties: true
 ---

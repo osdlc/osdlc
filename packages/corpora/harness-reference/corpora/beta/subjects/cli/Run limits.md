@@ -60,6 +60,47 @@ valueSchema:
     note:
       description: A caveat the other keys do not carry.
       type: string
+    max_tool_calls:
+      description: The cap on tool calls.
+      type: object
+      properties:
+        argv:
+          description: Arguments to set it, with {n} for the value.
+          type: array
+          items: &a1
+            type: string
+        config_key:
+          type: string
+      additionalProperties: true
+    max_credits:
+      description: The cap on credits, where the harness meters credits instead of dollars.
+      type: object
+      properties:
+        argv:
+          description: Arguments to set it, with {credits} for the value.
+          type: array
+          items: *a1
+        config_key:
+          type: string
+      additionalProperties: true
+    max_wall_time:
+      description: The cap on wall time.
+      type: object
+      properties:
+        argv:
+          description: Arguments to set it, with {seconds} for the value.
+          type: array
+          items: *a1
+        config_key:
+          type: string
+      additionalProperties: true
+    basis:
+      description: "How an answer of false or absent is known: stated in the docs, left out of the help
+        text, or never mentioned."
+      enum:
+        - documented
+        - omitted-from-help
+        - undocumented
   additionalProperties: true
 ---
 

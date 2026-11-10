@@ -7,21 +7,32 @@ proposition:
     key: "[mcp_servers]"
     format: TOML
 direction: supports
-strength: weak
+strength: moderate
 hasEvidenceLines:
   - hasEvidenceItems:
       - "[2026-08-08 Grok Build MCP config file](../../study-results/Grok%20Build/2026-08-08%20Grok%20Build%20MCP%20config%20file.md)"
     directionOfEvidenceProvided: supports
     strengthOfEvidenceProvided: weak
     description: third-party observed 2026-08-08.
+  - hasEvidenceItems:
+      - "[2026-11-09 grok mcp servers](../../study-results/Grok%20Build/2026-11-09%20grok%20mcp%20servers.md)"
+    directionOfEvidenceProvided: supports
+    strengthOfEvidenceProvided: moderate
+    description: docs observed 2026-11-09.
 reportedIn:
   - "[Harness comparison](../../documents/skillwright/Harness%20comparison.md)"
+  - "[Grok Build user guide MCP servers](../../documents/github.com/Grok%20Build%20user%20guide%20MCP%20servers.md)"
 contributions:
   - contributor:
       name: harness-reference import
       agentType: software
     activityType: created
     date: 2026-08-08T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T12:00:00Z
 harness: "[Grok Build](../../harnesses/Grok%20Build.md)"
 subject: "[MCP config file](../../subjects/mcp/MCP%20config%20file.md)"
 scope:

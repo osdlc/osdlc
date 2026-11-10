@@ -21,6 +21,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-08-08T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T12:00:00Z
 harness: "[Codex CLI](../../harnesses/Codex%20CLI.md)"
 subject: "[Instruction files read](../../subjects/instructions/Instruction%20files%20read.md)"
 scope:
@@ -28,8 +33,10 @@ scope:
   until: null
   platform: []
   model: null
-status: current
+status: superseded
 imported_from: fact:instructions/files@codex#scope-[null,null,null]
 ---
 
 Imported from `facts/codex/instructions/files.md`.
+
+Superseded by [Codex CLI Instruction files read 0.162.0](Codex%20CLI%20Instruction%20files%20read%200.162.0.md), which checks the value against 0.162.0.

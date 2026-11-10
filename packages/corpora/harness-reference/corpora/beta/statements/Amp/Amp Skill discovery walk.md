@@ -13,6 +13,11 @@ hasEvidenceLines:
     directionOfEvidenceProvided: supports
     strengthOfEvidenceProvided: moderate
     description: docs observed 2026-11-04.
+  - hasEvidenceItems:
+      - "[2026-11-09 skills recursive five](../../study-results/Amp/2026-11-09%20skills%20recursive%20five.md)"
+    directionOfEvidenceProvided: supports
+    strengthOfEvidenceProvided: moderate
+    description: docs observed 2026-11-09.
 reportedIn:
   - "[Amp docs Skills](../../documents/ampcode.com/Amp%20docs%20Skills.md)"
 contributions:
@@ -21,6 +26,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-11-04T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T12:00:00Z
 harness: "[Amp](../../harnesses/Amp.md)"
 subject: "[Skill discovery walk](../../subjects/skills/Skill%20discovery%20walk.md)"
 scope:

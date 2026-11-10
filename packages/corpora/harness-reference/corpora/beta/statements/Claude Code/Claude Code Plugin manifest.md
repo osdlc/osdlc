@@ -14,6 +14,11 @@ hasEvidenceLines:
     directionOfEvidenceProvided: supports
     strengthOfEvidenceProvided: moderate
     description: docs observed 2026-10-01.
+  - hasEvidenceItems:
+      - "[2026-11-09 docs pmanifest location](../../study-results/Claude%20Code/2026-11-09%20docs%20pmanifest%20location.md)"
+    directionOfEvidenceProvided: supports
+    strengthOfEvidenceProvided: weak
+    description: "Partial: the manifest is .claude-plugin/plugin.json under the plugin root; the excerpt does not cover the skills layout or that it is optional."
 reportedIn:
   - "[Claude Code docs plugins reference](../../documents/code.claude.com/Claude%20Code%20docs%20plugins%20reference.md)"
 contributions:
@@ -22,6 +27,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-10-01T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T07:53:54Z
 harness: "[Claude Code](../../harnesses/Claude%20Code.md)"
 subject: "[Plugin manifest](../../subjects/plugins/Plugin%20manifest.md)"
 scope:

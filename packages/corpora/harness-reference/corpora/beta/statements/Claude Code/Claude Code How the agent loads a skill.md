@@ -9,13 +9,12 @@ proposition:
     after_load: rendered SKILL.md enters the conversation as one message and stays across turns; file is not re-read
     built_ins_via_skill_tool: /init and /security-review
 direction: supports
-strength: weak
+strength: moderate
 hasEvidenceLines:
   - hasEvidenceItems:
       - "[2026-10-01 Claude Code How the agent loads a skill](../../study-results/Claude%20Code/2026-10-01%20Claude%20Code%20How%20the%20agent%20loads%20a%20skill.md)"
-    directionOfEvidenceProvided: disputes
-    strengthOfEvidenceProvided: moderate
-    description: docs observed 2026-10-01; its value differs from the latest.
+    directionOfEvidenceProvided: neutral
+    description: The 2026-10-01 note says only "the Skill tool, by name", the same mechanism in fewer words; it does not conflict with the later wording.
   - hasEvidenceItems:
       - "[2026-11-04 Claude Code How the agent loads a skill](../../study-results/Claude%20Code/2026-11-04%20Claude%20Code%20How%20the%20agent%20loads%20a%20skill.md)"
     directionOfEvidenceProvided: supports
@@ -40,6 +39,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-11-04T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T07:53:54Z
 harness: "[Claude Code](../../harnesses/Claude%20Code.md)"
 subject: "[How the agent loads a skill](../../subjects/skills/How%20the%20agent%20loads%20a%20skill.md)"
 scope:
@@ -47,10 +51,12 @@ scope:
   until: null
   platform: []
   model: null
-status: disputed
+status: current
 imported_from: fact:skills/agent-loading@claude-code#scope-[null,null,null]
 ---
 
 Imported from `facts/claude-code/skills/agent-loading.md`.
 
 The observations disagree on: mechanism. The latest value is kept.
+
+Resolved 2026-11-09: the earlier observation named the same mechanism more briefly.

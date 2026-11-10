@@ -5,21 +5,32 @@ proposition:
   object:
     supported: true
 direction: supports
-strength: weak
+strength: moderate
 hasEvidenceLines:
   - hasEvidenceItems:
       - "[2026-08-08 Grok Build Reads .agents skills](../../study-results/Grok%20Build/2026-08-08%20Grok%20Build%20Reads%20.agents%20skills.md)"
     directionOfEvidenceProvided: supports
     strengthOfEvidenceProvided: weak
     description: third-party observed 2026-08-08.
+  - hasEvidenceItems:
+      - "[2026-11-09 grok skill dirs](../../study-results/Grok%20Build/2026-11-09%20grok%20skill%20dirs.md)"
+    directionOfEvidenceProvided: supports
+    strengthOfEvidenceProvided: moderate
+    description: docs observed 2026-11-09.
 reportedIn:
   - "[Harness comparison](../../documents/skillwright/Harness%20comparison.md)"
+  - "[Grok Build user guide Skills](../../documents/github.com/Grok%20Build%20user%20guide%20Skills.md)"
 contributions:
   - contributor:
       name: harness-reference import
       agentType: software
     activityType: created
     date: 2026-08-08T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T12:00:00Z
 harness: "[Grok Build](../../harnesses/Grok%20Build.md)"
 subject: "[Reads .agents skills](../../subjects/skills/Reads%20.agents%20skills.md)"
 scope:

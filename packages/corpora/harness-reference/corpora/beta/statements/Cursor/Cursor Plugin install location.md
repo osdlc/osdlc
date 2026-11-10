@@ -13,6 +13,11 @@ hasEvidenceLines:
     directionOfEvidenceProvided: supports
     strengthOfEvidenceProvided: moderate
     description: docs observed 2026-11-04.
+  - hasEvidenceItems:
+      - "[2026-11-09 Cursor docs plugin local](../../study-results/Cursor/2026-11-09%20Cursor%20docs%20plugin%20local.md)"
+    directionOfEvidenceProvided: supports
+    strengthOfEvidenceProvided: moderate
+    description: Local plugins live in ~/.cursor/plugins/local.
 reportedIn:
   - "[Cursor docs Plugins](../../documents/cursor.com/Cursor%20docs%20Plugins.md)"
 contributions:
@@ -21,6 +26,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-11-04T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T12:00:00Z
 harness: "[Cursor](../../harnesses/Cursor.md)"
 subject: "[Plugin install location](../../subjects/plugins/Plugin%20install%20location.md)"
 scope:
@@ -38,3 +48,5 @@ Imported from `facts/cursor/plugins/install-location.md`.
 
 Open questions:
 - Where do marketplace-installed plugin files go on disk (path, versioned cache or not)?
+
+Rechecked 2026-11-09 against the installed CLI and vendor docs.

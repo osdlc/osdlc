@@ -14,6 +14,11 @@ hasEvidenceLines:
     directionOfEvidenceProvided: supports
     strengthOfEvidenceProvided: moderate
     description: docs observed 2026-10-01.
+  - hasEvidenceItems:
+      - "[2026-11-09 Cursor docs skill dirs](../../study-results/Cursor/2026-11-09%20Cursor%20docs%20skill%20dirs.md)"
+    directionOfEvidenceProvided: supports
+    strengthOfEvidenceProvided: moderate
+    description: Skill directories table.
 reportedIn:
   - "[Cursor docs Agent Skills](../../documents/cursor.com/Cursor%20docs%20Agent%20Skills.md)"
 contributions:
@@ -22,6 +27,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-10-01T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T12:00:00Z
 harness: "[Cursor](../../harnesses/Cursor.md)"
 subject: "[User skill directories](../../subjects/skills/User%20skill%20directories.md)"
 scope:
@@ -34,3 +44,5 @@ imported_from: fact:skills/user-dirs@cursor#scope-[null,null,null]
 ---
 
 Imported from `facts/cursor/skills/user-dirs.md`.
+
+Rechecked 2026-11-09 against the installed CLI and vendor docs.

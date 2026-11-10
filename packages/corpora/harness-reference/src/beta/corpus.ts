@@ -9,6 +9,24 @@ import { stringify } from 'yaml'
 
 export const BETA = resolve(import.meta.dirname, '../../corpora/beta')
 
+export type Strength = 'weak' | 'moderate' | 'strong'
+/** Weakest first, so a strength's index is its rank. */
+export const STRENGTHS: Strength[] = ['weak', 'moderate', 'strong']
+/**
+ * The strongest a supporting line can be, by the best kind among its study results. An unlisted
+ * kind is weak. See corpora/beta/README.md#statements.
+ */
+export const KIND_STRENGTH: Record<string, Strength> = {
+  run: 'strong',
+  source: 'strong',
+  'help-text': 'strong',
+  docs: 'moderate',
+  changelog: 'moderate',
+  issue: 'weak',
+  'third-party': 'weak',
+  inferred: 'weak',
+}
+
 export interface RecordRef {
   type: string
   id: string

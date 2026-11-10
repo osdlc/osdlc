@@ -6,13 +6,18 @@ proposition:
     file: .gemini/settings.json
     format: JSON
 direction: supports
-strength: weak
+strength: moderate
 hasEvidenceLines:
   - hasEvidenceItems:
       - "[2026-08-08 Gemini CLI Main config file](../../study-results/Gemini%20CLI/2026-08-08%20Gemini%20CLI%20Main%20config%20file.md)"
     directionOfEvidenceProvided: supports
     strengthOfEvidenceProvided: weak
     description: third-party observed 2026-08-08.
+  - hasEvidenceItems:
+      - "[2026-11-09 Project settings file docs](../../study-results/Gemini%20CLI/2026-11-09%20Project%20settings%20file%20docs.md)"
+    directionOfEvidenceProvided: supports
+    strengthOfEvidenceProvided: moderate
+    description: "configuration reference: .gemini/settings.json (project)."
 reportedIn:
   - "[Harness comparison](../../documents/skillwright/Harness%20comparison.md)"
 contributions:
@@ -21,6 +26,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-08-08T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-09T12:00:00Z
 harness: "[Gemini CLI](../../harnesses/Gemini%20CLI.md)"
 subject: "[Main config file](../../subjects/config/Main%20config%20file.md)"
 scope:
