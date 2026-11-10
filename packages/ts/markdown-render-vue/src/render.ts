@@ -192,12 +192,26 @@ const CODE_ELEMENTS = new Set(['script', 'iframe', 'object', 'embed', 'frame', '
 const LINK_ATTRS = new Set(['href', 'xlink:href', 'action', 'formaction'])
 const ASSET_ATTRS = new Set(['src', 'poster'])
 
-/** Is this attribute allowed to reach the DOM? `srcdoc` is markup; a URL must pass its scheme check. */
-function attrAllowed(name: string, value: unknown): boolean {
+/** The class `embedMedia` gives a PDF embed: a link whose `href` is the host's asset URL. */
+const PDF_EMBED_CLASS = 'markdown-embed-pdf'
+
+/** Does this element carry the PDF embed class? */
+function isPdfEmbed(properties: Record<string, unknown>): boolean {
+  const cls = properties.className
+  return Array.isArray(cls) ? cls.includes(PDF_EMBED_CLASS) : cls === PDF_EMBED_CLASS
+}
+
+/**
+ * Is this attribute allowed to reach the DOM? `srcdoc` is markup; a URL must pass its scheme check.
+ * A PDF embed's `href` is an asset URL, so it takes the asset check, which admits the `blob:` URLs
+ * a host serves attachments as.
+ */
+function attrAllowed(name: string, value: unknown, assetLink: boolean): boolean {
   if (name === 'srcdoc') return false
   // An array value is joined into one string by `toVueProps`, so it is checked as that string.
   const text = Array.isArray(value) ? value.join(' ') : value
   if (typeof text !== 'string') return true
+  if (assetLink && name === 'href') return isSafeAssetUrl(text)
   if (LINK_ATTRS.has(name)) return isSafeLinkPath(text)
   if (ASSET_ATTRS.has(name)) return isSafeAssetUrl(text)
   return true
@@ -219,11 +233,12 @@ export function toVueProps(
 ): Record<string, unknown> {
   const props: Record<string, unknown> = {}
   if (!properties) return props
+  const assetLink = isPdfEmbed(properties)
   for (const [key, value] of Object.entries(properties)) {
     if (value === undefined || value === null || value === false) continue
     if (EVENT_HANDLER.test(key)) continue
     const name = attrName(key)
-    if (!attrAllowed(name, value)) continue
+    if (!attrAllowed(name, value, assetLink)) continue
     if (name === 'class') {
       props.class = Array.isArray(value) ? value.join(' ') : String(value)
     } else if (Array.isArray(value)) {

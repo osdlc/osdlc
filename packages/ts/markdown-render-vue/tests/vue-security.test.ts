@@ -254,6 +254,32 @@ describe('an image embed src', () => {
   })
 })
 
+describe('a PDF embed href', () => {
+  test('keeps the blob URL a host hands back for a fetched attachment', async () => {
+    assetAnswer = 'blob:https://app.example/7d2'
+    const host = await mount({ source: '![[paper.pdf]]', notePath: '/vault/Host' })
+    expect(host.querySelector('a.markdown-embed-pdf')?.getAttribute('href')).toBe(
+      'blob:https://app.example/7d2',
+    )
+  })
+
+  test('is refused when the host answers with a script URL', async () => {
+    assetAnswer = 'javascript:alert(1)'
+    const host = await mount({ source: '![[paper.pdf]]', notePath: '/vault/Host' })
+    expect(host.querySelector('a[href^="javascript"]')).toBeNull()
+  })
+
+  test('does not open blob URLs to an ordinary link', () => {
+    expect(toVueProps({ href: 'blob:https://app.example/7d2' }).href).toBeUndefined()
+    expect(
+      toVueProps({
+        className: ['markdown-embed', 'markdown-embed-pdf'],
+        href: 'blob:https://app.example/7d2',
+      }).href,
+    ).toBe('blob:https://app.example/7d2')
+  })
+})
+
 describe('forged routing signals', () => {
   /**
    * The class names and `data-lang` below all survive `rehype-sanitize` — the
