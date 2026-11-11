@@ -26,6 +26,10 @@ export default defineConfig({
       ? ['tests/**/*.browser.test.ts', 'examples/**/*.browser.test.ts']
       : ['tests/**/*.test.ts', 'examples/**/*.test.ts'],
     exclude: browser ? [] : ['**/*.browser.test.ts', '**/node_modules/**'],
+    // A browser test launches Chromium and shoots several stories; on a busy
+    // CI runner the first one, which also pays the cold start, can take over
+    // the 5 s default.
+    testTimeout: browser ? 30_000 : 5_000,
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
