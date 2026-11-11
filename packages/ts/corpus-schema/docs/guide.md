@@ -685,7 +685,8 @@ is one mechanism. `extends:` replaces the reserved `profiles` key, which stays u
 A type builds on another type with `x-extends` at the root of its schema. The value is a local
 type, or `<prefix>/<type>` for a type in a parent corpus.
 
-- The fields add up first: the ancestors' top-level fields, then the type's own. A closing
+- The fields add up first: the ancestors' root-level `properties` and `patternProperties`, then the
+  type's own. A field declared in `allOf` or a `$ref` does not count. A closing
   `additionalProperties: false` or `unevaluatedProperties: false` on the type applies to that
   merged set, so a closed child sees its parents' fields without listing them.
 - A record must pass the type's schema and every ancestor's, each with its fields merged this way.

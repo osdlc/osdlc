@@ -4,7 +4,8 @@
 #
 # validate <folder>... runs packages/ts/corpus-schema, built first by
 # tools/build-corpus-schema.sh. Set CORPUS_SCHEMA to the command of another
-# validator to run that one instead.
+# validator to run that one instead. tools/validate-strict.sh passes it
+# --strict, which @osdlc/corpus-schema has from 0.3.0.
 validate() {
   if [ -n "${CORPUS_SCHEMA:-}" ]; then
     $CORPUS_SCHEMA validate "$@"
