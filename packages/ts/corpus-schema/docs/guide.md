@@ -489,12 +489,16 @@ The canonical link is a relative Markdown link: `[Claude Code](../harnesses/Clau
 Wikilinks are accepted but not canonical: `[[target]]`, `[[target|text]]`, `[[target#heading]]` and
 `![[target]]`.
 
-- A wikilink resolves by path suffix within the corpus and the copies of the corpora it references
-  directly, as `_references/<prefix>/<path>`, after NFC normalization and case folding. A match in
-  a copy is a link into it. A copy's own `_references/` is not searched. `[[Claude Code]]`, `[[harnesses/Claude Code]]` and `[[harnesses/Claude Code.md]]` all match
-  `harnesses/Claude Code.md`. The extension of a record can be left out.
+- A wikilink reaches the corpus's own files and those of the corpora it references directly,
+  through their copies in `_references/<prefix>/`. It does not reach a corpus further away, such as
+  one that a referenced corpus references. This holds in a body, in a string and in a `wikilink`
+  field. To name a record further away, use the `id` form, which reaches any depth.
+- A wikilink resolves by path suffix among the files it reaches, after NFC normalization and case
+  folding. A match in a copy is a link into it. `[[Claude Code]]`, `[[harnesses/Claude Code]]` and
+  `[[harnesses/Claude Code.md]]` all match `harnesses/Claude Code.md`. The extension of a record
+  can be left out.
 - A wikilink that matches no file and has no `/` names a record by id. The record can be of any
-  type, in the corpus or in a corpus it references, and its id or whole file name must fold to the
+  type, among the records the wikilink reaches, and its id or whole file name must fold to the
   target, as the `id` form of `x-ref` resolves. `[[P-0002]]` names
   `principles/P-0002-favor-deterministic.md`. A record of a referenced corpus is a link into its
   copy. Obsidian does not resolve such a wikilink by itself. `validate --fix` rewrites it as a
@@ -532,8 +536,8 @@ after:
   a nested object, it is an error.
 - Every named type must exist, in the corpus or in a corpus its prefixes name. A list must name one
   or more.
-- A reference matches a record of any named type, or of a type that extends one through
-  `x-extends`.
+- A reference matches a record of any named type, or of a type whose chain holds it, through
+  `x-extends` or `uses`. Types compare by identity (see [Identity](#identity)).
 
 `x-ref-form`, beside `x-ref`, says how the value names the record:
 
@@ -541,15 +545,16 @@ after:
 | ---------------- | -------------------------------------- | ----------------------------------------------- |
 | `link` (default) | `"[Antigravity](Antigravity.md)"`      | as a relative link, to a matching record's file |
 | `id`             | `T-0012`                               | by id, among the matching records               |
-| `wikilink`       | `"[[N-0001]]"` or `"[[N-0001\|text]]"` | by id, as `id` does                             |
+| `wikilink`       | `"[[N-0001]]"` or `"[[N-0001\|text]]"` | by id, as `id` does, within a wikilink's reach  |
 
 - An `x-ref` link that leaves the corpus is an error, not a warning. A link to a referenced
   corpus's record goes through `_references/<prefix>/`.
-- An id matches as ids compare, after NFC normalization and case folding. It may name a record in
-  the corpus or in any corpus it references, at any depth. A parent gives no records. A value can
-  also name a record by its whole file name without the extension, or by its record folder's name,
-  where that is longer than its id: `P-0002-favor-deterministic` names `P-0002`. No match is
-  an error, and so is more than one.
+- An id matches as ids compare, after NFC normalization and case folding. An `id` value may name a
+  record in the corpus or in any corpus it references, at any depth. A `wikilink` value reaches
+  only the corpus and the corpora it references directly (see [Wikilinks](#wikilinks)). A parent
+  gives no records. A value can also name a record by its whole file name without the extension,
+  or by its record folder's name, where that is longer than its id: `P-0002-favor-deterministic`
+  names `P-0002`. No match is an error, and so is more than one.
 - A `null` value, as a field or as an item, refers to nothing and is not checked as a reference.
   The schema says whether `null` is allowed. Records with one identity are one record, however many chains
   reach them (see [Identity](#identity)).
@@ -625,8 +630,8 @@ corpus-schema sync [<folder>...]
   of each corpus the root file names under `references`. It removes every other file there. It
   copies nothing for `extends`.
 - It changes nothing outside `_references/`, and a second run changes nothing.
-- A corpus syncs after the corpora it references that sit below the same folder, so a chain in one
-  repository syncs in one run.
+- A corpus syncs after the corpora it extends or references that sit below the same folder, so a
+  chain in one repository syncs in one run.
 - When the root file has an error, or a referenced corpus does not resolve or has errors of its
   own, including a cycle, it writes nothing in that corpus and exits with code 1.
 - When a referenced corpus turns a folder into a file, or a file into a folder, the copy follows.
@@ -684,10 +689,10 @@ package already has dialects in this sense.
 ### Profiles
 
 A profile is a shared, versioned set of types that many corpora can follow: a parent corpus that
-holds types and no records. This repo has two drafts, neither published as a package yet. The
-claims profile is for statements backed by evidence, and its design is in
+holds types and no records. Two profiles are drafts in this repo, under `profiles/`. The
+[claims profile](../profiles/claims/README.md) is for statements backed by evidence; its design is in
 [the plan](ecosystem-plan.md). The [planning profile](../profiles/planning/README.md) holds tasks,
-milestones and decisions, and this repo's plan extends it by path.
+milestones and decisions, and this repo's plan extends it by path. An sdlc profile is coming.
 
 - A corpus names its profiles in the root file under `extends:`, each under a short prefix. The
   prefix is always required, so adding a second profile later breaks nothing. An unknown prefix is
@@ -813,18 +818,21 @@ extends:
 uses: [sdlc/tasks, sdlc/decisions]
 ```
 
-- A folder named after a used type, with no schema file, holds records of the parent's type as it
-  is. Its files are records, as in Records.
-- A folder named after a used type that also holds a schema file is an error. To add fields, take
-  the type out of `uses` and write `x-extends` in the schema.
+- `uses` applies to folders at the corpus root only. A folder there named after a used type, with
+  no schema file, holds records of the parent's type as it is. Its files are records, as in
+  Records.
+- A folder below the root gets no type from `uses`, whatever its name. A `notes/tasks/` folder
+  stays narrative even with `uses: [sdlc/*]`.
+- A folder at the root named after a used type that also holds a schema file is an error. To add
+  fields, take the type out of `uses` and write `x-extends` in the schema.
 - Two used types with the same name, such as `sdlc/tasks` and `other/tasks`, are an error, and
   neither is used. Build the folder's type with `x-extends` instead.
 - A used type with no folder of its name is fine. The corpus has no records of it yet.
 - An entry that names no parent, a prefix in `references` rather than `extends`, or a type the
   parent does not have, is an error.
-- A folder with no schema file that `uses` does not name stays a plain folder. If it holds record
-  files and its name is a parent type's name or close to it, the validator warns, since a typo or a
-  missing `uses` entry leaves records unchecked.
+- A folder with no schema file that `uses` does not name stays a plain folder. If it sits at the
+  root, holds record files and its name is a parent type's name or close to it, the validator
+  warns, since a typo or a missing `uses` entry leaves records unchecked.
 
 ### References and the copy
 
@@ -871,7 +879,9 @@ results of queries, builds and exports, can be told apart or merged. Identity us
   uses that `name`. It does not depend on how the corpus is reached: a package source, an npm
   alias and a `./` or `../` path to the same folder give the same identity. A corpus in no package
   has a local identity only and no purl.
-- Two records with the same identity are one record. A reference by id that finds one record
+- Types with the same identity are one type, and two records with the same identity are one
+  record. So two installed copies of one package at one version, such as a profile installed again
+  inside a corpus you reference, give one type for `x-ref`. A reference by id that finds one record
   through two chains is not ambiguous. It resolves to the copy reached through the shortest chain,
   so a direct reference wins. Two records with different identities are two matches, even with the
   same id.
