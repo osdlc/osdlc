@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Public names behind a TLS-terminating reverse proxy:
+  `GuardState::with_public_hosts` and `ServeOptions::public_hosts`. Each name
+  is an allowed `Host`. It is an allowed `Origin` only as `https://<name>`,
+  and only on a request whose `Host` is a public name. A share cookie set on a
+  public name carries `Secure`. A request for a public name needs a token,
+  even from a loopback peer under `loopback_open`.
+- `guard::PublicHost`, which the guard puts in the request extensions of a
+  request whose `Host` is a public name, and `origin_matches_public_host`, the
+  Origin check for a handler on such a request.
+- `guard::normalize_public_host`, the rule `with_public_hosts` keeps or drops
+  a name by. It drops IP addresses and bad ports, and a written port 80 or
+  443.
+- `ServerHandle::public_share_urls_for`: `https://<name>/?token=` links for
+  the public names.
+- `ServeError::BadPublicHost` and
+  `ServeError::AdminPublicOnlyWithoutPublicHosts`: `serve` refuses to start
+  on a public name `normalize_public_host` drops, or on `admin_public_only`
+  with no public name.
+- `GuardState::with_admin_over_public_only` and
+  `ServeOptions::admin_public_only`: the admin token gives `Admin` only on a
+  public name and `Full` elsewhere. Its link is refused there with 401, sets
+  no cookie, and is reported as `DenialReason::AdminNotPublic`. The runtime's
+  admin share links are then the `https://` links on the public names.
+- `GuardState::with_cookie_max_age` and `ServeOptions::cookie_max_age`: a
+  `Max-Age` for the share cookie. The default is still a session cookie. The
+  admin cookie never gets one.
+- `guard::admin_cookie_name`. An admin token's share link sets
+  `web_access_admin_<port>`, so opening a full or read link no longer replaces
+  it. The guard reads both cookies, and the highest grant wins.
+  `is_cookie_name` matches both names.
+
+### Changed
+
+- Breaking: `ServeOptions` has three new public fields. Code that builds it
+  with every field named must add them. Code that ends with
+  `..ServeOptions::default()` is unaffected.
+- An admin token's share link sets the `web_access_admin_<port>` cookie, not
+  `web_access_<port>`. An admin token already in `web_access_<port>` still
+  works.
+
 ## [0.5.0](https://github.com/osdlc/osdlc/compare/web-access/v0.4.1...web-access/v0.5.0) - 2026-11-10
 
 ### Fixed

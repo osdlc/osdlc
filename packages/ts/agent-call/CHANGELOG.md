@@ -1,5 +1,11 @@
 # @osdlc/agent-call
 
+## 0.12.0
+
+### Minor Changes
+
+- 20dfeb4: The adapters' binary names, flags and permission-mode arguments are now asserted against the harness knowledge file by a test. Fixes the research showed wrong: Antigravity passes `context.dirs` with `--add-dir` and `permissions.mode: edits` with `--mode accept-edits`; dsh passes `context.dirs` with `--add-dir`, no longer restates the `{{cwd}}` persona suffix that fails prompt assembly (dsh headless runs no longer get the "Your working directory is {{cwd}}" persona clause), resolves relative `context.dirs` to absolute paths for `--add-dir`, and says its read-only mode needs a configured preset (dsh ships none); opencode 2.x has no `--variant`, so `opencodeAdapter({ version: '2.x' })` sends the effort as a `#variant` suffix on `--model`. Without `version` opencode keeps `--variant`.
+
 ## 0.11.0
 
 ### Minor Changes
