@@ -90,8 +90,10 @@ the Wi-Fi is `192.168.1.5`.
 
 3. **Every later request carries the cookie.** It is a session cookie, so the
    browser keeps it until it is closed (some phone browsers keep sessions much
-   longer). Opening the link again signs the browser in again; rotating the
-   token signs it out.
+   longer). `ServeOptions::cookie_max_age` gives it a lifetime instead. An
+   admin token's link sets its own cookie, `web_access_admin_<port>`, which is
+   always a session cookie. Opening the link again signs the browser in again;
+   rotating the token signs it out.
 
 A script or another program skips the link and sends the header instead:
 
@@ -112,12 +114,12 @@ one that fails answers the request.
 
 | # | Check | Fails with | Why it exists |
 |---|---|---|---|
-| 1 | `Host` is on the allowlist or, with a wildcard bind, is a current interface address on the bound port | 421 `host not allowed` | Stops DNS rebinding: a page on `evil.example` that points its name at `192.168.1.5` still sends `Host: evil.example`. |
+| 1 | `Host` is on the allowlist, is a public name, or, with a wildcard bind, is a current interface address on the bound port | 421 `host not allowed` | Stops DNS rebinding: a page on `evil.example` that points its name at `192.168.1.5` still sends `Host: evil.example`. |
 | 2 | A mutating request or a WebSocket upgrade with an `Origin` has an allowed origin | 403 `origin not allowed` | Stops another site from changing data, or opening a socket, through your browser. |
 | 3 | The path normalises | 400 `bad path` | Stops `/a/../admin` and `/a%2Fb` tricks from slipping past route rules. |
-| 4 | A loopback peer under `loopback_open` | passes with `full` | Lets the app's own window work with no token, when you allow it. |
+| 4 | A loopback peer under `loopback_open`, on a `Host` that is not a public name | passes with `full` | Lets the app's own window work with no token, when you allow it. A proxy on the same machine is loopback too, so a public name always needs a token. |
 | 5 | `GET` with a valid `?token=` | 200 landing page | The share link (above). |
-| 6 | A valid token in the `web_access_<port>` cookie or the `x-web-access-token` header | 401 `missing or wrong token` | The token check itself. |
+| 6 | A valid token in the `web_access_<port>` or `web_access_admin_<port>` cookie or the `x-web-access-token` header | 401 `missing or wrong token` | The token check itself. |
 | 7 | A `read` grant uses only `GET`, `HEAD`, `OPTIONS` (and no WebSocket), or a read-safe route | 403 `{"error":"read_only"}` | View-only links stay view-only. A WebSocket can carry writes. |
 
 Every response also carries `Referrer-Policy: no-referrer` and
@@ -334,7 +336,8 @@ What `serve` refuses:
 
 With no tokens on loopback, `serve` lets loopback peers in with `full`
 (`loopback_open`). Use `serve_opts` with `ServeOptions` to set the policy
-yourself, list read-safe routes, or get a callback for each refused request:
+yourself, list read-safe routes, serve public names behind a TLS proxy, or get
+a callback for each refused request:
 
 ```rust
 use std::sync::Arc;
@@ -345,6 +348,23 @@ let options = ServeOptions {
     on_denied: Some(Arc::new(|d: &Denial| {
         eprintln!("refused {:?} {} {} from {:?}", d.reason, d.method, d.path, d.peer);
     })),
+    ..ServeOptions::default()
+};
+```
+
+Behind a reverse proxy that ends TLS on another machine, list the public names
+and, with admin access on, keep the admin grant to them. The README's
+[Behind a TLS proxy](../README.md#behind-a-tls-proxy) section says what each
+option does.
+
+```rust
+use std::time::Duration;
+use web_access::ServeOptions;
+
+let options = ServeOptions {
+    public_hosts: vec!["app.example.com".to_owned()],
+    admin_public_only: true,
+    cookie_max_age: Some(Duration::from_secs(30 * 86_400)),
     ..ServeOptions::default()
 };
 ```
@@ -486,7 +506,8 @@ What it does not protect against, and what to do instead:
 | Plain HTTP | Someone who can read the network traffic can read the token. | Use it only on networks you trust, or behind TLS (for example a VPN or Tailscale Serve). |
 | Cookies are not kept apart by port | Browsers send a host's cookies to every port on it. Another server on the same address can read `web_access_20015`. The port in the name only stops two servers overwriting each other's cookie. | Do not run untrusted servers on the same address as a shared app, especially with admin on. |
 | Open connections survive a revoke in your own server | `serve`'s `stop()` ends open connections: their reads and writes fail. `SharingRuntime` stops the server when sharing or admin is turned off or a token is rotated. If you put the guard in your own server, an open WebSocket or stream keeps going until it closes. | Close long-lived connections yourself when the grant they were opened with is withdrawn. |
-| Reverse proxies | Behind a proxy on the same machine, every request comes from loopback, so every request is `WebLocal`. | Do not put a proxy in front, or turn `loopback_open` off and do not trust `WebLocal`. |
+| Reverse proxies | Behind a proxy on the same machine, every request comes from loopback, so every request is `WebLocal`. | Do not put a proxy in front, or turn `loopback_open` off and do not trust `WebLocal`. A TLS proxy on another machine works with `public_hosts`. |
+| Public names are client-chosen | The `Host` header is the client's. A peer that reaches the port directly can send a public name, so `admin_public_only` does not prove a request came through the proxy. | Treat the admin token as the control. Keep the port reachable only from the proxy where you can. |
 | Windows file permissions | Token files get no owner-only mode. | Keep the token directory in the user's profile, such as under `%LOCALAPPDATA%`. |
 | One token per grant | Every device shares the same token, so you cannot revoke one device. | Rotate the token, which signs every device out. |
 

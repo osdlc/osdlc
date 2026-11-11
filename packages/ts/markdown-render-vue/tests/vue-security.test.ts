@@ -254,6 +254,38 @@ describe('an image embed src', () => {
   })
 })
 
+describe('a PDF embed href', () => {
+  test('keeps the blob URL a host hands back for a fetched attachment', async () => {
+    assetAnswer = 'blob:https://app.example/7d2'
+    const host = await mount({ source: '![[paper.pdf]]', notePath: '/vault/Host' })
+    expect(host.querySelector('a.markdown-embed-pdf')?.getAttribute('href')).toBe(
+      'blob:https://app.example/7d2',
+    )
+  })
+
+  test('keeps the page fragment on a blob URL', async () => {
+    assetAnswer = 'blob:https://app.example/7d2'
+    const host = await mount({ source: '![[paper.pdf#page=3]]', notePath: '/vault/Host' })
+    expect(host.querySelector('a.markdown-embed-pdf')?.getAttribute('href')).toBe(
+      'blob:https://app.example/7d2#page=3',
+    )
+  })
+
+  test('is refused when the host answers with a script URL', async () => {
+    assetAnswer = 'javascript:alert(1)'
+    const host = await mount({ source: '![[paper.pdf]]', notePath: '/vault/Host' })
+    expect(host.querySelector('a[href^="javascript"]')).toBeNull()
+  })
+
+  test('does not open blob URLs to a link, even one a note dresses as a PDF embed', () => {
+    const blob = 'blob:https://app.example/7d2'
+    expect(toVueProps({ href: blob }).href).toBeUndefined()
+    expect(
+      toVueProps({ className: ['markdown-embed', 'markdown-embed-pdf'], href: blob }).href,
+    ).toBeUndefined()
+  })
+})
+
 describe('forged routing signals', () => {
   /**
    * The class names and `data-lang` below all survive `rehype-sanitize` — the
@@ -274,6 +306,12 @@ describe('forged routing signals', () => {
     )
     expect(routed).toEqual([])
     expect(host.querySelector('a.wikilink')).toBeNull()
+  })
+
+  test('a hand-written PDF embed link keeps no blob: href', async () => {
+    const host = await forged('<a class="markdown-embed-pdf" href="blob:https://x/1">x</a>')
+    expect(host.querySelector('a[href^="blob:"]')).toBeNull()
+    expect(host.textContent).toContain('x')
   })
 
   test('a hand-written tag anchor never reaches TagAnchor', async () => {
