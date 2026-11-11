@@ -82,7 +82,9 @@ pub struct ShareUrls {
     pub read: Vec<String>,
     /// Links with the full token, one per reachable address.
     pub full: Vec<String>,
-    /// Empty while [`WebAccessConfig::admin`] is off.
+    /// Empty while [`WebAccessConfig::admin`] is off. Under
+    /// [`ServeOptions::admin_public_only`], one `https://` link per public
+    /// name instead of one per reachable address.
     pub admin: Vec<String>,
 }
 
@@ -379,7 +381,14 @@ impl SharingRuntime {
                         admin: tokens
                             .admin
                             .as_ref()
-                            .map(|t| handle.share_urls_for(t))
+                            .map(|t| {
+                                // Off a public name the admin link is refused.
+                                if self.options.admin_public_only {
+                                    handle.public_share_urls_for(t)
+                                } else {
+                                    handle.share_urls_for(t)
+                                }
+                            })
                             .unwrap_or_default(),
                     };
                     live.server = Some(handle);
@@ -654,6 +663,24 @@ mod tests {
             rt.rotate(Grant::Admin).await,
             Err(RuntimeError::AdminOff)
         ));
+        rt.set(cfg(false)).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn admin_over_public_only_publishes_admin_links_on_the_public_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let rt = runtime(&dir, MemStore::default()).with_options(ServeOptions {
+            public_hosts: vec!["x.example.com".to_owned()],
+            admin_public_only: true,
+            ..ServeOptions::default()
+        });
+        let up = rt.set(cfg_admin()).await.unwrap();
+        let admin = token::load_or_mint_admin(dir.path()).unwrap();
+        assert_eq!(
+            up.share_urls.admin,
+            [format!("https://x.example.com/?token={}", admin.as_str())]
+        );
+        assert!(up.share_urls.full.iter().all(|u| u.starts_with("http://")));
         rt.set(cfg(false)).await.unwrap();
     }
 
