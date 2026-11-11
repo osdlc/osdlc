@@ -8,6 +8,8 @@ milestone: "[m-npm](../milestones/m-npm.md)"
 after:
   - "[3 Publish 0.2.0](3%20Publish%200.2.0.md)"
   - "[21 Release here](21%20Release%20here.md)"
+prs:
+  - "[osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12)"
 ---
 
 Parents: `extends` and `x-extends`. D4 is decided, so the work is to build it in the validator. A

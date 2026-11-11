@@ -62,6 +62,12 @@ const components = computed(() =>
         <dt>Phase</dt>
         <dd><PhaseTag :phase="milestone.phase" :label="index.phaseLabel(milestone.phase)" /></dd>
       </template>
+      <template v-if="task.prs.length > 0">
+        <dt>Pull requests</dt>
+        <dd class="task-detail__prs">
+          <a v-for="pr in task.prs" :key="pr.url" :href="pr.url" target="_blank" rel="noopener">{{ pr.label }}</a>
+        </dd>
+      </template>
       <template v-if="source">
         <dt>Source</dt>
         <dd><a :href="source" target="_blank" rel="noopener">{{ task.source }}</a></dd>
@@ -110,6 +116,12 @@ const components = computed(() =>
 .task-detail__head {
   display: grid;
   gap: 4px;
+}
+
+.task-detail__prs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
 }
 
 .task-detail__number {

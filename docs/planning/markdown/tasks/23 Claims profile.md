@@ -8,6 +8,8 @@ milestone: "[m-npm](../milestones/m-npm.md)"
 after:
   - "[21 Release here](21%20Release%20here.md)"
   - "[36 Release 0.3.0](36%20Release%200.3.0.md)"
+prs:
+  - "[osdlc/markdown#15](https://github.com/osdlc/markdown/pull/15)"
 ---
 
 The claims profile. The example from task 4 is already in the right place. The profile's types are
@@ -16,8 +18,8 @@ the downstream review in [osdlc/markdown#8](https://github.com/osdlc/markdown/is
 adds the profile wrapper, a corpus with only types, as the package
 `@osdlc/corpus-profile-claims`, versioned. The package is built at `profiles/claims/` as 0.1.0 in
 [#15](https://github.com/osdlc/markdown/pull/15), and is not published. The claims example extends
-it by path. Publishing it from this repo still needs `profiles/*` added to the workspace and the
-owner staging the npm name once. The release setup from
+it by path. Publishing it from this repo still needs `profiles/*` added to the workspace. The
+owner then stages the npm name (task 59) and publishes it (task 60). The release setup from
 [#10](https://github.com/osdlc/markdown/pull/10) has merged. Corpora then list it by package name
 under `extends` in their root file and use `x-extends` instead of holding full copies.
 harness-reference and the evidence project switch over. After 21 and 36: publishing from this repo

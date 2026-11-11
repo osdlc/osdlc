@@ -7,6 +7,8 @@ type: functional
 milestone: "[m-npm](../milestones/m-npm.md)"
 after:
   - "[27 Org corpora](27%20Org%20corpora.md)"
+prs:
+  - "[osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12)"
 ---
 
 `corpus-schema sync`. It writes a read-only, committed copy of each parent corpus into

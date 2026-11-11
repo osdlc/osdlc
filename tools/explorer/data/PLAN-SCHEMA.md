@@ -38,6 +38,9 @@ file, then run `pnpm build-data` (see [scripts/README.md](../scripts/README.md))
       "milestone": "m-npm",              // a milestones[].id
       "type": "functional",              // functional | supporting
       "after": [9],                      // ids of the tasks it waits on
+      "prs": [                           // the pull requests that do the work; may be empty
+        { "label": "osdlc/markdown#12", "url": "https://github.com/osdlc/markdown/pull/12" }
+      ],
       "text": "The plan paragraph, with [markdown links](https://example.com) and `code`.",
       "source": "docs/planning/tasks/27 Org corpora.md"   // optional, as for milestones
     }
@@ -60,7 +63,8 @@ that every task number in `ecosystem.json` is a plan task.
 Derived, not stored:
 
 - A milestone waits on another when one of its tasks waits on one of the other's.
-- A task is next up when it is not done and every task it waits on is done.
+- A task is next up when it is not done and every task it waits on is done. The checklist in
+  [BEELINE.md](../../../docs/planning/BEELINE.md) uses the same rule.
 - A milestone's progress is its done tasks out of all its tasks.
 - A task's phase is its milestone's phase.
 - The components a task changes are the `ecosystem.json` nodes whose `tasks` hold its id.

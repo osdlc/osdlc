@@ -2,8 +2,9 @@
 as_of: "2026-11-11"
 sources:
   - >-
-    Rechecked 2026-11-11: sksizer/dev PRs #4069 (64b7132) and #4070 (f607009) are open; the package
-    names and paths of @osdlc/pack-intent and @osdlc/pack-sdlc.
+    Rechecked 2026-11-11: sksizer/dev PRs #4069 and #4070 merged into code-intelligence-planning,
+    which open PR #4068 takes to main; the package names and paths of @osdlc/pack-intent and
+    @osdlc/pack-sdlc; npm versions of @osdlc/corpus-schema (0.2.1) and @osdlc/package-checks (0.2.0).
   - >-
     Rechecked 2026-11-10: osdlc/markdown main (3c8f6fe) and open PRs #12, #15 and #16; osdlc/osdlc
     PRs #767, #773 and #774; npm versions of @osdlc/package-checks and @osdlc/conformance-suites.

@@ -14,3 +14,4 @@ after:
 An org principles corpus. The first real case: one shared principles corpus that project corpora
 extend, refine and waive. Task 35 is its start. After 27, 28 and 35. Sync (task 29) helps here but
 is not required.
+The starter corpus (task 63) may become it.

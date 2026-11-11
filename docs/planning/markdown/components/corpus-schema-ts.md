@@ -5,7 +5,7 @@ language: ts
 layer: "[spec](../layers/spec.md)"
 states: [present, target]
 status: published
-version: "0.2.0"
+version: "0.2.1"
 registry: "https://www.npmjs.com/package/@osdlc/corpus-schema"
 repo_present: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
 path_present: packages/ts/corpus-schema
@@ -33,6 +33,8 @@ tasks:
   - "[45 Refs by id](../tasks/45%20Refs%20by%20id.md)"
   - "[46 Multi-type x-ref](../tasks/46%20Multi-type%20x-ref.md)"
   - "[57 x-body](../tasks/57%20x-body.md)"
+  - "[59 Trusted publishing](../tasks/59%20Trusted%20publishing.md)"
+  - "[69 Add command](../tasks/69%20Add%20command.md)"
 links:
   - "[osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9)"
   - "[osdlc/markdown#10](https://github.com/osdlc/markdown/pull/10)"
@@ -66,7 +68,7 @@ records against their schemas, ids, links and typed references.
 
 ## Notes
 
-- 0.2.0 is its first version on npm. 0.1.0 was cut but never published (task 3).
+- 0.2.0 is its first version on npm, and 0.2.1 the latest. 0.1.0 was cut but never published (task 3).
 - Today it walks the folder and checks links itself (problem F8). Task 14 makes it read the corpus
   model instead.
 - Near target: open osdlc/markdown#9 moves it here with the same npm name, and open

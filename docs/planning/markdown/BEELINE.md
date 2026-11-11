@@ -1,0 +1,253 @@
+# Beeline: the sdlc profile and an upstream corpus
+
+This file is the shortest path to one goal. It is for a person or an agent who picks up the work.
+The plan's records hold the facts. This file says how to read them and how to keep them current.
+The checklist below is generated from the records, so it cannot drift from them.
+
+## Goal and end state
+
+The goal is the sdlc profile, with inheritance, and an upstream corpus that a repo installs. A repo
+references a remote corpus so that it can read and cite its records locally. It works like a git
+submodule, but through npm.
+
+At the end, a work repo's `docs/planning/` names two npm packages under `extends`:
+
+- `sdlc`: `@osdlc/corpus-profile-sdlc`, the profile. It holds types only: the intent and sdlc
+  kinds, in one profile for now. It lives in this repo at `profiles/sdlc/`. It is generated from
+  the packs in sksizer/dev. Until task 62 moves the generator to a public repo, it is regenerated
+  by hand.
+- `osdlc`: `@osdlc/corpus-sdlc-starter`, the starter corpus. It holds records: principles and
+  standards any project can inherit. It lives in this repo at `corpora/starter/` and extends the
+  sdlc profile.
+
+The work repo's root file, `docs/planning/corpus-schema.md`:
+
+```yaml
+---
+corpus-schema: 0
+level: 2
+extends:
+  sdlc: "@osdlc/corpus-profile-sdlc"
+  osdlc: "@osdlc/corpus-sdlc-starter"
+---
+```
+
+Its own tasks cite the starter's records by id. A task's schema marks the field, and a task names
+`P-0002`. The type names below are examples; the generated profile fixes them (task 49).
+
+```yaml
+# docs/planning/tasks/tasks.schema.yaml
+x-extends: sdlc/tasks
+properties:
+  principles:
+    type: array
+    items: { type: string, x-ref: osdlc/principles, x-ref-form: id }
+```
+
+```yaml
+# a task's frontmatter
+principles: [P-0002]
+```
+
+The repo installs the parents, copies them in, and checks the result:
+
+```sh
+pnpm add -D @osdlc/corpus-schema @osdlc/corpus-profile-sdlc @osdlc/corpus-sdlc-starter
+npx corpus-schema sync docs/planning               # writes docs/planning/_inherited/sdlc/ and osdlc/
+npx corpus-schema validate --strict docs/planning  # CI runs this too
+git add package.json pnpm-lock.yaml docs/planning
+```
+
+`validate --strict` fails on any error or warning, and fails when `_inherited/` differs from the
+installed package. So CI catches a stale copy.
+
+Updating the upstream is three steps: bump the version, sync, and commit.
+
+```sh
+pnpm update @osdlc/corpus-sdlc-starter
+npx corpus-schema sync docs/planning
+git add package.json pnpm-lock.yaml docs/planning/_inherited
+```
+
+## Critical path
+
+The tasks in the order the work goes. Each line says why it comes there.
+
+1. [9 Extends](tasks/9%20Extends.md): a corpus names its parents by package name. Everything
+   else builds on it.
+2. [27 Org corpora](tasks/27%20Org%20corpora.md): a parent brings its records, not only its
+   types.
+3. [29 Sync](tasks/29%20Sync.md): the committed `_inherited/` copy, and the check that it is
+   current.
+4. [44 Flatten extends](tasks/44%20Flatten%20extends.md): the profile's closed types see their
+   parents' fields.
+5. [45 Refs by id](tasks/45%20Refs%20by%20id.md): a work repo's task cites `P-0002` by id, across
+   corpora.
+6. [46 Multi-type x-ref](tasks/46%20Multi-type%20x-ref.md): sdlc fields such as `related` link to
+   several kinds.
+7. [43 Strict mode](tasks/43%20Strict%20mode.md): CI fails on a warning, not only an error.
+8. [21 Release here](tasks/21%20Release%20here.md): this repo's release setup, which every publish
+   below goes through.
+9. [59 Trusted publishing](tasks/59%20Trusted%20publishing.md) (owner): the npm names and their
+   trusted publishers, before any publish.
+10. [36 Release 0.3.0](tasks/36%20Release%200.3.0.md) (owner): a published corpus-schema that knows
+    tasks 9 to 46. Every consumer installs it.
+11. [48 Profile generator](tasks/48%20Profile%20generator.md): turns the packs into a profile. The
+    packs are merged ([47 Merge packs](tasks/47%20Merge%20packs.md)).
+12. [51 Work copy](tasks/51%20Work%20copy.md): the work repo starts on a flattened copy, which
+    corpus-schema 0.2.0 can check.
+13. [49 SDLC profiles](tasks/49%20SDLC%20profiles.md): the one profile, at `profiles/sdlc/`. It
+    needs 44 to 46 and the generator.
+14. [61 Publish sdlc](tasks/61%20Publish%20sdlc.md) (owner): consumers install the profile from npm.
+15. [63 Starter corpus](tasks/63%20Starter%20corpus.md): the records. It extends the profile, so it
+    comes after 49.
+16. [65 Leak check](tasks/65%20Leak%20check.md): no private data reaches a public registry.
+17. [66 Publish starter](tasks/66%20Publish%20starter.md) (owner): after the profile it depends on.
+18. [23 Claims profile](tasks/23%20Claims%20profile.md) and
+    [35 Example pair](tasks/35%20Example%20pair.md): the example pair's harness, which the work
+    example reuses.
+19. [67 Work example](tasks/67%20Work%20example.md): the end state in this repo's CI, before a real
+    repo copies it.
+20. [52 Work extends](tasks/52%20Work%20extends.md): the work repo drops its copy and uses
+    `extends`.
+21. [68 Work cites starter](tasks/68%20Work%20cites%20starter.md): the end state.
+
+Off the critical path, but in a beeline milestone:
+[38 Planning profile](tasks/38%20Planning%20profile.md),
+[37 Use extends](tasks/37%20Use%20extends.md), [60 Publish claims](tasks/60%20Publish%20claims.md),
+[50 Dev on sdlc](tasks/50%20Dev%20on%20sdlc.md), [53 Plan on sdlc](tasks/53%20Plan%20on%20sdlc.md),
+[62 Packs in public](tasks/62%20Packs%20in%20public.md),
+[64 Starter content](tasks/64%20Starter%20content.md) and the optional
+[69 Add command](tasks/69%20Add%20command.md).
+
+Decisions [D11](decisions/D11%20Upstream%20corpora%20travel%20as%20npm%20packages.md),
+[D12](decisions/D12%20Inherited%20records%20come%20in%20as%20a%20committed%20copy.md),
+[D13](decisions/D13%20The%20model%20layer%20sits%20above%20store%20specs.md) and
+[D14](decisions/D14%20The%20first%20upstream%20instance%20is%20a%20starter%20corpus.md) say why the
+path has this shape.
+
+## Checklist
+
+<!-- beeline:start -->
+
+Generated by `pnpm build-data` from the tasks in the beeline milestones: `m-release`, `m-npm`, `m-sdlc-profile`, `m-upstream`. Do not edit it by hand.
+
+Each item: the task, its status, who does it, its pull requests, and the tasks it still waits on.
+
+### Next up (4)
+
+- [ ] [21 Release here](tasks/21%20Release%20here.md) · in progress · agent · [osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9), [osdlc/markdown#10](https://github.com/osdlc/markdown/pull/10)
+- [ ] [43 Strict mode](tasks/43%20Strict%20mode.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12)
+- [ ] [59 Trusted publishing](tasks/59%20Trusted%20publishing.md) · waiting on owner · owner
+- [ ] [48 Profile generator](tasks/48%20Profile%20generator.md) · not started · agent
+
+### Waiting (26)
+
+- [ ] [9 Extends](tasks/9%20Extends.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12) · waits on 21
+- [ ] [38 Planning profile](tasks/38%20Planning%20profile.md) · in progress · agent · [osdlc/markdown#14](https://github.com/osdlc/markdown/pull/14) · waits on 9
+- [ ] [27 Org corpora](tasks/27%20Org%20corpora.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12) · waits on 9
+- [ ] [29 Sync](tasks/29%20Sync.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12) · waits on 27
+- [ ] [44 Flatten extends](tasks/44%20Flatten%20extends.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12) · waits on 9
+- [ ] [45 Refs by id](tasks/45%20Refs%20by%20id.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12) · waits on 9
+- [ ] [46 Multi-type x-ref](tasks/46%20Multi-type%20x-ref.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12) · waits on 9
+- [ ] [36 Release 0.3.0](tasks/36%20Release%200.3.0.md) · waiting on owner · owner · waits on 9, 21, 27, 29, 43, 44, 45, 46, 59
+- [ ] [23 Claims profile](tasks/23%20Claims%20profile.md) · in progress · agent · [osdlc/markdown#15](https://github.com/osdlc/markdown/pull/15) · waits on 21, 36
+- [ ] [60 Publish claims](tasks/60%20Publish%20claims.md) · waiting on owner · owner · waits on 23, 59
+- [ ] [35 Example pair](tasks/35%20Example%20pair.md) · in progress · agent · [osdlc/markdown#16](https://github.com/osdlc/markdown/pull/16) · waits on 23, 29, 36
+- [ ] [37 Use extends](tasks/37%20Use%20extends.md) · not started · agent · waits on 36, 60
+- [ ] [69 Add command](tasks/69%20Add%20command.md) · not started · agent · waits on 29
+- [ ] [51 Work copy](tasks/51%20Work%20copy.md) · not started · agent · waits on 48
+- [ ] [49 SDLC profiles](tasks/49%20SDLC%20profiles.md) · not started · agent · waits on 44, 45, 46, 48
+- [ ] [61 Publish sdlc](tasks/61%20Publish%20sdlc.md) · waiting on owner · owner · waits on 49, 59
+- [ ] [50 Dev on sdlc](tasks/50%20Dev%20on%20sdlc.md) · not started · agent · waits on 36, 49, 61
+- [ ] [52 Work extends](tasks/52%20Work%20extends.md) · not started · agent · waits on 36, 49, 51, 61
+- [ ] [53 Plan on sdlc](tasks/53%20Plan%20on%20sdlc.md) · not started · agent · waits on 38, 49
+- [ ] [62 Packs in public](tasks/62%20Packs%20in%20public.md) · not started · agent · waits on 49
+- [ ] [63 Starter corpus](tasks/63%20Starter%20corpus.md) · not started · agent · waits on 49
+- [ ] [65 Leak check](tasks/65%20Leak%20check.md) · not started · agent · waits on 63
+- [ ] [67 Work example](tasks/67%20Work%20example.md) · not started · agent · waits on 35, 63
+- [ ] [66 Publish starter](tasks/66%20Publish%20starter.md) · waiting on owner · owner · waits on 59, 61, 63, 65
+- [ ] [68 Work cites starter](tasks/68%20Work%20cites%20starter.md) · not started · agent · waits on 52, 66, 67
+- [ ] [64 Starter content](tasks/64%20Starter%20content.md) · waiting on owner · owner · waits on 63
+
+### Done (1)
+
+- [x] [47 Merge packs](tasks/47%20Merge%20packs.md) · done · [sksizer/dev#4069](https://github.com/sksizer/dev/pull/4069), [sksizer/dev#4070](https://github.com/sksizer/dev/pull/4070)
+
+<!-- beeline:end -->
+
+## Handoff protocol
+
+Read these first:
+
+1. This file.
+2. [README.md](README.md), which says what each record type holds.
+3. Decisions D11 to D14, linked above.
+4. The task record of the item you pick, and its pull request if it has one.
+
+Choose the next item. Take the first unchecked item under "Next up" whose status is not "waiting
+on owner". Every item there has its `after` tasks done. An item that is in progress has a pull
+request: finish it first, by fixing CI and answering review. Start a new task only when no such
+item is left. Never work an owner item; tell the owner it is waiting.
+
+Report, when you stop:
+
+- the task number and title;
+- the pull request, as a Markdown link;
+- what changed, in a few lines;
+- the checks you ran and their results;
+- the records you changed;
+- anything waiting on the owner, and anything you could not do.
+
+## Keeping the graph up to date
+
+Change the records with every step of the work. Do each of these as it happens.
+
+1. When work starts, set the task's `status` to `doing` and add its pull request under `prs`, as a
+   Markdown link. Do this in the task's own pull request.
+2. When the pull request merges, set `status` to `done`. Update the body's last sentence to say
+   where the work landed.
+3. A new finding is a new task. Take the next free number, add `after` links to the tasks it waits
+   on, list it in its milestone's `tasks`, and add it to each component's `tasks` it changes. Add
+   it to the `after` of any task that now waits on it. [README.md](README.md) lists the steps.
+4. A new design choice is a decision record, `decisions/D<n> <the decision>.md`.
+5. Work that only the owner can do gets `status: owner`.
+6. When a package or an edge changes, change its component record: `states`, `status`, `version`,
+   `repo_*` and `path_*`, the edge fields and their `edge_notes`.
+7. Then rebuild and check, from the repo root:
+
+   ```sh
+   sh tools/build-corpus-schema.sh   # once, to build this repo's validator
+   (cd tools/explorer && pnpm build-data)
+   sh tools/validate-strict.sh docs/planning profiles/planning
+   ```
+
+   `pnpm build-data` rewrites `tools/explorer/data/*.json` and the checklist in this file. CI fails
+   when either differs from what the records build.
+
+8. Commit the records, the JSON and this file together.
+
+The repo's rules apply to every change:
+
+- Commit explicit paths only: `git add <path>...`, never `git add -A` or `git add .`.
+- Never force-push.
+- Write every pull request as a Markdown link, such as
+  [#12](https://github.com/osdlc/markdown/pull/12), never a bare number.
+- After CI passes on a pull request, comment `@claude review`, then fix or answer each finding.
+- Only the owner merges, publishes, tags, and changes repo or npm settings.
+
+## For an orchestrator loop
+
+A loop that drives this work follows the same rules as a person. Each tick:
+
+1. Rebuild the checklist with `pnpm build-data` on the plan's branch, and read it.
+2. Surface every next-up item whose status is "waiting on owner". Never attempt one. Owner work is
+   publishing (tasks 36, 59, 60, 61 and 66), choosing the starter's content (task 64), and every
+   merge, tag and settings change.
+3. Pick the next agent item, as in the handoff protocol.
+4. If it is in progress, tend its pull request: CI, review findings, conflicts.
+5. Otherwise brief one agent, using the task record as the brief: its path, its body, the tasks it
+   waits on and the components it changes. The agent opens a pull request and sets the task to
+   `doing` with the link.
+6. When a pull request merges, update the records as above, rebuild, check and commit.
+7. Run one agent per task. Stop when "Next up" holds only owner items, and report them.

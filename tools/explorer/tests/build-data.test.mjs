@@ -56,6 +56,32 @@ describe('build-data', () => {
       )
   })
 
+  it('matches the committed checklist in BEELINE.md', () => {
+    const { beeline } = buildData(planning, repo)
+    expect(beeline, 'BEELINE.md is out of date; run pnpm build-data').toBe(readFileSync(join(planning, 'BEELINE.md'), 'utf8'))
+  })
+
+  it('reads a task pull requests as links', () => {
+    const { plan } = buildData(planning, repo)
+    expect(plan.tasks.find((t) => t.id === 47).prs).toEqual([
+      { label: 'sksizer/dev#4069', url: 'https://github.com/sksizer/dev/pull/4069' },
+      { label: 'sksizer/dev#4070', url: 'https://github.com/sksizer/dev/pull/4070' },
+    ])
+  })
+
+  it('needs both markers in BEELINE.md', () => {
+    const problems = problemsAfter(({ edit }) => edit('BEELINE.md', '<!-- beeline:end -->', ''))
+    expect(problems).toEqual([
+      'docs/planning/BEELINE.md: (body): needs a <!-- beeline:start --> line and a <!-- beeline:end --> line after it',
+    ])
+  })
+
+  it('builds no checklist for a corpus with no BEELINE.md', () => {
+    const data = buildAfter(({ root }) => rmSync(join(root, 'docs/planning/BEELINE.md')))
+    expect(data.problems).toEqual([])
+    expect(data.beeline).toBeNull()
+  })
+
   it('derives milestone status and keeps the beeline flag', () => {
     const { plan } = buildData(planning, repo)
     const release = plan.milestones.find((m) => m.id === 'm-release')

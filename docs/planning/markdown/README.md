@@ -7,7 +7,8 @@ level 2. That means each type folder holds a JSON Schema, and a validator checks
 against it.
 
 The [ecosystem plan](../ecosystem-plan.md) explains the why. These records are the what and the
-when.
+when. [BEELINE.md](BEELINE.md) is the shortest path to the work in hand, with a checklist built
+from the records, and says how to keep them current.
 
 ## The types
 
@@ -21,8 +22,8 @@ type with `x-extends`, such as `x-extends: plan/tasks`. A record passes the loca
 profile's. The other types are this plan's own, because they describe this ecosystem.
 
 - [tasks](tasks/tasks.schema.md): one piece of work. The file name is the task number and a short
-  name, such as `27 Org corpora.md`. The body is the task's plan. It adds `detail` and `type` to
-  the profile's task.
+  name, such as `27 Org corpora.md`. The body is the task's plan. It adds `detail`, `type` and
+  `prs` to the profile's task.
 - [milestones](milestones/milestones.schema.md): a goal that a group of tasks reaches. The body is
   the goal. It adds `phase` and `beeline` to the profile's milestone. `phase` says which part of
   the ecosystem it builds: the store, the model above it, or harness knowledge. The profile's
@@ -48,7 +49,7 @@ with `x-ref`, and the validator checks that it points at a record of the right t
 1. Pick the next free number. Copy a task file and name the copy `<number> <short name>.md`.
 2. Fill in the fields that [tasks.schema.md](tasks/tasks.schema.md) and the profile's
    [task schema](../../profiles/planning/tasks/tasks.schema.md) list. `after` holds the tasks it
-   waits on.
+   waits on, and `prs` the pull requests that do it.
 3. Write the plan in the body: what the task does, and what it waits on.
 4. Add a link to the task under `tasks` in its milestone's record, at the point where the work
    comes.
@@ -73,25 +74,27 @@ To record that two components do some of the same job, add an overlap record nam
 
 ## Check and build
 
-The plan uses `extends`, which `@osdlc/corpus-schema` 0.2.0 on npm does not know. So it is
+The plan uses `extends`, which the `@osdlc/corpus-schema` on npm does not know yet. So it is
 checked with this repo's own corpus-schema, in `packages/ts/corpus-schema/`. Build it, then
-validate the folder, from the repo root:
+validate the folder, from the repo root. `validate-strict.sh` fails on a warning as well as an
+error:
 
 ```sh
 sh tools/build-corpus-schema.sh
-node packages/ts/corpus-schema/bin/corpus-schema.js validate docs/planning profiles/planning
+sh tools/validate-strict.sh docs/planning profiles/planning
 ```
 
 The plan's report includes the profile's errors, but not its warnings, so the command names both
 folders.
 
-The explorer's data, `tools/explorer/data/ecosystem.json` and `plan.json`, is built from these
-records. The explorer links to the same built corpus-schema. After you change a record, run this
-in `tools/explorer/` and commit the JSON with it:
+The explorer's data, `tools/explorer/data/ecosystem.json` and `plan.json`, and the checklist in
+[BEELINE.md](BEELINE.md) are built from these records. The explorer links to the same built
+corpus-schema. After you change a record, run this in `tools/explorer/` and commit the output with
+it:
 
 ```sh
 pnpm build-data
 ```
 
 It also checks the rules the validator can't, such as a task missing from its milestone. CI runs
-both checks, and fails when the committed JSON differs from what the records build.
+both checks, and fails when the committed JSON or checklist differs from what the records build.

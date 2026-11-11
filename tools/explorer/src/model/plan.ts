@@ -1,5 +1,7 @@
 // Mirrors data/PLAN-SCHEMA.md. Change both together.
 
+import type { Link } from './types'
+
 export type TaskStatus = 'done' | 'doing' | 'owner' | 'todo'
 export type TaskType = 'functional' | 'supporting'
 /** The part of the ecosystem a milestone builds. */
@@ -39,6 +41,8 @@ export interface PlanTask {
   type: TaskType
   /** Ids of the tasks this one waits on. */
   after: number[]
+  /** The pull requests that do the work. */
+  prs: Link[]
   /** The plan's paragraph for the task, with markdown links and code. */
   text: string
   source: string | null
@@ -211,6 +215,9 @@ export function parsePlan(raw: unknown): { plan: Plan; problems: string[] } {
       milestone: text(entry.milestone),
       type: isType(entry.type) ? entry.type : 'functional',
       after: ids(entry.after),
+      prs: array(entry.prs)
+        .filter(isObject)
+        .map((link) => ({ label: text(link.label, text(link.url)), url: text(link.url) })),
       text: text(entry.text),
       source: typeof entry.source === 'string' ? entry.source : null,
     })

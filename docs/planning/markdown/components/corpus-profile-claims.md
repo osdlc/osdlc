@@ -10,6 +10,8 @@ path_target: profiles/claims
 tasks:
   - "[23 Claims profile](../tasks/23%20Claims%20profile.md)"
   - "[24 Name overrides](../tasks/24%20Name%20overrides.md)"
+  - "[59 Trusted publishing](../tasks/59%20Trusted%20publishing.md)"
+  - "[60 Publish claims](../tasks/60%20Publish%20claims.md)"
 links:
   - "[osdlc/markdown#15](https://github.com/osdlc/markdown/pull/15)"
 implements_new:

@@ -24,3 +24,9 @@ Body rules come from markdown-contract. The corpus-schema `x-body` keyword point
 does not invent its own format.
 
 We don't build another store, or a general binding layer, until a second store is needed.
+
+The intent and sdlc packs generate one profile for now, `@osdlc/corpus-profile-sdlc`, with both
+packs' kinds. A separate intent profile splits out later, if a consumer needs the intent kinds
+alone. The profile lives in osdlc/markdown at `profiles/sdlc/`, because it is shared now and dev is
+private. The generator stays in dev until model-schema and the packs move to a public repo (task
+62).

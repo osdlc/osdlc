@@ -1,6 +1,6 @@
 ---
 title: "Sharing, the rest"
-order: 7
+order: 8
 phase: store
 tasks:
   - "[28 Refine, waive](../tasks/28%20Refine,%20waive.md)"

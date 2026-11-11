@@ -7,6 +7,8 @@ type: functional
 milestone: "[m-npm](../milestones/m-npm.md)"
 after:
   - "[9 Extends](9%20Extends.md)"
+prs:
+  - "[osdlc/markdown#14](https://github.com/osdlc/markdown/pull/14)"
 ---
 
 The planning profile. Tasks, milestones and decisions become a profile, `@osdlc/corpus-profile-planning`

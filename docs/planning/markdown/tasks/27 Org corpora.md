@@ -7,6 +7,8 @@ type: functional
 milestone: "[m-npm](../milestones/m-npm.md)"
 after:
   - "[9 Extends](9%20Extends.md)"
+prs:
+  - "[osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12)"
 ---
 
 Corpus inheritance. A parent named under `extends` can bring its records, not just its types. A

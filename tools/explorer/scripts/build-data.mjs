@@ -1,14 +1,17 @@
-// Builds data/ecosystem.json and data/plan.json from the plan's records in docs/planning.
+// Builds data/ecosystem.json and data/plan.json from the plan's records in docs/planning, and the
+// checklist in the corpus's BEELINE.md.
 // Usage: node scripts/build-data.mjs [--corpus <dir>] [--out <dir>]
 // The corpus is validated with @osdlc/corpus-schema first. Each problem, from the validator or from
 // a rule it cannot check, is one line on stderr, and then nothing is written. See
 // docs/planning/README.md.
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, posix, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 import { validateCorpus } from '@osdlc/corpus-schema'
 import { parse } from 'yaml'
+import { beelineChecklist, replaceBeeline } from '../src/model/beeline.ts'
+import { parsePlan } from '../src/model/plan.ts'
 
 const STATES = ['present', 'target']
 const EDGE_KINDS = ['depends', 'dev-depends', 'implements', 'extends', 'validates', 'reads']
@@ -35,6 +38,12 @@ function linkDest(value) {
   const inner = m[1].trim()
   const raw = inner.startsWith('<') ? inner.slice(1, inner.indexOf('>')) : inner.split(/\s/)[0]
   return raw.replace(/\\(.)/g, '$1')
+}
+
+/** A whole-string Markdown link to a URL, `[label](url)`, as `{ label, url }`. The schema checks the form. */
+function urlLink(value) {
+  const m = /^\[(.+)\]\((\S+)\)$/.exec(value)
+  return { label: m[1], url: m[2] }
 }
 
 /**
@@ -185,6 +194,7 @@ function buildPlan(corpus, problems, { refId, refs }) {
       milestone,
       type: t.data.type,
       after: refs(t, 'after', 'tasks').map(toNumber).sort((a, b) => a - b),
+      prs: (t.data.prs ?? []).map(urlLink),
       text: unwrap(t.body),
       source: t.source,
     }
@@ -289,10 +299,7 @@ function buildEcosystem(corpus, problems, { target, refId, refs }) {
         twin: refId(c, 'twin', 'components'),
         ...purposeAndNotes(c, problems),
         tasks: refs(c, 'tasks', 'tasks').map((t) => numberOf.get(t.id)),
-        links: (d.links ?? []).map((l) => {
-          const m = /^\[(.+)\]\((\S+)\)$/.exec(l)
-          return { label: m[1], url: m[2] }
-        }),
+        links: (d.links ?? []).map(urlLink),
         source: c.source,
       }
     })
@@ -372,8 +379,22 @@ function buildEcosystem(corpus, problems, { target, refId, refs }) {
 }
 
 /**
- * The explorer's data built from a plan corpus, and every problem found. `root` is the folder the
- * `source` paths start from: the repo root.
+ * The corpus's BEELINE.md with its checklist rebuilt from the plan, or null when the corpus has no
+ * BEELINE.md. Links to records are relative to the corpus root, where the file sits.
+ */
+function buildBeeline(corpusDir, label, plan, problems) {
+  const file = join(corpusDir, 'BEELINE.md')
+  if (!existsSync(file)) return null
+  const block = beelineChecklist(parsePlan(plan).plan, (t) => encodeURI(posix.relative(label, t.source)))
+  const text = replaceBeeline(readFileSync(file, 'utf8'), block)
+  if (text === null) problems.push(`${label}/BEELINE.md: (body): needs a <!-- beeline:start --> line and a <!-- beeline:end --> line after it`)
+  return text
+}
+
+/**
+ * The explorer's data built from a plan corpus, the corpus's BEELINE.md with a fresh checklist
+ * (null when it has none), and every problem found. `root` is the folder the `source` paths start
+ * from: the repo root.
  */
 export function buildData(corpusDir, root) {
   const corpus = readCorpus(corpusDir, root)
@@ -382,7 +403,8 @@ export function buildData(corpusDir, root) {
   const links = linker(corpus, problems)
   const plan = buildPlan(corpus, problems, links)
   const ecosystem = buildEcosystem(corpus, problems, links)
-  return { ecosystem, plan, problems: [...new Set(problems)] }
+  const beeline = buildBeeline(corpusDir, corpus.label, plan, problems)
+  return { ecosystem, plan, beeline, problems: [...new Set(problems)] }
 }
 
 function main() {
@@ -396,7 +418,8 @@ function main() {
     process.exit(2)
   }
   const out = resolve(values.out ?? join(explorer, 'data'))
-  const data = buildData(resolve(values.corpus ?? join(repo, 'docs/planning')), repo)
+  const corpus = resolve(values.corpus ?? join(repo, 'docs/planning'))
+  const data = buildData(corpus, repo)
   if (data.problems.length > 0) {
     for (const p of data.problems) console.error(p)
     console.error(`build-data: ${data.problems.length} problem(s); nothing written.`)
@@ -410,6 +433,13 @@ function main() {
     console.error(`build-data: cannot write ${out}: ${e.code ?? e.message}`)
     process.exit(1)
   }
+  if (data.beeline !== null)
+    try {
+      writeFileSync(join(corpus, 'BEELINE.md'), data.beeline)
+    } catch (e) {
+      console.error(`build-data: cannot write ${join(corpus, 'BEELINE.md')}: ${e.code ?? e.message}`)
+      process.exit(1)
+    }
   console.log(`build-data: wrote ${data.ecosystem.nodes.length} components, ${data.ecosystem.edges.length} edges and ${data.plan.tasks.length} tasks to ${out}`)
 }
 

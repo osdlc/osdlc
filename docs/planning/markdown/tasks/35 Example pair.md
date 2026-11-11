@@ -9,6 +9,8 @@ after:
   - "[23 Claims profile](23%20Claims%20profile.md)"
   - "[29 Sync](29%20Sync.md)"
   - "[36 Release 0.3.0](36%20Release%200.3.0.md)"
+prs:
+  - "[osdlc/markdown#16](https://github.com/osdlc/markdown/pull/16)"
 ---
 
 The example pair. Check in an org corpus with records (a few principles) and a project corpus that

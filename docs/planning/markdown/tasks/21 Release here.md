@@ -7,6 +7,9 @@ type: functional
 milestone: "[m-release](../milestones/m-release.md)"
 after:
   - "[3 Publish 0.2.0](3%20Publish%200.2.0.md)"
+prs:
+  - "[osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9)"
+  - "[osdlc/markdown#10](https://github.com/osdlc/markdown/pull/10)"
 ---
 
 Release setup here, then move corpus-schema. Give this repo its own release setup: Changesets, a
@@ -22,7 +25,6 @@ uses the shared CI and release workflows and checks from osdlc/osdlc
 ([osdlc/osdlc#749](https://github.com/osdlc/osdlc/pull/749)). The shared release workflow had failed
 for lack of the App key ([osdlc/osdlc#767](https://github.com/osdlc/osdlc/pull/767)) and the version
 script left the lockfile stale ([osdlc/osdlc#774](https://github.com/osdlc/osdlc/pull/774)). Both
-have merged. `@osdlc/conformance-suites` 0.1.0 is on npm. `@osdlc/package-checks` is not yet: it
-publishes when the Version Packages PR ([osdlc/osdlc#773](https://github.com/osdlc/osdlc/pull/773))
-merges. This repo has not made a release yet. Until it does, corpus-schema releases still go out
+have merged. `@osdlc/conformance-suites` 0.1.0 is on npm. `@osdlc/package-checks` 0.2.0 is on npm too: the Version
+Packages PR ([osdlc/osdlc#773](https://github.com/osdlc/osdlc/pull/773)) has merged. This repo has not made a release yet. Until it does, corpus-schema releases still go out
 from osdlc/osdlc.

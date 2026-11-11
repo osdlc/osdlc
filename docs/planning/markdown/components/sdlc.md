@@ -53,6 +53,6 @@ The planning CLI and plugin. It keeps its planning docs as a corpus of notes wit
 - Uses osdlc note parts from npm, dev's private markdown-link copy, and the vendored
   markdown-contract 0.2.1. Its desktop app (solutions/ontological/desktop) uses the render and edit
   packages.
-- Target from the plan's diagram: it takes its types from profiles. Open sksizer/dev#4070 says sdlc
-  does not use the packs yet.
+- Target from the plan's diagram: it takes its types from profiles. sksizer/dev#4070 says sdlc does
+  not use the packs yet.
 - Plan: nothing from dev is published.

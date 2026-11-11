@@ -15,6 +15,7 @@ tasks:
   - "[54 Named relations](../tasks/54%20Named%20relations.md)"
   - "[55 Augment](../tasks/55%20Augment.md)"
   - "[58 Second store](../tasks/58%20Second%20store.md)"
+  - "[62 Packs in public](../tasks/62%20Packs%20in%20public.md)"
 links:
   - "[sksizer/dev#4069](https://github.com/sksizer/dev/pull/4069)"
 ---
@@ -24,9 +25,10 @@ and emits TypeScript types and JSON Schema.
 
 ## Notes
 
-- Only in open PR sksizer/dev#4069. It is not on dev main or npm.
-- Task 9 says moving model-schema to osdlc is separate work, and no task does it yet. osdlc/osdlc
-  is shown because the plan says packages stay there until they move to osdlc/markdown.
+- sksizer/dev#4069 merged it into dev's code-intelligence-planning branch, which reaches main with
+  sksizer/dev#4068. It is not on npm.
+- Task 62 moves it and the packs to a public osdlc repo. osdlc/osdlc is shown because the plan says
+  packages stay there until they move to osdlc/markdown.
 - Decision D4 makes types plain JSON Schema. Decision D13 puts packs above that as the model, and
   corpus-schema below as the store spec for Markdown. That answers problem F5: two ways to define
   types.

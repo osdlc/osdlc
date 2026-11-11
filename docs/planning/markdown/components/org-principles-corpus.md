@@ -18,4 +18,5 @@ principles and waive others with a reason.
 
 ## Notes
 
-- The first real case for sharing across corpora. The plan does not say which repo holds it.
+- The first real case for sharing across corpora. The plan does not say which repo holds it. The
+  starter corpus (task 63) may become it.

@@ -1,5 +1,6 @@
-import type { MilestonePhase, Plan, PlanMilestone, PlanTask, TaskStatus } from './plan'
-import { DEFAULT_PHASE_LABEL, DEFAULT_STATUS_LABEL } from './plan'
+// Imports name the .ts file, so that scripts/build-data.mjs can load this module under plain Node.
+import type { MilestonePhase, Plan, PlanMilestone, PlanTask, TaskStatus } from './plan.ts'
+import { DEFAULT_PHASE_LABEL, DEFAULT_STATUS_LABEL } from './plan.ts'
 
 /** Lookups over a parsed plan. Build it once; the plan does not change while the app runs. */
 export interface PlanIndex {

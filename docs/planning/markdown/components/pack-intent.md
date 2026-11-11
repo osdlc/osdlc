@@ -12,6 +12,7 @@ path_target: packages/ts/pack-intent
 tasks:
   - "[47 Merge packs](../tasks/47%20Merge%20packs.md)"
   - "[49 SDLC profiles](../tasks/49%20SDLC%20profiles.md)"
+  - "[62 Packs in public](../tasks/62%20Packs%20in%20public.md)"
 links:
   - "[sksizer/dev#4070](https://github.com/sksizer/dev/pull/4070)"
 depends:
@@ -23,5 +24,6 @@ decisions, drivers, products, capabilities, terms and references.
 
 ## Notes
 
-- Only in open PR sksizer/dev#4070, stacked on #4069. Private, not on npm.
-- Task 49 generates @osdlc/corpus-profile-intent from it.
+- sksizer/dev#4070 merged it into dev's code-intelligence-planning branch, which reaches main with
+  sksizer/dev#4068. Private, not on npm.
+- Task 49 generates @osdlc/corpus-profile-sdlc from it and the sdlc pack.
