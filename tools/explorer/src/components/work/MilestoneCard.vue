@@ -3,6 +3,7 @@ import { Handle, Position } from '@vue-flow/core'
 import { computed } from 'vue'
 import { progressText } from '../../model/work'
 import type { MilestoneCardData } from '../../model/workFlow'
+import PhaseTag from './PhaseTag.vue'
 import ProgressBar from './ProgressBar.vue'
 import StatusChip from './StatusChip.vue'
 
@@ -16,13 +17,16 @@ const progress = computed(() => progressText(props.data.progress))
 const classes = computed(() => [
   `milestone--${props.data.variant}`,
   `milestone--${milestone.value.status}`,
+  milestone.value.phase ? `milestone--phase-${milestone.value.phase}` : 'milestone--no-phase',
   {
     'is-selected': props.data.selected,
     'is-dimmed': props.data.dimmed,
     'is-next': props.data.highlighted,
   },
 ])
-const label = computed(() => `Milestone: ${milestone.value.title} · ${props.data.statusLabel} · ${progress.value}`)
+const label = computed(() =>
+  [`Milestone: ${milestone.value.title}`, props.data.phaseLabel, props.data.statusLabel, progress.value].filter(Boolean).join(' · '),
+)
 </script>
 
 <template>
@@ -31,6 +35,7 @@ const label = computed(() => `Milestone: ${milestone.value.title} · ${props.dat
       <Handle id="t-left" type="target" :position="Position.Left" class="milestone__handle" />
       <Handle id="s-right" type="source" :position="Position.Right" class="milestone__handle" />
     </template>
+    <PhaseTag v-if="milestone.phase" class="milestone__phase" :phase="milestone.phase" :label="data.phaseLabel" />
     <div class="milestone__top">
       <StatusChip :status="milestone.status" :label="data.statusLabel" />
       <span v-if="data.highlighted" class="milestone__next"><span aria-hidden="true">▶</span> {{ data.nextUp }} next up</span>
@@ -51,12 +56,35 @@ const label = computed(() => `Milestone: ${milestone.value.title} · ${props.dat
   height: 136px; /* MILESTONE_HEIGHT */
   padding: 9px 12px;
   border: 1.5px solid var(--border-strong);
+  border-top: 5px solid var(--milestone-phase);
   border-left-width: 5px;
   border-radius: var(--radius);
   background: var(--surface);
   color: var(--text);
   box-shadow: var(--shadow);
   transition: opacity 120ms ease;
+  position: relative;
+  --milestone-phase: var(--border-strong);
+}
+
+/* The phase band: the card's top edge in the phase colour, with the phase name on it. */
+.milestone--phase-store {
+  --milestone-phase: var(--phase-store);
+}
+
+.milestone--phase-model {
+  --milestone-phase: var(--phase-model);
+}
+
+.milestone--phase-harness {
+  --milestone-phase: var(--phase-harness);
+}
+
+.milestone__phase {
+  position: absolute;
+  top: -3px;
+  right: 12px;
+  transform: translateY(-50%);
 }
 
 .milestone--lane {

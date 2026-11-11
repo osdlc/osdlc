@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { sourceUrl } from '../../model/crossLinks'
 import type { PlanMilestone } from '../../model/plan'
 import { groupByStatus, milestoneNeighbours, progressOf, progressText, type MilestoneDep, type PlanIndex } from '../../model/work'
+import PhaseTag from './PhaseTag.vue'
 import ProgressBar from './ProgressBar.vue'
 import StatusChip from './StatusChip.vue'
 import TaskList from './TaskList.vue'
@@ -35,6 +36,14 @@ const linkSections = computed(() => [
       <h2 class="milestone-detail__title">{{ milestone.title }}</h2>
       <StatusChip :status="milestone.status" :label="index.statusLabel(milestone.status)" />
     </header>
+
+    <dl class="facts">
+      <dt>Phase</dt>
+      <dd>
+        <PhaseTag v-if="milestone.phase" :phase="milestone.phase" :label="index.phaseLabel(milestone.phase)" />
+        <template v-else>none</template>
+      </dd>
+    </dl>
 
     <p v-if="milestone.goal" class="milestone-detail__goal">{{ milestone.goal }}</p>
 
@@ -92,6 +101,22 @@ const linkSections = computed(() => [
   margin: 0;
   font-size: 17px;
   overflow-wrap: anywhere;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.facts dt {
+  color: var(--muted);
+}
+
+.facts dd {
+  margin: 0;
 }
 
 .milestone-detail__goal {

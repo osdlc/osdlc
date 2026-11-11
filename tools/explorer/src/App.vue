@@ -156,6 +156,7 @@ function openTask(id: number) {
         <div v-else class="app__tools-body">
           <WorkFilterBar
             v-model:statuses="work.filters.statuses"
+            v-model:phases="work.filters.phases"
             v-model:milestones="work.filters.milestones"
             v-model:types="work.filters.types"
             v-model:next-up="work.filters.nextUp"
@@ -163,7 +164,7 @@ function openTask(id: number) {
             :index="work.index"
             :next-up-count="work.nextUp.size"
           />
-          <WorkLegend :level="work.level.value" />
+          <WorkLegend :level="work.level.value" :phases="work.index.plan.phases" />
         </div>
       </details>
     </div>

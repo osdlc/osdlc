@@ -53,6 +53,8 @@ on npm does not know it. Run the line again after corpus-schema changes.
 ### Work
 
 - **Milestones** shows one card per milestone with its goal, status and progress ("3 of 7 done").
+  The card's top edge is in its phase's colour, with the phase's name on it: Store (teal), Model
+  (violet) or Harness (rose). The lane headers in Tasks show the same band.
   An arrow runs from a milestone to one that waits on it, because one of its tasks waits on one of
   the other's. A milestone sits right of everything it waits on.
 - **Tasks** shows each milestone as a band, in plan order. The view opens on the beeline
@@ -66,11 +68,12 @@ on npm does not know it. Run the line again after corpus-schema changes.
   and a "support" label. Colour is never the only signal.
 - A solid dark arrow still holds work up. A faded dashed arrow comes from a task that is done.
 - **Next up** highlights the tasks that are not done and wait only on done tasks. The filters
-  narrow by status, milestone and type; Functional and Supporting are both on at first.
+  narrow by status, type, phase and milestone; Functional and Supporting are both on at first. A
+  task's phase is its milestone's.
 - Click a task to see its plan paragraph, what it waits on, what it unblocks, and the components it
   changes. A component link opens that card in the Components view. Click a milestone, in either
-  level, to see its goal, progress, tasks by status, and the milestones it waits on and that wait
-  on it.
+  level, to see its phase, goal, progress, tasks by status, and the milestones it waits on and that
+  wait on it. A task's details show its milestone's phase too.
 - Tab, Enter and Esc work as in the Components view.
 - The URL holds the view, the level and the selection: `#view=work&task=27`,
   `#view=work&milestone=m-npm`, `#view=work&level=overview`.

@@ -5,6 +5,7 @@ import { cardsForTask, sourceUrl } from '../../model/crossLinks'
 import type { PlanTask } from '../../model/plan'
 import type { DisplayGraph } from '../../model/twins'
 import { isNextUp, unblocksOf, waitsOn, type PlanIndex } from '../../model/work'
+import PhaseTag from './PhaseTag.vue'
 import RichText from './RichText.vue'
 import StatusChip from './StatusChip.vue'
 import TaskList from './TaskList.vue'
@@ -57,6 +58,10 @@ const components = computed(() =>
         </button>
         <template v-else>{{ task.milestone || 'none' }}</template>
       </dd>
+      <template v-if="milestone?.phase">
+        <dt>Phase</dt>
+        <dd><PhaseTag :phase="milestone.phase" :label="index.phaseLabel(milestone.phase)" /></dd>
+      </template>
       <template v-if="source">
         <dt>Source</dt>
         <dd><a :href="source" target="_blank" rel="noopener">{{ task.source }}</a></dd>

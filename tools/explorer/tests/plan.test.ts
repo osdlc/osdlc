@@ -14,6 +14,24 @@ describe('parsePlan', () => {
     expect(plan.milestones.map((m) => m.id)).toEqual(['m-a', 'm-b'])
     expect(plan.milestones[1]!.source).toBe('docs/plan/m-b.md')
     expect(plan.tasks[0]!.source).toBeNull()
+    expect(plan.milestones.map((m) => m.phase)).toEqual(['model', 'store'])
+    expect(plan.phases.map((p) => p.label)).toEqual(['Store', 'Model', 'Harness'])
+  })
+
+  it('reports an unknown or missing phase and keeps the milestone with no phase', () => {
+    const milestones = [{ ...rawPlan.milestones[0]!, phase: 'later' }, { ...rawPlan.milestones[1]!, phase: undefined }]
+    const { plan, problems } = withTasks(rawPlan.tasks, milestones)
+    expect(problems).toEqual(['Milestone "m-a" has unknown phase "later".', 'Milestone "m-b" has unknown phase "undefined".'])
+    expect(plan.milestones.map((m) => m.phase)).toEqual([null, null])
+  })
+
+  it('uses the default phase labels when the data leaves them out', () => {
+    const { plan } = parsePlan({ ...rawPlan, phases: [{ id: 'model', label: 'The model' }] })
+    expect(plan.phases).toEqual([
+      { id: 'store', label: 'Store' },
+      { id: 'model', label: 'The model' },
+      { id: 'harness', label: 'Harness' },
+    ])
   })
 
   it('reports and drops an unknown task in after', () => {

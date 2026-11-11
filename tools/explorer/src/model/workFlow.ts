@@ -38,6 +38,8 @@ export interface MilestoneCardData extends CardState {
   milestone: PlanMilestone
   progress: Progress
   statusLabel: string
+  /** The phase's label, or '' when the milestone has no phase. */
+  phaseLabel: string
   /** `lane` heads a lane in the detailed level; `card` stands alone in the overview. */
   variant: 'lane' | 'card'
   /** Its tasks that are next up. */
@@ -145,6 +147,7 @@ function milestoneData(input: WorkFlowInput, milestone: PlanMilestone, variant: 
     milestone,
     progress: progressOf(tasks),
     statusLabel: index.statusLabel(milestone.status),
+    phaseLabel: milestone.phase ? index.phaseLabel(milestone.phase) : '',
     variant,
     nextUp,
     highlighted: highlightNext && nextUp > 0,

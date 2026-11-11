@@ -36,11 +36,25 @@ describe('filters', () => {
     expect([...onlyA.milestones]).toEqual(['m-a'])
   })
 
+  it('narrow by the phase of each task milestone', () => {
+    const filters = { ...emptyWorkFilters(), phases: ['store' as const] }
+    expect(hasWorkFilters(filters)).toBe(true)
+    const visible = visibleWork(index, filters)
+    expect([...visible.tasks].sort()).toEqual([1, 2, 3])
+    expect([...visible.milestones]).toEqual(['m-b'])
+    expect(visibleWork(index, { ...emptyWorkFilters(), phases: ['harness'] }).tasks.size).toBe(0)
+  })
+
   it('count tasks per facet', () => {
     const facets = workFacets(index)
     expect(facets.statuses.find((f) => f.value === 'todo')!.count).toBe(2)
     expect(facets.milestones).toEqual([{ value: 'm-a', count: 2 }, { value: 'm-b', count: 3 }])
     expect(facets.types).toEqual([{ value: 'functional', count: 4 }, { value: 'supporting', count: 1 }])
+    expect(facets.phases).toEqual([
+      { value: 'store', count: 3 },
+      { value: 'model', count: 2 },
+      { value: 'harness', count: 0 },
+    ])
   })
 })
 
@@ -96,6 +110,7 @@ describe('toWorkFlow, overview', () => {
     expect(flow.nodes.map((n) => n.id)).toEqual([milestoneNodeId('m-b'), milestoneNodeId('m-a')])
     const b = flow.nodes[0]!.data
     expect(b.kind === 'milestone' && b.progress).toEqual({ done: 1, total: 3 })
+    expect(b.kind === 'milestone' && b.phaseLabel).toBe('Store')
     expect(flow.edges.map((e) => [e.source, e.target, e.satisfied])).toEqual([
       [milestoneNodeId('m-b'), milestoneNodeId('m-a'), false],
     ])

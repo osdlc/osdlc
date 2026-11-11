@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import type { MilestonePhase, PlanOption } from '../../model/plan'
 import type { WorkLevel } from '../../model/route'
+import PhaseTag from './PhaseTag.vue'
 import StatusChip from './StatusChip.vue'
 
-defineProps<{ level: WorkLevel }>()
+defineProps<{ level: WorkLevel; phases: readonly PlanOption<MilestonePhase>[] }>()
 </script>
 
 <template>
@@ -14,6 +16,9 @@ defineProps<{ level: WorkLevel }>()
     <StatusChip status="owner" label="waiting on owner" />
     <span class="legend__item"><span class="swatch swatch--support" />support: supporting work</span>
     <span class="legend__item"><span class="swatch swatch--next" />▶ next up</span>
+    <span v-for="phase in phases" :key="phase.id" class="legend__item">
+      <span class="swatch swatch--phase" :class="`swatch--phase-${phase.id}`" /><PhaseTag :phase="phase.id" :label="phase.label" />
+    </span>
     <span class="legend__item">
       <svg class="line" viewBox="0 0 36 8" aria-hidden="true"><line x1="0" y1="4" x2="36" y2="4" class="line--open" /></svg>
       still waiting
@@ -23,8 +28,8 @@ defineProps<{ level: WorkLevel }>()
       prerequisite done
     </span>
     <span class="legend__note">
-      <template v-if="level === 'detail'">Each band is a milestone, in plan order; the view opens on the beeline milestones. Arrows run from a task to the task that waits on it; left to right is the order work can happen.</template>
-      <template v-else>Arrows run from a milestone to one that waits on it, because one of its tasks does.</template>
+      <template v-if="level === 'detail'">Each band is a milestone, in plan order; the view opens on the beeline milestones. A milestone's top edge shows its phase. Arrows run from a task to the task that waits on it; left to right is the order work can happen.</template>
+      <template v-else>A milestone's top edge shows its phase. Arrows run from a milestone to one that waits on it, because one of its tasks does.</template>
     </span>
   </div>
 </template>
@@ -69,6 +74,22 @@ defineProps<{ level: WorkLevel }>()
 
 .swatch--support {
   border-style: dashed;
+}
+
+.swatch--phase {
+  border-top-width: 4px;
+}
+
+.swatch--phase-store {
+  border-top-color: var(--phase-store);
+}
+
+.swatch--phase-model {
+  border-top-color: var(--phase-model);
+}
+
+.swatch--phase-harness {
+  border-top-color: var(--phase-harness);
 }
 
 .swatch--next {

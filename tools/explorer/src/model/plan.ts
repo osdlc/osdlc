@@ -2,9 +2,12 @@
 
 export type TaskStatus = 'done' | 'doing' | 'owner' | 'todo'
 export type TaskType = 'functional' | 'supporting'
+/** The part of the ecosystem a milestone builds. */
+export type MilestonePhase = 'store' | 'model' | 'harness'
 
 export const TASK_STATUSES: readonly TaskStatus[] = ['done', 'doing', 'owner', 'todo']
 export const TASK_TYPES: readonly TaskType[] = ['functional', 'supporting']
+export const MILESTONE_PHASES: readonly MilestonePhase[] = ['store', 'model', 'harness']
 
 export interface PlanOption<T extends string> {
   id: T
@@ -16,6 +19,8 @@ export interface PlanMilestone {
   title: string
   goal: string
   status: TaskStatus
+  /** Null when the data gives no known phase. */
+  phase: MilestonePhase | null
   /** True for the milestones the work is heading for now. The Work view opens on them. */
   beeline: boolean
   /** Task ids in plan order. */
@@ -43,6 +48,7 @@ export interface Plan {
   asOf: string
   statuses: PlanOption<TaskStatus>[]
   types: PlanOption<TaskType>[]
+  phases: PlanOption<MilestonePhase>[]
   /** In plan order. */
   milestones: PlanMilestone[]
   tasks: PlanTask[]
@@ -60,8 +66,21 @@ export const DEFAULT_TYPE_LABEL: Record<TaskType, string> = {
   supporting: 'Supporting',
 }
 
+export const DEFAULT_PHASE_LABEL: Record<MilestonePhase, string> = {
+  store: 'Store',
+  model: 'Model',
+  harness: 'Harness',
+}
+
 export function emptyPlan(): Plan {
-  return { asOf: '', statuses: defaultOptions(DEFAULT_STATUS_LABEL), types: defaultOptions(DEFAULT_TYPE_LABEL), milestones: [], tasks: [] }
+  return {
+    asOf: '',
+    statuses: defaultOptions(DEFAULT_STATUS_LABEL),
+    types: defaultOptions(DEFAULT_TYPE_LABEL),
+    phases: defaultOptions(DEFAULT_PHASE_LABEL),
+    milestones: [],
+    tasks: [],
+  }
 }
 
 function defaultOptions<T extends string>(labels: Record<T, string>): PlanOption<T>[] {
@@ -94,7 +113,11 @@ function isType(value: unknown): value is TaskType {
   return TASK_TYPES.includes(value as TaskType)
 }
 
-/** Data labels where given, the default label for any status or type the data leaves out. */
+function isPhase(value: unknown): value is MilestonePhase {
+  return MILESTONE_PHASES.includes(value as MilestonePhase)
+}
+
+/** Data labels where given, the default label for any status, type or phase the data leaves out. */
 function options<T extends string>(raw: unknown, valid: (v: unknown) => v is T, defaults: Record<T, string>): PlanOption<T>[] {
   const given = new Map<T, string>()
   for (const entry of array(raw).filter(isObject)) {
@@ -142,6 +165,7 @@ export function parsePlan(raw: unknown): { plan: Plan; problems: string[] } {
   plan.asOf = text(raw.asOf)
   plan.statuses = options(raw.statuses, isStatus, DEFAULT_STATUS_LABEL)
   plan.types = options(raw.types, isType, DEFAULT_TYPE_LABEL)
+  plan.phases = options(raw.phases, isPhase, DEFAULT_PHASE_LABEL)
 
   for (const entry of array(raw.milestones).filter(isObject)) {
     const id = text(entry.id)
@@ -154,11 +178,13 @@ export function parsePlan(raw: unknown): { plan: Plan; problems: string[] } {
       continue
     }
     if (!isStatus(entry.status)) problems.push(`Milestone "${id}" has unknown status "${String(entry.status)}".`)
+    if (!isPhase(entry.phase)) problems.push(`Milestone "${id}" has unknown phase "${String(entry.phase)}".`)
     plan.milestones.push({
       id,
       title: text(entry.title, id),
       goal: text(entry.goal),
       status: isStatus(entry.status) ? entry.status : 'todo',
+      phase: isPhase(entry.phase) ? entry.phase : null,
       beeline: entry.beeline === true,
       tasks: ids(entry.tasks),
       source: typeof entry.source === 'string' ? entry.source : null,

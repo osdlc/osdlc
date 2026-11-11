@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { TaskStatus, TaskType } from '../../model/plan'
+import type { MilestonePhase, TaskStatus, TaskType } from '../../model/plan'
 import type { PlanIndex } from '../../model/work'
 import { emptyWorkFilters, hasWorkFilters, type WorkFacets } from '../../model/workFilters'
 import FacetGroup from '../controls/FacetGroup.vue'
@@ -8,20 +8,29 @@ import FacetGroup from '../controls/FacetGroup.vue'
 const props = defineProps<{ facets: WorkFacets; index: PlanIndex; nextUpCount: number }>()
 
 const statuses = defineModel<TaskStatus[]>('statuses', { required: true })
+const phases = defineModel<MilestonePhase[]>('phases', { required: true })
 const milestones = defineModel<string[]>('milestones', { required: true })
 const types = defineModel<TaskType[]>('types', { required: true })
 const nextUp = defineModel<boolean>('nextUp', { required: true })
 
 const filtered = computed(() =>
-  hasWorkFilters({ statuses: statuses.value, milestones: milestones.value, types: types.value, nextUp: nextUp.value }),
+  hasWorkFilters({
+    statuses: statuses.value,
+    phases: phases.value,
+    milestones: milestones.value,
+    types: types.value,
+    nextUp: nextUp.value,
+  }),
 )
 const statusName = (status: TaskStatus) => props.index.statusLabel(status)
+const phaseName = (phase: MilestonePhase) => props.index.phaseLabel(phase)
 const milestoneName = (id: string) => props.index.milestone.get(id)?.title ?? id
 const typeName = (type: TaskType) => props.index.plan.types.find((t) => t.id === type)?.label ?? type
 
 function reset() {
   const empty = emptyWorkFilters()
   statuses.value = empty.statuses
+  phases.value = empty.phases
   milestones.value = empty.milestones
   types.value = empty.types
 }
@@ -40,6 +49,7 @@ function reset() {
     </button>
     <FacetGroup v-model="statuses" label="Status" :options="facets.statuses" :label-for="statusName" />
     <FacetGroup v-model="types" label="Type" :options="facets.types" :label-for="typeName" />
+    <FacetGroup v-model="phases" label="Phase" :options="facets.phases" :label-for="phaseName" />
     <FacetGroup v-model="milestones" label="Milestone" :options="facets.milestones" :label-for="milestoneName" />
     <button v-if="filtered" type="button" class="work-filters__reset" @click="reset">Clear filters</button>
   </div>

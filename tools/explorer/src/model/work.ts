@@ -1,5 +1,5 @@
-import type { Plan, PlanMilestone, PlanTask, TaskStatus } from './plan'
-import { DEFAULT_STATUS_LABEL } from './plan'
+import type { MilestonePhase, Plan, PlanMilestone, PlanTask, TaskStatus } from './plan'
+import { DEFAULT_PHASE_LABEL, DEFAULT_STATUS_LABEL } from './plan'
 
 /** Lookups over a parsed plan. Build it once; the plan does not change while the app runs. */
 export interface PlanIndex {
@@ -11,6 +11,7 @@ export interface PlanIndex {
   /** The tasks that wait on each task, in task order. */
   unblocks: Map<number, PlanTask[]>
   statusLabel: (status: TaskStatus) => string
+  phaseLabel: (phase: MilestonePhase) => string
 }
 
 export function indexPlan(plan: Plan): PlanIndex {
@@ -27,6 +28,7 @@ export function indexPlan(plan: Plan): PlanIndex {
     for (const id of t.after) unblocks.get(id)?.push(t)
   }
   const labels = new Map(plan.statuses.map((s) => [s.id, s.label]))
+  const phaseLabels = new Map(plan.phases.map((p) => [p.id, p.label]))
   return {
     plan,
     task,
@@ -34,6 +36,7 @@ export function indexPlan(plan: Plan): PlanIndex {
     tasksOf,
     unblocks,
     statusLabel: (status) => labels.get(status) ?? DEFAULT_STATUS_LABEL[status],
+    phaseLabel: (phase) => phaseLabels.get(phase) ?? DEFAULT_PHASE_LABEL[phase],
   }
 }
 

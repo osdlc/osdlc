@@ -2,7 +2,7 @@ import { parsePlan } from '../src/model/plan'
 import { indexPlan } from '../src/model/work'
 
 /**
- * A small plan: m-a waits on m-b through task 3 -> 4. Task 1 is done, 2 is in progress and waits
+ * A small plan: m-a (phase model) waits on m-b (phase store) through task 3 -> 4. Task 1 is done, 2 is in progress and waits
  * on 1, 3 waits on 1 and 2, 4 is a supporting task in m-a and 5 waits on nothing.
  */
 export const rawPlan = {
@@ -17,9 +17,14 @@ export const rawPlan = {
     { id: 'functional', label: 'Functional' },
     { id: 'supporting', label: 'Supporting' },
   ],
+  phases: [
+    { id: 'store', label: 'Store' },
+    { id: 'model', label: 'Model' },
+    { id: 'harness', label: 'Harness' },
+  ],
   milestones: [
-    { id: 'm-a', title: 'A first', goal: 'Do A.', status: 'todo', beeline: true, tasks: [4, 5] },
-    { id: 'm-b', title: 'B base', goal: 'Do B.', status: 'doing', tasks: [1, 2, 3], source: 'docs/plan/m-b.md' },
+    { id: 'm-a', title: 'A first', goal: 'Do A.', status: 'todo', phase: 'model', beeline: true, tasks: [4, 5] },
+    { id: 'm-b', title: 'B base', goal: 'Do B.', status: 'doing', phase: 'store', tasks: [1, 2, 3], source: 'docs/plan/m-b.md' },
   ],
   tasks: [
     { id: 1, title: 'One', detail: 'first', status: 'done', milestone: 'm-b', type: 'functional', after: [], text: 'See [PR 1](https://github.com/x/y/pull/1).' },

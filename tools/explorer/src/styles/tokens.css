@@ -42,6 +42,11 @@
   --next: #9a5f0c;
   --next-bg: #fdf3dc;
   --edge-strong: #4f535a;
+  /* Work view: milestone phases. Hues kept apart from the status, next-up and accent colours,
+     and always shown with the phase name. */
+  --phase-store: #0b7285;
+  --phase-model: #7a3fc0;
+  --phase-harness: #b02a6b;
 
   /* Simple Icons brand colours; the dark set is lightened to keep 3:1 or more on the card. */
   --logo-ts: #3178c6;
@@ -105,6 +110,9 @@
     --next: #f0b44c;
     --next-bg: #3a2f14;
     --edge-strong: #b5b9c0;
+    --phase-store: #3cc4d0;
+    --phase-model: #b48cf0;
+    --phase-harness: #f27bb2;
 
     --logo-ts: #5b9bea;
     --logo-rust: #e8e8e5;
@@ -163,6 +171,9 @@
   --next: #f0b44c;
   --next-bg: #3a2f14;
   --edge-strong: #b5b9c0;
+  --phase-store: #3cc4d0;
+  --phase-model: #b48cf0;
+  --phase-harness: #f27bb2;
 
   --logo-ts: #5b9bea;
   --logo-rust: #e8e8e5;
