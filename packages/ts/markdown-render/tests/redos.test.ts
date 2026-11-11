@@ -145,8 +145,7 @@ function timeWindow(run: (tree: MdNode) => unknown, body: string, passes: number
  * is measured on.
  *
  * Each rung is timed over the same total volume of input: rung `i` of an
- * `n`-rung ladder is scanned `volume * step ** (n - 1 - i)` times (defaults
- * `volume = 1`, `step = GROWTH_STEP`), so the bottom rung's windows cover as
+ * `n`-rung ladder is scanned `volume * step ** (n - 1 - i)` times, so the bottom rung's windows cover as
  * many bytes as the top rung's. `volume` lengthens every window by the same
  * factor without changing the ratio, for ladders whose windows are short
  * enough that one GC pause on a shared runner moves the ratio. See
@@ -250,10 +249,9 @@ describe('redos hardening', () => {
     )
   }, 30_000)
 
-  // Well under a second healthy (~0.2s locally). A restored blowup has no
-  // ceiling to stop it early (see SANITY_CEILING_MS) and, at volume: 10, runs
-  // ~44s (10× the ~4.4s it took at one pass) before the ratio fails it; the
-  // 120s timeout keeps that a ratio failure, not a clock one.
+  // A restored blowup has no ceiling to stop it early (see SANITY_CEILING_MS).
+  // At volume: 10 it runs about 10× as long as at one pass, which still fits
+  // well inside the 120s timeout, so it fails on the ratio, not the clock.
   test('a long run of unterminated openers costs a flat amount per opener', () => {
     // `[[[[[[…` is the polynomial case, not the exponential one: a scanner that
     // lets every opener walk to the end of the string is quadratic. The two
