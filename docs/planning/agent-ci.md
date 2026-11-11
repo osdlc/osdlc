@@ -135,18 +135,18 @@ move; merged PRs drop off.
 
 | Order | PR | What | Why this order | Status |
 | --- | --- | --- | --- | --- |
-| 1 | [#764](https://github.com/osdlc/osdlc/pull/764) | feat(gh-actions): run any skill from a PR comment, read-only or with `--apply` | Next to be ready; nothing else waits on you | draft: needs your choice of how `--apply` changes land, the `pr-agent` environment and the token fix, then the gate reruns; main merged in at 16:46 UTC; CI running |
+| 1 | [#764](https://github.com/osdlc/osdlc/pull/764) | feat(gh-actions): run any skill from a PR comment, read-only or with `--apply` | Next to be ready; nothing else waits on you | draft: needs your choice of how `--apply` changes land, the `pr-agent` environment and the token fix, then the gate reruns; up to date with main; clean and green |
 
 ## PR tracker
 
-Checked 2026-11-11 17:17 UTC. A periodic check refreshes this table and the graph.
+Checked 2026-11-11 18:17 UTC. A periodic check refreshes this table and the graph.
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
 | [#749](https://github.com/osdlc/osdlc/pull/749) | ci: shared reusable workflows for TypeScript package CI and release | merged | — | — | — | merged 2026-11-10 (shared-CI work) |
 | [#748](https://github.com/osdlc/osdlc/pull/748) | package-checks: move the package checks into @osdlc/package-checks | merged | — | — | — | merged 2026-11-09 |
 | [#747](https://github.com/osdlc/osdlc/pull/747) | ci: codex and cursor answer PR mentions | merged | — | — | — | merged 2026-11-10; next: live codex and cursor mentions (needs OPENAI_API_KEY, CURSOR_API_KEY) |
-| [#764](https://github.com/osdlc/osdlc/pull/764) | feat(gh-actions): run any skill from a PR comment, read-only or with --apply | draft | none | up to date; CI running | pre-review gate (draft) | new; touches gh-actions |
+| [#764](https://github.com/osdlc/osdlc/pull/764) | feat(gh-actions): run any skill from a PR comment, read-only or with --apply | draft | none | clean; green | pre-review gate (draft) | new; touches gh-actions |
 | [#760](https://github.com/osdlc/osdlc/pull/760) | pr-update: one PR identity across repositories, per-repository verify, --restack | merged | — | — | — | merged 2026-11-10 (pr-update work) |
 | [#759](https://github.com/osdlc/osdlc/pull/759) | ci(pr-update): run once a night instead of on every push to main | merged | — | — | — | merged 2026-11-09; ends the CI storms from merges to main |
 | [#750](https://github.com/osdlc/osdlc/pull/750) | feat(harness-knowledge): compiled harness facts, read by agent-call and detect-harness | merged | — | — | — | merged 2026-11-11 07:55 UTC; phase 5 of the harness-knowledge plan; Version Packages [#784](https://github.com/osdlc/osdlc/pull/784) merged 12:12 UTC; packages-publish failed: @osdlc/harness-knowledge is not on npm yet, so the owner must run `package-checks stage packages/ts/harness-knowledge` once, then rerun packages-publish; nothing in that release published |
