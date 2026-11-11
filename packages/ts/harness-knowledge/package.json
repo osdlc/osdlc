@@ -1,0 +1,74 @@
+{
+  "name": "@osdlc/harness-knowledge",
+  "version": "0.1.0",
+  "description": "Compiled facts about coding-agent harnesses (binaries, flags, environment markers, config and skills folders, instruction files) with a lookup by harness, subject, version, platform and model. Every value links to the statement that sets it.",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/ts/harness-knowledge"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/ts/harness-knowledge#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "keywords": [
+    "agent",
+    "harness",
+    "knowledge",
+    "claude-code",
+    "codex",
+    "cursor",
+    "lookup",
+    "json-schema"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./data/harness-knowledge.json": "./data/harness-knowledge.json",
+    "./data/harness-knowledge.schema.json": "./data/harness-knowledge.schema.json"
+  },
+  "files": [
+    "dist/",
+    "data/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "SECURITY.md",
+    "CONTRIBUTING.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
+    "smoke": "node tests/smoke.mjs",
+    "prepublishOnly": "npm run clean && npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit",
+    "sync": "node scripts/sync.ts"
+  },
+  "devDependencies": {
+    "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/tsconfig": "workspace:^",
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "ajv": "^8.20.0",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
