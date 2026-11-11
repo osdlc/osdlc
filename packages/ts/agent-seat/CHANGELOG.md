@@ -1,5 +1,14 @@
 # @osdlc/agent-seat
 
+## 0.7.4
+
+### Patch Changes
+
+- Updated dependencies [20dfeb4]
+- Updated dependencies [20dfeb4]
+  - @osdlc/agent-call@0.12.0
+  - @osdlc/detect-harness@0.7.2
+
 ## 0.7.3
 
 ### Patch Changes
