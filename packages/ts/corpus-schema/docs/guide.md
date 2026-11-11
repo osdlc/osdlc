@@ -533,7 +533,9 @@ corpus-schema sync [<folder>...]
   copy of each parent the root file names under `extends`. It removes stale files there.
 - It changes nothing outside `_inherited/`, and a second run changes nothing.
 - A corpus syncs after the corpora it extends, so a chain in one repository syncs in one run.
-- When a parent does not resolve, it writes nothing in that corpus and exits with code 1.
+- When a parent does not resolve or has errors of its own, including a cycle in `extends`, it
+  writes nothing in that corpus and exits with code 1.
+- When a parent turns a folder into a file, or a file into a folder, the copy follows.
 - `validate` never writes the copy. It checks it, and says to run `sync` when it is stale.
 
 ### Writing records
