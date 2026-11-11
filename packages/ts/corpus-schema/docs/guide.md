@@ -1,0 +1,1114 @@
+# The corpus-schema guide
+
+This guide explains corpus-schema in plain words: what it is, why we made it, how its levels work,
+why we chose what we chose, and where it is going. The rules themselves are in the spec,
+[SPEC.md](https://github.com/osdlc/osdlc/blob/main/packages/conformance/corpus-schema/SPEC.md).
+This guide explains the spec, but SPEC.md is the rule. Where the two differ, follow SPEC.md, and
+tell us so we can fix the guide.
+
+Version 0 of the spec is in force. While it is at version 0 we rewrite it in place. Some parts of
+this guide describe proposals from the [ecosystem plan](ecosystem-plan.md)
+([osdlc/markdown#4](https://github.com/osdlc/markdown/pull/4)) and the
+[architecture](architecture.md) ([osdlc/markdown#5](https://github.com/osdlc/markdown/pull/5)).
+Those parts say "Proposed" and are not built. Everything else describes what is on osdlc main
+today.
+
+## Contents
+
+1. [What it is](#what-it-is)
+2. [Why it exists](#why-it-exists)
+3. [A small corpus](#a-small-corpus)
+4. [Levels](#levels)
+5. [The rules in detail](#the-rules-in-detail)
+6. [Three settings: level, dialect and profiles](#three-settings-level-dialect-and-profiles)
+7. [Sharing across corpora (proposed)](#sharing-across-corpora-proposed)
+8. [Why we decided what we did](#why-we-decided-what-we-did)
+9. [What v0 does not do yet](#what-v0-does-not-do-yet)
+10. [The plan for the spec](#the-plan-for-the-spec)
+11. [FAQ](#faq)
+12. [Words used](#words-used)
+
+## What it is
+
+corpus-schema is a spec for folders of notes that hold typed records. A record is one Markdown,
+YAML or JSON file. Records of the same kind sit in a type folder, and each type has a JSON Schema
+that says what its records hold. A validator then checks the records against their schemas, and
+checks their ids, their links and the references between them, the way a database checks its rows.
+The files stay plain notes. You can still edit them in Obsidian, read them on GitHub, or open them
+in any editor.
+
+We call such a folder a corpus: a folder of notes and the files they link to. The spec says what a
+corpus can declare about itself on top of its notes. The reference validator is the npm package
+[`@osdlc/corpus-schema`](https://github.com/osdlc/osdlc/tree/main/packages/ts/corpus-schema#readme),
+and its command is `corpus-schema validate`.
+
+## Why it exists
+
+Facts kept as notes drift. A field gets misspelled, a link points at a file that was renamed, and
+nothing notices. corpus-schema lets a folder of notes say what its records should look like, so a
+tool can catch those mistakes, in CI or on your machine.
+
+It is for people and tools that keep typed records as files and still want to edit them as plain
+notes. Two kinds of use shaped it:
+
+- A reference corpus that code depends on. harness-reference is a cited record of how coding-agent
+  harnesses differ. Code reads its facts as typed values, and each value cites the evidence behind
+  it. The evidence work that follows it keeps scripts, queries and CSV results beside the records
+  that describe them.
+- A small app that keeps its data inside a user's vault. A reading list, a task tracker or a set of
+  inherited policies can be a corpus. The app reads and writes records, and the user still browses
+  and edits them as notes.
+
+One rule runs through the whole design: the folder is pure data. Every rule a tool enforces is
+written in the spec or in the corpus's own files, never only in code. So a validator written in
+another language can check a corpus the same way. The spec's conformance cases sit beside it for
+that reason.
+
+A second rule matters as much: a corpus can be moved. You can drop a corpus folder into a larger
+vault or repo, and its data still works. Its links are relative, so they still point at the right
+files. Its root file still marks where it starts, and the validator finds every corpus below the
+folder you give it. So a team can ship a bundle of records, such as a set of shared types with
+example data, and people can copy it into their own notes without fixing anything.
+
+What it is not:
+
+- It is not a database. It does not answer queries, keep an index or handle many writers at once.
+  In v0 a write replaces the whole file and the last writer wins.
+- It is not a query engine. Reading a corpus as a database is a separate layer that we plan to
+  build later on the same files. That layer needs running code: something has to load the
+  records, keep an index and answer queries. corpus-schema is only the data definition, so that
+  layer can be built on top of it, in any language, without changing the files.
+- It does not check the structure of a single document, such as its headings and sections.
+  [`@osdlc/markdown-contract`](https://github.com/osdlc/osdlc/tree/main/packages/ts/markdown-contract#readme)
+  does that. corpus-schema checks a whole folder: data against schemas, and links, ids and
+  references across files.
+
+## A small corpus
+
+Here is a small corpus. It holds two types: `harnesses` (coding-agent harnesses) and `methods`
+(ways we check facts about them). The `Survey` method is a record folder, so its script, query and
+results sit beside it.
+
+```text
+evidence/
+├── corpus-schema.md                the root file, and the corpus's front page
+├── README.md                       narrative: the validator ignores it
+├── harnesses/
+│   ├── harnesses.schema.md         the type "harnesses" and its JSON Schema
+│   ├── Claude Code.md              a record, id "Claude Code"
+│   └── Gemini CLI.md               a record, id "Gemini CLI"
+└── methods/
+    ├── methods.schema.yaml         the type "methods" and its JSON Schema
+    └── Survey/                     a record folder
+        ├── Survey.md               the record, id "Survey"
+        ├── count.py                these files belong to the record
+        ├── query.sql
+        └── results/
+            └── counts.csv
+```
+
+The root file, `corpus-schema.md`, marks the folder as a corpus. Its frontmatter holds the
+settings. Its body is the front page people see when they open the corpus.
+
+```markdown
+---
+corpus-schema: 0
+level: 2
+formats: [md, yaml]
+---
+
+Facts about coding-agent harnesses, and the methods we use to check them.
+Start with [the harnesses](harnesses/harnesses.schema.md).
+```
+
+`corpus-schema: 0` says which version of the spec the corpus follows. `level: 2` promises that
+every type has a schema. `formats: [md, yaml]` allows records written as Markdown or as YAML.
+
+A type is a folder that holds a schema file named after the folder. Here is
+`harnesses/harnesses.schema.md`. The frontmatter is the JSON Schema, written in YAML. The body
+explains the type to people.
+
+```markdown
+---
+$schema: https://json-schema.org/draft/2020-12/schema
+title: Harness
+type: object
+additionalProperties: false
+required: [vendor, status]
+properties:
+  vendor: { type: string }
+  status: { enum: [current, sunsetting, retired] }
+  successor: { type: string, x-ref: harnesses }
+---
+
+One harness per record. `successor` links to the harness that replaces it.
+```
+
+`x-ref: harnesses` makes `successor` a typed link: its value must be a link to a `harnesses`
+record. A record looks like any other note. This is `harnesses/Claude Code.md`, and its id is its
+file name without the extension, `Claude Code`.
+
+```markdown
+---
+vendor: Anthropic
+status: current
+---
+
+Anthropic's terminal agent.
+```
+
+The `methods` type keeps its schema as YAML, in `methods/methods.schema.yaml`. Its `harnesses`
+field is a list, and each item must link to a `harnesses` record.
+
+```yaml
+$schema: https://json-schema.org/draft/2020-12/schema
+type: object
+additionalProperties: false
+required: [question, status]
+properties:
+  question: { type: string }
+  status: { enum: [planned, run] }
+  harnesses:
+    type: array
+    items: { type: string, x-ref: harnesses }
+```
+
+`methods/Survey/` is a record folder, because it holds a record file named after itself,
+`Survey.md`. The record links to its own files with ordinary relative links. In frontmatter a link
+is a quoted string.
+
+```markdown
+---
+question: Which harnesses read AGENTS.md?
+status: run
+harnesses:
+  - "[Claude Code](../../harnesses/Claude%20Code.md)"
+  - "[Gemini CLI](../../harnesses/Gemini%20CLI.md)"
+---
+
+[count.py](count.py) runs [the query](query.sql) and writes
+[the counts](results/counts.csv).
+```
+
+`count.py`, `query.sql` and `results/counts.csv` belong to the record. They are not records, so
+they are not checked against the schema. The links to them are checked.
+
+Checking the corpus:
+
+```console
+$ corpus-schema validate evidence
+ok: evidence: 2 harnesses, 1 methods
+```
+
+If `Survey.md` said `status: done`, or linked to a file that does not exist, the validator would
+print one line for each problem and exit with code 1.
+
+## Levels
+
+The spec has three levels. Each one adds rules to the level below it.
+
+| Level | The corpus declares                                | Rules it adds                                                                   | What you get                                                      |
+| ----- | -------------------------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| 0     | Nothing. Any folder of linked notes, no root file. | Its relative Markdown links resolve.                                            | Nothing to set up. Every notes folder is already here.            |
+| 1     | A root file marks it as a corpus.                  | Type folders, record folders, ids, YAML and JSON records. Schemas are optional. | The validator finds the corpus and checks ids, formats and links. |
+| 2     | A JSON Schema for each type.                       | Every record is checked against its type's schema. `x-ref` links are checked.   | Every field of every record is checked.                           |
+
+### Level 0
+
+Any folder of linked notes is a corpus at level 0. An Obsidian vault is one, and so is a docs
+folder. The only rule is that its relative Markdown links resolve.
+
+The validator does not check level 0. It finds a corpus by its root file, and a level-0 folder has
+none. Run on such a folder, it says so and exits with code 1:
+
+```console
+$ corpus-schema validate notes
+notes: no corpus-schema root file at or below it
+```
+
+### Level 1
+
+A folder with a root file is a corpus at level 1 or 2. At level 1 the folder can have type folders
+and records, and their ids, formats and links are checked. A type does not need a schema yet. An
+empty schema file makes an untyped type:
+
+```text
+reading-list/
+├── corpus-schema.yaml          corpus-schema: 0
+└── books/
+    ├── books.schema.md         empty: an untyped type
+    └── The Dispossessed.md
+```
+
+The validator checks that `The Dispossessed` is a valid id and that every link in the record
+resolves. It does not check the record's fields, because the type has no schema. A schema file
+counts as empty when it is an empty file, has empty frontmatter, is a `.md` file with no
+frontmatter, or holds `{}`.
+
+### Level 2
+
+At level 2 every type has a schema that is not empty, and every record is checked against it. To
+make that a promise the validator holds you to, state the level in the root file:
+
+```yaml
+corpus-schema: 0
+level: 2
+```
+
+With `level: 2`, an untyped type is an error. A type that has a schema is checked against it at any
+level, so a corpus with no `level` key and a schema on every type is checked just as fully. Only the
+promise is missing. The `level` key accepts `1` or `2`. Any other value, `0` included, is an error,
+since a level-0 folder has no root file to write it in.
+
+### Why levels
+
+Levels let a corpus start as an ordinary folder of notes and add structure one step at a time.
+Every notes folder is already at level 0. Adding a root file turns folders into types, with ids and
+checked links. Adding schemas, when you know what the fields are, turns on field checks. Nothing
+has to be rewritten between steps.
+
+## The rules in detail
+
+This section restates the rules in SPEC.md in plain words. It covers corpora at level 1 and 2:
+from here on, a corpus is a folder that holds a root file.
+
+### The root file
+
+The root file is `corpus-schema.md`, `corpus-schema.yaml` or `corpus-schema.json`. The name must
+match exactly, case included, so a corpus is the same on every file system. A folder holds at most
+one root file.
+
+In `corpus-schema.md` the settings are the YAML frontmatter, and the body is the corpus's front
+page. The body may be empty. In the `.yaml` and `.json` forms the whole file is the settings. The
+settings must be a mapping.
+
+| Key             | Required | Holds                                                                           |
+| --------------- | -------- | ------------------------------------------------------------------------------- |
+| `corpus-schema` | yes      | The spec version. `0` for v0. A tool must refuse a version it does not support. |
+| `id`            | no       | A stable handle for the corpus, such as `reading-list` or a UUID.               |
+| `formats`       | no       | The record formats the corpus allows. The default is `[md]`.                    |
+| `level`         | no       | `1` or `2`. Any other value is an error.                                        |
+| `dialect`       | no       | Reserved for a later version. Not checked yet.                                  |
+| `profiles`      | no       | Reserved for a later version. Not checked yet.                                  |
+
+- `id` lets an app find its corpus after a user moves or renames the folder. The app scans for root
+  files and picks the one with its id. Links never use `id`. Two corpora with the same `id` get a
+  warning when they are checked together.
+- The corpus's name is its folder name. Renaming the folder renames the corpus, as renaming a
+  package does.
+- `dialect` and `profiles` get a warning that says they are not checked yet. Any other key gets a
+  warning that it is not a v0 key. Neither is an error, because later versions add keys.
+
+### Formats
+
+`formats` lists the record formats the corpus allows:
+
+| Format | Extension | The record's data                                                   |
+| ------ | --------- | ------------------------------------------------------------------- |
+| `md`   | `.md`     | The YAML frontmatter, between `---` lines. A Markdown body follows. |
+| `yaml` | `.yaml`   | The whole file, one YAML mapping.                                   |
+| `json` | `.json`   | The whole file, one JSON object.                                    |
+
+- `[md]`, the default, keeps every record a note you can browse in Obsidian.
+- `[md, yaml, json]` makes a hybrid corpus. Data-only records can sit beside notes, even in one
+  type.
+- A record in a format the corpus does not list is an error.
+- A `.yml` file in a type folder is an error. The extension is `.yaml`.
+- Extensions are lower case. `X.MD` in a type folder is an error.
+- `formats` covers records only. The root file and schema files can use any of the three forms.
+
+### What a corpus holds
+
+A corpus holds every file under its folder, except:
+
+- any path with a part that starts with `.`, such as `.git/`, `.obsidian/` or `.DS_Store`;
+- any path with a part named `node_modules`;
+- symbolic links. A tool does not follow them, so a link to one does not resolve. A symbolic link
+  inside a type folder gets a warning, since a record there would not be checked;
+- a folder with its own root file. That folder is a separate corpus, and the outer corpus stops at
+  it.
+
+A corpus must not sit inside a type folder.
+
+### Types and schemas
+
+- A type is a folder that holds a schema file named after the folder:
+  `harnesses/harnesses.schema.md`, `.yaml` or `.json`. The name matches exactly, case included. A
+  type folder holds at most one schema file.
+- The type's name is its folder name. Type names are unique within a corpus. A type folder can sit
+  at any depth, but not inside another type folder.
+- A type folder with the same name as another type, or inside another type folder, is an error,
+  and that folder is not a type. Its schema file is still checked for links. Its records count as
+  the outer type's records when it sits inside another type folder, and as narrative otherwise.
+- A schema file whose name does not match exactly, such as `harnesses/Harnesses.schema.md`, is not
+  a schema file. The folder is then not a type, and its files are narrative. No error is reported.
+- A second schema file in one type folder is an error. The type keeps the first one.
+- The schema is a JSON Schema, draft 2020-12, for a record's data. In a `.md` schema file the
+  frontmatter is the schema and the body documents the type. In `.yaml` and `.json` the whole file
+  is the schema.
+- Renaming a type folder means renaming its schema file too.
+
+The schema sits inside its folder, so the folder carries its own rules when it moves. It is named
+after the folder, so search and Obsidian's quick switcher find it by the type's name.
+
+### Each schema stands alone
+
+Each type's schema is read on its own. Two types may give their schemas the same `$id`, and a
+`$ref` in one type's schema does not reach another type's schema. A type folder that you copy into
+another corpus arrives with all of its rules. To share types between corpora today, copy the type
+folders (see the [FAQ](#how-do-i-share-types-between-corpora-today)).
+
+The spec adds two keywords to JSON Schema, `x-ref` and `x-id-pattern`, and a validator must accept
+both. The reference validator reports any other unknown keyword in a schema as an error, so a
+misspelled keyword is caught.
+
+### Records
+
+- Every `.md`, `.yaml` and `.json` file under a type folder, at any depth, is a record of that
+  type. The exceptions are the type's schema file and the files a record folder owns. Other files
+  in a type folder, such as images, are narrative.
+- A record's type comes from its folder. A record has no type field.
+- A record's data must be a mapping. A `.md` record with no frontmatter has empty data, and its body
+  may be empty.
+- A record's data must pass its type's schema.
+
+So records can be grouped in plain folders inside a type folder, such as
+`harnesses/google/Gemini CLI.md`. The folder is only a place to keep files. The record is still a
+`harnesses` record with the id `Gemini CLI`.
+
+### Record folders
+
+A record folder lets a record keep its own files beside it, such as the script, the query and the
+CSV results of a method the record describes.
+
+- A folder inside a type folder that holds a record file named after the folder (`<folder>.md`,
+  `<folder>.yaml` or `<folder>.json`) is a record folder. The name matches exactly, case included.
+  The record file must sit directly in the folder.
+- The record's id is the folder name. `methods/Survey/Survey.md` has the id `Survey`.
+- This holds whatever `formats` says. A record file in a format the corpus does not allow still
+  makes a record folder, and that file is a format error.
+- Every other file under a record folder, at any depth, belongs to the record. It is not a record,
+  so its data and id are not checked, and its links are not checked either. The validator ignores it,
+  as it ignores narrative.
+- Links from the record file to its own files resolve as any relative link does:
+  `[the counts](results/counts.csv)`. Links into another record's folder resolve too. An `x-ref`
+  points at the record file, not at the folder.
+- A record folder must not hold another record folder, at any depth. That is an error, and the inner
+  folder's files belong to the outer record. A record folder cannot hold a type folder either, since
+  no type folder sits inside another.
+- Ids are compared across both shapes: `methods/Survey/Survey.md` and `methods/survey.md` collide.
+- A folder in a type folder with no record file named after it is a plain folder. Each `.md`,
+  `.yaml` and `.json` file in it is a record of the type.
+
+osdlc calls this shape a bundle: a note's folder holding `<name>/<name>.md` and the files beside it.
+Moving the folder moves the record and its files together, and their relative links keep working.
+
+### Ids
+
+A record's id is its file name without the extension. `harnesses/Claude Code.md` has the id
+`Claude Code`. An id is a name people read, so spaces and capitals are fine.
+
+- An id must not contain `/ \ : * ? " < > |`, which some file systems refuse, or `[ ] # ^`, which
+  break links. It must not contain control characters.
+- An id must not start or end with a space or a dot.
+- Ids are unique within a type, across every folder and every extension. They are compared after
+  Unicode NFC normalization and case folding, so `Kiro.md`, `kiro.json` and `aws/Kiro.md` collide.
+- A type can narrow its ids with `x-id-pattern`, a regular expression at the root of its schema
+  (ECMA-262 syntax, Unicode mode). For example, `x-id-pattern: "^[a-z0-9-]+$"` allows only slugs.
+- Type names follow the same rules.
+
+### Narrative
+
+Every file that is not the root file, a schema file or a record is narrative: READMEs, guides,
+essays, daily notes, attachments. Narrative can sit anywhere in a corpus, and the validator ignores
+it, links included.
+
+### Links
+
+The canonical link is a relative Markdown link: `[Claude Code](../harnesses/Claude%20Code.md)`.
+
+- The path is relative to the file that holds the link. A space is written `%20`, or the body form
+  wraps the path in `<…>`.
+- In frontmatter a link is a quoted string that holds the whole link:
+  `successor: "[Antigravity](Antigravity.md)"`. A bare path such as `"Antigravity.md"` is not a
+  link.
+- The validator checks the links in records, the root file and schema files: in their bodies and in
+  every string of their data. It skips links with a URL scheme, such as `https:` or `mailto:`, and
+  links to a heading in the same file, such as `#usage`.
+- A relative path must lead, after percent-decoding, to a file or folder that exists, with the same
+  case. The validator never falls back to matching by name, as Obsidian does. A broken path is
+  always an error. The part after `#` is not checked.
+- A path that starts with `/` is an error. Links in a corpus are relative.
+- A link that leaves the corpus (above its root, into a nested corpus, or into an excluded path such
+  as `.git/`) is a link between corpora. v0 does not define those yet. It gets a warning, not an
+  error, except in an `x-ref` field.
+
+### Wikilinks
+
+Wikilinks are accepted but not canonical: `[[target]]`, `[[target|text]]`, `[[target#heading]]` and
+`![[target]]`.
+
+- A wikilink resolves by path suffix within the corpus, after NFC normalization and case folding.
+  `[[Claude Code]]`, `[[harnesses/Claude Code]]` and `[[harnesses/Claude Code.md]]` all match
+  `harnesses/Claude Code.md`. The extension of a record can be left out.
+- No match is an error. More than one match is an error.
+- A wikilink that matches nothing in the corpus but matches a file in a nested corpus leaves the
+  corpus, and gets the same warning as a Markdown link that leaves it.
+- A target that starts with `/` is an error.
+- Every wikilink that resolves gets a warning.
+- `corpus-schema validate --fix` rewrites each wikilink that resolves to one file as a relative
+  Markdown link, and changes nothing else. `See [[Dune]].` becomes `See [Dune](Dune.md).`
+- In frontmatter, a wikilink must be a quoted string: `series: "[[Dune]]"`. Unquoted,
+  `series: [[Dune]]` is a YAML list inside a list, not a link. `--fix` leaves such a file alone and
+  warns, because the rewrite would change its data.
+
+### References: `x-ref`
+
+`x-ref` is a schema keyword that makes a field a typed link, like a foreign key in a database. Its
+value names a type in the same corpus:
+
+```yaml
+successor: { type: string, x-ref: harnesses }
+```
+
+- On a top-level property, the value must be one link, and it must resolve to a record of the named
+  type.
+- On the `items` of a top-level array property, each item must be such a link.
+- The named type must exist in the corpus.
+- An `x-ref` link that leaves the corpus is an error, not a warning.
+- v0 defines `x-ref` only in those two places. Anywhere else, such as inside a nested object, it is
+  an error.
+
+### Errors and warnings
+
+An error makes the corpus invalid, and `validate` exits with code 1. A warning is printed, and the
+corpus is still valid. The warnings in v0 are:
+
+| Warning                                       | Why it is not an error                                       |
+| --------------------------------------------- | ------------------------------------------------------------ |
+| The root file uses `dialect` or `profiles`    | Reserved for later versions. v0 says it does not check them. |
+| The root file has a key v0 does not know      | Later versions add keys.                                     |
+| Two corpora checked together share an `id`    | Each corpus is still valid on its own.                       |
+| A symbolic link inside a type folder          | It is not followed, so a record there is not checked.        |
+| A link, or a wikilink, that leaves the corpus | v0 does not define links between corpora yet.                |
+| A wikilink that resolves                      | It works, but it is not the canonical form.                  |
+| `--fix` could not rewrite a file's wikilinks  | The file is left as it was.                                  |
+
+Everything else the validator reports is an error. That includes a broken link, a wikilink with no
+match or more than one, a record that fails its schema, data that does not parse, a bad id, two ids
+that collide, a record in a format the corpus does not allow, a nested record folder, an unknown
+schema keyword, and an `x-ref` that leaves the corpus or points at the wrong type.
+
+### The validate command
+
+v0 defines one verb.
+
+```sh
+corpus-schema validate [--fix] <folder>...
+```
+
+- It checks every corpus at or below each folder.
+- It prints one line per problem, as `<file>: <field>: <message>`, with the file relative to the
+  corpus root. A problem that is not in one field puts a word in parentheses in the field's place,
+  such as `(data)` for data that does not parse or `(folder)` for a folder problem.
+- Warnings start with `warning: `. A corpus that passes prints `ok: <name>: <counts>`.
+- The `<file>: <field>` part of each line is fixed by the spec. The message text after it is not,
+  and may change in any release.
+- `--fix` first rewrites the wikilinks it can resolve, then checks the result.
+
+| Exit code | Meaning                                                                      |
+| --------- | ---------------------------------------------------------------------------- |
+| `0`       | Every corpus is valid. Warnings may have been printed.                       |
+| `1`       | A corpus has an error, a folder holds no corpus, or a folder cannot be read. |
+| `2`       | Bad usage: an unknown verb or option, or no folder.                          |
+
+### Writing records
+
+A tool that writes records changes only the keys it owns. It keeps key order, unknown keys,
+comments and the body. In v0 a write replaces the whole file, and the last writer wins.
+
+## Three settings: level, dialect and profiles
+
+A corpus says three separate things about itself in its root file. In v0 only the level works. The
+other two keys are reserved, and their design is a proposal.
+
+| Setting  | It says                                    | In v0                                                      |
+| -------- | ------------------------------------------ | ---------------------------------------------------------- |
+| Level    | How much the corpus declares, from 0 to 2. | Built. `level: 1` or `level: 2`.                           |
+| Dialect  | Which syntax it uses beyond the baseline.  | Reserved key `dialect`. Warns that it is not checked yet.  |
+| Profiles | Which shared sets of types it uses.        | Reserved key `profiles`. Warns that it is not checked yet. |
+
+The settings are separate on purpose. A profile is not a higher level, and a dialect is not a
+profile. A level-2 corpus can use the claims profile, another profile and its own types all at
+once.
+
+Proposed. A root file that uses all three could look like this. The proposal names profiles under
+`extends:`, which would replace the reserved `profiles` key (see
+[Sharing across corpora](#sharing-across-corpora-proposed)).
+
+```yaml
+corpus-schema: 0
+level: 2
+dialect: obsidian
+extends:
+  claims: "npm:@osdlc/corpus-profile-claims@0.1"
+```
+
+Do not write this yet. In v0, `dialect` gets a warning that it is not checked, `extends` gets a
+warning that it is not a v0 key, and nothing is read from either.
+
+### Dialects (proposed)
+
+The baseline is what every tool supports. Today it has relative Markdown links, and it accepts
+wikilinks with a warning, as described above.
+
+A dialect would be a named flavor of note syntax on top of the baseline, for things that vary from
+tool to tool. The first one would be `obsidian`. A corpus that says `dialect: obsidian` would make
+wikilinks normal, with no warning. They could reach beyond the corpus into the rest of the vault,
+and the corpus could use embeds.
+
+There would be no promise that every tool handles every dialect. A tool that knows the dialect
+checks it. A tool that does not checks only the baseline, and says that it did. This is how
+CommonMark and GFM work: CommonMark is the baseline and GFM is an extension. Our own markdown-tags
+package already has dialects in this sense.
+
+### Profiles (proposed)
+
+A profile would be a shared, versioned set of types that many corpora can follow. The first one is
+the claims profile, for statements backed by evidence. Its design is in
+[the plan](ecosystem-plan.md).
+
+- A corpus would name its profiles in the root file, under a short prefix, with a version. The
+  prefix is always required, so adding a second profile later breaks nothing. An unknown prefix
+  would be an error.
+- A type would say which profile type it builds on with `x-extends`, for example
+  `x-extends: claims/StudyResult`.
+- A record would pass its own type's schema and the schema of every type above it.
+- A profile could extend another profile. It would add rules or tighten them, but never loosen
+  them. So a record that is valid under the child profile is also valid under the parent. VA-Spec
+  and FHIR profiles work this way.
+- A corpus could give a profile's types its own folder names, mapped to them with `x-extends`. Field
+  names would stay the profile's, so tools and exports work everywhere.
+
+Do not use `x-extends` yet. In v0 it is an unknown schema keyword, so the validator reports the
+schema as an error.
+
+Earlier drafts of the plan and the architecture wrote these as a `profiles:` prefix map and an
+`x-class` keyword. The newer proposal replaces both with `extends:` and `x-extends`. Some text in
+those documents may still use the older names while they are updated.
+
+## Sharing across corpora (proposed)
+
+Proposed, not built. v0 does not define links between corpora at all.
+
+Some things belong to a whole organization, such as its engineering principles. Teams and projects
+need them in their own corpora, next to their local records. Sometimes a project needs a stricter
+form of a principle, and sometimes one does not apply. The proposal lets an org corpus reach a team
+corpus, and a team corpus reach a project corpus, while the project can still see what it changed.
+
+### Corpus inheritance
+
+A root file would name parent corpora under `extends:`. Each entry maps a prefix to a parent,
+pinned to a commit or a version. A parent can also be a relative path.
+
+```yaml
+corpus-schema: 0
+level: 2
+extends:
+  org: "github:acme/org-corpus@4f2a9c1"
+  claims: "npm:@osdlc/corpus-profile-claims@0.1"
+```
+
+- The project would see the parent's types and records, read-only, plus its own records.
+- Inheritance is transitive. If the org corpus extends another corpus, the project sees that one
+  too.
+- A parent update arrives only when the project changes its pin.
+
+### A profile is a corpus with only types
+
+Under this proposal a profile is a parent corpus that holds types and no records. So `extends:`
+covers both, and there is one mechanism. `extends:` would replace the reserved `profiles` key.
+
+### Type inheritance
+
+A type would build on another type with `x-extends`. The value is a local type, or `<prefix>/<Type>`
+for a type in a parent corpus.
+
+- A record must pass its own schema and every ancestor's.
+- A child type can add rules or tighten them, never loosen them.
+- An `x-ref` to a parent type accepts records of its child types.
+- A type has one parent at first.
+
+### Explicit blending
+
+A local record would relate to an inherited one on purpose, in one of three ways:
+
+| How       | It means                                                        |
+| --------- | --------------------------------------------------------------- |
+| `x-ref`   | The local record cites the inherited one.                       |
+| `refines` | The local record is a narrower, local version of it.            |
+| `waives`  | The inherited record does not apply here. A reason is required. |
+
+A local record with the same type and id as an inherited one is an error unless it says `refines`.
+Nothing is shadowed silently.
+
+### `corpus-schema sync`
+
+Inherited records live in another repository or package, not in the project's folder. So Obsidian
+and GitHub have no file to follow a link to. `corpus-schema sync` would write a read-only copy of
+the inherited records into a generated folder, such as `_inherited/org/`, so those links resolve.
+The validator would check that the copy matches the pin.
+
+### Example: org principles
+
+The org keeps a principles corpus, with a `principles` type. A project extends it:
+
+```yaml
+# project/corpus-schema.yaml
+corpus-schema: 0
+level: 2
+extends:
+  org: "github:acme/org-principles@4f2a9c1"
+```
+
+The project refines one principle that needs a stricter local form, and waives one that does not
+apply, with a reason. A reviewer can then read the project's corpus and see which principles hold,
+which were narrowed, and which were set aside and why. When the org changes a principle, the
+project sees the change only after it moves its pin.
+
+The exact shape of a `refines` or `waives` record is not designed yet. The plan has the tasks in
+order: inheritance first, then refine and waive, then `sync`, then a real org principles corpus.
+
+## Why we decided what we did
+
+One short entry per decision. Each gives the other options we looked at and the reason. Where the
+record of a decision gives no reason, the entry says what the choice allows. Decisions marked
+"proposed" are not settled.
+
+### The name corpus-schema
+
+Others considered: markdown-db (the first name), corpus-spec, corpora-spec, markdown-corpus,
+markdown-records.
+
+The name says what the spec adds on top of a corpus: its types and their schemas. markdown-db sat
+close to MarkdownDB (`mddb`), the npm package `markdown-db` and `@synstack/markdown-db`, and it
+suggested a database, which this is not. corpus-spec and corpora-spec named the document more than
+the tool, and the plural was easy to mistype. markdown-corpus was already the name of our Rust
+crate that models any corpus. markdown-records fit only the levels that have records.
+`corpus-schema` was free on both npm and crates.io, so a later Rust implementation can use the
+same name. The decision is
+[D-01](https://github.com/osdlc/osdlc/blob/main/packages/ts/corpus-schema/docs/planning/decisions/D-01-name.md).
+
+### "Corpus" as the word for a folder of notes
+
+Others considered: vault, which some of our package names still use.
+
+osdlc already used "corpus" for any folder of Markdown notes and the files they link to. Keeping
+it avoids a second word for the same thing, and having two words for one idea is one of the
+problems the plan sets out to fix. Vault names in our packages move to corpus over time. Inside the
+spec, "corpus" alone means a corpus that holds a root file. Everywhere else it keeps the general
+meaning.
+
+### JSON Schema 2020-12, not a type language of our own
+
+Others considered: Zod schemas or Rust types in code, and dev's model-schema packs, which are YAML
+that compiles to JSON Schema.
+
+The folder must be pure data, with every rule written in the corpus or in the spec, never only in
+code. JSON Schema is a written, language-neutral format, so a validator in any language checks a
+corpus the same way. Editors and other JSON Schema tools can read the `.json` and `.yaml` schema
+files. Whether profiles are written as packs or as plain JSON Schema files is still an open
+question in the plan (D4). The records' schemas are JSON Schema either way.
+
+### Relative links, not wikilinks, in the baseline
+
+Others considered: two-segment wikilinks such as `[[harnesses/X]]`, or allowing both with neither
+canonical.
+
+We tested this in Obsidian 1.12.7. When we moved a corpus that used wikilinks, Obsidian rewrote the
+corpus's own links to vault paths, such as `[[Archive/2026/harness-reference/harnesses/Claude Code]]`.
+The corpus no longer worked anywhere else. With relative Markdown links, the corpus's files did not
+change at all. GitHub follows relative links, and so do Docusaurus, VitePress and MkDocs. None of
+them follows wikilinks without a plugin. This is what lets a corpus be dropped into a larger vault
+and keep working. The cost is `%20` for spaces and quoted strings for links in frontmatter.
+
+Two smaller choices go with it. The validator checks paths literally, with no fallback to matching
+by name, because that catches the broken path that Obsidian hides and a published site would show
+as dead. And `--fix` rewrites wikilinks, so people can paste wikilinks in Obsidian and the corpus
+still ends up with one form.
+
+### Levels
+
+Others considered: requiring a schema for every type from the start.
+
+A type folder without a schema is still useful. Its ids, formats and links are checked, and adding
+a schema later turns on field checks. Level 0 means any notes folder already conforms, so a corpus
+can start where it is. `level: 2` lets a corpus that wants the strict form say so and be held to it.
+
+### Profiles separate from levels, not a level 3
+
+Others considered: making shared types a level above 2.
+
+A level says how much a corpus declares. A profile says whose types it uses. Those are different
+questions, so they are different settings. A level-2 corpus can use the claims profile, another
+profile and its own types at once, which a single level number could not say.
+
+### "Profile", not "pack"
+
+Others considered: pack, the word dev's model-schema uses.
+
+Profile is the usual word in data standards: FHIR profiles, Dublin Core application profiles, the
+W3C Profiles Vocabulary, the `profile` link relation in RFC 6906, and GA4GH VA-Spec profiles. In
+dev, "pack" already means plugin bundles. Whether model-schema switches its word is an open question
+in [sksizer/dev#4069](https://github.com/sksizer/dev/pull/4069).
+
+### Record folders in v0
+
+Others considered: waiting until the first experiment needed them.
+
+The evidence work needs them now. A test run keeps its script, its query and its CSV results
+together, and without record folders a `result.json` beside a Markdown record is an error in a
+Markdown-only corpus. So record folders are part of level 1 and ship in the first release.
+
+The shape follows rules we already had. A type is a folder holding `<folder>.schema.*`, and a record
+folder is a folder holding `<folder>.*`. It is also the bundle shape osdlc already uses, and
+Obsidian's folder-note pattern. A folder with no record file stays a plain folder, as it was before,
+because a warning for "a folder with files but no record" would also fire on ordinary folders of
+attachments.
+
+### A record file makes a record folder whatever `formats` says
+
+The records of the decision give no separate reason. What the rule allows: whether a folder is a
+record folder depends only on its file names, not on the root file's settings. A record file in a
+format the corpus does not allow gives one error, on that file. Its sibling files stay the record's
+own and are not read as records, so one mistake does not turn into a list of schema errors.
+
+### Each schema stands alone
+
+The records of the decision give no separate reason. What the rule allows: a type folder carries
+all of its own rules, so you can copy it into another corpus and it arrives complete. Two types can
+share a `$id` without clashing. Sharing types on purpose is the job of profiles, which are
+proposed.
+
+### No database or query layer in the spec
+
+Others considered: a loader and a JSON build in the spec, and the name markdown-db.
+
+The spec is a format and a validator. Reading a corpus as a database is its own layer, which will
+read the corpus model and corpus-schema. We keep the word "db" for that layer, and what it covers
+is still open in the plan (D5). This is also why the spec is no longer called markdown-db: the name
+suggested a database.
+
+### The VA-Spec claims model, and the name "claims"
+
+Others considered: assurance-case standards (ISO/IEC/IEEE 15026-2, OMG SACM and GSN, which name the
+parts claim, argument and evidence), OASIS OSLC Quality Management for tests and results, and
+keeping our own type names.
+
+VA-Spec is GA4GH's Variant Annotation spec. It is a JSON Schema model for claims backed by evidence:
+Statement, Evidence Line, Study Result, Method, Document and Contribution. None of the other
+standards has a JSON Schema for the whole chain. Their words feed later name overrides and an
+acceptance-testing profile. We take VA-Spec's model, type names and field names, with one change:
+study results have no `focus` field. What a study result is about comes from the statements that
+cite it, because one observation can support statements about several things.
+
+The profile is called claims. "Claims" is the plain word for statements backed by evidence. It does
+not clash with a type name, as "evidence" would. "va-spec" would read as genomics to anyone outside
+that field.
+
+### The JSON and SQLite build comes later
+
+Others considered: building a JSON or SQLite copy of the records as part of the first release.
+
+The evidence work does not need it to start. It needs the format, record folders and a published
+validator. A database built from the records belongs to the query layer, and the query layer builds
+on a shared corpus model that does not exist in TypeScript yet. So the build waits for both.
+
+### The version line, 0.x
+
+Others considered: a 1.0 release.
+
+The version line is
+[D-02](https://github.com/osdlc/osdlc/blob/main/packages/ts/corpus-schema/docs/planning/decisions/D-02-version-line-and-stability.md),
+which is still proposed and waits for the owner's sign-off. The package and the spec are new, so a
+1.0 promise would come too early. The first version on npm is `0.2.0`, and every export is stable within
+0.x. A minor release may change any export, and the changelog marks the change as breaking. A patch
+release does not. The `<file>: <field>` part of a problem line is part of the contract, as the spec
+fixes it. The message text is not.
+
+### Inheritance is explicit: no silent shadowing (proposed)
+
+Others considered: letting a local record with the same id simply replace the inherited one.
+
+A reader of a project corpus should be able to tell what holds, what was narrowed and what was set
+aside, and why. That only works if the project says so. With silent shadowing, a local record could
+hide an org record and nobody would see it. So a local record cites, refines or waives an inherited
+one, and a same-id record without `refines` is an error.
+
+### A profile is a types-only corpus (proposed)
+
+Others considered: profiles as their own thing, under their own `profiles:` key, beside a separate
+mechanism for inherited corpora.
+
+A profile is a parent corpus that happens to hold no records. Treating it that way gives one
+mechanism, `extends:`, for both, with one set of rules for pins, prefixes and type inheritance.
+
+### Parents are pinned (proposed)
+
+Others considered: following a parent's latest version.
+
+The proposal does not record a longer reason. What a pin allows: a project's validation result does
+not change when someone edits the org corpus. An update arrives as a pin change that a person makes
+and can review. And `sync` has a fixed version to compare its copy against.
+
+### Smaller choices from the first design review
+
+- The root file has a fixed name, so a tool finds every corpus in a vault by name alone, without
+  reading files, as `.git` marks a repository. The `.md` form doubles as the corpus's front page in
+  Obsidian. We considered `index.md` with a key in its frontmatter, but then a tool must read every
+  `index.md` to find corpora.
+- A corpus's name is its folder name, not a `name` key, because a path to the corpus already names
+  it and Obsidian resolves such paths by suffix. The optional `id` covers apps that must find a
+  corpus after it moves.
+- Ids are display names such as `Claude Code`, not slugs, so files read well in Finder, on GitHub
+  and in Obsidian. A type that wants slugs says so with `x-id-pattern`.
+- corpus-schema is its own spec, and it borrows several rules from
+  [mdbase](https://github.com/mdbase-dev/mdbase-spec) with credit. It does not adopt mdbase whole,
+  because mdbase keeps types in `_types/` notes and resolves links from each collection's root.
+
+## What v0 does not do yet
+
+SPEC.md's Deferred section lists what v0 leaves out. Here it is with what the plan says about each
+item. The task numbers are in the [plan's work list](ecosystem-plan.md#all-the-work).
+
+| Not in v0                                                        | Where it stands                                                                     |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Links between corpora                                            | Proposed: corpus inheritance with `extends:` and `sync`.                            |
+| Dialects                                                         | Proposed: the baseline plus named dialects, `obsidian` first.                       |
+| Profiles                                                         | Proposed: types-only corpora named under `extends:`, with `x-extends`.              |
+| A schema rule that warns instead of failing (`x-warn`)           | A task in the plan, after the first release.                                        |
+| `x-ref` inside nested objects                                    | Needed for evidence lines inside a statement. Not yet a task in the plan.           |
+| Build targets: JSON, SQLite, Astro, Nuxt, Obsidian Bases views   | The JSON and SQLite build is a task after the query layer. The others have no task. |
+| A query layer                                                    | A task in the plan, on top of the shared corpus model.                              |
+| Checking a level-0 folder                                        | Not in the plan. The validator finds corpora by their root file.                    |
+| Schema versions and migrations                                   | Deferred. Not in the plan.                                                          |
+| Concurrent edits beyond last-writer-wins                         | Deferred. Not in the plan.                                                          |
+| Obsidian's vault-wide property types, which clash across corpora | Deferred. Not in the plan.                                                          |
+| Reserved names, such as Windows device names                     | Deferred. Not in the plan.                                                          |
+| Stable error codes                                               | Deferred. Not in the plan.                                                          |
+| `move` and `rename` verbs that rewrite every link to a record    | Deferred. Not in the plan.                                                          |
+| A Rust validator                                                 | The architecture says it comes later and runs the same cases. No task yet.          |
+
+## The plan for the spec
+
+The full plan is in [ecosystem-plan.md](ecosystem-plan.md), under review in
+[osdlc/markdown#4](https://github.com/osdlc/markdown/pull/4). This is the part that concerns the
+spec. The plan numbers each task, and the numbers still change while the plan is edited, so this
+section describes tasks by what they do.
+
+Where it lives. The spec, its conformance cases and the TypeScript package are in osdlc/osdlc today,
+in `packages/conformance/corpus-schema/` and `packages/ts/corpus-schema/`. The rename from
+markdown-db and the levels came in [osdlc/osdlc#725](https://github.com/osdlc/osdlc/pull/725), and
+record folders in [osdlc/osdlc#729](https://github.com/osdlc/osdlc/pull/729). The release pull
+request, [osdlc/osdlc#726](https://github.com/osdlc/osdlc/pull/726), cut 0.1.0, but it was never
+published. Record folders landed as a second minor bump, so the first version on npm is 0.2.0, from
+[osdlc/osdlc#733](https://github.com/osdlc/osdlc/pull/733). Once this repo, osdlc/markdown, has its own release setup, the spec,
+its cases and the package move here. The npm name stays the same.
+
+The evidence work comes first:
+
+- An example claims corpus in this repo, at `profiles/claims/example/`. It is a valid level-2
+  corpus with the VA-Spec types `documents`, `study-results`, `methods` and `statements`, and a few
+  records that show the whole chain. A README maps each type to VA-Spec. CI checks it with the
+  published validator, and people copy it with
+  `npx degit osdlc/markdown/profiles/claims/example <dir>`. It is in progress in a separate pull
+  request.
+- harness-reference copies those types, switches to the npm package and renames its root file to
+  `corpus-schema.md`. Its capture command then writes study results.
+- The evidence project keeps its records in the same format, checked by the validator.
+
+Then the spec grows:
+
+- `x-warn`: a schema can mark a rule as a warning instead of an error.
+- The Obsidian dialect.
+- Profiles: the validator learns `extends:` and `x-extends`. Then the claims types ship as a
+  versioned npm package, `@osdlc/corpus-profile-claims`, and corpora name it instead of holding
+  copies. Name overrides and an acceptance-testing profile build on it.
+- Corpus inheritance, then `refines` and `waives`, then `corpus-schema sync`, then a real org
+  principles corpus as the first case.
+
+And the code under it changes:
+
+- TypeScript markdown-link learns to resolve links the same way the Rust crate does. One shared
+  TypeScript corpus model follows, called markdown-corpus like its Rust twin.
+- The validator reads that corpus model instead of walking the folder itself.
+- One query layer is built on the corpus model, and the JSON and SQLite build comes after it.
+- A Rust validator comes later. It will run the same conformance cases, which name no code for that
+  reason.
+
+## FAQ
+
+### Does my Obsidian vault work?
+
+Your vault is already a corpus at level 0, so in that sense it conforms with no changes. The
+validator does not check level 0, though. To check part of a vault, put a root file in a folder,
+such as `Data/reading-list/corpus-schema.md`, and add type folders under it. The spec suggests one
+top-level `Data/` folder with one corpus per app or dataset.
+
+Obsidian keeps working on the files. `.obsidian/` is skipped, because paths that start with a dot
+are not part of a corpus. Wikilinks are accepted with a warning, and `validate --fix` rewrites them.
+To make Obsidian write relative links in the first place, turn off "Use [[Wikilinks]]" and set "New
+link format" to "Relative path to file" in its Files and links settings. In our tests Obsidian
+updated body links when a record moved, but once missed a link in frontmatter, so run `validate`
+after you move records. If two corpora in one vault give the same property different types,
+Obsidian's vault-wide property types clash. v0 does not handle that yet.
+
+### Is this a database?
+
+No. It is a format and a validator. It checks a folder the way a database checks its rows, but it
+has no queries, no index and no handling of concurrent writers. In v0 the last writer wins. Do not
+use it as the database for an app with many writers. A query layer that reads corpora is planned as
+a separate piece.
+
+### How is it different from Astro content collections, MarkdownDB, Contentlayer or Obsidian Bases?
+
+- [mdbase](https://github.com/mdbase-dev/mdbase-spec) is the closest. It also types Markdown records
+  and validates them, and we borrow several of its rules. It declares types in type notes under
+  `_types/` and resolves links from each collection's root. corpus-schema puts each type's schema in
+  the type's own folder and uses relative links, which GitHub and site generators follow.
+- MarkdownDB (`mddb`) parses a folder of Markdown into a SQL database for queries. It does not check
+  records against schema files in the folder.
+- `@synstack/markdown-db` uses Markdown files with frontmatter as a database from TypeScript code. It
+  has no written spec for the folder.
+- Astro content collections define each collection's schema in the site's code, with Zod. In our
+  tests with Astro 7.4.5, it enforced our schema only after we converted it to Zod, and relative
+  links needed some glue code. corpus-schema keeps the schema in the folder as JSON Schema, so it
+  does not depend on one site generator. An Astro build target is deferred.
+- Contentlayer also defines document types in code, in a site's config file. We have not tested it.
+  The difference is the same as with Astro: there the rules live in the site's code, here they live
+  in the folder.
+- Obsidian Bases shows notes as tables and views inside Obsidian, filtered by their properties. It
+  is a way to look at notes, not a check on them. The two fit together: a Bases view of a corpus is
+  one of the deferred build targets.
+
+In our own packages, the Rust crate `markdown-corpus` models any corpus (its files, links and
+frontmatter) but does not apply the corpus-schema rules, and `@osdlc/markdown-contract` checks the
+structure of one document.
+
+### Can I use YAML or JSON instead of Markdown?
+
+Yes. List the formats in the root file, such as `formats: [md, yaml, json]`. The default is `[md]`.
+YAML and JSON records hold data only, with no body. They can sit beside Markdown records, even in
+one type, and ids are unique across all three. Use `.yaml`, not `.yml`. Schema files and the root
+file can be `.md`, `.yaml` or `.json` whatever `formats` says.
+
+### Why can't I nest record folders?
+
+The spec forbids it, and the inner folder's files then belong to the outer record. The record of
+the decision gives no separate reason. What the rule gives you: every file under a record folder
+belongs to exactly one record, the outer one. If a record has parts that are records in their own
+right, make them records of another type and link to them with `x-ref`. A plain folder of records,
+one with no record file named after it, can be nested as deep as you like.
+
+### What happens to wikilinks?
+
+They are accepted. A wikilink resolves by path suffix inside the corpus, and each one that resolves
+gets a warning. A wikilink with no match, or more than one, is an error. `validate --fix` rewrites
+each one that resolves as a relative Markdown link. In frontmatter, quote it: `series: "[[Dune]]"`.
+The proposed `obsidian` dialect would make wikilinks normal, with no warning.
+
+### How do I share types between corpora today?
+
+Copy the type folders. A type folder holds its own schema, so it arrives complete. A `$ref` from one
+type's schema to another type's schema does not resolve, so each copy must stand alone. Copies can
+drift apart, which is fine for one or two corpora. For the claims types, the example corpus in this
+repo is meant to be copied with `npx degit`. Profiles, which are proposed, would replace the copies.
+
+### Is there a Rust version?
+
+Not yet. The architecture says a Rust validator comes later and runs the same conformance cases.
+Those cases name no code, so any language can run them. The name `corpus-schema` is free on
+crates.io for it. The Rust crate `markdown-corpus` reads any corpus, but it does not apply these
+rules.
+
+### How stable is v0, and what does `corpus-schema: 0` promise?
+
+`corpus-schema: 0` says the corpus follows version 0 of the spec. A tool must refuse a corpus whose
+version it does not support, so a tool never checks your corpus by rules it does not know.
+
+Version 0 is young. We rewrite it in place while it is at version 0, so a rule can still change.
+The spec fixes the `<file>: <field>` part of each problem line. The message text is not fixed, and
+error codes are not defined yet. For the package, D-02 proposes that a change to what is reported
+comes in a minor release, marked as breaking in the changelog. D-02 still waits for the owner's
+sign-off. New root keys get a warning from a validator that does not
+know them, not an error, so adding a key does not break older validators.
+
+### How do I check a corpus in CI?
+
+Run the validator on the folder and let the exit code fail the job. It needs Node.js 22 or later.
+
+```sh
+npx @osdlc/corpus-schema validate corpora/
+```
+
+In GitHub Actions:
+
+```yaml
+jobs:
+  corpus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npx --yes @osdlc/corpus-schema@0.2 validate corpora/
+```
+
+Version 0.2.0 is on npm. For the current usage, check the
+[package README](https://github.com/osdlc/osdlc/tree/main/packages/ts/corpus-schema#readme). A
+corpus's schemas run on its data, and a badly written `pattern` or `x-id-pattern` can take a very
+long time on some input. So validate a corpus you do not trust only with a time limit, such as the
+`timeout-minutes` above. Leave `--fix` out of CI checks: it rewrites files in place.
+
+### How do org principles reach my project?
+
+Today, by copying: the project copies the org's type folders and the records it needs. Under the
+[proposal](#sharing-across-corpora-proposed), the project's root file names the org corpus under
+`extends:`, pinned to a commit or version. The project then sees the org's types and records,
+read-only, next to its own.
+
+### Can I override an org record?
+
+Not silently. Under the proposal, a local record with the same type and id as an inherited one is an
+error, unless it says `refines`. A refining record is a local, narrower version of the org record.
+If an org record does not apply, a local record `waives` it and gives a reason. You can also just
+cite it with `x-ref`.
+
+### Why can't Obsidian see inherited records without sync?
+
+Inherited records would live in another repository or package, pinned to a version. They are not
+files in your folder, so Obsidian and GitHub have nothing to open when you follow a link to one.
+The proposed `corpus-schema sync` writes a read-only copy into a generated folder, such as
+`_inherited/org/`, so the links have real files to point at. The validator would check that the copy
+matches the pin, so it cannot quietly go stale.
+
+## Words used
+
+| Word           | Meaning                                                                                                                           |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| corpus         | A folder of notes and the files they link to. In the spec, a corpus is a folder that holds a root file, with everything under it. |
+| root file      | `corpus-schema.md`, `.yaml` or `.json`. It marks a folder as a corpus and holds its settings.                                     |
+| type           | A folder that holds a schema file named after the folder. The type's name is the folder name.                                     |
+| record         | One `.md`, `.yaml` or `.json` file of a type. Its data is checked against the type's schema.                                      |
+| id             | A record's file name without its extension, such as `Claude Code`. Unique within its type.                                        |
+| record folder  | A folder in a type folder that holds a record file named after the folder. The record owns the other files in it.                 |
+| narrative      | Every other file in a corpus: READMEs, guides, attachments. The validator ignores it.                                             |
+| level          | How much a corpus declares. 0 is any folder of linked notes, 1 adds the root file and types, 2 gives every type a schema.         |
+| dialect        | A named flavor of note syntax on top of the baseline, such as `obsidian`. Reserved in v0.                                         |
+| profile        | A shared, versioned set of types that many corpora can use. Reserved in v0. The proposal makes it a corpus with only types.       |
+| `extends`      | Proposed root-file key that names parent corpora and profiles by prefix, each pinned to a version.                                |
+| `x-ref`        | A schema keyword that makes a field a typed link to a record of a named type, like a foreign key.                                 |
+| `x-id-pattern` | A schema keyword with a regular expression that every id in the type must match.                                                  |
+| `x-extends`    | Proposed schema keyword that makes a type build on another type, local or from a parent corpus.                                   |
