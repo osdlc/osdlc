@@ -17,8 +17,28 @@ import {
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
+// The binary and flags below are asserted against the harness knowledge file in
+// tests/knowledge-facts.test.ts; policy (which mode, which default) stays here.
+
 /** Options for {@link opencodeAdapter}. */
-export interface OpencodeAdapterOptions extends CommandOptions {}
+export interface OpencodeAdapterOptions extends CommandOptions {
+  /**
+   * The installed opencode version. From 2.0.0 `opencode run` has no
+   * `--variant` flag and the effort goes in the model string as
+   * `provider/model#variant`. A bare semver such as `2.2.6` (a leading `v` is
+   * accepted). Without a version, or with one that does not parse, the 1.x
+   * `--variant` flag is used.
+   */
+  version?: string | undefined
+}
+
+const MAJOR = /^v?(\d+)(?:\.|$)/
+
+/** Whether `version` is opencode 2.0.0 or later. */
+function variantInModelString(version: string | undefined): boolean {
+  const major = version === undefined ? undefined : MAJOR.exec(version)?.[1]
+  return major !== undefined && Number(major) >= 2
+}
 
 /**
  * opencode (`opencode run`). Context files attach with `-f`. Permissions go
@@ -33,7 +53,7 @@ export function opencodeAdapter(options: OpencodeAdapterOptions = {}): AgentAdap
     binary,
     command,
     plan(spec) {
-      return planOpencode(command, spec)
+      return planOpencode(command, spec, variantInModelString(options.version))
     },
     parseResult(planned, raw) {
       return parseOpencode(planned, raw)
@@ -51,7 +71,11 @@ const PERMISSION_ENV: Record<Exclude<PermissionMode, 'default'>, Record<string, 
   bypass: { edit: 'allow', bash: 'allow', webfetch: 'allow' },
 }
 
-function planOpencode(command: readonly string[], spec: AgentCallSpec): PlannedCall {
+function planOpencode(
+  command: readonly string[],
+  spec: AgentCallSpec,
+  variantInModel: boolean,
+): PlannedCall {
   const notes: CapabilityNote[] = []
   const env: Record<string, string> = { ...spec.env }
   const argv = [...command, 'run']
@@ -69,8 +93,14 @@ function planOpencode(command: readonly string[], spec: AgentCallSpec): PlannedC
     }
   }
 
+  const modelHasVariant = spec.model?.includes('#') === true
   if (spec.model !== undefined) {
-    argv.push('--model', spec.model)
+    argv.push(
+      '--model',
+      variantInModel && spec.effort !== undefined && !modelHasVariant
+        ? `${spec.model}#${spec.effort}`
+        : spec.model,
+    )
     if (!spec.model.includes('/')) {
       note(
         notes,
@@ -81,7 +111,18 @@ function planOpencode(command: readonly string[], spec: AgentCallSpec): PlannedC
     }
   }
 
-  if (spec.effort !== undefined) {
+  if (spec.effort !== undefined && variantInModel) {
+    note(
+      notes,
+      'effort',
+      spec.model === undefined || modelHasVariant ? 'dropped' : 'approximated',
+      spec.model === undefined
+        ? 'opencode 2.x takes the effort as a #variant suffix on --model; without a model there is nothing to suffix'
+        : modelHasVariant
+          ? 'the model already names a #variant; the effort is not appended'
+          : 'opencode 2.x has no --variant flag; sent as the #variant suffix of --model (values depend on the model)',
+    )
+  } else if (spec.effort !== undefined) {
     argv.push('--variant', spec.effort)
     note(
       notes,

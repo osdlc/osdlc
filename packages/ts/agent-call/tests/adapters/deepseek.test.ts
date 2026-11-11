@@ -1,3 +1,5 @@
+import { resolve } from 'node:path'
+
 import { describe, expect, test } from 'vitest'
 
 import { deepseekAdapter } from '../../src/adapters/deepseek.js'
@@ -108,11 +110,10 @@ describe('deepseek plan', () => {
     expect(patchRows(replace)).toEqual([
       {
         id: 'system-prompt',
-        // The headless working-directory suffix is restated: a row's config is replaced whole.
+        // No persona suffix: its {{cwd}} clause fails prompt assembly.
         config: {
           includeHarnessIdentity: false,
           personaPrefix: 'be terse',
-          personaSuffix: 'Your working directory is {{cwd}}.',
         },
       },
     ])
@@ -123,10 +124,10 @@ describe('deepseek plan', () => {
     expect(patchRows(append)).toEqual([
       {
         id: 'system-prompt',
-        // The headless persona prefix and suffix are restated, and the text appends.
+        // The headless persona prefix is restated, and the text is the suffix.
         config: {
           personaPrefix: 'You are a coding agent powered by the {{model}} model.',
-          personaSuffix: 'Your working directory is {{cwd}}.\n\ncite files',
+          personaSuffix: 'cite files',
         },
       },
     ])
@@ -170,11 +171,36 @@ describe('deepseek plan', () => {
     expect(noteFor(withModel, 'effort')?.detail).not.toContain('pins')
   })
 
-  test('tool rules, extra dirs, continueLast, session pinning, persist and budget are dropped', () => {
+  test('extra dirs ride --add-dir', () => {
+    const planned = adapter.plan({ prompt: 'x', context: { dirs: ['/x', '/y'] } })
+    expect(planned.argv).toEqual([
+      'dsh',
+      '--profile',
+      'headless',
+      '--json',
+      '--add-dir',
+      '/x',
+      '--add-dir',
+      '/y',
+      '-',
+    ])
+    expect(noteFor(planned, 'context.dirs')?.support).toBe('native')
+  })
+
+  test('relative extra dirs are resolved against cwd', () => {
+    const planned = adapter.plan({ prompt: 'x', cwd: '/repo', context: { dirs: ['../shared'] } })
+    expect(planned.argv).toContain('/shared')
+  })
+
+  test('relative extra dirs fall back to process.cwd() without a cwd', () => {
+    const planned = adapter.plan({ prompt: 'x', context: { dirs: ['rel'] } })
+    expect(planned.argv).toContain(resolve(process.cwd(), 'rel'))
+  })
+
+  test('tool rules, continueLast, session pinning, persist and budget are dropped', () => {
     const planned = adapter.plan({
       prompt: 'x',
       permissions: { allowTools: ['bash'], denyTools: ['write'] },
-      context: { dirs: ['/x'] },
       session: { continueLast: true, id: 'pin', persist: false },
       plugins: { dirs: ['/p'], disable: [] },
       budgetUsd: 1,
@@ -182,7 +208,6 @@ describe('deepseek plan', () => {
     for (const field of [
       'permissions.allowTools',
       'permissions.denyTools',
-      'context.dirs',
       'session.continueLast',
       'session.id',
       'session.persist',
