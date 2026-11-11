@@ -136,9 +136,10 @@ Off the critical path, but in a beeline milestone:
 Decisions [D11](decisions/D11%20Upstream%20corpora%20travel%20as%20npm%20packages.md),
 [D12](decisions/D12%20Inherited%20records%20come%20in%20as%20a%20committed%20copy.md),
 [D13](decisions/D13%20The%20model%20layer%20sits%20above%20store%20specs.md),
-[D14](decisions/D14%20The%20first%20upstream%20instance%20is%20a%20starter%20corpus.md) and
-[D15](decisions/D15%20Extending%20types%20and%20referencing%20corpora%20are%20separate.md) say why
-the path has this shape.
+[D14](decisions/D14%20The%20first%20upstream%20instance%20is%20a%20starter%20corpus.md),
+[D15](decisions/D15%20Extending%20types%20and%20referencing%20corpora%20are%20separate.md) and
+[D16](decisions/D16%20Types%20and%20records%20are%20named%20by%20Package%20URL.md) say why the
+path has this shape.
 
 ## Checklist
 
@@ -198,7 +199,7 @@ Read these first:
 
 1. This file.
 2. [README.md](README.md), which says what each record type holds.
-3. Decisions D11 to D15, linked above.
+3. Decisions D11 to D16, linked above.
 4. The task record of the item you pick, and its pull request if it has one.
 
 Choose the next item. Take the first unchecked item under "Next up" whose status is not "waiting
