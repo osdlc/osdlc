@@ -310,8 +310,8 @@ record to the example, and runs the validator. An error case passes when the val
 exactly one error, the expected one. A warning case passes when the validator exits 0 and prints
 the expected warning.
 
-[tests/package.sh](tests/package.sh) checks the package as npm ships it. It packs the package,
-unpacks it into a temporary `node_modules/`, and validates
+[tests/package.sh](tests/package.sh) checks the package as npm ships it. It packs the package
+with pnpm, as the release does, unpacks it into a temporary `node_modules/`, and validates
 [tests/package/fixture/](tests/package/fixture/), a small corpus that names the profile by its
 package name. It also checks that the tarball holds no example or tests, and that a rule of the
 profile and a rule the fixture adds both still apply.
@@ -369,9 +369,9 @@ Extend the profile, as [Use it](#use-it) says. Then:
   top-level field can point at them with `x-ref`.
 - Keep the field names the claims types use. If you add a field that VA-Spec defines and the claims
   types leave out, such as `score`, give it VA-Spec's meaning.
-- For strict checking, close your type with `additionalProperties: false`. Your schema is checked
-  on its own, beside the profile's, so it must list every field it allows, the profile's fields
-  too. `title: true` is enough for a field the profile already checks.
+- For strict checking, close your type with `additionalProperties: false`. The profile's fields
+  count as your type's own, so list only the fields you add. A record still passes the profile's
+  rules for its fields.
 
 The example statement
 [fernlog config path on Linux](example/statements/fernlog%20config%20path%20on%20Linux.md) has a

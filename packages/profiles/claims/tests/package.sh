@@ -1,9 +1,9 @@
 #!/bin/sh
 # Checks the profile as npm ships it.
 #
-# The script packs the package with npm, unpacks the tarball into a temporary
-# node_modules/@osdlc/corpus-profile-claims/, and copies package/fixture/
-# beside it. The fixture names the profile by its package name, so the
+# The script packs the package with pnpm, as the release does, unpacks the
+# tarball into a temporary node_modules/@osdlc/corpus-profile-claims/, and
+# copies package/fixture/ beside it. The fixture names the profile by its package name, so the
 # validator finds it as Node finds a package, through the "corpus" field.
 #
 # Checks:
@@ -33,10 +33,10 @@ fail() {
 }
 
 # Pack and unpack.
-tarball=$(cd "$package_dir" && npm pack --silent --pack-destination "$work")
+(cd "$package_dir" && pnpm pack --pack-destination "$work" >/dev/null)
 installed="$work/node_modules/@osdlc/corpus-profile-claims"
 mkdir -p "$installed"
-tar -xzf "$work/$tarball" -C "$installed" --strip-components=1
+tar -xzf "$work"/*.tgz -C "$installed" --strip-components=1
 
 if [ -f "$installed/corpus/corpus-schema.md" ] &&
   [ ! -e "$installed/example" ] && [ ! -e "$installed/tests" ]; then
@@ -47,17 +47,19 @@ else
 fi
 
 # Runs the validator on $1 and passes when it exits $2 and its output holds
-# $3, as its one error. With no $3, the output must hold no warning.
+# $3, as its one error. With no $3, it runs with --strict, so a warning fails.
 check() {
   status=0
-  out=$(validate "$1" 2>&1) || status=$?
+  if [ -z "$3" ]; then
+    out=$(validate --strict "$1" 2>&1) || status=$?
+  else
+    out=$(validate "$1" 2>&1) || status=$?
+  fi
   if [ "$status" -ne "$2" ]; then
     fail "$4 (exit $status, expected $2)"
   elif [ -n "$3" ] && ! { printf '%s\n' "$out" | grep -qF "$3" &&
     printf '%s\n' "$out" | grep -qF "$(basename "$1"): 1 error(s)"; }; then
     fail "$4 (expected one error: $3)"
-  elif [ -z "$3" ] && printf '%s\n' "$out" | grep -q '^warning:'; then
-    fail "$4 (a warning)"
   else
     pass "$4"
     return 0
