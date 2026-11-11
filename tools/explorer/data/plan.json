@@ -1,5 +1,5 @@
 {
-  "asOf": "2026-11-10",
+  "asOf": "2026-11-11",
   "statuses": [
     {
       "id": "done",
@@ -28,12 +28,27 @@
       "label": "Supporting"
     }
   ],
+  "phases": [
+    {
+      "id": "store",
+      "label": "Store"
+    },
+    {
+      "id": "model",
+      "label": "Model"
+    },
+    {
+      "id": "harness",
+      "label": "Harness"
+    }
+  ],
   "milestones": [
     {
       "id": "m-release",
       "title": "Release from osdlc/markdown",
       "goal": "This repo publishes corpus-schema with its own release setup.",
       "status": "doing",
+      "phase": "store",
       "beeline": true,
       "tasks": [
         21
@@ -45,12 +60,17 @@
       "title": "Upstream corpora over npm",
       "goal": "A corpus builds on parent corpora that arrive as npm packages, pinned by a lockfile.",
       "status": "doing",
+      "phase": "store",
       "beeline": true,
       "tasks": [
         9,
         38,
         27,
         29,
+        44,
+        45,
+        46,
+        43,
         36,
         23,
         35,
@@ -59,10 +79,29 @@
       "source": "docs/planning/milestones/m-npm.md"
     },
     {
+      "id": "m-sdlc-profile",
+      "title": "SDLC profile from packs",
+      "goal": "The sdlc packs generate corpus profiles, and sdlc corpora validate against them: at work first, then in dev and in this plan.",
+      "status": "todo",
+      "phase": "model",
+      "beeline": true,
+      "tasks": [
+        47,
+        48,
+        51,
+        49,
+        50,
+        52,
+        53
+      ],
+      "source": "docs/planning/milestones/m-sdlc-profile.md"
+    },
+    {
       "id": "m-evidence",
       "title": "The evidence project writes records",
       "goal": "The evidence project keeps its evidence as claims records, checked by the validator.",
       "status": "doing",
+      "phase": "harness",
       "beeline": false,
       "tasks": [
         4,
@@ -78,6 +117,7 @@
       "title": "One corpus model",
       "goal": "One TypeScript corpus model and link resolver, used by the validator, the store and the apps. It also renames markdown-relink to markdown-reshape, adds its TypeScript twin, and adds split, merge and extract.",
       "status": "todo",
+      "phase": "store",
       "beeline": false,
       "tasks": [
         10,
@@ -98,6 +138,7 @@
       "title": "Query and build",
       "goal": "One query layer over the corpus model, and a JSON and SQLite build.",
       "status": "todo",
+      "phase": "store",
       "beeline": false,
       "tasks": [
         15,
@@ -110,6 +151,7 @@
       "title": "Sharing, the rest",
       "goal": "Refine and waive, a real org principles corpus, name overrides and the testing profile.",
       "status": "todo",
+      "phase": "store",
       "beeline": false,
       "tasks": [
         28,
@@ -124,6 +166,7 @@
       "title": "Spec hardening",
       "goal": "The spec gains soft rules, the Obsidian dialect, nested x-ref, error codes and stable ids.",
       "status": "todo",
+      "phase": "store",
       "beeline": false,
       "tasks": [
         6,
@@ -139,6 +182,7 @@
       "title": "Render and sites",
       "goal": "The render, edit and site packages move to osdlc.",
       "status": "doing",
+      "phase": "store",
       "beeline": false,
       "tasks": [
         17
@@ -150,6 +194,7 @@
       "title": "Plan and docs",
       "goal": "The spec is renamed and published, and the plan and architecture are written and linked.",
       "status": "doing",
+      "phase": "store",
       "beeline": false,
       "tasks": [
         1,
@@ -160,6 +205,22 @@
         20
       ],
       "source": "docs/planning/milestones/m-docs.md"
+    },
+    {
+      "id": "m-model-layer",
+      "title": "Model layer",
+      "goal": "The model gains named relations and augments, and corpus-schema's x-body points at a markdown-contract. A second store comes only when it is needed.",
+      "status": "todo",
+      "phase": "model",
+      "beeline": false,
+      "tasks": [
+        54,
+        55,
+        56,
+        57,
+        58
+      ],
+      "source": "docs/planning/milestones/m-model-layer.md"
     }
   ],
   "tasks": [
@@ -632,9 +693,13 @@
         9,
         21,
         27,
-        29
+        29,
+        43,
+        44,
+        45,
+        46
       ],
-      "text": "Release corpus-schema 0.3.0. (supporting) The first version with `extends`, `x-extends`, cross-corpus `x-ref` and `sync`, published from this repo with its release setup. After 9, 21, 27 and 29.",
+      "text": "Release corpus-schema 0.3.0. (supporting) The first version with `extends`, `x-extends`, cross-corpus `x-ref` and `sync`, published from this repo with its release setup. It also carries `--strict`, flattened `x-extends`, refs by id and `x-ref` to several types, which the sdlc profile needs. After 9, 21, 27, 29 and 43 to 46.",
       "source": "docs/planning/tasks/36 Release 0.3.0.md"
     },
     {
@@ -715,6 +780,218 @@
       ],
       "text": "Add extract to markdown-reshape. It pulls one thread out of the graph: a note and what it links to, followed to some depth or by type. The thread is copied or moved into its own folder or corpus. Links inside it are kept. Links leaving it are rewritten or flagged. After 41.\n\nOpen questions:\n\n- What is the stopping rule: depth, link type or the corpus boundary?\n- Can the result be a new corpus that `extends` the source?",
       "source": "docs/planning/tasks/42 Extract.md"
+    },
+    {
+      "id": 43,
+      "title": "Strict mode",
+      "detail": "warnings fail",
+      "status": "todo",
+      "milestone": "m-npm",
+      "type": "supporting",
+      "after": [
+        3
+      ],
+      "text": "Add `--strict` to `corpus-schema validate`. With it, a warning fails the run, like an error. CI can then drop the step that greps stderr for warning lines, as `planning.yml` does today. After 3.",
+      "source": "docs/planning/tasks/43 Strict mode.md"
+    },
+    {
+      "id": 44,
+      "title": "Flatten extends",
+      "detail": "closed child types",
+      "status": "todo",
+      "milestone": "m-npm",
+      "type": "functional",
+      "after": [
+        9
+      ],
+      "text": "Flatten `x-extends`. A closed child type, one with `additionalProperties: false`, sees the fields of every type above it. So it no longer has to list them as `true`. The child can still tighten a parent's rule, and never loosen it. When this lands, remove the workaround from [osdlc/markdown#14](https://github.com/osdlc/markdown/pull/14): the plan's tasks and milestones types stop listing the profile's fields. After 9.",
+      "source": "docs/planning/tasks/44 Flatten extends.md"
+    },
+    {
+      "id": 45,
+      "title": "Refs by id",
+      "detail": "bare id or wikilink",
+      "status": "todo",
+      "milestone": "m-npm",
+      "type": "functional",
+      "after": [
+        9
+      ],
+      "text": "`x-ref` by id. Today an `x-ref` field holds a relative Markdown link. It may also hold a bare record id, or a wikilink such as `[[T-0003]]`. The validator matches it to the record with that id. dev's planning records link this way. After 9.",
+      "source": "docs/planning/tasks/45 Refs by id.md"
+    },
+    {
+      "id": 46,
+      "title": "Multi-type x-ref",
+      "detail": "several types",
+      "status": "todo",
+      "milestone": "m-npm",
+      "type": "functional",
+      "after": [
+        9
+      ],
+      "text": "`x-ref` to several types. An `x-ref` can name a list of types, and the link must point at a record of one of them. sdlc's `related` field, for one, links to any kind. After 9.",
+      "source": "docs/planning/tasks/46 Multi-type x-ref.md"
+    },
+    {
+      "id": 47,
+      "title": "Merge packs",
+      "detail": "dev PRs 4069, 4070",
+      "status": "owner",
+      "milestone": "m-sdlc-profile",
+      "type": "functional",
+      "after": [],
+      "text": "Merge the pack harness and the intent and sdlc packs: [sksizer/dev#4069](https://github.com/sksizer/dev/pull/4069) and [sksizer/dev#4070](https://github.com/sksizer/dev/pull/4070). This is owner work. Then `@osdlc/model-schema`, `@osdlc/pack-intent` and `@osdlc/pack-sdlc` are on dev main.",
+      "source": "docs/planning/tasks/47 Merge packs.md"
+    },
+    {
+      "id": 48,
+      "title": "Profile generator",
+      "detail": "packs to profiles",
+      "status": "todo",
+      "milestone": "m-sdlc-profile",
+      "type": "functional",
+      "after": [
+        47
+      ],
+      "text": "A generator in model-schema that turns a pack into a corpus profile. Each kind becomes a type folder. Refs become `x-ref`. Id patterns become `x-id-pattern`. A pack's `requires` becomes `extends`. It can also write a flattened copy: one corpus with no `extends`, which corpus-schema 0.2.0 can check. In 0.2.0, refs by id are checked only as strings. After 47.",
+      "source": "docs/planning/tasks/48 Profile generator.md"
+    },
+    {
+      "id": 49,
+      "title": "SDLC profiles",
+      "detail": "intent and sdlc",
+      "status": "todo",
+      "milestone": "m-sdlc-profile",
+      "type": "functional",
+      "after": [
+        44,
+        45,
+        46,
+        48
+      ],
+      "text": "Generate `@osdlc/corpus-profile-intent` and `@osdlc/corpus-profile-sdlc` from the packs. The sdlc profile extends the intent profile. A closed type needs flattened `x-extends` to see its parent's fields. Their refs are ids and wikilinks, some to several types. After 48, 44, 45 and 46.",
+      "source": "docs/planning/tasks/49 SDLC profiles.md"
+    },
+    {
+      "id": 50,
+      "title": "Dev on sdlc",
+      "detail": "dev docs/planning",
+      "status": "todo",
+      "milestone": "m-sdlc-profile",
+      "type": "functional",
+      "after": [
+        36,
+        49
+      ],
+      "text": "dev's `docs/planning/` validates against the sdlc profile. dev installs the profile and corpus-schema 0.3.0 from npm. After 49 and 36.",
+      "source": "docs/planning/tasks/50 Dev on sdlc.md"
+    },
+    {
+      "id": 51,
+      "title": "Work copy",
+      "detail": "flattened, 0.2.0",
+      "status": "todo",
+      "milestone": "m-sdlc-profile",
+      "type": "functional",
+      "after": [
+        48
+      ],
+      "text": "A work repo keeps its sdlc records as a corpus now. It uses a flattened copy of the sdlc profile, written by the generator, and checks it with corpus-schema 0.2.0 from npm. This is the first use of the sdlc corpus at work. After 48.",
+      "source": "docs/planning/tasks/51 Work copy.md"
+    },
+    {
+      "id": 52,
+      "title": "Work extends",
+      "detail": "after 0.3.0",
+      "status": "todo",
+      "milestone": "m-sdlc-profile",
+      "type": "functional",
+      "after": [
+        36,
+        49,
+        51
+      ],
+      "text": "The work repo drops its flattened copy. It names the sdlc profile under `extends` and uses corpus-schema 0.3.0. After 49, 51 and 36.",
+      "source": "docs/planning/tasks/52 Work extends.md"
+    },
+    {
+      "id": 53,
+      "title": "Plan on sdlc",
+      "detail": "not planning",
+      "status": "todo",
+      "milestone": "m-sdlc-profile",
+      "type": "functional",
+      "after": [
+        38,
+        49
+      ],
+      "text": "This plan extends the sdlc profile instead of the planning profile. Its tasks, milestones and decisions build on the sdlc kinds, and keep the fields the explorer reads. After 49 and 38.",
+      "source": "docs/planning/tasks/53 Plan on sdlc.md"
+    },
+    {
+      "id": 54,
+      "title": "Named relations",
+      "detail": "and inverses",
+      "status": "todo",
+      "milestone": "m-model-layer",
+      "type": "functional",
+      "after": [
+        47
+      ],
+      "text": "Named relations and their inverses, in the model. A pack names a relation, such as `depends_on`, and its inverse, such as `blocks`. The inverse is derived, not stored. After 47.",
+      "source": "docs/planning/tasks/54 Named relations.md"
+    },
+    {
+      "id": 55,
+      "title": "Augment",
+      "detail": "namespaced keys",
+      "status": "todo",
+      "milestone": "m-model-layer",
+      "type": "functional",
+      "after": [
+        44,
+        47
+      ],
+      "text": "Augment with namespaced keys. A pack adds fields to another pack's kind under its own prefix, such as `harness:model`. A strict type admits keys with the prefix of a profile that isn't loaded, so a record with extra fields still passes. After 47 and 44.",
+      "source": "docs/planning/tasks/55 Augment.md"
+    },
+    {
+      "id": 56,
+      "title": "Contract spec",
+      "detail": "markdown-contract",
+      "status": "todo",
+      "milestone": "m-model-layer",
+      "type": "functional",
+      "after": [],
+      "text": "A spec for markdown-contract, with shared test cases for its TypeScript and Rust twins. Then a contract has a stable format that other specs can point at.",
+      "source": "docs/planning/tasks/56 Contract spec.md"
+    },
+    {
+      "id": 57,
+      "title": "x-body",
+      "detail": "points at a contract",
+      "status": "todo",
+      "milestone": "m-model-layer",
+      "type": "functional",
+      "after": [
+        56
+      ],
+      "text": "The corpus-schema `x-body` keyword. A type names a markdown-contract, and each record's body must pass it. corpus-schema does not invent its own body format. After 56.",
+      "source": "docs/planning/tasks/57 x-body.md"
+    },
+    {
+      "id": 58,
+      "title": "Second store",
+      "detail": "only when needed",
+      "status": "todo",
+      "milestone": "m-model-layer",
+      "type": "functional",
+      "after": [
+        48
+      ],
+      "text": "A second store binding, such as SQLite or JSON, beside `document:`. Build it only when a real need comes. Until then there is no general binding layer. After 48.",
+      "source": "docs/planning/tasks/58 Second store.md"
     }
   ]
 }

@@ -1,6 +1,7 @@
 ---
 title: One corpus model
-order: 4
+order: 5
+phase: store
 tasks:
   - "[10 Store layout](../tasks/10%20Store%20layout.md)"
   - "[11 Link resolver](../tasks/11%20Link%20resolver.md)"

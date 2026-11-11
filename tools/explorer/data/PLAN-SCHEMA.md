@@ -14,12 +14,16 @@ file, then run `pnpm build-data` (see [scripts/README.md](../scripts/README.md))
   "types": [
     { "id": "functional", "label": "Functional" }   // functional | supporting
   ],
+  "phases": [                            // the label for each milestone phase
+    { "id": "store", "label": "Store" }  // store | model | harness
+  ],
   "milestones": [                        // in plan order
     {
       "id": "m-npm",                     // stable, kebab-case, unique
       "title": "Upstream corpora over npm",
       "goal": "One or two plain sentences: what is true when it is done.",
       "status": "todo",                  // a statuses[].id, derived from its tasks
+      "phase": "store",                  // a phases[].id: the part of the ecosystem it builds
       "beeline": true,                   // true for the milestones the work is heading for now
       "tasks": [9, 27, 29],              // its task ids, in plan order
       "source": "docs/planning/milestones/m-npm.md"   // optional: repo-relative path of its record
@@ -47,10 +51,10 @@ Rules:
 - Every id in a milestone's `tasks` is a `tasks[].id`.
 - A task is listed in exactly one milestone, and that is the milestone its `milestone` names.
 - The `after` links have no cycle.
-- `status` and `type` take only the values above.
+- `status`, `type` and `phase` take only the values above. Every milestone has a phase.
 
 The app checks these rules when it loads the file and shows any break in the header. It drops a
-bad reference and draws the rest. `pnpm test` checks `plan.json` against the same rules, and checks
+bad reference and draws the rest. A milestone with an unknown phase is drawn with no phase band. `pnpm test` checks `plan.json` against the same rules, and checks
 that every task number in `ecosystem.json` is a plan task.
 
 Derived, not stored:
@@ -58,4 +62,5 @@ Derived, not stored:
 - A milestone waits on another when one of its tasks waits on one of the other's.
 - A task is next up when it is not done and every task it waits on is done.
 - A milestone's progress is its done tasks out of all its tasks.
+- A task's phase is its milestone's phase.
 - The components a task changes are the `ecosystem.json` nodes whose `tasks` hold its id.

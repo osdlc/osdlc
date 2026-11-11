@@ -12,6 +12,9 @@ path_present: packages/ts/markdown-contract
 repo_target: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
 path_target: packages/ts/markdown-contract
 twin: "[markdown-contract-rs](markdown-contract-rs.md)"
+tasks:
+  - "[56 Contract spec](../tasks/56%20Contract%20spec.md)"
+  - "[57 x-body](../tasks/57%20x-body.md)"
 depends:
   - "[gfm-table](gfm-table.md)"
 ---

@@ -1,6 +1,7 @@
 ---
 title: Plan and docs
-order: 9
+order: 10
+phase: store
 tasks:
   - "[1 corpus-schema](../tasks/1%20corpus-schema.md)"
   - "[2 Record folders](../tasks/2%20Record%20folders.md)"

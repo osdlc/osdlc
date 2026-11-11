@@ -1,6 +1,7 @@
 ---
 title: Query and build
-order: 5
+order: 6
+phase: store
 tasks:
   - "[15 Query layer](../tasks/15%20Query%20layer.md)"
   - "[16 JSON and SQLite](../tasks/16%20JSON%20and%20SQLite.md)"

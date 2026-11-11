@@ -9,6 +9,8 @@ repo_present: "[sksizer/dev](../repos/sksizer-dev.md)"
 path_present: solutions/ontological
 repo_target: "[sksizer/dev](../repos/sksizer-dev.md)"
 path_target: solutions/ontological
+tasks:
+  - "[50 Dev on sdlc](../tasks/50%20Dev%20on%20sdlc.md)"
 links:
   - "[sksizer/dev#4070](https://github.com/sksizer/dev/pull/4070)"
 depends:
@@ -23,7 +25,7 @@ depends:
   - "[markdown-render](markdown-render.md)"
 depends_new:
   - "[markdown-link](markdown-link.md)"
-  - "[sdlc-packs](sdlc-packs.md)"
+  - "[pack-sdlc](pack-sdlc.md)"
 depends_going:
   - "[markdown-link-dev-copy](markdown-link-dev-copy.md)"
 edge_notes:
@@ -40,7 +42,7 @@ edge_notes:
     to: "[markdown-render](markdown-render.md)"
     note: Through the desktop app in solutions/ontological/desktop.
   - edge: depends_new
-    to: "[sdlc-packs](sdlc-packs.md)"
+    to: "[pack-sdlc](pack-sdlc.md)"
     note: "The plan's target diagram says sdlc takes its types from profiles."
 ---
 

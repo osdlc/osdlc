@@ -1,12 +1,17 @@
 ---
 title: Upstream corpora over npm
 order: 2
+phase: store
 beeline: true
 tasks:
   - "[9 Extends](../tasks/9%20Extends.md)"
   - "[38 Planning profile](../tasks/38%20Planning%20profile.md)"
   - "[27 Org corpora](../tasks/27%20Org%20corpora.md)"
   - "[29 Sync](../tasks/29%20Sync.md)"
+  - "[44 Flatten extends](../tasks/44%20Flatten%20extends.md)"
+  - "[45 Refs by id](../tasks/45%20Refs%20by%20id.md)"
+  - "[46 Multi-type x-ref](../tasks/46%20Multi-type%20x-ref.md)"
+  - "[43 Strict mode](../tasks/43%20Strict%20mode.md)"
   - "[36 Release 0.3.0](../tasks/36%20Release%200.3.0.md)"
   - "[23 Claims profile](../tasks/23%20Claims%20profile.md)"
   - "[35 Example pair](../tasks/35%20Example%20pair.md)"

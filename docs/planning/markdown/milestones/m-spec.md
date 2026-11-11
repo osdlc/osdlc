@@ -1,6 +1,7 @@
 ---
 title: Spec hardening
-order: 7
+order: 8
+phase: store
 tasks:
   - "[6 x-warn](../tasks/6%20x-warn.md)"
   - "[7 Obsidian](../tasks/7%20Obsidian.md)"

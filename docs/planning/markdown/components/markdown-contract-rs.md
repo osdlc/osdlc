@@ -12,6 +12,8 @@ path_present: packages/rust/markdown-contract
 repo_target: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
 path_target: packages/rust/markdown-contract
 twin: "[markdown-contract](markdown-contract.md)"
+tasks:
+  - "[56 Contract spec](../tasks/56%20Contract%20spec.md)"
 depends:
   - "[markdown-link-rs](markdown-link-rs.md)"
 edge_notes:

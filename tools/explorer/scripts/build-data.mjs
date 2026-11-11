@@ -81,13 +81,14 @@ function readCorpus(corpus, root) {
   for (const type of ['tasks', 'milestones', 'components', 'layers', 'repos', 'overlaps', 'datasets'])
     if (ofType[type] === undefined) problems.push(`${label}/${type}: (folder): missing type`)
   if (problems.length > 0) return { problems }
-  let taskSchemas
-  try {
-    taskSchemas = schemaChain(corpus, 'tasks')
-  } catch (e) {
-    return { problems: [`${label}/tasks/tasks.schema.md: x-extends: ${e.message}`] }
-  }
-  return { label, problems, byPath, ofType, taskSchemas }
+  const schemas = {}
+  for (const type of ['tasks', 'milestones'])
+    try {
+      schemas[type] = schemaChain(corpus, type)
+    } catch (e) {
+      return { problems: [`${label}/${type}/${type}.schema.md: x-extends: ${e.message}`] }
+    }
+  return { label, problems, byPath, ofType, schemas }
 }
 
 /**
@@ -153,7 +154,7 @@ function linker({ byPath }, problems) {
 }
 
 function buildPlan(corpus, problems, { refId, refs }) {
-  const { ofType, label, taskSchemas } = corpus
+  const { ofType, label, schemas } = corpus
   const tasksDir = `${label}/tasks`
   const numberOf = new Map(ofType.tasks.map((t) => [t.id, t.data.number]))
   for (const t of ofType.tasks)
@@ -208,14 +209,15 @@ function buildPlan(corpus, problems, { refId, refs }) {
     if (states.size > 0 && [...states].every((s) => s === 'done')) return 'done'
     return states.has('doing') || states.has('done') ? 'doing' : 'todo'
   }
-  // The nearest schema that gives the field its values: `status` comes from the profile.
-  const labels = (field) =>
-    taskSchemas.find((s) => s.properties?.[field]?.oneOf).properties[field].oneOf.map((v) => ({ id: v.const, label: v.title }))
+  // The nearest schema that gives the field its values: a task's `status` comes from the profile.
+  const labels = (type, field) =>
+    schemas[type].find((s) => s.properties?.[field]?.oneOf).properties[field].oneOf.map((v) => ({ id: v.const, label: v.title }))
 
   return {
     asOf: ofType.datasets.find((d) => d.id === 'plan')?.data.as_of,
-    statuses: labels('status'),
-    types: labels('type'),
+    statuses: labels('tasks', 'status'),
+    types: labels('tasks', 'type'),
+    phases: labels('milestones', 'phase'),
     milestones: milestones.map((m) => {
       const ids = refs(m, 'tasks', 'tasks').map(toNumber)
       return {
@@ -223,6 +225,7 @@ function buildPlan(corpus, problems, { refId, refs }) {
         title: m.data.title,
         goal: unwrap(m.body),
         status: milestoneStatus(ids),
+        phase: m.data.phase,
         beeline: m.data.beeline === true,
         tasks: ids,
         source: m.source,

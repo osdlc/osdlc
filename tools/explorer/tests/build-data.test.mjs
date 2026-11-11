@@ -64,6 +64,22 @@ describe('build-data', () => {
     expect(plan.milestones.find((m) => m.id === 'm-query').beeline).toBe(false)
   })
 
+  it('keeps each milestone phase and reads the phase labels from the local schema', () => {
+    const { plan } = buildData(planning, repo)
+    expect(plan.phases).toEqual([
+      { id: 'store', label: 'Store' },
+      { id: 'model', label: 'Model' },
+      { id: 'harness', label: 'Harness' },
+    ])
+    expect(plan.milestones.find((m) => m.id === 'm-release').phase).toBe('store')
+    expect(plan.milestones.every((m) => plan.phases.some((p) => p.id === m.phase))).toBe(true)
+  })
+
+  it('passes on a missing phase from the validator', () => {
+    const problems = problemsAfter(({ edit }) => edit('milestones/m-query.md', 'phase: store\n', ''))
+    expect(problems).toContainEqual(expect.stringMatching(/milestones\/m-query\.md: phase: required/))
+  })
+
   it('reads the status labels from a profile schema in YAML', () => {
     const { plan } = buildData(planning, repo)
     const data = buildAfter(({ root }) => {

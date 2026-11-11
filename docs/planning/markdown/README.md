@@ -24,7 +24,8 @@ profile's. The other types are this plan's own, because they describe this ecosy
   name, such as `27 Org corpora.md`. The body is the task's plan. It adds `detail` and `type` to
   the profile's task.
 - [milestones](milestones/milestones.schema.md): a goal that a group of tasks reaches. The body is
-  the goal. It adds `beeline` to the profile's milestone. The profile's
+  the goal. It adds `phase` and `beeline` to the profile's milestone. `phase` says which part of
+  the ecosystem it builds: the store, the model above it, or harness knowledge. The profile's
   [milestone schema](../../profiles/planning/milestones/milestones.schema.md) says how a
   milestone's status follows from its tasks.
 - [decisions](decisions/decisions.schema.md): a choice the plan made, or one still open. The body

@@ -28,6 +28,11 @@ tasks:
   - "[31 Nested x-ref](../tasks/31%20Nested%20x-ref.md)"
   - "[33 Spec details](../tasks/33%20Spec%20details.md)"
   - "[34 Ids and move](../tasks/34%20Ids%20and%20move.md)"
+  - "[43 Strict mode](../tasks/43%20Strict%20mode.md)"
+  - "[44 Flatten extends](../tasks/44%20Flatten%20extends.md)"
+  - "[45 Refs by id](../tasks/45%20Refs%20by%20id.md)"
+  - "[46 Multi-type x-ref](../tasks/46%20Multi-type%20x-ref.md)"
+  - "[57 x-body](../tasks/57%20x-body.md)"
 links:
   - "[osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9)"
   - "[osdlc/markdown#10](https://github.com/osdlc/markdown/pull/10)"
@@ -39,6 +44,7 @@ depends:
   - "[markdown-link](markdown-link.md)"
 depends_new:
   - "[markdown-corpus](markdown-corpus.md)"
+  - "[markdown-contract](markdown-contract.md)"
 implements:
   - "[corpus-schema-spec](corpus-schema-spec.md)"
 validates:
@@ -47,6 +53,9 @@ edge_notes:
   - edge: depends_new
     to: "[markdown-corpus](markdown-corpus.md)"
     note: "Task 14: the validator reads the corpus model instead of walking the folder."
+  - edge: depends_new
+    to: "[markdown-contract](markdown-contract.md)"
+    note: "Task 57: x-body checks a record's body against a contract."
   - edge: validates
     to: "[harness-beta-corpus](harness-beta-corpus.md)"
     note: "harness-reference's validate:beta script."

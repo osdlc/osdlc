@@ -21,6 +21,10 @@ tasks:
   - "[31 Nested x-ref](../tasks/31%20Nested%20x-ref.md)"
   - "[33 Spec details](../tasks/33%20Spec%20details.md)"
   - "[34 Ids and move](../tasks/34%20Ids%20and%20move.md)"
+  - "[44 Flatten extends](../tasks/44%20Flatten%20extends.md)"
+  - "[45 Refs by id](../tasks/45%20Refs%20by%20id.md)"
+  - "[46 Multi-type x-ref](../tasks/46%20Multi-type%20x-ref.md)"
+  - "[57 x-body](../tasks/57%20x-body.md)"
 links:
   - "[osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9)"
   - "[osdlc/osdlc#725](https://github.com/osdlc/osdlc/pull/725)"

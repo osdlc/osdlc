@@ -1,6 +1,7 @@
 {
-  "asOf": "2026-11-10",
+  "asOf": "2026-11-11",
   "sources": [
+    "Rechecked 2026-11-11: sksizer/dev PRs #4069 (64b7132) and #4070 (f607009) are open; the package names and paths of @osdlc/pack-intent and @osdlc/pack-sdlc.",
     "Rechecked 2026-11-10: osdlc/markdown main (3c8f6fe) and open PRs #12, #15 and #16; osdlc/osdlc PRs #767, #773 and #774; npm versions of @osdlc/package-checks and @osdlc/conformance-suites. Other facts below are as of 2026-11-09.",
     "osdlc/markdown main (de5bb97): docs/architecture.md, docs/ecosystem-plan.md, docs/corpus-schema.md, tools/diagrams/build.py, tools/diagrams/architecture.py, profiles/claims/, .github/workflows/examples.yml",
     "osdlc/markdown open PRs #9 (move corpus-schema, 1ad5a95) and #10 (shared CI, 4548e92)",
@@ -340,10 +341,13 @@
       "twin": null,
       "purpose": "This plan's tasks, milestones and decisions, and the components it changes, kept as records. The explorer's data is built from it.",
       "notes": [
+        "Today it extends the planning profile. Its tasks and milestones add fields, and its decisions use the profile's type as it is. Task 53 moves it to the sdlc profile.",
         "Its components, layers, repos, overlaps and datasets are its own types. They describe this ecosystem, so they stay out of the profile."
       ],
       "tasks": [
-        38
+        38,
+        44,
+        53
       ],
       "links": [
         {
@@ -385,7 +389,9 @@
         "Target from the plan's diagram: it takes its types from profiles. Open sksizer/dev#4070 says sdlc does not use the packs yet.",
         "Plan: nothing from dev is published."
       ],
-      "tasks": [],
+      "tasks": [
+        50
+      ],
       "links": [
         {
           "label": "sksizer/dev#4070",
@@ -735,6 +741,38 @@
       "source": "docs/planning/components/corpus-profile-claims.md"
     },
     {
+      "id": "corpus-profile-intent",
+      "name": "@osdlc/corpus-profile-intent",
+      "kind": "profile",
+      "language": "markdown",
+      "layer": "profiles",
+      "states": [
+        "target"
+      ],
+      "repo": {
+        "present": null,
+        "target": null
+      },
+      "path": {
+        "present": null,
+        "target": null
+      },
+      "status": "planned",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "The intent pack's kinds as a corpus profile, generated from the pack. A Markdown corpus names it under extends: and builds its types on these with x-extends.",
+      "notes": [
+        "Planned in decision D13: packs are the model, and corpus-schema is the store spec for Markdown.",
+        "Where it lives and whether it goes to npm are not decided."
+      ],
+      "tasks": [
+        49
+      ],
+      "links": [],
+      "source": "docs/planning/components/corpus-profile-intent.md"
+    },
+    {
       "id": "corpus-profile-planning",
       "name": "@osdlc/corpus-profile-planning",
       "kind": "profile",
@@ -758,10 +796,12 @@
       "purpose": "Record types for a plan: tasks, milestones and decisions. A corpus names it under extends: and builds its own types on these with x-extends.",
       "notes": [
         "Private package. Not on npm. A corpus extends it by a path to the folder.",
-        "Its types are open, so a corpus can add fields. A corpus that wants a closed type lists the profile's fields as well as its own."
+        "Its types are open, so a corpus can add fields. A corpus that wants a closed type lists the profile's fields as well as its own. Task 44 removes that need.",
+        "Task 53 moves this plan to the sdlc profile. After that, nothing in the plan uses this profile."
       ],
       "tasks": [
-        38
+        38,
+        53
       ],
       "links": [
         {
@@ -770,6 +810,43 @@
         }
       ],
       "source": "docs/planning/components/corpus-profile-planning.md"
+    },
+    {
+      "id": "corpus-profile-sdlc",
+      "name": "@osdlc/corpus-profile-sdlc",
+      "kind": "profile",
+      "language": "markdown",
+      "layer": "profiles",
+      "states": [
+        "target"
+      ],
+      "repo": {
+        "present": null,
+        "target": null
+      },
+      "path": {
+        "present": null,
+        "target": null
+      },
+      "status": "planned",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "The sdlc pack's kinds as a corpus profile, generated from the pack. sdlc corpora in dev, at work and in this plan validate against it.",
+      "notes": [
+        "Planned in decision D13. It extends the intent profile.",
+        "A work repo uses a flattened copy with corpus-schema 0.2.0 first (task 51), then extends: after 0.3.0 (task 52).",
+        "Where it lives and whether it goes to npm are not decided."
+      ],
+      "tasks": [
+        49,
+        50,
+        51,
+        52,
+        53
+      ],
+      "links": [],
+      "source": "docs/planning/components/corpus-profile-sdlc.md"
     },
     {
       "id": "fernlog-example",
@@ -834,12 +911,17 @@
       "purpose": "The pack harness: loads packs (folders of YAML that declare kinds), compiles them, validates values and emits TypeScript types and JSON Schema.",
       "notes": [
         "Only in open PR sksizer/dev#4069. It is not on dev main or npm.",
-        "Task 9 says model-schema moves to osdlc but does not name the repo. osdlc/osdlc is shown because the plan says packages stay there until they move to osdlc/markdown.",
-        "Decision D4 is open: profiles written as packs, or plain JSON Schema files that packs compile to. Problem F5: two ways to define types.",
+        "Task 9 says moving model-schema to osdlc is separate work, and no task does it yet. osdlc/osdlc is shown because the plan says packages stay there until they move to osdlc/markdown.",
+        "Decision D4 makes types plain JSON Schema. Decision D13 puts packs above that as the model, and corpus-schema below as the store spec for Markdown. That answers problem F5: two ways to define types.",
+        "Task 48 adds a generator that turns a pack into a corpus profile.",
         "Packs differ from the proposed profiles: a record's own property replaces an inherited one, and strict can be overridden."
       ],
       "tasks": [
-        9
+        47,
+        48,
+        54,
+        55,
+        58
       ],
       "links": [
         {
@@ -920,8 +1002,47 @@
       "source": "docs/planning/components/org-principles-example.md"
     },
     {
-      "id": "sdlc-packs",
-      "name": "@osdlc/pack-intent and @osdlc/pack-sdlc",
+      "id": "pack-intent",
+      "name": "@osdlc/pack-intent",
+      "kind": "profile",
+      "language": "yaml",
+      "layer": "profiles",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "sksizer/dev",
+        "target": "sksizer/dev"
+      },
+      "path": {
+        "present": "packages/ts/pack-intent",
+        "target": "packages/ts/pack-intent"
+      },
+      "status": "in-progress",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "The intent pack. It declares why a project exists and what it holds to: principles, standards, decisions, drivers, products, capabilities, terms and references.",
+      "notes": [
+        "Only in open PR sksizer/dev#4070, stacked on #4069. Private, not on npm.",
+        "Task 49 generates @osdlc/corpus-profile-intent from it."
+      ],
+      "tasks": [
+        47,
+        49
+      ],
+      "links": [
+        {
+          "label": "sksizer/dev#4070",
+          "url": "https://github.com/sksizer/dev/pull/4070"
+        }
+      ],
+      "source": "docs/planning/components/pack-intent.md"
+    },
+    {
+      "id": "pack-sdlc",
+      "name": "@osdlc/pack-sdlc",
       "kind": "profile",
       "language": "yaml",
       "layer": "profiles",
@@ -941,13 +1062,15 @@
       "version": null,
       "registry": null,
       "twin": null,
-      "purpose": "Two packs that port sdlc's 14 entity kinds (task, decision, principle and the rest) into the pack format.",
+      "purpose": "The sdlc pack. It declares the work a project plans and tracks: work items, milestones, backlog, roadmaps, friction and notes. It builds on the intent pack.",
       "notes": [
-        "Only in open PR sksizer/dev#4070, stacked on #4069. The other package is at packages/ts/pack-intent.",
-        "The plan's levels-and-profiles diagram shows an sdlc profile with today's sdlc kinds. It does not say whether these packs become it, or where they live, so the target is unchanged here."
+        "Only in open PR sksizer/dev#4070, stacked on #4069. Private, not on npm.",
+        "Together with the intent pack it ports sdlc's 14 entity kinds from hand-written zod.",
+        "Task 49 generates @osdlc/corpus-profile-sdlc from it."
       ],
       "tasks": [
-        9
+        47,
+        49
       ],
       "links": [
         {
@@ -955,7 +1078,7 @@
           "url": "https://github.com/sksizer/dev/pull/4070"
         }
       ],
-      "source": "docs/planning/components/sdlc-packs.md"
+      "source": "docs/planning/components/pack-sdlc.md"
     },
     {
       "id": "corpus-schema-rs",
@@ -1028,7 +1151,11 @@
         28,
         31,
         33,
-        34
+        34,
+        44,
+        45,
+        46,
+        57
       ],
       "links": [
         {
@@ -1092,7 +1219,12 @@
         29,
         31,
         33,
-        34
+        34,
+        43,
+        44,
+        45,
+        46,
+        57
       ],
       "links": [
         {
@@ -1519,7 +1651,10 @@
       "notes": [
         "Its shared test cases still live inside the package. The architecture plans a shared conformance family for it."
       ],
-      "tasks": [],
+      "tasks": [
+        56,
+        57
+      ],
       "links": [],
       "source": "docs/planning/components/markdown-contract.md"
     },
@@ -1549,7 +1684,9 @@
       "notes": [
         "Open release PR osdlc/osdlc#730 would bump it to 0.4.3."
       ],
-      "tasks": [],
+      "tasks": [
+        56
+      ],
       "links": [],
       "source": "docs/planning/components/markdown-contract-rs.md"
     },
@@ -2407,12 +2544,12 @@
     },
     {
       "from": "plan-corpus",
-      "to": "corpus-profile-planning",
+      "to": "corpus-profile-sdlc",
       "kind": "extends",
       "states": [
         "target"
       ],
-      "note": "Its tasks and milestones add fields. Its decisions use the profile's type as it is."
+      "note": "Task 53. Until then it extends the planning profile."
     },
     {
       "from": "sdlc",
@@ -2509,7 +2646,7 @@
     },
     {
       "from": "sdlc",
-      "to": "sdlc-packs",
+      "to": "pack-sdlc",
       "kind": "depends",
       "states": [
         "target"
@@ -2858,6 +2995,33 @@
       "note": "A profile is a corpus that has only types."
     },
     {
+      "from": "corpus-profile-intent",
+      "to": "model-schema",
+      "kind": "dev-depends",
+      "states": [
+        "target"
+      ],
+      "note": "Its profile generator writes this profile (task 48)."
+    },
+    {
+      "from": "corpus-profile-intent",
+      "to": "pack-intent",
+      "kind": "dev-depends",
+      "states": [
+        "target"
+      ],
+      "note": "The profile is generated from this pack."
+    },
+    {
+      "from": "corpus-profile-intent",
+      "to": "corpus-schema-spec",
+      "kind": "implements",
+      "states": [
+        "target"
+      ],
+      "note": "A profile is a corpus that has only types."
+    },
+    {
       "from": "corpus-profile-planning",
       "to": "corpus-schema-spec",
       "kind": "implements",
@@ -2865,6 +3029,42 @@
         "target"
       ],
       "note": "A profile is a corpus that has only types."
+    },
+    {
+      "from": "corpus-profile-sdlc",
+      "to": "model-schema",
+      "kind": "dev-depends",
+      "states": [
+        "target"
+      ],
+      "note": "Its profile generator writes this profile (task 48)."
+    },
+    {
+      "from": "corpus-profile-sdlc",
+      "to": "pack-sdlc",
+      "kind": "dev-depends",
+      "states": [
+        "target"
+      ],
+      "note": "The profile is generated from this pack."
+    },
+    {
+      "from": "corpus-profile-sdlc",
+      "to": "corpus-schema-spec",
+      "kind": "implements",
+      "states": [
+        "target"
+      ],
+      "note": "A profile is a corpus that has only types."
+    },
+    {
+      "from": "corpus-profile-sdlc",
+      "to": "corpus-profile-intent",
+      "kind": "extends",
+      "states": [
+        "target"
+      ],
+      "note": "The sdlc pack's requires: becomes extends:."
     },
     {
       "from": "fernlog-example",
@@ -2911,13 +3111,32 @@
       "note": "A valid level-2 corpus with one type, principles, and three records."
     },
     {
-      "from": "sdlc-packs",
+      "from": "pack-intent",
       "to": "model-schema",
       "kind": "depends",
       "states": [
         "present",
         "target"
       ]
+    },
+    {
+      "from": "pack-sdlc",
+      "to": "model-schema",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "pack-sdlc",
+      "to": "pack-intent",
+      "kind": "extends",
+      "states": [
+        "present",
+        "target"
+      ],
+      "note": "Its pack.yaml requires intent ^0.1.0."
     },
     {
       "from": "corpus-schema-rs",
@@ -2971,6 +3190,15 @@
         "target"
       ],
       "note": "Task 14: the validator reads the corpus model instead of walking the folder."
+    },
+    {
+      "from": "corpus-schema-ts",
+      "to": "markdown-contract",
+      "kind": "depends",
+      "states": [
+        "target"
+      ],
+      "note": "Task 57: x-body checks a record's body against a contract."
     },
     {
       "from": "corpus-schema-ts",
