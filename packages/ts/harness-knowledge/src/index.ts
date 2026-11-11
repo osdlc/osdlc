@@ -1,0 +1,5 @@
+export { DATA_DIR, loadKnowledge } from './data.js'
+export type { Knowledge, KnowledgeValue, Scope, Strength } from './knowledge.js'
+export { AmbiguousValue, lookup } from './lookup.js'
+export type { Found, LookupQuery } from './lookup.js'
+export { fact } from './query.js'
