@@ -45,8 +45,16 @@ extends:
 ---
 ```
 
-Then add a type folder for each claims type you want. A schema that holds only `x-extends` uses
-the profile's type as it is. `statements/statements.schema.md`:
+Then use the claims types. `uses` gives a folder named after a type that type as it is, with no
+schema file in the folder:
+
+```yaml
+uses: claims/* # or a list, such as [claims/statements, claims/study-results]
+```
+
+The records then go straight into `statements/`, `study-results/` and the rest. To add fields to a
+type, leave it out of `uses` and write a schema that names it in `x-extends` instead.
+`statements/statements.schema.md`:
 
 ```markdown
 ---
@@ -71,9 +79,14 @@ Validate as usual:
 npx --yes @osdlc/corpus-schema@^0.3.0 validate my-corpus
 ```
 
-Your corpus does not need a copy of the profile in `_inherited/`. The profile has no records to
-link to. If you run `corpus-schema sync`, it writes one, and the validator then checks that the
-copy matches the installed package.
+`extends` brings in types only, so your corpus keeps no copy of the profile, and
+`corpus-schema sync` writes none for it. A corpus package that builds on the profile lists it under
+`peerDependencies`, with a range, so the project that installs both holds one version of the
+profile:
+
+```json
+{ "peerDependencies": { "@osdlc/corpus-profile-claims": "^0.1.0" } }
+```
 
 ## Where the types come from
 
@@ -251,8 +264,9 @@ A contribution has `contributor` (an Agent with `name` and `agentType`), `activi
 
 ## The example
 
-[example/](example/) is a valid level-2 corpus. It extends the profile by the path `../corpus`, so
-its type schemas hold only `x-extends`. The example is not part of the npm package.
+[example/](example/) is a valid level-2 corpus. It extends the profile by the path `../corpus`. `uses` gives
+three of its type folders the profile's types with no schema files, and `study-results/` has a
+schema that holds only `x-extends`. The example is not part of the npm package.
 
 It checks a claim about a made-up command line tool, fernlog: that version 2.3 reads its config
 file from `~/.config/fernlog/config.toml`. It also checks a narrower form of the same claim, for
