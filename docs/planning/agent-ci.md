@@ -139,7 +139,7 @@ move; merged PRs drop off.
 
 ## PR tracker
 
-Checked 2026-11-11 09:17 UTC. A periodic check refreshes this table and the graph.
+Checked 2026-11-11 12:17 UTC. A periodic check refreshes this table and the graph.
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
@@ -149,7 +149,7 @@ Checked 2026-11-11 09:17 UTC. A periodic check refreshes this table and the grap
 | [#764](https://github.com/osdlc/osdlc/pull/764) | feat(gh-actions): run any skill from a PR comment, read-only or with --apply | draft | none | behind main; green | pre-review gate (draft) | new; touches gh-actions |
 | [#760](https://github.com/osdlc/osdlc/pull/760) | pr-update: one PR identity across repositories, per-repository verify, --restack | merged | — | — | — | merged 2026-11-10 (pr-update work) |
 | [#759](https://github.com/osdlc/osdlc/pull/759) | ci(pr-update): run once a night instead of on every push to main | merged | — | — | — | merged 2026-11-09; ends the CI storms from merges to main |
-| [#750](https://github.com/osdlc/osdlc/pull/750) | feat(harness-knowledge): compiled harness facts, read by agent-call and detect-harness | merged | — | — | — | merged 2026-11-11 07:55 UTC; phase 5 of the harness-knowledge plan; Version Packages [#784](https://github.com/osdlc/osdlc/pull/784) is open; merging it first publishes @osdlc/harness-knowledge |
+| [#750](https://github.com/osdlc/osdlc/pull/750) | feat(harness-knowledge): compiled harness facts, read by agent-call and detect-harness | merged | — | — | — | merged 2026-11-11 07:55 UTC; phase 5 of the harness-knowledge plan; Version Packages [#784](https://github.com/osdlc/osdlc/pull/784) merged 12:12 UTC; packages-publish is running the first @osdlc/harness-knowledge publish |
 | [#741](https://github.com/osdlc/osdlc/pull/741) | fix: kill the agent's process group when its host is interrupted (command-seam, agent-call, pr-update) | merged | — | — | — | merged 2026-11-10; releases with the next Version Packages PR |
 | [#734](https://github.com/osdlc/osdlc/pull/734) | feat(gh-actions): codex-pr and cursor-pr, shared pr-common scripts, multi-marketplace plugins | merged | — | — | — | merged 2026-11-09; next: live test with caller workflows |
 | [#733](https://github.com/osdlc/osdlc/pull/733) | Version Packages (corpus-schema; unblocked the agent-call 0.10.0 publish) | merged | — | — | — | merged 2026-11-09; agent-call 0.10.0 on npm |
