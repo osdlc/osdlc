@@ -368,15 +368,19 @@ Each type's schema is read on its own. Two types may give their schemas the same
 another corpus arrives with all of its rules. To share types on purpose, extend a corpus that holds
 them (see the [FAQ](#how-do-i-share-types-between-corpora)).
 
-The spec adds five keywords to JSON Schema, `x-ref`, `x-ref-form`, `x-id-pattern`, `x-extends` and
-`x-identity`, and a validator must accept all five. The reference validator reports any other unknown keyword in a schema as an error, so a
+The spec adds six keywords to JSON Schema, `x-ref`, `x-ref-form`, `x-id-pattern`, `x-extends`,
+`x-identity` and `x-record-file`, and a validator must accept all six. The reference validator reports any other unknown keyword in a schema as an error, so a
 misspelled keyword is caught.
 
 ### Records
 
 - Every `.md`, `.yaml` and `.json` file under a type folder, at any depth, is a record of that
-  type. The exceptions are the type's schema file and the files a record folder owns. Other files
-  in a type folder, such as images, are narrative.
+  type. The exceptions are the type's schema file, the files a record folder owns and the files in
+  a narrative folder. Other files in a type folder, such as images, are narrative.
+- A folder in a type folder, at any depth, whose name starts with `_`, such as `_attachments/`, is
+  a narrative folder. Every file under it is narrative. This tells it apart from the two other
+  kinds of folder in a type folder: a record folder holds its record file, and a plain folder
+  holds records.
 - A record's type comes from its folder. A record has no type field.
 - A record's data must be a mapping. A `.md` record with no frontmatter has empty data, and its body
   may be empty.
@@ -391,10 +395,22 @@ So records can be grouped in plain folders inside a type folder, such as
 A record folder lets a record keep its own files beside it, such as the script, the query and the
 CSV results of a method the record describes.
 
-- A folder inside a type folder that holds a record file named after the folder (`<folder>.md`,
-  `<folder>.yaml` or `<folder>.json`) is a record folder. The name matches exactly, case included.
-  The record file must sit directly in the folder.
-- The record's id is the folder name. `methods/Survey/Survey.md` has the id `Survey`.
+- A folder inside a type folder that holds a record file is a record folder. The record file is
+  named after the folder (`<folder>.md`, `<folder>.yaml` or `<folder>.json`), or it has the name
+  the type's `x-record-file` gives. The name matches exactly, case included. The record file must
+  sit directly in the folder.
+- The record's id comes from the folder name (see [Ids](#ids)). `methods/Survey/Survey.md` has the
+  id `Survey`.
+- `x-record-file` at the root of a schema names a record file for the type's record folders. It is
+  a file name with no path and a `.md`, `.yaml` or `.json` extension, such as `README.md`. With
+  `x-record-file: README.md`, `decisions/D-0001-split/README.md` is a record with the id of its
+  folder. A type with no `x-record-file` of its own takes the one of the nearest type up its
+  chain, so a type that `uses` a parent type or builds on it gets the parent's. Any other value is
+  an error.
+- The type folder's own file of that name, such as `decisions/README.md`, documents the type. It
+  is narrative, not a record.
+- A record folder holds one record file. A folder that holds two, such as `<folder>.md` and the
+  `x-record-file`, is an error at the second.
 - This holds whatever `formats` says. A record file in a format the corpus does not allow still
   makes a record folder, and that file is a format error.
 - Every other file under a record folder, at any depth, belongs to the record. It is not a record,
@@ -404,27 +420,38 @@ CSV results of a method the record describes.
   `[the counts](results/counts.csv)`. Links into another record's folder resolve too. An `x-ref`
   points at the record file, not at the folder.
 - A record folder must not hold another record folder, at any depth. That is an error, and the inner
-  folder's files belong to the outer record. A record folder cannot hold a type folder either, since
+  folder's files belong to the outer record. A folder in a record folder whose only record file is
+  the `x-record-file`, such as a `README.md`, is not a record folder, and its files belong to the
+  outer record with no error. A record folder cannot hold a type folder either, since
   no type folder sits inside another.
 - Ids are compared across both shapes: `methods/Survey/Survey.md` and `methods/survey.md` collide.
-- A folder in a type folder with no record file named after it is a plain folder. Each `.md`,
-  `.yaml` and `.json` file in it is a record of the type.
+- A folder in a type folder with no record file is not a record folder. Unless its name starts with
+  `_`, it is a plain folder: each `.md`, `.yaml` and `.json` file in it is a record of the type.
 
 osdlc calls this shape a bundle: a note's folder holding `<name>/<name>.md` and the files beside it.
 Moving the folder moves the record and its files together, and their relative links keep working.
 
 ### Ids
 
-A record's id is its file name without the extension. `harnesses/Claude Code.md` has the id
-`Claude Code`. An id is a name people read, so spaces and capitals are fine.
+A record's id comes from its name: its file name without the extension, or for a record folder's
+record, the folder name. `harnesses/Claude Code.md` has the id `Claude Code`. An id is a name
+people read, so spaces and capitals are fine.
+
+- A type can narrow its ids with `x-id-pattern`, a regular expression at the root of its schema
+  (ECMA-262 syntax, Unicode mode). For example, `x-id-pattern: "^[a-z0-9-]+$"` allows only slugs.
+  With a pattern, the id is the longest of these that every `x-id-pattern` up the type's chain
+  matches: the whole name, or a part of it that ends just before a `-`. With
+  `x-id-pattern: "^P-[0-9]{4}$"`, `P-0002-favor-deterministic.md` has the id `P-0002`, and the rest
+  of the name is a slug for people. A name the patterns match whole keeps the whole name as its
+  id. A name with no matching part is an error.
+- A record's data can hold `id`. When it does, it must be a string that names the record's id, as
+  ids compare. Anything else is an error at `id`.
 
 - An id must not contain `/ \ : * ? " < > |`, which some file systems refuse, or `[ ] # ^`, which
   break links. It must not contain control characters.
 - An id must not start or end with a space or a dot.
 - Ids are unique within a type, across every folder and every extension. They are compared after
   Unicode NFC normalization and case folding, so `Kiro.md`, `kiro.json` and `aws/Kiro.md` collide.
-- A type can narrow its ids with `x-id-pattern`, a regular expression at the root of its schema
-  (ECMA-262 syntax, Unicode mode). For example, `x-id-pattern: "^[a-z0-9-]+$"` allows only slugs.
 - Type names follow the same rules.
 
 ### Narrative
@@ -442,8 +469,10 @@ The canonical link is a relative Markdown link: `[Claude Code](../harnesses/Clau
 - In frontmatter a link is a quoted string that holds the whole link:
   `successor: "[Antigravity](Antigravity.md)"`. A bare path such as `"Antigravity.md"` is not a
   link.
-- The validator checks the links in records, the root file and schema files: in their bodies and in
-  every string of their data. It skips links with a URL scheme, such as `https:` or `mailto:`, and
+- The validator checks the links in records, the root file and schema files: in their bodies, in
+  every string of the data of records and the root file, and in a schema in the strings of its
+  prose keywords `title`, `description` and `$comment`, at any depth. Other strings in a schema,
+  such as a `pattern`, a `const` or an `enum` value, are not text and hold no links. It skips links with a URL scheme, such as `https:` or `mailto:`, and
   links to a heading in the same file, such as `#usage`.
 - A relative path must lead, after percent-decoding, to a file or folder that exists, with the same
   case. The validator never falls back to matching by name, as Obsidian does. A broken path is
@@ -464,6 +493,12 @@ Wikilinks are accepted but not canonical: `[[target]]`, `[[target|text]]`, `[[ta
   directly, as `_references/<prefix>/<path>`, after NFC normalization and case folding. A match in
   a copy is a link into it. A copy's own `_references/` is not searched. `[[Claude Code]]`, `[[harnesses/Claude Code]]` and `[[harnesses/Claude Code.md]]` all match
   `harnesses/Claude Code.md`. The extension of a record can be left out.
+- A wikilink that matches no file and has no `/` names a record by id. The record can be of any
+  type, in the corpus or in a corpus it references, and its id or whole file name must fold to the
+  target, as the `id` form of `x-ref` resolves. `[[P-0002]]` names
+  `principles/P-0002-favor-deterministic.md`. A record of a referenced corpus is a link into its
+  copy. Obsidian does not resolve such a wikilink by itself. `validate --fix` rewrites it as a
+  relative link.
 - No match is an error. More than one match is an error.
 - A wikilink that matches nothing in the corpus but matches a file in a nested corpus leaves the
   corpus, and gets the same warning as a Markdown link that leaves it.
@@ -511,8 +546,12 @@ after:
 - An `x-ref` link that leaves the corpus is an error, not a warning. A link to a referenced
   corpus's record goes through `_references/<prefix>/`.
 - An id matches as ids compare, after NFC normalization and case folding. It may name a record in
-  the corpus or in any corpus it references, at any depth. A parent gives no records. No match is
-  an error, and so is more than one. Records with one identity are one record, however many chains
+  the corpus or in any corpus it references, at any depth. A parent gives no records. A value can
+  also name a record by its whole file name without the extension, or by its record folder's name,
+  where that is longer than its id: `P-0002-favor-deterministic` names `P-0002`. No match is
+  an error, and so is more than one.
+- A `null` value, as a field or as an item, refers to nothing and is not checked as a reference.
+  The schema says whether `null` is allowed. Records with one identity are one record, however many chains
   reach them (see [Identity](#identity)).
 - Quote a wikilink in YAML: `about: "[[N-0001]]"`. Unquoted, `[[N-0001]]` is a list.
 - An `id` or `wikilink` field is not checked as a link. Its wikilinks get no warning, and
@@ -537,7 +576,7 @@ corpus is still valid. The warnings in v0 are:
 | A link, or a wikilink, that leaves the corpus                                   | v0 defines links to referenced corpora only, through `_references/`. |
 | A folder with record files, named like a parent type, that `uses` does not name | It may be a typo or a missing `uses` entry.                          |
 | `x-identity` in a corpus that has no package URL                                | There is nothing to match it against.                                |
-| A wikilink that resolves                                                        | It works, but it is not the canonical form.                          |
+| A wikilink that resolves, by path or by id                                      | It works, but it is not the canonical form.                          |
 | `--fix` could not rewrite a file's wikilinks                                    | The file is left as it was.                                          |
 
 Everything else the validator reports is an error. That includes a broken link, a wikilink with no
@@ -987,6 +1026,28 @@ record folder depends only on its file names, not on the root file's settings. A
 format the corpus does not allow gives one error, on that file. Its sibling files stay the record's
 own and are not read as records, so one mistake does not turn into a list of schema errors.
 
+### Ids come from the file name, cut by `x-id-pattern`
+
+Others considered: a frontmatter `id` as the source of the id. The chosen rule keeps the file name
+as the source, so a record is found by its name in a file list and in Obsidian. With a pattern,
+the id is the longest whole name or leading part (cut before a `-`) that the patterns match, so
+`P-0002-favor-deterministic.md` has the id `P-0002`. It also keeps old corpora valid: a name the
+pattern matches whole keeps its whole name as its id. A frontmatter `id` is allowed, but it must
+equal the id from the name.
+
+### `x-record-file` declares the record file of a record folder
+
+Others considered: always accepting `README.md` as a record file. Declaring it keeps the default
+record folder shape, `<folder>/<folder>.md`, and lets each type opt in. A type that wants
+`README.md` says so, and a `README.md` elsewhere stays narrative. Types that `uses` or build on a
+parent type inherit the setting, so one declaration covers the chain.
+
+### Folders that start with `_` hold narrative
+
+Others considered: treating any folder with no record file as narrative. That would break plain
+folders of records such as `harnesses/google/`, which have no record file of their own and hold
+records. A leading `_` marks the folder as narrative on purpose, in the name, where a reader sees it.
+
 ### Each schema stands alone
 
 The records of the decision give no separate reason. What the rule allows: a type folder carries
@@ -1248,12 +1309,14 @@ The spec forbids it, and the inner folder's files then belong to the outer recor
 the decision gives no separate reason. What the rule gives you: every file under a record folder
 belongs to exactly one record, the outer one. If a record has parts that are records in their own
 right, make them records of another type and link to them with `x-ref`. A plain folder of records,
-one with no record file named after it, can be nested as deep as you like.
+one with no record file, can be nested as deep as you like.
 
 ### What happens to wikilinks?
 
 They are accepted. A wikilink resolves by path suffix inside the corpus, and each one that resolves
-gets a warning. A wikilink with no match, or more than one, is an error. `validate --fix` rewrites
+gets a warning. A wikilink with no match, or more than one, is an error. A wikilink with no `/`
+that matches no file can name a record by id, such as `[[P-0002]]`. Obsidian does not resolve it,
+and `--fix` rewrites it as a relative link. `validate --fix` rewrites
 each one that resolves as a relative Markdown link. In frontmatter, quote it: `series: "[[Dune]]"`.
 The proposed `obsidian` dialect would make wikilinks normal, with no warning.
 
@@ -1343,24 +1406,25 @@ quietly go stale.
 
 ## Words used
 
-| Word           | Meaning                                                                                                                           |
-| -------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| corpus         | A folder of notes and the files they link to. In the spec, a corpus is a folder that holds a root file, with everything under it. |
-| root file      | `corpus-schema.md`, `.yaml` or `.json`. It marks a folder as a corpus and holds its settings.                                     |
-| type           | A folder that holds a schema file named after the folder. The type's name is the folder name.                                     |
-| record         | One `.md`, `.yaml` or `.json` file of a type. Its data is checked against the type's schema.                                      |
-| id             | A record's file name without its extension, such as `Claude Code`. Unique within its type.                                        |
-| record folder  | A folder in a type folder that holds a record file named after the folder. The record owns the other files in it.                 |
-| narrative      | Every other file in a corpus: READMEs, guides, attachments. The validator ignores it.                                             |
-| level          | How much a corpus declares. 0 is any folder of linked notes, 1 adds the root file and types, 2 gives every type a schema.         |
-| dialect        | A named flavor of note syntax on top of the baseline, such as `obsidian`. Reserved in v0.                                         |
-| profile        | A shared, versioned set of types that many corpora can use: a parent corpus with only types, named under `extends`.               |
-| `extends`      | The root-file key that names parent corpora and profiles by prefix. A parent gives types only.                                    |
-| `references`   | The root-file key that names corpora whose records the corpus links to, by prefix.                                                |
-| `uses`         | The root-file key that names parent types which local folders hold as they are, with no schema file.                              |
-| `_references/` | The folder where `corpus-schema sync` keeps a read-only copy of each referenced corpus.                                           |
-| identity       | A package URL (purl) for a corpus, a type or a record, such as `pkg:npm/%40osdlc/corpus-profile-sdlc#tasks`.                      |
-| `x-ref`        | A schema keyword that makes a field a typed link to a record of a named type, like a foreign key.                                 |
-| `x-id-pattern` | A schema keyword with a regular expression that every id in the type must match.                                                  |
-| `x-extends`    | A schema keyword that makes a type build on another type, local or from a parent corpus.                                          |
-| `x-identity`   | A schema keyword that states the type's unversioned identity.                                                                     |
+| Word            | Meaning                                                                                                                            |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| corpus          | A folder of notes and the files they link to. In the spec, a corpus is a folder that holds a root file, with everything under it.  |
+| root file       | `corpus-schema.md`, `.yaml` or `.json`. It marks a folder as a corpus and holds its settings.                                      |
+| type            | A folder that holds a schema file named after the folder. The type's name is the folder name.                                      |
+| record          | One `.md`, `.yaml` or `.json` file of a type. Its data is checked against the type's schema.                                       |
+| id              | A record's name without its extension, such as `Claude Code`, cut by `x-id-pattern` if the type has one. Unique within its type.   |
+| record folder   | A folder in a type folder that holds a record file, named after the folder or by `x-record-file`. The record owns the other files. |
+| narrative       | Every other file in a corpus: READMEs, guides, attachments. The validator ignores it.                                              |
+| level           | How much a corpus declares. 0 is any folder of linked notes, 1 adds the root file and types, 2 gives every type a schema.          |
+| dialect         | A named flavor of note syntax on top of the baseline, such as `obsidian`. Reserved in v0.                                          |
+| profile         | A shared, versioned set of types that many corpora can use: a parent corpus with only types, named under `extends`.                |
+| `extends`       | The root-file key that names parent corpora and profiles by prefix. A parent gives types only.                                     |
+| `references`    | The root-file key that names corpora whose records the corpus links to, by prefix.                                                 |
+| `uses`          | The root-file key that names parent types which local folders hold as they are, with no schema file.                               |
+| `_references/`  | The folder where `corpus-schema sync` keeps a read-only copy of each referenced corpus.                                            |
+| identity        | A package URL (purl) for a corpus, a type or a record, such as `pkg:npm/%40osdlc/corpus-profile-sdlc#tasks`.                       |
+| `x-ref`         | A schema keyword that makes a field a typed link to a record of a named type, like a foreign key.                                  |
+| `x-id-pattern`  | A schema keyword with a regular expression that every id in the type must match.                                                   |
+| `x-record-file` | A schema keyword that names the record file of the type's record folders, such as `README.md`.                                     |
+| `x-extends`     | A schema keyword that makes a type build on another type, local or from a parent corpus.                                           |
+| `x-identity`    | A schema keyword that states the type's unversioned identity.                                                                      |
