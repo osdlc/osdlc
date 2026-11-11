@@ -359,8 +359,8 @@ Each type's schema is read on its own. Two types may give their schemas the same
 another corpus arrives with all of its rules. To share types between corpora today, copy the type
 folders (see the [FAQ](#how-do-i-share-types-between-corpora-today)).
 
-The spec adds two keywords to JSON Schema, `x-ref` and `x-id-pattern`, and a validator must accept
-both. The reference validator reports any other unknown keyword in a schema as an error, so a
+The spec adds four keywords to JSON Schema, `x-ref`, `x-ref-form`, `x-id-pattern` and
+`x-extends`, and a validator must accept all four. The reference validator reports any other unknown keyword in a schema as an error, so a
 misspelled keyword is caught.
 
 ### Records
@@ -465,20 +465,44 @@ Wikilinks are accepted but not canonical: `[[target]]`, `[[target|text]]`, `[[ta
 
 ### References: `x-ref`
 
-`x-ref` is a schema keyword that makes a field a typed link, like a foreign key in a database. Its
-value names a type in the same corpus:
+`x-ref` is a schema keyword that makes a field a typed reference, like a foreign key in a
+database. Its value names a type, in the same corpus or as `<prefix>/<type>` in a parent, or lists
+several types:
 
 ```yaml
 successor: { type: string, x-ref: harnesses }
+after:
+  {
+    type: array,
+    items: { type: string, x-ref: [tasks, decisions, milestones] },
+  }
 ```
 
-- On a top-level property, the value must be one link, and it must resolve to a record of the named
-  type.
-- On the `items` of a top-level array property, each item must be such a link.
-- The named type must exist in the corpus.
+- It sits on a top-level property, or on the `items` of a top-level array property, where each
+  item is a reference. v0 defines `x-ref` only in those two places. Anywhere else, such as inside
+  a nested object, it is an error.
+- Every named type must exist. A list must name one or more.
+- A reference matches a record of any named type, or of a type that extends one.
+
+`x-ref-form`, beside `x-ref`, says how the value names the record:
+
+| `x-ref-form`     | Value                                  | Resolved                                        |
+| ---------------- | -------------------------------------- | ----------------------------------------------- |
+| `link` (default) | `"[Antigravity](Antigravity.md)"`      | as a relative link, to a matching record's file |
+| `id`             | `T-0012`                               | by id, among the matching records               |
+| `wikilink`       | `"[[N-0001]]"` or `"[[N-0001\|text]]"` | by id, as `id` does                             |
+
 - An `x-ref` link that leaves the corpus is an error, not a warning.
-- v0 defines `x-ref` only in those two places. Anywhere else, such as inside a nested object, it is
-  an error.
+- An id matches as ids compare, after NFC normalization and case folding. It may name a record in
+  the corpus or in any corpus it extends. No match is an error, and so is more than one.
+- Quote a wikilink in YAML: `about: "[[N-0001]]"`. Unquoted, `[[N-0001]]` is a list.
+- An `id` or `wikilink` field is not checked as a link. Its wikilinks get no warning, and
+  `validate --fix` leaves them as they are.
+- A `wikilink` to a parent's record needs the parent's copy in `_inherited/`, because Obsidian
+  resolves the wikilink there. An `id` needs no copy.
+
+The `id` and `wikilink` forms suit corpora written by tools that keep ids, such as sdlc, whose
+tasks write `depends_on: [T-0012]` or `[[N-0001]]`.
 
 ### Errors and warnings
 
@@ -498,14 +522,17 @@ corpus is still valid. The warnings in v0 are:
 Everything else the validator reports is an error. That includes a broken link, a wikilink with no
 match or more than one, a record that fails its schema, data that does not parse, a bad id, two ids
 that collide, a record in a format the corpus does not allow, a nested record folder, an unknown
-schema keyword, and an `x-ref` that leaves the corpus or points at the wrong type.
+schema keyword, and an `x-ref` that leaves the corpus, points at the wrong type or names no record.
+
+`validate --strict` fails on a warning as on an error. Use it in CI to hold a corpus to no
+warnings.
 
 ### The validate command
 
 v0 defines two verbs, `validate` and `sync`.
 
 ```sh
-corpus-schema validate [--fix] <folder>...
+corpus-schema validate [--fix] [--strict] <folder>...
 ```
 
 - It checks every corpus at or below each folder.
@@ -516,12 +543,14 @@ corpus-schema validate [--fix] <folder>...
 - The `<file>: <field>` part of each line is fixed by the spec. The message text after it is not,
   and may change in any release.
 - `--fix` first rewrites the wikilinks it can resolve, then checks the result.
+- `--strict` fails a corpus that has warnings, and prints `<name>: <n> warning(s), and --strict
+fails on them`.
 
-| Exit code | Meaning                                                                      |
-| --------- | ---------------------------------------------------------------------------- |
-| `0`       | Every corpus is valid. Warnings may have been printed.                       |
-| `1`       | A corpus has an error, a folder holds no corpus, or a folder cannot be read. |
-| `2`       | Bad usage: an unknown verb or option, or no folder.                          |
+| Exit code | Meaning                                                                                               |
+| --------- | ----------------------------------------------------------------------------------------------------- |
+| `0`       | Every corpus is valid. Without `--strict`, warnings may have been printed.                            |
+| `1`       | A corpus has an error, or a warning under `--strict`. Or a folder holds no corpus, or cannot be read. |
+| `2`       | Bad usage: an unknown verb or option, or no folder.                                                   |
 
 ### The sync command
 
@@ -533,7 +562,9 @@ corpus-schema sync [<folder>...]
   copy of each parent the root file names under `extends`. It removes stale files there.
 - It changes nothing outside `_inherited/`, and a second run changes nothing.
 - A corpus syncs after the corpora it extends, so a chain in one repository syncs in one run.
-- When a parent does not resolve, it writes nothing in that corpus and exits with code 1.
+- When a parent does not resolve or has errors of its own, including a cycle in `extends`, it
+  writes nothing in that corpus and exits with code 1.
+- When a parent turns a folder into a file, or a file into a folder, the copy follows.
 - `validate` never writes the copy. It checks it, and says to run `sync` when it is stale.
 
 ### Writing records
@@ -654,10 +685,16 @@ is one mechanism. `extends:` replaces the reserved `profiles` key, which stays u
 A type builds on another type with `x-extends` at the root of its schema. The value is a local
 type, or `<prefix>/<type>` for a type in a parent corpus.
 
-- A record must pass its own schema and every ancestor's.
-- A child type can add rules or tighten them, never loosen them. A parent with
-  `additionalProperties: false` admits no new fields.
+- The fields add up first: the ancestors' top-level fields, then the type's own. A closing
+  `additionalProperties: false` or `unevaluatedProperties: false` on the type applies to that
+  merged set, so a closed child sees its parents' fields without listing them.
+- A record must pass the type's schema and every ancestor's, each with its fields merged this way.
+- A child type can add fields and tighten rules, never loosen them. A field it declares again must
+  still pass the parent's rules for it. A parent with `additionalProperties: false` admits no new
+  fields, and a child that declares one gets an error at that field.
 - An `x-ref` to a type accepts records of the types that extend it, local or inherited.
+- A corpus needs a copy of a parent in `_inherited/` only when one of its files links into it, or
+  a `wikilink` reference names one of the parent's records. Using a parent's types needs no copy.
 - A type has one parent.
 
 ### Explicit blending (proposed)
@@ -967,6 +1004,8 @@ Then the spec grows:
   copies. Name overrides and an acceptance-testing profile build on it.
 - Corpus inheritance and `corpus-schema sync` are built. Next come `refines` and `waives`, then a
   real org principles corpus as the first case.
+- `validate --strict`, flattened `x-extends`, references by id (`x-ref-form`) and `x-ref` lists of
+  types are built, for the 0.3.0 release.
 
 And the code under it changes:
 
