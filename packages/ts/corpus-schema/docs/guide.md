@@ -630,8 +630,8 @@ corpus-schema sync [<folder>...]
   of each corpus the root file names under `references`. It removes every other file there. It
   copies nothing for `extends`.
 - It changes nothing outside `_references/`, and a second run changes nothing.
-- A corpus syncs after the corpora it references that sit below the same folder, so a chain in one
-  repository syncs in one run.
+- A corpus syncs after the corpora it extends or references that sit below the same folder, so a
+  chain in one repository syncs in one run.
 - When the root file has an error, or a referenced corpus does not resolve or has errors of its
   own, including a cycle, it writes nothing in that corpus and exits with code 1.
 - When a referenced corpus turns a folder into a file, or a file into a folder, the copy follows.
