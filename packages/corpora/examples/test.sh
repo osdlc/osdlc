@@ -42,7 +42,7 @@ check follows-a-document \
   'sed "s#\.\./_inherited/org/principles/Write%20decisions%20down\.md#../documents/fernlog%20README.md#" \
     "fernlog/decisions/Read config from the XDG folder.md" >decision.md &&
     mv decision.md "fernlog/decisions/Read config from the XDG folder.md"' \
-  'follows: documents/fernlog README.md is not a org/principles record'
+  'follows: documents/fernlog README.md is not a record of type org/principles'
 
 # The package parent's copy is checked as the path parent's is, though no
 # record links into it.
@@ -54,6 +54,6 @@ check checked-by-a-document \
   'sed "s#\.\./statements/fernlog%20config%20path\.md#../documents/fernlog%20README.md#" \
     "fernlog/decisions/Read config from the XDG folder.md" >decision.md &&
     mv decision.md "fernlog/decisions/Read config from the XDG folder.md"' \
-  'checkedBy: documents/fernlog README.md is not a claims/statements record'
+  'checkedBy: documents/fernlog README.md is not a record of type claims/statements'
 
 exit "$failed"
