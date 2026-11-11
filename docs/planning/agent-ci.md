@@ -139,7 +139,7 @@ move; merged PRs drop off.
 
 ## PR tracker
 
-Checked 2026-11-11 08:17 UTC. A periodic check refreshes this table and the graph.
+Checked 2026-11-11 09:17 UTC. A periodic check refreshes this table and the graph.
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
