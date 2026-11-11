@@ -1,5 +1,13 @@
 # @osdlc/detect-harness
 
+## 0.7.2
+
+### Patch Changes
+
+- 20dfeb4: Codex's user-scope skills folder (`~/.agents/skills`) is now read from `@osdlc/harness-knowledge`. detect-harness now depends on `@osdlc/harness-knowledge`. Codex's project skills now include `.codex/skills` beside `.agents/skills`, as the knowledge file states. The other location facts stay in the table and a test asserts them against the knowledge file.
+- Updated dependencies [20dfeb4]
+  - @osdlc/harness-knowledge@0.1.0
+
 ## 0.7.1
 
 ### Patch Changes
