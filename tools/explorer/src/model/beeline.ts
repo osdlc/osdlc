@@ -16,7 +16,7 @@ export function doerOf(task: PlanTask): Doer {
 export interface BeelineGroups {
   /** Not done, and every task it waits on is done. In STATUS_ORDER, then plan order. */
   nextUp: PlanTask[]
-  /** Not done, and waiting on a task that is not done. In plan order. */
+  /** Not done, and waiting on a task that is not done. In beelineTasks order. */
   waiting: PlanTask[]
   done: PlanTask[]
 }

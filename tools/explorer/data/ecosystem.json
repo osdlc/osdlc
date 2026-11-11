@@ -843,7 +843,7 @@
       "version": null,
       "registry": null,
       "twin": null,
-      "purpose": "A starter corpus of principles and standards that any project can inherit. A work repo names it under references: with the prefix osdlc, syncs it into _references/osdlc/ and cites its records by id.",
+      "purpose": "A starter corpus of principles and standards that any project can reference and cite. A work repo names it under references: with the prefix osdlc, syncs it into _references/osdlc/ and cites its records by id.",
       "notes": [
         "Decision D14. It starts with two principles, P-0001 and P-0002, and the owner adds more (task 64).",
         "dev's own intent records are not the upstream for now.",

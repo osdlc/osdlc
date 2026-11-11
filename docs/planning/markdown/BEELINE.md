@@ -46,6 +46,10 @@ is an example; the generated profile fixes it (task 49).
 related: [P-0002]
 ```
 
+The id resolves because the profile's `x-ref` on that field names its own principles type, and an
+`x-ref` to a type also matches records of that type in every referenced corpus (task 70). The
+starter's principles build on the profile's.
+
 The repo installs the packages, copies the referenced corpus in, and checks the result:
 
 ```sh

@@ -13,7 +13,7 @@ after:
 
 The work repo reaches the beeline's end state. It installs `@osdlc/corpus-profile-sdlc` and
 `@osdlc/corpus-sdlc-starter` from npm, extends `sdlc`, uses `sdlc/*` and references `osdlc`. It runs
-`corpus-schema sync` and commits `_references/osdlc/`. Its tasks cite inherited principles and standards
+`corpus-schema sync` and commits `_references/osdlc/`. Its tasks cite the starter's principles and standards
 by id, such as `P-0002`. CI runs `corpus-schema validate --strict`, which also fails on a stale copy.
 Updating the starter is then a version bump, a sync and a commit. After 52, 66 and 67, whose example
 it copies.

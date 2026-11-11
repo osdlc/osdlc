@@ -28,7 +28,7 @@ edge_notes:
     note: By package name. Its records are the profile's principles and standards.
 ---
 
-A starter corpus of principles and standards that any project can inherit. A work repo names it
+A starter corpus of principles and standards that any project can reference and cite. A work repo names it
 under references: with the prefix osdlc, syncs it into _references/osdlc/ and cites its records by
 id.
 

@@ -944,7 +944,7 @@
           "url": "https://github.com/osdlc/markdown/pull/12"
         }
       ],
-      "text": "`x-ref` by id. Today an `x-ref` field holds a relative Markdown link. It may also hold a bare record id, or a wikilink such as `[[T-0003]]`. The validator matches it to the record with that id. dev's planning records link this way. After 9. Built in [#12](https://github.com/osdlc/markdown/pull/12) as `x-ref-form: id` and `x-ref-form: wikilink`. An id resolves in the corpus and in the corpora it draws on, so a work repo's task can cite the starter's principle as `P-0002`. The `x-ref` names the other corpus's type by prefix, such as `osdlc/principles`, not the id. Under decision D15, records come from referenced corpora (task 70).",
+      "text": "`x-ref` by id. Today an `x-ref` field holds a relative Markdown link. It may also hold a bare record id, or a wikilink such as `[[T-0003]]`. The validator matches it to the record with that id. dev's planning records link this way. After 9. Built in [#12](https://github.com/osdlc/markdown/pull/12) as `x-ref-form: id` and `x-ref-form: wikilink`. An id resolves in the corpus and in the corpora it draws on, so a work repo's task can cite the starter's principle as `P-0002`. The `x-ref` names a type, not the id. Under decision D15, records come from referenced corpora, and task 70 lets an `x-ref` to a type such as `sdlc/principles` match the records of that type in them.",
       "source": "docs/planning/tasks/45 Refs by id.md"
     },
     {
@@ -1062,7 +1062,7 @@
         61
       ],
       "prs": [],
-      "text": "The work repo drops its flattened copy. It installs the sdlc profile from npm, names it under `extends` and uses corpus-schema 0.3.0. After 49, 51, 36 and 61, which publishes the profile.",
+      "text": "The work repo drops its flattened copy. It installs the sdlc profile from npm, names it under `extends`, takes its types with `uses: [sdlc/*]` (task 71, decision D15) and uses corpus-schema 0.3.0. After 49, 51, 36 and 61, which publishes the profile.",
       "source": "docs/planning/tasks/52 Work extends.md"
     },
     {
@@ -1295,7 +1295,7 @@
         67
       ],
       "prs": [],
-      "text": "The work repo reaches the beeline's end state. It installs `@osdlc/corpus-profile-sdlc` and `@osdlc/corpus-sdlc-starter` from npm, extends `sdlc`, uses `sdlc/*` and references `osdlc`. It runs `corpus-schema sync` and commits `_references/osdlc/`. Its tasks cite inherited principles and standards by id, such as `P-0002`. CI runs `corpus-schema validate --strict`, which also fails on a stale copy. Updating the starter is then a version bump, a sync and a commit. After 52, 66 and 67, whose example it copies.",
+      "text": "The work repo reaches the beeline's end state. It installs `@osdlc/corpus-profile-sdlc` and `@osdlc/corpus-sdlc-starter` from npm, extends `sdlc`, uses `sdlc/*` and references `osdlc`. It runs `corpus-schema sync` and commits `_references/osdlc/`. Its tasks cite the starter's principles and standards by id, such as `P-0002`. CI runs `corpus-schema validate --strict`, which also fails on a stale copy. Updating the starter is then a version bump, a sync and a commit. After 52, 66 and 67, whose example it copies.",
       "source": "docs/planning/tasks/68 Work cites starter.md"
     },
     {
@@ -1329,7 +1329,7 @@
           "url": "https://github.com/osdlc/markdown/pull/12"
         }
       ],
-      "text": "`references` in the root file, as decision D15 says. It maps a prefix to another corpus, by package name or path, whose records a corpus links to and cites by id. `extends` brings types only. `corpus-schema sync` copies each referenced corpus into `_references/<prefix>/`, which replaces `_inherited/`, and `validate` fails when the copy differs from the installed package. It works at any level, so a plain vault with no types can reference a corpus. Nested references get a namespace path, such as `b/c/principles`. After 27 and 29, whose record inheritance and copy it reshapes. In progress in [#12](https://github.com/osdlc/markdown/pull/12), which also defines the namespace and identity rules.",
+      "text": "`references` in the root file, as decision D15 says. It maps a prefix to another corpus, by package name or path, whose records a corpus links to and cites by id. `extends` brings types only. `corpus-schema sync` copies each referenced corpus into `_references/<prefix>/`, which replaces `_inherited/`, and `validate` fails when the copy differs from the installed package. It works at any level, so a plain vault with no types can reference a corpus. Nested references get a namespace path, such as `b/c/principles`. An `x-ref` to a type also matches records of that type, or of a type that extends it, in every referenced corpus. So a profile's field with `x-ref: sdlc/principles` resolves `P-0002` in the starter, whose principles build on the profile's. After 27 and 29, whose record inheritance and copy it reshapes. In progress in [#12](https://github.com/osdlc/markdown/pull/12), which also defines the namespace and identity rules.",
       "source": "docs/planning/tasks/70 References.md"
     },
     {
@@ -1363,7 +1363,7 @@
         70
       ],
       "prs": [],
-      "text": "Search and queries over typed records span referenced corpora. A query names a referenced type by its namespace path, such as `osdlc/principles`, or `b/c/principles` for a reference of a reference. Each result carries the record's identity: its Package URL, from the package, the version, the type and the id, such as `pkg:npm/%40osdlc/corpus-sdlc-starter@0.1.0#principles/P-0002` (decision D16). One record reached by two paths is one result. [#12](https://github.com/osdlc/markdown/pull/12) is defining the namespace and identity rules now, and this task follows them. The owner wants it soon. After 15 and 70.",
+      "text": "Search and queries over typed records span referenced corpora. A query names a referenced type by its namespace path, such as `osdlc/principles`, or `b/c/principles` for a reference of a reference. Each result carries the record's identity: its Package URL, from the package, the version, the type and the id, such as `pkg:npm/%40osdlc/corpus-sdlc-starter@0.1.0#principles/P-0002` (decision D16). One record reached by two paths is one result, even at two versions: the result lists the versions it was reached at. [#12](https://github.com/osdlc/markdown/pull/12) is defining the namespace rules now, and this task follows them. The owner wants it soon. After 15 and 70.",
       "source": "docs/planning/tasks/72 Queries span references.md"
     }
   ]

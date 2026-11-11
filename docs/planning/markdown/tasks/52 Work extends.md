@@ -13,4 +13,5 @@ after:
 ---
 
 The work repo drops its flattened copy. It installs the sdlc profile from npm, names it under
-`extends` and uses corpus-schema 0.3.0. After 49, 51, 36 and 61, which publishes the profile.
+`extends`, takes its types with `uses: [sdlc/*]` (task 71, decision D15) and uses corpus-schema
+0.3.0. After 49, 51, 36 and 61, which publishes the profile.
