@@ -13,8 +13,8 @@ implements_new:
   - "[corpus-schema-spec](corpus-schema-spec.md)"
 ---
 
-A proposed shared corpus of an organization's principles. Project corpora extend it, refine some
-principles and waive others with a reason.
+A proposed shared corpus of an organization's principles. Project corpora reference it and cite
+its principles, and later refine some and waive others with a reason (task 28).
 
 ## Notes
 

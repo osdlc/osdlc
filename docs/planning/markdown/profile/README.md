@@ -65,8 +65,8 @@ A local type can add rules and tighten them. It cannot loosen the profile's rule
 `milestone`, `after` and `tasks` accept records of the local types that extend the profile's
 types.
 
-The corpus needs no `_inherited/` copy. The profile has no records, so no local record links to
-one.
+The corpus needs no `_references/` copy. A profile sits under `extends`, which gives types only,
+and `sync` copies only the corpora under `references`.
 
 ## Where it is used
 

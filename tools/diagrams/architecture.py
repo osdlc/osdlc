@@ -87,7 +87,7 @@ def settings():
     out = [ARROW, f'<text class="rl" x="{X0}" y="26">Three settings on a corpus</text>',
            f'<text class="rs" x="{X0}" y="44">Each answers a different question. Dialect is a proposal.</text>']
     code = ["# corpus-schema.yaml", "corpus-schema: 0", "level: 2", "dialect: obsidian", "extends:", '  claims: "@osdlc/corpus-profile-claims"',
-            '  org: "../org-principles"']
+            "uses: [claims/*]", "references:", '  org: "../org-principles"']
     out.append(f'<g class="code"><rect x="{X0}" y="58" width="{W - 2 * X0}" height="{18 * len(code) + 16}" rx="8"/>')
     out.extend(f'<text x="{X0 + 14}" y="{80 + 18 * i}">{esc(line.replace(chr(32) * 2, chr(160) * 2))}</text>' for i, line in enumerate(code))
     out.append('</g>')
@@ -108,7 +108,7 @@ def settings():
     out.append(box(X0 + 208, y, 200, 48, "obsidian", "wikilinks, embeds, no warning", "lvl opt"))
     y += 76
 
-    out.append(f'<text class="rl" x="{X0}" y="{y}">Extends</text><text class="rs" x="{X0 + 66}" y="{y}">whose types and records it uses</text>')
+    out.append(f'<text class="rl" x="{X0}" y="{y}">Extends</text><text class="rs" x="{X0 + 66}" y="{y}">whose types it builds on</text>')
     y += 12
     out.append(box(X0, y, 190, 48, "claims", "a profile: types only", "prof"))
     out.append(box(X0 + 218, y, 190, 48, "acceptance testing", "+ build, commit, environment", "prof"))

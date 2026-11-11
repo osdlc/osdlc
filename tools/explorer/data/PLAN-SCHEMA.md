@@ -33,7 +33,7 @@ file, then run `pnpm build-data` (see [scripts/README.md](../scripts/README.md))
     {
       "id": 27,                          // a whole number, unique
       "title": "Org corpora",            // a few words
-      "detail": "inherit records",       // one short line under the title
+      "detail": "a parent: types only",  // one short line under the title
       "status": "todo",                  // done | doing (in progress) | owner (waiting on owner) | todo
       "milestone": "m-npm",              // a milestones[].id
       "type": "functional",              // functional | supporting

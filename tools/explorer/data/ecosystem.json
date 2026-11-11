@@ -837,7 +837,7 @@
       },
       "path": {
         "present": null,
-        "target": "corpora/starter"
+        "target": "corpora/sdlc-starter"
       },
       "status": "planned",
       "version": null,
@@ -882,9 +882,9 @@
       "version": null,
       "registry": null,
       "twin": null,
-      "purpose": "A project corpus for a made-up tool. It extends the claims profile and the example org principles. Its decisions and statements cite inherited principles. CI installs the parents, runs corpus-schema sync and validates both corpora.",
+      "purpose": "A project corpus for a made-up tool. It extends the claims profile and references the example org principles. Its decisions and statements cite the org's principles. CI installs the claims profile, runs corpus-schema sync and validates both corpora.",
       "notes": [
-        "Built in osdlc/markdown#16, not merged. It holds a committed _inherited/ copy of both parents.",
+        "Built in osdlc/markdown#16, not merged. It holds a committed _references/org/ copy of the org principles. The claims profile gets no copy, since it gives types only.",
         "examples/test.sh breaks one thing at a time and checks each case fails with its one expected error.",
         "It is the start of task 30."
       ],
@@ -966,7 +966,7 @@
       "version": null,
       "registry": null,
       "twin": null,
-      "purpose": "A proposed shared corpus of an organization's principles. Project corpora extend it, refine some principles and waive others with a reason.",
+      "purpose": "A proposed shared corpus of an organization's principles. Project corpora reference it and cite its principles, and later refine some and waive others with a reason (task 28).",
       "notes": [
         "The first real case for sharing across corpora. The plan does not say which repo holds it. The starter corpus (task 63) may become it."
       ],
@@ -1249,7 +1249,7 @@
         "Near target: open osdlc/markdown#9 moves it here with the same npm name, and open osdlc/markdown#10 builds and releases it with the shared osdlc workflows. Until those land, releases go out from osdlc/osdlc.",
         "On the osdlc/markdown#9 branch its osdlc dependencies change from workspace:^ to npm ranges (^1.1.2 and ^0.8.1).",
         "osdlc/markdown builds and releases it with the shared osdlc workflows, ts-packages-ci and ts-packages-release (task 21).",
-        "validate --fix exists today. Task 29 adds the corpus-schema sync command: it writes a read-only copy of inherited records into a generated folder, such as _inherited/org/, so Obsidian and GitHub links resolve. The validator then checks that the copy matches the pinned parent. Task 34 adds a move verb."
+        "validate --fix exists today. Task 29 adds the corpus-schema sync command: it writes a read-only copy of each referenced corpus into _references/<prefix>/, such as _references/org/, so Obsidian and GitHub links resolve. The validator then checks that the copy matches the installed corpus. Task 34 adds a move verb."
       ],
       "tasks": [
         1,
@@ -1275,7 +1275,8 @@
         59,
         69,
         70,
-        71
+        71,
+        73
       ],
       "links": [
         {
@@ -3130,11 +3131,11 @@
     {
       "from": "fernlog-example",
       "to": "org-principles-example",
-      "kind": "extends",
+      "kind": "reads",
       "states": [
         "target"
       ],
-      "note": "By the path ../org-principles."
+      "note": "Under references: as org (D15), by the path ../org-principles."
     },
     {
       "from": "org-principles-corpus",

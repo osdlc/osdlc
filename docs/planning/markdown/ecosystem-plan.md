@@ -19,8 +19,10 @@ building toward is in [the architecture](architecture.md).
   record folder can't hold another record folder or a type folder.
 - A **profile** is a shared set of types that many corpora can use, such as a set of types for
   evidence. It is a corpus that has only types. A corpus can use more than one profile, next to its own types.
-- A **parent** is a corpus that another corpus builds on, named under `extends` in its root file. A
-  profile is a parent. So is an org's principles corpus.
+- A **parent** is a corpus whose types another corpus builds on, named under `extends` in its root
+  file. A profile is a parent. A parent gives types only.
+- A **referenced corpus** is a corpus whose records another corpus cites, named under `references`
+  in its root file. An org's principles corpus is one.
 - A **dialect** is a named flavor of note syntax on top of a common baseline, such as Obsidian's
   wikilinks and embeds.
 - **Conformance cases** are shared test inputs and expected results. Every implementation of the
@@ -208,8 +210,8 @@ So the spec would have three separate settings:
 
 - the **level**: how much a corpus declares, from 0 to 2;
 - the **dialect**: which link and syntax flavor it uses beyond the baseline;
-- the **extends** key: which parent corpora it uses. A profile, a shared set of types, is a parent
-  corpus that has only types.
+- the **extends** key: which parent corpora it builds its types on. A profile, a shared set of
+  types, is a parent corpus that has only types.
 
 We'd like to call these shared sets of types **profiles**, not packs. Profile is the usual word in
 data standards: FHIR profiles, Dublin Core application profiles, the W3C Profiles Vocabulary and the
@@ -222,19 +224,26 @@ end up using the word for this too. Whether model-schema switches its word is an
 ### Sharing across corpora
 
 Some things belong to a whole organization, such as its engineering principles. Teams and projects
-need them in their own corpora, next to local records. So a corpus can extend a parent corpus. The
-parent can extend another one, so org, team and project form a chain. A profile is a parent that has
-only types.
+need them in their own corpora, next to local records. A corpus names other corpora in its root
+file for two separate jobs (D15):
 
-The parts below marked decided are decisions D11, D4 and D12. They are not built yet: tasks 9, 27
-and 29 build them. The parts marked proposal are still open.
+- `extends` names parents, whose types it builds on. A parent gives types only. A profile is a
+  parent. `uses` lets a folder take a parent's type as it is, with no schema file.
+- `references` names corpora whose records it links to and cites, such as an org's principles. A
+  referenced corpus can reference another one, so org, team and project form a chain.
 
-**Parents are npm packages (decided, D11).** A parent is an npm package or a local folder. npm or
-pnpm installs it. `package.json` holds the version range and the lockfile pins the exact version, so a
-parent update arrives only when someone updates the lockfile. A private org corpus can be a git
-dependency, such as `"acme-principles": "github:acme/principles#v3"`, so it needs no registry.
+The parts below marked decided are decisions D4, D11, D12, D15 and D16. They are built in
+[#12](https://github.com/osdlc/markdown/pull/12) for corpus-schema 0.3.0 (tasks 9, 27, 29, 70 and
+71). The parts marked proposal are still open.
 
-The spec stays independent of npm. It says that each parent resolves to a folder that holds a
+**Other corpora are npm packages (decided, D11).** A parent or a referenced corpus is an npm package
+or a local folder. npm or pnpm installs it. `package.json` holds the version range and the lockfile
+pins the exact version, so an update arrives only when someone updates the lockfile. A corpus
+package lists the corpora it names as `peerDependencies`, so a project installs one version of each.
+A private org corpus can be a git dependency, such as
+`"acme-principles": "github:acme/principles#v3"`, so it needs no registry.
+
+The spec stays independent of npm. It says that each source resolves to a folder that holds a
 corpus. corpus-schema ships two resolvers: a package name, found the way Node finds packages from the
 corpus folder, and a relative path (`./` or `../`), for monorepos.
 
@@ -245,66 +254,74 @@ corpus-schema: 0
 level: 2
 extends:
   claims: "@osdlc/corpus-profile-claims"   # package name, resolved from this folder
+uses: [claims/*]
+references:
   org: "../org-principles"                 # or a relative path
 ```
 
 The rules (decided):
 
-1. `extends` maps a prefix to a source. A prefix is lowercase letters, digits and `-`. A source that
-   starts with `./` or `../` is a path from the corpus root. Anything else is a package name. A
-   package's corpus root is the package folder, or the folder named by a `corpus` field in its
-   `package.json`. The folder must hold a `corpus-schema.md`. `extends` needs level 2.
-2. Parents load transitively. Each parent's own `extends` resolves from the parent's folder. A cycle
-   is an error, and so is an unknown prefix anywhere.
-3. A parent's types are visible as `<prefix>/<type>`, read-only. A local type folder can use one as
-   it is, with a schema that holds only `x-extends: claims/statements`, or add fields. A type has
-   one parent for now.
+1. `extends` and `references` each map a prefix to a source. A prefix is lowercase letters, digits
+   and `-`, and sits in one key only. A source that starts with `./` or `../` is a path from the
+   corpus root. Anything else is a package name. A package's corpus root is the package folder, or
+   the folder named by a `corpus` field in its `package.json`. The folder must hold a root file.
+   `extends` and `uses` need level 2. `references` works at any level.
+2. Named corpora load transitively. Each one's own `extends` and `references` resolve from its own
+   folder. A cycle is an error, and so is an unknown prefix anywhere.
+3. A parent's types are visible as `<prefix>/<type>`, read-only. A local folder can take one as it
+   is through `uses: [claims/*]`, or a local type can add fields with `x-extends: claims/statements`.
+   A type has one parent for now.
 4. Types are plain JSON Schema (D4). A type builds on another with `x-extends`, using a parent type
    or a local type name. A record must pass every schema up the chain, which is JSON Schema's
    `allOf`. A child can add rules or tighten them, never loosen them.
-5. `x-ref: <prefix>/<type>` points at records of an inherited type. It also accepts local records
-   whose type `x-extends` that type. An `x-ref` to a local type accepts records of local types that
-   extend it.
-6. Inherited records are read-only. A local record whose type extends an inherited type and whose id
-   equals an inherited record's id is an error.
-7. The root key `profiles` stays reserved and unused. `extends` replaces the idea.
+5. `x-ref: <prefix>/<type>` points at records of that type, and of every type whose chain holds it,
+   through `x-extends` or `uses`. A reference by id or by wikilink resolves among the records of the
+   corpus and of the corpora it references.
+6. A parent gives no records. A local record may share an id with a parent's record, and a link into
+   a parent is an error. A local record may also share an id with a referenced record, but a
+   reference by id that matches both is an error.
+7. Every corpus, type and record in a package has a Package URL (D16). A corpus's graph holds one
+   version of each corpus, and a second version is an error. One record reached through two chains
+   of references is one record.
+8. The root key `profiles` stays reserved and unused. `extends` replaces the idea.
 
-**Inherited records come in as a committed copy (decided, D12).** `corpus-schema sync` copies each
-parent corpus into `_inherited/<prefix>/`: its root file, type folders and records, and its own
-`_inherited/`, so the chain carries through. The copy is committed. Relative links from local records
-then resolve in Obsidian and on GitHub. The validator skips `_inherited/` when it looks for local
-types and records. A link from a local record into `_inherited/<prefix>/` counts as a link to that
-parent's record. When the copy is missing or differs from the installed parent, the validator says so
-and names the fix: run `corpus-schema sync`. A corpus that only uses a parent's types and never links
-its records needs no copy.
+**Referenced records come in as a committed copy (decided, D12 and D15).** `corpus-schema sync`
+copies each referenced corpus into `_references/<prefix>/`: its root file, type folders and records,
+and its own `_references/`, so the chain carries through. A parent under `extends` gets no copy. The
+copy is committed. Relative links from local records then resolve in Obsidian and on GitHub. The
+validator skips `_references/` when it looks for local types and records. A link from a local record
+into `_references/<prefix>/` counts as a link to that corpus's record. When the copy is missing or
+differs from the installed corpus, the validator says so and names the fix: run
+`corpus-schema sync`. A corpus that cites referenced records only by bare id, and never links into
+the copy, needs no copy.
 
-**Refine and waive (proposal).** A local record relates to an inherited one on purpose. It can cite
+**Refine and waive (proposal).** A local record relates to a referenced one on purpose. It can cite
 it with `x-ref`, which is decided. It could also narrow it with `refines`, or set it aside with
-`waives` and a reason. Two records with the same type and id would be an error unless one says
-`refines`. Nothing is shadowed silently. This is task 28.
+`waives` and a reason. Nothing is shadowed silently. This is task 28.
 
-For principles: the org keeps a principles corpus. A project extends it, refines a principle that
+For principles: the org keeps a principles corpus. A project references it, refines a principle that
 needs a stricter local form, and waives one that doesn't apply, with a reason. A reviewer can then
 read the project's own corpus and see what holds and what was set aside.
 
 ## Milestone: upstream corpora over npm
 
-The goal: a corpus can build on parent corpora that arrive as npm packages, with a lockfile pinning
-them. We work toward it in this order. Each step names its task numbers. A task here can wait on one
+The goal: a corpus can build on profiles and cite other corpora's records, all arriving as npm
+packages, with a lockfile pinning them. We work toward it in this order. Each step names its task numbers. A task here can wait on one
 outside the milestone, such as task 26.
 
 1. **Finish the release setup here (task 21).** [osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9),
    [osdlc/markdown#10](https://github.com/osdlc/markdown/pull/10) and
    [osdlc/markdown#17](https://github.com/osdlc/markdown/pull/17) have merged.
-2. **Spec and validator (tasks 9 and 27).** `extends` with both resolvers, transitive loading,
-   `x-extends`, cross-corpus `x-ref` and the id rule.
-3. **`corpus-schema sync` and the copy check (task 29).**
+2. **Spec and validator (tasks 9, 27, 70 and 71).** `extends`, `uses` and `references` with both
+   resolvers, transitive loading, `x-extends`, cross-corpus `x-ref`, ids cut by `x-id-pattern`,
+   `x-record-file`, and identity by Package URL.
+3. **`corpus-schema sync` and the copy check (task 29).** The copy is `_references/<prefix>/`.
 4. **Release corpus-schema 0.3.0 (task 36).**
 5. **The claims profile as an npm package (task 23).** `@osdlc/corpus-profile-claims`, a corpus with
    types only.
 6. **An example pair, checked in CI (task 35).** An org corpus with records, and a project corpus that
-   extends both the claims profile and the org corpus, with local records citing inherited ones. This
-   is the start of task 30.
+   extends the claims profile and references the org corpus, with local records citing the org's
+   principles. This is the start of task 30.
 7. **harness-reference uses `extends` (task 37).** It stops holding copies of the claims types.
 
 Later in the same milestone: refine and waive (task 28), a real org principles corpus (task 30) and

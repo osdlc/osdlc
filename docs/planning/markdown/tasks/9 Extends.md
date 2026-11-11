@@ -19,8 +19,8 @@ starts with `./` or `../`. Parents load transitively, a cycle is an error, and t
 required. A type says which type it builds on with `x-extends: claims/statements`, or `x-extends:
 <local type>` for a type in the same corpus. A record must pass its own schema and the schema of
 every type above it. A child may add rules and tighten them, never loosen them. A type has one
-parent at first. This task also covers cross-corpus `x-ref` and the rule that a local record can't
-reuse an inherited record's id (see [Sharing across
+parent at first. This task also covers cross-corpus `x-ref`. A parent gives types only, so a local record
+may share an id with a parent's record (see [Sharing across
 corpora](https://github.com/osdlc/markdown/blob/main/docs/ecosystem-plan.md#sharing-across-corpora)).
 It no longer waits on [sksizer/dev#4069](https://github.com/sksizer/dev/pull/4069): types are plain
 JSON Schema, so moving model-schema to osdlc is separate work. After 3 and 21. In progress in

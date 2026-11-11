@@ -14,7 +14,7 @@ Search and queries over typed records span referenced corpora. A query names a r
 its namespace path, such as `osdlc/principles`, or `b/c/principles` for a reference of a reference.
 Each result carries the record's identity: its Package URL, from the package, the version, the
 type and the id, such as `pkg:npm/%40osdlc/corpus-sdlc-starter@0.1.0#principles/P-0002` (decision
-D16). One record reached by two paths is one result, even at two versions: the result lists the
-versions it was reached at. [#12](https://github.com/osdlc/markdown/pull/12) is defining the
+D16). One record reached by two paths is one result, since a graph holds one version of each
+corpus. [#12](https://github.com/osdlc/markdown/pull/12) is defining the
 namespace rules now, and this task follows them. The owner wants it soon.
 After 15 and 70.

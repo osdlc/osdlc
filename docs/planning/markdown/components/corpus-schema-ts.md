@@ -37,6 +37,7 @@ tasks:
   - "[69 Add command](../tasks/69%20Add%20command.md)"
   - "[70 References](../tasks/70%20References.md)"
   - "[71 Uses](../tasks/71%20Uses.md)"
+  - "[73 Identity and record files](../tasks/73%20Identity%20and%20record%20files.md)"
 links:
   - "[osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9)"
   - "[osdlc/markdown#10](https://github.com/osdlc/markdown/pull/10)"
@@ -81,6 +82,6 @@ records against their schemas, ids, links and typed references.
 - osdlc/markdown builds and releases it with the shared osdlc workflows, ts-packages-ci and
   ts-packages-release (task 21).
 - validate --fix exists today. Task 29 adds the corpus-schema sync command: it writes a read-only
-  copy of inherited records into a generated folder, such as _inherited/org/, so Obsidian and GitHub
-  links resolve. The validator then checks that the copy matches the pinned parent. Task 34 adds a
-  move verb.
+  copy of each referenced corpus into _references/<prefix>/, such as _references/org/, so Obsidian
+  and GitHub links resolve. The validator then checks that the copy matches the installed corpus.
+  Task 34 adds a move verb.

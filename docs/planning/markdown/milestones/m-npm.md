@@ -14,6 +14,7 @@ tasks:
   - "[43 Strict mode](../tasks/43%20Strict%20mode.md)"
   - "[70 References](../tasks/70%20References.md)"
   - "[71 Uses](../tasks/71%20Uses.md)"
+  - "[73 Identity and record files](../tasks/73%20Identity%20and%20record%20files.md)"
   - "[59 Trusted publishing](../tasks/59%20Trusted%20publishing.md)"
   - "[36 Release 0.3.0](../tasks/36%20Release%200.3.0.md)"
   - "[23 Claims profile](../tasks/23%20Claims%20profile.md)"

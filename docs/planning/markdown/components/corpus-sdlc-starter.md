@@ -6,7 +6,7 @@ layer: "[profiles](../layers/profiles.md)"
 states: [target]
 status: planned
 repo_target: "[osdlc/markdown](../repos/osdlc-markdown.md)"
-path_target: corpora/starter
+path_target: corpora/sdlc-starter
 tasks:
   - "[59 Trusted publishing](../tasks/59%20Trusted%20publishing.md)"
   - "[63 Starter corpus](../tasks/63%20Starter%20corpus.md)"

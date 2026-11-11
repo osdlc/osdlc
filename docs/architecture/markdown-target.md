@@ -76,18 +76,30 @@ Every note in a corpus at once.
 The spec, and the validator that checks a corpus against it.
 
 - It owns: the root file `corpus-schema.md` (or `.yaml` or `.json`) that marks a corpus, type folders,
-  record ids, record folders, JSON Schemas for types, links between types (`x-ref`), parent corpora
-  (`extends` in the root file and `x-extends` on a type), and the `validate`, `validate --fix` and
-  `sync` commands. `extends`, `x-extends` and `sync` come in the next release, 0.3.0 (the plan's
-  task 36), and are built in [#12](https://github.com/osdlc/markdown/pull/12).
+  record ids, record folders, JSON Schemas for types, links between types (`x-ref`), other corpora
+  (`extends`, `uses` and `references` in the root file, `x-extends` on a type), identity, and the
+  `validate`, `validate --fix` and `sync` commands. These come in the next release, 0.3.0 (the
+  plan's task 36), built in [#12](https://github.com/osdlc/markdown/pull/12): `extends`, `uses`,
+  `references`, `x-extends`, identity and `sync`.
+- A record's id comes from its file name. A type's `x-id-pattern` cuts it: the id is the longest
+  part of the name that the pattern matches, followed by `-` or the end of the name. So with
+  `^P-[0-9]{4}$`, `P-0002-favor-deterministic.md` has the id `P-0002`, and the rest is a slug for
+  people. A record's `id` field, when it has one, must equal it.
 - It does not walk folders or resolve links itself. It reads the corpus model. (Today the validator
   still does its own walk. That changes in the plan.)
 - A record folder is a folder inside a type folder that holds a file with the folder's own name:
-  `<folder>.md`, `.yaml` or `.json`. That file is the record, and it owns every other file in the
+  `<folder>.md`, `.yaml` or `.json`, or the name the type's `x-record-file` gives, such as
+  `README.md`. That file is the record, with the folder's id, and it owns every other file in the
   folder. A record folder can't hold another record folder or a type folder. A test run keeps its
-  script, query and results this way. Record folders are part of level 1 and ship in the first published
+  script, query and results this way. A folder in a type folder whose name starts with `_`, such as
+  `_attachments/`, holds narrative, not records. Record folders are part of level 1 and ship in the first published
   version. This is decided. The work is in [osdlc/osdlc#729](https://github.com/osdlc/osdlc/pull/729), merged on
   2026-11-09.
+- Identity: every corpus, type and record in a package has a [Package URL](https://github.com/package-url/purl-spec)
+  (purl), derived from the nearest `package.json`: `pkg:npm/%40osdlc/corpus-profile-sdlc#tasks` for
+  a type, and the record id after the type for a record. A corpus's graph holds one version of each
+  corpus, so a record reached through two chains of references is one record. A schema may state
+  its type's identity in `x-identity`, and the validator checks it. This is the plan's D16.
 - Packages: `@osdlc/corpus-schema` (TypeScript), in this repo's `packages/ts/corpus-schema`, with its
   spec and cases in `packages/conformance/corpus-schema`. It moved here from osdlc/osdlc in
   [osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9), with the same npm name. Its first
@@ -96,8 +108,9 @@ The spec, and the validator that checks a corpus against it.
 
 ### 5. Profiles
 
-Shared sets of types. The parent mechanism is decided (the plan's D11 and D4) and built for the
-next corpus-schema release, 0.3.0 (the plan's task 36). Refine and waive are still proposals.
+Shared sets of types, and shared corpora of records. How a corpus names them is decided (the plan's
+D4, D11 and D15) and built for the next corpus-schema release, 0.3.0 (the plan's task 36). Refine
+and waive are still proposals.
 
 - A profile is a set of types and rules that many corpora can use. It is a corpus that has only
   types. A corpus can use more than one, next to its own types.
@@ -109,13 +122,24 @@ next corpus-schema release, 0.3.0 (the plan's task 36). Refine and waive are sti
   profile is published from this repo as the npm package `@osdlc/corpus-profile-claims`.
 - The planning profile, `profiles/planning/`, holds the task, milestone and decision types. This
   repo's plan extends it by path. It is private and not on npm.
-- A parent corpus, such as a profile or an org corpus, is an npm package or a local folder. A corpus
-  names its parents in the root file under `extends`, which maps a short prefix to a source. A source
-  that starts with `./` or `../` is a path from the corpus root. Anything else is a package name,
-  found the way Node finds packages from the corpus folder. npm or pnpm installs it, `package.json`
-  holds the version range and the lockfile pins it. A private org corpus can be a git dependency,
-  such as `github:acme/principles#v3`, so it needs no registry. The spec does not depend on npm. It says only
-  that each parent resolves to a folder that holds a corpus.
+- The sdlc profile, `@osdlc/corpus-profile-sdlc` in `profiles/sdlc/`, holds sdlc's fourteen
+  planning types. It is generated, not written by hand (see The model, below).
+- A corpus names other corpora in its root file, under three keys (the plan's D15):
+  - `extends` names parents, whose types it builds on. A parent gives types only, not records. A
+    profile is a parent.
+  - `uses` names parent types that local folders hold as they are, such as `uses: [sdlc/*]`. A
+    folder at the corpus root named after the type, with no schema file, holds its records.
+  - `references` names corpora whose records it links to and cites, such as an org's principles.
+    `corpus-schema sync` copies each into `_references/<prefix>/`, and the copy is committed, so
+    links work in Obsidian and on GitHub. The validator checks that the copy matches the installed
+    corpus. A parent under `extends` gets no copy.
+- Each key maps a short prefix to a source. A source that starts with `./` or `../` is a path from
+  the corpus root. Anything else is a package name, found the way Node finds packages from the
+  corpus folder. npm or pnpm installs it, `package.json` holds the version range and the lockfile
+  pins it. A corpus package lists the corpora it names as `peerDependencies`, so a project holds one
+  version of each. A private org corpus can be a git dependency, such as
+  `github:acme/principles#v3`, so it needs no registry. The spec does not depend on npm. It says
+  only that each source resolves to a folder that holds a corpus.
 - Types are plain JSON Schema. A type builds on another with `x-extends`, for example
   `x-extends: claims/statements`. A record must pass its own schema and every schema above it. A
   child can add rules or tighten them, never loosen them. A record that is valid under the child is
@@ -124,12 +148,16 @@ next corpus-schema release, 0.3.0 (the plan's task 36). Refine and waive are sti
   overridden. Packs could compile to JSON Schema later.
 - The prefix is always required, so adding a second parent later breaks nothing. An unknown prefix
   is an error.
-- dev's model-schema already does much of this. It calls a profile a "pack": a folder of YAML that
-  declares kinds and compiles to JSON Schema. A pack can name packs it `requires`, a record can
-  `extends` another record, and a pack can `augment` another pack's records. See
+- The model sits above the store spec (the plan's D13). dev's model-schema packs are the model: a
+  pack declares kinds, refs, relations and their inverses, rules and defaults, and says nothing
+  about storage. A kind's `document:` binding maps it to Markdown: its folder, how refs are
+  written, and the file of a record kept in a folder. `model-schema corpus` turns packs into a
+  profile: a kind becomes a type folder, an id pattern becomes `x-id-pattern`, a ref becomes `x-ref`
+  with `x-ref-form`, and `document.recordFile` becomes `x-record-file`. The sdlc profile is built
+  this way from `@osdlc/pack-intent` and `@osdlc/pack-sdlc`. See
   [sksizer/dev#4069](https://github.com/sksizer/dev/pull/4069) and
-  [sksizer/dev#4070](https://github.com/sksizer/dev/pull/4070). We'd rather use the word profile,
-  because that is the usual word in data standards and "pack" already means something else in dev.
+  [sksizer/dev#4163](https://github.com/sksizer/dev/pull/4163). corpus-schema stays usable on its
+  own, with no packs.
 - Example: an acceptance-testing profile built on the claims profile. Requirements or acceptance
   criteria are what statements are about. A test is a method. A test run is a study result, kept as
   a record folder with its script, query and CSV results. Pass or fail is the direction: whether the
@@ -138,12 +166,10 @@ next corpus-schema release, 0.3.0 (the plan's task 36). Refine and waive are sti
 - A corpus can rename a profile's folders. It gives a type its own folder name and maps it to its
   parent type with `x-extends`. Field names stay the profile's, so tools and exports work everywhere. This
   is the plan's task 24, name overrides.
-- A parent can also bring its records, not only its types. Then an org's principles reach team and
-  project corpora, read-only. `corpus-schema sync` copies each parent into `_inherited/<prefix>/` in
-  the child, and the copy is committed, so links work in Obsidian and on GitHub. The validator checks
-  that the copy matches the installed parent. A local record can cite an inherited one. Narrowing it
-  with `refines` or setting it aside with `waives` are proposals. See the plan's
-  [Sharing across corpora](ecosystem-plan.md#sharing-across-corpora) (tasks 27 to 30).
+- An org's principles reach team and project corpora through `references`, read-only. A local
+  record cites a referenced one by id or by link. Narrowing it with `refines` or setting it aside
+  with `waives` are proposals. See the plan's
+  [Sharing across corpora](ecosystem-plan.md#sharing-across-corpora) (tasks 27 to 30 and 70).
 
 ### 6. Query (later)
 
@@ -185,12 +211,15 @@ level: 2
 dialect: obsidian
 extends:
   claims: "@osdlc/corpus-profile-claims"   # a package name
+uses: [claims/*]
+references:
   org: "../org-principles"                 # or a relative path
 ```
 
 As `corpus-schema.md`, the same keys go in YAML frontmatter between `---` lines. Today only
-`corpus-schema: 0` is required. Version 0 has `level`. `extends` comes in corpus-schema 0.3.0 (the
-plan's task 36), and needs `level: 2`. It replaces `profiles`, which stays reserved and unused.
+`corpus-schema: 0` is required. Version 0 has `level`. `extends`, `uses` and `references` come in
+corpus-schema 0.3.0 (the plan's task 36). `extends` and `uses` need `level: 2`. `extends` replaces
+`profiles`, which stays reserved and unused.
 `dialect` is reserved too: a validator says it does not check it. The `dialect` setting is still a
 proposal.
 
@@ -204,12 +233,13 @@ proposal.
   outside the corpus, and add embeds. A tool that knows the dialect checks it. A tool that doesn't
   checks the baseline and says what it skipped. There is no promise that every tool handles every
   dialect.
-- The **extends** key says which parent corpora it uses. A profile is a parent that has only types.
+- The **extends** key says which profiles it builds on. A profile is a parent that has only types.
   Each parent has a short prefix and a source (a package name or a path). A type builds on a parent
-  type as `x-extends: prefix/type`. A profile that builds on another, such as testing on claims,
-  names it under its own `extends`.
+  type as `x-extends: prefix/type`, or a folder takes it as it is through `uses`. A profile that
+  builds on another, such as testing on claims, names it under its own `extends`.
 
 These are separate on purpose. A profile is not a higher level, and a dialect is not a profile.
+`references` is not a setting of this kind: it names corpora whose records the corpus cites.
 
 ## Twins and shared tests
 

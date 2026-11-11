@@ -9,7 +9,7 @@ after:
   - "[49 SDLC profiles](49%20SDLC%20profiles.md)"
 ---
 
-Starter instance corpus: `@osdlc/corpus-sdlc-starter`, at `corpora/starter/` in this repo. It is
+Starter instance corpus: `@osdlc/corpus-sdlc-starter`, at `corpora/sdlc-starter/` in this repo. It is
 an upstream corpus with records, not only types. Its root file extends the sdlc profile by package
 name, and it holds principles to start: P-0001 "Normalize equivalent inputs at the boundary, and
 reject invalid ones", carried over from [osdlc/osdlc#447](https://github.com/osdlc/osdlc/pull/447),

@@ -15,6 +15,7 @@ implements_new:
   - "[corpus-schema-spec](corpus-schema-spec.md)"
 extends_new:
   - "[corpus-profile-claims](corpus-profile-claims.md)"
+reads_new:
   - "[org-principles-example](org-principles-example.md)"
 edge_notes:
   - edge: implements_new
@@ -23,17 +24,18 @@ edge_notes:
   - edge: extends_new
     to: "[corpus-profile-claims](corpus-profile-claims.md)"
     note: By the package name, installed with a file dependency on profiles/claims.
-  - edge: extends_new
+  - edge: reads_new
     to: "[org-principles-example](org-principles-example.md)"
-    note: By the path ../org-principles.
+    note: "Under references: as org (D15), by the path ../org-principles."
 ---
 
-A project corpus for a made-up tool. It extends the claims profile and the example org principles.
-Its decisions and statements cite inherited principles. CI installs the parents, runs
-corpus-schema sync and validates both corpora.
+A project corpus for a made-up tool. It extends the claims profile and references the example org
+principles. Its decisions and statements cite the org's principles. CI installs the claims
+profile, runs corpus-schema sync and validates both corpora.
 
 ## Notes
 
-- Built in osdlc/markdown#16, not merged. It holds a committed _inherited/ copy of both parents.
+- Built in osdlc/markdown#16, not merged. It holds a committed _references/org/ copy of the org
+  principles. The claims profile gets no copy, since it gives types only.
 - examples/test.sh breaks one thing at a time and checks each case fails with its one expected error.
 - It is the start of task 30.

@@ -14,8 +14,8 @@ prs:
 ---
 
 The example pair. Check in an org corpus with records (a few principles) and a project corpus that
-extends both the claims profile and the org corpus, by package name and by path. The project's local
-records cite inherited ones. CI installs the parents, runs `corpus-schema sync` and validates both
-corpora. This is the start of task 30. After 23, 29 and 36. In progress in
+extends the claims profile by package name and references the org corpus by path. The project's
+local records cite the org's principles. CI installs the claims profile, runs `corpus-schema sync`
+and validates both corpora. This is the start of task 30. After 23, 29 and 36. In progress in
 [#16](https://github.com/osdlc/markdown/pull/16): `examples/org-principles/` and `examples/fernlog/`,
 with the claims profile coming in by package name through a `file:` dependency.

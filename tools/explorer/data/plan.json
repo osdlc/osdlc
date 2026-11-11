@@ -73,6 +73,7 @@
         43,
         70,
         71,
+        73,
         59,
         36,
         23,
@@ -378,7 +379,7 @@
           "url": "https://github.com/osdlc/markdown/pull/12"
         }
       ],
-      "text": "Parents: `extends` and `x-extends`. D4 is decided, so the work is to build it in the validator. A corpus names its parents in the root file. `extends` maps a prefix to a source. The source is a package name, found the way Node finds packages from the corpus folder, or a relative path that starts with `./` or `../`. Parents load transitively, a cycle is an error, and the prefix is always required. A type says which type it builds on with `x-extends: claims/statements`, or `x-extends: <local type>` for a type in the same corpus. A record must pass its own schema and the schema of every type above it. A child may add rules and tighten them, never loosen them. A type has one parent at first. This task also covers cross-corpus `x-ref` and the rule that a local record can't reuse an inherited record's id (see [Sharing across corpora](https://github.com/osdlc/markdown/blob/main/docs/ecosystem-plan.md#sharing-across-corpora)). It no longer waits on [sksizer/dev#4069](https://github.com/sksizer/dev/pull/4069): types are plain JSON Schema, so moving model-schema to osdlc is separate work. After 3 and 21. In progress in [#12](https://github.com/osdlc/markdown/pull/12).",
+      "text": "Parents: `extends` and `x-extends`. D4 is decided, so the work is to build it in the validator. A corpus names its parents in the root file. `extends` maps a prefix to a source. The source is a package name, found the way Node finds packages from the corpus folder, or a relative path that starts with `./` or `../`. Parents load transitively, a cycle is an error, and the prefix is always required. A type says which type it builds on with `x-extends: claims/statements`, or `x-extends: <local type>` for a type in the same corpus. A record must pass its own schema and the schema of every type above it. A child may add rules and tighten them, never loosen them. A type has one parent at first. This task also covers cross-corpus `x-ref`. A parent gives types only, so a local record may share an id with a parent's record (see [Sharing across corpora](https://github.com/osdlc/markdown/blob/main/docs/ecosystem-plan.md#sharing-across-corpora)). It no longer waits on [sksizer/dev#4069](https://github.com/sksizer/dev/pull/4069): types are plain JSON Schema, so moving model-schema to osdlc is separate work. After 3 and 21. In progress in [#12](https://github.com/osdlc/markdown/pull/12).",
       "source": "docs/planning/tasks/9 Extends.md"
     },
     {
@@ -632,7 +633,7 @@
     {
       "id": 27,
       "title": "Org corpora",
-      "detail": "inherit records",
+      "detail": "a parent: types only",
       "status": "doing",
       "milestone": "m-npm",
       "type": "functional",
@@ -645,13 +646,13 @@
           "url": "https://github.com/osdlc/markdown/pull/12"
         }
       ],
-      "text": "Corpus inheritance. A parent named under `extends` can bring its records, not just its types. A corpus sees the parent's types and records read-only, next to its own records. A parent is an npm package (a version range plus the lockfile pin), a git dependency for a private org corpus, or a local folder. Loading is transitive. A parent update arrives when the lockfile changes. After 9. See [Sharing across corpora](https://github.com/osdlc/markdown/blob/main/docs/ecosystem-plan.md#sharing-across-corpora). In progress in [#12](https://github.com/osdlc/markdown/pull/12). Decision D15 changes this: `extends` brings types only, and records come in through `references` (task 70).",
+      "text": "Org corpora as packages. A corpus names other corpora in its root file: parents under `extends`, whose types it builds on, and corpora under `references`, whose records it cites (decision D15, task 70). A parent gives types only. A named corpus is an npm package (a version range plus the lockfile pin), a git dependency for a private org corpus, or a local folder. Loading is transitive, and a cycle is an error. An update arrives when the lockfile changes. After 9. See [Sharing across corpora](https://github.com/osdlc/markdown/blob/main/docs/ecosystem-plan.md#sharing-across-corpora). In progress in [#12](https://github.com/osdlc/markdown/pull/12).",
       "source": "docs/planning/tasks/27 Org corpora.md"
     },
     {
       "id": 28,
       "title": "Refine, waive",
-      "detail": "local vs inherited",
+      "detail": "local vs referenced",
       "status": "todo",
       "milestone": "m-sharing",
       "type": "functional",
@@ -659,13 +660,13 @@
         27
       ],
       "prs": [],
-      "text": "Refine and waive. A local record can say `refines` (a local version that narrows an inherited record) or `waives` (it doesn't apply here, with a reason). A local record with the same type and id as an inherited one is an error unless it says `refines`. After 27. Still a proposal.",
+      "text": "Refine and waive. A local record can say `refines` (a local version that narrows a referenced record) or `waives` (it doesn't apply here, with a reason). Today a local record may share an id with a referenced one, and a reference by id that matches both is an error. After 27. Still a proposal.",
       "source": "docs/planning/tasks/28 Refine, waive.md"
     },
     {
       "id": 29,
       "title": "Sync",
-      "detail": "_inherited copy",
+      "detail": "_references copy",
       "status": "doing",
       "milestone": "m-npm",
       "type": "functional",
@@ -678,7 +679,7 @@
           "url": "https://github.com/osdlc/markdown/pull/12"
         }
       ],
-      "text": "`corpus-schema sync`. It writes a read-only, committed copy of each parent corpus into `_inherited/<prefix>/`, including the parent's own `_inherited/`, so Obsidian and GitHub links resolve. The validator skips that folder when it looks for local records, treats a link into it as a link to the parent's record, and says \"run corpus-schema sync\" when the copy differs from the installed parent. After 27. In progress in [#12](https://github.com/osdlc/markdown/pull/12). Decision D15 moves the copy to `_references/<prefix>/`, for referenced corpora (task 70).",
+      "text": "`corpus-schema sync`. It writes a read-only, committed copy of each referenced corpus into `_references/<prefix>/`, including that corpus's own `_references/`, so Obsidian and GitHub links resolve. A parent under `extends` gets no copy (decision D15). The validator skips that folder when it looks for local records, treats a link into it as a link to the referenced corpus's record, and says \"run corpus-schema sync\" when the copy differs from the installed corpus. After 27. In progress in [#12](https://github.com/osdlc/markdown/pull/12).",
       "source": "docs/planning/tasks/29 Sync.md"
     },
     {
@@ -773,7 +774,7 @@
           "url": "https://github.com/osdlc/markdown/pull/16"
         }
       ],
-      "text": "The example pair. Check in an org corpus with records (a few principles) and a project corpus that extends both the claims profile and the org corpus, by package name and by path. The project's local records cite inherited ones. CI installs the parents, runs `corpus-schema sync` and validates both corpora. This is the start of task 30. After 23, 29 and 36. In progress in [#16](https://github.com/osdlc/markdown/pull/16): `examples/org-principles/` and `examples/fernlog/`, with the claims profile coming in by package name through a `file:` dependency.",
+      "text": "The example pair. Check in an org corpus with records (a few principles) and a project corpus that extends the claims profile by package name and references the org corpus by path. The project's local records cite the org's principles. CI installs the claims profile, runs `corpus-schema sync` and validates both corpora. This is the start of task 30. After 23, 29 and 36. In progress in [#16](https://github.com/osdlc/markdown/pull/16): `examples/org-principles/` and `examples/fernlog/`, with the claims profile coming in by package name through a `file:` dependency.",
       "source": "docs/planning/tasks/35 Example pair.md"
     },
     {
@@ -794,10 +795,11 @@
         46,
         59,
         70,
-        71
+        71,
+        73
       ],
       "prs": [],
-      "text": "Release corpus-schema 0.3.0. (supporting) The first version with `extends`, `x-extends`, cross-corpus `x-ref` and `sync`, published from this repo with its release setup. It also carries `--strict`, flattened `x-extends`, refs by id and `x-ref` to several types, which the sdlc profile needs. It also carries `references` and `uses` (tasks 70 and 71, decision D15). After 9, 21, 27, 29, 43 to 46, 59, 70 and 71. The changeset is in [#12](https://github.com/osdlc/markdown/pull/12). Owner work: merging #12 and then the Version Packages pull request publishes it.",
+      "text": "Release corpus-schema 0.3.0. (supporting) The first version with `extends`, `x-extends`, cross-corpus `x-ref` and `sync`, published from this repo with its release setup. It also carries `--strict`, flattened `x-extends`, refs by id and `x-ref` to several types, which the sdlc profile needs. It also carries `references` and `uses` (tasks 70 and 71, decision D15), and identity, the id cut, `x-record-file` and narrative folders (task 73, decision D16). After 9, 21, 27, 29, 43 to 46, 59, 70, 71 and 73. The changeset is in [#12](https://github.com/osdlc/markdown/pull/12). Owner work: merging #12 and then the Version Packages pull request publishes it.",
       "source": "docs/planning/tasks/36 Release 0.3.0.md"
     },
     {
@@ -991,14 +993,19 @@
       "id": 48,
       "title": "Profile generator",
       "detail": "packs to profiles",
-      "status": "todo",
+      "status": "doing",
       "milestone": "m-sdlc-profile",
       "type": "functional",
       "after": [
         47
       ],
-      "prs": [],
-      "text": "A generator in model-schema, in sksizer/dev, that turns a pack into a corpus profile. Each kind becomes a type folder. Refs become `x-ref`. Id patterns become `x-id-pattern`. A pack's `requires` becomes `extends`. It can also write a flattened copy: one corpus with no `extends`, which corpus-schema 0.2.0 can check. In 0.2.0, refs by id are checked only as strings. After 47.",
+      "prs": [
+        {
+          "label": "sksizer/dev#4163",
+          "url": "https://github.com/sksizer/dev/pull/4163"
+        }
+      ],
+      "text": "A generator in model-schema, in sksizer/dev, that turns a pack into a corpus profile. Each kind becomes a type folder. Refs become `x-ref` with `x-ref-form`. A kind's id pattern becomes `x-id-pattern` as it is, so corpus-schema 0.3 cuts the id out of a `<id>-<slug>` file name. A binding's `recordFile` becomes `x-record-file`. A pack's `requires` becomes `extends`, or with `--inline` one profile holds the required packs' types. `--target 0.2` writes a form that corpus-schema 0.2.0 can check, with refs checked only by their patterns. After 47. In progress in [sksizer/dev#4163](https://github.com/sksizer/dev/pull/4163).",
       "source": "docs/planning/tasks/48 Profile generator.md"
     },
     {
@@ -1217,7 +1224,7 @@
         49
       ],
       "prs": [],
-      "text": "Starter instance corpus: `@osdlc/corpus-sdlc-starter`, at `corpora/starter/` in this repo. It is an upstream corpus with records, not only types. Its root file extends the sdlc profile by package name, and it holds principles to start: P-0001 \"Normalize equivalent inputs at the boundary, and reject invalid ones\", carried over from [osdlc/osdlc#447](https://github.com/osdlc/osdlc/pull/447), and P-0002 \"Favor deterministic over probabilistic judgement\". Standards follow in task 64. A work repo names it under `references` (decision D15) with the prefix `osdlc` and cites its records by id. CI validates it with `--strict`. Decision D14 says why it is a starter and not dev's own records. After 49.",
+      "text": "Starter instance corpus: `@osdlc/corpus-sdlc-starter`, at `corpora/sdlc-starter/` in this repo. It is an upstream corpus with records, not only types. Its root file extends the sdlc profile by package name, and it holds principles to start: P-0001 \"Normalize equivalent inputs at the boundary, and reject invalid ones\", carried over from [osdlc/osdlc#447](https://github.com/osdlc/osdlc/pull/447), and P-0002 \"Favor deterministic over probabilistic judgement\". Standards follow in task 64. A work repo names it under `references` (decision D15) with the prefix `osdlc` and cites its records by id. CI validates it with `--strict`. Decision D14 says why it is a starter and not dev's own records. After 49.",
       "source": "docs/planning/tasks/63 Starter corpus.md"
     },
     {
@@ -1245,7 +1252,7 @@
         63
       ],
       "prs": [],
-      "text": "A CI check that the starter corpus holds no private data, since its records ship to a public registry. It fails on a link or path into a private repo such as sksizer/dev, an absolute home path, an email address, and a wikilink or id that names a record the corpus does not hold. The check runs on every pull request that touches `corpora/starter/`, and before each publish. Records carried over from dev (task 64) go through it too. After 63.",
+      "text": "A CI check that the starter corpus holds no private data, since its records ship to a public registry. It fails on a link or path into a private repo such as sksizer/dev, an absolute home path, an email address, and a wikilink or id that names a record the corpus does not hold. The check runs on every pull request that touches `corpora/sdlc-starter/`, and before each publish. Records carried over from dev (task 64) go through it too. After 63.",
       "source": "docs/planning/tasks/65 Leak check.md"
     },
     {
@@ -1329,7 +1336,7 @@
           "url": "https://github.com/osdlc/markdown/pull/12"
         }
       ],
-      "text": "`references` in the root file, as decision D15 says. It maps a prefix to another corpus, by package name or path, whose records a corpus links to and cites by id. `extends` brings types only. `corpus-schema sync` copies each referenced corpus into `_references/<prefix>/`, which replaces `_inherited/`, and `validate` fails when the copy differs from the installed package. It works at any level, so a plain vault with no types can reference a corpus. Nested references get a namespace path, such as `b/c/principles`. An `x-ref` to a type also matches records of that type, or of a type that extends it, in every referenced corpus. So a profile's field with `x-ref: sdlc/principles` resolves `P-0002` in the starter, whose principles build on the profile's. After 27 and 29, whose record inheritance and copy it reshapes. In progress in [#12](https://github.com/osdlc/markdown/pull/12), which also defines the namespace and identity rules.",
+      "text": "`references` in the root file, as decision D15 says. It maps a prefix to another corpus, by package name or path, whose records a corpus links to and cites by id. `extends` brings types only. `corpus-schema sync` copies each referenced corpus into `_references/<prefix>/`, and `validate` fails when the copy differs from the installed package. It works at any level, so a plain vault with no types can reference a corpus. Nested references get a namespace path, such as `b/c/principles`. An `x-ref` to a type also matches records of that type, or of a type that extends or uses it, in every referenced corpus. So a profile's field with `x-ref: sdlc/principles` resolves `P-0002` in the starter, whose principles use the profile's. After 27 and 29. In progress in [#12](https://github.com/osdlc/markdown/pull/12), which also defines the namespace and identity rules.",
       "source": "docs/planning/tasks/70 References.md"
     },
     {
@@ -1363,8 +1370,28 @@
         70
       ],
       "prs": [],
-      "text": "Search and queries over typed records span referenced corpora. A query names a referenced type by its namespace path, such as `osdlc/principles`, or `b/c/principles` for a reference of a reference. Each result carries the record's identity: its Package URL, from the package, the version, the type and the id, such as `pkg:npm/%40osdlc/corpus-sdlc-starter@0.1.0#principles/P-0002` (decision D16). One record reached by two paths is one result, even at two versions: the result lists the versions it was reached at. [#12](https://github.com/osdlc/markdown/pull/12) is defining the namespace rules now, and this task follows them. The owner wants it soon. After 15 and 70.",
+      "text": "Search and queries over typed records span referenced corpora. A query names a referenced type by its namespace path, such as `osdlc/principles`, or `b/c/principles` for a reference of a reference. Each result carries the record's identity: its Package URL, from the package, the version, the type and the id, such as `pkg:npm/%40osdlc/corpus-sdlc-starter@0.1.0#principles/P-0002` (decision D16). One record reached by two paths is one result, since a graph holds one version of each corpus. [#12](https://github.com/osdlc/markdown/pull/12) is defining the namespace rules now, and this task follows them. The owner wants it soon. After 15 and 70.",
       "source": "docs/planning/tasks/72 Queries span references.md"
+    },
+    {
+      "id": 73,
+      "title": "Identity and record files",
+      "detail": "purl, id cut, x-record-file, _ folders",
+      "status": "doing",
+      "milestone": "m-npm",
+      "type": "functional",
+      "after": [
+        9,
+        70
+      ],
+      "prs": [
+        {
+          "label": "osdlc/markdown#12",
+          "url": "https://github.com/osdlc/markdown/pull/12"
+        }
+      ],
+      "text": "The rules that let sdlc's own planning folders validate as they are, and that tell corpora apart.\n\n- Identity: every corpus, type and record in a package has a Package URL, derived from the nearest `package.json` (decision D16). A corpus's graph holds one version of each corpus. Records reached through two chains collapse by identity. A schema may state its type's identity in `x-identity`.\n- The id cut: with `x-id-pattern`, a record's id is the longest part of its file name that the pattern matches, followed by `-` or the end of the name. So `P-0002-favor-deterministic.md` has the id `P-0002`, and a record's `id` field must equal it.\n- `x-record-file`: a type names the file that holds a record kept in a folder of its own, such as `README.md` for `decisions/D-0001-a-slug/README.md`.\n- Narrative folders: a folder in a type folder whose name starts with `_` holds narrative, not records.\n\nAfter 9 and 70. In progress in [#12](https://github.com/osdlc/markdown/pull/12). It ships in 0.3.0 (task 36).",
+      "source": "docs/planning/tasks/73 Identity and record files.md"
     }
   ]
 }

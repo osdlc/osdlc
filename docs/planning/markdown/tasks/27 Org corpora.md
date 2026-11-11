@@ -1,7 +1,7 @@
 ---
 number: 27
 title: Org corpora
-detail: inherit records
+detail: "a parent: types only"
 status: doing
 type: functional
 milestone: "[m-npm](../milestones/m-npm.md)"
@@ -11,12 +11,10 @@ prs:
   - "[osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12)"
 ---
 
-Corpus inheritance. A parent named under `extends` can bring its records, not just its types. A
-corpus sees the parent's types and records read-only, next to its own records. A parent is an npm
-package (a version range plus the lockfile pin), a git dependency for a private org corpus, or a
-local folder. Loading is transitive. A parent update arrives when the lockfile changes. After 9. See
-[Sharing across
+Org corpora as packages. A corpus names other corpora in its root file: parents under `extends`,
+whose types it builds on, and corpora under `references`, whose records it cites (decision D15,
+task 70). A parent gives types only. A named corpus is an npm package (a version range plus the
+lockfile pin), a git dependency for a private org corpus, or a local folder. Loading is transitive,
+and a cycle is an error. An update arrives when the lockfile changes. After 9. See [Sharing across
 corpora](https://github.com/osdlc/markdown/blob/main/docs/ecosystem-plan.md#sharing-across-corpora).
 In progress in [#12](https://github.com/osdlc/markdown/pull/12).
-Decision D15 changes this: `extends` brings types only, and records come in through `references`
-(task 70).
