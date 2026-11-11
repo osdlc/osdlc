@@ -1,6 +1,6 @@
 ---
 title: The evidence project writes records
-order: 5
+order: 7
 phase: harness
 tasks:
   - "[4 Claims example](../tasks/4%20Claims%20example.md)"

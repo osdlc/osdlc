@@ -12,6 +12,8 @@ tasks:
   - "[45 Refs by id](../tasks/45%20Refs%20by%20id.md)"
   - "[46 Multi-type x-ref](../tasks/46%20Multi-type%20x-ref.md)"
   - "[43 Strict mode](../tasks/43%20Strict%20mode.md)"
+  - "[70 References](../tasks/70%20References.md)"
+  - "[71 Uses](../tasks/71%20Uses.md)"
   - "[59 Trusted publishing](../tasks/59%20Trusted%20publishing.md)"
   - "[36 Release 0.3.0](../tasks/36%20Release%200.3.0.md)"
   - "[23 Claims profile](../tasks/23%20Claims%20profile.md)"

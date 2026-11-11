@@ -15,11 +15,14 @@ after:
   - "[45 Refs by id](45%20Refs%20by%20id.md)"
   - "[46 Multi-type x-ref](46%20Multi-type%20x-ref.md)"
   - "[59 Trusted publishing](59%20Trusted%20publishing.md)"
+  - "[70 References](70%20References.md)"
+  - "[71 Uses](71%20Uses.md)"
 ---
 
 Release corpus-schema 0.3.0. (supporting) The first version with `extends`, `x-extends`,
 cross-corpus `x-ref` and `sync`, published from this repo with its release setup. It also carries
 `--strict`, flattened `x-extends`, refs by id and `x-ref` to several types, which the sdlc profile
-needs. After 9, 21, 27, 29, 43 to 46 and 59. The changeset is in
+needs. It also carries `references` and `uses` (tasks 70
+and 71, decision D15). After 9, 21, 27, 29, 43 to 46, 59, 70 and 71. The changeset is in
 [#12](https://github.com/osdlc/markdown/pull/12). Owner work: merging #12 and then the Version
 Packages pull request publishes it.

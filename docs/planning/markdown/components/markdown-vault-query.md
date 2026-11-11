@@ -13,6 +13,7 @@ tasks:
   - "[13 Switch users](../tasks/13%20Switch%20users.md)"
   - "[15 Query layer](../tasks/15%20Query%20layer.md)"
   - "[16 JSON and SQLite](../tasks/16%20JSON%20and%20SQLite.md)"
+  - "[72 Queries span references](../tasks/72%20Queries%20span%20references.md)"
 depends:
   - "[path-guard](path-guard.md)"
 depends_new:

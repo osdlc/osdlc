@@ -13,4 +13,4 @@ tasks:
 ---
 
 A work repo installs an upstream corpus with records, the starter corpus, from npm. It keeps a
-synced copy in _inherited/ and its own tasks cite the starter's principles and standards by id.
+synced copy in _references/ and its own tasks cite the starter's principles and standards by id.

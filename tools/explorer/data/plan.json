@@ -71,6 +71,8 @@
         45,
         46,
         43,
+        70,
+        71,
         59,
         36,
         23,
@@ -104,7 +106,7 @@
     {
       "id": "m-upstream",
       "title": "Upstream instances",
-      "goal": "A work repo installs an upstream corpus with records, the starter corpus, from npm. It keeps a synced copy in _inherited/ and its own tasks cite the starter's principles and standards by id.",
+      "goal": "A work repo installs an upstream corpus with records, the starter corpus, from npm. It keeps a synced copy in _references/ and its own tasks cite the starter's principles and standards by id.",
       "status": "todo",
       "phase": "store",
       "beeline": true,
@@ -117,22 +119,6 @@
         64
       ],
       "source": "docs/planning/milestones/m-upstream.md"
-    },
-    {
-      "id": "m-evidence",
-      "title": "The evidence project writes records",
-      "goal": "The evidence project keeps its evidence as claims records, checked by the validator.",
-      "status": "doing",
-      "phase": "harness",
-      "beeline": false,
-      "tasks": [
-        4,
-        8,
-        26,
-        22,
-        5
-      ],
-      "source": "docs/planning/milestones/m-evidence.md"
     },
     {
       "id": "m-model",
@@ -158,15 +144,32 @@
     {
       "id": "m-query",
       "title": "Query and build",
-      "goal": "One query layer over the corpus model, and a JSON and SQLite build.",
+      "goal": "One query layer over the corpus model that spans referenced corpora, and a JSON and SQLite build.",
       "status": "todo",
       "phase": "store",
       "beeline": false,
       "tasks": [
         15,
-        16
+        16,
+        72
       ],
       "source": "docs/planning/milestones/m-query.md"
+    },
+    {
+      "id": "m-evidence",
+      "title": "The evidence project writes records",
+      "goal": "The evidence project keeps its evidence as claims records, checked by the validator.",
+      "status": "doing",
+      "phase": "harness",
+      "beeline": false,
+      "tasks": [
+        4,
+        8,
+        26,
+        22,
+        5
+      ],
+      "source": "docs/planning/milestones/m-evidence.md"
     },
     {
       "id": "m-sharing",
@@ -642,7 +645,7 @@
           "url": "https://github.com/osdlc/markdown/pull/12"
         }
       ],
-      "text": "Corpus inheritance. A parent named under `extends` can bring its records, not just its types. A corpus sees the parent's types and records read-only, next to its own records. A parent is an npm package (a version range plus the lockfile pin), a git dependency for a private org corpus, or a local folder. Loading is transitive. A parent update arrives when the lockfile changes. After 9. See [Sharing across corpora](https://github.com/osdlc/markdown/blob/main/docs/ecosystem-plan.md#sharing-across-corpora). In progress in [#12](https://github.com/osdlc/markdown/pull/12).",
+      "text": "Corpus inheritance. A parent named under `extends` can bring its records, not just its types. A corpus sees the parent's types and records read-only, next to its own records. A parent is an npm package (a version range plus the lockfile pin), a git dependency for a private org corpus, or a local folder. Loading is transitive. A parent update arrives when the lockfile changes. After 9. See [Sharing across corpora](https://github.com/osdlc/markdown/blob/main/docs/ecosystem-plan.md#sharing-across-corpora). In progress in [#12](https://github.com/osdlc/markdown/pull/12). Decision D15 changes this: `extends` brings types only, and records come in through `references` (task 70).",
       "source": "docs/planning/tasks/27 Org corpora.md"
     },
     {
@@ -675,7 +678,7 @@
           "url": "https://github.com/osdlc/markdown/pull/12"
         }
       ],
-      "text": "`corpus-schema sync`. It writes a read-only, committed copy of each parent corpus into `_inherited/<prefix>/`, including the parent's own `_inherited/`, so Obsidian and GitHub links resolve. The validator skips that folder when it looks for local records, treats a link into it as a link to the parent's record, and says \"run corpus-schema sync\" when the copy differs from the installed parent. After 27. In progress in [#12](https://github.com/osdlc/markdown/pull/12).",
+      "text": "`corpus-schema sync`. It writes a read-only, committed copy of each parent corpus into `_inherited/<prefix>/`, including the parent's own `_inherited/`, so Obsidian and GitHub links resolve. The validator skips that folder when it looks for local records, treats a link into it as a link to the parent's record, and says \"run corpus-schema sync\" when the copy differs from the installed parent. After 27. In progress in [#12](https://github.com/osdlc/markdown/pull/12). Decision D15 moves the copy to `_references/<prefix>/`, for referenced corpora (task 70).",
       "source": "docs/planning/tasks/29 Sync.md"
     },
     {
@@ -789,10 +792,12 @@
         44,
         45,
         46,
-        59
+        59,
+        70,
+        71
       ],
       "prs": [],
-      "text": "Release corpus-schema 0.3.0. (supporting) The first version with `extends`, `x-extends`, cross-corpus `x-ref` and `sync`, published from this repo with its release setup. It also carries `--strict`, flattened `x-extends`, refs by id and `x-ref` to several types, which the sdlc profile needs. After 9, 21, 27, 29, 43 to 46 and 59. The changeset is in [#12](https://github.com/osdlc/markdown/pull/12). Owner work: merging #12 and then the Version Packages pull request publishes it.",
+      "text": "Release corpus-schema 0.3.0. (supporting) The first version with `extends`, `x-extends`, cross-corpus `x-ref` and `sync`, published from this repo with its release setup. It also carries `--strict`, flattened `x-extends`, refs by id and `x-ref` to several types, which the sdlc profile needs. It also carries `references` and `uses` (tasks 70 and 71, decision D15). After 9, 21, 27, 29, 43 to 46, 59, 70 and 71. The changeset is in [#12](https://github.com/osdlc/markdown/pull/12). Owner work: merging #12 and then the Version Packages pull request publishes it.",
       "source": "docs/planning/tasks/36 Release 0.3.0.md"
     },
     {
@@ -939,7 +944,7 @@
           "url": "https://github.com/osdlc/markdown/pull/12"
         }
       ],
-      "text": "`x-ref` by id. Today an `x-ref` field holds a relative Markdown link. It may also hold a bare record id, or a wikilink such as `[[T-0003]]`. The validator matches it to the record with that id. dev's planning records link this way. After 9. Built in [#12](https://github.com/osdlc/markdown/pull/12) as `x-ref-form: id` and `x-ref-form: wikilink`. An id resolves in the corpus and in every corpus it extends, so a work repo's task can cite an inherited principle as `P-0002`, with `x-ref: osdlc/principles`. The `x-ref` names the parent by prefix, not the id. An `id` value needs no `_inherited/` copy; a `wikilink` value does, so that Obsidian can open it.",
+      "text": "`x-ref` by id. Today an `x-ref` field holds a relative Markdown link. It may also hold a bare record id, or a wikilink such as `[[T-0003]]`. The validator matches it to the record with that id. dev's planning records link this way. After 9. Built in [#12](https://github.com/osdlc/markdown/pull/12) as `x-ref-form: id` and `x-ref-form: wikilink`. An id resolves in the corpus and in the corpora it draws on, so a work repo's task can cite the starter's principle as `P-0002`. The `x-ref` names the other corpus's type by prefix, such as `osdlc/principles`, not the id. Under decision D15, records come from referenced corpora (task 70).",
       "source": "docs/planning/tasks/45 Refs by id.md"
     },
     {
@@ -1212,7 +1217,7 @@
         49
       ],
       "prs": [],
-      "text": "Starter instance corpus: `@osdlc/corpus-sdlc-starter`, at `corpora/starter/` in this repo. It is an upstream corpus with records, not only types. Its root file extends the sdlc profile by package name, and it holds principles to start: P-0001 \"Normalize equivalent inputs at the boundary, and reject invalid ones\", carried over from [osdlc/osdlc#447](https://github.com/osdlc/osdlc/pull/447), and P-0002 \"Favor deterministic over probabilistic judgement\". Standards follow in task 64. A work repo names it under `extends` with the prefix `osdlc` and cites its records by id. CI validates it with `--strict`. Decision D14 says why it is a starter and not dev's own records. After 49.",
+      "text": "Starter instance corpus: `@osdlc/corpus-sdlc-starter`, at `corpora/starter/` in this repo. It is an upstream corpus with records, not only types. Its root file extends the sdlc profile by package name, and it holds principles to start: P-0001 \"Normalize equivalent inputs at the boundary, and reject invalid ones\", carried over from [osdlc/osdlc#447](https://github.com/osdlc/osdlc/pull/447), and P-0002 \"Favor deterministic over probabilistic judgement\". Standards follow in task 64. A work repo names it under `references` (decision D15) with the prefix `osdlc` and cites its records by id. CI validates it with `--strict`. Decision D14 says why it is a starter and not dev's own records. After 49.",
       "source": "docs/planning/tasks/63 Starter corpus.md"
     },
     {
@@ -1269,10 +1274,12 @@
       "type": "functional",
       "after": [
         35,
-        63
+        63,
+        70,
+        71
       ],
       "prs": [],
-      "text": "An example of the beeline's end state, checked in CI: `examples/work/`, a project corpus shaped like a work repo's `docs/planning/`. Its root file extends `sdlc: \"@osdlc/corpus-profile-sdlc\"` and `osdlc: \"@osdlc/corpus-sdlc-starter\"`, each by package name through a `file:` dependency on its folder in this repo. It holds `_inherited/` from `corpus-schema sync`, and a task that cites `P-0002` by id. It reuses the example pair's harness from task 35: CI installs the parents, runs sync and validates with `--strict`, and `examples/test.sh` adds a case where the copy is stale and the run must fail. After 35 and 63.",
+      "text": "An example of the beeline's end state, checked in CI: `examples/work/`, a project corpus shaped like a work repo's `docs/planning/`. Its root file has `extends: { sdlc: \"@osdlc/corpus-profile-sdlc\" }`, `uses: [sdlc/*]` and `references: { osdlc: \"@osdlc/corpus-sdlc-starter\" }`, each package through a `file:` dependency on its folder in this repo. It holds `_references/osdlc/` from `corpus-schema sync`, and a task that cites `P-0002` by id. A second, plain vault with no types references the starter too. It reuses the example pair's harness from task 35: CI installs the parents, runs sync and validates with `--strict`, and `examples/test.sh` adds a case where the copy is stale and the run must fail. After 35, 63, 70 and 71.",
       "source": "docs/planning/tasks/67 Work example.md"
     },
     {
@@ -1288,7 +1295,7 @@
         67
       ],
       "prs": [],
-      "text": "The work repo reaches the beeline's end state. It installs `@osdlc/corpus-profile-sdlc` and `@osdlc/corpus-sdlc-starter` from npm, names them under `extends` as `sdlc` and `osdlc`, runs `corpus-schema sync` and commits `_inherited/`. Its tasks cite inherited principles and standards by id, such as `P-0002`. CI runs `corpus-schema validate --strict`, which also fails on a stale copy. Updating the starter is then a version bump, a sync and a commit. After 52, 66 and 67, whose example it copies.",
+      "text": "The work repo reaches the beeline's end state. It installs `@osdlc/corpus-profile-sdlc` and `@osdlc/corpus-sdlc-starter` from npm, extends `sdlc`, uses `sdlc/*` and references `osdlc`. It runs `corpus-schema sync` and commits `_references/osdlc/`. Its tasks cite inherited principles and standards by id, such as `P-0002`. CI runs `corpus-schema validate --strict`, which also fails on a stale copy. Updating the starter is then a version bump, a sync and a commit. After 52, 66 and 67, whose example it copies.",
       "source": "docs/planning/tasks/68 Work cites starter.md"
     },
     {
@@ -1304,6 +1311,60 @@
       "prs": [],
       "text": "Optional: `corpus-schema add <package> --as <prefix>`. It adds the package as a dependency, adds the `extends` entry to the root file and runs sync. It saves three steps a person can do by hand, so no other task waits on it and it is off the beeline's critical path. After 29.",
       "source": "docs/planning/tasks/69 Add command.md"
+    },
+    {
+      "id": 70,
+      "title": "References",
+      "detail": "references, _references/",
+      "status": "doing",
+      "milestone": "m-npm",
+      "type": "functional",
+      "after": [
+        27,
+        29
+      ],
+      "prs": [
+        {
+          "label": "osdlc/markdown#12",
+          "url": "https://github.com/osdlc/markdown/pull/12"
+        }
+      ],
+      "text": "`references` in the root file, as decision D15 says. It maps a prefix to another corpus, by package name or path, whose records a corpus links to and cites by id. `extends` brings types only. `corpus-schema sync` copies each referenced corpus into `_references/<prefix>/`, which replaces `_inherited/`, and `validate` fails when the copy differs from the installed package. It works at any level, so a plain vault with no types can reference a corpus. Nested references get a namespace path, such as `b/c/principles`. After 27 and 29, whose record inheritance and copy it reshapes. In progress in [#12](https://github.com/osdlc/markdown/pull/12), which also defines the namespace and identity rules.",
+      "source": "docs/planning/tasks/70 References.md"
+    },
+    {
+      "id": 71,
+      "title": "Uses",
+      "detail": "uses: [sdlc/*]",
+      "status": "doing",
+      "milestone": "m-npm",
+      "type": "functional",
+      "after": [
+        9
+      ],
+      "prs": [
+        {
+          "label": "osdlc/markdown#12",
+          "url": "https://github.com/osdlc/markdown/pull/12"
+        }
+      ],
+      "text": "`uses` in the root file, as decision D15 says. `uses: [sdlc/*]` takes a parent's types as they are, so a corpus no longer needs a one-line schema file that holds only `x-extends` for each type. After 9. In progress in [#12](https://github.com/osdlc/markdown/pull/12).",
+      "source": "docs/planning/tasks/71 Uses.md"
+    },
+    {
+      "id": 72,
+      "title": "Queries span references",
+      "detail": "namespaced types, one result per record",
+      "status": "todo",
+      "milestone": "m-query",
+      "type": "functional",
+      "after": [
+        15,
+        70
+      ],
+      "prs": [],
+      "text": "Search and queries over typed records span referenced corpora. A query names a referenced type by its namespace path, such as `osdlc/principles`, or `b/c/principles` for a reference of a reference. Each result carries the record's identity, its package, type and id, and the package version. One record reached by two paths is one result. [#12](https://github.com/osdlc/markdown/pull/12) is defining the namespace and identity rules now, and this task follows them. The owner wants it soon. After 15 and 70.",
+      "source": "docs/planning/tasks/72 Queries span references.md"
     }
   ]
 }

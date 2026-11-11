@@ -14,5 +14,6 @@ an upstream corpus with records, not only types. Its root file extends the sdlc 
 name, and it holds principles to start: P-0001 "Normalize equivalent inputs at the boundary, and
 reject invalid ones", carried over from [osdlc/osdlc#447](https://github.com/osdlc/osdlc/pull/447),
 and P-0002 "Favor deterministic over probabilistic judgement". Standards follow in task 64. A work
-repo names it under `extends` with the prefix `osdlc` and cites its records by id. CI validates it
+repo names it under `references` (decision D15) with the prefix `osdlc` and cites its records by
+id. CI validates it
 with `--strict`. Decision D14 says why it is a starter and not dev's own records. After 49.

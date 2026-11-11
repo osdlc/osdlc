@@ -18,3 +18,5 @@ local folder. Loading is transitive. A parent update arrives when the lockfile c
 [Sharing across
 corpora](https://github.com/osdlc/markdown/blob/main/docs/ecosystem-plan.md#sharing-across-corpora).
 In progress in [#12](https://github.com/osdlc/markdown/pull/12).
+Decision D15 changes this: `extends` brings types only, and records come in through `references`
+(task 70).

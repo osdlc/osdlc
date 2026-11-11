@@ -613,7 +613,8 @@
       "tasks": [
         13,
         15,
-        16
+        16,
+        72
       ],
       "links": [],
       "source": "docs/planning/components/markdown-vault-query.md"
@@ -842,7 +843,7 @@
       "version": null,
       "registry": null,
       "twin": null,
-      "purpose": "A starter corpus of principles and standards that any project can inherit. A work repo names it under extends: with the prefix osdlc, syncs it into _inherited/osdlc/ and cites its records by id.",
+      "purpose": "A starter corpus of principles and standards that any project can inherit. A work repo names it under references: with the prefix osdlc, syncs it into _references/osdlc/ and cites its records by id.",
       "notes": [
         "Decision D14. It starts with two principles, P-0001 and P-0002, and the owner adds more (task 64).",
         "dev's own intent records are not the upstream for now.",
@@ -1116,7 +1117,7 @@
       "version": null,
       "registry": null,
       "twin": null,
-      "purpose": "The beeline's end state as an example: a project corpus shaped like a work repo's docs/planning. It extends the sdlc profile and the starter corpus, and its task cites P-0002 by id. CI syncs and validates it with --strict.",
+      "purpose": "The beeline's end state as an example: a project corpus shaped like a work repo's docs/planning. It extends the sdlc profile, references the starter corpus, and its task cites P-0002 by id. CI syncs and validates it with --strict.",
       "notes": [
         "It reuses the example pair's harness (task 35), with a case where a stale copy must fail."
       ],
@@ -1272,7 +1273,9 @@
         46,
         57,
         59,
-        69
+        69,
+        70,
+        71
       ],
       "links": [
         {
@@ -1330,6 +1333,7 @@
         13,
         14,
         15,
+        72,
         32
       ],
       "links": [],
@@ -3193,16 +3197,16 @@
       "states": [
         "target"
       ],
-      "note": "As sdlc, by package name through a file: dependency."
+      "note": "As sdlc, by package name through a file: dependency, with uses: [sdlc/*]."
     },
     {
       "from": "work-example",
       "to": "corpus-sdlc-starter",
-      "kind": "extends",
+      "kind": "reads",
       "states": [
         "target"
       ],
-      "note": "As osdlc, by package name through a file: dependency."
+      "note": "Under references: as osdlc (D15), through a file: dependency."
     },
     {
       "from": "corpus-schema-rs",

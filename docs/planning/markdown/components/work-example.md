@@ -13,6 +13,7 @@ implements_new:
   - "[corpus-schema-spec](corpus-schema-spec.md)"
 extends_new:
   - "[corpus-profile-sdlc](corpus-profile-sdlc.md)"
+reads_new:
   - "[corpus-sdlc-starter](corpus-sdlc-starter.md)"
 edge_notes:
   - edge: implements_new
@@ -20,14 +21,14 @@ edge_notes:
     note: A valid level-2 corpus.
   - edge: extends_new
     to: "[corpus-profile-sdlc](corpus-profile-sdlc.md)"
-    note: "As sdlc, by package name through a file: dependency."
-  - edge: extends_new
+    note: "As sdlc, by package name through a file: dependency, with uses: [sdlc/*]."
+  - edge: reads_new
     to: "[corpus-sdlc-starter](corpus-sdlc-starter.md)"
-    note: "As osdlc, by package name through a file: dependency."
+    note: "Under references: as osdlc (D15), through a file: dependency."
 ---
 
 The beeline's end state as an example: a project corpus shaped like a work repo's docs/planning. It
-extends the sdlc profile and the starter corpus, and its task cites P-0002 by id. CI syncs and
+extends the sdlc profile, references the starter corpus, and its task cites P-0002 by id. CI syncs and
 validates it with --strict.
 
 ## Notes

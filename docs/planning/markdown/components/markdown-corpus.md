@@ -13,6 +13,7 @@ tasks:
   - "[13 Switch users](../tasks/13%20Switch%20users.md)"
   - "[14 Validator](../tasks/14%20Validator.md)"
   - "[15 Query layer](../tasks/15%20Query%20layer.md)"
+  - "[72 Queries span references](../tasks/72%20Queries%20span%20references.md)"
   - "[32 Rust validator](../tasks/32%20Rust%20validator.md)"
 depends_new:
   - "[markdown-link](markdown-link.md)"

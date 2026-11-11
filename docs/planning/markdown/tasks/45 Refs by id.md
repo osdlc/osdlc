@@ -14,7 +14,7 @@ prs:
 `x-ref` by id. Today an `x-ref` field holds a relative Markdown link. It may also hold a bare record
 id, or a wikilink such as `[[T-0003]]`. The validator matches it to the record with that id. dev's
 planning records link this way. After 9. Built in [#12](https://github.com/osdlc/markdown/pull/12)
-as `x-ref-form: id` and `x-ref-form: wikilink`. An id resolves in the corpus and in every corpus it
-extends, so a work repo's task can cite an inherited principle as `P-0002`, with `x-ref:
-osdlc/principles`. The `x-ref` names the parent by prefix, not the id. An `id` value needs no
-`_inherited/` copy; a `wikilink` value does, so that Obsidian can open it.
+as `x-ref-form: id` and `x-ref-form: wikilink`. An id resolves in the corpus and in the corpora it
+draws on, so a work repo's task can cite the starter's principle as `P-0002`. The `x-ref` names the
+other corpus's type by prefix, such as `osdlc/principles`, not the id. Under decision D15, records
+come from referenced corpora (task 70).

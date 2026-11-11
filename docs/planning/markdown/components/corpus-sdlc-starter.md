@@ -29,7 +29,8 @@ edge_notes:
 ---
 
 A starter corpus of principles and standards that any project can inherit. A work repo names it
-under extends: with the prefix osdlc, syncs it into _inherited/osdlc/ and cites its records by id.
+under references: with the prefix osdlc, syncs it into _references/osdlc/ and cites its records by
+id.
 
 ## Notes
 

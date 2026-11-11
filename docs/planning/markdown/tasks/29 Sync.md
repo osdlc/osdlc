@@ -16,3 +16,4 @@ prs:
 resolve. The validator skips that folder when it looks for local records, treats a link into it as a
 link to the parent's record, and says "run corpus-schema sync" when the copy differs from the
 installed parent. After 27. In progress in [#12](https://github.com/osdlc/markdown/pull/12).
+Decision D15 moves the copy to `_references/<prefix>/`, for referenced corpora (task 70).
