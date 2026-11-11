@@ -102,6 +102,19 @@ describe('build-data', () => {
     ])
   })
 
+  it('names the schema file it was reading when x-extends fails', () => {
+    const problems = problemsAfter(({ edit, root }) => {
+      cpSync(join(root, 'profiles/planning'), join(root, 'node_modules/@osdlc/corpus-profile-planning'), { recursive: true })
+      edit('corpus-schema.md', 'plan: ../../profiles/planning', 'plan: "@osdlc/corpus-profile-planning"')
+      const dir = join(root, 'docs/planning/tasks')
+      writeFileSync(join(dir, 'tasks.schema.yaml'), readFileSync(join(dir, 'tasks.schema.md'), 'utf8').split('---\n')[1])
+      rmSync(join(dir, 'tasks.schema.md'))
+    })
+    expect(problems).toEqual([
+      'docs/planning/tasks/tasks.schema.yaml: x-extends: build-data reads a parent by path only, not @osdlc/corpus-profile-planning',
+    ])
+  })
+
   it('passes on the validator problems', () => {
     const problems = problemsAfter(({ edit }) =>
       edit('tasks/4 Claims example.md', '3%20Publish%200.2.0.md', '3%20Publish%200.3.0.md'),

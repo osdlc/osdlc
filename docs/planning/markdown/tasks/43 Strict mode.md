@@ -9,5 +9,5 @@ after:
   - "[3 Publish 0.2.0](3%20Publish%200.2.0.md)"
 ---
 
-Add `--strict` to `corpus-schema validate`. With it, a warning fails the run, like an error. CI can
-then drop the step that greps stderr for warning lines, as `planning.yml` does today. After 3.
+Add `--strict` to `corpus-schema validate`. With it, a warning fails the run, like an error. Then
+`tools/validate-strict.sh`, which greps stderr for warning lines, can go. After 3.

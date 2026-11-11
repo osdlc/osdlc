@@ -17,20 +17,22 @@ const progress = computed(() => progressText(props.data.progress))
 const classes = computed(() => [
   `milestone--${props.data.variant}`,
   `milestone--${milestone.value.status}`,
-  milestone.value.phase ? `milestone--phase-${milestone.value.phase}` : 'milestone--no-phase',
   {
     'is-selected': props.data.selected,
     'is-dimmed': props.data.dimmed,
     'is-next': props.data.highlighted,
+    'has-phase': milestone.value.phase !== null,
   },
 ])
+// The phase band: the card's top edge in the phase colour, with the phase name on it.
+const phaseStyle = computed(() => (milestone.value.phase ? { '--milestone-phase': `var(--phase-${milestone.value.phase})` } : {}))
 const label = computed(() =>
   [`Milestone: ${milestone.value.title}`, props.data.phaseLabel, props.data.statusLabel, progress.value].filter(Boolean).join(' · '),
 )
 </script>
 
 <template>
-  <div class="milestone" :class="classes" :title="label">
+  <div class="milestone" :class="classes" :style="phaseStyle" :title="label">
     <template v-if="data.variant === 'card'">
       <Handle id="t-left" type="target" :position="Position.Left" class="milestone__handle" />
       <Handle id="s-right" type="source" :position="Position.Right" class="milestone__handle" />
@@ -56,7 +58,6 @@ const label = computed(() =>
   height: 136px; /* MILESTONE_HEIGHT */
   padding: 9px 12px;
   border: 1.5px solid var(--border-strong);
-  border-top: 5px solid var(--milestone-phase);
   border-left-width: 5px;
   border-radius: var(--radius);
   background: var(--surface);
@@ -64,20 +65,10 @@ const label = computed(() =>
   box-shadow: var(--shadow);
   transition: opacity 120ms ease;
   position: relative;
-  --milestone-phase: var(--border-strong);
 }
 
-/* The phase band: the card's top edge in the phase colour, with the phase name on it. */
-.milestone--phase-store {
-  --milestone-phase: var(--phase-store);
-}
-
-.milestone--phase-model {
-  --milestone-phase: var(--phase-model);
-}
-
-.milestone--phase-harness {
-  --milestone-phase: var(--phase-harness);
+.milestone.has-phase {
+  border-top: 5px solid var(--milestone-phase);
 }
 
 .milestone__phase {

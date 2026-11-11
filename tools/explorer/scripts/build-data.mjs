@@ -86,7 +86,7 @@ function readCorpus(corpus, root) {
     try {
       schemas[type] = schemaChain(corpus, type)
     } catch (e) {
-      return { problems: [`${label}/${type}/${type}.schema.md: x-extends: ${e.message}`] }
+      return { problems: [`${toPosix(relative(root, e.file))}: x-extends: ${e.message}`] }
     }
   return { label, problems, byPath, ofType, schemas }
 }
@@ -94,9 +94,10 @@ function readCorpus(corpus, root) {
 /**
  * The schemas of a type and of each type up its `x-extends` chain, nearest first. A prefix is
  * followed through the root file's `extends`, which must give a path. The validator has already
- * checked the chain.
+ * checked the chain. A thrown error's `file` is the schema whose `x-extends` failed.
  */
 function schemaChain(corpus, type) {
+  let at = join(corpus, type, `${type}.schema.md`) // the schema being followed
   // The first of `names` in `dir`, as data: a Markdown file's frontmatter, or YAML or JSON.
   const data = (dir, names) => {
     for (const name of names) {
@@ -106,19 +107,20 @@ function schemaChain(corpus, type) {
       } catch {
         continue
       }
-      return parse(name.endsWith('.md') ? split(text).frontmatter : text)
+      return { file: join(dir, name), value: parse(name.endsWith('.md') ? split(text).frontmatter : text) }
     }
-    throw new Error(`no ${names.join(', ')} in ${dir}`)
+    throw Object.assign(new Error(`no ${names.join(', ')} in ${dir}`), { file: at })
   }
   const chain = []
   for (let dir = corpus, name = type; name !== undefined; ) {
-    const schema = data(join(dir, name), ['.md', '.yaml', '.json'].map((ext) => `${name}.schema${ext}`))
+    const { file, value: schema } = data(join(dir, name), ['.md', '.yaml', '.json'].map((ext) => `${name}.schema${ext}`))
+    at = file
     chain.push(schema)
     const [prefix, base] = (schema['x-extends'] ?? '').split('/', 2)
     if (base === undefined) name = prefix || undefined
     else {
-      const source = data(dir, ['corpus-schema.md', 'corpus-schema.yaml', 'corpus-schema.json']).extends[prefix]
-      if (!/^\.\.?\//.test(source)) throw new Error(`build-data reads a parent by path only, not ${source}`)
+      const source = data(dir, ['corpus-schema.md', 'corpus-schema.yaml', 'corpus-schema.json']).value.extends[prefix]
+      if (!/^\.\.?\//.test(source)) throw Object.assign(new Error(`build-data reads a parent by path only, not ${source}`), { file: at })
       dir = resolve(dir, source)
       name = base
     }

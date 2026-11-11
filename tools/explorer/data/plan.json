@@ -791,7 +791,7 @@
       "after": [
         3
       ],
-      "text": "Add `--strict` to `corpus-schema validate`. With it, a warning fails the run, like an error. CI can then drop the step that greps stderr for warning lines, as `planning.yml` does today. After 3.",
+      "text": "Add `--strict` to `corpus-schema validate`. With it, a warning fails the run, like an error. Then `tools/validate-strict.sh`, which greps stderr for warning lines, can go. After 3.",
       "source": "docs/planning/tasks/43 Strict mode.md"
     },
     {

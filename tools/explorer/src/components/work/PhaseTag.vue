@@ -6,12 +6,11 @@ defineProps<{ phase: MilestonePhase; label: string }>()
 </script>
 
 <template>
-  <span class="phase" :class="`phase--${phase}`">{{ label }}</span>
+  <span class="phase" :style="{ '--phase': `var(--phase-${phase})` }">{{ label }}</span>
 </template>
 
 <style scoped>
 .phase {
-  --phase: var(--muted);
   display: inline-flex;
   align-items: center;
   padding: 0 7px;
@@ -25,17 +24,5 @@ defineProps<{ phase: MilestonePhase; label: string }>()
   letter-spacing: 0.04em;
   text-transform: uppercase;
   white-space: nowrap;
-}
-
-.phase--store {
-  --phase: var(--phase-store);
-}
-
-.phase--model {
-  --phase: var(--phase-model);
-}
-
-.phase--harness {
-  --phase: var(--phase-harness);
 }
 </style>

@@ -17,7 +17,7 @@ defineProps<{ level: WorkLevel; phases: readonly PlanOption<MilestonePhase>[] }>
     <span class="legend__item"><span class="swatch swatch--support" />support: supporting work</span>
     <span class="legend__item"><span class="swatch swatch--next" />▶ next up</span>
     <span v-for="phase in phases" :key="phase.id" class="legend__item">
-      <span class="swatch swatch--phase" :class="`swatch--phase-${phase.id}`" /><PhaseTag :phase="phase.id" :label="phase.label" />
+      <span class="swatch swatch--phase" :style="{ borderTopColor: `var(--phase-${phase.id})` }" /><PhaseTag :phase="phase.id" :label="phase.label" />
     </span>
     <span class="legend__item">
       <svg class="line" viewBox="0 0 36 8" aria-hidden="true"><line x1="0" y1="4" x2="36" y2="4" class="line--open" /></svg>
@@ -78,18 +78,6 @@ defineProps<{ level: WorkLevel; phases: readonly PlanOption<MilestonePhase>[] }>
 
 .swatch--phase {
   border-top-width: 4px;
-}
-
-.swatch--phase-store {
-  border-top-color: var(--phase-store);
-}
-
-.swatch--phase-model {
-  border-top-color: var(--phase-model);
-}
-
-.swatch--phase-harness {
-  border-top-color: var(--phase-harness);
 }
 
 .swatch--next {
