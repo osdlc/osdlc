@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/markdown-render-vue",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Vue 3 components for @osdlc/markdown-render: a MarkdownRender component that walks the rendered hast into VNodes (never v-html), with built-in wikilink, tag, embed, callout, task, math, mermaid, code and table components and an injected NoteSource.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",

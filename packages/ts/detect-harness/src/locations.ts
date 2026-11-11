@@ -21,9 +21,12 @@
  * Vendor facts here come from each harness's public documentation (see the
  * README). They change; a wrong entry is a bug in this table, not in a provider.
  *
- * Runtime-agnostic: `node:path` only.
+ * Facts the harness knowledge file states at moderate strength or better are read
+ * from it; the rest are constants here, asserted against it by the tests.
+ * Runtime: `node:path`, and `node:fs` through `@osdlc/harness-knowledge`.
  */
 
+import { fact } from '@osdlc/harness-knowledge'
 import { join, posix, win32 } from 'node:path'
 
 import type { BuiltinHarnessId } from './harnesses.ts'
@@ -141,6 +144,24 @@ const p = (
 ): LocationPath => (env ? { role, scope, kind, path, env } : { role, scope, kind, path })
 
 /**
+ * A user-scope skills folder the knowledge file states for `harness`, as a `~/` template, or
+ * `fallback` when the file has no moderate-strength value listing one under `~/.agents/`.
+ */
+function knownAgentsSkillsDir(harness: string, fallback: string): string {
+  const dirs = fact(harness, 'skills/user-dirs')?.['dirs']
+  const found = Array.isArray(dirs)
+    ? dirs.find((d): d is string => typeof d === 'string' && d.startsWith('~/.agents/'))
+    : undefined
+  return found ?? fallback
+}
+
+// knowledge: codex's `~/.agents/skills` is read from skills/user-dirs. Every other constant
+// below (binary, detection variables, config folder variables, skills folders) is asserted
+// against the file in tests/knowledge-facts.test.ts, which also pins the stated folders the
+// table leaves out (cursor and pi `~/.agents/skills`, antigravity `~/.gemini/skills`) and
+// the values the file holds only weakly or disputed.
+
+/**
  * The location table. Entries are added as harnesses change.
  * For opencode, pi and Antigravity, `detect()` reads only the base folders and
  * sign-in files; their other paths are listed here but not read yet.
@@ -223,8 +244,9 @@ export const LOCATIONS: Readonly<Record<BuiltinHarnessId, HarnessLocations>> = {
       p('hooks', 'project', 'file', '{project}/.codex/hooks.json'),
       // `~/.codex/skills` is the older folder; `~/.agents/skills` replaced it.
       p('skills', 'user', 'dir', '{config}/skills'),
-      p('skills', 'user', 'dir', '~/.agents/skills'),
+      p('skills', 'user', 'dir', knownAgentsSkillsDir('codex', '~/.agents/skills')),
       p('skills', 'project', 'dir', '{project}/.agents/skills'),
+      p('skills', 'project', 'dir', '{project}/.codex/skills'),
       p('instructions', 'user', 'file', '{config}/AGENTS.md'),
       p('instructions', 'user', 'file', '{config}/AGENTS.override.md'),
       p('instructions', 'project', 'file', '{project}/AGENTS.md'),
