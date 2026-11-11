@@ -21,7 +21,8 @@ pub mod token;
 pub use config::{Listen, WebAccessConfig};
 pub use context::{AccessContext, Grant};
 pub use guard::{
-    Denial, DenialReason, GuardPolicy, GuardState, Tokens, TokensError, origin_matches_host,
+    Denial, DenialReason, GuardPolicy, GuardState, PublicHost, Tokens, TokensError,
+    normalize_public_host, origin_matches_host, origin_matches_public_host,
 };
 pub use interfaces::{InterfaceAddr, interfaces};
 pub use origin::{is_local_authority, is_local_origin};

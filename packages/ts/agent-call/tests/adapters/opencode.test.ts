@@ -76,6 +76,51 @@ describe('opencode plan', () => {
   })
 })
 
+describe('opencode 2.x effort', () => {
+  const v2 = opencodeAdapter({ version: '2.2.6' })
+
+  test('effort is a #variant suffix on --model, with no --variant flag', () => {
+    const planned = v2.plan({ prompt: 'x', model: 'anthropic/claude-opus-4-8', effort: 'high' })
+    expect(planned.argv).not.toContain('--variant')
+    expect(planned.argv.join(' ')).toContain('--model anthropic/claude-opus-4-8#high')
+    expect(planned.notes.find((n) => n.field === 'effort')?.support).toBe('approximated')
+  })
+
+  test('effort without a model is dropped', () => {
+    const planned = v2.plan({ prompt: 'x', effort: 'high' })
+    expect(planned.argv).not.toContain('--variant')
+    expect(planned.notes.find((n) => n.field === 'effort')?.support).toBe('dropped')
+  })
+
+  test('"2" and "v2.0.0" count as 2.x; garbage keeps --variant', () => {
+    for (const version of ['2', 'v2.0.0']) {
+      const planned = opencodeAdapter({ version }).plan({
+        prompt: 'x',
+        model: 'a/b',
+        effort: 'low',
+      })
+      expect(planned.argv).not.toContain('--variant')
+      expect(planned.argv).toContain('a/b#low')
+    }
+    for (const version of ['next', '', 'x2.1']) {
+      const planned = opencodeAdapter({ version }).plan({ prompt: 'x', effort: 'low' })
+      expect(planned.argv.join(' ')).toContain('--variant low')
+    }
+  })
+
+  test('a model that already has a #variant keeps it and the effort is dropped', () => {
+    const planned = v2.plan({ prompt: 'x', model: 'a/b#max', effort: 'low' })
+    expect(planned.argv).toContain('a/b#max')
+    expect(planned.argv.join(' ')).not.toContain('#low')
+    expect(planned.notes.find((n) => n.field === 'effort')?.support).toBe('dropped')
+  })
+
+  test('a 1.x version keeps --variant', () => {
+    const planned = opencodeAdapter({ version: '1.17.12' }).plan({ prompt: 'x', effort: 'high' })
+    expect(planned.argv.join(' ')).toContain('--variant high')
+  })
+})
+
 describe('opencode parse', () => {
   test('aggregates text parts from json events', () => {
     const lines = [

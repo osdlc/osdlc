@@ -16,6 +16,8 @@ export {
   useHandlers,
   MAX_EMBED_DEPTH,
   MAX_EMBEDS_PER_DOCUMENT,
+  NoteSourceKey,
+  EmbedAncestorsKey,
   type FoldTogglePayload,
   type NoteSource,
   type RenderHandlers,
