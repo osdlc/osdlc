@@ -289,9 +289,9 @@ The goal: a corpus can build on parent corpora that arrive as npm packages, with
 them. We work toward it in this order. Each step names its task numbers. A task here can wait on one
 outside the milestone, such as task 26.
 
-1. **Finish the release setup here (task 21).** osdlc/osdlc publishes `@osdlc/package-checks` 0.1.0.
-   [osdlc/markdown#10](https://github.com/osdlc/markdown/pull/10) gets its lockfile and leaves
-   draft, and merges. [osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9) has merged.
+1. **Finish the release setup here (task 21).** [osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9),
+   [osdlc/markdown#10](https://github.com/osdlc/markdown/pull/10) and
+   [osdlc/markdown#17](https://github.com/osdlc/markdown/pull/17) have merged.
 2. **Spec and validator (tasks 9 and 27).** `extends` with both resolvers, transitive loading,
    `x-extends`, cross-corpus `x-ref` and the id rule.
 3. **`corpus-schema sync` and the copy check (task 29).**
