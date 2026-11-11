@@ -1,5 +1,12 @@
 # @osdlc/pr-update
 
+## 0.10.1
+
+### Patch Changes
+
+- Updated dependencies [20dfeb4]
+  - @osdlc/agent-call@0.12.0
+
 ## 0.10.0
 
 ### Minor Changes
