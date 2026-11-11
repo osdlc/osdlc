@@ -14,7 +14,7 @@ contributions:
   - contributor: { name: Ada Example, agentType: person }
     activityType: created
     date: 2026-04-12T09:45:00Z
-follows: "[Back claims with evidence](../_inherited/org/principles/Back%20claims%20with%20evidence.md)"
+follows: "[Back claims with evidence](../_references/org/principles/Back%20claims%20with%20evidence.md)"
 ---
 
 Only the README backs this claim, so it is weak. A probe run on Linux and macOS would make it

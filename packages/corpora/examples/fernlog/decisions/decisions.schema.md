@@ -32,5 +32,5 @@ properties:
 # Decisions
 
 One record per design decision. `follows` links to the org principles the decision follows. Each
-link goes through `_inherited/org/`, the copy of the org corpus. `checkedBy` links to the project's
+link goes through `_references/org/`, the copy of the org corpus. `checkedBy` links to the project's
 statements that check the result.

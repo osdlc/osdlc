@@ -10,4 +10,4 @@ properties:
 # Statements
 
 The claims profile's `statements` type, with one more field. `follows` links to an org principle
-through `_inherited/org/`.
+through `_references/org/`.

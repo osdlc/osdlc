@@ -1,7 +1,7 @@
 {
   "name": "fernlog-corpus-example",
   "private": true,
-  "description": "An example project corpus that extends the claims profile by package name and the org principles corpus by path.",
+  "description": "An example project corpus that extends the claims profile by package name and references the org principles corpus by path.",
   "devDependencies": {
     "@osdlc/corpus-profile-claims": "file:../../profiles/claims"
   }

@@ -36,19 +36,20 @@ check() {
 
 check stale-copy \
   'echo "One more line." >>"org-principles/principles/Write decisions down.md"' \
-  '_inherited/org/principles/Write decisions down.md: (copy): differs from the installed parent; run corpus-schema sync'
+  '_references/org/principles/Write decisions down.md: (copy): differs from the installed corpus; run corpus-schema sync'
 
 check follows-a-document \
-  'sed "s#\.\./_inherited/org/principles/Write%20decisions%20down\.md#../documents/fernlog%20README.md#" \
+  'sed "s#\.\./_references/org/principles/Write%20decisions%20down\.md#../documents/fernlog%20README.md#" \
     "fernlog/decisions/Read config from the XDG folder.md" >decision.md &&
     mv decision.md "fernlog/decisions/Read config from the XDG folder.md"' \
   'follows: documents/fernlog README.md is not a record of type org/principles'
 
-# The package parent's copy is checked as the path parent's is, though no
-# record links into it.
-check stale-package-copy \
-  'echo "One more line." >>fernlog/_inherited/claims/statements/statements.schema.md' \
-  '_inherited/claims/statements/statements.schema.md: (copy): differs from the installed parent; run corpus-schema sync'
+# The claims profile is in extends, which gives types only, so a link into it
+# is an error.
+check link-into-profile \
+  'printf "\nSee [the profile](../_references/claims/corpus-schema.md).\n" \
+    >>"fernlog/decisions/Read config from the XDG folder.md"' \
+  'claims is in extends, which gives types only; name the corpus in references to link to its files'
 
 check checked-by-a-document \
   'sed "s#\.\./statements/fernlog%20config%20path\.md#../documents/fernlog%20README.md#" \
