@@ -864,9 +864,11 @@ results of queries, builds and exports, can be told apart or merged. Identity us
 | Type     | The corpus identity plus `#<type>`                      | `pkg:npm/%40osdlc/corpus-profile-sdlc#tasks`                   |
 | Record   | The corpus identity plus `#<type>/<id>`                 | `pkg:npm/%40osdlc/corpus-sdlc-starter@0.1.0#principles/P-0002` |
 
-- A corpus reached through a package source is that package. The corpus being validated is a
-  package when the nearest `package.json` at or above its folder has a `name`. A corpus reached by
-  a `./` or `../` path, or in no package, has a local identity only and no purl.
+- A corpus is a package when the nearest `package.json` at or above its folder has a `name`, and
+  that file's `"corpus"` field, or its own folder when it has none, is the corpus folder. The purl
+  uses that `name`. It does not depend on how the corpus is reached: a package source, an npm
+  alias and a `./` or `../` path to the same folder give the same identity. A corpus in no package
+  has a local identity only and no purl.
 - Two records with the same identity are one record. A reference by id that finds one record
   through two chains is not ambiguous. It resolves to the copy reached through the shortest chain,
   so a direct reference wins. Two records with different identities are two matches, even with the
