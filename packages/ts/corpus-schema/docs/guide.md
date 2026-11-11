@@ -56,7 +56,7 @@ notes. Two kinds of use shaped it:
   it. The evidence work that follows it keeps scripts, queries and CSV results beside the records
   that describe them.
 - A small app that keeps its data inside a user's vault. A reading list, a task tracker or a set of
-  inherited policies can be a corpus. The app reads and writes records, and the user still browses
+  shared policies can be a corpus. The app reads and writes records, and the user still browses
   and edits them as notes.
 
 One rule runs through the whole design: the folder is pure data. Every rule a tool enforces is
@@ -240,6 +240,9 @@ reading-list/
     └── The Dispossessed.md
 ```
 
+A level-1 corpus can also use `references` to link to another corpus's records (see
+[Sharing across corpora](#sharing-across-corpora)). `extends` and `uses` need level 2.
+
 The validator checks that `The Dispossessed` is a valid id and that every link in the record
 resolves. It does not check the record's fields, because the type has no schema. A schema file
 counts as empty when it is an empty file, has empty frontmatter, is a `.md` file with no
@@ -288,9 +291,14 @@ settings must be a mapping.
 | `id`            | no       | A stable handle for the corpus, such as `reading-list` or a UUID.               |
 | `formats`       | no       | The record formats the corpus allows. The default is `[md]`.                    |
 | `level`         | no       | `1` or `2`. Any other value is an error.                                        |
-| `extends`       | no       | The corpus's parents, by prefix. Needs `level: 2`. See Sharing across corpora.  |
+| `extends`       | no       | The parents whose types it builds on, by prefix. Needs `level: 2`.              |
+| `references`    | no       | The corpora whose records it links to, by prefix. Works at level 1 and 2.       |
+| `uses`          | no       | Parent types its folders hold as they are. Needs `level: 2`.                    |
 | `dialect`       | no       | Reserved for a later version. Not checked yet.                                  |
 | `profiles`      | no       | Reserved and unused. `extends` replaces it.                                     |
+
+`extends`, `references` and `uses` are explained under
+[Sharing across corpora](#sharing-across-corpora).
 
 - `id` lets an app find its corpus after a user moves or renames the folder. The app scans for root
   files and picks the one with its id. Links never use `id`. Two corpora with the same `id` get a
@@ -327,7 +335,8 @@ A corpus holds every file under its folder, except:
 - symbolic links. A tool does not follow them, so a link to one does not resolve. A symbolic link
   inside a type folder gets a warning, since a record there would not be checked;
 - a folder with its own root file. That folder is a separate corpus, and the outer corpus stops at
-  it.
+  it;
+- the folder `_references` at the corpus root, which holds copies of the corpora it references.
 
 A corpus must not sit inside a type folder.
 
@@ -356,18 +365,22 @@ after the folder, so search and Obsidian's quick switcher find it by the type's 
 
 Each type's schema is read on its own. Two types may give their schemas the same `$id`, and a
 `$ref` in one type's schema does not reach another type's schema. A type folder that you copy into
-another corpus arrives with all of its rules. To share types between corpora today, copy the type
-folders (see the [FAQ](#how-do-i-share-types-between-corpora-today)).
+another corpus arrives with all of its rules. To share types on purpose, extend a corpus that holds
+them (see the [FAQ](#how-do-i-share-types-between-corpora)).
 
-The spec adds four keywords to JSON Schema, `x-ref`, `x-ref-form`, `x-id-pattern` and
-`x-extends`, and a validator must accept all four. The reference validator reports any other unknown keyword in a schema as an error, so a
+The spec adds six keywords to JSON Schema, `x-ref`, `x-ref-form`, `x-id-pattern`, `x-extends`,
+`x-identity` and `x-record-file`, and a validator must accept all six. The reference validator reports any other unknown keyword in a schema as an error, so a
 misspelled keyword is caught.
 
 ### Records
 
 - Every `.md`, `.yaml` and `.json` file under a type folder, at any depth, is a record of that
-  type. The exceptions are the type's schema file and the files a record folder owns. Other files
-  in a type folder, such as images, are narrative.
+  type. The exceptions are the type's schema file, the files a record folder owns and the files in
+  a narrative folder. Other files in a type folder, such as images, are narrative.
+- A folder in a type folder, at any depth, whose name starts with `_`, such as `_attachments/`, is
+  a narrative folder. Every file under it is narrative. This tells it apart from the two other
+  kinds of folder in a type folder: a record folder holds its record file, and a plain folder
+  holds records.
 - A record's type comes from its folder. A record has no type field.
 - A record's data must be a mapping. A `.md` record with no frontmatter has empty data, and its body
   may be empty.
@@ -382,10 +395,22 @@ So records can be grouped in plain folders inside a type folder, such as
 A record folder lets a record keep its own files beside it, such as the script, the query and the
 CSV results of a method the record describes.
 
-- A folder inside a type folder that holds a record file named after the folder (`<folder>.md`,
-  `<folder>.yaml` or `<folder>.json`) is a record folder. The name matches exactly, case included.
-  The record file must sit directly in the folder.
-- The record's id is the folder name. `methods/Survey/Survey.md` has the id `Survey`.
+- A folder inside a type folder that holds a record file is a record folder. The record file is
+  named after the folder (`<folder>.md`, `<folder>.yaml` or `<folder>.json`), or it has the name
+  the type's `x-record-file` gives. The name matches exactly, case included. The record file must
+  sit directly in the folder.
+- The record's id comes from the folder name (see [Ids](#ids)). `methods/Survey/Survey.md` has the
+  id `Survey`.
+- `x-record-file` at the root of a schema names a record file for the type's record folders. It is
+  a file name with no path and a `.md`, `.yaml` or `.json` extension, such as `README.md`. With
+  `x-record-file: README.md`, `decisions/D-0001-split/README.md` is a record with the id of its
+  folder. A type with no `x-record-file` of its own takes the one of the nearest type up its
+  chain, so a type that `uses` a parent type or builds on it gets the parent's. Any other value is
+  an error.
+- The type folder's own file of that name, such as `decisions/README.md`, documents the type. It
+  is narrative, not a record.
+- A record folder holds one record file. A folder that holds two, such as `<folder>.md` and the
+  `x-record-file`, is an error at the second.
 - This holds whatever `formats` says. A record file in a format the corpus does not allow still
   makes a record folder, and that file is a format error.
 - Every other file under a record folder, at any depth, belongs to the record. It is not a record,
@@ -395,27 +420,38 @@ CSV results of a method the record describes.
   `[the counts](results/counts.csv)`. Links into another record's folder resolve too. An `x-ref`
   points at the record file, not at the folder.
 - A record folder must not hold another record folder, at any depth. That is an error, and the inner
-  folder's files belong to the outer record. A record folder cannot hold a type folder either, since
+  folder's files belong to the outer record. A folder in a record folder whose only record file is
+  the `x-record-file`, such as a `README.md`, is not a record folder, and its files belong to the
+  outer record with no error. A record folder cannot hold a type folder either, since
   no type folder sits inside another.
 - Ids are compared across both shapes: `methods/Survey/Survey.md` and `methods/survey.md` collide.
-- A folder in a type folder with no record file named after it is a plain folder. Each `.md`,
-  `.yaml` and `.json` file in it is a record of the type.
+- A folder in a type folder with no record file is not a record folder. Unless its name starts with
+  `_`, it is a plain folder: each `.md`, `.yaml` and `.json` file in it is a record of the type.
 
 osdlc calls this shape a bundle: a note's folder holding `<name>/<name>.md` and the files beside it.
 Moving the folder moves the record and its files together, and their relative links keep working.
 
 ### Ids
 
-A record's id is its file name without the extension. `harnesses/Claude Code.md` has the id
-`Claude Code`. An id is a name people read, so spaces and capitals are fine.
+A record's id comes from its name: its file name without the extension, or for a record folder's
+record, the folder name. `harnesses/Claude Code.md` has the id `Claude Code`. An id is a name
+people read, so spaces and capitals are fine.
+
+- A type can narrow its ids with `x-id-pattern`, a regular expression at the root of its schema
+  (ECMA-262 syntax, Unicode mode). For example, `x-id-pattern: "^[a-z0-9-]+$"` allows only slugs.
+  With a pattern, the id is the longest of these that every `x-id-pattern` up the type's chain
+  matches: the whole name, or a part of it that ends just before a `-`. With
+  `x-id-pattern: "^P-[0-9]{4}$"`, `P-0002-favor-deterministic.md` has the id `P-0002`, and the rest
+  of the name is a slug for people. A name the patterns match whole keeps the whole name as its
+  id. A name with no matching part is an error.
+- A record's data can hold `id`. When it does, it must be a string that names the record's id, as
+  ids compare. Anything else is an error at `id`.
 
 - An id must not contain `/ \ : * ? " < > |`, which some file systems refuse, or `[ ] # ^`, which
   break links. It must not contain control characters.
 - An id must not start or end with a space or a dot.
 - Ids are unique within a type, across every folder and every extension. They are compared after
   Unicode NFC normalization and case folding, so `Kiro.md`, `kiro.json` and `aws/Kiro.md` collide.
-- A type can narrow its ids with `x-id-pattern`, a regular expression at the root of its schema
-  (ECMA-262 syntax, Unicode mode). For example, `x-id-pattern: "^[a-z0-9-]+$"` allows only slugs.
 - Type names follow the same rules.
 
 ### Narrative
@@ -433,13 +469,17 @@ The canonical link is a relative Markdown link: `[Claude Code](../harnesses/Clau
 - In frontmatter a link is a quoted string that holds the whole link:
   `successor: "[Antigravity](Antigravity.md)"`. A bare path such as `"Antigravity.md"` is not a
   link.
-- The validator checks the links in records, the root file and schema files: in their bodies and in
-  every string of their data. It skips links with a URL scheme, such as `https:` or `mailto:`, and
+- The validator checks the links in records, the root file and schema files: in their bodies, in
+  every string of the data of records and the root file, and in a schema in the strings of its
+  prose keywords `title`, `description` and `$comment`, at any depth. Other strings in a schema,
+  such as a `pattern`, a `const` or an `enum` value, are not text and hold no links. It skips links with a URL scheme, such as `https:` or `mailto:`, and
   links to a heading in the same file, such as `#usage`.
 - A relative path must lead, after percent-decoding, to a file or folder that exists, with the same
   case. The validator never falls back to matching by name, as Obsidian does. A broken path is
   always an error. The part after `#` is not checked.
 - A path that starts with `/` is an error. Links in a corpus are relative.
+- A link into `_references/<prefix>/` is a link to a file of a corpus the corpus references. It
+  stays in the corpus (see [References and the copy](#references-and-the-copy)).
 - A link that leaves the corpus (above its root, into a nested corpus, or into an excluded path such
   as `.git/`) is a link between corpora. v0 does not define those yet. It gets a warning, not an
   error, except in an `x-ref` field.
@@ -449,9 +489,16 @@ The canonical link is a relative Markdown link: `[Claude Code](../harnesses/Clau
 Wikilinks are accepted but not canonical: `[[target]]`, `[[target|text]]`, `[[target#heading]]` and
 `![[target]]`.
 
-- A wikilink resolves by path suffix within the corpus, after NFC normalization and case folding.
-  `[[Claude Code]]`, `[[harnesses/Claude Code]]` and `[[harnesses/Claude Code.md]]` all match
+- A wikilink resolves by path suffix within the corpus and the copies of the corpora it references
+  directly, as `_references/<prefix>/<path>`, after NFC normalization and case folding. A match in
+  a copy is a link into it. A copy's own `_references/` is not searched. `[[Claude Code]]`, `[[harnesses/Claude Code]]` and `[[harnesses/Claude Code.md]]` all match
   `harnesses/Claude Code.md`. The extension of a record can be left out.
+- A wikilink that matches no file and has no `/` names a record by id. The record can be of any
+  type, in the corpus or in a corpus it references, and its id or whole file name must fold to the
+  target, as the `id` form of `x-ref` resolves. `[[P-0002]]` names
+  `principles/P-0002-favor-deterministic.md`. A record of a referenced corpus is a link into its
+  copy. Obsidian does not resolve such a wikilink by itself. `validate --fix` rewrites it as a
+  relative link.
 - No match is an error. More than one match is an error.
 - A wikilink that matches nothing in the corpus but matches a file in a nested corpus leaves the
   corpus, and gets the same warning as a Markdown link that leaves it.
@@ -466,11 +513,13 @@ Wikilinks are accepted but not canonical: `[[target]]`, `[[target|text]]`, `[[ta
 ### References: `x-ref`
 
 `x-ref` is a schema keyword that makes a field a typed reference, like a foreign key in a
-database. Its value names a type, in the same corpus or as `<prefix>/<type>` in a parent, or lists
-several types:
+database. Its value names a type, or lists several types. A type is named `<type>` in the same
+corpus, or `<prefix>/<type>` in a parent or a referenced corpus (see
+[Namespace](#namespace)):
 
 ```yaml
 successor: { type: string, x-ref: harnesses }
+cites: { type: string, x-ref: org/principles }
 after:
   {
     type: array,
@@ -481,8 +530,10 @@ after:
 - It sits on a top-level property, or on the `items` of a top-level array property, where each
   item is a reference. v0 defines `x-ref` only in those two places. Anywhere else, such as inside
   a nested object, it is an error.
-- Every named type must exist. A list must name one or more.
-- A reference matches a record of any named type, or of a type that extends one.
+- Every named type must exist, in the corpus or in a corpus its prefixes name. A list must name one
+  or more.
+- A reference matches a record of any named type, or of a type that extends one through
+  `x-extends`.
 
 `x-ref-form`, beside `x-ref`, says how the value names the record:
 
@@ -492,14 +543,21 @@ after:
 | `id`             | `T-0012`                               | by id, among the matching records               |
 | `wikilink`       | `"[[N-0001]]"` or `"[[N-0001\|text]]"` | by id, as `id` does                             |
 
-- An `x-ref` link that leaves the corpus is an error, not a warning.
+- An `x-ref` link that leaves the corpus is an error, not a warning. A link to a referenced
+  corpus's record goes through `_references/<prefix>/`.
 - An id matches as ids compare, after NFC normalization and case folding. It may name a record in
-  the corpus or in any corpus it extends. No match is an error, and so is more than one.
+  the corpus or in any corpus it references, at any depth. A parent gives no records. A value can
+  also name a record by its whole file name without the extension, or by its record folder's name,
+  where that is longer than its id: `P-0002-favor-deterministic` names `P-0002`. No match is
+  an error, and so is more than one.
+- A `null` value, as a field or as an item, refers to nothing and is not checked as a reference.
+  The schema says whether `null` is allowed. Records with one identity are one record, however many chains
+  reach them (see [Identity](#identity)).
 - Quote a wikilink in YAML: `about: "[[N-0001]]"`. Unquoted, `[[N-0001]]` is a list.
 - An `id` or `wikilink` field is not checked as a link. Its wikilinks get no warning, and
   `validate --fix` leaves them as they are.
-- A `wikilink` to a parent's record needs the parent's copy in `_inherited/`, because Obsidian
-  resolves the wikilink there. An `id` needs no copy.
+- A `wikilink` to a referenced corpus's record needs its copy in `_references/<prefix>/`, because
+  Obsidian resolves the wikilink there. An `id` needs no copy.
 
 The `id` and `wikilink` forms suit corpora written by tools that keep ids, such as sdlc, whose
 tasks write `depends_on: [T-0012]` or `[[N-0001]]`.
@@ -509,20 +567,25 @@ tasks write `depends_on: [T-0012]` or `[[N-0001]]`.
 An error makes the corpus invalid, and `validate` exits with code 1. A warning is printed, and the
 corpus is still valid. The warnings in v0 are:
 
-| Warning                                       | Why it is not an error                                       |
-| --------------------------------------------- | ------------------------------------------------------------ |
-| The root file uses `dialect` or `profiles`    | Reserved for later versions. v0 says it does not check them. |
-| The root file has a key v0 does not know      | Later versions add keys.                                     |
-| Two corpora checked together share an `id`    | Each corpus is still valid on its own.                       |
-| A symbolic link inside a type folder          | It is not followed, so a record there is not checked.        |
-| A link, or a wikilink, that leaves the corpus | v0 defines links to parents only, through `_inherited/`.     |
-| A wikilink that resolves                      | It works, but it is not the canonical form.                  |
-| `--fix` could not rewrite a file's wikilinks  | The file is left as it was.                                  |
+| Warning                                                                         | Why it is not an error                                               |
+| ------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| The root file uses `dialect` or `profiles`                                      | Reserved for later versions. v0 says it does not check them.         |
+| The root file has a key v0 does not know                                        | Later versions add keys.                                             |
+| Two corpora checked together share an `id`                                      | Each corpus is still valid on its own.                               |
+| A symbolic link inside a type folder                                            | It is not followed, so a record there is not checked.                |
+| A link, or a wikilink, that leaves the corpus                                   | v0 defines links to referenced corpora only, through `_references/`. |
+| A folder with record files, named like a parent type, that `uses` does not name | It may be a typo or a missing `uses` entry.                          |
+| `x-identity` in a corpus that has no package URL                                | There is nothing to match it against.                                |
+| A wikilink that resolves, by path or by id                                      | It works, but it is not the canonical form.                          |
+| `--fix` could not rewrite a file's wikilinks                                    | The file is left as it was.                                          |
 
 Everything else the validator reports is an error. That includes a broken link, a wikilink with no
 match or more than one, a record that fails its schema, data that does not parse, a bad id, two ids
 that collide, a record in a format the corpus does not allow, a nested record folder, an unknown
 schema keyword, and an `x-ref` that leaves the corpus, points at the wrong type or names no record.
+Errors in how corpora are named are also errors: a source that does not resolve, a cycle, a prefix in
+both `extends` and `references`, a link into a parent, a `_references/` copy that does not match the
+installed corpus, a second version of one corpus in the graph, and a wrong `x-identity`.
 
 `validate --strict` fails on a warning as on an error. Use it in CI to hold a corpus to no
 warnings.
@@ -558,13 +621,17 @@ fails on them`.
 corpus-schema sync [<folder>...]
 ```
 
-- It writes `_inherited/<prefix>/` in every corpus at or below each folder, by default `.`: a
-  copy of each parent the root file names under `extends`. It removes stale files there.
-- It changes nothing outside `_inherited/`, and a second run changes nothing.
-- A corpus syncs after the corpora it extends, so a chain in one repository syncs in one run.
-- When a parent does not resolve or has errors of its own, including a cycle in `extends`, it
-  writes nothing in that corpus and exits with code 1.
-- When a parent turns a folder into a file, or a file into a folder, the copy follows.
+- It writes `_references/<prefix>/` in every corpus at or below each folder, by default `.`: a copy
+  of each corpus the root file names under `references`. It removes every other file there. It
+  copies nothing for `extends`.
+- It changes nothing outside `_references/`, and a second run changes nothing.
+- A corpus syncs after the corpora it references that sit below the same folder, so a chain in one
+  repository syncs in one run.
+- When the root file has an error, or a referenced corpus does not resolve or has errors of its
+  own, including a cycle, it writes nothing in that corpus and exits with code 1.
+- When a referenced corpus turns a folder into a file, or a file into a folder, the copy follows.
+- `sync` owns `_references/`. In a corpus with no `references` it empties it. It does not follow a
+  symbolic link there, and reports one as an error.
 - `validate` never writes the copy. It checks it, and says to run `sync` when it is stale.
 
 ### Writing records
@@ -636,54 +703,90 @@ milestones and decisions, and this repo's plan extends it by path.
 - A corpus can give a profile's type its own folder name: a local `findings/` type can
   `x-extends: claims/statements`. Field names stay the profile's, so tools and exports work
   everywhere.
-
-Earlier drafts of the plan and the architecture wrote these as a `profiles:` prefix map and an
-`x-class` keyword. The newer proposal replaces both with `extends:` and `x-extends`. Some text in
-those documents may still use the older names while they are updated.
+- A corpus can take a profile's type as it is, with no schema file, by naming it under `uses` (see
+  [Uses](#uses)).
 
 ## Sharing across corpora
 
-Corpus inheritance, type inheritance and `sync` are built. Refining and waiving inherited records
-is proposed.
-
 Some things belong to a whole organization, such as its engineering principles. Teams and projects
-need them in their own corpora, next to their local records. Sometimes a project needs a stricter
-form of a principle, and sometimes one does not apply. The proposal lets an org corpus reach a team
-corpus, and a team corpus reach a project corpus, while the project can still see what it changed.
+need them next to their own records. A corpus can build on another corpus's types, link to another
+corpus's records, or do both. Refining or waiving a referenced record on purpose is proposed.
 
-### Corpus inheritance
+### Three keys
 
-A root file names parent corpora under `extends:`. Each entry maps a prefix to a parent: a package
-name, or a relative path for corpora side by side in one repository. The corpus must be at level 2.
+A corpus names other corpora in its root file. Three keys do it, each for one purpose:
+
+| Key          | It gives the corpus                                                                               | Needs             |
+| ------------ | ------------------------------------------------------------------------------------------------- | ----------------- |
+| `extends`    | A parent's **types**, to build on. A parent's records are not brought in.                         | `level: 2`        |
+| `references` | Another corpus's **records**, to link to. Its types can be read as `x-ref` targets, not built on. | `level: 1` or `2` |
+| `uses`       | Local folders that hold a parent's type **as it is**, with no schema file.                        | `level: 2`        |
 
 ```yaml
 corpus-schema: 0
 level: 2
 extends:
-  org: "acme-org-principles"
-  claims: "@osdlc/corpus-profile-claims"
-  team: "../team-rules"
+  sdlc: "@osdlc/corpus-profile-sdlc" # a package name
+references:
+  org: "../org-principles" # a path from the corpus root
+uses: [sdlc/tasks, sdlc/decisions]
 ```
 
+A level 0 folder has no root file, so it names no corpora, and no corpus can name it.
+
+### Sources
+
+- `extends` and `references` are each a mapping. Each key is a prefix: lowercase letters, digits
+  and `-`. Each value is a source, a string.
+- A prefix cannot be in both keys. One corpus can sit under two prefixes, one in each key, to give
+  both its types and its records. It is still one corpus.
+- A source that starts with `./` or `../` is a path from the corpus root. Any other source is a
+  package name.
 - A package is found the way Node.js finds one from the corpus folder. Its corpus is the package
   folder, or the folder that a `"corpus"` field in its `package.json` names.
+- The source must resolve to a folder that holds a root file. Otherwise it is an error.
+- Named corpora load transitively. Each one's own `extends` and `references` resolve from its own
+  folder. A cycle, in any mix of the two keys, is an error. So two corpora cannot reference each
+  other.
+- A folder reached twice, through two prefixes or two paths, is one corpus.
+- Each named corpus is checked by its own rules. Its errors are errors of the corpus that names it.
 - `package.json` holds each package's range and the lockfile pins it. A private corpus with no
   registry can be a git dependency: `"acme-org-principles": "github:acme/org-principles#v3"`.
-- The project sees the parent's types and records, read-only, plus its own records.
-- Inheritance is transitive. Each parent's own `extends` resolves from the parent's folder. A cycle
-  is an error. A corpus names only its own parents' types, so to use a grandparent's type, extend
-  it too.
-- A parent update arrives only when the project changes its dependency and reinstalls.
+- An update arrives only when the project changes its dependency and reinstalls.
+
+### Namespace
+
+One rule says which types a corpus can name:
+
+- A local type is `<type>`.
+- A parent's type is `<prefix>/<type>`.
+- A type of a referenced corpus is `<prefix>/<type>`, extended by each further reference.
+  `b/c/principles` is type `principles` of the corpus that `c` names in the `references` of the
+  corpus that `b` names.
+
+Every such name can be read, by `x-ref`. Only a local type and a parent's `<prefix>/<type>` can be
+built on, by `x-extends` and `uses`. Each corpus's prefixes are its own. A corpus sees a
+grandparent's types only by extending the grandparent too.
+
+### Extends: types only
+
+A corpus gets a parent's types through `extends`. An inherited type is read-only. The corpus uses
+it through a local type folder: one with a schema that names it in `x-extends`, or one that `uses`
+names.
+
+- A parent's records are not the corpus's. A local record can share an id with a parent's record.
+- A link into a parent is an error. `_references/` holds only referenced corpora.
 
 ### A profile is a corpus with only types
 
-A profile is a parent corpus that holds types and no records. So `extends:` covers both, and there
-is one mechanism. `extends:` replaces the reserved `profiles` key, which stays unused.
+A profile is a parent corpus that holds types and no records. So `extends` covers profiles, and
+there is one mechanism. `extends` takes the place of the reserved `profiles` key, which stays
+unused.
 
 ### Type inheritance
 
 A type builds on another type with `x-extends` at the root of its schema. The value is a local
-type, or `<prefix>/<type>` for a type in a parent corpus.
+type, or `<prefix>/<type>` for a type in a parent corpus. A type of a referenced corpus is an error.
 
 - The fields add up first: the ancestors' root-level `properties` and `patternProperties`, then the
   type's own. A field declared in `allOf` or a `$ref` does not count. A closing
@@ -694,55 +797,132 @@ type, or `<prefix>/<type>` for a type in a parent corpus.
   still pass the parent's rules for it. A parent with `additionalProperties: false` admits no new
   fields, and a child that declares one gets an error at that field.
 - An `x-ref` to a type accepts records of the types that extend it, local or inherited.
-- A corpus needs a copy of a parent in `_inherited/` only when one of its files links into it, or
-  a `wikilink` reference names one of the parent's records. Using a parent's types needs no copy.
 - A type has one parent.
+- A schema that holds only `x-extends` uses the parent's type as it is, under a new name.
+- A prefix that `extends` does not declare, a name that matches no type, and a loop in the chain
+  are errors.
+
+### Uses
+
+`uses` gives local folders a parent's type with no schema file of their own. Its value is one entry
+or a list. Each entry is `<prefix>/<type>`, or `<prefix>/*` for every type of the parent.
+
+```yaml
+extends:
+  sdlc: "@osdlc/corpus-profile-sdlc"
+uses: [sdlc/tasks, sdlc/decisions]
+```
+
+- A folder named after a used type, with no schema file, holds records of the parent's type as it
+  is. Its files are records, as in Records.
+- A folder named after a used type that also holds a schema file is an error. To add fields, take
+  the type out of `uses` and write `x-extends` in the schema.
+- Two used types with the same name, such as `sdlc/tasks` and `other/tasks`, are an error, and
+  neither is used. Build the folder's type with `x-extends` instead.
+- A used type with no folder of its name is fine. The corpus has no records of it yet.
+- An entry that names no parent, a prefix in `references` rather than `extends`, or a type the
+  parent does not have, is an error.
+- A folder with no schema file that `uses` does not name stays a plain folder. If it holds record
+  files and its name is a parent type's name or close to it, the validator warns, since a typo or a
+  missing `uses` entry leaves records unchecked.
+
+### References and the copy
+
+A referenced corpus's records stay its own. A link, an `x-ref` link, or a reference by id or
+wikilink can point at them. Its types are visible by the Namespace rule, for reading. Its own
+references are reachable too: `b/c/principles`.
+
+Referenced records live in another package or folder, not in the project's folder. So Obsidian and
+GitHub have no file to follow a link to. `corpus-schema sync` writes a read-only copy of each
+referenced corpus into `_references/<prefix>/`, and the project commits it. A local record then
+links to `../_references/org/principles/Be%20Kind.md`, and the link works everywhere. `extends`
+gets no copy.
+
+- The copy holds every file of the referenced corpus, byte for byte, and its own `_references/`.
+  So transitive references sit nested: `_references/b/_references/c/`.
+- The validator finds no types, records or nested corpora in `_references/`, and does not check
+  its links.
+- A link from a checked file to `_references/<prefix>/<path>` is a link to `<path>` in that
+  corpus. It resolves in the installed corpus, not in the copy.
+- When the copy exists, or a checked file links into it, it must match the installed corpus. The
+  validator reports each file that differs, is missing or is extra, and says to run
+  `corpus-schema sync`.
+- A link into `_references/<prefix>/` where `<prefix>` is in `extends` is an error. A parent gives
+  types only.
+- A folder or file directly in `_references/` that names no reference is an error.
+- A copy is needed only by a link into it: a link or wikilink from a checked file, or a `wikilink`
+  reference to the corpus's record. A corpus that references another and has no such link needs no
+  copy.
+
+### Identity
+
+Every corpus, type and record has an identity, so that copies reached through two chains, and the
+results of queries, builds and exports, can be told apart or merged. Identity uses package URLs
+([purl](https://github.com/package-url/purl-spec)).
+
+| Identity | Form                                                    | Example                                                        |
+| -------- | ------------------------------------------------------- | -------------------------------------------------------------- |
+| Corpus   | `pkg:npm/%40scope/name`, with `@version` when versioned | `pkg:npm/%40osdlc/corpus-profile-sdlc@0.3.0`                   |
+| Type     | The corpus identity plus `#<type>`                      | `pkg:npm/%40osdlc/corpus-profile-sdlc#tasks`                   |
+| Record   | The corpus identity plus `#<type>/<id>`                 | `pkg:npm/%40osdlc/corpus-sdlc-starter@0.1.0#principles/P-0002` |
+
+- A corpus reached through a package source is that package. The corpus being validated is a
+  package when the nearest `package.json` at or above its folder has a `name`. A corpus reached by
+  a `./` or `../` path, or in no package, has a local identity only and no purl.
+- Two records with the same identity are one record. A reference by id that finds one record
+  through two chains is not ambiguous. It resolves to the copy reached through the shortest chain,
+  so a direct reference wins. Two records with different identities are two matches, even with the
+  same id.
+- Across the whole graph of a corpus, each corpus identity appears at exactly one version. A second
+  version is an error that names both versions and the chain of prefixes that brings in each.
+- A tool that reports, queries, builds or exports records gives each corpus's identity and version
+  with its results.
+- A schema can state its type's identity in `x-identity` at its root. It must be the unversioned
+  type identity, such as `pkg:npm/%40osdlc/corpus-profile-sdlc#tasks`. Anything else is an error.
+  `$id` cannot hold it, because JSON Schema forbids a fragment in `$id`. In a corpus with no purl
+  there is nothing to match, and the validator warns that it does not check it.
+- A corpus package should list the corpora it extends or references as `peerDependencies`, with a
+  range, not as `dependencies`. The project that installs it then holds one version of each, which
+  the one-version rule needs.
 
 ### Explicit blending (proposed)
 
-A local record would relate to an inherited one on purpose, in one of three ways. `x-ref` works
+A local record would relate to a referenced one on purpose, in one of three ways. `x-ref` works
 today. `refines` and `waives` are proposed.
 
-| How       | It means                                                        |
-| --------- | --------------------------------------------------------------- |
-| `x-ref`   | The local record cites the inherited one.                       |
-| `refines` | The local record is a narrower, local version of it.            |
-| `waives`  | The inherited record does not apply here. A reason is required. |
+| How       | It means                                                         |
+| --------- | ---------------------------------------------------------------- |
+| `x-ref`   | The local record cites the referenced one.                       |
+| `refines` | The local record is a narrower, local version of it.             |
+| `waives`  | The referenced record does not apply here. A reason is required. |
 
-A local record whose type extends an inherited type, with the id of a record of that type, is an
-error. `refines` will allow it on purpose. Nothing is shadowed silently.
-
-### `corpus-schema sync`
-
-Inherited records live in another package or folder, not in the project's folder. So Obsidian and
-GitHub have no file to follow a link to. `corpus-schema sync` writes a read-only copy of each
-parent into `_inherited/<prefix>/`, and the project commits it. A local record then links to
-`../_inherited/org/principles/Be%20Kind.md`, and the link resolves everywhere.
-
-- The validator resolves such a link in the installed parent. It checks that the copy matches the
-  installed parent, byte for byte, and says to run `corpus-schema sync` when it does not.
-- The validator finds no local types or records in `_inherited/`.
-- A corpus that uses a parent's types and never links to its records needs no copy.
+Today a local record that has the same id as a referenced record is not an error, since they have
+different identities. A reference by id that could match both is ambiguous, and is an error.
 
 ### Example: org principles
 
-The org keeps a principles corpus, with a `principles` type. A project extends it:
+The org keeps a principles corpus, with a `principles` type. A project references it to link to its
+principles, and builds on the types of a shared profile:
 
 ```yaml
 # project/corpus-schema.yaml
 corpus-schema: 0
 level: 2
 extends:
+  sdlc: "@osdlc/corpus-profile-sdlc"
+references:
   org: "acme-org-principles" # in package.json: "github:acme/org-principles#v3"
 ```
 
-Under the proposal, the project refines one principle that needs a stricter local form, and waives one that does not
-apply, with a reason. A reviewer can then read the project's corpus and see which principles hold,
-which were narrowed, and which were set aside and why. When the org changes a principle, the
-project sees the change only after it moves its pin.
+A project type can then use `x-ref: org/principles` on a field, and its records link to
+`_references/org/principles/Be%20Kind.md`. When the org changes a principle, the project sees the
+change only after it moves its pin and runs `corpus-schema sync`.
 
-The exact shape of a `refines` or `waives` record is not designed yet. In the plan, refine and
-waive come next, then a real org principles corpus.
+Under the proposal, the project would refine one principle that needs a stricter local form, and
+waive one that does not apply, with a reason. A reviewer could then read the project's corpus and
+see which principles hold, which were narrowed, and which were set aside and why. The exact shape
+of a `refines` or `waives` record is not designed yet. In the plan, refine and waive come next,
+then a real org principles corpus.
 
 ## Why we decided what we did
 
@@ -848,11 +1028,33 @@ record folder depends only on its file names, not on the root file's settings. A
 format the corpus does not allow gives one error, on that file. Its sibling files stay the record's
 own and are not read as records, so one mistake does not turn into a list of schema errors.
 
+### Ids come from the file name, cut by `x-id-pattern`
+
+Others considered: a frontmatter `id` as the source of the id. The chosen rule keeps the file name
+as the source, so a record is found by its name in a file list and in Obsidian. With a pattern,
+the id is the longest whole name or leading part (cut before a `-`) that the patterns match, so
+`P-0002-favor-deterministic.md` has the id `P-0002`. It also keeps old corpora valid: a name the
+pattern matches whole keeps its whole name as its id. A frontmatter `id` is allowed, but it must
+equal the id from the name.
+
+### `x-record-file` declares the record file of a record folder
+
+Others considered: always accepting `README.md` as a record file. Declaring it keeps the default
+record folder shape, `<folder>/<folder>.md`, and lets each type opt in. A type that wants
+`README.md` says so, and a `README.md` elsewhere stays narrative. Types that `uses` or build on a
+parent type inherit the setting, so one declaration covers the chain.
+
+### Folders that start with `_` hold narrative
+
+Others considered: treating any folder with no record file as narrative. That would break plain
+folders of records such as `harnesses/google/`, which have no record file of their own and hold
+records. A leading `_` marks the folder as narrative on purpose, in the name, where a reader sees it.
+
 ### Each schema stands alone
 
 The records of the decision give no separate reason. What the rule allows: a type folder carries
 all of its own rules, so you can copy it into another corpus and it arrives complete. Two types can
-share a `$id` without clashing. Sharing types on purpose is the job of `extends` and `x-extends`.
+share a `$id` without clashing. Sharing types on purpose is the job of `extends`, `x-extends` and `uses`.
 
 ### No database or query layer in the spec
 
@@ -900,35 +1102,61 @@ which is still proposed and waits for the owner's sign-off. The package and the 
 release does not. The `<file>: <field>` part of a problem line is part of the contract, as the spec
 fixes it. The message text is not.
 
-### Inheritance is explicit: no silent shadowing
+### `extends`, `references` and `uses` are separate keys
 
-Others considered: letting a local record with the same id simply replace the inherited one.
+Others considered: one key that brings in a parent's types and records together, as OWL's
+`owl:imports` does. `peers` and `mounts` as names for the records key.
 
-A reader of a project corpus should be able to tell what holds, what was narrowed and what was set
-aside, and why. That only works if the project says so. With silent shadowing, a local record could
-hide an org record and nobody would see it. So a local record cites an inherited one, and a same-id
-record is an error. The proposed `refines` and `waives` will let a record narrow or set aside an
-inherited one on purpose.
+The two jobs differ. Building on a parent's types changes how a corpus's own records are checked.
+Linking to another corpus's records changes nothing about how they are checked, and the records stay
+their own. With one key, a local record could silently share an id with a parent's record, and a
+reader could not tell what was inherited. With two keys, `extends` gives types only, `references`
+gives records to link to, and a record is never merged into another. `uses` is the plain way to take
+a parent's type as it is, with no new schema. The spec's section
+"Prior art and terms: other corpora" compares DITA, Sphinx, Antora, Hugo, OWL and AsciiDoc, and says
+why each word was chosen.
+
+### Referenced records are copied into `_references/`
+
+Others considered: resolving links into the installed package only.
+
+A referenced corpus lives in another package or folder, so Obsidian and GitHub have no file to
+follow a link to. A committed read-only copy gives them one, like a Hugo module mount kept as
+files. The validator checks that the copy matches the installed corpus, so it cannot quietly go
+stale. A parent's types need no copy, so `extends` has none.
+
+### Identity uses package URLs
+
+Others considered: a plain URL, and a new URN scheme.
+
+A plain URL names where a corpus is fetched from, which changes with mirrors and checkouts, not what
+it is. A new URN scheme would need its own registry and tools. A purl already names npm and git
+packages, has a written spec and libraries in many languages, and its subpath fits a type and a
+record. Identity lets two records reached through different chains be told apart or merged, and it
+lets the validator require one version of each corpus across the graph. `x-identity` carries the
+type identity because JSON Schema forbids a fragment in `$id`.
 
 ### A profile is a types-only corpus
 
 Others considered: profiles as their own thing, under their own `profiles:` key, beside a separate
-mechanism for inherited corpora.
+mechanism for other corpora.
 
 A profile is a parent corpus that happens to hold no records. Treating it that way gives one
-mechanism, `extends:`, for both, with one set of rules for sources, prefixes and type inheritance.
+mechanism, `extends:`, with one set of rules for sources, prefixes and type inheritance.
 
-### Parents travel as npm packages, pinned by the lockfile
+### Corpora travel as npm packages, pinned by the lockfile
 
-Others considered: following a parent's latest version, and a pin written in the root file, such
+Others considered: following a corpus's latest version, and a pin written in the root file, such
 as `github:acme/org-corpus@4f2a9c1`.
 
-A parent is an npm package or a local folder. npm or pnpm installs it, `package.json` holds the
-range, and the lockfile pins it. Git dependencies cover private corpora with no registry. The spec
-stays independent of npm: it says only that each parent resolves to a folder holding a corpus. What
-a pin allows: a project's validation result does not change when someone edits the org corpus. An
-update arrives as a dependency change that a person makes and can review. And `sync` has a fixed
-installed version to compare its copy against.
+A corpus named by `extends` or `references` is an npm package or a local folder. npm or pnpm
+installs it, `package.json` holds the range, and the lockfile pins it. Git dependencies cover
+private corpora with no registry. A corpus package lists the corpora it names as `peerDependencies`,
+so the project that installs it holds one version of each. The spec stays independent of npm: it
+says only that each source resolves to a folder holding a corpus. What a pin allows: a project's
+validation result does not change when someone edits the org corpus. An update arrives as a
+dependency change that a person makes and can review. And `sync` has a fixed installed version to
+compare its copy against.
 
 ### Smaller choices from the first design review
 
@@ -950,23 +1178,27 @@ installed version to compare its copy against.
 SPEC.md's Deferred section lists what v0 leaves out. Here it is with what the plan says about each
 item. The task numbers are the plan's [task records](planning/README.md).
 
-| Not in v0                                                        | Where it stands                                                                     |
-| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| Links between corpora, other than to a parent                    | Links to parents work through `extends:` and `sync`. Others are not in the plan.    |
-| Refining or waiving an inherited record                          | A task in the plan: `refines` and `waives`.                                         |
-| Dialects                                                         | Proposed: the baseline plus named dialects, `obsidian` first.                       |
-| A schema rule that warns instead of failing (`x-warn`)           | A task in the plan, after the first release.                                        |
-| `x-ref` inside nested objects                                    | Needed for evidence lines inside a statement. Not yet a task in the plan.           |
-| Build targets: JSON, SQLite, Astro, Nuxt, Obsidian Bases views   | The JSON and SQLite build is a task after the query layer. The others have no task. |
-| A query layer                                                    | A task in the plan, on top of the shared corpus model.                              |
-| Checking a level-0 folder                                        | Not in the plan. The validator finds corpora by their root file.                    |
-| Schema versions and migrations                                   | Deferred. Not in the plan.                                                          |
-| Concurrent edits beyond last-writer-wins                         | Deferred. Not in the plan.                                                          |
-| Obsidian's vault-wide property types, which clash across corpora | Deferred. Not in the plan.                                                          |
-| Reserved names, such as Windows device names                     | Deferred. Not in the plan.                                                          |
-| Stable error codes                                               | Deferred. Not in the plan.                                                          |
-| `move` and `rename` verbs that rewrite every link to a record    | Deferred. Not in the plan.                                                          |
-| A Rust validator                                                 | The architecture says it comes later and runs the same cases. No task yet.          |
+| Not in v0                                                             | Where it stands                                                                              |
+| --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Links between corpora, other than into a referenced corpus's copy     | Links into `_references/` work through `references:` and `sync`. Others are not in the plan. |
+| Refining or waiving a referenced record                               | A task in the plan: `refines` and `waives`.                                                  |
+| Inclusion and transclusion of another corpus's content                | Out of scope. Not in the plan.                                                               |
+| Two corpora that reference each other                                 | A cycle is an error in v0. Not in the plan.                                                  |
+| A type that extends more than one type, and renaming a type or prefix | Deferred. Not in the plan.                                                                   |
+| Wikilinks into a copy's own `_references/`                            | Deferred. Not in the plan.                                                                   |
+| Dialects                                                              | Proposed: the baseline plus named dialects, `obsidian` first.                                |
+| A schema rule that warns instead of failing (`x-warn`)                | A task in the plan, after the first release.                                                 |
+| `x-ref` inside nested objects                                         | Needed for evidence lines inside a statement. Not yet a task in the plan.                    |
+| Build targets: JSON, SQLite, Astro, Nuxt, Obsidian Bases views        | The JSON and SQLite build is a task after the query layer. The others have no task.          |
+| A query layer                                                         | A task in the plan, on top of the shared corpus model.                                       |
+| Checking a level-0 folder                                             | Not in the plan. The validator finds corpora by their root file.                             |
+| Schema versions and migrations                                        | Deferred. Not in the plan.                                                                   |
+| Concurrent edits beyond last-writer-wins                              | Deferred. Not in the plan.                                                                   |
+| Obsidian's vault-wide property types, which clash across corpora      | Deferred. Not in the plan.                                                                   |
+| Reserved names, such as Windows device names                          | Deferred. Not in the plan.                                                                   |
+| Stable error codes                                                    | Deferred. Not in the plan.                                                                   |
+| `move` and `rename` verbs that rewrite every link to a record         | Deferred. Not in the plan.                                                                   |
+| A Rust validator                                                      | The architecture says it comes later and runs the same cases. No task yet.                   |
 
 ## The plan for the spec
 
@@ -1000,11 +1232,11 @@ Then the spec grows:
 
 - `x-warn`: a schema can mark a rule as a warning instead of an error.
 - The Obsidian dialect.
-- Profiles: the validator reads `extends:` and `x-extends`. Next the claims types ship as a
+- Profiles: the validator reads `extends:`, `uses:` and `x-extends`. Next the claims types ship as a
   versioned npm package, `@osdlc/corpus-profile-claims`, and corpora name it instead of holding
   copies. Name overrides and an acceptance-testing profile build on it.
-- Corpus inheritance and `corpus-schema sync` are built. Next come `refines` and `waives`, then a
-  real org principles corpus as the first case.
+- `extends`, `references`, `uses`, identity and `corpus-schema sync` are built. Next come `refines`
+  and `waives`, then a real org principles corpus as the first case.
 - `validate --strict`, flattened `x-extends`, references by id (`x-ref-form`) and `x-ref` lists of
   types are built, for the 0.3.0 release.
 
@@ -1079,19 +1311,23 @@ The spec forbids it, and the inner folder's files then belong to the outer recor
 the decision gives no separate reason. What the rule gives you: every file under a record folder
 belongs to exactly one record, the outer one. If a record has parts that are records in their own
 right, make them records of another type and link to them with `x-ref`. A plain folder of records,
-one with no record file named after it, can be nested as deep as you like.
+one with no record file, can be nested as deep as you like.
 
 ### What happens to wikilinks?
 
 They are accepted. A wikilink resolves by path suffix inside the corpus, and each one that resolves
-gets a warning. A wikilink with no match, or more than one, is an error. `validate --fix` rewrites
+gets a warning. A wikilink with no match, or more than one, is an error. A wikilink with no `/`
+that matches no file can name a record by id, such as `[[P-0002]]`. Obsidian does not resolve it,
+and `--fix` rewrites it as a relative link. `validate --fix` rewrites
 each one that resolves as a relative Markdown link. In frontmatter, quote it: `series: "[[Dune]]"`.
 The proposed `obsidian` dialect would make wikilinks normal, with no warning.
 
-### How do I share types between corpora today?
+### How do I share types between corpora?
 
 Extend a corpus that holds them. Name it under `extends:`, then build local types on its types with
-`x-extends`. A schema that holds only `x-extends: <prefix>/<type>` uses the type as it is.
+`x-extends`. A schema that holds only `x-extends: <prefix>/<type>` uses the type as it is, under a
+new name. To keep records of a parent's type with no schema file, name the type under `uses:` and
+make a folder of that name.
 
 You can also copy the type folders. A type folder holds its own schema, so it arrives complete. A
 `$ref` from one type's schema to another type's schema does not resolve, so each copy must stand
@@ -1148,42 +1384,49 @@ long time on some input. So validate a corpus you do not trust only with a time 
 
 ### How do org principles reach my project?
 
-The project's root file names the org corpus under `extends:`, as a package or a relative path (see
-[Sharing across corpora](#sharing-across-corpora)). The project then sees the org's types and
-records, read-only, next to its own. To link to the org's records, run `corpus-schema sync` and
-commit the copy.
+The project's root file names the org corpus under `references:`, as a package or a relative path
+(see [Sharing across corpora](#sharing-across-corpora)). A field can then use `x-ref: org/principles`
+to point at an org principle by link, id or wikilink. To link to the org's records from notes, run
+`corpus-schema sync` and commit the copy in `_references/org/`. If the project also wants the org's
+types, it names the org corpus under `extends:` too, under its own prefix.
 
 ### Can I override an org record?
 
-Not silently. A local record whose type extends the org's type, with the id of one of its records,
-is an error. You can cite the org record with `x-ref`. Under the proposal, a local record could
-also say `refines`, to be a local, narrower version of the org record, or `waives`, with a reason,
-when an org record does not apply.
+A local record does not replace an org record. The org's records stay the org's. A local record can
+have the same id as an org record, since they have different identities, but a reference by id that
+could match both is an error. You can cite the org record with `x-ref`. Under the proposal, a local
+record could also say `refines`, to be a local, narrower version of the org record, or `waives`,
+with a reason, when an org record does not apply.
 
-### Why can't Obsidian see inherited records without sync?
+### Why can't Obsidian see referenced records without sync?
 
-Inherited records live in another package or folder, pinned to a version. They are not files in
+Referenced records live in another package or folder, pinned to a version. They are not files in
 your folder, so Obsidian and GitHub have nothing to open when you follow a link to one.
-`corpus-schema sync` writes a read-only copy into `_inherited/<prefix>/`, so the links have real
-files to point at. The validator checks that the copy matches the installed parent, so it cannot
+`corpus-schema sync` writes a read-only copy into `_references/<prefix>/`, so the links have real
+files to point at. The validator checks that the copy matches the installed corpus, so it cannot
 quietly go stale.
 
 ## Words used
 
-| Word           | Meaning                                                                                                                           |
-| -------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| corpus         | A folder of notes and the files they link to. In the spec, a corpus is a folder that holds a root file, with everything under it. |
-| root file      | `corpus-schema.md`, `.yaml` or `.json`. It marks a folder as a corpus and holds its settings.                                     |
-| type           | A folder that holds a schema file named after the folder. The type's name is the folder name.                                     |
-| record         | One `.md`, `.yaml` or `.json` file of a type. Its data is checked against the type's schema.                                      |
-| id             | A record's file name without its extension, such as `Claude Code`. Unique within its type.                                        |
-| record folder  | A folder in a type folder that holds a record file named after the folder. The record owns the other files in it.                 |
-| narrative      | Every other file in a corpus: READMEs, guides, attachments. The validator ignores it.                                             |
-| level          | How much a corpus declares. 0 is any folder of linked notes, 1 adds the root file and types, 2 gives every type a schema.         |
-| dialect        | A named flavor of note syntax on top of the baseline, such as `obsidian`. Reserved in v0.                                         |
-| profile        | A shared, versioned set of types that many corpora can use: a parent corpus with only types, named under `extends`.               |
-| `extends`      | The root-file key that names parent corpora and profiles by prefix, each a package name or a relative path.                       |
-| `_inherited/`  | The folder where `corpus-schema sync` keeps a read-only copy of each parent.                                                      |
-| `x-ref`        | A schema keyword that makes a field a typed link to a record of a named type, like a foreign key.                                 |
-| `x-id-pattern` | A schema keyword with a regular expression that every id in the type must match.                                                  |
-| `x-extends`    | A schema keyword that makes a type build on another type, local or from a parent corpus.                                          |
+| Word            | Meaning                                                                                                                            |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| corpus          | A folder of notes and the files they link to. In the spec, a corpus is a folder that holds a root file, with everything under it.  |
+| root file       | `corpus-schema.md`, `.yaml` or `.json`. It marks a folder as a corpus and holds its settings.                                      |
+| type            | A folder that holds a schema file named after the folder. The type's name is the folder name.                                      |
+| record          | One `.md`, `.yaml` or `.json` file of a type. Its data is checked against the type's schema.                                       |
+| id              | A record's name without its extension, such as `Claude Code`, cut by `x-id-pattern` if the type has one. Unique within its type.   |
+| record folder   | A folder in a type folder that holds a record file, named after the folder or by `x-record-file`. The record owns the other files. |
+| narrative       | Every other file in a corpus: READMEs, guides, attachments. The validator ignores it.                                              |
+| level           | How much a corpus declares. 0 is any folder of linked notes, 1 adds the root file and types, 2 gives every type a schema.          |
+| dialect         | A named flavor of note syntax on top of the baseline, such as `obsidian`. Reserved in v0.                                          |
+| profile         | A shared, versioned set of types that many corpora can use: a parent corpus with only types, named under `extends`.                |
+| `extends`       | The root-file key that names parent corpora and profiles by prefix. A parent gives types only.                                     |
+| `references`    | The root-file key that names corpora whose records the corpus links to, by prefix.                                                 |
+| `uses`          | The root-file key that names parent types which local folders hold as they are, with no schema file.                               |
+| `_references/`  | The folder where `corpus-schema sync` keeps a read-only copy of each referenced corpus.                                            |
+| identity        | A package URL (purl) for a corpus, a type or a record, such as `pkg:npm/%40osdlc/corpus-profile-sdlc#tasks`.                       |
+| `x-ref`         | A schema keyword that makes a field a typed link to a record of a named type, like a foreign key.                                  |
+| `x-id-pattern`  | A schema keyword with a regular expression that every id in the type must match.                                                   |
+| `x-record-file` | A schema keyword that names the record file of the type's record folders, such as `README.md`.                                     |
+| `x-extends`     | A schema keyword that makes a type build on another type, local or from a parent corpus.                                           |
+| `x-identity`    | A schema keyword that states the type's unversioned identity.                                                                      |
