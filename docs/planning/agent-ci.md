@@ -77,7 +77,7 @@ flowchart LR
   subgraph later["Later"]
     MCP["MCP and hooks via skillwright"]
     PUB["Move to osdlc/actions + Marketplace"]
-    DATA["harness-reference as agent-call's data (PR 750, draft)"]
+    DATA["harness-reference as agent-call's data (PR 750)"]
     PIN["skillwright: agent-adapt 0.19.2 → 0.19.3"]
   end
 
@@ -125,7 +125,7 @@ flowchart LR
   class REL done
   class CUR done
   class MCP,PUB,PIN,STRICT later
-  class DATA external
+  class DATA blocked
 ```
 
 ## Review queue
@@ -135,12 +135,12 @@ move; merged PRs drop off.
 
 | Order | PR | What | Why this order | Status |
 | --- | --- | --- | --- | --- |
-| 1 | [#750](https://github.com/osdlc/osdlc/pull/750) | feat(harness-knowledge): compiled harness facts, read by agent-call and detect-harness | Marked ready at 09:51 UTC; the only PR waiting on your review | waiting on your review since 09:51 UTC; CI green; behind main again |
+| 1 | [#750](https://github.com/osdlc/osdlc/pull/750) | feat(harness-knowledge): compiled harness facts, read by agent-call and detect-harness | Marked ready at 09:51 UTC; the only PR waiting on your review | waiting on your review since 09:51 UTC; updated from main at 04:33 UTC; CI green, up to date |
 | 2 | [#764](https://github.com/osdlc/osdlc/pull/764) | feat(gh-actions): run any skill from a PR comment, read-only or with `--apply` | Next to be ready, after 750 | draft: needs your choice of how `--apply` changes land and the `pr-agent` environment, then the gate reruns; CI green; behind main again |
 
 ## PR tracker
 
-Checked 2026-11-10 21:17 UTC. A periodic check refreshes this table and the graph.
+Checked 2026-11-11 05:17 UTC. A periodic check refreshes this table and the graph.
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
@@ -150,7 +150,7 @@ Checked 2026-11-10 21:17 UTC. A periodic check refreshes this table and the grap
 | [#764](https://github.com/osdlc/osdlc/pull/764) | feat(gh-actions): run any skill from a PR comment, read-only or with --apply | draft | none | behind main; green | pre-review gate (draft) | new; touches gh-actions |
 | [#760](https://github.com/osdlc/osdlc/pull/760) | pr-update: one PR identity across repositories, per-repository verify, --restack | merged | — | — | — | merged 2026-11-10 (pr-update work) |
 | [#759](https://github.com/osdlc/osdlc/pull/759) | ci(pr-update): run once a night instead of on every push to main | merged | — | — | — | merged 2026-11-09; ends the CI storms from merges to main |
-| [#750](https://github.com/osdlc/osdlc/pull/750) | feat(harness-knowledge): compiled harness facts, read by agent-call and detect-harness | open | none | behind main; green | waiting on your review | phase 5 of the harness-knowledge plan; data synced from skillwright release harness-knowledge-20261110-9db55cc; merge, then the changesets release publishes @osdlc/harness-knowledge |
+| [#750](https://github.com/osdlc/osdlc/pull/750) | feat(harness-knowledge): compiled harness facts, read by agent-call and detect-harness | open | none | up to date; green | waiting on your review | phase 5 of the harness-knowledge plan; data synced from skillwright release harness-knowledge-20261110-9db55cc; merge, then the changesets release publishes @osdlc/harness-knowledge |
 | [#741](https://github.com/osdlc/osdlc/pull/741) | fix: kill the agent's process group when its host is interrupted (command-seam, agent-call, pr-update) | merged | — | — | — | merged 2026-11-10; releases with the next Version Packages PR |
 | [#734](https://github.com/osdlc/osdlc/pull/734) | feat(gh-actions): codex-pr and cursor-pr, shared pr-common scripts, multi-marketplace plugins | merged | — | — | — | merged 2026-11-09; next: live test with caller workflows |
 | [#733](https://github.com/osdlc/osdlc/pull/733) | Version Packages (corpus-schema; unblocked the agent-call 0.10.0 publish) | merged | — | — | — | merged 2026-11-09; agent-call 0.10.0 on npm |
