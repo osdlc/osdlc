@@ -17,7 +17,9 @@ use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
 use crate::config::{Listen, WebAccessConfig};
-use crate::guard::{GuardPolicy, GuardState, HostIps, OnDenied, Tokens, guard};
+use crate::guard::{
+    GuardPolicy, GuardState, HostIps, OnDenied, Tokens, guard, normalize_public_host,
+};
 use crate::interfaces::interfaces;
 use crate::permissions::RouteRule;
 use crate::token::Token;
@@ -160,6 +162,14 @@ pub enum ServeError {
     /// `Listen::Interfaces` names no address.
     #[error("the listen setting names no address")]
     NoAddress,
+    /// A [`ServeOptions::public_hosts`] entry is not a name
+    /// [`normalize_public_host`] keeps.
+    #[error("not a public host name: {0:?}")]
+    BadPublicHost(String),
+    /// [`ServeOptions::admin_public_only`] is set with no public host, so the
+    /// admin token could never be used.
+    #[error("admin_public_only needs at least one public host")]
+    AdminPublicOnlyWithoutPublicHosts,
     /// An address could not be bound.
     #[error("could not bind {addr}: {source}")]
     Bind {
@@ -183,6 +193,8 @@ pub struct ServerHandle {
     /// The addresses a peer can open, before a token is attached.
     share_addrs: Vec<SocketAddr>,
     share_urls: Vec<String>,
+    /// [`ServeOptions::public_hosts`] as [`normalize_public_host`] keeps them.
+    public_names: Vec<String>,
     stop_tx: watch::Sender<bool>,
     cut_tx: watch::Sender<bool>,
     tasks: Vec<JoinHandle<()>>,
@@ -207,6 +219,15 @@ impl ServerHandle {
         self.share_addrs
             .iter()
             .map(|a| share_url(*a, token))
+            .collect()
+    }
+
+    /// `https://<name>/?token=<token>` for each [`ServeOptions::public_hosts`]
+    /// name, as the browser opens it through the TLS proxy.
+    pub fn public_share_urls_for(&self, token: &Token) -> Vec<String> {
+        self.public_names
+            .iter()
+            .map(|n| format!("https://{n}/?token={token}"))
             .collect()
     }
 
@@ -274,6 +295,14 @@ pub struct ServeOptions {
     pub read_safe: Vec<RouteRule<()>>,
     /// See [`GuardState::with_on_denied`].
     pub on_denied: Option<Arc<OnDenied>>,
+    /// See [`GuardState::with_public_hosts`]. `serve` refuses to start on a
+    /// name [`normalize_public_host`] drops.
+    pub public_hosts: Vec<String>,
+    /// See [`GuardState::with_admin_over_public_only`]. Needs at least one
+    /// [`Self::public_hosts`] entry.
+    pub admin_public_only: bool,
+    /// See [`GuardState::with_cookie_max_age`]. `None` keeps a session cookie.
+    pub cookie_max_age: Option<Duration>,
 }
 
 /// Bind every listen address and serve `router` behind [`guard`].
@@ -351,6 +380,16 @@ async fn serve_with_ips(
     if matches!(&cfg.listen, Listen::Interfaces(ips) if ips.is_empty()) {
         return Err(ServeError::NoAddress);
     }
+    let mut public_names: Vec<String> = Vec::new();
+    for raw in &opts.public_hosts {
+        let n = normalize_public_host(raw).ok_or_else(|| ServeError::BadPublicHost(raw.clone()))?;
+        if !public_names.contains(&n) {
+            public_names.push(n);
+        }
+    }
+    if opts.admin_public_only && public_names.is_empty() {
+        return Err(ServeError::AdminPublicOnlyWithoutPublicHosts);
+    }
 
     let policy = opts.policy.unwrap_or(GuardPolicy {
         loopback_open: tokens.is_empty(),
@@ -420,7 +459,15 @@ async fn serve_with_ips(
         })
         .collect();
 
-    let mut state = GuardState::new(tokens, hosts, policy).with_read_safe(opts.read_safe);
+    let mut state = GuardState::new(tokens, hosts, policy)
+        .with_read_safe(opts.read_safe)
+        .with_public_hosts(&public_names);
+    if opts.admin_public_only {
+        state = state.with_admin_over_public_only();
+    }
+    if let Some(age) = opts.cookie_max_age {
+        state = state.with_cookie_max_age(age);
+    }
     let wildcards: Vec<SocketAddr> = addrs
         .iter()
         .copied()
@@ -465,6 +512,7 @@ async fn serve_with_ips(
         addrs,
         share_addrs,
         share_urls,
+        public_names,
         stop_tx,
         cut_tx,
         tasks,
@@ -752,6 +800,78 @@ mod tests {
         // Once it is stale the list is read again, so a new address shows up.
         assert_ne!(cache.get(t0 + Duration::from_secs(2)), first);
         assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn a_bad_public_host_or_admin_public_only_without_one_is_refused() {
+        let bad = ServeOptions {
+            public_hosts: vec!["https://x.example.com".to_owned()],
+            ..ServeOptions::default()
+        };
+        let err = serve_opts(
+            router(),
+            &cfg(Listen::Loopback),
+            Tokens::full_only(tok(TOK)),
+            bad,
+        )
+        .await
+        .err()
+        .unwrap();
+        assert!(
+            matches!(&err, ServeError::BadPublicHost(n) if n == "https://x.example.com"),
+            "{err}"
+        );
+        let no_public = ServeOptions {
+            admin_public_only: true,
+            ..ServeOptions::default()
+        };
+        let err = serve_opts(
+            router(),
+            &cfg(Listen::Loopback),
+            Tokens::full_only(tok(TOK)),
+            no_public,
+        )
+        .await
+        .err()
+        .unwrap();
+        assert!(
+            matches!(err, ServeError::AdminPublicOnlyWithoutPublicHosts),
+            "{err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn serve_options_reach_the_guard() {
+        const ADMIN: &str = "admin-0123456789abcdefghijklmnopqrstu";
+        let app = Router::new().route("/", get(|g: crate::Grant| async move { format!("{g:?}") }));
+        let tokens = Tokens::full_only(tok(TOK))
+            .with(tok(ADMIN), crate::Grant::Admin)
+            .unwrap();
+        let opts = ServeOptions {
+            public_hosts: vec!["X.example.com:443".to_owned(), "x.example.com".to_owned()],
+            admin_public_only: true,
+            cookie_max_age: Some(Duration::from_secs(60)),
+            ..ServeOptions::default()
+        };
+        let handle = serve_opts(app, &cfg(Listen::Loopback), tokens, opts)
+            .await
+            .unwrap();
+        let addr = handle.addrs()[0];
+        assert_eq!(
+            handle.public_share_urls_for(&tok(ADMIN)),
+            [format!("https://x.example.com/?token={ADMIN}")]
+        );
+        let admin = format!("x-web-access-token: {ADMIN}\r\n");
+        let res = raw_get(addr, "x.example.com", &admin).await;
+        assert!(res.ends_with("Admin"), "{res}");
+        let res = raw_get(addr, &addr.to_string(), &admin).await;
+        assert!(res.ends_with("Full"), "{res}");
+        let link = format!(
+            "GET /?token={TOK} HTTP/1.1\r\nHost: x.example.com\r\nConnection: close\r\n\r\n"
+        );
+        let res = raw_request(addr, &link).await;
+        assert!(res.contains("; Secure; Max-Age=60\r\n"), "{res}");
+        handle.stop().await;
     }
 
     #[tokio::test]
