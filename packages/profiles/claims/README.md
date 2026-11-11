@@ -369,9 +369,9 @@ Extend the profile, as [Use it](#use-it) says. Then:
   top-level field can point at them with `x-ref`.
 - Keep the field names the claims types use. If you add a field that VA-Spec defines and the claims
   types leave out, such as `score`, give it VA-Spec's meaning.
-- For strict checking, close your type with `additionalProperties: false`. Your schema is checked
-  on its own, beside the profile's, so it must list every field it allows, the profile's fields
-  too. `title: true` is enough for a field the profile already checks.
+- For strict checking, close your type with `additionalProperties: false`. The profile's fields
+  count as your type's own, so list only the fields you add. A record still passes the profile's
+  rules for its fields.
 
 The example statement
 [fernlog config path on Linux](example/statements/fernlog%20config%20path%20on%20Linux.md) has a
