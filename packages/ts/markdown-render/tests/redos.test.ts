@@ -145,8 +145,11 @@ function timeWindow(run: (tree: MdNode) => unknown, body: string, passes: number
  * is measured on.
  *
  * Each rung is timed over the same total volume of input: rung `i` of an
- * `n`-rung ladder is scanned `GROWTH_STEP ** (n - 1 - i)` times, so the bottom
- * rung's window covers as many bytes as the top rung's single scan. See
+ * `n`-rung ladder is scanned `volume * step ** (n - 1 - i)` times (defaults
+ * `volume = 1`, `step = GROWTH_STEP`), so the bottom rung's windows cover as
+ * many bytes as the top rung's. `volume` lengthens every window by the same
+ * factor without changing the ratio, for ladders whose windows are short
+ * enough that one GC pause on a shared runner moves the ratio. See
  * {@link GROWTH_CEILING} for why that equalisation is what makes the ratio
  * survive a loaded runner.
  *
@@ -247,23 +250,23 @@ describe('redos hardening', () => {
     )
   }, 30_000)
 
-  // ~0.7s healthy; ~4.4s with a restored blowup, which has no ceiling to stop
-  // it early (see SANITY_CEILING_MS). Same reasoning as the timeout above:
-  // fail on the ratio, not on the clock.
+  // Well under a second healthy (~0.2s locally). A restored blowup has no
+  // ceiling to stop it early (see SANITY_CEILING_MS) and, at volume: 10, runs
+  // ~44s (10× the ~4.4s it took at one pass) before the ratio fails it; the
+  // 120s timeout keeps that a ratio failure, not a clock one.
   test('a long run of unterminated openers costs a flat amount per opener', () => {
     // `[[[[[[…` is the polynomial case, not the exponential one: a scanner that
     // lets every opener walk to the end of the string is quadratic. The two
     // rungs are 10× apart, with equal total volume per window, so a quadratic
     // scanner reads ~10× against ~1× for a linear one; the bound of 3× sits
     // far from both, and the minimum of many windows removes runner noise.
-    // volume: 10 makes each window ~15 ms. At one pass a window was ~1.5 ms,
-    // and a single GC pause on a shared runner read as 3-5× (packages-publish
-    // run 42974263424).
+    // volume: 10, since one-pass windows (~1.5 ms) read 3-5× on a shared
+    // runner (packages-publish run 42974263424).
     const rungs = [1000, 10_000]
     const wide = { step: 10, reps: 9, ceiling: 3, volume: 10 }
     assertLinearGrowth(remarkWikilinks(), (k) => '[['.repeat(k), rungs, undefined, wide)
     assertLinearGrowth(remarkEmbeds(), (k) => '![['.repeat(k), rungs, undefined, wide)
-  }, 30_000)
+  }, 120_000)
 
   test('a very large text node is scanned like any other', () => {
     // There is no size past which a node is skipped: the scan is linear, so a
