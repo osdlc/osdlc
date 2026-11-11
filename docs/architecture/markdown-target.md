@@ -249,7 +249,7 @@ A twin can have extras the other doesn't need. It just has to pass the shared ca
 | Corpus model, TypeScript | markdown-vault and vault-graph-core in dev | markdown-corpus in osdlc |
 | Corpus model, Rust | markdown-corpus in osdlc | the same |
 | corpus-schema | this repo; 0.2.0 is on npm | the same |
-| Profiles | drafts in this repo; model-schema and packs in dev (open PRs) | this repo |
+| Profiles | drafts in this repo; model-schema and packs in dev, merged to a branch that is not on main yet | this repo |
 | Query | markdown-vault-query in dev | osdlc |
 | Render, edit, sites | dev | osdlc |
 | Typed records from Rust | markdown-store in rust-ontogen | on the shared parts; where it lives is an open question |
