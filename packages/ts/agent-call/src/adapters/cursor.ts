@@ -29,6 +29,9 @@ import {
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
+// The binary and flags below are asserted against the harness knowledge file in
+// tests/knowledge-facts.test.ts; policy (which mode, which default) stays here.
+
 /** Plugin manifest and MCP config written to the per-call temp dir, loaded with `--plugin-dir`. */
 const PLUGIN_MANIFEST_FILE = 'plugin.json'
 const MCP_CONFIG_FILE = 'mcp.json'
