@@ -135,7 +135,7 @@ move; merged PRs drop off.
 
 | Order | PR | What | Why this order | Status |
 | --- | --- | --- | --- | --- |
-| 1 | [#764](https://github.com/osdlc/osdlc/pull/764) | feat(gh-actions): run any skill from a PR comment, read-only or with `--apply` | Next to be ready; nothing else waits on you | draft: needs your choice of how `--apply` changes land, the `pr-agent` environment and the token fix, then the gate reruns; main merged in at 07:56 UTC, CI running |
+| 1 | [#764](https://github.com/osdlc/osdlc/pull/764) | feat(gh-actions): run any skill from a PR comment, read-only or with `--apply` | Next to be ready; nothing else waits on you | draft: needs your choice of how `--apply` changes land, the `pr-agent` environment and the token fix, then the gate reruns; main merged in at 07:56 UTC, CI running; behind main again |
 
 ## PR tracker
 
