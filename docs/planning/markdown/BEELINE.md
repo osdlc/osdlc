@@ -113,23 +113,21 @@ The tasks in the order the work goes. Each line says why it comes there.
     all of the above. Every consumer installs it.
 13. [48 Profile generator](tasks/48%20Profile%20generator.md): turns the packs into a profile. The
     packs are merged ([47 Merge packs](tasks/47%20Merge%20packs.md)).
-14. [51 Work copy](tasks/51%20Work%20copy.md): the work repo starts on a flattened copy, which
-    corpus-schema 0.2.0 can check.
-15. [49 SDLC profiles](tasks/49%20SDLC%20profiles.md): the one profile, at `profiles/sdlc/`. It
+14. [49 SDLC profiles](tasks/49%20SDLC%20profiles.md): the one profile, at `profiles/sdlc/`. It
     needs 44 to 46 and the generator.
-16. [61 Publish sdlc](tasks/61%20Publish%20sdlc.md) (owner): consumers install the profile from npm.
-17. [63 Starter corpus](tasks/63%20Starter%20corpus.md): the records. It extends the profile, so it
+15. [61 Publish sdlc](tasks/61%20Publish%20sdlc.md) (owner): consumers install the profile from npm.
+16. [63 Starter corpus](tasks/63%20Starter%20corpus.md): the records. It uses the profile's types, so it
     comes after 49.
-18. [65 Leak check](tasks/65%20Leak%20check.md): no private data reaches a public registry.
-19. [66 Publish starter](tasks/66%20Publish%20starter.md) (owner): after the profile it depends on.
-20. [23 Claims profile](tasks/23%20Claims%20profile.md) and
+17. [65 Leak check](tasks/65%20Leak%20check.md): no private data reaches a public registry.
+18. [66 Publish starter](tasks/66%20Publish%20starter.md) (owner): after the profile it depends on.
+19. [23 Claims profile](tasks/23%20Claims%20profile.md) and
     [35 Example pair](tasks/35%20Example%20pair.md): the example pair's harness, which the work
     example reuses.
-21. [67 Work example](tasks/67%20Work%20example.md): the end state in this repo's CI, before a real
+20. [67 Work example](tasks/67%20Work%20example.md): the end state in this repo's CI, before a real
     repo copies it.
-22. [52 Work extends](tasks/52%20Work%20extends.md): the work repo drops its flattened copy and
-    extends the profile.
-23. [68 Work cites starter](tasks/68%20Work%20cites%20starter.md): the end state.
+21. [52 Work extends](tasks/52%20Work%20extends.md): the work repo installs the profile and
+    corpus-schema 0.3.0 from npm and extends the profile.
+22. [68 Work cites starter](tasks/68%20Work%20cites%20starter.md): the end state.
 
 Off the critical path, but in a beeline milestone:
 [38 Planning profile](tasks/38%20Planning%20profile.md),
@@ -162,7 +160,7 @@ Each item: the task, its status, who does it, its pull requests, and the tasks i
 - [ ] [48 Profile generator](tasks/48%20Profile%20generator.md) · in progress · agent · [sksizer/dev#4163](https://github.com/sksizer/dev/pull/4163)
 - [ ] [59 Trusted publishing](tasks/59%20Trusted%20publishing.md) · waiting on owner · owner
 
-### Waiting (29)
+### Waiting (28)
 
 - [ ] [9 Extends](tasks/9%20Extends.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12) · waits on 21
 - [ ] [38 Planning profile](tasks/38%20Planning%20profile.md) · in progress · agent · [osdlc/markdown#14](https://github.com/osdlc/markdown/pull/14) · waits on 9
@@ -180,11 +178,10 @@ Each item: the task, its status, who does it, its pull requests, and the tasks i
 - [ ] [35 Example pair](tasks/35%20Example%20pair.md) · in progress · agent · [osdlc/markdown#16](https://github.com/osdlc/markdown/pull/16) · waits on 23, 29, 36
 - [ ] [37 Use extends](tasks/37%20Use%20extends.md) · not started · agent · waits on 36, 60
 - [ ] [69 Add command](tasks/69%20Add%20command.md) · not started · agent · waits on 29
-- [ ] [51 Work copy](tasks/51%20Work%20copy.md) · not started · agent · waits on 48
 - [ ] [49 SDLC profiles](tasks/49%20SDLC%20profiles.md) · not started · agent · waits on 44, 45, 46, 48
 - [ ] [61 Publish sdlc](tasks/61%20Publish%20sdlc.md) · waiting on owner · owner · waits on 49, 59
 - [ ] [50 Dev on sdlc](tasks/50%20Dev%20on%20sdlc.md) · not started · agent · waits on 36, 49, 61
-- [ ] [52 Work extends](tasks/52%20Work%20extends.md) · not started · agent · waits on 36, 49, 51, 61
+- [ ] [52 Work extends](tasks/52%20Work%20extends.md) · not started · agent · waits on 36, 49, 61
 - [ ] [53 Plan on sdlc](tasks/53%20Plan%20on%20sdlc.md) · not started · agent · waits on 38, 49
 - [ ] [62 Packs in public](tasks/62%20Packs%20in%20public.md) · not started · agent · waits on 49
 - [ ] [63 Starter corpus](tasks/63%20Starter%20corpus.md) · not started · agent · waits on 49

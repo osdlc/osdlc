@@ -6,7 +6,6 @@ beeline: true
 tasks:
   - "[47 Merge packs](../tasks/47%20Merge%20packs.md)"
   - "[48 Profile generator](../tasks/48%20Profile%20generator.md)"
-  - "[51 Work copy](../tasks/51%20Work%20copy.md)"
   - "[49 SDLC profiles](../tasks/49%20SDLC%20profiles.md)"
   - "[61 Publish sdlc](../tasks/61%20Publish%20sdlc.md)"
   - "[50 Dev on sdlc](../tasks/50%20Dev%20on%20sdlc.md)"

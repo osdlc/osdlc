@@ -94,7 +94,6 @@
       "tasks": [
         47,
         48,
-        51,
         49,
         61,
         50,
@@ -1042,34 +1041,19 @@
       "source": "docs/planning/tasks/50 Dev on sdlc.md"
     },
     {
-      "id": 51,
-      "title": "Work copy",
-      "detail": "flattened, 0.2.0",
-      "status": "todo",
-      "milestone": "m-sdlc-profile",
-      "type": "functional",
-      "after": [
-        48
-      ],
-      "prs": [],
-      "text": "A work repo keeps its sdlc records as a corpus now. It uses a flattened copy of the sdlc profile, written by the generator, and checks it with corpus-schema 0.2.0 from npm. This is the first use of the sdlc corpus at work. After 48.",
-      "source": "docs/planning/tasks/51 Work copy.md"
-    },
-    {
       "id": 52,
       "title": "Work extends",
-      "detail": "after 0.3.0",
+      "detail": "from npm, on 0.3.0",
       "status": "todo",
       "milestone": "m-sdlc-profile",
       "type": "functional",
       "after": [
         36,
         49,
-        51,
         61
       ],
       "prs": [],
-      "text": "The work repo drops its flattened copy. It installs the sdlc profile from npm, names it under `extends`, takes its types with `uses: [sdlc/*]` (task 71, decision D15) and uses corpus-schema 0.3.0. After 49, 51, 36 and 61, which publishes the profile.",
+      "text": "The work repo keeps its sdlc records as a corpus. It installs the sdlc profile from npm, names it under `extends`, takes its types with `uses: [sdlc/*]` (task 71, decision D15) and uses corpus-schema 0.3.0. This is the first use of the sdlc corpus at work. Before 1.0 there is no older form to start on, so it waits for 49, 36 and 61, which publishes the profile.",
       "source": "docs/planning/tasks/52 Work extends.md"
     },
     {
