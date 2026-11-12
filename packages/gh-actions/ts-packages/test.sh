@@ -2,9 +2,6 @@
 # Runs the "Refuse a package that is not on npm yet" step of
 # ts-packages-release.yml, read from the workflow with yq, against small
 # package trees with fake npm and pnpm programs on PATH. Needs no network.
-# Checks `package-globs` (space- and newline-separated, a misspelt entry with
-# and without a wildcard, a blank value), `ts-checks: false` without globs,
-# the default `tsDir` path, and a package that is not on npm.
 set -uo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -65,8 +62,11 @@ check() {
 tree "$T/models" profiles/claims=@osdlc/claims profiles/sdlc=@osdlc/sdlc corpora/starter=@osdlc/starter
 tree "$T/unstaged" profiles/claims=@osdlc/claims corpora/starter=@new/starter
 tree "$T/ts" packages/ts/lib=@osdlc/lib
+tree "$T/ts-unstaged" packages/ts/lib=@osdlc/lib packages/ts/new=@new/lib
 
-check "space-separated globs" 0 "" "$T/models" false "profiles/* corpora/*"
+check "every package on npm" 0 "" "$T/models" false "profiles/* corpora/*"
+check "space-separated globs reach every entry" 1 "@new/starter is not on npm yet" \
+  "$T/unstaged" false "profiles/* corpora/*"
 check "newline-separated globs reach every entry" 1 "@new/starter is not on npm yet" \
   "$T/unstaged" false $'profiles/*\ncorpora/*\n'
 check "a misspelt entry with a wildcard" 1 "the package-globs entry profle/* matches no package folder" \
@@ -78,6 +78,8 @@ check "a blank package-globs" 1 "package-globs is set but names no folder" \
 check "ts-checks false without package-globs" 1 "ts-checks: false needs package-globs" \
   "$T/models" false ""
 check "the default reads tsDir" 0 "" "$T/ts" true ""
+check "the default refuses a package not on npm" 1 "@new/lib is not on npm yet" \
+  "$T/ts-unstaged" true ""
 check "an empty tsDir" 1 "no packages in packages/ts" "$T/models" true ""
 
 if [ "$failures" -ne 0 ]; then
