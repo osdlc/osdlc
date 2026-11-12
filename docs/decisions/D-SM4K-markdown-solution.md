@@ -9,27 +9,35 @@ Accepted 2026-11-12.
 - **Its home is `solutions/markdown/`.** A solution is a group of apps,
   packages and docs that belong to one product area, with its own planning.
   This is the first one here. The layout follows the one sksizer/dev uses
-  (its decision D-0001, "Placement and promotion").
-- **Placement follows who uses a thing, not what kind of thing it is.**
+  (its decision D-0001), with one change to the rule, below.
+- **Placement follows who owns a thing, not who imports it.**
 
-  | Place                  | What goes there                                                 |
-  | ---------------------- | --------------------------------------------------------------- |
-  | `solutions/<s>/`       | What only that solution uses, and its planning                  |
-  | `packages/<language>/` | A library that two or more solutions, or osdlc's own tools, use |
-  | Its own repository     | A library that is near 1.0 and releases on its own              |
+  | Place                  | What goes there                                           |
+  | ---------------------- | --------------------------------------------------------- |
+  | `solutions/<s>/`       | What that solution's plan owns: its libraries, apps, docs |
+  | `packages/<language>/` | General libraries that no solution owns                   |
+  | Its own repository     | A library that is near 1.0 and releases on its own        |
 
-- **A library that only the markdown solution uses moves to
-  `solutions/markdown/packages/<language>/`.** That covers `markdown-link`,
-  `markdown-tags`, `markdown-contract`, `markdown-render`,
-  `markdown-render-vue`, `markdown-vault-astro` and `corpus-schema`, and the
-  crates `markdown-corpus`, `markdown-relink`, `markdown-vault-fs`, `vfs-walk`,
-  `vfs-seam` and `slug-collate`. A package moves up to `packages/` when
-  something outside the solution imports it. It is not moved up ahead of that.
-- **A library that other libraries or osdlc's own tools use stays in
-  `packages/`.** `frontmatter-lossless`, `gfm-table`, `gfm-pipe-table`,
-  `yaml-splice`, `etag-write` and `path-guard` stay: `config-layers` and
-  `detect-harness` depend on them. So do `cli-tool`, `command-seam` and the
-  rest of the tool libraries.
+  A library stays in its solution however many things import it. sksizer/dev
+  moves a package up to `packages/` when a second solution imports it. Here
+  every library is published under `@osdlc`, so a folder does not say who may
+  import it. It says what the library belongs to.
+
+- **The markdown solution owns** `markdown-link`, `markdown-tags`,
+  `markdown-contract`, `markdown-render`, `markdown-render-vue`,
+  `markdown-vault-astro` and `corpus-schema`, and the crates
+  `markdown-corpus`, `markdown-relink`, `markdown-vault-fs`, `vfs-walk`,
+  `vfs-seam` and `slug-collate`. They move to
+  `solutions/markdown/packages/<language>/`.
+- **`packages/` never depends on anything under `solutions/`.** A check in CI
+  holds this. It is why `frontmatter-lossless`, `gfm-table`,
+  `gfm-pipe-table` and `yaml-splice` stay in `packages/`, though they deal
+  with Markdown: `config-layers` and `detect-harness` depend on them.
+  `etag-write`, `path-guard`, `cli-tool`, `command-seam` and the rest of the
+  tool libraries stay too.
+- **A solution may depend on another solution's libraries, in one direction.**
+  sdlc will depend on the markdown solution's libraries. The markdown solution
+  uses sdlc as a tool, to run its plan, and does not import sdlc's libraries.
 - **`solutions/markdown/` also holds** the conformance suites and specs of its
   libraries, the ecosystem's plan and architecture, example corpora, and the
   tools that read the plan.
@@ -79,9 +87,12 @@ against the markdown packages in the same pull request.
 - **Keep the code here and the plan in osdlc/markdown.** The plan would sit
   apart from the code it plans, and could not be run by the sdlc in this
   repository.
-- **Leave every markdown library flat in `packages/`.** The sdlc product will
-  import some of them, but placing them by a use that has not happened yet is
-  a guess. They move up when it does.
+- **Leave every markdown library flat in `packages/`.** Seventy libraries in
+  two folders no longer show what belongs together, and the plan, spec and
+  examples would sit apart from the code.
+- **Move a library up to `packages/` when a second solution imports it**, as
+  sksizer/dev does. The markdown solution would empty out as sdlc starts to
+  use it.
 
 ## When to look again
 
@@ -105,6 +116,8 @@ The work, in order:
    - moon, as sksizer/dev has: `.moon/workspace.yml` enrols each solution's
      folders, and task presets for TypeScript libraries and crates call each
      package's own scripts. CI runs the affected projects.
+   - A check that nothing in `packages/` depends on a package under
+     `solutions/`.
 2. **Move the markdown libraries** into `solutions/markdown/` with `git mv`.
    History is kept. npm and crates.io names do not change, and the trusted
    publishers stay on osdlc/osdlc.
@@ -122,7 +135,3 @@ The work, in order:
    `markdown-editor` and `markdown-ui`.
 7. **The owner archives osdlc/markdown and osdlc/models** once they are
    empty, with a README that points here.
-
-One thing to settle in step 2: the sdlc plugin pack in this repository already
-installs `@osdlc/markdown-link`, from a vendored 0.1.0 tarball. If that counts
-as osdlc's own tools using it, `markdown-link` stays in `packages/`.
