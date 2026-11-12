@@ -145,6 +145,7 @@ Checked 2026-11-12 02:17 UTC. A periodic check refreshes this table and the grap
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
 | [#785](https://github.com/osdlc/osdlc/pull/785) | ts-packages-release: inputs for packages with no code | open | none | clean; green | waiting on your review | related (shared-CI work; touches gh-actions/ts-packages) |
+| [#787](https://github.com/osdlc/osdlc/pull/787) | feat(gh-actions): fall through to the next key when one is out of credit | draft | none | — | pre-review gate (draft) | keys (see "Next: execution modes") |
 | [#749](https://github.com/osdlc/osdlc/pull/749) | ci: shared reusable workflows for TypeScript package CI and release | merged | — | — | — | merged 2026-11-10 (shared-CI work) |
 | [#748](https://github.com/osdlc/osdlc/pull/748) | package-checks: move the package checks into @osdlc/package-checks | merged | — | — | — | merged 2026-11-09 |
 | [#747](https://github.com/osdlc/osdlc/pull/747) | ci: codex and cursor answer PR mentions | merged | — | — | — | merged 2026-11-10; next: live codex and cursor mentions (needs OPENAI_API_KEY, CURSOR_API_KEY) |
@@ -217,7 +218,7 @@ Rules:
 
 ## Investigations
 
-All five are answered; the findings follow the sections below.
+I1–I5 are answered; the findings follow the sections below. I6 is open.
 
 | Id  | Question                                                                                                      | Status |
 | --- | ------------------------------------------------------------------------------------------------------------- | ------ |
@@ -226,6 +227,7 @@ All five are answered; the findings follow the sections below.
 | I3  | Does `claude -p` expand a leading `/plugin:skill` the way an interactive session does?                        | answered: yes |
 | I4  | Does `codex exec` pick a skill from prose, and does `$plugin:skill` work in exec mode?                        | answered: yes (project skill; plugin namespace not run) |
 | I5  | What does harness-reference need in a `permissions` category, and does agent-call's capability map agree with it? | answered: subjects proposed; one agent-call note contradicted |
+| I6  | Prior art before building `agent-run`: the Claude Agent SDK, the Codex SDK, ACP (Agent Client Protocol) and GitHub Agentic Workflows (gh-aw). Which harnesses and modes does each cover, and should agent-call build on any of them? | open: time-boxed spike, see "Next: execution modes" |
 
 ## API and architecture review
 
@@ -384,6 +386,66 @@ them, uncited, and I2 found one of its notes wrong. Proposed subjects:
 
 agent-call's permission rows should then be checked against these facts the
 way tradecraft-core's profile is (D-FDLQ).
+
+## Next: execution modes and `agent-run`
+
+Decided 2026-11-12. Prior art first: I6 runs before any of this is built.
+
+**Modes, not replacements.** agent-call describes a call once (prompt or
+skill, permissions, context, keys) and runs it in a mode the caller picks.
+The CLI path stays; the SDK is added beside it.
+
+| Mode       | Runs the harness as                                   | For                                                                 |
+| ---------- | ----------------------------------------------------- | ------------------------------------------------------------------- |
+| `terminal` | an interactive session in tmux (agent-seat)            | local work; long or steered tasks a person can attach to             |
+| `cli`      | `claude -p`, `codex exec`, `cursor-agent -p`           | any harness; CI with only bash; the fallback                         |
+| `sdk`      | a library: Claude Agent SDK, Codex SDK                 | CI and automation: per-tool-call permission callback, typed errors |
+| `acp`      | a JSON-RPC client (Agent Client Protocol)              | one interface across vendors, if I6 finds it covers enough           |
+
+- Each harness lists the modes it supports (claude: terminal, cli, sdk;
+  cursor: terminal, cli). These are harness-knowledge facts beside the CLI
+  flags.
+- Callers state intent (read-only, edits, allowed tools); each mode enforces
+  it its own way: allow-lists in `cli`, a `canUseTool` callback in `sdk`,
+  approval prompts in `terminal`.
+- Default by context: `sdk` in CI when the harness has one, else `cli`;
+  `terminal` when a person is at a TTY. Callers can override.
+- In `sdk` mode the permission callback can refuse reads of the
+  environment, which closes [#764](https://github.com/osdlc/osdlc/pull/764)'s remaining gap (the agent job's own
+  `GITHUB_TOKEN`) better than allow-lists.
+
+**`agent-run` and `agent-pr`.** After [#764](https://github.com/osdlc/osdlc/pull/764) merges, the per-harness actions
+become two, each choosing its mode through agent-call:
+
+- `agent-run`: install the harness and plugins, run any prompt or
+  `/plugin:skill`, read-only or with edits; returns output and a patch.
+  Triggers: PR comments, issue comments or assignment (a new
+  `agent/<issue>-<slug>` branch and a draft PR), `workflow_dispatch` with a
+  `prompt` input, cron.
+- `agent-pr`: parse the comment, prefetch PR context, call `agent-run`,
+  post; `agent: claude|codex|cursor`. Replaces `claude-pr`, `codex-pr` and
+  `cursor-pr`.
+- Input text starting with `/` is a skill call; anything else is a plain
+  prompt.
+- Conversations: replay the PR or issue thread as context first (works
+  across harnesses). Harness session resume (`--resume`, `codex exec
+  resume`) is an opt-in later, with sessions kept in the Actions cache
+  (not artifacts, which are public on public repos) and the session id in
+  the reply's marker.
+- Input names follow claude-code-action and codex-action: `prompt`,
+  `prompt-file`, `branch-prefix`, `allowed-users`, `model`, `effort`.
+
+**Keys.** Each key secret is an ordered list; the first account's credit is
+used first. [#787](https://github.com/osdlc/osdlc/pull/787) falls through to the next key on an authentication failure
+or when a key is out of credit or quota. A Claude subscription token
+(`CLAUDE_CODE_OAUTH_TOKEN`) is a possible extra entry, not yet supported.
+
+**I6 spike (half a day, on skillwright).** For each of the Claude Agent SDK,
+the Codex SDK, ACP and gh-aw: which harnesses and modes it covers; whether
+it triggers on comments; whether it installs our skill packs; how it holds
+keys (gh-aw keeps them in a proxy the agent can't read); and whether
+agent-call should sit on top of it. Outcome: adopt, build on, or borrow
+ideas.
 
 ## Later: harness-reference as agent-call's data
 
