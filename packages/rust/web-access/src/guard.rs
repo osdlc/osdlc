@@ -74,7 +74,7 @@ use axum::response::Response;
 use subtle::ConstantTimeEq;
 
 pub use crate::conn::ConnectionCut;
-use crate::conn::{Connections, Peer};
+use crate::conn::{Conn, Connections};
 use crate::context::{AccessContext, Grant};
 use crate::origin::is_webview_origin;
 use crate::permissions::{RouteRule, normalize_path};
@@ -599,8 +599,7 @@ impl GuardState {
         });
     }
 
-    /// Stamp the resolved context, grant and [`ConnectionCut`] on `req`, then
-    /// enforce read-only.
+    /// Stamp the resolved context and grant on `req`, then enforce read-only.
     async fn admit(
         &self,
         mut req: Request<Body>,
@@ -624,10 +623,6 @@ impl GuardState {
         if read_only {
             let body = serde_json::json!({ "error": "read_only" });
             return json_response(StatusCode::FORBIDDEN, &body);
-        }
-        if let Some(peer) = req.extensions().get::<ConnectInfo<Peer>>() {
-            let cut = peer.0.conn.signal();
-            req.extensions_mut().insert(cut);
         }
         req.extensions_mut().insert(context);
         req.extensions_mut().insert(grant);
@@ -810,14 +805,10 @@ pub async fn guard(
 async fn check(state: &GuardState, mut req: Request<Body>, next: Next) -> Response {
     let method = req.method().clone();
     let path = req.uri().path().to_owned();
-    // Under `serve` the connection info is a `Peer`; handlers expect the
-    // address alone, as `ConnectInfo<SocketAddr>`.
-    let conn = req
-        .extensions()
-        .get::<ConnectInfo<Peer>>()
-        .map(|c| (c.0.addr, c.0.conn.clone()));
-    if let Some((addr, _)) = &conn {
-        req.extensions_mut().insert(ConnectInfo(*addr));
+    // Under `serve`, the connection the request arrived on.
+    let conn = req.extensions().get::<Arc<Conn>>().cloned();
+    if let Some(c) = &conn {
+        req.extensions_mut().insert(c.signal());
     }
     let peer = req
         .extensions()
@@ -932,7 +923,7 @@ async fn check(state: &GuardState, mut req: Request<Body>, next: Next) -> Respon
         }
         // Tagged under the same read lock as the match, so a
         // `replace_tokens` that withdraws the entry cuts this connection.
-        if let (Some((_, id)), Some((_, c))) = (best, &conn) {
+        if let (Some((_, id)), Some(c)) = (best, &conn) {
             c.tag(id);
         }
         best

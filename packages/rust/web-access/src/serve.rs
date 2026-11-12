@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use axum::Router;
+use axum::extract::ConnectInfo;
 use tokio::net::TcpListener;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
@@ -109,20 +110,7 @@ impl ServerHandle {
     /// The addresses a peer can open: each bound address, a wildcard one
     /// expanded to the host's non-loopback addresses of its family.
     fn share_addrs(&self) -> Vec<SocketAddr> {
-        let ips = (self.host_ips)();
-        let mut out: Vec<SocketAddr> = Vec::new();
-        for a in &self.addrs {
-            if a.ip().is_unspecified() {
-                let family = ips
-                    .iter()
-                    .filter(|ip| !ip.is_loopback() && ip.is_ipv4() == a.is_ipv4());
-                out.extend(family.map(|ip| SocketAddr::new(*ip, a.port())));
-            } else {
-                out.push(*a);
-            }
-        }
-        out.dedup();
-        out
+        reached(&self.addrs, &(self.host_ips)(), false)
     }
 
     /// Accept `tokens` from now on, in place of the ones the server holds, and
@@ -193,6 +181,26 @@ fn listen_ips(listen: &Listen) -> Vec<IpAddr> {
         Listen::AllInterfaces => vec![IpAddr::V4(Ipv4Addr::UNSPECIFIED)],
         Listen::Interfaces(ips) => ips.clone(),
     }
+}
+
+/// What `addrs` reach: each bound address, and for a wildcard bind each
+/// address in `ips` of its family on its port, loopback ones only with
+/// `loopback`. Sorted, without repeats.
+fn reached(addrs: &[SocketAddr], ips: &[IpAddr], loopback: bool) -> Vec<SocketAddr> {
+    let mut out: Vec<SocketAddr> = Vec::new();
+    for a in addrs {
+        if a.ip().is_unspecified() {
+            let family = ips
+                .iter()
+                .filter(|ip| (loopback || !ip.is_loopback()) && ip.is_ipv4() == a.is_ipv4());
+            out.extend(family.map(|ip| SocketAddr::new(*ip, a.port())));
+        } else {
+            out.push(*a);
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
 }
 
 fn authority(ip: IpAddr, port: u16) -> String {
@@ -290,6 +298,19 @@ impl IpCache {
     }
 }
 
+/// Split `serve`'s connection info into the `ConnectInfo<SocketAddr>` handlers
+/// expect and the connection the guard tags. Runs outside the guard.
+async fn split_peer(
+    mut req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    if let Some(ConnectInfo(peer)) = req.extensions_mut().remove::<ConnectInfo<Peer>>() {
+        req.extensions_mut().insert(ConnectInfo(peer.addr));
+        req.extensions_mut().insert(peer.conn);
+    }
+    next.run(req).await
+}
+
 /// [`serve_opts`] with the interface list as a parameter, so a test can change it.
 async fn serve_with_ips(
     router: Router,
@@ -335,32 +356,18 @@ async fn serve_with_ips(
         .filter_map(|l| l.local_addr().ok())
         .collect();
 
-    // Reachable IPs: what was bound, or every interface for a wildcard bind.
-    let host_ifaces = host_ips();
-    let mut reachable: Vec<IpAddr> = Vec::new();
-    for a in &addrs {
-        if a.ip().is_unspecified() {
-            reachable.extend(
-                host_ifaces
-                    .iter()
-                    .copied()
-                    .filter(|ip| ip.is_ipv4() == a.ip().is_ipv4()),
-            );
-        } else {
-            reachable.push(a.ip());
-        }
-    }
-    reachable.sort();
-    reachable.dedup();
-
     let mut hosts = Vec::new();
     for a in &addrs {
         let port = a.port();
         hosts.push(format!("localhost:{port}"));
         hosts.push(authority(IpAddr::V4(Ipv4Addr::LOCALHOST), port));
         hosts.push(authority(IpAddr::V6(std::net::Ipv6Addr::LOCALHOST), port));
-        hosts.extend(reachable.iter().map(|ip| authority(*ip, port)));
     }
+    hosts.extend(
+        reached(&addrs, &host_ips(), true)
+            .iter()
+            .map(SocketAddr::to_string),
+    );
 
     let mut state = GuardState::new(tokens, hosts, policy)
         .with_read_safe(opts.read_safe)
@@ -384,7 +391,9 @@ async fn serve_with_ips(
     }
     let conns = Arc::new(Connections::default());
     let state = Arc::new(state.with_connections(conns.clone()));
-    let app = router.layer(axum::middleware::from_fn_with_state(state.clone(), guard));
+    let app = router
+        .layer(axum::middleware::from_fn_with_state(state.clone(), guard))
+        .layer(axum::middleware::from_fn(split_peer));
 
     let (stop_tx, stop_rx) = watch::channel(false);
     let tasks = listeners
@@ -400,8 +409,6 @@ async fn serve_with_ips(
                 let shutdown = async move {
                     let _ = rx.wait_for(|stopped| *stopped).await;
                 };
-                // The guard turns `ConnectInfo<Peer>` into the usual
-                // `ConnectInfo<SocketAddr>` for the handlers behind it.
                 let svc = app.into_make_service_with_connect_info::<Peer>();
                 let _ = axum::serve(listener, svc)
                     .with_graceful_shutdown(shutdown)
@@ -424,15 +431,13 @@ async fn serve_with_ips(
 #[cfg(test)]
 mod tests {
     use axum::routing::get;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio::net::TcpStream;
 
     use super::*;
     use crate::context::Grant;
     use crate::guard::{ConnectionCut, Denial};
     use crate::test_support::{
-        STAYS_OPEN, closes_within, echoes, long_lived_router, open_stream, open_upgrade,
-        switching_protocols,
+        STAYS_OPEN, closes_within, echoes, long_lived_router, open_stream, open_upgrade, raw_get,
+        raw_request, switching_protocols,
     };
 
     const TOK: &str = "tok-0123456789abcdefghijklmnopqrstu";
@@ -452,21 +457,6 @@ mod tests {
 
     fn router() -> Router {
         Router::new().route("/", get(|| async { "hello" }))
-    }
-
-    /// One raw HTTP/1.1 GET; returns the status line and the whole response.
-    async fn raw_get(addr: SocketAddr, host: &str, extra: &str) -> String {
-        let req = format!("GET / HTTP/1.1\r\nHost: {host}\r\n{extra}Connection: close\r\n\r\n");
-        raw_request(addr, &req).await
-    }
-
-    /// Send `req` as written and read the response to EOF.
-    async fn raw_request(addr: SocketAddr, req: &str) -> String {
-        let mut s = TcpStream::connect(addr).await.unwrap();
-        s.write_all(req.as_bytes()).await.unwrap();
-        let mut out = String::new();
-        s.read_to_string(&mut out).await.unwrap();
-        out
     }
 
     #[tokio::test]
@@ -584,17 +574,15 @@ mod tests {
     /// handler's [`ConnectionCut`], and leaves the full token's socket open.
     #[tokio::test]
     async fn replace_tokens_closes_only_a_withdrawn_tokens_connections() {
-        let (cut_tx, cut_rx) = tokio::sync::oneshot::channel();
-        let cut_tx = Arc::new(Mutex::new(Some(cut_tx)));
+        let fired = Arc::new(tokio::sync::Notify::new());
+        let notify = fired.clone();
         let watched = move |cut: ConnectionCut, mut req: axum::extract::Request| async move {
             let on = hyper::upgrade::on(&mut req);
             tokio::spawn(async move {
                 // Held, as a WebSocket handler holds its socket.
                 let _io = on.await.unwrap();
                 cut.wait().await;
-                if let Some(tx) = cut_tx.lock().unwrap().take() {
-                    let _ = tx.send(());
-                }
+                notify.notify_one();
             });
             switching_protocols()
         };
@@ -611,10 +599,9 @@ mod tests {
 
         handle.replace_tokens(Tokens::full_only(tok(TOK)));
         assert!(closes_within(&mut admin, Duration::from_secs(1)).await);
-        tokio::time::timeout(Duration::from_secs(1), cut_rx)
+        tokio::time::timeout(Duration::from_secs(1), fired.notified())
             .await
-            .expect("the handler's ConnectionCut did not fire")
-            .unwrap();
+            .expect("the handler's ConnectionCut did not fire");
         assert!(echoes(&mut full).await, "the full socket was closed");
         assert!(!closes_within(&mut full_stream, STAYS_OPEN).await);
 

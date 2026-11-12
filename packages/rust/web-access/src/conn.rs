@@ -114,8 +114,8 @@ impl Connections {
 }
 
 /// What `serve` hands axum as the connection info: the peer address and the
-/// connection. The guard reads it and puts `ConnectInfo<SocketAddr>` on the
-/// request, so handlers extract the address as usual.
+/// connection. A layer outside the guard splits it into the usual
+/// `ConnectInfo<SocketAddr>` and an `Arc<Conn>` extension.
 #[derive(Clone)]
 pub(crate) struct Peer {
     pub(crate) addr: SocketAddr,
@@ -146,8 +146,8 @@ impl Listener for CutListener {
         let conn = self.conns.register();
         let stream = CutStream {
             io,
-            read_cut: Some(cut_signal(conn.cut.subscribe())),
-            write_cut: Some(cut_signal(conn.cut.subscribe())),
+            read_cut: Box::pin(fired(conn.cut.subscribe())),
+            write_cut: Box::pin(fired(conn.cut.subscribe())),
             conn,
         };
         (stream, addr)
@@ -159,11 +159,6 @@ impl Listener for CutListener {
 }
 
 type CutSignal = Pin<Box<dyn Future<Output = ()> + Send>>;
-
-/// Ready once `cut` turns true.
-fn cut_signal(cut: watch::Receiver<bool>) -> CutSignal {
-    Box::pin(fired(cut))
-}
 
 /// Ready once `cut` turns true, or once its [`Conn`] is dropped. A
 /// [`CutStream`] holds its `Conn`, so for the stream only a cut fires it.
@@ -177,22 +172,16 @@ async fn fired(mut cut: watch::Receiver<bool>) {
 /// connection split into a reader task and a writer task then wakes both.
 pub(crate) struct CutStream {
     io: TcpStream,
-    /// `None` once fired, because a finished future must not be polled again.
-    read_cut: Option<CutSignal>,
-    write_cut: Option<CutSignal>,
+    read_cut: CutSignal,
+    write_cut: CutSignal,
     conn: Arc<Conn>,
 }
 
-/// An error once `signal` has fired, and on every call after. Polling also
-/// registers the waker, so a read or write that is waiting is woken to see the
-/// cut.
-fn check(signal: &mut Option<CutSignal>, cx: &mut Context<'_>) -> io::Result<()> {
-    let fired = match signal {
-        None => true,
-        Some(cut) => cut.as_mut().poll(cx).is_ready(),
-    };
-    if fired {
-        *signal = None;
+/// An error once `conn` is cut. Otherwise `signal` is polled, which registers
+/// the waker, so a read or write that is waiting is woken to see the cut. A
+/// signal that has fired is never polled again: the flag is checked first.
+fn check(conn: &Conn, signal: &mut CutSignal, cx: &mut Context<'_>) -> io::Result<()> {
+    if *conn.cut.borrow() || signal.as_mut().poll(cx).is_ready() {
         return Err(io::ErrorKind::ConnectionAborted.into());
     }
     Ok(())
@@ -204,7 +193,8 @@ impl AsyncRead for CutStream {
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
-        check(&mut self.read_cut, cx)?;
+        let this = &mut *self;
+        check(&this.conn, &mut this.read_cut, cx)?;
         Pin::new(&mut self.io).poll_read(cx, buf)
     }
 }
@@ -215,7 +205,8 @@ impl AsyncWrite for CutStream {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
-        check(&mut self.write_cut, cx)?;
+        let this = &mut *self;
+        check(&this.conn, &mut this.write_cut, cx)?;
         Pin::new(&mut self.io).poll_write(cx, buf)
     }
 
@@ -224,7 +215,8 @@ impl AsyncWrite for CutStream {
         cx: &mut Context<'_>,
         bufs: &[io::IoSlice<'_>],
     ) -> Poll<io::Result<usize>> {
-        check(&mut self.write_cut, cx)?;
+        let this = &mut *self;
+        check(&this.conn, &mut this.write_cut, cx)?;
         Pin::new(&mut self.io).poll_write_vectored(cx, bufs)
     }
 
@@ -233,7 +225,8 @@ impl AsyncWrite for CutStream {
     }
 
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        check(&mut self.write_cut, cx)?;
+        let this = &mut *self;
+        check(&this.conn, &mut this.write_cut, cx)?;
         Pin::new(&mut self.io).poll_flush(cx)
     }
 

@@ -47,6 +47,20 @@ pub struct WebAccessConfig {
     pub admin: bool,
 }
 
+impl WebAccessConfig {
+    /// True when a server started for `self` can serve `other` as it is:
+    /// they differ at most in `enabled` and `admin`, which only change the
+    /// tokens. Any other field, including one added later, needs a restart.
+    pub(crate) fn same_bind(&self, other: &Self) -> bool {
+        let rebased = Self {
+            enabled: other.enabled,
+            admin: other.admin,
+            ..self.clone()
+        };
+        rebased == *other
+    }
+}
+
 impl Default for WebAccessConfig {
     fn default() -> Self {
         Self {
@@ -61,6 +75,31 @@ impl Default for WebAccessConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn same_bind_ignores_only_the_token_switches() {
+        let on = WebAccessConfig {
+            enabled: true,
+            port: 20015,
+            ..WebAccessConfig::default()
+        };
+        let admin_off = WebAccessConfig {
+            enabled: false,
+            admin: true,
+            ..on.clone()
+        };
+        assert!(on.same_bind(&admin_off));
+        let moved = WebAccessConfig {
+            port: 20016,
+            ..on.clone()
+        };
+        assert!(!on.same_bind(&moved));
+        let wider = WebAccessConfig {
+            listen: Listen::AllInterfaces,
+            ..on.clone()
+        };
+        assert!(!on.same_bind(&wider));
+    }
 
     #[test]
     fn default_is_disabled_loopback() {

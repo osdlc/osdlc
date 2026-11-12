@@ -51,6 +51,26 @@ pub(crate) fn switching_protocols() -> axum::response::Response {
         .unwrap()
 }
 
+/// One raw HTTP/1.1 GET; returns the status line and the whole response.
+pub(crate) async fn raw_get(addr: SocketAddr, host: &str, extra: &str) -> String {
+    let req = format!("GET / HTTP/1.1\r\nHost: {host}\r\n{extra}Connection: close\r\n\r\n");
+    raw_request(addr, &req).await
+}
+
+/// Send `req` as written and read the response to EOF.
+pub(crate) async fn raw_request(addr: SocketAddr, req: &str) -> String {
+    let mut s = send(addr, req).await;
+    let mut out = String::new();
+    s.read_to_string(&mut out).await.unwrap();
+    out
+}
+
+async fn send(addr: SocketAddr, req: &str) -> TcpStream {
+    let mut s = TcpStream::connect(addr).await.unwrap();
+    s.write_all(req.as_bytes()).await.unwrap();
+    s
+}
+
 /// `GET /stream` with `token` in the header, read up to its first chunk.
 pub(crate) async fn open_stream(addr: SocketAddr, token: &str) -> TcpStream {
     let req =
@@ -68,8 +88,7 @@ pub(crate) async fn open_upgrade(addr: SocketAddr, path: &str, token: &str) -> T
 }
 
 async fn open(addr: SocketAddr, req: &str, until: &str) -> TcpStream {
-    let mut s = TcpStream::connect(addr).await.unwrap();
-    s.write_all(req.as_bytes()).await.unwrap();
+    let mut s = send(addr, req).await;
     let mut buf = vec![0u8; 4096];
     let mut seen = String::new();
     while !seen.contains(until) {
