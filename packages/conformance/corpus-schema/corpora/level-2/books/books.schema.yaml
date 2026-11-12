@@ -1,4 +1,0 @@
-type: object
-required: [author]
-properties:
-  author: { type: string }

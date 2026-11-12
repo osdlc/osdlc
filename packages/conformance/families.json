@@ -7,13 +7,6 @@
       { "language": "rust", "dir": "packages/rust/config-layers", "name": "config-layers" }
     ]
   },
-  "corpus-schema": {
-    "reference": "ts",
-    "generator": "pnpm --filter @osdlc/corpus-schema conformance:write",
-    "implementations": [
-      { "language": "ts", "dir": "packages/ts/corpus-schema", "name": "@osdlc/corpus-schema" }
-    ]
-  },
   "frontmatter-lossless": {
     "reference": "rust",
     "generator": "cargo run -p frontmatter-lossless --example conformance-write",

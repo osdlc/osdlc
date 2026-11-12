@@ -1,6 +1,0 @@
-type: object
-additionalProperties: false
-required: [question]
-properties:
-  question: { type: string }
-  status: { enum: [planned, run] }
