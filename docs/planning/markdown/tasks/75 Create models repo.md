@@ -5,8 +5,6 @@ detail: "osdlc/models, owner"
 status: done
 type: supporting
 milestone: "[m-sdlc-profile](../milestones/m-sdlc-profile.md)"
-after:
-  - "[59 Trusted publishing](59%20Trusted%20publishing.md)"
 ---
 
 The public repo [osdlc/models](https://github.com/osdlc/models) exists, as decided in

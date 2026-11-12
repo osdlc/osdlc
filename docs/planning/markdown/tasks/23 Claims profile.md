@@ -20,7 +20,7 @@ adds the profile wrapper, a corpus with only types, as the package
 [#15](https://github.com/osdlc/markdown/pull/15), and is not published. Task 78 moves it to osdlc/models
 before its first publish. The claims example extends
 it by path. It publishes from osdlc/models (decision D17). The
-owner then stages the npm name (task 59) and publishes it (task 60). The release setup from
+owner then stages the npm name (task 80) and publishes it (task 60). The release setup from
 [#10](https://github.com/osdlc/markdown/pull/10) has merged. Corpora then list it by package name
 under `extends` in their root file and use `x-extends` instead of holding full copies.
 harness-reference and the evidence project switch over. After 21 and 36: publishing from this repo

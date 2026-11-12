@@ -28,4 +28,5 @@ builds its own types on these with x-extends.
 - Private package. Not on npm. A corpus extends it by a path to the folder.
 - Its types are open, so a corpus can add fields. A corpus that wants a closed type lists the
   profile's fields as well as its own. Task 44 removes that need.
-- Task 53 moves this plan to the sdlc profile. After that, nothing in the plan uses this profile.
+- Task 53 removes this profile: the plan moves to the sdlc profile and profiles/planning is
+  deleted. Before 1.0 no second form is kept.

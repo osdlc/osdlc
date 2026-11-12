@@ -18,6 +18,8 @@ implements_new:
   - "[corpus-schema-spec](corpus-schema-spec.md)"
 extends_new:
   - "[corpus-profile-sdlc](corpus-profile-sdlc.md)"
+reads_new:
+  - "[corpus-sdlc-starter](corpus-sdlc-starter.md)"
 dev_depends_new:
   - "[corpus-schema-ts](corpus-schema-ts.md)"
 edge_notes:
@@ -26,7 +28,10 @@ edge_notes:
     note: A valid level-2 corpus.
   - edge: extends_new
     to: "[corpus-profile-sdlc](corpus-profile-sdlc.md)"
-    note: "Task 53. Until then it extends the planning profile."
+    note: "As sdlc, from npm (task 53). Until then it extends the planning profile."
+  - edge: reads_new
+    to: "[corpus-sdlc-starter](corpus-sdlc-starter.md)"
+    note: "Under references: as osdlc (D15), from npm, synced into _references/osdlc/ (task 53)."
   - edge: dev_depends_new
     to: "[corpus-schema-ts](corpus-schema-ts.md)"
     note: CI checks it with this repo's corpus-schema, which knows extends.
@@ -38,6 +43,8 @@ explorer's data is built from it.
 ## Notes
 
 - Today it extends the planning profile. Its tasks and milestones add fields, and its decisions use
-  the profile's type as it is. Task 53 moves it to the sdlc profile.
+  the profile's type as it is.
+- Task 53 makes it the first remote consumer of the sdlc profile and the starter corpus, from npm.
+  Its records move to sdlc ids and fields, and the planning profile is deleted.
 - Its components, layers, repos, overlaps and datasets are its own types. They describe this
   ecosystem, so they stay out of the profile.

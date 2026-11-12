@@ -38,6 +38,10 @@ references:
 `extends` makes the profile's types visible. `uses: [sdlc/*]` takes them as they are, so the repo
 needs no schema file per type. `references` brings the starter's records in, to link to and cite.
 
+This plan is the first remote consumer (task 53). Its own `docs/planning/` takes this shape from npm
+before the work repo copies it. It adds local schemas, with `x-extends`, for the fields the explorer
+reads.
+
 The repo's own records cite the starter's records by id. A principle of the repo names `P-0002` in
 its `related` field:
 
@@ -98,65 +102,73 @@ The tasks in the order the work goes. Each line says why it comes there.
 4. [70 References](tasks/70%20References.md): records come through `references`, into
    `_references/<prefix>/`. `extends` keeps types only.
 5. [71 Uses](tasks/71%20Uses.md): `uses: [sdlc/*]` takes the profile's types as they are.
-6. [44 Flatten extends](tasks/44%20Flatten%20extends.md): the profile's closed types see their
+6. [73 Identity and record files](tasks/73%20Identity%20and%20record%20files.md): identity, the
+   id cut and `x-record-file`, so sdlc ids such as `P-0002` work.
+7. [44 Flatten extends](tasks/44%20Flatten%20extends.md): the profile's closed types see their
    parents' fields.
-7. [45 Refs by id](tasks/45%20Refs%20by%20id.md): a work repo's record cites `P-0002` by id,
-   across corpora.
-8. [46 Multi-type x-ref](tasks/46%20Multi-type%20x-ref.md): sdlc fields such as `related` link to
+8. [45 Refs by id](tasks/45%20Refs%20by%20id.md): a record cites `P-0002` by id, across corpora.
+9. [46 Multi-type x-ref](tasks/46%20Multi-type%20x-ref.md): sdlc fields such as `related` link to
    several kinds.
-9. [43 Strict mode](tasks/43%20Strict%20mode.md): CI fails on a warning, not only an error.
-10. [21 Release here](tasks/21%20Release%20here.md): this repo's release setup. corpus-schema
+10. [43 Strict mode](tasks/43%20Strict%20mode.md): CI fails on a warning, not only an error.
+11. [21 Release here](tasks/21%20Release%20here.md): this repo's release setup. corpus-schema
     publishes through it, and osdlc/models copies it.
-11. [59 Trusted publishing](tasks/59%20Trusted%20publishing.md) (owner): the npm names and their
-    trusted publishers. corpus-schema's comes before 36. The names that publish from osdlc/models
-    come after the setup task.
-12. [36 Release 0.3.0](tasks/36%20Release%200.3.0.md) (owner): a published corpus-schema that knows
+12. [59 Corpus-schema publisher](tasks/59%20Corpus-schema%20publisher.md) (owner): corpus-schema's
+    npm trusted publisher points at this repo's workflow. It waits on nothing.
+13. [36 Release 0.3.0](tasks/36%20Release%200.3.0.md) (owner): a published corpus-schema that knows
     all of the above. Every consumer installs it.
-13. [78 Models repo setup](tasks/78%20Models%20repo%20setup.md): osdlc/models gets the release
+14. [23 Claims profile](tasks/23%20Claims%20profile.md): the claims profile, which task 60
+    publishes.
+15. [78 Models repo setup](tasks/78%20Models%20repo%20setup.md): osdlc/models gets the release
     tooling, and the profiles and the starter move in from this repo's pull requests. It validates
     them with corpus-schema 0.3.0 from npm. The repo itself exists
     ([75 Create models repo](tasks/75%20Create%20models%20repo.md)).
-14. [48 Profile generator](tasks/48%20Profile%20generator.md): turns the packs into a profile. The
+16. [80 Models publishers](tasks/80%20Models%20publishers.md) (owner): the npm trusted publishers
+    for the profiles and the starter point at osdlc/models' workflow.
+17. [48 Profile generator](tasks/48%20Profile%20generator.md): turns the packs into a profile. The
     packs are merged ([47 Merge packs](tasks/47%20Merge%20packs.md)).
-15. [49 SDLC profiles](tasks/49%20SDLC%20profiles.md): the one profile, at `profiles/sdlc/` in
+18. [49 SDLC profiles](tasks/49%20SDLC%20profiles.md): the one profile, at `profiles/sdlc/` in
     osdlc/models. It needs 44 to 46 and the generator.
-16. [61 Publish sdlc](tasks/61%20Publish%20sdlc.md) (owner): consumers install the profile from npm.
+19. [61 Publish sdlc](tasks/61%20Publish%20sdlc.md) (owner): consumers install the profile from npm.
     It publishes from osdlc/models.
-17. [63 Starter corpus](tasks/63%20Starter%20corpus.md): the records, in osdlc/models. It uses the
+20. [63 Starter corpus](tasks/63%20Starter%20corpus.md): the records, in osdlc/models. It uses the
     profile's types, so it comes after 49.
-18. [65 Leak check](tasks/65%20Leak%20check.md): no private data reaches a public registry.
-19. [66 Publish starter](tasks/66%20Publish%20starter.md) (owner): after the profile it depends on.
-20. [60 Publish claims](tasks/60%20Publish%20claims.md) (owner): the claims profile, from
+21. [65 Leak check](tasks/65%20Leak%20check.md): no private data reaches a public registry.
+22. [66 Publish starter](tasks/66%20Publish%20starter.md) (owner): after the profile it depends on.
+23. [60 Publish claims](tasks/60%20Publish%20claims.md) (owner): the claims profile, from
     osdlc/models, so the fernlog example can install it from npm.
-21. [23 Claims profile](tasks/23%20Claims%20profile.md) and
-    [35 Example pair](tasks/35%20Example%20pair.md): the example pair's harness, which the work
-    example reuses.
-22. [79 Markdown after the move](tasks/79%20Markdown%20after%20the%20move.md): close the moved pull
+24. [79 Markdown after the move](tasks/79%20Markdown%20after%20the%20move.md): close the moved pull
     requests, drop the folders' traces from this repo's docs, and make the fernlog example install
     the claims profile from npm.
-23. [67 Work example](tasks/67%20Work%20example.md): the end state in this repo's CI, before a real
-    repo copies it. Most of its harness change is in 79.
-24. [52 Work extends](tasks/52%20Work%20extends.md): the work repo installs the profile and
+25. [53 Plan on sdlc](tasks/53%20Plan%20on%20sdlc.md): this plan is the first remote consumer. It
+    installs the profile and the starter from npm, moves its records to sdlc ids, syncs
+    `_references/osdlc/` and cites `P-0002`. It deletes the planning profile.
+26. [52 Work extends](tasks/52%20Work%20extends.md): the work repo installs the profile and
     corpus-schema 0.3.0 from npm and extends the profile.
-25. [68 Work cites starter](tasks/68%20Work%20cites%20starter.md): the end state.
+27. [68 Work cites starter](tasks/68%20Work%20cites%20starter.md): the end state, copied from this
+    plan's setup.
 
-The foundation order is 9, 27, 29, 70, 71, 44, 45, 46, 43, 21, 36 (owner), 78, 59 (owner), then
-61, 60 and 66 (owner), 79, 67, 52 and 68.
+In short: 9, 27, 29, 70, 71, 73, 44, 45, 46, 43, 21, 59 (owner), 36 (owner), 23, 78, 80 (owner),
+48, 49, 61 (owner), 63, 65, 66 (owner), 60 (owner), 79, 53, 52 and 68. Each task comes after every
+task it waits on.
 
 Off the critical path, but in a beeline milestone:
-[38 Planning profile](tasks/38%20Planning%20profile.md),
+[38 Planning profile](tasks/38%20Planning%20profile.md) (task 53 removes it),
+[35 Example pair](tasks/35%20Example%20pair.md) (task 79 changes its fernlog example),
 [37 Use extends](tasks/37%20Use%20extends.md),
-[50 Dev on sdlc](tasks/50%20Dev%20on%20sdlc.md), [53 Plan on sdlc](tasks/53%20Plan%20on%20sdlc.md),
+[50 Dev on sdlc](tasks/50%20Dev%20on%20sdlc.md),
 [62 Packs in public](tasks/62%20Packs%20in%20public.md) (model-schema and the packs),
-[64 Starter content](tasks/64%20Starter%20content.md) and the optional
+[64 Starter content](tasks/64%20Starter%20content.md),
+[74 Skillwright on 0.3.0](tasks/74%20Skillwright%20on%200.3.0.md) and the optional
 [69 Add command](tasks/69%20Add%20command.md).
+[67 Work example](tasks/67%20Work%20example.md) is no longer on the path: task 53 covers it.
 
 Decisions [D11](decisions/D11%20Upstream%20corpora%20travel%20as%20npm%20packages.md),
 [D12](decisions/D12%20Inherited%20records%20come%20in%20as%20a%20committed%20copy.md),
 [D13](decisions/D13%20The%20model%20layer%20sits%20above%20store%20specs.md),
 [D14](decisions/D14%20The%20first%20upstream%20instance%20is%20a%20starter%20corpus.md),
-[D15](decisions/D15%20Extending%20types%20and%20referencing%20corpora%20are%20separate.md) and
-[D16](decisions/D16%20Types%20and%20records%20are%20named%20by%20Package%20URL.md) say why the
+[D15](decisions/D15%20Extending%20types%20and%20referencing%20corpora%20are%20separate.md),
+[D16](decisions/D16%20Types%20and%20records%20are%20named%20by%20Package%20URL.md) and
+[D17](decisions/D17%20Profiles%20and%20corpora%20live%20in%20osdlc%20models.md) say why the
 path has this shape.
 
 ## Checklist
@@ -172,7 +184,7 @@ Each item: the task, its status, who does it, its pull requests, and the tasks i
 - [ ] [21 Release here](tasks/21%20Release%20here.md) · in progress · agent · [osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9), [osdlc/markdown#10](https://github.com/osdlc/markdown/pull/10)
 - [ ] [43 Strict mode](tasks/43%20Strict%20mode.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12)
 - [ ] [48 Profile generator](tasks/48%20Profile%20generator.md) · in progress · agent · [sksizer/dev#4163](https://github.com/sksizer/dev/pull/4163)
-- [ ] [59 Trusted publishing](tasks/59%20Trusted%20publishing.md) · waiting on owner · owner
+- [ ] [59 Corpus-schema publisher](tasks/59%20Corpus-schema%20publisher.md) · waiting on owner · owner
 
 ### Waiting (31)
 
@@ -189,29 +201,29 @@ Each item: the task, its status, who does it, its pull requests, and the tasks i
 - [ ] [36 Release 0.3.0](tasks/36%20Release%200.3.0.md) · waiting on owner · owner · waits on 9, 21, 27, 29, 43, 44, 45, 46, 59, 70, 71, 73
 - [ ] [74 Skillwright on 0.3.0](tasks/74%20Skillwright%20on%200.3.0.md) · not started · agent · waits on 36, 60
 - [ ] [23 Claims profile](tasks/23%20Claims%20profile.md) · in progress · agent · [osdlc/markdown#15](https://github.com/osdlc/markdown/pull/15) · waits on 21, 36
-- [ ] [60 Publish claims](tasks/60%20Publish%20claims.md) · waiting on owner · owner · waits on 23, 59, 78
+- [ ] [60 Publish claims](tasks/60%20Publish%20claims.md) · waiting on owner · owner · waits on 23, 78, 80
 - [ ] [35 Example pair](tasks/35%20Example%20pair.md) · in progress · agent · [osdlc/markdown#16](https://github.com/osdlc/markdown/pull/16) · waits on 23, 29, 36
 - [ ] [37 Use extends](tasks/37%20Use%20extends.md) · not started · agent · waits on 36, 60
 - [ ] [69 Add command](tasks/69%20Add%20command.md) · not started · agent · waits on 29
 - [ ] [49 SDLC profiles](tasks/49%20SDLC%20profiles.md) · not started · agent · waits on 44, 45, 46, 48
-- [ ] [61 Publish sdlc](tasks/61%20Publish%20sdlc.md) · waiting on owner · owner · waits on 49, 59, 78
+- [ ] [61 Publish sdlc](tasks/61%20Publish%20sdlc.md) · waiting on owner · owner · waits on 49, 78, 80
 - [ ] [50 Dev on sdlc](tasks/50%20Dev%20on%20sdlc.md) · not started · agent · waits on 36, 49, 61
 - [ ] [52 Work extends](tasks/52%20Work%20extends.md) · not started · agent · waits on 36, 49, 61
-- [ ] [53 Plan on sdlc](tasks/53%20Plan%20on%20sdlc.md) · not started · agent · waits on 38, 49
 - [ ] [78 Models repo setup](tasks/78%20Models%20repo%20setup.md) · not started · agent · waits on 36
+- [ ] [80 Models publishers](tasks/80%20Models%20publishers.md) · waiting on owner · owner · waits on 78
 - [ ] [62 Packs in public](tasks/62%20Packs%20in%20public.md) · not started · agent · waits on 49, 78
 - [ ] [63 Starter corpus](tasks/63%20Starter%20corpus.md) · not started · agent · waits on 49
 - [ ] [65 Leak check](tasks/65%20Leak%20check.md) · not started · agent · waits on 63
-- [ ] [67 Work example](tasks/67%20Work%20example.md) · not started · agent · waits on 35, 61, 63, 66, 70, 71, 79
-- [ ] [66 Publish starter](tasks/66%20Publish%20starter.md) · waiting on owner · owner · waits on 59, 61, 63, 65, 78
-- [ ] [68 Work cites starter](tasks/68%20Work%20cites%20starter.md) · not started · agent · waits on 52, 66, 67
-- [ ] [64 Starter content](tasks/64%20Starter%20content.md) · waiting on owner · owner · waits on 63
+- [ ] [66 Publish starter](tasks/66%20Publish%20starter.md) · waiting on owner · owner · waits on 61, 63, 65, 78, 80
 - [ ] [79 Markdown after the move](tasks/79%20Markdown%20after%20the%20move.md) · not started · agent · waits on 60, 78
+- [ ] [53 Plan on sdlc](tasks/53%20Plan%20on%20sdlc.md) · not started · agent · waits on 61, 66, 79
+- [ ] [68 Work cites starter](tasks/68%20Work%20cites%20starter.md) · not started · agent · waits on 52, 53, 66
+- [ ] [64 Starter content](tasks/64%20Starter%20content.md) · waiting on owner · owner · waits on 63
 
 ### Done (2)
 
 - [x] [47 Merge packs](tasks/47%20Merge%20packs.md) · done · [sksizer/dev#4069](https://github.com/sksizer/dev/pull/4069), [sksizer/dev#4070](https://github.com/sksizer/dev/pull/4070)
-- [x] [75 Create models repo](tasks/75%20Create%20models%20repo.md) · done · waits on 59
+- [x] [75 Create models repo](tasks/75%20Create%20models%20repo.md) · done
 
 <!-- beeline:end -->
 
@@ -221,7 +233,7 @@ Read these first:
 
 1. This file.
 2. [README.md](README.md), which says what each record type holds.
-3. Decisions D11 to D16, linked above.
+3. Decisions D11 to D17, linked above.
 4. The task record of the item you pick, and its pull request if it has one.
 
 Choose the next item. Take the first unchecked item under "Next up" whose status is not "waiting
@@ -281,8 +293,8 @@ A loop that drives this work follows the same rules as a person. Each tick:
 
 1. Rebuild the checklist with `pnpm build-data` on the plan's branch, and read it.
 2. Surface every next-up item whose status is "waiting on owner". Never attempt one. Owner work is
-   publishing (tasks 36, 59, 60, 61 and 66), choosing the starter's content (task 64), and every
-   merge, tag and settings change.
+   publishing and its trusted publishers (tasks 36, 59, 60, 61, 66 and 80), choosing the
+   starter's content (task 64), and every merge, tag and settings change.
 3. Pick the next agent item, as in the handoff protocol.
 4. If it is in progress, tend its pull request: CI, review findings, conflicts.
 5. Otherwise brief one agent, using the task record as the brief: its path, its body, the tasks it

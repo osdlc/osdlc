@@ -34,4 +34,4 @@ validates it with --strict.
 
 ## Notes
 
-- It reuses the example pair's harness (task 35), with a case where a stale copy must fail.
+- Task 53 covers it: this plan's own corpus shows the end state in CI, from npm. It is not built.

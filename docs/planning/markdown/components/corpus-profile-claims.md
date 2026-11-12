@@ -12,7 +12,7 @@ tasks:
   - "[78 Models repo setup](../tasks/78%20Models%20repo%20setup.md)"
   - "[23 Claims profile](../tasks/23%20Claims%20profile.md)"
   - "[24 Name overrides](../tasks/24%20Name%20overrides.md)"
-  - "[59 Trusted publishing](../tasks/59%20Trusted%20publishing.md)"
+  - "[80 Models publishers](../tasks/80%20Models%20publishers.md)"
   - "[60 Publish claims](../tasks/60%20Publish%20claims.md)"
   - "[76 Claims as a pack](../tasks/76%20Claims%20as%20a%20pack.md)"
 links:

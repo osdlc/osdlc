@@ -33,7 +33,7 @@ tasks:
   - "[45 Refs by id](../tasks/45%20Refs%20by%20id.md)"
   - "[46 Multi-type x-ref](../tasks/46%20Multi-type%20x-ref.md)"
   - "[57 x-body](../tasks/57%20x-body.md)"
-  - "[59 Trusted publishing](../tasks/59%20Trusted%20publishing.md)"
+  - "[59 Corpus-schema publisher](../tasks/59%20Corpus-schema%20publisher.md)"
   - "[69 Add command](../tasks/69%20Add%20command.md)"
   - "[70 References](../tasks/70%20References.md)"
   - "[71 Uses](../tasks/71%20Uses.md)"

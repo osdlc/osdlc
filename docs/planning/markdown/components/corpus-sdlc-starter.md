@@ -9,11 +9,12 @@ repo_target: "[osdlc/models](../repos/osdlc-models.md)"
 path_target: corpora/sdlc-starter
 tasks:
   - "[78 Models repo setup](../tasks/78%20Models%20repo%20setup.md)"
-  - "[59 Trusted publishing](../tasks/59%20Trusted%20publishing.md)"
+  - "[80 Models publishers](../tasks/80%20Models%20publishers.md)"
   - "[63 Starter corpus](../tasks/63%20Starter%20corpus.md)"
   - "[64 Starter content](../tasks/64%20Starter%20content.md)"
   - "[65 Leak check](../tasks/65%20Leak%20check.md)"
   - "[66 Publish starter](../tasks/66%20Publish%20starter.md)"
+  - "[53 Plan on sdlc](../tasks/53%20Plan%20on%20sdlc.md)"
   - "[67 Work example](../tasks/67%20Work%20example.md)"
   - "[68 Work cites starter](../tasks/68%20Work%20cites%20starter.md)"
 implements_new:
@@ -29,9 +30,9 @@ edge_notes:
     note: By package name. Its records are the profile's principles and standards.
 ---
 
-A starter corpus of principles and standards that any project can reference and cite. A work repo names it
-under references: with the prefix osdlc, syncs it into _references/osdlc/ and cites its records by
-id.
+A starter corpus of principles and standards that any project can reference and cite. This plan
+(task 53) and then a work repo name it under references: with the prefix osdlc, sync it into
+_references/osdlc/ and cite its records by id.
 
 ## Notes
 

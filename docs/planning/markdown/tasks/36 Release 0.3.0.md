@@ -14,7 +14,7 @@ after:
   - "[44 Flatten extends](44%20Flatten%20extends.md)"
   - "[45 Refs by id](45%20Refs%20by%20id.md)"
   - "[46 Multi-type x-ref](46%20Multi-type%20x-ref.md)"
-  - "[59 Trusted publishing](59%20Trusted%20publishing.md)"
+  - "[59 Corpus-schema publisher](59%20Corpus-schema%20publisher.md)"
   - "[70 References](70%20References.md)"
   - "[71 Uses](71%20Uses.md)"
   - "[73 Identity and record files](73%20Identity%20and%20record%20files.md)"
