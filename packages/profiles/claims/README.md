@@ -13,9 +13,9 @@ That is task 23 in the [ecosystem plan](https://github.com/osdlc/markdown/pull/4
 
 A few words used below:
 
-- A corpus is a folder of Markdown notes. A corpus-schema corpus has a root file,
-  `corpus-schema.md`, and one folder per type of record. See the
-  [corpus-schema spec](https://github.com/osdlc/osdlc/blob/main/packages/conformance/corpus-schema/SPEC.md).
+- A corpus is a folder of Markdown notes. A corpus-schema corpus has a root file named after it,
+  such as `example.corpus-schema.md`, and one folder per type of record at its root. See the
+  [corpus-schema spec](../../packages/conformance/corpus-schema/SPEC.md).
 - A record is one note in a type folder. Its YAML frontmatter is its data, and the type's JSON
   Schema checks it.
 - A record folder is a record that keeps its own files beside it, such as a script and a CSV:
@@ -266,7 +266,8 @@ npx degit osdlc/markdown/profiles/claims/example my-corpus
 ```
 
 Or copy the folder by hand. Then delete the example records and keep the four schema files.
-Rewrite the front page in `corpus-schema.md` too, since its links point at the example records.
+Rename `example.corpus-schema.md` to `<your corpus's name>.corpus-schema.md`, and rewrite its
+front page too, since its links point at the example records.
 
 To add the types to a corpus you already have, copy the type folders you want, each with its
 `<type>.schema.md`, next to your own types. Keep the folder names and field names as they are

@@ -10,10 +10,12 @@
 #   must exit 0 and print this text.
 #
 # For each case the script copies the example corpus, adds the record, and runs
-# the validator.
+# the validator built from packages/ts/corpus-schema in this checkout. Build it
+# first: pnpm --filter @osdlc/corpus-schema build.
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
+cli="$here/../../../packages/ts/corpus-schema/bin/corpus-schema.js"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
@@ -26,16 +28,17 @@ for case_dir in "$here"/cases/*/; do
   rm -f "$corpus/expected-error.txt" "$corpus/expected-warning.txt"
 
   status=0
-  out=$(npx --yes @osdlc/corpus-schema@^0.2.0 validate "$corpus" 2>&1) || status=$?
+  out=$(node "$cli" validate "$corpus" 2>&1) || status=$?
 
+  # The copy keeps example.corpus-schema.md, so the corpus is named example.
   if [ -f "$case_dir/expected-error.txt" ]; then
     expected=$(cat "$case_dir/expected-error.txt")
     want_status=1
-    summary="$name: 1 error(s)"
+    summary="example: 1 error(s)"
   else
     expected=$(cat "$case_dir/expected-warning.txt")
     want_status=0
-    summary="ok: $name:"
+    summary="ok: example:"
   fi
 
   if [ "$status" -eq "$want_status" ] &&
