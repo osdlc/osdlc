@@ -7,6 +7,8 @@
 #                              the JSON result to $RESULT; return the CLI's exit status
 #   harness_auth_failed        succeed when $RESULT shows an authentication failure
 #                              (default: .auth_failed == true in the result JSON)
+#   harness_key_exhausted      succeed when $RESULT shows the key's account is out of
+#                              credit, quota or usage (default: .key_exhausted == true)
 #   harness_review_intro BASE  the words after "by running" in the review prompt
 # and may set HARNESS_OFFLINE=1 (the agent cannot reach gh, so the pull request
 # text and diff are written to files) and define harness_prompt_suffix (text
@@ -19,6 +21,9 @@ set -e  # no pipefail: `grep -q` may close a pipe early, as in the workflow it c
 # Default for harnesses whose result JSON carries auth_failed.
 if [ "$(type -t harness_auth_failed)" != function ]; then
   harness_auth_failed() { jq -e '.auth_failed == true' "$RESULT" > /dev/null 2>&1; }
+fi
+if [ "$(type -t harness_key_exhausted)" != function ]; then
+  harness_key_exhausted() { jq -e '.key_exhausted == true' "$RESULT" > /dev/null 2>&1; }
 fi
 rm -f "$RESULT"
 ctx="${RUNNER_TEMP:-/tmp}/$AGENT-pr-context"
@@ -69,6 +74,9 @@ $REQUEST"
 fi
 status=1
 tried=0
+auth_failed=0
+exhausted=0
+fell=0  # the last key tried was passed over
 keys=()
 while IFS= read -r k; do
   if [ -n "$k" ]; then keys+=("$k"); fi
@@ -86,13 +94,34 @@ for key in "${keys[@]}"; do
   if [ "$status" -eq 0 ] && jq -e '.is_error == false' "$RESULT" > /dev/null 2>&1; then
     break
   fi
-  # Only an authentication failure moves on to the next key.
+  # Only an authentication failure or an exhausted key moves on to the next key.
+  fell=0
   if harness_auth_failed; then
+    auth_failed=$((auth_failed + 1))
+    fell=1
     echo "::warning::key $n in $KEY_VAR failed authentication; remove it from the secret"
+    continue
+  fi
+  if harness_key_exhausted; then
+    exhausted=$((exhausted + 1))
+    fell=1
+    if [ "$n" -lt "${#keys[@]}" ]; then
+      echo "::warning::key $n in $KEY_VAR is out of credit or quota; trying key $((n + 1))"
+    else
+      echo "::warning::key $n in $KEY_VAR is out of credit or quota; no keys left"
+    fi
     continue
   fi
   break
 done
+# Every key was passed over: say why in the posted failure.
+if [ "$fell" -eq 1 ]; then
+  if [ "$exhausted" -eq 0 ]; then why="All $tried keys in $KEY_VAR failed authentication."
+  elif [ "$auth_failed" -eq 0 ]; then why="All $tried keys in $KEY_VAR are out of credit or quota."
+  else why="No key in $KEY_VAR worked: $auth_failed failed authentication, $exhausted are out of credit or quota."
+  fi
+  jq --arg w "$why" '.result = $w + "\n\n" + (.result // "")' "$RESULT" > "$RESULT.tmp" 2> /dev/null && mv "$RESULT.tmp" "$RESULT"
+fi
 if [ "$tried" -eq 0 ]; then
   jq -n --arg m "No $KEY_VAR secret is set" '{is_error: true, result: $m}' | tee "$RESULT"
 fi

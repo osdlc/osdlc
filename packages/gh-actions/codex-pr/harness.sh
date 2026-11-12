@@ -23,7 +23,7 @@ harness_run() {
     codex exec --json --ephemeral --color never --sandbox read-only \
     --output-last-message "$d/last" ${MODEL:+-m "$MODEL"} - > "$d/events" 2> "$d/err"
   status=$?
-  # Fold the JSONL events into {is_error, result, auth_failed}. A failed turn
+  # Fold the JSONL events into {is_error, result, auth_failed, key_exhausted}. A failed turn
   # carries the API error text; a 401 there (or in stderr) is an authentication
   # failure. The key is cut out of anything posted.
   jq -R 'fromjson? | select(type == "object")' "$d/events" | jq -s \
@@ -35,7 +35,8 @@ harness_run() {
       | (($failed != null) or $st != 0 or $msg == "") as $bad
       | {is_error: $bad,
          result: (if $bad then ($errtext // "codex produced no answer") else $msg end),
-         auth_failed: ($bad and (($errtext // "") | test("401 Unauthorized|invalid_api_key|Incorrect API key|Missing bearer|not logged in"; "i")))}
+         auth_failed: ($bad and (($errtext // "") | test("401 Unauthorized|invalid_api_key|Incorrect API key|Missing bearer|not logged in"; "i"))),
+         key_exhausted: ($bad and (($errtext // "") | test("insufficient_quota|exceeded your current quota|billing_hard_limit|billing hard limit|402 Payment Required"; "i")))}
       | .result |= (split($k) | join("***"))' > "$RESULT"
   if [ "$status" -eq 0 ] && ! jq -e '.is_error == false' "$RESULT" > /dev/null 2>&1; then status=1; fi
   return "$status"

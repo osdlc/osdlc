@@ -47,6 +47,9 @@ echo "$*" > "$FAKE_DIR/args"
 case "$ANTHROPIC_API_KEY" in
   bad*) echo '{"is_error":true,"api_error_status":401,"num_turns":1,"result":"Invalid API key"}'; exit 1 ;;
   boom*) echo '{"is_error":true,"num_turns":5,"result":"overloaded"}'; exit 1 ;;
+  exh*) echo '{"is_error":true,"api_error_status":402,"num_turns":1,"result":"Your credit balance is too low to access the API"}'; exit 1 ;;
+  rate*) echo '{"is_error":true,"api_error_status":429,"num_turns":1,"result":"rate_limit_error: Number of requests has exceeded your per-minute rate limit"}'; exit 1 ;;
+  trap*) echo '{"is_error":true,"num_turns":5,"result":"credit balance is too low (quoted from a file)"}'; exit 1 ;;
   leak*) echo "{\"is_error\":true,\"num_turns\":5,\"result\":\"oops\"}"; exit 1 ;;
 esac
 echo '{"is_error":false,"num_turns":3,"result":"claude says hi"}'
@@ -66,6 +69,9 @@ done
 case "$CODEX_API_KEY" in
   bad*) echo '{"type":"turn.failed","error":{"message":"unexpected status 401 Unauthorized: Incorrect API key provided: '"$CODEX_API_KEY"'"}}'; exit 1 ;;
   boom*) echo '{"type":"turn.failed","error":{"message":"stream disconnected, request id req_401abc"}}'; exit 1 ;;
+  exh*) echo '{"type":"turn.failed","error":{"message":"You exceeded your current quota, please check your plan and billing details. insufficient_quota"}}'; exit 1 ;;
+  rate*) echo '{"type":"turn.failed","error":{"message":"429 Too Many Requests: Rate limit reached for requests per min"}}'; exit 1 ;;
+  trap*) echo "insufficient_quota exceeded your current quota" > "$last"; echo "stream disconnected" >&2; exit 1 ;;
 esac
 echo "not json line"
 echo '{"type":"thread.started","thread_id":"t"}'
@@ -84,6 +90,9 @@ cp .cursor/cli.json "$FAKE_DIR/cli.json" 2> /dev/null
 case "$CURSOR_API_KEY" in
   bad*) printf '\033[33m⚠ Warning: The provided API key is invalid.\033[0m\n' ; exit 1 ;;
   boom*) echo "Something broke"; exit 1 ;;
+  exh*) echo "You have hit your usage limit. Upgrade your plan."; exit 1 ;;
+  rate*) echo "Too many requests, slow down"; exit 1 ;;
+  trap*) echo '{"is_error":true,"num_turns":5,"result":"usage limit quoted from a file"}'; exit 1 ;;
 esac
 echo '{"type":"result","is_error":false,"result":"cursor says hi"}'
 EOF
@@ -165,6 +174,29 @@ for agent in claude codex cursor; do
   run $agent answer "bad1 bad2"
   [ "$status" != 0 ] && [ "$(nkeys)" = 2 ] && ok "$agent: all keys dead fails" || bad "$agent: all keys dead fails"
   check "$agent: all dead is a failed comment" grep -q "answer: failed" "$FAKE_DIR/posted"
+
+  run $agent answer "exh1 good"
+  [ "$status" = 0 ] && [ "$(nkeys)" = 2 ] && ok "$agent: exhausted key falls through" || bad "$agent: exhausted key falls through"
+  check "$agent: exhausted warning" grep -q '::warning::key 1 in .* is out of credit or quota; trying key 2' "$FAKE_DIR/ask.log"
+
+  run $agent answer "exh1 bad1 good"
+  [ "$status" = 0 ] && [ "$(nkeys)" = 3 ] && ok "$agent: exhausted then auth-failed then good" || bad "$agent: exhausted then auth-failed then good"
+
+  run $agent answer "exh1 exh2"
+  [ "$status" != 0 ] && [ "$(nkeys)" = 2 ] && ok "$agent: all exhausted fails" || bad "$agent: all exhausted fails"
+  check "$agent: all exhausted says so" grep -q 'All 2 keys in .* are out of credit or quota' "$FAKE_DIR/posted"
+  check "$agent: last key says no keys left" grep -q 'key 2 in .* is out of credit or quota; no keys left' "$FAKE_DIR/ask.log"
+
+  run $agent answer "bad1 exh1"
+  check "$agent: mixed reason" grep -q '1 failed authentication, 1 are out of credit or quota' "$FAKE_DIR/posted"
+  run $agent answer "bad1 bad2"
+  check "$agent: all auth failed reason" grep -q 'All 2 keys in .* failed authentication' "$FAKE_DIR/posted"
+
+  run $agent answer "rate1 good"
+  [ "$status" != 0 ] && [ "$(nkeys)" = 1 ] && ok "$agent: plain rate limit does not fall through" || bad "$agent: plain rate limit does not fall through"
+
+  run $agent answer "trap1 good"
+  [ "$status" != 0 ] && [ "$(nkeys)" = 1 ] && ok "$agent: agent output about credit does not fall through" || bad "$agent: agent output about credit does not fall through"
 
   run $agent answer ""
   check "$agent: no key is reported" grep -q "No .*_API_KEY secret is set" "$FAKE_DIR/posted"
