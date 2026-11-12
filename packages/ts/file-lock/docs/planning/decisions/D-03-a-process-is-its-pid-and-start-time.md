@@ -19,9 +19,12 @@ created: 2026-11-12
   `/proc/stat`, with no subprocess; elsewhere from `ps -o lstart` run with
   `LC_ALL=C` and `TZ=UTC0`, read as UTC. Windows has no reading.
 - A recorded start may be an instant (ms or seconds since the epoch, or
-  ISO-8601 with a zone), compared within two seconds; or zoneless
-  `ps -o lstart` text, which matches when it is the real start time in some
-  real time-zone offset.
+  ISO-8601 with a zone), or zoneless `ps -o lstart` text, which matches when
+  it is the real start time in some real time-zone offset. Against an
+  instant, only a process that started more than two seconds after it counts
+  as a different one: a pid is reused only after its holder exits, so a
+  reuser always starts later, and a writer that recorded something later
+  than its start (when it took the lock) is not mistaken for a reuser.
 - When either start time cannot be read, `sameProcess` answers true. A lock
   held a little too long costs less than a live holder's work taken over.
 - The `ps` call is the caller's to replace (`PsRunner`), so a host that runs
@@ -57,6 +60,8 @@ created: 2026-11-12
   quarter hours from the recorded zoneless text (within twelve to fourteen
   hours) is taken for the holder. An instant has no such gap, so writers
   should record `processStartedAt(process.pid)` rather than `ps` text.
-- A clock changed by more than two seconds while a holder runs can make an
+- A clock set back by more than two seconds while a holder runs can make an
   instant-recorded holder look replaced on Linux, where the start time is
   boot time plus ticks.
+- A start time in a form `sameProcess` cannot read gives no protection: the
+  holder is judged on its pid alone.

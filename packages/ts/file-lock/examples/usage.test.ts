@@ -174,5 +174,6 @@ test('start times read through your own ps, as other tools record them', () => {
   expect(sameProcess(4242, '2026-11-01T08:30:00Z', same)).toBe(true)
   // `ps -o lstart` text a Los Angeles process wrote: the same moment, in its zone.
   expect(sameProcess(4242, 'Sun Nov  1 00:30:00 2026', same)).toBe(true)
-  expect(sameProcess(4242, '2026-11-01T09:30:00Z', same)).toBe(false)
+  // A process that started after the recorded time is a later process that reused the pid.
+  expect(sameProcess(4242, '2026-11-01T07:30:00Z', same)).toBe(false)
 })

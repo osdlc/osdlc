@@ -207,9 +207,14 @@ sameProcess(process.pid, 'Sun Nov  1 01:30:00 2026')
   macOS it runs `ps` in UTC and the C locale. It never reads clock text in the
   local zone or language. `ProcessStartOptions` is its options type: replace
   the `ps` call (a `PsRunner`), the platform or the `/proc` root.
-- `sameProcess(pid, startedAt, options?)`: false only when the pid is gone or
-  is known to have started at another time. When either start time cannot be
-  read, true: the owner cannot be ruled out. `startedAt` may be ms or seconds
+- `sameProcess(pid, startedAt, options?)`: false only when the pid is gone, or
+  belongs to a process that started after `startedAt`. A pid is reused only
+  after its holder exits, so a reuser always starts later; a process that
+  started earlier is taken for the holder, so a writer that recorded when it
+  took the lock, rather than when it started, keeps it. When either start
+  time cannot be read, true: the owner cannot be ruled out, and a reused pid
+  keeps the lock held, as with `pidAlive`. Record
+  `processStartedAt(process.pid)` to get the protection. `startedAt` may be ms or seconds
   since the epoch, an ISO-8601 time with a zone, or what `ps -o lstart`
   printed in the C locale in any time zone, which matches when it is the real
   start time in some zone. So the writer's zone need not be known, and the

@@ -103,6 +103,25 @@ describe('processStartedAt', () => {
     ).toBeNull()
   })
 
+  test('the default ps, in UTC and the C locale, agrees with /proc on this machine', () => {
+    if (process.platform !== 'linux') return
+    // ps inherits this process's zone and language unless the call sets its own.
+    const saved = { TZ: process.env['TZ'], LC_ALL: process.env['LC_ALL'] }
+    process.env['TZ'] = 'America/New_York'
+    process.env['LC_ALL'] = 'de_DE.UTF-8'
+    try {
+      expect(processStartedAt(process.pid, { platform: 'darwin' })).toBe(
+        processStartedAt(process.pid),
+      )
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key]
+        else process.env[key] = value
+      }
+    }
+    expect(processStartedAt(DEAD_PID, { platform: 'darwin' })).toBeNull()
+  })
+
   test('Windows gives no start time and runs nothing', () => {
     const ps = fakePs('Sun Nov  1 01:30:00 2026\n')
     expect(processStartedAt(42, { platform: 'win32', ps })).toBeNull()
@@ -123,18 +142,23 @@ describe('sameProcess', () => {
     expect(sameProcess(42, STARTED, { ...live, alive: () => false })).toBe(false)
   })
 
-  test('an instant with a zone matches within two seconds', () => {
+  test('a process that started more than two seconds after the recorded instant is a reused pid', () => {
     expect(sameProcess(42, '2026-11-01T08:30:00Z', live)).toBe(true)
-    expect(sameProcess(42, '2026-11-01T09:30:01.500+01:00', live)).toBe(true)
-    expect(sameProcess(42, '2026-11-01T08:30:03Z', live)).toBe(false)
-    expect(sameProcess(42, '2026-11-01T09:30:00Z', live)).toBe(false)
+    expect(sameProcess(42, '2026-11-01T09:29:58.500+01:00', live)).toBe(true)
+    expect(sameProcess(42, '2026-11-01T08:29:57Z', live)).toBe(false)
+    expect(sameProcess(42, '2026-11-01T07:30:00Z', live)).toBe(false)
+  })
+
+  test('a process that started before the recorded instant is the holder: a reuser starts later', () => {
+    // A writer that recorded when it took the lock, an hour into its run, keeps it.
+    expect(sameProcess(42, '2026-11-01T09:30:00Z', live)).toBe(true)
   })
 
   test('epoch seconds and ms match, as numbers or text', () => {
     for (const recorded of [STARTED, STARTED / 1000, String(STARTED), String(STARTED / 1000)]) {
       expect(sameProcess(42, recorded, live)).toBe(true)
     }
-    expect(sameProcess(42, STARTED / 1000 + 3600, live)).toBe(false)
+    expect(sameProcess(42, STARTED / 1000 - 3600, live)).toBe(false)
   })
 
   test('zoneless ps text matches in any real time zone, so its writer need not be known', () => {
@@ -168,7 +192,7 @@ describe('sameProcess', () => {
     if (process.platform === 'win32') return
     const started = processStartedAt(process.pid)!
     expect(sameProcess(process.pid, new Date(started).toISOString())).toBe(true)
-    expect(sameProcess(process.pid, started + 3_600_000)).toBe(false)
+    expect(sameProcess(process.pid, started - 3_600_000)).toBe(false)
     const local = new Date(started)
     const day = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][local.getDay()]
     const month = [
@@ -204,9 +228,9 @@ describe('holderGone with recorded start times', () => {
     startedAt: () => STARTED,
   })
 
-  test('a live pid that started at another time is a reused pid: the lock is stale', () => {
+  test('a live pid that started after the recorded holder is a reused pid: the lock is stale', () => {
     expect(rule(held({ pid: 42, startedAt: '2026-11-01T08:30:00Z' }))).toBe(false)
-    expect(rule(held({ pid: 42, startedAt: '2026-11-01T11:00:00Z' }))).toBe(true)
+    expect(rule(held({ pid: 42, startedAt: '2026-11-01T06:00:00Z' }))).toBe(true)
   })
 
   test('a holder recorded without a start time is judged on liveness alone', () => {

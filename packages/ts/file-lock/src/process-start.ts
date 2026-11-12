@@ -77,8 +77,11 @@ const OFFSET_STEP_MS = 15 * 60_000
 
 /**
  * When the process with `pid` started, in ms since the epoch, rounded down to
- * a whole second. Null when no process has that pid, or its start time cannot
- * be read (Windows, a `ps` that fails, output in an unknown format).
+ * a whole second. Null when it cannot be read: no process has that pid, or
+ * this process cannot see it (another pid namespace, `/proc` mounted with
+ * `hidepid`), or the platform cannot say (Windows, a `ps` that fails, output
+ * in an unknown format). Null is not proof the process is gone; ask
+ * {@link pidAlive} for that.
  *
  * The result depends on neither the time zone nor the locale of this process.
  *
@@ -99,9 +102,13 @@ export function processStartedAt(pid: number, options: ProcessStartOptions = {})
 
 /**
  * Whether `pid` still names the process that started at `startedAt`: it is
- * alive, and its start time matches. False only when the pid is gone or its
- * start time is known to differ. When either side cannot be read, true: the
- * owner cannot be ruled out.
+ * alive, and it did not start after `startedAt`. False only when the pid is
+ * gone, or is known to belong to a process that started later: a pid is
+ * reused only after its holder exits, so a reuser always starts after the
+ * holder did. A process that started earlier than `startedAt` is taken for
+ * the holder, so a writer that recorded when it took the lock, rather than
+ * when it started, keeps its lock. When either side cannot be read, true: the
+ * owner cannot be ruled out, and a reused pid keeps the lock held.
  *
  * `startedAt` may be:
  * - ms since the epoch, as a number (a number below 10^11 is read as seconds);
@@ -124,7 +131,7 @@ export function sameProcess(
   if (recorded === null) return true
   const actual = (options.startedAt ?? ((p: number) => processStartedAt(p, options)))(pid)
   if (actual === null) return true
-  if (recorded.zoned) return Math.abs(actual - recorded.ms) <= TOLERANCE_MS
+  if (recorded.zoned) return actual <= recorded.ms + TOLERANCE_MS
   return inSomeTimeZone(recorded.ms, actual)
 }
 
