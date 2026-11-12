@@ -160,7 +160,7 @@ Each item: the task, its status, who does it, its pull requests, and the tasks i
 - [ ] [48 Profile generator](tasks/48%20Profile%20generator.md) · in progress · agent · [sksizer/dev#4163](https://github.com/sksizer/dev/pull/4163)
 - [ ] [59 Trusted publishing](tasks/59%20Trusted%20publishing.md) · waiting on owner · owner
 
-### Waiting (29)
+### Waiting (30)
 
 - [ ] [9 Extends](tasks/9%20Extends.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12) · waits on 21
 - [ ] [38 Planning profile](tasks/38%20Planning%20profile.md) · in progress · agent · [osdlc/markdown#14](https://github.com/osdlc/markdown/pull/14) · waits on 9
@@ -184,7 +184,8 @@ Each item: the task, its status, who does it, its pull requests, and the tasks i
 - [ ] [50 Dev on sdlc](tasks/50%20Dev%20on%20sdlc.md) · not started · agent · waits on 36, 49, 61
 - [ ] [52 Work extends](tasks/52%20Work%20extends.md) · not started · agent · waits on 36, 49, 61
 - [ ] [53 Plan on sdlc](tasks/53%20Plan%20on%20sdlc.md) · not started · agent · waits on 38, 49
-- [ ] [62 Packs in public](tasks/62%20Packs%20in%20public.md) · not started · agent · waits on 49
+- [ ] [75 Create models repo](tasks/75%20Create%20models%20repo.md) · waiting on owner · owner · waits on 59
+- [ ] [62 Packs in public](tasks/62%20Packs%20in%20public.md) · not started · agent · waits on 49, 75
 - [ ] [63 Starter corpus](tasks/63%20Starter%20corpus.md) · not started · agent · waits on 49
 - [ ] [65 Leak check](tasks/65%20Leak%20check.md) · not started · agent · waits on 63
 - [ ] [67 Work example](tasks/67%20Work%20example.md) · not started · agent · waits on 35, 63, 70, 71

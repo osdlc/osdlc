@@ -100,6 +100,7 @@
         50,
         52,
         53,
+        75,
         62
       ],
       "source": "docs/planning/milestones/m-sdlc-profile.md"
@@ -244,7 +245,9 @@
         55,
         56,
         57,
-        58
+        58,
+        76,
+        77
       ],
       "source": "docs/planning/milestones/m-model-layer.md"
     }
@@ -1192,10 +1195,11 @@
       "type": "functional",
       "after": [
         47,
-        49
+        49,
+        75
       ],
       "prs": [],
-      "text": "Move `@osdlc/model-schema` and the intent and sdlc packs to a public osdlc repo, so the sdlc profile is regenerated and drift-checked in public. Today the generator and the packs are in sksizer/dev, which is private, and the profile is in `profiles/sdlc/` here. Until this task is done, regenerating the profile is manual: run the generator in dev and copy its output here. CI then checks that the committed profile matches what the packs generate. Not on the beeline's critical path. After 47 and 49.",
+      "text": "Move `@osdlc/model-schema`, the intent and sdlc packs, `profiles/sdlc/` and `corpora/sdlc-starter/` to osdlc/models, as decided in [D17](../decisions/D17%20Profiles%20and%20corpora%20live%20in%20osdlc%20models.md). Today the generator and the packs are in sksizer/dev, which is private, and the profile and the starter are here. Until this task is done, regenerating the profile is manual: run the generator in dev and copy its output here.\n\nIn osdlc/models, CI regenerates the sdlc profile from the packs and checks that the committed copy matches. The profile and the starter publish from there, under the same npm names. Not on the beeline's critical path. After 47, 49 and 75.",
       "source": "docs/planning/tasks/62 Packs in public.md"
     },
     {
@@ -1392,6 +1396,49 @@
       "prs": [],
       "text": "Skillwright's `harness-reference/corpus` (in osdlc/skillwright) validates with `@osdlc/corpus-schema` `^0.2.0` from npm. Move it to 0.3.0 once that is published. Later, extend the claims profile: its claims types come from `@osdlc/corpus-profile-claims` (task 60) instead of copies. After 36 and 60.",
       "source": "docs/planning/tasks/74 Skillwright on 0.3.0.md"
+    },
+    {
+      "id": 75,
+      "title": "Create models repo",
+      "detail": "osdlc/models, owner",
+      "status": "owner",
+      "milestone": "m-sdlc-profile",
+      "type": "supporting",
+      "after": [
+        59
+      ],
+      "prs": [],
+      "text": "Create the public repo osdlc/models, as decided in [D17](../decisions/D17%20Profiles%20and%20corpora%20live%20in%20osdlc%20models.md). Owner work. It needs the same release setup as osdlc/markdown (task 59), so its packages publish with trusted publishing. Task 62 then moves model-schema, the packs, the profiles and the starter corpus into it.",
+      "source": "docs/planning/tasks/75 Create models repo.md"
+    },
+    {
+      "id": 76,
+      "title": "Claims as a pack",
+      "detail": "pack-claims",
+      "status": "todo",
+      "milestone": "m-model-layer",
+      "type": "functional",
+      "after": [
+        23,
+        62
+      ],
+      "prs": [],
+      "text": "Write the claims types as `pack-claims` in osdlc/models, and generate `@osdlc/corpus-profile-claims` from it. Move `profiles/claims/` there. The package name does not change, so corpora that extend it see no change. The type folders of the profile become generated output, as decided in [D17](../decisions/D17%20Profiles%20and%20corpora%20live%20in%20osdlc%20models.md). After 23 and 62.",
+      "source": "docs/planning/tasks/76 Claims as a pack.md"
+    },
+    {
+      "id": 77,
+      "title": "Profile catalog",
+      "detail": "index of profiles",
+      "status": "todo",
+      "milestone": "m-model-layer",
+      "type": "supporting",
+      "after": [
+        62
+      ],
+      "prs": [],
+      "text": "A generated index of the shared profiles and of the corpora built on them. Each entry has the package's purl, its version and its types. Build it once a few research corpora exist. Low priority. After 62.",
+      "source": "docs/planning/tasks/77 Profile catalog.md"
     }
   ]
 }

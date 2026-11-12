@@ -5,7 +5,7 @@ language: markdown
 layer: "[profiles](../layers/profiles.md)"
 states: [target]
 status: planned
-repo_target: "[osdlc/markdown](../repos/osdlc-markdown.md)"
+repo_target: "[osdlc/models](../repos/osdlc-models.md)"
 path_target: corpora/sdlc-starter
 tasks:
   - "[59 Trusted publishing](../tasks/59%20Trusted%20publishing.md)"
@@ -35,5 +35,6 @@ id.
 ## Notes
 
 - Decision D14. It starts with two principles, P-0001 and P-0002, and the owner adds more (task 64).
+- It moves to osdlc/models with the profiles (task 62, decision D17).
 - dev's own intent records are not the upstream for now.
 - A CI check keeps private data out of it (task 65).

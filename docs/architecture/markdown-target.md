@@ -119,11 +119,17 @@ and waive are still proposals.
   statement holds its evidence lines, and Contribution is a field on records. It starts as an
   example corpus in this repo, `profiles/claims/example/`, with a README that maps each type to
   VA-Spec. Until 0.3.0 ships `extends`, a corpus copies the type folders from the example. Then the
-  profile is published from this repo as the npm package `@osdlc/corpus-profile-claims`.
+  profile is published from this repo as the npm package `@osdlc/corpus-profile-claims`. It is a
+  general starting profile that research corpora use or extend. Later it is written as a pack and
+  moves to osdlc/models (the plan's D17).
 - The planning profile, `profiles/planning/`, holds the task, milestone and decision types. This
   repo's plan extends it by path. It is private and not on npm.
 - The sdlc profile, `@osdlc/corpus-profile-sdlc` in `profiles/sdlc/`, holds sdlc's fourteen
-  planning types. It is generated, not written by hand (see The model, below).
+  planning types. It is generated, not written by hand (see The model, below). It stays here until
+  the packs move, then it moves to osdlc/models with them (task 62). The npm name does not change.
+- Shared types are authored as packs, and the type folders of a shared profile are generated
+  output. A corpus's own local types stay hand-written, next to their schemas. Each type's schema
+  stands alone: there is no `$ref` across type schemas (the plan's D17).
 - A corpus names other corpora in its root file, under three keys (the plan's D15):
   - `extends` names parents, whose types it builds on. A parent gives types only, not records. A
     profile is a parent.
@@ -267,9 +273,10 @@ A twin can have extras the other doesn't need. It just has to pass the shared ca
   name).
 - Writes never lose what a person wrote. Frontmatter is rewritten with frontmatter-lossless or
   yaml-splice, and files are saved with etag-write.
-- General code lives in the osdlc org. The spec and its profiles live in this repo
-  (osdlc/markdown). The other packages stay in osdlc/osdlc until they move here. Apps use them from
-  there and keep only their own rules.
+- General code lives in the osdlc org. This repo (osdlc/markdown) holds the Markdown libraries, the
+  corpus-schema spec and validator, and examples. Models, packs, profiles and starter corpora live
+  in osdlc/models (the plan's D17). The other packages stay in osdlc/osdlc until they move here.
+  Apps use them from there and keep only their own rules.
 
 ## Where things live
 
@@ -279,7 +286,7 @@ A twin can have extras the other doesn't need. It just has to pass the shared ca
 | Corpus model, TypeScript | markdown-vault and vault-graph-core in dev | markdown-corpus in osdlc |
 | Corpus model, Rust | markdown-corpus in osdlc | the same |
 | corpus-schema | this repo; 0.2.0 is on npm | the same |
-| Profiles | drafts in this repo; model-schema and packs in dev, merged to a branch that is not on main yet | this repo |
+| Profiles, packs, starter corpora | profiles and the starter in this repo; model-schema and packs in dev, merged to a branch that is not on main yet | osdlc/models (task 62) |
 | Query | markdown-vault-query in dev | osdlc |
 | Render, edit, sites | dev | osdlc |
 | Typed records from Rust | markdown-store in rust-ontogen | on the shared parts; where it lives is an open question |

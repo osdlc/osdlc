@@ -7,8 +7,8 @@ states: [present, target]
 status: in-progress
 repo_present: "[sksizer/dev](../repos/sksizer-dev.md)"
 path_present: packages/ts/pack-sdlc
-repo_target: "[sksizer/dev](../repos/sksizer-dev.md)"
-path_target: packages/ts/pack-sdlc
+repo_target: "[osdlc/models](../repos/osdlc-models.md)"
+path_target: pack-sdlc
 tasks:
   - "[47 Merge packs](../tasks/47%20Merge%20packs.md)"
   - "[49 SDLC profiles](../tasks/49%20SDLC%20profiles.md)"

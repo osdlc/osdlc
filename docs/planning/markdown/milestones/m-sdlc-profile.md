@@ -11,6 +11,7 @@ tasks:
   - "[50 Dev on sdlc](../tasks/50%20Dev%20on%20sdlc.md)"
   - "[52 Work extends](../tasks/52%20Work%20extends.md)"
   - "[53 Plan on sdlc](../tasks/53%20Plan%20on%20sdlc.md)"
+  - "[75 Create models repo](../tasks/75%20Create%20models%20repo.md)"
   - "[62 Packs in public](../tasks/62%20Packs%20in%20public.md)"
 ---
 
