@@ -387,9 +387,164 @@ them, uncited, and I2 found one of its notes wrong. Proposed subjects:
 agent-call's permission rows should then be checked against these facts the
 way tradecraft-core's profile is (D-FDLQ).
 
+## Architecture: running an agent from a spec
+
+Status: target design, 2026-11-12. Nothing here is built beyond what the
+"Today" column of the plugin table says. I6 (prior art) can still change it.
+
+### The idea in one paragraph
+
+A **spec** says what an agent run needs: which harness, which skills,
+which permissions, which keys, what it may change. A **caller** hands the
+spec to **agent-call**, which **resolves** it against harness-knowledge,
+**provisions** an execution context, **runs** the harness, **collects** a
+typed result and **applies** the allowed outputs. Every step that differs
+between places (your laptop, Orca, a GitHub runner) is a plugin, so the
+same spec runs everywhere.
+
+### Terms
+
+| Term | Means | Answers | Examples |
+| --- | --- | --- | --- |
+| Spec | A reviewed file describing one kind of run | What should happen? | `.github/agents/simplify.yml` |
+| Caller | Whatever starts the run | Who asked? | a PR comment, cron, `agent-call run` in a shell, Orca, another agent |
+| Harness | The coding agent program | Which agent? | claude, codex, cursor |
+| Mode | How agent-call drives the harness process | How do we talk to it? | `cli` (`claude -p`), `sdk` (a library), `acp` (JSON-RPC), `terminal` (a live session) |
+| Host | The machine and workspace the run lives in, and who owns its lifecycle | Where do the files live and the processes run? | `local` (a folder on your machine), `orca` (an Orca worktree), `github-actions` (a runner), later `container` |
+| Sandbox | Hard walls inside the host | What can it touch even if it misbehaves? | `none`, `harness` (codex `--sandbox`, Claude Code's sandbox), later `container` |
+| Credentials | How keys reach the harness | How does it authenticate, and can it see the key? | `env`, ordered key list ([#787](https://github.com/osdlc/osdlc/pull/787)), later `proxy`, OIDC |
+| Surface | Where a `terminal`-mode session is shown and typed into | Where can a person watch or step in? | `tmux` (agent-seat), `orca` terminal, `cmux` pane |
+| Output | An effect applied after the run, outside the agent's reach | What may change in the world? | a comment, a patch on the PR branch, a new branch and draft PR, a run summary |
+
+**Execution context** = host + sandbox + credentials (+ surface in
+`terminal` mode). It is everything about *where and under what walls* the
+run happens, and nothing about *which agent* or *what it is asked*. The
+same spec can run in different execution contexts; agent-call picks the
+context from the caller (or the spec's override) and checks that it can
+honour the spec.
+
+A quick way to tell host from surface: the host owns the files and the
+processes; the surface only displays a terminal. Orca can be both (it makes
+the worktree and shows the terminal); tmux and cmux are only surfaces;
+a GitHub runner is only a host.
+
+### The pipeline
+
+```mermaid
+flowchart LR
+  C["Caller<br/>PR comment, cron, CLI, Orca"] --> S["Spec"]
+  S --> R["1 Resolve<br/>check against harness-knowledge<br/>for harness x mode x host"]
+  R --> P["2 Provision<br/>host, sandbox, credentials, setup"]
+  P --> X["3 Run<br/>harness adapter x mode driver<br/>surface if terminal"]
+  X --> K["4 Collect<br/>reply, patch, session id, usage, error kind"]
+  K --> A["5 Apply<br/>output adapters, separate trust domain"]
+```
+
+1. **Resolve.** Merge the spec with caller overrides; look up what this
+   harness supports in this mode on this host (harness-knowledge). With
+   `strict`, refuse anything that would only be approximated, such as
+   `network: none` on a host and sandbox that can't block the network.
+   `--explain` prints the plan and the exact commands.
+2. **Provision.** The host makes a workspace (a checkout, a worktree, a
+   container); the sandbox walls it; credentials are made available in
+   the chosen way; setup (skillwright) installs the harness, plugins and
+   skills.
+3. **Run.** The harness adapter turns the spec into this harness's flags,
+   settings and permission rules; the mode driver starts and drives it.
+   In `terminal` mode the session lives on a surface where a person can
+   attach.
+4. **Collect.** One typed result for every harness and mode: reply text,
+   a patch of file changes, session id, usage, and an error kind (auth,
+   out of credit, refused, failed) instead of text to grep.
+5. **Apply.** Output adapters turn the result into effects. This step
+   holds any write token and never runs agent code (in CI it is [#764](https://github.com/osdlc/osdlc/pull/764)'s
+   separate push job).
+
+### Plugin types
+
+| Type | Interface (sketch) | Today | First version | Later |
+| --- | --- | --- | --- | --- |
+| Host | `provision(spec) → workspace; exec(cmd, env); attach?; cleanup()` | hard-coded in the gh-actions | `local`, `orca`, `github-actions` | `container`, remote VM, GitLab CI |
+| Sandbox | `wrap(exec, policy) → exec` | harness flags only | `none`, `harness` | `container`, gh-aw's runtime |
+| Credentials | `provide(keyNames) → env`; `next(errorKind) → bool` | env; rotate on auth failure | ordered list with fall-through ([#787](https://github.com/osdlc/osdlc/pull/787)) | `proxy` (agent gets a dummy key), OIDC, subscription token |
+| Setup | `install(harness, marketplaces, plugins)` | agent-setup over skillwright | same | translate packs per harness ([skillwright#94](https://github.com/osdlc/skillwright/issues/94)) |
+| Harness | `plan(spec, mode) → invocation; classify(result) → errorKind` | agent-call adapters (9 harnesses), cli only | claude, codex, cursor | the rest |
+| Mode | `start(invocation, host, surface?) → session; wait(); send?()` | `cli` | `cli`, `terminal` | `sdk`, `acp` |
+| Surface | `open(session); read(); send(keys); notify()` | agent-seat's tmux | `tmux`, `orca` | `cmux` |
+| Output | `apply(result, policy)` | comment; patch to PR branch ([#764](https://github.com/osdlc/osdlc/pull/764)) | same | new branch and draft PR, summary, file |
+
+### How enforcement stacks
+
+Each control in the spec is enforced by the strongest layer that can:
+
+1. Harness permissions (allow-lists, a `canUseTool` callback): soft. They
+   stop the agent asking, but an allowed tool like `node` can do a lot.
+2. Sandbox (no network, read-only files, empty environment): hard. It
+   stops whatever the agent manages to run.
+3. Credentials (a proxy or OIDC): hardest. No real key exists where the
+   agent runs.
+4. Trust split: only the apply step holds write tokens.
+
+Resolve reports which layer enforces each control; `strict` fails the run
+when none can.
+
+### Three runs of the same spec
+
+The spec is `/craft:simplify` with edits allowed and `changes: patch`.
+
+| | PR comment `/craft:simplify --apply` | You, in Orca: "simplify this with cursor" | Nightly cron |
+| --- | --- | --- | --- |
+| Caller | GitHub `issue_comment` | Orca | GitHub `schedule` |
+| Harness | claude (the action's default) | cursor (override) | codex |
+| Host | `github-actions` runner, PR head checkout | `orca`: a new worktree of the repo | `github-actions`, default branch |
+| Sandbox | `harness` | `none` (you're watching) | `harness` |
+| Credentials | ordered key list from secrets | your local env | ordered key list |
+| Mode | `cli` (later `sdk`) | `terminal` | `cli` |
+| Surface | none | Orca terminal you can attach to | none |
+| Outputs | reply comment; patch, applied to the PR branch by the push job | changed files left in the worktree for you to review | new branch and draft PR |
+
+### Callers
+
+Anything can be a caller: the gh-actions (`agent-pr`, `agent-run`), a
+shell (`agent-call run spec.yml --harness codex --host local`), Orca (run
+a spec in a worktree, hand off between agents), or another agent. Callers
+choose the spec, the overrides and the host; they never pass keys in the
+spec.
+
+### Where existing pieces sit
+
+- `@osdlc/agent-call`: the core, harness adapters and the `cli` mode.
+- `@osdlc/harness-knowledge` ([#750](https://github.com/osdlc/osdlc/pull/750)): the facts Resolve checks against.
+- skillwright and `agent-setup`: Setup.
+- agent-seat: the `terminal` mode with the `tmux` surface.
+- `packages/gh-actions`: today a hard-coded `github-actions` host with
+  `env` credentials and comment and patch outputs; `pr-apply` ([#764](https://github.com/osdlc/osdlc/pull/764)) is
+  the first output adapter; [#787](https://github.com/osdlc/osdlc/pull/787) the first credential behaviour.
+- Orca: a host and a surface, and a caller.
+
+### First version, deliberately small
+
+- Hosts `local`, `orca`, `github-actions`; sandbox `none` and `harness`;
+  credentials `env` with an ordered list; modes `cli` and `terminal`;
+  surfaces `tmux` and `orca`; outputs comment and patch.
+- Write the interfaces first so `container`, `proxy`, `sdk`, `acp` and
+  `cmux` slot in later without changing the spec.
+
+### Prior art to check (I6)
+
+- gh-aw: frontmatter with engine, permissions, tools, network and safe
+  outputs; an API proxy for keys; isolated runtimes. It may serve as a
+  host and sandbox adapter for GitHub, or supply the spec's field names.
+- Dev Containers for the spec's `environment`.
+- The Claude Agent SDK, the Codex SDK and ACP for the `sdk` and `acp`
+  modes.
+- cmux's scripting API before writing its surface.
+
 ## Next: execution modes and `agent-run`
 
 Decided 2026-11-12. Prior art first: I6 runs before any of this is built.
+
+See "Architecture: running an agent from a spec" above for the terms and the pipeline.
 
 **Modes, not replacements.** agent-call describes a call once (prompt or
 skill, permissions, context, keys) and runs it in a mode the caller picks.
