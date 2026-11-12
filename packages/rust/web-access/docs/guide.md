@@ -383,7 +383,10 @@ keeps its addresses and its share links' form; `share_urls()` carries the new
 share token. Every connection a token that is gone let in fails all further
 reads and writes at once, streams and WebSockets included. A token that stays
 with the same grant keeps its connections open, and so does a connection let
-in without a token. The same token under another grant counts as gone.
+in without a token. The same token under another grant counts as gone. A
+keep-alive connection counts as opened by the token of its latest request.
+Under the default policy, a loopback-only server lets loopback in exactly
+while it holds no token.
 
 ```rust
 use web_access::{ServerHandle, Tokens, token::Token};

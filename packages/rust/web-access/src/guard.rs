@@ -58,6 +58,7 @@
 //! Under `serve`, a request the guard admits carries a [`ConnectionCut`], and
 //! the guard notes which token admitted it on its connection. Withdrawing that
 //! token with [`GuardState::replace_tokens`] closes the connection at once.
+//!
 //! Every response carries `Referrer-Policy: no-referrer` and
 //! `X-Content-Type-Options: nosniff`.
 
@@ -370,6 +371,9 @@ pub struct GuardState {
     tokens: RwLock<Tokens>,
     /// The server's open connections, when `serve` built this state.
     conns: Option<Arc<Connections>>,
+    /// Let a loopback peer in while the set holds no token, whatever
+    /// `policy` says; `serve`'s default on a loopback-only listen.
+    open_while_tokenless: bool,
     read_safe: Vec<RouteRule<()>>,
     allowed_hosts: Vec<String>,
     /// Public names as `host:port` authorities. Kept apart from
@@ -404,6 +408,7 @@ impl GuardState {
         Self {
             tokens: RwLock::new(tokens),
             conns: None,
+            open_while_tokenless: false,
             read_safe: Vec::new(),
             allowed_hosts: hosts,
             public_hosts: Vec::new(),
@@ -562,9 +567,10 @@ impl GuardState {
             .filter(|id| !next.0.iter().any(|n| n.id == *id))
             .collect();
         *held = next;
-        // Still under the write lock: a request either matched an old entry
-        // and tagged its connection before this point, so the cut reaches it,
-        // or it reads the new set.
+        drop(held);
+        // A request tags its connection under the read lock, so it either
+        // matched an old entry and tagged before the swap, and the cut reaches
+        // it, or it reads the new set.
         if let Some(conns) = &self.conns {
             conns.cut_tagged(&withdrawn);
         }
@@ -574,6 +580,13 @@ impl GuardState {
     /// withdrawn.
     pub(crate) fn with_connections(mut self, conns: Arc<Connections>) -> Self {
         self.conns = Some(conns);
+        self
+    }
+
+    /// Open to a loopback peer exactly while the set holds no token, so a
+    /// [`Self::replace_tokens`] that adds the first token closes it.
+    pub(crate) fn open_while_tokenless(mut self) -> Self {
+        self.open_while_tokenless = true;
         self
     }
 
@@ -863,7 +876,9 @@ async fn check(state: &GuardState, mut req: Request<Body>, next: Next) -> Respon
     }
 
     // 4. Loopback peer without a token.
-    if state.policy.loopback_open && context == AccessContext::WebLocal && !public {
+    let loopback_open =
+        state.policy.loopback_open || (state.open_while_tokenless && state.tokens().is_empty());
+    if loopback_open && context == AccessContext::WebLocal && !public {
         return state.admit(req, context, Grant::Full, next).await;
     }
 
@@ -914,22 +929,30 @@ async fn check(state: &GuardState, mut req: Request<Body>, next: Next) -> Respon
         .and_then(|v| v.to_str().ok());
     let matched = {
         let tokens = state.tokens();
-        let mut best = header_tok.and_then(|t| tokens.grant_for(t));
+        // The highest grant this request may use, and the entry that gives
+        // it: an entry whose grant is lowered here ranks below one whose grant
+        // stands, so withdrawing it does not cut a request another token holds.
+        let rank = |t: &str| {
+            tokens.grant_for(t).map(|(g, id)| {
+                let used = state.effective_grant(g, public);
+                (used, used == g, id)
+            })
+        };
+        let mut best = header_tok.and_then(rank);
         for name in [&cookie, &admin_cookie] {
             for t in cookie_values(&req, name) {
                 presented_wrong = true;
-                best = best.max(tokens.grant_for(t));
+                best = best.max(rank(t));
             }
         }
         // Tagged under the same read lock as the match, so a
         // `replace_tokens` that withdraws the entry cuts this connection.
-        if let (Some((_, id)), Some(c)) = (best, &conn) {
+        if let (Some((_, _, id)), Some(c)) = (best, &conn) {
             c.tag(id);
         }
         best
     };
-    if let Some((grant, _)) = matched {
-        let grant = state.effective_grant(grant, public);
+    if let Some((grant, _, _)) = matched {
         return state.admit(req, context, grant, next).await;
     }
     presented_wrong |= header_tok.is_some();

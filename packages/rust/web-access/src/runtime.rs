@@ -388,11 +388,11 @@ impl SharingRuntime {
             .unwrap_or_else(PoisonError::into_inner) = snap;
     }
 
-    /// The running server first takes the tokens `cfg` calls for (none when
-    /// sharing is off or they cannot be loaded), which closes the connections
-    /// of every withdrawn token at once. It keeps running when it can serve
-    /// `cfg` as it is ([`WebAccessConfig::same_bind`]) and is stopped
-    /// otherwise. Returns the share links while a server runs.
+    /// A running server that can serve `cfg` as it is
+    /// ([`WebAccessConfig::same_bind`]) takes the tokens `cfg` calls for, which
+    /// closes the connections of every withdrawn token at once. Any other is
+    /// handed no token, which closes every connection opened with one, then
+    /// stopped. Returns the share links while a server runs.
     async fn reconcile(
         &self,
         live: &mut Live,
@@ -400,15 +400,17 @@ impl SharingRuntime {
     ) -> Result<Option<ShareUrls>, String> {
         let tokens = self.tokens_for(cfg);
         if let Some(running) = live.server.take() {
-            let set = match &tokens {
-                Ok(Some(t)) => t.set.clone(),
-                _ => Tokens::none(),
-            };
-            running.handle.replace_tokens(set);
-            if matches!(tokens, Ok(Some(_))) && running.cfg.same_bind(cfg) {
-                live.server = Some(running);
-            } else {
-                running.handle.stop().await;
+            match &tokens {
+                Ok(Some(t)) if running.cfg.same_bind(cfg) => {
+                    running.handle.replace_tokens(t.set.clone());
+                    live.server = Some(running);
+                }
+                // Withdrawing every token first closes their connections at
+                // once, rather than after the stop's grace period.
+                _ => {
+                    running.handle.replace_tokens(Tokens::none());
+                    running.handle.stop().await;
+                }
             }
         }
         let Some(tokens) = tokens? else {
@@ -907,6 +909,32 @@ mod tests {
             assert!(closes_within(s, Duration::from_secs(1)).await);
         }
         assert!(!off.await.unwrap().unwrap().running);
+    }
+
+    /// A new port moves the server without waiting out the old one's grace
+    /// period for its open streams.
+    #[tokio::test]
+    async fn a_port_change_closes_the_old_servers_connections_at_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let rt = runtime(&dir, MemStore::default());
+        let up = rt.set(cfg(true)).await.unwrap();
+        let (_, mut stream) = open_both(&up.share_urls.full).await;
+        let started = std::time::Instant::now();
+        let moved = rt
+            .set(WebAccessConfig {
+                listen: Listen::Interfaces(vec!["127.0.0.1".parse().unwrap()]),
+                ..cfg(true)
+            })
+            .await
+            .unwrap();
+        assert!(moved.running);
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "{:?}",
+            started.elapsed()
+        );
+        assert!(closes_within(&mut stream, Duration::from_millis(100)).await);
+        rt.set(cfg(false)).await.unwrap();
     }
 
     #[tokio::test]

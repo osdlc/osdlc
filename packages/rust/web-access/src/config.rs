@@ -10,11 +10,11 @@ pub enum Listen {
     /// 127.0.0.1 only.
     #[default]
     Loopback,
-    /// 0.0.0.0: every interface. The share links cover the addresses the
-    /// machine has when the server starts. The `Host` check also admits an
-    /// address the machine gains later, on the same port. That takes up to
-    /// about two seconds, because `serve` rereads the interface list at most
-    /// that often.
+    /// 0.0.0.0: every interface. The share links and the `Host` check cover
+    /// the addresses the machine has now, on the bound port, including one
+    /// it gains after the server started. A new address shows up within about
+    /// two seconds, because `serve` rereads the interface list at most that
+    /// often.
     AllInterfaces,
     /// Exactly these addresses.
     Interfaces(Vec<IpAddr>),

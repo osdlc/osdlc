@@ -110,7 +110,13 @@ impl ServerHandle {
     /// The addresses a peer can open: each bound address, a wildcard one
     /// expanded to the host's non-loopback addresses of its family.
     fn share_addrs(&self) -> Vec<SocketAddr> {
-        reached(&self.addrs, &(self.host_ips)(), false)
+        let wildcard = self.addrs.iter().any(|a| a.ip().is_unspecified());
+        let ips = if wildcard {
+            (self.host_ips)()
+        } else {
+            Vec::new()
+        };
+        reached(&self.addrs, &ips, false)
     }
 
     /// Accept `tokens` from now on, in place of the ones the server holds, and
@@ -120,9 +126,11 @@ impl ServerHandle {
     /// connections let in without a token. The server keeps running on the
     /// same addresses.
     ///
-    /// [`GuardPolicy::loopback_open`] stays as it was at start. A server that
-    /// started with tokens and is handed [`Tokens::none`] refuses every
-    /// request that needs a token.
+    /// Under the default policy, a loopback-only server is open to loopback
+    /// exactly while it holds no token. A server listening beyond loopback,
+    /// or one given an explicit [`ServeOptions::policy`], keeps its policy: if
+    /// it is handed [`Tokens::none`], it refuses every request that needs a
+    /// token.
     pub fn replace_tokens(&self, tokens: Tokens) {
         self.state.replace_tokens(tokens);
     }
@@ -224,7 +232,9 @@ pub async fn serve(
 /// Guard inputs beyond the tokens, for [`serve_opts`].
 #[derive(Clone, Default)]
 pub struct ServeOptions {
-    /// `None` is [`serve`]'s default: loopback is open only without tokens.
+    /// `None` is [`serve`]'s default: on a loopback-only listen, loopback is
+    /// open while the server holds no token, following
+    /// [`ServerHandle::replace_tokens`]; on any other listen, never.
     pub policy: Option<GuardPolicy>,
     /// See [`GuardState::with_read_safe`].
     pub read_safe: Vec<RouteRule<()>>,
@@ -339,9 +349,10 @@ async fn serve_with_ips(
         return Err(ServeError::AdminPublicOnlyWithoutPublicHosts);
     }
 
-    let policy = opts.policy.unwrap_or(GuardPolicy {
-        loopback_open: tokens.is_empty(),
-    });
+    // The default opens loopback while there is no token, which `serve`
+    // allows only on a loopback-only listen. It follows `replace_tokens`.
+    let loopback_follows_tokens = opts.policy.is_none() && cfg.listen.is_loopback_only();
+    let policy = opts.policy.unwrap_or_default();
 
     let mut listeners = Vec::new();
     for ip in listen_ips(&cfg.listen) {
@@ -372,6 +383,9 @@ async fn serve_with_ips(
     let mut state = GuardState::new(tokens, hosts, policy)
         .with_read_safe(opts.read_safe)
         .with_public_hosts(&public_names);
+    if loopback_follows_tokens {
+        state = state.open_while_tokenless();
+    }
     if opts.admin_public_only {
         state = state.with_admin_over_public_only();
     }
@@ -431,6 +445,9 @@ async fn serve_with_ips(
 #[cfg(test)]
 mod tests {
     use axum::routing::get;
+
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpStream;
 
     use super::*;
     use crate::context::Grant;
@@ -592,7 +609,7 @@ mod tests {
             .unwrap();
         let addr = handle.addrs()[0];
         let mut admin = open_upgrade(addr, "/up", ADMIN).await;
-        let _admin_watched = open_upgrade(addr, "/watched", ADMIN).await;
+        let admin_watched = open_upgrade(addr, "/watched", ADMIN).await;
         let mut full = open_upgrade(addr, "/up", TOK).await;
         let mut full_stream = open_stream(addr, TOK).await;
         assert!(echoes(&mut admin).await && echoes(&mut full).await);
@@ -620,6 +637,8 @@ mod tests {
         )
         .await;
         assert!(res.starts_with("HTTP/1.1 200"), "{res}");
+        // Closed first, so stop need not wait out its grace period.
+        drop((admin_watched, full, full_stream));
         handle.stop().await;
     }
 
@@ -659,6 +678,96 @@ mod tests {
         handle.replace_tokens(Tokens::full_only(tok(TOK)));
         assert!(!closes_within(&mut s, STAYS_OPEN).await);
         assert_eq!(handle.share_urls(), [format!("http://{addr}/?token={TOK}")]);
+        // Closed first, so stop need not wait out its grace period.
+        drop(s);
+        handle.stop().await;
+    }
+
+    /// Under the default policy a loopback-only server is open exactly while
+    /// it holds no token.
+    #[tokio::test]
+    async fn the_default_loopback_opening_follows_the_tokens() {
+        let handle = serve(long_lived_router(), &cfg(Listen::Loopback), Tokens::none())
+            .await
+            .unwrap();
+        let addr = handle.addrs()[0];
+        let host = addr.to_string();
+        assert!(raw_get(addr, &host, "").await.starts_with("HTTP/1.1 200"));
+        handle.replace_tokens(Tokens::full_only(tok(TOK)));
+        assert!(raw_get(addr, &host, "").await.starts_with("HTTP/1.1 401"));
+        handle.replace_tokens(Tokens::none());
+        assert!(raw_get(addr, &host, "").await.starts_with("HTTP/1.1 200"));
+        handle.stop().await;
+    }
+
+    /// A keep-alive connection carries the token of its latest request: one
+    /// that served a read request, then a full stream, survives rotating the
+    /// read token.
+    #[tokio::test]
+    async fn a_connection_is_cut_for_the_token_of_its_latest_request() {
+        let tokens = Tokens::full_only(tok(TOK))
+            .with(tok(READ), Grant::Read)
+            .unwrap();
+        let handle = serve(long_lived_router(), &cfg(Listen::Loopback), tokens)
+            .await
+            .unwrap();
+        let addr = handle.addrs()[0];
+        let mut s = TcpStream::connect(addr).await.unwrap();
+        let first = format!("GET / HTTP/1.1\r\nHost: {addr}\r\nx-web-access-token: {READ}\r\n\r\n");
+        s.write_all(first.as_bytes()).await.unwrap();
+        let mut buf = vec![0u8; 4096];
+        let mut seen = String::new();
+        while !seen.ends_with("ok") {
+            let n = s.read(&mut buf).await.unwrap();
+            assert_ne!(n, 0, "{seen}");
+            seen.push_str(&String::from_utf8_lossy(&buf[..n]));
+        }
+        let second =
+            format!("GET /stream HTTP/1.1\r\nHost: {addr}\r\nx-web-access-token: {TOK}\r\n\r\n");
+        s.write_all(second.as_bytes()).await.unwrap();
+        let n = s.read(&mut buf).await.unwrap();
+        assert!(String::from_utf8_lossy(&buf[..n]).contains("HTTP/1.1 200"));
+
+        handle.replace_tokens(Tokens::full_only(tok(TOK)));
+        assert!(!closes_within(&mut s, STAYS_OPEN).await);
+        // Closed first, so stop need not wait out its grace period.
+        drop(s);
+        handle.stop().await;
+    }
+
+    /// An admin cookie lowered to `full` off a public name does not tag the
+    /// connection over a full cookie sent with it: admin off leaves it open.
+    #[tokio::test]
+    async fn a_lowered_admin_grant_tags_the_full_token_it_sits_beside() {
+        let opts = ServeOptions {
+            public_hosts: vec!["app.example.com".to_owned()],
+            admin_public_only: true,
+            ..ServeOptions::default()
+        };
+        let handle = serve_opts(
+            long_lived_router(),
+            &cfg(Listen::Loopback),
+            full_and_admin(),
+            opts,
+        )
+        .await
+        .unwrap();
+        let addr = handle.addrs()[0];
+        let port = addr.port();
+        let mut s = TcpStream::connect(addr).await.unwrap();
+        let req = format!(
+            "GET /stream HTTP/1.1\r\nHost: {addr}\r\n\
+             Cookie: web_access_admin_{port}={ADMIN}; web_access_{port}={TOK}\r\n\r\n"
+        );
+        s.write_all(req.as_bytes()).await.unwrap();
+        let mut buf = vec![0u8; 4096];
+        let n = s.read(&mut buf).await.unwrap();
+        assert!(String::from_utf8_lossy(&buf[..n]).contains("HTTP/1.1 200"));
+
+        handle.replace_tokens(Tokens::full_only(tok(TOK)));
+        assert!(!closes_within(&mut s, STAYS_OPEN).await);
+        // Closed first, so stop need not wait out its grace period.
+        drop(s);
         handle.stop().await;
     }
 

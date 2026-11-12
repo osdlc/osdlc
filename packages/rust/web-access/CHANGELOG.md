@@ -42,7 +42,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `ServerHandle::replace_tokens` and `GuardState::replace_tokens`: a running
   server takes a new set of tokens. Under `serve`, every connection a
   withdrawn token let in closes at once, streams and upgraded WebSockets
-  included, and the other connections stay open.
+  included, and the other connections stay open. A connection counts as let in by
+  the token of its latest request. Under `serve`'s default policy, a
+  loopback-only server is open to loopback exactly while it holds no token.
 - `guard::ConnectionCut`, a handler argument that fires when the request's
   connection is closed that way or by `stop()`.
 

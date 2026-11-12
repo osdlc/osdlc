@@ -6,7 +6,7 @@
 //! writes does, so every accepted stream is a [`CutStream`] that fails once
 //! its [`Conn`] is cut.
 //!
-//! The guard tags a connection with the id of each token that admits a
+//! The guard tags a connection with the id of the token that admitted the
 //! request on it. Withdrawing a token cuts the connections tagged with it and
 //! leaves the others open. Stopping the server cuts them all.
 
@@ -15,6 +15,7 @@ use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError, Weak};
 use std::task::{Context, Poll};
 
@@ -29,24 +30,24 @@ use tokio::sync::watch;
 /// One accepted connection.
 pub(crate) struct Conn {
     cut: watch::Sender<bool>,
-    /// Ids of the token entries that admitted a request on this connection.
-    tags: Mutex<Vec<u64>>,
+    /// The id of the token entry that admitted the latest request on this
+    /// connection; 0 for none (ids start at 1). HTTP/1 carries one request at
+    /// a time, so a stream or an upgraded socket runs under this one.
+    tag: AtomicU64,
 }
 
 impl Conn {
     fn new(cut: bool) -> Self {
         Self {
             cut: watch::Sender::new(cut),
-            tags: Mutex::new(Vec::new()),
+            tag: AtomicU64::new(0),
         }
     }
 
-    /// Record that the token entry `id` admitted a request here.
+    /// Record that the token entry `id` admitted the request now on this
+    /// connection.
     pub(crate) fn tag(&self, id: u64) {
-        let mut tags = self.tags.lock().unwrap_or_else(PoisonError::into_inner);
-        if !tags.contains(&id) {
-            tags.push(id);
-        }
+        self.tag.store(id, Ordering::SeqCst);
     }
 
     fn cut(&self) {
@@ -54,8 +55,7 @@ impl Conn {
     }
 
     fn tagged_with_any(&self, ids: &[u64]) -> bool {
-        let tags = self.tags.lock().unwrap_or_else(PoisonError::into_inner);
-        tags.iter().any(|t| ids.contains(t))
+        ids.contains(&self.tag.load(Ordering::SeqCst))
     }
 
     pub(crate) fn signal(&self) -> ConnectionCut {
