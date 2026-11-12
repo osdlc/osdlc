@@ -1,0 +1,32 @@
+# Runs packages/gh-actions/ts-packages/test.sh, which checks the shell of
+# ts-packages-release.yml's "not on npm yet" step against small package trees.
+# Needs no network and no secrets.
+name: ts-packages test
+
+on:
+  pull_request:
+    paths:
+      - packages/gh-actions/ts-packages/**
+      - .github/workflows/ts-packages-release.yml
+      - .github/workflows/ts-packages-test.yml
+
+permissions: {}
+
+# A newer push to the same pull request cancels this workflow's older run,
+# whose result no longer matters.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  release-step:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # yq is preinstalled on GitHub's Ubuntu runners.
+      - run: packages/gh-actions/ts-packages/test.sh

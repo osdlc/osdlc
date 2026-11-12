@@ -12,3 +12,5 @@
   such as osdlc/models, can call it. `ts-checks: false` skips the build and
   `package-checks ts`; `package-globs` names the package folders the pack job
   checks are on npm, in place of the `tsDir` of package-checks.json.
+- `test.sh` checks the release workflow's "not on npm yet" step, and
+  `ts-packages-test.yml` runs it on pull requests that touch it.

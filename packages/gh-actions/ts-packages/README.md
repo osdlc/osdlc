@@ -155,7 +155,7 @@ by default.
 | `version-script`  | `pnpm run version-packages` | One command, run without a shell, that versions the packages.      |
 | `npm-version`     | `11.19.1`                   | The npm that publishes. Trusted publishing needs 11.5.1 or later.  |
 | `ts-checks`       | `true`                      | Build the packages and run `package-checks ts` before the pack.    |
-| `package-globs`   | empty                       | Space-separated globs of the package folders. Empty means `tsDir`. |
+| `package-globs`   | empty                       | Globs of the package folders. Empty means `tsDir`.                 |
 
 The pack job refuses to go on while any package in `tsDir` (from
 `package-checks.json`), or in `package-globs` when it is set, is not on npm
@@ -165,8 +165,10 @@ A workspace of packages that hold no code, such as Markdown and JSON Schema
 files, sets `ts-checks: false` and lists its package folders in
 `package-globs`, for example `profiles/* corpora/*`. It then needs no
 `package-checks.json`, and `package-checks` only to stage a new package. The
-pack job fails when `ts-checks` is false and `package-globs` is empty, and
-when any one glob matches no package folder.
+pack job fails when `ts-checks` is false and `package-globs` is empty, when
+`package-globs` is blank, and when any one entry matches no package folder.
+Entries may be separated by spaces or newlines. `test.sh` in this folder
+checks that step, and `ts-packages-test.yml` runs it on pull requests.
 
 ## Versioning
 

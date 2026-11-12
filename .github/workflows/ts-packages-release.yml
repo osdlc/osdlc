@@ -58,9 +58,9 @@ on:
         default: true
       package-globs:
         description: >-
-          Space-separated globs of the package folders, such as
-          `profiles/* corpora/*`, which the pack job checks are on npm. Empty
-          means the `tsDir` of package-checks.json.
+          Globs of the package folders, separated by spaces or newlines, such
+          as `profiles/* corpora/*`, which the pack job checks are on npm.
+          Empty means the `tsDir` of package-checks.json.
         type: string
         default: ''
     secrets:
@@ -194,12 +194,22 @@ jobs:
           set -euo pipefail
           shopt -s nullglob
           if [ -n "$PACKAGE_GLOBS" ]; then
-            read -ra globs <<<"$PACKAGE_GLOBS"
+            # Split on any whitespace, newlines included, so a YAML block
+            # list works too.
+            read -ra globs -d '' <<<"$PACKAGE_GLOBS" || true
+            if [ "${#globs[@]}" -eq 0 ]; then
+              echo "::error::package-globs is set but names no folder"
+              exit 1
+            fi
             manifests=()
             for glob in "${globs[@]}"; do
-              # Unquoted, so the glob expands.
-              # shellcheck disable=SC2206
-              matched=($glob/package.json)
+              # Unquoted, so the glob expands. The -f test drops an entry
+              # without a wildcard, which nullglob keeps, when it is missing.
+              matched=()
+              # shellcheck disable=SC2231
+              for manifest in $glob/package.json; do
+                if [ -f "$manifest" ]; then matched+=("$manifest"); fi
+              done
               if [ "${#matched[@]}" -eq 0 ]; then
                 echo "::error::the package-globs entry $glob matches no package folder"
                 exit 1
