@@ -38,7 +38,7 @@ installed="$work/node_modules/@osdlc/corpus-profile-claims"
 mkdir -p "$installed"
 tar -xzf "$work"/*.tgz -C "$installed" --strip-components=1
 
-if [ -f "$installed/corpus/corpus-schema.md" ] &&
+if [ -f "$installed/corpus/claims.corpus-schema.md" ] &&
   [ ! -e "$installed/example" ] && [ ! -e "$installed/tests" ]; then
   pass "the tarball holds corpus/ and no example or tests"
 else
