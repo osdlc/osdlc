@@ -20,9 +20,10 @@ created: 2026-11-12
   moves the boot time in `/proc/stat`, and every instant derived from it, but
   not the ticks. Another boot id means the holder ended at a reboot.
   Elsewhere it is `start:<ms>`.
-- The system `/proc` is trusted only when `/proc/self` names this process. A
-  `/proc` mounted for another pid namespace describes other processes under
-  the same numbers.
+- `/proc` is trusted only when its `self` entry names this process. A `/proc`
+  mounted for another pid namespace describes other processes under the same
+  numbers, and `ps` reads the same `/proc`, so the start time is then unknown
+  rather than read from `ps`.
 - A start time is read as a number, never as clock text in the local zone or
   language: on Linux from `/proc/<pid>/stat` and the boot time in
   `/proc/stat`, with no subprocess; elsewhere from `ps -o lstart` run with
@@ -68,11 +69,13 @@ created: 2026-11-12
 - A live process that reuses a holder's pid at a start time a whole number of
   quarter hours from the recorded zoneless text (within twelve to fourteen
   hours) is taken for the holder. An instant has no such gap, so writers
-  should record `processStartedAt(process.pid)` rather than `ps` text.
+  should record `processIdentity(process.pid)` rather than `ps` text.
 - On Linux, a wall clock set forward by more than two seconds while a holder
   runs (time sync after a VM resumes, say) moves an instant-recorded holder's
   start later, so it looks replaced. A holder recorded with
-  `processIdentity` is not affected; hence the advice to record it.
+  `processIdentity` is not affected; hence the advice to record it. Where
+  `ps` derives the start from the boot time, as on the BSDs, the `start:<ms>`
+  identity has the same weakness.
 - Zoneless `ps` text is matched both ways, since its zone is unknown: it must
   be the process's own start as `ps -o lstart` printed it, in a whole
   quarter-hour zone. Text written later, or in a custom zone such as

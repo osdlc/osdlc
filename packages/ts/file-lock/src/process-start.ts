@@ -27,7 +27,7 @@ export type PsRunner = (
 ) => string | null
 
 /**
- * Options for {@link processStartedAt}.
+ * Options for {@link processStartedAt} and {@link processIdentity}.
  *
  * @experimental
  */
@@ -36,7 +36,11 @@ export interface ProcessStartOptions {
   ps?: PsRunner | undefined
   /** The platform to read for. Default `process.platform`. */
   platform?: NodeJS.Platform | undefined
-  /** Where `/proc` is mounted on Linux. Default `/proc`. */
+  /**
+   * Where `/proc` is mounted on Linux. Default `/proc`. It is read only when
+   * its `self` entry names this process; otherwise it belongs to another pid
+   * namespace, and the start time is unknown.
+   */
   procRoot?: string | undefined
 }
 
@@ -48,7 +52,11 @@ export interface ProcessStartOptions {
 export interface SameProcessOptions extends ProcessStartOptions {
   /** The liveness probe. Default {@link pidAlive}. */
   alive?: ((pid: number) => boolean) | undefined
-  /** The start-time probe. Default {@link processStartedAt} with these options. */
+  /**
+   * The start-time probe for a recorded instant or `ps` text. Default
+   * {@link processStartedAt} with these options. A Linux identity is checked
+   * against `/proc` directly and does not use it.
+   */
   startedAt?: ((pid: number) => number | null) | undefined
 }
 
@@ -108,7 +116,9 @@ export function processStartedAt(pid: number, options: ProcessStartOptions = {})
  * - Linux: `linux:<boot id>:<start ticks>`, read from `/proc`. Neither a
  *   change to the wall clock nor the time zone moves it, and a reboot changes
  *   the boot id.
- * - Elsewhere: `start:<ms>`, from {@link processStartedAt}.
+ * - Elsewhere: `start:<ms>`, from {@link processStartedAt}. Where `ps`
+ *   derives the start from the boot time, as on the BSDs, setting the wall
+ *   clock can move it.
  *
  * Null when the start time cannot be read; see {@link processStartedAt}.
  *
@@ -118,7 +128,7 @@ export function processIdentity(pid: number, options: ProcessStartOptions = {}):
   if (!Number.isInteger(pid) || pid <= 0) return null
   if ((options.platform ?? process.platform) === 'linux') {
     const proc = linuxProcess(pid, options.procRoot)
-    if (proc === null) return null
+    if (proc === null || proc === FOREIGN) return null
     if (proc !== undefined && proc.bootId !== null) return `linux:${proc.bootId}:${proc.ticks}`
   }
   const started = processStartedAt(pid, options)
@@ -181,7 +191,7 @@ function sameLinuxProcess(
 ): boolean {
   if ((options.platform ?? process.platform) !== 'linux') return true
   const proc = linuxProcess(pid, options.procRoot)
-  if (proc === undefined || proc === null || proc.bootId === null) return true
+  if (proc === undefined || proc === null || proc === FOREIGN || proc.bootId === null) return true
   if (proc.bootId !== recorded.bootId) return false
   return proc.ticks <= recorded.ticks + (TOLERANCE_MS / 1000) * LINUX_TICKS_PER_SECOND
 }
@@ -230,24 +240,30 @@ function lstartAsUtcMs(text: string): number | null {
  */
 function linuxStartedAt(pid: number, procRoot: string | undefined): number | null | undefined {
   const proc = linuxProcess(pid, procRoot)
+  // A foreign /proc: ps would read the same one, so there is no answer.
+  if (proc === FOREIGN) return null
   if (proc === null || proc === undefined) return proc
   const boot = bootSeconds(procRoot ?? '/proc')
   if (boot === null) return undefined
   return (boot + Math.floor(proc.ticks / LINUX_TICKS_PER_SECOND)) * 1000
 }
 
+/** `linuxProcess`'s answer for a `/proc` that belongs to another pid namespace. */
+const FOREIGN = 'foreign'
+
 /**
  * A process's start ticks and the boot id, from `/proc`. Null when there is
- * no such process; undefined when `/proc` cannot say. The system `/proc` is
- * trusted only when it lists this process as itself: one mounted for another
- * pid namespace would describe a different process under the same number.
+ * no such process; undefined when `/proc` cannot say, so `ps` may. FOREIGN
+ * when `/proc` does not list this process as itself: it was mounted for
+ * another pid namespace and describes other processes under the same
+ * numbers, and `ps` reads the same `/proc`, so nothing here can answer.
  */
 function linuxProcess(
   pid: number,
   procRoot: string | undefined,
-): { ticks: number; bootId: string | null } | null | undefined {
+): { ticks: number; bootId: string | null } | typeof FOREIGN | null | undefined {
   const root = procRoot ?? '/proc'
-  if (procRoot === undefined && !ownProc(root)) return undefined
+  if (!ownProc(root)) return FOREIGN
   let stat: string
   try {
     stat = readFileSync(`${root}/${pid}/stat`, 'utf-8')

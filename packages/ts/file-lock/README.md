@@ -212,7 +212,9 @@ new Date(processStartedAt(process.pid) ?? 0).toISOString() // when this process 
 - `processIdentity(pid, options?)`: what to record. On Linux it is the boot
   id and the start time in kernel ticks (`linux:<boot id>:<ticks>`), which
   neither a change to the wall clock nor the time zone moves; elsewhere
-  `start:<ms>`. Null when it cannot be read.
+  `start:<ms>` (which can move with the wall clock where `ps` derives it from
+  the boot time, as on the BSDs). Null when it cannot be read, including in a
+  pid namespace whose `/proc` is not its own.
 - `processStartedAt(pid, options?)`: when the process started, in ms since
   the epoch, rounded down to a whole second; null when there is no such
   process or its start time cannot be read. On Linux it reads `/proc`; on

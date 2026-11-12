@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -23,12 +23,20 @@ afterAll(() => {
 const BOOT_ID = '0b9a2c6e-5f4d-4e3b-9a1c-7d8e6f5a4b3c'
 
 /** A fake `/proc`: `btime` in `/proc/stat`, a boot id, and one `stat` line per pid. */
-function fakeProc(bootSeconds: number, stats: Record<number, string>, bootId = BOOT_ID): string {
+function fakeProc(
+  bootSeconds: number,
+  stats: Record<number, string>,
+  bootId: string | null = BOOT_ID,
+  selfPid = process.pid,
+): string {
   const root = mkdtempSync(join(tmpdir(), 'file-lock-proc-'))
   roots.push(root)
   writeFileSync(join(root, 'stat'), `cpu  1 2 3\nbtime ${bootSeconds}\nprocesses 9\n`)
+  // `self` names this process, as in its own pid namespace.
+  symlinkSync(String(selfPid), join(root, 'self'))
   mkdirSync(join(root, 'sys', 'kernel', 'random'), { recursive: true })
-  writeFileSync(join(root, 'sys', 'kernel', 'random', 'boot_id'), `${bootId}\n`)
+  if (bootId !== null)
+    writeFileSync(join(root, 'sys', 'kernel', 'random', 'boot_id'), `${bootId}\n`)
   for (const [pid, line] of Object.entries(stats)) {
     mkdirSync(join(root, pid))
     writeFileSync(join(root, pid, 'stat'), line)
@@ -232,6 +240,24 @@ describe('processIdentity', () => {
       `linux:${BOOT_ID}:12345`,
     )
     expect(processIdentity(99, { platform: 'linux', procRoot: root })).toBeNull()
+  })
+
+  test('a /proc for another pid namespace answers nothing, and ps is not asked', () => {
+    // ps reads the same /proc, so it would describe the same foreign process.
+    const ps = fakePs('Sun Nov  1 08:30:00 2026\n')
+    const foreign = fakeProc(BOOT, { 42: statLine(42, 'node', 12_345) }, BOOT_ID, 1)
+    const options = { platform: 'linux' as const, procRoot: foreign, ps }
+    expect(processIdentity(42, options)).toBeNull()
+    expect(processStartedAt(42, options)).toBeNull()
+    expect(sameProcess(42, `linux:${BOOT_ID}:1`, { ...options, alive: () => true })).toBe(true)
+    expect(ps.calls).toEqual([])
+  })
+
+  test('without a boot id, the identity falls back to the start time', () => {
+    const root = fakeProc(BOOT, { 42: statLine(42, 'node', 12_345) }, null)
+    expect(processIdentity(42, { platform: 'linux', procRoot: root })).toBe(
+      `start:${(BOOT + 123) * 1000}`,
+    )
   })
 
   test('elsewhere, the start time from ps', () => {
