@@ -47,7 +47,7 @@ check follows-a-document \
 # The claims profile is in extends, which gives types only, so a link into it
 # is an error.
 check link-into-profile \
-  'printf "\nSee [the profile](../_references/claims/corpus-schema.md).\n" \
+  'printf "\nSee [the profile](../_references/claims/claims.corpus-schema.md).\n" \
     >>"fernlog/decisions/Read config from the XDG folder.md"' \
   'claims is in extends, which gives types only; name the corpus in references to link to its files'
 

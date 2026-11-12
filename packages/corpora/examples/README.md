@@ -2,9 +2,9 @@
 
 Two corpora that show one corpus building on a profile and linking to another corpus.
 
-- [org-principles/](org-principles/corpus-schema.md) is an organisation's principles: a corpus
+- [org-principles/](org-principles/org-principles.corpus-schema.md) is an organisation's principles: a corpus
   with one type, `principles`, and three records.
-- [fernlog/](fernlog/corpus-schema.md) is a project corpus for a made-up tool. It names two
+- [fernlog/](fernlog/fernlog.corpus-schema.md) is a project corpus for a made-up tool. It names two
   corpora:
   - It extends `claims`, the [claims profile](../profiles/claims/README.md), by its package name,
     `@osdlc/corpus-profile-claims`, for its types. Its `package.json` installs the profile from
