@@ -164,7 +164,9 @@ yet, and names it.
 A workspace of packages that hold no code, such as Markdown and JSON Schema
 files, sets `ts-checks: false` and lists its package folders in
 `package-globs`, for example `profiles/* corpora/*`. It then needs no
-`package-checks.json`, and `package-checks` only to stage a new package.
+`package-checks.json`, and `package-checks` only to stage a new package. The
+pack job fails when `ts-checks` is false and `package-globs` is empty, and
+when any one glob matches no package folder.
 
 ## Versioning
 
