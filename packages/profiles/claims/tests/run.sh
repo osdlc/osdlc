@@ -9,7 +9,8 @@
 # - expected-warning.txt: a known gap that the validator only warns about. It
 #   must exit 0 and print this text.
 #
-# For each case the script copies the example corpus, adds the record, and runs
+# For each case the script copies the example corpus, adds the case's files over it
+# (a case may replace the root file, as evidence-schema-file does), and runs
 # the validator. The example extends the profile by the path ../corpus, so the
 # profile's corpus is copied beside the cases.
 #
