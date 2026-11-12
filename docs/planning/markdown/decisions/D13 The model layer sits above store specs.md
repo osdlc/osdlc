@@ -27,6 +27,6 @@ We don't build another store, or a general binding layer, until a second store i
 
 The intent and sdlc packs generate one profile for now, `@osdlc/corpus-profile-sdlc`, with both
 packs' kinds. A separate intent profile splits out later, if a consumer needs the intent kinds
-alone. The profile lives in osdlc/markdown at `profiles/sdlc/`, because it is shared now and dev is
-private. The generator stays in dev until model-schema and the packs move to a public repo (task
-62).
+alone. The profile lives in osdlc/models at `profiles/sdlc/`, because it is shared now and dev is
+private (decision D17). The generator stays in dev until model-schema and the packs move to
+osdlc/models (task 62).

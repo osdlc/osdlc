@@ -10,8 +10,9 @@ after:
   - "[65 Leak check](65%20Leak%20check.md)"
   - "[59 Trusted publishing](59%20Trusted%20publishing.md)"
   - "[61 Publish sdlc](61%20Publish%20sdlc.md)"
+  - "[78 Models repo setup](78%20Models%20repo%20setup.md)"
 ---
 
-Publish `@osdlc/corpus-sdlc-starter` to npm. Owner work: merging the Version Packages pull request
-publishes it. Its `package.json` depends on `@osdlc/corpus-profile-sdlc`, so that is published
-first. After 63, 65, 59 and 61.
+Publish `@osdlc/corpus-sdlc-starter` to npm from `corpora/sdlc-starter/` in osdlc/models. Owner
+work: merging the Version Packages pull request there publishes it. Its `package.json` depends on `@osdlc/corpus-profile-sdlc`, so that is published
+first. After 63, 65, 59, 61 and 78.

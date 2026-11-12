@@ -17,8 +17,9 @@ open: a proposition's object can be any JSON value, and consumers add their own 
 the downstream review in [osdlc/markdown#8](https://github.com/osdlc/markdown/issues/8). This task
 adds the profile wrapper, a corpus with only types, as the package
 `@osdlc/corpus-profile-claims`, versioned. The package is built at `profiles/claims/` as 0.1.0 in
-[#15](https://github.com/osdlc/markdown/pull/15), and is not published. The claims example extends
-it by path. Publishing it from this repo still needs `profiles/*` added to the workspace. The
+[#15](https://github.com/osdlc/markdown/pull/15), and is not published. Task 78 moves it to osdlc/models
+before its first publish. The claims example extends
+it by path. It publishes from osdlc/models (decision D17). The
 owner then stages the npm name (task 59) and publishes it (task 60). The release setup from
 [#10](https://github.com/osdlc/markdown/pull/10) has merged. Corpora then list it by package name
 under `extends` in their root file and use `x-extends` instead of holding full copies.

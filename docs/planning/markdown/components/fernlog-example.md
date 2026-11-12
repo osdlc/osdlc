@@ -9,6 +9,7 @@ repo_target: "[osdlc/markdown](../repos/osdlc-markdown.md)"
 path_target: examples/fernlog
 tasks:
   - "[35 Example pair](../tasks/35%20Example%20pair.md)"
+  - "[79 Markdown after the move](../tasks/79%20Markdown%20after%20the%20move.md)"
 links:
   - "[osdlc/markdown#16](https://github.com/osdlc/markdown/pull/16)"
 implements_new:
@@ -23,7 +24,7 @@ edge_notes:
     note: A valid level-2 corpus.
   - edge: extends_new
     to: "[corpus-profile-claims](corpus-profile-claims.md)"
-    note: By the package name, installed with a file dependency on profiles/claims.
+    note: By the package name, installed with a file dependency on profiles/claims. Task 79 switches it to npm.
   - edge: reads_new
     to: "[org-principles-example](org-principles-example.md)"
     note: "Under references: as org (D15), by the path ../org-principles."

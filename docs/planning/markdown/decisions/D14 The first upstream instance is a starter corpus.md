@@ -5,7 +5,7 @@ decided: "2026-11-11"
 ---
 
 The first upstream corpus with records is a starter corpus, `@osdlc/corpus-sdlc-starter`, in
-osdlc/markdown at `corpora/sdlc-starter/`. It uses the sdlc profile's types and holds principles and
+osdlc/models at `corpora/sdlc-starter/` (decision D17). It uses the sdlc profile's types and holds principles and
 standards that any project can reference and cite. A work repo names it under `references` with the
 prefix `osdlc`, syncs it into `_references/osdlc/` and cites its records by id (decision D15).
 

@@ -9,6 +9,7 @@ repo_target: "[osdlc/markdown](../repos/osdlc-markdown.md)"
 path_target: examples/work
 tasks:
   - "[67 Work example](../tasks/67%20Work%20example.md)"
+  - "[79 Markdown after the move](../tasks/79%20Markdown%20after%20the%20move.md)"
 implements_new:
   - "[corpus-schema-spec](corpus-schema-spec.md)"
 extends_new:

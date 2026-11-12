@@ -10,6 +10,7 @@ tasks:
   - "[66 Publish starter](../tasks/66%20Publish%20starter.md)"
   - "[68 Work cites starter](../tasks/68%20Work%20cites%20starter.md)"
   - "[64 Starter content](../tasks/64%20Starter%20content.md)"
+  - "[79 Markdown after the move](../tasks/79%20Markdown%20after%20the%20move.md)"
 ---
 
 A work repo installs an upstream corpus with records, the starter corpus, from npm. It keeps a
