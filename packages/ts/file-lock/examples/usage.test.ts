@@ -16,18 +16,24 @@ import {
   MARKER_STALE_MS,
   NotALockError,
   pidAlive,
+  processStartedAt,
   releaseLock,
+  sameProcess,
   touchLock,
   untouchedFor,
   updateLock,
   withLock,
   type ClaimOptions,
   type HeldLock,
+  type Holder,
   type HolderGoneOptions,
   type LockClaim,
   type LockContent,
   type LockOptions,
   type NotALockKind,
+  type ProcessStartOptions,
+  type PsRunner,
+  type SameProcessOptions,
   type SectionHolder,
   type StaleRule,
 } from '@osdlc/file-lock'
@@ -136,4 +142,37 @@ test('something other than a lock file at the path is reported, not retried', ()
     kind = err.kind
   }
   expect(kind).toBe('directory')
+})
+
+test('a holder recorded with its start time, so a reused pid does not keep the lock', () => {
+  type Owner = { pid: number; startedAt: number | null }
+  const lock = join(dir, 'owner.lock')
+  const me: Owner = { pid: process.pid, startedAt: processStartedAt(process.pid) }
+  const holders = (o: Partial<Owner>): Holder[] => [
+    { pid: o.pid ?? 0, startedAt: o.startedAt ?? undefined },
+  ]
+  const claim = claimLock<Partial<Owner>>(lock, me, { isStale: holderGone(holders) })
+  if (!claim.ok) throw new Error('expected a free lock')
+
+  // The same pid with another start time is another process: the lock is stale.
+  const reused: HeldLock<Partial<Owner>> = {
+    content: { pid: process.pid, startedAt: 1 },
+    mtimeMs: 0,
+    raw: '',
+  }
+  expect(holderGone(holders)(reused)).toBe(process.platform === 'win32' ? false : true)
+  expect(releaseLock(lock, claim.token)).toBe(true)
+})
+
+test('start times read through your own ps, as other tools record them', () => {
+  // A ps run elsewhere: here it prints a fixed start time, in UTC and the C locale.
+  const ps: PsRunner = () => 'Sun Nov  1 08:30:00 2026\n'
+  const options: ProcessStartOptions = { platform: 'darwin', ps }
+  expect(processStartedAt(4242, options)).toBe(Date.UTC(2026, 10, 1, 8, 30, 0))
+
+  const same: SameProcessOptions = { ...options, alive: () => true }
+  expect(sameProcess(4242, '2026-11-01T08:30:00Z', same)).toBe(true)
+  // `ps -o lstart` text a Los Angeles process wrote: the same moment, in its zone.
+  expect(sameProcess(4242, 'Sun Nov  1 00:30:00 2026', same)).toBe(true)
+  expect(sameProcess(4242, '2026-11-01T09:30:00Z', same)).toBe(false)
 })

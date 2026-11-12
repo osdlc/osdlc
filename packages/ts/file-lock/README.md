@@ -1,7 +1,8 @@
 # @osdlc/file-lock
 
 Cross-process exclusive file locks for Node.js. No dependencies beyond Node's
-own `fs` and `crypto`.
+own `fs`, `crypto` and, to read a process's start time where `/proc` cannot,
+`child_process`.
 
 There are two shapes, built on one mechanism:
 
@@ -159,15 +160,64 @@ its `kind`.
 
 `isStale` is any function of a `HeldLock`. Two are ready-made:
 
-- `holderGone(pids, { alive? })`: stale once no pid that `pids` reads from the
-  content is alive. A lock whose content cannot be parsed is never judged
-  gone by this rule. A recycled pid keeps the lock held; compare a start time
-  in your own rule if that matters. `alive` defaults to `pidAlive(pid)`,
-  which sends signal 0 and counts `EPERM` (another user's process) as alive.
-  `HolderGoneOptions` is its options type.
+- `holderGone(pids, { alive?, startedAt? })`: stale once no holder that `pids`
+  reads from the content is alive. A lock whose content cannot be parsed is
+  never judged gone by this rule. `alive` defaults to `pidAlive(pid)`, which
+  sends signal 0 and counts `EPERM` (another user's process) as alive.
+  `HolderGoneOptions` is its options type. A pid can be recycled by a later
+  process, which would keep the lock held: record the holder's start time and
+  have `pids` return `{ pid, startedAt }` entries (the `Holder` type). Such a
+  holder counts as alive only while `sameProcess` says so; see
+  [Process start times](#process-start-times).
 - `untouchedFor(ms, now?)`: stale once the lock was not written or touched for
   more than `ms`. A live holder that outlasts `ms` without touching loses the
   lock, so keep `ms` far above the longest hold.
+
+## Process start times
+
+A pid only names a process until it exits; then the OS can give it to an
+unrelated one. Record when the holder started, and compare:
+
+```ts
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+import { claimLock, holderGone, processStartedAt, releaseLock, sameProcess } from '@osdlc/file-lock'
+
+type Owner = { pid: number; startedAt: number | null }
+
+const dir = mkdtempSync(join(tmpdir(), 'owner-'))
+const lock = join(dir, 'job.lock')
+const me: Owner = { pid: process.pid, startedAt: processStartedAt(process.pid) }
+// A later process that reuses this pid started later, so it does not hold the lock.
+const isStale = holderGone<Owner>((o) => [{ pid: o.pid, startedAt: o.startedAt ?? undefined }])
+
+const claim = claimLock(lock, me, { isStale })
+if (claim.ok) releaseLock(lock, claim.token)
+rmSync(dir, { recursive: true, force: true })
+
+// Start times other tools record work too: ISO time, epoch seconds, or `ps -o lstart` text.
+sameProcess(process.pid, 'Sun Nov  1 01:30:00 2026')
+```
+
+- `processStartedAt(pid, options?)`: when the process started, in ms since
+  the epoch, rounded down to a whole second; null when there is no such
+  process or its start time cannot be read. On Linux it reads `/proc`; on
+  macOS it runs `ps` in UTC and the C locale. It never reads clock text in the
+  local zone or language. `ProcessStartOptions` is its options type: replace
+  the `ps` call (a `PsRunner`), the platform or the `/proc` root.
+- `sameProcess(pid, startedAt, options?)`: false only when the pid is gone or
+  is known to have started at another time. When either start time cannot be
+  read, true: the owner cannot be ruled out. `startedAt` may be ms or seconds
+  since the epoch, an ISO-8601 time with a zone, or what `ps -o lstart`
+  printed in the C locale in any time zone, which matches when it is the real
+  start time in some zone. So the writer's zone need not be known, and the
+  repeated hour of a daylight-saving change cannot make a live owner look
+  gone. `SameProcessOptions` adds the `alive` and `startedAt` probes.
+
+The approach follows `@rushstack/node-core-library`'s `LockFile`, whose
+start-time helpers are internal there.
 
 ## The short section
 
@@ -273,6 +323,7 @@ withLock(`${path}.lock`, () => {
 | Lock never exists empty or half written | yes | yes (a directory) | yes |
 | Holder recorded in the lock | yes | no | no |
 | Stale when the holder process is gone | yes (`holderGone`) | no | yes (the kernel drops it) |
+| Tells a reused pid from its holder | yes (`sameProcess`) | no | yes |
 | Stale when untouched for a while | yes (`untouchedFor`) | yes | no |
 | Release refuses to delete another holder's lock | yes (token) | no | yes |
 | Shared (reader) locks | no | no | yes |
@@ -292,7 +343,8 @@ experimental export.
 
 The experimental exports:
 
-- none
+`processStartedAt`, `sameProcess`, `ProcessStartOptions`, `SameProcessOptions`,
+`PsRunner` and `Holder`.
 
 ## Runtimes and platforms
 
@@ -300,7 +352,8 @@ Node.js 22 or later, ESM only. Bun works too, through the compiled `dist/`.
 The tests run on Linux and macOS. Windows is not tested: `pidAlive` relies on
 signal 0, the takeover relies on hard links and ctime, and Node has no
 `O_NOFOLLOW` there, so a symlink swapped in at the lock path between the
-`lstat` check and the open is followed.
+`lstat` check and the open is followed. `processStartedAt` returns null on
+Windows, so `sameProcess` falls back to `pidAlive` there.
 
 ## Licence
 

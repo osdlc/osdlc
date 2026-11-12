@@ -17,5 +17,12 @@ export {
   type StaleRule,
 } from './held.ts'
 export { NotALockError, type NotALockKind } from './lock-file.ts'
-export { holderGone, pidAlive, untouchedFor, type HolderGoneOptions } from './rules.ts'
+export {
+  processStartedAt,
+  sameProcess,
+  type ProcessStartOptions,
+  type PsRunner,
+  type SameProcessOptions,
+} from './process-start.ts'
+export { holderGone, pidAlive, untouchedFor, type Holder, type HolderGoneOptions } from './rules.ts'
 export { LockTimeoutError, withLock, type LockOptions, type SectionHolder } from './section.ts'
