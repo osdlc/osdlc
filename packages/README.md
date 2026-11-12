@@ -68,6 +68,10 @@ The libraries change together: the shared TypeScript and Prettier configs set
 the rules for the others. `command-seam` links both through this workspace,
 so a config change here runs against its build in CI.
 
+A library that only one product area uses can live under `solutions/<name>/`
+instead, and move here when a second one uses it
+([D-SM4K](../docs/decisions/D-SM4K-markdown-solution.md)).
+
 ## Library families
 
 A family is a set of libraries, one per language, that do the same job, such
