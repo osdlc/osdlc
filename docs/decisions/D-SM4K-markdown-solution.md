@@ -12,31 +12,39 @@ Accepted 2026-11-12.
   (its decision D-0001, "Placement and promotion").
 - **Placement follows who uses a thing, not what kind of thing it is.**
 
-  | Place                  | What goes there                                    |
-  | ---------------------- | -------------------------------------------------- |
-  | `solutions/<s>/`       | What only that solution uses, and its planning     |
-  | `packages/<language>/` | A library that two or more solutions use           |
-  | Its own repository     | A library that is near 1.0 and releases on its own |
+  | Place                  | What goes there                                                 |
+  | ---------------------- | --------------------------------------------------------------- |
+  | `solutions/<s>/`       | What only that solution uses, and its planning                  |
+  | `packages/<language>/` | A library that two or more solutions, or osdlc's own tools, use |
+  | Its own repository     | A library that is near 1.0 and releases on its own              |
 
-- **The libraries already in `packages/` stay there.** That covers
-  `markdown-link`, `markdown-tags`, `markdown-contract`, `markdown-render`,
-  `markdown-render-vue`, `markdown-vault-astro`, `markdown-corpus`,
-  `markdown-relink`, `markdown-vault-fs`, `corpus-schema` and the parts they
-  share with other libraries, such as `frontmatter-lossless` and
-  `yaml-splice`. The sdlc product will use them, so they are shared.
-- **`solutions/markdown/` holds the rest:** the ecosystem's plan and
-  architecture (`docs/` and `docs/planning/`), packages that only the markdown
-  solution uses, example corpora, and the tools that read the plan. A package
-  there moves to `packages/` when something outside the solution imports it.
+- **A library that only the markdown solution uses moves to
+  `solutions/markdown/packages/<language>/`.** That covers `markdown-link`,
+  `markdown-tags`, `markdown-contract`, `markdown-render`,
+  `markdown-render-vue`, `markdown-vault-astro` and `corpus-schema`, and the
+  crates `markdown-corpus`, `markdown-relink`, `markdown-vault-fs`, `vfs-walk`,
+  `vfs-seam` and `slug-collate`. A package moves up to `packages/` when
+  something outside the solution imports it. It is not moved up ahead of that.
+- **A library that other libraries or osdlc's own tools use stays in
+  `packages/`.** `frontmatter-lossless`, `gfm-table`, `gfm-pipe-table`,
+  `yaml-splice`, `etag-write` and `path-guard` stay: `config-layers` and
+  `detect-harness` depend on them. So do `cli-tool`, `command-seam` and the
+  rest of the tool libraries.
+- **`solutions/markdown/` also holds** the conformance suites and specs of its
+  libraries, the ecosystem's plan and architecture, example corpora, and the
+  tools that read the plan.
 - **A folder is not a boundary for the build.** Solution packages are members
   of the same workspace, so `workspace:` ranges resolve across the repository.
   A published name does not change when its folder moves.
-- **`corpus-schema` releases from here.** The copy in `packages/ts/` is the
-  source. The copy in osdlc/markdown is retired once its open work is brought
-  over.
-- **osdlc/models folds in too.** Where its profiles, packs and starter corpora
-  go inside this repository is not decided yet.
+- **`corpus-schema` releases from here.** This repository's copy is the
+  source, and its npm publisher does not change. The copy in osdlc/markdown is
+  retired once its open work is brought over.
+- **osdlc/models folds in too.** The proposal is a second solution,
+  `solutions/models/`, for model-schema, the packs, the profiles and the
+  starter corpus. That is not decided yet.
 - **`markdown-store` stays in sksizer/rust-ontogen for now.**
+- **The sdlc CLI, the plugin libraries and the skillwright and tradecraft
+  crates stay where they are for now.**
 
 ## Why
 
@@ -50,14 +58,18 @@ one repository and a bump in another.
 The split had already cost something with one package moved:
 
 - `corpus-schema` was published at 0.2.1 from here while osdlc/markdown stayed
-  at 0.2.0.
+  at 0.2.0 and built 0.3.0. There were two live copies.
 - Its next release waited on moving the npm publisher.
-- osdlc/markdown's CI pinned this repository's workflows by commit.
+- osdlc/markdown's CI pinned this repository's workflows by commit, and the
+  release workflow needed new inputs for packages with no code
+  ([#785](https://github.com/osdlc/osdlc/pull/785)).
 
 Moving the rest would have needed a rule that some markdown libraries stay
-here, because `cli-tool`, `config-layers` and `detect-harness` depend on
-`gfm-table`, `yaml-splice` and `frontmatter-lossless`, while
-`markdown-contract` and `markdown-vault-astro` depend on `cli-tool`.
+here, because `config-layers` and `detect-harness` depend on `gfm-table`,
+`yaml-splice` and `frontmatter-lossless`, while `markdown-contract` and
+`markdown-vault-astro` depend on `cli-tool`. In one repository that rule is
+not needed, and a change to `cli-tool` or `frontmatter-lossless` is tested
+against the markdown packages in the same pull request.
 
 ## Options rejected
 
@@ -67,8 +79,9 @@ here, because `cli-tool`, `config-layers` and `detect-harness` depend on
 - **Keep the code here and the plan in osdlc/markdown.** The plan would sit
   apart from the code it plans, and could not be run by the sdlc in this
   repository.
-- **Put every markdown library under `solutions/markdown/`.** They would move
-  back to `packages/` as soon as sdlc imports them.
+- **Leave every markdown library flat in `packages/`.** The sdlc product will
+  import some of them, but placing them by a use that has not happened yet is
+  a guess. They move up when it does.
 
 ## When to look again
 
@@ -78,15 +91,38 @@ this repository is its source.
 
 ## Consequences
 
-- osdlc/markdown's content comes here: the plan and its records, the
-  architecture doc, the corpus-schema guide, the claims example, the explorer
-  and the diagram scripts. Its open pull requests are brought over or closed.
-  The `corpus-schema` 0.3.0 work lands on `packages/ts/corpus-schema` here.
-- The packages still in sksizer/dev come here directly: `markdown-vault` and
-  `vault-graph-core` (as `markdown-corpus`), `markdown-vault-query`,
-  `markdown-editor` and `markdown-ui`. Each goes to `solutions/markdown/` or
-  `packages/` by the rule above.
-- The workspace, the package checks and CI learn the `solutions/` paths when
-  the first package lands there.
-- osdlc/markdown and osdlc/models are archived once they are empty, with a
-  README that points here.
+The work, in order:
+
+1. **Tooling, with no moves.** CI must give the same results before and
+   after.
+   - pnpm stays the package manager. Its workspace globs gain the solution
+     folders.
+   - The Cargo workspace root moves from `packages/rust/` to the repository
+     root, because members must sit under the root. release-plz moves with
+     it.
+   - `package-checks` takes a list of package folders, not one, and the
+     release's "not on npm yet" check reads the same list.
+   - moon, as sksizer/dev has: `.moon/workspace.yml` enrols each solution's
+     folders, and task presets for TypeScript libraries and crates call each
+     package's own scripts. CI runs the affected projects.
+2. **Move the markdown libraries** into `solutions/markdown/` with `git mv`.
+   History is kept. npm and crates.io names do not change, and the trusted
+   publishers stay on osdlc/osdlc.
+3. **Bring osdlc/markdown's content here**, keeping its history: the spec and
+   conformance suite, the examples, the plan and its records, the
+   architecture doc and the explorer.
+4. **Re-apply the `corpus-schema` 0.3.0 work**
+   ([osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12)) onto this
+   repository's copy and release it from here. The two copies have the same
+   `src/` at 0.2.1.
+5. **The models:** the profiles and the starter corpus, then model-schema and
+   the packs from sksizer/dev, once their place is decided.
+6. **The packages still in sksizer/dev** come here directly: `markdown-vault`
+   and `vault-graph-core` (as `markdown-corpus`), `markdown-vault-query`,
+   `markdown-editor` and `markdown-ui`.
+7. **The owner archives osdlc/markdown and osdlc/models** once they are
+   empty, with a README that points here.
+
+One thing to settle in step 2: the sdlc plugin pack in this repository already
+installs `@osdlc/markdown-link`, from a vendored 0.1.0 tarball. If that counts
+as osdlc's own tools using it, `markdown-link` stays in `packages/`.
