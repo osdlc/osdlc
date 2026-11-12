@@ -36,14 +36,15 @@ for case_dir in "$here"/cases/*/; do
   status=0
   out=$(validate "$corpus" 2>&1) || status=$?
 
+  # The copy keeps example.corpus-schema.md, so the corpus is named example.
   if [ -f "$case_dir/expected-error.txt" ]; then
     expected=$(cat "$case_dir/expected-error.txt")
     want_status=1
-    summary="$name: 1 error(s)"
+    summary="example: 1 error(s)"
   else
     expected=$(cat "$case_dir/expected-warning.txt")
     want_status=0
-    summary="ok: $name:"
+    summary="ok: example:"
   fi
 
   if [ "$status" -eq "$want_status" ] &&
