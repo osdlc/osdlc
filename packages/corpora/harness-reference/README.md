@@ -24,9 +24,11 @@ corpus.
 
 ## Probes
 
-A probe is a run anyone can repeat: `probes/<id>/probe.md`, plus an optional `fixture/` folder of
-the files the run needs. Probes sit outside `corpus/`, so a fixture's own Markdown is never read as
-a record. A run is a study result that links its method. `probes/` is not validated.
+A probe is a run anyone can repeat. New probes are method records,
+`corpus/methods/<Name>/<Name>.md`, with a `fixture/` folder of the files the run needs beside the
+record. The validator reads only the record, not the fixture. A run is a study result that links
+its method. The older probes in `probes/<id>/probe.md` are moving into `corpus/methods/`;
+`probes/` is not validated.
 
 ## Checking it
 
