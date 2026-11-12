@@ -135,14 +135,16 @@ move; merged PRs drop off.
 
 | Order | PR | What | Why this order | Status |
 | --- | --- | --- | --- | --- |
-| 1 | [#764](https://github.com/osdlc/osdlc/pull/764) | feat(gh-actions): run any skill from a PR comment, read-only or with `--apply` | Next to be ready; nothing else waits on you | draft: needs your choice of how `--apply` changes land, the `pr-agent` environment and the token fix, then the gate reruns; up to date with main; clean and green |
+| 1 | [#785](https://github.com/osdlc/osdlc/pull/785) | ts-packages-release: inputs for packages with no code | Small shared-CI change, ready now; the only PR waiting on your review | waiting on your review since 01:47 UTC; clean and green |
+| 2 | [#764](https://github.com/osdlc/osdlc/pull/764) | feat(gh-actions): run any skill from a PR comment, read-only or with `--apply` | Next to be ready, after 785 | draft: needs your choice of how `--apply` changes land, the `pr-agent` environment and the token fix, then the gate reruns; up to date with main; clean and green |
 
 ## PR tracker
 
-Checked 2026-11-11 18:17 UTC. A periodic check refreshes this table and the graph.
+Checked 2026-11-12 02:17 UTC. A periodic check refreshes this table and the graph.
 
 | PR   | Title                                    | State | Review | Merge          | Blocker                                                              | Plan                     |
 | ---- | ---------------------------------------- | ----- | ------ | -------------- | -------------------------------------------------------------------- | ------------------------ |
+| [#785](https://github.com/osdlc/osdlc/pull/785) | ts-packages-release: inputs for packages with no code | open | none | clean; green | waiting on your review | related (shared-CI work; touches gh-actions/ts-packages) |
 | [#749](https://github.com/osdlc/osdlc/pull/749) | ci: shared reusable workflows for TypeScript package CI and release | merged | — | — | — | merged 2026-11-10 (shared-CI work) |
 | [#748](https://github.com/osdlc/osdlc/pull/748) | package-checks: move the package checks into @osdlc/package-checks | merged | — | — | — | merged 2026-11-09 |
 | [#747](https://github.com/osdlc/osdlc/pull/747) | ci: codex and cursor answer PR mentions | merged | — | — | — | merged 2026-11-10; next: live codex and cursor mentions (needs OPENAI_API_KEY, CURSOR_API_KEY) |
