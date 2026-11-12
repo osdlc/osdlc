@@ -25,10 +25,11 @@ before the app's own handlers see it.
 - **Permissions.** Your table of routes and what each needs, checked against the
   context and the grant.
 - **Server.** `serve` binds every address the config names, wraps your router in
-  the guard and returns a handle with the share links and `stop()`.
-- **Sharing runtime.** `SharingRuntime` applies a stored config, restarts the
-  server when it changes, rotates tokens and reports a status for a settings
-  page.
+  the guard and returns a handle with the share links, `replace_tokens()` and
+  `stop()`. Withdrawing a token closes the connections it opened at once.
+- **Sharing runtime.** `SharingRuntime` applies a stored config, rotates
+  tokens and reports a status for a settings page. It restarts the server
+  only when the listen setting or port changes.
 
 ## Who it is for
 
@@ -231,12 +232,14 @@ these in `ServeOptions`, or on a `GuardState` you build yourself:
   there can read the token. The port in the name only keeps two servers from
   overwriting each other's cookie. Do not run untrusted servers on the same
   address as a shared app, above all with admin access on.
-- `stop()` ends connections that are still open, such as a stream or a
-  WebSocket. After a grace period, every further read and write on them fails.
-  `SharingRuntime` stops the server when sharing or admin is turned off or a
-  token is rotated. If you put the guard in your own server, an open
-  connection keeps running until it closes. Close long-lived connections
-  yourself when the grant they were opened with is withdrawn.
+- Withdrawing a token closes what it opened. `ServerHandle::replace_tokens`
+  hands the running server a new set of tokens. Every connection a withdrawn
+  token let in, a stream or a WebSocket included, fails all further reads and
+  writes at once. Connections of the tokens that stay are left open.
+  `SharingRuntime` does this when sharing or admin is turned off or a token is
+  rotated. `stop()` closes every connection after a grace period. If you put
+  the guard in your own server, `GuardState::replace_tokens` changes the
+  tokens, but closing open connections is up to you.
 - On Windows, token files get no owner-only mode. Keep the token directory in
   the user's own profile (for example under `%LOCALAPPDATA%`), where the
   default permissions keep other users out.

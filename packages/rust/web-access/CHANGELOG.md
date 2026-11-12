@@ -39,6 +39,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `web_access_admin_<port>`, so opening a full or read link no longer replaces
   it. The guard reads both cookies, and the highest grant wins.
   `is_cookie_name` matches both names.
+- `ServerHandle::replace_tokens` and `GuardState::replace_tokens`: a running
+  server takes a new set of tokens. Under `serve`, every connection a
+  withdrawn token let in closes at once, streams and upgraded WebSockets
+  included, and the other connections stay open.
+- `guard::ConnectionCut`, a handler argument that fires when the request's
+  connection is closed that way or by `stop()`.
 
 ### Changed
 
@@ -48,6 +54,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - An admin token's share link sets the `web_access_admin_<port>` cookie, not
   `web_access_<port>`. An admin token already in `web_access_<port>` still
   works.
+- Breaking: `ServerHandle::share_urls` returns a `Vec<String>`, built from the
+  tokens the server holds now. It and `share_urls_for` list, for a wildcard
+  bind, the addresses the machine has now, not those it had at start.
+- `SharingRuntime` restarts the server only when the listen setting or port
+  changes. Rotating a token, or turning admin on or off, hands the running
+  server its new tokens: the withdrawn token's connections close at once, and
+  the others' stay open, on the same port (also with `port: 0`). Turning
+  sharing off closes every connection opened with a token at once, before the
+  stop's grace period.
 
 ## [0.5.0](https://github.com/osdlc/osdlc/compare/web-access/v0.4.1...web-access/v0.5.0) - 2026-11-10
 

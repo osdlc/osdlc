@@ -323,7 +323,7 @@ async fn share() -> Result<(), Box<dyn std::error::Error>> {
 | `Listen` | Binds | Share links |
 |---|---|---|
 | `Loopback` | `127.0.0.1` | `127.0.0.1` only |
-| `AllInterfaces` | `0.0.0.0` | one per non-loopback IPv4 address the machine had when the server started |
+| `AllInterfaces` | `0.0.0.0` | one per non-loopback IPv4 address the machine has now |
 | `Interfaces(vec![..])` | exactly those addresses | one per address |
 
 What `serve` refuses:
@@ -377,6 +377,45 @@ belongs to its handler. The handler sees the error the next time it reads or
 writes, and then closes the socket. A handler waiting on a read is woken to
 see it. See
 [Security model](#security-model).
+
+`replace_tokens(tokens)` changes the tokens of a running server. The server
+keeps its addresses and its share links' form; `share_urls()` carries the new
+share token. Every connection a token that is gone let in fails all further
+reads and writes at once, streams and WebSockets included. A token that stays
+with the same grant keeps its connections open, and so does a connection let
+in without a token. The same token under another grant counts as gone.
+
+```rust
+use web_access::{ServerHandle, Tokens, token::Token};
+
+/// The server held a full and an admin token. From now on it holds the full
+/// one only: admin WebSockets close now, full ones stay open.
+fn withdraw_admin(server: &ServerHandle, full: Token) {
+    server.replace_tokens(Tokens::full_only(full));
+}
+```
+
+A handler that runs work apart from its socket, such as a terminal session it
+feeds, can take a `ConnectionCut` argument and wait on it. It fires when the
+connection is closed this way, or by `stop()`, and resolves too once the
+connection is gone.
+
+```rust
+use axum::extract::Request;
+use axum::response::Response;
+use web_access::guard::ConnectionCut;
+
+async fn terminal(cut: ConnectionCut, mut req: Request) -> Response {
+    let upgrade = hyper::upgrade::on(&mut req);
+    tokio::spawn(async move {
+        let _socket = upgrade.await;
+        // ... attach the session and pump the socket here ...
+        cut.wait().await;
+        // ... detach the session ...
+    });
+    Response::default() // a real handler answers 101 Switching Protocols
+}
+```
 
 ## Using the guard without `serve`
 
@@ -469,10 +508,15 @@ What the settings page shows comes from `WebAccessStatus`:
 }
 ```
 
-- `set` saves first, then restarts the server. If the start fails (say the port
-  is taken), the setting stays saved, `running` is false and `error` says why.
-- `rotate(grant)` mints a new token for that grant only. The other grants' links
-  keep working.
+- `set` saves first, then makes the server match. A new listen setting or port
+  restarts it. Otherwise the server keeps running and takes the new tokens in
+  place, so turning admin off closes the admin connections at once and leaves
+  the others open. Turning sharing off closes every connection opened with a
+  token at once, then stops the server. If a start fails (say the port is
+  taken), the setting stays saved, `running` is false and `error` says why.
+- `rotate(grant)` mints a new token for that grant only. The old token's open
+  connections close at once. The other grants' links and connections keep
+  working, on the same port.
 - Turning `admin` off deletes the admin token file, so turning it on again makes
   a new link.
 - `status.without_tokens()` is the copy to show a remote peer: the links lose
@@ -505,7 +549,7 @@ What it does not protect against, and what to do instead:
 |---|---|---|
 | Plain HTTP | Someone who can read the network traffic can read the token. | Use it only on networks you trust, or behind TLS (for example a VPN or Tailscale Serve). |
 | Cookies are not kept apart by port | Browsers send a host's cookies to every port on it. Another server on the same address can read `web_access_20015`. The port in the name only stops two servers overwriting each other's cookie. | Do not run untrusted servers on the same address as a shared app, especially with admin on. |
-| Open connections survive a revoke in your own server | `serve`'s `stop()` ends open connections: their reads and writes fail. `SharingRuntime` stops the server when sharing or admin is turned off or a token is rotated. If you put the guard in your own server, an open WebSocket or stream keeps going until it closes. | Close long-lived connections yourself when the grant they were opened with is withdrawn. |
+| Open connections survive a revoke in your own server | Under `serve`, `replace_tokens` closes the connections of a withdrawn token at once, and `SharingRuntime` uses it when sharing or admin is turned off or a token is rotated. If you put the guard in your own server, an open WebSocket or stream keeps going until it closes. | Close long-lived connections yourself when the grant they were opened with is withdrawn. |
 | Reverse proxies | Behind a proxy on the same machine, every request comes from loopback, so every request is `WebLocal`. | Do not put a proxy in front, or turn `loopback_open` off and do not trust `WebLocal`. A TLS proxy on another machine works with `public_hosts`. |
 | Public names are client-chosen | The `Host` header is the client's. A peer that reaches the port directly can send a public name, so `admin_public_only` does not prove a request came through the proxy. | Treat the admin token as the control. Keep the port reachable only from the proxy where you can. |
 | Windows file permissions | Token files get no owner-only mode. | Keep the token directory in the user's profile, such as under `%LOCALAPPDATA%`. |
@@ -517,9 +561,10 @@ Report a vulnerability as [SECURITY.md](../SECURITY.md) says.
 
 **My old link stopped working after I switched networks.** With
 `Listen::AllInterfaces`, the server answers on any address the machine has, on
-its port. A new address is served within about two seconds. But the share
-links list only the addresses the machine had when the server started. Restart
-sharing (with `SharingRuntime::set`) to get links for the new address.
+its port. A new address is served within about two seconds, and
+`ServerHandle::share_urls` lists it from then on. `SharingRuntime::status`
+shows the links as of the last `set` or `rotate`; `set` the same config again
+to refresh them. That does not restart the server.
 
 **My app's own window gets 401.** Either give it a token, or let loopback in with
 `GuardPolicy { loopback_open: true }`. `serve` does that for you only when there
@@ -530,8 +575,8 @@ keep no cookies between visits. The header form (`x-web-access-token`) works for
 scripts; for people, open the link in the system browser.
 
 **How do I sign every device out?** Rotate the grant's token:
-`runtime.rotate(Grant::Full)`. That restarts the server, which also ends open
-streams and WebSockets. See the security model.
+`runtime.rotate(Grant::Full)`. The streams and WebSockets opened with the old
+token close at once; the other grants' stay open. See the security model.
 
 **Can I use my own header name?** Not yet. The header is `x-web-access-token`
 (`web_access::guard::TOKEN_HEADER`).
