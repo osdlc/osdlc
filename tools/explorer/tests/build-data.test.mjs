@@ -1,6 +1,6 @@
 // The checks in scripts/build-data.mjs. Each case copies docs/planning and the profile it extends,
 // breaks one rule, and expects the problem that names it.
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
@@ -104,6 +104,21 @@ describe('build-data', () => {
   it('passes on a missing phase from the validator', () => {
     const problems = problemsAfter(({ edit }) => edit('milestones/m-query.md', 'phase: store\n', ''))
     expect(problems).toContainEqual(expect.stringMatching(/milestones\/m-query\.md: phase: required/))
+  })
+
+  it('builds a corpus whose milestones have no phase, with no phase labels', () => {
+    const data = buildAfter(({ root }) => {
+      const dir = join(root, 'docs/planning/milestones')
+      for (const file of readdirSync(dir)) {
+        const path = join(dir, file)
+        const text = readFileSync(path, 'utf8')
+        writeFileSync(path, file === 'milestones.schema.md'
+          ? text.replace('required: [phase]\n', '').replace(/\n  phase:\n[\s\S]*?(?=\n  beeline:)/, '')
+          : text.replace(/^phase: .*\n/m, ''))
+      }
+    })
+    expect(data.problems).toEqual([])
+    expect(data.plan.phases).toEqual([])
   })
 
   it('reads the status labels from a profile schema in YAML', () => {

@@ -222,8 +222,9 @@ function buildPlan(corpus, problems, { refId, refs }) {
     return states.has('doing') || states.has('done') ? 'doing' : 'todo'
   }
   // The nearest schema that gives the field its values: a task's `status` comes from the profile.
+  // None when no schema in the chain has the field; the explorer then uses its default labels.
   const labels = (type, field) =>
-    schemas[type].find((s) => s.properties?.[field]?.oneOf).properties[field].oneOf.map((v) => ({ id: v.const, label: v.title }))
+    schemas[type].find((s) => s.properties?.[field]?.oneOf)?.properties[field].oneOf.map((v) => ({ id: v.const, label: v.title })) ?? []
 
   return {
     asOf: ofType.datasets.find((d) => d.id === 'plan')?.data.as_of,
