@@ -91,7 +91,7 @@ results sit beside it.
 
 ```text
 evidence/
-├── corpus-schema.md                the root file, and the corpus's front page
+├── evidence.corpus-schema.md       the root file, and the corpus's front page
 ├── README.md                       narrative: the validator ignores it
 ├── harnesses/
 │   ├── harnesses.schema.md         the type "harnesses" and its JSON Schema
@@ -107,7 +107,7 @@ evidence/
             └── counts.csv
 ```
 
-The root file, `corpus-schema.md`, marks the folder as a corpus. Its frontmatter holds the
+The root file, `<name>.corpus-schema.md`, marks the folder as a corpus. Its frontmatter holds the
 settings. Its body is the front page people see when they open the corpus.
 
 ```markdown
@@ -234,7 +234,7 @@ empty schema file makes an untyped type:
 
 ```text
 reading-list/
-├── corpus-schema.yaml          corpus-schema: 0
+├── reading-list.corpus-schema.yaml   corpus-schema: 0
 └── books/
     ├── books.schema.md         empty: an untyped type
     └── The Dispossessed.md
@@ -274,11 +274,13 @@ from here on, a corpus is a folder that holds a root file.
 
 ### The root file
 
-The root file is `corpus-schema.md`, `corpus-schema.yaml` or `corpus-schema.json`. The name must
-match exactly, case included, so a corpus is the same on every file system. A folder holds at most
-one root file.
+The root file is `<name>.corpus-schema.md`, `<name>.corpus-schema.yaml` or
+`<name>.corpus-schema.json`, where `<name>` is the corpus's name and matches `^[a-z0-9-]+$`. The
+suffix must match exactly, case included, so a corpus is the same on every file system. A bare
+`corpus-schema.md` is not a root file. A folder holds at most one root file. Type folders sit at the
+corpus root.
 
-In `corpus-schema.md` the settings are the YAML frontmatter, and the body is the corpus's front
+In the `.md` form the settings are the YAML frontmatter, and the body is the corpus's front
 page. The body may be empty. In the `.yaml` and `.json` forms the whole file is the settings. The
 settings must be a mapping.
 
@@ -664,7 +666,7 @@ The validator would check that the copy matches the pin.
 The org keeps a principles corpus, with a `principles` type. A project extends it:
 
 ```yaml
-# project/corpus-schema.yaml
+# project/project.corpus-schema.yaml
 corpus-schema: 0
 level: 2
 extends:
@@ -924,7 +926,7 @@ The evidence work comes first:
   `npx degit osdlc/markdown/profiles/claims/example <dir>`. It is in progress in a separate pull
   request.
 - harness-reference copies those types, switches to the npm package and renames its root file to
-  `corpus-schema.md`. Its capture command then writes study results.
+  `harness-reference.corpus-schema.md`. Its capture command then writes study results.
 - The evidence project keeps its records in the same format, checked by the validator.
 
 Then the spec grows:
@@ -952,7 +954,7 @@ And the code under it changes:
 
 Your vault is already a corpus at level 0, so in that sense it conforms with no changes. The
 validator does not check level 0, though. To check part of a vault, put a root file in a folder,
-such as `Data/reading-list/corpus-schema.md`, and add type folders under it. The spec suggests one
+such as `Data/reading-list/reading-list.corpus-schema.md`, and add type folders under it. The spec suggests one
 top-level `Data/` folder with one corpus per app or dataset.
 
 Obsidian keeps working on the files. `.obsidian/` is skipped, because paths that start with a dot
@@ -1099,7 +1101,7 @@ matches the pin, so it cannot quietly go stale.
 | Word           | Meaning                                                                                                                           |
 | -------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | corpus         | A folder of notes and the files they link to. In the spec, a corpus is a folder that holds a root file, with everything under it. |
-| root file      | `corpus-schema.md`, `.yaml` or `.json`. It marks a folder as a corpus and holds its settings.                                     |
+| root file      | `<name>.corpus-schema.md`, `.yaml` or `.json`. It marks a folder as a corpus and holds its settings.                                     |
 | type           | A folder that holds a schema file named after the folder. The type's name is the folder name.                                     |
 | record         | One `.md`, `.yaml` or `.json` file of a type. Its data is checked against the type's schema.                                      |
 | id             | A record's file name without its extension, such as `Claude Code`. Unique within its type.                                        |
