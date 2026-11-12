@@ -265,8 +265,7 @@ A contribution has `contributor` (an Agent with `name` and `agentType`), `activi
 ## The example
 
 [example/](example/) is a valid level-2 corpus. It extends the profile by the path `../corpus`. `uses` gives
-three of its type folders the profile's types with no schema files, and `study-results/` has a
-schema that holds only `x-extends`. The example is not part of the npm package.
+all four of its type folders the profile's types with no schema files. The example is not part of the npm package.
 
 It checks a claim about a made-up command line tool, fernlog: that version 2.3 reads its config
 file from `~/.config/fernlog/config.toml`. It also checks a narrower form of the same claim, for
