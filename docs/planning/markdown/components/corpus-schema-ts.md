@@ -38,6 +38,9 @@ tasks:
   - "[70 References](../tasks/70%20References.md)"
   - "[71 Uses](../tasks/71%20Uses.md)"
   - "[73 Identity and record files](../tasks/73%20Identity%20and%20record%20files.md)"
+  - "[81 Versions and lockfile](../tasks/81%20Versions%20and%20lockfile.md)"
+  - "[82 Install and update](../tasks/82%20Install%20and%20update.md)"
+  - "[83 Resolve from the cache](../tasks/83%20Resolve%20from%20the%20cache.md)"
 links:
   - "[osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9)"
   - "[osdlc/markdown#10](https://github.com/osdlc/markdown/pull/10)"

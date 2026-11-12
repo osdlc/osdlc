@@ -253,6 +253,21 @@
         77
       ],
       "source": "docs/planning/milestones/m-model-layer.md"
+    },
+    {
+      "id": "m-vault-install",
+      "title": "Vault install",
+      "goal": "A plain Obsidian vault extends a profile and references a corpus with no `package.json` and no `node_modules`. Packages install into a cache outside the vault, and a lockfile beside the root file pins them ([D18](../decisions/D18%20Vaults%20install%20corpora%20outside%20the%20vault.md)). It is not on the beeline and comes after corpus-schema 0.3.0.",
+      "status": "todo",
+      "phase": "store",
+      "beeline": false,
+      "tasks": [
+        81,
+        82,
+        83,
+        84
+      ],
+      "source": "docs/planning/milestones/m-vault-install.md"
     }
   ],
   "tasks": [
@@ -1486,6 +1501,62 @@
       "prs": [],
       "text": "Set up npm trusted publishing for the packages that publish from [osdlc/models](https://github.com/osdlc/models) (decision D17): `@osdlc/corpus-profile-sdlc` (task 49), `@osdlc/corpus-profile-claims` (task 23) and `@osdlc/corpus-sdlc-starter` (task 63). Stage each name once and point its trusted publisher at osdlc/models' release workflow. Owner work: it needs the npm account. After 78, which adds that workflow. Tasks 60, 61 and 66 publish after it.",
       "source": "docs/planning/tasks/80 Models publishers.md"
+    },
+    {
+      "id": 81,
+      "title": "Versions and lockfile",
+      "detail": "corpus-schema spec",
+      "status": "todo",
+      "milestone": "m-vault-install",
+      "type": "functional",
+      "after": [
+        36
+      ],
+      "prs": [],
+      "text": "Spec the vault install shape in [D18](../decisions/D18%20Vaults%20install%20corpora%20outside%20the%20vault.md). A package source in `extends` and `references` may carry a version range, such as `@acme/corpus-nutrition@^2.3`. The spec names the lockfile `corpus-schema.lock.yaml`, sets its format (per package: name, exact version, integrity hash, prefix) and says what it means. It also sets the resolution order: when a lockfile exists it wins, and `node_modules` is ignored. Add conformance cases for ranges, the lockfile and the order. After 36.",
+      "source": "docs/planning/tasks/81 Versions and lockfile.md"
+    },
+    {
+      "id": 82,
+      "title": "Install and update",
+      "detail": "corpus-schema",
+      "status": "todo",
+      "milestone": "m-vault-install",
+      "type": "functional",
+      "after": [
+        81
+      ],
+      "prs": [],
+      "text": "`corpus-schema install` fetches each package in the root file with pacote into a cache outside the vault, one folder per name and version. It checks the integrity hash and writes the lockfile. `corpus-schema update` moves each package to a newer version inside its range and rewrites the lockfile. The cache location per OS is an open point in D18. After 81.",
+      "source": "docs/planning/tasks/82 Install and update.md"
+    },
+    {
+      "id": 83,
+      "title": "Resolve from the cache",
+      "detail": "corpus-schema",
+      "status": "todo",
+      "milestone": "m-vault-install",
+      "type": "functional",
+      "after": [
+        82
+      ],
+      "prs": [],
+      "text": "`sync` and `validate` resolve `extends` and `references` from the cache when the lockfile is present, by the order task 81 sets. They need no network once the cache is warm. After 82.",
+      "source": "docs/planning/tasks/83 Resolve from the cache.md"
+    },
+    {
+      "id": 84,
+      "title": "Vault guide",
+      "detail": "docs",
+      "status": "todo",
+      "milestone": "m-vault-install",
+      "type": "functional",
+      "after": [
+        83
+      ],
+      "prs": [],
+      "text": "A guide to set up a plain Obsidian vault that extends a profile and references a corpus with no `package.json`: write the root file, run `corpus-schema install`, commit the lockfile, then run `sync` and `validate`. After 83.",
+      "source": "docs/planning/tasks/84 Vault guide.md"
     }
   ]
 }
