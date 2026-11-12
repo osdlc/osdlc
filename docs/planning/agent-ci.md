@@ -268,6 +268,18 @@ approved on 2026-11-08. Decisions:
   Follow-up from [#723](https://github.com/osdlc/osdlc/pull/723); fixed by
   [#741](https://github.com/osdlc/osdlc/pull/741), merged. It is the only other caller.
 
+- Project settings from the pull request load in the agent job. The PR
+  actions check out the PR head and run the harness there, so a pull
+  request's own `.claude/settings.json` (hooks included) applies while the
+  API keys are in the environment. Only the owner can trigger the actions
+  and forks are refused when changes are pushed, so today it is limited
+  to the owner's own pull requests, but it breaks the spec rule that a
+  pull request must not change the instructions that run with a secret.
+  Fix after [#764](https://github.com/osdlc/osdlc/pull/764): load project
+  settings from the default branch, or project settings without hooks
+  (`--setting-sources` or a settings override), and keep user settings
+  out (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`). See "Ambient configuration".
+
 ## PR process
 
 Every PR opens as a draft. Before it is marked ready for review it goes
@@ -502,6 +514,62 @@ The spec is `/craft:simplify` with edits allowed and `changes: patch`.
 | Mode | `cli` (later `sdk`) | `terminal` | `cli` |
 | Surface | none | Orca terminal you can attach to | none |
 | Outputs | reply comment; patch, applied to the PR branch by the push job | changed files left in the worktree for you to review | new branch and draft PR |
+
+### Ambient configuration
+
+"Ambient" means anything a run picks up that is in neither the spec nor
+the repository. By default a run gets none of it, so a spec behaves the
+same on every machine.
+
+| Source | Examples |
+| --- | --- |
+| User harness config | `~/.claude/settings.json` (hooks, permissions), user plugins, user MCP servers, `~/.claude/CLAUDE.md`; `~/.codex/config.toml`, the global `AGENTS.md`; `~/.cursor/cli-config.json` |
+| Environment | `ANTHROPIC_*` and `OPENAI_*` overrides, proxy variables, `BASH_ENV`, anything the shell exports |
+| Tool config | global git config (hooks, aliases, signing), shell rc files, npm and pnpm config |
+| Managed policy | Claude Code's managed settings. It is admin policy: it can't be switched off, only reported |
+
+The repository's own config (`.claude/`, `CLAUDE.md`, `AGENTS.md`) is not
+ambient; it has its own switch, `project`.
+
+How each harness is isolated (to confirm in harness-knowledge, beside the
+existing `config/config-dir-env` fact):
+
+- claude: `CLAUDE_CONFIG_DIR` pointed at an empty temporary folder;
+  `--setting-sources` to choose layers (`project` without `user`);
+  `--strict-mcp-config`; in `sdk` mode, the SDK's explicit setting
+  sources.
+- codex: `CODEX_HOME` pointed at a temporary folder; `-c` for single keys.
+- cursor: no known config-folder variable; fall back to a temporary
+  `HOME`, which also hides its login, so the key must come from the
+  environment. Unverified.
+- Any harness, from the host: start from an empty environment plus an
+  allowlist, `HOME` and `XDG_CONFIG_HOME` pointed at a temporary folder,
+  `GIT_CONFIG_GLOBAL=/dev/null`. A `container` host gives this for free.
+
+In the spec:
+
+```yaml
+run:
+  ambient: none # none | user | all; default none
+  # or per source:
+  # ambient:
+  #   user-settings: false
+  #   user-instructions: false
+  #   user-plugins: false
+  #   user-mcp: false
+  #   env: [PATH, LANG, TERM]   # allowlist; the rest is dropped
+  #   git-config: false
+  project: settings-from-default-branch # true | false | settings-from-default-branch | no-hooks
+```
+
+- Resolve decides how to enforce each item for this harness and host.
+  `strict` refuses the run when an item can't be isolated; `--explain`
+  lists what was isolated, how, and any managed policy still in force.
+- Defaults: `none` in CI. `none` in `terminal` mode on your machine too,
+  with `ambient: user` as one switch when you want your normal setup.
+- Ambient isolation is part of the execution context, set up in Provision
+  by the harness adapter (config folders, flags) and the host
+  (environment, `HOME`).
 
 ### Callers
 
