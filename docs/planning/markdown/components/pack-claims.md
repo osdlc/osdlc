@@ -2,7 +2,7 @@
 name: "@osdlc/pack-claims"
 kind: profile
 language: yaml
-layer: "[profiles](../layers/profiles.md)"
+layer: "[model](../layers/model.md)"
 states: [target]
 status: planned
 repo_target: "[osdlc/models](../repos/osdlc-models.md)"

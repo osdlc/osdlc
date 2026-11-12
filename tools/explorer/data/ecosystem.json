@@ -16,23 +16,28 @@
   "layers": [
     {
       "id": "apps",
-      "label": "8. Apps",
+      "label": "9. Apps",
       "summary": "Programs that use the layers below and keep only their own rules."
     },
     {
       "id": "render",
-      "label": "7. Render, edit, sites",
+      "label": "8. Render, edit, sites",
       "summary": "Showing notes to people: HTML rendering, the live editor, viewing chrome and site builds."
     },
     {
       "id": "query",
-      "label": "6. Query (later)",
+      "label": "7. Query (later)",
       "summary": "Reading a corpus as a database: loading records, queries, and JSON or SQLite builds."
     },
     {
       "id": "profiles",
-      "label": "5. Profiles",
-      "summary": "Shared, versioned sets of types that many corpora can use, next to their own types."
+      "label": "6. Profiles",
+      "summary": "Shared, versioned sets of types that many corpora can use, next to their own types, and starter corpora whose records a corpus references."
+    },
+    {
+      "id": "model",
+      "label": "5. The model",
+      "summary": "Packs, which declare kinds, relations and rules but not storage, and model-schema, which loads them and generates profiles from them. It sits above the store spec (decision D13)."
     },
     {
       "id": "spec",
@@ -636,7 +641,7 @@
       ],
       "repo": {
         "present": null,
-        "target": "osdlc/markdown"
+        "target": "osdlc/models"
       },
       "path": {
         "present": null,
@@ -648,7 +653,7 @@
       "twin": null,
       "purpose": "A proposed profile built on claims: acceptance criteria are what statements are about, tests are methods and test runs are study results.",
       "notes": [
-        "The architecture diagram places it in osdlc/markdown. The plan gives no package name or path."
+        "It would live in osdlc/models with the other shared profiles (decision D17). The plan gives no package name or path."
       ],
       "tasks": [
         25
@@ -914,52 +919,6 @@
       "source": "docs/planning/components/fernlog-example.md"
     },
     {
-      "id": "model-schema",
-      "name": "@osdlc/model-schema",
-      "kind": "package",
-      "language": "ts",
-      "layer": "profiles",
-      "states": [
-        "present",
-        "target"
-      ],
-      "repo": {
-        "present": "sksizer/dev",
-        "target": "osdlc/models"
-      },
-      "path": {
-        "present": "packages/ts/model-schema",
-        "target": "model-schema"
-      },
-      "status": "in-progress",
-      "version": null,
-      "registry": null,
-      "twin": null,
-      "purpose": "The pack harness: loads packs (folders of YAML that declare kinds), compiles them, validates values and emits TypeScript types and JSON Schema.",
-      "notes": [
-        "sksizer/dev#4069 merged it into dev's code-intelligence-planning branch, which reaches main with sksizer/dev#4068. It is not on npm.",
-        "Task 62 moves it and the packs to osdlc/models (decision D17).",
-        "Decision D4 makes types plain JSON Schema. Decision D13 puts packs above that as the model, and corpus-schema below as the store spec for Markdown. That answers problem F5: two ways to define types.",
-        "Task 48 adds a generator that turns a pack into a corpus profile.",
-        "Packs differ from the proposed profiles: a record's own property replaces an inherited one, and strict can be overridden."
-      ],
-      "tasks": [
-        47,
-        48,
-        54,
-        55,
-        58,
-        62
-      ],
-      "links": [
-        {
-          "label": "sksizer/dev#4069",
-          "url": "https://github.com/sksizer/dev/pull/4069"
-        }
-      ],
-      "source": "docs/planning/components/model-schema.md"
-    },
-    {
       "id": "org-principles-corpus",
       "name": "org principles corpus",
       "kind": "corpus",
@@ -1030,11 +989,89 @@
       "source": "docs/planning/components/org-principles-example.md"
     },
     {
+      "id": "work-example",
+      "name": "work example corpus",
+      "kind": "corpus",
+      "language": "markdown",
+      "layer": "profiles",
+      "states": [
+        "target"
+      ],
+      "repo": {
+        "present": null,
+        "target": "osdlc/markdown"
+      },
+      "path": {
+        "present": null,
+        "target": "examples/work"
+      },
+      "status": "planned",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "The beeline's end state as an example: a project corpus shaped like a work repo's docs/planning. It extends the sdlc profile, references the starter corpus, and its task cites P-0002 by id. CI syncs and validates it with --strict.",
+      "notes": [
+        "Task 53 covers it: this plan's own corpus shows the end state in CI, from npm. It is not built."
+      ],
+      "tasks": [
+        67,
+        79
+      ],
+      "links": [],
+      "source": "docs/planning/components/work-example.md"
+    },
+    {
+      "id": "model-schema",
+      "name": "@osdlc/model-schema",
+      "kind": "package",
+      "language": "ts",
+      "layer": "model",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "sksizer/dev",
+        "target": "osdlc/models"
+      },
+      "path": {
+        "present": "packages/ts/model-schema",
+        "target": "model-schema"
+      },
+      "status": "in-progress",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "The pack harness: loads packs (folders of YAML that declare kinds), compiles them, validates values and emits TypeScript types and JSON Schema.",
+      "notes": [
+        "sksizer/dev#4069 merged it into dev's code-intelligence-planning branch, which reaches main with sksizer/dev#4068. It is not on npm.",
+        "Task 62 moves it and the packs to osdlc/models (decision D17).",
+        "Decision D4 makes types plain JSON Schema. Decision D13 puts packs above that as the model, and corpus-schema below as the store spec for Markdown. That answers problem F5: two ways to define types.",
+        "Task 48 adds a generator that turns a pack into a corpus profile.",
+        "Packs differ from the proposed profiles: a record's own property replaces an inherited one, and strict can be overridden."
+      ],
+      "tasks": [
+        47,
+        48,
+        54,
+        55,
+        58,
+        62
+      ],
+      "links": [
+        {
+          "label": "sksizer/dev#4069",
+          "url": "https://github.com/sksizer/dev/pull/4069"
+        }
+      ],
+      "source": "docs/planning/components/model-schema.md"
+    },
+    {
       "id": "pack-claims",
       "name": "@osdlc/pack-claims",
       "kind": "profile",
       "language": "yaml",
-      "layer": "profiles",
+      "layer": "model",
       "states": [
         "target"
       ],
@@ -1065,7 +1102,7 @@
       "name": "@osdlc/pack-intent",
       "kind": "profile",
       "language": "yaml",
-      "layer": "profiles",
+      "layer": "model",
       "states": [
         "present",
         "target"
@@ -1105,7 +1142,7 @@
       "name": "@osdlc/pack-sdlc",
       "kind": "profile",
       "language": "yaml",
-      "layer": "profiles",
+      "layer": "model",
       "states": [
         "present",
         "target"
@@ -1140,38 +1177,6 @@
         }
       ],
       "source": "docs/planning/components/pack-sdlc.md"
-    },
-    {
-      "id": "work-example",
-      "name": "work example corpus",
-      "kind": "corpus",
-      "language": "markdown",
-      "layer": "profiles",
-      "states": [
-        "target"
-      ],
-      "repo": {
-        "present": null,
-        "target": "osdlc/markdown"
-      },
-      "path": {
-        "present": null,
-        "target": "examples/work"
-      },
-      "status": "planned",
-      "version": null,
-      "registry": null,
-      "twin": null,
-      "purpose": "The beeline's end state as an example: a project corpus shaped like a work repo's docs/planning. It extends the sdlc profile, references the starter corpus, and its task cites P-0002 by id. CI syncs and validates it with --strict.",
-      "notes": [
-        "Task 53 covers it: this plan's own corpus shows the end state in CI, from npm. It is not built."
-      ],
-      "tasks": [
-        67,
-        79
-      ],
-      "links": [],
-      "source": "docs/planning/components/work-example.md"
     },
     {
       "id": "corpus-schema-rs",
@@ -3210,6 +3215,33 @@
       "note": "A valid level-2 corpus with one type, principles, and three records."
     },
     {
+      "from": "work-example",
+      "to": "corpus-schema-spec",
+      "kind": "implements",
+      "states": [
+        "target"
+      ],
+      "note": "A valid level-2 corpus."
+    },
+    {
+      "from": "work-example",
+      "to": "corpus-profile-sdlc",
+      "kind": "extends",
+      "states": [
+        "target"
+      ],
+      "note": "As sdlc, by package name through a file: dependency, with uses: [sdlc/*]."
+    },
+    {
+      "from": "work-example",
+      "to": "corpus-sdlc-starter",
+      "kind": "reads",
+      "states": [
+        "target"
+      ],
+      "note": "Under references: as osdlc (D15), through a file: dependency."
+    },
+    {
       "from": "pack-claims",
       "to": "model-schema",
       "kind": "depends",
@@ -3244,33 +3276,6 @@
         "target"
       ],
       "note": "Its pack.yaml requires intent ^0.1.0."
-    },
-    {
-      "from": "work-example",
-      "to": "corpus-schema-spec",
-      "kind": "implements",
-      "states": [
-        "target"
-      ],
-      "note": "A valid level-2 corpus."
-    },
-    {
-      "from": "work-example",
-      "to": "corpus-profile-sdlc",
-      "kind": "extends",
-      "states": [
-        "target"
-      ],
-      "note": "As sdlc, by package name through a file: dependency, with uses: [sdlc/*]."
-    },
-    {
-      "from": "work-example",
-      "to": "corpus-sdlc-starter",
-      "kind": "reads",
-      "states": [
-        "target"
-      ],
-      "note": "Under references: as osdlc (D15), through a file: dependency."
     },
     {
       "from": "corpus-schema-rs",

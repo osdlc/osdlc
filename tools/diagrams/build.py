@@ -16,10 +16,10 @@ CW, CH, GX, GY = 200, 46, 8, 8
 X0 = 16
 
 LIGHT = dict(bg="#fbfaf7", fg="#1d1d1b", mut="#5d5d58", band="#f0eee8", line="#d8d5cc", chip="#ffffff",
-             osdlc="#2f855a", md="#b83280", dev="#2b6cb0", ont="#6b46c1", sw="#c05621",
+             osdlc="#2f855a", md="#b83280", mod="#0e7490", dev="#2b6cb0", ont="#6b46c1", sw="#c05621",
              bad="#c53030", badbg="#fde8e8", acc="#b8741a", accbg="#fde7c8")
 DARK = dict(bg="#16161a", fg="#ececea", mut="#a3a39d", band="#222227", line="#3a3a40", chip="#2b2b31",
-            osdlc="#68d391", md="#f687b3", dev="#63b3ed", ont="#b794f4", sw="#f6ad55",
+            osdlc="#68d391", md="#f687b3", mod="#22d3ee", dev="#63b3ed", ont="#b794f4", sw="#f6ad55",
             bad="#fc8181", badbg="#3b1d1d", acc="#f6ad55", accbg="#3d2f1c")
 
 
@@ -32,6 +32,7 @@ def rules(c):
 .cn{{font-size:13px;font-weight:650;fill:{c['fg']}}} .cs{{font-size:11px;fill:{c['mut']}}}
 .r-osdlc rect{{stroke:{c['osdlc']}}} .r-osdlc .dot{{fill:{c['osdlc']}}}
 .r-md rect{{stroke:{c['md']}}} .r-md .dot{{fill:{c['md']}}}
+.r-mod rect{{stroke:{c['mod']}}} .r-mod .dot{{fill:{c['mod']}}}
 .r-dev rect{{stroke:{c['dev']}}} .r-dev .dot{{fill:{c['dev']}}}
 .r-ont rect{{stroke:{c['ont']}}} .r-ont .dot{{fill:{c['ont']}}}
 .r-sw rect{{stroke:{c['sw']}}} .r-sw .dot{{fill:{c['sw']}}}
@@ -39,7 +40,8 @@ def rules(c):
 .dup{{stroke:{c['bad']};stroke-width:1.6;stroke-dasharray:4 3}}
 .edge{{fill:none;stroke:{c['mut']};stroke-width:1.4}} .ahp{{fill:{c['mut']}}}
 .lvl rect{{fill:{c['chip']};stroke:{c['line']}}} .prof rect{{fill:{c['accbg']};stroke:{c['acc']}}}
-.tie{{stroke:{c['acc']};stroke-width:1.6;fill:none}}"""
+.refc rect{{fill:{c['chip']};stroke:{c['acc']};stroke-width:1.5}}
+.tie{{stroke:{c['acc']};stroke-width:1.6;fill:none}} .tie.ref{{stroke-dasharray:4 3}}"""
 
 
 def svg(body, height, label):
@@ -82,7 +84,8 @@ def grid(y, items):
 
 
 KEY = [("osdlc", "osdlc"), ("dev", "dev"), ("ont", "rust-ontogen"), ("sw", "skillwright")]
-TARGET_KEY = [("md", "markdown")] + KEY
+PRESENT_KEY = [("md", "markdown")] + KEY           # osdlc/models holds nothing yet
+TARGET_KEY = [("md", "markdown"), ("mod", "models")] + KEY
 
 
 def key(y, repos, label="Repo:"):
@@ -94,8 +97,20 @@ def key(y, repos, label="Repo:"):
     return "".join(out)
 
 
+def key_width(repos):
+    return X0 + 40 + sum(22 + len(name) * 6.6 for _, name in repos)
+
+
+def keys(repos, split=3):
+    """The repo key, on two rows when one is too wide. Returns (svg, first band's y)."""
+    if key_width(repos) <= W - X0:
+        return key(12, repos), 26
+    return key(12, repos[:split]) + key(28, repos[split:], label=""), 42
+
+
 def layers(rows, label, repos=KEY):
-    y, out = 26, [key(12, repos)]
+    k, y = keys(repos)
+    out = [k]
     for name, sub, ts, rs in rows:
         top, body, yy = y, [], y + 52
         for lang, items in (("TYPESCRIPT", ts), ("RUST", rs)):
@@ -127,7 +142,7 @@ PRESENT = [
       ("query loader", "planned", "osdlc", "later", ("F9",))],
      [("markdown-store", "typed CRUD, lossless", "ont", ("F6", "F7")), ("ontogen", "Rust structs → notes", "ont")]),
     ("Types", "what a record must hold",
-     [("model-schema", "packs; dev, open PRs", "dev", ("F5",)), ("pack-intent, -sdlc", "sdlc's 14 kinds", "dev", ("F5",)),
+     [("model-schema", "packs; on a dev branch", "dev", ("F5",)), ("pack-intent, -sdlc", "sdlc's 14 kinds", "dev", ("F5",)),
       ("corpus-schema", "validator, on npm", "md", ("F5", "F8"))], []),
     ("Corpus model", "every note, link, backlink",
      [("markdown-vault", "scan + resolve + backlinks", "dev", ("F1", "F4")),
@@ -156,12 +171,16 @@ TARGET = [
     ("Render, edit, sites", "in osdlc/osdlc for now",
      [("markdown-render", "", "osdlc"), ("markdown-editor", "", "osdlc"),
       ("markdown-astro", "", "osdlc"), ("markdown-ui", "", "osdlc")], []),
-    ("Query: the db layer (D5)", "one read layer over the model",
+    ("Query: the db layer (D5)", "one read layer over the corpus model",
      [("query layer", "Bases + loader, one model", "osdlc")],
      [("markdown-store", "writes the spec layout", "ont")]),
-    ("The spec and profiles", "in this repo, one type format",
-     [("corpus-schema", "levels 0–2, reads the model", "md"), ("profiles (D4)", "claims, sdlc, ...", "md")],
-     []),
+    ("Profiles and starters (D17)", "in osdlc/models, published to npm",
+     [("claims profile", "VA-Spec types", "mod"), ("sdlc profile", "intent and sdlc kinds", "mod"),
+      ("sdlc starter", "records to reference", "mod")], []),
+    ("The model (D13)", "packs, above the store spec",
+     [("model-schema", "packs → profiles", "mod"), ("packs", "intent, sdlc, claims", "mod")], []),
+    ("The spec (D4)", "in this repo, one type format",
+     [("corpus-schema", "extends, uses, references", "md")], []),
     ("Corpus model", "one per language, one family",
      [("markdown-corpus", "vault + graph merged", "osdlc")],
      [("markdown-corpus", "twin", "osdlc"), ("markdown-relink", "", "osdlc")]),
@@ -194,33 +213,44 @@ def resolvers():
 
 
 def levels_profiles():
-    out = [f'<text class="rl" x="{X0}" y="26">Levels and profiles: two separate axes</text>',
-           f'<text class="rs" x="{X0}" y="44">Levels: how much a corpus declares. Profiles: whose types it uses.</text>']
+    out = [f'<text class="rl" x="{X0}" y="26">Levels, parents and references</text>',
+           f'<text class="rs" x="{X0}" y="44">Levels: how much a corpus declares.</text>',
+           f'<text class="rs" x="{X0}" y="60">Parents give types. Referenced corpora give records.</text>']
+    lw, rx, rw, top = 200, 246, 180, 76
     lv = [("2 · Typed", "every type has a JSON Schema"),
           ("1 · Records", "a root file, type folders, ids"),
           ("0 · Linked notes", "declares nothing; any vault")]
-    y = 62
+    y = top
     for t, s in lv:
-        out.append(f'<g class="lvl"><rect x="{X0}" y="{y}" width="230" height="50" rx="8"/></g>'
+        out.append(f'<g class="lvl"><rect x="{X0}" y="{y}" width="{lw}" height="50" rx="8"/></g>'
                    f'<text class="cn" x="{X0 + 12}" y="{y + 21}">{esc(t)}</text>'
                    f'<text class="cs" x="{X0 + 12}" y="{y + 38}">{esc(s)}</text>')
         y += 60
-    py = 62
-    for t, s in [("claims profile", "statements, study results"), ("sdlc profile", "today's sdlc kinds"),
-                 ("your profile", "any shared set of types")]:
-        out.append(f'<g class="prof"><rect x="276" y="{py}" width="150" height="50" rx="8"/></g>'
-                   f'<text class="cn" x="288" y="{py + 21}">{esc(t)}</text>'
-                   f'<text class="cs" x="288" y="{py + 38}">{esc(s)}</text>')
-        out.append(f'<path class="tie" d="M276,{py + 25} C262,{py + 25} 262,87 {X0 + 231},87"/>')
+    # Each right-hand box: title, subtitle, class, and the y of the level box it ties to.
+    right = [("claims profile", "types, by extends or uses", "prof", top),
+             ("sdlc profile", "types, by extends or uses", "prof", top),
+             ("sdlc starter", "records, by references", "refc", top + 120)]
+    py = top
+    for t, s, cls, ly in right:
+        tie = "tie ref" if cls == "refc" else "tie"
+        out.append(f'<g class="{cls}"><rect x="{rx}" y="{py}" width="{rw}" height="50" rx="8"/></g>'
+                   f'<text class="cn" x="{rx + 12}" y="{py + 21}">{esc(t)}</text>'
+                   f'<text class="cs" x="{rx + 12}" y="{py + 38}">{esc(s)}</text>')
+        out.append(f'<path class="{tie}" d="M{rx},{py + 25} C{rx - 14},{py + 25} {rx - 14},{ly + 25} {X0 + lw + 1},{ly + 25}"/>')
         py += 60
-    out.append(f'<text class="cs" x="{X0}" y="{y + 10}">A corpus can use several profiles, next to its own types.</text>')
-    return svg("".join(out), y + 22, "Levels 0 to 2, and profiles that supply level-2 types")
+    notes = ["extends and uses need level 2. references works at any level:",
+             "sync copies the records into _references/<prefix>/.",
+             "A corpus can name several of each, next to its own types."]
+    for i, n in enumerate(notes):
+        out.append(f'<text class="cs" x="{X0}" y="{y + 10 + 16 * i}">{esc(n)}</text>')
+    return svg("".join(out), y + 10 + 16 * len(notes) + 4,
+               "Levels 0 to 2; profiles that give types through extends and uses; a starter corpus that gives records through references")
 
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     files = {
-        "present.svg": layers(PRESENT, "Present state by layer", TARGET_KEY),
+        "present.svg": layers(PRESENT, "Present state by layer", PRESENT_KEY),
         "resolvers.svg": resolvers(),
         "levels-profiles.svg": levels_profiles(),
         "target.svg": layers(TARGET, "Target state by layer", TARGET_KEY),

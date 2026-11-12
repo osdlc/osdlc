@@ -3,7 +3,7 @@
 Run from the repo root: python3 tools/diagrams/architecture.py
 It uses build.py's shared style and helpers, so both pages look the same.
 """
-from build import ARROW, DARK, LIGHT, OUT, TARGET_KEY, W, X0, esc, grid, key, svg
+from build import ARROW, DARK, LIGHT, OUT, TARGET_KEY, W, X0, esc, grid, keys, svg
 
 
 def extra(c, ext):
@@ -30,21 +30,26 @@ def arrow(x1, y1, x2, y2):
 
 # The target, top to bottom. Each item: name, what it does, repo, then "later" if not built yet.
 LAYERS = [
-  ("8", "Apps", "use the layers below; keep their own rules",
+  ("9", "Apps", "use the layers below; keep their own rules",
    [("sdlc", "planning corpus", "dev"), ("skillwright", "skills, harness-reference", "sw"),
     ("evidence project", "records + files", "ext")],
    [("determined", "notes app", "dev"), ("markdown-store", "typed records; home open", "ont"),
     ("ontogen", "Rust structs → notes", "ont")]),
-  ("7", "Render, edit, sites", "show notes to people",
+  ("8", "Render, edit, sites", "show notes to people",
    [("markdown-render", "notes → HTML", "osdlc"), ("markdown-editor", "live editor", "osdlc"),
     ("markdown-ui", "viewing chrome", "osdlc"), ("markdown-astro", "notes → site", "osdlc")], []),
-  ("6", "Query (later)", "read a corpus as a database",
+  ("7", "Query (later)", "read a corpus as a database",
    [("query layer", "Bases queries, loader, builds", "osdlc", "later")], []),
-  ("5", "Profiles (proposal)", "shared sets of types",
-   [("claims profile", "VA-Spec evidence types", "md", "later"),
-    ("acceptance testing", "builds on claims", "md", "later")], []),
+  ("6", "Profiles", "shared types, and records to reference",
+   [("claims profile", "VA-Spec evidence types", "mod", "later"),
+    ("sdlc profile", "generated from packs", "mod", "later"),
+    ("sdlc starter", "principles to cite", "mod", "later"),
+    ("acceptance testing", "builds on claims", "mod", "later")], []),
+  ("5", "The model", "packs, above the store spec",
+   [("model-schema", "packs → profiles", "mod"), ("pack-intent, -sdlc", "the sdlc kinds", "mod"),
+    ("pack-claims", "the claims kinds", "mod", "later")], []),
   ("4", "corpus-schema", "the spec and its validator",
-   [("@osdlc/corpus-schema", "levels 0–2, validate --fix", "md")],
+   [("@osdlc/corpus-schema", "levels 0–2, extends, sync", "md")],
    [("Rust validator", "later, same tests", "md", "later")]),
   ("3", "Corpus model", "every note and link, kept fresh",
    [("markdown-corpus", "from vault + graph", "osdlc", "later")],
@@ -59,9 +64,8 @@ LAYERS = [
 
 
 def layers():
-    # The key needs two rows to fit; the second has no label.
-    repos = TARGET_KEY + [("ext", "other")]
-    out, y = [key(12, repos[:3]), key(28, repos[3:], label="")], 42
+    k, y = keys(TARGET_KEY + [("ext", "other")])
+    out = [k]
     for num, name, sub, ts, rs in LAYERS:
         top, body, yy = y, [], y + 52
         for lang, items in (("TYPESCRIPT", ts), ("RUST", rs)):
@@ -120,7 +124,17 @@ def settings():
     out.append(arrow(X0 + 313, y - 2, X0 + 313, y - 32))
     out.append(f'<text class="cs" x="{X0}" y="{y + 30}">So a record valid under acceptance</text>'
                f'<text class="cs" x="{X0}" y="{y + 46}">testing is also valid under claims.</text>')
-    y += 62
+    y += 90
+
+    out.append(f'<text class="rl" x="{X0}" y="{y}">References</text>'
+               f'<text class="rs" x="{X0 + 86}" y="{y}">whose records it cites; not a setting</text>')
+    y += 12
+    out.append(box(X0, y, 190, 48, "org", "a corpus with records", "refc"))
+    out.append(box(X0 + 218, y, 190, 48, "_references/org/", "the copy that sync writes"))
+    out.append(arrow(X0 + 192, y + 24, X0 + 216, y + 24))
+    out.append(f'<text class="cs" x="{X0}" y="{y + 66}">Any level can reference a corpus. The copy is committed,</text>'
+               f'<text class="cs" x="{X0}" y="{y + 82}">so links work in Obsidian and on GitHub.</text>')
+    y += 96
     return svg(STYLE + "".join(out), y, "Level, dialect and profiles, with a root file example")
 
 

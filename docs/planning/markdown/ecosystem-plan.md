@@ -179,14 +179,17 @@ In practice:
   linked notes into its own folder or corpus.
 - The spec has levels 0 to 2. Its validator reads the corpus model instead of walking the folder
   itself.
-- Types can come from parent corpora, such as profiles. There is one format for defining types, not
-  two: plain JSON Schema.
+- Types can come from parent corpora, such as profiles. A corpus's types are plain JSON Schema.
+  Shared types are written once, as packs in the model layer above the spec (D13), and generated
+  into profiles. Packs, profiles and starter corpora live in osdlc/models (D17).
 - markdown-store writes the spec's layout and uses the shared note parts.
 - There is one query layer, built on the corpus model.
 
 Levels and profiles are separate ideas. A level says how much a corpus declares. A profile says
-whose types it uses. So a profile is not "level 3": a corpus at level 2 can use the claims profile,
-the sdlc profile and its own types all at once.
+whose types it uses, through `extends` and `uses`. So a profile is not "level 3": a corpus at level
+2 can use the claims profile, the sdlc profile and its own types all at once. A referenced corpus,
+such as the sdlc starter, gives records instead, through `references`. It works at any level, and
+`corpus-schema sync` copies it into `_references/<prefix>/`.
 
 ![Levels 0 to 2 on one side, profiles on the other](diagrams/levels-profiles.svg)
 

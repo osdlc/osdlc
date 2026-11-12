@@ -2,7 +2,7 @@
 name: "@osdlc/model-schema"
 kind: package
 language: ts
-layer: "[profiles](../layers/profiles.md)"
+layer: "[model](../layers/model.md)"
 states: [present, target]
 status: in-progress
 repo_present: "[sksizer/dev](../repos/sksizer-dev.md)"

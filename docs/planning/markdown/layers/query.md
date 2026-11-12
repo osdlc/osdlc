@@ -1,5 +1,5 @@
 ---
-label: "6. Query (later)"
+label: "7. Query (later)"
 order: 3
 ---
 
