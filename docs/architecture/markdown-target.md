@@ -75,7 +75,7 @@ Every note in a corpus at once.
 
 The spec, and the validator that checks a corpus against it.
 
-- It owns: the root file `corpus-schema.md` (or `.yaml` or `.json`) that marks a corpus, type folders,
+- It owns: the root file `<name>.corpus-schema.md` (or `.yaml` or `.json`) that marks a corpus, type folders,
   record ids, record folders, JSON Schemas for types, links between types (`x-ref`), other corpora
   (`extends`, `uses` and `references` in the root file, `x-extends` on a type), identity, and the
   `validate`, `validate --fix` and `sync` commands. These come in the next release, 0.3.0 (the
@@ -226,7 +226,7 @@ the shared note parts.
 A corpus says three separate things about itself in its root file:
 
 ```yaml
-# corpus-schema.yaml
+# my-corpus.corpus-schema.yaml
 corpus-schema: 0
 level: 2
 dialect: obsidian
@@ -237,7 +237,7 @@ references:
   org: "../org-principles"                 # or a relative path
 ```
 
-As `corpus-schema.md`, the same keys go in YAML frontmatter between `---` lines. Today only
+As `my-corpus.corpus-schema.md`, the same keys go in YAML frontmatter between `---` lines. Today only
 `corpus-schema: 0` is required. Version 0 has `level`. `extends`, `uses` and `references` come in
 corpus-schema 0.3.0 (the plan's task 36). `extends` and `uses` need `level: 2`. `extends` replaces
 `profiles`, which stays reserved and unused.

@@ -50,8 +50,8 @@ queries and CSV results, as records with their files. Most of this exists alread
 before the rest of the plan. It is tasks 1 to 5, 22 and 26.
 
 - **1. Rename to corpus-schema.** Done. The package and spec are now `@osdlc/corpus-schema` on osdlc
-  main, with the command `corpus-schema` and the root file `corpus-schema.md` (or `.yaml`,
-  `.json`). The spec text has the levels.
+  main, with the command `corpus-schema` and the root file `<name>.corpus-schema.md` (or `.yaml`,
+  `.json`), where `<name>` is the corpus's name. The spec text has the levels.
   [osdlc/osdlc#725](https://github.com/osdlc/osdlc/pull/725) merged on 2026-11-09.
 - **2. Record folders.** A record folder keeps a record together with its files. This is how a test
   run keeps its script, its query and its CSV results together. It is in the first published version:
@@ -268,7 +268,7 @@ The rules (decided):
 1. `extends` and `references` each map a prefix to a source. A prefix is lowercase letters, digits
    and `-`, and sits in one key only. A source that starts with `./` or `../` is a path from the
    corpus root. Anything else is a package name. A package's corpus root is the package folder, or
-   the folder named by a `corpus` field in its `package.json`. The folder must hold a root file.
+   the folder named by a `corpus` field in its `package.json`. The folder must hold a root file, `<name>.corpus-schema.md` (or `.yaml`, `.json`).
    `extends` and `uses` need level 2. `references` works at any level.
 2. Named corpora load transitively. Each one's own `extends` and `references` resolve from its own
    folder. A cycle is an error, and so is an unknown prefix anywhere.

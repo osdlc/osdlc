@@ -60,8 +60,8 @@ with `x-ref`, and the validator checks that it points at a record of the right t
 ## Add a component
 
 1. Copy a component file. Name the copy with a short, lower-case id, such as `markdown-link.md`.
-   The id is how other records and the explorer refer to it. Avoid `corpus-schema` as an id: a file
-   called `corpus-schema.md` would start a new corpus.
+   The id is how other records and the explorer refer to it. Avoid ids that end in `.corpus-schema`: a file
+   called `<name>.corpus-schema.md` would start a new corpus.
 2. Fill in the fields that [components.schema.md](components/components.schema.md) lists. Set
    `repo_present` and `path_present` if it exists today, and `repo_target` and `path_target` if it
    exists in the target.

@@ -90,7 +90,7 @@ def layers():
 def settings():
     out = [ARROW, f'<text class="rl" x="{X0}" y="26">Three settings on a corpus</text>',
            f'<text class="rs" x="{X0}" y="44">Each answers a different question. Dialect is a proposal.</text>']
-    code = ["# corpus-schema.yaml", "corpus-schema: 0", "level: 2", "dialect: obsidian", "extends:", '  claims: "@osdlc/corpus-profile-claims"',
+    code = ["# my-corpus.corpus-schema.yaml", "corpus-schema: 0", "level: 2", "dialect: obsidian", "extends:", '  claims: "@osdlc/corpus-profile-claims"',
             "uses: [claims/*]", "references:", '  org: "../org-principles"']
     out.append(f'<g class="code"><rect x="{X0}" y="58" width="{W - 2 * X0}" height="{18 * len(code) + 16}" rx="8"/>')
     out.extend(f'<text x="{X0 + 14}" y="{80 + 18 * i}">{esc(line.replace(chr(32) * 2, chr(160) * 2))}</text>' for i, line in enumerate(code))
