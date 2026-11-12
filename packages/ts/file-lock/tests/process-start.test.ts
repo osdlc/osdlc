@@ -7,6 +7,7 @@ import { afterAll, describe, expect, test } from 'vitest'
 import {
   type HeldLock,
   holderGone,
+  processIdentity,
   processStartedAt,
   type PsRunner,
   sameProcess,
@@ -19,11 +20,15 @@ afterAll(() => {
   for (const dir of roots) rmSync(dir, { recursive: true, force: true })
 })
 
-/** A fake `/proc`: `btime` in `/proc/stat`, and one `stat` line per pid. */
-function fakeProc(bootSeconds: number, stats: Record<number, string>): string {
+const BOOT_ID = '0b9a2c6e-5f4d-4e3b-9a1c-7d8e6f5a4b3c'
+
+/** A fake `/proc`: `btime` in `/proc/stat`, a boot id, and one `stat` line per pid. */
+function fakeProc(bootSeconds: number, stats: Record<number, string>, bootId = BOOT_ID): string {
   const root = mkdtempSync(join(tmpdir(), 'file-lock-proc-'))
   roots.push(root)
   writeFileSync(join(root, 'stat'), `cpu  1 2 3\nbtime ${bootSeconds}\nprocesses 9\n`)
+  mkdirSync(join(root, 'sys', 'kernel', 'random'), { recursive: true })
+  writeFileSync(join(root, 'sys', 'kernel', 'random', 'boot_id'), `${bootId}\n`)
   for (const [pid, line] of Object.entries(stats)) {
     mkdirSync(join(root, pid))
     writeFileSync(join(root, pid, 'stat'), line)
@@ -212,6 +217,55 @@ describe('sameProcess', () => {
     const two = (n: number): string => String(n).padStart(2, '0')
     const text = `${day} ${month} ${String(local.getDate()).padStart(2, ' ')} ${two(local.getHours())}:${two(local.getMinutes())}:${two(local.getSeconds())} ${local.getFullYear()}`
     expect(sameProcess(process.pid, text)).toBe(true)
+  })
+})
+
+describe('processIdentity', () => {
+  test('on Linux, the boot id and start ticks, which no clock change moves', () => {
+    const root = fakeProc(BOOT, { 42: statLine(42, 'node', 12_345) })
+    expect(processIdentity(42, { platform: 'linux', procRoot: root })).toBe(
+      `linux:${BOOT_ID}:12345`,
+    )
+    // The wall clock jumps forward an hour: boot time moves, the identity does not.
+    const later = fakeProc(BOOT + 3600, { 42: statLine(42, 'node', 12_345) })
+    expect(processIdentity(42, { platform: 'linux', procRoot: later })).toBe(
+      `linux:${BOOT_ID}:12345`,
+    )
+    expect(processIdentity(99, { platform: 'linux', procRoot: root })).toBeNull()
+  })
+
+  test('elsewhere, the start time from ps', () => {
+    const ps = fakePs('Sun Nov  1 08:30:00 2026\n')
+    expect(processIdentity(42, { platform: 'darwin', ps })).toBe(
+      `start:${Date.UTC(2026, 10, 1, 8, 30, 0)}`,
+    )
+    expect(processIdentity(42, { platform: 'win32', ps })).toBeNull()
+  })
+
+  test('this process matches its own identity', () => {
+    if (process.platform === 'win32') return
+    const me = processIdentity(process.pid)
+    expect(me).not.toBeNull()
+    expect(sameProcess(process.pid, me!)).toBe(true)
+    if (process.platform === 'linux') expect(me).toMatch(/^linux:[0-9a-f-]{36}:\d+$/)
+  })
+
+  test('against a Linux identity: another boot, or a later start, is another process', () => {
+    const root = fakeProc(BOOT, { 42: statLine(42, 'node', 12_345) })
+    const options = { platform: 'linux' as const, procRoot: root, alive: () => true }
+    expect(sameProcess(42, `linux:${BOOT_ID}:12345`, options)).toBe(true)
+    // Started 3 s after the recorded holder: a reused pid.
+    expect(sameProcess(42, `linux:${BOOT_ID}:12045`, options)).toBe(false)
+    // Started earlier than recorded: no reuser does, so it is the holder.
+    expect(sameProcess(42, `linux:${BOOT_ID}:20000`, options)).toBe(true)
+    // The holder's boot ended; whatever has pid 42 now is someone else.
+    expect(sameProcess(42, 'linux:11111111-2222-3333-4444-555555555555:12345', options)).toBe(false)
+  })
+
+  test('a Linux identity cannot be checked off Linux, so it rules nothing out', () => {
+    expect(sameProcess(42, `linux:${BOOT_ID}:1`, { platform: 'darwin', alive: () => true })).toBe(
+      true,
+    )
   })
 })
 

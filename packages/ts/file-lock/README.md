@@ -183,13 +183,20 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { claimLock, holderGone, processStartedAt, releaseLock, sameProcess } from '@osdlc/file-lock'
+import {
+  claimLock,
+  holderGone,
+  processIdentity,
+  processStartedAt,
+  releaseLock,
+  sameProcess,
+} from '@osdlc/file-lock'
 
-type Owner = { pid: number; startedAt: number | null }
+type Owner = { pid: number; startedAt: string | null }
 
 const dir = mkdtempSync(join(tmpdir(), 'owner-'))
 const lock = join(dir, 'job.lock')
-const me: Owner = { pid: process.pid, startedAt: processStartedAt(process.pid) }
+const me: Owner = { pid: process.pid, startedAt: processIdentity(process.pid) }
 // A later process that reuses this pid started later, so it does not hold the lock.
 const isStale = holderGone<Owner>((o) => [{ pid: o.pid, startedAt: o.startedAt ?? undefined }])
 
@@ -199,22 +206,32 @@ rmSync(dir, { recursive: true, force: true })
 
 // Start times other tools record work too: ISO time, epoch seconds, or `ps -o lstart` text.
 sameProcess(process.pid, 'Sun Nov  1 01:30:00 2026')
+new Date(processStartedAt(process.pid) ?? 0).toISOString() // when this process started
 ```
 
+- `processIdentity(pid, options?)`: what to record. On Linux it is the boot
+  id and the start time in kernel ticks (`linux:<boot id>:<ticks>`), which
+  neither a change to the wall clock nor the time zone moves; elsewhere
+  `start:<ms>`. Null when it cannot be read.
 - `processStartedAt(pid, options?)`: when the process started, in ms since
   the epoch, rounded down to a whole second; null when there is no such
   process or its start time cannot be read. On Linux it reads `/proc`; on
   macOS it runs `ps` in UTC and the C locale. It never reads clock text in the
-  local zone or language. `ProcessStartOptions` is its options type: replace
-  the `ps` call (a `PsRunner`), the platform or the `/proc` root.
+  local zone or language. Null is not proof the process is gone (another pid
+  namespace cannot see it); ask `pidAlive`. On Linux the result moves if the
+  wall clock is set, so record `processIdentity` instead. `ProcessStartOptions`
+  is the options type of both: replace the `ps` call (a `PsRunner`), the
+  platform or the `/proc` root.
 - `sameProcess(pid, startedAt, options?)`: false only when the pid is gone, or
-  belongs to a process that started after `startedAt`. A pid is reused only
-  after its holder exits, so a reuser always starts later; a process that
-  started earlier is taken for the holder, so a writer that recorded when it
-  took the lock, rather than when it started, keeps it. When either start
-  time cannot be read, true: the owner cannot be ruled out, and a reused pid
-  keeps the lock held, as with `pidAlive`. Record
-  `processStartedAt(process.pid)` to get the protection. `startedAt` may be ms or seconds
+  belongs to a process that started after `startedAt` (or, for a Linux
+  identity, in another boot). A pid is reused only after its holder exits, so
+  a reuser always starts later; a process that started earlier is taken for
+  the holder, so a writer that recorded an instant later than its start, such
+  as when it took the lock, keeps it. Zoneless `ps` text is the exception: it
+  must be the process's own start, so record it only as `ps -o lstart` printed
+  it. When either start time cannot be read, true: the owner cannot be ruled
+  out, and a reused pid keeps the lock held, as with `pidAlive`. Record
+  `processIdentity(process.pid)` to get the protection. `startedAt` may be ms or seconds
   since the epoch, an ISO-8601 time with a zone, or what `ps -o lstart`
   printed in the C locale in any time zone, which matches when it is the real
   start time in some zone. So the writer's zone need not be known, and the
@@ -348,8 +365,8 @@ experimental export.
 
 The experimental exports:
 
-`processStartedAt`, `sameProcess`, `ProcessStartOptions`, `SameProcessOptions`,
-`PsRunner` and `Holder`.
+`processIdentity`, `processStartedAt`, `sameProcess`, `ProcessStartOptions`,
+`SameProcessOptions`, `PsRunner` and `Holder`.
 
 ## Runtimes and platforms
 

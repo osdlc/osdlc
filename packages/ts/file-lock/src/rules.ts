@@ -32,7 +32,7 @@ export interface HolderGoneOptions {
 /**
  * A holder as `holderGone` reads it: a pid, or a pid with the start time it
  * was recorded with, as `sameProcess` takes it. Record
- * `processStartedAt(process.pid)`; a start time in a form `sameProcess` cannot
+ * `processIdentity(process.pid)`; a start time in a form `sameProcess` cannot
  * read is ignored, and the holder is then judged on its pid alone.
  *
  * @experimental

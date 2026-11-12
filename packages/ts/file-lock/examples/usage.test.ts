@@ -16,6 +16,7 @@ import {
   MARKER_STALE_MS,
   NotALockError,
   pidAlive,
+  processIdentity,
   processStartedAt,
   releaseLock,
   sameProcess,
@@ -145,9 +146,9 @@ test('something other than a lock file at the path is reported, not retried', ()
 })
 
 test('a holder recorded with its start time, so a reused pid does not keep the lock', () => {
-  type Owner = { pid: number; startedAt: number | null }
+  type Owner = { pid: number; startedAt: string | null }
   const lock = join(dir, 'owner.lock')
-  const me: Owner = { pid: process.pid, startedAt: processStartedAt(process.pid) }
+  const me: Owner = { pid: process.pid, startedAt: processIdentity(process.pid) }
   const holders = (o: Partial<Owner>): Holder[] => [
     { pid: o.pid ?? 0, startedAt: o.startedAt ?? undefined },
   ]
@@ -156,7 +157,7 @@ test('a holder recorded with its start time, so a reused pid does not keep the l
 
   // The same pid with another start time is another process: the lock is stale.
   const reused: HeldLock<Partial<Owner>> = {
-    content: { pid: process.pid, startedAt: 1 },
+    content: { pid: process.pid, startedAt: 'start:1' },
     mtimeMs: 0,
     raw: '',
   }

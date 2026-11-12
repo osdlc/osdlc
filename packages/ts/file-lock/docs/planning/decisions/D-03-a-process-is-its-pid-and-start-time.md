@@ -10,10 +10,19 @@ created: 2026-11-12
 ## Decision
 
 - The package tells a holder from a later process that reuses its pid by the
-  process's start time. `processStartedAt(pid)` reads it, and
-  `sameProcess(pid, startedAt)` compares it with what a lock recorded.
+  process's start time. `processIdentity(pid)` gives what to record,
+  `processStartedAt(pid)` the start as an instant, and
+  `sameProcess(pid, startedAt)` compares either with what a lock recorded.
   `holderGone` uses `sameProcess` for a holder returned as
   `{ pid, startedAt }`.
+- On Linux the identity is the boot id and the start in kernel ticks
+  (`linux:<boot id>:<ticks>`), compared directly: a change to the wall clock
+  moves the boot time in `/proc/stat`, and every instant derived from it, but
+  not the ticks. Another boot id means the holder ended at a reboot.
+  Elsewhere it is `start:<ms>`.
+- The system `/proc` is trusted only when `/proc/self` names this process. A
+  `/proc` mounted for another pid namespace describes other processes under
+  the same numbers.
 - A start time is read as a number, never as clock text in the local zone or
   language: on Linux from `/proc/<pid>/stat` and the boot time in
   `/proc/stat`, with no subprocess; elsewhere from `ps -o lstart` run with
@@ -60,8 +69,13 @@ created: 2026-11-12
   quarter hours from the recorded zoneless text (within twelve to fourteen
   hours) is taken for the holder. An instant has no such gap, so writers
   should record `processStartedAt(process.pid)` rather than `ps` text.
-- A clock set back by more than two seconds while a holder runs can make an
-  instant-recorded holder look replaced on Linux, where the start time is
-  boot time plus ticks.
+- On Linux, a wall clock set forward by more than two seconds while a holder
+  runs (time sync after a VM resumes, say) moves an instant-recorded holder's
+  start later, so it looks replaced. A holder recorded with
+  `processIdentity` is not affected; hence the advice to record it.
+- Zoneless `ps` text is matched both ways, since its zone is unknown: it must
+  be the process's own start as `ps -o lstart` printed it, in a whole
+  quarter-hour zone. Text written later, or in a custom zone such as
+  `XYZ-5:07`, makes a live holder look replaced.
 - A start time in a form `sameProcess` cannot read gives no protection: the
   holder is judged on its pid alone.

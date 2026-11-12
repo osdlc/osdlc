@@ -11,7 +11,7 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readlinkSync } from 'node:fs'
 
 import { pidAlive } from './rules.ts'
 
@@ -91,13 +91,38 @@ export function processStartedAt(pid: number, options: ProcessStartOptions = {})
   if (!Number.isInteger(pid) || pid <= 0) return null
   const platform = options.platform ?? process.platform
   if (platform === 'linux') {
-    const fromProc = linuxStartedAt(pid, options.procRoot ?? '/proc')
+    const fromProc = linuxStartedAt(pid, options.procRoot)
     if (fromProc !== undefined) return fromProc
   }
   if (platform === 'win32') return null
   const ps = options.ps ?? defaultPs
   const out = ps(['-o', 'lstart=', '-p', String(pid)], { LC_ALL: 'C', TZ: 'UTC0' })
   return out === null ? null : lstartAsUtcMs(out)
+}
+
+/**
+ * A token that names the process with `pid` for as long as it runs, and no
+ * later process: the start time in the form least open to error. Record it
+ * in a lock, and pass it back to {@link sameProcess}.
+ *
+ * - Linux: `linux:<boot id>:<start ticks>`, read from `/proc`. Neither a
+ *   change to the wall clock nor the time zone moves it, and a reboot changes
+ *   the boot id.
+ * - Elsewhere: `start:<ms>`, from {@link processStartedAt}.
+ *
+ * Null when the start time cannot be read; see {@link processStartedAt}.
+ *
+ * @experimental
+ */
+export function processIdentity(pid: number, options: ProcessStartOptions = {}): string | null {
+  if (!Number.isInteger(pid) || pid <= 0) return null
+  if ((options.platform ?? process.platform) === 'linux') {
+    const proc = linuxProcess(pid, options.procRoot)
+    if (proc === null) return null
+    if (proc !== undefined && proc.bootId !== null) return `linux:${proc.bootId}:${proc.ticks}`
+  }
+  const started = processStartedAt(pid, options)
+  return started === null ? null : `start:${started}`
 }
 
 /**
@@ -111,6 +136,7 @@ export function processStartedAt(pid: number, options: ProcessStartOptions = {})
  * owner cannot be ruled out, and a reused pid keeps the lock held.
  *
  * `startedAt` may be:
+ * - what {@link processIdentity} returned, the most reliable form;
  * - ms since the epoch, as a number (a number below 10^11 is read as seconds);
  * - an ISO-8601 time with a zone, such as `2026-11-01T08:30:00Z`;
  * - epoch seconds (9-10 digits) or ms (12-13 digits), as text;
@@ -129,32 +155,55 @@ export function sameProcess(
   if (!alive(pid)) return false
   const recorded = readRecorded(startedAt)
   if (recorded === null) return true
+  if (recorded.kind === 'linux') return sameLinuxProcess(pid, recorded, options)
   const actual = (options.startedAt ?? ((p: number) => processStartedAt(p, options)))(pid)
   if (actual === null) return true
   if (recorded.zoned) return actual <= recorded.ms + TOLERANCE_MS
   return inSomeTimeZone(recorded.ms, actual)
 }
 
-/** A recorded start: an instant, or zoneless `ps` text read as if it were UTC. */
-interface Recorded {
-  ms: number
-  zoned: boolean
+/** A recorded start: an instant, zoneless `ps` text read as if it were UTC, or a Linux identity. */
+type Recorded =
+  { kind: 'time'; ms: number; zoned: boolean } | { kind: 'linux'; bootId: string; ticks: number }
+
+/** `processIdentity` on Linux: the boot id, then the start ticks. */
+const LINUX_IDENTITY = /^linux:([0-9a-f-]{36}):(\d+)$/
+
+/**
+ * A Linux identity against this machine's `/proc`. Another boot id means the
+ * holder ended at a reboot. Otherwise, as for an instant, only a process that
+ * started later is a different one. When `/proc` cannot say, true.
+ */
+function sameLinuxProcess(
+  pid: number,
+  recorded: { bootId: string; ticks: number },
+  options: SameProcessOptions,
+): boolean {
+  if ((options.platform ?? process.platform) !== 'linux') return true
+  const proc = linuxProcess(pid, options.procRoot)
+  if (proc === undefined || proc === null || proc.bootId === null) return true
+  if (proc.bootId !== recorded.bootId) return false
+  return proc.ticks <= recorded.ticks + (TOLERANCE_MS / 1000) * LINUX_TICKS_PER_SECOND
 }
 
 function readRecorded(startedAt: string | number): Recorded | null {
   if (typeof startedAt === 'number') {
     if (!Number.isFinite(startedAt) || startedAt <= 0) return null
-    return { ms: startedAt < 1e11 ? startedAt * 1000 : startedAt, zoned: true }
+    return { kind: 'time', ms: startedAt < 1e11 ? startedAt * 1000 : startedAt, zoned: true }
   }
   const text = startedAt.trim()
-  if (/^\d{9,10}$/.test(text)) return { ms: Number(text) * 1000, zoned: true }
-  if (/^\d{12,13}$/.test(text)) return { ms: Number(text), zoned: true }
+  const linux = LINUX_IDENTITY.exec(text)
+  if (linux !== null) return { kind: 'linux', bootId: linux[1]!, ticks: Number(linux[2]) }
+  const start = /^start:(\d+)$/.exec(text)
+  if (start !== null) return { kind: 'time', ms: Number(start[1]), zoned: true }
+  if (/^\d{9,10}$/.test(text)) return { kind: 'time', ms: Number(text) * 1000, zoned: true }
+  if (/^\d{12,13}$/.test(text)) return { kind: 'time', ms: Number(text), zoned: true }
   if (ISO_WITH_ZONE.test(text)) {
     const ms = Date.parse(text)
-    return Number.isNaN(ms) ? null : { ms, zoned: true }
+    return Number.isNaN(ms) ? null : { kind: 'time', ms, zoned: true }
   }
   const lstart = lstartAsUtcMs(text)
-  return lstart === null ? null : { ms: lstart, zoned: false }
+  return lstart === null ? null : { kind: 'time', ms: lstart, zoned: false }
 }
 
 /** Whether zoneless text, read as UTC, is `actualMs` shifted by a real time-zone offset. */
@@ -179,19 +228,55 @@ function lstartAsUtcMs(text: string): number | null {
  * Null when there is no such process; undefined when `/proc` cannot say, so
  * the caller asks `ps` instead.
  */
-function linuxStartedAt(pid: number, procRoot: string): number | null | undefined {
+function linuxStartedAt(pid: number, procRoot: string | undefined): number | null | undefined {
+  const proc = linuxProcess(pid, procRoot)
+  if (proc === null || proc === undefined) return proc
+  const boot = bootSeconds(procRoot ?? '/proc')
+  if (boot === null) return undefined
+  return (boot + Math.floor(proc.ticks / LINUX_TICKS_PER_SECOND)) * 1000
+}
+
+/**
+ * A process's start ticks and the boot id, from `/proc`. Null when there is
+ * no such process; undefined when `/proc` cannot say. The system `/proc` is
+ * trusted only when it lists this process as itself: one mounted for another
+ * pid namespace would describe a different process under the same number.
+ */
+function linuxProcess(
+  pid: number,
+  procRoot: string | undefined,
+): { ticks: number; bootId: string | null } | null | undefined {
+  const root = procRoot ?? '/proc'
+  if (procRoot === undefined && !ownProc(root)) return undefined
   let stat: string
   try {
-    stat = readFileSync(`${procRoot}/${pid}/stat`, 'utf-8')
+    stat = readFileSync(`${root}/${pid}/stat`, 'utf-8')
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code
     // ESRCH: the process exited while the file was being read.
     return code === 'ENOENT' || code === 'ESRCH' ? null : undefined
   }
   const ticks = startTicks(stat)
-  const boot = bootSeconds(procRoot)
-  if (ticks === null || boot === null) return undefined
-  return (boot + Math.floor(ticks / LINUX_TICKS_PER_SECOND)) * 1000
+  return ticks === null ? undefined : { ticks, bootId: bootId(root) }
+}
+
+/** Whether `/proc` at `root` belongs to this process's pid namespace. */
+function ownProc(root: string): boolean {
+  try {
+    return readlinkSync(`${root}/self`) === String(process.pid)
+  } catch {
+    return false
+  }
+}
+
+/** This boot's id, from `/proc/sys/kernel/random/boot_id`; null when it cannot be read. */
+function bootId(root: string): string | null {
+  try {
+    const id = readFileSync(`${root}/sys/kernel/random/boot_id`, 'utf-8').trim()
+    return /^[0-9a-f-]{36}$/.test(id) ? id : null
+  } catch {
+    return null
+  }
 }
 
 /**

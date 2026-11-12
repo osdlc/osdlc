@@ -95,23 +95,23 @@ Any function of `HeldLock` works. Check field types yourself: the content is
 whatever is on disk.
 
 ```ts
-import { claimLock, processStartedAt, sameProcess, type HeldLock } from '@osdlc/file-lock'
+import { claimLock, processIdentity, sameProcess, type HeldLock } from '@osdlc/file-lock'
 
-type Owner = { pid?: number; started_at?: number | null }
+type Owner = { pid?: number; started_at?: string | null }
 
 // Stale when the pid is gone, or now belongs to a different process.
 function ownerGone(held: HeldLock<Owner>): boolean {
   const owner = held.content
   if (owner === null) return false // not JSON: another program's file, leave it alone
   if (typeof owner.pid !== 'number') return true
-  return !sameProcess(owner.pid, owner.started_at ?? Number.NaN)
+  return !sameProcess(owner.pid, owner.started_at ?? '')
 }
 
-claimLock<Owner>(lock, { pid: process.pid, started_at: processStartedAt(process.pid) }, { isStale: ownerGone })
+claimLock<Owner>(lock, { pid: process.pid, started_at: processIdentity(process.pid) }, { isStale: ownerGone })
 ```
 
 `holderGone((o) => [{ pid: o.pid, startedAt: o.started_at }])` does the same.
-`sameProcess` reads a start time it cannot parse (here `NaN`) as unknown, so a
+`sameProcess` reads a start time it cannot parse (here `''`) as unknown, so a
 live pid with no recorded start counts as the owner.
 
 ## Changing what a held lock records

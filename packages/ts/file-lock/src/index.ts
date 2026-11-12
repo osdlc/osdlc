@@ -18,6 +18,7 @@ export {
 } from './held.ts'
 export { NotALockError, type NotALockKind } from './lock-file.ts'
 export {
+  processIdentity,
   processStartedAt,
   sameProcess,
   type ProcessStartOptions,
