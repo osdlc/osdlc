@@ -136,7 +136,7 @@ move; merged PRs drop off.
 | Order | PR | What | Why this order | Status |
 | --- | --- | --- | --- | --- |
 | 1 | [#785](https://github.com/osdlc/osdlc/pull/785) | ts-packages-release: inputs for packages with no code | Small shared-CI change, ready now; the only PR waiting on your review | waiting on your review since 01:47 UTC; clean and green |
-| 2 | [#764](https://github.com/osdlc/osdlc/pull/764) | feat(gh-actions): run any skill from a PR comment, read-only or with `--apply` | Next to be ready, after 785 | draft: needs your choice of how `--apply` changes land, the `pr-agent` environment and the token fix, then the gate reruns; up to date with main; clean and green |
+| 2 | [#764](https://github.com/osdlc/osdlc/pull/764) | feat(gh-actions): run any skill from a PR comment, read-only or with `--apply` | Next to be ready, after 785 | draft: needs your choice of how `--apply` changes land, the `pr-agent` environment and the token fix, then the gate reruns; CI green; behind main again |
 
 ## PR tracker
 
