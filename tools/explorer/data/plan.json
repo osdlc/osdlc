@@ -76,6 +76,7 @@
         73,
         59,
         36,
+        74,
         23,
         60,
         35,
@@ -1376,6 +1377,21 @@
       ],
       "text": "The rules that let sdlc's own planning folders validate as they are, and that tell corpora apart.\n\n- Identity: every corpus, type and record in a package has a Package URL, derived from the nearest `package.json` (decision D16). A corpus's graph holds one version of each corpus. Records reached through two chains collapse by identity. A schema may state its type's identity in `x-identity`.\n- The id cut: with `x-id-pattern`, a record's id is the longest part of its file name that the pattern matches, followed by `-` or the end of the name. So `P-0002-favor-deterministic.md` has the id `P-0002`, and a record's `id` field must equal it.\n- `x-record-file`: a type names the file that holds a record kept in a folder of its own, such as `README.md` for `decisions/D-0001-a-slug/README.md`.\n- Narrative folders: a folder in a type folder whose name starts with `_` holds narrative, not records.\n\nAfter 9 and 70. In progress in [#12](https://github.com/osdlc/markdown/pull/12). It ships in 0.3.0 (task 36).",
       "source": "docs/planning/tasks/73 Identity and record files.md"
+    },
+    {
+      "id": 74,
+      "title": "Skillwright on 0.3.0",
+      "detail": "skillwright",
+      "status": "todo",
+      "milestone": "m-npm",
+      "type": "functional",
+      "after": [
+        36,
+        60
+      ],
+      "prs": [],
+      "text": "Skillwright's `harness-reference/corpus` (in osdlc/skillwright) validates with `@osdlc/corpus-schema` `^0.2.0` from npm. Move it to 0.3.0 once that is published. Later, extend the claims profile: its claims types come from `@osdlc/corpus-profile-claims` (task 60) instead of copies. After 36 and 60.",
+      "source": "docs/planning/tasks/74 Skillwright on 0.3.0.md"
     }
   ]
 }

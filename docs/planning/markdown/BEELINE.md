@@ -160,7 +160,7 @@ Each item: the task, its status, who does it, its pull requests, and the tasks i
 - [ ] [48 Profile generator](tasks/48%20Profile%20generator.md) · in progress · agent · [sksizer/dev#4163](https://github.com/sksizer/dev/pull/4163)
 - [ ] [59 Trusted publishing](tasks/59%20Trusted%20publishing.md) · waiting on owner · owner
 
-### Waiting (28)
+### Waiting (29)
 
 - [ ] [9 Extends](tasks/9%20Extends.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12) · waits on 21
 - [ ] [38 Planning profile](tasks/38%20Planning%20profile.md) · in progress · agent · [osdlc/markdown#14](https://github.com/osdlc/markdown/pull/14) · waits on 9
@@ -173,6 +173,7 @@ Each item: the task, its status, who does it, its pull requests, and the tasks i
 - [ ] [71 Uses](tasks/71%20Uses.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12) · waits on 9
 - [ ] [73 Identity and record files](tasks/73%20Identity%20and%20record%20files.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12) · waits on 9, 70
 - [ ] [36 Release 0.3.0](tasks/36%20Release%200.3.0.md) · waiting on owner · owner · waits on 9, 21, 27, 29, 43, 44, 45, 46, 59, 70, 71, 73
+- [ ] [74 Skillwright on 0.3.0](tasks/74%20Skillwright%20on%200.3.0.md) · not started · agent · waits on 36, 60
 - [ ] [23 Claims profile](tasks/23%20Claims%20profile.md) · in progress · agent · [osdlc/markdown#15](https://github.com/osdlc/markdown/pull/15) · waits on 21, 36
 - [ ] [60 Publish claims](tasks/60%20Publish%20claims.md) · waiting on owner · owner · waits on 23, 59
 - [ ] [35 Example pair](tasks/35%20Example%20pair.md) · in progress · agent · [osdlc/markdown#16](https://github.com/osdlc/markdown/pull/16) · waits on 23, 29, 36

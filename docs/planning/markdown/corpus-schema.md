@@ -3,6 +3,7 @@ corpus-schema: 0
 level: 2
 extends:
   plan: ../../profiles/planning
+uses: [plan/decisions]
 ---
 
 # The markdown ecosystem plan, as records

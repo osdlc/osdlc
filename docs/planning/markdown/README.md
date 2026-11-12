@@ -17,9 +17,10 @@ what each one means.
 
 Tasks, milestones and decisions build on the
 [planning profile](../../profiles/planning/README.md), a corpus with only types. The root file
-names it under `extends` with the prefix `plan`, and each of the three schemas names its profile
-type with `x-extends`, such as `x-extends: plan/tasks`. A record passes the local schema and the
-profile's. The other types are this plan's own, because they describe this ecosystem.
+names it under `extends` with the prefix `plan`. Tasks and milestones add fields, so each has a
+schema that names its profile type with `x-extends`, such as `x-extends: plan/tasks`. Decisions add
+none, so `uses: [plan/decisions]` in the root file gives the `decisions/` folder the profile's type,
+with no schema file. A record passes the local schema and the profile's. The other types are this plan's own, because they describe this ecosystem.
 
 - [tasks](tasks/tasks.schema.md): one piece of work. The file name is the task number and a short
   name, such as `27 Org corpora.md`. The body is the task's plan. It adds `detail`, `type` and
@@ -29,8 +30,9 @@ profile's. The other types are this plan's own, because they describe this ecosy
   the ecosystem it builds: the store, the model above it, or harness knowledge. The profile's
   [milestone schema](../../profiles/planning/milestones/milestones.schema.md) says how a
   milestone's status follows from its tasks.
-- [decisions](decisions/decisions.schema.md): a choice the plan made, or one still open. The body
-  states it and why. It is the profile's decision type, as it is.
+- [decisions](decisions/): a choice the plan made, or one still open. The body states it and why.
+  It is the profile's [decision type](../../profiles/planning/decisions/decisions.schema.md), as it
+  is, through `uses`.
 - [components](components/components.schema.md): a package, crate, spec, profile, corpus or app,
   where it lives today (`present`) and in the plan's end state (`target`), and what it depends on.
   The body is its purpose, then a `## Notes` list.

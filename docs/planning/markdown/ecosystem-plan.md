@@ -329,7 +329,7 @@ name overrides (task 24).
 
 ## Decisions
 
-Each decision is a record in [planning/decisions/](planning/decisions/decisions.schema.md), with
+Each decision is a record in [planning/decisions/](planning/decisions/), with
 its status and reasons.
 
 ### Names we considered

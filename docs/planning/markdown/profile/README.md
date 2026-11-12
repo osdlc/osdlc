@@ -38,16 +38,16 @@ extends:
   plan: ../profiles/planning
 ```
 
-Then give each type you want a local folder whose schema names the profile's type with
-`x-extends`. The records go in the local folder.
+Then give each type you want a local folder. The records go in the local folder.
 
-To use a type as it is, the schema holds only `x-extends`:
+To use a type as it is, list it in `uses` in the root file. The folder has no schema file:
 
 ```yaml
-x-extends: plan/decisions
+uses: [plan/decisions] # or plan/* for every type
 ```
 
-To add fields, list them in the local schema. A record must pass both schemas. To keep the type
+To add fields, leave the type out of `uses` and write a local schema that names the profile's type
+with `x-extends`, then lists the fields. A record must pass both schemas. To keep the type
 closed, also list the profile's fields as `true` and set `additionalProperties: false`:
 
 ```yaml
@@ -71,4 +71,4 @@ and `sync` copies only the corpora under `references`.
 ## Where it is used
 
 This repo's plan, [docs/planning/](../../docs/planning/README.md), extends it. Its tasks and
-milestones add fields. Its decisions use the type as it is.
+milestones add fields. Its decisions use the type as it is, through `uses`.
