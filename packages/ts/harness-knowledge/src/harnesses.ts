@@ -41,10 +41,9 @@ export function idFor(harness: string): string | undefined {
 export function credentialEnv(harness: string): string[] {
   const vars = fact(slugFor(harness) ?? harness, 'config/credentials-env')?.['vars']
   if (!Array.isArray(vars)) return []
-  return vars.flatMap((v: unknown) => {
-    const name = (v as { name?: unknown } | null)?.name
-    return typeof name === 'string' ? [name] : []
-  })
+  return vars
+    .map((v: unknown) => (v as { name?: unknown } | null)?.name)
+    .filter((name): name is string => typeof name === 'string')
 }
 
 /**
