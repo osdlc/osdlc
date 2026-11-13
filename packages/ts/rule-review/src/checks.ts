@@ -3,7 +3,7 @@
  * `@osdlc/command-seam` runner the caller can replace.
  * Design: docs/planning/decisions/D-07-check-folders.md.
  */
-import { spawnRunnerAsync, type AsyncCommandRunner } from '@osdlc/command-seam'
+import { spawnRunnerAsync, type AsyncCommandRunner, type EnvOverrides } from '@osdlc/command-seam'
 
 import type { Changeset } from './changeset.ts'
 import { selectByScope } from './select.ts'
@@ -89,7 +89,7 @@ export function checkEnv(
   folder: CheckFolder,
   projectRoot: string,
   base?: string,
-): Record<string, string | undefined> {
+): EnvOverrides {
   return {
     CHECK_ROOT: projectRoot,
     CHECK_NAME: check.name,
