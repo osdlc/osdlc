@@ -53,7 +53,7 @@ created: 2026-10-19
   same `events.jsonl`: a later process, a resume, a hook reporter, another
   machine. A process that is a new session writes its own `launched` event in
   its own directory, with its own meta.
-- The record gains `meta?: M`, and `projection`, the version of the model that
+- The record gains `meta?: M`, and `projection`, an integer revision of the model that
   projected it (see Consequences).
 - `meta` is for the caller's own fields only. The fields observe already
   defines, such as `run`, `subject`, `task` and `parent`, stay where they are,
@@ -130,7 +130,7 @@ There is no change to the closed lists. The README gets a section on mapping:
   `SessionTranscript`. They are stable for 0.x.
 - `TranscriptCoverage` joins the closed unions of D-04.
 - `IgnoredEventOf['reason']` gains `immutable_meta`, `invalid_meta` and
-  `weaker_transcript`. D-04 does not list it as closed, but the changeset says
+  `weaker_transcript`. D-04 does not list it as closed, but the implementation changeset will say
   so.
 - Older readers and writers:
   - An older reader skips the two new event kinds, as it skips any kind it
@@ -142,6 +142,6 @@ There is no change to the closed lists. The README gets a section on mapping:
   - An older writer that appends to the same log re-projects `record.json`
     without `meta` or `transcript`, stamping the log length it covered. A newer
     reader would then trust that record. To prevent this, the record gains
-    `projection`, the version of the model that wrote it, and a reader reduces
+    `projection`, an integer revision of the observe model (bumped on any change to the reducer) that wrote it, and a reader reduces
     the log again when a record's version is older than its own (or absent).
 - A minor release.

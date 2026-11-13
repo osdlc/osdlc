@@ -54,7 +54,6 @@ created: 2026-10-19
   other conversations are never returned.
 - The package reads and never writes. Copying the logs somewhere, and the rules
   for replacing an earlier copy, are the caller's.
-
 - `CLAUDE_CONFIG_DIR` and `CODEX_HOME` count only when they hold an absolute
   path. An empty or relative value counts as unset, the same rule
   `@osdlc/detect-harness` applies.
