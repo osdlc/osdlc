@@ -1,0 +1,3 @@
+type: object
+properties:
+  task: { type: string, x-ref: [one/tasks, two/tasks], x-ref-form: id }
