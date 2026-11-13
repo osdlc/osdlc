@@ -1,0 +1,4032 @@
+{
+  "asOf": "2026-11-12",
+  "sources": [
+    "Rechecked 2026-11-12: osdlc/osdlc main (480c02a4) packages/ts/*/package.json and packages/rust/*/Cargo.toml, with npm and crates.io versions; sksizer/dev main (0408c39271) packages/ts/*/package.json and the solutions/ontological and solutions/determined manifests, and commit 48b62783, which removed its markdown-link copy and the vendored markdown-contract; osdlc/skillwright main (b3657db) Cargo.toml files; osdlc/osdlc PRs #649, #650, #651, #728 and #730; osdlc/models #1 and #2.",
+    "Rechecked 2026-11-11: sksizer/dev PRs #4069 and #4070 merged into code-intelligence-planning, which open PR #4068 takes to main; the package names and paths of @osdlc/pack-intent and @osdlc/pack-sdlc; npm versions of @osdlc/corpus-schema (0.2.1) and @osdlc/package-checks (0.2.0).",
+    "Rechecked 2026-11-10: osdlc/markdown main (3c8f6fe) and open PRs #12, #15 and #16; osdlc/osdlc PRs #767, #773 and #774; npm versions of @osdlc/package-checks and @osdlc/conformance-suites. Other facts below are as of 2026-11-09.",
+    "osdlc/markdown main (de5bb97): docs/architecture.md, docs/ecosystem-plan.md, docs/corpus-schema.md, tools/diagrams/build.py, tools/diagrams/architecture.py, profiles/claims/, .github/workflows/examples.yml",
+    "osdlc/markdown open PRs #9 (move corpus-schema, 1ad5a95) and #10 (shared CI, 4548e92)",
+    "osdlc/osdlc main (c4886b06): packages/ts/*/package.json, packages/rust/Cargo.toml and each crate's Cargo.toml, packages/conformance/families.json, .github/workflows/ts-packages-ci.yml and ts-packages-release.yml",
+    "osdlc/osdlc PRs #649, #650, #651, #719, #720 (branch feat/markdown-render), #728, #730, #746, #748, #749, #750",
+    "osdlc/skillwright main (08504e2): harness-reference/package.json, harness-reference/corpora/beta, packages/rust/Cargo.toml, skillwright and tradecraft-core Cargo.toml; PRs #74, #95, #97",
+    "sksizer/dev main (adb63f43df): packages/ts/*/package.json, solutions/ontological and solutions/determined package.json files, vendor/; PRs #4069 and #4070; task T-1NC5",
+    "sksizer/rust-ontogen main (128bb5e): Cargo.toml, crates/markdown-store/Cargo.toml",
+    "npm registry (npm view <name> version) and crates.io API (/api/v1/crates/<name>), checked 2026-11-09",
+    "Overlap evidence, read on main unless named: osdlc/osdlc packages/ts/corpus-schema/src/validate.ts and links.ts, packages/ts/markdown-contract/src/core/frontmatter.ts; sksizer/dev packages/ts/{markdown-link,markdown-tags,markdown-vault,vault-graph-core,markdown-astro,markdown-render}/src, vendor/markdown-contract-0.2.1.tgz, solutions/determined/apps/{vault-graph,connector,vault-digest,workflow-designer}; rust-ontogen crates/markdown-store/src; osdlc/skillwright harness-reference/corpora/beta/*/*.schema.md; model-schema at the head of sksizer/dev#4069 (64b7132)"
+  ],
+  "layers": [
+    {
+      "id": "apps",
+      "label": "9. Apps",
+      "summary": "Programs that use the layers below and keep only their own rules."
+    },
+    {
+      "id": "render",
+      "label": "8. Render, edit, sites",
+      "summary": "Showing notes to people: HTML rendering, the live editor, viewing chrome and site builds."
+    },
+    {
+      "id": "query",
+      "label": "7. Query (later)",
+      "summary": "Reading a corpus as a database: loading records, queries, and JSON or SQLite builds."
+    },
+    {
+      "id": "profiles",
+      "label": "6. Profiles",
+      "summary": "Shared, versioned sets of types that many corpora can use, next to their own types, and starter corpora whose records a corpus references."
+    },
+    {
+      "id": "model",
+      "label": "5. The model",
+      "summary": "Packs, which declare kinds, relations and rules but not storage, and model-schema, which loads them and generates profiles from them. It sits above the store spec (decision D13)."
+    },
+    {
+      "id": "spec",
+      "label": "4. corpus-schema",
+      "summary": "The spec for what a corpus declares about itself, and the validator that checks a corpus against it."
+    },
+    {
+      "id": "corpus-model",
+      "label": "3. The corpus model",
+      "summary": "Every note in a corpus at once: files, links in both directions, frontmatter and tags, kept up to date."
+    },
+    {
+      "id": "note-parts",
+      "label": "2. Note parts",
+      "summary": "The pieces of one note: links, frontmatter, tags, tables and one document's structure."
+    },
+    {
+      "id": "formats",
+      "label": "Data formats (proposal)",
+      "summary": "Lossless readers and editors for a file format in general, not just inside a note: YAML today, JSON later. Note parts build on them. Not one of the layers in docs/architecture/markdown-target.md yet."
+    },
+    {
+      "id": "files",
+      "label": "1. Files",
+      "summary": "Walking folders, reading files and writing them safely. It does not know what Markdown is."
+    }
+  ],
+  "repos": [
+    {
+      "id": "osdlc/markdown",
+      "label": "markdown",
+      "url": "https://github.com/osdlc/markdown"
+    },
+    {
+      "id": "osdlc/models",
+      "label": "models",
+      "url": "https://github.com/osdlc/models"
+    },
+    {
+      "id": "osdlc/osdlc",
+      "label": "osdlc",
+      "url": "https://github.com/osdlc/osdlc"
+    },
+    {
+      "id": "osdlc/skillwright",
+      "label": "skillwright",
+      "url": "https://github.com/osdlc/skillwright"
+    },
+    {
+      "id": "sksizer/dev",
+      "label": "dev",
+      "url": "https://github.com/sksizer/dev"
+    },
+    {
+      "id": "sksizer/rust-ontogen",
+      "label": "rust-ontogen",
+      "url": "https://github.com/sksizer/rust-ontogen"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "determined",
+      "name": "determined",
+      "kind": "app",
+      "language": "ts",
+      "layer": "apps",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "sksizer/dev",
+        "target": "sksizer/dev"
+      },
+      "path": {
+        "present": "solutions/determined",
+        "target": "solutions/determined"
+      },
+      "status": "unpublished",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "The plan calls it a notes app. In dev it is many small apps and experiences over a user's vault, such as notes, graph, search and sites.",
+      "notes": [
+        "Uses the dev render, edit and corpus packages through workspace:*, plus osdlc note parts from npm, markdown-link and markdown-contract among them.",
+        "Task 13 switches its vault-graph app and its graph and notes experiences to the shared model and resolver."
+      ],
+      "tasks": [
+        13
+      ],
+      "links": [],
+      "source": "docs/planning/markdown/components/determined.md"
+    },
+    {
+      "id": "evidence-project",
+      "name": "the evidence project",
+      "kind": "app",
+      "language": "none",
+      "layer": "apps",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": null,
+        "target": null
+      },
+      "path": {
+        "present": null,
+        "target": null
+      },
+      "status": "unpublished",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "Another project that will keep evidence, observations and test material (scripts, queries, CSV results) as records with their files.",
+      "notes": [
+        "The plan and architecture do not name it or its repo.",
+        "Task 5: it copies the types from the claims example and writes records, after tasks 3, 4 and 22. Task 23 switches it to the claims profile."
+      ],
+      "tasks": [
+        5,
+        23
+      ],
+      "links": [],
+      "source": "docs/planning/markdown/components/evidence-project.md"
+    },
+    {
+      "id": "harness-beta-corpus",
+      "name": "harness-reference beta corpus",
+      "kind": "corpus",
+      "language": "markdown",
+      "layer": "apps",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/skillwright",
+        "target": "osdlc/skillwright"
+      },
+      "path": {
+        "present": "harness-reference/corpora/beta",
+        "target": "harness-reference/corpora/beta"
+      },
+      "status": "published",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "harness-reference's level-2 corpus: harnesses, subjects, and the claims types (documents, methods, study-results, statements) with harness fields added.",
+      "notes": [
+        "osdlc/skillwright#97 (2026-11-09) moved it to the claims types: references became documents, evidence became study-results. Its schemas are copied from the claims example at commit 663f545. The plan still lists task 26 as not started.",
+        "The alpha corpus beside it has no root file and is not a corpus-schema corpus.",
+        "Open osdlc/skillwright PRs #98 and #100 to #106 add research records to it."
+      ],
+      "tasks": [
+        8,
+        23,
+        26
+      ],
+      "links": [
+        {
+          "label": "osdlc/skillwright#97",
+          "url": "https://github.com/osdlc/skillwright/pull/97"
+        },
+        {
+          "label": "osdlc/skillwright#74",
+          "url": "https://github.com/osdlc/skillwright/pull/74"
+        }
+      ],
+      "source": "docs/planning/markdown/components/harness-beta-corpus.md"
+    },
+    {
+      "id": "harness-reference",
+      "name": "harness-reference",
+      "kind": "app",
+      "language": "ts",
+      "layer": "apps",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/skillwright",
+        "target": "osdlc/skillwright"
+      },
+      "path": {
+        "present": "harness-reference",
+        "target": "harness-reference"
+      },
+      "status": "unpublished",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "A cited record of how coding-agent harnesses differ, kept as Markdown corpora, with its validators, an importer and a compiler for a knowledge file.",
+      "notes": [
+        "Private package. It validates its beta corpus with @osdlc/corpus-schema ^0.2.0 from npm (osdlc/skillwright#95, 2026-11-09).",
+        "osdlc/skillwright#95 deleted skillwright's own markdown-db copy. The plan still lists that copy, and task 8 as not started.",
+        "Its compiled harness-knowledge.json feeds the draft @osdlc/harness-knowledge package (osdlc/osdlc#750).",
+        "Target: it uses @osdlc/corpus-profile-claims instead of copies (task 23)."
+      ],
+      "tasks": [
+        8,
+        22,
+        23,
+        26
+      ],
+      "links": [
+        {
+          "label": "osdlc/skillwright#95",
+          "url": "https://github.com/osdlc/skillwright/pull/95"
+        },
+        {
+          "label": "osdlc/skillwright#97",
+          "url": "https://github.com/osdlc/skillwright/pull/97"
+        },
+        {
+          "label": "osdlc/osdlc#750",
+          "url": "https://github.com/osdlc/osdlc/pull/750"
+        }
+      ],
+      "source": "docs/planning/markdown/components/harness-reference.md"
+    },
+    {
+      "id": "markdown-store",
+      "name": "markdown-store",
+      "kind": "crate",
+      "language": "rust",
+      "layer": "apps",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "sksizer/rust-ontogen",
+        "target": "sksizer/rust-ontogen"
+      },
+      "path": {
+        "present": "crates/markdown-store",
+        "target": "crates/markdown-store"
+      },
+      "status": "unpublished",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "Reads and writes typed records as Markdown notes from Rust code, keeping the frontmatter lossless.",
+      "notes": [
+        "publish = false, so not on crates.io.",
+        "Problems F6 and F7: it lays out records differently from corpus-schema, and has its own frontmatter and wikilink code.",
+        "Task 10: it writes the spec's layout and uses the shared note parts.",
+        "Where it lives in the target is an open question (stay in rust-ontogen or move to osdlc). Unchanged here.",
+        "Its Cargo.toml says it is meant to move into a rust-markdown workspace beside markdown-vault. The plan does not say this."
+      ],
+      "tasks": [
+        10
+      ],
+      "links": [],
+      "source": "docs/planning/markdown/components/markdown-store.md"
+    },
+    {
+      "id": "ontogen",
+      "name": "ontogen",
+      "kind": "crate",
+      "language": "rust",
+      "layer": "apps",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "sksizer/rust-ontogen",
+        "target": "sksizer/rust-ontogen"
+      },
+      "path": {
+        "present": ".",
+        "target": "."
+      },
+      "status": "published",
+      "version": "0.11.0",
+      "registry": "https://crates.io/crates/ontogen",
+      "twin": null,
+      "purpose": "A build-time code generator: from Rust structs it generates persistence, a store, an API and clients. Its Markdown backend writes records through markdown-store.",
+      "notes": [
+        "Related crates on crates.io: ontogen-core 0.8.0, ontogen-macros 0.2.0, ontogen-jsonapi 0.3.0, ontogen-ts 0.2.0.",
+        "The plan does not say how its target changes beyond markdown-store (task 10)."
+      ],
+      "tasks": [],
+      "links": [],
+      "source": "docs/planning/markdown/components/ontogen.md"
+    },
+    {
+      "id": "plan-corpus",
+      "name": "the Markdown Ecosystem Plan corpus",
+      "kind": "corpus",
+      "language": "markdown",
+      "layer": "apps",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": "docs/planning/markdown",
+        "target": "docs/planning/markdown"
+      },
+      "status": "unpublished",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "This plan's tasks, milestones and decisions, and the components it changes, kept as records. The explorer's data is built from it.",
+      "notes": [
+        "Built in osdlc/markdown#13 and #14 at docs/planning. It is now in osdlc/osdlc at docs/planning/markdown (decision D19).",
+        "Today it extends the planning profile. Its tasks and milestones add fields, and its decisions use the profile's type as it is.",
+        "Task 53 makes it the first remote consumer of the sdlc profile and the starter corpus, from npm. Its records move to sdlc ids and fields, and the planning profile is deleted.",
+        "Its components, layers, repos, overlaps and datasets are its own types. They describe this ecosystem, so they stay out of the profile."
+      ],
+      "tasks": [
+        38,
+        44,
+        53
+      ],
+      "links": [
+        {
+          "label": "osdlc/markdown#13",
+          "url": "https://github.com/osdlc/markdown/pull/13"
+        },
+        {
+          "label": "osdlc/markdown#14",
+          "url": "https://github.com/osdlc/markdown/pull/14"
+        }
+      ],
+      "source": "docs/planning/markdown/components/plan-corpus.md"
+    },
+    {
+      "id": "sdlc",
+      "name": "sdlc (@sdlc/cli)",
+      "kind": "app",
+      "language": "ts",
+      "layer": "apps",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "sksizer/dev",
+        "target": "sksizer/dev"
+      },
+      "path": {
+        "present": "solutions/ontological",
+        "target": "solutions/ontological"
+      },
+      "status": "unpublished",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "The planning CLI and plugin. It keeps its planning docs as a corpus of notes with typed frontmatter.",
+      "notes": [
+        "Uses osdlc note parts from npm, markdown-link and markdown-contract among them. dev's private markdown-link copy and the vendored markdown-contract 0.2.1 are gone (sksizer/dev 48b62783). Its desktop app (solutions/ontological/desktop) uses the render and edit packages.",
+        "Target from the plan's diagram: it takes its types from profiles. sksizer/dev#4070 says sdlc does not use the packs yet.",
+        "Plan: nothing from dev is published."
+      ],
+      "tasks": [
+        50
+      ],
+      "links": [
+        {
+          "label": "sksizer/dev#4070",
+          "url": "https://github.com/sksizer/dev/pull/4070"
+        }
+      ],
+      "source": "docs/planning/markdown/components/sdlc.md"
+    },
+    {
+      "id": "skillwright",
+      "name": "skillwright",
+      "kind": "app",
+      "language": "rust",
+      "layer": "apps",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/skillwright",
+        "target": "osdlc/skillwright"
+      },
+      "path": {
+        "present": "packages/rust/skillwright",
+        "target": "packages/rust/skillwright"
+      },
+      "status": "published",
+      "version": "0.12.0",
+      "registry": "https://crates.io/crates/skillwright",
+      "twin": null,
+      "purpose": "A CLI that publishes a vault of skill notes into the formats of coding-agent tools, checks them for drift, and edits and reorganizes the vault.",
+      "notes": [
+        "Uses the osdlc Rust crates from crates.io, through its tradecraft-core crate.",
+        "It no longer uses markdown-corpus, markdown-relink, markdown-vault-fs or etag-write, so task 39 has nothing to switch in it.",
+        "Its workspace pins frontmatter-lossless 1.1.2 and path-guard 0.3.3, older than the latest.",
+        "It moved out of osdlc/osdlc into osdlc/skillwright."
+      ],
+      "tasks": [],
+      "links": [],
+      "source": "docs/planning/markdown/components/skillwright.md"
+    },
+    {
+      "id": "markdown-astro",
+      "name": "@osdlc/markdown-vault-astro",
+      "kind": "package",
+      "language": "ts",
+      "layer": "render",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": "packages/ts/markdown-vault-astro",
+        "target": "packages/ts/markdown-vault-astro"
+      },
+      "status": "published",
+      "version": "0.8.0",
+      "registry": "https://www.npmjs.com/package/@osdlc/markdown-vault-astro",
+      "twin": null,
+      "purpose": "Brings an Obsidian vault into Astro content collections: rewrites embeds, copies assets and resolves wikilinks at build time.",
+      "notes": [
+        "Renamed from @osdlc/markdown-astro. First release 0.8.0 on npm, from osdlc/osdlc (osdlc/osdlc#720; #719 merged into its branch). It ships a markdown-vault-astro command.",
+        "It also depends on @osdlc/cli-tool, a general library with no record here.",
+        "sksizer/dev still has its own private copy at packages/ts/markdown-astro. Nothing moves out of dev yet (decision D19).",
+        "Problem F1: it resolves links its own way (resolveRef takes the first match and finds embeds by file name). Task 13 switches it to the shared model and resolver."
+      ],
+      "tasks": [
+        13,
+        17
+      ],
+      "links": [
+        {
+          "label": "osdlc/osdlc#719",
+          "url": "https://github.com/osdlc/osdlc/pull/719"
+        },
+        {
+          "label": "osdlc/osdlc#720",
+          "url": "https://github.com/osdlc/osdlc/pull/720"
+        }
+      ],
+      "source": "docs/planning/markdown/components/markdown-astro.md"
+    },
+    {
+      "id": "markdown-editor",
+      "name": "@osdlc/markdown-editor",
+      "kind": "package",
+      "language": "ts",
+      "layer": "render",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "sksizer/dev",
+        "target": "sksizer/dev"
+      },
+      "path": {
+        "present": "packages/ts/markdown-editor",
+        "target": "packages/ts/markdown-editor"
+      },
+      "status": "unpublished",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "An Obsidian-style live-preview Markdown editor on CodeMirror 6, with a Vue 3 wrapper.",
+      "notes": [
+        "Private in dev at 0.5.1. It stays in sksizer/dev for now (decision D19). Task 17 planned to move it to osdlc; there was no PR for that."
+      ],
+      "tasks": [
+        17
+      ],
+      "links": [],
+      "source": "docs/planning/markdown/components/markdown-editor.md"
+    },
+    {
+      "id": "markdown-render",
+      "name": "@osdlc/markdown-render",
+      "kind": "package",
+      "language": "ts",
+      "layer": "render",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": "packages/ts/markdown-render",
+        "target": "packages/ts/markdown-render"
+      },
+      "status": "published",
+      "version": "0.8.0",
+      "registry": "https://www.npmjs.com/package/@osdlc/markdown-render",
+      "twin": null,
+      "purpose": "Turns Markdown, including Obsidian's wikilinks, embeds, callouts and tags, into HTML. It has no framework: the Vue components are in markdown-render-vue.",
+      "notes": [
+        "First release 0.8.0 on npm, from osdlc/osdlc (osdlc/osdlc#720). It finds wikilinks and embeds with @osdlc/markdown-link's body scanner.",
+        "The Vue components were its `./vue` entry. They are now @osdlc/markdown-render-vue.",
+        "sksizer/dev still has its own private copy at packages/ts/markdown-render, at 0.5.0. It uses dev's copy of markdown-tags and @osdlc/markdown-link from npm. Nothing moves out of dev yet (decision D19)."
+      ],
+      "tasks": [
+        17
+      ],
+      "links": [
+        {
+          "label": "osdlc/osdlc#720",
+          "url": "https://github.com/osdlc/osdlc/pull/720"
+        }
+      ],
+      "source": "docs/planning/markdown/components/markdown-render.md"
+    },
+    {
+      "id": "markdown-render-vue",
+      "name": "@osdlc/markdown-render-vue",
+      "kind": "package",
+      "language": "ts",
+      "layer": "render",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": "packages/ts/markdown-render-vue",
+        "target": "packages/ts/markdown-render-vue"
+      },
+      "status": "published",
+      "version": "0.8.0",
+      "registry": "https://www.npmjs.com/package/@osdlc/markdown-render-vue",
+      "twin": null,
+      "purpose": "Vue 3 components over markdown-render's output: a MarkdownRender component that walks the HTML tree into VNodes, never v-html, with built-in parts for wikilinks, tags, embeds, callouts, math, diagrams, code and tables.",
+      "notes": [
+        "It was markdown-render's `./vue` entry. First release 0.8.0 on npm, from osdlc/osdlc (osdlc/osdlc#720).",
+        "Its package.json is at 0.8.1 after osdlc/osdlc#781, but npm's latest is still 0.8.0.",
+        "vue ^3.5 is its only peer. The host injects a NoteSource that resolves links and loads embeds."
+      ],
+      "tasks": [
+        17
+      ],
+      "links": [
+        {
+          "label": "osdlc/osdlc#720",
+          "url": "https://github.com/osdlc/osdlc/pull/720"
+        },
+        {
+          "label": "osdlc/osdlc#781",
+          "url": "https://github.com/osdlc/osdlc/pull/781"
+        }
+      ],
+      "source": "docs/planning/markdown/components/markdown-render-vue.md"
+    },
+    {
+      "id": "markdown-ui",
+      "name": "@sksizer/markdown-ui",
+      "kind": "package",
+      "language": "ts",
+      "layer": "render",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "sksizer/dev",
+        "target": "sksizer/dev"
+      },
+      "path": {
+        "present": "packages/ts/markdown-ui",
+        "target": "packages/ts/markdown-ui"
+      },
+      "status": "unpublished",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "Markdown viewing and editing chrome as a Nuxt layer: a surface that switches between reading, live editing and source.",
+      "notes": [
+        "Private in dev at 0.6.0. It builds on @determined/ui.",
+        "It stays in sksizer/dev for now (decision D19). Task 17 planned to move it to osdlc; there was no PR for that, and the plan does not say whether its @sksizer scope changes."
+      ],
+      "tasks": [
+        17
+      ],
+      "links": [],
+      "source": "docs/planning/markdown/components/markdown-ui.md"
+    },
+    {
+      "id": "markdown-vault-query",
+      "name": "@osdlc/markdown-vault-query",
+      "kind": "package",
+      "language": "ts",
+      "layer": "query",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "sksizer/dev",
+        "target": "sksizer/dev"
+      },
+      "path": {
+        "present": "packages/ts/markdown-vault-query",
+        "target": "packages/ts/markdown-vault-query"
+      },
+      "status": "unpublished",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "Runs Obsidian Bases (.base) queries over a vault. In the target it becomes the one query layer, on top of the corpus model.",
+      "notes": [
+        "Version 0.2.1 in dev; not on npm.",
+        "Problem F9: two query layers (this and a loader corpus-schema planned).",
+        "It stays in sksizer/dev for now (decision D19). Task 15 puts it on top of the corpus model. It also planned to move it to osdlc. Its target name is not decided; the architecture keeps the word db for this layer, and decision D5 (what db means) is open.",
+        "Task 16 adds a build that writes every valid record to JSON files and a SQLite file."
+      ],
+      "tasks": [
+        13,
+        15,
+        16,
+        72
+      ],
+      "links": [],
+      "source": "docs/planning/markdown/components/markdown-vault-query.md"
+    },
+    {
+      "id": "acceptance-testing-profile",
+      "name": "acceptance-testing profile",
+      "kind": "profile",
+      "language": "markdown",
+      "layer": "profiles",
+      "states": [
+        "target"
+      ],
+      "repo": {
+        "present": null,
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": null,
+        "target": null
+      },
+      "status": "proposal",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "A proposed profile built on claims: acceptance criteria are what statements are about, tests are methods and test runs are study results.",
+      "notes": [
+        "It would live in osdlc/osdlc with the other shared profiles (decision D19). The plan gives no package name or path."
+      ],
+      "tasks": [
+        25
+      ],
+      "links": [],
+      "source": "docs/planning/markdown/components/acceptance-testing-profile.md"
+    },
+    {
+      "id": "claims-example",
+      "name": "claims example corpus",
+      "kind": "corpus",
+      "language": "markdown",
+      "layer": "profiles",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/markdown",
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": "profiles/claims/example",
+        "target": null
+      },
+      "status": "published",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "A valid level-2 corpus with the claims types: documents, methods, study-results and statements. Its records check a made-up claim about a tool called fernlog.",
+      "notes": [
+        "The types follow GA4GH's VA-Spec 1.1.0 (decision D8). profiles/claims/README.md maps each type and field to VA-Spec.",
+        "It comes to osdlc/osdlc with the claims profile (decision D19). Its place there is not decided.",
+        "Merged in osdlc/markdown#6. The plan still calls task 4 in progress.",
+        "Until osdlc/markdown#15 merges, people copy it with npx degit osdlc/markdown/profiles/claims/example. After it, the example holds no type copies, so the profile package is the thing to extend. It is not on a registry.",
+        "profiles/claims/tests/ holds broken records that must fail with one expected error each.",
+        "Its CI builds this repo's corpus-schema, because the published 0.2.x does not read extends.",
+        "Until task 31, evidence items are relative links with a pattern check, not x-ref."
+      ],
+      "tasks": [
+        4,
+        23,
+        31
+      ],
+      "links": [
+        {
+          "label": "osdlc/markdown#6",
+          "url": "https://github.com/osdlc/markdown/pull/6"
+        },
+        {
+          "label": "osdlc/markdown#8 (issue)",
+          "url": "https://github.com/osdlc/markdown/issues/8"
+        },
+        {
+          "label": "osdlc/markdown#15",
+          "url": "https://github.com/osdlc/markdown/pull/15"
+        }
+      ],
+      "source": "docs/planning/markdown/components/claims-example.md"
+    },
+    {
+      "id": "corpus-profile-claims",
+      "name": "@osdlc/corpus-profile-claims",
+      "kind": "profile",
+      "language": "markdown",
+      "layer": "profiles",
+      "states": [
+        "target"
+      ],
+      "repo": {
+        "present": null,
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": null,
+        "target": null
+      },
+      "status": "in-progress",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "The claims types published as a versioned profile, so a corpus names it under extends: and marks its types with x-extends instead of copying them.",
+      "notes": [
+        "Decision D10 fixed the name, the folder and the prefix claims. The architecture still marks the profiles layer a proposal, and its open questions ask whether to adopt profiles.",
+        "Built in osdlc/markdown#15 as package 0.1.0 at profiles/claims. The four type schemas are in its corpus/ folder, which package.json names with \"corpus\". The claims example extends it.",
+        "Task 76 rewrites it as pack-claims.",
+        "It comes to osdlc/osdlc (decision D19). Its place there is not decided; the proposal is packages/profiles/*.",
+        "Not published. The npm name does not change."
+      ],
+      "tasks": [
+        79,
+        78,
+        23,
+        24,
+        80,
+        60,
+        76
+      ],
+      "links": [
+        {
+          "label": "osdlc/markdown#15",
+          "url": "https://github.com/osdlc/markdown/pull/15"
+        }
+      ],
+      "source": "docs/planning/markdown/components/corpus-profile-claims.md"
+    },
+    {
+      "id": "corpus-profile-planning",
+      "name": "@osdlc/corpus-profile-planning",
+      "kind": "profile",
+      "language": "markdown",
+      "layer": "profiles",
+      "states": [
+        "present"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": null
+      },
+      "path": {
+        "present": "docs/planning/markdown/profile",
+        "target": null
+      },
+      "status": "retiring",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "Record types for a plan: tasks, milestones and decisions. A corpus names it under extends: and builds its own types on these with x-extends.",
+      "notes": [
+        "Private package. Not on npm. A corpus extends it by a path to the folder.",
+        "Built in osdlc/markdown#14 at profiles/planning. It is now in osdlc/osdlc with this plan, beside the plan's records (decision D19).",
+        "Its types are open, so a corpus can add fields. A corpus that wants a closed type lists the profile's fields as well as its own. Task 44 removes that need.",
+        "Task 53 removes this profile: the plan moves to the sdlc profile and the profile folder is deleted. Before 1.0 no second form is kept."
+      ],
+      "tasks": [
+        38,
+        53
+      ],
+      "links": [
+        {
+          "label": "osdlc/markdown#14",
+          "url": "https://github.com/osdlc/markdown/pull/14"
+        }
+      ],
+      "source": "docs/planning/markdown/components/corpus-profile-planning.md"
+    },
+    {
+      "id": "corpus-profile-sdlc",
+      "name": "@osdlc/corpus-profile-sdlc",
+      "kind": "profile",
+      "language": "markdown",
+      "layer": "profiles",
+      "states": [
+        "target"
+      ],
+      "repo": {
+        "present": null,
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": null,
+        "target": null
+      },
+      "status": "planned",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "The intent and sdlc packs' kinds as one corpus profile, generated from the packs. sdlc corpora in dev, at work and in this plan validate against it, and the starter corpus extends it.",
+      "notes": [
+        "Planned in decision D13. One profile for now; an intent profile splits out later if a consumer needs the intent kinds alone.",
+        "It comes to osdlc/osdlc (decision D19). Its place there is not decided; the proposal is packages/profiles/*. The generator stays in sksizer/dev, so the profile is regenerated by hand there and copied in.",
+        "This plan (task 53) and a work repo (task 52) install it from npm with corpus-schema 0.3.0."
+      ],
+      "tasks": [
+        78,
+        49,
+        50,
+        52,
+        53,
+        80,
+        61,
+        62
+      ],
+      "links": [],
+      "source": "docs/planning/markdown/components/corpus-profile-sdlc.md"
+    },
+    {
+      "id": "corpus-sdlc-starter",
+      "name": "@osdlc/corpus-sdlc-starter",
+      "kind": "corpus",
+      "language": "markdown",
+      "layer": "profiles",
+      "states": [
+        "target"
+      ],
+      "repo": {
+        "present": null,
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": null,
+        "target": null
+      },
+      "status": "planned",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "A starter corpus of principles and standards that any project can reference and cite. This plan (task 53) and then a work repo name it under references: with the prefix osdlc, sync it into _references/osdlc/ and cite its records by id.",
+      "notes": [
+        "Decision D14. It starts with two principles, P-0001 and P-0002, and the owner adds more (task 64).",
+        "It comes to osdlc/osdlc (decision D19). Its place there is not decided; the proposal is packages/corpora/*.",
+        "dev's own intent records are not the upstream for now.",
+        "A CI check keeps private data out of it (task 65)."
+      ],
+      "tasks": [
+        78,
+        80,
+        63,
+        64,
+        65,
+        66,
+        53,
+        67,
+        68
+      ],
+      "links": [],
+      "source": "docs/planning/markdown/components/corpus-sdlc-starter.md"
+    },
+    {
+      "id": "fernlog-example",
+      "name": "fernlog example corpus",
+      "kind": "corpus",
+      "language": "markdown",
+      "layer": "profiles",
+      "states": [
+        "target"
+      ],
+      "repo": {
+        "present": null,
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": null,
+        "target": null
+      },
+      "status": "in-progress",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "A project corpus for a made-up tool. It extends the claims profile and references the example org principles. Its decisions and statements cite the org's principles. CI installs the claims profile, runs corpus-schema sync and validates both corpora.",
+      "notes": [
+        "Built in osdlc/markdown#16 at examples/fernlog, not merged. It comes to osdlc/osdlc (decision D19); its place there is not decided. It holds a committed _references/org/ copy of the org principles. The claims profile gets no copy, since it gives types only.",
+        "examples/test.sh breaks one thing at a time and checks each case fails with its one expected error.",
+        "It is the start of task 30."
+      ],
+      "tasks": [
+        35,
+        79
+      ],
+      "links": [
+        {
+          "label": "osdlc/markdown#16",
+          "url": "https://github.com/osdlc/markdown/pull/16"
+        }
+      ],
+      "source": "docs/planning/markdown/components/fernlog-example.md"
+    },
+    {
+      "id": "org-principles-corpus",
+      "name": "org principles corpus",
+      "kind": "corpus",
+      "language": "markdown",
+      "layer": "profiles",
+      "states": [
+        "target"
+      ],
+      "repo": {
+        "present": null,
+        "target": null
+      },
+      "path": {
+        "present": null,
+        "target": null
+      },
+      "status": "proposal",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "A proposed shared corpus of an organization's principles. Project corpora reference it and cite its principles, and later refine some and waive others with a reason (task 28).",
+      "notes": [
+        "The first real case for sharing across corpora. The plan does not say which repo holds it. The starter corpus (task 63) may become it."
+      ],
+      "tasks": [
+        27,
+        28,
+        30
+      ],
+      "links": [],
+      "source": "docs/planning/markdown/components/org-principles-corpus.md"
+    },
+    {
+      "id": "org-principles-example",
+      "name": "org principles example corpus",
+      "kind": "corpus",
+      "language": "markdown",
+      "layer": "profiles",
+      "states": [
+        "target"
+      ],
+      "repo": {
+        "present": null,
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": null,
+        "target": null
+      },
+      "status": "in-progress",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "An example organisation's principles: a corpus with one type and three records. The fernlog example extends it by path.",
+      "notes": [
+        "Built in osdlc/markdown#16 at examples/org-principles, not merged. It comes to osdlc/osdlc (decision D19); its place there is not decided.",
+        "An example, not the shared org corpus. That one is the org principles corpus (task 30)."
+      ],
+      "tasks": [
+        35
+      ],
+      "links": [
+        {
+          "label": "osdlc/markdown#16",
+          "url": "https://github.com/osdlc/markdown/pull/16"
+        }
+      ],
+      "source": "docs/planning/markdown/components/org-principles-example.md"
+    },
+    {
+      "id": "work-example",
+      "name": "work example corpus",
+      "kind": "corpus",
+      "language": "markdown",
+      "layer": "profiles",
+      "states": [
+        "target"
+      ],
+      "repo": {
+        "present": null,
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": null,
+        "target": null
+      },
+      "status": "planned",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "The beeline's end state as an example: a project corpus shaped like a work repo's docs/planning. It extends the sdlc profile, references the starter corpus, and its task cites P-0002 by id. CI syncs and validates it with --strict.",
+      "notes": [
+        "It would live in osdlc/osdlc (decision D19). Its place there is not decided.",
+        "Task 53 covers it: this plan's own corpus shows the end state in CI, from npm. It is not built."
+      ],
+      "tasks": [
+        67,
+        79
+      ],
+      "links": [],
+      "source": "docs/planning/markdown/components/work-example.md"
+    },
+    {
+      "id": "model-schema",
+      "name": "@osdlc/model-schema",
+      "kind": "package",
+      "language": "ts",
+      "layer": "model",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "sksizer/dev",
+        "target": "sksizer/dev"
+      },
+      "path": {
+        "present": "packages/ts/model-schema",
+        "target": "packages/ts/model-schema"
+      },
+      "status": "in-progress",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "The pack harness: loads packs (folders of YAML that declare kinds), compiles them, validates values and emits TypeScript types and JSON Schema.",
+      "notes": [
+        "sksizer/dev#4069 merged it into dev's code-intelligence-planning branch, which reaches main with sksizer/dev#4068. It is not on npm.",
+        "It and the packs stay in sksizer/dev for now (decision D19). Task 62 planned to move them to osdlc/models (decision D17).",
+        "Decision D4 makes types plain JSON Schema. Decision D13 puts packs above that as the model, and corpus-schema below as the store spec for Markdown. That answers problem F5: two ways to define types.",
+        "Task 48 adds a generator that turns a pack into a corpus profile.",
+        "Packs differ from the proposed profiles: a record's own property replaces an inherited one, and strict can be overridden."
+      ],
+      "tasks": [
+        47,
+        48,
+        54,
+        55,
+        58,
+        62
+      ],
+      "links": [
+        {
+          "label": "sksizer/dev#4069",
+          "url": "https://github.com/sksizer/dev/pull/4069"
+        }
+      ],
+      "source": "docs/planning/markdown/components/model-schema.md"
+    },
+    {
+      "id": "pack-claims",
+      "name": "@osdlc/pack-claims",
+      "kind": "profile",
+      "language": "yaml",
+      "layer": "model",
+      "states": [
+        "target"
+      ],
+      "repo": {
+        "present": null,
+        "target": null
+      },
+      "path": {
+        "present": null,
+        "target": null
+      },
+      "status": "planned",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "The claims types written as a pack. `@osdlc/corpus-profile-claims` is generated from it.",
+      "notes": [
+        "Where it lives is not decided. The packs stay in sksizer/dev for now, and osdlc/models is a holding pen (decision D19).",
+        "Decision D17. The profile's type folders become generated output (task 76)."
+      ],
+      "tasks": [
+        76
+      ],
+      "links": [],
+      "source": "docs/planning/markdown/components/pack-claims.md"
+    },
+    {
+      "id": "pack-intent",
+      "name": "@osdlc/pack-intent",
+      "kind": "profile",
+      "language": "yaml",
+      "layer": "model",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "sksizer/dev",
+        "target": "sksizer/dev"
+      },
+      "path": {
+        "present": "packages/ts/pack-intent",
+        "target": "packages/ts/pack-intent"
+      },
+      "status": "in-progress",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "The intent pack. It declares why a project exists and what it holds to: principles, standards, decisions, drivers, products, capabilities, terms and references.",
+      "notes": [
+        "sksizer/dev#4070 merged it into dev's code-intelligence-planning branch, which reaches main with sksizer/dev#4068. Private, not on npm.",
+        "It stays in sksizer/dev for now (decision D19). Task 62 planned to move it to osdlc/models (decision D17).",
+        "Task 49 generates @osdlc/corpus-profile-sdlc from it and the sdlc pack."
+      ],
+      "tasks": [
+        47,
+        49,
+        62
+      ],
+      "links": [
+        {
+          "label": "sksizer/dev#4070",
+          "url": "https://github.com/sksizer/dev/pull/4070"
+        }
+      ],
+      "source": "docs/planning/markdown/components/pack-intent.md"
+    },
+    {
+      "id": "pack-sdlc",
+      "name": "@osdlc/pack-sdlc",
+      "kind": "profile",
+      "language": "yaml",
+      "layer": "model",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "sksizer/dev",
+        "target": "sksizer/dev"
+      },
+      "path": {
+        "present": "packages/ts/pack-sdlc",
+        "target": "packages/ts/pack-sdlc"
+      },
+      "status": "in-progress",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "The sdlc pack. It declares the work a project plans and tracks: work items, milestones, backlog, roadmaps, friction and notes. It builds on the intent pack.",
+      "notes": [
+        "sksizer/dev#4070 merged it into dev's code-intelligence-planning branch, which reaches main with sksizer/dev#4068. Private, not on npm.",
+        "It stays in sksizer/dev for now (decision D19). Task 62 planned to move it to osdlc/models (decision D17).",
+        "Together with the intent pack it ports sdlc's 14 entity kinds from hand-written zod.",
+        "Task 49 generates @osdlc/corpus-profile-sdlc from it and the intent pack."
+      ],
+      "tasks": [
+        47,
+        49,
+        62
+      ],
+      "links": [
+        {
+          "label": "sksizer/dev#4070",
+          "url": "https://github.com/sksizer/dev/pull/4070"
+        }
+      ],
+      "source": "docs/planning/markdown/components/pack-sdlc.md"
+    },
+    {
+      "id": "corpus-schema-rs",
+      "name": "Rust corpus-schema validator",
+      "kind": "crate",
+      "language": "rust",
+      "layer": "spec",
+      "states": [
+        "target"
+      ],
+      "repo": {
+        "present": null,
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": null,
+        "target": "packages/rust/corpus-schema"
+      },
+      "status": "planned",
+      "version": null,
+      "registry": null,
+      "twin": "corpus-schema-ts",
+      "purpose": "A planned Rust validator that runs the same conformance cases as the TypeScript one, built on the markdown-corpus crate.",
+      "notes": [
+        "The plan names no crate. It would live in osdlc/osdlc (decision D19). The path is a guess at the repo's layout, not from a source."
+      ],
+      "tasks": [
+        32
+      ],
+      "links": [],
+      "source": "docs/planning/markdown/components/corpus-schema-rs.md"
+    },
+    {
+      "id": "corpus-schema-spec",
+      "name": "corpus-schema spec (SPEC.md)",
+      "kind": "spec",
+      "language": "markdown",
+      "layer": "spec",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": "packages/conformance/corpus-schema",
+        "target": "packages/conformance/corpus-schema"
+      },
+      "status": "published",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "The rules for what a corpus can declare about itself: a root file, type folders, record ids, record folders, JSON Schemas per type and typed links (x-ref). Its test cases sit beside it.",
+      "notes": [
+        "Version 0 is in force (corpus-schema: 0). It has levels 0 to 2.",
+        "It stays in osdlc/osdlc (decision D19). The copy in osdlc/markdown (osdlc/markdown#9) is retired once its open work is brought here.",
+        "Proposals not built yet: a baseline and dialects (task 7), profiles through the extends key (task 9), and sharing whole corpora (tasks 27 to 30).",
+        "A plain-language guide is at packages/ts/corpus-schema/docs/guide/corpus-schema.md."
+      ],
+      "tasks": [
+        1,
+        2,
+        6,
+        7,
+        9,
+        21,
+        27,
+        28,
+        31,
+        33,
+        34,
+        44,
+        45,
+        46,
+        57
+      ],
+      "links": [
+        {
+          "label": "osdlc/markdown#9",
+          "url": "https://github.com/osdlc/markdown/pull/9"
+        },
+        {
+          "label": "osdlc/osdlc#725",
+          "url": "https://github.com/osdlc/osdlc/pull/725"
+        },
+        {
+          "label": "osdlc/osdlc#729",
+          "url": "https://github.com/osdlc/osdlc/pull/729"
+        }
+      ],
+      "source": "docs/planning/markdown/components/corpus-schema-spec.md"
+    },
+    {
+      "id": "corpus-schema-ts",
+      "name": "@osdlc/corpus-schema",
+      "kind": "package",
+      "language": "ts",
+      "layer": "spec",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": "packages/ts/corpus-schema",
+        "target": "packages/ts/corpus-schema"
+      },
+      "status": "published",
+      "version": "0.2.1",
+      "registry": "https://www.npmjs.com/package/@osdlc/corpus-schema",
+      "twin": "corpus-schema-rs",
+      "purpose": "The validator for the corpus-schema spec, as a library and the corpus-schema command. It checks records against their schemas, ids, links and typed references.",
+      "notes": [
+        "0.2.0 is its first version on npm, and 0.2.1 the latest. 0.1.0 was cut but never published (task 3).",
+        "Today it walks the folder and checks links itself (problem F8). Task 14 makes it read the corpus model instead.",
+        "It stays in osdlc/osdlc and releases from here, with the same npm publisher (decision D19). The copy that osdlc/markdown#9 and #10 set up in osdlc/markdown is retired.",
+        "The 0.3.0 work (extends, x-extends and sync) comes here from osdlc/markdown#12 and releases from here. It is not released yet.",
+        "validate --fix exists today. Task 29 adds the corpus-schema sync command: it writes a read-only copy of each referenced corpus into _references/<prefix>/, such as _references/org/, so Obsidian and GitHub links resolve. The validator then checks that the copy matches the installed corpus. Task 34 adds a move verb."
+      ],
+      "tasks": [
+        1,
+        2,
+        3,
+        6,
+        7,
+        9,
+        14,
+        21,
+        24,
+        27,
+        28,
+        29,
+        31,
+        33,
+        34,
+        43,
+        44,
+        45,
+        46,
+        57,
+        69,
+        70,
+        71,
+        73,
+        81,
+        82,
+        83
+      ],
+      "links": [
+        {
+          "label": "osdlc/markdown#9",
+          "url": "https://github.com/osdlc/markdown/pull/9"
+        },
+        {
+          "label": "osdlc/markdown#10",
+          "url": "https://github.com/osdlc/markdown/pull/10"
+        },
+        {
+          "label": "osdlc/osdlc#725",
+          "url": "https://github.com/osdlc/osdlc/pull/725"
+        },
+        {
+          "label": "osdlc/osdlc#729",
+          "url": "https://github.com/osdlc/osdlc/pull/729"
+        },
+        {
+          "label": "osdlc/osdlc#733",
+          "url": "https://github.com/osdlc/osdlc/pull/733"
+        }
+      ],
+      "source": "docs/planning/markdown/components/corpus-schema-ts.md"
+    },
+    {
+      "id": "markdown-corpus",
+      "name": "@osdlc/markdown-corpus",
+      "kind": "package",
+      "language": "ts",
+      "layer": "corpus-model",
+      "states": [
+        "target"
+      ],
+      "repo": {
+        "present": null,
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": null,
+        "target": "packages/ts/markdown-corpus"
+      },
+      "status": "planned",
+      "version": null,
+      "registry": null,
+      "twin": "markdown-corpus-rs",
+      "purpose": "The planned TypeScript corpus model: markdown-vault and vault-graph-core made into one package, built on markdown-link's resolver, the twin of the Rust crate.",
+      "notes": [
+        "Decision D3 names it markdown-corpus.",
+        "The plan does not give a path. This follows osdlc/osdlc's `packages/ts/<name>` layout.",
+        "Its shared test cases are planned as a conformance family."
+      ],
+      "tasks": [
+        12,
+        13,
+        14,
+        15,
+        72,
+        32
+      ],
+      "links": [],
+      "source": "docs/planning/markdown/components/markdown-corpus.md"
+    },
+    {
+      "id": "markdown-corpus-rs",
+      "name": "markdown-corpus",
+      "kind": "crate",
+      "language": "rust",
+      "layer": "corpus-model",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": "packages/rust/markdown-corpus",
+        "target": "packages/rust/markdown-corpus"
+      },
+      "status": "published",
+      "version": "0.3.1",
+      "registry": "https://crates.io/crates/markdown-corpus",
+      "twin": "markdown-corpus",
+      "purpose": "The corpus model in Rust: every note and file in a folder, their links in both directions, tags and frontmatter, kept up to date as files change.",
+      "notes": [
+        "It never rejects a note: a note with broken frontmatter is read as body only.",
+        "Decision D3: the crate keeps its name, and the TypeScript model takes the same name.",
+        "Release PR osdlc/osdlc#730 took it to 0.3.1.",
+        "Open osdlc/osdlc#650 changes it (see markdown-vault-fs)."
+      ],
+      "tasks": [],
+      "links": [
+        {
+          "label": "osdlc/osdlc#650",
+          "url": "https://github.com/osdlc/osdlc/pull/650"
+        }
+      ],
+      "source": "docs/planning/markdown/components/markdown-corpus-rs.md"
+    },
+    {
+      "id": "markdown-relink",
+      "name": "markdown-relink",
+      "kind": "crate",
+      "language": "rust",
+      "layer": "corpus-model",
+      "states": [
+        "present"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": null
+      },
+      "path": {
+        "present": "packages/rust/markdown-relink",
+        "target": null
+      },
+      "status": "retiring",
+      "version": "0.4.1",
+      "registry": "https://crates.io/crates/markdown-relink",
+      "twin": null,
+      "purpose": "Moves or renames a note and rewrites the links that point at it, as a plan you can review before it is applied.\n\nThe plan renames it markdown-reshape. This crate retires under the old name.",
+      "notes": [
+        "Renamed to markdown-reshape-rs, the same library under the new name (task 39). The owner deprecates this crate on crates.io once the new name is published.",
+        "Its code still says vault (VaultFacts).",
+        "Release PR osdlc/osdlc#730 took it to 0.4.1.",
+        "Open osdlc/osdlc#651 also touches it."
+      ],
+      "tasks": [
+        39
+      ],
+      "links": [
+        {
+          "label": "osdlc/osdlc#651",
+          "url": "https://github.com/osdlc/osdlc/pull/651"
+        }
+      ],
+      "source": "docs/planning/markdown/components/markdown-relink.md"
+    },
+    {
+      "id": "markdown-reshape-rs",
+      "name": "markdown-reshape",
+      "kind": "crate",
+      "language": "rust",
+      "layer": "corpus-model",
+      "states": [
+        "target"
+      ],
+      "repo": {
+        "present": null,
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": null,
+        "target": "packages/rust/markdown-reshape"
+      },
+      "status": "planned",
+      "version": null,
+      "registry": null,
+      "twin": "markdown-reshape-ts",
+      "purpose": "Changes how notes are arranged without changing what they say, as a plan you can review before it is applied. Its operations are move, rename, split, merge and extract.",
+      "notes": [
+        "It is markdown-relink under a new name: the same library, renamed (task 39). The old record, markdown-relink, is present only and retiring.",
+        "The path is the old folder renamed. osdlc/osdlc's `packages/rust/<name>` layout gives it.",
+        "Reshape means a change to how notes are arranged, not to what they say. It is the plain word for refactor.",
+        "Move relocates a note and the links follow. This is what relink does today. Rename is a move within a folder.",
+        "Split turns one note into several and redirects each link to the right piece (task 41). Merge makes links to any merged note point to the result (task 41).",
+        "Extract pulls one thread out of the graph into its own folder or corpus (task 42). The thread is a note and what it links to, followed to some depth or by type. Links inside it are kept. Links leaving it are rewritten or flagged. The result could be a new corpus that `extends` the original.",
+        "Its code still says vault (VaultFacts). Task 39 renames those terms.",
+        "Consumer to switch: the determined notes app, which uses it through its Rust backend. skillwright no longer uses it."
+      ],
+      "tasks": [
+        39,
+        41,
+        42
+      ],
+      "links": [],
+      "source": "docs/planning/markdown/components/markdown-reshape-rs.md"
+    },
+    {
+      "id": "markdown-reshape-ts",
+      "name": "@osdlc/markdown-reshape",
+      "kind": "package",
+      "language": "ts",
+      "layer": "corpus-model",
+      "states": [
+        "target"
+      ],
+      "repo": {
+        "present": null,
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": null,
+        "target": "packages/ts/markdown-reshape"
+      },
+      "status": "planned",
+      "version": null,
+      "registry": null,
+      "twin": "markdown-reshape-rs",
+      "purpose": "The planned TypeScript twin of markdown-reshape-rs: move, rename, split, merge and extract over a corpus of notes.",
+      "notes": [
+        "The Rust crate depends on markdown-vault-fs and vfs-seam. There is no TypeScript port of either yet, so this package has no edge for them.",
+        "Two ways to provide TypeScript: port the crate, or build it to WebAssembly, as yaml-splice-wasm does for yaml-splice. Task 40 holds the open question.",
+        "The path follows osdlc/osdlc's `packages/ts/<name>` layout. The plan does not give one."
+      ],
+      "tasks": [
+        40
+      ],
+      "links": [],
+      "source": "docs/planning/markdown/components/markdown-reshape-ts.md"
+    },
+    {
+      "id": "markdown-vault",
+      "name": "@osdlc/markdown-vault",
+      "kind": "package",
+      "language": "ts",
+      "layer": "corpus-model",
+      "states": [
+        "present"
+      ],
+      "repo": {
+        "present": "sksizer/dev",
+        "target": null
+      },
+      "path": {
+        "present": "packages/ts/markdown-vault",
+        "target": null
+      },
+      "status": "retiring",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "Reads an Obsidian-style vault from disk: each note's frontmatter, tags, links, embeds and backlinks. It has its own link-resolving rule.",
+      "notes": [
+        "Version 0.2.2 in dev; not on npm.",
+        "Problems F1 and F4: it resolves links its own way, and says vault instead of corpus.",
+        "Task 12 merges it with vault-graph-core into the TypeScript markdown-corpus.",
+        "It stays in sksizer/dev for now (decision D19). Whether task 12 still retires it is not decided."
+      ],
+      "tasks": [
+        12,
+        13
+      ],
+      "links": [],
+      "source": "docs/planning/markdown/components/markdown-vault.md"
+    },
+    {
+      "id": "vault-graph-core",
+      "name": "@sdlc/vault-graph-core",
+      "kind": "package",
+      "language": "ts",
+      "layer": "corpus-model",
+      "states": [
+        "present"
+      ],
+      "repo": {
+        "present": "sksizer/dev",
+        "target": null
+      },
+      "path": {
+        "present": "packages/ts/vault-graph-core",
+        "target": null
+      },
+      "status": "retiring",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "Builds a graph of notes and links from note data, with no file access. Its link resolver is a copy of the Rust one.",
+      "notes": [
+        "Version 0.1.1 in dev; not on npm. Its scope is @sdlc, not @osdlc (problem F11).",
+        "Task 12 merges it with markdown-vault into the TypeScript markdown-corpus. Task 11 takes the TypeScript resolver from its copy of the Rust one.",
+        "It stays in sksizer/dev for now (decision D19). Whether task 12 still retires it is not decided."
+      ],
+      "tasks": [
+        11,
+        12,
+        13
+      ],
+      "links": [],
+      "source": "docs/planning/markdown/components/vault-graph-core.md"
+    },
+    {
+      "id": "frontmatter-lossless",
+      "name": "@osdlc/frontmatter-lossless",
+      "kind": "package",
+      "language": "ts",
+      "layer": "note-parts",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": "packages/ts/frontmatter-lossless",
+        "target": "packages/ts/frontmatter-lossless"
+      },
+      "status": "published",
+      "version": "1.1.2",
+      "registry": "https://www.npmjs.com/package/@osdlc/frontmatter-lossless",
+      "twin": "frontmatter-lossless-rs",
+      "purpose": "Splits a note into its YAML frontmatter and body, and puts them back together byte for byte.",
+      "notes": [
+        "A general library, not one the plan owns: detect-harness depends on it ([D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md)).",
+        "Shares the frontmatter-lossless conformance family with the Rust crate, which is the reference."
+      ],
+      "tasks": [],
+      "links": [],
+      "source": "docs/planning/markdown/components/frontmatter-lossless.md"
+    },
+    {
+      "id": "frontmatter-lossless-rs",
+      "name": "frontmatter-lossless",
+      "kind": "crate",
+      "language": "rust",
+      "layer": "note-parts",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": "packages/rust/frontmatter-lossless",
+        "target": "packages/rust/frontmatter-lossless"
+      },
+      "status": "published",
+      "version": "1.1.3",
+      "registry": "https://crates.io/crates/frontmatter-lossless",
+      "twin": "frontmatter-lossless",
+      "purpose": "The Rust twin of @osdlc/frontmatter-lossless. A broken frontmatter block is read as body only.",
+      "notes": [
+        "A general library, not one the plan owns, like its twin, which detect-harness depends on ([D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md)).",
+        "Release PR osdlc/osdlc#730 took it to 1.1.3."
+      ],
+      "tasks": [],
+      "links": [],
+      "source": "docs/planning/markdown/components/frontmatter-lossless-rs.md"
+    },
+    {
+      "id": "gfm-pipe-table",
+      "name": "gfm-pipe-table",
+      "kind": "crate",
+      "language": "rust",
+      "layer": "note-parts",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": "packages/rust/gfm-pipe-table",
+        "target": "packages/rust/gfm-pipe-table"
+      },
+      "status": "unpublished",
+      "version": null,
+      "registry": null,
+      "twin": "gfm-table",
+      "purpose": "The Rust twin of @osdlc/gfm-table.",
+      "notes": [
+        "A general library, not one the plan owns, like its twin, which config-layers depends on ([D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md)).",
+        "It is publish = false, so it is not on crates.io."
+      ],
+      "tasks": [],
+      "links": [],
+      "source": "docs/planning/markdown/components/gfm-pipe-table.md"
+    },
+    {
+      "id": "gfm-table",
+      "name": "@osdlc/gfm-table",
+      "kind": "package",
+      "language": "ts",
+      "layer": "note-parts",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": "packages/ts/gfm-table",
+        "target": "packages/ts/gfm-table"
+      },
+      "status": "published",
+      "version": "0.5.0",
+      "registry": "https://www.npmjs.com/package/@osdlc/gfm-table",
+      "twin": "gfm-pipe-table",
+      "purpose": "Reads, edits and renders GFM pipe tables as plain strings, and pads columns so the pipes line up.",
+      "notes": [
+        "A general library, not one the plan owns: config-layers depends on it ([D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md)).",
+        "Its shared test cases still live inside the package. The architecture plans a shared conformance family."
+      ],
+      "tasks": [],
+      "links": [],
+      "source": "docs/planning/markdown/components/gfm-table.md"
+    },
+    {
+      "id": "markdown-contract",
+      "name": "@osdlc/markdown-contract",
+      "kind": "package",
+      "language": "ts",
+      "layer": "note-parts",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": "packages/ts/markdown-contract",
+        "target": "packages/ts/markdown-contract"
+      },
+      "status": "published",
+      "version": "0.7.7",
+      "registry": "https://www.npmjs.com/package/@osdlc/markdown-contract",
+      "twin": "markdown-contract-rs",
+      "purpose": "Checks the structure of one document against a contract: its frontmatter, heading sections, tables, lists and code blocks. Then reads it as a typed model.",
+      "notes": [
+        "Its shared test cases still live inside the package. The architecture plans a shared conformance family for it.",
+        "It also depends on @osdlc/cli-tool, a general library with no record here."
+      ],
+      "tasks": [
+        56,
+        57
+      ],
+      "links": [],
+      "source": "docs/planning/markdown/components/markdown-contract.md"
+    },
+    {
+      "id": "markdown-contract-rs",
+      "name": "markdown-contract",
+      "kind": "crate",
+      "language": "rust",
+      "layer": "note-parts",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": "packages/rust/markdown-contract",
+        "target": "packages/rust/markdown-contract"
+      },
+      "status": "published",
+      "version": "0.4.3",
+      "registry": "https://crates.io/crates/markdown-contract",
+      "twin": "markdown-contract",
+      "purpose": "The Rust twin of @osdlc/markdown-contract.",
+      "notes": [
+        "Release PR osdlc/osdlc#730 took it to 0.4.3."
+      ],
+      "tasks": [
+        56
+      ],
+      "links": [],
+      "source": "docs/planning/markdown/components/markdown-contract-rs.md"
+    },
+    {
+      "id": "markdown-contract-vendored",
+      "name": "markdown-contract 0.2.1 (vendored)",
+      "kind": "package",
+      "language": "ts",
+      "layer": "note-parts",
+      "states": [
+        "present"
+      ],
+      "repo": {
+        "present": "sksizer/dev",
+        "target": null
+      },
+      "path": {
+        "present": "vendor/markdown-contract-0.2.1.tgz",
+        "target": null
+      },
+      "status": "retiring",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "An old markdown-contract release that the dev repo kept as a tarball. It is gone: sksizer/dev commit 48b62783 (2026-11-08) removed it, and sdlc and determined take @osdlc/markdown-contract ^0.7.6 from npm.",
+      "notes": [
+        "It was also vendored at solutions/determined/vendor/markdown-contract-0.2.1.tgz. Its npm name, markdown-contract, is not on npm.",
+        "The record stays so that links to it still resolve."
+      ],
+      "tasks": [],
+      "links": [],
+      "source": "docs/planning/markdown/components/markdown-contract-vendored.md"
+    },
+    {
+      "id": "markdown-link",
+      "name": "@osdlc/markdown-link",
+      "kind": "package",
+      "language": "ts",
+      "layer": "note-parts",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": "packages/ts/markdown-link",
+        "target": "packages/ts/markdown-link"
+      },
+      "status": "published",
+      "version": "0.9.0",
+      "registry": "https://www.npmjs.com/package/@osdlc/markdown-link",
+      "twin": "markdown-link-rs",
+      "purpose": "Finds every wikilink, embed and relative Markdown link in a note body, and skips links inside code. Today it only finds links; it cannot say which file a link points to.",
+      "notes": [
+        "Target: it gets the same link resolver as the Rust crate (LinkIndex), and becomes the only place in TypeScript that decides what a link points to (task 11).",
+        "Its shared test cases are in the markdown-link conformance family, since osdlc/osdlc#728.",
+        "Open osdlc/osdlc#649 (0.9: more code forms) and #651 (link titles, parentheses in paths; stacked on #649) change both twins. #651 fixes problem F3 (osdlc/osdlc#635).",
+        "Problem F2: only the Rust crate can resolve links, so each TypeScript package wrote its own resolver."
+      ],
+      "tasks": [
+        11,
+        13
+      ],
+      "links": [
+        {
+          "label": "osdlc/osdlc#649",
+          "url": "https://github.com/osdlc/osdlc/pull/649"
+        },
+        {
+          "label": "osdlc/osdlc#651",
+          "url": "https://github.com/osdlc/osdlc/pull/651"
+        },
+        {
+          "label": "osdlc/osdlc#728",
+          "url": "https://github.com/osdlc/osdlc/pull/728"
+        },
+        {
+          "label": "osdlc/osdlc#635 (issue)",
+          "url": "https://github.com/osdlc/osdlc/issues/635"
+        }
+      ],
+      "source": "docs/planning/markdown/components/markdown-link.md"
+    },
+    {
+      "id": "markdown-link-dev-copy",
+      "name": "@osdlc/markdown-link (dev copy)",
+      "kind": "package",
+      "language": "ts",
+      "layer": "note-parts",
+      "states": [
+        "present"
+      ],
+      "repo": {
+        "present": "sksizer/dev",
+        "target": null
+      },
+      "path": {
+        "present": "packages/ts/markdown-link",
+        "target": null
+      },
+      "status": "retiring",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "A private copy of markdown-link that the dev repo had, at version 0.1.0. It is gone: sksizer/dev commit 48b62783 (2026-11-08) removed it, and its users take @osdlc/markdown-link ^0.8.1 from npm.",
+      "notes": [
+        "Its users were markdown-vault, vault-graph-core, markdown-astro, markdown-render, sdlc (solutions/ontological) and parts of determined.",
+        "Problem F11. The record stays so that links to it still resolve. dev task T-1NC5 tracked the move and is still marked in-progress/blocked."
+      ],
+      "tasks": [
+        13
+      ],
+      "links": [],
+      "source": "docs/planning/markdown/components/markdown-link-dev-copy.md"
+    },
+    {
+      "id": "markdown-link-rs",
+      "name": "markdown-link",
+      "kind": "crate",
+      "language": "rust",
+      "layer": "note-parts",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": "packages/rust/markdown-link",
+        "target": "packages/rust/markdown-link"
+      },
+      "status": "published",
+      "version": "0.9.1",
+      "registry": "https://crates.io/crates/markdown-link",
+      "twin": "markdown-link",
+      "purpose": "Finds and resolves links in notes. Its LinkIndex resolves a link target against a set of file paths.",
+      "notes": [
+        "Open osdlc/osdlc#649 and #651 change it too. osdlc/osdlc#728 moved the shared cases into the markdown-link conformance family.",
+        "Release PR osdlc/osdlc#730 took it to 0.9.1."
+      ],
+      "tasks": [
+        11
+      ],
+      "links": [
+        {
+          "label": "osdlc/osdlc#649",
+          "url": "https://github.com/osdlc/osdlc/pull/649"
+        },
+        {
+          "label": "osdlc/osdlc#651",
+          "url": "https://github.com/osdlc/osdlc/pull/651"
+        },
+        {
+          "label": "osdlc/osdlc#728",
+          "url": "https://github.com/osdlc/osdlc/pull/728"
+        }
+      ],
+      "source": "docs/planning/markdown/components/markdown-link-rs.md"
+    },
+    {
+      "id": "markdown-tags",
+      "name": "@osdlc/markdown-tags",
+      "kind": "package",
+      "language": "ts",
+      "layer": "note-parts",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": "packages/ts/markdown-tags",
+        "target": "packages/ts/markdown-tags"
+      },
+      "status": "published",
+      "version": "0.4.1",
+      "registry": "https://www.npmjs.com/package/@osdlc/markdown-tags",
+      "twin": "markdown-tags-rs",
+      "purpose": "Finds inline #tags in a note body, in three dialects: Obsidian's rule (the default), a Unicode one and an ASCII one.",
+      "notes": [
+        "Moved into osdlc in osdlc/osdlc#714. Shares the markdown-tags conformance family with the Rust crate.",
+        "The plan says markdown-tags is on neither registry yet. That is out of date: 0.4.1 is on npm and on crates.io."
+      ],
+      "tasks": [],
+      "links": [
+        {
+          "label": "osdlc/osdlc#714",
+          "url": "https://github.com/osdlc/osdlc/pull/714"
+        }
+      ],
+      "source": "docs/planning/markdown/components/markdown-tags.md"
+    },
+    {
+      "id": "markdown-tags-dev-copy",
+      "name": "@osdlc/markdown-tags (dev copy)",
+      "kind": "package",
+      "language": "ts",
+      "layer": "note-parts",
+      "states": [
+        "present"
+      ],
+      "repo": {
+        "present": "sksizer/dev",
+        "target": null
+      },
+      "path": {
+        "present": "packages/ts/markdown-tags",
+        "target": null
+      },
+      "status": "retiring",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "A private copy of markdown-tags in the dev repo, at version 0.1.0. dev's markdown-vault, markdown-render, markdown-editor and determined's notes experience use it through workspace:*.",
+      "notes": [
+        "The plan does not mention this copy. It says markdown-tags moved into osdlc in osdlc/osdlc#714. It is shown as going away because it is an @osdlc package living in dev (problem F11) and the target has none."
+      ],
+      "tasks": [],
+      "links": [
+        {
+          "label": "osdlc/osdlc#714",
+          "url": "https://github.com/osdlc/osdlc/pull/714"
+        }
+      ],
+      "source": "docs/planning/markdown/components/markdown-tags-dev-copy.md"
+    },
+    {
+      "id": "markdown-tags-rs",
+      "name": "markdown-tags",
+      "kind": "crate",
+      "language": "rust",
+      "layer": "note-parts",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": "packages/rust/markdown-tags",
+        "target": "packages/rust/markdown-tags"
+      },
+      "status": "published",
+      "version": "0.4.1",
+      "registry": "https://crates.io/crates/markdown-tags",
+      "twin": "markdown-tags",
+      "purpose": "The Rust twin of @osdlc/markdown-tags, and the reference for their shared test cases.",
+      "notes": [
+        "Release PR osdlc/osdlc#730 took it to 0.4.1."
+      ],
+      "tasks": [],
+      "links": [],
+      "source": "docs/planning/markdown/components/markdown-tags-rs.md"
+    },
+    {
+      "id": "slug-collate",
+      "name": "slug-collate",
+      "kind": "crate",
+      "language": "rust",
+      "layer": "note-parts",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": "packages/rust/slug-collate",
+        "target": "packages/rust/slug-collate"
+      },
+      "status": "published",
+      "version": "0.2.0",
+      "registry": "https://crates.io/crates/slug-collate",
+      "twin": null,
+      "purpose": "Turns a title into a filename-safe slug, folding accents instead of dropping letters, and gives a fixed, locale-free order for strings and paths in place of localeCompare.",
+      "notes": [
+        "markdown-link-rs, markdown-corpus-rs and markdown-relink depend on it (their Cargo.toml).",
+        "The plan has no task for it. The layer is a guess: it works on the text that names notes.",
+        "D-SM4K does not say whether it is a general library or one the markdown plan owns."
+      ],
+      "tasks": [],
+      "links": [],
+      "source": "docs/planning/markdown/components/slug-collate.md"
+    },
+    {
+      "id": "yaml-splice",
+      "name": "@osdlc/yaml-splice",
+      "kind": "package",
+      "language": "ts",
+      "layer": "formats",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": "packages/ts/yaml-splice",
+        "target": "packages/ts/yaml-splice"
+      },
+      "status": "published",
+      "version": "0.3.1",
+      "registry": "https://www.npmjs.com/package/@osdlc/yaml-splice",
+      "twin": null,
+      "purpose": "Edits top-level YAML fields in place and keeps every other byte, comments included. It is the Rust crate built to WebAssembly for Node.js and Bun.",
+      "notes": [
+        "A general library, not one the plan owns: config-layers depends on it ([D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md)).",
+        "It is a binding, not a twin: one crate built for another runtime, with no tests of its own.",
+        "It edits any YAML mapping, not only frontmatter. Frontmatter is its main use today: frontmatter-lossless splits the note, and yaml-splice edits the YAML part."
+      ],
+      "tasks": [],
+      "links": [],
+      "source": "docs/planning/markdown/components/yaml-splice.md"
+    },
+    {
+      "id": "yaml-splice-rs",
+      "name": "yaml-splice",
+      "kind": "crate",
+      "language": "rust",
+      "layer": "formats",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": "packages/rust/yaml-splice",
+        "target": "packages/rust/yaml-splice"
+      },
+      "status": "published",
+      "version": "0.3.4",
+      "registry": "https://crates.io/crates/yaml-splice",
+      "twin": null,
+      "purpose": "Sets, removes and renames top-level YAML fields while every other byte stays as it was.",
+      "notes": [
+        "A general library, not one the plan owns, like its TypeScript binding, which config-layers depends on ([D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md)).",
+        "Release PR osdlc/osdlc#730 took it to 0.3.4."
+      ],
+      "tasks": [],
+      "links": [],
+      "source": "docs/planning/markdown/components/yaml-splice-rs.md"
+    },
+    {
+      "id": "yaml-splice-wasm",
+      "name": "yaml-splice-wasm",
+      "kind": "crate",
+      "language": "rust",
+      "layer": "formats",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": "packages/rust/yaml-splice-wasm",
+        "target": "packages/rust/yaml-splice-wasm"
+      },
+      "status": "unpublished",
+      "version": null,
+      "registry": null,
+      "twin": null,
+      "purpose": "The WebAssembly wrapper that @osdlc/yaml-splice is built from.",
+      "notes": [
+        "It is publish = false."
+      ],
+      "tasks": [],
+      "links": [],
+      "source": "docs/planning/markdown/components/yaml-splice-wasm.md"
+    },
+    {
+      "id": "etag-write",
+      "name": "@osdlc/etag-write",
+      "kind": "package",
+      "language": "ts",
+      "layer": "files",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": "packages/ts/etag-write",
+        "target": "packages/ts/etag-write"
+      },
+      "status": "published",
+      "version": "0.3.1",
+      "registry": "https://www.npmjs.com/package/@osdlc/etag-write",
+      "twin": "etag-write-rs",
+      "purpose": "Writes a file atomically and refuses to overwrite it if someone else changed it since it was read. Used to save notes without losing edits.",
+      "notes": [
+        "Its tests live in the package. There is no shared conformance family for it yet."
+      ],
+      "tasks": [],
+      "links": [],
+      "source": "docs/planning/markdown/components/etag-write.md"
+    },
+    {
+      "id": "etag-write-rs",
+      "name": "etag-write",
+      "kind": "crate",
+      "language": "rust",
+      "layer": "files",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": "packages/rust/etag-write",
+        "target": "packages/rust/etag-write"
+      },
+      "status": "published",
+      "version": "0.2.4",
+      "registry": "https://crates.io/crates/etag-write",
+      "twin": "etag-write",
+      "purpose": "The Rust twin of @osdlc/etag-write: atomic writes with a hash check, so a stale write never replaces newer changes.",
+      "notes": [],
+      "tasks": [],
+      "links": [],
+      "source": "docs/planning/markdown/components/etag-write-rs.md"
+    },
+    {
+      "id": "markdown-vault-fs",
+      "name": "markdown-vault-fs",
+      "kind": "crate",
+      "language": "rust",
+      "layer": "files",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": "packages/rust/markdown-vault-fs",
+        "target": "packages/rust/markdown-vault-fs"
+      },
+      "status": "published",
+      "version": "0.6.1",
+      "registry": "https://crates.io/crates/markdown-vault-fs",
+      "twin": null,
+      "purpose": "Walks a folder of notes: tells notes from attachments, applies the skip rules (including Obsidian's excluded files) and guards paths.",
+      "notes": [
+        "Its name still says vault. Decision D1 says vault names move to corpus over time; the plan names no new name.",
+        "Release PR osdlc/osdlc#730 took it to 0.6.1.",
+        "Open osdlc/osdlc#650 changes it (edge cases from earlier reviews). It still targets the branch of #648, which merged on 2026-11-08, and assumes 0.6.0 is unreleased, but 0.6.0 is on crates.io."
+      ],
+      "tasks": [],
+      "links": [
+        {
+          "label": "osdlc/osdlc#650",
+          "url": "https://github.com/osdlc/osdlc/pull/650"
+        }
+      ],
+      "source": "docs/planning/markdown/components/markdown-vault-fs.md"
+    },
+    {
+      "id": "path-guard",
+      "name": "@osdlc/path-guard",
+      "kind": "package",
+      "language": "ts",
+      "layer": "files",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": "packages/ts/path-guard",
+        "target": "packages/ts/path-guard"
+      },
+      "status": "published",
+      "version": "0.3.1",
+      "registry": "https://www.npmjs.com/package/@osdlc/path-guard",
+      "twin": "path-guard-rs",
+      "purpose": "Takes a path that came from outside (a request, a config file, a link in a note), joins it onto a root folder, and refuses it if the result could end up outside that root. It catches `..`, absolute paths, `~`, Windows drives and symlinks that point out of the root, and it works for files that don't exist yet. Anything that reads or writes files under a vault or corpus root uses it.",
+      "notes": [
+        "It shares the path-guard conformance family with the Rust crate (packages/conformance/path-guard)."
+      ],
+      "tasks": [],
+      "links": [],
+      "source": "docs/planning/markdown/components/path-guard.md"
+    },
+    {
+      "id": "path-guard-rs",
+      "name": "path-guard",
+      "kind": "crate",
+      "language": "rust",
+      "layer": "files",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": "packages/rust/path-guard",
+        "target": "packages/rust/path-guard"
+      },
+      "status": "published",
+      "version": "0.3.4",
+      "registry": "https://crates.io/crates/path-guard",
+      "twin": "path-guard",
+      "purpose": "The Rust twin of @osdlc/path-guard: the same lexical check and symlink-aware containment proof, run against the same conformance suite. markdown-vault-fs uses it for every file it touches.",
+      "notes": [
+        "Release PR osdlc/osdlc#730 took it to 0.3.4."
+      ],
+      "tasks": [],
+      "links": [],
+      "source": "docs/planning/markdown/components/path-guard-rs.md"
+    },
+    {
+      "id": "vfs-seam",
+      "name": "vfs-seam",
+      "kind": "crate",
+      "language": "rust",
+      "layer": "files",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": "packages/rust/vfs-seam",
+        "target": "packages/rust/vfs-seam"
+      },
+      "status": "published",
+      "version": "0.2.1",
+      "registry": "https://crates.io/crates/vfs-seam",
+      "twin": null,
+      "purpose": "A file-access trait, so the same Rust code runs on a real disk, in memory or in a browser (WebAssembly).",
+      "notes": [],
+      "tasks": [],
+      "links": [],
+      "source": "docs/planning/markdown/components/vfs-seam.md"
+    },
+    {
+      "id": "vfs-walk",
+      "name": "vfs-walk",
+      "kind": "crate",
+      "language": "rust",
+      "layer": "files",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": "packages/rust/vfs-walk",
+        "target": "packages/rust/vfs-walk"
+      },
+      "status": "published",
+      "version": "0.2.1",
+      "registry": "https://crates.io/crates/vfs-walk",
+      "twin": null,
+      "purpose": "A sorted walk of a folder tree through vfs-seam, with skip lists and a symlink policy. It knows nothing about Markdown.",
+      "notes": [],
+      "tasks": [],
+      "links": [],
+      "source": "docs/planning/markdown/components/vfs-walk.md"
+    }
+  ],
+  "edges": [
+    {
+      "from": "determined",
+      "to": "markdown-render",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "determined",
+      "to": "markdown-ui",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "determined",
+      "to": "markdown-editor",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "determined",
+      "to": "markdown-astro",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "determined",
+      "to": "markdown-vault-query",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "determined",
+      "to": "gfm-table",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "determined",
+      "to": "etag-write",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "determined",
+      "to": "frontmatter-lossless",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "determined",
+      "to": "path-guard",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "determined",
+      "to": "markdown-contract",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "determined",
+      "to": "markdown-link",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "determined",
+      "to": "markdown-reshape-rs",
+      "kind": "depends",
+      "states": [
+        "target"
+      ],
+      "note": "Through its Rust backend. Task 39 switches it from markdown-relink."
+    },
+    {
+      "from": "determined",
+      "to": "markdown-corpus",
+      "kind": "depends",
+      "states": [
+        "target"
+      ],
+      "note": "Task 13 switches its vault-graph app and graph and notes experiences."
+    },
+    {
+      "from": "determined",
+      "to": "markdown-tags",
+      "kind": "depends",
+      "states": [
+        "target"
+      ],
+      "note": "Its private copies go away in the target."
+    },
+    {
+      "from": "determined",
+      "to": "markdown-relink",
+      "kind": "depends",
+      "states": [
+        "present"
+      ]
+    },
+    {
+      "from": "determined",
+      "to": "markdown-vault",
+      "kind": "depends",
+      "states": [
+        "present"
+      ]
+    },
+    {
+      "from": "determined",
+      "to": "vault-graph-core",
+      "kind": "depends",
+      "states": [
+        "present"
+      ]
+    },
+    {
+      "from": "determined",
+      "to": "markdown-tags-dev-copy",
+      "kind": "depends",
+      "states": [
+        "present"
+      ]
+    },
+    {
+      "from": "evidence-project",
+      "to": "corpus-schema-ts",
+      "kind": "depends",
+      "states": [
+        "target"
+      ],
+      "note": "Task 5: its records are checked by the validator."
+    },
+    {
+      "from": "evidence-project",
+      "to": "corpus-profile-claims",
+      "kind": "extends",
+      "states": [
+        "target"
+      ],
+      "note": "Task 23 switches it from copies to the profile."
+    },
+    {
+      "from": "harness-beta-corpus",
+      "to": "corpus-schema-spec",
+      "kind": "implements",
+      "states": [
+        "present",
+        "target"
+      ],
+      "note": "A level-2 corpus."
+    },
+    {
+      "from": "harness-beta-corpus",
+      "to": "corpus-profile-claims",
+      "kind": "extends",
+      "states": [
+        "target"
+      ],
+      "note": "Through extends: and x-extends (task 23)."
+    },
+    {
+      "from": "harness-beta-corpus",
+      "to": "claims-example",
+      "kind": "extends",
+      "states": [
+        "present"
+      ],
+      "note": "By copying the four type folders (pinned to commit 663f545) and adding harness fields. There is no extends mechanism yet."
+    },
+    {
+      "from": "harness-reference",
+      "to": "corpus-schema-ts",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ],
+      "note": "@osdlc/corpus-schema ^0.2.0 from npm."
+    },
+    {
+      "from": "harness-reference",
+      "to": "harness-beta-corpus",
+      "kind": "reads",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-store",
+      "to": "frontmatter-lossless-rs",
+      "kind": "depends",
+      "states": [
+        "target"
+      ],
+      "note": "Task 10: it uses the shared note parts instead of its own frontmatter and wikilink code."
+    },
+    {
+      "from": "markdown-store",
+      "to": "markdown-link-rs",
+      "kind": "depends",
+      "states": [
+        "target"
+      ],
+      "note": "Task 10: it uses the shared note parts instead of its own frontmatter and wikilink code."
+    },
+    {
+      "from": "markdown-store",
+      "to": "corpus-schema-spec",
+      "kind": "implements",
+      "states": [
+        "target"
+      ],
+      "note": "Task 10: it writes the spec's layout."
+    },
+    {
+      "from": "ontogen",
+      "to": "markdown-store",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ],
+      "note": "The code ontogen generates for its Markdown backend uses markdown-store; the ontogen crate itself does not list it."
+    },
+    {
+      "from": "plan-corpus",
+      "to": "corpus-schema-ts",
+      "kind": "dev-depends",
+      "states": [
+        "present",
+        "target"
+      ],
+      "note": "CI checks it with this repo's corpus-schema, which knows extends."
+    },
+    {
+      "from": "plan-corpus",
+      "to": "corpus-schema-spec",
+      "kind": "implements",
+      "states": [
+        "present",
+        "target"
+      ],
+      "note": "A valid level-2 corpus."
+    },
+    {
+      "from": "plan-corpus",
+      "to": "corpus-profile-sdlc",
+      "kind": "extends",
+      "states": [
+        "target"
+      ],
+      "note": "As sdlc, from npm (task 53). Until then it extends the planning profile."
+    },
+    {
+      "from": "plan-corpus",
+      "to": "corpus-profile-planning",
+      "kind": "extends",
+      "states": [
+        "present"
+      ]
+    },
+    {
+      "from": "plan-corpus",
+      "to": "corpus-sdlc-starter",
+      "kind": "reads",
+      "states": [
+        "target"
+      ],
+      "note": "Under references: as osdlc (D15), from npm, synced into _references/osdlc/ (task 53)."
+    },
+    {
+      "from": "sdlc",
+      "to": "etag-write",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "sdlc",
+      "to": "frontmatter-lossless",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "sdlc",
+      "to": "gfm-table",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "sdlc",
+      "to": "path-guard",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "sdlc",
+      "to": "yaml-splice",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "sdlc",
+      "to": "markdown-contract",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "sdlc",
+      "to": "markdown-link",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "sdlc",
+      "to": "markdown-ui",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ],
+      "note": "Through the desktop app in solutions/ontological/desktop."
+    },
+    {
+      "from": "sdlc",
+      "to": "markdown-editor",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ],
+      "note": "Through the desktop app in solutions/ontological/desktop."
+    },
+    {
+      "from": "sdlc",
+      "to": "markdown-render",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ],
+      "note": "Through the desktop app in solutions/ontological/desktop."
+    },
+    {
+      "from": "sdlc",
+      "to": "pack-sdlc",
+      "kind": "depends",
+      "states": [
+        "target"
+      ],
+      "note": "The plan's target diagram says sdlc takes its types from profiles."
+    },
+    {
+      "from": "skillwright",
+      "to": "frontmatter-lossless-rs",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ],
+      "note": "Through its tradecraft-core crate."
+    },
+    {
+      "from": "skillwright",
+      "to": "markdown-contract-rs",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ],
+      "note": "Through its tradecraft-core crate."
+    },
+    {
+      "from": "skillwright",
+      "to": "markdown-link-rs",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ],
+      "note": "Through its tradecraft-core crate."
+    },
+    {
+      "from": "skillwright",
+      "to": "path-guard-rs",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "skillwright",
+      "to": "vfs-seam",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ],
+      "note": "Through its tradecraft-core crate."
+    },
+    {
+      "from": "skillwright",
+      "to": "yaml-splice-rs",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "skillwright",
+      "to": "vfs-walk",
+      "kind": "dev-depends",
+      "states": [
+        "present",
+        "target"
+      ],
+      "note": "Through its tradecraft-core crate."
+    },
+    {
+      "from": "markdown-astro",
+      "to": "frontmatter-lossless",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-astro",
+      "to": "markdown-link",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-astro",
+      "to": "markdown-render",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-astro",
+      "to": "markdown-corpus",
+      "kind": "depends",
+      "states": [
+        "target"
+      ],
+      "note": "Task 13 switches it to the shared corpus model."
+    },
+    {
+      "from": "markdown-editor",
+      "to": "gfm-table",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-editor",
+      "to": "markdown-render",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-editor",
+      "to": "markdown-tags",
+      "kind": "depends",
+      "states": [
+        "target"
+      ],
+      "note": "Assumed once it uses the published markdown-tags; there is no PR for it yet."
+    },
+    {
+      "from": "markdown-editor",
+      "to": "markdown-tags-dev-copy",
+      "kind": "depends",
+      "states": [
+        "present"
+      ]
+    },
+    {
+      "from": "markdown-render",
+      "to": "markdown-link",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-render",
+      "to": "markdown-tags",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-render-vue",
+      "to": "gfm-table",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-render-vue",
+      "to": "markdown-render",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-ui",
+      "to": "frontmatter-lossless",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-ui",
+      "to": "markdown-editor",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-ui",
+      "to": "markdown-render",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-vault-query",
+      "to": "path-guard",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-vault-query",
+      "to": "markdown-corpus",
+      "kind": "depends",
+      "states": [
+        "target"
+      ],
+      "note": "Task 15: the query layer sits on the corpus model."
+    },
+    {
+      "from": "markdown-vault-query",
+      "to": "markdown-vault",
+      "kind": "depends",
+      "states": [
+        "present"
+      ]
+    },
+    {
+      "from": "markdown-vault-query",
+      "to": "corpus-schema-ts",
+      "kind": "reads",
+      "states": [
+        "target"
+      ],
+      "note": "The architecture says the query layer reads the corpus model and corpus-schema."
+    },
+    {
+      "from": "acceptance-testing-profile",
+      "to": "corpus-profile-claims",
+      "kind": "extends",
+      "states": [
+        "target"
+      ],
+      "note": "It adds to claims and never loosens a rule."
+    },
+    {
+      "from": "claims-example",
+      "to": "corpus-schema-spec",
+      "kind": "implements",
+      "states": [
+        "present",
+        "target"
+      ],
+      "note": "A valid level-2 corpus."
+    },
+    {
+      "from": "claims-example",
+      "to": "corpus-profile-claims",
+      "kind": "extends",
+      "states": [
+        "target"
+      ],
+      "note": "By the path ../corpus. Its four schemas hold only x-extends: claims/<type> (osdlc/markdown#15)."
+    },
+    {
+      "from": "corpus-profile-claims",
+      "to": "corpus-schema-spec",
+      "kind": "implements",
+      "states": [
+        "target"
+      ],
+      "note": "A profile is a corpus that has only types."
+    },
+    {
+      "from": "corpus-profile-planning",
+      "to": "corpus-schema-spec",
+      "kind": "implements",
+      "states": [
+        "present"
+      ],
+      "note": "A profile is a corpus that has only types."
+    },
+    {
+      "from": "corpus-profile-sdlc",
+      "to": "model-schema",
+      "kind": "dev-depends",
+      "states": [
+        "target"
+      ],
+      "note": "Its profile generator writes this profile (task 48)."
+    },
+    {
+      "from": "corpus-profile-sdlc",
+      "to": "pack-intent",
+      "kind": "dev-depends",
+      "states": [
+        "target"
+      ],
+      "note": "The profile holds the intent pack's kinds."
+    },
+    {
+      "from": "corpus-profile-sdlc",
+      "to": "pack-sdlc",
+      "kind": "dev-depends",
+      "states": [
+        "target"
+      ],
+      "note": "The profile holds the sdlc pack's kinds."
+    },
+    {
+      "from": "corpus-profile-sdlc",
+      "to": "corpus-schema-spec",
+      "kind": "implements",
+      "states": [
+        "target"
+      ],
+      "note": "A profile is a corpus that has only types."
+    },
+    {
+      "from": "corpus-sdlc-starter",
+      "to": "corpus-schema-spec",
+      "kind": "implements",
+      "states": [
+        "target"
+      ],
+      "note": "A corpus with records, published as an npm package."
+    },
+    {
+      "from": "corpus-sdlc-starter",
+      "to": "corpus-profile-sdlc",
+      "kind": "extends",
+      "states": [
+        "target"
+      ],
+      "note": "By package name. Its records are the profile's principles and standards."
+    },
+    {
+      "from": "fernlog-example",
+      "to": "corpus-schema-spec",
+      "kind": "implements",
+      "states": [
+        "target"
+      ],
+      "note": "A valid level-2 corpus."
+    },
+    {
+      "from": "fernlog-example",
+      "to": "corpus-profile-claims",
+      "kind": "extends",
+      "states": [
+        "target"
+      ],
+      "note": "By the package name, installed with a file dependency on profiles/claims. Task 79 switches it to npm."
+    },
+    {
+      "from": "fernlog-example",
+      "to": "org-principles-example",
+      "kind": "reads",
+      "states": [
+        "target"
+      ],
+      "note": "Under references: as org (D15), by the path ../org-principles."
+    },
+    {
+      "from": "org-principles-corpus",
+      "to": "corpus-schema-spec",
+      "kind": "implements",
+      "states": [
+        "target"
+      ]
+    },
+    {
+      "from": "org-principles-example",
+      "to": "corpus-schema-spec",
+      "kind": "implements",
+      "states": [
+        "target"
+      ],
+      "note": "A valid level-2 corpus with one type, principles, and three records."
+    },
+    {
+      "from": "work-example",
+      "to": "corpus-schema-spec",
+      "kind": "implements",
+      "states": [
+        "target"
+      ],
+      "note": "A valid level-2 corpus."
+    },
+    {
+      "from": "work-example",
+      "to": "corpus-profile-sdlc",
+      "kind": "extends",
+      "states": [
+        "target"
+      ],
+      "note": "As sdlc, by package name through a file: dependency, with uses: [sdlc/*]."
+    },
+    {
+      "from": "work-example",
+      "to": "corpus-sdlc-starter",
+      "kind": "reads",
+      "states": [
+        "target"
+      ],
+      "note": "Under references: as osdlc (D15), through a file: dependency."
+    },
+    {
+      "from": "pack-claims",
+      "to": "model-schema",
+      "kind": "depends",
+      "states": [
+        "target"
+      ]
+    },
+    {
+      "from": "pack-intent",
+      "to": "model-schema",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "pack-sdlc",
+      "to": "model-schema",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "pack-sdlc",
+      "to": "pack-intent",
+      "kind": "extends",
+      "states": [
+        "present",
+        "target"
+      ],
+      "note": "Its pack.yaml requires intent ^0.1.0."
+    },
+    {
+      "from": "corpus-schema-rs",
+      "to": "corpus-schema-ts",
+      "kind": "twin",
+      "states": [
+        "target"
+      ],
+      "note": "Planned: the Rust validator runs the same conformance cases (task 32)."
+    },
+    {
+      "from": "corpus-schema-rs",
+      "to": "markdown-corpus-rs",
+      "kind": "depends",
+      "states": [
+        "target"
+      ],
+      "note": "Task 32: built on the markdown-corpus crate."
+    },
+    {
+      "from": "corpus-schema-rs",
+      "to": "corpus-schema-spec",
+      "kind": "implements",
+      "states": [
+        "target"
+      ]
+    },
+    {
+      "from": "corpus-schema-ts",
+      "to": "frontmatter-lossless",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "corpus-schema-ts",
+      "to": "markdown-link",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "corpus-schema-ts",
+      "to": "markdown-corpus",
+      "kind": "depends",
+      "states": [
+        "target"
+      ],
+      "note": "Task 14: the validator reads the corpus model instead of walking the folder."
+    },
+    {
+      "from": "corpus-schema-ts",
+      "to": "markdown-contract",
+      "kind": "depends",
+      "states": [
+        "target"
+      ],
+      "note": "Task 57: x-body checks a record's body against a contract."
+    },
+    {
+      "from": "corpus-schema-ts",
+      "to": "corpus-schema-spec",
+      "kind": "implements",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "corpus-schema-ts",
+      "to": "harness-beta-corpus",
+      "kind": "validates",
+      "states": [
+        "present",
+        "target"
+      ],
+      "note": "harness-reference's validate:beta script."
+    },
+    {
+      "from": "markdown-corpus",
+      "to": "markdown-link",
+      "kind": "depends",
+      "states": [
+        "target"
+      ],
+      "note": "Built on markdown-link's resolver (task 12)."
+    },
+    {
+      "from": "markdown-corpus-rs",
+      "to": "markdown-corpus",
+      "kind": "twin",
+      "states": [
+        "target"
+      ],
+      "note": "Planned: the TypeScript model is the crate's twin (task 12)."
+    },
+    {
+      "from": "markdown-corpus-rs",
+      "to": "frontmatter-lossless-rs",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-corpus-rs",
+      "to": "markdown-link-rs",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-corpus-rs",
+      "to": "markdown-vault-fs",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-corpus-rs",
+      "to": "slug-collate",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-corpus-rs",
+      "to": "vfs-seam",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-corpus-rs",
+      "to": "yaml-splice-rs",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-relink",
+      "to": "markdown-link-rs",
+      "kind": "depends",
+      "states": [
+        "present"
+      ]
+    },
+    {
+      "from": "markdown-relink",
+      "to": "markdown-corpus-rs",
+      "kind": "depends",
+      "states": [
+        "present"
+      ]
+    },
+    {
+      "from": "markdown-relink",
+      "to": "markdown-vault-fs",
+      "kind": "depends",
+      "states": [
+        "present"
+      ]
+    },
+    {
+      "from": "markdown-relink",
+      "to": "slug-collate",
+      "kind": "depends",
+      "states": [
+        "present"
+      ]
+    },
+    {
+      "from": "markdown-relink",
+      "to": "vfs-seam",
+      "kind": "depends",
+      "states": [
+        "present"
+      ]
+    },
+    {
+      "from": "markdown-relink",
+      "to": "etag-write-rs",
+      "kind": "depends",
+      "states": [
+        "present"
+      ]
+    },
+    {
+      "from": "markdown-relink",
+      "to": "yaml-splice-rs",
+      "kind": "depends",
+      "states": [
+        "present"
+      ]
+    },
+    {
+      "from": "markdown-reshape-rs",
+      "to": "markdown-reshape-ts",
+      "kind": "twin",
+      "states": [
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-reshape-rs",
+      "to": "markdown-link-rs",
+      "kind": "depends",
+      "states": [
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-reshape-rs",
+      "to": "markdown-corpus-rs",
+      "kind": "depends",
+      "states": [
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-reshape-rs",
+      "to": "markdown-vault-fs",
+      "kind": "depends",
+      "states": [
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-reshape-rs",
+      "to": "vfs-seam",
+      "kind": "depends",
+      "states": [
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-reshape-rs",
+      "to": "etag-write-rs",
+      "kind": "depends",
+      "states": [
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-reshape-rs",
+      "to": "yaml-splice-rs",
+      "kind": "depends",
+      "states": [
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-reshape-ts",
+      "to": "markdown-link",
+      "kind": "depends",
+      "states": [
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-reshape-ts",
+      "to": "markdown-corpus",
+      "kind": "depends",
+      "states": [
+        "target"
+      ],
+      "note": "In place of the Rust corpus crate."
+    },
+    {
+      "from": "markdown-reshape-ts",
+      "to": "etag-write",
+      "kind": "depends",
+      "states": [
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-reshape-ts",
+      "to": "yaml-splice",
+      "kind": "depends",
+      "states": [
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-vault",
+      "to": "frontmatter-lossless",
+      "kind": "depends",
+      "states": [
+        "present"
+      ]
+    },
+    {
+      "from": "markdown-vault",
+      "to": "markdown-tags-dev-copy",
+      "kind": "depends",
+      "states": [
+        "present"
+      ]
+    },
+    {
+      "from": "markdown-vault",
+      "to": "markdown-link",
+      "kind": "depends",
+      "states": [
+        "present"
+      ]
+    },
+    {
+      "from": "vault-graph-core",
+      "to": "markdown-link",
+      "kind": "depends",
+      "states": [
+        "present"
+      ]
+    },
+    {
+      "from": "vault-graph-core",
+      "to": "markdown-vault",
+      "kind": "depends",
+      "states": [
+        "present"
+      ]
+    },
+    {
+      "from": "frontmatter-lossless-rs",
+      "to": "frontmatter-lossless",
+      "kind": "twin",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "gfm-pipe-table",
+      "to": "gfm-table",
+      "kind": "twin",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-contract",
+      "to": "gfm-table",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-contract-rs",
+      "to": "markdown-contract",
+      "kind": "twin",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-contract-rs",
+      "to": "markdown-link-rs",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ],
+      "note": "It uses markdown-link's fence lexer."
+    },
+    {
+      "from": "markdown-link-rs",
+      "to": "markdown-link",
+      "kind": "twin",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-link-rs",
+      "to": "yaml-splice-rs",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-link-rs",
+      "to": "slug-collate",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-link-rs",
+      "to": "frontmatter-lossless-rs",
+      "kind": "dev-depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-tags",
+      "to": "markdown-link",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-tags-dev-copy",
+      "to": "markdown-link",
+      "kind": "depends",
+      "states": [
+        "present"
+      ]
+    },
+    {
+      "from": "markdown-tags-rs",
+      "to": "markdown-tags",
+      "kind": "twin",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-tags-rs",
+      "to": "markdown-link-rs",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "yaml-splice",
+      "to": "yaml-splice-wasm",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ],
+      "note": "Its build:wasm script builds the wasm crate; the package ships the result."
+    },
+    {
+      "from": "yaml-splice-wasm",
+      "to": "yaml-splice-rs",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "etag-write-rs",
+      "to": "etag-write",
+      "kind": "twin",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-vault-fs",
+      "to": "path-guard-rs",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-vault-fs",
+      "to": "vfs-seam",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-vault-fs",
+      "to": "vfs-walk",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "path-guard-rs",
+      "to": "path-guard",
+      "kind": "twin",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "vfs-walk",
+      "to": "vfs-seam",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "corpus-schema-ts",
+      "to": "markdown-corpus-rs",
+      "kind": "overlaps",
+      "states": [
+        "present"
+      ],
+      "note": "The validator walks the folder and builds its own wikilink index in validate.ts and links.ts instead of reading the corpus model (problem F8, task 14).",
+      "overlap": "partial"
+    },
+    {
+      "from": "corpus-schema-ts",
+      "to": "markdown-link",
+      "kind": "overlaps",
+      "states": [
+        "present"
+      ],
+      "note": "corpus-schema finds relative Markdown links with its own regex because markdown-link misses some (osdlc/osdlc#635, fixed by #651).",
+      "overlap": "partial"
+    },
+    {
+      "from": "determined",
+      "to": "frontmatter-lossless",
+      "kind": "overlaps",
+      "states": [
+        "present",
+        "target"
+      ],
+      "note": "Several determined apps (connector, vault-digest, workflow-designer) split frontmatter with their own regex; the plan does not change them.",
+      "overlap": "partial"
+    },
+    {
+      "from": "determined",
+      "to": "markdown-link",
+      "kind": "overlaps",
+      "states": [
+        "present"
+      ],
+      "note": "determined's vault-graph app finds Markdown links with its own regexes in lib/parse.ts; task 13 moves that app to the shared model and resolver.",
+      "overlap": "partial"
+    },
+    {
+      "from": "harness-beta-corpus",
+      "to": "claims-example",
+      "kind": "overlaps",
+      "states": [
+        "present"
+      ],
+      "note": "The beta corpus's four claims schemas are copied from the claims example at commit 663f545 and extended, so the two drift apart until task 23.",
+      "overlap": "copy"
+    },
+    {
+      "from": "markdown-astro",
+      "to": "markdown-link-rs",
+      "kind": "overlaps",
+      "states": [
+        "present"
+      ],
+      "note": "markdown-astro resolves wikilinks with its own index where the first match wins, and embeds by bare file name (problem F1, task 13).",
+      "overlap": "partial"
+    },
+    {
+      "from": "markdown-contract",
+      "to": "frontmatter-lossless",
+      "kind": "overlaps",
+      "states": [
+        "present",
+        "target"
+      ],
+      "note": "markdown-contract splits frontmatter itself with remark-frontmatter and does not use frontmatter-lossless; the plan does not change this.",
+      "overlap": "partial"
+    },
+    {
+      "from": "markdown-contract-vendored",
+      "to": "markdown-contract",
+      "kind": "overlaps",
+      "states": [
+        "present"
+      ],
+      "note": "The tarball was the unscoped 0.2.1 build of the code osdlc now publishes as @osdlc/markdown-contract 0.7.7. sksizer/dev commit 48b62783 removed it.",
+      "overlap": "copy"
+    },
+    {
+      "from": "markdown-link-dev-copy",
+      "to": "markdown-link",
+      "kind": "overlaps",
+      "states": [
+        "present"
+      ],
+      "note": "dev's copy had the same five source files as osdlc's 0.8.1 but lacked its newer scan and size API. sksizer/dev commit 48b62783 removed it, and its users take @osdlc/markdown-link from npm.",
+      "overlap": "copy"
+    },
+    {
+      "from": "markdown-render",
+      "to": "markdown-link",
+      "kind": "overlaps",
+      "states": [
+        "present"
+      ],
+      "note": "markdown-render finds `[[...]]` and `![[...]]` with its own regexes and uses markdown-link only for the attachment list; draft osdlc/osdlc#720 switches it.",
+      "overlap": "partial"
+    },
+    {
+      "from": "markdown-store",
+      "to": "corpus-schema-spec",
+      "kind": "overlaps",
+      "states": [
+        "present"
+      ],
+      "note": "markdown-store lays typed records out as <dir>/<id>.md with wikilink relations, while the spec uses type folders with schemas and relative links (problem F6, task 10).",
+      "overlap": "partial"
+    },
+    {
+      "from": "markdown-store",
+      "to": "frontmatter-lossless-rs",
+      "kind": "overlaps",
+      "states": [
+        "present"
+      ],
+      "note": "markdown-store's frontmatter.rs has its own split instead of the frontmatter-lossless crate (problem F7, task 10).",
+      "overlap": "partial"
+    },
+    {
+      "from": "markdown-store",
+      "to": "markdown-link-rs",
+      "kind": "overlaps",
+      "states": [
+        "present"
+      ],
+      "note": "markdown-store's wikilink.rs parses and writes `[[target#anchor|alias]]` links itself instead of using markdown-link (problem F7, task 10).",
+      "overlap": "partial"
+    },
+    {
+      "from": "markdown-store",
+      "to": "markdown-vault-fs",
+      "kind": "overlaps",
+      "states": [
+        "present",
+        "target"
+      ],
+      "note": "markdown-store's walk.rs walks folders with the ignore crate instead of markdown-vault-fs; the plan only says it moves to the shared note parts.",
+      "overlap": "partial"
+    },
+    {
+      "from": "markdown-tags-dev-copy",
+      "to": "markdown-tags",
+      "kind": "overlaps",
+      "states": [
+        "present"
+      ],
+      "note": "dev kept a 0.1.0 copy of the same one-file package after osdlc moved it in (osdlc/osdlc#714) and published 0.4.0.",
+      "overlap": "copy"
+    },
+    {
+      "from": "markdown-vault",
+      "to": "markdown-link-rs",
+      "kind": "overlaps",
+      "states": [
+        "present"
+      ],
+      "note": "markdown-vault's createLinkResolver decides what a link points to by its own rule (exact path, then file name, shortest path wins) instead of the shared resolver (problem F1).",
+      "overlap": "partial"
+    },
+    {
+      "from": "model-schema",
+      "to": "corpus-schema-ts",
+      "kind": "overlaps",
+      "states": [
+        "present"
+      ],
+      "note": "Both define types and check records: model-schema with YAML packs and its own validator, corpus-schema with JSON Schema files and Ajv (problem F5).",
+      "overlap": "partial"
+    },
+    {
+      "from": "vault-graph-core",
+      "to": "markdown-link-rs",
+      "kind": "overlaps",
+      "states": [
+        "present"
+      ],
+      "note": "vault-graph-core's resolve.ts is a hand port of the Rust LinkIndex and its tie-break, as its README says; task 11 moves the resolver into TypeScript markdown-link.",
+      "overlap": "copy"
+    },
+    {
+      "from": "vault-graph-core",
+      "to": "markdown-vault",
+      "kind": "overlaps",
+      "states": [
+        "present"
+      ],
+      "note": "Both build the note and link graph in dev with different link rules: markdown-vault tries file names first, vault-graph-core indexes every path suffix (task 12 merges them).",
+      "overlap": "partial"
+    }
+  ]
+}
