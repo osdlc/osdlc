@@ -6,9 +6,9 @@ prose. The folder is a [corpus-schema](../../packages/conformance/corpus-schema/
 level 2. That means each type folder holds a JSON Schema, and a validator checks every record
 against it.
 
-The [ecosystem plan](../ecosystem-plan.md) explains the why. These records are the what and the
-when. [BEELINE.md](BEELINE.md) is the shortest path to the work in hand, with a checklist built
-from the records, and says how to keep them current.
+The [Markdown Ecosystem Plan](ecosystem-plan.md) explains the why. These records are the what
+and the when. [BEELINE.md](BEELINE.md) is the shortest path to the work in hand, with a checklist
+built from the records, and says how to keep them current.
 
 ## The types
 

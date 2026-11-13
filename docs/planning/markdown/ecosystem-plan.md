@@ -1,4 +1,4 @@
-# The markdown ecosystem plan
+# Markdown Ecosystem Plan
 
 This is a working plan. It says where our markdown packages are today, what is wrong with them,
 where we want to end up, and the steps to get there. We update it as we go. The shape we are

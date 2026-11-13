@@ -7,7 +7,8 @@ This guide explains the spec, but SPEC.md is the rule. Where the two differ, fol
 tell us so we can fix the guide.
 
 Version 0 of the spec is in force. While it is at version 0 we rewrite it in place. Some parts of
-this guide describe proposals from the [ecosystem plan](ecosystem-plan.md)
+this guide describe proposals from the
+[Markdown Ecosystem Plan](../../../../docs/planning/markdown/ecosystem-plan.md)
 ([osdlc/markdown#4](https://github.com/osdlc/markdown/pull/4)) and the
 [architecture](architecture.md) ([osdlc/markdown#5](https://github.com/osdlc/markdown/pull/5)).
 Those parts say "Proposed" and are not built. Everything else describes what is on main in
