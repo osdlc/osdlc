@@ -10,11 +10,7 @@ import { LogEnvelopeSchema } from './envelope.ts'
 import { mergeRedactions, type Redactions, type Redactor } from './redactor.ts'
 import { appendJsonl, type AppendOptions } from './writer.ts'
 
-/**
- * The top-level keys of the log envelope (`v`, `ts`, `kind`, `writer`,
- * `source`, `session`, `run`, `subject`). They hold ids and structure, which
- * {@link appendRedactedJsonl} writes as they are.
- */
+/** The log envelope's top-level keys: ids and structure, which {@link appendRedactedJsonl} writes as they are. */
 const ENVELOPE_KEYS: ReadonlySet<string> = new Set(Object.keys(LogEnvelopeSchema.shape))
 
 /** The value types an envelope key keeps its key for; anything else goes through `redactJson`. */

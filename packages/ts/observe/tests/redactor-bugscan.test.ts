@@ -1,4 +1,4 @@
-/** Regression tests for leaks and data loss found by a bug scan of the redactor and its writer. */
+/** Regression tests for leaks and data loss in the redactor and its writer. */
 
 import { describe, expect, test } from 'vitest'
 
@@ -169,5 +169,61 @@ describe('found by code review', () => {
   test('a number under a secret-named key is kept only when the key reads as a count', async () => {
     const { value } = await r.redactJson({ otp_token: 482913, token_limit: 4096 })
     expect(value).toEqual({ otp_token: '[REDACTED:assigned-secret]', token_limit: 4096 })
+  })
+})
+
+describe('pass keys, spaced values and token plurals', () => {
+  // Built-in rules only, so each case shows what this package's rules do.
+  const b = createRedactor({ env: {}, lint: async () => [] })
+
+  test.each([
+    ['export DB_PASS=s3cretvalue', 'export DB_PASS=[REDACTED:assigned-secret]'],
+    ['MYSQL_PASS=s3cretvalue', 'MYSQL_PASS=[REDACTED:assigned-secret]'],
+    ['pass: hunter22hunter', 'pass: [REDACTED:assigned-secret]'],
+    ['passphrase=hunter22x', 'passphrase=[REDACTED:assigned-secret]'],
+  ])('a value under a pass key is redacted: %s', async (text, want) => {
+    expect((await b.redact(text)).text).toBe(want)
+  })
+
+  test.each(['bypass=enabled-value', 'compass=northwest', 'pass_through=upstream-host'])(
+    'a word that only contains pass is not a key: %s',
+    async (text) => {
+      expect((await b.redact(text)).text).toBe(text)
+    },
+  )
+
+  test('a pass key in JSON is blanked; bypass is not', async () => {
+    const { value } = await b.redactJson({
+      db_pass: 'hunter22',
+      passphrase: 'hunter22 x',
+      bypass: 'on',
+    })
+    expect(value).toEqual({
+      db_pass: '[REDACTED:assigned-secret]',
+      passphrase: '[REDACTED:assigned-secret]',
+      bypass: 'on',
+    })
+  })
+
+  test.each([
+    ['password: correct horse battery staple', 'password: [REDACTED:assigned-secret]'],
+    ['secret: correct horse battery', 'secret: [REDACTED:assigned-secret]'],
+    ['db_password = correct horse battery', 'db_password = [REDACTED:assigned-secret]'],
+    ['passphrase: correct horse battery  ', 'passphrase: [REDACTED:assigned-secret]  '],
+  ])(
+    'an unquoted spaced value under a password-like key is redacted whole: %s',
+    async (text, want) => {
+      expect((await b.redact(text)).text).toBe(want)
+    },
+  )
+
+  test('a spaced value that is a shell variable or a working directory is kept', async () => {
+    expect((await b.redact('password: $DB_PASSWORD')).text).toBe('password: $DB_PASSWORD')
+    expect((await b.redact('pwd: /home/ada/my app')).text).toBe('pwd: /home/ada/my app')
+  })
+
+  test('a camelCase token count is kept', async () => {
+    const { value } = await b.redactJson({ tokensUsed: 9, tokensIn: 3, token: 'abcdefgh' })
+    expect(value).toEqual({ tokensUsed: 9, tokensIn: 3, token: '[REDACTED:assigned-secret]' })
   })
 })

@@ -167,8 +167,6 @@ export function isPermissionNotification(notificationType: string | undefined): 
   return notificationType !== undefined && PERMISSION_NOTIFICATIONS.has(notificationType)
 }
 
-// ── Event bodies ─────────────────────────────────────────────────────────
-
 /**
  * A string field of the payload's body, or `undefined` when it is absent or not a string.
  *

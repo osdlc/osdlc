@@ -280,6 +280,9 @@ describe('adversarial timing (100 KiB)', () => {
     bearer: fill('Bearer '),
     entropy: fill('key '),
     mixed: fill('password: x token=eyJ -----BEGIN ://x: Bearer key='),
+    passKeys: fill('pass:'),
+    spacedValue: fill('password: ' + 'a '.repeat(300) + '\n'),
+    spacedIni: fill('db_pass = x '),
   }
   for (const [name, text] of Object.entries(inputs)) {
     test(`input '${name}' redacts within budget`, async () => {

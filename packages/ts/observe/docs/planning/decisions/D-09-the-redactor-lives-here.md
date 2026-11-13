@@ -49,8 +49,13 @@ as `[REDACTED:<rule>]`.
    - `assigned-secret`: a key name (`password`, `passwd`, `pwd`, `secret`,
      `token`, `api_key`, `access_key`, `private_key`, `credential`, with an
      identifier tail so `DB_PASSWORD` and `client_secret_key` match; `auth`
-     takes no tail, so `author` does not) followed by `:` or `=` and a value.
-     A quoted value redacts at any length, a bare value from 6 characters. Only
+     takes no tail, so `author` does not; `pass` and `passphrase` only as a
+     whole segment, so `DB_PASS` matches and `bypass` does not) followed by
+     `:` or `=` and a value. A quoted value redacts up to 2000 characters, a
+     bare value from 6 characters to the next space. Under a password-like key
+     in the `key: value` or `key = value` form (YAML, `.ini`, logs), an
+     unquoted value runs to the end of the line, so a passphrase with spaces
+     goes whole; a shell `PASSWORD=x y` assigns only `x`. Only
      the value is redacted. Token counts (`input_tokens: 12048`) and values
      that read as code (a call, a member chain off a known receiver, a type
      name, `$VAR`) are exempt, except under a password-like key, where only

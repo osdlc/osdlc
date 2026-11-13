@@ -370,13 +370,15 @@ What it finds: secretlint's recommended preset (cloud, chat, package-registry
 and payment provider keys, private keys, connection strings, basic auth),
 PEM and PGP private keys, JWTs, provider API keys, URL passwords, `Authorization`
 and cookie headers, bearer tokens, a value assigned to a secret-named key
-(`DB_PASSWORD=...`, `"api_key": "..."`), a long high-entropy token after a
+(`DB_PASSWORD=...`, `DB_PASS=...`, `"api_key": "..."`; under a password-like
+key an unquoted `password: correct horse battery` is redacted to the end of
+the line), a long high-entropy token after a
 key-like word, and the value of every environment variable whose name has a
 secret-like part (`KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `AUTH`...) and is 8
 characters or longer. `envNames` adds variables by name and `extraPatterns`
 adds regexes, reported as `custom:<id>`. `redactJson` also blanks the value of
-a secret-named key whatever it holds, except a number under a key that names
-a token, which is a count: `"max_tokens": 100` stays. A value with a `toJSON`
+a secret-named key whatever it holds, except a number under a key that reads
+as a count: `"max_tokens": 100` and `"tokensUsed": 9` stay. A value with a `toJSON`
 method (a `URL`, a `Buffer`) is replaced by what that returns, then redacted,
 and an `Error` keeps its own fields and `cause`.
 
@@ -448,7 +450,9 @@ see each other's sessions must agree on them.
   unions: a new value is a breaking change (a minor version while 0.x).
 - **Redaction markers.** A redacted span reads `[REDACTED:<rule>]`. The rule ids
   are the secretlint rule names without their `@secretlint/secretlint-rule-`
-  prefix, the built-in rule names, `env:<NAME>`, `custom:<id>` and
+  prefix; the built-in rules `private-key`, `jwt`, `provider-key`,
+  `connection-password`, `auth-scheme`, `auth-digest`, `cookie`, `bearer`,
+  `assigned-secret` and `high-entropy`; `env:<NAME>`; `custom:<id>`; and
   `redactor-error`.
 
 ## Stability

@@ -1,32 +1,9 @@
 /**
- * The log redactor: a deterministic filter for text and parsed JSON before a
- * log writer puts it on disk.
- *
- * Always on. Options can only EXTEND it (`envNames`, `extraPatterns`); nothing
- * here turns a rule off, and neither can the text: a `secretlint-disable`
- * comment in it is ignored. {@link Redacted} is a branded string only this module
- * mints, so a writer that declares its content field `Redacted` rejects a
- * plain string at compile time. A cast still gets past the
- * types, and `appendJsonl` takes any value: write free text through
- * `appendRedactedJsonl`, or redact it first.
- *
- * Four passes each collect `[start, end)` ranges over the ORIGINAL text:
- * secretlint's recommended preset, the built-in rules, the values of
- * secret-named environment variables, and configured extra patterns. Ranges
- * are merged (overlapping or adjacent ranges become one, keeping the rule id
- * of the earliest start) and each is replaced with `[REDACTED:<rule>]`.
- *
- * The matched text is never logged or returned: callers get only per-rule
- * counts. No built-in regex nests an unbounded quantifier, quantifiers are
- * bounded where a start position could rescan a long run, and the PEM rule is a
- * linear `indexOf` scan. Each rule has a test that it finishes a hostile 100 KiB
- * input quickly. If secretlint throws, the whole text is replaced: failing closed
- * beats failing open. The same applies to any other error inside a pass.
- *
- * Known limits, accepted: a context-free 40-character AWS secret key (no key
- * name or access key id nearby) is indistinguishable from any other base64
- * string and survives; a secret split across a line wrap is not matched; and a
- * caller-supplied `extraPatterns` regex runs unbounded (see the option doc).
+ * The log redactor: a deterministic, always-on filter for text and parsed JSON
+ * before a log writer puts it on disk. `appendJsonl` takes any value, so write
+ * free text through `appendRedactedJsonl`, or redact it first. The passes, the
+ * merge rule, failing closed and the accepted limits are recorded in decision
+ * D-09 ("The redactor lives here") in the package's repository.
  */
 
 import { redactPatternProblem } from './redact-pattern.ts'
@@ -39,11 +16,10 @@ export type Redacted = string & { readonly __brand: 'Redacted' }
 
 /**
  * How many matches each rule replaced, by rule id: a secretlint rule id
- * without its `@secretlint/secretlint-rule-` prefix, a built-in rule
- * (`private-key`, `jwt`, `provider-key`, `connection-password`, `auth-scheme`,
- * `auth-digest`, `cookie`, `bearer`, `assigned-secret`, `high-entropy`),
- * `env:<NAME>` for an environment value, `custom:<id>` for an extra pattern,
- * or `redactor-error` when a pass failed and the whole text was replaced.
+ * without its `@secretlint/secretlint-rule-` prefix, a built-in rule id (the
+ * README lists them), `env:<NAME>` for an environment value, `custom:<id>` for
+ * an extra pattern, or `redactor-error` when a pass failed and the whole text
+ * was replaced.
  */
 export type Redactions = Record<string, number>
 
@@ -64,10 +40,7 @@ export interface RedactorOptions {
    * can still backtrack badly, so keep custom patterns simple and bounded.
    */
   extraPatterns?: { id: string; regex: string }[]
-  /**
-   * Replaces secretlint, for a test that must reach the fail-closed path.
-   * Returns `[start, end, ruleId]` ranges.
-   */
+  /** Replaces secretlint, for a test that must reach the fail-closed path. */
   lint?: (text: string) => Promise<readonly RedactionRange[]>
 }
 
@@ -79,18 +52,23 @@ export interface Redactor {
    */
   redact(text: string): Promise<{ text: Redacted; redactions: Redactions }>
   /**
-   * Redact every string in a parsed JSON value, object keys included. A
-   * non-empty string or an object under a secret-named key (`password`,
-   * `token`, `apiKey`, `cookie`, `authorization`, `auth`...) is replaced
-   * whole, and so is a string under `session`. A number under one is replaced
-   * too, unless the key names a token (a count); booleans are kept.
-   * A `Date` becomes its ISO string, an `Error` its name, message, stack, own
-   * fields and `cause`, a `Map` an object, a `Set` an array and a `BigInt` its
-   * decimal string. A value with a `toJSON` method (a `URL`, a `Buffer`) is
-   * replaced by what it returns, then redacted. Other functions and symbols are
-   * dropped, as JSON drops them, so nothing runs at write time. Two keys that redact to the same text
-   * are kept apart as `key`, `key#2`... A cycle becomes `[Circular]`, and
-   * nesting deeper than 64 levels `[MaxDepth]`.
+   * Redact every string in a parsed JSON value, object keys included.
+   *
+   * - Under a secret-named key (`password`, `pass`, `token`, `apiKey`,
+   *   `cookie`, `authorization`, `auth`...), a non-empty string or an object is
+   *   replaced whole. So is a string under `session`.
+   * - A number under a secret-named key is replaced too, unless the key reads
+   *   as a count or limit (`token_count`, `max_retries`) or is a token plural
+   *   (`input_tokens`, `tokensUsed`). Booleans are kept.
+   * - A `Date` becomes its ISO string, an `Error` its name, message, stack,
+   *   own fields and `cause`, a `Map` an object, a `Set` an array and a
+   *   `BigInt` its decimal string.
+   * - A value with a `toJSON` method (a `URL`, a `Buffer`) is replaced by what
+   *   it returns, then redacted. Other functions and symbols are dropped, as
+   *   JSON drops them, so nothing runs at write time.
+   * - Two keys that redact to the same text are kept apart as `key`, `key#2`...
+   * - A cycle becomes `[Circular]`, and nesting deeper than 64 levels
+   *   `[MaxDepth]`.
    */
   redactJson(value: unknown): Promise<{ value: unknown; redactions: Redactions }>
 }
@@ -164,7 +142,7 @@ function loadSecretlint(): Promise<Lint> {
   return secretlint
 }
 
-/** The preset's rule that obeys `secretlint-disable` comments. Left out of the config. */
+/** The preset's rule that obeys `secretlint-disable` comments. */
 export const LINT_COMMENT_FILTER = '@secretlint/secretlint-rule-filter-comments'
 
 /**
@@ -186,8 +164,6 @@ async function secretlintRanges(text: string): Promise<RedactionRange[]> {
   if (!LINT_CANDIDATE.test(text)) return []
   return (await loadSecretlint())(text)
 }
-
-// ── built-in rules ──────────────────────────────────────────────────────────
 
 /** A regex whose capture group 1 is the secret (the rest is context to keep). */
 interface GroupRule {
@@ -235,20 +211,24 @@ const GROUP_RULES: GroupRule[] = [
   {
     id: 'assigned-secret',
     // Key name (any prefix), then an identifier tail so SECRET_KEY, client_secret_key
-    // and STRIPE_SECRET_KEY match; `auth` takes no tail so `author:` does not.
-    // The value is quoted (spaces and backslash escapes allowed, up to 2000 characters) or a
-    // bare run of 6+. `tokenizer` is a model setting, not a secret.
-    re: /(?:(?:password|passwd|pwd|secret|token(?!izer)|api[_-]?key|access[_-]?key|private[_-]?key|credentials?)[A-Za-z0-9_-]{0,30}|auth(?![A-Za-z]))["']?\s{0,8}[:=]\s{0,8}(?:"((?:[^"\\\r\n]|\\.){1,2000})"|'((?:[^'\\\r\n]|\\.){1,2000})'|([^\s"']{6,}))/dgi,
+    // and STRIPE_SECRET_KEY match; `auth` takes no tail so `author:` does not, and `pass`
+    // stands alone so `bypass` and `pass_through` do not. `tokenizer` is a model setting.
+    re: /(?:(?:password|passwd|pwd|secret|token(?!izer)|api[_-]?key|access[_-]?key|private[_-]?key|credentials?)[A-Za-z0-9_-]{0,30}|auth(?![A-Za-z])|(?<![A-Za-z])pass(?:phrase)?(?![A-Za-z0-9_-]))["']?\s{0,8}[:=]\s{0,8}(?:"((?:[^"\\\r\n]|\\.){1,2000})"|'((?:[^'\\\r\n]|\\.){1,2000})'|([^\s"']{6,}))/dgi,
     trim: /[,;)}\]]+$/,
-    // A count is not a secret: `"input_tokens":12048` in a usage line.
-    // Code-looking values (`token = session.id`) are exempt. Under a password-like key
-    // only variable references and type names are: `password=correct.horse.battery`
-    // is a passphrase, not a member chain.
-    // `PWD=/home/ada/app` is the shell's working directory, not a password.
     acceptBare: (v, match) =>
       !looksLikeCode(v, PASSWORD_LIKE_KEY.test(match)) &&
       !(TOKEN_COUNT_KEY.test(match) && /^\d+$/.test(v)) &&
       !(PWD_PATH_KEY.test(match) && /^(?:[/~]|[A-Za-z]:[\\/])/.test(v)),
+  },
+  {
+    // `password: correct horse battery staple` (YAML, logs) or `password = ...` (.ini): under
+    // a password-like key the unquoted value runs to the end of the line, spaces and all. A
+    // shell `PASSWORD=x y` assigns only `x`, so the rule above, which stops at a space, fits it.
+    id: 'assigned-secret',
+    re: /(?:(?:password|passwd|pwd|secret)[A-Za-z0-9_-]{0,30}|(?<![A-Za-z])pass(?:phrase)?(?![A-Za-z0-9_-]))["']?(?:\s{0,8}:|\s{1,8}=)[ \t]{1,8}([^\s"'][^\r\n]{5,399})/dgi,
+    trim: /\s+$/,
+    acceptBare: (v, match) =>
+      !looksLikeCode(v, true) && !(PWD_PATH_KEY.test(match) && /^(?:[/~]|[A-Za-z]:[\\/])/.test(v)),
   },
   {
     // A long high-entropy token right after a key-ish word: git SHAs, UUIDs
@@ -260,7 +240,7 @@ const GROUP_RULES: GroupRule[] = [
 ]
 
 /** The match starts with a password-like key name (`DB_PASSWORD=`, `pwd:`), whose value is never treated as code. */
-const PASSWORD_LIKE_KEY = /^[A-Za-z0-9_-]*(?:password|passwd|pwd|secret)/i
+const PASSWORD_LIKE_KEY = /^[A-Za-z0-9_-]*(?:pass|pwd|secret)/i
 
 /** The key is exactly `pwd` (the shell's working directory variable), whose path value is no secret. */
 const PWD_PATH_KEY = /^["']?pwd["']?\s*[:=]/i
@@ -272,15 +252,18 @@ const COUNT_KEY = /count|limit|budget|total|max|min/i
 const TOKEN_COUNT_KEY = /^[A-Za-z0-9_-]*tokens["']?\s*[:=]/i
 
 /**
- * Object keys whose value is a secret (`auth` only exactly: `author` is not one). `pwd` is left
- * out: as a key it is usually a directory. `token` does not match the plural (`input_tokens`,
- * `completion_tokens_details` count) or `tokenizer`; a session id (`sessionId`) is an id, not
- * a credential.
+ * Object keys whose value is a secret (`auth` only exactly: `author` is not one; `pass` only as
+ * a whole segment: `db_pass`, not `bypass`). `pwd` is left out: as a key it is usually a
+ * directory. `token` does not match a plural (`input_tokens`, `tokensUsed`,
+ * `completion_tokens_details` count) or `tokenizer`.
  */
 const SECRET_KEY =
-  /password|passwd|secret|token(?!s$|s_|izer)|api[_-]?key|access[_-]?key|private[_-]?key|credential|cookie|authorization|^auth$/i
+  /password|passwd|passphrase|(?:^|[_-])pass$|secret|token(?!s|izer)|api[_-]?key|access[_-]?key|private[_-]?key|credential|cookie|authorization|^auth$/i
 
-/** A key whose STRING value is a secret but whose object value is structure (`session: {id}`). */
+/**
+ * A key whose STRING value is a secret but whose object value is structure (`session: {id}`).
+ * Anchored, so `sessionId` (an id, not a credential) does not match.
+ */
 const SECRET_STRING_KEY = /^session$/i
 
 const PEM_BEGIN = /-----BEGIN [A-Z ]{0,30}PRIVATE KEY(?: BLOCK)?-----/g
@@ -404,8 +387,6 @@ function builtinRanges(text: string): RedactionRange[] {
   return [...pemRanges(text), ...GROUP_RULES.flatMap((r) => groupRanges(text, r))]
 }
 
-// ── environment values ──────────────────────────────────────────────────────
-
 function isSecretEnvName(name: string): boolean {
   const upper = name.toUpperCase()
   if (ENV_DENY_NAMES.has(upper)) return false
@@ -437,8 +418,6 @@ function envRanges(text: string, values: [string, string][]): RedactionRange[] {
   }
   return out
 }
-
-// ── merge and splice ────────────────────────────────────────────────────────
 
 /** Merge overlapping or adjacent ranges; the earliest start keeps its rule. */
 function mergeRanges(ranges: RedactionRange[]): RedactionRange[] {
@@ -506,8 +485,6 @@ function count(into: Redactions, rule: string, n = 1): void {
 export function mergeRedactions(into: Redactions, from: Readonly<Redactions>): void {
   for (const [rule, n] of Object.entries(from)) count(into, rule, n)
 }
-
-// ── factory ─────────────────────────────────────────────────────────────────
 
 /**
  * Build a redactor. Secret-named environment values are read once, here.
@@ -598,10 +575,7 @@ export function createRedactor(opts: RedactorOptions = {}): Redactor {
         for (const [k, item] of entries) {
           if (typeof item === 'function' || typeof item === 'symbol' || item === undefined) continue
           const key = uniqueKey(out, await str(k))
-          // A secret-named key carries its value's context, which a per-string
-          // pass cannot see: `{ "password": "hunter22" }`. A number is blanked too
-          // (`otp_token: 482913`), except under a key that reads as a count or limit
-          // (`token_count: 100`). Booleans are kept.
+          // A per-string pass cannot see that `{ "password": "hunter22" }` is a secret.
           const blank =
             (SECRET_KEY.test(k) &&
               ((typeof item === 'string' && item.length > 0) ||

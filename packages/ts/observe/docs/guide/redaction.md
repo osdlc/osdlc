@@ -117,7 +117,9 @@ replaced:
 2. **Rules for what logs hold that files seldom do.**
    - `Authorization` and `Cookie` headers, and `Bearer ...` tokens.
    - A value assigned to a secret-sounding name: `DB_PASSWORD=...`,
-     `"api_key": "..."`, `client_secret: ...`.
+     `DB_PASS=...`, `"api_key": "..."`, `client_secret: ...`. Under a
+     password-like name, `password: correct horse battery staple` is redacted
+     to the end of the line, spaces and all.
    - JWTs, provider API keys, PEM and PGP private key blocks, passwords inside
      URLs.
    - A long, random-looking token right after a word like `key` or `token`.
