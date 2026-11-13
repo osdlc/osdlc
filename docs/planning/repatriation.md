@@ -176,9 +176,9 @@ Needs phase 2. The plan's records still describe the split.
 
 Needs phase 1, because the profiles use `extends`.
 
-- [ ] **owner** Decide where the profiles and the starter corpus go in this
-      repository. Proposed: `packages/profiles/*` and `packages/corpora/*`,
-      as members of the pnpm workspace.
+- [x] **owner** The profiles go in `packages/profiles/*` and the starter
+      corpus in `packages/corpora/*`, as members of the pnpm workspace, for
+      now. Decided on #789.
 - [ ] Bring the claims profile example from osdlc/markdown `main`
       (`profiles/claims/`), with history.
 - [ ] Bring osdlc/markdown's `examples.yml` over as a path-filtered job, as

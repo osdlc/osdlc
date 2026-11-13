@@ -39,8 +39,9 @@ Accepted 2026-11-12.
   markdown plan does not own them: `config-layers` and `detect-harness`
   depend on them. With that, today's dependencies follow the directions
   above.
-- **osdlc/models folds in too.** Where the profiles and the starter corpus go
-  is not decided yet.
+- **osdlc/models folds in too.** The profiles go in `packages/profiles/*`
+  and the starter corpus in `packages/corpora/*`, as pnpm workspace members,
+  for now.
 - **Nothing moves out of sksizer/dev yet.** Its markdown packages,
   model-schema and the packs stay there for now.
 - **`markdown-store` stays in sksizer/rust-ontogen for now.**
