@@ -1,8 +1,8 @@
 ---
 number: 59
 title: Corpus-schema publisher
-detail: npm, owner
-status: owner
+detail: dropped
+status: done
 type: supporting
 milestone: "[m-npm](../milestones/m-npm.md)"
 ---

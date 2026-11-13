@@ -18,4 +18,6 @@ Splits a note into its YAML frontmatter and body, and puts them back together by
 
 ## Notes
 
+- A general library, not one the plan owns: detect-harness depends on it
+  ([D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md)).
 - Shares the frontmatter-lossless conformance family with the Rust crate, which is the reference.

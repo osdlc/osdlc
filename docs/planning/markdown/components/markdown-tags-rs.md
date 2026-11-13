@@ -5,7 +5,7 @@ language: rust
 layer: "[note-parts](../layers/note-parts.md)"
 states: [present, target]
 status: published
-version: "0.4.0"
+version: "0.4.1"
 registry: "https://crates.io/crates/markdown-tags"
 repo_present: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
 path_present: packages/rust/markdown-tags
@@ -20,4 +20,4 @@ The Rust twin of @osdlc/markdown-tags, and the reference for their shared test c
 
 ## Notes
 
-- Open release PR osdlc/osdlc#730 would bump it to 0.4.1.
+- Release PR osdlc/osdlc#730 took it to 0.4.1.

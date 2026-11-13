@@ -10,7 +10,7 @@ path_present: packages/ts/markdown-tags
 links:
   - "[osdlc/osdlc#714](https://github.com/osdlc/osdlc/pull/714)"
 depends_going:
-  - "[markdown-link-dev-copy](markdown-link-dev-copy.md)"
+  - "[markdown-link](markdown-link.md)"
 ---
 
 A private copy of markdown-tags in the dev repo, at version 0.1.0. dev's markdown-vault,

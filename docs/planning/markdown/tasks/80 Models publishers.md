@@ -1,6 +1,6 @@
 ---
 number: 80
-title: Models publishers
+title: Profile publishers
 detail: npm, owner
 status: owner
 type: supporting

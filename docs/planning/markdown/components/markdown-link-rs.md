@@ -5,7 +5,7 @@ language: rust
 layer: "[note-parts](../layers/note-parts.md)"
 states: [present, target]
 status: published
-version: "0.8.1"
+version: "0.9.1"
 registry: "https://crates.io/crates/markdown-link"
 repo_present: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
 path_present: packages/rust/markdown-link
@@ -29,5 +29,6 @@ Finds and resolves links in notes. Its LinkIndex resolves a link target against 
 
 ## Notes
 
-- The same open PRs change it: osdlc/osdlc#649, #651 and #728.
-- Open release PR osdlc/osdlc#730 would bump it to 0.8.2.
+- Open osdlc/osdlc#649 and #651 change it too. osdlc/osdlc#728 moved the shared cases into the
+  markdown-link conformance family.
+- Release PR osdlc/osdlc#730 took it to 0.9.1.

@@ -11,8 +11,9 @@ after:
 ---
 
 Clean up osdlc/markdown once the plan, the profiles and the starter live in osdlc/osdlc ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)).
-Close [#15](https://github.com/osdlc/markdown/pull/15) and [#19](https://github.com/osdlc/markdown/pull/19)
-as moved, and link the osdlc/osdlc pull request in each. Remove from osdlc/markdown what was brought
-to osdlc/osdlc, so there is one copy. Its README stays, as the holding pen's. Change the fernlog
-example ([#16](https://github.com/osdlc/markdown/pull/16), re-opened in osdlc/osdlc) to install
-`@osdlc/corpus-profile-claims` from npm instead of by path. After 78 and 60.
+Close osdlc/markdown [#15](https://github.com/osdlc/markdown/pull/15),
+[#16](https://github.com/osdlc/markdown/pull/16) and [#19](https://github.com/osdlc/markdown/pull/19),
+and [osdlc/models#1](https://github.com/osdlc/models/pull/1), as moved, and link the osdlc/osdlc pull
+request in each. Remove from osdlc/markdown what was brought to osdlc/osdlc, so there is one copy.
+Its README stays, as the holding pen's. In osdlc/osdlc, change the fernlog example (from #16) to
+install `@osdlc/corpus-profile-claims` from npm instead of by path. After 78 and 60.

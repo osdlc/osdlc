@@ -5,7 +5,7 @@ language: rust
 layer: "[corpus-model](../layers/corpus-model.md)"
 states: [present, target]
 status: published
-version: "0.3.0"
+version: "0.3.1"
 registry: "https://crates.io/crates/markdown-corpus"
 repo_present: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
 path_present: packages/rust/markdown-corpus
@@ -34,5 +34,5 @@ frontmatter, kept up to date as files change.
 
 - It never rejects a note: a note with broken frontmatter is read as body only.
 - Decision D3: the crate keeps its name, and the TypeScript model takes the same name.
-- Open release PR osdlc/osdlc#730 would bump it to 0.3.1.
+- Release PR osdlc/osdlc#730 took it to 0.3.1.
 - Open osdlc/osdlc#650 changes it (see markdown-vault-fs).

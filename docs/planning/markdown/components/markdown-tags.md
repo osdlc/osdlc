@@ -5,7 +5,7 @@ language: ts
 layer: "[note-parts](../layers/note-parts.md)"
 states: [present, target]
 status: published
-version: "0.4.0"
+version: "0.4.1"
 registry: "https://www.npmjs.com/package/@osdlc/markdown-tags"
 repo_present: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
 path_present: packages/ts/markdown-tags
@@ -25,5 +25,5 @@ and an ASCII one.
 
 - Moved into osdlc in osdlc/osdlc#714. Shares the markdown-tags conformance family with the Rust
   crate.
-- The plan says markdown-tags is on neither registry yet. That is out of date: 0.4.0 is on npm and
+- The plan says markdown-tags is on neither registry yet. That is out of date: 0.4.1 is on npm and
   on crates.io.

@@ -16,4 +16,6 @@ The Rust twin of @osdlc/gfm-table.
 
 ## Notes
 
+- A general library, not one the plan owns, like its twin, which config-layers depends on
+  ([D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md)).
 - It is publish = false, so it is not on crates.io.

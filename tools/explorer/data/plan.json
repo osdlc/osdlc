@@ -814,13 +814,12 @@
         44,
         45,
         46,
-        59,
         70,
         71,
         73
       ],
       "prs": [],
-      "text": "Release corpus-schema 0.3.0. (supporting) The first version with `extends`, `x-extends`, cross-corpus `x-ref` and `sync`, published from osdlc/osdlc. It also carries `--strict`, flattened `x-extends`, refs by id and `x-ref` to several types, which the sdlc profile needs. It also carries `references` and `uses` (tasks 70 and 71, decision D15), and identity, the id cut, `x-record-file` and narrative folders (task 73, decision D16). After 9, 21, 27, 29, 43 to 46, 59, 70, 71 and 73. The changeset is in [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12), which [osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790) brings to osdlc/osdlc as one commit ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)). Owner work: merging #790 and then the Version Packages pull request publishes it.",
+      "text": "Release corpus-schema 0.3.0. (supporting) The first version with `extends`, `x-extends`, cross-corpus `x-ref` and `sync`, published from osdlc/osdlc. It also carries `--strict`, flattened `x-extends`, refs by id and `x-ref` to several types, which the sdlc profile needs. It also carries `references` and `uses` (tasks 70 and 71, decision D15), and identity, the id cut, `x-record-file` and narrative folders (task 73, decision D16). After 9, 21, 27, 29, 43 to 46, 70, 71 and 73. The changeset is in [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12), which [osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790) brings to osdlc/osdlc as one commit ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)). Owner work: merging #790 and then the Version Packages pull request publishes it.",
       "source": "docs/planning/markdown/tasks/36 Release 0.3.0.md"
     },
     {
@@ -867,7 +866,7 @@
       "type": "functional",
       "after": [],
       "prs": [],
-      "text": "Rename the markdown-relink crate to markdown-reshape. Reshape means changing how notes are arranged without changing what they say. Steps:\n\n- Publish the crate under the new name.\n- Deprecate markdown-relink on crates.io. This is an owner step.\n- Rename the vault terms in its code, such as `VaultFacts`.\n- Switch the determined notes app, which uses it through its Rust backend, and skillwright.",
+      "text": "Rename the markdown-relink crate to markdown-reshape. Reshape means changing how notes are arranged without changing what they say. Steps:\n\n- Publish the crate under the new name.\n- Deprecate markdown-relink on crates.io. This is an owner step.\n- Rename the vault terms in its code, such as `VaultFacts`.\n- Switch the determined notes app, which uses it through its Rust backend. skillwright no longer uses it.",
       "source": "docs/planning/markdown/tasks/39 Rename relink.md"
     },
     {
@@ -1166,8 +1165,8 @@
     {
       "id": 59,
       "title": "Corpus-schema publisher",
-      "detail": "npm, owner",
-      "status": "owner",
+      "detail": "dropped",
+      "status": "done",
       "milestone": "m-npm",
       "type": "supporting",
       "after": [],
@@ -1426,7 +1425,7 @@
       "type": "supporting",
       "after": [],
       "prs": [],
-      "text": "The public repo [osdlc/models](https://github.com/osdlc/models) exists, as decided in [D17](../decisions/D17%20Profiles%20and%20corpora%20live%20in%20osdlc%20models.md). Owner work, done on 2026-11-12. It holds only a README.\n\n[D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) supersedes D17 on where things live. osdlc/models is kept as a holding pen, and its README says the work happens in osdlc/osdlc for now ([osdlc/models#2](https://github.com/osdlc/models/pull/2)). The profiles and the starter corpus come to osdlc/osdlc instead (task 78). model-schema and the packs stay in sksizer/dev (task 62).",
+      "text": "The public repo [osdlc/models](https://github.com/osdlc/models) exists, as decided in [D17](../decisions/D17%20Profiles%20and%20corpora%20live%20in%20osdlc%20models.md). Owner work, done on 2026-11-12. It holds only a README.\n\n[D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) supersedes D17 on where things live. osdlc/models is kept as a holding pen. Open [osdlc/models#2](https://github.com/osdlc/models/pull/2) changes its README to say the work happens in osdlc/osdlc for now. The profiles and the starter corpus come to osdlc/osdlc instead (task 78). model-schema and the packs stay in sksizer/dev (task 62).",
       "source": "docs/planning/markdown/tasks/75 Create models repo.md"
     },
     {
@@ -1460,17 +1459,16 @@
     },
     {
       "id": 78,
-      "title": "Models repo setup",
+      "title": "Bring in profiles",
       "detail": "profiles and starter in osdlc/osdlc",
       "status": "todo",
       "milestone": "m-sdlc-profile",
       "type": "supporting",
       "after": [
-        36,
-        75
+        36
       ],
       "prs": [],
-      "text": "Bring the profiles and the starter corpus into osdlc/osdlc, so they publish from it ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)). They do not go to osdlc/models, as D17 planned. Their place in osdlc/osdlc is not decided: the proposal is `packages/profiles/*` and `packages/corpora/*`, as members of the pnpm workspace. Owner work decides it.\n\nBring in `profiles/sdlc/`, `profiles/claims/` and `corpora/sdlc-starter/` from [#19](https://github.com/osdlc/markdown/pull/19) and [#15](https://github.com/osdlc/markdown/pull/15). [osdlc/models#1](https://github.com/osdlc/models/pull/1) holds the same three packages moved; use whichever is newer. Add them to the package checks and the changeset config, and check them in CI with corpus-schema 0.3.0. The trusted publishers (task 80) point at osdlc/osdlc's release workflow. After 36 and 75.",
+      "text": "Bring the profiles and the starter corpus into osdlc/osdlc, so they publish from it ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)). They do not go to osdlc/models, as D17 planned. Their place in osdlc/osdlc is not decided: the proposal is `packages/profiles/*` and `packages/corpora/*`, as members of the pnpm workspace. Owner work decides it.\n\nBring in `profiles/sdlc/`, `profiles/claims/` and `corpora/sdlc-starter/` from [#19](https://github.com/osdlc/markdown/pull/19) and [#15](https://github.com/osdlc/markdown/pull/15). [osdlc/models#1](https://github.com/osdlc/models/pull/1) holds the same three packages moved; use whichever is newer. Add them to the package checks and the changeset config, and check them in CI with corpus-schema 0.3.0. The trusted publishers (task 80) point at osdlc/osdlc's release workflow. After 36.",
       "source": "docs/planning/markdown/tasks/78 Models repo setup.md"
     },
     {
@@ -1485,12 +1483,12 @@
         78
       ],
       "prs": [],
-      "text": "Clean up osdlc/markdown once the plan, the profiles and the starter live in osdlc/osdlc ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)). Close [#15](https://github.com/osdlc/markdown/pull/15) and [#19](https://github.com/osdlc/markdown/pull/19) as moved, and link the osdlc/osdlc pull request in each. Remove from osdlc/markdown what was brought to osdlc/osdlc, so there is one copy. Its README stays, as the holding pen's. Change the fernlog example ([#16](https://github.com/osdlc/markdown/pull/16), re-opened in osdlc/osdlc) to install `@osdlc/corpus-profile-claims` from npm instead of by path. After 78 and 60.",
+      "text": "Clean up osdlc/markdown once the plan, the profiles and the starter live in osdlc/osdlc ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)). Close osdlc/markdown [#15](https://github.com/osdlc/markdown/pull/15), [#16](https://github.com/osdlc/markdown/pull/16) and [#19](https://github.com/osdlc/markdown/pull/19), and [osdlc/models#1](https://github.com/osdlc/models/pull/1), as moved, and link the osdlc/osdlc pull request in each. Remove from osdlc/markdown what was brought to osdlc/osdlc, so there is one copy. Its README stays, as the holding pen's. In osdlc/osdlc, change the fernlog example (from #16) to install `@osdlc/corpus-profile-claims` from npm instead of by path. After 78 and 60.",
       "source": "docs/planning/markdown/tasks/79 Markdown after the move.md"
     },
     {
       "id": 80,
-      "title": "Models publishers",
+      "title": "Profile publishers",
       "detail": "npm, owner",
       "status": "owner",
       "milestone": "m-sdlc-profile",

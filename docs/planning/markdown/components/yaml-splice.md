@@ -24,6 +24,8 @@ crate built to WebAssembly for Node.js and Bun.
 
 ## Notes
 
+- A general library, not one the plan owns: config-layers depends on it
+  ([D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md)).
 - It is a binding, not a twin: one crate built for another runtime, with no tests of its own.
 - It edits any YAML mapping, not only frontmatter. Frontmatter is its main use today:
   frontmatter-lossless splits the note, and yaml-splice edits the YAML part.

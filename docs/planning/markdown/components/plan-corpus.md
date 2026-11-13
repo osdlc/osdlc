@@ -1,5 +1,5 @@
 ---
-name: the ecosystem plan corpus
+name: the Markdown Ecosystem Plan corpus
 kind: corpus
 language: markdown
 layer: "[apps](../layers/apps.md)"

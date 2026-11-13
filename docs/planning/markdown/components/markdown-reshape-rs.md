@@ -40,5 +40,5 @@ is applied. Its operations are move, rename, split, merge and extract.
   leaving it are rewritten or flagged. The result could be a new corpus that `extends` the
   original.
 - Its code still says vault (VaultFacts). Task 39 renames those terms.
-- Consumers to switch: skillwright and the determined notes app, which uses it through its Rust
-  backend.
+- Consumer to switch: the determined notes app, which uses it through its Rust backend. skillwright
+  no longer uses it.

@@ -13,4 +13,5 @@ without changing what they say. Steps:
 - Publish the crate under the new name.
 - Deprecate markdown-relink on crates.io. This is an owner step.
 - Rename the vault terms in its code, such as `VaultFacts`.
-- Switch the determined notes app, which uses it through its Rust backend, and skillwright.
+- Switch the determined notes app, which uses it through its Rust backend. skillwright no longer
+  uses it.

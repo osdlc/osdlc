@@ -5,7 +5,7 @@ language: rust
 layer: "[corpus-model](../layers/corpus-model.md)"
 states: [present]
 status: retiring
-version: "0.4.0"
+version: "0.4.1"
 registry: "https://crates.io/crates/markdown-relink"
 repo_present: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
 path_present: packages/rust/markdown-relink
@@ -33,5 +33,5 @@ The plan renames it markdown-reshape. This crate retires under the old name.
 - Renamed to markdown-reshape-rs, the same library under the new name (task 39). The owner
   deprecates this crate on crates.io once the new name is published.
 - Its code still says vault (VaultFacts).
-- Open release PR osdlc/osdlc#730 would bump it to 0.4.1.
+- Release PR osdlc/osdlc#730 took it to 0.4.1.
 - Open osdlc/osdlc#651 also touches it.

@@ -1,6 +1,7 @@
 {
-  "asOf": "2026-11-11",
+  "asOf": "2026-11-12",
   "sources": [
+    "Rechecked 2026-11-12: osdlc/osdlc main (480c02a4) packages/ts/*/package.json and packages/rust/*/Cargo.toml, with npm and crates.io versions; sksizer/dev main (0408c39271) packages/ts/*/package.json and the solutions/ontological and solutions/determined manifests, and commit 48b62783, which removed its markdown-link copy and the vendored markdown-contract; osdlc/skillwright main (b3657db) Cargo.toml files; osdlc/osdlc PRs #649, #650, #651, #728 and #730; osdlc/models #1 and #2.",
     "Rechecked 2026-11-11: sksizer/dev PRs #4069 and #4070 merged into code-intelligence-planning, which open PR #4068 takes to main; the package names and paths of @osdlc/pack-intent and @osdlc/pack-sdlc; npm versions of @osdlc/corpus-schema (0.2.1) and @osdlc/package-checks (0.2.0).",
     "Rechecked 2026-11-10: osdlc/markdown main (3c8f6fe) and open PRs #12, #15 and #16; osdlc/osdlc PRs #767, #773 and #774; npm versions of @osdlc/package-checks and @osdlc/conformance-suites. Other facts below are as of 2026-11-09.",
     "osdlc/markdown main (de5bb97): docs/architecture.md, docs/ecosystem-plan.md, docs/corpus-schema.md, tools/diagrams/build.py, tools/diagrams/architecture.py, profiles/claims/, .github/workflows/examples.yml",
@@ -57,7 +58,7 @@
     {
       "id": "formats",
       "label": "Data formats (proposal)",
-      "summary": "Lossless readers and editors for a file format in general, not just inside a note: YAML today, JSON later. Note parts build on them. Not one of the layers in docs/architecture.md yet."
+      "summary": "Lossless readers and editors for a file format in general, not just inside a note: YAML today, JSON later. Note parts build on them. Not one of the layers in docs/architecture/markdown-target.md yet."
     },
     {
       "id": "files",
@@ -122,7 +123,7 @@
       "twin": null,
       "purpose": "The plan calls it a notes app. In dev it is many small apps and experiences over a user's vault, such as notes, graph, search and sites.",
       "notes": [
-        "Uses the dev render, edit and corpus packages through workspace:*, plus osdlc note parts from npm and the vendored markdown-contract 0.2.1.",
+        "Uses the dev render, edit and corpus packages through workspace:*, plus osdlc note parts from npm, markdown-link and markdown-contract among them.",
         "Task 13 switches its vault-graph app and its graph and notes experiences to the shared model and resolver."
       ],
       "tasks": [
@@ -330,7 +331,7 @@
     },
     {
       "id": "plan-corpus",
-      "name": "the ecosystem plan corpus",
+      "name": "the Markdown Ecosystem Plan corpus",
       "kind": "corpus",
       "language": "markdown",
       "layer": "apps",
@@ -397,7 +398,7 @@
       "twin": null,
       "purpose": "The planning CLI and plugin. It keeps its planning docs as a corpus of notes with typed frontmatter.",
       "notes": [
-        "Uses osdlc note parts from npm, dev's private markdown-link copy, and the vendored markdown-contract 0.2.1. Its desktop app (solutions/ontological/desktop) uses the render and edit packages.",
+        "Uses osdlc note parts from npm, markdown-link and markdown-contract among them. dev's private markdown-link copy and the vendored markdown-contract 0.2.1 are gone (sksizer/dev 48b62783). Its desktop app (solutions/ontological/desktop) uses the render and edit packages.",
         "Target from the plan's diagram: it takes its types from profiles. sksizer/dev#4070 says sdlc does not use the packs yet.",
         "Plan: nothing from dev is published."
       ],
@@ -431,13 +432,14 @@
         "target": "packages/rust/skillwright"
       },
       "status": "published",
-      "version": "0.9.0",
+      "version": "0.12.0",
       "registry": "https://crates.io/crates/skillwright",
       "twin": null,
       "purpose": "A CLI that publishes a vault of skill notes into the formats of coding-agent tools, checks them for drift, and edits and reorganizes the vault.",
       "notes": [
-        "Uses the osdlc Rust crates from crates.io, partly through its tradecraft-core crate.",
-        "Its workspace pins some older versions than the latest: markdown-corpus 0.2.0, markdown-relink 0.3.0, markdown-vault-fs 0.5.0, markdown-link 0.8.0.",
+        "Uses the osdlc Rust crates from crates.io, through its tradecraft-core crate.",
+        "It no longer uses markdown-corpus, markdown-relink, markdown-vault-fs or etag-write, so task 39 has nothing to switch in it.",
+        "Its workspace pins frontmatter-lossless 1.1.2 and path-guard 0.3.3, older than the latest.",
         "It moved out of osdlc/osdlc into osdlc/skillwright."
       ],
       "tasks": [],
@@ -547,7 +549,7 @@
       "notes": [
         "First release 0.8.0 on npm, from osdlc/osdlc (osdlc/osdlc#720). It finds wikilinks and embeds with @osdlc/markdown-link's body scanner.",
         "The Vue components were its `./vue` entry. They are now @osdlc/markdown-render-vue.",
-        "sksizer/dev still has its own private copy at packages/ts/markdown-render, which uses dev's copies of markdown-link and markdown-tags. Nothing moves out of dev yet (decision D19)."
+        "sksizer/dev still has its own private copy at packages/ts/markdown-render, at 0.5.0. It uses dev's copy of markdown-tags and @osdlc/markdown-link from npm. Nothing moves out of dev yet (decision D19)."
       ],
       "tasks": [
         17
@@ -1373,7 +1375,6 @@
         45,
         46,
         57,
-        59,
         69,
         70,
         71,
@@ -1463,14 +1464,14 @@
         "target": "packages/rust/markdown-corpus"
       },
       "status": "published",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "registry": "https://crates.io/crates/markdown-corpus",
       "twin": "markdown-corpus",
       "purpose": "The corpus model in Rust: every note and file in a folder, their links in both directions, tags and frontmatter, kept up to date as files change.",
       "notes": [
         "It never rejects a note: a note with broken frontmatter is read as body only.",
         "Decision D3: the crate keeps its name, and the TypeScript model takes the same name.",
-        "Open release PR osdlc/osdlc#730 would bump it to 0.3.1.",
+        "Release PR osdlc/osdlc#730 took it to 0.3.1.",
         "Open osdlc/osdlc#650 changes it (see markdown-vault-fs)."
       ],
       "tasks": [],
@@ -1500,14 +1501,14 @@
         "target": null
       },
       "status": "retiring",
-      "version": "0.4.0",
+      "version": "0.4.1",
       "registry": "https://crates.io/crates/markdown-relink",
       "twin": null,
       "purpose": "Moves or renames a note and rewrites the links that point at it, as a plan you can review before it is applied.\n\nThe plan renames it markdown-reshape. This crate retires under the old name.",
       "notes": [
         "Renamed to markdown-reshape-rs, the same library under the new name (task 39). The owner deprecates this crate on crates.io once the new name is published.",
         "Its code still says vault (VaultFacts).",
-        "Open release PR osdlc/osdlc#730 would bump it to 0.4.1.",
+        "Release PR osdlc/osdlc#730 took it to 0.4.1.",
         "Open osdlc/osdlc#651 also touches it."
       ],
       "tasks": [
@@ -1551,7 +1552,7 @@
         "Split turns one note into several and redirects each link to the right piece (task 41). Merge makes links to any merged note point to the result (task 41).",
         "Extract pulls one thread out of the graph into its own folder or corpus (task 42). The thread is a note and what it links to, followed to some depth or by type. Links inside it are kept. Links leaving it are rewritten or flagged. The result could be a new corpus that `extends` the original.",
         "Its code still says vault (VaultFacts). Task 39 renames those terms.",
-        "Consumers to switch: skillwright and the determined notes app, which uses it through its Rust backend."
+        "Consumer to switch: the determined notes app, which uses it through its Rust backend. skillwright no longer uses it."
       ],
       "tasks": [
         39,
@@ -1688,6 +1689,7 @@
       "twin": "frontmatter-lossless-rs",
       "purpose": "Splits a note into its YAML frontmatter and body, and puts them back together byte for byte.",
       "notes": [
+        "A general library, not one the plan owns: detect-harness depends on it ([D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md)).",
         "Shares the frontmatter-lossless conformance family with the Rust crate, which is the reference."
       ],
       "tasks": [],
@@ -1713,12 +1715,13 @@
         "target": "packages/rust/frontmatter-lossless"
       },
       "status": "published",
-      "version": "1.1.2",
+      "version": "1.1.3",
       "registry": "https://crates.io/crates/frontmatter-lossless",
       "twin": "frontmatter-lossless",
       "purpose": "The Rust twin of @osdlc/frontmatter-lossless. A broken frontmatter block is read as body only.",
       "notes": [
-        "Open release PR osdlc/osdlc#730 would bump it to 1.1.3."
+        "A general library, not one the plan owns, like its twin, which detect-harness depends on ([D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md)).",
+        "Release PR osdlc/osdlc#730 took it to 1.1.3."
       ],
       "tasks": [],
       "links": [],
@@ -1748,6 +1751,7 @@
       "twin": "gfm-table",
       "purpose": "The Rust twin of @osdlc/gfm-table.",
       "notes": [
+        "A general library, not one the plan owns, like its twin, which config-layers depends on ([D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md)).",
         "It is publish = false, so it is not on crates.io."
       ],
       "tasks": [],
@@ -1778,6 +1782,7 @@
       "twin": "gfm-pipe-table",
       "purpose": "Reads, edits and renders GFM pipe tables as plain strings, and pads columns so the pipes line up.",
       "notes": [
+        "A general library, not one the plan owns: config-layers depends on it ([D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md)).",
         "Its shared test cases still live inside the package. The architecture plans a shared conformance family."
       ],
       "tasks": [],
@@ -1836,12 +1841,12 @@
         "target": "packages/rust/markdown-contract"
       },
       "status": "published",
-      "version": "0.4.2",
+      "version": "0.4.3",
       "registry": "https://crates.io/crates/markdown-contract",
       "twin": "markdown-contract",
       "purpose": "The Rust twin of @osdlc/markdown-contract.",
       "notes": [
-        "Open release PR osdlc/osdlc#730 would bump it to 0.4.3."
+        "Release PR osdlc/osdlc#730 took it to 0.4.3."
       ],
       "tasks": [
         56
@@ -1856,25 +1861,24 @@
       "language": "ts",
       "layer": "note-parts",
       "states": [
-        "present",
-        "target"
+        "present"
       ],
       "repo": {
         "present": "sksizer/dev",
-        "target": "sksizer/dev"
+        "target": null
       },
       "path": {
         "present": "vendor/markdown-contract-0.2.1.tgz",
-        "target": "vendor/markdown-contract-0.2.1.tgz"
+        "target": null
       },
-      "status": "unpublished",
+      "status": "retiring",
       "version": null,
       "registry": null,
       "twin": null,
-      "purpose": "An old markdown-contract release, kept as a tarball in the dev repo. sdlc and several determined apps install it instead of @osdlc/markdown-contract.",
+      "purpose": "An old markdown-contract release that the dev repo kept as a tarball. It is gone: sksizer/dev commit 48b62783 (2026-11-08) removed it, and sdlc and determined take @osdlc/markdown-contract ^0.7.6 from npm.",
       "notes": [
-        "Also vendored at solutions/determined/vendor/markdown-contract-0.2.1.tgz. Its npm name, markdown-contract, is not on npm.",
-        "The plan does not mention it, so its target is unchanged here."
+        "It was also vendored at solutions/determined/vendor/markdown-contract-0.2.1.tgz. Its npm name, markdown-contract, is not on npm.",
+        "The record stays so that links to it still resolve."
       ],
       "tasks": [],
       "links": [],
@@ -1899,13 +1903,13 @@
         "target": "packages/ts/markdown-link"
       },
       "status": "published",
-      "version": "0.8.1",
+      "version": "0.9.0",
       "registry": "https://www.npmjs.com/package/@osdlc/markdown-link",
       "twin": "markdown-link-rs",
       "purpose": "Finds every wikilink, embed and relative Markdown link in a note body, and skips links inside code. Today it only finds links; it cannot say which file a link points to.",
       "notes": [
         "Target: it gets the same link resolver as the Rust crate (LinkIndex), and becomes the only place in TypeScript that decides what a link points to (task 11).",
-        "Its shared test cases still live inside the package. Open osdlc/osdlc#728 moves them into a shared conformance family.",
+        "Its shared test cases are in the markdown-link conformance family, since osdlc/osdlc#728.",
         "Open osdlc/osdlc#649 (0.9: more code forms) and #651 (link titles, parentheses in paths; stacked on #649) change both twins. #651 fixes problem F3 (osdlc/osdlc#635).",
         "Problem F2: only the Rust crate can resolve links, so each TypeScript package wrote its own resolver."
       ],
@@ -1954,10 +1958,10 @@
       "version": null,
       "registry": null,
       "twin": null,
-      "purpose": "A private copy of markdown-link in the dev repo, at version 0.1.0. Several dev packages use it through workspace:* instead of the published 0.8.1.",
+      "purpose": "A private copy of markdown-link that the dev repo had, at version 0.1.0. It is gone: sksizer/dev commit 48b62783 (2026-11-08) removed it, and its users take @osdlc/markdown-link ^0.8.1 from npm.",
       "notes": [
-        "The plan names markdown-vault, vault-graph-core and markdown-astro as its users. dev's manifests show more: markdown-render, sdlc (solutions/ontological) and parts of determined also use it.",
-        "Problem F11. Task 13 moves its users off it. dev task T-1NC5 tracks the move and is marked in-progress/blocked."
+        "Its users were markdown-vault, vault-graph-core, markdown-astro, markdown-render, sdlc (solutions/ontological) and parts of determined.",
+        "Problem F11. The record stays so that links to it still resolve. dev task T-1NC5 tracked the move and is still marked in-progress/blocked."
       ],
       "tasks": [
         13
@@ -1984,13 +1988,13 @@
         "target": "packages/rust/markdown-link"
       },
       "status": "published",
-      "version": "0.8.1",
+      "version": "0.9.1",
       "registry": "https://crates.io/crates/markdown-link",
       "twin": "markdown-link",
       "purpose": "Finds and resolves links in notes. Its LinkIndex resolves a link target against a set of file paths.",
       "notes": [
-        "The same open PRs change it: osdlc/osdlc#649, #651 and #728.",
-        "Open release PR osdlc/osdlc#730 would bump it to 0.8.2."
+        "Open osdlc/osdlc#649 and #651 change it too. osdlc/osdlc#728 moved the shared cases into the markdown-link conformance family.",
+        "Release PR osdlc/osdlc#730 took it to 0.9.1."
       ],
       "tasks": [
         11
@@ -2030,13 +2034,13 @@
         "target": "packages/ts/markdown-tags"
       },
       "status": "published",
-      "version": "0.4.0",
+      "version": "0.4.1",
       "registry": "https://www.npmjs.com/package/@osdlc/markdown-tags",
       "twin": "markdown-tags-rs",
       "purpose": "Finds inline #tags in a note body, in three dialects: Obsidian's rule (the default), a Unicode one and an ASCII one.",
       "notes": [
         "Moved into osdlc in osdlc/osdlc#714. Shares the markdown-tags conformance family with the Rust crate.",
-        "The plan says markdown-tags is on neither registry yet. That is out of date: 0.4.0 is on npm and on crates.io."
+        "The plan says markdown-tags is on neither registry yet. That is out of date: 0.4.1 is on npm and on crates.io."
       ],
       "tasks": [],
       "links": [
@@ -2100,12 +2104,12 @@
         "target": "packages/rust/markdown-tags"
       },
       "status": "published",
-      "version": "0.4.0",
+      "version": "0.4.1",
       "registry": "https://crates.io/crates/markdown-tags",
       "twin": "markdown-tags",
       "purpose": "The Rust twin of @osdlc/markdown-tags, and the reference for their shared test cases.",
       "notes": [
-        "Open release PR osdlc/osdlc#730 would bump it to 0.4.1."
+        "Release PR osdlc/osdlc#730 took it to 0.4.1."
       ],
       "tasks": [],
       "links": [],
@@ -2167,6 +2171,7 @@
       "twin": null,
       "purpose": "Edits top-level YAML fields in place and keeps every other byte, comments included. It is the Rust crate built to WebAssembly for Node.js and Bun.",
       "notes": [
+        "A general library, not one the plan owns: config-layers depends on it ([D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md)).",
         "It is a binding, not a twin: one crate built for another runtime, with no tests of its own.",
         "It edits any YAML mapping, not only frontmatter. Frontmatter is its main use today: frontmatter-lossless splits the note, and yaml-splice edits the YAML part."
       ],
@@ -2193,12 +2198,13 @@
         "target": "packages/rust/yaml-splice"
       },
       "status": "published",
-      "version": "0.3.3",
+      "version": "0.3.4",
       "registry": "https://crates.io/crates/yaml-splice",
       "twin": null,
       "purpose": "Sets, removes and renames top-level YAML fields while every other byte stays as it was.",
       "notes": [
-        "Open release PR osdlc/osdlc#730 would bump it to 0.3.4."
+        "A general library, not one the plan owns, like its twin, which config-layers depends on ([D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md)).",
+        "Release PR osdlc/osdlc#730 took it to 0.3.4."
       ],
       "tasks": [],
       "links": [],
@@ -2311,13 +2317,13 @@
         "target": "packages/rust/markdown-vault-fs"
       },
       "status": "published",
-      "version": "0.6.0",
+      "version": "0.6.1",
       "registry": "https://crates.io/crates/markdown-vault-fs",
       "twin": null,
       "purpose": "Walks a folder of notes: tells notes from attachments, applies the skip rules (including Obsidian's excluded files) and guards paths.",
       "notes": [
         "Its name still says vault. Decision D1 says vault names move to corpus over time; the plan names no new name.",
-        "Open release PR osdlc/osdlc#730 would bump it to 0.6.1.",
+        "Release PR osdlc/osdlc#730 took it to 0.6.1.",
         "Open osdlc/osdlc#650 changes it (edge cases from earlier reviews). It still targets the branch of #648, which merged on 2026-11-08, and assumes 0.6.0 is unreleased, but 0.6.0 is on crates.io."
       ],
       "tasks": [],
@@ -2378,12 +2384,12 @@
         "target": "packages/rust/path-guard"
       },
       "status": "published",
-      "version": "0.3.3",
+      "version": "0.3.4",
       "registry": "https://crates.io/crates/path-guard",
       "twin": "path-guard",
       "purpose": "The Rust twin of @osdlc/path-guard: the same lexical check and symlink-aware containment proof, run against the same conformance suite. markdown-vault-fs uses it for every file it touches.",
       "notes": [
-        "Open release PR osdlc/osdlc#730 would bump it to 0.3.4."
+        "Release PR osdlc/osdlc#730 took it to 0.3.4."
       ],
       "tasks": [],
       "links": [],
@@ -2530,7 +2536,16 @@
     },
     {
       "from": "determined",
-      "to": "markdown-contract-vendored",
+      "to": "markdown-contract",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "determined",
+      "to": "markdown-link",
       "kind": "depends",
       "states": [
         "present",
@@ -2554,15 +2569,6 @@
         "target"
       ],
       "note": "Task 13 switches its vault-graph app and graph and notes experiences."
-    },
-    {
-      "from": "determined",
-      "to": "markdown-link",
-      "kind": "depends",
-      "states": [
-        "target"
-      ],
-      "note": "Its private copies go away in the target."
     },
     {
       "from": "determined",
@@ -2600,14 +2606,6 @@
     {
       "from": "determined",
       "to": "markdown-tags-dev-copy",
-      "kind": "depends",
-      "states": [
-        "present"
-      ]
-    },
-    {
-      "from": "determined",
-      "to": "markdown-link-dev-copy",
       "kind": "depends",
       "states": [
         "present"
@@ -2798,7 +2796,16 @@
     },
     {
       "from": "sdlc",
-      "to": "markdown-contract-vendored",
+      "to": "markdown-contract",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "sdlc",
+      "to": "markdown-link",
       "kind": "depends",
       "states": [
         "present",
@@ -2837,15 +2844,6 @@
     },
     {
       "from": "sdlc",
-      "to": "markdown-link",
-      "kind": "depends",
-      "states": [
-        "target"
-      ],
-      "note": "The private copy goes away in the target. The plan does not name sdlc among its users."
-    },
-    {
-      "from": "sdlc",
       "to": "pack-sdlc",
       "kind": "depends",
       "states": [
@@ -2854,92 +2852,8 @@
       "note": "The plan's target diagram says sdlc takes its types from profiles."
     },
     {
-      "from": "sdlc",
-      "to": "markdown-link-dev-copy",
-      "kind": "depends",
-      "states": [
-        "present"
-      ]
-    },
-    {
-      "from": "skillwright",
-      "to": "markdown-corpus-rs",
-      "kind": "depends",
-      "states": [
-        "present",
-        "target"
-      ]
-    },
-    {
-      "from": "skillwright",
-      "to": "yaml-splice-rs",
-      "kind": "depends",
-      "states": [
-        "present",
-        "target"
-      ]
-    },
-    {
-      "from": "skillwright",
-      "to": "path-guard-rs",
-      "kind": "depends",
-      "states": [
-        "present",
-        "target"
-      ]
-    },
-    {
-      "from": "skillwright",
-      "to": "etag-write-rs",
-      "kind": "depends",
-      "states": [
-        "present",
-        "target"
-      ]
-    },
-    {
       "from": "skillwright",
       "to": "frontmatter-lossless-rs",
-      "kind": "depends",
-      "states": [
-        "present",
-        "target"
-      ],
-      "note": "Through its tradecraft-core crate."
-    },
-    {
-      "from": "skillwright",
-      "to": "markdown-link-rs",
-      "kind": "depends",
-      "states": [
-        "present",
-        "target"
-      ],
-      "note": "Through its tradecraft-core crate."
-    },
-    {
-      "from": "skillwright",
-      "to": "vfs-seam",
-      "kind": "depends",
-      "states": [
-        "present",
-        "target"
-      ],
-      "note": "Through its tradecraft-core crate."
-    },
-    {
-      "from": "skillwright",
-      "to": "vfs-walk",
-      "kind": "depends",
-      "states": [
-        "present",
-        "target"
-      ],
-      "note": "Through its tradecraft-core crate."
-    },
-    {
-      "from": "skillwright",
-      "to": "markdown-vault-fs",
       "kind": "depends",
       "states": [
         "present",
@@ -2959,19 +2873,51 @@
     },
     {
       "from": "skillwright",
-      "to": "markdown-reshape-rs",
+      "to": "markdown-link-rs",
       "kind": "depends",
       "states": [
+        "present",
+        "target"
+      ],
+      "note": "Through its tradecraft-core crate."
+    },
+    {
+      "from": "skillwright",
+      "to": "path-guard-rs",
+      "kind": "depends",
+      "states": [
+        "present",
         "target"
       ]
     },
     {
       "from": "skillwright",
-      "to": "markdown-relink",
+      "to": "vfs-seam",
       "kind": "depends",
       "states": [
-        "present"
+        "present",
+        "target"
+      ],
+      "note": "Through its tradecraft-core crate."
+    },
+    {
+      "from": "skillwright",
+      "to": "yaml-splice-rs",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
       ]
+    },
+    {
+      "from": "skillwright",
+      "to": "vfs-walk",
+      "kind": "dev-depends",
+      "states": [
+        "present",
+        "target"
+      ],
+      "note": "Through its tradecraft-core crate."
     },
     {
       "from": "markdown-astro",
@@ -3042,15 +2988,6 @@
       "kind": "depends",
       "states": [
         "present"
-      ]
-    },
-    {
-      "from": "markdown-render",
-      "to": "gfm-table",
-      "kind": "depends",
-      "states": [
-        "present",
-        "target"
       ]
     },
     {
@@ -3674,7 +3611,7 @@
     },
     {
       "from": "markdown-vault",
-      "to": "markdown-link-dev-copy",
+      "to": "markdown-link",
       "kind": "depends",
       "states": [
         "present"
@@ -3682,7 +3619,7 @@
     },
     {
       "from": "vault-graph-core",
-      "to": "markdown-link-dev-copy",
+      "to": "markdown-link",
       "kind": "depends",
       "states": [
         "present"
@@ -3789,7 +3726,7 @@
     },
     {
       "from": "markdown-tags-dev-copy",
-      "to": "markdown-link-dev-copy",
+      "to": "markdown-link",
       "kind": "depends",
       "states": [
         "present"
@@ -3963,10 +3900,9 @@
       "to": "markdown-contract",
       "kind": "overlaps",
       "states": [
-        "present",
-        "target"
+        "present"
       ],
-      "note": "The tarball is the unscoped 0.2.1 build of the code osdlc now publishes as @osdlc/markdown-contract 0.7.7; the plan does not say to drop it.",
+      "note": "The tarball was the unscoped 0.2.1 build of the code osdlc now publishes as @osdlc/markdown-contract 0.7.7. sksizer/dev commit 48b62783 removed it.",
       "overlap": "copy"
     },
     {
@@ -3976,7 +3912,7 @@
       "states": [
         "present"
       ],
-      "note": "dev's copy has the same five source files as osdlc's 0.8.1 but lacks its newer scan and size API, and eight dev packages and apps still link it.",
+      "note": "dev's copy had the same five source files as osdlc's 0.8.1 but lacked its newer scan and size API. sksizer/dev commit 48b62783 removed it, and its users take @osdlc/markdown-link from npm.",
       "overlap": "copy"
     },
     {

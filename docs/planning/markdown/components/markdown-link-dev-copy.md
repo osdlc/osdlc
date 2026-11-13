@@ -11,12 +11,12 @@ tasks:
   - "[13 Switch users](../tasks/13%20Switch%20users.md)"
 ---
 
-A private copy of markdown-link in the dev repo, at version 0.1.0. Several dev packages use it
-through workspace:* instead of the published 0.8.1.
+A private copy of markdown-link that the dev repo had, at version 0.1.0. It is gone: sksizer/dev
+commit 48b62783 (2026-11-08) removed it, and its users take @osdlc/markdown-link ^0.8.1 from npm.
 
 ## Notes
 
-- The plan names markdown-vault, vault-graph-core and markdown-astro as its users. dev's manifests
-  show more: markdown-render, sdlc (solutions/ontological) and parts of determined also use it.
-- Problem F11. Task 13 moves its users off it. dev task T-1NC5 tracks the move and is marked
-  in-progress/blocked.
+- Its users were markdown-vault, vault-graph-core, markdown-astro, markdown-render, sdlc
+  (solutions/ontological) and parts of determined.
+- Problem F11. The record stays so that links to it still resolve. dev task T-1NC5 tracked the
+  move and is still marked in-progress/blocked.

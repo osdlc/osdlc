@@ -21,18 +21,17 @@ depends:
   - "[etag-write](etag-write.md)"
   - "[frontmatter-lossless](frontmatter-lossless.md)"
   - "[path-guard](path-guard.md)"
-  - "[markdown-contract-vendored](markdown-contract-vendored.md)"
+  - "[markdown-contract](markdown-contract.md)"
+  - "[markdown-link](markdown-link.md)"
 depends_new:
   - "[markdown-reshape-rs](markdown-reshape-rs.md)"
   - "[markdown-corpus](markdown-corpus.md)"
-  - "[markdown-link](markdown-link.md)"
   - "[markdown-tags](markdown-tags.md)"
 depends_going:
   - "[markdown-relink](markdown-relink.md)"
   - "[markdown-vault](markdown-vault.md)"
   - "[vault-graph-core](vault-graph-core.md)"
   - "[markdown-tags-dev-copy](markdown-tags-dev-copy.md)"
-  - "[markdown-link-dev-copy](markdown-link-dev-copy.md)"
 edge_notes:
   - edge: depends_new
     to: "[markdown-reshape-rs](markdown-reshape-rs.md)"
@@ -40,9 +39,6 @@ edge_notes:
   - edge: depends_new
     to: "[markdown-corpus](markdown-corpus.md)"
     note: Task 13 switches its vault-graph app and graph and notes experiences.
-  - edge: depends_new
-    to: "[markdown-link](markdown-link.md)"
-    note: Its private copies go away in the target.
   - edge: depends_new
     to: "[markdown-tags](markdown-tags.md)"
     note: Its private copies go away in the target.
@@ -53,7 +49,7 @@ such as notes, graph, search and sites.
 
 ## Notes
 
-- Uses the dev render, edit and corpus packages through workspace:*, plus osdlc note parts from npm
-  and the vendored markdown-contract 0.2.1.
+- Uses the dev render, edit and corpus packages through workspace:*, plus osdlc note parts from npm,
+  markdown-link and markdown-contract among them.
 - Task 13 switches its vault-graph app and its graph and notes experiences to the shared model and
   resolver.

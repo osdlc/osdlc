@@ -1,6 +1,13 @@
 ---
-as_of: "2026-11-11"
+as_of: "2026-11-12"
 sources:
+  - >-
+    Rechecked 2026-11-12: osdlc/osdlc main (480c02a4) packages/ts/*/package.json and
+    packages/rust/*/Cargo.toml, with npm and crates.io versions; sksizer/dev main (0408c39271)
+    packages/ts/*/package.json and the solutions/ontological and solutions/determined manifests,
+    and commit 48b62783, which removed its markdown-link copy and the vendored markdown-contract;
+    osdlc/skillwright main (b3657db) Cargo.toml files; osdlc/osdlc PRs #649, #650, #651, #728 and
+    #730; osdlc/models #1 and #2.
   - >-
     Rechecked 2026-11-11: sksizer/dev PRs #4069 and #4070 merged into code-intelligence-planning,
     which open PR #4068 takes to main; the package names and paths of @osdlc/pack-intent and

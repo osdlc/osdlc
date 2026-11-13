@@ -13,7 +13,7 @@ tasks:
 depends_going:
   - "[frontmatter-lossless](frontmatter-lossless.md)"
   - "[markdown-tags-dev-copy](markdown-tags-dev-copy.md)"
-  - "[markdown-link-dev-copy](markdown-link-dev-copy.md)"
+  - "[markdown-link](markdown-link.md)"
 ---
 
 Reads an Obsidian-style vault from disk: each note's frontmatter, tags, links, embeds and backlinks.

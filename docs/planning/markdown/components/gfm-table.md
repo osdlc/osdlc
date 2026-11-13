@@ -18,5 +18,7 @@ Reads, edits and renders GFM pipe tables as plain strings, and pads columns so t
 
 ## Notes
 
+- A general library, not one the plan owns: config-layers depends on it
+  ([D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md)).
 - Its shared test cases still live inside the package. The architecture plans a shared conformance
   family.

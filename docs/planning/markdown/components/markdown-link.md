@@ -5,7 +5,7 @@ language: ts
 layer: "[note-parts](../layers/note-parts.md)"
 states: [present, target]
 status: published
-version: "0.8.1"
+version: "0.9.0"
 registry: "https://www.npmjs.com/package/@osdlc/markdown-link"
 repo_present: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
 path_present: packages/ts/markdown-link
@@ -29,8 +29,7 @@ Today it only finds links; it cannot say which file a link points to.
 
 - Target: it gets the same link resolver as the Rust crate (LinkIndex), and becomes the only place
   in TypeScript that decides what a link points to (task 11).
-- Its shared test cases still live inside the package. Open osdlc/osdlc#728 moves them into a shared
-  conformance family.
+- Its shared test cases are in the markdown-link conformance family, since osdlc/osdlc#728.
 - Open osdlc/osdlc#649 (0.9: more code forms) and #651 (link titles, parentheses in paths; stacked
   on #649) change both twins. #651 fixes problem F3 (osdlc/osdlc#635).
 - Problem F2: only the Rust crate can resolve links, so each TypeScript package wrote its own

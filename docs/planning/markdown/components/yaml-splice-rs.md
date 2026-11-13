@@ -5,7 +5,7 @@ language: rust
 layer: "[formats](../layers/formats.md)"
 states: [present, target]
 status: published
-version: "0.3.3"
+version: "0.3.4"
 registry: "https://crates.io/crates/yaml-splice"
 repo_present: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
 path_present: packages/rust/yaml-splice
@@ -17,4 +17,6 @@ Sets, removes and renames top-level YAML fields while every other byte stays as 
 
 ## Notes
 
-- Open release PR osdlc/osdlc#730 would bump it to 0.3.4.
+- A general library, not one the plan owns, like its twin, which config-layers depends on
+  ([D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md)).
+- Release PR osdlc/osdlc#730 took it to 0.3.4.

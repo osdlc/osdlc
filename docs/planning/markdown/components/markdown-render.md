@@ -16,7 +16,6 @@ tasks:
 links:
   - "[osdlc/osdlc#720](https://github.com/osdlc/osdlc/pull/720)"
 depends:
-  - "[gfm-table](gfm-table.md)"
   - "[markdown-link](markdown-link.md)"
   - "[markdown-tags](markdown-tags.md)"
 ---
@@ -29,5 +28,6 @@ framework: the Vue components are in markdown-render-vue.
 - First release 0.8.0 on npm, from osdlc/osdlc (osdlc/osdlc#720). It finds wikilinks and embeds
   with @osdlc/markdown-link's body scanner.
 - The Vue components were its `./vue` entry. They are now @osdlc/markdown-render-vue.
-- sksizer/dev still has its own private copy at packages/ts/markdown-render, which uses dev's
-  copies of markdown-link and markdown-tags. Nothing moves out of dev yet (decision D19).
+- sksizer/dev still has its own private copy at packages/ts/markdown-render, at 0.5.0. It uses
+  dev's copy of markdown-tags and @osdlc/markdown-link from npm. Nothing moves out of dev yet
+  (decision D19).

@@ -12,7 +12,7 @@ tasks:
   - "[12 One TS model](../tasks/12%20One%20TS%20model.md)"
   - "[13 Switch users](../tasks/13%20Switch%20users.md)"
 depends_going:
-  - "[markdown-link-dev-copy](markdown-link-dev-copy.md)"
+  - "[markdown-link](markdown-link.md)"
   - "[markdown-vault](markdown-vault.md)"
 ---
 
