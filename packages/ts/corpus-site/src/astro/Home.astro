@@ -1,0 +1,73 @@
+---
+// The home page's content: the title, the description, the validator's verdict, the types
+// with their counts, and the root file's body.
+import { getSite } from '../context.js'
+import { renderMarkdown } from '../markdown.js'
+
+const site = getSite()
+const { model } = site
+const count = new Intl.NumberFormat(site.locale)
+const records = site.types.reduce((n, type) => n + type.count, 0)
+const intro = site.intro === null ? null : renderMarkdown(site, site.intro, model.rootFile ?? 'README.md')
+const problems = [...model.errors.map((text) => ({ kind: 'Error', text })), ...model.warnings.map((text) => ({ kind: 'Warning', text }))]
+---
+
+<header class="cs-page-head">
+  <h1>{site.title}</h1>
+  {site.description && <p class="cs-lead">{site.description}</p>}
+  <ul class="cs-meta">
+    <li>{count.format(records)} records in {site.types.length} types</li>
+    {model.version && <li>Version {model.version}</li>}
+    {
+      problems.length === 0 ? (
+        <li><span class="cs-badge" data-color="green">Valid</span></li>
+      ) : (
+        <li>
+          <span class="cs-badge" data-color={model.errors.length > 0 ? 'red' : 'amber'}>
+            {model.errors.length} errors, {model.warnings.length} warnings
+          </span>
+        </li>
+      )
+    }
+  </ul>
+  {
+    problems.length > 0 && (
+      <details class="cs-validation">
+        <summary>What the validator reports</summary>
+        <ul>
+          {problems.slice(0, 200).map((p) => <li>{p.kind}: {p.text}</li>)}
+          {problems.length > 200 && <li>and {problems.length - 200} more</li>}
+        </ul>
+      </details>
+    )
+  }
+</header>
+
+<section aria-labelledby="cs-types">
+  <h2 id="cs-types" class="cs-sr">Types</h2>
+  <ul class="cs-types">
+    {
+      site.types.map((type) => (
+        <li>
+          <article class="cs-type-card">
+            <h3>
+              {type.icon && <span aria-hidden="true">{type.icon}</span>}
+              <a href={type.url}>{type.label}</a>
+              <span class="cs-type-count">{count.format(type.count)}</span>
+            </h3>
+            {type.blurb && <p>{type.blurb}</p>}
+          </article>
+        </li>
+      ))
+    }
+  </ul>
+</section>
+
+{
+  intro && (
+    <section aria-labelledby="cs-about">
+      <h2 id="cs-about" class="cs-section-title">About this corpus</h2>
+      <div class="cs-prose markdown-render" set:html={intro} />
+    </section>
+  )
+}

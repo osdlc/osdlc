@@ -2,7 +2,9 @@
 # profiles and corpora, packages/profiles/* and packages/corpora/*, and the
 # Markdown Ecosystem Plan's explorer, tools/explorer, which is private and reads
 # the plan with packages/ts/corpus-schema. The profiles and corpora hold
-# Markdown and JSON Schema and no code. The example pair under
+# Markdown and JSON Schema and no code. packages/corpora/harness-reference/site
+# is private too: the harness reference as a static site, built with
+# packages/ts/corpus-site. The example pair under
 # packages/corpora/examples/ is not a member: fernlog installs the claims
 # profile on its own, as a consumer would. The plugin packs under
 # .claude-plugin/, .agents/, .cursor-plugin/ and .pi/ install on their own, and
@@ -11,6 +13,7 @@ packages:
   - 'packages/ts/*'
   - 'packages/profiles/*'
   - 'packages/corpora/*'
+  - 'packages/corpora/harness-reference/site'
   - 'tools/explorer'
 
 # Third-party versions shared by more than one package, and the dev tooling

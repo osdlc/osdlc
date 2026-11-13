@@ -1,0 +1,107 @@
+---
+// A record's page: its title, its fields by section, its Markdown body, the files of its
+// folder, and the records that point at it. Props: `record`, a SiteRecord.
+import { FieldValue } from 'virtual:corpus-site/components'
+import { getSite } from '../context.js'
+import { backlinkGroups, fieldSections, recordFiles } from '../display.js'
+import { renderBody } from '../markdown.js'
+
+const { record } = Astro.props
+const site = getSite()
+const sections = fieldSections(site, record)
+const body = renderBody(site, record)
+const files = recordFiles(site, record)
+const backlinks = backlinkGroups(site, record)
+const pointing = backlinks.reduce((n, group) => n + group.records.length, 0)
+---
+
+<div class="cs-with-rail">
+<article>
+  <header class="cs-page-head">
+    <p class="cs-crumbs">
+      {record.type.url ? <a href={record.type.url}>{record.type.label}</a> : <span>{record.type.label}</span>}
+      {record.corpus !== '' && <span> · {record.corpus}</span>}
+    </p>
+    <h1>{record.title}</h1>
+    {record.summary && <p class="cs-lead">{record.summary}</p>}
+    {
+      !record.record.valid && (
+        <ul class="cs-meta">
+          <li><span class="cs-badge" data-color="red">Has validation errors</span></li>
+        </ul>
+      )
+    }
+  </header>
+
+  {
+    sections.map((section, i) => (
+      <section id={`cs-fields-${i}`}>
+        {section.label && <h2 class="cs-section-title">{section.label}</h2>}
+        {section.note && <p class="cs-section-note">{section.note}</p>}
+        <dl class="cs-fields">
+          {section.rows.map(({ field, value }) => (
+            <>
+              <dt>{field.help ? <abbr class="cs-term" title={field.help}>{field.label}</abbr> : field.label}</dt>
+              <dd>
+                <FieldValue value={value} />
+                {field.link && <a class="cs-field-link" href={field.link.href}>{field.link.label ?? 'Learn more'}</a>}
+              </dd>
+            </>
+          ))}
+        </dl>
+      </section>
+    ))
+  }
+
+  {
+    body && (
+      <section id="cs-body" class="cs-body">
+        <h2 class="cs-section-title cs-sr">Text</h2>
+        <div class="cs-prose markdown-render" set:html={body} />
+      </section>
+    )
+  }
+
+  {
+    files.length > 0 && (
+      <section id="cs-files">
+        <h2 class="cs-section-title">Files</h2>
+        <ul class="cs-files">
+          {files.map((file) => <li><a href={file.url}>{file.name}</a></li>)}
+        </ul>
+      </section>
+    )
+  }
+
+  {
+    backlinks.length > 0 && (
+      <section id="cs-backlinks" class="cs-backlinks">
+        <h2 class="cs-section-title">Referenced by</h2>
+        {backlinks.map((group) => (
+          <>
+            <h3>
+              {group.type.label}
+              <span>{group.field === null ? 'in the text' : `as ${group.field.toLowerCase()}`} · {group.records.length}</span>
+            </h3>
+            <ul>
+              {group.records.map((from) => (
+                <li>{from.url ? <a href={from.url}>{from.title}</a> : from.title}</li>
+              ))}
+            </ul>
+          </>
+        ))}
+      </section>
+    )
+  }
+</article>
+
+<aside class="cs-rail" aria-label="On this page">
+  <h2>On this page</h2>
+  <ul>
+    {sections.map((section, i) => <li><a href={`#cs-fields-${i}`}>{section.label ?? 'Fields'}</a></li>)}
+    {body && <li><a href="#cs-body">Text</a></li>}
+    {files.length > 0 && <li><a href="#cs-files">Files</a></li>}
+    {backlinks.length > 0 && <li><a href="#cs-backlinks">Referenced by ({pointing})</a></li>}
+  </ul>
+</aside>
+</div>

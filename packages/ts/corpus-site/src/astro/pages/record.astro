@@ -1,0 +1,14 @@
+---
+import { Layout, RecordPage } from 'virtual:corpus-site/components'
+import { getSite } from '../../context.js'
+import { recordBySlug, recordPaths } from '../../routes.js'
+
+export const getStaticPaths = () => recordPaths(getSite())
+
+const record = recordBySlug(getSite(), Astro.params.type, Astro.params.record)
+if (record === undefined) return new Response(null, { status: 404 })
+---
+
+<Layout title={record.title} description={record.summary} active={record.type.slug} wide>
+  <RecordPage record={record} />
+</Layout>

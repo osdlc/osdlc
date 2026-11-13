@@ -1,0 +1,32 @@
+---
+// The navigation: the home page, then one link per type with its record count.
+// Props: `active`, the slug of the current type, or `home`.
+import { getSite } from '../context.js'
+
+const { active = null } = Astro.props
+const site = getSite()
+const current = (name) => (active === name ? 'page' : undefined)
+const count = new Intl.NumberFormat(site.locale)
+---
+
+<div class="cs-sidebar">
+  <nav aria-label="Corpus">
+    <ul class="cs-nav-list">
+      <li><a class="cs-nav-link" href={site.homeUrl} aria-current={current('home')}>Overview</a></li>
+    </ul>
+    <p class="cs-nav-heading" id="cs-nav-types">Types</p>
+    <ul class="cs-nav-list" aria-labelledby="cs-nav-types">
+      {
+        site.types.map((type) => (
+          <li>
+            <a class="cs-nav-link" href={type.url} aria-current={current(type.slug)}>
+              {type.icon && <span class="cs-nav-icon" aria-hidden="true">{type.icon}</span>}
+              <span>{type.label}</span>
+              <span class="cs-nav-count">{count.format(type.count)}</span>
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+  </nav>
+</div>
