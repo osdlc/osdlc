@@ -5,8 +5,6 @@ detail: profiles and starter in osdlc/osdlc
 status: done
 type: supporting
 milestone: "[m-sdlc-profile](../milestones/m-sdlc-profile.md)"
-after:
-  - "[36 Release 0.3.0](36%20Release%200.3.0.md)"
 ---
 
 Bring the profiles and the starter corpus into osdlc/osdlc, so they publish from it ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)). They do

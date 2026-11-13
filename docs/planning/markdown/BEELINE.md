@@ -228,7 +228,7 @@ Each item: the task, its status, who does it, its pull requests, and the tasks i
 - [x] [59 Corpus-schema publisher](tasks/59%20Corpus-schema%20publisher.md) · done
 - [x] [47 Merge packs](tasks/47%20Merge%20packs.md) · done · [sksizer/dev#4069](https://github.com/sksizer/dev/pull/4069), [sksizer/dev#4070](https://github.com/sksizer/dev/pull/4070)
 - [x] [75 Create models repo](tasks/75%20Create%20models%20repo.md) · done
-- [x] [78 Bring in profiles](tasks/78%20Models%20repo%20setup.md) · done · waits on 36
+- [x] [78 Bring in profiles](tasks/78%20Models%20repo%20setup.md) · done
 
 <!-- beeline:end -->
 
