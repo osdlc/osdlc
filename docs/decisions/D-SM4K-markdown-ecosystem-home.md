@@ -48,6 +48,10 @@ Accepted 2026-11-12.
 - **Two repositories stay as places to publish from.** osdlc/marketplace
   publishes the skill plugins. osdlc/skillwright publishes skillwright, the
   product. osdlc/parley is not decided.
+- **The harness reference comes here from osdlc/skillwright**, to
+  `packages/corpora/harness-reference/`. `@osdlc/harness-knowledge` is
+  already here and ships the facts compiled from it, so the corpus, its
+  compiler and the package are in one place.
 
 ## Why
 
