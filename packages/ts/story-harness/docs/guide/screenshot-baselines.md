@@ -31,7 +31,7 @@ differently. A baseline made on a laptop would fail in CI. So `story-shots` alwa
 browser inside one pinned Playwright image, as `linux/amd64`, the platform of most CI runners.
 On an Apple silicon Mac, Docker emulates it: slower, but the pixels match CI exactly.
 
-This is also why the check can use zero tolerance. The only slack is a colour distance of
+This is also why the check can use a very tight tolerance. The only slack is a colour distance of
 0.02 per pixel, which absorbs antialiasing noise on rounded corners and nothing larger.
 
 ## What happens to each story

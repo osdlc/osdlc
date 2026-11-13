@@ -10,7 +10,7 @@ created: 2026-11-07
 ## Decision
 
 - Baselines are made and checked only inside one pinned Playwright image, run
-  as `linux/amd64`, at zero pixel tolerance past a 0.02 colour distance.
+  as `linux/amd64`, failing on any pixel past a 0.02 colour distance.
 - The runner folder is copied into the container as one flat folder, and
   imports only Node and Playwright.
 - A change that can change a shot is a minor release: the pinned image, or

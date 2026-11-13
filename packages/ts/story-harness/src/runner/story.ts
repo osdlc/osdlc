@@ -186,7 +186,8 @@ export interface OpenStoryOptions {
  * Open one story and wait until it is ready to shoot: the story (and its
  * `play`) finished, fonts are loaded, the page's load reached network idle,
  * and the settle wait has passed. A request `play` starts after the page went
- * idle is covered only by the settle wait. A failed story throws, unless `onStoryError` takes the errors.
+ * idle is covered only by the settle wait.
+ * A failed story throws, unless `onStoryError` takes the errors.
  * Returns the story's `parameters.screenshot`; a story marked `skip` returns
  * at once, unchecked. The page must have been through {@link preparePage}.
  */
