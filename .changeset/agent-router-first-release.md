@@ -48,8 +48,8 @@ published version breaks.
   caller could change them for every other.
 - The `./config` subpath and the detection report schemas are experimental. The README lists
   them.
-- Requires Node.js 22 or later. zod 4 is a peer, and `@osdlc/config-layers` an optional peer
-  that only the `./config` subpath needs.
+- Requires Node.js 22 or later. zod 4 is a peer, and `@osdlc/config-layers` (0.8, 0.9 or 0.10)
+  an optional peer that only the `./config` subpath needs.
 
 **Fixed**
 

@@ -29,11 +29,12 @@ test('the README Stability list is exactly the @experimental exports', () => {
 })
 
 // D-02: the optional config-layers peer is a range written by hand. A Changesets rewrite that
-// drops the 0.9 line would break hosts on it in a patch, so the Version Packages PR fails here.
-test('the config-layers peer range still admits 0.9.0', () => {
+// drops a supported line would break hosts on it in a patch, so the Version Packages PR fails here.
+test('the config-layers peer range still admits every line it was checked against', () => {
   const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as {
     peerDependencies?: Record<string, string>
   }
   const range = manifest.peerDependencies?.['@osdlc/config-layers'] ?? ''
-  expect(satisfies('0.9.0', range)).toBe(true)
+  // Checked by hand with the packed package: `./config` builds its sections on each.
+  for (const version of ['0.8.0', '0.9.0', '0.10.0']) expect(satisfies(version, range)).toBe(true)
 })
