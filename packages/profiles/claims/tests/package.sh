@@ -14,7 +14,7 @@
 # - a fixture document without `title` fails, a rule of the profile's type;
 # - a fixture document without `publisher` fails, a rule the fixture adds.
 #
-# The validator is this repository's corpus-schema, built first. Set
+# The validator is the corpus-schema the repository root installs. Set
 # CORPUS_SCHEMA to run another one (see tools/validator.sh).
 set -eu
 

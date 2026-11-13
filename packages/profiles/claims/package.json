@@ -6,11 +6,11 @@
   "author": "sksizer",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/osdlc/markdown.git",
+    "url": "git+https://github.com/osdlc/models.git",
     "directory": "profiles/claims"
   },
-  "homepage": "https://github.com/osdlc/markdown/tree/main/profiles/claims#readme",
-  "bugs": "https://github.com/osdlc/markdown/issues",
+  "homepage": "https://github.com/osdlc/models/tree/main/profiles/claims#readme",
+  "bugs": "https://github.com/osdlc/models/issues",
   "keywords": [
     "corpus-schema",
     "corpus-profile",

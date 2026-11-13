@@ -6,13 +6,13 @@ keeps research, test results or fact checks can use these types instead of inven
 The profile is a corpus that holds types and no records. It ships as the npm package
 `@osdlc/corpus-profile-claims`. A corpus names it under `extends` in its root file, with the prefix
 `claims`, and builds its own types on the profile's types with `x-extends`. The
-[corpus-schema spec](../../packages/conformance/corpus-schema/SPEC.md) defines both keys.
+[corpus-schema spec](https://github.com/osdlc/markdown/blob/main/packages/conformance/corpus-schema/SPEC.md) defines both keys.
 
 A few words used below:
 
 - A corpus is a folder of Markdown notes. A corpus-schema corpus has a root file named after it,
   such as `example.corpus-schema.md`, and one folder per type of record at its root. See the
-  [corpus-schema spec](../../packages/conformance/corpus-schema/SPEC.md).
+  [corpus-schema spec](https://github.com/osdlc/markdown/blob/main/packages/conformance/corpus-schema/SPEC.md).
 - A record is one note in a type folder. Its YAML frontmatter is its data, and the type's JSON
   Schema checks it.
 - A record folder is a record that keeps its own files beside it, such as a script and a CSV:
@@ -232,8 +232,9 @@ A contribution has `contributor` (an Agent with `name` and `agentType`), `activi
    `..`, plain or percent-encoded, and does not point at the type's schema file. The pattern has
    two gaps. A link to a `.md` file inside a record folder that is not the record itself still
    passes. A link that climbs above the corpus into some other `study-results` folder gets only a
-   warning, and `corpus-schema validate` still exits 0. Both close when corpus-schema allows
-   `x-ref` inside nested objects (task 31): the pattern then becomes `x-ref: study-results`.
+   warning, and `corpus-schema validate` still exits 0. corpus-schema does not support `x-ref`
+   inside nested objects yet. Once it does, both gaps close: the pattern becomes
+   `x-ref: study-results`.
 5. Evidence items are study results only. VA-Spec also lets an evidence line cite statements and
    other information entities. Citing another statement can come later.
 6. Strength is a plain word, not a concept object. VA-Spec's `strength` and
@@ -247,8 +248,8 @@ A contribution has `contributor` (an Agent with `name` and `agentType`), `activi
    abstract class whose `subject` and `object` are entities. Here `subject` and `predicate` are
    text, and `object` is any JSON value except null: text, a number, true or false, an object or a
    list. The corpus decides the object's shape. `subject` may be a slug or a link to a record. The
-   validator checks that a link resolves, but not what type it points at, until `x-ref` works
-   inside nested objects (task 31). The proposition has no `type`.
+   validator checks that a link resolves, but not what type it points at, because corpus-schema
+   does not support `x-ref` inside nested objects yet. The proposition has no `type`.
 9. Some optional fields are required. `title` on a document, `contributions` on study results and
    statements, `hasEvidenceItems` on an evidence line, and all three parts of a contribution. A
    record without them does not carry enough to check.
@@ -298,15 +299,16 @@ Linux only, and a claim that lists the config paths for each platform.
 
 A nested field can hold a link, but the validator checks only that the link resolves, not what
 type of record it points at. Typed links from nested fields need `x-ref` inside nested objects,
-which is plan task 31. Until then, typed links go in top-level fields, and evidence items use the
-pattern described in departure 4.
+which corpus-schema does not support yet. Until then, typed links go in top-level fields, and
+evidence items use the pattern described in departure 4.
 
-Check the profile and the example from the root of this repository. CI uses the repository's own
-validator, since the published 0.2.x does not read `extends`:
+Check the profile and the example from the root of this repository. The validator is
+`@osdlc/corpus-schema`, a devDependency of the root, at 0.3.0 or later, since 0.2.x does not read
+`extends`:
 
 ```sh
-pnpm --filter @osdlc/corpus-schema run build
-node packages/ts/corpus-schema/bin/corpus-schema.js validate profiles/claims/corpus profiles/claims/example
+pnpm install --frozen-lockfile
+sh tools/validate-strict.sh profiles/claims/corpus profiles/claims/example
 ```
 
 ## The tests
@@ -330,15 +332,14 @@ with pnpm, as the release does, unpacks it into a temporary `node_modules/`, and
 package name. It also checks that the tarball holds no example or tests, and that a rule of the
 profile and a rule the fixture adds both still apply.
 
-Run both after building the validator, from this folder:
+Run both from this folder, after `pnpm install` at the repository root:
 
 ```sh
-npm test
+pnpm test
 ```
 
-Each script uses `packages/ts/corpus-schema` from this repository. Set `CORPUS_SCHEMA` to the
-command of another validator to run that one instead. CI runs both scripts after it checks the
-example.
+Each script uses the `corpus-schema` the root installs. Set `CORPUS_SCHEMA` to the command of
+another validator to run that one instead. CI runs both scripts after it checks the example.
 
 ## Adding your own kinds
 
@@ -410,7 +411,7 @@ properties:
 ```
 
 `harness` and `subject` are top-level fields here, so they can be typed links. A typed link inside
-the proposition needs `x-ref` in nested objects, which is plan task 31.
+the proposition needs `x-ref` in nested objects, which corpus-schema does not support yet.
 
 ### What stays in your corpus
 

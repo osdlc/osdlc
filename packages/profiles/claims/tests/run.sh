@@ -14,7 +14,7 @@
 # the validator. The example extends the profile by the path ../corpus, so the
 # profile's corpus is copied beside the cases.
 #
-# The validator is this repository's corpus-schema, built first. Set
+# The validator is the corpus-schema the repository root installs. Set
 # CORPUS_SCHEMA to run another one (see tools/validator.sh).
 set -eu
 

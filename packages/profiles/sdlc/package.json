@@ -1,0 +1,35 @@
+{
+  "name": "@osdlc/corpus-profile-sdlc",
+  "version": "0.0.0",
+  "description": "The sdlc profile for corpus-schema: the planning record types of sdlc (principles, standards, decisions, drivers, products, capabilities, terms, references, tasks, milestones, backlog, roadmaps, frictions, notes). A corpus of types and no records, named under extends in a corpus's root file, whose folders take its types through uses.",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/models.git",
+    "directory": "profiles/sdlc"
+  },
+  "homepage": "https://github.com/osdlc/models/tree/main/profiles/sdlc#readme",
+  "bugs": "https://github.com/osdlc/models/issues",
+  "keywords": [
+    "corpus-schema",
+    "corpus-profile",
+    "sdlc",
+    "planning",
+    "json-schema",
+    "markdown"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "corpus": "corpus",
+  "files": [
+    "corpus/",
+    "README.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE"
+  ],
+  "scripts": {
+    "test": "sh tests/package.sh"
+  }
+}

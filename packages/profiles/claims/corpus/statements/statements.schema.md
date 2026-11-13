@@ -160,7 +160,8 @@ The rules a description does not say clearly:
   things. A link to another `.md` file inside a record folder, such as
   `study-results/linux/Linux probe/notes.md`, passes, though that file is not a record. A link
   that climbs above the corpus, such as `../../study-results/x.md`, gets only a warning from the
-  validator. Both are fixed when `x-ref` works in nested objects (plan task 31).
+  validator. Both close once corpus-schema supports `x-ref` in nested objects, which it does
+  not yet.
 - `subject` may link to a record of a type the corpus adds itself, such as a `tools` type. The
   claims types do not define one. The validator checks that the link resolves, but not what type
   it points at, because `x-ref` does not work inside the proposition yet.

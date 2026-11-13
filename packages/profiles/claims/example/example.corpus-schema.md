@@ -30,5 +30,5 @@ The four types come from the claims profile. The root file names it under `exten
 `../corpus`. `uses` gives all four type folders the profile's type as it is, with no schema file of
 their own. To add fields to one later, take it out of `uses` and write a schema with `x-extends`. The types follow GA4GH's Variant
 Annotation Specification (VA-Spec). The
-[mapping note](https://github.com/osdlc/markdown/blob/main/profiles/claims/README.md) says which of
+[mapping note](https://github.com/osdlc/models/blob/main/profiles/claims/README.md) says which of
 its classes and fields each type takes.
