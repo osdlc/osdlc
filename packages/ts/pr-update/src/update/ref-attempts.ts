@@ -20,9 +20,6 @@ import { isEntry, MAX_AGE_MS, type Entry } from './attempts.ts'
 /** The default prefix under which everything this package writes to a remote lives. */
 export const DEFAULT_REF_PREFIX = 'refs/pr-update/'
 
-/** Compare-and-swap tries before a write or lease gives up. */
-export const MAX_CAS_ATTEMPTS = 5
-
 /** The namespace of attempt records under `refPrefix`. */
 export function attemptsPrefix(refPrefix: string): string {
   return `${refPrefix.replace(/\/+$/, '')}/attempts/`
@@ -31,9 +28,16 @@ export function attemptsPrefix(refPrefix: string): string {
 /** The record key of one PR target: repo, head and base branch. */
 const targetKey = (repo: string, head: string, base: string): string => `${repo}\0${head}\0${base}`
 
+/** The readable part of a ref name: the repo and head of a record key. */
+function labelOf(key: string): string {
+  const [repo, head] = key.split('\0')
+  return `${repo}__${head}`
+}
+
 /** The ref holding the failed-attempt record of one PR target, under an attempts prefix. */
 export function attemptRef(prefix: string, repo: string, head: string, base: string): string {
-  return refKey(prefix, targetKey(repo, head, base), `${repo}__${head}`)
+  const key = targetKey(repo, head, base)
+  return refKey(prefix, key, labelOf(key))
 }
 
 export interface RefAttemptStoreOptions {
@@ -95,11 +99,7 @@ export function refAttemptStore(opts: RefAttemptStoreOptions): RefAttemptStore {
     cwd: opts.cwd,
     prefix: opts.prefix ?? attemptsPrefix(DEFAULT_REF_PREFIX),
     decode,
-    attempts: MAX_CAS_ATTEMPTS,
-    label: (key) => {
-      const [repo, head] = key.split('\0')
-      return `${repo}__${head}`
-    },
+    label: labelOf,
   })
   const hint = <R>(run: () => R): R => {
     try {

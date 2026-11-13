@@ -15,7 +15,7 @@ import { hostname } from 'node:os'
 import { CasFailed, claim, refKey, release } from '@osdlc/ref-lease'
 
 import type { BranchLease, LeaseGrant } from '../ports.ts'
-import { DEFAULT_REF_PREFIX, MAX_CAS_ATTEMPTS, withRefHint } from './ref-attempts.ts'
+import { DEFAULT_REF_PREFIX, withRefHint } from './ref-attempts.ts'
 
 /** The ref holding the update lease of one head branch. */
 export function lockRef(refPrefix: string, head: string): string {
@@ -35,7 +35,7 @@ export interface RefBranchLeaseOptions {
   /** The `ref_prefix` setting. Default `refs/pr-update/`. */
   refPrefix?: string
   ttlMs: number
-  /** Default: `GITHUB_RUN_ID` when set, else `<hostname>:<pid>`. */
+  /** Default: `defaultHolder()`. */
   holder?: string
   now?: () => Date
 }
@@ -81,7 +81,6 @@ export function refBranchLease(opts: RefBranchLeaseOptions): BranchLease {
         const got = claim<LeasePayload>(remote, ref, {
           cwd,
           decode,
-          attempts: MAX_CAS_ATTEMPTS,
           build: () => {
             const t = now()
             return {

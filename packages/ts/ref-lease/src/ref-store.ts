@@ -11,7 +11,7 @@ import { PayloadUnreadable, RefNotFound } from './errors.ts'
 import { client, type GitOptions } from './git.ts'
 import { DEFAULT_PAYLOAD_FILE, fetchNamespace, fetchRef } from './primitives.ts'
 import { refKey } from './ref-key.ts'
-import { release, updateWithRetry, type UpdateOutcome } from './recipes.ts'
+import { DEFAULT_ATTEMPTS, release, updateWithRetry, type UpdateOutcome } from './recipes.ts'
 
 export interface RefStoreOptions<T> extends GitOptions {
   /** The git remote (name or URL) that holds the refs. */
@@ -106,7 +106,7 @@ export function refStore<T>(opts: RefStoreOptions<T>): RefStore<T> {
       const view = load()
       let deleted = 0
       for (const loaded of [...view.values()]) {
-        for (let pass = 1; pass <= (opts.attempts ?? 5); pass++) {
+        for (let pass = 1; pass <= (opts.attempts ?? DEFAULT_ATTEMPTS); pass++) {
           let now
           try {
             now = fetchRef<T>(remote, loaded.ref, { ...git, decode })

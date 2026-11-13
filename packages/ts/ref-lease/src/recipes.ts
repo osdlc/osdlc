@@ -13,7 +13,7 @@ import { CasFailed, PayloadUnreadable, RefNotFound } from './errors.ts'
 import { sleepSync, type GitOptions } from './git.ts'
 import { casCreate, casDelete, casReplace, fetchRef } from './primitives.ts'
 
-const DEFAULT_ATTEMPTS = 5
+export const DEFAULT_ATTEMPTS = 5
 
 /** Options shared by {@link updateWithRetry} and {@link claim}. */
 export interface RetryOptions<T> extends GitOptions {

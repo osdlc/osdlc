@@ -259,6 +259,7 @@ describe('ref store and lease', () => {
       expect(results.map((r) => [r.number, r.outcome.status])).toEqual([[2, 'updated']])
       expect(skipped).toEqual([
         {
+          repo: 'o/r',
           number: 1,
           head: 'held',
           reason: 'another pr-update run is updating this branch (run-x)',

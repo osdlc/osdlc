@@ -9,8 +9,8 @@
  * step, called only when no fixed rule resolved the problem. The conflict
  * repair is offered only on a merge (a rebase falls back to a merge first). A
  * verify repair runs for either strategy. The optional `attempts` port records
- * failed updates across runs, an optional `lease` port locks each head branch while it is updated, and `confirmPush` asks before each rebase
- * force-push. A standalone run (see `defaults.ts`) supplies simple versions of
+ * failed updates across runs. The optional `lease` port locks each head branch
+ * while it is updated. `confirmPush` asks before each rebase force-push. A standalone run (see `defaults.ts`) supplies simple versions of
  * the same ports that work with any host.
  */
 

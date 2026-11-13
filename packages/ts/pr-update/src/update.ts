@@ -569,7 +569,8 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
         apply: writes,
         worktreeRoot,
         onSkip: (s) => skipped.push(s),
-        // Recorded as each PR finishes, so a run killed part-way (a job timeout) keeps what it
+        // A rehearsal cannot repair, so `writes` keeps it from recording anything. Recorded as
+        // each PR finishes, so a run killed part-way (a job timeout) keeps what it
         // learned about the PRs it had already done. Once the host is signalled nothing more is
         // recorded: the last PR may have failed only because it was stopped, and a recorded
         // failure would skip that PR on the next run.
@@ -592,8 +593,6 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
       })),
     )
   }
-  // A rehearsal cannot repair, so its failures say nothing about a real run, and `writes`
-  // keeps it from recording any.
 
   const local = new Map<string, LocalCheckout>()
   if (writes && args.branch !== undefined) {
