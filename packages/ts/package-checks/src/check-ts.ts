@@ -209,7 +209,9 @@ function cleanConsumer(
       // sibling's override is dropped and the tarball installed directly instead.
       const siblings = new Set(peers.map(peerName).filter((name) => overrides[name] !== undefined))
       if (siblings.size > 0) {
-        writeOverrides(Object.fromEntries(Object.entries(overrides).filter(([n]) => !siblings.has(n))))
+        writeOverrides(
+          Object.fromEntries(Object.entries(overrides).filter(([n]) => !siblings.has(n))),
+        )
       }
       const installs = peers.map((p) => overrides[peerName(p)] ?? p)
       run('npm', ['install', '--no-audit', '--no-fund', '--ignore-scripts', ...installs], consumer)
