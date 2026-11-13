@@ -7,10 +7,8 @@
  * generates `--help` and `schema` from the same declarations.
  *
  * Each command loads the config layers, checks the run's tools before any PR
- * is listed (`preflight.ts`), and runs the engine. An invalid config is a
- * {@link CommandError} with exit 14, a run refused for want of trust exit 21,
- * and a classified failure (a missing tool, a failed listing) is thrown so the
- * app prints it and exits with its shared code (22 to 25).
+ * is listed (`preflight.ts`), and runs the engine. Classified failures are
+ * thrown; `cli.ts` lists the exit codes.
  */
 
 import { mkdirSync, rmSync } from 'node:fs'
@@ -74,11 +72,10 @@ export interface CliSeams {
 /** The schema version of the `survey` and `update` documents. */
 const SCHEMA_VERSION = 1
 
-/** The `kind` of the document `survey --json` prints. */
-const SURVEY_KIND = 'survey'
-
-/** The `kind` of the document `update --json` prints, and of the `--report` file. */
-const UPDATE_KIND = 'update'
+/** The injected git runner, else one that runs git only from an absolute PATH entry. */
+function gitRunner(seams: CliSeams): CommandRunner {
+  return seams.git ?? spawnRunner('git', { absolutePathOnly: true })
+}
 
 const BRANCH_HELP =
   'Only the PR whose head is this branch. A bare --branch (no name) means the branch checked out in the current directory. No such PR is a usage error.'
@@ -161,8 +158,7 @@ function branchOf(
   if (flags.branch !== undefined) throw new UsageError('--branch names one branch; give it once')
   const noGit = gitMissingFailure(cwd, seams.which)
   if (noGit !== null) throw noGit
-  const runner = seams.git ?? spawnRunner('git', { absolutePathOnly: true })
-  const current = new Git(cwd, { runner }).soft.currentBranch()
+  const current = new Git(cwd, { runner: gitRunner(seams) }).soft.currentBranch()
   if (current === null || current === '') {
     throw new UsageError('--branch needs a branch name: this directory is not on a branch')
   }
@@ -194,7 +190,7 @@ function runEnv(
   },
 ): UpdateEnv {
   // Both run in the project, so a bare name runs only from an absolute PATH entry.
-  const git = seams.git ?? spawnRunner('git', { absolutePathOnly: true })
+  const git = gitRunner(seams)
   const gh = seams.gh ?? spawnRunner('gh', { absolutePathOnly: true })
   const projectRoot = ctx.cwd
   const loaded = layers.merged.pr_update
@@ -230,7 +226,7 @@ function checkStart(
 ): void {
   const unready = preflight({
     cwd: ctx.cwd,
-    git: seams.git ?? spawnRunner('git', { absolutePathOnly: true }),
+    git: gitRunner(seams),
     remote: scope.remote,
     repoGiven: scope.repo.length > 0,
     override: layers.merged.code_host.override,
@@ -283,7 +279,7 @@ export function surveyCommand(seams: CliSeams) {
     exits: { 14: 'the config file is invalid or unreadable' },
     examples: ['survey', 'survey --branch --no-fetch', 'survey --repo acme/widgets --json'],
     output: surveyOutputSchema,
-    kind: SURVEY_KIND,
+    kind: 'survey',
     schemaVersion: SCHEMA_VERSION,
     readOnly: true,
     run({ flags }, ctx) {
@@ -324,7 +320,7 @@ export function surveyCommand(seams: CliSeams) {
  * with `schemaVersion` and `kind` in front.
  */
 function updateDocument(out: UpdateOutput): Record<string, unknown> {
-  return { schemaVersion: SCHEMA_VERSION, kind: UPDATE_KIND, ...updateOutputSchema.parse(out) }
+  return { schemaVersion: SCHEMA_VERSION, kind: 'update', ...updateOutputSchema.parse(out) }
 }
 
 /**
@@ -435,7 +431,7 @@ export function updateCommand(seams: CliSeams) {
       'update --pr 12 --apply --report out.json',
     ],
     output: updateOutputSchema,
-    kind: UPDATE_KIND,
+    kind: 'update',
     schemaVersion: SCHEMA_VERSION,
     destructive: true,
     // Consent given on the command line (trust for one run, a repair the

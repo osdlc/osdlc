@@ -323,8 +323,8 @@ some other way than the terminal.
 
 `update --report <file>` writes the run's result as JSON (the same document
 `--json` prints, `schemaVersion` and `kind` included) through a temp file and
-a rename, so a reader never sees half of it. Any report left by an earlier run is removed first, so a file that is
-there belongs to this run. It is written whenever the run produced a result,
+a rename, so a reader never sees half of it. Any report left by an earlier run
+is removed first, so a file that is there belongs to this run. It is written whenever the run produced a result,
 on a clean exit and on a conflict or failure alike. Each PR's entry carries its
 `repo` and `number`, `status`, the `strategy` that ran, `strategyFallback`,
 `repaired`, `conflicts` and `localCheckout`, so a host can act on each outcome
