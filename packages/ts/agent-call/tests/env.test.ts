@@ -39,6 +39,16 @@ describe('buildChildEnv', () => {
     expect(env).toEqual({ PATH: '/opt/bin', GH_TOKEN: 'explicit', NEW: 'n' })
   })
 
+  test('Windows names match in any case, without running on Windows', () => {
+    const parent = { Path: 'p', GitHub_Token: 't', Home: 'h' }
+    const spec = { prompt: 'x', inheritEnv: ['PATH', 'GITHUB_TOKEN'], unsetEnv: ['github_token'] }
+    expect(buildChildEnv(parent, spec, {}, undefined, true)).toEqual({ Path: 'p' })
+    expect(buildChildEnv(parent, spec, {}, undefined, false)).toEqual({})
+    expect(buildChildEnv({ Path: 'p' }, { prompt: 'x' }, { PATH: 'q' }, undefined, true)).toEqual({
+      PATH: 'q',
+    })
+  })
+
   test('BASELINE_ENV names PATH and HOME and is frozen', () => {
     expect(BASELINE_ENV).toContain('PATH')
     expect(BASELINE_ENV).toContain('HOME')

@@ -38,7 +38,10 @@ export const BASELINE_ENV: readonly string[] = Object.freeze([
 const windows = (): boolean => process.platform === 'win32'
 
 /** Windows names match in any case, so compare them upper-cased there. */
-const fold = (name: string): string => (windows() ? name.toUpperCase() : name)
+const folder =
+  (win: boolean) =>
+  (name: string): string =>
+    win ? name.toUpperCase() : name
 
 /**
  * The environment the child process gets, built in one place for every
@@ -58,7 +61,9 @@ export function buildChildEnv(
   spec: AgentCallSpec,
   plannedEnv: PlannedCall['env'],
   resolve: (value: string) => string = (v) => v,
+  win: boolean = windows(),
 ): NodeJS.ProcessEnv {
+  const fold = folder(win)
   const inherit = spec.inheritEnv
   const keep = inherit === undefined || inherit === 'all' ? undefined : new Set(inherit.map(fold))
   const drop = new Set((spec.unsetEnv ?? []).map(fold))
@@ -69,6 +74,10 @@ export function buildChildEnv(
     env[key] = value
   }
   for (const [key, value] of Object.entries(plannedEnv)) {
+    // On Windows `Path` and `PATH` are one variable: replace, never duplicate.
+    for (const existing of Object.keys(env)) {
+      if (existing !== key && fold(existing) === fold(key)) delete env[existing]
+    }
     env[key] = resolve(value)
   }
   return env
@@ -89,7 +98,7 @@ export function missingPathReason(
     (spec.unsetEnv !== undefined && spec.unsetEnv.length > 0)
   if (!touched) return undefined
   if (binary.includes('/') || (windows() && binary.includes('\\'))) return undefined
-  const has = Object.keys(env).some((k) => fold(k) === 'PATH' && env[k] !== undefined)
+  const has = Object.keys(env).some((k) => folder(windows())(k) === 'PATH' && env[k] !== undefined)
   if (has) return undefined
   return `spawn ${binary}: the child environment has no PATH (inheritEnv or unsetEnv dropped it). Add 'PATH' to inheritEnv, set it in env, or give the binary as a path`
 }
