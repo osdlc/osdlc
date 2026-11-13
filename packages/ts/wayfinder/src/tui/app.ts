@@ -309,7 +309,7 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
   /** The agent CLIs that can start each skill, looked up once: `PATH` is fixed for a run. */
   const agentsBySkill = new Map<string, AgentCli[]>()
   const agentsFor = (skill: SkillRow): AgentCli[] => {
-    const key = `${skill.id}\0${skill.harnesses.join(',')}`
+    const key = skill.harnesses.join(',')
     let found = agentsBySkill.get(key)
     if (found === undefined) {
       found = agentClis(skill, session.env, host.platform)
@@ -953,7 +953,7 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
         ),
       )
       const hints = footerHints(keysFor('tui', 'arguments'), width)
-      const about = `takes ${skill.argumentHint ?? 'any words'}; type any, or none`
+      const about = `takes ${skill.argumentHint!}; type any, or none`
       const aboutRoom = Math.max(0, width - hints.length - 6)
       out.push(
         line(
