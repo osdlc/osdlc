@@ -1,0 +1,39 @@
+{
+  "_": "Shared by harness-reference/src/corpus/versions.test.ts and tradecraft-core's harness/knowledge.rs tests, so the two validators and orderings cannot drift.",
+  "valid": [
+    ["semver", "1.2.3", true],
+    ["semver", "1.0.0-rc.1+build.5", true],
+    ["semver", "1.0.0-alpha.beta", true],
+    ["semver", "0.0.0", true],
+    ["semver", "1.0.0-01", false],
+    ["semver", "01.0.0", false],
+    ["semver", "1.0", false],
+    ["semver", "1.0.0-", false],
+    ["semver", "1.0.0+", false],
+    ["semver", "garbage", false],
+    ["date", "2026-02-28", true],
+    ["date", "2024-02-29", true],
+    ["date", "2000-02-29", true],
+    ["date", "0004-02-29", true],
+    ["date", "0000-01-01", true],
+    ["date", "0099-12-31", true],
+    ["date", "2026-02-29", false],
+    ["date", "1900-02-29", false],
+    ["date", "0100-02-29", false],
+    ["date", "2026-02-30", false],
+    ["date", "2026-13-01", false],
+    ["date", "2026-00-10", false],
+    ["date", "2026-1-01", false],
+    ["unknown", "1.0.0", false]
+  ],
+  "semverOrder": [
+    ["1.0.0-alpha", "1.0.0-alpha.1", -1],
+    ["1.0.0-alpha.1", "1.0.0-alpha.beta", -1],
+    ["1.0.0-beta.2", "1.0.0-beta.11", -1],
+    ["1.0.0-rc.1", "1.0.0", -1],
+    ["1.9.0", "1.10.0", -1],
+    ["2.0.0", "2.0.0", 0],
+    ["1.0.0+a", "1.0.0+b", 0],
+    ["10.0.0", "9.9.9", 1]
+  ]
+}
