@@ -1,5 +1,5 @@
 import type { AgentAdapter } from './adapters/types.js'
-import { builtinAdapter } from './registry.js'
+import { resolveAdapter } from './registry.js'
 import type { AgentName } from './spec.js'
 
 /**
@@ -56,7 +56,7 @@ export function classifyFailure(
   options: { now?: Date } = {},
 ): FailureCause | undefined {
   try {
-    const adapter = typeof agent === 'string' ? builtinAdapter(agent) : agent
+    const adapter = resolveAdapter(agent)
     return adapter?.classifyFailure?.(output, options)
   } catch {
     return undefined

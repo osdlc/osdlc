@@ -6,7 +6,6 @@ import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './adapters/ty
 import type { Conversation } from './conversation.js'
 import type { FailureCause } from './failure.js'
 import { TMP_TOKEN, type PlannedCall } from './plan.js'
-import { classifyFailure } from './failure.js'
 import { applyProjectFile } from './project-files.js'
 import { spawnCollect } from './spawn.js'
 import type { AgentCallSpec } from './spec.js'
@@ -184,8 +183,12 @@ export async function callAgent(
   }
 
   if (error !== undefined && (error.reason === 'nonzero-exit' || error.reason === 'agent-error')) {
-    const cause = classifyFailure(adapter, raw)
-    if (cause !== undefined) error.cause = cause
+    try {
+      const cause = adapter.classifyFailure?.(raw)
+      if (cause !== undefined) error.cause = cause
+    } catch {
+      // classification is best effort and never changes the result
+    }
   }
 
   const result: AgentResult = {

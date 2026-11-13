@@ -1,7 +1,7 @@
 import type { AgentAdapter, ParsedOutput } from './adapters/types.js'
 import { asNumber, asString, get, tryParseJson } from './adapters/shared.js'
 import type { PlannedCall } from './plan.js'
-import { builtinAdapter } from './registry.js'
+import { resolveAdapter } from './registry.js'
 import type { AgentName, OutputFormat } from './spec.js'
 
 /**
@@ -30,7 +30,7 @@ export function parseOutput(
   options: { stderr?: string; exitCode?: number | null; schema?: Record<string, unknown> } = {},
 ): ParsedOutput {
   try {
-    const adapter = typeof agent === 'string' ? builtinAdapter(agent) : agent
+    const adapter = resolveAdapter(agent)
     if (adapter === undefined) return { text: '' }
     const planned: PlannedCall = {
       agent: adapter.name,

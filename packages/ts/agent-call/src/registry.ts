@@ -63,6 +63,11 @@ export function builtinAdapter(name: string): AgentAdapter | undefined {
     : undefined
 }
 
+/** @internal An adapter passes through; a name resolves to its built-in adapter, or `undefined`. */
+export function resolveAdapter(agent: AgentAdapter | string): AgentAdapter | undefined {
+  return typeof agent === 'string' ? builtinAdapter(agent) : agent
+}
+
 /** Whether one agent CLI is installed, as `detectAgents` reports it. */
 export interface AgentAvailability {
   /** The adapter's name. */

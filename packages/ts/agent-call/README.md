@@ -250,6 +250,7 @@ const output: FailureOutput = {
   exitCode: 1,
 }
 const cause = classifyFailure('claude', output)
+// { kind: 'rate-limit', resetAt: '2026-...', limit: '...' }
 ```
 
 ## Command line: `agent-call run`
