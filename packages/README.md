@@ -213,6 +213,10 @@ Developed here, in this repository:
   corpus declares about itself, typed records kept as Markdown, YAML and JSON
   files in a folder, checked against the schemas, ids and links the folder
   holds; a library and a `corpus-schema` command)
+- `packages/ts/corpus-site` (`@osdlc/corpus-site` on npm, an Astro
+  integration that publishes a corpus-schema corpus as a static site: a page
+  for each type with filters and search, a page for each record, the corpus
+  as JSON files, and Vue composables and components for pages of your own)
 - `packages/ts/markdown-link` (`@osdlc/markdown-link` on npm, wikilink and
   relative markdown link parsing with spans, and the code lexer that keeps
   links in code out; the TypeScript implementation of the parsing half of the

@@ -41,7 +41,7 @@ const pageDescription = description ?? site.description
     <Header />
     <div class="cs-frame">
       <Sidebar active={active} />
-      <main id="cs-main" class="cs-main">
+      <main id="cs-main" class="cs-main" data-pagefind-body>
         <div class="cs-content" data-wide={wide ? '' : undefined}><slot /></div>
       </main>
     </div>

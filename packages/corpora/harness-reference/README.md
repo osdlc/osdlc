@@ -51,6 +51,19 @@ CI (`.github/workflows/harness-reference.yml`) runs `pnpm run check` when this f
 validator or `packages/ts/harness-knowledge/data/` changes. It also checks the compiled file
 `@osdlc/harness-knowledge` ships against the corpus.
 
+## The site
+
+`site/` is an Astro project that publishes the corpus as a static site with
+[`@osdlc/corpus-site`](../../ts/corpus-site/). Its field labels, notes and colours are in
+`site/corpus-site.config.ts`. Build `@osdlc/corpus-site` first (`pnpm --filter @osdlc/corpus-site... run build`
+at the repository root). Then, from `site/`:
+
+```sh
+pnpm run dev            # serve it while editing
+pnpm run build:site     # write it to site/dist
+pnpm run preview        # serve site/dist on port 4310, on every interface
+```
+
 ## The compiled file
 
 `pnpm run compile` reads the corpus and writes two files to `dist/`, which is not committed:
