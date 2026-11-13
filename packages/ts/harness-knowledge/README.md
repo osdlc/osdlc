@@ -6,9 +6,9 @@ and skills live, which instruction files it reads. The package ships one JSON fi
 Schema, TypeScript types, and a `lookup()` that picks the value for a harness, subject, version,
 platform and model.
 
-Every value carries a `basis`: a permalink to the statement, at a fixed commit of
-[osdlc/skillwright](https://github.com/osdlc/skillwright), that sets it. Nothing in the file is
-unsourced, and a reader can always follow the link to the evidence.
+Every value carries a `basis`: a permalink to the statement that sets it, at a fixed commit of
+the corpus. Nothing in the file is unsourced, and a reader can always follow the link to the
+evidence. The file's `corpus` block names the repository, folder and commit the links use.
 
 ## Install
 
@@ -25,7 +25,7 @@ const found = lookup(loadKnowledge(), 'codex', 'skills/user-dirs', { version: '0
 if (found !== undefined) {
   found.value // { dirs: ['~/.agents/skills'], ... }
   found.strength // 'strong' | 'moderate' (weak only with accept: { weak: true })
-  found.basis // https://github.com/osdlc/skillwright/blob/<sha>/...
+  found.basis // https://github.com/<repo>/blob/<sha>/.../statements/...
   found.disputed // true only with accept: { disputed: true }
 }
 
@@ -59,17 +59,36 @@ import knowledge from '@osdlc/harness-knowledge/data/harness-knowledge.json' wit
 
 ## Where the data comes from
 
-`data/harness-knowledge.json` and `data/harness-knowledge.schema.json` are compiled by
-`harness-reference` in [osdlc/skillwright](https://github.com/osdlc/skillwright) from its
-statements, and copied here unchanged. Only current and disputed statements are in the file.
-To update:
+`data/harness-knowledge.json` and `data/harness-knowledge.schema.json` are compiled from the
+harness reference, the corpus of statements in
+[`packages/corpora/harness-reference`](https://github.com/osdlc/osdlc/tree/main/packages/corpora/harness-reference)
+of this repository, and copied here unchanged. Only current and disputed statements are in the
+file.
+
+The corpus came here from [osdlc/skillwright](https://github.com/osdlc/skillwright). Data
+compiled there has `corpus.repo` `osdlc/skillwright`, and its `basis` links name a commit of that
+repository. They still resolve.
+
+To update the data, after a change to the corpus is on `main`:
 
 ```sh
-pnpm --filter @osdlc/harness-knowledge run sync --from <dir with the compiled files>
-pnpm --filter @osdlc/harness-knowledge run sync --release <skillwright release tag>
+git switch --detach origin/main
+pnpm --filter @osdlc/harness-knowledge run sync
 ```
 
-`--release` downloads the two assets from the osdlc/skillwright release with `gh`. A test checks
+`sync` compiles the corpus at `HEAD` and writes both files. It refuses a `HEAD` that is not a
+commit of `origin/main`, and a corpus with uncommitted changes, because every `basis` names that
+commit. Commit the two files on a branch, with a changeset, and open a pull request. So a change
+to a fact is two pull requests: the corpus, then the data.
+
+```sh
+pnpm --filter @osdlc/harness-knowledge run sync --commit <sha>   # the corpus as it was at <sha>
+pnpm --filter @osdlc/harness-knowledge run sync --from <dir>     # two files compiled elsewhere
+pnpm --filter @osdlc/harness-knowledge run check:data
+```
+
+`check:data` is what CI runs. The data must be exactly what the corpus compiles to at the commit
+the data names. When the corpus has changed since, it prints a warning and passes. A test checks
 the data file against the schema.
 
 ## Licence
