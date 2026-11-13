@@ -113,8 +113,9 @@ only open a Version Packages pull request there to close.
       `corpus-schema` becomes `workspace:*`, and the tools the catalog
       already pins (`typescript`, `vitest`, `yaml`, `@types/node`) become
       `catalog:`.
-- [ ] Bring the three workflows over as path-filtered jobs: `planning.yml`
-      (checks the plan records), `diagrams.yml` and `examples.yml`. They pin
+- [ ] Bring two workflows over as path-filtered jobs: `planning.yml`
+      (checks the plan records) and `diagrams.yml`. `examples.yml` checks the
+      claims example, so it comes in phase 4 with the example. They pin
       this repository's shared workflows by commit; here they call them by
       path. Third-party actions are pinned by SHA, as in this repository's
       other workflows. Check that the explorer's committed `data/*.json`
@@ -180,6 +181,8 @@ Needs phase 1, because the profiles use `extends`.
       as members of the pnpm workspace.
 - [ ] Bring the claims profile example from osdlc/markdown `main`
       (`profiles/claims/`), with history.
+- [ ] Bring osdlc/markdown's `examples.yml` over as a path-filtered job, as
+      phase 2 did for `planning.yml`.
 - [ ] Re-open as pull requests here: the claims profile package
       (osdlc/markdown#15), the example pair (#16), the sdlc profile and
       starter corpus (#19). osdlc/models#1 holds the same three packages
