@@ -692,10 +692,11 @@ package already has dialects in this sense.
 ### Profiles
 
 A profile is a shared, versioned set of types that many corpora can follow: a parent corpus that
-holds types and no records. Two profiles are drafts in this repo, under `profiles/`. The
-[claims profile](https://github.com/osdlc/markdown/blob/main/profiles/claims/README.md) is for statements backed by evidence; its design is in
-[the plan](../../../../docs/planning/markdown/ecosystem-plan.md). The [planning profile](../../../../docs/planning/markdown/profile/README.md) holds tasks,
-milestones and decisions, and this repo's plan extends it by path. An sdlc profile is coming.
+holds types and no records. The [planning profile](../../../../docs/planning/markdown/profile/README.md)
+holds tasks, milestones and decisions, and this repository's plan extends it by path. The claims
+profile, for statements backed by evidence, and the sdlc profile are drafts in osdlc/markdown for
+now. They come to this repository later, in phase 4 of the plan to bring that work back. The claims
+profile's design is in [the plan](../../../../docs/planning/markdown/ecosystem-plan.md).
 
 - A corpus names its profiles in the root file under `extends:`, each under a short prefix. The
   prefix is always required, so adding a second profile later breaks nothing. An unknown prefix is
@@ -1217,28 +1218,29 @@ item. The task numbers are the plan's [task records](planning/README.md).
 
 ## The plan for the spec
 
-The full plan is in [ecosystem-plan.md](../../../../docs/planning/markdown/ecosystem-plan.md), under review in
-[osdlc/markdown#4](https://github.com/osdlc/markdown/pull/4). This is the part that concerns the
-spec. The plan numbers each task, and the numbers still change while the plan is edited, so this
+The full plan is in [ecosystem-plan.md](../../../../docs/planning/markdown/ecosystem-plan.md). This
+is the part that concerns the spec. The plan numbers each task, and the numbers still change while the plan is edited, so this
 section describes tasks by what they do.
 
 Where it lives. The spec, its conformance cases and the TypeScript package are in this repository,
-osdlc/markdown, in `packages/conformance/corpus-schema/` and `packages/ts/corpus-schema/`. The rename from
-markdown-db and the levels came in [osdlc/osdlc#725](https://github.com/osdlc/osdlc/pull/725), and
-record folders in [osdlc/osdlc#729](https://github.com/osdlc/osdlc/pull/729). The release pull
-request, [osdlc/osdlc#726](https://github.com/osdlc/osdlc/pull/726), cut 0.1.0, but it was never
-published. Record folders landed as a second minor bump, so the first version on npm is 0.2.0, from
-[osdlc/osdlc#733](https://github.com/osdlc/osdlc/pull/733). They then moved here, in
-[osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9). The npm name stayed the same.
+osdlc/osdlc, in `packages/conformance/corpus-schema/` and `packages/ts/corpus-schema/`, and they
+publish from here. The rename from markdown-db and the levels came in
+[osdlc/osdlc#725](https://github.com/osdlc/osdlc/pull/725), and record folders in
+[osdlc/osdlc#729](https://github.com/osdlc/osdlc/pull/729). The release pull request,
+[osdlc/osdlc#726](https://github.com/osdlc/osdlc/pull/726), cut 0.1.0, but it was never published.
+Record folders landed as a second minor bump, so the first version on npm is 0.2.0, from
+[osdlc/osdlc#733](https://github.com/osdlc/osdlc/pull/733). 0.2.1 followed, and is the version on
+npm today. A copy went to osdlc/markdown for a time, and the 0.3.0 work, which adds `extends`, was
+done there. That work comes back here, and 0.3.0 publishes from this repository. The npm name does
+not change.
 
 The evidence work comes first:
 
-- An example claims corpus in this repo, at `profiles/claims/example/`. It is a valid level-2
+- An example claims corpus, at `profiles/claims/example/` in osdlc/markdown. It is a valid level-2
   corpus with the VA-Spec types `documents`, `study-results`, `methods` and `statements`, and a few
-  records that show the whole chain. A README maps each type to VA-Spec. CI checks it with the
-  published validator, and people copy it with
-  `npx degit osdlc/markdown/profiles/claims/example <dir>`. It is in progress in a separate pull
-  request.
+  records that show the whole chain. A README maps each type to VA-Spec. People copy it with
+  `npx degit osdlc/markdown/profiles/claims/example <dir>`. It comes to this repository later,
+  with the profiles.
 - harness-reference copies those types, switches to the npm package and renames its root file to
   `harness-reference.corpus-schema.md`. Its capture command then writes study results.
 - The evidence project keeps its records in the same format, checked by the validator.
@@ -1346,8 +1348,8 @@ make a folder of that name.
 
 You can also copy the type folders. A type folder holds its own schema, so it arrives complete. A
 `$ref` from one type's schema to another type's schema does not resolve, so each copy must stand
-alone. Copies can drift apart. For the claims types, the example corpus in this repo is meant to be
-copied with `npx degit` until the claims profile is published as a package.
+alone. Copies can drift apart. For the claims types, the claims example corpus is meant to be copied
+with `npx degit` until the claims profile is published as a package.
 
 ### Is there a Rust version?
 
@@ -1391,7 +1393,8 @@ jobs:
       - run: npx --yes @osdlc/corpus-schema@0.2 validate corpora/
 ```
 
-Version 0.2.0 is on npm. For the current usage, check the
+Version 0.2.1 is on npm. 0.3.0, which adds `extends`, publishes from this repository next. For
+the current usage, check the
 [package README](../README.md). A
 corpus's schemas run on its data, and a badly written `pattern` or `x-id-pattern` can take a very
 long time on some input. So validate a corpus you do not trust only with a time limit, such as the

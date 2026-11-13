@@ -35,8 +35,8 @@ properties:
 # Tasks
 
 One record per task. The type builds on `plan/tasks`, the planning profile's task type in
-`profiles/planning/`. `x-extends` is flattened, so `additionalProperties: false` admits the
-profile's fields and the ones listed here, and nothing else.
+`docs/planning/markdown/profile/`. `x-extends` is flattened, so `additionalProperties: false`
+admits the profile's fields and the ones listed here, and nothing else.
 
 The body is the task's plan: what it does, what it waits on and where it stands. The task must also
 be listed in its milestone's `tasks`.

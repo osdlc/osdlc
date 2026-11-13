@@ -29,13 +29,14 @@ The types are open. A record may hold fields the schema does not list, so a corp
 ## Use it
 
 Name the profile under `extends` in the corpus's root file, with a prefix. The prefix `plan` is
-used below. The path starts from the corpus root:
+used below. The path starts from the corpus root. This plan's root file, one folder up, names it
+this way:
 
 ```yaml
 corpus-schema: 0
 level: 2
 extends:
-  plan: ../profiles/planning
+  plan: ./profile
 ```
 
 Then give each type you want a local folder. The records go in the local folder.

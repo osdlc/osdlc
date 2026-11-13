@@ -40,8 +40,9 @@ properties:
 # Milestones
 
 One record per milestone. The type builds on `plan/milestones`, the planning profile's milestone
-type in `profiles/planning/`, which says how a milestone's status follows from its tasks. As in
-tasks, `additionalProperties: false` admits the profile's fields and the ones listed here.
+type in `docs/planning/markdown/profile/`, which says how a milestone's status follows from its
+tasks. As in tasks, `additionalProperties: false` admits the profile's fields and the ones listed
+here.
 
 Every milestone names its `phase`. The explorer colours its cards by phase.
 

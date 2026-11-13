@@ -101,33 +101,35 @@ the query layer (task 15).
 
 | Layer | TypeScript | Rust |
 |---|---|---|
-| Render, edit, sites | markdown-render, markdown-editor, markdown-ui, markdown-astro (all in dev) | none |
+| Render, edit, sites | markdown-render, markdown-render-vue, markdown-vault-astro (osdlc); markdown-editor, markdown-ui, and dev's own markdown-render and markdown-astro (dev) | none |
 | Query and store | markdown-vault-query (dev) | markdown-store, ontogen (rust-ontogen) |
-| Types | model-schema and its packs (dev, open PRs); corpus-schema (this repo) | none |
+| Types | model-schema and its packs (dev, open PRs); corpus-schema (osdlc) | none |
 | Corpus model | markdown-vault, vault-graph-core (dev) | markdown-corpus, markdown-relink (osdlc) |
 | Note parts | markdown-link, frontmatter-lossless, markdown-contract, markdown-tags, gfm-table, yaml-splice (osdlc) | a twin of each (osdlc) |
 | Files | etag-write, path-guard (osdlc) | markdown-vault-fs, vfs-walk, vfs-seam, etag-write, path-guard (osdlc) |
 
 markdown-tags moved into osdlc in [osdlc/osdlc#714](https://github.com/osdlc/osdlc/pull/714). Both
-twins are on osdlc main with a conformance family. markdown-astro is moving in
-[#719](https://github.com/osdlc/osdlc/pull/719) and markdown-render in
-[#720](https://github.com/osdlc/osdlc/pull/720). The pack harness is in
-[sksizer/dev#4069](https://github.com/sksizer/dev/pull/4069) and the first packs in
-[sksizer/dev#4070](https://github.com/sksizer/dev/pull/4070). Neither is on dev main yet.
+twins are on osdlc main with a conformance family. markdown-render, markdown-render-vue and
+markdown-vault-astro came to osdlc in [osdlc/osdlc#720](https://github.com/osdlc/osdlc/pull/720).
+markdown-vault-astro is dev's markdown-astro under a new name. dev still has its own markdown-render
+(private), markdown-tags (private) and markdown-astro, not yet switched to the published ones. The
+pack harness is in [sksizer/dev#4069](https://github.com/sksizer/dev/pull/4069) and the first packs
+in [sksizer/dev#4070](https://github.com/sksizer/dev/pull/4070). Neither is on dev main yet.
 
-dev also keeps a private copy of markdown-link (`packages/ts/markdown-link`, version 0.1.0).
-markdown-vault, vault-graph-core and markdown-astro use that copy through `workspace:*`, not the
-published 0.8.1. dev task T-1NC5 tracks moving them off it.
+dev no longer keeps its own copy of markdown-link. markdown-vault, vault-graph-core and
+markdown-astro use the published `@osdlc/markdown-link` `^0.8.1`; 0.9.0 is the latest.
 
 What is published:
 
-- Most osdlc note-part packages are on npm and crates.io. Two are not: the Rust gfm-pipe-table is
-  `publish = false`, and markdown-tags is on neither registry yet.
+- The osdlc note-part packages are on npm and crates.io, markdown-tags included (0.4.1 on both).
+  One is not: the Rust gfm-pipe-table is `publish = false`.
+- markdown-render 0.8.0, markdown-render-vue 0.8.0 and markdown-vault-astro 0.8.0 are on npm,
+  published from osdlc.
 - The Rust corpus packages (markdown-corpus, markdown-relink, markdown-vault-fs) are on crates.io.
 - From rust-ontogen, ontogen 0.11.0, ontogen-core 0.8.0, ontogen-macros 0.2.0, ontogen-jsonapi
   0.3.0 and ontogen-ts 0.2.0 are on crates.io. markdown-store is `publish = false`.
-- Nothing from dev is published. corpus-schema 0.2.0 is on npm, and skillwright's harness-reference
-  uses it from there ([osdlc/skillwright#95](https://github.com/osdlc/skillwright/pull/95) removed
+- Nothing from dev is published. corpus-schema 0.2.1 is on npm, published from osdlc, and
+  skillwright's harness-reference uses it from there ([osdlc/skillwright#95](https://github.com/osdlc/skillwright/pull/95) removed
   skillwright's own copy).
 
 ## What is wrong

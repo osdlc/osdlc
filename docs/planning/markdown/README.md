@@ -83,7 +83,7 @@ error:
 
 ```sh
 sh tools/build-corpus-schema.sh
-sh tools/validate-strict.sh docs/planning profiles/planning
+sh tools/validate-strict.sh docs/planning/markdown docs/planning/markdown/profile
 ```
 
 The plan's report includes the profile's errors, but not its warnings, so the command names both
