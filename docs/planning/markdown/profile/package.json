@@ -1,0 +1,26 @@
+{
+  "name": "@osdlc/corpus-profile-planning",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A corpus-schema profile for plans: task, milestone and decision record types that a corpus extends.",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "docs/planning/markdown/profile"
+  },
+  "keywords": [
+    "corpus-schema",
+    "profile",
+    "planning",
+    "markdown-as-data"
+  ],
+  "files": [
+    "planning.corpus-schema.md",
+    "tasks/",
+    "milestones/",
+    "decisions/",
+    "README.md"
+  ]
+}

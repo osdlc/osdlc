@@ -1,0 +1,5 @@
+corpus-schema: 0
+level: 2
+references:
+  plan: acme-plan
+  tasks: "@acme/tasks"
