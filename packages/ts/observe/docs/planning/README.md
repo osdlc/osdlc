@@ -15,8 +15,8 @@ there.
 
 Ids are numbers in order of writing, zero-padded to two digits so they sort.
 They are never reused. Each decision has a `state`: `proposed` (under review,
-not built yet), `accepted` or `superseded`. A superseded decision names the one
-that replaces it.
+not built yet), `accepted` or `superseded`. A proposed decision waits for the
+maintainer's sign-off. A superseded decision names the one that replaces it.
 
 ## Decisions
 
@@ -31,5 +31,8 @@ that replaces it.
 - [D-07](decisions/D-07-helper-types-for-model-types.md): Helper types for
   model types
 - [D-08](decisions/D-08-platforms.md): Platforms
-- [D-09](decisions/D-09-meta-transcript-index-and-folder-names.md): Session
+- [D-09](decisions/D-09-the-redactor-lives-here.md): The redactor lives here
+  (proposed)
+- [D-10](decisions/D-10-hook-envelope.md): The hook envelope (proposed)
+- [D-11](decisions/D-11-meta-transcript-index-and-folder-names.md): Session
   meta, a transcript index and safe folder names (proposed; stable exports)

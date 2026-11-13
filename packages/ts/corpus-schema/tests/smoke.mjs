@@ -21,6 +21,7 @@ import {
   fold,
   idProblem,
   markdownLink,
+  syncCorpus,
   validateCorpus,
 } from '@osdlc/corpus-schema'
 
@@ -35,17 +36,26 @@ const put = (rel, text) => {
   writeFileSync(join(dir, rel), text)
 }
 try {
-  put('good/corpus-schema.md', '---\ncorpus-schema: 0\n---\n')
+  put('good/good.corpus-schema.md', '---\ncorpus-schema: 0\n---\n')
   put('good/notes/notes.schema.yaml', 'type: object\nrequired: [status]\n')
   put('good/notes/A.md', '---\nstatus: done\n---\nSee [B](B.md).\n')
   put('good/notes/B.md', '---\nstatus: open\n---\n')
-  put('bad/corpus-schema.md', '---\ncorpus-schema: 0\n---\nSee [gone](gone.md).\n')
+  put('bad/bad.corpus-schema.md', '---\ncorpus-schema: 0\n---\nSee [gone](gone.md).\n')
 
   assert.deepEqual(findCorpora(dir).sort(), [join(dir, 'bad'), join(dir, 'good')])
   const good = validateCorpus(join(dir, 'good'))
   assert.deepEqual(good.errors, [])
   assert.equal(good.files.get('notes')?.get('A'), 'notes/A.md')
   assert.equal(validateCorpus(join(dir, 'bad')).errors.length, 1)
+
+  put(
+    'child/child.corpus-schema.md',
+    '---\ncorpus-schema: 0\nlevel: 2\nextends:\n  base: ../good\nreferences:\n  good: ../good\n---\n',
+  )
+  put('child/tasks/tasks.schema.yaml', 'x-extends: base/notes\n')
+  put('child/tasks/T.md', '---\nstatus: done\n---\nSee [A](../_references/good/notes/A.md).\n')
+  assert.deepEqual(syncCorpus(join(dir, 'child')).errors, [])
+  assert.deepEqual(validateCorpus(join(dir, 'child')).errors, [])
 
   // The bin, under node and, once installed, as npm links it in node_modules/.bin.
   const bin = join(

@@ -1,0 +1,9 @@
+#!/bin/sh
+# applies_to: **/*.sh
+# timeout: 60
+# Parse each changed shell script without running it.
+status=0
+while IFS= read -r file; do
+  sh -n "$file" || status=1
+done
+exit $status

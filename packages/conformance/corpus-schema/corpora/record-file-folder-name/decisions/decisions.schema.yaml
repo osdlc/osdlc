@@ -1,0 +1,3 @@
+type: object
+x-id-pattern: "^D-[0-9]{4}$"
+x-record-file: D-0001.md
