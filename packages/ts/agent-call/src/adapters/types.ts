@@ -77,8 +77,7 @@ export interface AgentAdapter {
    * Optional: say why a failed run failed, from its output alone (pure).
    * `now` resolves relative or wall-clock reset times; it defaults to the
    * current time. Return `undefined` when the run did not fail or the cause is
-   * not a `FailureCause`. `callAgent` sets `CallError.cause` from it. Only the
-   * claude, codex and cursor adapters implement it.
+   * not a `FailureCause`. `callAgent` sets `CallError.cause` from it.
    */
   classifyFailure?(output: FailureOutput, options?: { now?: Date }): FailureCause | undefined
 }

@@ -56,6 +56,13 @@ export const BUILTIN_AGENTS: readonly AgentName[] = Object.freeze([
   'deepseek',
 ])
 
+/** @internal The built-in adapter for `name`, or `undefined` when it names none. */
+export function builtinAdapter(name: string): AgentAdapter | undefined {
+  return (BUILTIN_AGENTS as readonly string[]).includes(name)
+    ? adapterFor(name as AgentName)
+    : undefined
+}
+
 /** Whether one agent CLI is installed, as `detectAgents` reports it. */
 export interface AgentAvailability {
   /** The adapter's name. */

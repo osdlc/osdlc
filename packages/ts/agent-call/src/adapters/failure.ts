@@ -4,11 +4,8 @@
  * tail of stdout when it is not structured. It never reads the agent's own
  * answer, so a task that talks about rate limits is not a rate limit.
  *
- * The claude and codex phrases are ported from the failure classifiers in
- * solutions/ontological/lib/services/route/failure/ (claude.ts, codex.ts,
- * reset.ts, reason.ts), with the credit and authentication patterns of the
- * gh-actions harness scripts added. All come from published messages and issue
- * trackers, not live captures.
+ * The phrases come from published messages and issue trackers, not live
+ * captures.
  */
 
 import type { FailureCause, FailureOutput } from '../failure.js'
@@ -17,8 +14,8 @@ import { asNumber, asString, get, parseJsonLines, tryParseJson } from './shared.
 
 type Classifier = (output: FailureOutput, now: Date) => FailureCause | undefined
 
-/** Characters of stdout read when it is not the CLI's structured output. */
-const TAIL = 2000
+/** Characters. */
+const UNSTRUCTURED_STDOUT_TAIL = 2000
 
 function rateLimit(text: string, now: Date): FailureCause {
   const at = parseReset(text, now)
@@ -30,8 +27,7 @@ function rateLimit(text: string, now: Date): FailureCause {
 }
 
 interface Envelope {
-  /** The envelope says the run failed. */
-  failed: boolean
+  isError: boolean
   text: string
   status: number | undefined
   turns: number | undefined
@@ -43,10 +39,10 @@ function errorEnvelope(stdout: string): Envelope {
   // A stream-json run prints one event per line; its last event is the result.
   const envelope = Array.isArray(parsed) ? parsed.at(-1) : (parsed ?? parseJsonLines(stdout).at(-1))
   if (get(envelope, 'is_error') !== true) {
-    return { failed: false, text: '', status: undefined, turns: undefined }
+    return { isError: false, text: '', status: undefined, turns: undefined }
   }
   return {
-    failed: true,
+    isError: true,
     text: asString(get(envelope, 'result')) ?? '',
     status: asNumber(get(envelope, 'api_error_status')),
     turns: asNumber(get(envelope, 'num_turns')),
@@ -61,7 +57,7 @@ function failureText(output: FailureOutput, envelope: Envelope): string {
   return [
     failedExit ? output.stderr : '',
     envelope.text,
-    failedExit && !structured ? output.stdout.slice(-TAIL) : '',
+    failedExit && !structured ? output.stdout.slice(-UNSTRUCTURED_STDOUT_TAIL) : '',
   ].join('\n')
 }
 
@@ -74,25 +70,22 @@ const CLAUDE_AUTH =
   /authentication_error|invalid x-api-key|invalid api key|please run \/login|not logged in|oauth token has expired|API Error:?\s*401/i
 
 /**
- * claude: HTTP 402, `billing_error`, "credit balance is too low" and
- * "insufficient credit" are `quota`, and so is a 429 that names a spend
- * or monthly limit (or the API org's specified usage limits). Other usage limits ("5-hour limit reached ∙ resets 3pm",
- * "usage limit reached|<epoch>") and plain 429s are `rate-limit`. The credit
- * and authentication words in an envelope count only on a run of at most one
- * turn, because a longer run's `result` is usually the agent's own text.
+ * claude: a 402 or a credit message is `quota`, and so is a 429 that names a
+ * spend or monthly limit; other usage limits and 429s are `rate-limit`. On a
+ * run of more than one turn the envelope's `result` is usually the agent's own
+ * text, so credit and auth words in it are ignored.
  */
 export const classifyClaude: Classifier = (output, now) => {
   const envelope = errorEnvelope(output.stdout)
-  if (output.exitCode === 0 && !envelope.failed) return undefined
+  if (output.exitCode === 0 && !envelope.isError) return undefined
   const text = failureText(output, envelope)
   const status = envelope.status ?? Number(/API Error:?\s*(\d{3})/i.exec(text)?.[1])
   const short = envelope.turns === undefined || envelope.turns <= 1
-  // On a long run the envelope's text may be the agent's own, so only the rest is searched.
-  const own = short ? text : text.replace(envelope.text, '')
-  if (status === 402 || CLAUDE_QUOTA.test(own)) return { kind: 'quota' }
+  const outsideAnswer = short ? text : text.replace(envelope.text, '')
+  if (status === 402 || CLAUDE_QUOTA.test(outsideAnswer)) return { kind: 'quota' }
   if (status === 429 && CLAUDE_QUOTA_429.test(text)) return { kind: 'quota' }
   if (CLAUDE_RATE_LIMIT.test(text) || status === 429) return rateLimit(text, now)
-  if (status === 401 || CLAUDE_AUTH.test(own)) return { kind: 'auth' }
+  if (status === 401 || CLAUDE_AUTH.test(outsideAnswer)) return { kind: 'auth' }
   return undefined
 }
 
@@ -117,12 +110,7 @@ function codexFailureMessages(stdout: string): string[] {
   return out
 }
 
-/**
- * codex: `insufficient_quota`, "exceeded your current quota", a billing hard
- * limit and 402 are `quota`. "You've hit your usage limit ... try again in 2
- * hours 13 minutes", `rate_limit_exceeded` and 429 are `rate-limit`. Only the
- * stream's error events and stderr are read.
- */
+/** codex: reads only the stream's error events, and stderr when the run exited nonzero. */
 export const classifyCodex: Classifier = (output, now) => {
   // An error event followed by a completed turn was retried and succeeded.
   if (
@@ -148,13 +136,12 @@ const CURSOR_AUTH =
 const CURSOR_QUOTA = /usage limit|out of credits|quota (?:exceeded|exhausted)/i
 
 /**
- * cursor: a bad key exits 1 with plain text ("The API key is invalid"). The
- * `quota` words are an unverified guess. There is no rate-limit
- * classification.
+ * cursor: a bad key exits 1 with plain text ("The API key is invalid"). There
+ * is no rate-limit classification.
  */
 export const classifyCursor: Classifier = (output) => {
   const envelope = errorEnvelope(output.stdout)
-  if (output.exitCode === 0 && !envelope.failed) return undefined
+  if (output.exitCode === 0 && !envelope.isError) return undefined
   const text = failureText(output, envelope)
   if (CURSOR_AUTH.test(text)) return { kind: 'auth' }
   if (CURSOR_QUOTA.test(text)) return { kind: 'quota' }

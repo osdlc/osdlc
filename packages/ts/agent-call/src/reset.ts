@@ -155,11 +155,6 @@ export function parseReset(text: string, now: Date): Date | null {
   return parseEpochReset(text) ?? parseRelativeReset(text, now) ?? parseWallClockReset(text, now)
 }
 
-/**
- * Which limit a rate-limit text names, in a few words: "weekly limit",
- * "5-hour limit", "usage limit", "rate limited (429)". A text that names no
- * more than a rate limit gives `rate limit`.
- */
 export function limitLabel(text: string): string {
   if (/weekly/i.test(text)) return 'weekly limit'
   const hours = /(\d+)-hour/i.exec(text)

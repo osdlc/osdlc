@@ -38,9 +38,8 @@ export interface CallError {
    * Why the provider refused the run, when the adapter can tell from the
    * output: authentication, a rate limit (with its reset time) or exhausted
    * credit. `reason` says how the run ended, `cause` says why. Absent when the
-   * adapter cannot classify (only claude, codex and cursor can), the output
-   * names no such cause, or the run ended by `spawn-failed`, `timeout` or
-   * `output-limit`.
+   * adapter has no `classifyFailure`, the output names no such cause, or the
+   * run ended by `spawn-failed`, `timeout` or `output-limit`.
    */
   cause?: FailureCause | undefined
 }

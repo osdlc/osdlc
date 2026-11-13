@@ -1,10 +1,7 @@
 /**
- * Failure classification. The claude, codex and reset fixtures are ported from
- * the classifier tests in solutions/ontological/lib/services/route/failure/
- * (claude.test.ts, codex.test.ts, reset.test.ts, reason.test.ts). They are
- * strings taken from published messages, not live captures, and they are the
- * contract until a run is captured. The credit fixtures follow the
- * gh-actions harness scripts. No test runs a CLI.
+ * Failure classification. The fixtures are strings taken from published
+ * messages, not live captures, and they are the contract until a run is
+ * captured. No test runs a CLI.
  */
 
 import { describe, expect, test } from 'vitest'

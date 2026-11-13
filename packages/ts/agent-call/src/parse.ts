@@ -1,7 +1,7 @@
 import type { AgentAdapter, ParsedOutput } from './adapters/types.js'
 import { asNumber, asString, get, tryParseJson } from './adapters/shared.js'
 import type { PlannedCall } from './plan.js'
-import { adapterFor, BUILTIN_AGENTS } from './registry.js'
+import { builtinAdapter } from './registry.js'
 import type { AgentName, OutputFormat } from './spec.js'
 
 /**
@@ -9,15 +9,14 @@ import type { AgentName, OutputFormat } from './spec.js'
  * spawned the process itself. `format` is the `--output-format` (or `--json`)
  * the CLI was asked for: the format the adapter's `plan` would have chosen.
  * `schema` marks that a structured answer was requested, as
- * `spec.output.schema` does. `stderr` and `exitCode` are read by adapters that
- * look at them.
+ * `spec.output.schema` does. `exitCode` defaults to `0`.
  *
  * It does the work of `adapter.parseResult` without a `PlannedCall`, and
  * where the output carries a `modelUsage` map (claude's json envelope) it also
  * fills `model` with the model that used the most tokens.
  *
- * Never throws. Output that cannot be parsed (empty, malformed, an unknown
- * agent name) gives `{ text: '' }` with every other field `undefined`; an
+ * Never throws. Empty or malformed output, or an unknown agent name, gives
+ * `{ text: '' }` with every other field `undefined`; an
  * adapter that reads the output but finds no result sets `isError`. A
  * `codex` text run reads its answer from a file the runner arranges, so
  * `text` is stdout. Call `adapter.parseResult` directly if you need that.
@@ -31,7 +30,7 @@ export function parseOutput(
   options: { stderr?: string; exitCode?: number | null; schema?: Record<string, unknown> } = {},
 ): ParsedOutput {
   try {
-    const adapter = typeof agent === 'string' ? builtin(agent) : agent
+    const adapter = typeof agent === 'string' ? builtinAdapter(agent) : agent
     if (adapter === undefined) return { text: '' }
     const planned: PlannedCall = {
       agent: adapter.name,
@@ -60,12 +59,6 @@ export function parseOutput(
   } catch {
     return { text: '' }
   }
-}
-
-function builtin(name: string): AgentAdapter | undefined {
-  return (BUILTIN_AGENTS as readonly string[]).includes(name)
-    ? adapterFor(name as AgentName)
-    : undefined
 }
 
 /**
