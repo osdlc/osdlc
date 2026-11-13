@@ -16,7 +16,7 @@ only the owner can change.
 | osdlc/markdown       | Content folded in here. Kept as a holding pen                     |
 | osdlc/models         | Content folded in here. Kept as a holding pen                     |
 | osdlc/marketplace    | Stays: where the skill plugins are published                      |
-| osdlc/skillwright    | Stays: where skillwright, the product, is published               |
+| osdlc/skillwright    | Stays: where skillwright is published. Harness reference leaves   |
 | osdlc/parley         | Not decided. Low priority                                         |
 | osdlc/homebrew-tap   | Stays                                                             |
 | sksizer/dev          | Stays as it is. Not part of this plan                             |
@@ -50,7 +50,7 @@ only the owner can change.
 
 Phase 1 comes first: the plan's records and the profiles both need
 `corpus-schema` 0.3.0. Phase 2 needs phase 1. Phase 3 needs phase 2. Phase 4
-needs phase 1 and a decision. Phase 5 is last.
+needs phase 1 and a decision. Phase 5 needs phase 4. Phase 6 is last.
 
 ### Phase 0: the decision
 
@@ -88,7 +88,7 @@ Both copies have the same paths and the same `src/`.
 
 Needs phase 1. The import is taken from the head of #14's branch
 (`plan-profile`), which holds #11 and #13 too. The stack is not merged into
-osdlc/markdown first: phase 5 empties that repository, so the merge would
+osdlc/markdown first: phase 6 empties that repository, so the merge would
 only open a Version Packages pull request there to close.
 
 - [ ] Import the history of `plan-profile` into a branch here, with the
@@ -198,7 +198,37 @@ Needs phase 1, because the profiles use `extends`.
       for a new library.
 - [ ] Close osdlc/markdown #15, #16, #19 and osdlc/models#1 with links.
 
-### Phase 5: empty the holding pens
+### Phase 5: the harness reference
+
+Needs phase 4: the corpus is a claims corpus, and can then extend the claims
+profile. One pull request, apart from the others.
+
+`@osdlc/harness-knowledge` (`packages/ts/harness-knowledge/`) is here, but
+its data is compiled in osdlc/skillwright, by `harness-reference`, from that
+repository's corpus of statements, and copied in by `scripts/sync.ts`. Each
+value's `basis` links to a statement at a fixed skillwright commit. The
+corpus comes here, so the facts, the compiler and the package that ships them
+are in one place.
+
+- [ ] Bring `harness-reference/` from osdlc/skillwright to
+      `packages/corpora/harness-reference/`, with history: the corpus
+      (`corpus/`, about 2,500 files), its notes and probes, and the `capture`,
+      `lint` and `compile` code in `src/`.
+- [ ] Rename its root file to `<name>.corpus-schema.md`, as 0.3.0 requires,
+      and validate it with this repository's corpus-schema.
+- [ ] Extend the claims profile (`@osdlc/corpus-profile-claims`) where its
+      types match, if that does not change the compiled file.
+- [ ] Compile `harness-knowledge`'s data from the corpus here, in place of
+      `sync --release <skillwright tag>`, and check the compiled file is
+      unchanged apart from the `basis` links, which now point at this
+      repository.
+- [ ] A path-filtered workflow that validates and lints the corpus, runs its
+      tests, and checks the committed compiled file matches.
+- [ ] Remove `harness-reference/` from osdlc/skillwright, and point
+      skillwright at `@osdlc/harness-knowledge` for anything it read from
+      `dist/harness-knowledge.json`.
+
+### Phase 6: empty the holding pens
 
 osdlc/markdown and osdlc/models stay open, as the places the work moves to
 once matured. They are not archived.
@@ -225,7 +255,8 @@ once matured. They are not archived.
   are aligned with sksizer/dev's views of the same kind later.
 - The sdlc plugin packs install `@osdlc/markdown-link` from a vendored 0.1.0
   tarball. That is a separate update.
-- osdlc/marketplace and osdlc/skillwright. They stay as they are.
+- osdlc/marketplace, and osdlc/skillwright apart from its harness reference
+  (phase 5). They stay as they are.
 
 ## PR tracker
 
