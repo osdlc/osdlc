@@ -17,6 +17,10 @@ const pkg = JSON.parse(readFileSync(join(import.meta.dirname, '../package.json')
   version: string
 }
 suite.referenceVersion = pkg.version
-for (const section of Object.values(suite.sections))
-  section.cases = section.cases.map((c) => ({ name: c.name, input: c.input, expect: run(c.input) }))
+for (const [name, section] of Object.entries(suite.sections))
+  section.cases = section.cases.map((c) => ({
+    name: c.name,
+    input: c.input,
+    expect: run(name, c.input),
+  }))
 writeFileSync(SUITE_PATH, `${JSON.stringify(suite, null, 2)}\n`)
