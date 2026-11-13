@@ -13,4 +13,6 @@ Set up npm trusted publishing for the packages that publish from osdlc/osdlc ([D
 `@osdlc/corpus-profile-sdlc` (task 49), `@osdlc/corpus-profile-claims` (task 23) and
 `@osdlc/corpus-sdlc-starter` (task 63). Stage each name once and point its trusted publisher at
 osdlc/osdlc's release workflow, as `packages/README.md` describes for a new library. Owner work: it
-needs the npm account. After 78, which brings the packages in. Tasks 60, 61 and 66 publish after it.
+needs the npm account. After 78, which brings the packages in. The release also needs the
+`package-globs` input of [osdlc/osdlc#785](https://github.com/osdlc/osdlc/pull/785), set in
+`packages-publish.yml` to `packages/ts/* packages/profiles/* packages/corpora/*`. Tasks 60, 61 and 66 publish after it.

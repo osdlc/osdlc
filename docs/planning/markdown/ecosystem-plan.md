@@ -64,13 +64,15 @@ before the rest of the plan. It is tasks 1 to 5, 22 and 26.
   [osdlc/osdlc#733](https://github.com/osdlc/osdlc/pull/733), made record folders a second minor
   bump. The owner merged it on 2026-11-09.
 - **4. Example claims corpus.** osdlc/markdown gets a valid level-2 corpus at
-  `profiles/claims/example/`. It comes to osdlc/osdlc with the profiles (task 78). It has the VA-Spec types (decision D8): `documents`, `study-results`, `methods` and `statements`.
+  `profiles/claims/example/`. It came to osdlc/osdlc with the profiles (task 78), at
+  `packages/profiles/claims/example/`. It has the VA-Spec types (decision D8): `documents`, `study-results`, `methods` and `statements`.
   Each type has a schema. A few example records show the whole chain. A statement is a claim
   together with the evidence lines that support or dispute it. A README at
-  `profiles/claims/README.md` maps each type to VA-Spec and says what we leave out. CI checks the
+  `profiles/claims/README.md` (now `packages/profiles/claims/README.md`) maps each type to VA-Spec and says what we leave out. CI checks the
   example with `@osdlc/corpus-schema` from npm. People copy it with
-  `npx degit osdlc/markdown/profiles/claims/example <dir>`. We don't need an npm package for that
-  yet. Done: it merged in [osdlc/markdown#6](https://github.com/osdlc/markdown/pull/6).
+  `npx degit osdlc/markdown/profiles/claims/example <dir>`, and now
+  `npx degit osdlc/osdlc/packages/profiles/claims/example <dir>`. We don't need an npm package for
+  that yet. Done: it merged in [osdlc/markdown#6](https://github.com/osdlc/markdown/pull/6).
 - **26. harness-reference adopts the claims types.** Done. harness-reference copies the type folders
   from the example and moves its records over. `references` becomes `documents`, `evidence` becomes
   `study-results`, and the `harness` field goes away
@@ -166,8 +168,8 @@ We follow four rules:
    conformance cases, so they behave the same.
 3. One word for each idea.
 4. Anything general lives in the osdlc org. osdlc/osdlc holds the Markdown libraries, the spec
-   and examples, beside the general libraries. The profiles and the starter corpus come there too
-   (decision D19). osdlc/markdown and osdlc/models are holding pens. dev's markdown packages,
+   and examples, beside the general libraries. The profiles and the starter corpus are there too,
+   in `packages/profiles/` and `packages/corpora/` (decision D19). osdlc/markdown and osdlc/models are holding pens. dev's markdown packages,
    model-schema and the packs stay in sksizer/dev for now. Apps use the packages from npm and
    crates.io.
 
@@ -186,7 +188,7 @@ In practice:
   itself.
 - Types can come from parent corpora, such as profiles. A corpus's types are plain JSON Schema.
   Shared types are written once, as packs in the model layer above the spec (D13), and generated
-  into profiles. Profiles and starter corpora come to osdlc/osdlc; the packs stay in dev for now
+  into profiles. Profiles and starter corpora are in osdlc/osdlc; the packs stay in dev for now
   (D19).
 - markdown-store writes the spec's layout and uses the shared note parts.
 - There is one query layer, built on the corpus model.
@@ -332,10 +334,11 @@ outside the milestone, such as task 26.
 3. **`corpus-schema sync` and the copy check (task 29).** The copy is `_references/<prefix>/`.
 4. **Release corpus-schema 0.3.0 (task 36).**
 5. **The claims profile as an npm package (task 23).** `@osdlc/corpus-profile-claims`, a corpus with
-   types only.
+   types only, at `packages/profiles/claims/` in osdlc/osdlc. Not published yet.
 6. **An example pair, checked in CI (task 35).** An org corpus with records, and a project corpus that
    extends the claims profile and references the org corpus, with local records citing the org's
-   principles. This is the start of task 30.
+   principles. This is the start of task 30. The pair is at `packages/corpora/examples/` in
+   osdlc/osdlc.
 7. **harness-reference uses `extends` (task 37).** It stops holding copies of the claims types.
 
 Later in the same milestone: refine and waive (task 28), a real org principles corpus (task 30) and

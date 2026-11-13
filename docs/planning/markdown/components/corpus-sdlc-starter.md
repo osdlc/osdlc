@@ -3,9 +3,12 @@ name: "@osdlc/corpus-sdlc-starter"
 kind: corpus
 language: markdown
 layer: "[profiles](../layers/profiles.md)"
-states: [target]
-status: planned
+states: [present, target]
+status: unpublished
+repo_present: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
+path_present: packages/corpora/sdlc-starter
 repo_target: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
+path_target: packages/corpora/sdlc-starter
 tasks:
   - "[78 Bring in profiles](../tasks/78%20Models%20repo%20setup.md)"
   - "[80 Profile publishers](../tasks/80%20Models%20publishers.md)"
@@ -36,7 +39,10 @@ _references/osdlc/ and cite its records by id.
 ## Notes
 
 - Decision D14. It starts with two principles, P-0001 and P-0002, and the owner adds more (task 64).
-- It comes to osdlc/osdlc (decision D19). Its place there is not decided; the proposal is
-  packages/corpora/*.
+- Built in osdlc/markdown#19. It came to osdlc/osdlc (decision D19, task 78), at
+  packages/corpora/sdlc-starter, with a changeset for its first release, 0.1.0.
+- Not published. The owner stages the name and sets its trusted publisher (task 80), and the release
+  needs osdlc/osdlc#785.
 - dev's own intent records are not the upstream for now.
-- A CI check keeps private data out of it (task 65).
+- A CI check keeps private data out of it (task 65): tools/leak-check.sh, run by
+  .github/workflows/profiles.yml.

@@ -1,0 +1,24 @@
+---
+kind: source
+reportedIn:
+  - "[DeepSeek Harness (dsh) harness notes for a dispatcher](../../documents/skillwright/DeepSeek%20Harness%20%28dsh%29%20harness%20notes%20for%20a%20dispatcher.md)"
+harness: "[DeepSeek Harness](../../harnesses/DeepSeek%20Harness.md)"
+version: 0.2.1-alpha.1
+version_basis: exact
+observed: 2026-10-08
+locator: deepseek-ai/deepseek-harness packages/skill/skill-filesystem/README.md:44-56 at 5badb150
+contributions:
+  - contributor:
+      name: harness-reference import
+      agentType: software
+    activityType: created
+    date: 2026-10-08T00:00:00Z
+imported_from: fact:skills/project-dirs@dsh#observation-1
+---
+
+Imported from `facts/dsh/skills/project-dirs.md`, observation 1.
+
+- dirs: [".dsh/skills",".agents/skills"]
+- dirs_setting: "customSkillDirs"
+- layout: "<name>/SKILL.md or a flat <name>.md"
+- order: "priority order as listed, then the customSkillDirs directories, then the user roots"
