@@ -86,19 +86,16 @@ Both copies have the same paths and the same `src/`.
 
 ### Phase 2: the plan and docs
 
-Needs phase 1. The plan stack lands in osdlc/markdown first, so the import
-happens once, from its `main`. Merging #14 puts #12's code on that `main`
-too. That copy is being retired and `packages/` is left out of the import, so
-it does no harm.
+Needs phase 1. The import is taken from the head of #14's branch
+(`plan-profile`), which holds #11 and #13 too. The stack is not merged into
+osdlc/markdown first: phase 5 empties that repository, so the merge would
+only open a Version Packages pull request there to close.
 
-- [ ] Merge osdlc/markdown #11, #13 and #14 into its `main`, in that order.
-- [ ] Close the Version Packages pull request that this opens in
-      osdlc/markdown. #14 carries #12's changeset, and 0.3.0 is released from
-      here, not from there.
-- [ ] Import osdlc/markdown's history into a branch here, with the paths
-      rewritten as in the table below (`git filter-repo --path-rename` on a
-      fresh clone, then `git merge --allow-unrelated-histories`). A path the
-      table does not list is dropped.
+- [ ] Import the history of `plan-profile` into a branch here, with the
+      paths rewritten as in the table below (`git filter-repo --path-rename`
+      on a fresh clone, then `git merge --allow-unrelated-histories`). A path
+      the table does not list is dropped.
+- [ ] Close osdlc/markdown #11, #13 and #14 with a link to the pull request.
 - [ ] Title `ecosystem-plan.md` "Markdown Ecosystem Plan", and use that
       name where the docs say "the ecosystem plan".
 - [ ] Point the plan's `extends` at the planning profile's new place, and
@@ -232,3 +229,4 @@ once matured. They are not archived.
 | Phase | Pull request                                    | State |
 | ----- | ----------------------------------------------- | ----- |
 | 0     | [#789](https://github.com/osdlc/osdlc/pull/789) | Open  |
+| 1     | [#790](https://github.com/osdlc/osdlc/pull/790) | Open  |
