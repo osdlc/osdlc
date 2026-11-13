@@ -4,7 +4,9 @@ import { join } from 'node:path'
 
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './adapters/types.js'
 import type { Conversation } from './conversation.js'
+import type { FailureCause } from './failure.js'
 import { TMP_TOKEN, type PlannedCall } from './plan.js'
+import { classifyFailure } from './failure.js'
 import { applyProjectFile } from './project-files.js'
 import { spawnCollect } from './spawn.js'
 import type { AgentCallSpec } from './spec.js'
@@ -32,6 +34,15 @@ export interface CallError {
   reason: 'spawn-failed' | 'timeout' | 'nonzero-exit' | 'agent-error' | 'output-limit'
   /** A human-readable explanation, taken from the agent's output where there is one. */
   detail: string
+  /**
+   * Why the provider refused the run, when the adapter can tell from the
+   * output: authentication, a rate limit (with its reset time) or exhausted
+   * credit. `reason` says how the run ended, `cause` says why. Absent when the
+   * adapter cannot classify (only claude, codex and cursor can), the output
+   * names no such cause, or the run ended by `spawn-failed`, `timeout` or
+   * `output-limit`.
+   */
+  cause?: FailureCause | undefined
 }
 
 /** Everything a run produced: normalized fields plus the untouched raw output. */
@@ -171,6 +182,11 @@ export async function callAgent(
       reason: 'agent-error',
       detail: parsed.errorDetail ?? 'the agent reported an error',
     }
+  }
+
+  if (error !== undefined && (error.reason === 'nonzero-exit' || error.reason === 'agent-error')) {
+    const cause = classifyFailure(adapter, raw)
+    if (cause !== undefined) error.cause = cause
   }
 
   const result: AgentResult = {

@@ -1,4 +1,5 @@
 import type { Conversation, Usage } from '../conversation.js'
+import type { FailureCause, FailureOutput } from '../failure.js'
 import type { PlannedCall } from '../plan.js'
 import type { AgentCallSpec } from '../spec.js'
 
@@ -72,4 +73,12 @@ export interface AgentAdapter {
   parseResult(planned: PlannedCall, raw: RawProcessOutput): ParsedOutput
   /** Optional: convert the raw transcript into the normalized conversation model. */
   toConversation?(planned: PlannedCall, raw: RawProcessOutput): Conversation | undefined
+  /**
+   * Optional: say why a failed run failed, from its output alone (pure).
+   * `now` resolves relative or wall-clock reset times; it defaults to the
+   * current time. Return `undefined` when the run did not fail or the cause is
+   * not a `FailureCause`. `callAgent` sets `CallError.cause` from it. Only the
+   * claude, codex and cursor adapters implement it.
+   */
+  classifyFailure?(output: FailureOutput, options?: { now?: Date }): FailureCause | undefined
 }

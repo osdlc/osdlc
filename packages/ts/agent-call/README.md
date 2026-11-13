@@ -223,6 +223,32 @@ A parser that throws on the output does not reject: the result is `ok: false`
 with reason `agent-error`. `planCall` throws the same way as planning. The
 `callAgent` TSDoc is the full list.
 
+`reason` says how the run ended. When the adapter can also tell why the
+provider refused, `error.cause` says so (experimental): `{ kind: 'auth' }`, a
+`{ kind: 'rate-limit', resetAt, limit }` with the reset time as ISO 8601 or
+`null`, and `{ kind: 'quota' }` for exhausted credit. `claude`, `codex` and
+`cursor` classify; for every other adapter `cause` stays `undefined`, and so it
+does when the output names none of these. Only the failure text is read, never
+the agent's own answer. The phrases come from published messages, not live
+captures, and the `cursor` out-of-credit words are an unverified guess.
+
+A caller that spawned the CLI itself gets the same two helpers without
+`callAgent`: `classifyFailure(agent, { stdout, stderr, exitCode }, { now })`,
+which returns the cause or `undefined` and never throws, and
+`parseOutput(agent, stdout, format, { stderr, exitCode, schema })`, which
+returns the `ParsedOutput` fields `parseResult` gives, plus `model` from
+claude's `modelUsage`. `parseOutput` never throws: output it cannot read gives
+`{ text: '' }`, or an `isError` result from the adapter.
+
+```ts
+const output: FailureOutput = {
+  stdout: '',
+  stderr: 'Claude AI usage limit reached|1791374400',
+  exitCode: 1,
+}
+const cause = classifyFailure('claude', output)
+```
+
 ## Command line: `agent-call run`
 
 The package installs an `agent-call` command that runs one call from a spec
@@ -310,10 +336,15 @@ The stable exports:
 The experimental exports:
 
 `modelArgs`, `modelArgsRefusal`, `ModelChoice`, `templateAdapter`,
-`templateRefusal`, `TemplateAdapterOptions`, `claudePluginArgv` and
-`claudeResumeFlag`.
+`templateRefusal`, `TemplateAdapterOptions`, `claudePluginArgv`,
+`claudeResumeFlag`, `classifyFailure`, `parseOutput`, `FailureCause` and
+`FailureOutput`.
 
-These build launch arguments for callers that assemble a command line
+`classifyFailure` and `parseOutput` read the output of a CLI you spawned
+yourself, and `FailureCause` is also `CallError.cause`; see Failures. The
+phrases they match are not from live captures.
+
+The rest build launch arguments for callers that assemble a command line
 themselves: model and effort flags for claude, codex and pi, an argument
 template for any CLI, claude's plugin flags and its `--resume=<id>` flag. They
 work and are tested, but their shape is not settled.

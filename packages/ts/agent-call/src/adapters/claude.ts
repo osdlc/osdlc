@@ -1,3 +1,4 @@
+import { classifyClaude, failureClassifier } from './failure.js'
 import type { Conversation } from '../conversation.js'
 import { isBelowLow } from '../models.js'
 import { note, TMP_TOKEN, type CapabilityNote, type PlannedCall, type TempFile } from '../plan.js'
@@ -38,6 +39,7 @@ export function claudeAdapter(options: ClaudeAdapterOptions = {}): AgentAdapter 
     parseResult(planned, raw) {
       return parseClaude(planned, raw)
     },
+    classifyFailure: failureClassifier(classifyClaude),
     toConversation(planned, raw) {
       return claudeConversation(planned, raw)
     },

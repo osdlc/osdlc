@@ -1,0 +1,157 @@
+/**
+ * Failure classifiers for the built-in adapters that have one. Each reads the
+ * failure text only: stderr, the error events or the error envelope, and the
+ * tail of stdout when it is not structured. It never reads the agent's own
+ * answer, so a task that talks about rate limits is not a rate limit.
+ *
+ * The claude and codex phrases are ported from the failure classifiers in
+ * solutions/ontological/lib/services/route/failure/ (claude.ts, codex.ts,
+ * reset.ts, reason.ts), with the credit and authentication patterns of the
+ * gh-actions harness scripts added. All come from published messages and issue
+ * trackers, not live captures.
+ */
+
+import type { FailureCause, FailureOutput } from '../failure.js'
+import { limitLabel, parseReset } from '../reset.js'
+import { asNumber, asString, get, parseJsonLines, tryParseJson } from './shared.js'
+
+type Classifier = (output: FailureOutput, now: Date) => FailureCause | undefined
+
+/** Characters of stdout read when it is not the CLI's structured output. */
+const TAIL = 2000
+
+function rateLimit(text: string, now: Date): FailureCause {
+  const at = parseReset(text, now)
+  return {
+    kind: 'rate-limit',
+    resetAt: at === null || Number.isNaN(at.getTime()) ? null : at.toISOString(),
+    limit: limitLabel(text),
+  }
+}
+
+interface Envelope {
+  /** The envelope says the run failed. */
+  failed: boolean
+  text: string
+  status: number | undefined
+  turns: number | undefined
+}
+
+/** The result envelope claude and cursor print, read only when it has `is_error: true`. */
+function errorEnvelope(stdout: string): Envelope {
+  const parsed = tryParseJson(stdout)
+  const envelope = Array.isArray(parsed) ? parsed.at(-1) : parsed
+  if (get(envelope, 'is_error') !== true) {
+    return { failed: false, text: '', status: undefined, turns: undefined }
+  }
+  return {
+    failed: true,
+    text: asString(get(envelope, 'result')) ?? '',
+    status: asNumber(get(envelope, 'api_error_status')),
+    turns: asNumber(get(envelope, 'num_turns')),
+  }
+}
+
+/** Stderr (of a run that exited nonzero), the envelope's error text, and an unstructured stdout's tail. */
+function failureText(output: FailureOutput, envelope: Envelope): string {
+  const failedExit = output.exitCode !== 0
+  const structured = tryParseJson(output.stdout) !== undefined
+  return [
+    failedExit ? output.stderr : '',
+    envelope.text,
+    failedExit && !structured ? output.stdout.slice(-TAIL) : '',
+  ].join('\n')
+}
+
+const CLAUDE_QUOTA = /billing_error|credit balance is too low|insufficient credit/i
+const CLAUDE_QUOTA_429 = /usage limit|spend limit|monthly limit/i
+const CLAUDE_RATE_LIMIT =
+  /usage limit reached|hit your (?:usage |weekly |session )?limit|(?:\d+-hour|weekly|session|opus|sonnet) limit reached|rate_limit_error|API Error:?\s*429|\b429\b[^\n]{0,40}(?:rate|too many)/i
+const CLAUDE_AUTH =
+  /authentication_error|invalid x-api-key|invalid api key|please run \/login|not logged in|oauth token has expired|API Error:?\s*401/i
+
+/**
+ * claude: HTTP 402, `billing_error`, "credit balance is too low" and
+ * "insufficient credit" are `quota`, and so is a 429 that names a usage, spend
+ * or monthly limit. Other usage limits ("5-hour limit reached ∙ resets 3pm",
+ * "usage limit reached|<epoch>") and plain 429s are `rate-limit`. The credit
+ * and authentication words in an envelope count only on a run of at most one
+ * turn, because a longer run's `result` is usually the agent's own text.
+ */
+export const classifyClaude: Classifier = (output, now) => {
+  const envelope = errorEnvelope(output.stdout)
+  if (output.exitCode === 0 && !envelope.failed) return undefined
+  const text = failureText(output, envelope)
+  const status = envelope.status ?? Number(/API Error:?\s*(\d{3})/i.exec(text)?.[1])
+  const short = envelope.turns === undefined || envelope.turns <= 1
+  if (status === 402 || (short && CLAUDE_QUOTA.test(text))) return { kind: 'quota' }
+  if (status === 429 && CLAUDE_QUOTA_429.test(text)) return { kind: 'quota' }
+  if (CLAUDE_RATE_LIMIT.test(text)) return rateLimit(text, now)
+  if (status === 401 || (short && CLAUDE_AUTH.test(text))) return { kind: 'auth' }
+  return undefined
+}
+
+const CODEX_QUOTA =
+  /insufficient_quota|exceeded your current quota|billing_hard_limit|billing hard limit|402 Payment Required/i
+const CODEX_RATE_LIMIT =
+  /usage limit|rate_limit_exceeded|rate limit (?:reached|exceeded)|too many requests/i
+const CODEX_AUTH =
+  /401 unauthorized|invalid_api_key|incorrect api key|missing bearer|not logged in|please log in|invalid api key|refresh token|authentication (?:error|failed)/i
+
+/** Messages of the JSONL stream's `error` and `turn.failed` events. */
+function codexFailureMessages(stdout: string): string[] {
+  const out: string[] = []
+  for (const event of parseJsonLines(stdout)) {
+    const type = asString(get(event, 'type')) ?? ''
+    if (!/error|fail/i.test(type)) continue
+    const error = get(event, 'error')
+    for (const m of [get(event, 'message'), error, get(error, 'message')]) {
+      if (typeof m === 'string') out.push(m)
+    }
+  }
+  return out
+}
+
+/**
+ * codex: `insufficient_quota`, "exceeded your current quota", a billing hard
+ * limit and 402 are `quota`. "You've hit your usage limit ... try again in 2
+ * hours 13 minutes", `rate_limit_exceeded` and 429 are `rate-limit`. Only the
+ * stream's error events and stderr are read.
+ */
+export const classifyCodex: Classifier = (output, now) => {
+  const text = [
+    output.exitCode === 0 ? '' : output.stderr,
+    ...codexFailureMessages(output.stdout),
+  ].join('\n')
+  if (CODEX_QUOTA.test(text)) return { kind: 'quota' }
+  if (CODEX_RATE_LIMIT.test(text)) return rateLimit(text, now)
+  if (CODEX_AUTH.test(text)) return { kind: 'auth' }
+  return undefined
+}
+
+const CURSOR_AUTH =
+  /API key is invalid|invalid API key|not logged in|not authenticated|Authentication required/i
+// UNVERIFIED: cursor's real out-of-credit message was not found. These words
+// are a conservative guess, to be replaced when a run is captured.
+const CURSOR_QUOTA = /usage limit|out of credits|quota/i
+
+/**
+ * cursor: a bad key exits 1 with plain text ("The API key is invalid"). The
+ * `quota` words are an unverified guess. There is no rate-limit
+ * classification.
+ */
+export const classifyCursor: Classifier = (output) => {
+  const envelope = errorEnvelope(output.stdout)
+  if (output.exitCode === 0 && !envelope.failed) return undefined
+  const text = failureText(output, envelope)
+  if (CURSOR_AUTH.test(text)) return { kind: 'auth' }
+  if (CURSOR_QUOTA.test(text)) return { kind: 'quota' }
+  return undefined
+}
+
+/** Adapts a classifier to `AgentAdapter.classifyFailure`. */
+export function failureClassifier(
+  classify: Classifier,
+): (output: FailureOutput, options?: { now?: Date }) => FailureCause | undefined {
+  return (output, options = {}) => classify(output, options.now ?? new Date())
+}
