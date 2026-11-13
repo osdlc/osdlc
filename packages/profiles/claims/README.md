@@ -349,7 +349,8 @@ statements, evidence lines, contributions and propositions. They know nothing ab
 field of study. The kinds of thing a corpus makes claims about, and the fields those claims need,
 belong to the corpus that uses the types.
 
-For example, osdlc/skillwright's harness-reference makes claims about agent harnesses. It needs
+For example, the harness reference (`packages/corpora/harness-reference` in osdlc/osdlc) makes
+claims about agent harnesses. It needs
 harnesses and subjects as types of their own, a scope on each claim, and a value with a set shape
 for each subject. None of these belong in the claims types. See the review in
 [osdlc/markdown#8](https://github.com/osdlc/markdown/issues/8).
