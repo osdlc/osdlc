@@ -8,8 +8,7 @@ import { BASELINE_ENV, buildChildEnv } from '../src/env.js'
 import { callAgent, planCall } from '../src/run.js'
 import type { AgentCallSpec } from '../src/spec.js'
 
-// The child environment: the filter, the removals, the adapter's variables
-// and spec.env. Real spawns of /bin/sh, no agent CLI.
+// Spawns /bin/sh for real; no agent CLI is needed.
 
 const PARENT = { PATH: '/usr/bin:/bin', HOME: '/h', GH_TOKEN: 'gh', OTHER: 'o' }
 

@@ -2,15 +2,9 @@ import type { PlannedCall } from './plan.js'
 import type { AgentCallSpec } from './spec.js'
 
 /**
- * Variable names a CLI usually needs to start: the executable search path, the
- * home and user identity, the shell, the locale, the terminal, the temp
- * directory, and the Windows system variables. Spread it into
- * `spec.inheritEnv` and add the names your agent needs, such as its API key:
- *
- * `inheritEnv: [...BASELINE_ENV, 'ANTHROPIC_API_KEY']`
- *
- * The runner never adds these on its own. A list without `PATH` fails the call
- * before spawn when the binary is a bare name.
+ * Names a CLI usually needs to start. Never added for you: spread it into
+ * `spec.inheritEnv` with the agent's own key, as in
+ * `[...BASELINE_ENV, 'ANTHROPIC_API_KEY']`.
  */
 export const BASELINE_ENV: readonly string[] = Object.freeze([
   'PATH',
@@ -38,23 +32,19 @@ export const BASELINE_ENV: readonly string[] = Object.freeze([
 const windows = (): boolean => process.platform === 'win32'
 
 /** Windows names match in any case, so compare them upper-cased there. */
-const folder =
+const envNameFolder =
   (win: boolean) =>
   (name: string): string =>
     win ? name.toUpperCase() : name
 
 /**
- * The environment the child process gets, built in one place for every
- * adapter. In order:
+ * The child process environment, built in the order documented on
+ * `AgentCallSpec.inheritEnv` (`./spec.ts`).
  *
- * 1. the parent environment, cut to `spec.inheritEnv` when that is a list
- *    (`'all'` or unset keeps everything);
- * 2. `spec.unsetEnv` names removed;
- * 3. `plannedEnv` laid over it: what the adapter sets, and `spec.env` on top
- *    of that. An explicit value therefore wins over a removal and over the
- *    list: `spec.env` can put back a name that `unsetEnv` removed.
- *
- * `resolve` is applied to each `plannedEnv` value (temp-dir substitution).
+ * @param plannedEnv what the adapter sets, with `spec.env` already laid over it
+ * @param resolve applied to each `plannedEnv` value (temp-dir substitution)
+ * @param win fold names case-insensitively; defaults to whether this is
+ * Windows, and a test passes it to exercise Windows matching anywhere
  */
 export function buildChildEnv(
   parent: NodeJS.ProcessEnv,
@@ -63,7 +53,7 @@ export function buildChildEnv(
   resolve: (value: string) => string = (v) => v,
   win: boolean = windows(),
 ): NodeJS.ProcessEnv {
-  const fold = folder(win)
+  const fold = envNameFolder(win)
   const inherit = spec.inheritEnv
   const keep = inherit === undefined || inherit === 'all' ? undefined : new Set(inherit.map(fold))
   const drop = new Set((spec.unsetEnv ?? []).map(fold))
@@ -98,7 +88,9 @@ export function missingPathReason(
     (spec.unsetEnv !== undefined && spec.unsetEnv.length > 0)
   if (!touched) return undefined
   if (binary.includes('/') || (windows() && binary.includes('\\'))) return undefined
-  const has = Object.keys(env).some((k) => folder(windows())(k) === 'PATH' && env[k] !== undefined)
+  const has = Object.keys(env).some(
+    (k) => envNameFolder(windows())(k) === 'PATH' && env[k] !== undefined,
+  )
   if (has) return undefined
   return `spawn ${binary}: the child environment has no PATH (inheritEnv or unsetEnv dropped it). Add 'PATH' to inheritEnv, set it in env, or give the binary as a path`
 }
