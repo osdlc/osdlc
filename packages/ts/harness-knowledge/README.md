@@ -57,6 +57,7 @@ Other packages name harnesses with short ids (`claude`, `copilot`, `deepseek`); 
 slugs (`claude-code`, `copilot-cli`, `dsh`). `HARNESS_SLUGS` is the map. `credentialEnv` and
 `configDirEnv` read the variable names the file states under `config/credentials-env` and
 `config/config-dir-env`; both accept an id or a slug.
+
 The map is frozen, and `HarnessId` and `HarnessSlug` are the types of its keys and values.
 
 ```ts

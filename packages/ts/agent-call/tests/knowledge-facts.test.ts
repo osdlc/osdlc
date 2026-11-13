@@ -18,8 +18,8 @@ import { adapterFor } from '../src/registry.js'
 import type { AgentName } from '../src/spec.js'
 import type { AgentCallSpec } from '../src/spec.js'
 
-/** Adapter name to the harness slug in the knowledge file. droid has no `cli/binary` value in it yet. */
 const HARNESS: Record<string, string> = Object.fromEntries(
+  // droid has no `cli/binary` value in the knowledge file, so its binary check would fail.
   Object.entries(HARNESS_SLUGS).filter(([adapter]) => adapter !== 'droid'),
 )
 

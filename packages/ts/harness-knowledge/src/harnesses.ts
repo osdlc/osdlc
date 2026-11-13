@@ -6,8 +6,8 @@
 import { fact } from './query.js'
 
 /**
- * Short id to knowledge slug: the ids of detect-harness's built-in harnesses and agent-call's
- * agent names that the file has a harness for. Frozen at run time.
+ * Short id to knowledge slug, for every detect-harness built-in id and agent-call agent name the
+ * file has a harness for.
  */
 export const HARNESS_SLUGS = Object.freeze({
   antigravity: 'antigravity',
@@ -22,10 +22,10 @@ export const HARNESS_SLUGS = Object.freeze({
   qwen: 'qwen-code',
 } as const)
 
-/** A short harness id: a key of {@link HARNESS_SLUGS}. */
+/** A short harness id, such as `claude`. */
 export type HarnessId = keyof typeof HARNESS_SLUGS
 
-/** A knowledge slug that a short id maps to: a value of {@link HARNESS_SLUGS}. */
+/** A knowledge slug a short id maps to, such as `claude-code`. */
 export type HarnessSlug = (typeof HARNESS_SLUGS)[HarnessId]
 
 const IDS = Object.keys(HARNESS_SLUGS) as HarnessId[]
@@ -47,8 +47,8 @@ export function idFor(harness: string): HarnessId | undefined {
 }
 
 /**
- * The names of the environment variables that carry the harness's credentials, as the file states
- * them at moderate strength or better. Empty when the harness is unknown or the file states none.
+ * The names of the environment variables that carry the harness's credentials, filtered as
+ * {@link fact} filters. Empty when the harness is unknown or the file states none.
  */
 export function credentialEnv(harness: string): string[] {
   const vars = fact(slugFor(harness) ?? harness, 'config/credentials-env')?.['vars']
@@ -59,8 +59,8 @@ export function credentialEnv(harness: string): string[] {
 }
 
 /**
- * The variable that moves the harness's config folder, or undefined when the harness is unknown
- * or the file states none.
+ * The variable that moves the harness's config folder, filtered as {@link fact} filters, or
+ * undefined when the harness is unknown or the file states none.
  */
 export function configDirEnv(harness: string): string | undefined {
   const name = fact(slugFor(harness) ?? harness, 'config/config-dir-env')?.['var']
