@@ -119,6 +119,30 @@ const planned = planCall(codex, { prompt: 'Review the change.' })
 // planned.argv is ['codex', '--profile', 'work', 'exec', ...]
 ```
 
+Keeping variables from the agent: `unsetEnv` names variables the child must
+not inherit, and `inheritEnv` (default `'all'`) can be a list, so the child
+inherits only those. `BASELINE_ENV` is a frozen list of the names a CLI
+usually needs to start (`PATH`, `HOME`, `USER`, `SHELL`, locale, `TERM`, `TZ`,
+the temp directory variables and the Windows system variables). It is never
+added for you, so spread it into the list:
+
+```ts
+const result = await callAgent(adapterFor('codex'), {
+  prompt: 'Review the change.',
+  inheritEnv: [...BASELINE_ENV, 'OPENAI_API_KEY'],
+  unsetEnv: ['GH_TOKEN', 'GITHUB_TOKEN'],
+})
+```
+
+The child's environment is built in one place, for every adapter: the parent's
+environment, cut to `inheritEnv` when it is a list, minus `unsetEnv`, then the
+variables the adapter sets, then `env`. The last two are not filtered, and an
+explicit value in `env` wins over a removal. If a bare binary name would be
+looked up on a `PATH` the child does not have, the call fails with
+`spawn-failed` instead of searching the working directory. `planCall` carries
+both fields on `planned.spec`, and `--explain` and `--dry-run` print their
+names, never values.
+
 `detectAgents` runs the whole command with `--version` appended, and each
 result's `command` says what answered. The Cursor CLI installs as both
 `agent`, the default cursor adapter's binary, and `cursor-agent`. `agent` is a
@@ -292,7 +316,7 @@ The stable exports:
   `PermissionMode`, `ContextSpec`, `OutputSpec`, `OutputFormat`, `SessionSpec`,
   `McpSpec`, `PluginSpec`, and `EFFORT_LEVELS` with `EffortLevel`.
 - Planning and running: `planCall`, `callAgent`, `PlannedCall`,
-  `CapabilityNote`, `Support`, `TempFile`, `TMP_TOKEN`, `AgentResult`,
+  `CapabilityNote`, `Support`, `TempFile`, `TMP_TOKEN`, `BASELINE_ENV`, `AgentResult`,
   `CallError` and `CallOptions`.
 - Built-in adapters: `adapterFor`, `BUILTIN_AGENTS`, `detectAgents`,
   `AgentAvailability`, `claudeAdapter`, `codexAdapter`, `antigravityAdapter`,
@@ -464,9 +488,12 @@ format (a JSON envelope or an event stream), so metadata is captured.
   binary planted in the working directory, such as a pull request's
   checkout, is never the one run. Not found is `spawn-failed`. A binary given
   as a path (`/opt/claude/bin/claude`, `./claude`) is run as given.
-- The child process inherits the parent's whole environment, plus the spec's
-  `env`. Credentials in your environment reach the agent CLI. Pass a trimmed
-  environment to the parent if that matters.
+- By default the child process inherits the parent's whole environment, plus
+  the spec's `env`, so credentials in your environment reach the agent CLI.
+  Set `unsetEnv` to name variables it must not get (`GH_TOKEN`,
+  `GITHUB_TOKEN`), or `inheritEnv` to a list so it inherits only those. See
+  "Keeping variables from the agent" under API. A bare binary name still needs
+  `PATH` in the child's environment.
 - Any local user can read argv in the process list. The prompt travels in
   argv for antigravity (`-p <prompt>`) and opencode (positional), so do not
   put secrets in a prompt for those two agents. claude and codex read the
