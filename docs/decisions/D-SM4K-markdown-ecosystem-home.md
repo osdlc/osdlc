@@ -30,8 +30,10 @@ Accepted 2026-11-12.
   plan owns. sdlc will depend on the markdown libraries. The markdown work
   uses sdlc as a tool, to run its plan, and no markdown library depends on an
   sdlc library. Today's dependencies already follow this.
-- **osdlc/models folds in too.** Where the profiles, the packs, the starter
-  corpus and model-schema go is not decided yet.
+- **osdlc/models folds in too.** Where the profiles and the starter corpus go
+  is not decided yet.
+- **Nothing moves out of sksizer/dev yet.** Its markdown packages,
+  model-schema and the packs stay there for now.
 - **`markdown-store` stays in sksizer/rust-ontogen for now.**
 - **Two repositories stay as places to publish from.** osdlc/marketplace
   publishes the skill plugins. osdlc/skillwright publishes skillwright, the
@@ -95,12 +97,11 @@ against the markdown packages in the same pull request.
 [The repatriation plan](../planning/repatriation.md) lists the work as steps
 to tick off. None of it needs a change to the build tooling. In short:
 
-1. Bring osdlc/markdown's plan and docs here, keeping their history.
-2. Re-apply the `corpus-schema` 0.3.0 work
+1. Re-apply the `corpus-schema` 0.3.0 work
    ([osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12)) onto this
-   repository's copy and release it from here.
+   repository's copy and release it from here. The plan's records need it.
+2. Bring osdlc/markdown's plan and docs here, keeping their history.
 3. Update the plan's records that name another repository as a library's
    home.
-4. Bring the models, once their place is decided.
-5. Bring the markdown packages still in sksizer/dev.
-6. The owner archives osdlc/markdown and osdlc/models.
+4. Bring the profiles and the starter corpus, once their place is decided.
+5. The owner archives osdlc/markdown and osdlc/models.
