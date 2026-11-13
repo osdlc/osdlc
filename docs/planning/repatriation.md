@@ -13,8 +13,8 @@ only the owner can change.
 | Repository           | After this plan                                                   |
 | -------------------- | ----------------------------------------------------------------- |
 | osdlc/osdlc          | Source for the sdlc CLI, the libraries, the markdown plan, models |
-| osdlc/markdown       | Folded in here, then archived                                     |
-| osdlc/models         | Folded in here, then archived                                     |
+| osdlc/markdown       | Content folded in here. Kept as a holding pen                     |
+| osdlc/models         | Content folded in here. Kept as a holding pen                     |
 | osdlc/marketplace    | Stays: where the skill plugins are published                      |
 | osdlc/skillwright    | Stays: where skillwright, the product, is published               |
 | osdlc/parley         | Not decided. Low priority                                         |
@@ -58,6 +58,11 @@ needs phase 1 and a decision. Phase 5 is last.
       ([#789](https://github.com/osdlc/osdlc/pull/789)).
 - [ ] Comment on osdlc/markdown #15, #16 and #19 with a link to #789, so no
       more work goes into the old layout. #20 already has the note.
+- [ ] Merge the holding-pen READMEs:
+      [osdlc/markdown#22](https://github.com/osdlc/markdown/pull/22) and
+      [osdlc/models#2](https://github.com/osdlc/models/pull/2). Each says the
+      work happens here for now, and that the repository is where it lives
+      once matured.
 - [ ] Delete the branch `corpus-schema-moved` here (its pull request, #788,
       was closed).
 
@@ -180,12 +185,16 @@ Needs phase 1, because the profiles use `extends`.
       for a new library.
 - [ ] Close osdlc/markdown #15, #16, #19 and osdlc/models#1 with links.
 
-### Phase 5: close the old repositories
+### Phase 5: empty the holding pens
+
+osdlc/markdown and osdlc/models stay open, as the places the work moves to
+once matured. They are not archived.
 
 - [ ] Check nothing is left: no open pull requests or issues, no branch with
       unmerged work, in osdlc/markdown and osdlc/models.
-- [ ] Replace each README with one that points here.
-- [ ] **owner** Archive osdlc/markdown and osdlc/models.
+- [ ] Remove from osdlc/markdown what was brought here, so there is one copy:
+      the docs, `packages/`, `profiles/`, `tools/`, and the workflows that
+      build and release them. Its README loses "What is still here".
 - [ ] **owner** Decide osdlc/parley's home.
 
 ## Not part of this

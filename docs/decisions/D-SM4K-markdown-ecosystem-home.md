@@ -5,7 +5,11 @@ Accepted 2026-11-12.
 ## Decision
 
 - **The markdown ecosystem stays in osdlc/osdlc.** It does not move to
-  osdlc/markdown. That repository is folded back in.
+  osdlc/markdown. That repository's content is folded back in.
+- **osdlc/markdown and osdlc/models are kept as holding pens.** They are not
+  archived. Each has a README that says the work happens here for now, and
+  that it is where the markdown ecosystem, or the models, will live once
+  matured.
 - **The libraries stay where they are**, flat under `packages/ts/` and
   `packages/rust/`. No folder groups them by product area yet. The boundaries
   between the markdown libraries, the sdlc product's libraries, the models and
@@ -94,8 +98,10 @@ against the markdown packages in the same pull request.
   layout is the one to start from. One point to carry over from this
   discussion: a library should be placed by which plan owns it, not by how
   many things import it, or the markdown group empties as sdlc adopts it.
-- **Its own repository**, for a library that nears 1.0 and that this
-  repository would use as a published release, like any outside dependency.
+- **Out to the holding pens**, for a library or model that nears 1.0 and that
+  this repository would use as a published release, like any outside
+  dependency. Markdown libraries go to osdlc/markdown and models to
+  osdlc/models.
 
 ## Consequences
 
@@ -110,4 +116,5 @@ the profile and corpus packages, and three path-filtered workflows. In short:
 3. Update the plan's records that name another repository as a library's
    home.
 4. Bring the profiles and the starter corpus, once their place is decided.
-5. The owner archives osdlc/markdown and osdlc/models.
+5. Empty osdlc/markdown and osdlc/models down to their READMEs. They stay
+   open.
