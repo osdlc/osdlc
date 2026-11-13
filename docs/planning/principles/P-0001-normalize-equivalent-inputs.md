@@ -49,7 +49,7 @@ it will do.
 
 ## Examples
 
-- `@osdlc/typed-gh` treats `hostname: ''` as no host, the same as leaving it
+- `@osdlc/typed-gh` (`hostOf` in `packages/ts/typed-gh/src/verbs.ts`) treats `hostname: ''` as no host, the same as leaving it
   out. A malformed host such as `-x` still throws `RangeError`. `github.com` is
   not treated as no host, because passing it explicitly keeps a call on
   github.com when `GH_HOST` names another host.
@@ -60,10 +60,6 @@ it will do.
   parameter.
 - It does not say that every input should be accepted. Inputs that are wrong,
   or ambiguous, are errors.
-
-## Notes
-
-- Draft. The wording is a first pass to be rewritten.
 
 ## Summary
 
