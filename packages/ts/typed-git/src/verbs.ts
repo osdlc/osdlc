@@ -1577,8 +1577,7 @@ function shaReply(r: CommandResult, ranArgv: string[]): string {
 /** Options for {@link hashObject}. */
 export interface HashObjectOptions {
   /**
-   * `-w` — write the blob into the object store. Without it git only
-   * computes the sha, as `git hash-object` does.
+   * `-w`: also write the blob into the object store; without it only the sha is computed.
    */
   write?: boolean | undefined
 }
@@ -1590,7 +1589,7 @@ export interface HashObjectOptions {
  * `content` goes to git on stdin as UTF-8, so the blob holds exactly those
  * bytes: input from stdin skips the clean filters and line-ending
  * conversion that `.gitattributes` would apply to a file. A string cannot
- * carry arbitrary bytes, so binary content is not supported yet.
+ * carry arbitrary bytes, so binary content is not supported.
  *
  * `absent: []`, and a reply that is not a sha throws.
  */
@@ -1636,7 +1635,7 @@ const TREE_MODE_TYPES: Readonly<Record<string, NonNullable<MktreeEntry['type']>>
 }
 
 /** Code points HFS+ ignores in a name (git's `next_hfs_char`). */
-const HFS_IGNORED = /[‌-‏‪-‮⁪-⁯﻿]/gu
+const HFS_IGNORED = /[\u200C-\u200F\u202A-\u202E\u206A-\u206F\uFEFF]/gu
 
 /** Lower-case the ASCII letters only, as git does against its ASCII needles. */
 const asciiLower = (s: string): string => s.replace(/[A-Z]/g, (c) => c.toLowerCase())
@@ -1709,23 +1708,13 @@ function readsAsDotGitmodules(name: string): boolean {
  * No entries writes the empty tree.
  *
  * The entries go to git on stdin, NUL-terminated, so a name may hold spaces,
- * tabs or newlines. git sorts them into tree order itself. It refuses a
- * name with `/`, but it would write a duplicate name, an empty name, `.`,
- * `..`, a name git reads as `.git`, a `.gitmodules` that is not a file, or
- * a mode such as `100664`, each of which `git fsck --strict` reports. Each
- * of those throws a `TypeError` here, before git runs, as do a name with
- * `/` or NUL, a sha that is not a full sha, and a type that does not match
- * the mode.
+ * tabs or newlines; git sorts them into tree order itself.
  *
- * A name git reads as `.git` is one git's fsck reports as `hasDotgit`:
- * `.git` in any letter case; the NTFS spellings, which are `.git` or
- * `git~1` followed only by dots and spaces, or by anything from a `:` or
- * `\` on (`.git.`, `.git ` and `.git::$INDEX_ALLOCATION`); and the HFS+
- * ones, which are `.git` with an ignorable code point such as U+200C
- * anywhere in it. The same spellings of `.gitmodules`, with the short names
- * `gitmod~1` to `~4` and the 8.3 fallback `gi7eba~1`, must be a file, mode
- * `100644` or `100755`: git fsck reports a symlink, a tree or a submodule
- * there even without `--strict`.
+ * Throws a `TypeError` before git runs for a duplicate, empty, `.`, `..`,
+ * `/`- or NUL-bearing name, a name git reads as `.git`, a `.gitmodules` that
+ * is not a file, an unknown mode, a sha that is not a full sha, and a type
+ * that does not match the mode. `git mktree` writes most of these, but
+ * `git fsck --strict` reports them. D-03 lists the NTFS and HFS+ spellings.
  *
  * Every sha must name an object already in the store, of the entry's type,
  * except a submodule (`160000`) commit, which git does not check; otherwise
@@ -2614,7 +2603,7 @@ export function updateRef(ref: string, sha: string, opts: UpdateRefOptions): Git
     // An empty old value is git's "must not exist", in either hash format.
     argv.push('')
   } else if (opts.oldSha === undefined) {
-    // The type requires it. A caller without types learns that, not that `undefined` is a bad sha.
+    // Only reachable without types: report the missing option, not an invalid sha.
     throw new TypeError(
       'typed-git: updateRef: oldSha is required: the sha the ref holds now, or null for "must not exist"',
     )
