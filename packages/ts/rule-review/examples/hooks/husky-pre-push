@@ -1,0 +1,2 @@
+# .husky/pre-push
+npx --no-install rule-review --base main --blocking

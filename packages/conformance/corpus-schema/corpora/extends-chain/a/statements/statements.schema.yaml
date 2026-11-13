@@ -1,0 +1,4 @@
+type: object
+required: [claim]
+properties:
+  claim: { type: string }

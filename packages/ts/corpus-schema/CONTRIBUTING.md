@@ -52,7 +52,9 @@ The corpus-schema spec and its conformance cases live in
 `SPEC.md`, `suite.json`, and one corpus folder under `corpora/` for each case. A case names no
 code, so another implementation can run the same cases. `tests/conformance.test.ts` runs them
 here. A change to the spec's rules gets a case there. Write the case's `input` by hand, then run
-`pnpm run conformance:write` to write its `expect`.
+`pnpm run conformance:write` to write its `expect`. A case whose corpus extends or references a
+package keeps the package in the case folder's own `node_modules/`. A case that links into
+`_references/` gets its copy from `node bin/corpus-schema.js sync <case folder>`, after a build.
 
 ## Code style
 

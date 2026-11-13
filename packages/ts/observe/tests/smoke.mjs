@@ -14,6 +14,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { appendJsonl, newRunId, readJsonl } from '@osdlc/observe'
+import { normalizeHookText } from '@osdlc/observe/hook'
+import { appendRedactedJsonl, createRedactor } from '@osdlc/observe/redact'
 import { isLegalTransition, looseSessionModel, sessionEnv } from '@osdlc/observe/session'
 
 assert.match(newRunId(), /^r-/)
@@ -23,6 +25,12 @@ try {
   const file = join(dir, 'log.jsonl')
   appendJsonl(file, { n: 1 })
   assert.deepEqual(readJsonl(file), [{ n: 1 }])
+  // Loads secretlint from the installed dependencies: a secret only it finds.
+  const redactor = createRedactor({ env: {} })
+  const secret = 'postgres://app:s3cr3t-pa55@db.internal/prod'
+  await appendRedactedJsonl(file, { kind: 'x', note: secret }, redactor)
+  const [, line] = readJsonl(file)
+  assert.equal(line.note, '[REDACTED:database-connection-string]')
 } finally {
   rmSync(dir, { recursive: true, force: true })
 }
@@ -30,4 +38,5 @@ try {
 assert.equal(typeof isLegalTransition, 'function')
 assert.equal(typeof looseSessionModel.recordSessionEventIn, 'function')
 assert.equal(typeof sessionEnv, 'function')
+assert.equal(normalizeHookText('claude', '{"hook_event_name":"Stop"}').event, 'Stop')
 console.log('observe smoke ok')
