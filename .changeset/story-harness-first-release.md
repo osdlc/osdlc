@@ -4,7 +4,7 @@
 
 The first release of `@osdlc/story-harness` on npm. It uses a component's static Storybook build as its test harness.
 
-- `story-shots <package dir>` shoots every story in light and dark inside the pinned Playwright image, as `linux/amd64`, and compares each shot with a committed baseline at zero pixel tolerance. `--update` writes the baselines and deletes those of stories that are gone. `SHOT_WORKERS` sets the worker count. It needs Docker and bash, on Linux or macOS.
+- `story-shots <package dir>` shoots every story in light and dark inside the pinned Playwright image, as `linux/amd64`, and compares each shot with a committed baseline, failing on any pixel past a 0.02 colour distance. `--update` writes the baselines and deletes those of stories that are gone. `SHOT_WORKERS` sets the worker count. It needs Docker and bash, on Linux or macOS.
 - `@osdlc/story-harness/browser`: `storyMetrics`, the in-page metrics hook for perf stories, and `seeded`, a deterministic PRNG.
 - `@osdlc/story-harness/playwright`: `defineStoryConfig`, `preparePage`, `openStory`, the perf helpers, and `budget`, `record` and `recordBrowser`, which write one report that every worker merges into. `openPerfStory`, `noLongTasks`, `paintedAt` and `responseEnd` are experimental.
 - `@osdlc/story-harness/runner`: `captureStories`, `captureCli`, `serveStatic` and `selectStories`.
