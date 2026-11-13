@@ -1,0 +1,4 @@
+x-extends: org/guides
+additionalProperties: false
+properties:
+  status: { type: string }
