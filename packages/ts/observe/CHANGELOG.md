@@ -16,6 +16,8 @@
 
 ## 0.4.0
 
+Never published to npm: these changes first shipped in 0.4.1.
+
 ### Minor Changes
 
 - b835ae4: Behaviour change: the machine-id cache (`~/.cache/sdlc/machine-id`) is now keyed by a hash of the hostname, so machines that share a home directory no longer share an id. On upgrade the id is derived once more and the cache rewritten in the new form; an id set through `OBSERVE_MACHINE_ID` is unaffected. A relative `XDG_CACHE_HOME` is ignored, as the XDG spec says.
