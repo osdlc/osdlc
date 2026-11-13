@@ -11,12 +11,12 @@
 # the other jobs skip when nothing under the Rust paths changed. `rust`
 # passes when every job it needs passed or was skipped.
 #
-# A draft pull request that pr-update.yml just updated (a push by
-# osdlc-release[bot]; `github.actor` is that pusher) runs none of the Rust
+# A draft pull request that pr-update.yml just updated (see "Load on pull
+# requests" in packages-ci.yml) runs none of the Rust
 # jobs: `changes` reports rust=false, so every job skips and `rust` still
-# reports success. A draft that a person pushes to runs as today. Marking the
+# reports success. A draft that a person pushes to runs every job. Marking the
 # pull request ready runs the jobs (`ready_for_review`). A push to main and a
-# manual run are never drafts and run as before.
+# manual run are never drafts.
 #
 # The toolchain is the pin in packages/rust/rust-toolchain.toml (with the
 # wasm32 target added in the `wasm` job), except in the `msrv` job (the
@@ -76,12 +76,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           EVENT: ${{ github.event_name }}
           PR: ${{ github.event.pull_request.number }}
-          DRAFT: ${{ github.event.pull_request.draft == true && github.actor == 'osdlc-release[bot]' }}
+          BOT_UPDATED_DRAFT: ${{ github.event.pull_request.draft == true && github.actor == 'osdlc-release[bot]' }}
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.sha }}
         run: |
           set -euo pipefail
-          if [ "$EVENT" = pull_request ] && [ "$DRAFT" = true ]; then
+          if [ "$EVENT" = pull_request ] && [ "$BOT_UPDATED_DRAFT" = true ]; then
             echo "rust=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi

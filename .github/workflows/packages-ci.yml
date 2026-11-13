@@ -51,7 +51,7 @@
 #     required check pending forever). Node 26 is not required, so it is
 #     left out of the matrix on a pull request.
 #   - Every other event (push to main through packages-publish.yml,
-#     workflow_dispatch) runs the full matrix: Node 22, 24 and 26.
+#     workflow_dispatch) runs the full matrix.
 #
 # Every action is pinned to a commit SHA; the comment names its release.
 name: packages
@@ -142,11 +142,10 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        # A pull request leaves out Node 26, which no ruleset requires.
         node: ${{ fromJSON(github.event_name == 'pull_request' && '["22","24"]' || '["22","24","26"]') }}
     env:
-      # False for a draft, and for a leg a pull request skips (Node 22). The
-      # job still reports, since the ruleset requires it.
+      # False for a draft pr-update pushed, and for the Node 22 legs on a pull
+      # request. The job still reports, since the ruleset requires it.
       HEAVY: ${{ !(github.event.pull_request.draft == true && github.actor == 'osdlc-release[bot]') && (github.event_name != 'pull_request' || matrix.node == '24') }}
       FILTER: ${{ needs.changes.outputs.filter }}
       BUILD: ${{ needs.changes.outputs.build }}
