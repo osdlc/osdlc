@@ -1,6 +1,6 @@
 /**
  * Planning: pair each rule source with the changed files it governs, as jobs.
- * Pure, so it can be golden-tested. Selection rationale: D-05.
+ * Pure, so it can be golden-tested. Selection rationale: docs/planning/decisions/D-05-selection-by-scope.md.
  */
 import { selectByScope } from './select.ts'
 import type { RuleSource, ReviewConfig, ReviewJob } from './types.ts'

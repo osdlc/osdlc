@@ -45,7 +45,10 @@ export interface DiscoveryContext {
   changedFiles: readonly string[]
 }
 
-/** A source of rule sources, passed in by the caller (D-04). */
+/**
+ * A source of rule sources. The caller passes providers in; the package itself
+ * reads only `CLAUDE.md` and `AGENTS.md` (`instructionFiles`).
+ */
 export interface RuleSourceProvider {
   /** Identifies the provider in diagnostics; not required to be unique. */
   id: string
@@ -162,9 +165,11 @@ export interface ReviewConfig {
    */
   extraArgs?: string[]
   /**
-   * Most jobs in flight at once; a ceiling, not a target. Set it with
-   * `maxFilesPerJob`: sharding pays only when the extra jobs fit in the waves
-   * already running (D-05).
+   * Most jobs in flight at once; a ceiling, not a target. A judgement takes
+   * about the same time whatever its size, so a run takes about
+   * `ceil(jobs / concurrency)` of them: with `maxFilesPerJob` sharding a large
+   * change, a cap below the job count makes the run slower than not sharding.
+   * Measurements: https://github.com/osdlc/osdlc/blob/main/packages/ts/rule-review/docs/planning/decisions/D-05-selection-by-scope.md
    */
   concurrency: number
   /** Findings at or above `severityFloor` produce a non-zero exit. */
@@ -175,14 +180,16 @@ export interface ReviewConfig {
   /** Per-job wall clock. */
   timeoutMs: number
   /**
-   * Prompt size, in bytes, past which a job is flagged as oversized. Nothing is
-   * truncated or skipped (D-05). Set 0 to disable.
+   * Prompt size, in bytes, past which a job's outcome is flagged `oversize`.
+   * The job still runs: nothing is truncated or skipped, because dropping files
+   * silently is worse than a weaker judgement. Set 0 to disable.
    */
   maxPromptBytes: number
   /**
    * Largest number of changed files one job may carry; 0 disables sharding. A
-   * source over it is split into jobs with the same rules, which run at once
-   * (D-05). Findings name the source, not the shard.
+   * source over it is split into jobs with the same rules, which run at once:
+   * a judge reasons better about a dozen diffs than sixty. Findings name the
+   * source, not the shard.
    */
   maxFilesPerJob: number
 }
@@ -193,7 +200,7 @@ export interface ReviewConfig {
  */
 export const DEFAULT_CONFIG: Readonly<ReviewConfig> = Object.freeze({
   engine: 'claude',
-  // A sharded branch-wide run is one wave (D-05).
+  // A sharded branch-wide run is one wave; see `concurrency`.
   concurrency: 32,
   blocking: false,
   severityFloor: 'violation',

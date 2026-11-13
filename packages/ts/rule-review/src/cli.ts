@@ -2,7 +2,7 @@
  * `rule-review`: review a changeset against the rule files that govern it.
  *
  * It needs nothing but a git repository, and reads only `CLAUDE.md` and
- * `AGENTS.md` (D-04).
+ * `AGENTS.md`. Design: docs/planning/decisions/D-04-one-built-in-provider.md.
  *
  * `src/bin.ts` runs {@link main} as the program.
  */
