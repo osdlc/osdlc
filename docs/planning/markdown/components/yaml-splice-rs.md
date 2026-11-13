@@ -17,6 +17,6 @@ Sets, removes and renames top-level YAML fields while every other byte stays as 
 
 ## Notes
 
-- A general library, not one the plan owns, like its twin, which config-layers depends on
-  ([D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md)).
+- A general library, not one the plan owns, like its TypeScript binding, which config-layers
+  depends on ([D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md)).
 - Release PR osdlc/osdlc#730 took it to 0.3.4.

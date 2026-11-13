@@ -9,6 +9,7 @@ after:
   - "[27 Org corpora](27%20Org%20corpora.md)"
 prs:
   - "[osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12)"
+  - "[osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790)"
 ---
 
 `corpus-schema sync`. It writes a read-only, committed copy of each referenced corpus into

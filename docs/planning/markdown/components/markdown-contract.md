@@ -26,3 +26,4 @@ lists and code blocks. Then reads it as a typed model.
 
 - Its shared test cases still live inside the package. The architecture plans a shared conformance
   family for it.
+- It also depends on @osdlc/cli-tool, a general library with no record here.

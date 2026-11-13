@@ -336,23 +336,24 @@
       "language": "markdown",
       "layer": "apps",
       "states": [
+        "present",
         "target"
       ],
       "repo": {
-        "present": null,
+        "present": "osdlc/osdlc",
         "target": "osdlc/osdlc"
       },
       "path": {
-        "present": null,
+        "present": "docs/planning/markdown",
         "target": "docs/planning/markdown"
       },
-      "status": "in-progress",
+      "status": "unpublished",
       "version": null,
       "registry": null,
       "twin": null,
       "purpose": "This plan's tasks, milestones and decisions, and the components it changes, kept as records. The explorer's data is built from it.",
       "notes": [
-        "Built in osdlc/markdown#13 and #14 at docs/planning. It comes to osdlc/osdlc at docs/planning/markdown (decision D19).",
+        "Built in osdlc/markdown#13 and #14 at docs/planning. It is now in osdlc/osdlc at docs/planning/markdown (decision D19).",
         "Today it extends the planning profile. Its tasks and milestones add fields, and its decisions use the profile's type as it is.",
         "Task 53 makes it the first remote consumer of the sdlc profile and the starter corpus, from npm. Its records move to sdlc ids and fields, and the planning profile is deleted.",
         "Its components, layers, repos, overlaps and datasets are its own types. They describe this ecosystem, so they stay out of the profile."
@@ -813,24 +814,24 @@
       "language": "markdown",
       "layer": "profiles",
       "states": [
-        "target"
+        "present"
       ],
       "repo": {
-        "present": null,
-        "target": "osdlc/osdlc"
+        "present": "osdlc/osdlc",
+        "target": null
       },
       "path": {
-        "present": null,
-        "target": "docs/planning/markdown/profile"
+        "present": "docs/planning/markdown/profile",
+        "target": null
       },
-      "status": "planned",
+      "status": "retiring",
       "version": null,
       "registry": null,
       "twin": null,
       "purpose": "Record types for a plan: tasks, milestones and decisions. A corpus names it under extends: and builds its own types on these with x-extends.",
       "notes": [
         "Private package. Not on npm. A corpus extends it by a path to the folder.",
-        "Built in osdlc/markdown#14 at profiles/planning. It comes to osdlc/osdlc with this plan, beside the plan's records (decision D19).",
+        "Built in osdlc/markdown#14 at profiles/planning. It is now in osdlc/osdlc with this plan, beside the plan's records (decision D19).",
         "Its types are open, so a corpus can add fields. A corpus that wants a closed type lists the profile's fields as well as its own. Task 44 removes that need.",
         "Task 53 removes this profile: the plan moves to the sdlc profile and the profile folder is deleted. Before 1.0 no second form is kept."
       ],
@@ -1813,7 +1814,8 @@
       "twin": "markdown-contract-rs",
       "purpose": "Checks the structure of one document against a contract: its frontmatter, heading sections, tables, lists and code blocks. Then reads it as a typed model.",
       "notes": [
-        "Its shared test cases still live inside the package. The architecture plans a shared conformance family for it."
+        "Its shared test cases still live inside the package. The architecture plans a shared conformance family for it.",
+        "It also depends on @osdlc/cli-tool, a general library with no record here."
       ],
       "tasks": [
         56,
@@ -2203,7 +2205,7 @@
       "twin": null,
       "purpose": "Sets, removes and renames top-level YAML fields while every other byte stays as it was.",
       "notes": [
-        "A general library, not one the plan owns, like its twin, which config-layers depends on ([D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md)).",
+        "A general library, not one the plan owns, like its TypeScript binding, which config-layers depends on ([D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md)).",
         "Release PR osdlc/osdlc#730 took it to 0.3.4."
       ],
       "tasks": [],
@@ -2718,6 +2720,7 @@
       "to": "corpus-schema-ts",
       "kind": "dev-depends",
       "states": [
+        "present",
         "target"
       ],
       "note": "CI checks it with this repo's corpus-schema, which knows extends."
@@ -2727,6 +2730,7 @@
       "to": "corpus-schema-spec",
       "kind": "implements",
       "states": [
+        "present",
         "target"
       ],
       "note": "A valid level-2 corpus."
@@ -2739,6 +2743,14 @@
         "target"
       ],
       "note": "As sdlc, from npm (task 53). Until then it extends the planning profile."
+    },
+    {
+      "from": "plan-corpus",
+      "to": "corpus-profile-planning",
+      "kind": "extends",
+      "states": [
+        "present"
+      ]
     },
     {
       "from": "plan-corpus",
@@ -3130,7 +3142,7 @@
       "to": "corpus-schema-spec",
       "kind": "implements",
       "states": [
-        "target"
+        "present"
       ],
       "note": "A profile is a corpus that has only types."
     },

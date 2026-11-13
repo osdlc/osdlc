@@ -10,6 +10,7 @@ after:
 prs:
   - "[osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9)"
   - "[osdlc/markdown#10](https://github.com/osdlc/markdown/pull/10)"
+  - "[osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790)"
 ---
 
 Release setup, then the corpus-schema move. This task gave osdlc/markdown its own release setup and

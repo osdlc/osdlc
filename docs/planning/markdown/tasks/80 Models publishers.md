@@ -6,7 +6,7 @@ status: owner
 type: supporting
 milestone: "[m-sdlc-profile](../milestones/m-sdlc-profile.md)"
 after:
-  - "[78 Models repo setup](78%20Models%20repo%20setup.md)"
+  - "[78 Bring in profiles](78%20Models%20repo%20setup.md)"
 ---
 
 Set up npm trusted publishing for the packages that publish from osdlc/osdlc ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)):

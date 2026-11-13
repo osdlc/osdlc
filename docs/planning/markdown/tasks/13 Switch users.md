@@ -10,5 +10,5 @@ after:
 ---
 
 Switch the users to the new model and resolver: markdown-vault-query, markdown-astro, and determined
-(its vault-graph app and its graph and notes experiences). They also move off dev's private copy of
-markdown-link. After 12.
+(its vault-graph app and its graph and notes experiences). They already use the published
+markdown-link (sksizer/dev 48b62783). After 12.

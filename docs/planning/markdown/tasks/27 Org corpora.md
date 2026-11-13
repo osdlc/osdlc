@@ -9,6 +9,7 @@ after:
   - "[9 Extends](9%20Extends.md)"
 prs:
   - "[osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12)"
+  - "[osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790)"
 ---
 
 Org corpora as packages. A corpus names other corpora in its root file: parents under `extends`,

@@ -10,6 +10,7 @@ after:
   - "[70 References](70%20References.md)"
 prs:
   - "[osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12)"
+  - "[osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790)"
 ---
 
 The rules that let sdlc's own planning folders validate as they are, and that tell corpora apart.

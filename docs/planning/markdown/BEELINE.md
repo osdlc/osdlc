@@ -114,17 +114,17 @@ The tasks in the order the work goes. Each line says why it comes there.
 10. [43 Strict mode](tasks/43%20Strict%20mode.md): CI fails on a warning, not only an error.
 11. [21 Release here](tasks/21%20Release%20here.md): corpus-schema releases from osdlc/osdlc, and
     the 0.3.0 work comes back from osdlc/markdown.
-12. [59 Corpus-schema publisher](tasks/59%20Corpus-schema%20publisher.md) (owner): no longer
-    needed. corpus-schema publishes from osdlc/osdlc, so its npm trusted publisher does not change.
+12. [59 Corpus-schema publisher](tasks/59%20Corpus-schema%20publisher.md): dropped. corpus-schema
+    publishes from osdlc/osdlc, so its npm trusted publisher does not change.
 13. [36 Release 0.3.0](tasks/36%20Release%200.3.0.md) (owner): a published corpus-schema that knows
     all of the above. Every consumer installs it.
 14. [23 Claims profile](tasks/23%20Claims%20profile.md): the claims profile, which task 60
     publishes.
-15. [78 Models repo setup](tasks/78%20Models%20repo%20setup.md): the profiles and the starter come
+15. [78 Bring in profiles](tasks/78%20Models%20repo%20setup.md): the profiles and the starter come
     to osdlc/osdlc from osdlc/markdown's pull requests, in a place not yet decided. CI validates
     them with corpus-schema 0.3.0. osdlc/models
     ([75 Create models repo](tasks/75%20Create%20models%20repo.md)) holds only a README.
-16. [80 Models publishers](tasks/80%20Models%20publishers.md) (owner): the npm trusted publishers
+16. [80 Profile publishers](tasks/80%20Models%20publishers.md) (owner): the npm trusted publishers
     for the profiles and the starter point at osdlc/osdlc's release workflow.
 17. [48 Profile generator](tasks/48%20Profile%20generator.md): turns the packs into a profile. The
     packs are merged ([47 Merge packs](tasks/47%20Merge%20packs.md)).
@@ -149,7 +149,7 @@ The tasks in the order the work goes. Each line says why it comes there.
 27. [68 Work cites starter](tasks/68%20Work%20cites%20starter.md): the end state, copied from this
     plan's setup.
 
-In short: 9, 27, 29, 70, 71, 73, 44, 45, 46, 43, 21, 59 (owner), 36 (owner), 23, 78, 80 (owner),
+In short: 9, 27, 29, 70, 71, 73, 44, 45, 46, 43, 21, 59 (dropped), 36 (owner), 23, 78, 80 (owner),
 48, 49, 61 (owner), 63, 65, 66 (owner), 60 (owner), 79, 53, 52 and 68. Each task comes after every
 task it waits on.
 
@@ -184,22 +184,22 @@ Each item: the task, its status, who does it, its pull requests, and the tasks i
 
 ### Next up (3)
 
-- [ ] [21 Release here](tasks/21%20Release%20here.md) · in progress · agent · [osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9), [osdlc/markdown#10](https://github.com/osdlc/markdown/pull/10)
-- [ ] [43 Strict mode](tasks/43%20Strict%20mode.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12)
+- [ ] [21 Release here](tasks/21%20Release%20here.md) · in progress · agent · [osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9), [osdlc/markdown#10](https://github.com/osdlc/markdown/pull/10), [osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790)
+- [ ] [43 Strict mode](tasks/43%20Strict%20mode.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12), [osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790)
 - [ ] [48 Profile generator](tasks/48%20Profile%20generator.md) · in progress · agent · [sksizer/dev#4163](https://github.com/sksizer/dev/pull/4163)
 
 ### Waiting (31)
 
-- [ ] [9 Extends](tasks/9%20Extends.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12) · waits on 21
+- [ ] [9 Extends](tasks/9%20Extends.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12), [osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790) · waits on 21
 - [ ] [38 Planning profile](tasks/38%20Planning%20profile.md) · in progress · agent · [osdlc/markdown#14](https://github.com/osdlc/markdown/pull/14) · waits on 9
-- [ ] [27 Org corpora](tasks/27%20Org%20corpora.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12) · waits on 9
-- [ ] [29 Sync](tasks/29%20Sync.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12) · waits on 27
-- [ ] [44 Flatten extends](tasks/44%20Flatten%20extends.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12) · waits on 9
-- [ ] [45 Refs by id](tasks/45%20Refs%20by%20id.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12) · waits on 9
-- [ ] [46 Multi-type x-ref](tasks/46%20Multi-type%20x-ref.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12) · waits on 9
-- [ ] [70 References](tasks/70%20References.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12) · waits on 27, 29
-- [ ] [71 Uses](tasks/71%20Uses.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12) · waits on 9
-- [ ] [73 Identity and record files](tasks/73%20Identity%20and%20record%20files.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12) · waits on 9, 70
+- [ ] [27 Org corpora](tasks/27%20Org%20corpora.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12), [osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790) · waits on 9
+- [ ] [29 Sync](tasks/29%20Sync.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12), [osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790) · waits on 27
+- [ ] [44 Flatten extends](tasks/44%20Flatten%20extends.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12), [osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790) · waits on 9
+- [ ] [45 Refs by id](tasks/45%20Refs%20by%20id.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12), [osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790) · waits on 9
+- [ ] [46 Multi-type x-ref](tasks/46%20Multi-type%20x-ref.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12), [osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790) · waits on 9
+- [ ] [70 References](tasks/70%20References.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12), [osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790) · waits on 27, 29
+- [ ] [71 Uses](tasks/71%20Uses.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12), [osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790) · waits on 9
+- [ ] [73 Identity and record files](tasks/73%20Identity%20and%20record%20files.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12), [osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790) · waits on 9, 70
 - [ ] [36 Release 0.3.0](tasks/36%20Release%200.3.0.md) · waiting on owner · owner · waits on 9, 21, 27, 29, 43, 44, 45, 46, 70, 71, 73
 - [ ] [74 Skillwright on 0.3.0](tasks/74%20Skillwright%20on%200.3.0.md) · not started · agent · waits on 36, 60
 - [ ] [23 Claims profile](tasks/23%20Claims%20profile.md) · in progress · agent · [osdlc/markdown#15](https://github.com/osdlc/markdown/pull/15) · waits on 21, 36
@@ -296,7 +296,7 @@ A loop that drives this work follows the same rules as a person. Each tick:
 
 1. Rebuild the checklist with `pnpm build-data` on the plan's branch, and read it.
 2. Surface every next-up item whose status is "waiting on owner". Never attempt one. Owner work is
-   publishing and its trusted publishers (tasks 36, 59, 60, 61, 66 and 80), choosing the
+   publishing and its trusted publishers (tasks 36, 60, 61, 66 and 80), choosing the
    starter's content (task 64), and every merge, tag and settings change.
 3. Pick the next agent item, as in the handoff protocol.
 4. If it is in progress, tend its pull request: CI, review findings, conflicts.

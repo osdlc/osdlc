@@ -9,6 +9,7 @@ after:
   - "[9 Extends](9%20Extends.md)"
 prs:
   - "[osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12)"
+  - "[osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790)"
 ---
 
 Flatten `x-extends`. A closed child type, one with `additionalProperties: false`, sees the fields of

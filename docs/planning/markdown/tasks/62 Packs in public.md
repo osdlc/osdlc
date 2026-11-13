@@ -9,7 +9,7 @@ after:
   - "[47 Merge packs](47%20Merge%20packs.md)"
   - "[49 SDLC profiles](49%20SDLC%20profiles.md)"
   - "[75 Create models repo](75%20Create%20models%20repo.md)"
-  - "[78 Models repo setup](78%20Models%20repo%20setup.md)"
+  - "[78 Bring in profiles](78%20Models%20repo%20setup.md)"
 ---
 
 Move `@osdlc/model-schema` and the intent and sdlc packs to a public repo, so the sdlc profile is

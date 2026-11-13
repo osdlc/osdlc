@@ -155,7 +155,7 @@ PRESENT = [
      [("markdown-link", "parse; no resolver", "osdlc", ("F2", "F3")), ("frontmatter-lossless", "split, rewrite", "osdlc"),
       ("markdown-contract", "one doc's structure", "osdlc"), ("markdown-tags", "#tags, 3 dialects", "osdlc"),
       ("gfm-table", "pipe tables", "osdlc"), ("yaml-splice", "edit YAML in place", "osdlc"),
-      ("markdown-link copy", "dev, private 0.1.0", "dev", ("F11",))],
+      ("markdown-tags copy", "dev, private 0.1.0", "dev", ("F11",))],
      [("markdown-link", "parse + LinkIndex", "osdlc"), ("frontmatter-lossless", "twin", "osdlc"),
       ("markdown-contract", "twin", "osdlc"), ("markdown-tags", "twin", "osdlc"),
       ("gfm-pipe-table", "twin", "osdlc"), ("yaml-splice", "twin + wasm", "osdlc"),

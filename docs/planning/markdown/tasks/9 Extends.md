@@ -10,6 +10,7 @@ after:
   - "[21 Release here](21%20Release%20here.md)"
 prs:
   - "[osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12)"
+  - "[osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790)"
 ---
 
 Parents: `extends` and `x-extends`. D4 is decided, so the work is to build it in the validator. A

@@ -9,6 +9,7 @@ after:
   - "[9 Extends](9%20Extends.md)"
 prs:
   - "[osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12)"
+  - "[osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790)"
 ---
 
 `x-ref` by id. Today an `x-ref` field holds a relative Markdown link. It may also hold a bare record

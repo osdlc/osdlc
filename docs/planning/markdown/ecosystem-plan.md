@@ -63,8 +63,8 @@ before the rest of the plan. It is tasks 1 to 5, 22 and 26.
   record folders pending, so 0.1.0 was never published. The next release pull request,
   [osdlc/osdlc#733](https://github.com/osdlc/osdlc/pull/733), made record folders a second minor
   bump. The owner merged it on 2026-11-09.
-- **4. Example claims corpus.** This repo gets a valid level-2 corpus at `profiles/claims/example/`.
-  It has the VA-Spec types (decision D8): `documents`, `study-results`, `methods` and `statements`.
+- **4. Example claims corpus.** osdlc/markdown gets a valid level-2 corpus at
+  `profiles/claims/example/`. It comes to osdlc/osdlc with the profiles (task 78). It has the VA-Spec types (decision D8): `documents`, `study-results`, `methods` and `statements`.
   Each type has a schema. A few example records show the whole chain. A statement is a claim
   together with the evidence lines that support or dispute it. A README at
   `profiles/claims/README.md` maps each type to VA-Spec and says what we leave out. CI checks the
@@ -151,7 +151,7 @@ use the same rules.
 | F8 | The validator walks the folder itself | corpus-schema doesn't use the corpus model |
 | F9 | Two query layers | markdown-vault-query exists; corpus-schema plans a loader |
 | F10 | The old name sounded like a database | fixed: the spec is now corpus-schema |
-| F11 | Packages in the wrong place | `@osdlc` packages that live in dev, including a private copy of markdown-link; vault-graph-core is `@sdlc` |
+| F11 | Packages in the wrong place | `@osdlc` packages that live in dev, including a private copy of markdown-tags; vault-graph-core is `@sdlc` |
 
 The Rust code says vault in markdown-vault-fs, in markdown-relink's `VaultFacts` and in
 markdown-store's `VaultHandle`. The TypeScript code says vault in markdown-vault and
@@ -243,8 +243,9 @@ file for two separate jobs (D15):
   referenced corpus can reference another one, so org, team and project form a chain.
 
 The parts below marked decided are decisions D4, D11, D12, D15 and D16. They are built in
-[#12](https://github.com/osdlc/markdown/pull/12) for corpus-schema 0.3.0 (tasks 9, 27, 29, 70 and
-71). The parts marked proposal are still open.
+[osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12), brought here in
+[osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790), for corpus-schema 0.3.0 (tasks 9,
+27, 29, 70 and 71). The parts marked proposal are still open.
 
 **Other corpora are npm packages (decided, D11).** A parent or a referenced corpus is an npm package
 or a local folder. npm or pnpm installs it. `package.json` holds the version range and the lockfile
@@ -319,9 +320,12 @@ The goal: a corpus can build on profiles and cite other corpora's records, all a
 packages, with a lockfile pinning them. We work toward it in this order. Each step names its task numbers. A task here can wait on one
 outside the milestone, such as task 26.
 
-1. **Finish the release setup here (task 21).** [osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9),
-   [osdlc/markdown#10](https://github.com/osdlc/markdown/pull/10) and
-   [osdlc/markdown#17](https://github.com/osdlc/markdown/pull/17) have merged.
+1. **Release corpus-schema from osdlc/osdlc (task 21).** The 0.3.0 work comes back from
+   [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12) in
+   [osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790). osdlc/markdown's release setup
+   ([osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9),
+   [#10](https://github.com/osdlc/markdown/pull/10) and
+   [#17](https://github.com/osdlc/markdown/pull/17)) merged before D19 reversed the move.
 2. **Spec and validator (tasks 9, 27, 70 and 71).** `extends`, `uses` and `references` with both
    resolvers, transitive loading, `x-extends`, cross-corpus `x-ref`, ids cut by `x-id-pattern`,
    `x-record-file`, and identity by Package URL.

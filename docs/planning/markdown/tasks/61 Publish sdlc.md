@@ -7,8 +7,8 @@ type: supporting
 milestone: "[m-sdlc-profile](../milestones/m-sdlc-profile.md)"
 after:
   - "[49 SDLC profiles](49%20SDLC%20profiles.md)"
-  - "[80 Models publishers](80%20Models%20publishers.md)"
-  - "[78 Models repo setup](78%20Models%20repo%20setup.md)"
+  - "[80 Profile publishers](80%20Models%20publishers.md)"
+  - "[78 Bring in profiles](78%20Models%20repo%20setup.md)"
 ---
 
 Publish `@osdlc/corpus-profile-sdlc` to npm from its folder in osdlc/osdlc (task 78). Owner work:

@@ -10,6 +10,7 @@ after:
   - "[29 Sync](29%20Sync.md)"
 prs:
   - "[osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12)"
+  - "[osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790)"
 ---
 
 `references` in the root file, as decision D15 says. It maps a prefix to another corpus, by package

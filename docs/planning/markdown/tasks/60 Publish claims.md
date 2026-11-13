@@ -7,8 +7,8 @@ type: supporting
 milestone: "[m-npm](../milestones/m-npm.md)"
 after:
   - "[23 Claims profile](23%20Claims%20profile.md)"
-  - "[80 Models publishers](80%20Models%20publishers.md)"
-  - "[78 Models repo setup](78%20Models%20repo%20setup.md)"
+  - "[80 Profile publishers](80%20Models%20publishers.md)"
+  - "[78 Bring in profiles](78%20Models%20repo%20setup.md)"
 ---
 
 Publish `@osdlc/corpus-profile-claims` 0.1.0 to npm from its folder in osdlc/osdlc (task 78). Owner

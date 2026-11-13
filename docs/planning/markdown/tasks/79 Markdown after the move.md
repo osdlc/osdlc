@@ -6,7 +6,7 @@ status: todo
 type: supporting
 milestone: "[m-upstream](../milestones/m-upstream.md)"
 after:
-  - "[78 Models repo setup](78%20Models%20repo%20setup.md)"
+  - "[78 Bring in profiles](78%20Models%20repo%20setup.md)"
   - "[60 Publish claims](60%20Publish%20claims.md)"
 ---
 

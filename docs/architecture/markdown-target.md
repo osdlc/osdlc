@@ -52,9 +52,8 @@ The pieces of one note.
 - Twins: markdown-link, frontmatter-lossless, markdown-tags, markdown-contract, and gfm-table
   (TypeScript) with gfm-pipe-table (Rust). yaml-splice is a binding: the Rust crate, built to
   WebAssembly for TypeScript.
-- Today dev also has its own copy of markdown-link. markdown-vault, vault-graph-core and
-  markdown-astro use that copy (`workspace:*`), not the published one. In the target they use the
-  published package.
+- dev no longer has its own copy of markdown-link. markdown-vault, vault-graph-core and
+  markdown-astro use the published package, `^0.8.1` (sksizer/dev 48b62783).
 - Target: TypeScript markdown-link gets the same link resolver as the Rust one, called `LinkIndex`.
   Then it is the only place in each language that decides what a link points to.
 
@@ -201,18 +200,19 @@ Reading a corpus as a database.
 - It owns: loading records into memory, queries, and building other forms from them, such as JSON or
   SQLite files.
 - It reads the corpus model and corpus-schema. It does not have its own file walk or link rules.
-- Today: markdown-vault-query (dev) runs Obsidian Bases queries over a vault. Target: it moves to
-  osdlc on top of the corpus model, and becomes the one query layer. We keep the word "db" for this
-  layer.
+- Today: markdown-vault-query (dev) runs Obsidian Bases queries over a vault. It stays in
+  sksizer/dev; no move is planned. Target: it sits on top of the corpus model and becomes the one
+  query layer. We keep the word "db" for this layer.
 
 ### 8. Render, edit, sites
 
 Showing notes to people.
 
 - It owns: turning notes into HTML, the live editor, viewing chrome, and building sites.
-- Packages: markdown-render, markdown-editor, markdown-ui and markdown-astro. They live in dev today
-  and move to osdlc ([osdlc/osdlc#720](https://github.com/osdlc/osdlc/pull/720) and
-  [osdlc/osdlc#719](https://github.com/osdlc/osdlc/pull/719) are open).
+- Packages: markdown-render, markdown-render-vue and markdown-vault-astro are in osdlc and on npm
+  at 0.8.0 ([osdlc/osdlc#719](https://github.com/osdlc/osdlc/pull/719) and
+  [osdlc/osdlc#720](https://github.com/osdlc/osdlc/pull/720) merged). markdown-editor, markdown-ui
+  and dev's own markdown-render and markdown-astro stay in sksizer/dev; no move is planned.
 
 ### 9. Apps
 
@@ -301,7 +301,7 @@ A twin can have extras the other doesn't need. It just has to pass the shared ca
 
 | Job | Today | Target |
 |---|---|---|
-| Note parts | osdlc; dev also has a private copy of markdown-link | osdlc, used from npm and crates.io |
+| Note parts | osdlc; dev also has a private copy of markdown-tags | osdlc, used from npm and crates.io |
 | Corpus model, TypeScript | markdown-vault and vault-graph-core in dev | markdown-corpus in osdlc |
 | Corpus model, Rust | markdown-corpus in osdlc | the same |
 | corpus-schema | osdlc; 0.2.1 is on npm, published from osdlc | the same |

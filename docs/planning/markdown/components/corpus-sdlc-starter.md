@@ -7,8 +7,8 @@ states: [target]
 status: planned
 repo_target: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
 tasks:
-  - "[78 Models repo setup](../tasks/78%20Models%20repo%20setup.md)"
-  - "[80 Models publishers](../tasks/80%20Models%20publishers.md)"
+  - "[78 Bring in profiles](../tasks/78%20Models%20repo%20setup.md)"
+  - "[80 Profile publishers](../tasks/80%20Models%20publishers.md)"
   - "[63 Starter corpus](../tasks/63%20Starter%20corpus.md)"
   - "[64 Starter content](../tasks/64%20Starter%20content.md)"
   - "[65 Leak check](../tasks/65%20Leak%20check.md)"

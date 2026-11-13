@@ -16,8 +16,8 @@ target is planned.
 ```jsonc
 {
   "asOf": "2026-11-09",                 // the date the facts were checked
-  "sources": ["docs/architecture.md", "..."],   // what the facts were taken from
-  "layers": [                           // top to bottom, as in docs/architecture.md
+  "sources": ["docs/architecture/markdown-target.md", "..."],   // what the facts were taken from
+  "layers": [                           // top to bottom, as in docs/architecture/markdown-target.md
     { "id": "files", "label": "1. Files", "summary": "one sentence" }
   ],
   "repos": [

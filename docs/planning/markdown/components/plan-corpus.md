@@ -3,8 +3,10 @@ name: the Markdown Ecosystem Plan corpus
 kind: corpus
 language: markdown
 layer: "[apps](../layers/apps.md)"
-states: [target]
-status: in-progress
+states: [present, target]
+status: unpublished
+repo_present: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
+path_present: docs/planning/markdown
 repo_target: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
 path_target: docs/planning/markdown
 tasks:
@@ -14,16 +16,18 @@ tasks:
 links:
   - "[osdlc/markdown#13](https://github.com/osdlc/markdown/pull/13)"
   - "[osdlc/markdown#14](https://github.com/osdlc/markdown/pull/14)"
-implements_new:
+implements:
   - "[corpus-schema-spec](corpus-schema-spec.md)"
 extends_new:
   - "[corpus-profile-sdlc](corpus-profile-sdlc.md)"
+extends_going:
+  - "[corpus-profile-planning](corpus-profile-planning.md)"
 reads_new:
   - "[corpus-sdlc-starter](corpus-sdlc-starter.md)"
-dev_depends_new:
+dev_depends:
   - "[corpus-schema-ts](corpus-schema-ts.md)"
 edge_notes:
-  - edge: implements_new
+  - edge: implements
     to: "[corpus-schema-spec](corpus-schema-spec.md)"
     note: A valid level-2 corpus.
   - edge: extends_new
@@ -32,7 +36,7 @@ edge_notes:
   - edge: reads_new
     to: "[corpus-sdlc-starter](corpus-sdlc-starter.md)"
     note: "Under references: as osdlc (D15), from npm, synced into _references/osdlc/ (task 53)."
-  - edge: dev_depends_new
+  - edge: dev_depends
     to: "[corpus-schema-ts](corpus-schema-ts.md)"
     note: CI checks it with this repo's corpus-schema, which knows extends.
 ---
@@ -42,7 +46,7 @@ explorer's data is built from it.
 
 ## Notes
 
-- Built in osdlc/markdown#13 and #14 at docs/planning. It comes to osdlc/osdlc at
+- Built in osdlc/markdown#13 and #14 at docs/planning. It is now in osdlc/osdlc at
   docs/planning/markdown (decision D19).
 - Today it extends the planning profile. Its tasks and milestones add fields, and its decisions use
   the profile's type as it is.

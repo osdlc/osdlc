@@ -9,6 +9,7 @@ after:
   - "[9 Extends](9%20Extends.md)"
 prs:
   - "[osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12)"
+  - "[osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790)"
 ---
 
 `uses` in the root file, as decision D15 says. `uses: [sdlc/*]` takes a parent's types as they are,
