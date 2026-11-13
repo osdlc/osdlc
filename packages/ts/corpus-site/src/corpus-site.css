@@ -1068,6 +1068,63 @@ mark {
   font-size: var(--cs-smaller);
 }
 
+/* A link to a record with what is shown of it, on one line */
+
+.cs-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.1rem 0.6rem;
+  max-width: 100%;
+}
+
+.cs-group-item {
+  min-width: 0;
+}
+
+.cs-group-item + .cs-group-item {
+  color: var(--cs-muted);
+  font-size: var(--cs-smaller);
+}
+
+.cs-table .cs-group,
+.cs-matrix .cs-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.cs-table td a.cs-external {
+  overflow-wrap: anywhere;
+}
+
+.cs-table td[data-tree]:has(.cs-group) {
+  min-width: 10.5rem;
+}
+
+/* A link that leaves the site */
+
+a.cs-external {
+  overflow-wrap: anywhere;
+}
+
+a.cs-external::after {
+  content: '\2197';
+  display: inline-block;
+  margin-left: 0.15em;
+  font-size: 0.8em;
+  text-decoration: none;
+  opacity: 0.7;
+}
+
+.cs-lead-links {
+  font-size: 1rem;
+}
+
+.cs-lead-links a.cs-external {
+  font-size: 1.0625rem;
+}
+
 .cs-pager {
   display: flex;
   align-items: center;
@@ -1378,12 +1435,12 @@ abbr.cs-term {
 }
 
 .cs-table[data-untitled] td:first-child {
-  min-width: 8rem;
+  min-width: 7rem;
   font-weight: 500;
 }
 
 .cs-table td[data-tree]:has(.cs-pairs) {
-  min-width: 14rem;
+  min-width: 10.5rem;
 }
 
 .cs-cell-open {

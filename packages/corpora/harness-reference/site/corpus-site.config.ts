@@ -57,7 +57,11 @@ export default defineCorpusSite({
           fields: ['status', 'direction', 'strength', 'supersedes', 'open'],
           note: 'How far the evidence backs the claim.',
         },
-        { label: 'Evidence', fields: ['hasEvidenceLines', 'reportedIn', 'specifiedBy'] },
+        {
+          label: 'Evidence',
+          fields: ['reportedIn', 'hasEvidenceLines', 'specifiedBy'],
+          note: 'The documents the answer was read from, then each line of evidence with the documents behind it.',
+        },
       ],
       fields: {
         status: {
@@ -105,8 +109,13 @@ export default defineCorpusSite({
           keysFrom: { ref: 'subject', schemaAt: 'valueSchema' },
         },
         hasEvidenceLines: { label: 'Evidence lines' },
-        'hasEvidenceLines.hasEvidenceItems': { label: 'Evidence' },
-        reportedIn: { label: 'Reported in' },
+        'hasEvidenceLines.hasEvidenceItems': {
+          label: 'Evidence',
+          help: 'The study results the line rests on: the date we looked, what we looked at, and the documents.',
+          linkText: '{observed} \u00b7 {kind}',
+          show: ['reportedIn'],
+        },
+        reportedIn: { label: 'Source', help: 'The documents the answer was read from.', show: ['urls', 'publisher'] },
         specifiedBy: { label: 'Method' },
         imported_from: { hidden: true },
         contributions: { order: 99 },
@@ -120,7 +129,22 @@ export default defineCorpusSite({
       columns: ['title', 'harness', 'kind', 'observed', 'version', 'version_basis'],
       filters: ['kind', 'version_basis', 'harness', 'observed', 'specifiedBy'],
       sort: '-observed',
-      sections: [{ label: 'Observation', fields: ['harness', 'kind', 'observed', 'version', 'version_basis', 'locator', 'excerpt'] }],
+      sections: [
+        {
+          label: 'Source',
+          fields: ['reportedIn', 'specifiedBy', 'kind', 'observed', 'locator', 'excerpt'],
+          note: 'What was looked at, when, and where in it.',
+        },
+        { label: 'Observation', fields: ['harness', 'version', 'version_basis'] },
+      ],
+      related: [
+        {
+          label: 'Answers that cite it',
+          from: 'statements',
+          via: 'hasEvidenceLines.hasEvidenceItems',
+          columns: ['title', 'proposition.object', 'status'],
+        },
+      ],
       fields: {
         kind: {
           control: 'chips',
@@ -149,7 +173,8 @@ export default defineCorpusSite({
         observed: { help: 'The date we looked. It is not the page’s own date.', format: { kind: 'date', dateStyle: 'medium' } },
         version: { format: 'code' },
         specifiedBy: { label: 'Method', help: 'The method a run followed.', note: 'Only runs have a method.' },
-        reportedIn: { label: 'Reported in' },
+        reportedIn: { label: 'Documents', help: 'The documents the result was read from.', show: ['urls', 'publisher'] },
+        locator: { help: 'Where in the document: a heading, a line range, or the command that was run.' },
         imported_from: { hidden: true },
         contributions: { order: 99 },
       },
@@ -218,8 +243,10 @@ export default defineCorpusSite({
           from: 'statements',
           via: 'subject',
           where: { status: 'current' },
-          columns: ['harness', 'proposition.object', 'scope', 'strength', 'hasEvidenceLines.hasEvidenceItems'],
+          columns: ['harness', 'proposition.object', 'scope', 'strength', 'reportedIn', 'hasEvidenceLines.hasEvidenceItems'],
           sort: 'harness',
+          // The Source column names the documents already.
+          fields: { 'hasEvidenceLines.hasEvidenceItems': { show: [] } },
         },
       ],
       fields: {
@@ -232,7 +259,25 @@ export default defineCorpusSite({
     },
     documents: {
       blurb: 'A page we can point at, grouped by publisher.',
-      columns: ['title', 'publisher', 'url_status', 'documentType'],
+      summary: '{urls}',
+      columns: ['title', 'urls', 'publisher', 'url_status'],
+      related: [
+        {
+          label: 'Answers read from it',
+          from: 'statements',
+          via: 'reportedIn',
+          where: { status: 'current' },
+          columns: ['title', 'proposition.object', 'strength'],
+        },
+        {
+          label: 'Study results',
+          note: 'Each time we looked at the document, and what we looked for.',
+          from: 'study-results',
+          via: 'reportedIn',
+          columns: ['title', 'kind', 'observed', 'locator'],
+          sort: '-observed',
+        },
+      ],
       filters: ['url_status', 'publisher'],
       fields: {
         url_status: {
@@ -241,7 +286,7 @@ export default defineCorpusSite({
         },
         publisher: { control: 'select' },
         documentType: { label: 'Document type' },
-        urls: { label: 'URLs' },
+        urls: { label: 'URLs', mark: { when: { url_status: 'dead' }, label: 'Dead link', color: 'red' } },
       },
     },
     methods: {

@@ -23,6 +23,7 @@ import {
   type DerivedConfig,
   type FieldConfig,
   type KeysFrom,
+  type MarkConfig,
   type MatrixViewConfig,
   type RelatedConfig,
   type SectionConfig,
@@ -72,6 +73,12 @@ export interface SiteField extends Omit<DataField, 'options'> {
   keysFrom: KeysFrom | null
   /** How the site works the field out, or null for a field the records hold. */
   derived: DerivedConfig | null
+  /** What to show of the records the field names, beside their links, or null. */
+  show: string[] | string | null
+  /** The text of a link to a record the field names, as a template, or null for its title. */
+  linkText: string | null
+  /** A badge after the value on some records, or null. */
+  mark: MarkConfig | null
 }
 
 /** A view of a type with its address. */
@@ -502,12 +509,42 @@ export class Site {
       fieldSchemaAt(record.type.source, path) !== undefined
     )
       return [{ record, path }]
-    const [head = '', ...rest] = path.split('.')
-    const field = this.field(record.type, head)
-    if (field?.kind !== 'reference' || rest.length === 0) return []
-    return this.referencesOf(record, head).flatMap((r) =>
-      r.target === null ? [] : this.follow(r.target, rest.join('.')),
-    )
+    const parts = path.split('.')
+    for (let i = 1; i < parts.length; i++) {
+      const head = parts.slice(0, i).join('.')
+      const reference = this.field(record.type, head)?.kind === 'reference'
+      if (!reference && fieldSchemaAt(record.type.source, head) === undefined) continue
+      const named = this.namedAt(record, head)
+      if (!reference && named.length === 0) continue
+      const rest = parts.slice(i).join('.')
+      return named.flatMap((target) => this.follow(target, rest))
+    }
+    return []
+  }
+
+  /**
+   * The records a field of a record names: a reference field's targets, or the records that the
+   * Markdown links at a path inside an object or a list point at.
+   */
+  namedAt(record: SiteRecord, path: string): SiteRecord[] {
+    if (this.field(record.type, path)?.kind === 'reference')
+      return this.referencesOf(record, path).flatMap((r) => (r.target === null ? [] : [r.target]))
+    const value = valueAt(record.record.data, path)
+    return (Array.isArray(value) ? value : [value]).flatMap((v) => {
+      const link = typeof v === 'string' ? parseWholeLink(v) : null
+      const target = link === null ? undefined : this.linked(record, link.href)
+      return target === undefined ? [] : [target]
+    })
+  }
+
+  /** The record a relative link written in a record's file points at, or undefined. */
+  linked(from: SiteRecord, href: string): SiteRecord | undefined {
+    if (/^[a-z][a-z0-9+.-]*:/i.test(href)) return undefined
+    const target = safeDecode(href.split('#')[0] ?? '')
+    const known = from.record.links.find((l) => l.href === target || safeDecode(l.href) === target)
+    if (known !== undefined) return this.record(known.target)
+    const path = posix.normalize(posix.join(posix.dirname(from.record.path), target))
+    return this.#records.get(`${from.corpus}\0${path}`)
   }
 
   /**
@@ -534,8 +571,8 @@ export class Site {
   readonly #incoming = new Map<string, Map<SiteRecord, SiteRecord[]>>()
 
   /**
-   * The records of the type `from` whose reference field `via` names `target`, that pass
-   * `where`, in id order.
+   * The records of the type `from` whose field `via` names `target`, that pass `where`, in id
+   * order. `via` is a reference field, or a path to Markdown links.
    */
   incoming(target: SiteRecord, from: string, via: string, where?: WhereConfig): SiteRecord[] {
     const key = `${from}\0${via}`
@@ -544,8 +581,7 @@ export class Site {
       index = new Map()
       const type = this.type(from)
       for (const record of type === undefined ? [] : this.recordsOf(type))
-        for (const { target: to } of this.referencesOf(record, via)) {
-          if (to === null) continue
+        for (const to of this.namedAt(record, via)) {
           const held = index.get(to) ?? []
           if (!held.includes(record)) held.push(record)
           index.set(to, held)
@@ -751,6 +787,9 @@ function siteField(
     order: config.order ?? index,
     keysFrom: config.keysFrom ?? null,
     derived: null,
+    show: config.show ?? null,
+    linkText: config.linkText ?? null,
+    mark: config.mark ?? null,
   }
 }
 

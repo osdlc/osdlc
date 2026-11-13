@@ -96,6 +96,12 @@ by side, and a tool's page every answer it has, grouped by the question's catego
 the side, tools across the top, the answer where they meet. A reader picks a group of rows and
 the columns to compare, and the choice is in the address.
 
+**Sources.** A claim is only as good as what it was read from, and that is often two records
+away: an answer cites an observation, and the observation names a document with a URL. `show` on
+a field that names records puts fields of those records beside each link, so the document's URL
+is one click from the answer. `linkText` shortens a link to what matters, and `mark` flags a
+value, such as a dead link. A URL is always a link that opens in a new tab.
+
 **Counts.** `derived` adds a number worked out at build time, such as how many tools have an
 answer to a question. It can be a column, a filter and a sort.
 

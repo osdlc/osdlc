@@ -71,6 +71,11 @@ function line(value: unknown, top: boolean): string {
   return String(value)
 }
 
+/** A URL as a reader sees it: no scheme, no `www.` and no trailing `/`. */
+export function shortUrl(url: string): string {
+  return url.replace(/^[a-z][a-z0-9+.-]*:\/\/(www\.)?/i, '').replace(/\/$/, '')
+}
+
 /** The text of a tree on one line, as `oneLine` writes a value. */
 export function treeText(tree: DataTree | undefined, top = true): string {
   if (tree === null || tree === undefined) return ''
@@ -80,6 +85,11 @@ export function treeText(tree: DataTree | undefined, top = true): string {
       .map((item) => treeText(item, false))
       .filter(Boolean)
       .join(', ')
+  if ('group' in tree)
+    return tree.group
+      .map((item) => treeText(item, false))
+      .filter(Boolean)
+      .join(' ')
   if ('entries' in tree)
     return tree.entries
       .map((entry) => `${entry.label}: ${treeText(entry.value, false)}`)

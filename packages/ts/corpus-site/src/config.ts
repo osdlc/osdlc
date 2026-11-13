@@ -68,7 +68,32 @@ export interface FieldConfig {
   values?: Record<string, ValueConfig>
   /** For a field that holds an object: where the labels and help of its keys come from. */
   keysFrom?: KeysFrom
+  /**
+   * For a field that names records, by reference or as Markdown links: what to show of each
+   * record beside its link. A list names fields of the record, shown after the link:
+   * `['urls', 'publisher']`. Text with `{field}` places is written out in full, and `{title}`
+   * in it is the link: `'{title} ({urls})'`.
+   */
+  show?: string[] | string
+  /**
+   * For a field that names records: the text of each link, with `{field}` places filled from
+   * the record it names, such as `'{observed} · {kind}'`. Default: the record's title.
+   */
+  linkText?: string
+  /** A badge shown after the field's value on the records that hold certain values. */
+  mark?: MarkConfig
 }
+
+/** A badge after a field's value, on the records that hold the values `when` asks for. */
+export interface MarkConfig {
+  when: WhereConfig
+  label: string
+  /** The badge colour. Default `neutral`. */
+  color?: BadgeColor
+}
+
+/** What a related table changes about one of its columns. */
+export type RelatedFieldConfig = Pick<FieldConfig, 'label' | 'show' | 'linkText'>
 
 /**
  * Labels for the keys of an object value, taken from a JSON Schema another record holds. `ref`
@@ -103,7 +128,10 @@ export interface RelatedConfig {
   note?: string
   /** The type whose records are listed. */
   from: string
-  /** The reference field of `from` that names this record. */
+  /**
+   * The field of `from` that names this record: a reference field, or a path to Markdown links
+   * inside an object or a list, such as `hasEvidenceLines.hasEvidenceItems`.
+   */
   via: string
   /** Keep only the records that hold these values. */
   where?: WhereConfig
@@ -117,6 +145,8 @@ export interface RelatedConfig {
   sort?: string
   /** A field path. Rows that share its value sit under one heading. */
   groupBy?: string
+  /** For a column of this table only: another label, `show` or `linkText`. */
+  fields?: Record<string, RelatedFieldConfig>
 }
 
 /** A table that crosses two fields of a type: one row per value of one, one column per value of the other. */
@@ -300,7 +330,17 @@ const TYPE_KEYS = [
   'views',
   'searchWeight',
 ]
-const RELATED_KEYS = ['label', 'note', 'from', 'via', 'where', 'columns', 'sort', 'groupBy']
+const RELATED_KEYS = [
+  'label',
+  'note',
+  'from',
+  'via',
+  'where',
+  'columns',
+  'sort',
+  'groupBy',
+  'fields',
+]
 const VIEW_KEYS = [
   'kind',
   'label',
@@ -325,6 +365,9 @@ const FIELD_KEYS = [
   'format',
   'values',
   'keysFrom',
+  'show',
+  'linkText',
+  'mark',
 ]
 
 const list = (names: Iterable<string>): string => [...names].join(', ') || '(none)'
@@ -425,7 +468,9 @@ export function configProblems(config: CorpusSiteConfig, model: LoadedCorpus): s
         return undefined
       }
       const refs = fromType.fields.filter((f) => f.ref !== null).map((f) => f.name)
-      if (!refs.includes(String(via))) {
+      // A path into an object or a list may hold Markdown links to records.
+      const nested = String(via).includes('.') && holdsText(fieldSchemaAt(fromType, String(via)))
+      if (!refs.includes(String(via)) && !nested) {
         problems.push(
           `${at}.via: type "${fromType.name}" has no reference field "${String(via)}". Reference fields: ${list(refs)}`,
         )
@@ -447,6 +492,41 @@ export function configProblems(config: CorpusSiteConfig, model: LoadedCorpus): s
     }
     const derivedOf = (t: CorpusType): string[] =>
       Object.keys(config.types?.[t.name]?.derived ?? {})
+    // `show` and `linkText` name fields of the records a field points at. `targets` are their
+    // types when the schema says them: a reference field's.
+    const checkShow = (
+      at: string,
+      field: Pick<FieldConfig, 'show' | 'linkText'>,
+      targets: CorpusType[],
+    ): void => {
+      const { show, linkText } = field
+      if (
+        show !== undefined &&
+        typeof show !== 'string' &&
+        !(Array.isArray(show) && show.every((path) => typeof path === 'string'))
+      ) {
+        problems.push(`${at}.show: must be a list of fields, or text with {field} places`)
+        return
+      }
+      if (linkText !== undefined && typeof linkText !== 'string') {
+        problems.push(`${at}.linkText: must be text with {field} places`)
+        return
+      }
+      const named = [
+        ...(typeof show === 'string' ? templateFields(show) : (show ?? [])).map(
+          (path) => ['show', path] as const,
+        ),
+        ...templateFields(linkText ?? '').map((path) => ['linkText', path] as const),
+      ]
+      for (const [setting, path] of named)
+        for (const target of targets)
+          checkPaths(
+            `${at}.${setting}`,
+            target,
+            [path],
+            ['title', 'id', 'name', ...derivedOf(target)],
+          )
+    }
 
     for (const [name, derived] of Object.entries(type.derived ?? {})) {
       const at = `${where}.derived.${name}`
@@ -476,6 +556,14 @@ export function configProblems(config: CorpusSiteConfig, model: LoadedCorpus): s
       else checkPaths(`${at}.columns`, from, related.columns, extra)
       checkPaths(`${at}.where`, from, Object.keys(related.where ?? {}))
       if (related.groupBy !== undefined) checkPaths(`${at}.groupBy`, from, [related.groupBy])
+      for (const [name, over] of Object.entries(related.fields ?? {})) {
+        if (!(related.columns ?? []).includes(name))
+          problems.push(
+            `${at}.fields: "${name}" is not a column of the table. Columns: ${list(related.columns ?? [])}`,
+          )
+        unknownKeys(`${at}.fields.${name}`, over, ['label', 'show', 'linkText'])
+        checkShow(`${at}.fields.${name}`, over, [])
+      }
       if (related.sort !== undefined) {
         const column = related.sort.replace(/^-/, '')
         if (column !== 'title' && !(related.columns ?? []).includes(column))
@@ -564,6 +652,39 @@ export function configProblems(config: CorpusSiteConfig, model: LoadedCorpus): s
         if (typeof schemaAt !== 'string' || schemaAt === '')
           problems.push(`${at}.keysFrom.schemaAt: name the field that holds the JSON Schema`)
       }
+      const own = corpusType.fields.find((f) => f.name === fieldName)
+      if (
+        (field.show !== undefined || field.linkText !== undefined) &&
+        (own === undefined || own.ref === null) &&
+        !holdsText(fieldSchemaAt(corpusType, fieldName))
+      )
+        problems.push(
+          `${at}: "show" and "linkText" are for a field that names records. Reference fields: ${list(referenceFields)}`,
+        )
+      else
+        checkShow(
+          at,
+          field,
+          (own?.ref?.targets ?? [])
+            .map((t) =>
+              (t.corpus === '' ? model : model.corpora[t.corpus])?.types.find(
+                (m) => m.name === t.type,
+              ),
+            )
+            .filter((t) => t !== undefined),
+        )
+      if (field.mark !== undefined) {
+        unknownKeys(`${at}.mark`, field.mark, ['when', 'label', 'color'])
+        if (typeof field.mark.label !== 'string' || field.mark.label === '')
+          problems.push(`${at}.mark.label: a mark needs a label`)
+        if (field.mark.color !== undefined && !COLORS.includes(field.mark.color))
+          problems.push(
+            `${at}.mark.color: "${String(field.mark.color)}" is not a badge colour. Colours: ${list(COLORS)}`,
+          )
+        if (typeof field.mark.when !== 'object' || field.mark.when === null)
+          problems.push(`${at}.mark.when: name the field values that set the mark`)
+        else checkPaths(`${at}.mark.when`, corpusType, Object.keys(field.mark.when))
+      }
       for (const [value, valueConfig] of Object.entries(field.values ?? {}))
         if (valueConfig.color !== undefined && !COLORS.includes(valueConfig.color))
           problems.push(
@@ -595,13 +716,30 @@ export function configProblems(config: CorpusSiteConfig, model: LoadedCorpus): s
  */
 function pathExists(model: LoadedCorpus, type: CorpusType, path: string): boolean {
   if (fieldSchemaAt(type, path) !== undefined) return true
-  const [head = '', ...rest] = path.split('.')
-  const field = type.fields.find((f) => f.name === head)
-  if (field === undefined || rest.length === 0) return false
+  const parts = path.split('.')
+  const field = type.fields.find((f) => f.name === parts[0])
+  if (field === undefined || parts.length < 2) return false
   const targets = (field.ref?.targets ?? []).map((t) =>
     (t.corpus === '' ? model : model.corpora[t.corpus])?.types.find((m) => m.name === t.type),
   )
-  return targets.some((t) => t !== undefined && pathExists(model, t, rest.join('.')))
+  if (targets.some((t) => t !== undefined && pathExists(model, t, parts.slice(1).join('.'))))
+    return true
+  // Text inside an object or a list may be a Markdown link to a record of any type.
+  for (let i = 2; i < parts.length; i++)
+    if (holdsText(fieldSchemaAt(type, parts.slice(0, i).join('.')))) {
+      const rest = parts.slice(i).join('.')
+      return rest === 'title' || model.types.some((t) => pathExists(model, t, rest))
+    }
+  return false
+}
+
+/** Whether a field schema is for a string, or for a list of strings. */
+function holdsText(schema: Record<string, unknown> | undefined): boolean {
+  if (schema === undefined) return false
+  const items = schema['items']
+  if (schema['type'] === 'array' && typeof items === 'object' && items !== null)
+    return (items as Record<string, unknown>)['type'] === 'string'
+  return schema['type'] === 'string'
 }
 
 /** Throw a `CorpusSiteConfigError` when `configProblems` finds any. */

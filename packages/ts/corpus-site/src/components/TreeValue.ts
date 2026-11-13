@@ -15,7 +15,28 @@ export const CLIP = 110
 type Leaf = string | DataTreeText
 
 const isLeaf = (tree: DataTree): tree is Leaf =>
-  typeof tree === 'string' || (tree !== null && !Array.isArray(tree) && !('entries' in tree))
+  typeof tree === 'string' ||
+  (tree !== null && !Array.isArray(tree) && !('entries' in tree) && !('group' in tree))
+
+/** A link. One that leaves the site opens in a new tab and carries a mark. */
+export function link(url: string, external: boolean, text: string): VNodeChild {
+  return external
+    ? h(
+        'a',
+        { href: url, class: 'cs-external', target: '_blank', rel: 'noopener', title: url },
+        text,
+      )
+    : h('a', { href: url }, text)
+}
+
+/** A group: its values side by side on one line. */
+function group(items: DataTree[], value: (tree: DataTree) => VNodeChild): VNodeChild {
+  return h(
+    'span',
+    { class: 'cs-group' },
+    items.map((item) => h('span', { class: 'cs-group-item' }, [value(item)])),
+  )
+}
 
 const clipped = (text: string, clip: number): string =>
   text.length > clip ? `${text.slice(0, clip - 1).trimEnd()}…` : text
@@ -23,7 +44,7 @@ const clipped = (text: string, clip: number): string =>
 function leaf(node: Leaf, clip = Infinity): VNodeChild {
   if (typeof node === 'string') return clipped(node, clip)
   const text = clipped(node.text, clip)
-  if (node.url !== undefined) return h('a', { href: node.url }, text)
+  if (node.url !== undefined) return link(node.url, node.external === true, text)
   if (node.color !== undefined)
     return h('span', { class: 'cs-badge', 'data-color': node.color }, text)
   return node.code === true ? h('code', text) : text
@@ -56,6 +77,7 @@ function full(tree: DataTree): VNodeChild {
       tree.map((item) => h('li', [full(item)])),
     )
   }
+  if ('group' in tree) return group(tree.group, full)
   return pairs(tree, full)
 }
 
@@ -63,7 +85,29 @@ function full(tree: DataTree): VNodeChild {
 function preview(tree: DataTree): { node: VNodeChild; cut: boolean } {
   if (tree === null) return { node: full(tree), cut: false }
   if (isLeaf(tree)) return { node: leaf(tree, CLIP), cut: leafLength(tree) > CLIP }
+  if ('group' in tree) {
+    const parts = tree.group.map(preview)
+    return {
+      node: h(
+        'span',
+        { class: 'cs-group' },
+        parts.map((part) => h('span', { class: 'cs-group-item' }, [part.node])),
+      ),
+      cut: parts.some((part) => part.cut),
+    }
+  }
   if (Array.isArray(tree)) {
+    if (tree.every((item) => item !== null && !isLeaf(item) && 'group' in item)) {
+      const shown = tree.slice(0, MAX_PAIRS).map(preview)
+      const more = tree.length - shown.length
+      return {
+        node: h('ul', { class: 'cs-list' }, [
+          ...shown.map((part) => h('li', [part.node])),
+          more > 0 ? h('li', { class: 'cs-more' }, `+${more}`) : null,
+        ]),
+        cut: more > 0 || shown.some((part) => part.cut),
+      }
+    }
     if (tree.every(isLeaf)) {
       const shown = tree.slice(0, MAX_PAIRS)
       const more = tree.length - shown.length

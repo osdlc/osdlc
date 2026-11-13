@@ -6,7 +6,7 @@ import { FieldValue } from 'virtual:corpus-site/components'
 import { ResultTable } from '../components/index.js'
 import { getSite } from '../context.js'
 import { relatedTables } from '../data.js'
-import { backlinkGroups, fieldSections, recordFiles } from '../display.js'
+import { backlinkGroups, displayPath, fieldSections, recordFiles } from '../display.js'
 import { renderBody } from '../markdown.js'
 
 const { record } = Astro.props
@@ -17,6 +17,13 @@ const files = recordFiles(site, record)
 const related = relatedTables(site, record)
 const backlinks = backlinkGroups(site, record)
 const pointing = backlinks.reduce((n, group) => n + group.records.length, 0)
+// A summary that is one field of links is drawn as the links, so a URL under the title can be followed.
+const place = /^\{([^{}]+)\}$/.exec(record.type.summaryTemplate ?? '')
+const led = place === null ? null : displayPath(site, record, place[1].trim())
+const linked = (value) =>
+  value.kind === 'link' ||
+  ((value.kind === 'list' || value.kind === 'group') && value.items.some(linked))
+const lead = led !== null && linked(led) ? led : null
 ---
 
 <div class="cs-with-rail">
@@ -27,7 +34,7 @@ const pointing = backlinks.reduce((n, group) => n + group.records.length, 0)
       {record.corpus !== '' && <span> · {record.corpus}</span>}
     </p>
     <h1>{record.title}</h1>
-    {record.summary && <p class="cs-lead">{record.summary}</p>}
+    {lead ? <div class="cs-lead cs-lead-links"><FieldValue value={lead} /></div> : record.summary && <p class="cs-lead">{record.summary}</p>}
     {
       !record.record.valid && (
         <ul class="cs-meta">

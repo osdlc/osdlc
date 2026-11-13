@@ -15,7 +15,8 @@ import {
   type SiteRecord,
   type SiteType,
 } from './site.ts'
-import { keyLabel, looksLikeCode } from './value-text.ts'
+import { templateFields } from './config.ts'
+import { keyLabel, looksLikeCode, shortUrl } from './value-text.ts'
 
 /** A value as a page shows it. */
 export type Display =
@@ -28,6 +29,8 @@ export type Display =
   | { kind: 'date'; text: string; iso: string }
   | { kind: 'list'; items: Display[] }
   | { kind: 'object'; entries: { label: string; help: string | null; value: Display }[] }
+  /** Values on one line: a link to a record with what is shown of it, or a value and its mark. */
+  | { kind: 'group'; items: Display[] }
 
 /** One field of a record page. */
 export interface FieldRow {
@@ -56,9 +59,78 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
 type Schema = Record<string, unknown>
 
 /** What a value is shown by: a field's label, help, kind, format and enum values. */
-type Shown = Pick<SiteField, 'label' | 'help' | 'kind' | 'format' | 'options'> & {
-  /** Nothing says how to write a string here, so one that reads as code is drawn as code. */
-  guess?: boolean
+type Shown = Pick<SiteField, 'label' | 'help' | 'kind' | 'format' | 'options'> &
+  Partial<Pick<SiteField, 'show' | 'linkText'>> & {
+    /** Nothing says how to write a string here, so one that reads as code is drawn as code. */
+    guess?: boolean
+  }
+
+/** What a column of one table changes about a field. */
+export type ShownOver = { show?: string[] | string; linkText?: string }
+
+/** How deep `show` goes: a record shown beside a link may show the records it names, once. */
+const MAX_SHOW_DEPTH = 2
+let showDepth = 0
+
+/**
+ * A link to a record a field names, with what the field's `show` asks for beside it. `text` is
+ * the link's text when the field has no `linkText`.
+ */
+function named(site: Site, target: SiteRecord, field: Shown, text = target.title): Display {
+  const label =
+    field.linkText === undefined || field.linkText === null
+      ? text
+      : site.fill(field.linkText, target) || text
+  const link: Display =
+    target.url === null
+      ? { kind: 'text', text: label, code: false }
+      : { kind: 'link', text: label, href: target.url, external: !target.local }
+  const show = field.show
+  if (show === undefined || show === null || show.length === 0 || showDepth >= MAX_SHOW_DEPTH)
+    return link
+  showDepth++
+  try {
+    // A list's items sit on the line one by one.
+    const flat = (value: Display): Display[] =>
+      value.kind === 'empty'
+        ? []
+        : value.kind === 'list' || value.kind === 'group'
+          ? value.items.flatMap(flat)
+          : [value]
+    const of = (path: string): Display[] =>
+      path === 'title' ? [link] : flat(displayPath(site, target, path))
+    let items: Display[]
+    if (typeof show !== 'string') items = [link, ...show.flatMap(of)]
+    else {
+      items = []
+      const places = templateFields(show)
+      const pieces = show.split(/\{[^{}]+\}/)
+      for (const [i, piece] of pieces.entries()) {
+        const next = places[i] === undefined ? null : of(places[i])
+        // Text that leads up to an empty place goes with it.
+        if (piece.trim() !== '' && !(next !== null && next.length === 0))
+          items.push({ kind: 'text', text: piece.trim(), code: false })
+        items.push(...(next ?? []))
+      }
+    }
+    return items.length === 1 ? (items[0] as Display) : { kind: 'group', items }
+  } finally {
+    showDepth--
+  }
+}
+
+/** `value` with the field's mark after it, when the record holds what the mark asks for. */
+function marked(site: Site, record: SiteRecord, field: SiteField, value: Display): Display {
+  if (field.mark === null || value.kind === 'empty' || !site.matches(record, field.mark.when))
+    return value
+  const badge: Display = {
+    kind: 'badge',
+    text: field.mark.label,
+    color: field.mark.color ?? 'neutral',
+    description: null,
+  }
+  const one = (item: Display): Display => ({ kind: 'group', items: [item, badge] })
+  return value.kind === 'list' ? { kind: 'list', items: value.items.map(one) } : one(value)
 }
 
 /** What the schemas and the config say about the field at `path`, top-level or nested. */
@@ -128,6 +200,10 @@ function scalar(
     const link = parseWholeLink(value)
     if (link !== null && !/^[a-z][a-z0-9+.-]*:/i.test(link.href)) {
       const [path = '', fragment] = link.href.split('#')
+      const target = site.linked(record, link.href)
+      const shows = (field.show ?? null) !== null || (field.linkText ?? null) !== null
+      if (shows && target !== undefined && target.url !== null)
+        return named(site, target, field, link.text || target.title)
       const found = site.resolveLink(record.corpus, record.record.path, safeDecode(path))
       const text = link.text || found?.title || path
       if (found === null || found.url === null) return { kind: 'missing', text, reason: null }
@@ -139,9 +215,14 @@ function scalar(
       }
     }
     if (link !== null)
-      return { kind: 'link', text: link.text || link.href, href: link.href, external: true }
+      return {
+        kind: 'link',
+        text: link.text || shortUrl(link.href),
+        href: link.href,
+        external: true,
+      }
     if (/^https?:\/\/\S+$/.test(value))
-      return { kind: 'link', text: value, href: value, external: true }
+      return { kind: 'link', text: shortUrl(value), href: value, external: true }
     if (field.format.kind === 'date' || field.format.kind === 'datetime')
       return { kind: 'date', text: formatScalar(value, field.format, site.locale), iso: value }
   }
@@ -206,7 +287,12 @@ function display(
  * derived field, a place inside an object or a list, or lead through a reference field to a
  * field of the record it names.
  */
-export function displayPath(site: Site, record: SiteRecord, path: string): Display {
+export function displayPath(
+  site: Site,
+  record: SiteRecord,
+  path: string,
+  over: ShownOver = {},
+): Display {
   const items = site
     .follow(record, path)
     .map((at): Display => {
@@ -217,8 +303,18 @@ export function displayPath(site: Site, record: SiteRecord, path: string): Displ
       const field = site.field(at.record.type, at.path)
       if (field !== undefined && field.derived !== null)
         return { kind: 'text', text: String(site.derivedValue(at.record, at.path)), code: false }
-      if (field !== undefined && !field.nested) return displayField(site, at.record, field)
-      return display(site, at.record, at.path, valueAt(at.record.record.data, at.path))
+      if (field !== undefined && !field.nested)
+        return displayField(site, at.record, { ...field, ...over })
+      return display(
+        site,
+        at.record,
+        at.path,
+        valueAt(at.record.record.data, at.path),
+        undefined,
+        Object.keys(over).length === 0
+          ? undefined
+          : { ...fieldAt(site, at.record.type, at.path), ...over },
+      )
     })
     .filter((item) => item.kind !== 'empty')
   if (items.length === 0) return { kind: 'empty' }
@@ -244,7 +340,11 @@ export function toTree(value: Display, help = true): DataTree {
     case 'date':
       return value.text
     case 'link':
-      return { text: value.text, url: value.href }
+      return { text: value.text, url: value.href, ...(value.external ? { external: true } : {}) }
+    case 'group': {
+      const group = value.items.map((item) => toTree(item, help)).filter((item) => item !== null)
+      return group.length === 0 ? null : group.length === 1 ? (group[0] as DataTree) : { group }
+    }
     case 'badge':
       return { text: value.text, color: value.color }
     case 'list': {
@@ -267,15 +367,22 @@ export function toTree(value: Display, help = true): DataTree {
 /** The value of a top-level field of a record as a display tree. */
 export function displayField(site: Site, record: SiteRecord, field: SiteField): Display {
   if (field.kind === 'reference') {
-    const items = site.referencesOf(record, field.name).map((r): Display => {
-      if (r.target === null) return { kind: 'missing', text: r.text, reason: r.unresolved }
-      if (r.target.url === null) return { kind: 'text', text: r.target.title, code: false }
-      return { kind: 'link', text: r.target.title, href: r.target.url, external: !r.target.local }
-    })
+    const items = site
+      .referencesOf(record, field.name)
+      .map((r): Display =>
+        r.target === null
+          ? { kind: 'missing', text: r.text, reason: r.unresolved }
+          : named(site, r.target, field),
+      )
     if (items.length === 0) return { kind: 'empty' }
-    return field.list ? { kind: 'list', items } : (items[0] as Display)
+    return marked(site, record, field, field.list ? { kind: 'list', items } : (items[0] as Display))
   }
-  return display(site, record, field.name, record.record.data[field.name])
+  return marked(
+    site,
+    record,
+    field,
+    display(site, record, field.name, record.record.data[field.name], undefined, field),
+  )
 }
 
 /**
@@ -328,7 +435,7 @@ export function backlinkGroups(site: Site, record: SiteRecord): BacklinkGroup[] 
       (related) =>
         from.corpus === '' &&
         related.from === from.type.name &&
-        related.via === fieldName &&
+        related.via.split('.')[0] === fieldName &&
         site.matches(from, related.where),
     )
   for (const incoming of record.record.incoming) {

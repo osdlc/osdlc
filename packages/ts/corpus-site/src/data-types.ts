@@ -48,6 +48,8 @@ export interface DataTreeText {
   text: string
   /** The address the text links to. */
   url?: string
+  /** Whether the address is outside the site. Such a link opens in a new tab. */
+  external?: boolean
   /** Draw it in the monospace face. */
   code?: boolean
   /** Draw it as a badge of this colour. */
@@ -66,11 +68,16 @@ export interface DataTreeObject {
   entries: DataTreeEntry[]
 }
 
+/** Values drawn side by side on one line: a link to a record and what is shown of it. */
+export interface DataTreeGroup {
+  group: DataTree[]
+}
+
 /**
- * A value that is not one scalar, ready to draw: text, a link, a list, or an object with a
- * label for each key. Dates, numbers and booleans are already text.
+ * A value that is not one scalar, ready to draw: text, a link, a list, an object with a label
+ * for each key, or a group on one line. Dates, numbers and booleans are already text.
  */
-export type DataTree = string | DataTreeText | DataTree[] | DataTreeObject | null
+export type DataTree = string | DataTreeText | DataTree[] | DataTreeObject | DataTreeGroup | null
 
 /** A field's value: scalars for most fields, and a tree for a field with `tree` set. */
 export type DataValue = DataScalar | DataScalar[] | DataTree

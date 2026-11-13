@@ -6,7 +6,8 @@ const blocks = (items) => items.some((item) => item.kind === 'object')
 ---
 
 {value.kind === 'text' && (value.code ? <code>{value.text}</code> : <span>{value.text}</span>)}
-{value.kind === 'link' && <a href={value.href} rel={value.external ? 'noopener' : undefined}>{value.text}</a>}
+{value.kind === 'link' && (value.external ? <a href={value.href} class="cs-external" target="_blank" rel="noopener" title={value.href}>{value.text}</a> : <a href={value.href}>{value.text}</a>)}
+{value.kind === 'group' && <span class="cs-group">{value.items.map((item) => <span class="cs-group-item"><Astro.self value={item} /></span>)}</span>}
 {value.kind === 'missing' && <span class="cs-missing" title={value.reason ?? 'This names no record'}>{value.text}</span>}
 {value.kind === 'badge' && <span class="cs-badge" data-color={value.color} title={value.description ?? undefined}>{value.text}</span>}
 {value.kind === 'date' && <time datetime={value.iso}>{value.text}</time>}

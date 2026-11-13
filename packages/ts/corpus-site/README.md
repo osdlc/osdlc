@@ -147,6 +147,9 @@ For a field:
 | `format`  | `text`, `date`, `datetime`, `number`, `badge`, `code` or `link`, with options        |
 | `values`  | For each enum value: a `label`, a `description` and a badge `color`                  |
 | `keysFrom` | For an object value: the record whose JSON Schema labels its keys                   |
+| `show`    | For a field that names records: fields of each record, shown beside its link         |
+| `linkText` | For a field that names records: the text of each link, with `{field}` places        |
+| `mark`    | A badge after the value on the records that hold certain values                      |
 
 A dotted name such as `scope.platform` names a field inside an object field, and makes it usable
 as a column or a filter. A path also steps through a list, and in `related` and a matrix through
@@ -174,6 +177,47 @@ fields: {
 
 `ref` is a reference field of the same record. `schemaAt` is the path of the schema in the record
 it names. A key's label is its `title` there and its help its `description`.
+
+### Links and sources
+
+A URL is a link out wherever it shows: on a record page, in a table cell, in a related table and
+in a matrix. That holds for a field whose schema says `format: uri`, for one with
+`format: 'link'`, and for any string that starts with `http://` or `https://`. The link opens in
+a new tab, carries a mark, and shows the address without its scheme: `example.com/docs/guide`.
+
+A reference shows the title of the record it names. Often the reader wants something that record
+holds, such as the URL of a source document. `show` puts fields of the named record beside its
+link:
+
+```ts
+fields: {
+  reportedIn: { label: 'Source', show: ['urls', 'publisher'] },
+}
+```
+
+Each document is then its title, which links to its page, its URLs as links out, and its
+publisher. `show` may also be text with `{field}` places, where `{title}` is the link:
+`'{title} by {publisher}'`. A place with no value is left out with the text before it.
+
+`linkText` changes the text of the link itself: `linkText: '{observed} · {kind}'` shows a study
+result as its date and kind in place of its long title.
+
+Both work for a reference field and for Markdown links inside an object or a list, such as
+`'hasEvidenceLines.hasEvidenceItems'`. A record shown this way shows its own `show` fields too,
+one level down. A path can also step through such links, as it does through a reference:
+`hasEvidenceLines.hasEvidenceItems.reportedIn`. A reference column with `show` or `linkText` is
+drawn whole in a type's table, and is then not a filter.
+
+`mark` adds a badge after a field's value on the records that hold certain values:
+
+```ts
+fields: {
+  urls: { mark: { when: { url_status: 'dead' }, label: 'Dead link', color: 'red' } },
+}
+```
+
+A type's `summary` that is one place holding links, such as `'{urls}'`, is drawn under the title
+of a record page as those links.
 
 ### Counts
 
@@ -216,7 +260,10 @@ subjects: {
 }
 ```
 
+`via` is a reference field of `from`, or a path to Markdown links inside an object or a list.
 `columns` are fields of `from`. Without `title` among them, each row ends in a link to its record.
+`fields` changes a column for this table only: `fields: { reportedIn: { label: 'Source', show: [] } }`
+gives it another label, `show` or `linkText`.
 `groupBy` puts the rows that share a value under one heading. A column with no value in any row is
 left out. The table is in the page's HTML and needs no script. The records it lists are left out
 of "Referenced by".
@@ -270,8 +317,9 @@ The site adds no keywords to the schemas. The validator rejects a keyword it doe
 what a site says about a field stays in the site's config.
 
 The types are in [`src/config.ts`](./src/config.ts): `CorpusSiteConfig`, `TypeConfig`,
-`FieldConfig`, `ValueConfig`, `FieldFormat`, `SectionConfig`, `DocLink`, `KeysFrom`,
-`WhereConfig`, `DerivedConfig`, `RelatedConfig`, `MatrixViewConfig`, `ViewConfig` and
+`FieldConfig`, `ValueConfig`, `FieldFormat`, `SectionConfig`, `DocLink`, `KeysFrom`, `MarkConfig`,
+`WhereConfig`, `DerivedConfig`, `RelatedConfig`, `RelatedFieldConfig`, `MatrixViewConfig`,
+`ViewConfig` and
 `ReferencedCorpusConfig`.
 
 ## Search
@@ -314,7 +362,8 @@ use of the search box. A matrix page loads no data file: its table is in the HTM
 there for pages of your own. No page loads the whole corpus.
 
 A column value is a string, a number, a boolean, a list of those, or for an object or a list of
-objects a `DataTree`: text, a list, or `{ entries: [{ label, value }] }`. Its field holds
+objects a `DataTree`: text, a link (`{ text, url, external }`), a list,
+`{ entries: [{ label, value }] }`, or `{ group: [...] }` for values on one line. Its field holds
 `"tree": true`.
 
 ## Your own pages
@@ -361,7 +410,7 @@ const site = getSite()
   `useTypeQuery` (the filtered, sorted and paged rows of a type).
 - Query functions: `filterRecords`, `facetCounts`, `fieldBounds`, `paginate`, `search`,
   `parseState` and `formatState`.
-- Value text: `oneLine`, `treeText`, `keyLabel` and `looksLikeCode`.
+- Value text: `oneLine`, `treeText`, `keyLabel`, `looksLikeCode` and `shortUrl`.
 - Components: `TypeExplorer`, `SearchApp`, `FilterPanel`, `FilterControl`, `ActiveFilters`,
   `ResultTable`, `ValueCell`, `TreeValue`, `MatrixTable`, `MatrixControls`, `FieldInfo` and
   `Pager`. Each takes data as props and emits events.

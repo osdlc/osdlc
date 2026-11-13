@@ -5,7 +5,8 @@
 import { defineComponent, h, type PropType, type VNodeChild } from 'vue'
 import type { DataField, DataScalar, DataTarget, DataTree, DataValue } from '../data-types.ts'
 import { formatScalar } from '../format.ts'
-import { TreeValue } from './TreeValue.ts'
+import { shortUrl } from '../value-text.ts'
+import { link, TreeValue } from './TreeValue.ts'
 
 /** The most values of a list a cell shows before `+n`. */
 const MAX_ITEMS = 3
@@ -39,8 +40,11 @@ export const ValueCell = defineComponent({
           option?.label ?? String(value),
         )
       }
-      if (field.kind === 'url' && typeof value === 'string')
-        return h('a', { href: value, rel: 'noopener' }, value.replace(/^https?:\/\/(www\.)?/, ''))
+      if (
+        typeof value === 'string' &&
+        (field.kind === 'url' || field.format.kind === 'link' || /^https?:\/\/\S+$/.test(value))
+      )
+        return link(value, true, shortUrl(value))
       const text = formatScalar(value, field.format, props.locale)
       if (field.kind === 'date' || field.kind === 'datetime')
         return h('time', { datetime: String(value) }, text)

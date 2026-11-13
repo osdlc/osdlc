@@ -21,7 +21,7 @@ import {
   type TableData,
   type TypeData,
 } from './data-types.ts'
-import { templateFields } from './config.ts'
+import { templateFields, type RelatedFieldConfig } from './config.ts'
 import { displayPath, toTree } from './display.ts'
 import { filterRecords } from './filter.ts'
 import { plainText } from './markdown.ts'
@@ -141,9 +141,12 @@ function columnOf(
   path: string,
   records: SiteRecord[],
   help: boolean,
+  over: RelatedFieldConfig = {},
 ): Column {
   const known = site.field(type, path)
-  const tree = (record: SiteRecord): DataValue => toTree(displayPath(site, record, path), help)
+  const { label, ...shown } = over
+  const tree = (record: SiteRecord): DataValue =>
+    toTree(displayPath(site, record, path, shown), help)
   if (known === undefined) {
     // A path through a reference: the label is the last field's, in the type it leads to.
     const last = records.flatMap((r) => site.follow(r, path))[0]
@@ -151,7 +154,7 @@ function columnOf(
     return {
       field: {
         name: path,
-        label: end?.label ?? keyLabel(path.split('.').pop() as string),
+        label: label ?? end?.label ?? keyLabel(path.split('.').pop() as string),
         kind: 'json',
         list: false,
         control: 'hidden',
@@ -170,13 +173,20 @@ function columnOf(
   }
   if (known.derived !== null)
     return { field: dataField(known, false), value: (r) => site.derivedValue(r, known.name) }
+  // A field that shows more than a scalar holds: fields of the records it names, or a mark.
+  const more =
+    known.mark !== null ||
+    ((known.show ?? shown.show ?? known.linkText ?? shown.linkText ?? null) !== null &&
+      known.kind === 'reference')
   const asTree =
+    more ||
     known.kind === 'json' ||
     ((known.kind === 'text' || known.kind === 'url') &&
       records.some((r) => holdsLink(valueAt(r.record.data, known.name))))
+  const field = { ...dataField(known, asTree), ...(label === undefined ? {} : { label }) }
   return asTree
-    ? { field: dataField(known, true), value: tree }
-    : { field: dataField(known, false), value: (r, targets) => dataValue(site, r, known, targets) }
+    ? { field, value: tree }
+    : { field, value: (r, targets) => dataValue(site, r, known, targets) }
 }
 
 /** The rows of a table: one per record, with a value for each column. */
@@ -265,7 +275,7 @@ export function relatedTables(site: Site, record: SiteRecord): RelatedTable[] {
     if (found.length === 0) continue
     const columns = related.columns
       .filter((name) => name !== 'title')
-      .map((name) => columnOf(site, from, name, found, true))
+      .map((name) => columnOf(site, from, name, found, true, related.fields?.[name]))
     const targets: Record<string, DataTarget> = {}
     const records = tableRows(found, columns, targets, false)
     // A column no row has a value for is left out.
