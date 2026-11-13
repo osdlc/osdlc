@@ -48,7 +48,7 @@ export function parseOutput(
     const parsed = adapter.parseResult(planned, {
       stdout,
       stderr: options.stderr ?? '',
-      exitCode: options.exitCode ?? 0,
+      exitCode: options.exitCode === undefined ? 0 : options.exitCode,
       durationMs: 0,
       timedOut: false,
     })

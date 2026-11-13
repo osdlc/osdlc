@@ -123,6 +123,22 @@ describe('claude', () => {
     expect(claude({ stdout: lines.map((l) => JSON.stringify(l)).join('\n') })).toBeUndefined()
   })
 
+  test('a structured 429 with no wording is a rate limit', () => {
+    expect(
+      claude({ stdout: envelope('Request rejected', { api_error_status: 429 }) }),
+    ).toMatchObject({
+      kind: 'rate-limit',
+    })
+  })
+
+  test('stderr auth words count on a long run, the envelope text does not', () => {
+    const long = { num_turns: 5 }
+    expect(claude({ stdout: envelope('', long), stderr: 'OAuth token has expired' })).toEqual({
+      kind: 'auth',
+    })
+    expect(claude({ stdout: envelope('invalid api key', long) })).toBeUndefined()
+  })
+
   test('a 429 with per-minute wording stays a rate limit', () => {
     const stdout = envelope('rate_limit_error: exceeded your per-minute rate limit', {
       api_error_status: 429,
@@ -254,6 +270,13 @@ describe('codex', () => {
   test('a truncated line is ignored; any other failure has no cause', () => {
     expect(codex({ stdout: '{"type":"err', stderr: 'boom' })).toBeUndefined()
   })
+})
+
+test('codex: an error event retried into a completed turn is not a failure', () => {
+  const stdout = [{ type: 'error', message: '429 Too Many Requests' }, { type: 'turn.completed' }]
+    .map((e) => JSON.stringify(e))
+    .join('\n')
+  expect(codex({ exitCode: 0, stdout })).toBeUndefined()
 })
 
 describe('cursor', () => {
