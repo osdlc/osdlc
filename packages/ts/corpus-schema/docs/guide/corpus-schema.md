@@ -1,4 +1,7 @@
-# The corpus-schema guide
+---
+title: The corpus-schema guide
+description: What corpus-schema is, why it was made, how its levels work, the choices behind it, and where it is going.
+---
 
 This guide explains corpus-schema in plain words: what it is, why we made it, how its levels work,
 why we chose what we chose, and where it is going. The rules themselves are in the spec,
