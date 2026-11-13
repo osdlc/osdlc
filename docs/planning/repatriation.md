@@ -87,6 +87,9 @@ too. That copy is being retired and `packages/` is left out of the import, so
 it does no harm.
 
 - [ ] Merge osdlc/markdown #11, #13 and #14 into its `main`, in that order.
+- [ ] Close the Version Packages pull request that this opens in
+      osdlc/markdown. #14 carries #12's changeset, and 0.3.0 is released from
+      here, not from there.
 - [ ] Import osdlc/markdown's history into a branch here, with the paths
       rewritten as in the table below (`git filter-repo --path-rename` on a
       fresh clone, then `git merge --allow-unrelated-histories`). A path the
@@ -168,6 +171,10 @@ Needs phase 1, because the profiles use `extends`.
       moved; use whichever is newer.
 - [ ] Add the new packages to the pnpm workspace, the package checks and the
       changeset config.
+- [ ] Decide [#785](https://github.com/osdlc/osdlc/pull/785) (release
+      inputs for packages with no code). It was written for osdlc/markdown's
+      profile packages. Merge it if the profile packages need it here, or
+      close it.
 - [ ] **owner** Publish each new package's placeholder version and set its
       trusted publisher to osdlc/osdlc, as `packages/README.md` describes
       for a new library.
