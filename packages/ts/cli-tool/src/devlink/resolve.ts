@@ -47,6 +47,7 @@ import {
   homeVar,
   projectLayerActive,
   runtimeOf,
+  type Runtime,
   type ToolSpec,
 } from './spec.ts'
 
@@ -76,7 +77,7 @@ export interface Selected {
    * bun, else `node`. `execSelection` reads an absent value as the spec's
    * `runtime`.
    */
-  runtime?: 'bun' | 'node'
+  runtime?: Runtime
   /** For `project`: the installed package's version, or null when it has none. */
   version?: string | null
 }
@@ -250,7 +251,7 @@ export function projectBin(spec: ToolSpec, dir: string): string | null {
 }
 
 /** What runs `file`: `bun` when its `#!` line names bun, else `node`. */
-export function binRuntime(file: string): 'bun' | 'node' {
+export function binRuntime(file: string): Runtime {
   let fd: number | undefined
   try {
     fd = openSync(file, 'r')

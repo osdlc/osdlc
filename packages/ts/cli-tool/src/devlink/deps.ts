@@ -9,6 +9,8 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 
+import type { Runtime } from './spec.ts'
+
 /**
  * The first dependency of `entry` that `checkout` has not installed, or null
  * when all are. It is a name from the `dependencies` of a `package.json`
@@ -40,7 +42,7 @@ export function missingDependencyLine(
   name: string,
   checkout: string,
   missing: string,
-  runtime: 'bun' | 'node' = 'bun',
+  runtime: Runtime = 'bun',
 ): string {
   const fix =
     runtime === 'bun' ? "Run 'bun install' there." : "Run its package manager's install there."

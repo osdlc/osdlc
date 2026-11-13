@@ -68,8 +68,7 @@ export interface OpOptions extends ResolveOptions {
   now?: () => Date
   /**
    * The `node` a `runtime: 'node'` checkout will run under, whose version
-   * `link` and `use` check for a TypeScript entry. Defaults to the one
-   * `execSelection` would pick.
+   * `link` and `use` check for a TypeScript entry. Defaults to {@link defaultNode}.
    */
   node?: string
 }

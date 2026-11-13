@@ -39,8 +39,7 @@ export interface DevlinkHookOptions {
  * the tool) resolves for itself. It keeps the value for its `describe`, which
  * `runMain` asks when it answers `--where`. A checkout chosen by the env, cwd
  * or link layer whose `node_modules` is incomplete is refused with exit 1 and
- * a line saying to run `bun install` there (for a `runtime: 'node'` spec,
- * its package manager's install).
+ * the line from {@link missingDependencyLine}.
  * @experimental
  */
 export function devlinkHook(spec: ToolSpec, opts: DevlinkHookOptions = {}): DevlinkHook {

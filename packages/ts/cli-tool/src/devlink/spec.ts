@@ -8,6 +8,9 @@
 
 import { envStem as stemOf, type VendorDirs } from '@osdlc/config-layers/dirs'
 
+/** What runs a linked checkout's entry. */
+export type Runtime = 'bun' | 'node'
+
 /**
  * What describes a tool that is run from a development checkout: its name,
  * launcher, marker file and vendor directories.
@@ -78,7 +81,7 @@ export interface ToolSpec {
    * project's copy is not affected: it runs under the runtime its bin's
    * `#!` line names.
    */
-  runtime?: 'bun' | 'node'
+  runtime?: Runtime
   /**
    * The executable the PATH shim from `install` runs, relative to the checkout
    * root. It is the tool's own launcher: a bash script that resolves before any
@@ -230,7 +233,7 @@ export function entryOf(spec: ToolSpec): string {
  * What runs a selected checkout's entry: the spec's `runtime`, else `bun`.
  * @internal
  */
-export function runtimeOf(spec: ToolSpec): 'bun' | 'node' {
+export function runtimeOf(spec: ToolSpec): Runtime {
   return spec.runtime ?? 'bun'
 }
 
@@ -303,11 +306,10 @@ export function validateSpec(spec: ToolSpec): ToolSpec {
 
 /**
  * The spec's runtime, as {@link runtimeOf} gives it, after refusing a value
- * other than `bun` and `node`. `validateSpec` and `renderLauncher` both check
- * the runtime here, so a new runtime is added in one place.
+ * other than `bun` and `node` (a spec built in untyped JS can carry anything).
  * @internal
  */
-export function checkedRuntime(spec: ToolSpec): 'bun' | 'node' {
+export function checkedRuntime(spec: ToolSpec): Runtime {
   const runtime: unknown = runtimeOf(spec)
   if (runtime !== 'bun' && runtime !== 'node') {
     throw new Error(`devlink: runtime must be 'bun' or 'node', got ${JSON.stringify(runtime)}`)

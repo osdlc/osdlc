@@ -37,6 +37,7 @@ import {
   launchLayerVar,
   quietVar,
   stateDirSegments,
+  type Runtime,
   type ToolSpec,
 } from './spec.ts'
 
@@ -80,7 +81,7 @@ const RUNTIMES = {
     install: 'Install Node (https://nodejs.org)',
     deps: "Run its package manager's install there.",
   },
-} as const
+} as const satisfies Record<Runtime, object>
 
 /**
  * Prints the keys of a package.json `dependencies` object, one per line.

@@ -59,11 +59,7 @@ export interface ExecOptions {
    * A hand-off to a project's copy of the same version runs silently.
    */
   version?: string | null
-  /**
-   * The `node` that runs a project's bin or a `runtime: 'node'` checkout's
-   * entry, used as given. Defaults to this process's own binary under Node,
-   * else the `node` found as `bun` is.
-   */
+  /** The `node` to run, used as given. Defaults to {@link defaultNode}. */
   node?: string
   /**
    * The `bun` to run, used as given. Defaults to this process's own binary
@@ -240,7 +236,6 @@ export function runningBun(
 /**
  * The `node` a hand-off runs when none is given: this process's own binary
  * under Node, else the `node` on the absolute entries of `env`'s `PATH`.
- * `dev link` asks the same, to check the node a checkout will run under.
  * @internal
  */
 export function defaultNode(env: Record<string, string | undefined>): string | undefined {

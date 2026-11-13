@@ -26,7 +26,7 @@ import { entryOf, runtimeOf, type ToolSpec } from './spec.ts'
 export interface EntryCheckOptions {
   /** Defaults to `process.env`. */
   env?: Record<string, string | undefined> | undefined
-  /** The `node` the checkout will run under. Defaults as `execSelection` picks it. */
+  /** The `node` the checkout will run under. Defaults to {@link defaultNode}. */
   node?: string | undefined
 }
 
