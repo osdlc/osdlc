@@ -58,7 +58,8 @@
     "format:check": "prettier --check .",
     "lint": "oxlint .",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit",
-    "sync": "node scripts/sync.ts"
+    "sync": "node scripts/sync.ts",
+    "check:data": "node scripts/sync.ts --check"
   },
   "devDependencies": {
     "@osdlc/prettier-config": "workspace:^",

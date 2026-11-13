@@ -18,6 +18,16 @@ of them.
 - Each library lives in `packages/<language>/<name>/`, for example
   `packages/ts/command-seam/`. TypeScript libraries are under `packages/ts/`
   and Rust crates under `packages/rust/`.
+- corpus-schema profiles and corpora are npm packages that hold Markdown and
+  JSON Schema and no code. Profiles are under `packages/profiles/` and
+  corpora under `packages/corpora/`, as members of the pnpm workspace, and
+  `.github/workflows/profiles.yml` checks them. `packages/corpora/examples/`
+  is an example pair, not a package.
+- `packages/corpora/harness-reference/` is the harness reference: a private
+  corpus of cited statements about coding-agent harnesses, with the tools
+  that capture, lint and compile it. It is not published. Its compiled file
+  ships in `packages/ts/harness-knowledge` (`@osdlc/harness-knowledge` on
+  npm), and `.github/workflows/harness-reference.yml` checks both.
 - TypeScript libraries are published to npm from CI with
   [Changesets](https://changesets.dev). `.github/workflows/packages-publish.yml`
   publishes through npm trusted publishing, with provenance, so no npm token
@@ -199,7 +209,8 @@ Developed here, in this repository:
   coding-agent session in the terminal app, multiplexer or editor a person
   already uses, behind one host contract in optional parts)
 - `packages/ts/observe` (`@osdlc/observe` on npm, a JSONL log envelope with
-  correlation ids, agent session records, a process scan and reconcile)
+  correlation ids, a secret redactor in front of the writer, one envelope for
+  agent hook payloads, agent session records, a process scan and reconcile)
 - `packages/ts/tiered-dirs` (`@osdlc/tiered-dirs` on npm, machine-local
   directories by tier and home, the TypeScript implementation of the `tiered-dirs` crate)
 - `packages/ts/markdown-contract` (`@osdlc/markdown-contract` on npm,

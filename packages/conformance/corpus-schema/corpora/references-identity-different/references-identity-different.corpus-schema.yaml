@@ -1,0 +1,5 @@
+corpus-schema: 0
+level: 2
+references:
+  one: acme-one
+  two: acme-two
