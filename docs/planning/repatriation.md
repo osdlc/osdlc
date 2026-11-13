@@ -125,19 +125,19 @@ only open a Version Packages pull request there to close.
 
 The paths for the import:
 
-| From (osdlc/markdown)                | To (here)                                  |
-| ------------------------------------ | ------------------------------------------ |
-| `docs/planning/`                     | `docs/planning/markdown/`                  |
-| `profiles/planning/`                 | `docs/planning/markdown/profile/`          |
-| `docs/ecosystem-plan.md`             | `docs/planning/markdown/ecosystem-plan.md` |
-| `docs/detail-requests.md`            | `docs/planning/markdown/`                  |
-| `docs/pointing-here.md`              | `docs/planning/markdown/`                  |
-| `docs/corpus-schema.md`              | `packages/ts/corpus-schema/docs/guide.md`  |
-| `docs/terms/`                        | `docs/terms/`                              |
-| `docs/architecture.md`               | `docs/architecture/markdown-target.md`     |
-| `docs/diagrams/`                     | `docs/architecture/img/markdown/`          |
-| `tools/diagrams/`, `tools/explorer/` | the same paths                             |
-| `tools/*.sh`                         | the same paths                             |
+| From (osdlc/markdown)                | To (here)                                               |
+| ------------------------------------ | ------------------------------------------------------- |
+| `docs/planning/`                     | `docs/planning/markdown/`                               |
+| `profiles/planning/`                 | `docs/planning/markdown/profile/`                       |
+| `docs/ecosystem-plan.md`             | `docs/planning/markdown/ecosystem-plan.md`              |
+| `docs/detail-requests.md`            | `docs/planning/markdown/`                               |
+| `docs/pointing-here.md`              | `docs/planning/markdown/`                               |
+| `docs/corpus-schema.md`              | `packages/ts/corpus-schema/docs/guide/corpus-schema.md` |
+| `docs/terms/`                        | `docs/terms/`                                           |
+| `docs/architecture.md`               | `docs/architecture/markdown-target.md`                  |
+| `docs/diagrams/`                     | `docs/architecture/img/markdown/`                       |
+| `tools/diagrams/`, `tools/explorer/` | the same paths                                          |
+| `tools/*.sh`                         | the same paths                                          |
 
 The planning profile comes with the plan because it is the plan's own
 profile, not a shared model.
@@ -265,3 +265,5 @@ once matured. They are not archived.
 | 0     | [#789](https://github.com/osdlc/osdlc/pull/789) | Open  |
 | 1     | [#790](https://github.com/osdlc/osdlc/pull/790) | Open  |
 | 2, 3  | [#791](https://github.com/osdlc/osdlc/pull/791) | Open  |
+| 4     | [#794](https://github.com/osdlc/osdlc/pull/794) | Open  |
+| 5     | [#793](https://github.com/osdlc/osdlc/pull/793) | Plan  |

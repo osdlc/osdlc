@@ -11,8 +11,8 @@ Accepted. The owner chose the name on 2026-11-08.
 
 ## Decision
 
-- The spec is corpus-schema. Its root file is `corpus-schema.md`, `corpus-schema.yaml` or
-  `corpus-schema.json`, and the root file's version key is `corpus-schema`.
+- The spec is corpus-schema. Its root file is `<name>.corpus-schema.md`, `.yaml` or `.json`, where
+  `<name>` is the corpus's name, and the root file's version key is `corpus-schema`.
 - The package is `@osdlc/corpus-schema`, published to npm from this repository,
   `packages/ts/corpus-schema`.
 - Its command is `corpus-schema`, with one verb in version 0: `corpus-schema validate`.
