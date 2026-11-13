@@ -29,7 +29,12 @@ Accepted 2026-11-12.
   as `config-layers` or `cli-tool`, does not depend on a library the markdown
   plan owns. sdlc will depend on the markdown libraries. The markdown work
   uses sdlc as a tool, to run its plan, and no markdown library depends on an
-  sdlc library. Today's dependencies already follow this.
+  sdlc library.
+- **`frontmatter-lossless`, `gfm-table`, `gfm-pipe-table` and `yaml-splice`
+  are general libraries.** They handle Markdown and YAML text, but the
+  markdown plan does not own them: `config-layers` and `detect-harness`
+  depend on them. With that, today's dependencies follow the directions
+  above.
 - **osdlc/models folds in too.** Where the profiles and the starter corpus go
   is not decided yet.
 - **Nothing moves out of sksizer/dev yet.** Its markdown packages,
@@ -57,8 +62,8 @@ The split had already cost something with one package moved:
   release workflow needed new inputs for packages with no code
   ([#785](https://github.com/osdlc/osdlc/pull/785)).
 
-Moving the rest would have needed a rule that some markdown libraries stay
-here, because `config-layers` and `detect-harness` depend on `gfm-table`,
+Moving the rest would have needed a rule that some libraries that handle
+Markdown stay here, because `config-layers` and `detect-harness` depend on `gfm-table`,
 `yaml-splice` and `frontmatter-lossless`, while `markdown-contract` and
 `markdown-vault-astro` depend on `cli-tool`. In one repository that rule is
 not needed, and a change to `cli-tool` or `frontmatter-lossless` is tested
@@ -77,9 +82,9 @@ against the markdown packages in the same pull request.
   library resolves or publishes, so it only records what belongs together,
   and that is not settled: which Markdown-handling libraries are general,
   where the models go, and whether sdlc becomes a group too. The move also
-  needs work first: the Cargo workspace root moves to the repository root,
-  the package checks and the release read a list of folders, and each
-  workflow path filter changes. That work would hold up the 0.3.0 release and
+  needs work that adding packages does not: the Cargo workspace root moves to
+  the repository root, and the path filters of the existing workflows are
+  rewritten. That work would hold up the 0.3.0 release and
   the plan's return for a grouping that may change.
 
 ## When to look again
@@ -95,7 +100,8 @@ against the markdown packages in the same pull request.
 ## Consequences
 
 [The repatriation plan](../planning/repatriation.md) lists the work as steps
-to tick off. None of it needs a change to the build tooling. In short:
+to tick off. The build tooling changes only to add members: the explorer,
+the profile and corpus packages, and three path-filtered workflows. In short:
 
 1. Re-apply the `corpus-schema` 0.3.0 work
    ([osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12)) onto this
