@@ -24,3 +24,4 @@ It has its own link-resolving rule.
 - Version 0.2.2 in dev; not on npm.
 - Problems F1 and F4: it resolves links its own way, and says vault instead of corpus.
 - Task 12 merges it with vault-graph-core into the TypeScript markdown-corpus.
+- It stays in sksizer/dev for now (decision D19). Whether task 12 still retires it is not decided.

@@ -4,6 +4,10 @@ status: decided
 decided: "2026-11-12"
 ---
 
+Superseded by [D19](D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md): the
+profiles and the starter corpus come to osdlc/osdlc, and osdlc/markdown and osdlc/models are
+holding pens. The rest of this record is kept as it was decided.
+
 Each repo has one job:
 
 - osdlc/osdlc holds the sdlc CLI, the plugins and their libraries.

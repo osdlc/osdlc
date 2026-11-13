@@ -18,6 +18,7 @@ depends:
   - "[frontmatter-lossless-rs](frontmatter-lossless-rs.md)"
   - "[markdown-link-rs](markdown-link-rs.md)"
   - "[markdown-vault-fs](markdown-vault-fs.md)"
+  - "[slug-collate](slug-collate.md)"
   - "[vfs-seam](vfs-seam.md)"
   - "[yaml-splice-rs](yaml-splice-rs.md)"
 edge_notes:

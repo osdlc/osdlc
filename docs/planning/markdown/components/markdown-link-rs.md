@@ -20,6 +20,7 @@ links:
   - "[osdlc/osdlc#728](https://github.com/osdlc/osdlc/pull/728)"
 depends:
   - "[yaml-splice-rs](yaml-splice-rs.md)"
+  - "[slug-collate](slug-collate.md)"
 dev_depends:
   - "[frontmatter-lossless-rs](frontmatter-lossless-rs.md)"
 ---

@@ -5,7 +5,7 @@ language: rust
 layer: "[spec](../layers/spec.md)"
 states: [target]
 status: planned
-repo_target: "[osdlc/markdown](../repos/osdlc-markdown.md)"
+repo_target: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
 path_target: packages/rust/corpus-schema
 twin: "[corpus-schema-ts](corpus-schema-ts.md)"
 tasks:
@@ -28,5 +28,5 @@ markdown-corpus crate.
 
 ## Notes
 
-- The plan names no crate. The architecture diagram places it in osdlc/markdown. The path is a guess
-  at the repo's layout, not from a source.
+- The plan names no crate. It would live in osdlc/osdlc (decision D19). The path is a guess at the
+  repo's layout, not from a source.

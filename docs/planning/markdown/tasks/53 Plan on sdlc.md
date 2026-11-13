@@ -11,7 +11,7 @@ after:
   - "[79 Markdown after the move](79%20Markdown%20after%20the%20move.md)"
 ---
 
-This plan, `docs/planning/`, is the first remote consumer of the sdlc profile and the starter
+This plan, `docs/planning/markdown/`, is the first remote consumer of the sdlc profile and the starter
 corpus. It installs `@osdlc/corpus-profile-sdlc` and `@osdlc/corpus-sdlc-starter` from npm. Its
 root file names the profile under `extends` with the prefix `sdlc` and takes the sdlc types. The
 explorer's own fields, such as `phase`, `beeline`, `prs`, `detail` and `order`, go in local
@@ -21,9 +21,9 @@ sdlc/milestones` and so on. The root file names the starter under `references` w
 
 The records move to sdlc ids, such as `T-0001`, `M-0001` and `D-0001`, and to the sdlc fields.
 The explorer's `build-data` and the BEELINE checklist generator read the new ids and fields, and
-resolve parents by package name. `profiles/planning/` is deleted: before 1.0 no second form is
+resolve parents by package name. Its `profile/` folder is deleted: before 1.0 no second form is
 kept. The components, layers, repos, overlaps and datasets stay local types.
 
 It replaces the work example (task 67): this plan shows the end state in this repo's CI, from npm,
 before the work repo copies it. After 61 and 66, which publish the two packages, and 79, which
-cleans up this repo after the move.
+cleans up osdlc/markdown after the move.

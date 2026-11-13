@@ -24,3 +24,4 @@ of the Rust one.
 - Version 0.1.1 in dev; not on npm. Its scope is @sdlc, not @osdlc (problem F11).
 - Task 12 merges it with markdown-vault into the TypeScript markdown-corpus. Task 11 takes the
   TypeScript resolver from its copy of the Rust one.
+- It stays in sksizer/dev for now (decision D19). Whether task 12 still retires it is not decided.

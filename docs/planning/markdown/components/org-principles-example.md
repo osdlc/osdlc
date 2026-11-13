@@ -5,8 +5,7 @@ language: markdown
 layer: "[profiles](../layers/profiles.md)"
 states: [target]
 status: in-progress
-repo_target: "[osdlc/markdown](../repos/osdlc-markdown.md)"
-path_target: examples/org-principles
+repo_target: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
 tasks:
   - "[35 Example pair](../tasks/35%20Example%20pair.md)"
 links:
@@ -24,5 +23,6 @@ extends it by path.
 
 ## Notes
 
-- Built in osdlc/markdown#16, not merged.
+- Built in osdlc/markdown#16 at examples/org-principles, not merged. It comes to osdlc/osdlc
+  (decision D19); its place there is not decided.
 - An example, not the shared org corpus. That one is the org principles corpus (task 30).

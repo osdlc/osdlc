@@ -9,7 +9,7 @@ version: "0.2.1"
 registry: "https://www.npmjs.com/package/@osdlc/corpus-schema"
 repo_present: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
 path_present: packages/ts/corpus-schema
-repo_target: "[osdlc/markdown](../repos/osdlc-markdown.md)"
+repo_target: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
 path_target: packages/ts/corpus-schema
 twin: "[corpus-schema-rs](corpus-schema-rs.md)"
 tasks:
@@ -77,13 +77,10 @@ records against their schemas, ids, links and typed references.
 - 0.2.0 is its first version on npm, and 0.2.1 the latest. 0.1.0 was cut but never published (task 3).
 - Today it walks the folder and checks links itself (problem F8). Task 14 makes it read the corpus
   model instead.
-- Near target: open osdlc/markdown#9 moves it here with the same npm name, and open
-  osdlc/markdown#10 builds and releases it with the shared osdlc workflows. Until those land,
-  releases go out from osdlc/osdlc.
-- On the osdlc/markdown#9 branch its osdlc dependencies change from workspace:^ to npm ranges
-  (^1.1.2 and ^0.8.1).
-- osdlc/markdown builds and releases it with the shared osdlc workflows, ts-packages-ci and
-  ts-packages-release (task 21).
+- It stays in osdlc/osdlc and releases from here, with the same npm publisher (decision D19). The
+  copy that osdlc/markdown#9 and #10 set up in osdlc/markdown is retired.
+- The 0.3.0 work (extends, x-extends and sync) comes here from osdlc/markdown#12 and releases from
+  here. It is not released yet.
 - validate --fix exists today. Task 29 adds the corpus-schema sync command: it writes a read-only
   copy of each referenced corpus into _references/<prefix>/, such as _references/org/, so Obsidian
   and GitHub links resolve. The validator then checks that the copy matches the installed corpus.

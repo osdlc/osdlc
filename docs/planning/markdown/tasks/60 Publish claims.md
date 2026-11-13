@@ -11,6 +11,6 @@ after:
   - "[78 Models repo setup](78%20Models%20repo%20setup.md)"
 ---
 
-Publish `@osdlc/corpus-profile-claims` 0.1.0 to npm from `profiles/claims/` in osdlc/models. Owner
+Publish `@osdlc/corpus-profile-claims` 0.1.0 to npm from its folder in osdlc/osdlc (task 78). Owner
 work: merging the Version Packages pull request there publishes it. After 23, which builds the
-package, 80, which sets up its trusted publisher, and 78, which moves it into osdlc/models.
+package, 80, which sets up its trusted publisher, and 78, which brings it into osdlc/osdlc.

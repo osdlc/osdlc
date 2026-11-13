@@ -7,8 +7,7 @@ states: [present, target]
 status: published
 repo_present: "[osdlc/markdown](../repos/osdlc-markdown.md)"
 path_present: profiles/claims/example
-repo_target: "[osdlc/markdown](../repos/osdlc-markdown.md)"
-path_target: profiles/claims/example
+repo_target: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
 tasks:
   - "[4 Claims example](../tasks/4%20Claims%20example.md)"
   - "[23 Claims profile](../tasks/23%20Claims%20profile.md)"
@@ -39,6 +38,7 @@ records check a made-up claim about a tool called fernlog.
 
 - The types follow GA4GH's VA-Spec 1.1.0 (decision D8). profiles/claims/README.md maps each type and
   field to VA-Spec.
+- It comes to osdlc/osdlc with the claims profile (decision D19). Its place there is not decided.
 - Merged in osdlc/markdown#6. The plan still calls task 4 in progress.
 - Until osdlc/markdown#15 merges, people copy it with npx degit osdlc/markdown/profiles/claims/example.
   After it, the example holds no type copies, so the profile package is the thing to extend. It is

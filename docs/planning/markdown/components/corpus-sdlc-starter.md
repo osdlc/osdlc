@@ -5,8 +5,7 @@ language: markdown
 layer: "[profiles](../layers/profiles.md)"
 states: [target]
 status: planned
-repo_target: "[osdlc/models](../repos/osdlc-models.md)"
-path_target: corpora/sdlc-starter
+repo_target: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
 tasks:
   - "[78 Models repo setup](../tasks/78%20Models%20repo%20setup.md)"
   - "[80 Models publishers](../tasks/80%20Models%20publishers.md)"
@@ -37,7 +36,7 @@ _references/osdlc/ and cite its records by id.
 ## Notes
 
 - Decision D14. It starts with two principles, P-0001 and P-0002, and the owner adds more (task 64).
-- It lives in osdlc/models at corpora/sdlc-starter (decision D17). Task 78 moves it there before its
-  first publish.
+- It comes to osdlc/osdlc (decision D19). Its place there is not decided; the proposal is
+  packages/corpora/*.
 - dev's own intent records are not the upstream for now.
 - A CI check keeps private data out of it (task 65).

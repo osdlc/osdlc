@@ -5,8 +5,7 @@ language: markdown
 layer: "[profiles](../layers/profiles.md)"
 states: [target]
 status: planned
-repo_target: "[osdlc/markdown](../repos/osdlc-markdown.md)"
-path_target: examples/work
+repo_target: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
 tasks:
   - "[67 Work example](../tasks/67%20Work%20example.md)"
   - "[79 Markdown after the move](../tasks/79%20Markdown%20after%20the%20move.md)"
@@ -34,4 +33,5 @@ validates it with --strict.
 
 ## Notes
 
+- It would live in osdlc/osdlc (decision D19). Its place there is not decided.
 - Task 53 covers it: this plan's own corpus shows the end state in CI, from npm. It is not built.

@@ -289,10 +289,12 @@ A twin can have extras the other doesn't need. It just has to pass the shared ca
   name).
 - Writes never lose what a person wrote. Frontmatter is rewritten with frontmatter-lossless or
   yaml-splice, and files are saved with etag-write.
-- General code lives in the osdlc org. This repo (osdlc/markdown) holds the Markdown libraries, the
-  corpus-schema spec and validator, and examples. Models, packs, profiles and starter corpora live
-  in osdlc/models (the plan's D17). The other packages stay in osdlc/osdlc until they move here.
-  Apps use them from there and keep only their own rules.
+- General code lives in the osdlc org. osdlc/osdlc holds the Markdown libraries, the corpus-schema
+  spec and validator, and examples, beside the general libraries
+  ([D-SM4K](../decisions/D-SM4K-markdown-ecosystem-home.md)). The profiles and the starter corpus
+  come there too. osdlc/markdown and osdlc/models are holding pens. dev's markdown packages,
+  model-schema and the packs stay in sksizer/dev for now. Apps use the packages and keep only their
+  own rules.
 
 ## Where things live
 
@@ -301,11 +303,11 @@ A twin can have extras the other doesn't need. It just has to pass the shared ca
 | Note parts | osdlc; dev also has a private copy of markdown-link | osdlc, used from npm and crates.io |
 | Corpus model, TypeScript | markdown-vault and vault-graph-core in dev | markdown-corpus in osdlc |
 | Corpus model, Rust | markdown-corpus in osdlc | the same |
-| corpus-schema | this repo; 0.2.0 is on npm | the same |
-| Profiles, packs, starter corpora | model-schema and packs in dev, merged to a branch that is not on main yet; profiles and the starter move to osdlc/models before their first publish (task 78) | osdlc/models (tasks 78 and 62) |
-| Query | markdown-vault-query in dev | osdlc |
-| Render, edit, sites | dev | osdlc |
-| Typed records from Rust | markdown-store in rust-ontogen | on the shared parts; where it lives is an open question |
+| corpus-schema | osdlc; 0.2.1 is on npm, published from osdlc | the same |
+| Profiles, packs, starter corpora | model-schema and packs in dev, merged to a branch that is not on main yet; the claims and sdlc profiles and the starter are in open pull requests (osdlc/markdown#15, #16 and #19, osdlc/models#1); the planning profile is in osdlc, with the plan | profiles and the starter in osdlc, place not decided (proposed `packages/profiles/*` and `packages/corpora/*`); model-schema and the packs stay in dev for now |
+| Query | markdown-vault-query in dev | dev for now; no move is planned |
+| Render, edit, sites | markdown-render, markdown-render-vue and markdown-vault-astro in osdlc; the rest in dev | the same; no move out of dev is planned |
+| Typed records from Rust | markdown-store in rust-ontogen | on the shared parts; it stays in rust-ontogen for now |
 
 The order of the moves is in the plan's [tasks and milestones](../planning/markdown/README.md).
 

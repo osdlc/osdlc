@@ -9,11 +9,13 @@ after:
   - "[49 SDLC profiles](49%20SDLC%20profiles.md)"
 ---
 
-Starter instance corpus: `@osdlc/corpus-sdlc-starter`, at `corpora/sdlc-starter/` in osdlc/models. It is
+Starter instance corpus: `@osdlc/corpus-sdlc-starter`, built at `corpora/sdlc-starter/` in
+[osdlc/markdown#19](https://github.com/osdlc/markdown/pull/19) and brought to osdlc/osdlc by task 78
+([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)). It is
 an upstream corpus with records, not only types. Its root file extends the sdlc profile by package
 name, and it holds principles to start: P-0001 "Normalize equivalent inputs at the boundary, and
 reject invalid ones", carried over from [osdlc/osdlc#447](https://github.com/osdlc/osdlc/pull/447),
 and P-0002 "Favor deterministic over probabilistic judgement". Standards follow in task 64. A work
 repo names it under `references` (decision D15) with the prefix `osdlc` and cites its records by
-id. CI in osdlc/models
+id. CI in osdlc/osdlc
 validates it with `--strict`. Decision D14 says why it is a starter and not dev's own records. After 49.

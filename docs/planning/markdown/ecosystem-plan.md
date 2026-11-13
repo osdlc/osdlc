@@ -2,7 +2,8 @@
 
 This is a working plan. It says where our markdown packages are today, what is wrong with them,
 where we want to end up, and the steps to get there. We update it as we go. The shape we are
-building toward is in [the architecture](../../architecture/markdown-target.md).
+building toward is in [the architecture](../../architecture/markdown-target.md). The steps that
+bring osdlc/markdown's work back to osdlc/osdlc are in [the repatriation plan](../repatriation.md).
 
 ## Words we use
 
@@ -162,9 +163,11 @@ We follow four rules:
 2. When a job has a TypeScript and a Rust package, they are twins. They share one set of
    conformance cases, so they behave the same.
 3. One word for each idea.
-4. Anything general lives in the osdlc org. This repo holds the Markdown libraries, the spec and
-   examples. Packs, profiles and starter corpora live in osdlc/models (decision D17). The other
-   packages stay in osdlc/osdlc until they move here. Apps use them from there.
+4. Anything general lives in the osdlc org. osdlc/osdlc holds the Markdown libraries, the spec
+   and examples, beside the general libraries. The profiles and the starter corpus come there too
+   (decision D19). osdlc/markdown and osdlc/models are holding pens. dev's markdown packages,
+   model-schema and the packs stay in sksizer/dev for now. Apps use the packages from npm and
+   crates.io.
 
 ![The target, by layer](../../architecture/img/markdown/target.svg)
 
@@ -181,7 +184,8 @@ In practice:
   itself.
 - Types can come from parent corpora, such as profiles. A corpus's types are plain JSON Schema.
   Shared types are written once, as packs in the model layer above the spec (D13), and generated
-  into profiles. Packs, profiles and starter corpora live in osdlc/models (D17).
+  into profiles. Profiles and starter corpora come to osdlc/osdlc; the packs stay in dev for now
+  (D19).
 - markdown-store writes the spec's layout and uses the shared note parts.
 - There is one query layer, built on the corpus model.
 

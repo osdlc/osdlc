@@ -17,6 +17,7 @@ depends_going:
   - "[markdown-link-rs](markdown-link-rs.md)"
   - "[markdown-corpus-rs](markdown-corpus-rs.md)"
   - "[markdown-vault-fs](markdown-vault-fs.md)"
+  - "[slug-collate](slug-collate.md)"
   - "[vfs-seam](vfs-seam.md)"
   - "[etag-write-rs](etag-write-rs.md)"
   - "[yaml-splice-rs](yaml-splice-rs.md)"

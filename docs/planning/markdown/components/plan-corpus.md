@@ -5,8 +5,8 @@ language: markdown
 layer: "[apps](../layers/apps.md)"
 states: [target]
 status: in-progress
-repo_target: "[osdlc/markdown](../repos/osdlc-markdown.md)"
-path_target: docs/planning
+repo_target: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
+path_target: docs/planning/markdown
 tasks:
   - "[38 Planning profile](../tasks/38%20Planning%20profile.md)"
   - "[44 Flatten extends](../tasks/44%20Flatten%20extends.md)"
@@ -42,6 +42,8 @@ explorer's data is built from it.
 
 ## Notes
 
+- Built in osdlc/markdown#13 and #14 at docs/planning. It comes to osdlc/osdlc at
+  docs/planning/markdown (decision D19).
 - Today it extends the planning profile. Its tasks and milestones add fields, and its decisions use
   the profile's type as it is.
 - Task 53 makes it the first remote consumer of the sdlc profile and the starter corpus, from npm.

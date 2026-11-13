@@ -10,9 +10,9 @@ after:
   - "[60 Publish claims](60%20Publish%20claims.md)"
 ---
 
-Clean up osdlc/markdown once the profiles and the starter live in osdlc/models. Close
-[#15](https://github.com/osdlc/markdown/pull/15) and [#19](https://github.com/osdlc/markdown/pull/19)
-as moved, and link the osdlc/models pull request in each. Remove the traces of those folders from
-osdlc/markdown's docs. Change the fernlog example
-([#16](https://github.com/osdlc/markdown/pull/16)) to install `@osdlc/corpus-profile-claims` from
-npm instead of by path. After 78 and 60.
+Clean up osdlc/markdown once the plan, the profiles and the starter live in osdlc/osdlc ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)).
+Close [#15](https://github.com/osdlc/markdown/pull/15) and [#19](https://github.com/osdlc/markdown/pull/19)
+as moved, and link the osdlc/osdlc pull request in each. Remove from osdlc/markdown what was brought
+to osdlc/osdlc, so there is one copy. Its README stays, as the holding pen's. Change the fernlog
+example ([#16](https://github.com/osdlc/markdown/pull/16), re-opened in osdlc/osdlc) to install
+`@osdlc/corpus-profile-claims` from npm instead of by path. After 78 and 60.

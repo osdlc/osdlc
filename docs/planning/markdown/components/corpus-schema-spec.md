@@ -7,7 +7,7 @@ states: [present, target]
 status: published
 repo_present: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
 path_present: packages/conformance/corpus-schema
-repo_target: "[osdlc/markdown](../repos/osdlc-markdown.md)"
+repo_target: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
 path_target: packages/conformance/corpus-schema
 tasks:
   - "[1 corpus-schema](../tasks/1%20corpus-schema.md)"
@@ -37,8 +37,8 @@ folders, JSON Schemas per type and typed links (x-ref). Its test cases sit besid
 ## Notes
 
 - Version 0 is in force (corpus-schema: 0). It has levels 0 to 2.
-- Near target: open osdlc/markdown#9 moves it here with its history. SPEC.md already says it moves
-  once this repo has a release setup.
+- It stays in osdlc/osdlc (decision D19). The copy in osdlc/markdown (osdlc/markdown#9) is retired
+  once its open work is brought here.
 - Proposals not built yet: a baseline and dialects (task 7), profiles through the extends key (task
   9), and sharing whole corpora (tasks 27 to 30).
-- A plain-language guide is in this repo at docs/corpus-schema.md.
+- A plain-language guide is at packages/ts/corpus-schema/docs/guide.md.

@@ -12,19 +12,16 @@ prs:
   - "[osdlc/markdown#10](https://github.com/osdlc/markdown/pull/10)"
 ---
 
-Release setup here, then move corpus-schema. Give this repo its own release setup: Changesets, a
-publish workflow with npm trusted publishing, package checks, the conformance check, a CI matrix and
-shared configs. Then move `@osdlc/corpus-schema` and its spec family from osdlc/osdlc into this repo
-as its first package. The npm name stays the same. After 3. Other markdown packages follow the same
-path later. SPEC.md says the spec moves to osdlc/markdown once this repo has its own release setup.
-This task is that move, so SPEC.md needs updating when it happens. In progress.
-[osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9) has merged: it moved the package and
-its spec family here, with their history, and updated SPEC.md.
-[osdlc/markdown#10](https://github.com/osdlc/markdown/pull/10) has merged (2026-11-10): this repo now
-uses the shared CI and release workflows and checks from osdlc/osdlc
-([osdlc/osdlc#749](https://github.com/osdlc/osdlc/pull/749)). The shared release workflow had failed
-for lack of the App key ([osdlc/osdlc#767](https://github.com/osdlc/osdlc/pull/767)) and the version
-script left the lockfile stale ([osdlc/osdlc#774](https://github.com/osdlc/osdlc/pull/774)). Both
-have merged. `@osdlc/conformance-suites` 0.1.0 is on npm. `@osdlc/package-checks` 0.2.0 is on npm too: the Version
-Packages PR ([osdlc/osdlc#773](https://github.com/osdlc/osdlc/pull/773)) has merged. This repo has not made a release yet. Until it does, corpus-schema releases still go out
-from osdlc/osdlc.
+Release setup, then the corpus-schema move. This task gave osdlc/markdown its own release setup and
+moved `@osdlc/corpus-schema` and its spec family there from osdlc/osdlc.
+[osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9) has merged: it moved the package and its spec family, with their history.
+[osdlc/markdown#10](https://github.com/osdlc/markdown/pull/10) has merged (2026-11-10): osdlc/markdown uses the shared CI and release workflows and
+checks from osdlc/osdlc ([osdlc/osdlc#749](https://github.com/osdlc/osdlc/pull/749), with fixes in [osdlc/osdlc#767](https://github.com/osdlc/osdlc/pull/767) and [osdlc/osdlc#774](https://github.com/osdlc/osdlc/pull/774)). osdlc/markdown has
+not made a release.
+
+[D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) and the repository decision
+[D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md)
+reverse the move. corpus-schema releases from osdlc/osdlc, and its npm publisher does not change.
+osdlc/markdown's copy is retired once its open work, 0.3.0 in [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12), is brought back
+([osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790)). That pull request also removes the note in SPEC.md that the spec moves to
+osdlc/markdown. In progress.

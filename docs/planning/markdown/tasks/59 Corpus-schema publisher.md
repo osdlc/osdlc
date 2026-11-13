@@ -7,8 +7,8 @@ type: supporting
 milestone: "[m-npm](../milestones/m-npm.md)"
 ---
 
-Move the npm trusted publisher of `@osdlc/corpus-schema` to this repo's publish workflow, since it
-releases from here (task 21). npm lists osdlc/osdlc as its repository today. Owner work: it needs
-the npm account. It waits on nothing. Release 0.3.0 (task 36) comes after it.
+Move the npm trusted publisher of `@osdlc/corpus-schema` to osdlc/markdown's publish workflow. No
+longer needed: [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) keeps corpus-schema releasing from osdlc/osdlc, so its publisher stays as it
+is. The record stays so that links to it still resolve.
 
-The packages that publish from osdlc/models get their trusted publishers in task 80.
+The profile and starter packages get their trusted publishers in task 80.

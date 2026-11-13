@@ -13,6 +13,6 @@ after:
   - "[78 Models repo setup](78%20Models%20repo%20setup.md)"
 ---
 
-Publish `@osdlc/corpus-sdlc-starter` to npm from `corpora/sdlc-starter/` in osdlc/models. Owner
+Publish `@osdlc/corpus-sdlc-starter` to npm from its folder in osdlc/osdlc (task 78). Owner
 work: merging the Version Packages pull request there publishes it. Its `package.json` depends on `@osdlc/corpus-profile-sdlc`, so that is published
 first. After 63, 65, 61, 78 and 80.

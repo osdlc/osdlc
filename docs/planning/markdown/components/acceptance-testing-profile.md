@@ -5,7 +5,7 @@ language: markdown
 layer: "[profiles](../layers/profiles.md)"
 states: [target]
 status: proposal
-repo_target: "[osdlc/models](../repos/osdlc-models.md)"
+repo_target: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
 tasks:
   - "[25 Testing profile](../tasks/25%20Testing%20profile.md)"
 extends_new:
@@ -21,5 +21,5 @@ methods and test runs are study results.
 
 ## Notes
 
-- It would live in osdlc/models with the other shared profiles (decision D17). The plan gives no
+- It would live in osdlc/osdlc with the other shared profiles (decision D19). The plan gives no
   package name or path.
