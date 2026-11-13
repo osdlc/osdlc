@@ -74,31 +74,40 @@ export function score(record: CorpusRecord, terms: readonly string[]): number {
 }
 
 const WIDTH = 160
+const LINK = /^!?\[[^\]]*\]\([^)]*\)$|^\[\[[^\]]*\]\]$/
 
-/** The text around the first term the body holds, else a field's, on one line. `''` for none. */
+/** `text` around `at`, on one line, with an ellipsis at each end that was cut. */
+function around(text: string, at: number, length: number): string {
+  const start = Math.max(0, at - Math.floor((WIDTH - length) / 2))
+  const cut = text
+    .slice(start, start + WIDTH)
+    .replace(/\s+/g, ' ')
+    .trim()
+  return `${start > 0 ? '…' : ''}${cut}${start + WIDTH < text.length ? '…' : ''}`
+}
+
+/**
+ * The text around the first term the body holds, else around a term in a string field, on one
+ * line. A field that is only a link is used when no other field holds a term. `''` for none.
+ */
 export function snippet(record: CorpusRecord, terms: readonly string[]): string {
-  const text = textOf(record)
+  // Lowercasing changes the length of a few characters; then the place is close, not exact.
+  const body = textOf(record).body
+  for (const term of terms) {
+    const at = body.indexOf(term)
+    if (at !== -1) return around(record.body ?? '', at, term.length)
+  }
   const fields: string[] = []
-  for (const [source, lower] of [
-    [record.body ?? '', text.body],
-    [fields, text.fields],
-  ] as const) {
+  strings(record.data, fields)
+  let link = ''
+  for (const field of fields) {
+    const lower = field.toLowerCase()
     for (const term of terms) {
       const at = lower.indexOf(term)
       if (at === -1) continue
-      let original = source
-      if (typeof original !== 'string') {
-        strings(record.data, fields)
-        original = fields.join('\n')
-      }
-      // Lowercasing changes the length of a few characters; then the place is close, not exact.
-      const start = Math.max(0, at - Math.floor((WIDTH - term.length) / 2))
-      const cut = original
-        .slice(start, start + WIDTH)
-        .replace(/\s+/g, ' ')
-        .trim()
-      return `${start > 0 ? '…' : ''}${cut}${start + WIDTH < original.length ? '…' : ''}`
+      if (!LINK.test(field)) return around(field, at, term.length)
+      link ||= around(field, at, term.length)
     }
   }
-  return ''
+  return link
 }
