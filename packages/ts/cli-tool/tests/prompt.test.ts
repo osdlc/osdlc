@@ -434,7 +434,7 @@ describe('askChoice', () => {
       )
       expect(e).toBeInstanceOf(Error)
       expect(e).not.toBeInstanceOf(NotInteractiveError)
-      expect((e as Error).message).toBe("no answer: 'y' is not one of the choices (text, json)")
+      expect((e as Error).message).toBe("'y' is not one of the choices (text, json)")
       expect(written).toEqual(['Format?\n  1) text\n  2) json\nChoose 1-2: '])
       // Only the first line was read; the rest is left for whatever reads next.
       expect(readLine(fd)).toBe('y')
@@ -448,7 +448,7 @@ describe('askChoice', () => {
       ),
     )
     expect((e as Error).message).toBe(
-      'no answer: an empty line is not one of the choices (text, json). Pass --format instead.',
+      'An empty line is not one of the choices (text, json). Pass --format instead.',
     )
   })
 

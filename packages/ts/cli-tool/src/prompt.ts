@@ -128,11 +128,8 @@ export function canPrompt(): boolean {
  * `end-of-input` when input ended before an answer was typed.
  *
  * `runMain` and a command tree's `run` print its message and exit with
- * {@link NotInteractiveError.exit}. That is 2 ({@link EXIT.usage}) for
- * `no-terminal`, as the CLI standard asks of a command that would prompt with
- * nobody there: the command line has to change, to pass the flag that
- * answers instead. It is 1 for `end-of-input`, where someone was asked and
- * closed the input.
+ * {@link NotInteractiveError.exit}. See D-04 for why `no-terminal` is a usage
+ * error.
  * @experimental
  */
 export class NotInteractiveError extends Error {
@@ -485,10 +482,10 @@ export function askChoice<const T extends string>(
     if (chosen !== undefined) return chosen
     const shown = safeLine(answer)
     if (!asking.terminal) {
-      const what = shown === '' ? 'an empty line' : `'${shown}'`
+      const what = shown === '' ? 'An empty line' : `'${shown}'`
       const named = choices.map(safeLine).join(', ')
       const pass = asking.flag === undefined ? '' : `. Pass ${asking.flag} instead.`
-      throw new Error(`no answer: ${what} is not one of the choices (${named})${pass}`)
+      throw new Error(`${what} is not one of the choices (${named})${pass}`)
     }
     const said = shown === '' ? '' : `'${shown}' is not one of the choices. `
     asking.write(`${said}${help}\n${line}`)

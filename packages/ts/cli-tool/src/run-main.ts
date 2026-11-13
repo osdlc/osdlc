@@ -14,12 +14,13 @@
  * kind. So a missing tool, a signed-out `gh` and a network failure read the
  * same in every tool that throws the classified failure (`@osdlc/typed-git`,
  * `@osdlc/typed-gh` and `@osdlc/code-host` do). A bare `CommandFailed` carries
- * only command-seam's kinds, so its generic `exit` kind exits 1. A thrown
- * `NotInteractiveError` (a prompt with nobody to answer it) prints its message
- * and exits with its own code: 2 when there was no terminal. A stack trace
+ * only command-seam's kinds, so its generic `exit` kind exits 1. A stack trace
  * is the wrong default for a command someone typed. It says where the code
  * was, not what the person should do. A tool that wants traces can catch
  * inside its own `main`.
+ *
+ * A thrown `NotInteractiveError` (a prompt with nobody to answer it) prints its
+ * message and exits with `err.exit`.
  *
  * A first argument of `--version` or `--where` is answered here, after the
  * devlink hook and without calling `main`.
