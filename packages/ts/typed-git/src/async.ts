@@ -130,7 +130,7 @@ export class AsyncGit {
    * Every method again, resolving to a `Result<T, GitFailure>` instead of
    * rejecting. A declared absence is `ok: true`; see `./outcome.ts`.
    *
-   * The type leaves out `raw`, `rawChecked`, `rawBytes`, `rawBytesChecked`
+   * The type leaves out the `raw*` methods
    * and `at`, but at runtime the proxy wraps them too: `git.try.raw(argv)`
    * resolves to `{ ok: true, value }`. Call those on the client itself.
    */
@@ -184,9 +184,8 @@ export class AsyncGit {
 
   /**
    * {@link AsyncGit.raw} with stdout as the bytes git wrote, never decoded.
-   * `cliBackend` runs it on its `bytesRunner`, and rejects with
-   * `UnsupportedRequest` when it was given a `runner` and no `bytesRunner`.
-   * A non-CLI backend rejects it too. See {@link Git.rawBytes}.
+   * Rejects with `UnsupportedRequest` when the backend has no bytes
+   * runner (see `cliBackend`), as a non-CLI backend does. See {@link Git.rawBytes}.
    *
    * @experimental command-seam's bytes runners are experimental.
    */

@@ -6,7 +6,7 @@
  *
  * A fake bytes runner pins the argv, options and gate. Real git proves the
  * bytes survive: a blob and a diff that are not UTF-8 come back unchanged,
- * where the text door replaces them with U+FFFD.
+ * where `raw` replaces them with U+FFFD.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
@@ -338,7 +338,7 @@ describe('byte-exact output against real git', () => {
 
     expect(fx.git.rawBytesChecked(argv).stdout.equals(NOT_UTF8)).toBe(true)
     expect(fx.git.rawBytes(argv).stdout.equals(NOT_UTF8)).toBe(true)
-    // The text door decodes, and the two invalid bytes become U+FFFD.
+    // `raw` decodes, and the two invalid bytes become U+FFFD.
     expect(fx.git.rawChecked(argv).stdout).toContain('�')
 
     const asyncGit = new AsyncGit(fx.dir)

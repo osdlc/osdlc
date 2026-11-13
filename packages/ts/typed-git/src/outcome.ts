@@ -25,8 +25,8 @@ import { thrownGitFailure, type GitFailure } from './failure.ts'
 
 /**
  * The methods `try` mirrors: everything except the `raw*` methods, `at`,
- * and `try` itself. `raw` and `rawBytes` already return a `CommandResult`
- * and never throw for a failed git. `rawChecked` and `rawBytesChecked` exist
+ * and `try` itself. The unchecked `raw*` methods already return a
+ * `CommandResult` and never throw for a failed git; the checked ones exist
  * to throw. `at(cwd)` returns a new client that has its own `.try`. The
  * types leave them out, but the runtime proxy wraps every function property,
  * these included.

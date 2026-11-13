@@ -217,7 +217,7 @@ export class Git {
    * or `{ ok: false, error }` with a classified {@link GitFailure}.
    * A declared absence is `ok: true`. See `./outcome.ts`.
    *
-   * The type leaves out `raw`, `rawChecked`, `rawBytes`, `rawBytesChecked`
+   * The type leaves out the `raw*` methods
    * and `at`, but at runtime the proxy wraps them too: `git.try.raw(argv)`
    * returns `{ ok: true, value }`. Call those on the client itself.
    */
@@ -273,8 +273,8 @@ export class Git {
    * {@link Git.raw} with stdout as the bytes git wrote, never decoded: for
    * output that is hashed or replayed, such as a blob, `status -z` with
    * names that are not UTF-8, or `diff --binary` of a file that is not
-   * UTF-8. Stderr is still text. Runs on the `bytesRunner`; a client given a
-   * `runner` and no `bytesRunner` throws `UnsupportedRequest`.
+   * UTF-8. Stderr is still text. Runs on the `bytesRunner`; throws
+   * `UnsupportedRequest` when the client has none (see the constructor).
    *
    * @experimental command-seam's bytes runners are experimental.
    */
@@ -494,7 +494,6 @@ export class Git {
 
   /**
    * Every changed or untracked file, from `status --porcelain -z`.
-   * `ignored` adds the ignored files, as `!` entries.
    */
   statusEntries(opts: GitSyncCallOptions & StatusEntriesOptions = {}): StatusEntry[] {
     return this.exec(v.statusEntries(opts), opts)

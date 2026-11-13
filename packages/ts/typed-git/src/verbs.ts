@@ -105,12 +105,9 @@ export function gate<T>(verb: GitVerb<T>, result: CommandResult, argv?: string[]
 }
 
 /**
- * {@link gate} for a bytes runner's result, as `rawBytesChecked` reads it:
- * the result itself, or a thrown `FailureError` carrying the classified
- * `GitFailure`. No exit code is an answer, and a `neverExited` or
- * `outputIncomplete` result fails, as in `gate`. The `CommandFailed` in
- * `failure.cause` holds stdout decoded as UTF-8, so the failure reads like
- * any other.
+ * Gate for a bytes runner's result: returns it, or throws a `FailureError`
+ * with the classified `GitFailure` on a non-zero exit, `neverExited` or
+ * `outputIncomplete`. The `CommandFailed` cause holds stdout decoded as UTF-8.
  */
 export function gateBytes(result: CommandResult<Buffer>, argv: string[]): CommandResult<Buffer> {
   try {
@@ -123,11 +120,9 @@ export function gateBytes(result: CommandResult<Buffer>, argv: string[]): Comman
 
 /**
  * The bytes runner a client runs `rawBytes` on: the `bytesRunner` passed,
- * else the default spawn, but only when no `runner` was passed either. A
- * client given a `runner` and no `bytesRunner` gets `undefined` and throws
- * `UnsupportedRequest` from its bytes calls, so a fake or a supervised runner
- * is never bypassed by a default spawn. `Git` and `cliBackend` both call it,
- * so the rule lives here once.
+ * else the default spawn, but only when no `runner` was passed either.
+ * `undefined` means the client throws `UnsupportedRequest` from its bytes
+ * calls. See the `Git` constructor.
  */
 export function bytesRunnerFor<B>(
   opts: { runner?: unknown; bytesRunner?: B | undefined },

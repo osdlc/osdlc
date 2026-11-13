@@ -227,8 +227,7 @@ export type GitRequest =
   | ({ kind: 'remoteSetBranches'; remote: string; branches: string[] } & RemoteSetBranchesOptions)
   | ({ kind: 'gc' } & GcOptions)
   | { kind: 'raw'; argv: string[]; input?: string | undefined; checked?: boolean | undefined }
-  // `raw` with stdout kept as the bytes git wrote. `cliBackend` runs it on its
-  // bytes runner.
+  // `raw` with stdout kept as the bytes git wrote.
   | { kind: 'rawBytes'; argv: string[]; input?: string | undefined; checked?: boolean | undefined }
 
 /**
@@ -539,7 +538,8 @@ export function cliBackend(
     runner?: AsyncCommandRunner | undefined
     /**
      * The runner for `rawBytes`. See the function doc for its default.
-     * Experimental, as command-seam's bytes runners are.
+     *
+     * @experimental command-seam's bytes runners are experimental.
      */
     bytesRunner?: AsyncBytesCommandRunner | undefined
     /**
@@ -601,7 +601,6 @@ export function cliBackend(
       if (req.kind === 'version') {
         return (await versionOf(runOpts, ['--version'])) as GitResults[R['kind']]
       }
-      // `rawBytes` has no verb: it runs on the bytes runner, with no parse.
       if (req.kind === 'rawBytes') {
         if (bytesRunner === undefined) {
           throw new UnsupportedRequest(req.kind, 'cliBackend with a runner and no bytesRunner')
