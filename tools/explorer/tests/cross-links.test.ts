@@ -26,7 +26,7 @@ describe('planTaskRefs', () => {
 
 describe('sourceUrl', () => {
   it('points at the record on GitHub', () => {
-    expect(sourceUrl('docs/plan/4.md')).toBe('https://github.com/osdlc/markdown/blob/main/docs/plan/4.md')
+    expect(sourceUrl('docs/plan/4.md')).toBe('https://github.com/osdlc/osdlc/blob/main/docs/plan/4.md')
     expect(sourceUrl(null)).toBeNull()
   })
 })

@@ -20,8 +20,9 @@ Open the address Vite prints. The explorer is a private package in the repo's pn
 `pnpm install` installs it with the rest, and its lockfile is the root `pnpm-lock.yaml`.
 
 The second line builds this repo's corpus-schema in `packages/ts/corpus-schema/`. The explorer's
-`@osdlc/corpus-schema` is `workspace:*`, that folder, because the plan uses `extends` and the 0.2.0
-on npm does not know it. Run the line again after corpus-schema changes.
+`@osdlc/corpus-schema` is `workspace:*`, that folder, because the plan uses `extends`, which
+corpus-schema has from 0.3.0. npm has 0.2.1, and 0.3.0 publishes from this repo. Run the line again
+after corpus-schema changes.
 
 ### Components
 
@@ -102,7 +103,7 @@ out, and checks that they match the records.
 ## Build a static copy
 
 ```sh
-pnpm build
+pnpm build:site
 ```
 
 The site goes to `dist/`, which git ignores. The data is built in, so `dist/` works on any static
@@ -115,7 +116,7 @@ pnpm typecheck
 pnpm test
 ```
 
-CI runs these, `pnpm build` and `pnpm build-data`, in `.github/workflows/planning.yml`. It builds
+CI runs these, `pnpm build:site` and `pnpm build-data`, in `.github/workflows/planning.yml`. It builds
 corpus-schema with `tools/build-corpus-schema.sh` first.
 
 The graph and plan logic is plain TypeScript under `src/model/`, with tests under `tests/`: the

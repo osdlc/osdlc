@@ -31,10 +31,10 @@ target is planned.
       "language": "ts",                 // ts | rust | yaml | markdown | none
       "layer": "spec",                  // a layers[].id
       "states": ["present", "target"],  // which states it exists in
-      "repo": { "present": "osdlc/osdlc", "target": "osdlc/markdown" },  // null for a state it is absent from
+      "repo": { "present": "osdlc/osdlc", "target": "osdlc/osdlc" },  // null for a state it is absent from
       "path": { "present": "packages/ts/corpus-schema", "target": "packages/ts/corpus-schema" },
       "status": "published",            // published | unpublished | in-progress | planned | retiring | proposal
-      "version": "0.2.0",               // latest published version, or null
+      "version": "0.2.1",               // latest published version, or null
       "registry": "https://www.npmjs.com/package/@osdlc/corpus-schema",  // or crates.io, or null
       "twin": "corpus-schema-rs",       // id of the same library in another language, or null
       "purpose": "One or two plain sentences: what it does and who uses it.",

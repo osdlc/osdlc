@@ -2,7 +2,7 @@ import type { PlanTask } from './plan'
 import type { DisplayGraph, DisplayNode } from './twins'
 
 /** Where a task's or milestone's markdown record lives on GitHub. */
-export const SOURCE_BASE = 'https://github.com/osdlc/markdown/blob/main/'
+export const SOURCE_BASE = 'https://github.com/osdlc/osdlc/blob/main/'
 
 export function sourceUrl(source: string | null): string | null {
   return source === null || source === '' ? null : SOURCE_BASE + source.replace(/^\/+/, '')

@@ -6,7 +6,7 @@
   "description": "An interactive graph of the osdlc markdown ecosystem, today and in the plan's target.",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc --build && vite build",
+    "build:site": "vue-tsc --build && vite build",
     "preview": "vite preview",
     "typecheck": "vue-tsc --build",
     "test": "vitest run",

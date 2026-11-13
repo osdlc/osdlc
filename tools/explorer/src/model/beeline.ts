@@ -1,4 +1,4 @@
-// The checklist in docs/planning/BEELINE.md, generated from the plan by scripts/build-data.mjs.
+// The checklist in docs/planning/markdown/BEELINE.md, generated from the plan by scripts/build-data.mjs.
 // Imports name the .ts file, so that the script can load this module under plain Node.
 import type { Plan, PlanTask } from './plan.ts'
 import { indexPlan, isNextUp, STATUS_ORDER, type PlanIndex } from './work.ts'
