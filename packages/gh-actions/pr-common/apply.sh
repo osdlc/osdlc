@@ -80,9 +80,7 @@ if [ "$step" = patch ]; then
   exit 0
 fi
 
-# --- push
 RESULT="$dir/result.json"
-: "${RESULT:?}"
 meta_head=$(jq -r .head "$dir/meta.json")
 printf '%s\n' "$meta_head" > "$tmp/$AGENT-pr-head"
 rm -f "$tmp/$AGENT-pr-pushed"
@@ -109,7 +107,6 @@ if [ "$(git rev-parse HEAD)" != "$pr_oid" ]; then fail "the checkout is not at t
 
 git -c core.hooksPath=/dev/null apply --index --binary "$dir/patch" || { git reset -q --hard "$pr_oid"; fail "the patch does not apply to the head."; }
 
-# Inspect what was staged: paths, symlinks, submodules and new executable bits.
 violation=""
 while IFS= read -r -d '' info && IFS= read -r -d '' path; do
   set -- ${info#:}
@@ -118,11 +115,7 @@ while IFS= read -r -d '' info && IFS= read -r -d '' path; do
   case "/$lower/" in
     //*|*/../*|*/./*) violation="path outside the repository: $path" ;;
   esac
-  case "$path" in /*) violation="path outside the repository: $path" ;; esac
-  IFS=/ read -r -a parts <<< "$lower"
-  for p in "${parts[@]}"; do
-    case "$p" in .git*) violation="a protected path ($path)" ;; esac
-  done
+  case "/$lower" in */.git*) violation="a protected path ($path)" ;; esac
   case "$oldmode$newmode" in
     *120000*) violation="a symlink ($path)" ;;
     *160000*) violation="a submodule ($path)" ;;

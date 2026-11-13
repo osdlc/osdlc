@@ -4,11 +4,8 @@ harness_review_intro() {
   echo "the /craft:code-review skill with base origin/$1"
 }
 
-# Skill mode runs /<plugin>:<skill> as the first line of the prompt (a slash
-# command for claude -p). With --apply ($APPLY=1) Edit, Write and MultiEdit are
-# allowed; commit, push and gh pr comment stay denied (the action commits).
-# The how-called block of skill mode goes in --append-system-prompt: after a
-# slash command, claude -p takes every following line as the command's arguments.
+# claude -p passes every prompt line after a slash command to the skill as arguments,
+# so the how-called block goes in --append-system-prompt.
 harness_uses_system_prompt() { :; }
 
 harness_limits() {

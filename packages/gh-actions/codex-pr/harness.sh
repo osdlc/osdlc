@@ -13,14 +13,11 @@ harness_review_intro() {
   echo "the \$craft:code-review skill with base origin/$1"
 }
 
-# Skill mode calls the skill as $plugin:skill. With --apply ($APPLY=1) the
-# sandbox is workspace-write: the working tree is writable, the network stays off.
 harness_skill_ref() {
   echo "\$$1"
 }
 
-# The how-called block of skill mode goes in codex's developer_instructions
-# config key (a TOML string; a JSON string is one), so the prompt stays the call.
+# developer_instructions takes a TOML string; jq's JSON string output is a valid one.
 harness_uses_system_prompt() { :; }
 
 harness_limits() {

@@ -1,4 +1,4 @@
-# Sourced by mention.sh, ask.sh, apply.sh and post.sh. parse_skill_request reads
+# parse_skill_request reads
 # $AGENT and $REQUEST (first line `@AGENT /<plugin>:<skill> [args...] [--apply]`)
 # and sets
 #   SKILL_TOKEN    the word after the mention, as typed (starts with /)

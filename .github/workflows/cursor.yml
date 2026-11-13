@@ -4,12 +4,8 @@
 # The work is the cursor-pr action (packages/gh-actions/cursor-pr); this file only
 # says when it runs and with what. See that action's README for its limits.
 #
-# `@cursor /<plugin>:<skill> [args]` runs any installed skill and posts its output.
-# Add `--apply` and the agent may edit files: the first job (no environment, no
-# push token) turns its edits into a patch artifact, and the second job (the
-# pr-agent environment, which holds the osdlc-release App secrets) checks the
-# patch, applies it to a fresh checkout, commits and pushes it to the pull
-# request branch with an App token, so CI runs. See packages/gh-actions/pr-apply.
+# `@cursor /<plugin>:<skill> [args] [--apply]` runs a skill; --apply pushes its edits from a
+# second job, see packages/gh-actions/pr-apply.
 #
 # Only sksizer can trigger it: the job's `if` checks the author before a
 # runner starts. The action is taken from main, never from the pull request,
@@ -46,7 +42,7 @@ jobs:
         with:
           cursor-api-key: ${{ secrets.CURSOR_API_KEY }}
 
-  # Only for --apply runs that changed files. The agent never runs here.
+  # The agent never runs in this job.
   cursor-push:
     needs: cursor
     if: needs.cursor.outputs.apply-patch == 'true'

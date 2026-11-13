@@ -91,9 +91,7 @@ runs:
         SOURCE_URL: ${{ github.event.comment.html_url || github.event.review.html_url }}
       run: '"$GITHUB_ACTION_PATH/../pr-common/ask.sh"'
 
-    # --apply: the agent job holds no push token. After the agent, its edits
-    # become a patch artifact; the pr-apply action in a separate job (environment
-    # pr-agent) validates and pushes it and posts the comment.
+    # Patch for the pr-apply job; see ../pr-apply/README.md.
     - id: patch
       if: steps.mention.outputs.real == '1' && steps.mention.outputs.mode == 'skill' && steps.mention.outputs.apply == '1'
       shell: bash

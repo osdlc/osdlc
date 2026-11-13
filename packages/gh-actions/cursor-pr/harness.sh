@@ -30,9 +30,6 @@ harness_prompt_suffix() {
   cat "$skills/code-review/SKILL.md"
 }
 
-# Skill mode: Cursor has no plugin install either, so the skill's SKILL.md is
-# found on disk and inlined. harness_skill_resolve prints its path, or where it
-# looked and returns 1 (the comment then says the skill was not found).
 cursor_skill_dirs() { # plugin ("" for a bare skill name)
   local pack packs
   echo "$PWD/.cursor/skills"
@@ -45,6 +42,7 @@ cursor_skill_dirs() { # plugin ("" for a bare skill name)
   fi
 }
 
+# Cursor has no plugin install, so SKILL.md is read from disk. Prints its path, or the paths tried and returns 1.
 harness_skill_resolve() {
   local name="${1#*:}" plugin="" dir tried=""
   case "$1" in *:*) plugin="${1%%:*}" ;; esac
