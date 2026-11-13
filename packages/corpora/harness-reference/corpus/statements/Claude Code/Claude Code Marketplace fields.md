@@ -1,0 +1,226 @@
+---
+proposition:
+  subject: "[Claude Code](../../harnesses/Claude%20Code.md)"
+  predicate: plugins/marketplace-fields
+  object:
+    file: .claude-plugin/marketplace.json
+    fields:
+      - name: name
+        type: string
+        required: true
+        use: marketplace id; typed after @ in a plugin id
+      - name: owner
+        type: object
+        required: true
+        use: maintainer information
+      - name: owner.name
+        required: true
+        use: maintainer name
+      - name: owner.email
+        required: false
+        use: not documented
+      - name: owner.url
+        required: false
+        use: not documented
+      - name: plugins
+        type: array
+        required: true
+        use: plugin entries; each is validated on its own
+      - name: $schema
+        type: string
+        required: false
+        use: JSON Schema URL for editor autocomplete; ignored at load time
+      - name: description
+        type: string
+        required: false
+        use: marketplace description shown to users; validate warns when missing
+      - name: version
+        type: string
+        required: false
+        use: marketplace manifest version
+      - name: metadata.description
+        type: string
+        required: false
+        use: alternate location for description
+      - name: metadata.version
+        type: string
+        required: false
+        use: alternate location for version
+      - name: metadata.pluginRoot
+        type: string
+        required: false
+        use: directory bare plugin source names resolve under
+        note: Requires v2.1.239 or later.
+      - name: forceRemoveDeletedPlugins
+        type: boolean
+        required: false
+        use: uninstalls a plugin removed from plugins on users' machines
+      - name: allowCrossMarketplaceDependenciesOn
+        type: string[]
+        required: false
+        use: marketplaces whose plugins may be installed as dependencies
+      - name: renames
+        type: object
+        required: false
+        use: map from a former plugin name to its current name, or null for a removed plugin
+    entry_fields:
+      - name: name
+        type: string
+        required: true
+        use: plugin id typed before @ at install, even when plugin.json sets another name
+      - name: source
+        type: string | object
+        required: true
+        use: where to fetch the plugin
+      - name: description
+        type: string
+        required: false
+        use: shown in /plugin listings and details
+      - name: version
+        type: string
+        required: false
+        use: plugin version; a version in plugin.json wins and validate warns
+      - name: category
+        type: string
+        required: false
+        use: free-form category for organizing the catalog
+      - name: tags
+        type: string[]
+        required: false
+        use: free-form tags for search
+      - name: strict
+        type: boolean
+        required: false
+        use: default true; whether plugin.json is the definitive source of components
+      - name: relevance
+        type: object
+        required: false
+        use: signals for when to suggest the plugin
+        note: Validation message names its keys topic and signals.
+      - name: dependencies
+        type: array
+        required: false
+        use: plugins that must be enabled for this one to work
+      - name: defaultEnabled
+        type: boolean
+        required: false
+        use: default true; the entry value wins over plugin.json
+      - name: displayName
+        type: string
+        required: false
+        use: name shown in the UI; wins over plugin.json
+      - name: metadata
+        type: object
+        required: false
+        use: free-form; Claude Code does not read it
+        note: Requires v2.1.222 or later.
+      - name: headers
+        type: object
+        required: false
+        use: HTTP headers sent when downloading an archive source
+        note: Requires v2.1.238 or later.
+      - name: headersHelper
+        type: string
+        required: false
+        use: command that prints archive-download headers; entry must set strict false
+        note: Requires v2.1.238 or later.
+      - name: author
+        type: object
+        required: false
+        use: display field; the entry value wins over plugin.json
+      - name: homepage
+        type: string
+        required: false
+        use: display field; the entry value wins over plugin.json
+      - name: repository
+        type: string
+        required: false
+        use: display field; the entry value wins over plugin.json
+      - name: license
+        type: string
+        required: false
+        use: display field; the entry value wins over plugin.json
+      - name: keywords
+        type: string[]
+        required: false
+        use: display field; the entry value wins over plugin.json
+      - name: commands
+        type: as in plugin.json
+        required: false
+        use: component field; appended to plugin.json under strict true, a conflict under strict false
+      - name: agents
+        type: as in plugin.json
+        required: false
+        use: component field; appended to plugin.json under strict true, a conflict under strict false
+      - name: skills
+        type: as in plugin.json
+        required: false
+        use: component field; appended to plugin.json under strict true, a conflict under strict false
+      - name: hooks
+        type: object
+        required: false
+        use: component field; only the inline object form runs; its matchers replace the manifest's per event
+      - name: outputStyles
+        type: as in plugin.json
+        required: false
+        use: component field; appended to plugin.json under strict true, a conflict under strict false
+      - name: themes
+        type: as in plugin.json
+        required: false
+        use: component field; appended to plugin.json under strict true, a conflict under strict false
+      - name: mcpServers
+        type: as in plugin.json
+        required: false
+        use: applies only when the plugin has no plugin.json
+      - name: lspServers
+        type: as in plugin.json
+        required: false
+        use: applies only when the plugin has no plugin.json
+      - name: userConfig
+        type: as in plugin.json
+        required: false
+        use: applies only when the plugin has no plugin.json
+      - name: channels
+        type: as in plugin.json
+        required: false
+        use: applies only when the plugin has no plugin.json
+      - name: experimental
+        type: object
+        required: false
+        use: component declarations; a non-object is ignored with a warning
+    source_forms:
+      - relative path (string)
+      - github (repo, ref, sha)
+      - url (url, ref, sha)
+      - git-subdir (url, path, ref, sha)
+      - npm (package, version, registry)
+      - archive (url, sha256)
+      - command (command, timeout, mode)
+direction: supports
+strength: moderate
+hasEvidenceLines:
+  - hasEvidenceItems:
+      - "[2026-11-05 Claude Code Marketplace fields](../../study-results/Claude%20Code/2026-11-05%20Claude%20Code%20Marketplace%20fields.md)"
+    directionOfEvidenceProvided: supports
+    strengthOfEvidenceProvided: moderate
+    description: docs observed 2026-11-05.
+reportedIn:
+  - "[Claude Code docs Marketplace reference](../../documents/code.claude.com/Claude%20Code%20docs%20Marketplace%20reference.md)"
+contributions:
+  - contributor:
+      name: harness-reference import
+      agentType: software
+    activityType: created
+    date: 2026-11-05T00:00:00Z
+harness: "[Claude Code](../../harnesses/Claude%20Code.md)"
+subject: "[Marketplace fields](../../subjects/plugins/Marketplace%20fields.md)"
+scope:
+  since: null
+  until: null
+  platform: []
+  model: null
+status: current
+imported_from: fact:plugins/marketplace-fields@claude-code#scope-[null,null,null]
+---
+
+Imported from `facts/claude-code/plugins/marketplace-fields.md`.
