@@ -9,7 +9,9 @@
 # packages: the leak check fails on private data in a package folder, and its
 # own test plants each kind of leak to check that it is caught. Every profile
 # and corpus, and the claims example, must validate with no errors and no
-# warnings. Each package's tests check the package as npm ships it, and that
+# warnings. That includes the harness reference in
+# packages/corpora/harness-reference/, a private corpus with its own tools,
+# which harness-reference.yml checks further. Each package's tests check the package as npm ships it, and that
 # broken records fail with their one expected error.
 #
 # example-pair: fernlog installs the claims profile with its own lockfile; it
@@ -110,8 +112,12 @@ jobs:
           packages/corpora/*/corpus
           packages/profiles/claims/example
 
+      # The harness reference's tests are of its own tools; harness-reference.yml
+      # runs them.
       - name: Run each package's tests
-        run: pnpm --filter './packages/profiles/*' --filter './packages/corpora/*' --if-present run test
+        run: >-
+          pnpm --filter './packages/profiles/*' --filter './packages/corpora/*'
+          --filter '!harness-reference' --if-present run test
 
   example-pair:
     runs-on: ubuntu-latest

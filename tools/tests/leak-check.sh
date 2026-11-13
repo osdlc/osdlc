@@ -3,8 +3,9 @@
 # tree, and fails with exit 2 when it cannot scan.
 #
 # Each case copies the script into a fresh temporary root that holds small
-# packages/profiles/x/, packages/profiles/claims/, packages/corpora/y/ and
-# packages/corpora/examples/ folders, writes one file, and runs the copy there.
+# packages/profiles/x/, packages/profiles/claims/, packages/corpora/y/,
+# packages/corpora/examples/ and packages/corpora/harness-reference/ folders,
+# writes one file, and runs the copy there.
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -27,9 +28,10 @@ check() {
   n=$((n + 1))
   root="$work/$n"
   p="$root/packages"
-  mkdir -p "$root/tools" "$p/profiles/x" "$p/profiles/claims" "$p/corpora/y" "$p/corpora/examples"
+  mkdir -p "$root/tools" "$p/profiles/x" "$p/profiles/claims" "$p/corpora/y" "$p/corpora/examples" \
+    "$p/corpora/harness-reference"
   cp "$script" "$root/tools/leak-check.sh"
-  for d in profiles/x profiles/claims corpora/y corpora/examples; do
+  for d in profiles/x profiles/claims corpora/y corpora/examples corpora/harness-reference; do
     echo "A clean record." >"$p/$d/README.md"
   done
   case $file in
@@ -72,6 +74,16 @@ check "home-relative path in packages/profiles/claims/ is allowed" 0 "ok: no pri
   packages/profiles/claims/README.md "The tool reads ~/.config/tool.toml."
 check "home-relative path in packages/corpora/examples/ is allowed" 0 "ok: no private data" \
   packages/corpora/examples/README.md "The tool reads ~/.config/tool.toml."
+check "home-relative path in packages/corpora/harness-reference/ is allowed" 0 "ok: no private data" \
+  packages/corpora/harness-reference/README.md "The harness reads ~/.claude/settings.json."
+check "home path in packages/corpora/harness-reference/ is still caught" 1 "leak (home path)" \
+  packages/corpora/harness-reference/README.md "Open /Users/someone/.claude/settings.json."
+check "email address in packages/corpora/harness-reference/ is still caught" 1 "leak (email address)" \
+  packages/corpora/harness-reference/README.md "Write to someone@example.com."
+check "a git SSH remote is not an email address" 0 "ok: no private data" packages/corpora/y/README.md \
+  "Run pi install git:git@github.com:user/repo or ssh://git@github.com/user/repo."
+check "an email address beside a git SSH remote is caught" 1 "leak (email address)" packages/corpora/y/README.md \
+  "Clone git@github.com:user/repo and write to someone@example.com."
 check "a missing root is an error" 2 "could not scan" -corpora ""
 
 if [ "$failed" -ne 0 ]; then
