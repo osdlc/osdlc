@@ -16,6 +16,28 @@ created: 2026-11-07
   clean, and it does not fail the run unless `--strict` is set, which exits 11.
 - An unknown engine name is refused before any agent starts.
 
+## Example
+
+```sh
+rule-review --base main                                # findings printed, exit 0
+rule-review --base main --blocking                     # exit 1 on a violation
+rule-review --base main --blocking --severity tension  # exit 1 on a tension or worse
+rule-review --base main --blocking --strict            # and exit 11 if a judgement failed
+```
+
+The library returns the run and leaves the verdict to the caller.
+`exitCodeFor` gives the command's answer for a set of findings:
+
+```ts
+import { DEFAULT_CONFIG, exitCodeFor, reviewChanges } from '@osdlc/rule-review'
+
+const run = await reviewChanges({ base: 'main', config: { blocking: true } })
+if (run.degraded) console.error('Some rule files could not be judged.')
+process.exitCode = exitCodeFor(run.findings, run.config) // 1 on a violation, else 0
+
+exitCodeFor(run.findings, DEFAULT_CONFIG) // always 0: advisory
+```
+
 ## Why
 
 - An agent's judgement is not deterministic. A team should see the findings

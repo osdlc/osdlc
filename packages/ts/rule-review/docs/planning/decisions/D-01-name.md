@@ -16,6 +16,17 @@ created: 2026-11-07
 - The functions take the name: `reviewChanges` and `review`, with
   `ReviewConfig`, `ReviewJob`, `ReviewRun` and `ReviewOptions`.
 
+## Example
+
+```sh
+npx @osdlc/rule-review --base main            # was: dfv --base main
+```
+
+```ts
+// was: import { verify, type VerifyConfig } from '@osdlc/agent-dev'
+import { reviewChanges, review, type ReviewConfig } from '@osdlc/rule-review'
+```
+
 ## Why
 
 - The name says what the package does: it reviews a change against rule files.

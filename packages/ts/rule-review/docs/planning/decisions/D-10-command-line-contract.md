@@ -33,6 +33,42 @@ created: 2026-11-07
 - Both commands declare their flags with `defineCli` from `@osdlc/cli-tool`,
   so the help is rendered from the same declaration the parser reads.
 
+## Example
+
+A CI step can tell the outcomes apart by code alone:
+
+```sh
+code=0
+rule-review --base origin/main --blocking --strict || code=$?
+case $code in
+  0)  echo "clean" ;;
+  1)  echo "rule violations: fix the change" ;;
+  11) echo "a judgement did not complete: retry" ;;
+  *)  echo "could not run" ; exit 1 ;;
+esac
+```
+
+Under `--json`, a run prints its document (cut down here):
+
+```json
+{
+  "schemaVersion": 1,
+  "kind": "review",
+  "base": "main",
+  "resolvedBase": "origin/main",
+  "degraded": false,
+  "findings": []
+}
+```
+
+A failure prints the error document instead. These three are real outputs, one document per run:
+
+```text
+{"schemaVersion":1,"kind":"error","code":"bad-base","message":"could not diff against 'no-such-branch': git merge-base: fatal: Not a valid object name no-such-branch","exit":10}
+{"schemaVersion":1,"kind":"error","code":"usage","message":"--base needs a value (got '--json')","exit":2,"hint":"See 'rule-review --help'."}
+{"schemaVersion":1,"kind":"error","code":"not-a-repository","message":"/tmp is not inside a git repository","exit":24}
+```
+
 ## Why
 
 - 0.4.0 is the first release, and exit codes and the JSON shape are contract

@@ -20,6 +20,35 @@ created: 2026-11-07
   governs more than `maxFilesPerJob` files (12) is split into shards of even
   size, judged at the same time against the same rules.
 
+## Example
+
+Four rule sources against a change to four files. `planJobs` makes the same
+selection a run makes, without git or an agent:
+
+```ts
+import { DEFAULT_CONFIG, planJobs } from '@osdlc/rule-review'
+
+// source(id, patterns) builds a RuleSource with those patterns.
+
+const { jobs, skipped } = planJobs(
+  [
+    source('CLAUDE.md', ['**']),
+    source('apps/web/CLAUDE.md', ['apps/web/**']),
+    source('docs/STYLE.md', ['**/*.md']),
+    source('db-rules', ['migrations/**']),
+  ],
+  ['apps/web/src/page.tsx', 'README.md', '.github/workflows/ci.yml', 'pages/[id].vue'],
+  DEFAULT_CONFIG,
+)
+```
+
+| Source | Judged against |
+| --- | --- |
+| `CLAUDE.md` (`**`) | all four files: `**` covers `.github/`, and `pages/[id].vue` is matched as a name |
+| `apps/web/CLAUDE.md` (`apps/web/**`) | `apps/web/src/page.tsx` |
+| `docs/STYLE.md` (`**/*.md`) | `README.md` |
+| `db-rules` (`migrations/**`) | nothing: it is in `skipped`, and costs no model call |
+
 ## Why
 
 - A rule file the change does not touch is dropped without a model call, so a

@@ -23,6 +23,50 @@ created: 2026-11-07
   and the check-name parsers are not exported.
 - The check-folder runner is experimental ([D-02](D-02-version-line-and-stability.md)).
 
+## Example
+
+The front door, from a checkout to a run in one call:
+
+```ts
+import { reviewChanges } from '@osdlc/rule-review'
+
+const run = await reviewChanges({ base: 'main', config: { engine: 'claude', effort: 'high' } })
+for (const f of run.findings) console.log(f.severity, f.file, f.why)
+```
+
+The same run with every input supplied, for a change that does not come from a
+checkout, or to choose settings per judgement:
+
+```ts
+import {
+  changedFiles,
+  DEFAULT_CONFIG,
+  discoverSources,
+  fileDiffs,
+  instructionFiles,
+  review,
+} from '@osdlc/rule-review'
+
+const files = changedFiles(root, 'main')
+const run = await review({
+  projectRoot: root,
+  sources: await discoverSources([instructionFiles()], { projectRoot: root, changedFiles: files }),
+  changedFiles: files,
+  diffs: fileDiffs(root, 'main', files),
+  config: DEFAULT_CONFIG,
+  // More reasoning for the security rules, the defaults for the rest.
+  configFor: (job) =>
+    job.source.path === 'security/AGENTS.md' ? { ...DEFAULT_CONFIG, effort: 'high' } : DEFAULT_CONFIG,
+})
+```
+
+The shared defaults are frozen, so a change is a copy:
+
+```ts
+const config = { ...DEFAULT_CONFIG, blocking: true } // fine
+DEFAULT_CONFIG.exclude.push('dist/**') // throws: the array is frozen too
+```
+
 ## Why
 
 - A caller should not need six imports and two other packages to review a

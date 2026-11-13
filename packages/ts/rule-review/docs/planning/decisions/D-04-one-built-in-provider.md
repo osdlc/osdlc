@@ -18,6 +18,40 @@ created: 2026-11-07
 - Nothing downstream of a provider knows where a rule came from: selection,
   judgement and reporting see only a `RuleSource`.
 
+## Example
+
+The built-in provider is the default. A corpus of your own is a provider you
+pass beside it; here, a style guide that governs every Markdown file:
+
+```ts
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+import { instructionFiles, reviewChanges, type RuleSourceProvider } from '@osdlc/rule-review'
+
+const styleGuide: RuleSourceProvider = {
+  id: 'style-guide',
+  async discover({ projectRoot }) {
+    return [
+      {
+        id: 'style:docs/STYLE.md',
+        kind: 'style',
+        path: 'docs/STYLE.md',
+        depth: 0,
+        patterns: ['**/*.md'],
+        text: readFileSync(join(projectRoot, 'docs/STYLE.md'), 'utf8'),
+        label: 'Style guide (Markdown files)',
+      },
+    ]
+  },
+}
+
+await reviewChanges({ base: 'main' }) // CLAUDE.md and AGENTS.md only
+await reviewChanges({ base: 'main', providers: [instructionFiles(), styleGuide] })
+```
+
+The full example is `examples/custom-provider.ts`.
+
 ## Why
 
 - Every repository that keeps agent rules has instruction files, and their

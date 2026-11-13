@@ -21,6 +21,34 @@ created: 2026-11-07
   silently.
 - Scripts start through `@osdlc/command-seam`, each in its own process group.
 
+## Example
+
+```text
+.sdlc/checks.d/
+  10-no-conflict-markers   script, every changed file
+  20-shell-syntax          script, changed *.sh files only
+  30-api-style.md          prompt check: skipped until T-01
+  README                   not a check: listed with the reason
+```
+
+```sh
+#!/bin/sh
+# applies_to: **/*.sh
+# timeout: 60
+# Parse each changed shell script without running it.
+status=0
+while IFS= read -r file; do
+  sh -n "$file" || status=1
+done
+exit $status
+```
+
+```sh
+rule-review checks .sdlc/checks.d --base main   # run what the branch touches
+rule-review checks .sdlc/checks.d --staged      # in a pre-commit hook
+rule-review checks .sdlc/checks.d --dry-run     # list what would run, and why
+```
+
 ## Why
 
 - Rules a command can check should be checked by the command: it is exact and
