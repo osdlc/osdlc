@@ -21,10 +21,8 @@ of them.
 - TypeScript libraries are published to npm from CI with
   [Changesets](https://changesets.dev). `.github/workflows/packages-publish.yml`
   publishes through npm trusted publishing, with provenance, so no npm token
-  is stored. It calls the shared release workflow,
-  `.github/workflows/ts-packages-release.yml`, which other repositories call
-  too ([`packages/gh-actions/ts-packages`](gh-actions/ts-packages/)). Only a
-  new library's placeholder version is published by hand (see below).
+  is stored. Only a new library's placeholder version is published by hand
+  (see below).
 - Each published npm version gets a git tag and a GitHub release named
   `<package>@<version>`, for example `@osdlc/command-seam@0.4.0`. The sdlc
   CLI's own tags are plain `vX.Y.Z`.
@@ -34,10 +32,6 @@ of them.
   `<crate>/vX.Y.Z`, for example `etag-write/v0.1.0`, and gets a GitHub
   release. The crate name keeps one crate's tags apart from another's, so
   it must be unique across `packages/rust/`.
-- Composite GitHub Actions live in `packages/gh-actions/<name>/`. They are
-  not published to a registry: callers reference them by path and commit,
-  and all of them share one version tag, `v1`.
-  [`gh-actions/README.md`](gh-actions/README.md) covers their shape.
 - A library can move to its own repository later if it grows.
 
 ## Licenses
@@ -68,10 +62,6 @@ The libraries change together: the shared TypeScript and Prettier configs set
 the rules for the others. `command-seam` links both through this workspace,
 so a config change here runs against its build in CI.
 
-A library that one product area owns lives under `solutions/<name>/` instead.
-Nothing here depends on a package there
-([D-SM4K](../docs/decisions/D-SM4K-markdown-solution.md)).
-
 ## Library families
 
 A family is a set of libraries, one per language, that do the same job, such
@@ -80,8 +70,7 @@ implementation. A build of one implementation for another runtime, such as
 `@osdlc/yaml-splice` (the crate built to WebAssembly), is a binding, not an
 implementation, and keeps its own version. The rules below apply when the
 implementations are hosted here. They keep the same behaviour, not the same
-code. A family that states a format in a `SPEC.md`, such as `corpus-schema`, may
-have one implementation so far.
+code.
 [S-conformance-suites](../docs/planning/standards/S-conformance-suites.md) is
 the standard.
 
@@ -90,12 +79,11 @@ the standard.
   conformance suite checks it: `packages/conformance/<family>/`, listed in
   `packages/conformance/families.json`, run by every implementation's tests,
   with expected values written by the reference implementation's generator.
-  `pnpm run check:conformance` checks the suites with `@osdlc/conformance-suites`;
-  `packages/conformance/config.json` holds its exemptions. `tiered-dirs`,
-  `config-layers`, `corpus-schema`, `frontmatter-lossless`, `intersect`,
-  `markdown-link`, `markdown-tags` and `path-guard` are there. Until they move,
-  `gfm-pipe-table` (the Rust implementation of `@osdlc/gfm-table`) keeps
-  `packages/rust/gfm-pipe-table/tests/fixtures/parity.json`, and
+  `pnpm run check:conformance` checks the suites. `tiered-dirs`,
+  `config-layers`, `frontmatter-lossless`, `intersect` and `path-guard` have
+  moved there. Until they move, `gfm-pipe-table` (the Rust implementation of
+  `@osdlc/gfm-table`) keeps `packages/rust/gfm-pipe-table/tests/fixtures/parity.json`,
+  `markdown-link` its crate's `tests/fixtures/conformance.json`, and
   `markdown-contract` runs the TypeScript package's `corpus/` directly.
   `etag-write` has no shared cases yet.
 - **Each language's idiom.** An implementation does not copy the other's names or
@@ -172,28 +160,18 @@ Developed here, in this repository:
 - `packages/rust/vfs-walk` (`vfs-walk` on crates.io, the folder walk over
   `vfs-seam`, with no Markdown or vault rules; builds for
   `wasm32-unknown-unknown`)
-- `packages/rust/web-access` (`web-access` on crates.io, puts an axum app on
-  the local network safely: listen settings, minted tokens, a request guard
-  with grants and access contexts, a route permission table and a server that
-  can be stopped)
 - `packages/rust/yaml-splice` (`yaml-splice` on crates.io)
 - `packages/rust/yaml-splice-wasm`, the WebAssembly build of `yaml-splice`
   for its npm package (not published to crates.io)
 - `packages/ts/yaml-splice` (`@osdlc/yaml-splice` on npm, the crate built to
   WebAssembly, with the built `wasm/` committed)
 - `packages/ts/etag-write` (`@osdlc/etag-write` on npm, the crate's TypeScript implementation)
-- `packages/ts/file-lock` (`@osdlc/file-lock` on npm, cross-process exclusive
-  file locks: a held lock with an owner token and a staleness rule, and a short
-  critical section; TypeScript only, since Rust has `File::lock`)
 - `packages/ts/frontmatter-lossless` (`@osdlc/frontmatter-lossless` on npm,
   the TypeScript implementation of the `frontmatter-lossless` crate)
 - `packages/ts/color` (`@osdlc/color` on npm, sRGB colour arithmetic for
   contrast checks)
 - `packages/ts/agent-call` (`@osdlc/agent-call` on npm, one call spec for
   headless coding-agent CLIs)
-- `packages/ts/agent-seat` (`@osdlc/agent-seat` on npm, opens an interactive
-  coding-agent session in the terminal app, multiplexer or editor a person
-  already uses, behind one host contract in optional parts)
 - `packages/ts/observe` (`@osdlc/observe` on npm, a JSONL log envelope with
   correlation ids, agent session records, a process scan and reconcile)
 - `packages/ts/tiered-dirs` (`@osdlc/tiered-dirs` on npm, machine-local
@@ -201,24 +179,10 @@ Developed here, in this repository:
 - `packages/ts/markdown-contract` (`@osdlc/markdown-contract` on npm,
   contracts for markdown documents: one parse gives findings with lines and a
   typed model; contracts in TypeScript or YAML, a folder runner and a CLI)
-- `packages/ts/corpus-schema` (`@osdlc/corpus-schema` on npm, the validator
-  for the [corpus-schema spec](./conformance/corpus-schema/SPEC.md): what a
-  corpus declares about itself, typed records kept as Markdown, YAML and JSON
-  files in a folder, checked against the schemas, ids and links the folder
-  holds; a library and a `corpus-schema` command)
 - `packages/ts/markdown-link` (`@osdlc/markdown-link` on npm, wikilink and
   relative markdown link parsing with spans, and the code lexer that keeps
   links in code out; the TypeScript implementation of the parsing half of the
   `markdown-link` crate)
-- `packages/ts/markdown-render` (`@osdlc/markdown-render` on npm, markdown to
-  HTML on unified and remark for CommonMark, GFM and the Obsidian extensions,
-  with injected link resolution and sanitized output; framework-free)
-- `packages/ts/markdown-render-vue` (`@osdlc/markdown-render-vue` on npm, Vue 3
-  components over `@osdlc/markdown-render`: `<MarkdownRender>` and the
-  `NoteSource` context)
-- `packages/ts/markdown-vault-astro` (`@osdlc/markdown-vault-astro` on npm, brings
-  Obsidian-vault markdown, wikilinks and embeds, into Astro content collections:
-  a vault-to-content transform, a remark plugin and a CLI)
 - `packages/ts/path-guard` (`@osdlc/path-guard` on npm, a path containment
   guard: lexical validation, then a symlink-aware proof that a path stays
   inside its root; the TypeScript implementation of the `path-guard` crate)
@@ -266,29 +230,10 @@ Developed here, in this repository:
   and terminal UI: a CSS sheet for light and dark, ANSI codes at the
   detected color level, color detection, and helpers for printing untrusted
   text)
-- `packages/ts/npm-binary` (`@osdlc/npm-binary` on npm, ships a compiled
-  binary through npm as one launcher package plus one `os`/`cpu`-gated package
-  per platform: platform names, the two `package.json` shapes, a
-  dependency-free Node launcher, platform-first publishing and cargo's target
-  directory)
 - `packages/ts/repo-cleaner` (`@osdlc/repo-cleaner` on npm, a tool and library
   that finds the branches, worktrees and remote branches that have been merged
   and can go away, with the evidence and the command for each, and applies an
   approved plan compare-and-swap)
-- `packages/ts/conformance-suites` (`@osdlc/conformance-suites` on npm, the `conformance-suites`
-  command that checks the library families' suites in
-  `packages/conformance/` against
-  [S-conformance-suites](../docs/planning/standards/S-conformance-suites.md)
-  and runs their generators; any repository with the same layout can use it)
-- `packages/ts/package-checks` (`@osdlc/package-checks` on npm, the
-  `package-checks` command: the TypeScript and Rust package shape, the
-  packed tarball in a clean consumer, breaking changes and crate versions, the
-  packages a pull request affects, and staging a new package on npm;
-  `package-checks.json` holds a repository's own settings)
-- `packages/ts/ref-lease` (`@osdlc/ref-lease` on npm, compare-and-swap leases
-  on git refs: create, replace and delete a ref at any git remote only if it
-  still holds the sha you read, through `git push --force-with-lease`, with the
-  payload as canonical JSON in the ref's commit)
 
 The development repository will take each TypeScript library from npm, like
 any other consumer. Today it still keeps its own copies. Open issues and pull
@@ -305,13 +250,8 @@ requests here.
 2. When the pull request merges, `packages-publish.yml` opens or updates one
    "Version Packages" pull request. It bumps each library's version and
    writes its CHANGELOG from the pending changesets. The root
-   `version-packages` script does this, then runs
-   `pnpm install --lockfile-only`, then rewrites the checked-in files that
-   name a version, such as wayfinder's `schema/config.json`. The lockfile
-   step is needed because `changeset version` rewrites the version ranges
-   that packages use for each other, and the Version Packages pull request's
-   `pnpm install --frozen-lockfile` fails if `pnpm-lock.yaml` still holds the
-   old ranges.
+   `version-packages` script does this, then rewrites the checked-in files
+   that name a version, such as wayfinder's `schema/config.json`.
 3. The osdlc-release GitHub App opens the Version Packages pull request, so
    its checks start on their own. Merge it when `test` and `verify` pass.
 4. On that merge, `packages-publish.yml` runs the full `verify` matrix and
@@ -343,9 +283,8 @@ mistake caught within hours, such as a leaked secret, and the owner does it.
 npm can only set up trusted publishing on a package that already exists, so
 CI cannot publish a new library's first version. Before its first release
 the owner does the two steps below.
-`pnpm exec package-checks stage packages/ts/<name>` does both, and skips a
-step that is already done (build the package checks first:
-`pnpm run build:tooling`). `--dry-run` builds the package and
+`node scripts/stage-npm-package.ts packages/ts/<name>` does both, and skips a
+step that is already done. `--dry-run` builds the package and
 shows what it would publish, without changing anything on npm.
 
 1. The owner publishes a real build as a placeholder version, `0.0.1-stage`:
@@ -464,25 +403,18 @@ pnpm run test
 The root scripts run each library's script of the same name.
 
 The repo tooling needs Node 24 or newer (`engines.node` in the root
-`package.json`). The scripts in `scripts/` are TypeScript that Node runs
-directly by stripping the types, with no build step, so write them in erasable
-syntax only (no `enum`, `namespace` or parameter properties).
-`pnpm run typecheck:scripts` checks them. The package checks and the
-conformance-suites check are packages, `@osdlc/package-checks` and
-`@osdlc/conformance-suites`; `pnpm run build:tooling` builds both, and the root
-scripts run their commands. The libraries themselves still support Node 22.
+`package.json`). The package-shape checks in `scripts/` are TypeScript that
+Node runs directly by stripping the types, with no build step, so write them
+in erasable syntax only (no `enum`, `namespace` or parameter properties).
+`pnpm run typecheck:scripts` checks them. The libraries themselves still
+support Node 22.
 
 `.github/workflows/packages-ci.yml` runs these and the smoke checks on Linux
-and macOS, on Node 22, 24 and 26, and the package checks on Node 24 only. It
-does so by calling the shared CI workflow,
-`.github/workflows/ts-packages-ci.yml`, whose jobs report as
-`packages / changes` and `packages / verify (<os>, node <n>)`.
+and macOS, on Node 22 and 24, and `pnpm run check:packages` on Node 24 only.
 On a pull request it checks only the libraries the pull request changed and
-the ones that depend on them. `package-checks affected` picks them. It
-lists the shared files that make it check every library, and the root
-`package-checks.json` adds this repository's own. path-guard also runs on
-Windows. The `packages / verify` jobs always report, so they are the checks
-to require.
+the ones that depend on them. `scripts/affected-packages.ts` picks them, and
+lists the shared files that make it check every library. path-guard also runs on
+Windows. The `verify` jobs always report, so they are the checks to require.
 The libraries that start programs or resolve paths also run on Windows as
 tier 2 (`.github/workflows/packages-windows-tier2.yml`). Tier 2 reports, but
 never fails a pull request or blocks a release.
