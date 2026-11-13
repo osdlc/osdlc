@@ -1,9 +1,9 @@
 /**
  * Parsing, ordering, and grading findings.
  *
- * A judge's reply is untrusted input even when a schema was requested — an
- * adapter may have emulated structured output by asking nicely — so every
- * field is validated here rather than cast.
+ * A judge's reply is untrusted input even when a schema was requested: some
+ * engines only get the schema in the prompt. Every field is validated here
+ * rather than cast.
  */
 import type { Finding, JobOutcome, Severity, ReviewConfig, ReviewJob } from './types.ts'
 import { SEVERITY_ORDER } from './types.ts'
@@ -96,8 +96,7 @@ export function meetsFloor(severity: Severity, floor: Severity): boolean {
 /**
  * The process exit code for a completed run.
  *
- * Returns 0 unless `blocking` is set — an advisory run reports and gets out of
- * the way. A degraded run (a job errored) does not fail on its own: an agent
+ * Returns 0 unless `blocking` is set. A degraded run (a job errored) does not fail on its own: an agent
  * that could not be reached is not evidence of a violation.
  */
 export function exitCodeFor(

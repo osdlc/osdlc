@@ -60,6 +60,10 @@ beforeAll(async () => {
   await symlink(root, alias)
   await put('abs/CLAUDE.md', `See @${alias}/docs/CLAUDE.md`)
 
+  // An email address, which is not an import of `example.com`.
+  await put('mail/CLAUDE.md', 'Ask user@example.com before changing this.')
+  await put('mail/example.com', 'Not an import: must not be inlined.')
+
   await put('empty/CLAUDE.md', '   \n\n  ')
   await put('node_modules/pkg/CLAUDE.md', 'Vendored: should never be read.')
 })
@@ -84,6 +88,7 @@ const listFixture = (): string[] => [
   'abs/CLAUDE.md',
   'inlink/CLAUDE.md',
   'empty/CLAUDE.md',
+  'mail/CLAUDE.md',
 ]
 
 async function discover(): Promise<RuleSource[]> {
@@ -185,6 +190,10 @@ describe('instructionFiles', () => {
     const inlink = byPath(await discover(), 'inlink/CLAUDE.md')
 
     expect(inlink.text).toContain('Docs rule: sentence case headings.')
+  })
+
+  test('an email address is not read as an import', async () => {
+    expect(byPath(await discover(), 'mail/CLAUDE.md').text).not.toContain('Not an import')
   })
 
   test('maxImportDepth 0 disables resolution entirely', async () => {

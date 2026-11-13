@@ -99,7 +99,6 @@ test('review judges only the files a source governs', async () => {
   expect(run.jobs[0]!.files).toEqual(['src/a.ts'])
   expect(settled).toHaveLength(1)
 
-  // The judgement came back as one violation.
   expect(run.findings).toHaveLength(1)
   expect(run.findings[0]!.severity).toBe('violation')
   expect(run.findings[0]!.sourceId).toBe('instruction:src/CLAUDE.md')

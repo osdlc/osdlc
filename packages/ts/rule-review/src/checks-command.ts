@@ -94,7 +94,7 @@ Exit codes
   2    the command line cannot run as typed
   10   the run could not complete: the folder cannot be read, the changed
        files cannot be listed, a scope pattern cannot be read
-  22   git is not installed
+  22   git is not installed, or cannot be run
   24   the directory does not exist, or a changeset flag was given outside git
   130  interrupted by SIGINT or SIGTERM; the running check is killed
 
@@ -170,8 +170,8 @@ export async function checksMain(argv: string[]): Promise<number> {
   try {
     topLevel = new Git(cwd).topLevel()
   } catch (err) {
-    // A missing -C directory fails the spawn itself rather than reading as
-    // "not a repo"; git that is not installed keeps its own code.
+    // A missing -C directory makes the spawn throw instead of returning null;
+    // report it as no repository unless git itself is missing.
     const classified = classify(err)
     const known = classified.exit === EXIT_CODE.missingTool ? classified : noRepository
     return fail(`${cwd}: ${errorText(err)}`, opts.json, known)

@@ -1,11 +1,4 @@
-/**
- * Discovery, dispatch, and collection — the one module that does IO.
- *
- * Fan-out is concurrency-capped. There is no correctness reason for the cap:
- * a review is read-only and no job touches the working tree, so jobs
- * cannot conflict with each other. It caps how many agent processes run at
- * once (`ReviewConfig.concurrency`).
- */
+/** Discovery, dispatch, and collection of a review run. */
 import { adapterFor, callAgent } from '@osdlc/agent-call'
 import type { AgentCallSpec, AgentName, AgentResult } from '@osdlc/agent-call'
 
@@ -24,16 +17,18 @@ import type {
   ReviewRun,
 } from './types.ts'
 
-/** Collect rule sources from every provider, in registration order. */
+/**
+ * Collect rule sources from every provider, in registration order.
+ *
+ * @throws {Error} Two sources share an id; the message names both providers.
+ */
 export async function discoverSources(
   providers: readonly RuleSourceProvider[],
   ctx: DiscoveryContext,
 ): Promise<RuleSource[]> {
   const collected = await Promise.all(providers.map((p) => p.discover(ctx)))
 
-  // Ids must be unique — the intersect registry throws on a duplicate at
-  // construction, and a collision here means two providers disagree about
-  // what they own. Surface it as that, not as an opaque registry error.
+  // Checked here so a duplicate names its providers, not the registry.
   const seen = new Map<string, string>()
   const sources: RuleSource[] = []
   collected.forEach((batch, i) => {
@@ -97,8 +92,7 @@ export interface ReviewOptions {
    * Plan and measure without dispatching anything.
    *
    * Every stage before the agent call is deterministic and free, so a dry run
-   * can answer what would be judged, by which rules, at what prompt size —
-   * the questions worth asking before paying for the answers.
+   * reports what would be judged, by which rules, at what prompt size.
    */
   dryRun?: boolean
   /** Called as each job settles, for progress output. */
@@ -156,7 +150,6 @@ export async function review(options: ReviewOptions): Promise<ReviewRun> {
   }
 }
 
-/** A planned job and the settings it is dispatched with. */
 interface ConfiguredJob {
   job: ReviewJob
   config: ReviewConfig
@@ -334,7 +327,6 @@ function oneLine(text: string): string {
   return text.replace(/\s+/g, ' ').trim()
 }
 
-/** True when a judge's reply is a record with a `findings` array. */
 function hasFindingsArray(structured: unknown): boolean {
   return (
     typeof structured === 'object' &&
@@ -346,8 +338,7 @@ function hasFindingsArray(structured: unknown): boolean {
 /**
  * `Promise.all` with a ceiling on in-flight work, preserving input order.
  *
- * Written out rather than pulled in: it is a dozen lines, and an uncapped
- * `Promise.all` would open one agent process per job at once.
+ * An uncapped `Promise.all` would open one agent process per job at once.
  */
 async function mapCapped<T, R>(
   items: readonly T[],

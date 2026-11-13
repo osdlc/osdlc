@@ -1,14 +1,8 @@
 /**
  * `rule-review`: review a changeset against the rule files that govern it.
  *
- * The standalone front door to this package. It needs nothing but a git repo:
- * the instruction-file provider reads the `CLAUDE.md` / `AGENTS.md` files
- * already there, so `rule-review` works in any checkout.
- *
- * It deliberately ships one provider. Any other rule corpus (a standards
- * tree, a house style registry) is a `RuleSourceProvider` supplied by
- * whatever owns that corpus, and teaching this binary about one would put that
- * knowledge in a package built to stay blind to it.
+ * It needs nothing but a git repository, and reads only `CLAUDE.md` and
+ * `AGENTS.md` (D-04).
  *
  * `src/bin.ts` runs {@link main} as the program.
  */
@@ -112,7 +106,7 @@ Exit codes
   10   the run could not complete: a base that does not resolve, an unreadable
        pattern, a failing rule source provider
   11   a judgement did not complete, with --strict
-  22   git is not installed
+  22   git is not installed, or cannot be run
   24   the directory is not inside a git repository, or does not exist
   130  interrupted by SIGINT or SIGTERM; running agents are killed
 
@@ -201,7 +195,6 @@ export async function main(argv: string[]): Promise<number> {
   let result
   try {
     result = await withInterrupt((signal) =>
-      // With no --base, reviewChanges compares against HEAD: uncommitted work.
       reviewChanges({
         cwd: opts.cwd,
         ...(opts.base !== undefined ? { base: opts.base } : {}),
@@ -270,9 +263,7 @@ export async function main(argv: string[]): Promise<number> {
     return EXIT_CODE.ok
   }
 
-  // Judgements, not rule sources: a sharded source contributes several, and
-  // reporting "13/17 rule sources" when there are 17 jobs over 12 sources
-  // would be counting two different things in one fraction.
+  // Count judgements, not rule sources: a sharded source has several.
   const judged = run.outcomes.filter((o) => o.error === undefined).length
   const sourceCount = new Set(run.jobs.map((j) => j.source.id)).size
   say(

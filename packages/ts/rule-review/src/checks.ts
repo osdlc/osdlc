@@ -1,12 +1,7 @@
 /**
- * Run a folder of checks and report the verdicts.
- *
- * Script checks run one after another in prefix order, each with its cwd at
- * the project root. With a changeset, a script runs only when its scope
- * matches a changed file, and reads those files on stdin. Processes are
- * started through `@osdlc/command-seam`, through a runner the caller can
- * replace. Each script leads its own process group, so a timeout or abort also
- * kills the processes it started.
+ * Run a folder of checks and report the verdicts. Processes start through a
+ * `@osdlc/command-seam` runner the caller can replace.
+ * Design: docs/planning/decisions/D-07-check-folders.md.
  */
 import { spawnRunnerAsync, type AsyncCommandRunner } from '@osdlc/command-seam'
 
@@ -54,7 +49,6 @@ export interface ChecksRun {
   results: CheckResult[]
 }
 
-/** Reason for a script whose scope matches no changed file. */
 const NO_FILES_IN_SCOPE = 'no changed files in scope'
 
 /**
@@ -270,7 +264,6 @@ function summaryLine(counts: Record<CheckStatus, number>): string {
   return `${counts.PASS} passed, ${counts.FAIL} failed, ${counts.ERROR} errored, ${counts.SKIP} skipped`
 }
 
-/** Output lines under a failing check, indented. */
 function indentedOutput(r: CheckResult): string[] {
   const text = [r.stdout, r.stderr]
     .map((s) => (s ?? '').trimEnd())

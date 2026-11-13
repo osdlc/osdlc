@@ -2,8 +2,7 @@
  * The check-folder provider: a directory of numbered check files.
  *
  * `10-lint` is a script check, `20-review.md` is a prompt check. The numeric
- * prefix is the run order. Anything that is not a check is reported with the
- * reason it was skipped, never dropped silently.
+ * prefix is the run order. Design: docs/planning/decisions/D-07-check-folders.md.
  */
 import { lstat, open, readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'

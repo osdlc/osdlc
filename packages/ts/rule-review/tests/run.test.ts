@@ -7,6 +7,7 @@ import type { AgentResult } from '@osdlc/agent-call'
 
 import { discoverSources, review, type Dispatch } from '../src/run.ts'
 import { DEFAULT_CONFIG, type RuleSource, type RuleSourceProvider } from '../src/types.ts'
+import { alive, waitFor } from './process-helpers.ts'
 
 function source(id: string, patterns: string[], depth: number): RuleSource {
   return {
@@ -129,7 +130,6 @@ describe('review', () => {
 
     expect(result.degraded).toBe(true)
     expect(result.outcomes[0]?.error).toContain('timeout')
-    // The surviving job's findings are kept.
     expect(result.findings).toHaveLength(1)
   })
 
@@ -280,7 +280,6 @@ describe('review', () => {
       },
     })
 
-    // The whole point: the plan is knowable for free.
     expect(dispatched).toBe(0)
     expect(result.dryRun).toBe(true)
     expect(result.jobs.map((j) => j.source.id)).toEqual(['root', 'lib'])
@@ -459,24 +458,6 @@ describe('review — sharding and observed tokens', () => {
     expect(run.outcomes.every((o) => o.promptBytes > 0)).toBe(true)
   })
 })
-
-/** Poll `check` until true; throw naming `what` if it never is. */
-async function waitFor(what: string, check: () => boolean, ceilingMs = 10_000): Promise<void> {
-  const deadline = Date.now() + ceilingMs
-  while (!check()) {
-    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`)
-    await new Promise((r) => setTimeout(r, 20))
-  }
-}
-
-function alive(pid: number): boolean {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch {
-    return false
-  }
-}
 
 describe('review signal', () => {
   test('aborting the signal kills the running agent process', async () => {

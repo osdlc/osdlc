@@ -54,9 +54,19 @@ const { jobs, skipped } = planJobs(
 - A rule file the change does not touch is dropped without a model call, so a
   run costs what the change touches, not what the repository holds.
 - A judge given one rule file and a dozen diffs reasons better about each than
-  one given sixty. Measured on a 63-file branch: 30 shards at a cap of 32 took
-  155 s, against 190 s unsharded; sharding under a cap below the job count was
-  slower than not sharding.
+  one given sixty.
+- A judgement costs about the same wall clock whatever its size: the time goes
+  on starting an agent and having it reason, not on reading. So a run costs
+  about `ceil(jobs / concurrency)` judgements, and its largest job sets its
+  time. Sharding pays only when the extra jobs fit in the waves already running.
+  Measured on a 63-file branch: 12 jobs at a cap of 6 took 190 s; the same
+  branch in 30 shards took 253 s at a cap of 12 (three waves instead of two)
+  and 155 s at a cap of 32. Sharding under a cap below the job count is the
+  one setting slower than not sharding.
+- A prompt over `maxPromptBytes` is flagged on its outcome, not truncated and
+  not skipped. Dropping files silently is worse than a weaker judgement, and
+  the flag is the only sign that scope, not the change, made the findings
+  vague.
 - A rule that says it covers the repository should cover its dot paths; not
   matching them was a silent miss.
 

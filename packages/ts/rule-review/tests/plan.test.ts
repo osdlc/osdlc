@@ -16,8 +16,8 @@ function source(id: string, patterns: string[], depth: number): RuleSource {
   }
 }
 
-// The worked example from the design doc: nested instruction files plus one
-// standard, over a changeset touching three different subtrees.
+// Nested instruction files plus one standard, over a changeset touching three
+// different subtrees.
 const SOURCES: RuleSource[] = [
   source('root', ['**'], 0),
   source('docs', ['docs/**'], 1),
@@ -136,7 +136,6 @@ describe('planJobs — sharding', () => {
 
     expect(jobs).toHaveLength(1)
     expect(jobs[0]?.files).toEqual(files)
-    // The common case carries no shard vocabulary at all.
     expect(jobs[0]?.shard).toBeUndefined()
   })
 
@@ -155,15 +154,13 @@ describe('planJobs — sharding', () => {
   test('every shard judges the same rules', () => {
     const { jobs } = planJobs(only, files, { exclude: [], maxFilesPerJob: 4 })
 
-    // The whole point: a split changes how many judgements run, never what
-    // any of them is asked. Findings stay attributable to the one source.
+    // A split changes how many judgements run, never what any of them is
+    // asked, so findings stay attributable to the one source.
     for (const job of jobs) expect(job.source).toBe(only[0]!)
   })
 
   test('shards are balanced rather than filled to the limit', () => {
-    // 10 files over a limit of 6 is 5+5, not 6+4: a job that judges four
-    // files reasons better than one judging six, and both calls happen
-    // anyway, so there is nothing to gain by loading the first one up.
+    // 10 files over a limit of 6 is 5+5, not 6+4 (see shardFiles).
     const { jobs } = planJobs(only, files, { exclude: [], maxFilesPerJob: 6 })
 
     expect(jobs.map((j) => j.files.length)).toEqual([5, 5])

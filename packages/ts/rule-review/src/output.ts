@@ -6,8 +6,6 @@
  */
 import { stripControls } from '@osdlc/ux'
 
-import { errorText } from './changeset.ts'
-
 /** Write `text` to stderr, terminal controls removed (line feeds and tabs stay). */
 export function say(text: string): void {
   process.stderr.write(stripControls(text, { newline: true, tab: true }))
@@ -29,9 +27,4 @@ export function printJson(value: unknown, indent?: number): void {
   const clean = (_key: string, v: unknown) =>
     typeof v === 'string' ? stripControls(v, { newline: true, tab: true }) : v
   process.stdout.write(JSON.stringify(value, clean, indent) + '\n')
-}
-
-/** Print an error line, `rule-review: <message>`, on stderr. */
-export function sayError(err: unknown): void {
-  say(`rule-review: ${errorText(err)}\n`)
 }

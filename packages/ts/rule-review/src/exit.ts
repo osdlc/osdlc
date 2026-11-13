@@ -1,12 +1,7 @@
 /**
  * How both commands end: their exit codes, the Ctrl-C wiring they share, and
  * how an error that stops a run is reported.
- *
- * The codes follow the osdlc CLI standard (`standards/cli-interface.md`, built
- * into `@osdlc/cli-tool`): 0, 1 and 2 mean what they mean in every osdlc tool,
- * 22 and 24 are the shared "not installed" and "no repository" codes, and 10
- * and 11 are this tool's own
- * outcomes, inside the band the standard leaves to a tool.
+ * Design: docs/planning/decisions/D-10-command-line-contract.md.
  */
 import { EXIT, EXIT_FAILURE, exitCodeFor, failureOf } from '@osdlc/cli-tool'
 

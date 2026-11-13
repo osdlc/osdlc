@@ -5,12 +5,12 @@
 //
 // It imports the package by name, so Node resolves it through `exports` as a
 // consumer would. `pnpm run smoke` runs it here, where the name resolves to
-// this package's own dist/. check-packages.ts copies it into a clean project
+// this package's own dist/. `package-checks ts` copies it into a clean project
 // that installed the tarball, so it must not import other repo files. It is
 // not a test-runner suite and is not in `files`.
 //
-// Also runs the installed binary: `--help`, `--version`, a dry run and
-// `checks --dry-run` must work.
+// Also runs the installed binary: `--help`, `--version`, a dry run, and a
+// `checks` run over one passing script.
 
 import { strict as assert } from 'node:assert'
 import { spawnSync } from 'node:child_process'

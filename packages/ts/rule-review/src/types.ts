@@ -1,10 +1,6 @@
 /**
- * The vocabulary every other module in this package speaks.
- *
- * The load-bearing idea is that nothing downstream of a provider knows where
- * a rule came from. A `CLAUDE.md`, a standards document, and whatever a consumer
- * invents next all arrive as `RuleSource` — an id, some prose, and the set of
- * paths it governs. Selection, dispatch, and reporting see only that shape.
+ * The types the other modules share. Nothing downstream of a provider knows
+ * where a rule came from: see docs/planning/decisions/D-04-one-built-in-provider.md.
  */
 
 import type { EffortLevel } from '@osdlc/agent-call'
@@ -49,14 +45,7 @@ export interface DiscoveryContext {
   changedFiles: readonly string[]
 }
 
-/**
- * A source of rule sources.
- *
- * Providers are registered explicitly by the caller, so this package never
- * imports a rule corpus and never learns that one exists. The built-in
- * `instructionFiles` provider handles `CLAUDE.md`/`AGENTS.md`, which every
- * repository has; anything else ships from wherever that corpus is defined.
- */
+/** A source of rule sources, passed in by the caller (D-04). */
 export interface RuleSourceProvider {
   /** Identifies the provider in diagnostics; not required to be unique. */
   id: string
@@ -69,11 +58,8 @@ export interface ReviewJob {
   /** Repo-relative, non-empty — a job with no files is never planned. */
   files: readonly string[]
   /**
-   * Set when the source's files were split across several jobs.
-   *
-   * A shard is a slice of one source's files judged by its own agent call,
-   * against the same rules. Absent when the source produced a single job, so
-   * the common case carries no shard vocabulary at all.
+   * Set when the source's files were split across several jobs: `index` is
+   * 1-based, `of` is the number of shards. Absent for a source with one job.
    */
   shard?: { index: number; of: number }
 }
@@ -130,13 +116,7 @@ export interface JobOutcome {
    * to work with.
    */
   promptTokens?: number
-  /**
-   * Set when the job's prompt crossed `maxPromptBytes`.
-   *
-   * Recorded rather than acted on: the job still runs, because a partial
-   * answer beats none. It exists so the quality decay that comes with an
-   * oversized prompt is visible instead of inferred from a thin result.
-   */
+  /** Set when the job's prompt crossed `maxPromptBytes`; see that setting. */
   oversize?: { bytes: number; limit: number }
 }
 
@@ -165,11 +145,11 @@ export interface ReviewRun {
 export interface ReviewConfig {
   /**
    * Agent to dispatch to: a name in `BUILTIN_AGENTS` from `@osdlc/agent-call`,
-   * such as `claude` or `codex`. `review` refuses any other name before it
-   * starts an agent.
+   * such as `claude` or `codex`. Without a custom `dispatch`, `review` refuses
+   * any other name before it starts an agent.
    */
   engine: string
-  /** The agent's executable. Omit to take the adapter's own (`claude`, `codex`, `agy`, `opencode`). */
+  /** The agent's executable. Omit to take the agent-call adapter's own. */
   binary?: string
   /** Concrete model id. Omit to take the agent's default. */
   model?: string
@@ -182,19 +162,9 @@ export interface ReviewConfig {
    */
   extraArgs?: string[]
   /**
-   * Ceiling on jobs in flight, not a target — a run plans what it plans and
-   * never opens more than it has. Read-only work, so this is a rate limit.
-   *
-   * Coupled to `maxFilesPerJob`, and the coupling is the whole story on
-   * latency. A judgement costs roughly the same wall clock whatever its
-   * prompt size, because the time goes on starting an agent and having it
-   * reason, not on reading. So a run costs about `ceil(jobs / concurrency)`
-   * of those, and sharding only pays when the extra jobs fit in the waves
-   * already being run. Measured on a 63-file branch: 12 jobs at a cap of 6
-   * took 190s, sharding to 30 jobs at a cap of 12 took 253s — slower, three
-   * waves instead of two — and the same 30 jobs at a cap of 32 took 155s.
-   * Sharding under a cap below the job count is the one configuration that
-   * loses to not sharding at all.
+   * Most jobs in flight at once; a ceiling, not a target. Set it with
+   * `maxFilesPerJob`: sharding pays only when the extra jobs fit in the waves
+   * already running (D-05).
    */
   concurrency: number
   /** Findings at or above `severityFloor` produce a non-zero exit. */
@@ -205,27 +175,14 @@ export interface ReviewConfig {
   /** Per-job wall clock. */
   timeoutMs: number
   /**
-   * Prompt size, in bytes, past which a job is reported as oversized.
-   *
-   * Advisory only — nothing is truncated and no job is skipped, because
-   * dropping files silently is a worse failure than a degraded judgement.
-   * A judge asked about two hundred files reasons worse about each one than a
-   * judge asked about five, and nothing else in the run surfaces that: you get
-   * vaguer findings and no signal that scope caused it. Set 0 to disable.
+   * Prompt size, in bytes, past which a job is flagged as oversized. Nothing is
+   * truncated or skipped (D-05). Set 0 to disable.
    */
   maxPromptBytes: number
   /**
-   * Largest number of changed files one job may carry. 0 disables sharding.
-   *
-   * The binding constraint is attention, not context. A judge handed sixty
-   * diffs and a long ruleset reasons worse about each one than a judge handed
-   * a dozen, well before any window fills — and the sixty-file job also sets
-   * the run's wall clock, because everything else finishes while it is still
-   * reading. Splitting a source's files into several same-rules jobs fixes
-   * both: each judgement is narrower, and the slices run concurrently.
-   *
-   * Findings are attributed to the source, not the shard, so a split is
-   * invisible in the output.
+   * Largest number of changed files one job may carry; 0 disables sharding. A
+   * source over it is split into jobs with the same rules, which run at once
+   * (D-05). Findings name the source, not the shard.
    */
   maxFilesPerJob: number
 }
@@ -236,9 +193,7 @@ export interface ReviewConfig {
  */
 export const DEFAULT_CONFIG: Readonly<ReviewConfig> = Object.freeze({
   engine: 'claude',
-  // High enough that a sharded branch-wide run is a single wave, which is
-  // what makes sharding a win rather than a regression. A ceiling, so a
-  // small changeset planning three jobs still opens three.
+  // A sharded branch-wide run is one wave (D-05).
   concurrency: 32,
   blocking: false,
   severityFloor: 'violation',

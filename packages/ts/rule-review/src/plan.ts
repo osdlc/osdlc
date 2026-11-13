@@ -1,14 +1,6 @@
 /**
- * Selection: which rule sources does this changeset actually touch?
- *
- * Pure — no disk, no network, no model. Mirrors the `planCall`/`callAgent`
- * split in `@osdlc/agent-call`: the decision of what to run is separable
- * from running it, so the whole selection step is golden-testable.
- *
- * A source survives only if one of its patterns matches a changed file. That
- * is what makes the fan-out affordable: `docs/CLAUDE.md` against a changeset
- * that touches no docs is proven irrelevant by pattern algebra, and never
- * costs a model call.
+ * Planning: pair each rule source with the changed files it governs, as jobs.
+ * Pure, so it can be golden-tested. Selection rationale: D-05.
  */
 import { selectByScope } from './select.ts'
 import type { RuleSource, ReviewConfig, ReviewJob } from './types.ts'
@@ -23,8 +15,7 @@ export interface PlanResult {
 /**
  * Pair every rule source with the changed files it governs.
  *
- * @param sources - Discovered rule sources. Ids must be unique; the intersect
- * registry rejects duplicates at construction rather than silently keeping one.
+ * @param sources - Discovered rule sources. Ids must be unique (see `selectByScope`).
  * @param changedFiles - Repo-relative paths in the changeset.
  * @param config - `exclude` prunes the changeset; `maxFilesPerJob` caps how
  * many files one job carries, splitting a broad source across several.
@@ -64,7 +55,7 @@ export function planJobs(
  * Consecutive slices of the incoming order, which is the changeset's own
  * order, so a shard boundary lands between neighbouring paths and each job
  * tends to cover one area of the tree. A single shard carries no `shard`
- * field: the overwhelmingly common case should not have to explain itself.
+ * field.
  */
 function shardFiles(
   files: readonly string[],
@@ -88,8 +79,6 @@ function shardFiles(
     at += size
   }
 
-  // Numbered off the slices actually produced, so `of` can never promise a
-  // shard that the arithmetic did not yield.
   return slices.map((sliced, i) => ({
     files: sliced,
     shard: { index: i + 1, of: slices.length },

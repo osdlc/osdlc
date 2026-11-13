@@ -1,16 +1,8 @@
 /**
- * The built-in provider: `CLAUDE.md` and `AGENTS.md` as scoped rule sources.
- *
- * An instruction file governs its own directory and everything under it, so
- * its scope is `<dir>/**` — the one place this package hard-codes a scoping
- * convention, because that convention is what an instruction file *is*.
- *
- * Pointer files are resolved. Several instruction files carry no rules of
- * their own and exist only to redirect (`See @./README.md`); dispatching one
- * verbatim spends a model call on a file that says nothing, so `@path`
- * imports are inlined the way Claude Code itself reads them, and a sibling
- * instruction file whose rules are already inlined (or symlinked) is not
- * dispatched a second time.
+ * The built-in provider: `CLAUDE.md` and `AGENTS.md` as rule sources, each
+ * governing `<dir>/**`. `@path` imports are inlined the way Claude Code reads
+ * them, and a sibling whose rules another already carries is not judged twice.
+ * Design: docs/planning/decisions/D-04-one-built-in-provider.md.
  */
 import { basename, dirname, relative, resolve } from 'node:path'
 
@@ -32,14 +24,11 @@ const FILENAMES = ['CLAUDE.md', 'AGENTS.md'] as const
 const PATHSPECS = FILENAMES.map((name) => `*${name}`)
 
 /**
- * Claude Code's import syntax: `@` followed by a path with an extension.
- *
- * Deliberately does NOT match `[[wikilinks]]`. Those are cross-references
- * between documents, not imports — following them would pull an entire docs
- * tree into a single prompt, which is a different feature with a different
- * cost profile.
+ * Claude Code's import syntax: `@` followed by a path with an extension. The
+ * `@` must not follow a word character, so an email address such as
+ * `user@example.com` is not read as an import of `example.com`.
  */
-const IMPORT_RE = /@((?:\.{1,2}\/)?[\w.\-/]+\.\w+)/g
+const IMPORT_RE = /(?<![\w.@])@((?:\.{1,2}\/)?[\w.\-/]+\.\w+)/g
 
 /** Enumerates candidate instruction-file paths, repo-relative. */
 export type FileLister = (projectRoot: string) => Promise<string[]> | string[]
@@ -81,8 +70,7 @@ export interface InstructionFilesOptions {
    */
   list?: FileLister
   /**
-   * How many levels of `@path` import to follow. 0 disables resolution.
-   * Bounded because an import chain is user-authored and may cycle.
+   * How many levels of `@path` import to follow; 0 disables resolution.
    * Defaults to 2.
    */
   maxImportDepth?: number
@@ -185,8 +173,8 @@ function toSource(relPath: string, text: string): RuleSource {
  * file that gave it its best budget, so the result does not depend on import
  * order.
  *
- * Each import is fenced with its source path so the judge can tell borrowed
- * prose from the instruction file's own words, and cannot misattribute a rule.
+ * Each import is preceded by `<!-- imported from <path> -->` so the judge can
+ * tell borrowed prose from the file's own.
  */
 async function readWithImports(
   realRoot: string,
@@ -194,7 +182,7 @@ async function readWithImports(
   maxDepth: number,
 ): Promise<{ text: string; inlined: string[] }> {
   const dir = dirname(relPath)
-  const fresh = (target: string): boolean =>
+  const isSiblingInstructionFile = (target: string): boolean =>
     target !== relPath && dirname(target) === dir && isInstructionFile(target)
   const budget = new Map<string, number>([[relPath, maxDepth]])
   const parent = new Map<string, string>()
@@ -211,7 +199,7 @@ async function readWithImports(
       const targets = importTargets(realRoot, path, text)
       targetsOf.set(path, targets)
       for (const target of targets) {
-        const offered = fresh(target) ? maxDepth : left - 1
+        const offered = isSiblingInstructionFile(target) ? maxDepth : left - 1
         if (offered <= (budget.get(target) ?? -1)) continue
         budget.set(target, offered)
         parent.set(target, path)
@@ -251,9 +239,9 @@ async function readText(realRoot: string, relPath: string): Promise<string | nul
 
 /**
  * Repo-relative targets of the `@path` imports that stay inside the project
- * root, deduped, in document order. An import is a convenience, not a way to
- * pull host files into a prompt. Each target is compared by real path, so an
- * absolute import spelled through a non-real root still counts as inside.
+ * root, deduped, in document order: an import never pulls a host file into a
+ * prompt. Each target is compared by real path, so an absolute import spelled
+ * through a non-real root still counts as inside.
  */
 function importTargets(realRoot: string, relPath: string, text: string): string[] {
   const baseDir = dirname(resolve(realRoot, relPath))

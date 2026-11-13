@@ -36,8 +36,8 @@ export function estimateTokens(bytes: number): number {
 /**
  * Render a token count compactly: `55k`, `8.2k`, `430`.
  *
- * Thousands are the unit a context budget is discussed in, so anything above
- * 10k drops the fractional part as noise.
+ * Thousands are the unit a context budget is discussed in, so from about 10k
+ * up the fractional part is dropped.
  */
 export function formatTokens(tokens: number): string {
   if (tokens < 1000) return String(tokens)

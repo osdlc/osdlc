@@ -72,9 +72,7 @@ afterAll(() => {
 
 describe('changedFiles', () => {
   test('--base HEAD sees only uncommitted work', () => {
-    // `origin/HEAD` exists in any clone, so a naive `origin/${base}` lookup
-    // rewrites HEAD into the default branch and silently returns the whole
-    // branch diff instead.
+    // See NOT_A_BRANCH in src/changeset.ts.
     const files = changedFiles(git, 'HEAD')
 
     expect(files).toEqual(['base.txt', 'untracked.txt'])

@@ -89,6 +89,20 @@ session, and times out after 10 minutes. The answer must match
 - **Containment.** A judge that cites a file outside its job has strayed, and
   its finding is dropped.
 
+## Prompt size
+
+A prompt's size is counted in bytes, and `maxPromptBytes` (400 kB) compares
+bytes: they are exact, free, and the same for every engine. A prompt over the
+limit still runs, flagged as oversized in its outcome.
+
+The report shows tokens, because a context window is measured in them. The
+dry run estimates them as bytes / 4, a round number on purpose: prose runs
+nearer 4.5 bytes a token and dense punctuation nearer 3. There is no
+tokenizer. An exact count for Claude needs a network call, which would take
+away the dry run's one strong property, that it is free and offline, and no
+one tokenizer is right for every engine. A real run records the token count
+the engine reports, when it reports one.
+
 ## When a judgement fails
 
 The agent may be missing, signed out, slow, or answer with something other than

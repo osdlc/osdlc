@@ -2,8 +2,8 @@
  * The one-call entry: review a git checkout's changes against its rule files.
  *
  * Everything {@link review} needs (the changed files, their diffs, the rule
- * sources) is read here from the checkout, in the order the CLI reads them, so
- * a library caller and `rule-review` judge the same thing.
+ * sources) is read here from the checkout. `rule-review` calls this too, so a
+ * library caller and the command judge the same thing.
  */
 import { resolve } from 'node:path'
 

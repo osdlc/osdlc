@@ -103,10 +103,9 @@ export function defaultBase(repo: Repo): string {
 
 /**
  * Rev syntax that no branch name can hold (`git check-ref-format` refuses
- * `~`, `^`, `:` and `@{`), plus `HEAD`. `HEAD` is the one that bites:
- * `origin/HEAD` exists in any cloned repo as the symbolic ref to the default
- * branch, so treating it as a branch name would rewrite `--base HEAD` into the
- * whole branch when the caller asked for the working tree.
+ * `~`, `^`, `:` and `@{`), plus `HEAD`. `origin/HEAD` exists in any clone as
+ * the symbolic ref to the default branch, so reading `HEAD` as a branch would
+ * turn `--base HEAD` (the working tree) into the whole branch.
  */
 const NOT_A_BRANCH = /^HEAD$|[~^:]|@\{/
 
@@ -116,17 +115,11 @@ const NOT_A_BRANCH = /^HEAD$|[~^:]|@\{/
  * A commit-naming rev (`HEAD`, a sha, `main~2`) is used as written — there is
  * no remote copy of those to prefer.
  *
- * For a branch name, the two refs can disagree in three ways: local behind
- * remote (a stale checkout that never fetched), local ahead of or diverged
- * from remote (an unpushed or rewritten branch), or only one of the two
- * existing at all (a branch never pushed, or named but not fetched locally).
- * Only the "local behind" case should prefer the remote copy — a local `main`
- * that lags would make already-merged commits look like part of this change.
- * Local ahead or diverged means the caller's own branch IS the fork point they
- * mean, and resolving to the remote's stale tip would walk the merge base
- * back past every commit they made, and pull in every file changed on the
- * remote since: the bug this function exists to close. When only one ref
- * exists, that one is used; neither existing falls through to the name as
+ * For a branch name, `origin/<name>` is used when the local branch is behind
+ * it or equal to it, so a stale local `main` does not make merged commits look
+ * like part of this change. A local branch ahead of or diverged from its
+ * remote is the caller's own fork point and is used as written. When only one
+ * of the two exists, that one is used; when neither does, the name as
  * written.
  */
 export function resolveBase(repo: Repo, base: string): string {
@@ -250,8 +243,9 @@ export function diffsSince(git: Git, ref: string, files: readonly string[]): Fil
       out.push({ file, diff: tracked })
       continue
     }
-    // Untracked files produce no diff above; render them as all-added so new
-    // and modified files reach the judge in the same shape.
+    // Untracked files, and tracked files with no change, produce no diff
+    // above. An untracked file is rendered as all-added, so new and modified
+    // files reach the judge in the same shape.
     const added = git.try.diffAddedFile(file)
     if (added.ok && added.value.trim() !== '') out.push({ file, diff: added.value.trim() })
   }

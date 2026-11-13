@@ -2,11 +2,9 @@
  * What `rule-review` runs: `bin/rule-review.js` loads the built copy, and a
  * development checkout that devlink selects runs this file under Bun.
  *
- * `runMain` answers `rule-review dev …` and `--version`, hands off to a linked
- * checkout, and sets the exit code without calling `process.exit`, so output
- * still buffered for a pipe is not cut off. An error `main` does not catch is
- * reported here and exits 10, "the run could not complete": never 1, which
- * means findings.
+ * `runMain` from `@osdlc/cli-tool` answers `dev` and `--version` and hands off
+ * to a linked checkout. An error `main` does not catch is reported through
+ * `fail` in exit.ts; it never exits 1, which means findings.
  */
 
 import { runMain } from '@osdlc/cli-tool'

@@ -53,9 +53,8 @@ describe.skipIf(!ENABLED)('eval — judge quality against a known answer', () =>
       const outcomes: RunOutcome[] = []
       let degraded = false
 
-      // Serial, not concurrent: the runs are a sample of the judge's own
-      // variance, and putting a dozen agent processes on one machine adds
-      // load-dependent timing to whatever variance is really there.
+      // Serial, not concurrent: the runs sample the judge's own variance, and
+      // running many agents on one machine would add load-dependent timing.
       for (let i = 0; i < RUNS; i++) {
         const started = Date.now()
         const run = await review({

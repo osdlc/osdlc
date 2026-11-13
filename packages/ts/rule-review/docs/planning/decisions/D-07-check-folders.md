@@ -12,9 +12,13 @@ created: 2026-11-07
 - `rule-review checks <folder>` runs a folder of check files. A file named
   `<number>-<name>` is a check; the number sets the order, as in `rc.d`.
   Adding a check means adding a file.
-- A script check is an executable file whose exit code is its verdict. A
-  `.md` file is a prompt check, judged by an agent like a rule file
-  ([T-01](../tasks/T-01-prompt-checks.md); reported as skipped until then).
+- A script check is an executable file whose exit code is its verdict.
+- A `.md` file is a prompt check: rules judged by an agent, against the files
+  its frontmatter globs match. **Not built yet:** today the folder lists it
+  and reports it as skipped. [T-01](../tasks/T-01-prompt-checks.md) builds it
+  on the judgement that already exists, by turning each `.md` check into a
+  rule source. Until then, rules with their own globs reach an agent through a
+  `RuleSourceProvider` (D-04), as sdlc's standards provider does.
 - A script declares its scope with `# applies_to:` header lines and runs only
   when the changeset touches it, reading the in-scope files on stdin.
 - Every entry that is not a check is listed with the reason, never dropped
@@ -55,6 +59,8 @@ rule-review checks .sdlc/checks.d --dry-run     # list what would run, and why
   cheap. A folder keeps those checks beside the rule files, with one scope
   syntax for both.
 - A skip without a reason hides a mistake such as a missing executable bit.
+- A script that starts other processes would leave them running after a
+  timeout or Ctrl-C. Its own process group lets one signal stop them all.
 
 ## Consequences
 

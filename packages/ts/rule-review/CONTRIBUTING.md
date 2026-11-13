@@ -41,6 +41,13 @@ to its path; `rule-review dev` lists the other subcommands.
 `pnpm run test:eval` runs a small suite against a real agent: a throwaway
 repository with planted rule breaches, scored against the known answers. It
 needs an installed, signed-in agent CLI and costs real calls.
+`RULE_REVIEW_EVAL_ENGINE` picks the engine (default `claude`) and
+`RULE_REVIEW_EVAL_RUNS` the number of runs. The breaches are planted, so a
+score has a fact to check against; they are also cleaner than real ones, so a
+good score shows the judge is not broken, not that it is good. `pnpm test`
+runs the harness with known-bad answers instead of a model
+(`tests/eval/harness.test.ts`), so a harness that cannot fail is caught on
+every push. The headers of the files in `tests/eval/` say more.
 
 Other checks:
 
