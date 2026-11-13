@@ -19,7 +19,7 @@ only the owner can change.
 | osdlc/skillwright    | Stays: where skillwright, the product, is published               |
 | osdlc/parley         | Not decided. Low priority                                         |
 | osdlc/homebrew-tap   | Stays                                                             |
-| sksizer/dev          | Nothing moves from it yet                                         |
+| sksizer/dev          | Stays as it is. Not part of this plan                             |
 | sksizer/rust-ontogen | `markdown-store` stays there for now                              |
 
 ## Where it stands
@@ -141,6 +141,11 @@ Needs phase 2. The plan's records still describe the split.
 - [ ] Update the records that name a repository: tasks 21, 59, 75 and 78–80,
       each component's `repo_target`, rule 4, the records under `repos/`,
       and "Where things live" in the architecture doc.
+- [ ] Update the records that say a package leaves sksizer/dev: tasks 12,
+      15 and 17, and the `repo_target` of `markdown-vault`,
+      `vault-graph-core`, `markdown-vault-query`, `markdown-editor`,
+      `markdown-ui`, model-schema and the two packs. They stay in
+      sksizer/dev, or the task is marked out of scope.
 - [ ] Correct the component records for `markdown-render` and
       `markdown-astro`: they are on npm at 0.8.0 from this repository, and
       the second is now `@osdlc/markdown-vault-astro`.
