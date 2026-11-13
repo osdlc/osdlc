@@ -6,13 +6,13 @@ keeps research, test results or fact checks can use these types instead of inven
 The profile is a corpus that holds types and no records. It ships as the npm package
 `@osdlc/corpus-profile-claims`. A corpus names it under `extends` in its root file, with the prefix
 `claims`, and builds its own types on the profile's types with `x-extends`. The
-[corpus-schema spec](https://github.com/osdlc/markdown/blob/main/packages/conformance/corpus-schema/SPEC.md) defines both keys.
+[corpus-schema spec](https://github.com/osdlc/osdlc/blob/main/packages/conformance/corpus-schema/SPEC.md) defines both keys.
 
 A few words used below:
 
 - A corpus is a folder of Markdown notes. A corpus-schema corpus has a root file named after it,
   such as `example.corpus-schema.md`, and one folder per type of record at its root. See the
-  [corpus-schema spec](https://github.com/osdlc/markdown/blob/main/packages/conformance/corpus-schema/SPEC.md).
+  [corpus-schema spec](https://github.com/osdlc/osdlc/blob/main/packages/conformance/corpus-schema/SPEC.md).
 - A record is one note in a type folder. Its YAML frontmatter is its data, and the type's JSON
   Schema checks it.
 - A record folder is a record that keeps its own files beside it, such as a script and a CSV:
@@ -302,13 +302,13 @@ type of record it points at. Typed links from nested fields need `x-ref` inside 
 which corpus-schema does not support yet. Until then, typed links go in top-level fields, and
 evidence items use the pattern described in departure 4.
 
-Check the profile and the example from the root of this repository. The validator is
-`@osdlc/corpus-schema`, a devDependency of the root, at 0.3.0 or later, since 0.2.x does not read
+Check the profile and the example from the root of this repository. The validator is this
+repository's `packages/ts/corpus-schema`, built first, since the published 0.2.x does not read
 `extends`:
 
 ```sh
-pnpm install --frozen-lockfile
-sh tools/validate-strict.sh profiles/claims/corpus profiles/claims/example
+sh tools/build-corpus-schema.sh
+sh tools/validate-strict.sh packages/profiles/claims/corpus packages/profiles/claims/example
 ```
 
 ## The tests
@@ -332,14 +332,15 @@ with pnpm, as the release does, unpacks it into a temporary `node_modules/`, and
 package name. It also checks that the tarball holds no example or tests, and that a rule of the
 profile and a rule the fixture adds both still apply.
 
-Run both from this folder, after `pnpm install` at the repository root:
+Run both from this folder, after `sh tools/build-corpus-schema.sh` at the repository root:
 
 ```sh
 pnpm test
 ```
 
-Each script uses the `corpus-schema` the root installs. Set `CORPUS_SCHEMA` to the command of
-another validator to run that one instead. CI runs both scripts after it checks the example.
+Each script uses `packages/ts/corpus-schema` from this repository. Set `CORPUS_SCHEMA` to the
+command of another validator to run that one instead. CI runs both scripts after it checks the
+example.
 
 ## Adding your own kinds
 

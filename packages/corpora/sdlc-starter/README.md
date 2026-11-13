@@ -52,7 +52,7 @@ npx @osdlc/corpus-schema validate --strict docs/planning
 types only. Run `sync` again after you update the starter. A record of yours may share an id with a
 starter record, but a reference by id that matches both is an error, so keep your ids apart.
 
-[profiles/sdlc/tests/downstream/](../../profiles/sdlc/tests/downstream/) is a corpus set up this
+[packages/profiles/sdlc/tests/downstream/](../../profiles/sdlc/tests/downstream/) is a corpus set up this
 way.
 
 ## Add a principle
@@ -65,8 +65,9 @@ way.
    `principle/project` or `principle/llm-ai`.
 4. Write the body: `## Statement`, `## Why` and `## How it applies`. The profile does not check
    body sections yet.
-5. Check it, from the repository root: `pnpm install --frozen-lockfile`, then
-   `sh profiles/sdlc/tests/package.sh` and `sh tools/leak-check.sh`.
+5. Check it, from the repository root: `sh tools/build-corpus-schema.sh` and
+   `pnpm install --frozen-lockfile`, then `sh packages/profiles/sdlc/tests/package.sh` and
+   `sh tools/leak-check.sh`.
 6. Add a changeset for `@osdlc/corpus-sdlc-starter`.
 
 The starter names each record by its id alone, `P-0003.md`. A name with a slug, such as

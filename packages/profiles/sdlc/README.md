@@ -7,7 +7,7 @@ check them with these types instead of writing its own.
 The profile is a corpus that holds types and no records. It ships as the npm package
 `@osdlc/corpus-profile-sdlc`. A corpus names it under `extends` in its root file, with the prefix
 `sdlc`, and its folders take the profile's types through `uses`. The
-[corpus-schema spec](https://github.com/osdlc/markdown/blob/main/packages/conformance/corpus-schema/SPEC.md) defines both.
+[corpus-schema spec](https://github.com/osdlc/osdlc/blob/main/packages/conformance/corpus-schema/SPEC.md) defines both.
 
 ## Where the types come from
 
@@ -118,7 +118,7 @@ From a checkout of the repo that holds model-schema and the packs, which is priv
 
 ```sh
 cd packages/ts/pack-sdlc
-bunx model-schema corpus . --inline --out <osdlc/models>/profiles/sdlc/corpus
+bunx model-schema corpus . --inline --out <osdlc/osdlc>/packages/profiles/sdlc/corpus
 ```
 
 The command owns `corpus/`: it rewrites every file and removes files it did not write. Commit the
@@ -129,8 +129,9 @@ result with a changeset.
 From the repository root:
 
 ```sh
+sh tools/build-corpus-schema.sh
 pnpm install --frozen-lockfile
-sh profiles/sdlc/tests/package.sh
+sh packages/profiles/sdlc/tests/package.sh
 ```
 
 `tests/package.sh` packs this package and the starter, installs them in a temporary

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Checks that the validator catches what the example pair's CI relies on.
 #
-# The script copies examples/, with fernlog's installed node_modules/, to a
+# The script copies packages/corpora/examples/, with fernlog's installed node_modules/, to a
 # temporary folder, breaks one thing at a time, and runs the validator on
 # fernlog. Each case must fail with its one expected error. Install fernlog's
 # dependencies and build the validator first. Set CORPUS_SCHEMA to run another
@@ -9,13 +9,13 @@
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
-repo=$(cd "$here/.." && pwd)
+repo=$(cd "$here/../../.." && pwd)
 . "$repo/tools/validator.sh"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 failed=0
-# Copies examples/ to $work/$1, runs the edit in $2 there, validates fernlog,
+# Copies packages/corpora/examples/ to $work/$1, runs the edit in $2 there, validates fernlog,
 # and passes when it reports one error that holds $3.
 check() {
   copy="$work/$1"

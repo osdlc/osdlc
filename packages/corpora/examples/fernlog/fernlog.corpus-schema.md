@@ -13,7 +13,7 @@ uses: [claims/documents, claims/study-results]
 An example project corpus for a made-up command line tool, fernlog. It names two other corpora:
 
 - It extends `claims`, the claims profile, by its package name, for its types. `package.json`
-  installs it from `profiles/claims/` in this repository.
+  installs it from `packages/profiles/claims/` in this repository.
 - It references `org`, the organisation's principles, by the path `../org-principles`, for its
   records.
 
