@@ -39,6 +39,7 @@ export * from './filter.ts'
 export * from './format.ts'
 export * from './search.ts'
 export * from './url-state.ts'
+export * from './value-text.ts'
 export type { BadgeColor, ControlKind, DocLink, FieldFormat } from './config.ts'
 export type { FieldKind } from './schema.ts'
 
@@ -125,6 +126,8 @@ export interface FilterStateOptions {
   defaultSort?: SortState | null
   /** Keep the state in the page's query string. Default true. */
   url?: boolean
+  /** The filters a reader starts with, by field name, as the page's address writes them. */
+  defaults?: Record<string, string[]>
 }
 
 /** A type index's filter state, with the actions that change it. */
@@ -153,15 +156,16 @@ export function useFilterState(
 ): FilterStateApi {
   const defaultSort = options.defaultSort ?? null
   const syncUrl = options.url ?? true
-  const state = shallowRef<FilterState>({ ...emptyState(), sort: defaultSort })
+  const defaults = options.defaults ?? {}
+  const state = shallowRef<FilterState>(parseState('', toValue(fields), defaultSort, defaults))
 
   const read = (): void => {
-    state.value = parseState(window.location.search, toValue(fields), defaultSort)
+    state.value = parseState(window.location.search, toValue(fields), defaultSort, defaults)
   }
   const set = (next: FilterState): void => {
     state.value = next
     if (!syncUrl || typeof window === 'undefined') return
-    const query = formatState(next, toValue(fields), defaultSort)
+    const query = formatState(next, toValue(fields), defaultSort, defaults)
     const url = `${window.location.pathname}${query === '' ? '' : `?${query}`}${window.location.hash}`
     window.history.replaceState(window.history.state, '', url)
   }

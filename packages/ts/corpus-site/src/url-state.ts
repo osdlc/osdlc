@@ -7,6 +7,9 @@
  * other key is a field: repeated for the values of a select or chips, `min..max` for a range
  * (either side may be empty), `true` or `false` for a toggle, and the text for a text filter. A
  * field named `q`, `sort` or `page` is written `f.q`, `f.sort` or `f.page`.
+ *
+ * A type may start with filters (`defaults`). The address leaves a filter out while it is the
+ * default, and writes the field with no value, `status=`, when a reader has removed it.
  */
 import type { DataField } from './data-types.ts'
 import {
@@ -40,8 +43,13 @@ export function parseState(
   search: string | URLSearchParams,
   fields: DataField[],
   defaultSort: SortState | null = null,
+  defaults: Record<string, string[]> = {},
 ): FilterState {
-  const params = typeof search === 'string' ? new URLSearchParams(search) : search
+  const given = typeof search === 'string' ? new URLSearchParams(search) : search
+  // A default filter applies until the address names its field.
+  const params = new URLSearchParams(given)
+  for (const [name, values] of Object.entries(defaults))
+    if (!given.has(keyOf(name))) for (const value of values) params.append(keyOf(name), value)
   const state = emptyState()
   state.query = params.get('q') ?? ''
   const sort = parseSort(params.get('sort'))
@@ -94,13 +102,23 @@ export function formatState(
   state: FilterState,
   fields: DataField[],
   defaultSort: SortState | null = null,
+  defaults: Record<string, string[]> = {},
 ): string {
   const params = new URLSearchParams()
   if (state.query.trim() !== '') params.set('q', state.query.trim())
+  const initial = parseState('', fields, null, defaults).filters
   for (const field of fields) {
     const filter = state.filters[field.name]
-    if (filter === undefined || isEmptyFilter(filter)) continue
     const key = keyOf(field.name)
+    if (initial[field.name] !== undefined) {
+      // The default is left out, and its removal is written as the field with no value.
+      if (filter === undefined || isEmptyFilter(filter)) {
+        params.set(key, '')
+        continue
+      }
+      if (JSON.stringify(filter) === JSON.stringify(initial[field.name])) continue
+    }
+    if (filter === undefined || isEmptyFilter(filter)) continue
     if (filter.kind === 'set') for (const v of filter.values) params.append(key, v)
     else if (filter.kind === 'range') params.set(key, `${filter.min ?? ''}..${filter.max ?? ''}`)
     else if (filter.kind === 'toggle') params.set(key, String(filter.value))

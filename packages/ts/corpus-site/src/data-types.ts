@@ -36,11 +36,44 @@ export interface DataField {
   format: FieldFormat
   /** The values of an enum field. Empty for other kinds. */
   options: DataOption[]
+  /** Whether a record's value is a `DataTree`: an object, a list of them, or text with links. */
+  tree?: boolean
 }
 
 /** A value in a type's data file. A reference is the key of its target in `targets`. */
 export type DataScalar = string | number | boolean
-export type DataValue = DataScalar | DataScalar[] | null
+
+/** A piece of text in a tree that is a link, code or a badge. */
+export interface DataTreeText {
+  text: string
+  /** The address the text links to. */
+  url?: string
+  /** Draw it in the monospace face. */
+  code?: boolean
+  /** Draw it as a badge of this colour. */
+  color?: BadgeColor
+}
+
+/** One key of an object in a tree, with its label and what the key means. */
+export interface DataTreeEntry {
+  label: string
+  value: DataTree
+  help?: string
+}
+
+/** An object in a tree: its keys in order. */
+export interface DataTreeObject {
+  entries: DataTreeEntry[]
+}
+
+/**
+ * A value that is not one scalar, ready to draw: text, a link, a list, or an object with a
+ * label for each key. Dates, numbers and booleans are already text.
+ */
+export type DataTree = string | DataTreeText | DataTree[] | DataTreeObject | null
+
+/** A field's value: scalars for most fields, and a tree for a field with `tree` set. */
+export type DataValue = DataScalar | DataScalar[] | DataTree
 
 /** One record in a type's data file: what the columns and filters need, and no body. */
 export interface DataRecord {
@@ -70,9 +103,52 @@ export interface TypeData {
   fields: DataField[]
   /** The names of the column fields, in column order. */
   columns: string[]
+  /** The filters a reader starts with, by field name, as the page's address writes them. */
+  defaults?: Record<string, string[]>
   records: DataRecord[]
   /** The records the reference values point at, by key: `<type>/<slug>`, or `<corpus>:<type>/<slug>`. */
   targets: Record<string, DataTarget>
+}
+
+/** The parts of a type's data file a table is drawn from. */
+export type TableData = Pick<TypeData, 'fields' | 'columns' | 'records' | 'targets'>
+
+/** A row or a column of a matrix: a record, or a value of a field. */
+export interface MatrixItem {
+  /** The item's key in the page's address. */
+  key: string
+  title: string
+  /** The record's page, or null. */
+  url: string | null
+}
+
+/** One record in a cell of a matrix. */
+export interface MatrixCell {
+  url: string | null
+  title: string
+  value: DataTree
+}
+
+/** A row of a matrix. `cells[i]` holds the records for the column `columns[i]`. */
+export interface MatrixRow extends MatrixItem {
+  summary: string | null
+  /** The key of the row's group, or null. */
+  group: string | null
+  cells: MatrixCell[][]
+}
+
+/** `data/views/<type>/<view>.json`: a matrix view. */
+export interface MatrixData {
+  version: number
+  type: string
+  label: string
+  /** What the rows and the columns are, in the plural: `Questions`, `Harnesses`. */
+  rowLabel: string
+  columnLabel: string
+  columns: MatrixItem[]
+  /** The groups of the rows, in order, with how many rows each has. */
+  groups: { key: string; label: string; count: number }[]
+  rows: MatrixRow[]
 }
 
 /** A record named from another record's data file. */
@@ -133,16 +209,22 @@ export interface CorpusData {
   errors: number
   warnings: number
   types: CorpusDataType[]
+  /** The views of the types, with the page and the data file of each as absolute paths. */
+  views: { type: string; label: string; url: string; data: string }[]
   /** The search index, as an absolute path, or null when search is off. */
   search: string | null
 }
 
 /**
  * `data/search.json`: one row per record. `docs[i]` is
- * `[url, title, type index, key field text, body text]`.
+ * `[url, title, type index, key field text, body text, summary]`.
  */
 export interface SearchData {
   version: number
   types: string[]
-  docs: [string, string, number, string, string][]
+  /** How much a match in a record of each type counts, by type index. */
+  weights: number[]
+  /** Groups of words that find each other, lower-cased. */
+  synonyms?: string[][]
+  docs: [string, string, number, string, string, string][]
 }

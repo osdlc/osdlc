@@ -5,7 +5,7 @@ import { queryWords } from './filter.ts'
 /** A search index ready to query: the rows, with their text lower-cased once. */
 export interface SearchIndex {
   data: SearchData
-  lower: { title: string; fields: string; body: string }[]
+  lower: { title: string; summary: string; fields: string; body: string }[]
 }
 
 /** Prepare a fetched `data/search.json` for `search`. */
@@ -14,6 +14,7 @@ export function prepareSearch(data: SearchData): SearchIndex {
     data,
     lower: data.docs.map((d) => ({
       title: d[1].toLowerCase(),
+      summary: (d[5] ?? '').toLowerCase(),
       fields: d[3].toLowerCase(),
       body: d[4].toLowerCase(),
     })),
@@ -26,7 +27,14 @@ export interface SearchHit {
   title: string
   /** The type's label. */
   type: string
-  /** Text around the first match outside the title, or the start of the record's text. */
+  /** The record's summary line, or `''`. */
+  summary: string
+  /** The ranges of `summary` that match a word. */
+  summaryMarks: [number, number][]
+  /**
+   * Text around the first match in the fields or the body. `''` when the title and the summary
+   * already show every word that matched.
+   */
   snippet: string
   /** The ranges of `snippet` that match a word, as `[start, end]`. */
   marks: [number, number][]
@@ -70,9 +78,52 @@ function marksOf(snippet: string, words: string[]): [number, number][] {
   return merged
 }
 
+/** Words a question is made of and a record is not found by. */
+const STOP = new Set(
+  'a about all an and any are as at be by can do does each for from get go has have how i in into is it its me my of on or our should that the their them there they this to was we were what when where which who why will with would you your'.split(
+    ' ',
+  ),
+)
+
 /**
- * The records that hold every word of `query`, best first: a word in the title counts most
- * (more at its start or as the whole title), then one in the key fields, then one in the body.
+ * The words a query is matched by: lower-cased, without the small words of a question unless
+ * it has no others, and without a plural or tense ending, so `skills` finds `skill` and
+ * `called` finds `call`.
+ */
+export function searchWords(query: string): string[] {
+  // Punctuation at the ends of a word is not part of it: `harness?` is `harness`.
+  const all = queryWords(query)
+    .map((word) => word.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ''))
+    .filter(Boolean)
+  const kept = all.filter((word) => !STOP.has(word))
+  return [...new Set((kept.length > 0 ? kept : all).map(stem))]
+}
+
+const stem = (word: string): string =>
+  word.length < 5
+    ? word
+    : word.replace(/(ing|ed|(?<=[sxz]|ch|sh)es|s)$/, (end) =>
+        word.length - end.length < 3 ? end : '',
+      )
+
+/** Each word with the words of its synonym groups: any of them finds a record for the word. */
+function alternatives(words: string[], synonyms: string[][] | undefined): string[][] {
+  const groups = (synonyms ?? []).map((group) => group.map(stem))
+  return words.map((word) => [
+    ...new Set([word, ...groups.filter((group) => group.includes(word)).flat()]),
+  ])
+}
+
+/** How much a word counts by where it is found. */
+const WEIGHT = { titleStart: 12, title: 8, summary: 5, fields: 3, body: 1 }
+
+/**
+ * The records that hold the words of `query`, best first. A word in the title counts most (more
+ * at its start or as the whole title), then one in the summary, then one in the key fields, then
+ * one in the body, all times the weight of the record's type. A query of one or two words finds
+ * the records that hold all of them. A longer one finds those that hold more than half, and a
+ * record's score is scaled by the share it holds. A word of a synonym group is found by any
+ * word of the group.
  * `type` keeps the records of one type, by name.
  */
 export function search(
@@ -80,49 +131,67 @@ export function search(
   query: string,
   { limit = SEARCH_LIMIT, type }: { limit?: number; type?: string } = {},
 ): { total: number; hits: SearchHit[] } {
-  const words = queryWords(query)
+  const words = searchWords(query)
   if (words.length === 0) return { total: 0, hits: [] }
   const typeIndex = type === undefined ? -1 : index.data.types.indexOf(type)
-  const phrase = words.join(' ')
-  const scored: { i: number; score: number }[] = []
+  const phrase = queryWords(query).join(' ')
+  const wanted = alternatives(words, index.data.synonyms)
+  const marks = wanted.flat()
+  const has = (text: string, any: string[]): boolean => any.some((word) => text.includes(word))
+  const needed = wanted.length
+  const scored: { i: number; score: number; held: number }[] = []
   for (let i = 0; i < index.lower.length; i++) {
-    if (typeIndex !== -1 && (index.data.docs[i] as SearchData['docs'][number])[2] !== typeIndex)
-      continue
+    const row = index.data.docs[i] as SearchData['docs'][number]
+    if (typeIndex !== -1 && row[2] !== typeIndex) continue
     const doc = index.lower[i] as SearchIndex['lower'][number]
     let score = 0
-    for (const word of words) {
-      const inTitle = doc.title.indexOf(word)
-      if (inTitle !== -1) score += inTitle === 0 ? 12 : 8
-      else if (doc.fields.includes(word)) score += 3
-      else if (doc.body.includes(word)) score += 1
-      else {
-        score = 0
-        break
-      }
+    let held = 0
+    for (const any of wanted) {
+      if (has(doc.title, any))
+        score += any.some((word) => doc.title.startsWith(word)) ? WEIGHT.titleStart : WEIGHT.title
+      else if (has(doc.summary, any)) score += WEIGHT.summary
+      else if (has(doc.fields, any)) score += WEIGHT.fields
+      else if (has(doc.body, any)) score += WEIGHT.body
+      else continue
+      held++
     }
-    if (score === 0) continue
+    if (held === 0) continue
     if (doc.title === phrase) score += 20
     else if (doc.title.includes(phrase)) score += 6
-    scored.push({ i, score })
+    else if (doc.summary.includes(phrase)) score += 4
+    scored.push({ i, score: score * (index.data.weights?.[row[2]] ?? 1), held })
   }
-  scored.sort((a, b) => b.score - a.score || a.i - b.i)
-  const hits = scored.slice(0, limit).map(({ i, score }): SearchHit => {
+  // A question of three words or more seldom has all of them in the record that answers it.
+  const kept = scored.filter((s) => (needed >= 3 ? s.held * 2 > needed : s.held === needed))
+  for (const s of kept) s.score *= s.held / needed
+  kept.sort((a, b) => b.score - a.score || a.i - b.i)
+  const hits = kept.slice(0, limit).map(({ i, score }): SearchHit => {
     const doc = index.data.docs[i] as SearchData['docs'][number]
     const lower = index.lower[i] as SearchIndex['lower'][number]
-    const inFields = words.some((w) => lower.fields.includes(w))
-    const inBody = words.some((w) => lower.body.includes(w))
+    const summary = doc[5] ?? ''
+    // The snippet is for a word the title and the summary do not show.
+    const hidden = wanted.filter((any) => !has(lower.title, any) && !has(lower.summary, any)).flat()
+    const inBody = hidden.some((w) => lower.body.includes(w))
     const snippet =
-      inBody || !inFields
-        ? snippetOf(doc[4] || doc[3], inBody ? lower.body : lower.fields, words)
-        : snippetOf(doc[3], lower.fields, words)
+      hidden.length === 0 && summary !== ''
+        ? ''
+        : inBody || !hidden.some((w) => lower.fields.includes(w))
+          ? snippetOf(
+              doc[4] || (summary === '' ? doc[3] : ''),
+              lower.body,
+              hidden.length > 0 ? hidden : marks,
+            )
+          : snippetOf(doc[3], lower.fields, hidden)
     return {
       url: doc[0],
       title: doc[1],
       type: index.data.types[doc[2]] ?? '',
+      summary,
+      summaryMarks: marksOf(summary, marks),
       snippet,
-      marks: marksOf(snippet, words),
+      marks: marksOf(snippet, marks),
       score,
     }
   })
-  return { total: scored.length, hits }
+  return { total: kept.length, hits }
 }

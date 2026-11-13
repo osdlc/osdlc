@@ -23,8 +23,14 @@ export {
   type FieldFormat,
   type ReferencedCorpusConfig,
   type SectionConfig,
+  type DerivedConfig,
+  type KeysFrom,
+  type MatrixViewConfig,
+  type RelatedConfig,
   type TypeConfig,
   type ValueConfig,
+  type ViewConfig,
+  type WhereConfig,
 } from './config.ts'
 export { getSite, getSiteContext, setSiteContext, type SiteContext } from './context.ts'
 export {
@@ -38,6 +44,7 @@ export {
   type SiteOptions,
   type SiteRecord,
   type SiteType,
+  type SiteView,
 } from './site.ts'
 export {
   defaultColumns,
@@ -57,6 +64,9 @@ export {
 export {
   backlinkGroups,
   displayField,
+  displayPath,
+  toTree,
+  MAX_TREE_TEXT,
   fieldSections,
   recordFiles,
   type BacklinkGroup,
@@ -67,6 +77,7 @@ export {
 export {
   recordByRef,
   recordBySlug,
+  viewBySlug,
   recordPaths,
   refPaths,
   typeBySlug,
@@ -76,6 +87,10 @@ export { plainText, renderBody, renderMarkdown } from './markdown.ts'
 export {
   corpusData,
   dataFiles,
+  matrixData,
+  relatedTables,
+  viewDataFile,
+  type RelatedTable,
   recordData,
   recordDataFile,
   searchData,
@@ -89,3 +104,4 @@ export * from './filter.ts'
 export * from './format.ts'
 export * from './search.ts'
 export * from './url-state.ts'
+export * from './value-text.ts'

@@ -16,6 +16,7 @@ export const COMPONENT_NAMES = [
   'Home',
   'TypeIndex',
   'RecordPage',
+  'MatrixPage',
   'SearchPage',
   'FieldValue',
 ] as const

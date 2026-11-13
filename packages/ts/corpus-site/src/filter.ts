@@ -1,9 +1,18 @@
 /**
  * Filtering, sorting and counting the records of a type's data file. It is the one place the
- * browser's query logic lives, with no import but types, so another query core can replace it.
+ * browser's query logic lives, with no import but types and one text helper, so another query
+ * core can replace it.
  */
 import type { ControlKind } from './config.ts'
-import type { DataField, DataRecord, DataScalar, DataValue, TypeData } from './data-types.ts'
+import type {
+  DataField,
+  DataRecord,
+  DataScalar,
+  DataTree,
+  DataValue,
+  TypeData,
+} from './data-types.ts'
+import { treeText } from './value-text.ts'
 
 /** One field's filter. Which kind applies follows the field's control (`filterKind`). */
 export type FilterValue =
@@ -61,8 +70,12 @@ export function isEmptyFilter(value: FilterValue): boolean {
   }
 }
 
+const isScalar = (value: unknown): value is DataScalar =>
+  typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+
+/** The scalars of a value. A tree has none: it is drawn and searched, not filtered. */
 const scalars = (value: DataValue | undefined): DataScalar[] =>
-  value === undefined || value === null ? [] : Array.isArray(value) ? value : [value]
+  Array.isArray(value) ? value.filter(isScalar) : isScalar(value) ? [value] : []
 
 /** A value as a reader sees it: an enum's label, a reference's title, else the value. */
 export function displayText(value: DataScalar, field: DataField, data: TypeData | null): string {
@@ -109,8 +122,10 @@ function matchesFilter(
 function searchText(record: DataRecord, fields: DataField[], data: TypeData | null): string {
   const parts = [record.title, record.id, record.summary ?? '']
   for (const field of fields)
-    for (const value of scalars(record.values[field.name]))
-      parts.push(displayText(value, field, data))
+    if (field.tree === true) parts.push(treeText(record.values[field.name] as DataTree))
+    else
+      for (const value of scalars(record.values[field.name]))
+        parts.push(displayText(value, field, data))
   return parts.join('\n').toLowerCase()
 }
 
@@ -164,6 +179,8 @@ function sortKey(
   data: TypeData,
 ): number | string | null {
   if (field === 'title') return record.title.toLowerCase()
+  if (field.tree === true)
+    return treeText(record.values[field.name] as DataTree).toLowerCase() || null
   const first = scalars(record.values[field.name])[0]
   if (first === undefined) return null
   if (typeof first === 'number') return first

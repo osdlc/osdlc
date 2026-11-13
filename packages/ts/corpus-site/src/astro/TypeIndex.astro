@@ -7,12 +7,15 @@ import { getSite } from '../context.js'
 import { typeData } from '../data.js'
 import { filterRecords, paginate } from '../filter.js'
 import { renderMarkdown } from '../markdown.js'
-import { formatSort } from '../url-state.js'
+import { formatSort, parseState } from '../url-state.js'
 
 const { type } = Astro.props
 const site = getSite()
 const data = typeData(site, type)
-const first = paginate(filterRecords(data, { query: '', filters: {}, sort: type.sort, page: 1 }), 1, site.pageSize)
+// The view a reader starts with: the default sort and the default filters.
+const start = parseState('', data.fields, type.sort, type.defaultFilters)
+const matching = filterRecords(data, start)
+const first = paginate(matching, 1, site.pageSize)
 // Only the records these rows name, so the page does not carry every target.
 const targets = {}
 for (const row of first.rows)
@@ -26,6 +29,13 @@ const count = new Intl.NumberFormat(site.locale)
 <header class="cs-page-head">
   <h1>{type.label}</h1>
   {intro && <div class="cs-lead cs-prose markdown-render" set:html={intro} />}
+  {
+    type.views.length > 0 && (
+      <ul class="cs-meta">
+        {type.views.map((view) => <li><a href={view.url}>{view.label}</a></li>)}
+      </ul>
+    )
+  }
 </header>
 
 <TypeExplorer
@@ -36,6 +46,7 @@ const count = new Intl.NumberFormat(site.locale)
   label={type.label}
   pageSize={site.pageSize}
   defaultSort={type.sort === null ? null : formatSort(type.sort)}
+  defaults={type.defaultFilters}
   titleLabel={type.singular}
   locale={site.locale}
 >
@@ -44,7 +55,7 @@ const count = new Intl.NumberFormat(site.locale)
     first.pages > 1 && (
       <noscript>
         <p class="cs-noscript">
-          The first {count.format(first.rows.length)} of {count.format(data.count)} are shown. Filters, sorting and the other pages need JavaScript.
+          The first {count.format(first.rows.length)} of {count.format(matching.length)} are shown. Filters, sorting and the other pages need JavaScript.
         </p>
       </noscript>
     )

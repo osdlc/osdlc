@@ -16,6 +16,7 @@ the folder and adds pages to an Astro site:
 - a home page, with the root file's body and each type with its count
 - a page for each type, with a table that can be filtered, sorted and searched
 - a page for each record, with its fields, its body, its files and the records that link to it
+- a matrix page, when the config asks for one, that crosses two fields of a type
 - a search page across every type
 
 The result is static files. Any web server or static host can serve it.
@@ -77,6 +78,39 @@ Three settings put words into a filter control:
 The build checks the config against the corpus. A type, a field or a setting that does not exist
 stops the build, and the message lists the names that do.
 
+## Show the answers, not only the records
+
+Some corpora hold their real content in an object: a statement whose `proposition.object` is the
+answer to a question. A list of record titles hides it. Four settings bring it out.
+
+**Object values.** A column or a field may be an object or a list. The site draws it as labelled
+pairs: keys in words, Yes and No for booleans, code type for a flag or a path. A table cell shows
+the first three keys with "Show all". `keysFrom` takes the labels of the keys from a JSON Schema
+held by another record, such as the question's `valueSchema`.
+
+**Related tables.** `related` puts a table on a record's page: the records of another type that
+point at it, with the columns you name. A question's page can then show each tool's answer side
+by side, and a tool's page every answer it has, grouped by the question's category.
+
+**A matrix.** `views` with `kind: 'matrix'` adds a page that crosses two fields: questions down
+the side, tools across the top, the answer where they meet. A reader picks a group of rows and
+the columns to compare, and the choice is in the address.
+
+**Counts.** `derived` adds a number worked out at build time, such as how many tools have an
+answer to a question. It can be a column, a filter and a sort.
+
+`defaultFilters` starts a type page on the records most readers want, such as the current ones.
+`typeOrder` and a site `intro` put the type a reader should start from first. The README shows
+each setting.
+
+## Search
+
+Search reads a query as words. It drops common words, matches a word without its ending, and
+ranks a match in a title above one in a summary, a field or a body. A question typed in full,
+such as "how are skills called", finds the records that hold most of its words. `searchWeight`
+puts one type ahead of the others, and `searchSynonyms` names words that mean the same, so
+"called" finds "invocation".
+
 ## Pages of your own
 
 The build writes the corpus as JSON files under `data/`, and the README lists them. A page of your
@@ -103,8 +137,12 @@ browser as it is.
 **One file per type, and one for search.** A type page loads its type's rows. The search page
 loads one index. A record page loads nothing. No page loads the whole corpus.
 
-**Search is a plain scan.** On a corpus of 2,417 records the index is 113 kB gzipped and a query
-takes under a millisecond. A prebuilt MiniSearch index was larger, and Pagefind wrote thousands of
+**Related tables and the matrix are HTML.** The build draws them, so they read without JavaScript
+and cost no data file. The matrix's pickers only hide rows and columns of the table that is
+already there. The price is page size: a matrix of 85 rows by 16 columns is 77 kB gzipped.
+
+**Search is a plain scan.** On a corpus of 2,417 records the index is 148 kB gzipped and a query
+takes a few milliseconds. A prebuilt MiniSearch index was larger, and Pagefind wrote thousands of
 files. At ten times the size Pagefind becomes the better choice, and `search: false` makes room
 for it.
 
@@ -122,5 +160,7 @@ A corpus is often published alone, and a small site should not need a documentat
 - One `corpusSite` per Astro project.
 - One locale per site.
 - Filtering and search need JavaScript. Reading does not.
+- A related table cannot be sorted or filtered by the reader. Its order comes from the config.
+- A matrix page holds every row and column, so a matrix of many thousands of cells is a large page.
 - Each record is a page, so a corpus of many tens of thousands of records builds slowly and makes
   many files.

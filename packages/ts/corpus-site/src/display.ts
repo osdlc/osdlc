@@ -3,16 +3,19 @@
  * record folder's files, and the records that point at it.
  */
 import type { BadgeColor } from './config.ts'
+import type { DataTree } from './data-types.ts'
 import { formatScalar } from './format.ts'
 import { fieldSchemaAt, humanize, shapeOf } from './schema.ts'
 import {
   parseWholeLink,
   safeDecode,
+  valueAt,
   type Site,
   type SiteField,
   type SiteRecord,
   type SiteType,
 } from './site.ts'
+import { keyLabel, looksLikeCode } from './value-text.ts'
 
 /** A value as a page shows it. */
 export type Display =
@@ -50,12 +53,16 @@ export interface BacklinkGroup {
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 
+type Schema = Record<string, unknown>
+
+/** What a value is shown by: a field's label, help, kind, format and enum values. */
+type Shown = Pick<SiteField, 'label' | 'help' | 'kind' | 'format' | 'options'> & {
+  /** Nothing says how to write a string here, so one that reads as code is drawn as code. */
+  guess?: boolean
+}
+
 /** What the schemas and the config say about the field at `path`, top-level or nested. */
-function fieldAt(
-  site: Site,
-  type: SiteType,
-  path: string,
-): Pick<SiteField, 'label' | 'help' | 'kind' | 'format' | 'options'> {
+function fieldAt(site: Site, type: SiteType, path: string): Shown {
   const known = site.field(type, path)
   if (known !== undefined) return known
   const schema = fieldSchemaAt(type.source, path)
@@ -71,13 +78,41 @@ function fieldAt(
           ? { kind: 'badge' }
           : { kind: 'text' },
     options: shape.options.map((o) => ({ ...o, color: null })),
+    guess: shape.kind === 'text' || shape.kind === 'json',
   }
+}
+
+/** What a JSON Schema taken from a record says about the key `key` of an object it describes. */
+function keyAt(schema: Schema | undefined, key: string): { shown: Shown; schema?: Schema } {
+  const properties = schema?.['properties']
+  const own = isObject(properties) && isObject(properties[key]) ? properties[key] : undefined
+  return {
+    shown: {
+      label: typeof own?.['title'] === 'string' ? own['title'] : keyLabel(key),
+      help: typeof own?.['description'] === 'string' ? own['description'] : null,
+      kind: 'text',
+      format: { kind: 'text' },
+      options: [],
+      guess: true,
+    },
+    ...(own === undefined ? {} : { schema: own }),
+  }
+}
+
+/** The JSON Schema a field's `keysFrom` names for a record's value, or undefined. */
+function keysSchema(site: Site, record: SiteRecord, path: string): Schema | undefined {
+  const from = site.field(record.type, path)?.keysFrom
+  if (from === null || from === undefined) return undefined
+  const target = site.referencesOf(record, from.ref)[0]?.target
+  const schema =
+    target === null || target === undefined ? undefined : valueAt(target.record.data, from.schemaAt)
+  return isObject(schema) ? schema : undefined
 }
 
 function scalar(
   site: Site,
   record: SiteRecord,
-  field: Pick<SiteField, 'kind' | 'format' | 'options'>,
+  field: Shown,
   value: string | number | boolean,
 ): Display {
   if (field.kind === 'enum' || field.format.kind === 'badge') {
@@ -113,17 +148,33 @@ function scalar(
   return {
     kind: 'text',
     text: formatScalar(value, field.format, site.locale),
-    code: field.format.kind === 'code',
+    code:
+      field.format.kind === 'code' ||
+      (field.guess === true && typeof value === 'string' && looksLikeCode(value)),
   }
 }
 
-/** The value at `path` of a record as a display tree. */
-function display(site: Site, record: SiteRecord, path: string, value: unknown): Display {
-  const field = fieldAt(site, record.type, path)
+/**
+ * The value at `path` of a record as a display tree. `keys` is a JSON Schema for the value that
+ * a record holds (`keysFrom`), which then names its keys in place of the type's schema. `shown`
+ * is what that schema says about the value itself.
+ */
+function display(
+  site: Site,
+  record: SiteRecord,
+  path: string,
+  value: unknown,
+  keys: Schema | undefined = keysSchema(site, record, path),
+  shown?: Shown,
+): Display {
   if (value === undefined || value === null || value === '') return { kind: 'empty' }
   if (Array.isArray(value)) {
     if (value.length === 0) return { kind: 'empty' }
-    return { kind: 'list', items: value.map((v) => display(site, record, path, v)) }
+    const items = isObject(keys?.['items']) ? keys['items'] : keys
+    return {
+      kind: 'list',
+      items: value.map((v) => display(site, record, path, v, items, shown)),
+    }
   }
   if (isObject(value)) {
     const entries = Object.entries(value)
@@ -131,14 +182,86 @@ function display(site: Site, record: SiteRecord, path: string, value: unknown): 
     return {
       kind: 'object',
       entries: entries.map(([key, v]) => {
-        const at = fieldAt(site, record.type, `${path}.${key}`)
-        return { label: at.label, help: at.help, value: display(site, record, `${path}.${key}`, v) }
+        const at = `${path}.${key}`
+        if (keys !== undefined) {
+          const own = keyAt(keys, key)
+          return {
+            label: own.shown.label,
+            help: own.shown.help,
+            value: display(site, record, at, v, own.schema ?? {}, own.shown),
+          }
+        }
+        const field = fieldAt(site, record.type, at)
+        return { label: field.label, help: field.help, value: display(site, record, at, v) }
       }),
     }
   }
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean')
-    return scalar(site, record, field, value)
+    return scalar(site, record, shown ?? fieldAt(site, record.type, path), value)
   return { kind: 'text', text: String(value), code: false }
+}
+
+/**
+ * The value a field path of a record leads to, as a display tree. The path may be `title`, a
+ * derived field, a place inside an object or a list, or lead through a reference field to a
+ * field of the record it names.
+ */
+export function displayPath(site: Site, record: SiteRecord, path: string): Display {
+  const items = site
+    .follow(record, path)
+    .map((at): Display => {
+      if (at.path === 'title')
+        return at.record.url === null
+          ? { kind: 'text', text: at.record.title, code: false }
+          : { kind: 'link', text: at.record.title, href: at.record.url, external: !at.record.local }
+      const field = site.field(at.record.type, at.path)
+      if (field !== undefined && field.derived !== null)
+        return { kind: 'text', text: String(site.derivedValue(at.record, at.path)), code: false }
+      if (field !== undefined && !field.nested) return displayField(site, at.record, field)
+      return display(site, at.record, at.path, valueAt(at.record.record.data, at.path))
+    })
+    .filter((item) => item.kind !== 'empty')
+  if (items.length === 0) return { kind: 'empty' }
+  return items.length === 1 ? (items[0] as Display) : { kind: 'list', items }
+}
+
+/** The longest text a tree keeps whole. Longer text is cut with `…`. */
+export const MAX_TREE_TEXT = 400
+
+/**
+ * A display tree in the slim form the data files and the table cells use. `help` keeps what
+ * each key of an object means, for a tooltip. A file of many records leaves it out.
+ */
+export function toTree(value: Display, help = true): DataTree {
+  const cut = (text: string): string =>
+    text.length > MAX_TREE_TEXT ? `${text.slice(0, MAX_TREE_TEXT - 1).trimEnd()}…` : text
+  switch (value.kind) {
+    case 'empty':
+      return null
+    case 'text':
+      return value.code ? { text: cut(value.text), code: true } : cut(value.text)
+    case 'missing':
+    case 'date':
+      return value.text
+    case 'link':
+      return { text: value.text, url: value.href }
+    case 'badge':
+      return { text: value.text, color: value.color }
+    case 'list': {
+      const items = value.items.map((item) => toTree(item, help)).filter((item) => item !== null)
+      return items.length === 0 ? null : items
+    }
+    case 'object': {
+      const entries = value.entries
+        .map((entry) => ({
+          label: entry.label,
+          value: toTree(entry.value, help),
+          ...(entry.help === null || !help ? {} : { help: entry.help }),
+        }))
+        .filter((entry) => entry.value !== null)
+      return entries.length === 0 ? null : { entries }
+    }
+  }
 }
 
 /** The value of a top-level field of a record as a display tree. */
@@ -199,6 +322,15 @@ export function recordFiles(site: Site, record: SiteRecord): { name: string; url
  */
 export function backlinkGroups(site: Site, record: SiteRecord): BacklinkGroup[] {
   const groups = new Map<string, BacklinkGroup>()
+  // A related table lists these records already.
+  const listed = (from: SiteRecord, fieldName: string | null): boolean =>
+    record.type.related.some(
+      (related) =>
+        from.corpus === '' &&
+        related.from === from.type.name &&
+        related.via === fieldName &&
+        site.matches(from, related.where),
+    )
   for (const incoming of record.record.incoming) {
     const from = site.record(incoming.from)
     if (from === undefined || from === record) continue
@@ -206,6 +338,7 @@ export function backlinkGroups(site: Site, record: SiteRecord): BacklinkGroup[] 
       incoming.pointer === null
         ? null
         : (incoming.pointer.split('/')[1] ?? '').replace(/~1/g, '/').replace(/~0/g, '~')
+    if (listed(from, fieldName)) continue
     const key = `${from.corpus}\0${from.type.name}\0${fieldName ?? '\0body'}`
     let group = groups.get(key)
     if (group === undefined) {

@@ -1,7 +1,11 @@
-/** One value of a record in a table cell: a badge, a link to a record, a date, or text. */
+/**
+ * One value of a record in a table cell: a badge, a link to a record, a date, text, or, for a
+ * field with `tree` set, an object or a list cut short.
+ */
 import { defineComponent, h, type PropType, type VNodeChild } from 'vue'
-import type { DataField, DataScalar, DataTarget, DataValue } from '../data-types.ts'
+import type { DataField, DataScalar, DataTarget, DataTree, DataValue } from '../data-types.ts'
 import { formatScalar } from '../format.ts'
+import { TreeValue } from './TreeValue.ts'
 
 /** The most values of a list a cell shows before `+n`. */
 const MAX_ITEMS = 3
@@ -10,7 +14,7 @@ export const ValueCell = defineComponent({
   name: 'CorpusValueCell',
   props: {
     field: { type: Object as PropType<DataField>, required: true },
-    value: { type: [String, Number, Boolean, Array] as PropType<DataValue>, default: null },
+    value: { type: [String, Number, Boolean, Array, Object] as PropType<DataValue>, default: null },
     /** The records reference values name, from the type's data file. */
     targets: { type: Object as PropType<Record<string, DataTarget>>, default: () => ({}) },
     locale: { type: String, default: 'en' },
@@ -42,12 +46,16 @@ export const ValueCell = defineComponent({
         return h('time', { datetime: String(value) }, text)
       return field.format.kind === 'code' ? h('code', text) : text
     }
+    const isScalar = (v: unknown): v is DataScalar =>
+      typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
     return () => {
       const { value } = props
       if (value === null || (Array.isArray(value) && value.length === 0))
         return h('span', { class: 'cs-empty', 'aria-label': 'none' }, '–')
-      if (!Array.isArray(value)) return h('span', { class: 'cs-value' }, [one(value)])
-      const shown = value.slice(0, MAX_ITEMS)
+      if (props.field.tree === true) return h(TreeValue, { tree: value as DataTree, compact: true })
+      if (!Array.isArray(value))
+        return h('span', { class: 'cs-value' }, [isScalar(value) ? one(value) : null])
+      const shown = value.filter(isScalar).slice(0, MAX_ITEMS)
       return h('span', { class: 'cs-value cs-value-list' }, [
         ...shown.map((v, i) => h('span', { key: i, class: 'cs-value-item' }, [one(v)])),
         value.length > shown.length

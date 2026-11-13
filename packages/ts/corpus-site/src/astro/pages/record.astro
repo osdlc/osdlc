@@ -1,14 +1,24 @@
 ---
-import { Layout, RecordPage } from 'virtual:corpus-site/components'
+// A page under a type: a record's, or a view's, which shares the route.
+import { Layout, MatrixPage, RecordPage } from 'virtual:corpus-site/components'
 import { getSite } from '../../context.js'
-import { recordBySlug, recordPaths } from '../../routes.js'
+import { recordBySlug, recordPaths, viewBySlug } from '../../routes.js'
 
 export const getStaticPaths = () => recordPaths(getSite())
 
-const record = recordBySlug(getSite(), Astro.params.type, Astro.params.record)
-if (record === undefined) return new Response(null, { status: 404 })
+const view = viewBySlug(getSite(), Astro.params.type, Astro.params.record)
+const record = view === undefined ? recordBySlug(getSite(), Astro.params.type, Astro.params.record) : undefined
+if (view === undefined && record === undefined) return new Response(null, { status: 404 })
 ---
 
-<Layout title={record.title} description={record.summary} active={record.type.slug} wide>
-  <RecordPage record={record} />
-</Layout>
+{
+  view !== undefined ? (
+    <Layout title={view.label} active={`${view.type.slug}/${view.slug}`} wide>
+      <MatrixPage view={view} />
+    </Layout>
+  ) : (
+    <Layout title={record.title} description={record.summary} active={record.type.slug} wide>
+      <RecordPage record={record} />
+    </Layout>
+  )
+}

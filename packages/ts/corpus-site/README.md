@@ -95,6 +95,7 @@ Node.js 22.18 or later.
 | `/`                                 | Home: the root file's body, and each type with its count            |
 | `/<type>/`                          | A type: a table with filters, sorting, a text box and pages         |
 | `/<type>/<record>/`                 | A record: its fields, its body, its files and what links to it      |
+| `/<type>/<view>/`                   | A view of a type from its config, such as a matrix                  |
 | `/ref/<corpus>/<type>/<record>/`    | A record of a corpus this one references or extends                 |
 | `/search/`                          | Search across every type                                            |
 
@@ -106,7 +107,8 @@ The state of a type page is in its address, so a filtered view can be shared:
 like one of the site's own parameters (`q`, `sort`, `page`) is written with an `f.` prefix.
 
 Without JavaScript a type page shows its first page of rows, and every record page and link works.
-Filtering, sorting and search need JavaScript.
+A related table and a matrix are whole in the HTML. Filtering, sorting, search and the matrix's
+pickers need JavaScript.
 
 A reference field shows the title of the record it points at and links to its page. A relative
 link or a wikilink in a body goes to the page of the record it resolves to. A link to a file in a
@@ -125,8 +127,10 @@ corpus-site config:
 ```
 
 For a type: `label`, `singular`, `icon`, `blurb`, `intro` (Markdown above the list), `hidden`,
-`slug`, `title` and `summary` (text with `{field}` places), `columns`, `filters`, `sort`,
-`sections` (groups of fields on the record page) and `fields`.
+`slug`, `title` and `summary` (text with `{field}` places), `columns`, `filters`,
+`defaultFilters`, `sort`, `sections` (groups of fields on the record page), `fields`, `derived`,
+`related`, `views` and `searchWeight`. For the site: `title`, `description`, `intro` (Markdown at
+the top of the home page), `typeOrder` and `searchSynonyms`.
 
 For a field:
 
@@ -142,9 +146,121 @@ For a field:
 | `hidden`  | Keep the field off the record page, the columns and the filters                      |
 | `format`  | `text`, `date`, `datetime`, `number`, `badge`, `code` or `link`, with options        |
 | `values`  | For each enum value: a `label`, a `description` and a badge `color`                  |
+| `keysFrom` | For an object value: the record whose JSON Schema labels its keys                   |
 
 A dotted name such as `scope.platform` names a field inside an object field, and makes it usable
-as a column or a filter.
+as a column or a filter. A path also steps through a list, and in `related` and a matrix through
+a reference field to the record it names (`subject.category`).
+
+### Object and list values
+
+A field may hold an object or a list, and so may a column. A record page shows the whole value:
+each key in words with its value, `true` and `false` as Yes and No, a string that looks like code
+(a flag, a path, a command) in code type, and a list inside as a list. A table cell shows the
+first three keys and cuts a long text, with "Show all" to open the rest. In a `title` or `summary`
+template such a value becomes one line: `Syntax: /review · Cli only: Yes`.
+
+The keys of an object are often described elsewhere. `keysFrom` takes their labels and help from
+a JSON Schema that another record holds:
+
+```ts
+fields: {
+  'proposition.object': {
+    label: 'Answer',
+    keysFrom: { ref: 'subject', schemaAt: 'valueSchema' },
+  },
+}
+```
+
+`ref` is a reference field of the same record. `schemaAt` is the path of the schema in the record
+it names. A key's label is its `title` there and its help its `description`.
+
+### Counts
+
+`derived` adds a number the build works out. It can be a column, a filter and a sort:
+
+```ts
+subjects: {
+  columns: ['title', 'category', 'answered'],
+  derived: {
+    answered: {
+      label: 'Harnesses',
+      help: 'How many harnesses have a current answer.',
+      count: { from: 'statements', via: 'subject', where: { status: 'current' }, distinct: 'harness' },
+    },
+  },
+}
+```
+
+It counts the records of `from` whose reference field `via` names the record. `where` keeps only
+some of them, and `distinct` counts the different values of one of their fields.
+
+### Related tables
+
+By default a record page ends with "Referenced by": a list of the records that link to it.
+`related` shows them as a table of their fields instead:
+
+```ts
+subjects: {
+  related: [
+    {
+      label: 'Across harnesses',
+      note: 'The current answer of each harness.',
+      from: 'statements',
+      via: 'subject',
+      where: { status: 'current' },
+      columns: ['harness', 'proposition.object', 'scope', 'strength'],
+      sort: 'harness',
+    },
+  ],
+}
+```
+
+`columns` are fields of `from`. Without `title` among them, each row ends in a link to its record.
+`groupBy` puts the rows that share a value under one heading. A column with no value in any row is
+left out. The table is in the page's HTML and needs no script. The records it lists are left out
+of "Referenced by".
+
+### A matrix
+
+`views` adds pages beside a type's index. A matrix crosses two fields of the type: one row for
+each value of one, one column for each value of the other, and in each cell the records that hold
+both.
+
+```ts
+statements: {
+  views: [
+    {
+      kind: 'matrix',
+      label: 'Compare harnesses',
+      slug: 'compare',
+      rows: 'subject',
+      columns: 'harness',
+      cell: 'proposition.object',
+      where: { status: 'current' },
+      groupRowsBy: 'category',
+      rowSummary: '{description}',
+    },
+  ],
+}
+```
+
+This is `/statements/compare/`. `rows` and `columns` are usually reference fields, and then every
+record the row field can name gets a row, with or without cells. `cell` is a field path or a
+template. `groupRowsBy` and `rowSummary` read the row's record. A column with no cell is left out.
+
+The page holds the whole table. Its header row and first column stay in place while it scrolls.
+Above it are a chip for each group, a text box that filters the rows and a list of the columns to
+show or hide. The choice is in the address: `?group=skills&col=claude-code&col=codex-cli&q=name`.
+Below 50rem wide the page shows one row at a time as a list, with a picker and Previous and Next
+(`row=` in the address). The home page and the navigation link to each view, and the home page
+links to each group.
+
+### Default filters
+
+`defaultFilters: { status: 'current' }` starts a type page with those filters on. The address
+stays bare while they hold. A reader who removes one gets `?status=` in the address, so the wider
+list can be shared too. Each name must be one of the type's `filters`.
 
 When the config names no control, the schema picks one: chips for an enum of up to six values and
 a select above that, a toggle for a boolean, a range for a number or a date, a select for a
@@ -154,8 +270,29 @@ The site adds no keywords to the schemas. The validator rejects a keyword it doe
 what a site says about a field stays in the site's config.
 
 The types are in [`src/config.ts`](./src/config.ts): `CorpusSiteConfig`, `TypeConfig`,
-`FieldConfig`, `ValueConfig`, `FieldFormat`, `SectionConfig`, `DocLink` and
+`FieldConfig`, `ValueConfig`, `FieldFormat`, `SectionConfig`, `DocLink`, `KeysFrom`,
+`WhereConfig`, `DerivedConfig`, `RelatedConfig`, `MatrixViewConfig`, `ViewConfig` and
 `ReferencedCorpusConfig`.
+
+## Search
+
+The search box finds records by their title, their summary line, their field text and the start
+of their body. A hit shows its title, its type and its summary, with the matched words marked.
+
+A query is read as words, not as a phrase. Common words such as "how", "are" and "the" are left
+out, and a word also matches without its ending: "skills" finds "skill" and "called" finds
+"call". A query of one or two words needs both. A longer one needs more than half of its words,
+and a record that holds more of them ranks higher. A match in the title counts most, then the
+summary, then the fields, then the body.
+
+Two settings tune it. `searchWeight` on a type makes its records rank higher: `3` puts a type
+three times ahead of the others. `searchSynonyms` on the site names words that mean the same:
+
+```ts
+searchSynonyms: [['call', 'invoke', 'invocation']],
+```
+
+With it, "how are skills called" finds a record that says "invocation".
 
 ## Data files
 
@@ -166,13 +303,19 @@ each file holds `"version": 1`.
 | ------------------------------------- | ----------------------------------------------------------------------- |
 | `data/corpus.json`                    | The title and each type: label, count, page path and data path          |
 | `data/types/<type>.json`              | One type: its fields, columns and a slim row for each record            |
+| `data/views/<type>/<view>.json`       | One matrix: its columns, groups, rows and cells                         |
 | `data/records/<type>/<record>.json`   | One record in full: its data, Markdown body, files, links and backlinks |
 | `data/search.json`                    | The search index: a title and text for each record                      |
 | `data/files/<path in the corpus>`     | The files of record folders that a record links to                      |
 
-The types of these files are `CorpusData`, `TypeData`, `RecordData` and `SearchData`. A browser
-loads one type's file on that type's page and the search index on first use of the search box. It
-never loads the whole corpus.
+The types of these files are `CorpusData`, `TypeData`, `RecordData`, `MatrixData` and
+`SearchData`. A browser loads one type's file on that type's page and the search index on first
+use of the search box. A matrix page loads no data file: its table is in the HTML, and the JSON is
+there for pages of your own. No page loads the whole corpus.
+
+A column value is a string, a number, a boolean, a list of those, or for an object or a list of
+objects a `DataTree`: text, a list, or `{ entries: [{ label, value }] }`. Its field holds
+`"tree": true`.
 
 ## Your own pages
 
@@ -218,11 +361,14 @@ const site = getSite()
   `useTypeQuery` (the filtered, sorted and paged rows of a type).
 - Query functions: `filterRecords`, `facetCounts`, `fieldBounds`, `paginate`, `search`,
   `parseState` and `formatState`.
+- Value text: `oneLine`, `treeText`, `keyLabel` and `looksLikeCode`.
 - Components: `TypeExplorer`, `SearchApp`, `FilterPanel`, `FilterControl`, `ActiveFilters`,
-  `ResultTable`, `ValueCell`, `FieldInfo` and `Pager`. Each takes data as props and emits events.
+  `ResultTable`, `ValueCell`, `TreeValue`, `MatrixTable`, `MatrixControls`, `FieldInfo` and
+  `Pager`. Each takes data as props and emits events.
 
 The node entry also exports what the pages are built from: `loadSite`, `Site`, `dataFiles`,
-`typeData`, `recordData`, `searchData`, `renderMarkdown`, `fieldSections` and `backlinkGroups`.
+`typeData`, `recordData`, `searchData`, `matrixData`, `relatedTables`, `renderMarkdown`,
+`fieldSections`, `displayPath`, `toTree` and `backlinkGroups`.
 
 ## Replace a component
 
@@ -233,7 +379,7 @@ corpusSite({ root: '../corpus', components: { Footer: './src/components/Footer.a
 ```
 
 The names are `Layout`, `Header`, `Sidebar`, `Footer`, `Home`, `TypeIndex`, `RecordPage`,
-`SearchPage` and `FieldValue`. A replacement gets the same props as the one it replaces. Import
+`MatrixPage`, `SearchPage` and `FieldValue`. A replacement gets the same props as the one it replaces. Import
 the others from `virtual:corpus-site/components`.
 
 ## Look
@@ -255,23 +401,29 @@ not use the layout.
 
 ## Size
 
-Measured on the harness reference in this repository: 2,417 records in six types.
+Measured on the harness reference in this repository: 2,417 records in six types, with related
+tables on two types and one matrix of 85 rows by 16 columns.
 
-| What                                    | Size                           |
-| --------------------------------------- | ------------------------------ |
-| `astro build`                           | 2,425 pages in about 4 seconds |
-| JavaScript on a type page (Vue included) | 98 kB, 37 kB gzipped           |
-| CSS                                     | 34 kB, 7 kB gzipped            |
-| The largest type file (1,189 records)   | 381 kB, 23 kB gzipped          |
-| The search index                        | 695 kB, 113 kB gzipped         |
+| What                                     | Size                             |
+| ---------------------------------------- | -------------------------------- |
+| `astro build`                            | 2,426 pages in about 4 seconds   |
+| JavaScript on a type page (Vue included) | 110 kB, 41 kB gzipped            |
+| CSS                                      | 41 kB, 8 kB gzipped              |
+| The largest type file (824 records)      | 562 kB, 80 kB gzipped            |
+| The matrix page (85 by 16)               | 752 kB, 77 kB gzipped            |
+| The largest record page (78 related rows) | 154 kB                          |
+| The search index                         | 915 kB, 148 kB gzipped           |
+
+The largest type file is the one with an object column: each row carries its answer. A matrix
+page grows with rows times columns, and it is the page to watch on a larger corpus.
 
 Search is a file the package writes itself: each record's title, its field text and the first
-4,000 characters of its body. The browser scans it, which takes under a millisecond here. Two
+4,000 characters of its body. The browser scans it, which takes 1 to 11 milliseconds here. Two
 other ways were measured on the same corpus. A prebuilt MiniSearch index came to 207 kB gzipped.
 Pagefind wrote 11 MB in 2,481 files and loads them in pieces, so it costs more files and less per
 visit.
 
-The search file grows with the corpus. At ten times this size it would be about 1 MB gzipped, and
+The search file grows with the corpus. At ten times this size it would be about 1.5 MB gzipped, and
 a type page of 12,000 rows would be slow to filter. Past a few thousand records per type, set
 `search: false` and run Pagefind over the built pages (the pages mark their content with
 `data-pagefind-body`).
@@ -279,7 +431,8 @@ a type page of 12,000 rows would be slow to filter. Past a few thousand records 
 ## Tests
 
 `pnpm run test` runs unit tests of the config check, the schema reading, the filter and search
-functions and the address state, component tests in jsdom, and a test that builds the example site
+functions, the address state, and the object values, counts, related tables and matrix over a
+small corpus, component tests in jsdom, and a test that builds the example site
 with Astro and reads the output.
 
 ## Stability

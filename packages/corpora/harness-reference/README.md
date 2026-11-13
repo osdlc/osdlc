@@ -64,6 +64,13 @@ pnpm run build:site     # write it to site/dist
 pnpm run preview        # serve site/dist on port 4310, on every interface
 ```
 
+The server answers only to `localhost` and IP addresses by default. To reach it by another host
+name, list the names in `CORPUS_SITE_ALLOWED_HOSTS`, separated by commas:
+
+```sh
+CORPUS_SITE_ALLOWED_HOSTS=my-laptop.example.net pnpm run preview
+```
+
 ## The compiled file
 
 `pnpm run compile` reads the corpus and writes two files to `dist/`, which is not committed:

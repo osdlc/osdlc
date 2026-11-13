@@ -319,6 +319,7 @@ describe('the data files', () => {
       1,
       'Henry David Thoreau · Finished · 1854 · 320 · essays',
       'Two years beside a pond, told as one.',
+      '',
     ])
   })
 })

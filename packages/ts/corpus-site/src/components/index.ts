@@ -11,3 +11,11 @@ export { ResultTable } from './ResultTable.ts'
 export { SearchApp } from './SearchApp.ts'
 export { TypeExplorer } from './TypeExplorer.ts'
 export { ValueCell } from './ValueCell.ts'
+export {
+  MatrixControls,
+  formatMatrixState,
+  parseMatrixState,
+  type MatrixState,
+} from './MatrixControls.ts'
+export { MatrixTable } from './MatrixTable.ts'
+export { TreeValue } from './TreeValue.ts'

@@ -2,7 +2,7 @@
  * The publisher's config: what a site says about a corpus that its schemas do not hold. Every
  * value is JSON, so a config can live in a `.json` file as well as in a module.
  */
-import type { LoadedCorpus } from '@osdlc/corpus-schema'
+import type { CorpusType, LoadedCorpus } from '@osdlc/corpus-schema'
 import { fieldSchemaAt } from './schema.ts'
 
 /** How a filter is drawn. `hidden` keeps a field out of the filters. */
@@ -66,7 +66,84 @@ export interface FieldConfig {
   format?: FieldFormat | FieldFormat['kind']
   /** A label, an explanation and a badge colour for each value of an enum field. */
   values?: Record<string, ValueConfig>
+  /** For a field that holds an object: where the labels and help of its keys come from. */
+  keysFrom?: KeysFrom
 }
+
+/**
+ * Labels for the keys of an object value, taken from a JSON Schema another record holds. `ref`
+ * is a reference field of the same record. `schemaAt` is the path, in the record it names, of a
+ * JSON Schema for the object. A key's label is its `title` there, and its help its `description`.
+ */
+export interface KeysFrom {
+  ref: string
+  schemaAt: string
+}
+
+/** Field values a record must hold, by field path: one value, or a list of which one must match. */
+export type WhereConfig = Record<string, string | number | boolean | (string | number | boolean)[]>
+
+/** A field the site works out at build time. */
+export interface DerivedConfig {
+  label: string
+  /** One or two sentences on what the number means. */
+  help?: string
+  /**
+   * How many records of the type `from` name this record in their reference field `via`. With
+   * `distinct`, how many different values of that field those records hold.
+   */
+  count: { from: string; via: string; where?: WhereConfig; distinct?: string }
+}
+
+/** A table, on a record's page, of the records of another type that point at it. */
+export interface RelatedConfig {
+  /** The table's heading. */
+  label: string
+  /** A line under the heading. */
+  note?: string
+  /** The type whose records are listed. */
+  from: string
+  /** The reference field of `from` that names this record. */
+  via: string
+  /** Keep only the records that hold these values. */
+  where?: WhereConfig
+  /**
+   * The columns: fields of `from`, in order. A dotted path reaches into an object, a list or,
+   * through a reference field, the record it names (`subject.category`). Without `title`, each
+   * row ends in a link to its record.
+   */
+  columns: string[]
+  /** The sort: a column, with a leading `-` for descending. Default `title`. */
+  sort?: string
+  /** A field path. Rows that share its value sit under one heading. */
+  groupBy?: string
+}
+
+/** A table that crosses two fields of a type: one row per value of one, one column per value of the other. */
+export interface MatrixViewConfig {
+  kind: 'matrix'
+  /** The page's title. */
+  label: string
+  /** The page's path segment under the type: `/<type>/<slug>/`. */
+  slug: string
+  /** Markdown shown above the table. */
+  intro?: string
+  /** The field whose values are the rows. A reference field gives one row per record it can name. */
+  rows: string
+  /** The field whose values are the columns. */
+  columns: string
+  /** What a cell shows: a field path, or text with `{field}` places. */
+  cell: string
+  /** Keep only the records that hold these values. */
+  where?: WhereConfig
+  /** A field path on the row's record. Rows that share its value form a group a reader can pick. */
+  groupRowsBy?: string
+  /** A line under each row's title: text with `{field}` places, filled from the row's record. */
+  rowSummary?: string
+}
+
+/** A page of a type beside its index. */
+export type ViewConfig = MatrixViewConfig
 
 /** A named group of fields on the record page. */
 export interface SectionConfig {
@@ -105,8 +182,21 @@ export interface TypeConfig {
   filters?: string[]
   /** The default sort: a field name, with a leading `-` for descending. `title` sorts by title. */
   sort?: string
+  /**
+   * The filters a reader starts with, by field name, written as in the page's address:
+   * `{ status: 'current' }`. A reader can remove them.
+   */
+  defaultFilters?: Record<string, string | string[]>
   /** Groups of fields on the record page. Fields in no group follow under `Details`. */
   sections?: SectionConfig[]
+  /** Fields worked out at build time, by name. Each can be a column, a filter and a sort. */
+  derived?: Record<string, DerivedConfig>
+  /** Tables of the records of other types that point at a record, on its page. */
+  related?: RelatedConfig[]
+  /** Pages beside the index, such as a matrix. */
+  views?: ViewConfig[]
+  /** How much a match in this type counts in search, against 1 for other types. */
+  searchWeight?: number
   /**
    * Field metadata by field name. A dotted name such as `scope.platform` names a field inside
    * an object, and makes it usable as a column or a filter.
@@ -139,6 +229,11 @@ export interface CorpusSiteConfig {
   pageSize?: number
   /** The locale dates and numbers are written in, as a BCP 47 tag. Default `en`. */
   locale?: string
+  /**
+   * Words search treats as one: a query word in a group finds a record that holds any word of
+   * the group. `[['call', 'invoke', 'run']]` lets "called" find "invocation".
+   */
+  searchSynonyms?: string[][]
   /** Type metadata by type name. */
   types?: Record<string, TypeConfig>
   /** The corpora the loaded one names, by key (`org`, `org/base`). Default: record pages under `ref/`. */
@@ -180,6 +275,7 @@ const TOP_KEYS = [
   'typeOrder',
   'pageSize',
   'locale',
+  'searchSynonyms',
   'types',
   'corpora',
 ]
@@ -198,6 +294,24 @@ const TYPE_KEYS = [
   'sort',
   'sections',
   'fields',
+  'defaultFilters',
+  'derived',
+  'related',
+  'views',
+  'searchWeight',
+]
+const RELATED_KEYS = ['label', 'note', 'from', 'via', 'where', 'columns', 'sort', 'groupBy']
+const VIEW_KEYS = [
+  'kind',
+  'label',
+  'slug',
+  'intro',
+  'rows',
+  'columns',
+  'cell',
+  'where',
+  'groupRowsBy',
+  'rowSummary',
 ]
 const FIELD_KEYS = [
   'label',
@@ -210,6 +324,7 @@ const FIELD_KEYS = [
   'hidden',
   'format',
   'values',
+  'keysFrom',
 ]
 
 const list = (names: Iterable<string>): string => [...names].join(', ') || '(none)'
@@ -234,6 +349,17 @@ export function configProblems(config: CorpusSiteConfig, model: LoadedCorpus): s
   if (config.pageSize !== undefined && !(Number.isInteger(config.pageSize) && config.pageSize > 0))
     problems.push(`pageSize: must be a whole number above 0, not ${String(config.pageSize)}`)
 
+  if (
+    config.searchSynonyms !== undefined &&
+    !(
+      Array.isArray(config.searchSynonyms) &&
+      config.searchSynonyms.every(
+        (group) => Array.isArray(group) && group.every((word) => typeof word === 'string'),
+      )
+    )
+  )
+    problems.push('searchSynonyms: must be a list of lists of words')
+
   const typeNames = model.types.map((t) => t.name)
   for (const name of config.typeOrder ?? [])
     if (!typeNames.includes(name))
@@ -253,9 +379,12 @@ export function configProblems(config: CorpusSiteConfig, model: LoadedCorpus): s
       continue
     }
     unknownKeys(where, type, TYPE_KEYS)
-    const fieldNames = corpusType.fields.map((f) => f.name)
+    const derivedNames = Object.keys(type.derived ?? {})
+    const fieldNames = [...corpusType.fields.map((f) => f.name), ...derivedNames]
     const known = (field: string): boolean =>
-      field === 'title' || fieldSchemaAt(corpusType, field) !== undefined
+      field === 'title' ||
+      derivedNames.includes(field) ||
+      fieldSchemaAt(corpusType, field) !== undefined
     const checkField = (setting: string, field: string, allowTitle: boolean): void => {
       if (known(field) && (allowTitle || field !== 'title' || fieldNames.includes('title'))) return
       problems.push(
@@ -272,6 +401,141 @@ export function configProblems(config: CorpusSiteConfig, model: LoadedCorpus): s
         if (field !== 'id' && field !== 'name') checkField(setting, field, true)
     if (type.slug !== undefined && !/^[a-z0-9][a-z0-9-]*$/.test(type.slug))
       problems.push(`${where}.slug: "${type.slug}" must be lower-case letters, digits and "-"`)
+
+    const referenceFields = corpusType.fields.filter((f) => f.ref !== null).map((f) => f.name)
+    for (const field of Object.keys(type.defaultFilters ?? {}))
+      if (type.filters !== undefined && !type.filters.includes(field))
+        problems.push(
+          `${where}.defaultFilters: "${field}" is not one of the type's filters. Filters: ${list(type.filters)}`,
+        )
+      else checkField('defaultFilters', field, false)
+    if (
+      type.searchWeight !== undefined &&
+      !(typeof type.searchWeight === 'number' && type.searchWeight > 0)
+    )
+      problems.push(`${where}.searchWeight: must be a number above 0`)
+
+    // A type and one of its reference fields, as `derived` and `related` name them.
+    const incoming = (at: string, from: unknown, via: unknown): CorpusType | undefined => {
+      const fromType = model.types.find((t) => t.name === from)
+      if (fromType === undefined) {
+        problems.push(
+          `${at}.from: the corpus has no type "${String(from)}". Types: ${list(typeNames)}`,
+        )
+        return undefined
+      }
+      const refs = fromType.fields.filter((f) => f.ref !== null).map((f) => f.name)
+      if (!refs.includes(String(via))) {
+        problems.push(
+          `${at}.via: type "${fromType.name}" has no reference field "${String(via)}". Reference fields: ${list(refs)}`,
+        )
+        return undefined
+      }
+      return fromType
+    }
+    const checkPaths = (
+      at: string,
+      of: CorpusType,
+      paths: string[],
+      extra: string[] = [],
+    ): void => {
+      for (const path of paths)
+        if (!extra.includes(path) && !pathExists(model, of, path))
+          problems.push(
+            `${at}: type "${of.name}" has no field "${path}". Fields: ${list(of.fields.map((f) => f.name))}`,
+          )
+    }
+    const derivedOf = (t: CorpusType): string[] =>
+      Object.keys(config.types?.[t.name]?.derived ?? {})
+
+    for (const [name, derived] of Object.entries(type.derived ?? {})) {
+      const at = `${where}.derived.${name}`
+      if (corpusType.fields.some((f) => f.name === name))
+        problems.push(`${at}: type "${typeName}" already has a field "${name}"`)
+      if (typeof derived.count !== 'object' || derived.count === null) {
+        problems.push(`${at}: needs "count", with "from" and "via"`)
+        continue
+      }
+      const from = incoming(`${at}.count`, derived.count.from, derived.count.via)
+      if (from === undefined) continue
+      checkPaths(`${at}.count.where`, from, Object.keys(derived.count.where ?? {}))
+      if (derived.count.distinct !== undefined)
+        checkPaths(`${at}.count.distinct`, from, [derived.count.distinct])
+    }
+
+    for (const [i, related] of (type.related ?? []).entries()) {
+      const at = `${where}.related[${i}]`
+      unknownKeys(at, related, RELATED_KEYS)
+      if (typeof related.label !== 'string' || related.label === '')
+        problems.push(`${at}.label: a related table needs a label`)
+      const from = incoming(at, related.from, related.via)
+      if (from === undefined) continue
+      const extra = ['title', ...derivedOf(from)]
+      if (!Array.isArray(related.columns) || related.columns.length === 0)
+        problems.push(`${at}.columns: name at least one column`)
+      else checkPaths(`${at}.columns`, from, related.columns, extra)
+      checkPaths(`${at}.where`, from, Object.keys(related.where ?? {}))
+      if (related.groupBy !== undefined) checkPaths(`${at}.groupBy`, from, [related.groupBy])
+      if (related.sort !== undefined) {
+        const column = related.sort.replace(/^-/, '')
+        if (column !== 'title' && !(related.columns ?? []).includes(column))
+          problems.push(
+            `${at}.sort: "${column}" is not a column of the table. Columns: ${list(['title', ...(related.columns ?? [])])}`,
+          )
+      }
+    }
+
+    const viewSlugs = new Set<string>()
+    for (const [i, view] of (type.views ?? []).entries()) {
+      const at = `${where}.views[${i}]`
+      unknownKeys(at, view, VIEW_KEYS)
+      if (view.kind !== 'matrix') {
+        problems.push(`${at}.kind: "${String(view.kind)}" is not a view. Views: matrix`)
+        continue
+      }
+      if (typeof view.label !== 'string' || view.label === '')
+        problems.push(`${at}.label: a view needs a label`)
+      if (typeof view.slug !== 'string' || !/^[a-z0-9][a-z0-9-]*$/.test(view.slug))
+        problems.push(
+          `${at}.slug: "${String(view.slug)}" must be lower-case letters, digits and "-"`,
+        )
+      else if (viewSlugs.has(view.slug))
+        problems.push(`${at}.slug: "${view.slug}" is also the path of another view`)
+      else viewSlugs.add(view.slug)
+      for (const axis of ['rows', 'columns'] as const)
+        if (typeof view[axis] !== 'string' || !fieldNames.includes(view[axis]))
+          problems.push(
+            `${at}.${axis}: type "${typeName}" has no field "${String(view[axis])}". Fields: ${list(fieldNames)}`,
+          )
+      if (typeof view.cell !== 'string' || view.cell === '')
+        problems.push(`${at}.cell: name a field, or write text with {field} places`)
+      else
+        checkPaths(
+          `${at}.cell`,
+          corpusType,
+          view.cell.includes('{') ? templateFields(view.cell) : [view.cell],
+          ['title', 'id', 'name', ...derivedNames],
+        )
+      checkPaths(`${at}.where`, corpusType, Object.keys(view.where ?? {}))
+      // The row's record is of the type the `rows` field names.
+      const rowTypes = (corpusType.fields.find((f) => f.name === view.rows)?.ref?.targets ?? [])
+        .filter((t) => t.corpus === '')
+        .map((t) => model.types.find((m) => m.name === t.type))
+        .filter((t) => t !== undefined)
+      const onRow = [
+        ...(view.groupRowsBy === undefined ? [] : [['groupRowsBy', view.groupRowsBy] as const]),
+        ...templateFields(view.rowSummary ?? '').map((f) => ['rowSummary', f] as const),
+      ]
+      for (const [setting, path] of onRow) {
+        if (rowTypes.length === 0)
+          problems.push(
+            `${at}.${setting}: needs "rows" to be a reference field. Reference fields: ${list(referenceFields)}`,
+          )
+        else
+          for (const rowType of rowTypes)
+            checkPaths(`${at}.${setting}`, rowType, [path], ['title', 'id', 'name'])
+      }
+    }
 
     for (const [fieldName, field] of Object.entries(type.fields ?? {})) {
       const at = `${where}.fields.${fieldName}`
@@ -291,6 +555,15 @@ export function configProblems(config: CorpusSiteConfig, model: LoadedCorpus): s
         problems.push(
           `${at}.format: "${String(format)}" is not a format. Formats: ${list(FORMATS)}`,
         )
+      if (field.keysFrom !== undefined) {
+        const { ref, schemaAt } = field.keysFrom
+        if (!referenceFields.includes(ref))
+          problems.push(
+            `${at}.keysFrom.ref: type "${typeName}" has no reference field "${String(ref)}". Reference fields: ${list(referenceFields)}`,
+          )
+        if (typeof schemaAt !== 'string' || schemaAt === '')
+          problems.push(`${at}.keysFrom.schemaAt: name the field that holds the JSON Schema`)
+      }
       for (const [value, valueConfig] of Object.entries(field.values ?? {}))
         if (valueConfig.color !== undefined && !COLORS.includes(valueConfig.color))
           problems.push(
@@ -314,6 +587,21 @@ export function configProblems(config: CorpusSiteConfig, model: LoadedCorpus): s
     slugs.set(slug, t.name)
   }
   return problems
+}
+
+/**
+ * Whether `path` names something in a record of `type`: a field, a place inside an object or a
+ * list field, or, through a reference field, a field of a record it names.
+ */
+function pathExists(model: LoadedCorpus, type: CorpusType, path: string): boolean {
+  if (fieldSchemaAt(type, path) !== undefined) return true
+  const [head = '', ...rest] = path.split('.')
+  const field = type.fields.find((f) => f.name === head)
+  if (field === undefined || rest.length === 0) return false
+  const targets = (field.ref?.targets ?? []).map((t) =>
+    (t.corpus === '' ? model : model.corpora[t.corpus])?.types.find((m) => m.name === t.type),
+  )
+  return targets.some((t) => t !== undefined && pathExists(model, t, rest.join('.')))
 }
 
 /** Throw a `CorpusSiteConfigError` when `configProblems` finds any. */

@@ -39,6 +39,8 @@ export const TypeExplorer = defineComponent({
     defaultSort: { type: String, default: null },
     titleLabel: { type: String, default: 'Title' },
     locale: { type: String, default: 'en' },
+    /** The filters a reader starts with, by field name, as the page's address writes them. */
+    defaults: { type: Object as PropType<Record<string, string[]>>, default: () => ({}) },
     /** Keep the view in the page's query string. */
     url: { type: Boolean, default: true },
   },
@@ -47,6 +49,7 @@ export const TypeExplorer = defineComponent({
     const filter = useFilterState(() => props.fields, {
       defaultSort: parseSort(props.defaultSort),
       url: props.url,
+      defaults: props.defaults,
     })
     const { matches, page, facets } = useTypeQuery(data, filter.state, () => props.pageSize)
 

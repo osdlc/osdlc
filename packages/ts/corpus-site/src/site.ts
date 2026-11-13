@@ -20,9 +20,14 @@ import {
   validateConfig,
   type BadgeColor,
   type CorpusSiteConfig,
+  type DerivedConfig,
   type FieldConfig,
+  type KeysFrom,
+  type MatrixViewConfig,
+  type RelatedConfig,
   type SectionConfig,
   type TypeConfig,
+  type WhereConfig,
 } from './config.ts'
 import type { DataField, DataOption } from './data-types.ts'
 import { parseSort } from './url-state.ts'
@@ -37,6 +42,7 @@ import {
   shapeOf,
   type FieldShape,
 } from './schema.ts'
+import { oneLine } from './value-text.ts'
 
 /** What `buildSite` needs beside the corpus. */
 export interface SiteOptions {
@@ -62,6 +68,16 @@ export interface SiteField extends Omit<DataField, 'options'> {
   /** Whether the name is dotted: a field inside an object, shown with its parent on a record page. */
   nested: boolean
   order: number
+  /** Where the labels of an object value's keys come from, or null. */
+  keysFrom: KeysFrom | null
+  /** How the site works the field out, or null for a field the records hold. */
+  derived: DerivedConfig | null
+}
+
+/** A view of a type with its address. */
+export interface SiteView extends MatrixViewConfig {
+  type: SiteType
+  url: string
 }
 
 /** A type as the site shows it. */
@@ -88,6 +104,11 @@ export interface SiteType {
   sections: SectionConfig[]
   titleTemplate: string | null
   summaryTemplate: string | null
+  /** The filters a reader starts with, as the page's address writes them. */
+  defaultFilters: Record<string, string[]>
+  related: RelatedConfig[]
+  views: SiteView[]
+  searchWeight: number
   source: CorpusType
 }
 
@@ -121,10 +142,22 @@ export function slugify(id: string): string {
   return slug === '' ? 'record' : slug
 }
 
-/** The value at a dotted path in a record's data, or undefined. */
+/**
+ * The value at a dotted path in a record's data, or undefined. A path steps through a list to
+ * its items, and then gives the list of what it finds in each.
+ */
 export function valueAt(data: unknown, path: string): unknown {
   let at = data
-  for (const part of path.split('.')) {
+  const parts = path.split('.')
+  for (const [i, part] of parts.entries()) {
+    if (Array.isArray(at)) {
+      const rest = parts.slice(i).join('.')
+      const found = at.flatMap((item) => {
+        const value = valueAt(item, rest)
+        return value === undefined || value === null ? [] : Array.isArray(value) ? value : [value]
+      })
+      return found.length === 0 ? undefined : found
+    }
     if (!isObject(at)) return undefined
     at = at[part]
   }
@@ -173,6 +206,8 @@ export class Site {
   readonly description: string | null
   /** Markdown for the home page, or null. */
   readonly intro: string | null
+  /** Whether `intro` is the config's, which the home page shows first, and not the root file's body. */
+  readonly introFromConfig: boolean
   readonly pageSize: number
   readonly locale: string
   readonly searchEnabled: boolean
@@ -197,6 +232,7 @@ export class Site {
     const root = splitHeading(options.rootBody ?? '')
     this.title = config.title ?? root.heading ?? model.name
     this.intro = config.intro ?? (root.rest.trim() === '' ? null : root.rest)
+    this.introFromConfig = config.intro !== undefined
     this.description = config.description ?? null
 
     for (const corpus of [model, ...Object.values(model.corpora)])
@@ -247,6 +283,24 @@ export class Site {
       const shape = shapeOf(schema, null, type.schema)
       fields.push(siteField(name, shape, null, schema, config.fields, fields.length))
     }
+    for (const [name, derived] of Object.entries(config.derived ?? {})) {
+      const shape: FieldShape = { kind: 'number', list: false, options: [] }
+      const field = siteField(name, shape, null, undefined, config.fields, fields.length)
+      fields.push({
+        ...field,
+        label: config.fields?.[name]?.label ?? derived.label,
+        help: config.fields?.[name]?.help ?? derived.help ?? null,
+        nested: false,
+        derived,
+      })
+    }
+    // A column the config names and nothing else describes: a path into an object or a list.
+    for (const name of [...(config.columns ?? []), ...(config.filters ?? [])]) {
+      if (name === 'title' || fields.some((f) => f.name === name)) continue
+      const schema = fieldSchemaAt(type, name)
+      const shape = shapeOf(schema, null, type.schema)
+      fields.push(siteField(name, shape, null, schema, config.fields, fields.length))
+    }
     const visible = shapes.filter(({ field }) => config.fields?.[field.name]?.hidden !== true)
     const columns = config.columns ?? defaultColumns(visible)
     const filters = (config.filters ?? defaultFilters(visible)).filter((name) => {
@@ -257,8 +311,10 @@ export class Site {
       field.column = columns.includes(field.name)
       field.filter = filters.includes(field.name)
     }
+    const url = hidden ? null : `${this.base}${slug}/`
+    const siteType = {} as SiteType
 
-    return {
+    return Object.assign(siteType, {
       corpus: corpus.key,
       name: type.name,
       slug,
@@ -268,7 +324,7 @@ export class Site {
       blurb: config.blurb ?? (type.description === null ? null : firstSentence(type.description)),
       intro: config.intro ?? type.description,
       description: type.description,
-      url: hidden ? null : `${this.base}${slug}/`,
+      url,
       count: 0,
       fields,
       columns,
@@ -277,8 +333,24 @@ export class Site {
       sections: config.sections ?? [],
       titleTemplate: config.title ?? null,
       summaryTemplate: config.summary ?? null,
+      defaultFilters: Object.fromEntries(
+        Object.entries(config.defaultFilters ?? {}).map(([name, value]) => [
+          name,
+          Array.isArray(value) ? value : [value],
+        ]),
+      ),
+      related: config.related ?? [],
+      views:
+        url === null
+          ? []
+          : (config.views ?? []).map((view) => ({
+              ...view,
+              type: siteType,
+              url: `${url}${view.slug}/`,
+            })),
+      searchWeight: config.searchWeight ?? 1,
       source: type,
-    }
+    } satisfies SiteType)
   }
 
   #addRecords(corpus: CorpusModel): void {
@@ -288,7 +360,8 @@ export class Site {
     for (const record of corpus.records) {
       const type = this.#types.get(`${corpus.key}\0${record.type}`)
       if (type === undefined) continue
-      const slugs = taken.get(type) ?? new Set<string>()
+      // A view's path is the type's too, so no record takes it.
+      const slugs = taken.get(type) ?? new Set<string>(type.views.map((view) => view.slug))
       taken.set(type, slugs)
       const stem = slugify(record.id)
       let slug = stem
@@ -337,6 +410,10 @@ export class Site {
   }
 
   /** `template` with each `{field}` replaced by the record's value as text. */
+  fill(template: string, record: SiteRecord): string {
+    return this.#fill(template, record)
+  }
+
   #fill(template: string, record: SiteRecord, seen?: Set<SiteRecord>): string {
     let out = template
     for (const name of templateFields(template)) {
@@ -356,7 +433,22 @@ export class Site {
    */
   textOf(record: SiteRecord, fieldName: string, seen?: Set<SiteRecord>): string[] {
     const field = this.field(record.type, fieldName)
-    if (field === undefined) return []
+    if (field === undefined) {
+      // A path the config does not describe: through a reference, or into an object or a list.
+      const through = this.follow(record, fieldName)
+      if (through.length > 0 && !(through.length === 1 && through[0]?.record === record))
+        return through.flatMap((at) =>
+          at.path === 'title' ? [at.record.title] : this.textOf(at.record, at.path, seen),
+        )
+      const raw = valueAt(record.record.data, fieldName)
+      const items = Array.isArray(raw) && raw.every((v) => !isObject(v)) ? raw : [raw]
+      return items.map((v) => oneLine(v)).filter(Boolean)
+    }
+    if (field.derived !== null) return [String(this.derivedValue(record, field.name))]
+    if (field.kind === 'json') {
+      const text = oneLine(valueAt(record.record.data, fieldName))
+      return text === '' ? [] : [text]
+    }
     if (field.kind === 'reference')
       return this.referencesOf(record, fieldName).map((r) =>
         r.target === null
@@ -396,6 +488,87 @@ export class Site {
         text: linkText(r.value),
         unresolved: r.unresolved,
       }))
+  }
+
+  /**
+   * Where a field path of a record leads: the record itself when its type has the field, else,
+   * when the path starts with a reference field, the records that field names with the rest of
+   * the path. `subject.category` on a statement gives its subject and `category`.
+   */
+  follow(record: SiteRecord, path: string): { record: SiteRecord; path: string }[] {
+    if (
+      path === 'title' ||
+      this.field(record.type, path) !== undefined ||
+      fieldSchemaAt(record.type.source, path) !== undefined
+    )
+      return [{ record, path }]
+    const [head = '', ...rest] = path.split('.')
+    const field = this.field(record.type, head)
+    if (field?.kind !== 'reference' || rest.length === 0) return []
+    return this.referencesOf(record, head).flatMap((r) =>
+      r.target === null ? [] : this.follow(r.target, rest.join('.')),
+    )
+  }
+
+  /**
+   * Whether a record holds the values `where` asks for. A reference field matches by the id or
+   * the title of the record it names, and any other field by its value as the file holds it.
+   */
+  matches(record: SiteRecord, where: WhereConfig | undefined): boolean {
+    for (const [path, wanted] of Object.entries(where ?? {})) {
+      const want = (Array.isArray(wanted) ? wanted : [wanted]).map(String)
+      const held = this.follow(record, path).flatMap((at) => {
+        if (at.path === 'title') return [at.record.title]
+        if (this.field(at.record.type, at.path)?.kind === 'reference')
+          return this.referencesOf(at.record, at.path).flatMap((r) =>
+            r.target === null ? [r.text] : [r.target.record.id, r.target.title],
+          )
+        const value = valueAt(at.record.record.data, at.path)
+        return (Array.isArray(value) ? value : [value]).filter((v) => v !== undefined).map(String)
+      })
+      if (!held.some((v) => want.includes(v))) return false
+    }
+    return true
+  }
+
+  readonly #incoming = new Map<string, Map<SiteRecord, SiteRecord[]>>()
+
+  /**
+   * The records of the type `from` whose reference field `via` names `target`, that pass
+   * `where`, in id order.
+   */
+  incoming(target: SiteRecord, from: string, via: string, where?: WhereConfig): SiteRecord[] {
+    const key = `${from}\0${via}`
+    let index = this.#incoming.get(key)
+    if (index === undefined) {
+      index = new Map()
+      const type = this.type(from)
+      for (const record of type === undefined ? [] : this.recordsOf(type))
+        for (const { target: to } of this.referencesOf(record, via)) {
+          if (to === null) continue
+          const held = index.get(to) ?? []
+          if (!held.includes(record)) held.push(record)
+          index.set(to, held)
+        }
+      this.#incoming.set(key, index)
+    }
+    const found = index.get(target) ?? []
+    return where === undefined ? found : found.filter((record) => this.matches(record, where))
+  }
+
+  /** The value of a derived field of a record. */
+  derivedValue(record: SiteRecord, name: string): number {
+    const count = this.field(record.type, name)?.derived?.count
+    if (count === undefined) return 0
+    const found = this.incoming(record, count.from, count.via, count.where)
+    if (count.distinct === undefined) return found.length
+    const distinct = count.distinct
+    return new Set(found.flatMap((r) => this.textOf(r, distinct))).size
+  }
+
+  /** Every view of every type, in navigation order. */
+  views(): SiteView[] {
+    return this.types.flatMap((type) => type.views)
   }
 
   /** The type named `name` in the corpus with key `corpus`, by default the loaded one. */
@@ -576,6 +749,8 @@ function siteField(
     hidden: config.hidden === true,
     nested: name.includes('.'),
     order: config.order ?? index,
+    keysFrom: config.keysFrom ?? null,
+    derived: null,
   }
 }
 

@@ -1270,6 +1270,447 @@ abbr.cs-term {
   overflow-wrap: anywhere;
 }
 
+/* Objects and lists in a cell */
+
+.cs-tree {
+  min-width: 0;
+}
+
+.cs-pairs {
+  display: grid;
+  grid-template-columns: fit-content(45%) minmax(0, 1fr);
+  gap: 0.15rem 0.6rem;
+  margin: 0;
+}
+
+.cs-pairs > dt {
+  color: var(--cs-muted);
+  font-size: var(--cs-smaller);
+  line-height: 1.7;
+}
+
+.cs-pairs > dt[title] {
+  text-decoration: underline dotted var(--cs-border-strong);
+  text-underline-offset: 0.2em;
+  cursor: help;
+}
+
+.cs-pairs > dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cs-pairs .cs-pairs {
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--cs-border);
+}
+
+.cs-tree code {
+  font-size: 0.9em;
+}
+
+.cs-tree-more > summary {
+  display: block;
+  cursor: pointer;
+  list-style: none;
+}
+
+.cs-tree-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.cs-tree-toggle::after {
+  content: 'Show all';
+  color: var(--cs-accent);
+  font-size: var(--cs-smaller);
+}
+
+.cs-tree-more > summary:hover .cs-tree-toggle::after {
+  text-decoration: underline;
+}
+
+.cs-tree-more[open] > summary .cs-tree-preview {
+  display: none;
+}
+
+.cs-tree-more[open] > summary .cs-tree-toggle::after {
+  content: 'Show less';
+}
+
+.cs-tree-preview {
+  display: block;
+}
+
+.cs-tree-full {
+  margin-top: 0.25rem;
+}
+
+/* Related tables and groups */
+
+.cs-section-count {
+  margin-left: 0.4rem;
+  color: var(--cs-muted);
+  font-size: var(--cs-small);
+  font-weight: 400;
+}
+
+.cs-table tbody .cs-group-row th,
+.cs-matrix .cs-group-row th {
+  width: auto;
+  padding-top: 1.4rem;
+  border-bottom-color: var(--cs-border-strong);
+  color: var(--cs-text-strong);
+  font-size: var(--cs-smaller);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.cs-table tbody .cs-group-row:hover {
+  background: none;
+}
+
+.cs-group-count {
+  margin-left: 0.5rem;
+  color: var(--cs-muted);
+  font-weight: 400;
+}
+
+.cs-table[data-untitled] td:first-child {
+  min-width: 8rem;
+  font-weight: 500;
+}
+
+.cs-table td[data-tree]:has(.cs-pairs) {
+  min-width: 14rem;
+}
+
+.cs-cell-open {
+  width: 1%;
+  padding-right: 0;
+  font-size: var(--cs-smaller);
+  white-space: nowrap;
+}
+
+/* Home: the intro and the views */
+
+.cs-home-intro {
+  margin-top: 1.75rem;
+}
+
+.cs-home-view .cs-section-title {
+  margin-top: 2rem;
+}
+
+.cs-group-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0 0 2rem;
+  padding: 0;
+  list-style: none;
+}
+
+.cs-group-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 1.875rem;
+  padding: 0 0.7rem;
+  border: 1px solid var(--cs-border-strong);
+  border-radius: 999px;
+  color: var(--cs-text);
+  font-size: var(--cs-small);
+  text-decoration: none;
+}
+
+.cs-group-links a:hover {
+  border-color: var(--cs-accent);
+  color: var(--cs-accent);
+}
+
+/* Matrix */
+
+.cs-matrix-controls {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.cs-matrix-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.cs-matrix-columns {
+  position: relative;
+}
+
+.cs-matrix-columns > summary {
+  display: inline-flex;
+  list-style: none;
+}
+
+.cs-matrix-columns > summary::-webkit-details-marker {
+  display: none;
+}
+
+.cs-matrix-column-list {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  display: grid;
+  gap: 0.35rem;
+  min-width: 14rem;
+  max-height: 22rem;
+  padding: 0.75rem 0.9rem;
+  overflow: auto;
+  background: var(--cs-bg);
+  border: 1px solid var(--cs-border-strong);
+  border-radius: var(--cs-radius);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
+  font-size: var(--cs-small);
+}
+
+.cs-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.cs-link-button {
+  justify-self: start;
+  padding: 0;
+  background: none;
+  color: var(--cs-accent);
+  border: 0;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.cs-link-button:disabled {
+  color: var(--cs-muted);
+  text-decoration: none;
+  cursor: default;
+}
+
+.cs-matrix-rowpick[hidden] {
+  display: none;
+}
+
+.cs-matrix-rowpick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.cs-matrix-rowpick .cs-select {
+  flex: 1 1 14rem;
+  max-width: 28rem;
+}
+
+.cs-matrix-step {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: var(--cs-small);
+}
+
+.cs-matrix-at {
+  color: var(--cs-muted);
+  white-space: nowrap;
+}
+
+.cs-button {
+  min-height: 2.25rem;
+  padding: 0 0.85rem;
+  background: var(--cs-bg);
+  color: var(--cs-text-strong);
+  border: 1px solid var(--cs-border-strong);
+  border-radius: var(--cs-radius);
+  font: inherit;
+  font-size: var(--cs-small);
+  cursor: pointer;
+}
+
+.cs-button:disabled {
+  color: var(--cs-muted);
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* The table scrolls both ways inside its box, so the header row and the first column can stick. */
+.cs-matrix-wrap {
+  max-height: calc(100vh - var(--cs-header-height) - 2rem);
+  overflow: auto;
+  border: 1px solid var(--cs-border);
+  border-radius: var(--cs-radius);
+}
+
+.cs-matrix {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--cs-small);
+  line-height: 1.45;
+}
+
+.cs-matrix th,
+.cs-matrix td {
+  padding: 0.55rem 0.75rem;
+  border-right: 1px solid var(--cs-border);
+  border-bottom: 1px solid var(--cs-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.cs-matrix td {
+  min-width: 13rem;
+  max-width: 20rem;
+  overflow-wrap: anywhere;
+}
+
+.cs-matrix thead th {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  background: var(--cs-bg-soft);
+  border-bottom-color: var(--cs-border-strong);
+  color: var(--cs-text-strong);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.cs-matrix thead th a {
+  color: inherit;
+}
+
+.cs-matrix .cs-matrix-row,
+.cs-matrix .cs-matrix-corner,
+.cs-matrix .cs-group-row th > span:first-child {
+  position: sticky;
+  left: 0;
+}
+
+.cs-matrix .cs-matrix-row {
+  z-index: 1;
+  width: 16rem;
+  min-width: 16rem;
+  max-width: 16rem;
+  background: var(--cs-bg);
+  border-right-color: var(--cs-border-strong);
+  font-weight: 500;
+}
+
+.cs-matrix .cs-matrix-corner {
+  z-index: 3;
+  border-right-color: var(--cs-border-strong);
+}
+
+.cs-matrix .cs-group-row th {
+  padding-top: 0.9rem;
+  background: var(--cs-bg-soft);
+}
+
+.cs-matrix .cs-group-row th > span:first-child {
+  left: 0.75rem;
+}
+
+.cs-matrix .cs-pairs {
+  display: block;
+}
+
+.cs-matrix .cs-pairs > dd + dt {
+  margin-top: 0.3rem;
+}
+
+.cs-matrix td[data-empty] {
+  background: color-mix(in srgb, var(--cs-bg-soft) 60%, transparent);
+}
+
+.cs-matrix-cell {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+.cs-matrix-cell > .cs-tree {
+  flex: 1 1 auto;
+}
+
+.cs-matrix-cell + .cs-matrix-cell {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--cs-border);
+}
+
+.cs-matrix-open {
+  flex: none;
+  color: var(--cs-muted);
+  text-decoration: none;
+}
+
+.cs-matrix-open:hover {
+  color: var(--cs-accent);
+}
+
+/* One row alone reads better down the page: a column per line. */
+.cs-matrix-wrap[data-one-row] {
+  max-height: none;
+  border: 0;
+}
+
+.cs-matrix-wrap[data-one-row] .cs-matrix thead,
+.cs-matrix-wrap[data-one-row] .cs-group-row {
+  display: none;
+}
+
+.cs-matrix-wrap[data-one-row] .cs-matrix,
+.cs-matrix-wrap[data-one-row] .cs-matrix tbody:not([hidden]),
+.cs-matrix-wrap[data-one-row] .cs-matrix tr[data-row]:not([hidden]),
+.cs-matrix-wrap[data-one-row] .cs-matrix th {
+  display: block;
+  width: auto;
+  max-width: none;
+}
+
+.cs-matrix-wrap[data-one-row] .cs-matrix-row {
+  position: static;
+  padding: 0 0 0.75rem;
+  border: 0;
+  border-bottom: 1px solid var(--cs-border-strong);
+  font-size: 1.0625rem;
+}
+
+.cs-matrix-wrap[data-one-row] .cs-matrix td:not([hidden]) {
+  display: grid;
+  grid-template-columns: 11rem minmax(0, 1fr);
+  gap: 1rem;
+  max-width: none;
+  padding: 0.6rem 0;
+  border-right: 0;
+  background: none;
+}
+
+.cs-matrix-wrap[data-one-row] .cs-matrix td::before {
+  content: attr(data-label);
+  color: var(--cs-text-strong);
+  font-weight: 500;
+}
+
+.cs-hit-summary {
+  margin: 0.2rem 0 0;
+  max-width: 50rem;
+  font-size: var(--cs-small);
+  overflow-wrap: anywhere;
+}
+
 /* Narrow screens */
 
 @media (max-width: 72rem) {
@@ -1409,6 +1850,88 @@ abbr.cs-term {
 
   .cs-object > dd {
     margin-bottom: 0.3rem;
+  }
+}
+
+@media (max-width: 50rem) {
+  .cs-table tbody .cs-group-row {
+    padding: 1rem 0 0.4rem;
+  }
+
+  .cs-cell-open {
+    width: auto;
+  }
+
+  .cs-table td.cs-cell-open {
+    display: block;
+  }
+
+  .cs-table td.cs-cell-open::before {
+    content: none;
+  }
+
+  .cs-matrix-column-list {
+    position: static;
+    margin-top: 0.4rem;
+    box-shadow: none;
+  }
+
+  .cs-matrix-wrap[data-one-row] .cs-matrix td:not([hidden]) {
+    grid-template-columns: 7.5rem minmax(0, 1fr);
+    gap: 0.75rem;
+  }
+
+  /* Without script every row is there: each becomes a block, a column per line. */
+  .cs-matrix-wrap:not([data-one-row]) {
+    max-height: none;
+    border: 0;
+  }
+
+  .cs-matrix-wrap:not([data-one-row]) .cs-matrix thead {
+    display: none;
+  }
+
+  .cs-matrix-wrap:not([data-one-row]) .cs-matrix,
+  .cs-matrix-wrap:not([data-one-row]) .cs-matrix tbody:not([hidden]),
+  .cs-matrix-wrap:not([data-one-row]) .cs-matrix tr:not([hidden]),
+  .cs-matrix-wrap:not([data-one-row]) .cs-matrix th {
+    display: block;
+    width: auto;
+    max-width: none;
+  }
+
+  .cs-matrix-wrap:not([data-one-row]) .cs-matrix-row {
+    position: static;
+    padding: 1rem 0 0.4rem;
+    border-right: 0;
+  }
+
+  .cs-matrix-wrap:not([data-one-row]) .cs-matrix td:not([hidden]) {
+    display: grid;
+    grid-template-columns: 7.5rem minmax(0, 1fr);
+    gap: 0.75rem;
+    max-width: none;
+    padding: 0.4rem 0;
+    border-right: 0;
+    background: none;
+  }
+
+  .cs-matrix-wrap:not([data-one-row]) .cs-matrix .cs-pairs {
+    display: block;
+  }
+
+  .cs-matrix .cs-pairs > dd + dt {
+    margin-top: 0.3rem;
+  }
+
+  .cs-matrix td[data-empty] {
+    display: none;
+  }
+
+  .cs-matrix-wrap:not([data-one-row]) .cs-matrix td::before {
+    content: attr(data-label);
+    color: var(--cs-text-strong);
+    font-weight: 500;
   }
 }
 

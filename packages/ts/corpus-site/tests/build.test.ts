@@ -41,7 +41,8 @@ describe('astro build on the example corpus', () => {
       'search/index.html',
     ])
       expect(existsSync(join(out, page)), page).toBe(true)
-    expect(readdirSync(join(out, 'books')).filter((f) => f !== 'index.html')).toHaveLength(8)
+    // Eight books and the matrix view.
+    expect(readdirSync(join(out, 'books')).filter((f) => f !== 'index.html')).toHaveLength(9)
     expect(readdirSync(join(out, 'authors')).filter((f) => f !== 'index.html')).toHaveLength(5)
     expect(existsSync(join(out, 'notes/selection-in-one-paragraph/index.html'))).toBe(true)
   })
@@ -95,6 +96,39 @@ describe('astro build on the example corpus', () => {
     expect(html).not.toContain('astro-island')
     const note = read('notes/selection-in-one-paragraph/index.html')
     expect(note).toContain('href="/data/files/notes/Selection%20in%20one%20paragraph/sketch.txt"')
+  })
+
+  test('a matrix view is a page with the whole table and its controls', () => {
+    const html = read('books/by-status/index.html')
+    expect(html).toContain('<title>Shelf by status · Reading list</title>')
+    expect(html).toContain('id="cs-matrix-books-by-status"')
+    expect(html).toMatch(/<tr[^>]*data-row="george-eliot"[^>]*data-group="england"/)
+    expect(html).toContain('Middlemarch (1871)')
+    expect(html).toContain('href="/books/middlemarch/"')
+    expect(html).toContain('astro-island')
+    expect(read('index.html')).toContain('href="/books/by-status/?group=england"')
+    const data = json('data/views/books/by-status.json')
+    expect(data.columns.map((c: { key: string }) => c.key)).toContain('finished')
+    expect(json('data/corpus.json').views).toEqual([
+      {
+        type: 'books',
+        label: 'Shelf by status',
+        url: '/books/by-status/',
+        data: '/data/views/books/by-status.json',
+      },
+    ])
+  })
+
+  test('a related table is on the record page, without script, in place of the backlinks', () => {
+    const html = read('authors/george-eliot/index.html')
+    expect(html).toContain('On the shelf')
+    const rows = [...html.matchAll(/<th scope="row"[^>]*><a href="([^"]+)"/g)].map((m) => m[1])
+    expect(rows).toEqual(['/books/middlemarch/', '/books/the-mill-on-the-floss/'])
+    // The edition is an object: a label and a value for each key.
+    expect(html).toMatch(/<dt[^>]*>Publisher<\/dt><dd[^>]*>Penguin Classics/)
+    expect(html).not.toContain('astro-island')
+    expect(html).not.toContain('Referenced by')
+    expect(json('data/types/authors.json').records[0].values.books).toBe(2)
   })
 
   test('the consumer page, the replaced footer and the added stylesheet are in', () => {

@@ -1,5 +1,7 @@
 // What the site says about the harness reference that its schemas do not: labels, help text,
-// the columns and filters of each type, and badge colours.
+// the columns and filters of each type, badge colours, and the tables that put the answers on
+// the page: a subject's answers across the harnesses, a harness's answers by category, and the
+// matrix of both.
 import { defineCorpusSite } from '@osdlc/corpus-site'
 
 const SPEC = 'https://github.com/osdlc/osdlc/tree/main/packages/corpora/harness-reference'
@@ -7,16 +9,47 @@ const SPEC = 'https://github.com/osdlc/osdlc/tree/main/packages/corpora/harness-
 export default defineCorpusSite({
   description:
     'A cited record of how coding-agent harnesses differ. Every claim names its evidence and the date it was seen.',
-  typeOrder: ['statements', 'study-results', 'harnesses', 'subjects', 'documents', 'methods'],
+  intro: [
+    'Each **question** is asked of every harness, and each answer cites what it was read from.',
+    '',
+    '- To see one question answered for every harness, open it under [Questions](/subjects/) or type it in the search box, such as "how are skills called".',
+    '- To put the harnesses side by side, open [Compare harnesses](/statements/compare/) and pick a category.',
+    '- To read everything known about one harness, open it under [Harnesses](/harnesses/).',
+  ].join('\n'),
+  // Words a question may use for the same thing.
+  searchSynonyms: [
+    ['call', 'invoke', 'invoking', 'invocation'],
+    ['config', 'configuration', 'setting'],
+  ],
+  typeOrder: ['subjects', 'harnesses', 'statements', 'study-results', 'documents', 'methods'],
   types: {
     statements: {
-      blurb: 'A claim about one harness and one subject, with its evidence and its verdict.',
+      label: 'Answers',
+      singular: 'Statement',
+      blurb: 'One harness\u2019s answer to one question, with its evidence and its verdict.',
       intro:
         'A claim about one harness and one subject, the evidence lines that support or dispute it, and how far the evidence backs it. See [subjects](../subjects/subjects.schema.md) for the questions and [study results](../study-results/study-results.schema.md) for the evidence.',
-      summary: '{harness} · {subject}',
-      columns: ['title', 'harness', 'subject', 'status', 'direction', 'strength'],
-      filters: ['status', 'direction', 'strength', 'harness', 'subject', 'scope.platform'],
+      summary: '{proposition.object}',
+      columns: ['title', 'proposition.object', 'strength', 'status'],
+      filters: ['status', 'harness', 'subject', 'strength', 'direction', 'scope.platform'],
+      defaultFilters: { status: 'current' },
       sort: 'title',
+      searchWeight: 1,
+      views: [
+        {
+          kind: 'matrix',
+          label: 'Compare harnesses',
+          slug: 'compare',
+          intro:
+            'Every question down the side, every harness across the top, and the current answer where they meet. Pick a category to narrow the questions and choose the harnesses to compare. The arrow in a cell opens the answer with its evidence.',
+          rows: 'subject',
+          columns: 'harness',
+          cell: 'proposition.object',
+          where: { status: 'current' },
+          groupRowsBy: 'category',
+          rowSummary: '{description}',
+        },
+      ],
       sections: [
         { label: 'Claim', fields: ['harness', 'subject', 'proposition', 'scope'] },
         {
@@ -56,7 +89,7 @@ export default defineCorpusSite({
           },
         },
         harness: { help: 'The harness the claim is about.' },
-        subject: { help: 'The question the claim answers.', note: 'Subjects are grouped by category on their own page.' },
+        subject: { label: 'Question', help: 'The question the claim answers.', note: 'Subjects are grouped by category on their own page.' },
         'scope.platform': {
           label: 'Platform',
           help: 'The operating systems the claim holds on. A claim with none holds on all.',
@@ -66,7 +99,13 @@ export default defineCorpusSite({
         'scope.since': { label: 'Since version', format: 'code' },
         'scope.until': { label: 'Until version', format: 'code' },
         'proposition.predicate': { label: 'Subject slug', format: 'code' },
+        'proposition.object': {
+          label: 'Answer',
+          help: 'What the harness does. The question\u2019s value schema names each key.',
+          keysFrom: { ref: 'subject', schemaAt: 'valueSchema' },
+        },
         hasEvidenceLines: { label: 'Evidence lines' },
+        'hasEvidenceLines.hasEvidenceItems': { label: 'Evidence' },
         reportedIn: { label: 'Reported in' },
         specifiedBy: { label: 'Method' },
         imported_from: { hidden: true },
@@ -120,6 +159,18 @@ export default defineCorpusSite({
       summary: '{vendor}',
       columns: ['title', 'vendor', 'status', 'kind', 'surfaces', 'open_source', 'checked'],
       filters: ['status', 'kind', 'surfaces', 'open_source', 'versioning'],
+      related: [
+        {
+          label: 'What it does',
+          note: 'Its current answer to each question, by category.',
+          from: 'statements',
+          via: 'harness',
+          where: { status: 'current' },
+          columns: ['subject', 'proposition.object', 'strength'],
+          sort: 'subject',
+          groupBy: 'subject.category',
+        },
+      ],
       fields: {
         status: {
           values: {
@@ -143,16 +194,40 @@ export default defineCorpusSite({
       },
     },
     subjects: {
-      blurb: 'One question asked of every harness, with the shape of its answer.',
+      label: 'Questions',
+      singular: 'Question',
+      blurb: 'One question asked of every harness. Its page shows every harness\u2019s answer.',
+      intro:
+        'One question asked of every harness. Open a question to see each harness\u2019s current answer side by side, or [compare harnesses](/statements/compare/) for a whole category at once.',
       summary: '{description}',
-      columns: ['title', 'category', 'slug', 'cardinality'],
-      filters: ['category', 'model_dependent', 'cardinality'],
-      sort: 'slug',
+      columns: ['title', 'category', 'answered'],
+      filters: ['category', 'model_dependent'],
+      sort: 'category',
+      searchWeight: 3,
+      derived: {
+        answered: {
+          label: 'Harnesses answered',
+          help: 'How many harnesses have a current answer to the question.',
+          count: { from: 'statements', via: 'subject', where: { status: 'current' }, distinct: 'harness' },
+        },
+      },
+      related: [
+        {
+          label: 'Across harnesses',
+          note: 'The current answer of each harness. Open a row for its evidence and its history.',
+          from: 'statements',
+          via: 'subject',
+          where: { status: 'current' },
+          columns: ['harness', 'proposition.object', 'scope', 'strength', 'hasEvidenceLines.hasEvidenceItems'],
+          sort: 'harness',
+        },
+      ],
       fields: {
-        category: { control: 'select', format: 'badge' },
+        category: { control: 'chips', format: 'badge', note: 'Pick a category to see its questions.' },
+        description: { label: 'Question' },
         slug: { format: 'code' },
         model_dependent: { label: 'Model dependent' },
-        valueSchema: { label: 'Value schema', order: 99 },
+        valueSchema: { hidden: true },
       },
     },
     documents: {

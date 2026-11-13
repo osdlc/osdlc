@@ -1,8 +1,11 @@
 ---
-// A record's page: its title, its fields by section, its Markdown body, the files of its
-// folder, and the records that point at it. Props: `record`, a SiteRecord.
+// A record's page: its title, its fields by section, its Markdown body, the related tables its
+// type's config asks for, the files of its folder, and the other records that point at it.
+// Props: `record`, a SiteRecord.
 import { FieldValue } from 'virtual:corpus-site/components'
+import { ResultTable } from '../components/index.js'
 import { getSite } from '../context.js'
+import { relatedTables } from '../data.js'
 import { backlinkGroups, fieldSections, recordFiles } from '../display.js'
 import { renderBody } from '../markdown.js'
 
@@ -11,6 +14,7 @@ const site = getSite()
 const sections = fieldSections(site, record)
 const body = renderBody(site, record)
 const files = recordFiles(site, record)
+const related = relatedTables(site, record)
 const backlinks = backlinkGroups(site, record)
 const pointing = backlinks.reduce((n, group) => n + group.records.length, 0)
 ---
@@ -63,6 +67,24 @@ const pointing = backlinks.reduce((n, group) => n + group.records.length, 0)
   }
 
   {
+    related.map((table, i) => (
+      <section id={`cs-related-${i}`} class="cs-related">
+        <h2 class="cs-section-title">{table.label} <span class="cs-section-count">{table.total}</span></h2>
+        {table.note && <p class="cs-section-note">{table.note}</p>}
+        <ResultTable
+          fields={table.table.fields}
+          columns={table.table.columns}
+          groups={table.groups}
+          targets={table.table.targets}
+          showTitle={table.showTitle}
+          titleLabel={table.from.singular}
+          locale={site.locale}
+        />
+      </section>
+    ))
+  }
+
+  {
     files.length > 0 && (
       <section id="cs-files">
         <h2 class="cs-section-title">Files</h2>
@@ -100,6 +122,7 @@ const pointing = backlinks.reduce((n, group) => n + group.records.length, 0)
   <ul>
     {sections.map((section, i) => <li><a href={`#cs-fields-${i}`}>{section.label ?? 'Fields'}</a></li>)}
     {body && <li><a href="#cs-body">Text</a></li>}
+    {related.map((table, i) => <li><a href={`#cs-related-${i}`}>{table.label} ({table.total})</a></li>)}
     {files.length > 0 && <li><a href="#cs-files">Files</a></li>}
     {backlinks.length > 0 && <li><a href="#cs-backlinks">Referenced by ({pointing})</a></li>}
   </ul>

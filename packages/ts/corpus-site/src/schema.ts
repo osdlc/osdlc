@@ -61,7 +61,7 @@ function deref(schema: unknown, root: Schema | null): Schema | undefined {
 
 /**
  * The schema of the field `path` names in `type`: a top-level field, or with dots a property
- * inside an object field (`scope.platform`). Undefined when the schemas declare no such field.
+ * inside an object field (`scope.platform`) or inside the items of a list field. Undefined when the schemas declare no such field.
  */
 export function fieldSchemaAt(type: CorpusType, path: string): Schema | undefined {
   const [head, ...rest] = path.split('.')
@@ -69,6 +69,9 @@ export function fieldSchemaAt(type: CorpusType, path: string): Schema | undefine
   if (field === undefined) return undefined
   let schema = deref(field.schema, type.schema)
   for (const part of rest) {
+    // A path steps through a list to the fields of its items.
+    if (schema?.['properties'] === undefined && isObject(schema?.['items']))
+      schema = deref(schema['items'], type.schema)
     const properties = schema?.['properties']
     if (!isObject(properties) || !Object.hasOwn(properties, part)) return undefined
     schema = deref(properties[part], type.schema)

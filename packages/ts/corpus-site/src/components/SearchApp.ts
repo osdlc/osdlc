@@ -5,18 +5,18 @@
 import { computed, defineComponent, h, onMounted, shallowRef, useId, type VNodeChild } from 'vue'
 import { fetchData } from '../client.ts'
 import type { SearchData } from '../data-types.ts'
-import { prepareSearch, search, type SearchHit, type SearchIndex } from '../search.ts'
+import { prepareSearch, search, type SearchIndex } from '../search.ts'
 
-/** A snippet with its matches marked. */
-function marked(hit: SearchHit): VNodeChild[] {
+/** Text with its matches marked. */
+function marked(text: string, marks: [number, number][]): VNodeChild[] {
   const out: VNodeChild[] = []
   let at = 0
-  for (const [start, end] of hit.marks) {
-    if (start > at) out.push(hit.snippet.slice(at, start))
-    out.push(h('mark', hit.snippet.slice(start, end)))
+  for (const [start, end] of marks) {
+    if (start > at) out.push(text.slice(at, start))
+    out.push(h('mark', text.slice(start, end)))
     at = end
   }
-  out.push(hit.snippet.slice(at))
+  out.push(text.slice(at))
   return out
 }
 
@@ -97,7 +97,12 @@ export const SearchApp = defineComponent({
             h('li', { key: hit.url, class: 'cs-hit' }, [
               h('a', { href: hit.url, class: 'cs-hit-title' }, hit.title),
               h('span', { class: 'cs-hit-type' }, hit.type),
-              hit.snippet === '' ? null : h('p', { class: 'cs-hit-snippet' }, marked(hit)),
+              hit.summary === ''
+                ? null
+                : h('p', { class: 'cs-hit-summary' }, marked(hit.summary, hit.summaryMarks)),
+              hit.snippet === ''
+                ? null
+                : h('p', { class: 'cs-hit-snippet' }, marked(hit.snippet, hit.marks)),
             ]),
           ),
         ),

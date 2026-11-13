@@ -1,7 +1,8 @@
 ---
-// The home page's content: the title, the description, the validator's verdict, the types
-// with their counts, and the root file's body.
+// The home page's content: the title, the description, the validator's verdict, the config's
+// intro, the views with their groups, the types with their counts, and the root file's body.
 import { getSite } from '../context.js'
+import { matrixData } from '../data.js'
 import { renderMarkdown } from '../markdown.js'
 
 const site = getSite()
@@ -9,6 +10,7 @@ const { model } = site
 const count = new Intl.NumberFormat(site.locale)
 const records = site.types.reduce((n, type) => n + type.count, 0)
 const intro = site.intro === null ? null : renderMarkdown(site, site.intro, model.rootFile ?? 'README.md')
+const views = site.views().map((view) => ({ view, groups: matrixData(site, view).groups }))
 const problems = [...model.errors.map((text) => ({ kind: 'Error', text })), ...model.warnings.map((text) => ({ kind: 'Warning', text }))]
 ---
 
@@ -43,6 +45,29 @@ const problems = [...model.errors.map((text) => ({ kind: 'Error', text })), ...m
   }
 </header>
 
+{intro && site.introFromConfig && <div class="cs-home-intro cs-prose markdown-render" set:html={intro} />}
+
+{
+  views.map(({ view, groups }) => (
+    <section class="cs-home-view">
+      <h2 class="cs-section-title"><a href={view.url}>{view.label}</a></h2>
+      {
+        groups.length > 0 && (
+          <ul class="cs-group-links">
+            {groups.map((group) => (
+              <li>
+                <a href={`${view.url}?group=${encodeURIComponent(group.key)}`}>
+                  {group.label} <span class="cs-count">{group.count}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        )
+      }
+    </section>
+  ))
+}
+
 <section aria-labelledby="cs-types">
   <h2 id="cs-types" class="cs-sr">Types</h2>
   <ul class="cs-types">
@@ -64,7 +89,7 @@ const problems = [...model.errors.map((text) => ({ kind: 'Error', text })), ...m
 </section>
 
 {
-  intro && (
+  intro && !site.introFromConfig && (
     <section aria-labelledby="cs-about">
       <h2 id="cs-about" class="cs-section-title">About this corpus</h2>
       <div class="cs-prose markdown-render" set:html={intro} />

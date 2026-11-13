@@ -11,7 +11,14 @@ export const ResultTable = defineComponent({
     fields: { type: Array as PropType<DataField[]>, required: true },
     /** The column fields by name, in column order. Default: the order of `fields`. */
     columns: { type: Array as PropType<string[]>, default: null },
-    rows: { type: Array as PropType<DataRecord[]>, required: true },
+    rows: { type: Array as PropType<DataRecord[]>, default: () => [] },
+    /** The rows under headings, in place of `rows`. A group with a null label has no heading. */
+    groups: {
+      type: Array as PropType<{ label: string | null; rows: DataRecord[] }[]>,
+      default: null,
+    },
+    /** Draw the title column. Without it each row ends in a link to its record. */
+    showTitle: { type: Boolean, default: true },
     targets: { type: Object as PropType<Record<string, DataTarget>>, default: () => ({}) },
     sort: { type: Object as PropType<SortState | null>, default: null },
     /** Draw the headers as sort buttons. Off for a table with no script behind it. */
@@ -51,36 +58,67 @@ export const ResultTable = defineComponent({
           : label,
       )
     }
-    return () =>
-      h('div', { class: 'cs-table-wrap' }, [
-        h('table', { class: 'cs-table' }, [
-          h('thead', [
-            h('tr', [
-              header('title', props.titleLabel),
-              ...columns.value.map((f) => header(f.name, f.label)),
+    const width = computed(() => columns.value.length + 1)
+    const body = (rows: DataRecord[], label: string | null, key: number) =>
+      h('tbody', { key }, [
+        label === null
+          ? null
+          : h('tr', { class: 'cs-group-row' }, [
+              h('th', { scope: 'rowgroup', colspan: width.value }, [
+                label,
+                h('span', { class: 'cs-group-count' }, String(rows.length)),
+              ]),
             ]),
-          ]),
-          h(
-            'tbody',
-            props.rows.map((row) =>
-              h('tr', { key: row.url || row.id }, [
-                h('th', { scope: 'row', class: 'cs-cell-title' }, [
+        ...rows.map((row) =>
+          h('tr', { key: row.url || row.id }, [
+            props.showTitle
+              ? h('th', { scope: 'row', class: 'cs-cell-title' }, [
                   row.url === '' ? row.title : h('a', { href: row.url }, row.title),
                   row.summary === null ? null : h('div', { class: 'cs-summary' }, row.summary),
-                ]),
-                ...columns.value.map((f) =>
-                  h('td', { key: f.name, 'data-label': f.label }, [
-                    h(ValueCell, {
-                      field: f,
-                      value: row.values[f.name] ?? null,
-                      targets: props.targets,
-                      locale: props.locale,
-                    }),
-                  ]),
-                ),
-              ]),
+                ])
+              : null,
+            ...columns.value.map((f) =>
+              h(
+                'td',
+                { key: f.name, 'data-label': f.label, 'data-tree': f.tree ? '' : undefined },
+                [
+                  h(ValueCell, {
+                    field: f,
+                    value: row.values[f.name] ?? null,
+                    targets: props.targets,
+                    locale: props.locale,
+                  }),
+                ],
+              ),
             ),
-          ),
+            props.showTitle
+              ? null
+              : h('td', { class: 'cs-cell-open' }, [
+                  row.url === ''
+                    ? null
+                    : h('a', { href: row.url, title: row.title }, [
+                        'Open',
+                        h('span', { class: 'cs-sr' }, ` ${row.title}`),
+                      ]),
+                ]),
+          ]),
+        ),
+      ])
+    return () =>
+      h('div', { class: 'cs-table-wrap' }, [
+        h('table', { class: 'cs-table', 'data-untitled': props.showTitle ? undefined : '' }, [
+          h('thead', [
+            h('tr', [
+              props.showTitle ? header('title', props.titleLabel) : null,
+              ...columns.value.map((f) => header(f.name, f.label)),
+              props.showTitle
+                ? null
+                : h('th', { scope: 'col' }, h('span', { class: 'cs-sr' }, 'Record')),
+            ]),
+          ]),
+          ...(props.groups === null
+            ? [body(props.rows, null, 0)]
+            : props.groups.map((group, i) => body(group.rows, group.label, i))),
         ]),
       ])
   },

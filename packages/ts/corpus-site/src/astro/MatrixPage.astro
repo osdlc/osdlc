@@ -1,0 +1,34 @@
+---
+// A matrix view's page: its title and intro, the controls, and the table. The table is whole
+// in the HTML. The controls hide rows and columns in it once the script runs.
+// Props: `view`, a SiteView.
+import { MatrixControls, MatrixTable } from '../components/index.js'
+import { getSite } from '../context.js'
+import { matrixData } from '../data.js'
+import { renderMarkdown } from '../markdown.js'
+
+const { view } = Astro.props
+const site = getSite()
+const matrix = matrixData(site, view)
+const type = view.type
+const intro = view.intro === undefined ? null : renderMarkdown(site, view.intro, type.source.schemaFile ?? `${type.source.dir}/x`)
+const id = `cs-matrix-${type.slug}-${view.slug}`
+const rows = matrix.rows.map(({ key, title, group }) => ({ key, title, group }))
+---
+
+<header class="cs-page-head">
+  <p class="cs-crumbs"><a href={type.url}>{type.label}</a></p>
+  <h1>{view.label}</h1>
+  {intro && <div class="cs-lead cs-prose markdown-render" set:html={intro} />}
+</header>
+
+<MatrixControls
+  client:load
+  target={id}
+  groups={matrix.groups}
+  columns={matrix.columns}
+  rows={rows}
+  rowLabel={matrix.rowLabel}
+  columnLabel={matrix.columnLabel}
+/>
+<MatrixTable matrix={matrix} id={id} />
