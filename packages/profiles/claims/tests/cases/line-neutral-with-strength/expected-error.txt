@@ -1,0 +1,1 @@
+statements/line-neutral-with-strength.md: hasEvidenceLines.0.strengthOfEvidenceProvided: not allowed here (see the if/then rule in the schema)
