@@ -96,7 +96,7 @@ markdown-corpus = { path = "markdown-corpus", version = "0.3.1" }
 markdown-link = { path = "markdown-link", version = "0.9.1" }
 markdown-relink = { path = "markdown-relink", version = "0.4.1" }
 markdown-vault-fs = { path = "markdown-vault-fs", version = "0.6.1", default-features = false }
-osdlc-file-lock = { path = "osdlc-file-lock", version = "0.1.0" }
+osdlc-file-lock = { path = "osdlc-file-lock", version = "0.2.0" }
 path-guard = { path = "path-guard", version = "0.3.4" }
 slug-collate = { path = "slug-collate", version = "0.2.0" }
 tiered-dirs = { path = "tiered-dirs", version = "0.3" }

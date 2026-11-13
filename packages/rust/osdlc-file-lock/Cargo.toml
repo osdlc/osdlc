@@ -1,6 +1,6 @@
 [package]
 name = "osdlc-file-lock"
-version = "0.1.0"
+version = "0.2.0"
 edition.workspace = true
 rust-version.workspace = true
 description = "Cross-process exclusive file locks that interoperate with the npm package @osdlc/file-lock: a JSON lock hard-linked into place, race-safe takeover of a stale lock through a hash-named marker, and token-fenced release."

@@ -102,8 +102,7 @@ the standard.
 - **One-sided features are allowed.** An implementation may have an export the other
   language has no use for. Its README lists such exports.
 - **Versions.** Implementations share the major and minor version. Patch releases are
-  independent. An implementation at 0.0.0 has never been released and is not
-  compared: its first release takes the family's major and minor. `tiered-dirs`'
+  independent. `tiered-dirs`'
   [D-02](ts/tiered-dirs/docs/planning/decisions/D-02-version-line-and-stability.md)
   applies this rule to one family.
 - **Skipping versions to catch up.** One implementation may release a breaking

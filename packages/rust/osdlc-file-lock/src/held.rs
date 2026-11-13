@@ -123,8 +123,8 @@ fn read_text(path: &Path) -> io::Result<String> {
 
 fn token_of(path: &Path) -> io::Result<Option<String>> {
     let content = parse(&read_text(path)?);
-    Ok(content.and_then(|c| match c.get("token") {
-        Some(Value::String(t)) => Some(t.clone()),
+    Ok(content.and_then(|mut c| match c.remove("token") {
+        Some(Value::String(t)) => Some(t),
         _ => None,
     }))
 }

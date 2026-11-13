@@ -150,8 +150,7 @@ A suite file is JSON:
 ### Versions
 
 Implementations share the major and minor version. One may skip versions to
-catch up, as `packages/README.md` describes. One at 0.0.0 has never been
-released and is not compared until its first release. A suite records
+catch up, as `packages/README.md` describes. A suite records
 `referenceVersion`, and an implementation that passes it conforms to that
 version.
 

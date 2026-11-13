@@ -1,7 +1,7 @@
 {
   "family": "file-lock",
   "reference": "ts",
-  "referenceVersion": "0.0.0",
+  "referenceVersion": "0.2.0",
   "sections": {
     "marker_name": {
       "description": "The takeover marker's name for a lock at `path` whose text is `raw`: `<path>.stale-` and the first 24 hex digits of the SHA-256 of the text's UTF-8 bytes. Text that is not UTF-8 is decoded first, with U+FFFD for each bad sequence, so every implementation hashes the same bytes.",

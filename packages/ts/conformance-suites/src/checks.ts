@@ -245,13 +245,6 @@ export function majorMinor(version: string): string {
   return version.split('.').slice(0, 2).join('.')
 }
 
-/**
- * The version of a package that was never released. Its first release takes
- * the family's major.minor (a `minor` changeset from 0.0.0 gives 0.1.0), so
- * until then it is not compared.
- */
-const UNRELEASED = '0.0.0'
-
 const BUMPS = ['none', 'patch', 'minor', 'major']
 
 /**
@@ -322,8 +315,7 @@ export function configProblems(config: unknown, hasPre: boolean): string[] {
  * Problems with the versions of one family's implementations. `released` is
  * each implementation's version once the pending changesets are applied,
  * where it differs from `versions`. The family must be level now and after
- * them, or be listed in `catchingUp`. One at 0.0.0 was never released and is
- * not compared.
+ * them, or be listed in `catchingUp`.
  */
 export function versionProblems(
   family: string,
@@ -332,7 +324,7 @@ export function versionProblems(
   catchingUp: Record<string, string> = {},
 ): string[] {
   const level = (v: Record<string, string>): boolean =>
-    new Set(Object.values(v).filter((x) => x !== UNRELEASED).map(majorMinor)).size <= 1
+    new Set(Object.values(v).map(majorMinor)).size <= 1
   const listed = catchingUp[family] !== undefined
   const moved = Object.keys(versions).filter((d) => released[d] !== versions[d])
   const bumped = moved.map((d) => `${d} ${versions[d]} -> ${released[d]}`).join(', ')

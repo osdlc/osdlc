@@ -51,7 +51,7 @@ protocol.
 - A change to the protocol is a change to both implementations and to
   `SPEC.md`, and the suite's regeneration shows it.
 - The crate's version shares major.minor with this package. The crate starts
-  at 0.1.0, the version this package's first release takes.
+  at 0.2.0, the version this package has.
 - `tests/interop.test.ts` runs Node.js and Rust processes against one lock
   when the crate's `interop-counter` example is built. CI does not build it,
   so the suite is what holds the two together there.
