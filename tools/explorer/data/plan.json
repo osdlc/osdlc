@@ -1,0 +1,1602 @@
+{
+  "asOf": "2026-11-12",
+  "statuses": [
+    {
+      "id": "done",
+      "label": "done"
+    },
+    {
+      "id": "doing",
+      "label": "in progress"
+    },
+    {
+      "id": "owner",
+      "label": "waiting on owner"
+    },
+    {
+      "id": "todo",
+      "label": "not started"
+    }
+  ],
+  "types": [
+    {
+      "id": "functional",
+      "label": "Functional"
+    },
+    {
+      "id": "supporting",
+      "label": "Supporting"
+    }
+  ],
+  "phases": [
+    {
+      "id": "store",
+      "label": "Store"
+    },
+    {
+      "id": "model",
+      "label": "Model"
+    },
+    {
+      "id": "harness",
+      "label": "Harness"
+    }
+  ],
+  "milestones": [
+    {
+      "id": "m-release",
+      "title": "Release from osdlc/osdlc",
+      "goal": "osdlc/osdlc publishes corpus-schema with its own release setup and npm publisher. osdlc/markdown does not release it (decision D-SM4K).",
+      "status": "doing",
+      "phase": "store",
+      "beeline": true,
+      "tasks": [
+        21
+      ],
+      "source": "docs/planning/markdown/milestones/m-release.md"
+    },
+    {
+      "id": "m-npm",
+      "title": "Upstream corpora over npm",
+      "goal": "A corpus builds on parent corpora that arrive as npm packages, pinned by a lockfile.",
+      "status": "doing",
+      "phase": "store",
+      "beeline": true,
+      "tasks": [
+        9,
+        38,
+        27,
+        29,
+        44,
+        45,
+        46,
+        43,
+        70,
+        71,
+        73,
+        59,
+        36,
+        74,
+        23,
+        60,
+        35,
+        37,
+        69
+      ],
+      "source": "docs/planning/markdown/milestones/m-npm.md"
+    },
+    {
+      "id": "m-sdlc-profile",
+      "title": "SDLC profile from packs",
+      "goal": "The intent and sdlc packs generate one corpus profile, @osdlc/corpus-profile-sdlc, and sdlc corpora validate against it: in dev and at work.",
+      "status": "doing",
+      "phase": "model",
+      "beeline": true,
+      "tasks": [
+        47,
+        48,
+        49,
+        61,
+        50,
+        52,
+        75,
+        78,
+        80,
+        62
+      ],
+      "source": "docs/planning/markdown/milestones/m-sdlc-profile.md"
+    },
+    {
+      "id": "m-upstream",
+      "title": "Upstream instances",
+      "goal": "This plan, then a work repo, installs an upstream corpus with records, the starter corpus, from npm. Each keeps a synced copy in _references/ and its own records cite the starter's principles and standards by id.",
+      "status": "doing",
+      "phase": "store",
+      "beeline": true,
+      "tasks": [
+        63,
+        65,
+        66,
+        79,
+        53,
+        68,
+        64
+      ],
+      "source": "docs/planning/markdown/milestones/m-upstream.md"
+    },
+    {
+      "id": "m-model",
+      "title": "One corpus model",
+      "goal": "One TypeScript corpus model and link resolver, used by the validator, the store and the apps. It also renames markdown-relink to markdown-reshape, adds its TypeScript twin, and adds split, merge and extract.",
+      "status": "todo",
+      "phase": "store",
+      "beeline": false,
+      "tasks": [
+        10,
+        11,
+        12,
+        13,
+        14,
+        32,
+        39,
+        40,
+        41,
+        42
+      ],
+      "source": "docs/planning/markdown/milestones/m-model.md"
+    },
+    {
+      "id": "m-query",
+      "title": "Query and build",
+      "goal": "One query layer over the corpus model that spans referenced corpora, and a JSON and SQLite build.",
+      "status": "todo",
+      "phase": "store",
+      "beeline": false,
+      "tasks": [
+        15,
+        16,
+        72
+      ],
+      "source": "docs/planning/markdown/milestones/m-query.md"
+    },
+    {
+      "id": "m-evidence",
+      "title": "The evidence project writes records",
+      "goal": "The evidence project keeps its evidence as claims records, checked by the validator.",
+      "status": "doing",
+      "phase": "harness",
+      "beeline": false,
+      "tasks": [
+        4,
+        8,
+        26,
+        22,
+        5
+      ],
+      "source": "docs/planning/markdown/milestones/m-evidence.md"
+    },
+    {
+      "id": "m-sharing",
+      "title": "Sharing, the rest",
+      "goal": "Refine and waive, a real org principles corpus, name overrides and the testing profile. The work example (task 67) is kept here; task 53 covers it.",
+      "status": "todo",
+      "phase": "store",
+      "beeline": false,
+      "tasks": [
+        28,
+        30,
+        24,
+        25,
+        67
+      ],
+      "source": "docs/planning/markdown/milestones/m-sharing.md"
+    },
+    {
+      "id": "m-spec",
+      "title": "Spec hardening",
+      "goal": "The spec gains soft rules, the Obsidian dialect, nested x-ref, error codes and stable ids.",
+      "status": "todo",
+      "phase": "store",
+      "beeline": false,
+      "tasks": [
+        6,
+        7,
+        31,
+        33,
+        34
+      ],
+      "source": "docs/planning/markdown/milestones/m-spec.md"
+    },
+    {
+      "id": "m-render",
+      "title": "Render and sites",
+      "goal": "markdown-render and the site package are in osdlc/osdlc. markdown-editor and markdown-ui stay in sksizer/dev for now (decision D-SM4K).",
+      "status": "doing",
+      "phase": "store",
+      "beeline": false,
+      "tasks": [
+        17
+      ],
+      "source": "docs/planning/markdown/milestones/m-render.md"
+    },
+    {
+      "id": "m-docs",
+      "title": "Plan and docs",
+      "goal": "The spec is renamed and published, and the plan and architecture are written and linked.",
+      "status": "doing",
+      "phase": "store",
+      "beeline": false,
+      "tasks": [
+        1,
+        2,
+        3,
+        18,
+        19,
+        20
+      ],
+      "source": "docs/planning/markdown/milestones/m-docs.md"
+    },
+    {
+      "id": "m-model-layer",
+      "title": "Model layer",
+      "goal": "The model gains named relations and augments, and corpus-schema's x-body points at a markdown-contract. A second store comes only when it is needed.",
+      "status": "todo",
+      "phase": "model",
+      "beeline": false,
+      "tasks": [
+        54,
+        55,
+        56,
+        57,
+        58,
+        76,
+        77
+      ],
+      "source": "docs/planning/markdown/milestones/m-model-layer.md"
+    },
+    {
+      "id": "m-vault-install",
+      "title": "Vault install",
+      "goal": "A plain Obsidian vault extends a profile and references a corpus with no `package.json` and no `node_modules`. Packages install into a cache outside the vault, and a lockfile beside the root file pins them ([D18](../decisions/D18%20Vaults%20install%20corpora%20outside%20the%20vault.md)). It is not on the beeline and comes after corpus-schema 0.3.0.",
+      "status": "todo",
+      "phase": "store",
+      "beeline": false,
+      "tasks": [
+        81,
+        82,
+        83,
+        84
+      ],
+      "source": "docs/planning/markdown/milestones/m-vault-install.md"
+    }
+  ],
+  "tasks": [
+    {
+      "id": 1,
+      "title": "corpus-schema",
+      "detail": "rename, levels",
+      "status": "done",
+      "milestone": "m-docs",
+      "type": "functional",
+      "after": [],
+      "prs": [],
+      "text": "Rename to corpus-schema, with the levels in the spec text: [osdlc/osdlc#725](https://github.com/osdlc/osdlc/pull/725). Done.",
+      "source": "docs/planning/markdown/tasks/1 corpus-schema.md"
+    },
+    {
+      "id": 2,
+      "title": "Record folders",
+      "detail": "osdlc PR 729",
+      "status": "done",
+      "milestone": "m-docs",
+      "type": "functional",
+      "after": [
+        1
+      ],
+      "prs": [],
+      "text": "Record folders in corpus-schema: [osdlc/osdlc#729](https://github.com/osdlc/osdlc/pull/729). After 1. Done: merged on 2026-11-09.",
+      "source": "docs/planning/markdown/tasks/2 Record folders.md"
+    },
+    {
+      "id": 3,
+      "title": "Publish 0.2.0",
+      "detail": "on npm",
+      "status": "done",
+      "milestone": "m-docs",
+      "type": "supporting",
+      "after": [
+        2
+      ],
+      "prs": [],
+      "text": "Publish the first version. (supporting) Done: `@osdlc/corpus-schema` 0.2.0 is on npm, published on 2026-11-09. The first version is 0.2.0 because a release race made record folders a second minor bump: [osdlc/osdlc#726](https://github.com/osdlc/osdlc/pull/726) cut 0.1.0, which was never published, and [osdlc/osdlc#733](https://github.com/osdlc/osdlc/pull/733) made 0.2.0. After 2.",
+      "source": "docs/planning/markdown/tasks/3 Publish 0.2.0.md"
+    },
+    {
+      "id": 4,
+      "title": "Claims example",
+      "detail": "profiles/claims",
+      "status": "done",
+      "milestone": "m-evidence",
+      "type": "functional",
+      "after": [
+        3
+      ],
+      "prs": [],
+      "text": "Example claims corpus, made in osdlc/markdown at `profiles/claims/example/` and now in osdlc/osdlc at `packages/profiles/claims/example/`. A valid level-2 corpus with the VA-Spec types `documents`, `study-results`, `methods` and `statements`, their schemas, and a few records that show the whole chain. After 3.\n- A statement holds its proposition (subject, predicate, object) and its evidence lines. Each line names study results, says whether it supports or disputes the statement, and how strongly.\n- Contribution (who, when, what role) is a field on records, not a type of its own.\n- `profiles/claims/README.md` maps each type to VA-Spec and says what we leave out and why. Check it against VA-Spec's published schemas.\n- CI validates the example with `@osdlc/corpus-schema` from npm.\n- People copy it with `npx degit osdlc/markdown/profiles/claims/example <dir>`. No npm package is needed yet.\n\n- Until task 31, a statement's evidence lines are plain relative links with a pattern check, not `x-ref`.\n\nDone: [osdlc/markdown#6](https://github.com/osdlc/markdown/pull/6).\n\nThe example came to osdlc/osdlc with the profiles ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md), task 78). Its `degit` path is now `npx degit osdlc/osdlc/packages/profiles/claims/example <dir>`. The osdlc/markdown path above stops working once osdlc/markdown is emptied (task 79).",
+      "source": "docs/planning/markdown/tasks/4 Claims example.md"
+    },
+    {
+      "id": 5,
+      "title": "Project writes",
+      "detail": "evidence as records",
+      "status": "todo",
+      "milestone": "m-evidence",
+      "type": "functional",
+      "after": [
+        3,
+        4,
+        22
+      ],
+      "prs": [],
+      "text": "The evidence project writes records. It copies the types from the example. After 3, 4 and 22.",
+      "source": "docs/planning/markdown/tasks/5 Project writes.md"
+    },
+    {
+      "id": 6,
+      "title": "x-warn",
+      "detail": "soft schema rules",
+      "status": "todo",
+      "milestone": "m-spec",
+      "type": "functional",
+      "after": [
+        3
+      ],
+      "prs": [],
+      "text": "x-warn: a schema can mark a rule as a warning instead of an error. After 3.",
+      "source": "docs/planning/markdown/tasks/6 x-warn.md"
+    },
+    {
+      "id": 7,
+      "title": "Obsidian",
+      "detail": "dialect: wikilinks",
+      "status": "todo",
+      "milestone": "m-spec",
+      "type": "functional",
+      "after": [
+        3
+      ],
+      "prs": [],
+      "text": "The Obsidian dialect: wikilinks without a warning, able to reach beyond the corpus, and embeds. After 3.",
+      "source": "docs/planning/markdown/tasks/7 Obsidian.md"
+    },
+    {
+      "id": 8,
+      "title": "Use npm",
+      "detail": "skillwright, root file",
+      "status": "done",
+      "milestone": "m-evidence",
+      "type": "functional",
+      "after": [
+        3
+      ],
+      "prs": [],
+      "text": "skillwright uses the npm package. harness-reference switches from its `workspace:*` copy of markdown-db to `@osdlc/corpus-schema` and renames its root file to `harness-reference.corpus-schema.md`. After 3. Done: [osdlc/skillwright#95](https://github.com/osdlc/skillwright/pull/95), which also deleted skillwright's copy.",
+      "source": "docs/planning/markdown/tasks/8 Use npm.md"
+    },
+    {
+      "id": 9,
+      "title": "Extends",
+      "detail": "package or path",
+      "status": "doing",
+      "milestone": "m-npm",
+      "type": "functional",
+      "after": [
+        3,
+        21
+      ],
+      "prs": [
+        {
+          "label": "osdlc/markdown#12",
+          "url": "https://github.com/osdlc/markdown/pull/12"
+        },
+        {
+          "label": "osdlc/osdlc#790",
+          "url": "https://github.com/osdlc/osdlc/pull/790"
+        }
+      ],
+      "text": "Parents: `extends` and `x-extends`. D4 is decided, so the work is to build it in the validator. A corpus names its parents in the root file. `extends` maps a prefix to a source. The source is a package name, found the way Node finds packages from the corpus folder, or a relative path that starts with `./` or `../`. Parents load transitively, a cycle is an error, and the prefix is always required. A type says which type it builds on with `x-extends: claims/statements`, or `x-extends: <local type>` for a type in the same corpus. A record must pass its own schema and the schema of every type above it. A child may add rules and tighten them, never loosen them. A type has one parent at first. This task also covers cross-corpus `x-ref`. A parent gives types only, so a local record may share an id with a parent's record (see [Sharing across corpora](../ecosystem-plan.md#sharing-across-corpora)). It no longer waits on [sksizer/dev#4069](https://github.com/sksizer/dev/pull/4069): types are plain JSON Schema, so moving model-schema to osdlc is separate work. After 3 and 21. In progress in [#12](https://github.com/osdlc/markdown/pull/12).",
+      "source": "docs/planning/markdown/tasks/9 Extends.md"
+    },
+    {
+      "id": 10,
+      "title": "Store layout",
+      "detail": "markdown-store",
+      "status": "todo",
+      "milestone": "m-model",
+      "type": "functional",
+      "after": [
+        3
+      ],
+      "prs": [],
+      "text": "markdown-store on the shared parts, writing the spec's layout. After 3.",
+      "source": "docs/planning/markdown/tasks/10 Store layout.md"
+    },
+    {
+      "id": 11,
+      "title": "Link resolver",
+      "detail": "after PRs 649, 651",
+      "status": "todo",
+      "milestone": "m-model",
+      "type": "functional",
+      "after": [],
+      "prs": [],
+      "text": "Teach markdown-link to resolve links. Land [osdlc/osdlc#649](https://github.com/osdlc/osdlc/pull/649) and then [#651](https://github.com/osdlc/osdlc/pull/651), which is stacked on it. Then add a TypeScript resolver taken from vault-graph-core's copy of the Rust one, with shared cases. Can start now.",
+      "source": "docs/planning/markdown/tasks/11 Link resolver.md"
+    },
+    {
+      "id": 12,
+      "title": "One TS model",
+      "detail": "vault + graph",
+      "status": "todo",
+      "milestone": "m-model",
+      "type": "functional",
+      "after": [
+        11
+      ],
+      "prs": [],
+      "text": "One TypeScript corpus model, markdown-corpus: markdown-vault and vault-graph-core merged into osdlc on top of markdown-link's resolver. After 11.\n\nOut of scope for now: markdown-vault and vault-graph-core are in sksizer/dev, and [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) keeps them there. The merge waits until they move.",
+      "source": "docs/planning/markdown/tasks/12 One TS model.md"
+    },
+    {
+      "id": 13,
+      "title": "Switch users",
+      "detail": "query, astro, apps",
+      "status": "todo",
+      "milestone": "m-model",
+      "type": "functional",
+      "after": [
+        12
+      ],
+      "prs": [],
+      "text": "Switch the users to the new model and resolver: markdown-vault-query, markdown-astro, and determined (its vault-graph app and its graph and notes experiences). They already use the published markdown-link (sksizer/dev 48b62783). After 12.",
+      "source": "docs/planning/markdown/tasks/13 Switch users.md"
+    },
+    {
+      "id": 14,
+      "title": "Validator",
+      "detail": "reads model; needs 3",
+      "status": "todo",
+      "milestone": "m-model",
+      "type": "functional",
+      "after": [
+        3,
+        12
+      ],
+      "prs": [],
+      "text": "The validator reads the corpus model instead of walking the folder itself. After 3 and 12.",
+      "source": "docs/planning/markdown/tasks/14 Validator.md"
+    },
+    {
+      "id": 15,
+      "title": "Query layer",
+      "detail": "one, on the model",
+      "status": "todo",
+      "milestone": "m-query",
+      "type": "functional",
+      "after": [
+        12
+      ],
+      "prs": [],
+      "text": "One query layer. Move markdown-vault-query to osdlc on top of the corpus model. After 12 and D5.\n\nOut of scope for now: markdown-vault-query is in sksizer/dev, and [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) keeps it there.",
+      "source": "docs/planning/markdown/tasks/15 Query layer.md"
+    },
+    {
+      "id": 16,
+      "title": "JSON / SQLite",
+      "detail": "after query layer",
+      "status": "todo",
+      "milestone": "m-query",
+      "type": "functional",
+      "after": [
+        15
+      ],
+      "prs": [],
+      "text": "The JSON/SQLite build: write every valid record to JSON files and a SQLite file. After 15.",
+      "source": "docs/planning/markdown/tasks/16 JSON and SQLite.md"
+    },
+    {
+      "id": 17,
+      "title": "Render/sites",
+      "detail": "PRs 719 720",
+      "status": "doing",
+      "milestone": "m-render",
+      "type": "functional",
+      "after": [],
+      "prs": [],
+      "text": "Finish moving the render, edit and site packages. The render and site packages are in osdlc/osdlc: [osdlc/osdlc#719](https://github.com/osdlc/osdlc/pull/719) and [#720](https://github.com/osdlc/osdlc/pull/720) have merged. markdown-editor and markdown-ui stay in sksizer/dev for now ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)), so moving them is out of scope. Rename the vault words to corpus. In progress.",
+      "source": "docs/planning/markdown/tasks/17 Render and sites.md"
+    },
+    {
+      "id": 18,
+      "title": "This plan",
+      "detail": "markdown PR 4",
+      "status": "done",
+      "milestone": "m-docs",
+      "type": "supporting",
+      "after": [],
+      "prs": [],
+      "text": "This plan (supporting): [osdlc/markdown#4](https://github.com/osdlc/markdown/pull/4). Done.",
+      "source": "docs/planning/markdown/tasks/18 This plan.md"
+    },
+    {
+      "id": 19,
+      "title": "Point repos",
+      "detail": "here, after 18",
+      "status": "todo",
+      "milestone": "m-docs",
+      "type": "supporting",
+      "after": [
+        18
+      ],
+      "prs": [],
+      "text": "Point other repos at this plan (supporting): sksizer/dev, osdlc/skillwright and sksizer/rust-ontogen get the note in [pointing-here.md](../pointing-here.md). The plan lives in osdlc/osdlc ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)), so the note points there, and osdlc/osdlc does not need it. After 18.",
+      "source": "docs/planning/markdown/tasks/19 Point repos.md"
+    },
+    {
+      "id": 20,
+      "title": "Arch doc",
+      "detail": "markdown PR 5",
+      "status": "done",
+      "milestone": "m-docs",
+      "type": "supporting",
+      "after": [],
+      "prs": [],
+      "text": "The architecture doc (supporting): [osdlc/markdown#5](https://github.com/osdlc/markdown/pull/5). Done.",
+      "source": "docs/planning/markdown/tasks/20 Arch doc.md"
+    },
+    {
+      "id": 21,
+      "title": "Release here",
+      "detail": "markdown PR 10",
+      "status": "doing",
+      "milestone": "m-release",
+      "type": "functional",
+      "after": [
+        3
+      ],
+      "prs": [
+        {
+          "label": "osdlc/markdown#9",
+          "url": "https://github.com/osdlc/markdown/pull/9"
+        },
+        {
+          "label": "osdlc/markdown#10",
+          "url": "https://github.com/osdlc/markdown/pull/10"
+        },
+        {
+          "label": "osdlc/osdlc#790",
+          "url": "https://github.com/osdlc/osdlc/pull/790"
+        }
+      ],
+      "text": "Release setup, then the corpus-schema move. This task gave osdlc/markdown its own release setup and moved `@osdlc/corpus-schema` and its spec family there from osdlc/osdlc. [osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9) has merged: it moved the package and its spec family, with their history. [osdlc/markdown#10](https://github.com/osdlc/markdown/pull/10) has merged (2026-11-10): osdlc/markdown uses the shared CI and release workflows and checks from osdlc/osdlc ([osdlc/osdlc#749](https://github.com/osdlc/osdlc/pull/749), with fixes in [osdlc/osdlc#767](https://github.com/osdlc/osdlc/pull/767) and [osdlc/osdlc#774](https://github.com/osdlc/osdlc/pull/774)). osdlc/markdown has not made a release.\n\n[D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) and the repository decision [D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md) reverse the move. corpus-schema releases from osdlc/osdlc, and its npm publisher does not change. osdlc/markdown's copy is retired once its open work, 0.3.0 in [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12), is brought back ([osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790)). That pull request also removes the note in SPEC.md that the spec moves to osdlc/markdown. In progress.",
+      "source": "docs/planning/markdown/tasks/21 Release here.md"
+    },
+    {
+      "id": 22,
+      "title": "Capture",
+      "detail": "writes study results",
+      "status": "todo",
+      "milestone": "m-evidence",
+      "type": "functional",
+      "after": [
+        26
+      ],
+      "prs": [],
+      "text": "Capture writes study results. harness-reference's capture command writes VA-Spec study results, with a contribution. After 26.",
+      "source": "docs/planning/markdown/tasks/22 Capture.md"
+    },
+    {
+      "id": 23,
+      "title": "Claims profile",
+      "detail": "npm package",
+      "status": "doing",
+      "milestone": "m-npm",
+      "type": "functional",
+      "after": [
+        21,
+        36
+      ],
+      "prs": [
+        {
+          "label": "osdlc/markdown#15",
+          "url": "https://github.com/osdlc/markdown/pull/15"
+        }
+      ],
+      "text": "The claims profile. The example from task 4 is already in the right place. The profile's types are open: a proposition's object can be any JSON value, and consumers add their own kinds. This follows the downstream review in [osdlc/markdown#8](https://github.com/osdlc/markdown/issues/8). This task adds the profile wrapper, a corpus with only types, as the package `@osdlc/corpus-profile-claims`, versioned. The package was built in [#15](https://github.com/osdlc/markdown/pull/15). Task 78 brought it to osdlc/osdlc, at `packages/profiles/claims/`, with a changeset for its first release, 0.1.0. It publishes from there ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)), and is not published yet. The claims example extends it by path. The owner then stages the npm name (task 80) and publishes it (task 60). Corpora then list it by package name under `extends` in their root file and use `x-extends` instead of holding full copies. harness-reference and the evidence project switch over. After 21 and 36: the profile is checked with a corpus-schema that knows `extends`. It no longer waits on 31. The profile can ship with its statements using relative links and a pattern check for evidence lines. When 31 lands, a new profile version switches them to `x-ref`. What is left is the publish (tasks 80 and 60) and the switch-over of the corpora that copy the types.",
+      "source": "docs/planning/markdown/tasks/23 Claims profile.md"
+    },
+    {
+      "id": 24,
+      "title": "Name overrides",
+      "detail": "own folder names",
+      "status": "todo",
+      "milestone": "m-sharing",
+      "type": "functional",
+      "after": [
+        23
+      ],
+      "prs": [],
+      "text": "Name overrides. A corpus can give a profile's types its own folder names and map each one to its type with `x-extends`. Field names stay the profile's, so tools and exports work everywhere. Write down one tested word set from assurance cases: claim, argument, evidence and source. After 23.",
+      "source": "docs/planning/markdown/tasks/24 Name overrides.md"
+    },
+    {
+      "id": 25,
+      "title": "Testing profile",
+      "detail": "extends claims",
+      "status": "todo",
+      "milestone": "m-sharing",
+      "type": "functional",
+      "after": [
+        23,
+        24
+      ],
+      "prs": [],
+      "text": "An acceptance-testing profile that extends claims. Requirements or acceptance criteria are what statements are about. Tests are methods. Test runs are study results, kept as record folders with their scripts, queries and CSV results. Pass and fail are the direction. Words come from OSLC QM and the ISTQB glossary. After 23 and 24.",
+      "source": "docs/planning/markdown/tasks/25 Testing profile.md"
+    },
+    {
+      "id": 26,
+      "title": "Adopt claims",
+      "detail": "harness-reference",
+      "status": "done",
+      "milestone": "m-evidence",
+      "type": "functional",
+      "after": [
+        4,
+        8
+      ],
+      "prs": [],
+      "text": "harness-reference adopts the claims types. Copy the type folders from the example and move harness-reference's records over: `references` becomes `documents` (they live today in [osdlc/skillwright#74](https://github.com/osdlc/skillwright/pull/74)), `evidence` becomes `study-results`, and the `harness` field is dropped. After 4 and 8. Done: [osdlc/skillwright#97](https://github.com/osdlc/skillwright/pull/97).",
+      "source": "docs/planning/markdown/tasks/26 Adopt claims.md"
+    },
+    {
+      "id": 27,
+      "title": "Org corpora",
+      "detail": "a parent: types only",
+      "status": "doing",
+      "milestone": "m-npm",
+      "type": "functional",
+      "after": [
+        9
+      ],
+      "prs": [
+        {
+          "label": "osdlc/markdown#12",
+          "url": "https://github.com/osdlc/markdown/pull/12"
+        },
+        {
+          "label": "osdlc/osdlc#790",
+          "url": "https://github.com/osdlc/osdlc/pull/790"
+        }
+      ],
+      "text": "Org corpora as packages. A corpus names other corpora in its root file: parents under `extends`, whose types it builds on, and corpora under `references`, whose records it cites (decision D15, task 70). A parent gives types only. A named corpus is an npm package (a version range plus the lockfile pin), a git dependency for a private org corpus, or a local folder. Loading is transitive, and a cycle is an error. An update arrives when the lockfile changes. After 9. See [Sharing across corpora](../ecosystem-plan.md#sharing-across-corpora). In progress in [#12](https://github.com/osdlc/markdown/pull/12).",
+      "source": "docs/planning/markdown/tasks/27 Org corpora.md"
+    },
+    {
+      "id": 28,
+      "title": "Refine, waive",
+      "detail": "local vs referenced",
+      "status": "todo",
+      "milestone": "m-sharing",
+      "type": "functional",
+      "after": [
+        27
+      ],
+      "prs": [],
+      "text": "Refine and waive. A local record can say `refines` (a local version that narrows a referenced record) or `waives` (it doesn't apply here, with a reason). Today a local record may share an id with a referenced one, and a reference by id that matches both is an error. After 27. Still a proposal.",
+      "source": "docs/planning/markdown/tasks/28 Refine, waive.md"
+    },
+    {
+      "id": 29,
+      "title": "Sync",
+      "detail": "_references copy",
+      "status": "doing",
+      "milestone": "m-npm",
+      "type": "functional",
+      "after": [
+        27
+      ],
+      "prs": [
+        {
+          "label": "osdlc/markdown#12",
+          "url": "https://github.com/osdlc/markdown/pull/12"
+        },
+        {
+          "label": "osdlc/osdlc#790",
+          "url": "https://github.com/osdlc/osdlc/pull/790"
+        }
+      ],
+      "text": "`corpus-schema sync`. It writes a read-only, committed copy of each referenced corpus into `_references/<prefix>/`, including that corpus's own `_references/`, so Obsidian and GitHub links resolve. A parent under `extends` gets no copy (decision D15). The validator skips that folder when it looks for local records, treats a link into it as a link to the referenced corpus's record, and says \"run corpus-schema sync\" when the copy differs from the installed corpus. After 27. In progress in [#12](https://github.com/osdlc/markdown/pull/12).",
+      "source": "docs/planning/markdown/tasks/29 Sync.md"
+    },
+    {
+      "id": 30,
+      "title": "Org principles",
+      "detail": "first real case",
+      "status": "todo",
+      "milestone": "m-sharing",
+      "type": "functional",
+      "after": [
+        27,
+        28,
+        35
+      ],
+      "prs": [],
+      "text": "An org principles corpus. The first real case: one shared principles corpus that project corpora extend, refine and waive. Task 35 is its start. After 27, 28 and 35. Sync (task 29) helps here but is not required. The starter corpus (task 63) may become it.",
+      "source": "docs/planning/markdown/tasks/30 Org principles.md"
+    },
+    {
+      "id": 31,
+      "title": "Nested x-ref",
+      "detail": "any depth; after 3, 4",
+      "status": "todo",
+      "milestone": "m-spec",
+      "type": "functional",
+      "after": [
+        3,
+        4
+      ],
+      "prs": [],
+      "text": "Nested x-ref. corpus-schema v0 allows `x-ref` only on top-level fields and the items of top-level arrays. The claims example needs it inside each statement's evidence lines (`hasEvidenceItems`). Allow `x-ref` at any depth in a schema, then switch the example's evidence items from relative links with a pattern check to `x-ref`. After 3 and 4. It is not part of the npm milestone. The claims profile ships first with the pattern check, and a later profile version uses `x-ref`.",
+      "source": "docs/planning/markdown/tasks/31 Nested x-ref.md"
+    },
+    {
+      "id": 32,
+      "title": "Rust validator",
+      "detail": "after 12 and 14",
+      "status": "todo",
+      "milestone": "m-model",
+      "type": "functional",
+      "after": [
+        12,
+        14
+      ],
+      "prs": [],
+      "text": "A Rust validator. It runs the same conformance cases as the TypeScript validator, built on the markdown-corpus crate. The architecture already mentions it. After 12 and 14.",
+      "source": "docs/planning/markdown/tasks/32 Rust validator.md"
+    },
+    {
+      "id": 33,
+      "title": "Spec details",
+      "detail": "YAML, format, codes",
+      "status": "todo",
+      "milestone": "m-spec",
+      "type": "functional",
+      "after": [
+        3
+      ],
+      "prs": [],
+      "text": "Spec: YAML 1.2, format, error codes. The spec says that YAML 1.2 applies, so an unquoted date stays a string, and that JSON Schema `format` is asserted. The TypeScript validator already asserts it through ajv-formats. This task also defines stable error codes for validator messages, so consumers such as agent-call can rely on them. After 3.",
+      "source": "docs/planning/markdown/tasks/33 Spec details.md"
+    },
+    {
+      "id": 34,
+      "title": "Ids and move",
+      "detail": "slug ids, move verb",
+      "status": "todo",
+      "milestone": "m-spec",
+      "type": "functional",
+      "after": [
+        3
+      ],
+      "prs": [],
+      "text": "Stable ids and a move verb. A profile can require slug ids with a separate `title`. A `move` or `rename` verb rewrites every link to a record. SPEC.md lists it as deferred. After 3. It should land before outside systems depend on ids.",
+      "source": "docs/planning/markdown/tasks/34 Ids and move.md"
+    },
+    {
+      "id": 35,
+      "title": "Example pair",
+      "detail": "org + project, CI",
+      "status": "doing",
+      "milestone": "m-npm",
+      "type": "functional",
+      "after": [
+        23,
+        29,
+        36
+      ],
+      "prs": [
+        {
+          "label": "osdlc/markdown#16",
+          "url": "https://github.com/osdlc/markdown/pull/16"
+        }
+      ],
+      "text": "The example pair. Check in an org corpus with records (a few principles) and a project corpus that extends the claims profile by package name and references the org corpus by path. The project's local records cite the org's principles. CI installs the claims profile, runs `corpus-schema sync` and validates both corpora. This is the start of task 30. After 23, 29 and 36. Built in [#16](https://github.com/osdlc/markdown/pull/16) and brought to osdlc/osdlc by task 78: `packages/corpora/examples/org-principles/` and `packages/corpora/examples/fernlog/`, with the claims profile coming in by package name through a `file:` dependency on `packages/profiles/claims/`. `.github/workflows/profiles.yml` checks the pair. Task 79 switches fernlog to the claims profile from npm.",
+      "source": "docs/planning/markdown/tasks/35 Example pair.md"
+    },
+    {
+      "id": 36,
+      "title": "Release 0.3.0",
+      "detail": "corpus-schema",
+      "status": "owner",
+      "milestone": "m-npm",
+      "type": "supporting",
+      "after": [
+        9,
+        21,
+        27,
+        29,
+        43,
+        44,
+        45,
+        46,
+        70,
+        71,
+        73
+      ],
+      "prs": [],
+      "text": "Release corpus-schema 0.3.0. (supporting) The first version with `extends`, `x-extends`, cross-corpus `x-ref` and `sync`, published from osdlc/osdlc. It also carries `--strict`, flattened `x-extends`, refs by id and `x-ref` to several types, which the sdlc profile needs. It also carries `references` and `uses` (tasks 70 and 71, decision D15), and identity, the id cut, `x-record-file` and narrative folders (task 73, decision D16). After 9, 21, 27, 29, 43 to 46, 70, 71 and 73. The changeset is in [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12), which [osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790) brings to osdlc/osdlc as one commit ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)). Owner work: merging #790 and then the Version Packages pull request publishes it.",
+      "source": "docs/planning/markdown/tasks/36 Release 0.3.0.md"
+    },
+    {
+      "id": 37,
+      "title": "Use extends",
+      "detail": "harness-reference",
+      "status": "todo",
+      "milestone": "m-npm",
+      "type": "functional",
+      "after": [
+        26,
+        36,
+        60
+      ],
+      "prs": [],
+      "text": "harness-reference uses `extends`. Follow-up to task 26: harness-reference stops copying the claims type folders. It installs `@osdlc/corpus-profile-claims`, lists it under `extends` and marks its types with `x-extends`. After 26, 36 and 60, which publishes the profile that 23 builds.",
+      "source": "docs/planning/markdown/tasks/37 Use extends.md"
+    },
+    {
+      "id": 38,
+      "title": "Planning profile",
+      "detail": "markdown PR 14",
+      "status": "doing",
+      "milestone": "m-npm",
+      "type": "functional",
+      "after": [
+        9
+      ],
+      "prs": [
+        {
+          "label": "osdlc/markdown#14",
+          "url": "https://github.com/osdlc/markdown/pull/14"
+        }
+      ],
+      "text": "The planning profile. Tasks, milestones and decisions become a profile, `@osdlc/corpus-profile-planning` in `docs/planning/markdown/profile/`, a corpus with only types. This plan's corpus names it under `extends` and builds its own types on the profile's with `x-extends`. Tasks and milestones add fields, and decisions use the profile's type as it is. The components, layers, repos, overlaps and datasets stay local: they describe this ecosystem. CI in osdlc/osdlc checks the plan with its corpus-schema, which knows `extends`. The profile is private and not on npm. After 9. In progress in [osdlc/markdown#14](https://github.com/osdlc/markdown/pull/14).\n\nTask 53 removes the profile: the plan moves to the sdlc profile and `profile/` is deleted.",
+      "source": "docs/planning/markdown/tasks/38 Planning profile.md"
+    },
+    {
+      "id": 39,
+      "title": "Rename relink",
+      "detail": "markdown-reshape",
+      "status": "todo",
+      "milestone": "m-model",
+      "type": "functional",
+      "after": [],
+      "prs": [],
+      "text": "Rename the markdown-relink crate to markdown-reshape. Reshape means changing how notes are arranged without changing what they say. Steps:\n\n- Publish the crate under the new name.\n- Deprecate markdown-relink on crates.io. This is an owner step.\n- Rename the vault terms in its code, such as `VaultFacts`.\n- Switch the determined notes app, which uses it through its Rust backend. skillwright no longer uses it.",
+      "source": "docs/planning/markdown/tasks/39 Rename relink.md"
+    },
+    {
+      "id": 40,
+      "title": "Reshape in TS",
+      "detail": "@osdlc/markdown-reshape",
+      "status": "todo",
+      "milestone": "m-model",
+      "type": "functional",
+      "after": [
+        12,
+        39
+      ],
+      "prs": [],
+      "text": "The TypeScript twin, `@osdlc/markdown-reshape`, built on markdown-corpus. After 39 and 12.\n\nOpen question: a TypeScript port, or a WebAssembly build of the crate, as yaml-splice-wasm does for yaml-splice? A port needs TypeScript versions of markdown-vault-fs and vfs-seam, which do not exist yet. A WebAssembly build avoids that.",
+      "source": "docs/planning/markdown/tasks/40 Reshape in TS.md"
+    },
+    {
+      "id": 41,
+      "title": "Split and merge",
+      "detail": "markdown-reshape",
+      "status": "todo",
+      "milestone": "m-model",
+      "type": "functional",
+      "after": [
+        39
+      ],
+      "prs": [],
+      "text": "Add split and merge to markdown-reshape. Split turns one note into several and redirects each link to the right piece. Merge makes links to any of the merged notes point to the result. After 39.",
+      "source": "docs/planning/markdown/tasks/41 Split and merge.md"
+    },
+    {
+      "id": 42,
+      "title": "Extract",
+      "detail": "markdown-reshape",
+      "status": "todo",
+      "milestone": "m-model",
+      "type": "functional",
+      "after": [
+        41
+      ],
+      "prs": [],
+      "text": "Add extract to markdown-reshape. It pulls one thread out of the graph: a note and what it links to, followed to some depth or by type. The thread is copied or moved into its own folder or corpus. Links inside it are kept. Links leaving it are rewritten or flagged. After 41.\n\nOpen questions:\n\n- What is the stopping rule: depth, link type or the corpus boundary?\n- Can the result be a new corpus that `extends` the source?",
+      "source": "docs/planning/markdown/tasks/42 Extract.md"
+    },
+    {
+      "id": 43,
+      "title": "Strict mode",
+      "detail": "warnings fail",
+      "status": "doing",
+      "milestone": "m-npm",
+      "type": "supporting",
+      "after": [
+        3
+      ],
+      "prs": [
+        {
+          "label": "osdlc/markdown#12",
+          "url": "https://github.com/osdlc/markdown/pull/12"
+        },
+        {
+          "label": "osdlc/osdlc#790",
+          "url": "https://github.com/osdlc/osdlc/pull/790"
+        }
+      ],
+      "text": "Add `--strict` to `corpus-schema validate`. With it, a warning fails the run, like an error. After 3. Built in [#12](https://github.com/osdlc/markdown/pull/12), not yet released. `tools/validate-strict.sh` already passes `--strict` to this repo's validator.",
+      "source": "docs/planning/markdown/tasks/43 Strict mode.md"
+    },
+    {
+      "id": 44,
+      "title": "Flatten extends",
+      "detail": "closed child types",
+      "status": "doing",
+      "milestone": "m-npm",
+      "type": "functional",
+      "after": [
+        9
+      ],
+      "prs": [
+        {
+          "label": "osdlc/markdown#12",
+          "url": "https://github.com/osdlc/markdown/pull/12"
+        },
+        {
+          "label": "osdlc/osdlc#790",
+          "url": "https://github.com/osdlc/osdlc/pull/790"
+        }
+      ],
+      "text": "Flatten `x-extends`. A closed child type, one with `additionalProperties: false`, sees the fields of every type above it. So it no longer has to list them as `true`. The child can still tighten a parent's rule, and never loosen it. After 9. Built in [#12](https://github.com/osdlc/markdown/pull/12), not yet merged. The plan's tasks and milestones types no longer list the profile's fields ([#14](https://github.com/osdlc/markdown/pull/14)). The task is done when #12 merges.",
+      "source": "docs/planning/markdown/tasks/44 Flatten extends.md"
+    },
+    {
+      "id": 45,
+      "title": "Refs by id",
+      "detail": "bare id or wikilink",
+      "status": "doing",
+      "milestone": "m-npm",
+      "type": "functional",
+      "after": [
+        9
+      ],
+      "prs": [
+        {
+          "label": "osdlc/markdown#12",
+          "url": "https://github.com/osdlc/markdown/pull/12"
+        },
+        {
+          "label": "osdlc/osdlc#790",
+          "url": "https://github.com/osdlc/osdlc/pull/790"
+        }
+      ],
+      "text": "`x-ref` by id. Today an `x-ref` field holds a relative Markdown link. It may also hold a bare record id, or a wikilink such as `[[T-0003]]`. The validator matches it to the record with that id. dev's planning records link this way. After 9. Built in [#12](https://github.com/osdlc/markdown/pull/12) as `x-ref-form: id` and `x-ref-form: wikilink`. An id resolves in the corpus and in the corpora it draws on, so a work repo's task can cite the starter's principle as `P-0002`. The `x-ref` names a type, not the id. Under decision D15, records come from referenced corpora, and task 70 lets an `x-ref` to a type such as `sdlc/principles` match the records of that type in them.",
+      "source": "docs/planning/markdown/tasks/45 Refs by id.md"
+    },
+    {
+      "id": 46,
+      "title": "Multi-type x-ref",
+      "detail": "several types",
+      "status": "doing",
+      "milestone": "m-npm",
+      "type": "functional",
+      "after": [
+        9
+      ],
+      "prs": [
+        {
+          "label": "osdlc/markdown#12",
+          "url": "https://github.com/osdlc/markdown/pull/12"
+        },
+        {
+          "label": "osdlc/osdlc#790",
+          "url": "https://github.com/osdlc/osdlc/pull/790"
+        }
+      ],
+      "text": "`x-ref` to several types. An `x-ref` can name a list of types, and the link must point at a record of one of them. sdlc's `related` field, for one, links to any kind. After 9. Built in [#12](https://github.com/osdlc/markdown/pull/12), not yet released.",
+      "source": "docs/planning/markdown/tasks/46 Multi-type x-ref.md"
+    },
+    {
+      "id": 47,
+      "title": "Merge packs",
+      "detail": "dev PRs 4069, 4070",
+      "status": "done",
+      "milestone": "m-sdlc-profile",
+      "type": "functional",
+      "after": [],
+      "prs": [
+        {
+          "label": "sksizer/dev#4069",
+          "url": "https://github.com/sksizer/dev/pull/4069"
+        },
+        {
+          "label": "sksizer/dev#4070",
+          "url": "https://github.com/sksizer/dev/pull/4070"
+        }
+      ],
+      "text": "Merge the pack harness and the intent and sdlc packs: [sksizer/dev#4069](https://github.com/sksizer/dev/pull/4069) and [sksizer/dev#4070](https://github.com/sksizer/dev/pull/4070). Owner work. Both merged on 2026-11-11 into dev's `code-intelligence-planning` branch. They reach dev main with [sksizer/dev#4068](https://github.com/sksizer/dev/pull/4068).",
+      "source": "docs/planning/markdown/tasks/47 Merge packs.md"
+    },
+    {
+      "id": 48,
+      "title": "Profile generator",
+      "detail": "packs to profiles",
+      "status": "doing",
+      "milestone": "m-sdlc-profile",
+      "type": "functional",
+      "after": [
+        47
+      ],
+      "prs": [
+        {
+          "label": "sksizer/dev#4163",
+          "url": "https://github.com/sksizer/dev/pull/4163"
+        }
+      ],
+      "text": "A generator in model-schema, in sksizer/dev, that turns a pack into a corpus profile. Each kind becomes a type folder. Refs become `x-ref` with `x-ref-form`. A kind's id pattern becomes `x-id-pattern` as it is, so corpus-schema 0.3 cuts the id out of a `<id>-<slug>` file name. A binding's `recordFile` becomes `x-record-file`. A pack's `requires` becomes `extends`, or with `--inline` one profile holds the required packs' types. It writes corpus-schema 0.3 only. After 47. In progress in [sksizer/dev#4163](https://github.com/sksizer/dev/pull/4163).",
+      "source": "docs/planning/markdown/tasks/48 Profile generator.md"
+    },
+    {
+      "id": 49,
+      "title": "SDLC profiles",
+      "detail": "one profile, both packs",
+      "status": "doing",
+      "milestone": "m-sdlc-profile",
+      "type": "functional",
+      "after": [
+        44,
+        45,
+        46,
+        48
+      ],
+      "prs": [],
+      "text": "Generate `@osdlc/corpus-profile-sdlc` from the intent and sdlc packs. For now it is one profile that holds both packs' kinds. A separate intent profile can split out later, if a consumer needs the intent kinds alone. It was built in [osdlc/markdown#19](https://github.com/osdlc/markdown/pull/19), and task 78 brought it to osdlc/osdlc, at `packages/profiles/sdlc/`, before its first publish ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)), because it is shared now and dev is private. It is not published yet (task 61). The generator stays in dev, so until task 62 the profile is regenerated by hand: run the generator in dev and copy its output in. A closed type needs flattened `x-extends` to see its parent's fields. Its refs are ids and wikilinks, some to several types. After 48, 44, 45 and 46.",
+      "source": "docs/planning/markdown/tasks/49 SDLC profiles.md"
+    },
+    {
+      "id": 50,
+      "title": "Dev on sdlc",
+      "detail": "dev docs/planning",
+      "status": "todo",
+      "milestone": "m-sdlc-profile",
+      "type": "functional",
+      "after": [
+        36,
+        49,
+        61
+      ],
+      "prs": [],
+      "text": "dev's `docs/planning/` validates against the sdlc profile. dev installs the profile and corpus-schema 0.3.0 from npm. After 49, 36 and 61, which publishes the profile.",
+      "source": "docs/planning/markdown/tasks/50 Dev on sdlc.md"
+    },
+    {
+      "id": 52,
+      "title": "Work extends",
+      "detail": "from npm, on 0.3.0",
+      "status": "todo",
+      "milestone": "m-sdlc-profile",
+      "type": "functional",
+      "after": [
+        36,
+        49,
+        61
+      ],
+      "prs": [],
+      "text": "The work repo keeps its sdlc records as a corpus. It installs the sdlc profile from npm, names it under `extends`, takes its types with `uses: [sdlc/*]` (task 71, decision D15) and uses corpus-schema 0.3.0. This is the first use of the sdlc corpus at work. Before 1.0 there is no older form to start on, so it waits for 49, 36 and 61, which publishes the profile.",
+      "source": "docs/planning/markdown/tasks/52 Work extends.md"
+    },
+    {
+      "id": 53,
+      "title": "Plan on sdlc",
+      "detail": "first remote consumer",
+      "status": "todo",
+      "milestone": "m-upstream",
+      "type": "functional",
+      "after": [
+        61,
+        66,
+        79
+      ],
+      "prs": [],
+      "text": "This plan, `docs/planning/markdown/`, is the first remote consumer of the sdlc profile and the starter corpus. It installs `@osdlc/corpus-profile-sdlc` and `@osdlc/corpus-sdlc-starter` from npm. Its root file names the profile under `extends` with the prefix `sdlc` and takes the sdlc types. The explorer's own fields, such as `phase`, `beeline`, `prs`, `detail` and `order`, go in local schemas that build on the profile's types with `x-extends: sdlc/tasks`, `x-extends: sdlc/milestones` and so on. The root file names the starter under `references` with the prefix `osdlc`. `corpus-schema sync` writes `_references/osdlc/`, and a record cites `P-0002`.\n\nThe records move to sdlc ids, such as `T-0001`, `M-0001` and `D-0001`, and to the sdlc fields. The explorer's `build-data` and the BEELINE checklist generator read the new ids and fields, and resolve parents by package name. Its `profile/` folder is deleted: before 1.0 no second form is kept. The components, layers, repos, overlaps and datasets stay local types.\n\nIt replaces the work example (task 67): this plan shows the end state in this repo's CI, from npm, before the work repo copies it. After 61 and 66, which publish the two packages, and 79, which cleans up osdlc/markdown after the move.",
+      "source": "docs/planning/markdown/tasks/53 Plan on sdlc.md"
+    },
+    {
+      "id": 54,
+      "title": "Named relations",
+      "detail": "and inverses",
+      "status": "todo",
+      "milestone": "m-model-layer",
+      "type": "functional",
+      "after": [
+        47
+      ],
+      "prs": [],
+      "text": "Named relations and their inverses, in the model. A pack names a relation, such as `depends_on`, and its inverse, such as `blocks`. The inverse is derived, not stored. After 47.",
+      "source": "docs/planning/markdown/tasks/54 Named relations.md"
+    },
+    {
+      "id": 55,
+      "title": "Augment",
+      "detail": "namespaced keys",
+      "status": "todo",
+      "milestone": "m-model-layer",
+      "type": "functional",
+      "after": [
+        44,
+        47
+      ],
+      "prs": [],
+      "text": "Augment with namespaced keys. A pack adds fields to another pack's kind under its own prefix, such as `harness:model`. A strict type admits keys with the prefix of a profile that isn't loaded, so a record with extra fields still passes. After 47 and 44.",
+      "source": "docs/planning/markdown/tasks/55 Augment.md"
+    },
+    {
+      "id": 56,
+      "title": "Contract spec",
+      "detail": "markdown-contract",
+      "status": "todo",
+      "milestone": "m-model-layer",
+      "type": "functional",
+      "after": [],
+      "prs": [],
+      "text": "A spec for markdown-contract, with shared test cases for its TypeScript and Rust twins. Then a contract has a stable format that other specs can point at.",
+      "source": "docs/planning/markdown/tasks/56 Contract spec.md"
+    },
+    {
+      "id": 57,
+      "title": "x-body",
+      "detail": "points at a contract",
+      "status": "todo",
+      "milestone": "m-model-layer",
+      "type": "functional",
+      "after": [
+        56
+      ],
+      "prs": [],
+      "text": "The corpus-schema `x-body` keyword. A type names a markdown-contract, and each record's body must pass it. corpus-schema does not invent its own body format. After 56.",
+      "source": "docs/planning/markdown/tasks/57 x-body.md"
+    },
+    {
+      "id": 58,
+      "title": "Second store",
+      "detail": "only when needed",
+      "status": "todo",
+      "milestone": "m-model-layer",
+      "type": "functional",
+      "after": [
+        48
+      ],
+      "prs": [],
+      "text": "A second store binding, such as SQLite or JSON, beside `document:`. Build it only when a real need comes. Until then there is no general binding layer. After 48.",
+      "source": "docs/planning/markdown/tasks/58 Second store.md"
+    },
+    {
+      "id": 59,
+      "title": "Corpus-schema publisher",
+      "detail": "dropped",
+      "status": "done",
+      "milestone": "m-npm",
+      "type": "supporting",
+      "after": [],
+      "prs": [],
+      "text": "Move the npm trusted publisher of `@osdlc/corpus-schema` to osdlc/markdown's publish workflow. No longer needed: [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) keeps corpus-schema releasing from osdlc/osdlc, so its publisher stays as it is. The record stays so that links to it still resolve.\n\nThe profile and starter packages get their trusted publishers in task 80.",
+      "source": "docs/planning/markdown/tasks/59 Corpus-schema publisher.md"
+    },
+    {
+      "id": 60,
+      "title": "Publish claims",
+      "detail": "claims profile, owner",
+      "status": "owner",
+      "milestone": "m-npm",
+      "type": "supporting",
+      "after": [
+        23,
+        78,
+        80
+      ],
+      "prs": [],
+      "text": "Publish `@osdlc/corpus-profile-claims` 0.1.0 to npm from its folder in osdlc/osdlc (task 78). Owner work: merging the Version Packages pull request there publishes it. After 23, which builds the package, 80, which sets up its trusted publisher, and 78, which brings it into osdlc/osdlc.",
+      "source": "docs/planning/markdown/tasks/60 Publish claims.md"
+    },
+    {
+      "id": 61,
+      "title": "Publish sdlc",
+      "detail": "sdlc profile, owner",
+      "status": "owner",
+      "milestone": "m-sdlc-profile",
+      "type": "supporting",
+      "after": [
+        49,
+        78,
+        80
+      ],
+      "prs": [],
+      "text": "Publish `@osdlc/corpus-profile-sdlc` to npm from its folder in osdlc/osdlc (task 78). Owner work: merging the Version Packages pull request there publishes it. dev (task 50), the starter corpus (task 66), this plan (task 53) and the work repo (task 52) install it from npm. After 49, 78 and 80, which sets up its trusted publisher.",
+      "source": "docs/planning/markdown/tasks/61 Publish sdlc.md"
+    },
+    {
+      "id": 62,
+      "title": "Packs in public",
+      "detail": "regenerate in public",
+      "status": "todo",
+      "milestone": "m-sdlc-profile",
+      "type": "functional",
+      "after": [
+        47,
+        49,
+        75,
+        78
+      ],
+      "prs": [],
+      "text": "Move `@osdlc/model-schema` and the intent and sdlc packs to a public repo, so the sdlc profile is regenerated in public. [D17](../decisions/D17%20Profiles%20and%20corpora%20live%20in%20osdlc%20models.md) put them in osdlc/models. [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) keeps them in sksizer/dev for now, so this task is out of scope until they move. Today the generator and the packs are in sksizer/dev, which is private. Until this task is done, regenerating the sdlc profile is manual: run the generator in dev and copy its output into osdlc/osdlc.\n\nOnce they move, CI regenerates the sdlc profile from the packs and checks that the committed copy matches. Not on the beeline's critical path. After 47, 49, 75 and 78.",
+      "source": "docs/planning/markdown/tasks/62 Packs in public.md"
+    },
+    {
+      "id": 63,
+      "title": "Starter corpus",
+      "detail": "@osdlc/corpus-sdlc-starter",
+      "status": "doing",
+      "milestone": "m-upstream",
+      "type": "functional",
+      "after": [
+        49
+      ],
+      "prs": [],
+      "text": "Starter instance corpus: `@osdlc/corpus-sdlc-starter`, built in [osdlc/markdown#19](https://github.com/osdlc/markdown/pull/19) and brought to osdlc/osdlc by task 78, at `packages/corpora/sdlc-starter/` ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)). It is not published yet (task 66). It is an upstream corpus with records, not only types. Its root file extends the sdlc profile by package name, and it holds principles to start: P-0001 \"Normalize equivalent inputs at the boundary, and reject invalid ones\", carried over from [osdlc/osdlc#447](https://github.com/osdlc/osdlc/pull/447), and P-0002 \"Favor deterministic over probabilistic judgement\". Standards follow in task 64. A work repo names it under `references` (decision D15) with the prefix `osdlc` and cites its records by id. CI in osdlc/osdlc (`.github/workflows/profiles.yml`) validates it with `--strict`. Decision D14 says why it is a starter and not dev's own records. After 49.",
+      "source": "docs/planning/markdown/tasks/63 Starter corpus.md"
+    },
+    {
+      "id": 64,
+      "title": "Starter content",
+      "detail": "principles, standards",
+      "status": "owner",
+      "milestone": "m-upstream",
+      "type": "functional",
+      "after": [
+        63
+      ],
+      "prs": [],
+      "text": "Fill out the starter corpus's principles and standards. Owner work: the owner chooses what goes in. An agent can draft records from the owner's notes, in a pull request the owner reviews. Each later version of the package carries more. The first publish (task 66) does not wait on it. After 63.",
+      "source": "docs/planning/markdown/tasks/64 Starter content.md"
+    },
+    {
+      "id": 65,
+      "title": "Leak check",
+      "detail": "no private data",
+      "status": "doing",
+      "milestone": "m-upstream",
+      "type": "supporting",
+      "after": [
+        63
+      ],
+      "prs": [],
+      "text": "A CI check in osdlc/osdlc that the starter corpus holds no private data, since its records ship to a public registry. It fails on a link or path into a private repo such as sksizer/dev, an absolute home path, an email address, and a wikilink or id that names a record the corpus does not hold. The check runs on every pull request that touches the starter corpus, and before each publish. Records carried over from dev (task 64) go through it too. After 63.\n\n`tools/leak-check.sh`, from [osdlc/models#1](https://github.com/osdlc/models/pull/1), scans `packages/profiles/` and `packages/corpora/` for a private repo name, a home path, an email address and a `~/` path, and `tools/tests/leak-check.sh` checks that it catches each one. `.github/workflows/profiles.yml` runs both on pull requests. A link to a record the corpus does not hold is left to the validator. It does not run before each publish yet: `packages-publish.yml` does not call it.",
+      "source": "docs/planning/markdown/tasks/65 Leak check.md"
+    },
+    {
+      "id": 66,
+      "title": "Publish starter",
+      "detail": "starter corpus, owner",
+      "status": "owner",
+      "milestone": "m-upstream",
+      "type": "supporting",
+      "after": [
+        61,
+        63,
+        65,
+        78,
+        80
+      ],
+      "prs": [],
+      "text": "Publish `@osdlc/corpus-sdlc-starter` to npm from its folder in osdlc/osdlc (task 78). Owner work: merging the Version Packages pull request there publishes it. Its `package.json` depends on `@osdlc/corpus-profile-sdlc`, so that is published first. After 63, 65, 61, 78 and 80.",
+      "source": "docs/planning/markdown/tasks/66 Publish starter.md"
+    },
+    {
+      "id": 67,
+      "title": "Work example",
+      "detail": "covered by 53",
+      "status": "todo",
+      "milestone": "m-sharing",
+      "type": "functional",
+      "after": [
+        53
+      ],
+      "prs": [],
+      "text": "Task 53 covers this task. This plan's own corpus shows the beeline's end state in this repo's CI, from npm, so no separate `examples/work/` is needed. The record stays so that links to it still resolve. It is not on the critical path, and nothing waits on it. Close it when 53 is done.\n\nThe example it described: `examples/work/`, a project corpus shaped like a work repo's `docs/planning/`, that extends the sdlc profile, references the starter corpus and cites `P-0002`, with a case where a stale `_references/` copy must fail.",
+      "source": "docs/planning/markdown/tasks/67 Work example.md"
+    },
+    {
+      "id": 68,
+      "title": "Work cites starter",
+      "detail": "the end state",
+      "status": "todo",
+      "milestone": "m-upstream",
+      "type": "functional",
+      "after": [
+        52,
+        53,
+        66
+      ],
+      "prs": [],
+      "text": "The work repo reaches the beeline's end state. It installs `@osdlc/corpus-profile-sdlc` and `@osdlc/corpus-sdlc-starter` from npm, extends `sdlc`, uses `sdlc/*` and references `osdlc`. It runs `corpus-schema sync` and commits `_references/osdlc/`. Its tasks cite the starter's principles and standards by id, such as `P-0002`. CI runs `corpus-schema validate --strict`, which also fails on a stale copy. Updating the starter is then a version bump, a sync and a commit. After 52, 66 and 53, whose setup it copies.",
+      "source": "docs/planning/markdown/tasks/68 Work cites starter.md"
+    },
+    {
+      "id": 69,
+      "title": "Add command",
+      "detail": "optional",
+      "status": "todo",
+      "milestone": "m-npm",
+      "type": "functional",
+      "after": [
+        29
+      ],
+      "prs": [],
+      "text": "Optional: `corpus-schema add <package> --as <prefix>`. It adds the package as a dependency, adds the `extends` entry to the root file and runs sync. It saves three steps a person can do by hand, so no other task waits on it and it is off the beeline's critical path. After 29.",
+      "source": "docs/planning/markdown/tasks/69 Add command.md"
+    },
+    {
+      "id": 70,
+      "title": "References",
+      "detail": "references, _references/",
+      "status": "doing",
+      "milestone": "m-npm",
+      "type": "functional",
+      "after": [
+        27,
+        29
+      ],
+      "prs": [
+        {
+          "label": "osdlc/markdown#12",
+          "url": "https://github.com/osdlc/markdown/pull/12"
+        },
+        {
+          "label": "osdlc/osdlc#790",
+          "url": "https://github.com/osdlc/osdlc/pull/790"
+        }
+      ],
+      "text": "`references` in the root file, as decision D15 says. It maps a prefix to another corpus, by package name or path, whose records a corpus links to and cites by id. `extends` brings types only. `corpus-schema sync` copies each referenced corpus into `_references/<prefix>/`, and `validate` fails when the copy differs from the installed package. It works at any level, so a plain vault with no types can reference a corpus. Nested references get a namespace path, such as `b/c/principles`. An `x-ref` to a type also matches records of that type, or of a type that extends or uses it, in every referenced corpus. So a profile's field with `x-ref: sdlc/principles` resolves `P-0002` in the starter, whose principles use the profile's. After 27 and 29. In progress in [#12](https://github.com/osdlc/markdown/pull/12), which also defines the namespace and identity rules.",
+      "source": "docs/planning/markdown/tasks/70 References.md"
+    },
+    {
+      "id": 71,
+      "title": "Uses",
+      "detail": "uses: [sdlc/*]",
+      "status": "doing",
+      "milestone": "m-npm",
+      "type": "functional",
+      "after": [
+        9
+      ],
+      "prs": [
+        {
+          "label": "osdlc/markdown#12",
+          "url": "https://github.com/osdlc/markdown/pull/12"
+        },
+        {
+          "label": "osdlc/osdlc#790",
+          "url": "https://github.com/osdlc/osdlc/pull/790"
+        }
+      ],
+      "text": "`uses` in the root file, as decision D15 says. `uses: [sdlc/*]` takes a parent's types as they are, so a corpus no longer needs a one-line schema file that holds only `x-extends` for each type. After 9. In progress in [#12](https://github.com/osdlc/markdown/pull/12).",
+      "source": "docs/planning/markdown/tasks/71 Uses.md"
+    },
+    {
+      "id": 72,
+      "title": "Queries span references",
+      "detail": "namespaced types, one result per record",
+      "status": "todo",
+      "milestone": "m-query",
+      "type": "functional",
+      "after": [
+        15,
+        70
+      ],
+      "prs": [],
+      "text": "Search and queries over typed records span referenced corpora. A query names a referenced type by its namespace path, such as `osdlc/principles`, or `b/c/principles` for a reference of a reference. Each result carries the record's identity: its Package URL, from the package, the version, the type and the id, such as `pkg:npm/%40osdlc/corpus-sdlc-starter@0.1.0#principles/P-0002` (decision D16). One record reached by two paths is one result, since a graph holds one version of each corpus. [#12](https://github.com/osdlc/markdown/pull/12) is defining the namespace rules now, and this task follows them. The owner wants it soon. After 15 and 70.",
+      "source": "docs/planning/markdown/tasks/72 Queries span references.md"
+    },
+    {
+      "id": 73,
+      "title": "Identity and record files",
+      "detail": "purl, id cut, x-record-file, _ folders",
+      "status": "doing",
+      "milestone": "m-npm",
+      "type": "functional",
+      "after": [
+        9,
+        70
+      ],
+      "prs": [
+        {
+          "label": "osdlc/markdown#12",
+          "url": "https://github.com/osdlc/markdown/pull/12"
+        },
+        {
+          "label": "osdlc/osdlc#790",
+          "url": "https://github.com/osdlc/osdlc/pull/790"
+        }
+      ],
+      "text": "The rules that let sdlc's own planning folders validate as they are, and that tell corpora apart.\n\n- Identity: every corpus, type and record in a package has a Package URL, derived from the nearest `package.json` (decision D16). A corpus's graph holds one version of each corpus. Records reached through two chains collapse by identity. A schema may state its type's identity in `x-identity`.\n- The id cut: with `x-id-pattern`, a record's id is the longest part of its file name that the pattern matches, followed by `-` or the end of the name. So `P-0002-favor-deterministic.md` has the id `P-0002`, and a record's `id` field must equal it.\n- `x-record-file`: a type names the file that holds a record kept in a folder of its own, such as `README.md` for `decisions/D-0001-a-slug/README.md`.\n- Narrative folders: a folder in a type folder whose name starts with `_` holds narrative, not records.\n\nAfter 9 and 70. In progress in [#12](https://github.com/osdlc/markdown/pull/12). It ships in 0.3.0 (task 36).",
+      "source": "docs/planning/markdown/tasks/73 Identity and record files.md"
+    },
+    {
+      "id": 74,
+      "title": "Skillwright on 0.3.0",
+      "detail": "skillwright",
+      "status": "todo",
+      "milestone": "m-npm",
+      "type": "functional",
+      "after": [
+        36,
+        60
+      ],
+      "prs": [],
+      "text": "Skillwright's `harness-reference/corpus` (in osdlc/skillwright) validates with `@osdlc/corpus-schema` `^0.2.0` from npm. Move it to 0.3.0 once that is published. Later, extend the claims profile: its claims types come from `@osdlc/corpus-profile-claims` (task 60) instead of copies. After 36 and 60.",
+      "source": "docs/planning/markdown/tasks/74 Skillwright on 0.3.0.md"
+    },
+    {
+      "id": 75,
+      "title": "Create models repo",
+      "detail": "osdlc/models, owner",
+      "status": "done",
+      "milestone": "m-sdlc-profile",
+      "type": "supporting",
+      "after": [],
+      "prs": [],
+      "text": "The public repo [osdlc/models](https://github.com/osdlc/models) exists, as decided in [D17](../decisions/D17%20Profiles%20and%20corpora%20live%20in%20osdlc%20models.md). Owner work, done on 2026-11-12. It holds only a README.\n\n[D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) supersedes D17 on where things live. osdlc/models is kept as a holding pen. Open [osdlc/models#2](https://github.com/osdlc/models/pull/2) changes its README to say the work happens in osdlc/osdlc for now. The profiles and the starter corpus come to osdlc/osdlc instead (task 78). model-schema and the packs stay in sksizer/dev (task 62).",
+      "source": "docs/planning/markdown/tasks/75 Create models repo.md"
+    },
+    {
+      "id": 76,
+      "title": "Claims as a pack",
+      "detail": "pack-claims",
+      "status": "todo",
+      "milestone": "m-model-layer",
+      "type": "functional",
+      "after": [
+        23,
+        62
+      ],
+      "prs": [],
+      "text": "Write the claims types as `pack-claims`, and generate `@osdlc/corpus-profile-claims` from it. The package name does not change, so corpora that extend it see no change. The type folders of the profile become generated output, as decided in [D17](../decisions/D17%20Profiles%20and%20corpora%20live%20in%20osdlc%20models.md). D17 put `pack-claims` in osdlc/models. [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) folds that repo into osdlc/osdlc and keeps model-schema and the packs in sksizer/dev for now, so where `pack-claims` lives is not decided. After 23 and 62.",
+      "source": "docs/planning/markdown/tasks/76 Claims as a pack.md"
+    },
+    {
+      "id": 77,
+      "title": "Profile catalog",
+      "detail": "index of profiles",
+      "status": "todo",
+      "milestone": "m-model-layer",
+      "type": "supporting",
+      "after": [
+        62
+      ],
+      "prs": [],
+      "text": "A generated index of the shared profiles and of the corpora built on them. Each entry has the package's purl, its version and its types. Build it once a few research corpora exist. Low priority. After 62.",
+      "source": "docs/planning/markdown/tasks/77 Profile catalog.md"
+    },
+    {
+      "id": 78,
+      "title": "Bring in profiles",
+      "detail": "profiles and starter in osdlc/osdlc",
+      "status": "done",
+      "milestone": "m-sdlc-profile",
+      "type": "supporting",
+      "after": [],
+      "prs": [],
+      "text": "Bring the profiles and the starter corpus into osdlc/osdlc, so they publish from it ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)). They do not go to osdlc/models, as D17 planned. The owner decided their place: `packages/profiles/*` and `packages/corpora/*`, as members of the pnpm workspace.\n\nDone in osdlc/osdlc, as phase 4 of `docs/planning/repatriation.md`:\n\n- `packages/profiles/claims/` comes from osdlc/markdown's `example-pair` branch ([osdlc/markdown#16](https://github.com/osdlc/markdown/pull/16), on top of [#15](https://github.com/osdlc/markdown/pull/15)), with its history, and the example pair with it, at `packages/corpora/examples/fernlog/` and `packages/corpora/examples/org-principles/`.\n- `packages/profiles/claims/`, `packages/profiles/sdlc/` and `packages/corpora/sdlc-starter/` then take the newest content, from [osdlc/models#1](https://github.com/osdlc/models/pull/1), which holds the packages of [#15](https://github.com/osdlc/markdown/pull/15) and [#19](https://github.com/osdlc/markdown/pull/19) moved. Its changesets for each package's first release, 0.1.0, come too.\n- `.github/workflows/profiles.yml` validates every profile and corpus with `--strict`, runs each package's tests, the example pair's check and the leak check (task 65). It builds corpus-schema from `packages/ts/corpus-schema`, so it does not wait on the 0.3.0 release. The changeset config covers the packages as it is. `check:packages` reads only `packages/ts/`, so it does not check these packages.\n\nNone of the three is published. Releasing them needs the `package-globs` input of [osdlc/osdlc#785](https://github.com/osdlc/osdlc/pull/785) in `packages-publish.yml`, and the owner's trusted publishers (task 80).",
+      "source": "docs/planning/markdown/tasks/78 Models repo setup.md"
+    },
+    {
+      "id": 79,
+      "title": "Markdown after the move",
+      "detail": "clean up osdlc/markdown",
+      "status": "todo",
+      "milestone": "m-upstream",
+      "type": "supporting",
+      "after": [
+        60,
+        78
+      ],
+      "prs": [],
+      "text": "Clean up osdlc/markdown once the plan, the profiles and the starter live in osdlc/osdlc ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)). Close osdlc/markdown [#15](https://github.com/osdlc/markdown/pull/15), [#16](https://github.com/osdlc/markdown/pull/16) and [#19](https://github.com/osdlc/markdown/pull/19), and [osdlc/models#1](https://github.com/osdlc/models/pull/1), as moved, and link the osdlc/osdlc pull request in each. Remove from osdlc/markdown what was brought to osdlc/osdlc, so there is one copy. Its README stays, as the holding pen's. In osdlc/osdlc, change the fernlog example (from [#16](https://github.com/osdlc/markdown/pull/16), now at `packages/corpora/examples/fernlog/`) to install `@osdlc/corpus-profile-claims` from npm instead of by path. After 78 and 60.",
+      "source": "docs/planning/markdown/tasks/79 Markdown after the move.md"
+    },
+    {
+      "id": 80,
+      "title": "Profile publishers",
+      "detail": "npm, owner",
+      "status": "owner",
+      "milestone": "m-sdlc-profile",
+      "type": "supporting",
+      "after": [
+        78
+      ],
+      "prs": [],
+      "text": "Set up npm trusted publishing for the packages that publish from osdlc/osdlc ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)): `@osdlc/corpus-profile-sdlc` (task 49), `@osdlc/corpus-profile-claims` (task 23) and `@osdlc/corpus-sdlc-starter` (task 63). Stage each name once and point its trusted publisher at osdlc/osdlc's release workflow, as `packages/README.md` describes for a new library. Owner work: it needs the npm account. After 78, which brings the packages in. The release also needs the `package-globs` input of [osdlc/osdlc#785](https://github.com/osdlc/osdlc/pull/785), set in `packages-publish.yml` to `packages/ts/* packages/profiles/* packages/corpora/*`. Tasks 60, 61 and 66 publish after it.",
+      "source": "docs/planning/markdown/tasks/80 Models publishers.md"
+    },
+    {
+      "id": 81,
+      "title": "Versions and lockfile",
+      "detail": "corpus-schema spec",
+      "status": "todo",
+      "milestone": "m-vault-install",
+      "type": "functional",
+      "after": [
+        36
+      ],
+      "prs": [],
+      "text": "Spec the vault install shape in [D18](../decisions/D18%20Vaults%20install%20corpora%20outside%20the%20vault.md). A package source in `extends` and `references` may carry a version range, such as `@acme/corpus-nutrition@^2.3`. The spec names the lockfile `corpus-schema.lock.yaml`, sets its format (per package: name, exact version, integrity hash, prefix) and says what it means. It also sets the resolution order: when a lockfile exists it wins, and `node_modules` is ignored. Add conformance cases for ranges, the lockfile and the order. After 36.",
+      "source": "docs/planning/markdown/tasks/81 Versions and lockfile.md"
+    },
+    {
+      "id": 82,
+      "title": "Install and update",
+      "detail": "corpus-schema",
+      "status": "todo",
+      "milestone": "m-vault-install",
+      "type": "functional",
+      "after": [
+        81
+      ],
+      "prs": [],
+      "text": "`corpus-schema install` fetches each package in the root file with pacote into a cache outside the vault, one folder per name and version. It checks the integrity hash and writes the lockfile. `corpus-schema update` moves each package to a newer version inside its range and rewrites the lockfile. The cache location per OS is an open point in D18. After 81.",
+      "source": "docs/planning/markdown/tasks/82 Install and update.md"
+    },
+    {
+      "id": 83,
+      "title": "Resolve from the cache",
+      "detail": "corpus-schema",
+      "status": "todo",
+      "milestone": "m-vault-install",
+      "type": "functional",
+      "after": [
+        82
+      ],
+      "prs": [],
+      "text": "`sync` and `validate` resolve `extends` and `references` from the cache when the lockfile is present, by the order task 81 sets. They need no network once the cache is warm. After 82.",
+      "source": "docs/planning/markdown/tasks/83 Resolve from the cache.md"
+    },
+    {
+      "id": 84,
+      "title": "Vault guide",
+      "detail": "docs",
+      "status": "todo",
+      "milestone": "m-vault-install",
+      "type": "functional",
+      "after": [
+        83
+      ],
+      "prs": [],
+      "text": "A guide to set up a plain Obsidian vault that extends a profile and references a corpus with no `package.json`: write the root file, run `corpus-schema install`, commit the lockfile, then run `sync` and `validate`. After 83.",
+      "source": "docs/planning/markdown/tasks/84 Vault guide.md"
+    }
+  ]
+}
