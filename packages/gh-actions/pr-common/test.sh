@@ -180,6 +180,7 @@ for agent in claude codex cursor; do
 
   run $agent answer "exh1 good"
   [ "$status" = 0 ] && [ "$(nkeys)" = 2 ] && ok "$agent: exhausted key falls through" || bad "$agent: exhausted key falls through"
+  check "$agent: success after a passed-over key has no failure prefix" bash -c '! grep -q "keys in" "$1"' _ "$FAKE_DIR/posted"
   check "$agent: exhausted warning" grep -q '::warning::key 1 in .* is out of credit or quota; trying key 2' "$FAKE_DIR/ask.log"
 
   run $agent answer "exh1 bad1 good"

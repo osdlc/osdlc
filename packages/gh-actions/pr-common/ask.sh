@@ -91,11 +91,11 @@ for key in "${keys[@]}"; do
   set -e
   echo "key $n: exit $status"
   jq '{is_error, subtype, num_turns, total_cost_usd, api_error_status, result}' "$RESULT" || cat "$RESULT"
+  last_passed_over=0
   if [ "$status" -eq 0 ] && jq -e '.is_error == false' "$RESULT" > /dev/null 2>&1; then
     break
   fi
   # Only an authentication failure or an exhausted key moves on to the next key.
-  last_passed_over=0
   if harness_auth_failed; then
     auth_failed=$((auth_failed + 1))
     last_passed_over=1
