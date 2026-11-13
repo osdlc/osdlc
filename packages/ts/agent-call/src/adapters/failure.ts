@@ -40,7 +40,8 @@ interface Envelope {
 /** The result envelope claude and cursor print, read only when it has `is_error: true`. */
 function errorEnvelope(stdout: string): Envelope {
   const parsed = tryParseJson(stdout)
-  const envelope = Array.isArray(parsed) ? parsed.at(-1) : parsed
+  // A stream-json run prints one event per line; its last event is the result.
+  const envelope = Array.isArray(parsed) ? parsed.at(-1) : (parsed ?? parseJsonLines(stdout).at(-1))
   if (get(envelope, 'is_error') !== true) {
     return { failed: false, text: '', status: undefined, turns: undefined }
   }
@@ -55,7 +56,8 @@ function errorEnvelope(stdout: string): Envelope {
 /** Stderr (of a run that exited nonzero), the envelope's error text, and an unstructured stdout's tail. */
 function failureText(output: FailureOutput, envelope: Envelope): string {
   const failedExit = output.exitCode !== 0
-  const structured = tryParseJson(output.stdout) !== undefined
+  const structured =
+    tryParseJson(output.stdout) !== undefined || parseJsonLines(output.stdout).length > 0
   return [
     failedExit ? output.stderr : '',
     envelope.text,
@@ -64,7 +66,8 @@ function failureText(output: FailureOutput, envelope: Envelope): string {
 }
 
 const CLAUDE_QUOTA = /billing_error|credit balance is too low|insufficient credit/i
-const CLAUDE_QUOTA_429 = /usage limit|spend limit|monthly limit/i
+// Not a bare "usage limit": a subscription's "usage limit reached" resets, so it is a rate limit.
+const CLAUDE_QUOTA_429 = /spend limit|monthly limit|specified API usage limit/i
 const CLAUDE_RATE_LIMIT =
   /usage limit reached|hit your (?:usage |weekly |session )?limit|(?:\d+-hour|weekly|session|opus|sonnet) limit reached|rate_limit_error|API Error:?\s*429|\b429\b[^\n]{0,40}(?:rate|too many)/i
 const CLAUDE_AUTH =
@@ -72,8 +75,8 @@ const CLAUDE_AUTH =
 
 /**
  * claude: HTTP 402, `billing_error`, "credit balance is too low" and
- * "insufficient credit" are `quota`, and so is a 429 that names a usage, spend
- * or monthly limit. Other usage limits ("5-hour limit reached ∙ resets 3pm",
+ * "insufficient credit" are `quota`, and so is a 429 that names a spend
+ * or monthly limit (or the API org's specified usage limits). Other usage limits ("5-hour limit reached ∙ resets 3pm",
  * "usage limit reached|<epoch>") and plain 429s are `rate-limit`. The credit
  * and authentication words in an envelope count only on a run of at most one
  * turn, because a longer run's `result` is usually the agent's own text.
@@ -133,7 +136,7 @@ const CURSOR_AUTH =
   /API key is invalid|invalid API key|not logged in|not authenticated|Authentication required/i
 // UNVERIFIED: cursor's real out-of-credit message was not found. These words
 // are a conservative guess, to be replaced when a run is captured.
-const CURSOR_QUOTA = /usage limit|out of credits|quota/i
+const CURSOR_QUOTA = /usage limit|out of credits|quota (?:exceeded|exhausted)/i
 
 /**
  * cursor: a bad key exits 1 with plain text ("The API key is invalid"). The

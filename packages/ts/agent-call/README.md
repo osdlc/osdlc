@@ -238,7 +238,10 @@ which returns the cause or `undefined` and never throws, and
 `parseOutput(agent, stdout, format, { stderr, exitCode, schema })`, which
 returns the `ParsedOutput` fields `parseResult` gives, plus `model` from
 claude's `modelUsage`. `parseOutput` never throws: output it cannot read gives
-`{ text: '' }`, or an `isError` result from the adapter.
+`{ text: '' }`, or an `isError` result from the adapter. `classifyFailure`,
+`parseOutput`, `FailureCause` and `FailureOutput` are all experimental. `model`
+is the one field `parseOutput` fills that `parseResult` does not, and codex's
+`usage.inputTokens` includes cached tokens, as in `parseResult`.
 
 ```ts
 const output: FailureOutput = {

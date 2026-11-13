@@ -101,6 +101,28 @@ describe('claude', () => {
     })
   })
 
+  test('a subscription limit that resets is a rate limit even on a 429', () => {
+    expect(
+      claude({ stderr: 'API Error: 429 Claude AI usage limit reached|1791374400' }),
+    ).toMatchObject({ kind: 'rate-limit', resetAt: '2026-10-07T12:00:00.000Z' })
+    const hit = envelope("You've hit your usage limit ∙ resets 7pm", { api_error_status: 429 })
+    expect(claude({ stdout: hit })).toMatchObject({ kind: 'rate-limit', limit: 'usage limit' })
+    expect(claude({ stdout: hit })).toHaveProperty('resetAt', expect.any(String))
+  })
+
+  test("a failed stream-json run does not read the agent's answer", () => {
+    const lines = [
+      {
+        type: 'assistant',
+        message: {
+          content: [{ type: 'text', text: 'credit balance is too low; invalid api key' }],
+        },
+      },
+      { type: 'result', is_error: false, result: 'credit balance is too low' },
+    ]
+    expect(claude({ stdout: lines.map((l) => JSON.stringify(l)).join('\n') })).toBeUndefined()
+  })
+
   test('a 429 with per-minute wording stays a rate limit', () => {
     const stdout = envelope('rate_limit_error: exceeded your per-minute rate limit', {
       api_error_status: 429,
@@ -247,6 +269,12 @@ describe('cursor', () => {
   test('the guessed out-of-credit words are quota', () => {
     expect(cursor({ stderr: 'You are out of credits' })).toEqual({ kind: 'quota' })
     expect(cursor({ stdout: envelope('usage limit reached') })).toEqual({ kind: 'quota' })
+  })
+
+  test('a bare quota, or a plain rate limit, is not quota', () => {
+    expect(cursor({ stderr: 'quota' })).toBeUndefined()
+    expect(cursor({ stderr: 'rate limit exceeded for this per-minute quota' })).toBeUndefined()
+    expect(cursor({ stderr: 'Quota exceeded' })).toEqual({ kind: 'quota' })
   })
 
   test('no failure, or an unknown one, has no cause', () => {
