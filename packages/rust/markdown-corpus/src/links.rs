@@ -609,11 +609,8 @@ impl LinkGraph {
     /// longer list (too small, a refused symlink, under a symlinked folder
     /// or a folder that cannot be listed) is dropped as if gone. So is a
     /// path its folder lists under another spelling
-    /// ([`Admission::Respelled`]: another case, or another Unicode form as
-    /// on HFS+), which also marks the graph stale, so the next refresh
-    /// walks and finds the file by the spelling on disk. That includes the
-    /// old name after a case-only rename on a case-insensitive file system,
-    /// which costs one walk. A batch against another
+    /// ([`Admission::Respelled`]), which also marks the graph stale, so the
+    /// next refresh walks. A batch against another
     /// corpus, or while no sweep is fresh, does nothing here, but marks the
     /// graph so a sweep that read the files before the change is not stamped
     /// fresh.

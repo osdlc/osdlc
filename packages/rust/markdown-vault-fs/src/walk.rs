@@ -710,12 +710,9 @@ impl Listings {
                 self.list(vfs, &folder);
             }
             let mut found = self.found(&folder, name);
-            // The file system answers for a name the listing lacks: either
-            // the file came after the listing, or its folder spells it
-            // otherwise. A fresh listing tells them apart. A name listed
-            // otherwise stands as the file system answers for it, and the
-            // folders below are listed by this spelling, as the file system
-            // also answers for them.
+            // A fresh listing separates a file created late from a
+            // respelling; below a respelled name the path follows the
+            // disk's spelling.
             if found == Found::Missing
                 && let Some(is_dir) = self.answers(vfs, folder.join(name))
             {
