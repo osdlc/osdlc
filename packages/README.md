@@ -191,7 +191,8 @@ Developed here, in this repository:
   coding-agent session in the terminal app, multiplexer or editor a person
   already uses, behind one host contract in optional parts)
 - `packages/ts/observe` (`@osdlc/observe` on npm, a JSONL log envelope with
-  correlation ids, agent session records, a process scan and reconcile)
+  correlation ids, a secret redactor in front of the writer, one envelope for
+  agent hook payloads, agent session records, a process scan and reconcile)
 - `packages/ts/tiered-dirs` (`@osdlc/tiered-dirs` on npm, machine-local
   directories by tier and home, the TypeScript implementation of the `tiered-dirs` crate)
 - `packages/ts/markdown-contract` (`@osdlc/markdown-contract` on npm,
@@ -271,6 +272,10 @@ Developed here, in this repository:
   that finds the branches, worktrees and remote branches that have been merged
   and can go away, with the evidence and the command for each, and applies an
   approved plan compare-and-swap)
+- `packages/ts/rule-review` (`@osdlc/rule-review` on npm, a tool and library
+  that reviews a change against the `CLAUDE.md` and `AGENTS.md` files that
+  govern it, one headless agent judgement per rule file, and runs a folder of
+  path-scoped check scripts)
 - `packages/ts/conformance-suites` (`@osdlc/conformance-suites` on npm, the `conformance-suites`
   command that checks the library families' suites in
   `packages/conformance/` against
