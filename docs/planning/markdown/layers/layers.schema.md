@@ -20,5 +20,5 @@ properties:
 # Layers
 
 One record per layer of the
-[architecture](https://github.com/osdlc/markdown/blob/main/docs/architecture.md). The body says in
+[architecture](https://github.com/osdlc/osdlc/blob/main/docs/architecture/markdown-target.md). The body says in
 one sentence what the layer does.

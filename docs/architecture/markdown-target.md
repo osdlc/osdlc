@@ -1,8 +1,9 @@
 # The markdown ecosystem architecture
 
-This is what we are building toward. The [plan](ecosystem-plan.md) says where we are today and the
-order of the work. This page says what the finished shape looks like. It is a draft, and some parts
-are still proposals. Those are marked.
+This is what we are building toward. The [plan](../planning/markdown/ecosystem-plan.md) says where
+we are today and the order of the work. This page says what the finished shape looks like. It is a
+draft, and some parts are still proposals. Those are marked. The Rust crates as they are today, and
+the planned split of their walk, are in [markdown-ecosystem.md](markdown-ecosystem.md).
 
 ## What it is for
 
@@ -26,7 +27,7 @@ the set of packages that lets programs do that safely, without breaking what peo
 
 ## The layers
 
-![The layers, top to bottom, with the packages in each](diagrams/architecture-layers.svg)
+![The layers, top to bottom, with the packages in each](img/markdown/architecture-layers.svg)
 
 The diagram shows the top layer first. Each layer uses only the layers below it. Here they are
 from the bottom up.
@@ -190,7 +191,7 @@ and waive are still proposals.
 - An org's principles reach team and project corpora through `references`, read-only. A local
   record cites a referenced one by id or by link. Narrowing it with `refines` or setting it aside
   with `waives` are proposals. See the plan's
-  [Sharing across corpora](ecosystem-plan.md#sharing-across-corpora) (tasks 27 to 30 and 70).
+  [Sharing across corpora](../planning/markdown/ecosystem-plan.md#sharing-across-corpora) (tasks 27 to 30 and 70).
 
 ### 7. Query (later)
 
@@ -221,7 +222,7 @@ the shared note parts.
 
 ## Three settings on a corpus
 
-![Level, dialect and profiles, with a root file example](diagrams/architecture-settings.svg)
+![Level, dialect and profiles, with a root file example](img/markdown/architecture-settings.svg)
 
 A corpus says three separate things about itself in its root file:
 
@@ -306,7 +307,7 @@ A twin can have extras the other doesn't need. It just has to pass the shared ca
 | Render, edit, sites | dev | osdlc |
 | Typed records from Rust | markdown-store in rust-ontogen | on the shared parts; where it lives is an open question |
 
-The order of the moves is in the plan's [tasks and milestones](planning/README.md).
+The order of the moves is in the plan's [tasks and milestones](../planning/markdown/README.md).
 
 ## Open questions
 

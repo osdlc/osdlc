@@ -2,7 +2,7 @@
 
 This guide explains corpus-schema in plain words: what it is, why we made it, how its levels work,
 why we chose what we chose, and where it is going. The rules themselves are in the spec,
-[SPEC.md](../packages/conformance/corpus-schema/SPEC.md).
+[SPEC.md](../../../conformance/corpus-schema/SPEC.md).
 This guide explains the spec, but SPEC.md is the rule. Where the two differ, follow SPEC.md, and
 tell us so we can fix the guide.
 
@@ -10,7 +10,7 @@ Version 0 of the spec is in force. While it is at version 0 we rewrite it in pla
 this guide describe proposals from the
 [Markdown Ecosystem Plan](../../../../docs/planning/markdown/ecosystem-plan.md)
 ([osdlc/markdown#4](https://github.com/osdlc/markdown/pull/4)) and the
-[architecture](architecture.md) ([osdlc/markdown#5](https://github.com/osdlc/markdown/pull/5)).
+[architecture](../../../../docs/architecture/markdown-target.md) ([osdlc/markdown#5](https://github.com/osdlc/markdown/pull/5)).
 Those parts say "Proposed" and are not built. Everything else describes what is on main in
 this repository today.
 
@@ -40,7 +40,7 @@ in any editor.
 
 We call such a folder a corpus: a folder of notes and the files they link to. The spec says what a
 corpus can declare about itself on top of its notes. The reference validator is the npm package
-[`@osdlc/corpus-schema`](https://github.com/osdlc/osdlc/tree/main/packages/ts/corpus-schema#readme),
+[`@osdlc/corpus-schema`](../README.md),
 and its command is `corpus-schema validate`.
 
 ## Why it exists
@@ -80,7 +80,7 @@ What it is not:
   records, keep an index and answer queries. corpus-schema is only the data definition, so that
   layer can be built on top of it, in any language, without changing the files.
 - It does not check the structure of a single document, such as its headings and sections.
-  [`@osdlc/markdown-contract`](https://github.com/osdlc/osdlc/tree/main/packages/ts/markdown-contract#readme)
+  [`@osdlc/markdown-contract`](../../markdown-contract/README.md)
   does that. corpus-schema checks a whole folder: data against schemas, and links, ids and
   references across files.
 
@@ -693,8 +693,8 @@ package already has dialects in this sense.
 
 A profile is a shared, versioned set of types that many corpora can follow: a parent corpus that
 holds types and no records. Two profiles are drafts in this repo, under `profiles/`. The
-[claims profile](../profiles/claims/README.md) is for statements backed by evidence; its design is in
-[the plan](ecosystem-plan.md). The [planning profile](../profiles/planning/README.md) holds tasks,
+[claims profile](https://github.com/osdlc/markdown/blob/main/profiles/claims/README.md) is for statements backed by evidence; its design is in
+[the plan](../../../../docs/planning/markdown/ecosystem-plan.md). The [planning profile](../../../../docs/planning/markdown/profile/README.md) holds tasks,
 milestones and decisions, and this repo's plan extends it by path. An sdlc profile is coming.
 
 - A corpus names its profiles in the root file under `extends:`, each under a short prefix. The
@@ -957,7 +957,7 @@ the tool, and the plural was easy to mistype. markdown-corpus was already the na
 crate that models any corpus. markdown-records fit only the levels that have records.
 `corpus-schema` was free on both npm and crates.io, so a later Rust implementation can use the
 same name. The decision is
-[D-01](https://github.com/osdlc/osdlc/blob/main/packages/ts/corpus-schema/docs/planning/decisions/D-01-name.md).
+[D-01](planning/decisions/D-01-name.md).
 
 ### "Corpus" as the word for a folder of notes
 
@@ -1110,7 +1110,7 @@ on a shared corpus model that does not exist in TypeScript yet. So the build wai
 Others considered: a 1.0 release.
 
 The version line is
-[D-02](https://github.com/osdlc/osdlc/blob/main/packages/ts/corpus-schema/docs/planning/decisions/D-02-version-line-and-stability.md),
+[D-02](planning/decisions/D-02-version-line-and-stability.md),
 which is still proposed and waits for the owner's sign-off. The package and the spec are new, so a
 1.0 promise would come too early. The first version on npm is `0.2.0`, and every export is stable within
 0.x. A minor release may change any export, and the changelog marks the change as breaking. A patch
@@ -1217,7 +1217,7 @@ item. The task numbers are the plan's [task records](planning/README.md).
 
 ## The plan for the spec
 
-The full plan is in [ecosystem-plan.md](ecosystem-plan.md), under review in
+The full plan is in [ecosystem-plan.md](../../../../docs/planning/markdown/ecosystem-plan.md), under review in
 [osdlc/markdown#4](https://github.com/osdlc/markdown/pull/4). This is the part that concerns the
 spec. The plan numbers each task, and the numbers still change while the plan is edited, so this
 section describes tasks by what they do.
@@ -1392,7 +1392,7 @@ jobs:
 ```
 
 Version 0.2.0 is on npm. For the current usage, check the
-[package README](../packages/ts/corpus-schema/README.md). A
+[package README](../README.md). A
 corpus's schemas run on its data, and a badly written `pattern` or `x-id-pattern` can take a very
 long time on some input. So validate a corpus you do not trust only with a time limit, such as the
 `timeout-minutes` above. Leave `--fix` out of CI checks: it rewrites files in place.

@@ -2,7 +2,7 @@
 
 This is a working plan. It says where our markdown packages are today, what is wrong with them,
 where we want to end up, and the steps to get there. We update it as we go. The shape we are
-building toward is in [the architecture](architecture.md).
+building toward is in [the architecture](../../architecture/markdown-target.md).
 
 ## Words we use
 
@@ -30,15 +30,15 @@ building toward is in [the architecture](architecture.md).
 
 ## The work
 
-The tasks, milestones and decisions are records in [planning/](planning/README.md), one Markdown
-file each. A task's file, such as [27 Org corpora](planning/tasks/27%20Org%20corpora.md), holds its
+The tasks, milestones and decisions are records in [this folder](README.md), one Markdown
+file each. A task's file, such as [27 Org corpora](tasks/27%20Org%20corpora.md), holds its
 status, its milestone, the tasks that must come first, and its plan. The
-[ecosystem explorer](../tools/explorer/README.md) shows the tasks and the components they change as
+[ecosystem explorer](../../../tools/explorer/README.md) shows the tasks and the components they change as
 graphs. Its data is built from the records.
 
 Each task is functional or supporting work, and belongs to one milestone. The
-[task schema](planning/tasks/tasks.schema.md) says what each kind means, and the
-[milestone schema](../profiles/planning/milestones/milestones.schema.md) of the planning profile
+[task schema](tasks/tasks.schema.md) says what each kind means, and the
+[milestone schema](profile/milestones/milestones.schema.md) of the planning profile
 says how a milestone's status follows from its tasks. The order of the npm work is in
 [the milestone](#milestone-upstream-corpora-over-npm).
 
@@ -96,7 +96,7 @@ the query layer (task 15).
 
 ## Where we are today
 
-![Every markdown package today, by layer, with the problems marked](diagrams/present.svg)
+![Every markdown package today, by layer, with the problems marked](../../architecture/img/markdown/present.svg)
 
 | Layer | TypeScript | Rust |
 |---|---|---|
@@ -134,7 +134,7 @@ What is published:
 The biggest problem is that five pieces of code each decide what a link points to, and they don't
 use the same rules.
 
-![Five places resolve links, each its own way](diagrams/resolvers.svg)
+![Five places resolve links, each its own way](../../architecture/img/markdown/resolvers.svg)
 
 | Id | Problem | Where |
 |---|---|---|
@@ -166,7 +166,7 @@ We follow four rules:
    examples. Packs, profiles and starter corpora live in osdlc/models (decision D17). The other
    packages stay in osdlc/osdlc until they move here. Apps use them from there.
 
-![The target, by layer](diagrams/target.svg)
+![The target, by layer](../../architecture/img/markdown/target.svg)
 
 In practice:
 
@@ -191,7 +191,7 @@ whose types it uses, through `extends` and `uses`. So a profile is not "level 3"
 such as the sdlc starter, gives records instead, through `references`. It works at any level, and
 `corpus-schema sync` copies it into `_references/<prefix>/`.
 
-![Levels 0 to 2 on one side, profiles on the other](diagrams/levels-profiles.svg)
+![Levels 0 to 2 on one side, profiles on the other](../../architecture/img/markdown/levels-profiles.svg)
 
 ### Proposal: a baseline and dialects
 
@@ -333,7 +333,7 @@ name overrides (task 24).
 
 ## Decisions
 
-Each decision is a record in [planning/decisions/](planning/decisions/), with
+Each decision is a record in [decisions/](decisions/), with
 its status and reasons.
 
 ### Names we considered

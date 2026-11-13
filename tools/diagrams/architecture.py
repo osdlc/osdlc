@@ -1,4 +1,4 @@
-"""Writes the architecture page's diagrams to docs/diagrams/architecture-*.svg.
+"""Writes the architecture page's diagrams to docs/architecture/img/markdown/architecture-*.svg.
 
 Run from the repo root: python3 tools/diagrams/architecture.py
 It uses build.py's shared style and helpers, so both pages look the same.

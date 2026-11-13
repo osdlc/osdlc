@@ -21,7 +21,7 @@ required. A type says which type it builds on with `x-extends: claims/statements
 every type above it. A child may add rules and tighten them, never loosen them. A type has one
 parent at first. This task also covers cross-corpus `x-ref`. A parent gives types only, so a local record
 may share an id with a parent's record (see [Sharing across
-corpora](https://github.com/osdlc/markdown/blob/main/docs/ecosystem-plan.md#sharing-across-corpora)).
+corpora](../ecosystem-plan.md#sharing-across-corpora)).
 It no longer waits on [sksizer/dev#4069](https://github.com/sksizer/dev/pull/4069): types are plain
 JSON Schema, so moving model-schema to osdlc is separate work. After 3 and 21. In progress in
 [#12](https://github.com/osdlc/markdown/pull/12).

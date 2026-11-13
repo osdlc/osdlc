@@ -1,4 +1,4 @@
-"""Writes the plan's diagrams to docs/diagrams/*.svg.
+"""Writes the plan's diagrams to docs/architecture/img/markdown/*.svg.
 
 Run from the repo root: python3 tools/diagrams/build.py
 Each SVG is standalone, with concrete colours and a dark-mode block. GitHub
@@ -9,7 +9,7 @@ import html
 import pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-OUT = ROOT / "docs" / "diagrams"
+OUT = ROOT / "docs" / "architecture" / "img" / "markdown"
 
 W = 440                    # viewBox width; reads on a phone without zooming
 CW, CH, GX, GY = 200, 46, 8, 8

@@ -2,7 +2,7 @@
 
 This folder holds the plan's tasks, milestones and decisions, and the components the plan changes.
 Each one is a record: a Markdown file whose frontmatter holds its fields and whose body holds its
-prose. The folder is a [corpus-schema](../../packages/conformance/corpus-schema/SPEC.md) corpus at
+prose. The folder is a [corpus-schema](../../../packages/conformance/corpus-schema/SPEC.md) corpus at
 level 2. That means each type folder holds a JSON Schema, and a validator checks every record
 against it.
 
@@ -16,7 +16,7 @@ Each folder below is a type. Its `<type>.schema.md` file lists the fields a reco
 what each one means.
 
 Tasks, milestones and decisions build on the
-[planning profile](../../profiles/planning/README.md), a corpus with only types. The root file
+[planning profile](profile/README.md), a corpus with only types. The root file
 names it under `extends` with the prefix `plan`. Tasks and milestones add fields, so each has a
 schema that names its profile type with `x-extends`, such as `x-extends: plan/tasks`. Decisions add
 none, so `uses: [plan/decisions]` in the root file gives the `decisions/` folder the profile's type,
@@ -28,15 +28,15 @@ with no schema file. A record passes the local schema and the profile's. The oth
 - [milestones](milestones/milestones.schema.md): a goal that a group of tasks reaches. The body is
   the goal. It adds `phase` and `beeline` to the profile's milestone. `phase` says which part of
   the ecosystem it builds: the store, the model above it, or harness knowledge. The profile's
-  [milestone schema](../../profiles/planning/milestones/milestones.schema.md) says how a
+  [milestone schema](profile/milestones/milestones.schema.md) says how a
   milestone's status follows from its tasks.
 - [decisions](decisions/): a choice the plan made, or one still open. The body states it and why.
-  It is the profile's [decision type](../../profiles/planning/decisions/decisions.schema.md), as it
+  It is the profile's [decision type](profile/decisions/decisions.schema.md), as it
   is, through `uses`.
 - [components](components/components.schema.md): a package, crate, spec, profile, corpus or app,
   where it lives today (`present`) and in the plan's end state (`target`), and what it depends on.
   The body is its purpose, then a `## Notes` list.
-- [layers](layers/layers.schema.md): a layer of the [architecture](../architecture.md). Each
+- [layers](layers/layers.schema.md): a layer of the [architecture](../../architecture/markdown-target.md). Each
   component sits in one.
 - [repos](repos/repos.schema.md): a repository that holds components.
 - [overlaps](overlaps/overlaps.schema.md): two components that do some of the same job.
@@ -50,7 +50,7 @@ with `x-ref`, and the validator checks that it points at a record of the right t
 
 1. Pick the next free number. Copy a task file and name the copy `<number> <short name>.md`.
 2. Fill in the fields that [tasks.schema.md](tasks/tasks.schema.md) and the profile's
-   [task schema](../../profiles/planning/tasks/tasks.schema.md) list. `after` holds the tasks it
+   [task schema](profile/tasks/tasks.schema.md) list. `after` holds the tasks it
    waits on, and `prs` the pull requests that do it.
 3. Write the plan in the body: what the task does, and what it waits on.
 4. Add a link to the task under `tasks` in its milestone's record, at the point where the work

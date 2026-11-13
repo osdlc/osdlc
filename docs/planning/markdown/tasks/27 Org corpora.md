@@ -16,5 +16,5 @@ whose types it builds on, and corpora under `references`, whose records it cites
 task 70). A parent gives types only. A named corpus is an npm package (a version range plus the
 lockfile pin), a git dependency for a private org corpus, or a local folder. Loading is transitive,
 and a cycle is an error. An update arrives when the lockfile changes. After 9. See [Sharing across
-corpora](https://github.com/osdlc/markdown/blob/main/docs/ecosystem-plan.md#sharing-across-corpora).
+corpora](../ecosystem-plan.md#sharing-across-corpora).
 In progress in [#12](https://github.com/osdlc/markdown/pull/12).

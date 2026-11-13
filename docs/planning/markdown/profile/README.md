@@ -3,7 +3,7 @@
 The planning profile is a set of record types for a plan: tasks, milestones and decisions. A corpus
 that keeps its plan as records can build on these types instead of writing its own.
 
-It is a [corpus-schema](../../packages/conformance/corpus-schema/SPEC.md) profile: a level-2
+It is a [corpus-schema](../../../../packages/conformance/corpus-schema/SPEC.md) profile: a level-2
 corpus that holds types and no records. Its package name is `@osdlc/corpus-profile-planning`. It
 is private for now and not on npm, so a corpus extends it by a path to this folder.
 
@@ -70,5 +70,5 @@ and `sync` copies only the corpora under `references`.
 
 ## Where it is used
 
-This repo's plan, [docs/planning/](../../docs/planning/README.md), extends it. Its tasks and
+The [Markdown Ecosystem Plan](../README.md) extends it. Its tasks and
 milestones add fields. Its decisions use the type as it is, through `uses`.

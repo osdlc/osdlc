@@ -11,4 +11,4 @@ after:
 
 Point other repos here (supporting): osdlc/osdlc, sksizer/dev, osdlc/skillwright and
 sksizer/rust-ontogen get the note in
-[pointing-here.md](https://github.com/osdlc/markdown/blob/main/docs/pointing-here.md). After 18.
+[pointing-here.md](../pointing-here.md). After 18.

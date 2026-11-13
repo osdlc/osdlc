@@ -7,8 +7,8 @@
   "author": "sksizer",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/osdlc/markdown.git",
-    "directory": "profiles/planning"
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "docs/planning/markdown/profile"
   },
   "keywords": [
     "corpus-schema",
@@ -17,7 +17,7 @@
     "markdown-as-data"
   ],
   "files": [
-    "corpus-schema.md",
+    "planning.corpus-schema.md",
     "tasks/",
     "milestones/",
     "decisions/",
