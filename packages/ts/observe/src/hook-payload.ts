@@ -70,8 +70,8 @@ export const HookEnvelopeSchema = z.object({
 
 /**
  * The envelope of one hook payload: who sent it, which event, for which
- * session and directory, and the body as sent. A field the payload lacks is
- * `null` and named in `missing`.
+ * session and directory, and the body as sent. Every field the payload lacks
+ * is named in `missing`: `event` is then `'unknown'`, the others `null`.
  *
  * @experimental
  */

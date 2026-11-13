@@ -10,16 +10,18 @@ import { LogEnvelopeSchema } from './envelope.ts'
 import { mergeRedactions, type Redactions, type Redactor } from './redactor.ts'
 import { appendJsonl, type AppendOptions } from './writer.ts'
 
-/** The log envelope's top-level keys: ids and structure, which {@link appendRedactedJsonl} writes as they are. */
+/**
+ * The log envelope's top-level keys. {@link appendRedactedJsonl} writes them without
+ * `redactJson`'s secret-key blanking, but a string value still passes `redact`.
+ */
 const ENVELOPE_KEYS: ReadonlySet<string> = new Set(Object.keys(LogEnvelopeSchema.shape))
 
-/** The value types an envelope key keeps its key for; anything else goes through `redactJson`. */
+/** With `null`, the value types that keep an envelope key out of `redactJson`. */
 const KEPT_TYPES: ReadonlySet<string> = new Set(['string', 'number', 'boolean'])
 
 /**
- * A line JSON would write as its own fields: an object literal or a class instance, but not
- * an array, a collection, an `Error`, a `Date`, a boxed primitive or a value with a `toJSON`,
- * which {@link Redactor.redactJson} converts first.
+ * A line JSON would write as its own fields: a plain object or class instance, not an array,
+ * a value with a `toJSON` or one of {@link CONVERTED}.
  */
 function isFieldRecord(v: unknown): v is Record<string, unknown> {
   if (v === null || typeof v !== 'object' || Array.isArray(v)) return false
@@ -27,6 +29,7 @@ function isFieldRecord(v: unknown): v is Record<string, unknown> {
   return !CONVERTED.some((type) => v instanceof type)
 }
 
+/** Types that {@link Redactor.redactJson} converts before walking, so a line holding one is redacted whole. */
 const CONVERTED = [Map, Set, Error, Date, String, Number, Boolean, BigInt]
 
 /**

@@ -33,7 +33,8 @@ first.
 
 - Translate a field only with a source for every harness. Otherwise pass it
   through in `raw` and say so. Never guess.
-- A field the payload lacks is `null` and named in `missing`, not filled in.
+- A field the payload lacks is named in `missing`, not guessed: `event` is
+  then `'unknown'`, the others `null`.
 - An empty string counts as missing.
 - The per-prompt id is read from each harness's own key: `turn_id` for Codex,
   `prompt_id` for the others once re-keyed.

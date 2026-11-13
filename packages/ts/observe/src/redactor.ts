@@ -165,7 +165,7 @@ async function secretlintRanges(text: string): Promise<RedactionRange[]> {
   return (await loadSecretlint())(text)
 }
 
-/** A regex whose capture group 1 is the secret (the rest is context to keep). */
+/** A regex whose last matched capture group is the secret; the rest of the match is kept as context. */
 interface GroupRule {
   id: string
   re: RegExp
@@ -239,7 +239,10 @@ const GROUP_RULES: GroupRule[] = [
   },
 ]
 
-/** The match starts with a password-like key name (`DB_PASSWORD=`, `pwd:`), whose value is never treated as code. */
+/**
+ * The match starts with a password-like key name (`DB_PASSWORD=`, `pwd:`), whose value counts
+ * as code only when it is a variable reference or a type name.
+ */
 const PASSWORD_LIKE_KEY = /^[A-Za-z0-9_-]*(?:pass|pwd|secret)/i
 
 /** The key is exactly `pwd` (the shell's working directory variable), whose path value is no secret. */
@@ -254,8 +257,8 @@ const TOKEN_COUNT_KEY = /^[A-Za-z0-9_-]*tokens["']?\s*[:=]/i
 /**
  * Object keys whose value is a secret (`auth` only exactly: `author` is not one; `pass` only as
  * a whole segment: `db_pass`, not `bypass`). `pwd` is left out: as a key it is usually a
- * directory. `token` does not match a plural (`input_tokens`, `tokensUsed`,
- * `completion_tokens_details` count) or `tokenizer`.
+ * directory. `token` does not match a plural, which is a count (`input_tokens`, `tokensUsed`,
+ * `completion_tokens_details`), or `tokenizer`.
  */
 const SECRET_KEY =
   /password|passwd|passphrase|(?:^|[_-])pass$|secret|token(?!s|izer)|api[_-]?key|access[_-]?key|private[_-]?key|credential|cookie|authorization|^auth$/i
