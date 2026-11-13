@@ -9,4 +9,4 @@ decisions to tasks, milestones and notes. The types are generated from `@osdlc/p
 its root file and takes its types through `uses: [sdlc/*]`, and the validator finds the types
 through the package's `"corpus"` field. A record's id is cut from its file name, so
 `P-0002-a-slug.md` has the id `P-0002`, and a decision may be a folder holding `README.md`. It
-needs `@osdlc/corpus-schema` 0.3.0 or later. Licence `MIT OR Apache-2.0`.
+needs `@osdlc/corpus-schema` 0.4.0 or later. Licence `MIT OR Apache-2.0`.
