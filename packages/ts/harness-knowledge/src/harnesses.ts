@@ -7,9 +7,9 @@ import { fact } from './query.js'
 
 /**
  * Short id to knowledge slug: the ids of detect-harness's built-in harnesses and agent-call's
- * agent names that the file has a harness for.
+ * agent names that the file has a harness for. Frozen at run time.
  */
-export const HARNESS_SLUGS: Readonly<Record<string, string>> = {
+export const HARNESS_SLUGS = Object.freeze({
   antigravity: 'antigravity',
   claude: 'claude-code',
   codex: 'codex',
@@ -20,18 +20,30 @@ export const HARNESS_SLUGS: Readonly<Record<string, string>> = {
   opencode: 'opencode',
   pi: 'pi',
   qwen: 'qwen-code',
+} as const)
+
+/** A short harness id: a key of {@link HARNESS_SLUGS}. */
+export type HarnessId = keyof typeof HARNESS_SLUGS
+
+/** A knowledge slug that a short id maps to: a value of {@link HARNESS_SLUGS}. */
+export type HarnessSlug = (typeof HARNESS_SLUGS)[HarnessId]
+
+const IDS = Object.keys(HARNESS_SLUGS) as HarnessId[]
+
+function isId(name: string): name is HarnessId {
+  return Object.hasOwn(HARNESS_SLUGS, name)
 }
 
 /** The knowledge slug for a short id; a slug resolves to itself; undefined for anything else. */
-export function slugFor(harness: string): string | undefined {
-  if (Object.hasOwn(HARNESS_SLUGS, harness)) return HARNESS_SLUGS[harness]
-  return Object.values(HARNESS_SLUGS).includes(harness) ? harness : undefined
+export function slugFor(harness: string): HarnessSlug | undefined {
+  if (isId(harness)) return HARNESS_SLUGS[harness]
+  return IDS.map((id) => HARNESS_SLUGS[id]).find((slug) => slug === harness)
 }
 
 /** The short id for a knowledge slug; an id resolves to itself; undefined for anything else. */
-export function idFor(harness: string): string | undefined {
-  if (Object.hasOwn(HARNESS_SLUGS, harness)) return harness
-  return Object.keys(HARNESS_SLUGS).find((id) => HARNESS_SLUGS[id] === harness)
+export function idFor(harness: string): HarnessId | undefined {
+  if (isId(harness)) return harness
+  return IDS.find((id) => HARNESS_SLUGS[id] === harness)
 }
 
 /**

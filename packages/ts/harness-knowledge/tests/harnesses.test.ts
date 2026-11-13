@@ -16,6 +16,10 @@ describe('HARNESS_SLUGS', () => {
   }
 })
 
+test('HARNESS_SLUGS cannot be changed at run time', () => {
+  expect(Object.isFrozen(HARNESS_SLUGS)).toBe(true)
+})
+
 test('slugFor and idFor map both ways, and a name passes through to itself', () => {
   expect(slugFor('claude')).toBe('claude-code')
   expect(slugFor('claude-code')).toBe('claude-code')
