@@ -1,7 +1,7 @@
 /**
  * Links in corpus-schema files (the corpus-schema spec's Links section,
- * packages/conformance/corpus-schema/SPEC.md): finding them in text, matching wikilinks by path
- * suffix, and writing the canonical relative Markdown link.
+ * packages/conformance/corpus-schema/SPEC.md): finding them in text, looking up bare-name
+ * wikilinks by path suffix, and writing the canonical relative Markdown link.
  */
 import { extname } from 'node:path'
 import { bodyLinksSpanned, stripCode } from '@osdlc/markdown-link'
@@ -106,7 +106,10 @@ export function wikilinkIndex(files: Iterable<string>): WikilinkIndex {
   return index
 }
 
-/** The files a wikilink target names: those whose path ends with it, compared after folding. */
+/**
+ * The files a bare-name wikilink names: those whose path ends with it, compared after folding. A
+ * wikilink that holds a path from its file resolves as a Markdown link does, not through this.
+ */
 export const matchWikilink = (target: string, index: WikilinkIndex): string[] =>
   index.get(fold(target.replace(/^\.\//, ''))) ?? []
 
