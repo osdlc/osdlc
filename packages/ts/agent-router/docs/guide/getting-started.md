@@ -1,4 +1,7 @@
-# A guide to the agent router
+---
+title: Getting started
+description: From the problem the router solves to a chosen launch, one step at a time, with the outputs shown.
+---
 
 This guide walks through the library from the problem it solves to a working profile walk, one
 step at a time. The [README](../../README.md) is the reference: every rule, table and edge case. Read
