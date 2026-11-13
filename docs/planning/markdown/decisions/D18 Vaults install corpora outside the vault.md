@@ -31,7 +31,7 @@ Prior art: Deno keeps a global cache and `deno.lock`. Go keeps a module cache an
 the project folder holds a lockfile and no copies of the dependencies.
 
 This does not change the beeline. Corpora installed through npm already work there. It comes after
-corpus-schema 0.3.0 (task 36), and it builds on
+corpus-schema 0.4.0 (task 36), and it builds on
 [D11](D11%20Upstream%20corpora%20travel%20as%20npm%20packages.md) and
 [D15](D15%20Extending%20types%20and%20referencing%20corpora%20are%20separate.md).
 
