@@ -18,6 +18,11 @@ of them.
 - Each library lives in `packages/<language>/<name>/`, for example
   `packages/ts/command-seam/`. TypeScript libraries are under `packages/ts/`
   and Rust crates under `packages/rust/`.
+- corpus-schema profiles and corpora are npm packages that hold Markdown and
+  JSON Schema and no code. Profiles are under `packages/profiles/` and
+  corpora under `packages/corpora/`, as members of the pnpm workspace, and
+  `.github/workflows/profiles.yml` checks them. `packages/corpora/examples/`
+  is an example pair, not a package.
 - TypeScript libraries are published to npm from CI with
   [Changesets](https://changesets.dev). `.github/workflows/packages-publish.yml`
   publishes through npm trusted publishing, with provenance, so no npm token
