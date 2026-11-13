@@ -57,7 +57,7 @@ needs phase 1 and a decision. Phase 5 is last.
 - [ ] Merge the decision record and this plan
       ([#789](https://github.com/osdlc/osdlc/pull/789)).
 - [ ] Comment on osdlc/markdown #15, #16 and #19 with a link to #789, so no
-      more work goes into the old layout. #20 already has the note.
+      more work goes into the old layout. #20 has the note but is closed.
 - [ ] Merge the holding-pen READMEs:
       [osdlc/markdown#22](https://github.com/osdlc/markdown/pull/22) and
       [osdlc/models#2](https://github.com/osdlc/models/pull/2). Each says the
@@ -101,18 +101,25 @@ it does no harm.
       table does not list is dropped.
 - [ ] Point the plan's `extends` at the planning profile's new place, and
       check the records with `corpus-schema` 0.3.0.
-- [ ] Fix what else the new paths break: links between the docs, the diagram
-      scripts' output paths, the explorer's path to the plan records, and the
-      three `tools/*.sh` scripts.
+- [ ] Fix what else the new paths break: links between the docs, the
+      output path of `tools/diagrams/build.py` and `architecture.py` (now
+      `docs/architecture/img/markdown/`), the default records path in the
+      explorer's `scripts/build-data.mjs` (now `docs/planning/markdown`), and
+      the three `tools/*.sh` scripts.
 - [ ] Merge the two copies of `docs/terms/corpus-schema.md` by hand.
 - [ ] `docs/architecture/markdown-ecosystem.md` here covers the crates.
       Link it and `markdown-target.md` to each other.
-- [ ] Add the explorer to the pnpm workspace. It has its own lockfile, which
-      goes.
+- [ ] Add the explorer to the pnpm workspace (`tools/explorer` in
+      `pnpm-workspace.yaml`). Its own lockfile goes, its `link:` to
+      `corpus-schema` becomes `workspace:*`, and the tools the catalog
+      already pins (`typescript`, `vitest`, `yaml`, `@types/node`) become
+      `catalog:`.
 - [ ] Bring the three workflows over as path-filtered jobs: `planning.yml`
       (checks the plan records), `diagrams.yml` and `examples.yml`. They pin
       this repository's shared workflows by commit; here they call them by
-      path.
+      path. Third-party actions are pinned by SHA, as in this repository's
+      other workflows. Check that the explorer's committed `data/*.json`
+      match the records.
 - [ ] Transfer the open issue
       [osdlc/markdown#8](https://github.com/osdlc/markdown/issues/8) here.
 
@@ -159,6 +166,9 @@ Needs phase 2. The plan's records still describe the split.
       the second is now `@osdlc/markdown-vault-astro`.
 - [ ] Add component records for `markdown-render-vue` and `slug-collate`.
 - [ ] Link the plan to this file.
+- [ ] Update the diagram data in `tools/diagrams/build.py` (`PRESENT`,
+      `TARGET` and their keys) and `architecture.py`: they are written by
+      hand, not read from the records, and show the split D-SM4K reverses.
 - [ ] Rebuild the diagrams and the explorer's data.
 
 ### Phase 4: the models
@@ -208,6 +218,8 @@ once matured. They are not archived.
   tasks under `docs/planning/markdown/`, beside this repository's
   `docs/decisions/`. Moving the plan's records to sdlc entities is a later
   step.
+- Improving the explorer and the diagrams. They come over as they are, and
+  are aligned with sksizer/dev's views of the same kind later.
 - The sdlc plugin packs install `@osdlc/markdown-link` from a vendored 0.1.0
   tarball. That is a separate update.
 - osdlc/marketplace and osdlc/skillwright. They stay as they are.
@@ -216,4 +228,4 @@ once matured. They are not archived.
 
 | Phase | Pull request                                    | State |
 | ----- | ----------------------------------------------- | ----- |
-| 0     | [#789](https://github.com/osdlc/osdlc/pull/789) | Draft |
+| 0     | [#789](https://github.com/osdlc/osdlc/pull/789) | Open  |
