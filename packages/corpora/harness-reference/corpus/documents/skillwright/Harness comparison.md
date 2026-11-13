@@ -2,7 +2,7 @@
 title: Harness comparison
 documentType: research note
 urls:
-  - https://github.com/osdlc/skillwright/blob/main/harness-reference/corpus/notes/harness-comparison.md
+  - https://github.com/osdlc/osdlc/blob/main/packages/corpora/harness-reference/corpus/notes/harness-comparison.md
 publisher: skillwright
 ---
 

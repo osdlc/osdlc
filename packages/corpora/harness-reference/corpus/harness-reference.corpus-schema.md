@@ -6,7 +6,7 @@ level: 2
 # Harness reference
 
 A cited record of coding-agent harnesses, in the shape of the
-[claims profile](https://github.com/osdlc/markdown/pull/6): what each harness is, and claims about
+[claims profile](https://github.com/osdlc/osdlc/tree/main/packages/profiles/claims): what each harness is, and claims about
 how it behaves, each with the evidence behind it.
 
 - [Harnesses](harnesses/harnesses.schema.md): one note per harness, such as

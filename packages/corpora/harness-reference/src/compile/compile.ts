@@ -16,8 +16,8 @@ import { lint } from '../corpus/lint.ts'
 import { compareScopes, type Versioning } from '../corpus/versions.ts'
 import { KNOWLEDGE_SCHEMA, type Knowledge, type KnowledgeValue, type Scope } from './knowledge.ts'
 
-export const REPO = 'osdlc/skillwright'
-export const CORPUS_PATH = 'harness-reference/corpus'
+export const REPO = 'osdlc/osdlc'
+export const CORPUS_PATH = 'packages/corpora/harness-reference/corpus'
 const ROOT = resolve(import.meta.dirname, '../..')
 
 /** The URL of a corpus file at `commit`, which never moves. */

@@ -1,5 +1,5 @@
 {
-  "_": "Shared by harness-reference/src/corpus/versions.test.ts and tradecraft-core's harness/knowledge.rs tests, so the two validators and orderings cannot drift.",
+  "_": "Read by src/corpus/versions.test.ts. osdlc/skillwright's tradecraft-core keeps a copy for its harness/knowledge.rs tests, so the two validators and orderings do not drift.",
   "valid": [
     ["semver", "1.2.3", true],
     ["semver", "1.0.0-rc.1+build.5", true],

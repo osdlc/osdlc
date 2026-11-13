@@ -1,7 +1,6 @@
 {
   // Typechecks the harness reference tools. Node runs these files directly
-  // (type stripping), so this only checks; nothing is emitted. Same settings
-  // as scripts/tsconfig.json.
+  // (type stripping), so this only checks; nothing is emitted.
   "compilerOptions": {
     "target": "ES2023",
     "lib": ["ES2023"],

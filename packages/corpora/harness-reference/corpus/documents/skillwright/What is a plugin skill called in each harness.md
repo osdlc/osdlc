@@ -2,7 +2,7 @@
 title: What is a plugin skill called in each harness?
 documentType: research note
 urls:
-  - https://github.com/osdlc/skillwright/blob/main/harness-reference/corpus/notes/skill-naming-across-harnesses.md
+  - https://github.com/osdlc/osdlc/blob/main/packages/corpora/harness-reference/corpus/notes/skill-naming-across-harnesses.md
 publisher: skillwright
 ---
 

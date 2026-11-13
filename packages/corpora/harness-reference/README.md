@@ -4,8 +4,8 @@ A versioned, cited record of how coding-agent harnesses differ: where they read 
 instructions, how skills are named and called, which frontmatter fields they honour, their plugin,
 hook and MCP formats, and their CLI session surface. Every value has a date and a source.
 
-The record is one [corpus-schema](https://github.com/osdlc/osdlc/blob/main/packages/conformance/corpus-schema/SPEC.md)
-corpus.
+The record is one [corpus-schema](../../conformance/corpus-schema/SPEC.md) corpus. It came here from
+osdlc/skillwright (`harness-reference/`), with its history.
 
 - `corpus/`: a claims corpus of harnesses, documents, methods, study results, subjects and
   statements. The package has one corpus, so it is not under `corpora/<name>/`. Each type's
@@ -16,11 +16,13 @@ corpus.
 - `probes/`: reproducible runs that back `run` study results. Most are also held as methods in
   the corpus (`corpus/methods/`). `probes/` is not validated.
 - `src/corpus/`: `capture`, which writes study results from a fetched page; `lint`, the rules that
-  compare records; and tests. The corpus is checked by the
-  [`@osdlc/corpus-schema`](https://www.npmjs.com/package/@osdlc/corpus-schema) validator, a
-  published package.
+  compare records; and tests. The corpus is checked by this repository's validator,
+  [`@osdlc/corpus-schema`](../../ts/corpus-schema/), a workspace package.
 - `src/compile/`: `compile`, which reads the corpus and writes `dist/harness-knowledge.json`, and
   `lookup`, which reads that file. See [The compiled file](#the-compiled-file).
+
+The package is private and is not published. What ships is the compiled file, in
+[`@osdlc/harness-knowledge`](../../ts/harness-knowledge/).
 
 ## Probes
 
@@ -32,7 +34,8 @@ its method. The older probes in `probes/<id>/probe.md` are moving into `corpus/m
 
 ## Checking it
 
-Node 24 runs the TypeScript in `src/` directly. From this folder:
+Node 24 runs the TypeScript in `src/` directly. Build the validator once, with
+`sh tools/build-corpus-schema.sh` at the repository root. Then, from this folder:
 
 ```sh
 pnpm run validate       # corpus-schema validate corpus
@@ -44,8 +47,9 @@ pnpm run capture ...    # write a study result; see corpus/README.md
 pnpm run compile        # write dist/harness-knowledge.json and its schema (not committed)
 ```
 
-CI runs `pnpm run check` when anything under `harness-reference/`, the workflow file
-(`.github/workflows/harness-reference.yml`) or `pnpm-lock.yaml` changes.
+CI (`.github/workflows/harness-reference.yml`) runs `pnpm run check` when this folder, the
+validator or `packages/ts/harness-knowledge/data/` changes. It also checks the compiled file
+`@osdlc/harness-knowledge` ships against the corpus.
 
 ## The compiled file
 
@@ -58,8 +62,7 @@ CI runs `pnpm run check` when anything under `harness-reference/`, the workflow 
 
 `--commit <sha>` sets the commit the permalinks point at; it defaults to `git rev-parse HEAD`.
 `--no-schema` skips the schema file. `--slice <file>` keeps only the harnesses and subjects the
-JSON file lists, drops `valueSchema`, writes compact JSON and no schema file; `pnpm run
-compile:embed` uses it to write the copy tradecraft-core embeds.
+JSON file lists, drops `valueSchema`, writes compact JSON and no schema file.
 `compile` refuses a corpus that fails validation or lint.
 
 `lookup(knowledge, harness, subject, { version, platform, model, accept })` in

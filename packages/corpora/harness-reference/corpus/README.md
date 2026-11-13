@@ -1,17 +1,17 @@
 # Harness reference corpus
 
 A cited record of coding-agent harnesses, in the shape of the
-[claims profile](https://github.com/osdlc/markdown/pull/6) (VA-Spec 1.1.0): what each harness is,
+[claims profile](../../../profiles/claims/README.md) (VA-Spec 1.1.0): what each harness is,
 and claims about how it behaves, each with the evidence behind it.
 
 The corpus follows
-[corpus-schema](https://github.com/osdlc/osdlc/blob/main/packages/conformance/corpus-schema/SPEC.md).
-It is data only. The validator is the
-[`@osdlc/corpus-schema`](https://www.npmjs.com/package/@osdlc/corpus-schema) package from npm.
+[corpus-schema](../../../conformance/corpus-schema/SPEC.md).
+It is data only. The validator is this repository's
+[`@osdlc/corpus-schema`](../../../ts/corpus-schema/), a workspace package.
 
 ## Layout
 
-- `corpus-schema.md`: the root file. Its frontmatter marks the folder as a corpus; its body is the
+- `harness-reference.corpus-schema.md`: the root file. It names the corpus `harness-reference`. Its frontmatter marks the folder as a corpus; its body is the
   front page.
 - `harnesses/`: one record per harness, named after the product as the vendor writes it, such as
   `Claude Code.md`. A required `slug` (`claude-code`) is its stable key.
@@ -115,7 +115,7 @@ on a note. Replace the note with the upstream page as study results are captured
 ## Recording a study result
 
 `capture` fetches a page, checks that a quote occurs on it, and writes a study result. From
-`harness-reference/`:
+`packages/corpora/harness-reference/`:
 
 ```sh
 pnpm run capture --harness "Codex CLI" --document "https://github.com/openai/codex" \
@@ -148,7 +148,8 @@ record. `capture` writes page kinds only. A run is written by hand and links its
 
 ## Checking it
 
-From `harness-reference/`:
+From `packages/corpora/harness-reference/`, after `sh tools/build-corpus-schema.sh` at the
+repository root:
 
 ```sh
 pnpm run validate        # corpus-schema validate corpus

@@ -2,7 +2,7 @@
 title: "DeepSeek Harness (dsh): harness notes for a dispatcher"
 documentType: research note
 urls:
-  - https://github.com/osdlc/skillwright/blob/main/harness-reference/corpus/notes/harnesses-deepseek.md
+  - https://github.com/osdlc/osdlc/blob/main/packages/corpora/harness-reference/corpus/notes/harnesses-deepseek.md
 publisher: skillwright
 ---
 

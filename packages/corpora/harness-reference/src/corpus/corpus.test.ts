@@ -46,7 +46,7 @@ describe('corpus', () => {
       const { errors } = validateCorpus(dir)
       const has = (part: string): boolean => errors.some((e) => e.includes(part))
       assert.ok(has('harnesses/Claude Code.md: license: not allowed here'), errors.join('\n'))
-      assert.ok(has('harnesses/Gemini CLI.md: successor: README.md is not a harnesses record'))
+      assert.ok(has('harnesses/Gemini CLI.md: successor: README.md is not a record of type harnesses'))
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
@@ -75,7 +75,7 @@ describe('corpus', () => {
       const { errors } = validateCorpus(dir)
       const has = (part: string): boolean => errors.some((e) => e.includes(part))
       assert.ok(
-        has('harnesses/Amp.md: sources: harnesses/Kiro.md is not a documents record'),
+        has('harnesses/Amp.md: sources: harnesses/Kiro.md is not a record of type documents'),
         errors.join('\n'),
       )
       assert.ok(has('study-results/2026-11-08 no document.md: reportedIn: required'))
@@ -155,8 +155,8 @@ describe('documents.schema.md doi', () => {
 })
 
 describe('files in this repository', () => {
-  const repo = resolve(corpus, '../..')
-  const blob = 'https://github.com/osdlc/skillwright/blob/main/'
+  const repo = resolve(corpus, '../../../..')
+  const blob = 'https://github.com/osdlc/osdlc/blob/main/'
 
   test('every document URL into this repository names a file that exists', () => {
     const { records } = validateCorpus(corpus)

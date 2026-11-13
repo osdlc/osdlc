@@ -54,8 +54,8 @@ describe('compile', () => {
     const k = compile(loadCorpus(CORPUS_ROOT), SHA)
     assert.equal(k.schema, 1)
     assert.deepEqual(k.corpus, {
-      repo: 'osdlc/skillwright',
-      path: 'harness-reference/corpus',
+      repo: 'osdlc/osdlc',
+      path: 'packages/corpora/harness-reference/corpus',
       commit: SHA,
     })
     assert.ok(k.values.length >= 30)
@@ -76,11 +76,11 @@ describe('compile', () => {
     const v = k.values.find((x) => x.harness === 'claude-code' && x.subject === 'cli/session-env')
     assert.equal(
       v?.basis,
-      `https://github.com/osdlc/skillwright/blob/${SHA}/harness-reference/corpus/statements/Claude%20Code/Claude%20Code%20Session%20environment.md`,
+      `https://github.com/osdlc/osdlc/blob/${SHA}/packages/corpora/harness-reference/corpus/statements/Claude%20Code/Claude%20Code%20Session%20environment.md`,
     )
     assert.equal(
       permalink('c', 'a b/c.md'),
-      'https://github.com/osdlc/skillwright/blob/c/harness-reference/corpus/a%20b/c.md',
+      'https://github.com/osdlc/osdlc/blob/c/packages/corpora/harness-reference/corpus/a%20b/c.md',
     )
     assert.deepEqual(v?.value, { vars: ['CLAUDE_CODE_SESSION_ID', 'CLAUDE_PID'] })
     assert.equal(v?.strength, 'strong')
