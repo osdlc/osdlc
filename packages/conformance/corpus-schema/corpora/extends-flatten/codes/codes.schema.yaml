@@ -1,0 +1,3 @@
+x-extends: org/principles
+additionalProperties: false
+required: [status]
