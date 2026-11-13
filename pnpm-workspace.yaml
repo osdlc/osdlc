@@ -1,8 +1,17 @@
-# Only the TypeScript packages, packages/ts/*, are a workspace. The plugin
-# packs under .claude-plugin/, .agents/, .cursor-plugin/ and .pi/ install on
-# their own.
+# The workspace is the TypeScript packages, packages/ts/*, the corpus-schema
+# profiles and corpora, packages/profiles/* and packages/corpora/*, and the
+# Markdown Ecosystem Plan's explorer, tools/explorer, which is private and reads
+# the plan with packages/ts/corpus-schema. The profiles and corpora hold
+# Markdown and JSON Schema and no code. The example pair under
+# packages/corpora/examples/ is not a member: fernlog installs the claims
+# profile on its own, as a consumer would. The plugin packs under
+# .claude-plugin/, .agents/, .cursor-plugin/ and .pi/ install on their own, and
+# so does site/.
 packages:
   - 'packages/ts/*'
+  - 'packages/profiles/*'
+  - 'packages/corpora/*'
+  - 'tools/explorer'
 
 # Third-party versions shared by more than one package, and the dev tooling
 # every package uses. A package or the root names one as `"catalog:"` so a bump
@@ -26,3 +35,8 @@ catalog:
   '@changesets/cli': 3.0.3
   publint: 0.3.24
   smol-toml: ^1.7.0
+
+# Dependencies whose install scripts pnpm runs. vue-demi, under the explorer's
+# @vue-flow packages, picks its Vue 3 build at install.
+onlyBuiltDependencies:
+  - vue-demi
