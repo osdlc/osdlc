@@ -110,8 +110,8 @@ export function createPerfRecorder(options: PerfRecorderOptions = {}) {
   }
   const write = () => {
     try {
-      // A lock untouched for 10 s was left by a worker that died holding it,
-      // and is taken over.
+      // withLock takes over a lock left by a worker that died holding it
+      // (staleMs in @osdlc/file-lock).
       withLock(`${outFile}.lock`, merge, { timeoutMs: lockDeadlineMs })
     } catch (err) {
       if (!(err instanceof LockTimeoutError)) throw err

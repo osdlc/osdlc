@@ -12,15 +12,12 @@
 # of stories that no longer exist (only those the filter covers). Commit what
 # it writes.
 #
-# The baselines are Linux PNGs, because CI is Linux and font rasterisation
-# differs across platforms. So the browser always runs in the pinned Playwright
-# image, as linux/amd64 to match the CI runner exactly; on Apple silicon Docker
-# runs it under emulation. That makes the comparison exact: no pixel may differ
-# by more than a colour distance of 0.02, and the same command gives the same
-# answer on a laptop and in CI. The static Storybook is served inside the
-# container, so no host port is used.
+# The browser always runs in the pinned Playwright image as linux/amd64, so a
+# laptop and CI produce the same pixels (why: D-03,
+# https://github.com/osdlc/osdlc/blob/main/packages/ts/story-harness/docs/planning/decisions/D-03-baselines-in-a-pinned-container.md).
+# The static Storybook is served inside the container, so no host port is used.
 #
-# SHOT_WORKERS=N sets the Playwright worker count in the container (default 6).
+# SHOT_WORKERS=N sets the Playwright worker count in the container.
 # STORY_SHOTS_PLATFORM sets the container platform (default linux/amd64).
 #
 # On a failure the expected/actual/diff images are in

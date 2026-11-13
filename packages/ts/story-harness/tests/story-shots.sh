@@ -3,7 +3,7 @@
 # a fixture build, then check against them, then make a story differ and
 # expect the check to fail. Needs Docker and the built dist/.
 #
-#   npm run test:shots
+#   pnpm run test:shots
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"

@@ -1,11 +1,11 @@
 /**
  * Capture stories of a built Storybook to PNG files, with no comparison. This
- * is the host-side tool for documentation shots (an exploration direction's
- * README images); the baseline check is the `story-shots` command.
+ * is the host-side tool for documentation shots; the baseline check is the
+ * `story-shots` command.
  *
- * By default shots are taken in the light theme at 1440x900. A story id
+ * By default shots are taken in the light theme at {@link VIEWPORT}. A story id
  * containing `-dark` is shot dark; an id ending in `-narrow` is shot at
- * 1024x720; a story with `parameters.screenshot.narrow` gets a second
+ * {@link NARROW_VIEWPORT}; a story with `parameters.screenshot.narrow` gets a second
  * `--narrow` shot. Each file is named after the story id with the prefix
  * removed. {@link CaptureOptions.themes}, {@link CaptureOptions.viewport} and
  * {@link CaptureOptions.outLayout} replace those defaults.
@@ -48,7 +48,7 @@ export interface CaptureOptions {
    * id containing `-dark`, light otherwise.
    */
   themes?: readonly Theme[] | undefined
-  /** Viewport for every shot, also for `-narrow` ids and the `--narrow` extra shot (which is then left out). Default 1440x900. */
+  /** Viewport for every shot, also for `-narrow` ids and the `--narrow` extra shot (which is then left out). Default {@link VIEWPORT}. */
   viewport?: { width: number; height: number } | undefined
   /**
    * `flat` (default) writes `<outDir>/<name>.png`, or `<outDir>/<name>--<theme>.png`
@@ -105,7 +105,6 @@ export async function captureStories(opts: CaptureOptions): Promise<boolean> {
         const shoot = async (theme: Theme, suffix: string) => {
           const byTheme = opts.outLayout === 'by-theme'
           if (byTheme) await mkdir(join(opts.outDir, name), { recursive: true })
-          // In the flat layout, several themes each need their own file.
           const themed = themes.length > 1 ? `--${theme}` : ''
           const file = byTheme ? `${name}/${theme}${suffix}.png` : `${name}${themed}${suffix}.png`
           await page.screenshot({ path: join(opts.outDir, file) })

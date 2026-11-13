@@ -33,6 +33,10 @@
 # git never run against a real one. A run that is not a pull request picks
 # every package, so a failure here also blocks a release.
 #
+# `story-harness` runs story-harness's browser tests and its `story-shots`
+# command end to end in Docker, which `verify` does not set up, when
+# story-harness is picked. It blocks a release the same way.
+#
 # Every action is pinned to a commit SHA; the comment names its release.
 name: packages
 
@@ -164,10 +168,7 @@ jobs:
 
   # Not required by the ruleset, but packages-publish.yml calls this workflow
   # before every release, so a failure here blocks every library's release,
-  # as old-git does. story-harness drives Chromium and Docker, which
-  # `verify` does not install: its browser tests run here, then the
-  # `story-shots` command end to end against a fixture build, in the pinned
-  # Playwright image on the runner's Docker.
+  # as old-git does. `verify` does not install Chromium or use Docker.
   story-harness:
     name: story-harness (browser and Docker, ubuntu-latest, node 24)
     needs: packages

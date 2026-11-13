@@ -32,9 +32,9 @@ export interface StoryMark {
 export interface StoryHarness {
   /** Rows the component has mounted now. */
   rows(): number
-  /** Settles with the `story:first-rows` mark's start time. */
+  /** Settles with the {@link FIRST_ROWS_MARK} mark's start time. */
   ready: Promise<number>
-  /** Every mark whose name starts with `story:`, in time order. */
+  /** Every mark whose name starts with {@link MARK_PREFIX}, in time order. */
   marks(): StoryMark[]
 }
 
@@ -54,7 +54,7 @@ let pendingFrame: number | undefined
 
 /**
  * Call once in a perf story's setup. Marks `story:mount` now and
- * `story:first-rows` on the first painted frame with rows (double
+ * {@link FIRST_ROWS_MARK} on the first painted frame with rows (double
  * `requestAnimationFrame`), and exposes {@link StoryHarness} on `window`.
  * A second call stops the first call's loop; its `ready` never settles.
  */
