@@ -339,11 +339,11 @@
       ],
       "repo": {
         "present": null,
-        "target": "osdlc/markdown"
+        "target": "osdlc/osdlc"
       },
       "path": {
         "present": null,
-        "target": "docs/planning"
+        "target": "docs/planning/markdown"
       },
       "status": "in-progress",
       "version": null,
@@ -351,6 +351,7 @@
       "twin": null,
       "purpose": "This plan's tasks, milestones and decisions, and the components it changes, kept as records. The explorer's data is built from it.",
       "notes": [
+        "Built in osdlc/markdown#13 and #14 at docs/planning. It comes to osdlc/osdlc at docs/planning/markdown (decision D19).",
         "Today it extends the planning profile. Its tasks and milestones add fields, and its decisions use the profile's type as it is.",
         "Task 53 makes it the first remote consumer of the sdlc profile and the starter corpus, from npm. Its records move to sdlc ids and fields, and the planning profile is deleted.",
         "Its components, layers, repos, overlaps and datasets are its own types. They describe this ecosystem, so they stay out of the profile."
@@ -445,7 +446,7 @@
     },
     {
       "id": "markdown-astro",
-      "name": "@osdlc/markdown-astro",
+      "name": "@osdlc/markdown-vault-astro",
       "kind": "package",
       "language": "ts",
       "layer": "render",
@@ -454,21 +455,22 @@
         "target"
       ],
       "repo": {
-        "present": "sksizer/dev",
+        "present": "osdlc/osdlc",
         "target": "osdlc/osdlc"
       },
       "path": {
-        "present": "packages/ts/markdown-astro",
-        "target": "packages/ts/markdown-astro"
+        "present": "packages/ts/markdown-vault-astro",
+        "target": "packages/ts/markdown-vault-astro"
       },
-      "status": "in-progress",
-      "version": null,
-      "registry": null,
+      "status": "published",
+      "version": "0.8.0",
+      "registry": "https://www.npmjs.com/package/@osdlc/markdown-vault-astro",
       "twin": null,
       "purpose": "Brings an Obsidian vault into Astro content collections: rewrites embeds, copies assets and resolves wikilinks at build time.",
       "notes": [
-        "Version 0.1.0 in dev; not on npm.",
-        "osdlc/osdlc#719 moved it, but it merged into the branch of draft #720, not into main. The architecture still calls #719 open.",
+        "Renamed from @osdlc/markdown-astro. First release 0.8.0 on npm, from osdlc/osdlc (osdlc/osdlc#720; #719 merged into its branch). It ships a markdown-vault-astro command.",
+        "It also depends on @osdlc/cli-tool, a general library with no record here.",
+        "sksizer/dev still has its own private copy at packages/ts/markdown-astro. Nothing moves out of dev yet (decision D19).",
         "Problem F1: it resolves links its own way (resolveRef takes the first match and finds embeds by file name). Task 13 switches it to the shared model and resolver."
       ],
       "tasks": [
@@ -499,7 +501,7 @@
       ],
       "repo": {
         "present": "sksizer/dev",
-        "target": "osdlc/osdlc"
+        "target": "sksizer/dev"
       },
       "path": {
         "present": "packages/ts/markdown-editor",
@@ -511,7 +513,7 @@
       "twin": null,
       "purpose": "An Obsidian-style live-preview Markdown editor on CodeMirror 6, with a Vue 3 wrapper.",
       "notes": [
-        "Private in dev at 0.5.1. Task 17 moves it to osdlc after osdlc/osdlc#719 and #720. There is no PR for it yet."
+        "Private in dev at 0.5.1. It stays in sksizer/dev for now (decision D19). Task 17 planned to move it to osdlc; there was no PR for that."
       ],
       "tasks": [
         17
@@ -530,22 +532,22 @@
         "target"
       ],
       "repo": {
-        "present": "sksizer/dev",
+        "present": "osdlc/osdlc",
         "target": "osdlc/osdlc"
       },
       "path": {
         "present": "packages/ts/markdown-render",
         "target": "packages/ts/markdown-render"
       },
-      "status": "in-progress",
-      "version": null,
-      "registry": null,
+      "status": "published",
+      "version": "0.8.0",
+      "registry": "https://www.npmjs.com/package/@osdlc/markdown-render",
       "twin": null,
-      "purpose": "Turns Markdown, including Obsidian's wikilinks, embeds, callouts and tags, into HTML, with Vue 3 components.",
+      "purpose": "Turns Markdown, including Obsidian's wikilinks, embeds, callouts and tags, into HTML. It has no framework: the Vue components are in markdown-render-vue.",
       "notes": [
-        "Private in dev at 0.5.0; not on npm.",
-        "Near target: draft osdlc/osdlc#720 moves it to osdlc for a first release at 0.8.0, and finds links with @osdlc/markdown-link.",
-        "On that branch it reads the markdown-tags conformance cases."
+        "First release 0.8.0 on npm, from osdlc/osdlc (osdlc/osdlc#720). It finds wikilinks and embeds with @osdlc/markdown-link's body scanner.",
+        "The Vue components were its `./vue` entry. They are now @osdlc/markdown-render-vue.",
+        "sksizer/dev still has its own private copy at packages/ts/markdown-render, which uses dev's copies of markdown-link and markdown-tags. Nothing moves out of dev yet (decision D19)."
       ],
       "tasks": [
         17
@@ -559,6 +561,49 @@
       "source": "docs/planning/markdown/components/markdown-render.md"
     },
     {
+      "id": "markdown-render-vue",
+      "name": "@osdlc/markdown-render-vue",
+      "kind": "package",
+      "language": "ts",
+      "layer": "render",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": "packages/ts/markdown-render-vue",
+        "target": "packages/ts/markdown-render-vue"
+      },
+      "status": "published",
+      "version": "0.8.0",
+      "registry": "https://www.npmjs.com/package/@osdlc/markdown-render-vue",
+      "twin": null,
+      "purpose": "Vue 3 components over markdown-render's output: a MarkdownRender component that walks the HTML tree into VNodes, never v-html, with built-in parts for wikilinks, tags, embeds, callouts, math, diagrams, code and tables.",
+      "notes": [
+        "It was markdown-render's `./vue` entry. First release 0.8.0 on npm, from osdlc/osdlc (osdlc/osdlc#720).",
+        "Its package.json is at 0.8.1 after osdlc/osdlc#781, but npm's latest is still 0.8.0.",
+        "vue ^3.5 is its only peer. The host injects a NoteSource that resolves links and loads embeds."
+      ],
+      "tasks": [
+        17
+      ],
+      "links": [
+        {
+          "label": "osdlc/osdlc#720",
+          "url": "https://github.com/osdlc/osdlc/pull/720"
+        },
+        {
+          "label": "osdlc/osdlc#781",
+          "url": "https://github.com/osdlc/osdlc/pull/781"
+        }
+      ],
+      "source": "docs/planning/markdown/components/markdown-render-vue.md"
+    },
+    {
       "id": "markdown-ui",
       "name": "@sksizer/markdown-ui",
       "kind": "package",
@@ -570,7 +615,7 @@
       ],
       "repo": {
         "present": "sksizer/dev",
-        "target": "osdlc/osdlc"
+        "target": "sksizer/dev"
       },
       "path": {
         "present": "packages/ts/markdown-ui",
@@ -583,7 +628,7 @@
       "purpose": "Markdown viewing and editing chrome as a Nuxt layer: a surface that switches between reading, live editing and source.",
       "notes": [
         "Private in dev at 0.6.0. It builds on @determined/ui.",
-        "Task 17 moves it to osdlc. There is no PR yet, and the plan does not say whether its @sksizer scope changes."
+        "It stays in sksizer/dev for now (decision D19). Task 17 planned to move it to osdlc; there was no PR for that, and the plan does not say whether its @sksizer scope changes."
       ],
       "tasks": [
         17
@@ -603,7 +648,7 @@
       ],
       "repo": {
         "present": "sksizer/dev",
-        "target": "osdlc/osdlc"
+        "target": "sksizer/dev"
       },
       "path": {
         "present": "packages/ts/markdown-vault-query",
@@ -617,9 +662,8 @@
       "notes": [
         "Version 0.2.1 in dev; not on npm.",
         "Problem F9: two query layers (this and a loader corpus-schema planned).",
-        "Task 15 moves it to osdlc on top of the corpus model. Its target name is not decided; the architecture keeps the word db for this layer, and decision D5 (what db means) is open.",
-        "Task 16 adds a build that writes every valid record to JSON files and a SQLite file.",
-        "The plan does not give a target path. This keeps its folder name in osdlc/osdlc."
+        "It stays in sksizer/dev for now (decision D19). Task 15 puts it on top of the corpus model. It also planned to move it to osdlc. Its target name is not decided; the architecture keeps the word db for this layer, and decision D5 (what db means) is open.",
+        "Task 16 adds a build that writes every valid record to JSON files and a SQLite file."
       ],
       "tasks": [
         13,
@@ -641,7 +685,7 @@
       ],
       "repo": {
         "present": null,
-        "target": "osdlc/models"
+        "target": "osdlc/osdlc"
       },
       "path": {
         "present": null,
@@ -653,7 +697,7 @@
       "twin": null,
       "purpose": "A proposed profile built on claims: acceptance criteria are what statements are about, tests are methods and test runs are study results.",
       "notes": [
-        "It would live in osdlc/models with the other shared profiles (decision D17). The plan gives no package name or path."
+        "It would live in osdlc/osdlc with the other shared profiles (decision D19). The plan gives no package name or path."
       ],
       "tasks": [
         25
@@ -673,11 +717,11 @@
       ],
       "repo": {
         "present": "osdlc/markdown",
-        "target": "osdlc/markdown"
+        "target": "osdlc/osdlc"
       },
       "path": {
         "present": "profiles/claims/example",
-        "target": "profiles/claims/example"
+        "target": null
       },
       "status": "published",
       "version": null,
@@ -686,6 +730,7 @@
       "purpose": "A valid level-2 corpus with the claims types: documents, methods, study-results and statements. Its records check a made-up claim about a tool called fernlog.",
       "notes": [
         "The types follow GA4GH's VA-Spec 1.1.0 (decision D8). profiles/claims/README.md maps each type and field to VA-Spec.",
+        "It comes to osdlc/osdlc with the claims profile (decision D19). Its place there is not decided.",
         "Merged in osdlc/markdown#6. The plan still calls task 4 in progress.",
         "Until osdlc/markdown#15 merges, people copy it with npx degit osdlc/markdown/profiles/claims/example. After it, the example holds no type copies, so the profile package is the thing to extend. It is not on a registry.",
         "profiles/claims/tests/ holds broken records that must fail with one expected error each.",
@@ -724,11 +769,11 @@
       ],
       "repo": {
         "present": null,
-        "target": "osdlc/models"
+        "target": "osdlc/osdlc"
       },
       "path": {
         "present": null,
-        "target": "profiles/claims"
+        "target": null
       },
       "status": "in-progress",
       "version": null,
@@ -737,9 +782,10 @@
       "purpose": "The claims types published as a versioned profile, so a corpus names it under extends: and marks its types with x-extends instead of copying them.",
       "notes": [
         "Decision D10 fixed the name, the folder and the prefix claims. The architecture still marks the profiles layer a proposal, and its open questions ask whether to adopt profiles.",
-        "Built in osdlc/markdown#15 as package 0.1.0 at profiles/claims. Task 78 moves it to osdlc/models before its first publish. The four type schemas are in its corpus/ folder, which package.json names with \"corpus\". The claims example extends it.",
-        "Task 76 rewrites it as pack-claims and moves it to osdlc/models (decision D17).",
-        "Not published. It publishes from osdlc/models after the owner stages the npm name once."
+        "Built in osdlc/markdown#15 as package 0.1.0 at profiles/claims. The four type schemas are in its corpus/ folder, which package.json names with \"corpus\". The claims example extends it.",
+        "Task 76 rewrites it as pack-claims.",
+        "It comes to osdlc/osdlc (decision D19). Its place there is not decided; the proposal is packages/profiles/*.",
+        "Not published. The npm name does not change."
       ],
       "tasks": [
         79,
@@ -769,11 +815,11 @@
       ],
       "repo": {
         "present": null,
-        "target": "osdlc/markdown"
+        "target": "osdlc/osdlc"
       },
       "path": {
         "present": null,
-        "target": "profiles/planning"
+        "target": "docs/planning/markdown/profile"
       },
       "status": "planned",
       "version": null,
@@ -782,8 +828,9 @@
       "purpose": "Record types for a plan: tasks, milestones and decisions. A corpus names it under extends: and builds its own types on these with x-extends.",
       "notes": [
         "Private package. Not on npm. A corpus extends it by a path to the folder.",
+        "Built in osdlc/markdown#14 at profiles/planning. It comes to osdlc/osdlc with this plan, beside the plan's records (decision D19).",
         "Its types are open, so a corpus can add fields. A corpus that wants a closed type lists the profile's fields as well as its own. Task 44 removes that need.",
-        "Task 53 removes this profile: the plan moves to the sdlc profile and profiles/planning is deleted. Before 1.0 no second form is kept."
+        "Task 53 removes this profile: the plan moves to the sdlc profile and the profile folder is deleted. Before 1.0 no second form is kept."
       ],
       "tasks": [
         38,
@@ -808,11 +855,11 @@
       ],
       "repo": {
         "present": null,
-        "target": "osdlc/models"
+        "target": "osdlc/osdlc"
       },
       "path": {
         "present": null,
-        "target": "profiles/sdlc"
+        "target": null
       },
       "status": "planned",
       "version": null,
@@ -821,7 +868,7 @@
       "purpose": "The intent and sdlc packs' kinds as one corpus profile, generated from the packs. sdlc corpora in dev, at work and in this plan validate against it, and the starter corpus extends it.",
       "notes": [
         "Planned in decision D13. One profile for now; an intent profile splits out later if a consumer needs the intent kinds alone.",
-        "It lives in osdlc/models at profiles/sdlc (decision D17). Task 78 moves it there before its first publish. The generator stays in dev until task 62 moves it, so the profile is regenerated by hand and copied in.",
+        "It comes to osdlc/osdlc (decision D19). Its place there is not decided; the proposal is packages/profiles/*. The generator stays in sksizer/dev, so the profile is regenerated by hand there and copied in.",
         "This plan (task 53) and a work repo (task 52) install it from npm with corpus-schema 0.3.0."
       ],
       "tasks": [
@@ -848,11 +895,11 @@
       ],
       "repo": {
         "present": null,
-        "target": "osdlc/models"
+        "target": "osdlc/osdlc"
       },
       "path": {
         "present": null,
-        "target": "corpora/sdlc-starter"
+        "target": null
       },
       "status": "planned",
       "version": null,
@@ -861,7 +908,7 @@
       "purpose": "A starter corpus of principles and standards that any project can reference and cite. This plan (task 53) and then a work repo name it under references: with the prefix osdlc, sync it into _references/osdlc/ and cite its records by id.",
       "notes": [
         "Decision D14. It starts with two principles, P-0001 and P-0002, and the owner adds more (task 64).",
-        "It lives in osdlc/models at corpora/sdlc-starter (decision D17). Task 78 moves it there before its first publish.",
+        "It comes to osdlc/osdlc (decision D19). Its place there is not decided; the proposal is packages/corpora/*.",
         "dev's own intent records are not the upstream for now.",
         "A CI check keeps private data out of it (task 65)."
       ],
@@ -890,11 +937,11 @@
       ],
       "repo": {
         "present": null,
-        "target": "osdlc/markdown"
+        "target": "osdlc/osdlc"
       },
       "path": {
         "present": null,
-        "target": "examples/fernlog"
+        "target": null
       },
       "status": "in-progress",
       "version": null,
@@ -902,7 +949,7 @@
       "twin": null,
       "purpose": "A project corpus for a made-up tool. It extends the claims profile and references the example org principles. Its decisions and statements cite the org's principles. CI installs the claims profile, runs corpus-schema sync and validates both corpora.",
       "notes": [
-        "Built in osdlc/markdown#16, not merged. It holds a committed _references/org/ copy of the org principles. The claims profile gets no copy, since it gives types only.",
+        "Built in osdlc/markdown#16 at examples/fernlog, not merged. It comes to osdlc/osdlc (decision D19); its place there is not decided. It holds a committed _references/org/ copy of the org principles. The claims profile gets no copy, since it gives types only.",
         "examples/test.sh breaks one thing at a time and checks each case fails with its one expected error.",
         "It is the start of task 30."
       ],
@@ -962,11 +1009,11 @@
       ],
       "repo": {
         "present": null,
-        "target": "osdlc/markdown"
+        "target": "osdlc/osdlc"
       },
       "path": {
         "present": null,
-        "target": "examples/org-principles"
+        "target": null
       },
       "status": "in-progress",
       "version": null,
@@ -974,7 +1021,7 @@
       "twin": null,
       "purpose": "An example organisation's principles: a corpus with one type and three records. The fernlog example extends it by path.",
       "notes": [
-        "Built in osdlc/markdown#16, not merged.",
+        "Built in osdlc/markdown#16 at examples/org-principles, not merged. It comes to osdlc/osdlc (decision D19); its place there is not decided.",
         "An example, not the shared org corpus. That one is the org principles corpus (task 30)."
       ],
       "tasks": [
@@ -999,11 +1046,11 @@
       ],
       "repo": {
         "present": null,
-        "target": "osdlc/markdown"
+        "target": "osdlc/osdlc"
       },
       "path": {
         "present": null,
-        "target": "examples/work"
+        "target": null
       },
       "status": "planned",
       "version": null,
@@ -1011,6 +1058,7 @@
       "twin": null,
       "purpose": "The beeline's end state as an example: a project corpus shaped like a work repo's docs/planning. It extends the sdlc profile, references the starter corpus, and its task cites P-0002 by id. CI syncs and validates it with --strict.",
       "notes": [
+        "It would live in osdlc/osdlc (decision D19). Its place there is not decided.",
         "Task 53 covers it: this plan's own corpus shows the end state in CI, from npm. It is not built."
       ],
       "tasks": [
@@ -1032,11 +1080,11 @@
       ],
       "repo": {
         "present": "sksizer/dev",
-        "target": "osdlc/models"
+        "target": "sksizer/dev"
       },
       "path": {
         "present": "packages/ts/model-schema",
-        "target": "model-schema"
+        "target": "packages/ts/model-schema"
       },
       "status": "in-progress",
       "version": null,
@@ -1045,7 +1093,7 @@
       "purpose": "The pack harness: loads packs (folders of YAML that declare kinds), compiles them, validates values and emits TypeScript types and JSON Schema.",
       "notes": [
         "sksizer/dev#4069 merged it into dev's code-intelligence-planning branch, which reaches main with sksizer/dev#4068. It is not on npm.",
-        "Task 62 moves it and the packs to osdlc/models (decision D17).",
+        "It and the packs stay in sksizer/dev for now (decision D19). Task 62 planned to move them to osdlc/models (decision D17).",
         "Decision D4 makes types plain JSON Schema. Decision D13 puts packs above that as the model, and corpus-schema below as the store spec for Markdown. That answers problem F5: two ways to define types.",
         "Task 48 adds a generator that turns a pack into a corpus profile.",
         "Packs differ from the proposed profiles: a record's own property replaces an inherited one, and strict can be overridden."
@@ -1077,11 +1125,11 @@
       ],
       "repo": {
         "present": null,
-        "target": "osdlc/models"
+        "target": null
       },
       "path": {
         "present": null,
-        "target": "pack-claims"
+        "target": null
       },
       "status": "planned",
       "version": null,
@@ -1089,6 +1137,7 @@
       "twin": null,
       "purpose": "The claims types written as a pack. `@osdlc/corpus-profile-claims` is generated from it.",
       "notes": [
+        "Where it lives is not decided. The packs stay in sksizer/dev for now, and osdlc/models is a holding pen (decision D19).",
         "Decision D17. The profile's type folders become generated output (task 76)."
       ],
       "tasks": [
@@ -1109,11 +1158,11 @@
       ],
       "repo": {
         "present": "sksizer/dev",
-        "target": "osdlc/models"
+        "target": "sksizer/dev"
       },
       "path": {
         "present": "packages/ts/pack-intent",
-        "target": "pack-intent"
+        "target": "packages/ts/pack-intent"
       },
       "status": "in-progress",
       "version": null,
@@ -1122,6 +1171,7 @@
       "purpose": "The intent pack. It declares why a project exists and what it holds to: principles, standards, decisions, drivers, products, capabilities, terms and references.",
       "notes": [
         "sksizer/dev#4070 merged it into dev's code-intelligence-planning branch, which reaches main with sksizer/dev#4068. Private, not on npm.",
+        "It stays in sksizer/dev for now (decision D19). Task 62 planned to move it to osdlc/models (decision D17).",
         "Task 49 generates @osdlc/corpus-profile-sdlc from it and the sdlc pack."
       ],
       "tasks": [
@@ -1149,11 +1199,11 @@
       ],
       "repo": {
         "present": "sksizer/dev",
-        "target": "osdlc/models"
+        "target": "sksizer/dev"
       },
       "path": {
         "present": "packages/ts/pack-sdlc",
-        "target": "pack-sdlc"
+        "target": "packages/ts/pack-sdlc"
       },
       "status": "in-progress",
       "version": null,
@@ -1162,6 +1212,7 @@
       "purpose": "The sdlc pack. It declares the work a project plans and tracks: work items, milestones, backlog, roadmaps, friction and notes. It builds on the intent pack.",
       "notes": [
         "sksizer/dev#4070 merged it into dev's code-intelligence-planning branch, which reaches main with sksizer/dev#4068. Private, not on npm.",
+        "It stays in sksizer/dev for now (decision D19). Task 62 planned to move it to osdlc/models (decision D17).",
         "Together with the intent pack it ports sdlc's 14 entity kinds from hand-written zod.",
         "Task 49 generates @osdlc/corpus-profile-sdlc from it and the intent pack."
       ],
@@ -1189,7 +1240,7 @@
       ],
       "repo": {
         "present": null,
-        "target": "osdlc/markdown"
+        "target": "osdlc/osdlc"
       },
       "path": {
         "present": null,
@@ -1201,7 +1252,7 @@
       "twin": "corpus-schema-ts",
       "purpose": "A planned Rust validator that runs the same conformance cases as the TypeScript one, built on the markdown-corpus crate.",
       "notes": [
-        "The plan names no crate. The architecture diagram places it in osdlc/markdown. The path is a guess at the repo's layout, not from a source."
+        "The plan names no crate. It would live in osdlc/osdlc (decision D19). The path is a guess at the repo's layout, not from a source."
       ],
       "tasks": [
         32
@@ -1221,7 +1272,7 @@
       ],
       "repo": {
         "present": "osdlc/osdlc",
-        "target": "osdlc/markdown"
+        "target": "osdlc/osdlc"
       },
       "path": {
         "present": "packages/conformance/corpus-schema",
@@ -1234,9 +1285,9 @@
       "purpose": "The rules for what a corpus can declare about itself: a root file, type folders, record ids, record folders, JSON Schemas per type and typed links (x-ref). Its test cases sit beside it.",
       "notes": [
         "Version 0 is in force (corpus-schema: 0). It has levels 0 to 2.",
-        "Near target: open osdlc/markdown#9 moves it here with its history. SPEC.md already says it moves once this repo has a release setup.",
+        "It stays in osdlc/osdlc (decision D19). The copy in osdlc/markdown (osdlc/markdown#9) is retired once its open work is brought here.",
         "Proposals not built yet: a baseline and dialects (task 7), profiles through the extends key (task 9), and sharing whole corpora (tasks 27 to 30).",
-        "A plain-language guide is in this repo at docs/corpus-schema.md."
+        "A plain-language guide is at packages/ts/corpus-schema/docs/guide.md."
       ],
       "tasks": [
         1,
@@ -1283,7 +1334,7 @@
       ],
       "repo": {
         "present": "osdlc/osdlc",
-        "target": "osdlc/markdown"
+        "target": "osdlc/osdlc"
       },
       "path": {
         "present": "packages/ts/corpus-schema",
@@ -1297,9 +1348,8 @@
       "notes": [
         "0.2.0 is its first version on npm, and 0.2.1 the latest. 0.1.0 was cut but never published (task 3).",
         "Today it walks the folder and checks links itself (problem F8). Task 14 makes it read the corpus model instead.",
-        "Near target: open osdlc/markdown#9 moves it here with the same npm name, and open osdlc/markdown#10 builds and releases it with the shared osdlc workflows. Until those land, releases go out from osdlc/osdlc.",
-        "On the osdlc/markdown#9 branch its osdlc dependencies change from workspace:^ to npm ranges (^1.1.2 and ^0.8.1).",
-        "osdlc/markdown builds and releases it with the shared osdlc workflows, ts-packages-ci and ts-packages-release (task 21).",
+        "It stays in osdlc/osdlc and releases from here, with the same npm publisher (decision D19). The copy that osdlc/markdown#9 and #10 set up in osdlc/markdown is retired.",
+        "The 0.3.0 work (extends, x-extends and sync) comes here from osdlc/markdown#12 and releases from here. It is not released yet.",
         "validate --fix exists today. Task 29 adds the corpus-schema sync command: it writes a read-only copy of each referenced corpus into _references/<prefix>/, such as _references/org/, so Obsidian and GitHub links resolve. The validator then checks that the copy matches the installed corpus. Task 34 adds a move verb."
       ],
       "tasks": [
@@ -1569,7 +1619,8 @@
       "notes": [
         "Version 0.2.2 in dev; not on npm.",
         "Problems F1 and F4: it resolves links its own way, and says vault instead of corpus.",
-        "Task 12 merges it with vault-graph-core into the TypeScript markdown-corpus."
+        "Task 12 merges it with vault-graph-core into the TypeScript markdown-corpus.",
+        "It stays in sksizer/dev for now (decision D19). Whether task 12 still retires it is not decided."
       ],
       "tasks": [
         12,
@@ -1602,7 +1653,8 @@
       "purpose": "Builds a graph of notes and links from note data, with no file access. Its link resolver is a copy of the Rust one.",
       "notes": [
         "Version 0.1.1 in dev; not on npm. Its scope is @sdlc, not @osdlc (problem F11).",
-        "Task 12 merges it with markdown-vault into the TypeScript markdown-corpus. Task 11 takes the TypeScript resolver from its copy of the Rust one."
+        "Task 12 merges it with markdown-vault into the TypeScript markdown-corpus. Task 11 takes the TypeScript resolver from its copy of the Rust one.",
+        "It stays in sksizer/dev for now (decision D19). Whether task 12 still retires it is not decided."
       ],
       "tasks": [
         11,
@@ -2058,6 +2110,38 @@
       "tasks": [],
       "links": [],
       "source": "docs/planning/markdown/components/markdown-tags-rs.md"
+    },
+    {
+      "id": "slug-collate",
+      "name": "slug-collate",
+      "kind": "crate",
+      "language": "rust",
+      "layer": "note-parts",
+      "states": [
+        "present",
+        "target"
+      ],
+      "repo": {
+        "present": "osdlc/osdlc",
+        "target": "osdlc/osdlc"
+      },
+      "path": {
+        "present": "packages/rust/slug-collate",
+        "target": "packages/rust/slug-collate"
+      },
+      "status": "published",
+      "version": "0.2.0",
+      "registry": "https://crates.io/crates/slug-collate",
+      "twin": null,
+      "purpose": "Turns a title into a filename-safe slug, folding accents instead of dropping letters, and gives a fixed, locale-free order for strings and paths in place of localeCompare.",
+      "notes": [
+        "markdown-link-rs, markdown-corpus-rs and markdown-relink depend on it (their Cargo.toml).",
+        "The plan has no task for it. The layer is a guess: it works on the text that names notes.",
+        "D-SM4K does not say whether it is a general library or one the markdown plan owns."
+      ],
+      "tasks": [],
+      "links": [],
+      "source": "docs/planning/markdown/components/slug-collate.md"
     },
     {
       "id": "yaml-splice",
@@ -2900,7 +2984,7 @@
     },
     {
       "from": "markdown-astro",
-      "to": "markdown-render",
+      "to": "markdown-link",
       "kind": "depends",
       "states": [
         "present",
@@ -2909,12 +2993,12 @@
     },
     {
       "from": "markdown-astro",
-      "to": "markdown-link",
+      "to": "markdown-render",
       "kind": "depends",
       "states": [
+        "present",
         "target"
-      ],
-      "note": "As on the osdlc/osdlc#720 branch."
+      ]
     },
     {
       "from": "markdown-astro",
@@ -2926,14 +3010,6 @@
       "note": "Task 13 switches it to the shared corpus model."
     },
     {
-      "from": "markdown-astro",
-      "to": "markdown-link-dev-copy",
-      "kind": "depends",
-      "states": [
-        "present"
-      ]
-    },
-    {
       "from": "markdown-editor",
       "to": "gfm-table",
       "kind": "depends",
@@ -2958,7 +3034,7 @@
       "states": [
         "target"
       ],
-      "note": "Assumed after the move; there is no PR for it yet."
+      "note": "Assumed once it uses the published markdown-tags; there is no PR for it yet."
     },
     {
       "from": "markdown-editor",
@@ -2982,33 +3058,35 @@
       "to": "markdown-link",
       "kind": "depends",
       "states": [
+        "present",
         "target"
-      ],
-      "note": "As on the osdlc/osdlc#720 branch."
+      ]
     },
     {
       "from": "markdown-render",
       "to": "markdown-tags",
       "kind": "depends",
       "states": [
+        "present",
         "target"
-      ],
-      "note": "As on the osdlc/osdlc#720 branch."
-    },
-    {
-      "from": "markdown-render",
-      "to": "markdown-link-dev-copy",
-      "kind": "depends",
-      "states": [
-        "present"
       ]
     },
     {
-      "from": "markdown-render",
-      "to": "markdown-tags-dev-copy",
+      "from": "markdown-render-vue",
+      "to": "gfm-table",
       "kind": "depends",
       "states": [
-        "present"
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-render-vue",
+      "to": "markdown-render",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
       ]
     },
     {
@@ -3408,6 +3486,15 @@
     },
     {
       "from": "markdown-corpus-rs",
+      "to": "slug-collate",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-corpus-rs",
       "to": "vfs-seam",
       "kind": "depends",
       "states": [
@@ -3443,6 +3530,14 @@
     {
       "from": "markdown-relink",
       "to": "markdown-vault-fs",
+      "kind": "depends",
+      "states": [
+        "present"
+      ]
+    },
+    {
+      "from": "markdown-relink",
+      "to": "slug-collate",
       "kind": "depends",
       "states": [
         "present"
@@ -3659,6 +3754,15 @@
     {
       "from": "markdown-link-rs",
       "to": "yaml-splice-rs",
+      "kind": "depends",
+      "states": [
+        "present",
+        "target"
+      ]
+    },
+    {
+      "from": "markdown-link-rs",
+      "to": "slug-collate",
       "kind": "depends",
       "states": [
         "present",

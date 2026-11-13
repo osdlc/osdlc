@@ -45,8 +45,8 @@
   "milestones": [
     {
       "id": "m-release",
-      "title": "Release from osdlc/markdown",
-      "goal": "This repo publishes corpus-schema with its own release setup.",
+      "title": "Release from osdlc/osdlc",
+      "goal": "osdlc/osdlc publishes corpus-schema with its own release setup and npm publisher. osdlc/markdown does not release it (decision D-SM4K).",
       "status": "doing",
       "phase": "store",
       "beeline": true,
@@ -210,7 +210,7 @@
     {
       "id": "m-render",
       "title": "Render and sites",
-      "goal": "The render, edit and site packages move to osdlc.",
+      "goal": "markdown-render and the site package are in osdlc/osdlc. markdown-editor and markdown-ui stay in sksizer/dev for now (decision D-SM4K).",
       "status": "doing",
       "phase": "store",
       "beeline": false,
@@ -322,7 +322,7 @@
         3
       ],
       "prs": [],
-      "text": "Example claims corpus, in this repo at `profiles/claims/example/`. A valid level-2 corpus with the VA-Spec types `documents`, `study-results`, `methods` and `statements`, their schemas, and a few records that show the whole chain. After 3.\n- A statement holds its proposition (subject, predicate, object) and its evidence lines. Each line names study results, says whether it supports or disputes the statement, and how strongly.\n- Contribution (who, when, what role) is a field on records, not a type of its own.\n- `profiles/claims/README.md` maps each type to VA-Spec and says what we leave out and why. Check it against VA-Spec's published schemas.\n- CI validates the example with `@osdlc/corpus-schema` from npm.\n- People copy it with `npx degit osdlc/markdown/profiles/claims/example <dir>`. No npm package is needed yet.\n\n- Until task 31, a statement's evidence lines are plain relative links with a pattern check, not `x-ref`.\n\nDone: [osdlc/markdown#6](https://github.com/osdlc/markdown/pull/6).",
+      "text": "Example claims corpus, in osdlc/markdown at `profiles/claims/example/`. A valid level-2 corpus with the VA-Spec types `documents`, `study-results`, `methods` and `statements`, their schemas, and a few records that show the whole chain. After 3.\n- A statement holds its proposition (subject, predicate, object) and its evidence lines. Each line names study results, says whether it supports or disputes the statement, and how strongly.\n- Contribution (who, when, what role) is a field on records, not a type of its own.\n- `profiles/claims/README.md` maps each type to VA-Spec and says what we leave out and why. Check it against VA-Spec's published schemas.\n- CI validates the example with `@osdlc/corpus-schema` from npm.\n- People copy it with `npx degit osdlc/markdown/profiles/claims/example <dir>`. No npm package is needed yet.\n\n- Until task 31, a statement's evidence lines are plain relative links with a pattern check, not `x-ref`.\n\nDone: [osdlc/markdown#6](https://github.com/osdlc/markdown/pull/6).\n\nThe example comes to osdlc/osdlc with the profiles ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md), task 78). The `degit` path above stops working once osdlc/markdown is emptied (task 79).",
       "source": "docs/planning/markdown/tasks/4 Claims example.md"
     },
     {
@@ -440,7 +440,7 @@
         11
       ],
       "prs": [],
-      "text": "One TypeScript corpus model, markdown-corpus: markdown-vault and vault-graph-core merged into osdlc on top of markdown-link's resolver. After 11.",
+      "text": "One TypeScript corpus model, markdown-corpus: markdown-vault and vault-graph-core merged into osdlc on top of markdown-link's resolver. After 11.\n\nOut of scope for now: markdown-vault and vault-graph-core are in sksizer/dev, and [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) keeps them there. The merge waits until they move.",
       "source": "docs/planning/markdown/tasks/12 One TS model.md"
     },
     {
@@ -483,7 +483,7 @@
         12
       ],
       "prs": [],
-      "text": "One query layer. Move markdown-vault-query to osdlc on top of the corpus model. After 12 and D5.",
+      "text": "One query layer. Move markdown-vault-query to osdlc on top of the corpus model. After 12 and D5.\n\nOut of scope for now: markdown-vault-query is in sksizer/dev, and [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) keeps it there.",
       "source": "docs/planning/markdown/tasks/15 Query layer.md"
     },
     {
@@ -509,7 +509,7 @@
       "type": "functional",
       "after": [],
       "prs": [],
-      "text": "Finish moving the render, edit and site packages: [osdlc/osdlc#719](https://github.com/osdlc/osdlc/pull/719) and [#720](https://github.com/osdlc/osdlc/pull/720), then markdown-editor and markdown-ui. Rename the vault words to corpus. In progress.",
+      "text": "Finish moving the render, edit and site packages. The render and site packages are in osdlc/osdlc: [osdlc/osdlc#719](https://github.com/osdlc/osdlc/pull/719) and [#720](https://github.com/osdlc/osdlc/pull/720) have merged. markdown-editor and markdown-ui stay in sksizer/dev for now ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)), so moving them is out of scope. Rename the vault words to corpus. In progress.",
       "source": "docs/planning/markdown/tasks/17 Render and sites.md"
     },
     {
@@ -535,7 +535,7 @@
         18
       ],
       "prs": [],
-      "text": "Point other repos here (supporting): osdlc/osdlc, sksizer/dev, osdlc/skillwright and sksizer/rust-ontogen get the note in [pointing-here.md](../pointing-here.md). After 18.",
+      "text": "Point other repos at this plan (supporting): sksizer/dev, osdlc/skillwright and sksizer/rust-ontogen get the note in [pointing-here.md](../pointing-here.md). The plan lives in osdlc/osdlc ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)), so the note points there, and osdlc/osdlc does not need it. After 18.",
       "source": "docs/planning/markdown/tasks/19 Point repos.md"
     },
     {
@@ -570,7 +570,7 @@
           "url": "https://github.com/osdlc/markdown/pull/10"
         }
       ],
-      "text": "Release setup here, then move corpus-schema. Give this repo its own release setup: Changesets, a publish workflow with npm trusted publishing, package checks, the conformance check, a CI matrix and shared configs. Then move `@osdlc/corpus-schema` and its spec family from osdlc/osdlc into this repo as its first package. The npm name stays the same. After 3. Other markdown packages follow the same path later. SPEC.md says the spec moves to osdlc/markdown once this repo has its own release setup. This task is that move, so SPEC.md needs updating when it happens. In progress. [osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9) has merged: it moved the package and its spec family here, with their history, and updated SPEC.md. [osdlc/markdown#10](https://github.com/osdlc/markdown/pull/10) has merged (2026-11-10): this repo now uses the shared CI and release workflows and checks from osdlc/osdlc ([osdlc/osdlc#749](https://github.com/osdlc/osdlc/pull/749)). The shared release workflow had failed for lack of the App key ([osdlc/osdlc#767](https://github.com/osdlc/osdlc/pull/767)) and the version script left the lockfile stale ([osdlc/osdlc#774](https://github.com/osdlc/osdlc/pull/774)). Both have merged. `@osdlc/conformance-suites` 0.1.0 is on npm. `@osdlc/package-checks` 0.2.0 is on npm too: the Version Packages PR ([osdlc/osdlc#773](https://github.com/osdlc/osdlc/pull/773)) has merged. This repo has not made a release yet. Until it does, corpus-schema releases still go out from osdlc/osdlc.",
+      "text": "Release setup, then the corpus-schema move. This task gave osdlc/markdown its own release setup and moved `@osdlc/corpus-schema` and its spec family there from osdlc/osdlc. [osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9) has merged: it moved the package and its spec family, with their history. [osdlc/markdown#10](https://github.com/osdlc/markdown/pull/10) has merged (2026-11-10): osdlc/markdown uses the shared CI and release workflows and checks from osdlc/osdlc ([osdlc/osdlc#749](https://github.com/osdlc/osdlc/pull/749), with fixes in [osdlc/osdlc#767](https://github.com/osdlc/osdlc/pull/767) and [osdlc/osdlc#774](https://github.com/osdlc/osdlc/pull/774)). osdlc/markdown has not made a release.\n\n[D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) and the repository decision [D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md) reverse the move. corpus-schema releases from osdlc/osdlc, and its npm publisher does not change. osdlc/markdown's copy is retired once its open work, 0.3.0 in [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12), is brought back ([osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790)). That pull request also removes the note in SPEC.md that the spec moves to osdlc/markdown. In progress.",
       "source": "docs/planning/markdown/tasks/21 Release here.md"
     },
     {
@@ -604,7 +604,7 @@
           "url": "https://github.com/osdlc/markdown/pull/15"
         }
       ],
-      "text": "The claims profile. The example from task 4 is already in the right place. The profile's types are open: a proposition's object can be any JSON value, and consumers add their own kinds. This follows the downstream review in [osdlc/markdown#8](https://github.com/osdlc/markdown/issues/8). This task adds the profile wrapper, a corpus with only types, as the package `@osdlc/corpus-profile-claims`, versioned. The package is built at `profiles/claims/` as 0.1.0 in [#15](https://github.com/osdlc/markdown/pull/15), and is not published. Task 78 moves it to osdlc/models before its first publish. The claims example extends it by path. It publishes from osdlc/models (decision D17). The owner then stages the npm name (task 80) and publishes it (task 60). The release setup from [#10](https://github.com/osdlc/markdown/pull/10) has merged. Corpora then list it by package name under `extends` in their root file and use `x-extends` instead of holding full copies. harness-reference and the evidence project switch over. After 21 and 36: publishing from this repo needs its release setup, and the profile is checked with a corpus-schema that knows `extends`. It no longer waits on 31. The profile can ship with its statements using relative links and a pattern check for evidence lines. When 31 lands, a new profile version switches them to `x-ref`. If the copies start to drift before then, we could release the profile from osdlc/osdlc first. In progress in [#15](https://github.com/osdlc/markdown/pull/15).",
+      "text": "The claims profile. The example from task 4 is already in the right place. The profile's types are open: a proposition's object can be any JSON value, and consumers add their own kinds. This follows the downstream review in [osdlc/markdown#8](https://github.com/osdlc/markdown/issues/8). This task adds the profile wrapper, a corpus with only types, as the package `@osdlc/corpus-profile-claims`, versioned. The package is built at `profiles/claims/` as 0.1.0 in [#15](https://github.com/osdlc/markdown/pull/15), and is not published. Task 78 brings it to osdlc/osdlc before its first publish, and it publishes from there ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)). The claims example extends it by path. The owner then stages the npm name (task 80) and publishes it (task 60). Corpora then list it by package name under `extends` in their root file and use `x-extends` instead of holding full copies. harness-reference and the evidence project switch over. After 21 and 36: the profile is checked with a corpus-schema that knows `extends`. It no longer waits on 31. The profile can ship with its statements using relative links and a pattern check for evidence lines. When 31 lands, a new profile version switches them to `x-ref`. In progress in [#15](https://github.com/osdlc/markdown/pull/15).",
       "source": "docs/planning/markdown/tasks/23 Claims profile.md"
     },
     {
@@ -820,7 +820,7 @@
         73
       ],
       "prs": [],
-      "text": "Release corpus-schema 0.3.0. (supporting) The first version with `extends`, `x-extends`, cross-corpus `x-ref` and `sync`, published from this repo with its release setup. It also carries `--strict`, flattened `x-extends`, refs by id and `x-ref` to several types, which the sdlc profile needs. It also carries `references` and `uses` (tasks 70 and 71, decision D15), and identity, the id cut, `x-record-file` and narrative folders (task 73, decision D16). After 9, 21, 27, 29, 43 to 46, 59, 70, 71 and 73. The changeset is in [#12](https://github.com/osdlc/markdown/pull/12). Owner work: merging #12 and then the Version Packages pull request publishes it.",
+      "text": "Release corpus-schema 0.3.0. (supporting) The first version with `extends`, `x-extends`, cross-corpus `x-ref` and `sync`, published from osdlc/osdlc. It also carries `--strict`, flattened `x-extends`, refs by id and `x-ref` to several types, which the sdlc profile needs. It also carries `references` and `uses` (tasks 70 and 71, decision D15), and identity, the id cut, `x-record-file` and narrative folders (task 73, decision D16). After 9, 21, 27, 29, 43 to 46, 59, 70, 71 and 73. The changeset is in [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12), which [osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790) brings to osdlc/osdlc as one commit ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)). Owner work: merging #790 and then the Version Packages pull request publishes it.",
       "source": "docs/planning/markdown/tasks/36 Release 0.3.0.md"
     },
     {
@@ -855,7 +855,7 @@
           "url": "https://github.com/osdlc/markdown/pull/14"
         }
       ],
-      "text": "The planning profile. Tasks, milestones and decisions become a profile, `@osdlc/corpus-profile-planning` in `profiles/planning/`, a corpus with only types. This plan's corpus names it under `extends` and builds its own types on the profile's with `x-extends`. Tasks and milestones add fields, and decisions use the profile's type as it is. The components, layers, repos, overlaps and datasets stay local: they describe this ecosystem. CI checks the plan with this repo's corpus-schema, which knows `extends`. The profile is private and not on npm. After 9. In progress in [osdlc/markdown#14](https://github.com/osdlc/markdown/pull/14).\n\nTask 53 removes the profile: the plan moves to the sdlc profile and `profiles/planning/` is deleted.",
+      "text": "The planning profile. Tasks, milestones and decisions become a profile, `@osdlc/corpus-profile-planning` in `docs/planning/markdown/profile/`, a corpus with only types. This plan's corpus names it under `extends` and builds its own types on the profile's with `x-extends`. Tasks and milestones add fields, and decisions use the profile's type as it is. The components, layers, repos, overlaps and datasets stay local: they describe this ecosystem. CI in osdlc/osdlc checks the plan with its corpus-schema, which knows `extends`. The profile is private and not on npm. After 9. In progress in [osdlc/markdown#14](https://github.com/osdlc/markdown/pull/14).\n\nTask 53 removes the profile: the plan moves to the sdlc profile and `profile/` is deleted.",
       "source": "docs/planning/markdown/tasks/38 Planning profile.md"
     },
     {
@@ -1043,7 +1043,7 @@
         48
       ],
       "prs": [],
-      "text": "Generate `@osdlc/corpus-profile-sdlc` from the intent and sdlc packs. For now it is one profile that holds both packs' kinds. A separate intent profile can split out later, if a consumer needs the intent kinds alone. It lives at `profiles/sdlc/`, built in this repo and moved to osdlc/models by task 78 before its first publish, because it is shared now and dev is private. The generator stays in dev, so until task 62 the profile is regenerated by hand: run the generator in dev and copy its output in. A closed type needs flattened `x-extends` to see its parent's fields. Its refs are ids and wikilinks, some to several types. After 48, 44, 45 and 46.",
+      "text": "Generate `@osdlc/corpus-profile-sdlc` from the intent and sdlc packs. For now it is one profile that holds both packs' kinds. A separate intent profile can split out later, if a consumer needs the intent kinds alone. It is built at `profiles/sdlc/` in [osdlc/markdown#19](https://github.com/osdlc/markdown/pull/19), and task 78 brings it to osdlc/osdlc before its first publish ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)), because it is shared now and dev is private. The generator stays in dev, so until task 62 the profile is regenerated by hand: run the generator in dev and copy its output in. A closed type needs flattened `x-extends` to see its parent's fields. Its refs are ids and wikilinks, some to several types. After 48, 44, 45 and 46.",
       "source": "docs/planning/markdown/tasks/49 SDLC profiles.md"
     },
     {
@@ -1091,7 +1091,7 @@
         79
       ],
       "prs": [],
-      "text": "This plan, `docs/planning/`, is the first remote consumer of the sdlc profile and the starter corpus. It installs `@osdlc/corpus-profile-sdlc` and `@osdlc/corpus-sdlc-starter` from npm. Its root file names the profile under `extends` with the prefix `sdlc` and takes the sdlc types. The explorer's own fields, such as `phase`, `beeline`, `prs`, `detail` and `order`, go in local schemas that build on the profile's types with `x-extends: sdlc/tasks`, `x-extends: sdlc/milestones` and so on. The root file names the starter under `references` with the prefix `osdlc`. `corpus-schema sync` writes `_references/osdlc/`, and a record cites `P-0002`.\n\nThe records move to sdlc ids, such as `T-0001`, `M-0001` and `D-0001`, and to the sdlc fields. The explorer's `build-data` and the BEELINE checklist generator read the new ids and fields, and resolve parents by package name. `profiles/planning/` is deleted: before 1.0 no second form is kept. The components, layers, repos, overlaps and datasets stay local types.\n\nIt replaces the work example (task 67): this plan shows the end state in this repo's CI, from npm, before the work repo copies it. After 61 and 66, which publish the two packages, and 79, which cleans up this repo after the move.",
+      "text": "This plan, `docs/planning/markdown/`, is the first remote consumer of the sdlc profile and the starter corpus. It installs `@osdlc/corpus-profile-sdlc` and `@osdlc/corpus-sdlc-starter` from npm. Its root file names the profile under `extends` with the prefix `sdlc` and takes the sdlc types. The explorer's own fields, such as `phase`, `beeline`, `prs`, `detail` and `order`, go in local schemas that build on the profile's types with `x-extends: sdlc/tasks`, `x-extends: sdlc/milestones` and so on. The root file names the starter under `references` with the prefix `osdlc`. `corpus-schema sync` writes `_references/osdlc/`, and a record cites `P-0002`.\n\nThe records move to sdlc ids, such as `T-0001`, `M-0001` and `D-0001`, and to the sdlc fields. The explorer's `build-data` and the BEELINE checklist generator read the new ids and fields, and resolve parents by package name. Its `profile/` folder is deleted: before 1.0 no second form is kept. The components, layers, repos, overlaps and datasets stay local types.\n\nIt replaces the work example (task 67): this plan shows the end state in this repo's CI, from npm, before the work repo copies it. After 61 and 66, which publish the two packages, and 79, which cleans up osdlc/markdown after the move.",
       "source": "docs/planning/markdown/tasks/53 Plan on sdlc.md"
     },
     {
@@ -1172,7 +1172,7 @@
       "type": "supporting",
       "after": [],
       "prs": [],
-      "text": "Move the npm trusted publisher of `@osdlc/corpus-schema` to this repo's publish workflow, since it releases from here (task 21). npm lists osdlc/osdlc as its repository today. Owner work: it needs the npm account. It waits on nothing. Release 0.3.0 (task 36) comes after it.\n\nThe packages that publish from osdlc/models get their trusted publishers in task 80.",
+      "text": "Move the npm trusted publisher of `@osdlc/corpus-schema` to osdlc/markdown's publish workflow. No longer needed: [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) keeps corpus-schema releasing from osdlc/osdlc, so its publisher stays as it is. The record stays so that links to it still resolve.\n\nThe profile and starter packages get their trusted publishers in task 80.",
       "source": "docs/planning/markdown/tasks/59 Corpus-schema publisher.md"
     },
     {
@@ -1188,7 +1188,7 @@
         80
       ],
       "prs": [],
-      "text": "Publish `@osdlc/corpus-profile-claims` 0.1.0 to npm from `profiles/claims/` in osdlc/models. Owner work: merging the Version Packages pull request there publishes it. After 23, which builds the package, 80, which sets up its trusted publisher, and 78, which moves it into osdlc/models.",
+      "text": "Publish `@osdlc/corpus-profile-claims` 0.1.0 to npm from its folder in osdlc/osdlc (task 78). Owner work: merging the Version Packages pull request there publishes it. After 23, which builds the package, 80, which sets up its trusted publisher, and 78, which brings it into osdlc/osdlc.",
       "source": "docs/planning/markdown/tasks/60 Publish claims.md"
     },
     {
@@ -1204,7 +1204,7 @@
         80
       ],
       "prs": [],
-      "text": "Publish `@osdlc/corpus-profile-sdlc` to npm from `profiles/sdlc/` in osdlc/models. Owner work: merging the Version Packages pull request there publishes it. dev (task 50), the starter corpus (task 66), this plan (task 53) and the work repo (task 52) install it from npm. After 49, 78 and 80, which sets up its trusted publisher.",
+      "text": "Publish `@osdlc/corpus-profile-sdlc` to npm from its folder in osdlc/osdlc (task 78). Owner work: merging the Version Packages pull request there publishes it. dev (task 50), the starter corpus (task 66), this plan (task 53) and the work repo (task 52) install it from npm. After 49, 78 and 80, which sets up its trusted publisher.",
       "source": "docs/planning/markdown/tasks/61 Publish sdlc.md"
     },
     {
@@ -1221,7 +1221,7 @@
         78
       ],
       "prs": [],
-      "text": "Move `@osdlc/model-schema` and the intent and sdlc packs to osdlc/models, as decided in [D17](../decisions/D17%20Profiles%20and%20corpora%20live%20in%20osdlc%20models.md). The profiles and the starter corpus are already there (task 78). Today the generator and the packs are in sksizer/dev, which is private. Until this task is done, regenerating the sdlc profile is manual: run the generator in dev and copy its output into osdlc/models.\n\nIn osdlc/models, CI then regenerates the sdlc profile from the packs and checks that the committed copy matches. Not on the beeline's critical path. After 47, 49, 75 and 78.",
+      "text": "Move `@osdlc/model-schema` and the intent and sdlc packs to a public repo, so the sdlc profile is regenerated in public. [D17](../decisions/D17%20Profiles%20and%20corpora%20live%20in%20osdlc%20models.md) put them in osdlc/models. [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) keeps them in sksizer/dev for now, so this task is out of scope until they move. Today the generator and the packs are in sksizer/dev, which is private. Until this task is done, regenerating the sdlc profile is manual: run the generator in dev and copy its output into osdlc/osdlc.\n\nOnce they move, CI regenerates the sdlc profile from the packs and checks that the committed copy matches. Not on the beeline's critical path. After 47, 49, 75 and 78.",
       "source": "docs/planning/markdown/tasks/62 Packs in public.md"
     },
     {
@@ -1235,7 +1235,7 @@
         49
       ],
       "prs": [],
-      "text": "Starter instance corpus: `@osdlc/corpus-sdlc-starter`, at `corpora/sdlc-starter/` in osdlc/models. It is an upstream corpus with records, not only types. Its root file extends the sdlc profile by package name, and it holds principles to start: P-0001 \"Normalize equivalent inputs at the boundary, and reject invalid ones\", carried over from [osdlc/osdlc#447](https://github.com/osdlc/osdlc/pull/447), and P-0002 \"Favor deterministic over probabilistic judgement\". Standards follow in task 64. A work repo names it under `references` (decision D15) with the prefix `osdlc` and cites its records by id. CI in osdlc/models validates it with `--strict`. Decision D14 says why it is a starter and not dev's own records. After 49.",
+      "text": "Starter instance corpus: `@osdlc/corpus-sdlc-starter`, built at `corpora/sdlc-starter/` in [osdlc/markdown#19](https://github.com/osdlc/markdown/pull/19) and brought to osdlc/osdlc by task 78 ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)). It is an upstream corpus with records, not only types. Its root file extends the sdlc profile by package name, and it holds principles to start: P-0001 \"Normalize equivalent inputs at the boundary, and reject invalid ones\", carried over from [osdlc/osdlc#447](https://github.com/osdlc/osdlc/pull/447), and P-0002 \"Favor deterministic over probabilistic judgement\". Standards follow in task 64. A work repo names it under `references` (decision D15) with the prefix `osdlc` and cites its records by id. CI in osdlc/osdlc validates it with `--strict`. Decision D14 says why it is a starter and not dev's own records. After 49.",
       "source": "docs/planning/markdown/tasks/63 Starter corpus.md"
     },
     {
@@ -1263,7 +1263,7 @@
         63
       ],
       "prs": [],
-      "text": "A CI check in osdlc/models that the starter corpus holds no private data, since its records ship to a public registry. It fails on a link or path into a private repo such as sksizer/dev, an absolute home path, an email address, and a wikilink or id that names a record the corpus does not hold. The check runs on every pull request that touches `corpora/sdlc-starter/`, and before each publish. Records carried over from dev (task 64) go through it too. After 63.",
+      "text": "A CI check in osdlc/osdlc that the starter corpus holds no private data, since its records ship to a public registry. It fails on a link or path into a private repo such as sksizer/dev, an absolute home path, an email address, and a wikilink or id that names a record the corpus does not hold. The check runs on every pull request that touches the starter corpus, and before each publish. Records carried over from dev (task 64) go through it too. After 63.",
       "source": "docs/planning/markdown/tasks/65 Leak check.md"
     },
     {
@@ -1281,7 +1281,7 @@
         80
       ],
       "prs": [],
-      "text": "Publish `@osdlc/corpus-sdlc-starter` to npm from `corpora/sdlc-starter/` in osdlc/models. Owner work: merging the Version Packages pull request there publishes it. Its `package.json` depends on `@osdlc/corpus-profile-sdlc`, so that is published first. After 63, 65, 61, 78 and 80.",
+      "text": "Publish `@osdlc/corpus-sdlc-starter` to npm from its folder in osdlc/osdlc (task 78). Owner work: merging the Version Packages pull request there publishes it. Its `package.json` depends on `@osdlc/corpus-profile-sdlc`, so that is published first. After 63, 65, 61, 78 and 80.",
       "source": "docs/planning/markdown/tasks/66 Publish starter.md"
     },
     {
@@ -1426,7 +1426,7 @@
       "type": "supporting",
       "after": [],
       "prs": [],
-      "text": "The public repo [osdlc/models](https://github.com/osdlc/models) exists, as decided in [D17](../decisions/D17%20Profiles%20and%20corpora%20live%20in%20osdlc%20models.md). Owner work, done on 2026-11-12. It holds only a README. Task 78 sets up its release tooling and moves the profiles and the starter corpus in. Task 62 later moves model-schema and the packs.",
+      "text": "The public repo [osdlc/models](https://github.com/osdlc/models) exists, as decided in [D17](../decisions/D17%20Profiles%20and%20corpora%20live%20in%20osdlc%20models.md). Owner work, done on 2026-11-12. It holds only a README.\n\n[D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) supersedes D17 on where things live. osdlc/models is kept as a holding pen, and its README says the work happens in osdlc/osdlc for now ([osdlc/models#2](https://github.com/osdlc/models/pull/2)). The profiles and the starter corpus come to osdlc/osdlc instead (task 78). model-schema and the packs stay in sksizer/dev (task 62).",
       "source": "docs/planning/markdown/tasks/75 Create models repo.md"
     },
     {
@@ -1441,7 +1441,7 @@
         62
       ],
       "prs": [],
-      "text": "Write the claims types as `pack-claims` in osdlc/models, and generate `@osdlc/corpus-profile-claims` from it. Move `profiles/claims/` there. The package name does not change, so corpora that extend it see no change. The type folders of the profile become generated output, as decided in [D17](../decisions/D17%20Profiles%20and%20corpora%20live%20in%20osdlc%20models.md). After 23 and 62.",
+      "text": "Write the claims types as `pack-claims`, and generate `@osdlc/corpus-profile-claims` from it. The package name does not change, so corpora that extend it see no change. The type folders of the profile become generated output, as decided in [D17](../decisions/D17%20Profiles%20and%20corpora%20live%20in%20osdlc%20models.md). D17 put `pack-claims` in osdlc/models. [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) folds that repo into osdlc/osdlc and keeps model-schema and the packs in sksizer/dev for now, so where `pack-claims` lives is not decided. After 23 and 62.",
       "source": "docs/planning/markdown/tasks/76 Claims as a pack.md"
     },
     {
@@ -1461,7 +1461,7 @@
     {
       "id": 78,
       "title": "Models repo setup",
-      "detail": "osdlc/models release and CI",
+      "detail": "profiles and starter in osdlc/osdlc",
       "status": "todo",
       "milestone": "m-sdlc-profile",
       "type": "supporting",
@@ -1470,7 +1470,7 @@
         75
       ],
       "prs": [],
-      "text": "Set up [osdlc/models](https://github.com/osdlc/models) so the profiles and the starter publish from it (decision D17). Copy the release tooling from osdlc/markdown: changesets, the packages workflow and package-checks. Move in `profiles/sdlc/`, `profiles/claims/` and `corpora/sdlc-starter/` from [#19](https://github.com/osdlc/markdown/pull/19) and [#15](https://github.com/osdlc/markdown/pull/15). Add CI that validates them with corpus-schema 0.3.0 from npm. No version is published from osdlc/markdown. The trusted publishers (task 80) point at the workflow this task adds. After 36 and 75.",
+      "text": "Bring the profiles and the starter corpus into osdlc/osdlc, so they publish from it ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)). They do not go to osdlc/models, as D17 planned. Their place in osdlc/osdlc is not decided: the proposal is `packages/profiles/*` and `packages/corpora/*`, as members of the pnpm workspace. Owner work decides it.\n\nBring in `profiles/sdlc/`, `profiles/claims/` and `corpora/sdlc-starter/` from [#19](https://github.com/osdlc/markdown/pull/19) and [#15](https://github.com/osdlc/markdown/pull/15). [osdlc/models#1](https://github.com/osdlc/models/pull/1) holds the same three packages moved; use whichever is newer. Add them to the package checks and the changeset config, and check them in CI with corpus-schema 0.3.0. The trusted publishers (task 80) point at osdlc/osdlc's release workflow. After 36 and 75.",
       "source": "docs/planning/markdown/tasks/78 Models repo setup.md"
     },
     {
@@ -1485,7 +1485,7 @@
         78
       ],
       "prs": [],
-      "text": "Clean up osdlc/markdown once the profiles and the starter live in osdlc/models. Close [#15](https://github.com/osdlc/markdown/pull/15) and [#19](https://github.com/osdlc/markdown/pull/19) as moved, and link the osdlc/models pull request in each. Remove the traces of those folders from osdlc/markdown's docs. Change the fernlog example ([#16](https://github.com/osdlc/markdown/pull/16)) to install `@osdlc/corpus-profile-claims` from npm instead of by path. After 78 and 60.",
+      "text": "Clean up osdlc/markdown once the plan, the profiles and the starter live in osdlc/osdlc ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)). Close [#15](https://github.com/osdlc/markdown/pull/15) and [#19](https://github.com/osdlc/markdown/pull/19) as moved, and link the osdlc/osdlc pull request in each. Remove from osdlc/markdown what was brought to osdlc/osdlc, so there is one copy. Its README stays, as the holding pen's. Change the fernlog example ([#16](https://github.com/osdlc/markdown/pull/16), re-opened in osdlc/osdlc) to install `@osdlc/corpus-profile-claims` from npm instead of by path. After 78 and 60.",
       "source": "docs/planning/markdown/tasks/79 Markdown after the move.md"
     },
     {
@@ -1499,7 +1499,7 @@
         78
       ],
       "prs": [],
-      "text": "Set up npm trusted publishing for the packages that publish from [osdlc/models](https://github.com/osdlc/models) (decision D17): `@osdlc/corpus-profile-sdlc` (task 49), `@osdlc/corpus-profile-claims` (task 23) and `@osdlc/corpus-sdlc-starter` (task 63). Stage each name once and point its trusted publisher at osdlc/models' release workflow. Owner work: it needs the npm account. After 78, which adds that workflow. Tasks 60, 61 and 66 publish after it.",
+      "text": "Set up npm trusted publishing for the packages that publish from osdlc/osdlc ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)): `@osdlc/corpus-profile-sdlc` (task 49), `@osdlc/corpus-profile-claims` (task 23) and `@osdlc/corpus-sdlc-starter` (task 63). Stage each name once and point its trusted publisher at osdlc/osdlc's release workflow, as `packages/README.md` describes for a new library. Owner work: it needs the npm account. After 78, which brings the packages in. Tasks 60, 61 and 66 publish after it.",
       "source": "docs/planning/markdown/tasks/80 Models publishers.md"
     },
     {

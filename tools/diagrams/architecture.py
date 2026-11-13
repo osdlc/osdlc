@@ -36,21 +36,22 @@ LAYERS = [
    [("determined", "notes app", "dev"), ("markdown-store", "typed records; home open", "ont"),
     ("ontogen", "Rust structs → notes", "ont")]),
   ("8", "Render, edit, sites", "show notes to people",
-   [("markdown-render", "notes → HTML", "osdlc"), ("markdown-editor", "live editor", "osdlc"),
-    ("markdown-ui", "viewing chrome", "osdlc"), ("markdown-astro", "notes → site", "osdlc")], []),
+   [("markdown-render", "notes → HTML", "osdlc"), ("markdown-render-vue", "notes → Vue", "osdlc"),
+    ("markdown-vault-astro", "notes → site", "osdlc"), ("markdown-editor", "live editor", "dev"),
+    ("markdown-ui", "viewing chrome", "dev")], []),
   ("7", "Query (later)", "read a corpus as a database",
-   [("query layer", "Bases queries, loader, builds", "osdlc", "later")], []),
+   [("query layer", "Bases engine; in dev for now", "dev", "later")], []),
   ("6", "Profiles", "shared types, and records to reference",
-   [("claims profile", "VA-Spec evidence types", "mod", "later"),
-    ("sdlc profile", "generated from packs", "mod", "later"),
-    ("sdlc starter", "principles to cite", "mod", "later"),
-    ("acceptance testing", "builds on claims", "mod", "later")], []),
+   [("claims profile", "VA-Spec evidence types", "osdlc", "later"),
+    ("sdlc profile", "generated from packs", "osdlc", "later"),
+    ("sdlc starter", "principles to cite", "osdlc", "later"),
+    ("acceptance testing", "builds on claims", "osdlc", "later")], []),
   ("5", "The model", "packs, above the store spec",
-   [("model-schema", "packs → profiles", "mod"), ("pack-intent, -sdlc", "the sdlc kinds", "mod"),
-    ("pack-claims", "the claims kinds", "mod", "later")], []),
+   [("model-schema", "packs → profiles", "dev"), ("pack-intent, -sdlc", "the sdlc kinds", "dev"),
+    ("pack-claims", "claims kinds; home open", "dev", "later")], []),
   ("4", "corpus-schema", "the spec and its validator",
-   [("@osdlc/corpus-schema", "levels 0–2, extends, sync", "md")],
-   [("Rust validator", "later, same tests", "md", "later")]),
+   [("@osdlc/corpus-schema", "levels 0–2, extends, sync", "osdlc")],
+   [("Rust validator", "later, same tests", "osdlc", "later")]),
   ("3", "Corpus model", "every note and link, kept fresh",
    [("markdown-corpus", "from vault + graph", "osdlc", "later")],
    [("markdown-corpus", "the twin", "osdlc"), ("markdown-relink", "move notes, fix links", "osdlc")]),
@@ -83,7 +84,7 @@ def layers():
         out.extend(body)
         y = top + h + 8
     out.append(f'<text class="cs" x="{X0}" y="{y + 10}">Each layer uses only the layers below it. Dashed: not built yet.</text>'
-               f'<text class="cs" x="{X0}" y="{y + 26}">Colour: where each package lives once the moves are done.</text>')
+               f'<text class="cs" x="{X0}" y="{y + 26}">Colour: where each package lives (D-SM4K).</text>')
     return svg(STYLE + "".join(out), y + 38, "The layers of the markdown ecosystem, top to bottom")
 
 

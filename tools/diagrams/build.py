@@ -84,8 +84,9 @@ def grid(y, items):
 
 
 KEY = [("osdlc", "osdlc"), ("dev", "dev"), ("ont", "rust-ontogen"), ("sw", "skillwright")]
-PRESENT_KEY = [("md", "markdown")] + KEY           # osdlc/models holds nothing yet
-TARGET_KEY = [("md", "markdown"), ("mod", "models")] + KEY
+# osdlc/markdown and osdlc/models are holding pens (D-SM4K): no package lives there.
+PRESENT_KEY = KEY
+TARGET_KEY = KEY
 
 
 def key(y, repos, label="Repo:"):
@@ -135,15 +136,16 @@ PRESENT = [
       ("harness-reference", "typed corpus", "sw")],
      [("determined", "notes app", "dev"), ("skillwright CLI", "renames", "sw")]),
     ("Render, edit, sites", "show notes to people",
-     [("markdown-render", "Obsidian dialect → HTML", "dev"), ("markdown-editor", "CodeMirror live edit", "dev"),
-      ("markdown-astro", "vault → Astro site", "dev", ("F1",)), ("markdown-ui", "Nuxt viewing chrome", "dev", ("F11",))], []),
+     [("markdown-render", "Obsidian dialect → HTML", "osdlc"), ("markdown-render-vue", "Vue renderer", "osdlc"),
+      ("markdown-vault-astro", "vault → Astro site", "osdlc", ("F1",)), ("markdown-editor", "CodeMirror live edit", "dev"),
+      ("markdown-ui", "Nuxt viewing chrome", "dev", ("F11",))], []),
     ("Query and store", "a db over notes",
      [("markdown-vault-query", "Obsidian Bases engine", "dev", ("F9",)),
       ("query loader", "planned", "osdlc", "later", ("F9",))],
      [("markdown-store", "typed CRUD, lossless", "ont", ("F6", "F7")), ("ontogen", "Rust structs → notes", "ont")]),
     ("Types", "what a record must hold",
      [("model-schema", "packs; on a dev branch", "dev", ("F5",)), ("pack-intent, -sdlc", "sdlc's 14 kinds", "dev", ("F5",)),
-      ("corpus-schema", "validator, on npm", "md", ("F5", "F8"))], []),
+      ("corpus-schema", "validator, on npm", "osdlc", ("F5", "F8"))], []),
     ("Corpus model", "every note, link, backlink",
      [("markdown-vault", "scan + resolve + backlinks", "dev", ("F1", "F4")),
       ("vault-graph-core", "resolve + nodes/edges", "dev", ("F1", "F11"))],
@@ -156,7 +158,8 @@ PRESENT = [
       ("markdown-link copy", "dev, private 0.1.0", "dev", ("F11",))],
      [("markdown-link", "parse + LinkIndex", "osdlc"), ("frontmatter-lossless", "twin", "osdlc"),
       ("markdown-contract", "twin", "osdlc"), ("markdown-tags", "twin", "osdlc"),
-      ("gfm-pipe-table", "twin", "osdlc"), ("yaml-splice", "twin + wasm", "osdlc")]),
+      ("gfm-pipe-table", "twin", "osdlc"), ("yaml-splice", "twin + wasm", "osdlc"),
+      ("slug-collate", "slugs, on crates.io", "osdlc")]),
     ("Files", "walk, read, write",
      [("etag-write", "atomic writes", "osdlc"), ("path-guard", "safe paths", "osdlc")],
      [("markdown-vault-fs", "walk, exclusions", "osdlc"), ("vfs-walk", "walk a folder", "osdlc"),
@@ -168,19 +171,20 @@ TARGET = [
     ("Apps and tools", "read only through osdlc packages",
      [("sdlc", "types from profiles", "dev"), ("skillwright, harness-ref", "spec corpora", "sw")],
      [("determined", "corpus model", "dev"), ("skillwright CLI", "corpus model", "sw")]),
-    ("Render, edit, sites", "in osdlc/osdlc for now",
-     [("markdown-render", "", "osdlc"), ("markdown-editor", "", "osdlc"),
-      ("markdown-astro", "", "osdlc"), ("markdown-ui", "", "osdlc")], []),
-    ("Query: the db layer (D5)", "one read layer over the corpus model",
-     [("query layer", "Bases + loader, one model", "osdlc")],
+    ("Render, edit, sites", "editor and ui stay in sksizer/dev for now",
+     [("markdown-render", "", "osdlc"), ("markdown-render-vue", "", "osdlc"),
+      ("markdown-vault-astro", "", "osdlc"), ("markdown-editor", "", "dev"),
+      ("markdown-ui", "", "dev")], []),
+    ("Query: the db layer (D5)", "stays in sksizer/dev for now",
+     [("markdown-vault-query", "Bases engine", "dev")],
      [("markdown-store", "writes the spec layout", "ont")]),
-    ("Profiles and starters (D17)", "in osdlc/models, published to npm",
-     [("claims profile", "VA-Spec types", "mod"), ("sdlc profile", "intent and sdlc kinds", "mod"),
-      ("sdlc starter", "records to reference", "mod")], []),
-    ("The model (D13)", "packs, above the store spec",
-     [("model-schema", "packs → profiles", "mod"), ("packs", "intent, sdlc, claims", "mod")], []),
-    ("The spec (D4)", "in this repo, one type format",
-     [("corpus-schema", "extends, uses, references", "md")], []),
+    ("Profiles and starters (D19)", "in osdlc/osdlc, published to npm",
+     [("claims profile", "VA-Spec types", "osdlc"), ("sdlc profile", "intent and sdlc kinds", "osdlc"),
+      ("sdlc starter", "records to reference", "osdlc")], []),
+    ("The model (D13)", "packs; stay in sksizer/dev for now",
+     [("model-schema", "packs → profiles", "dev"), ("packs", "intent, sdlc, claims", "dev")], []),
+    ("The spec (D4)", "in osdlc/osdlc, one type format",
+     [("corpus-schema", "extends, uses, references", "osdlc")], []),
     ("Corpus model", "one per language, one family",
      [("markdown-corpus", "vault + graph merged", "osdlc")],
      [("markdown-corpus", "twin", "osdlc"), ("markdown-relink", "", "osdlc")]),
@@ -194,8 +198,8 @@ TARGET = [
 def resolvers():
     rows = [("markdown-vault", "own shortest-path rule", "dev"),
             ("vault-graph-core", "port of the Rust LinkIndex", "dev"),
-            ("markdown-astro", "first match; embeds by name", "dev"),
-            ("corpus-schema", "own walk and link check", "md"),
+            ("markdown-vault-astro", "first match; embeds by name", "osdlc"),
+            ("corpus-schema", "own walk and link check", "osdlc"),
             ("markdown-store", "own [[id]] wikilink code", "ont")]
     out = [f'<text class="rl" x="{X0}" y="26">Who decides what a link points to</text>']
     y = 44
