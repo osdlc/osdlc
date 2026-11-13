@@ -2,8 +2,8 @@
 #
 # Auth: CURSOR_API_KEY. A bad key exits 1 with plain text, not JSON ("The API
 # key is invalid"), which is what harness_auth_failed looks for.
-# Out of credit: UNVERIFIED text; cursor-agent's real message was not found, so
-# key_exhausted matches "usage limit", "out of credits" or "quota" conservatively.
+# Out of credit: unverified. cursor-agent's real usage-limit message was not
+# found, so the key_exhausted pattern in harness_run is a guess.
 # Read-only: --mode ask plus a temporary .cursor/cli.json that denies writes
 # and gh and allows only reads, git and node. Cursor's rules match the command
 # name, not its arguments, so `git push` is not blocked by name; the caller's
@@ -62,14 +62,14 @@ JSON
     jq --arg k "$KEY" '. + {auth_failed: false, key_exhausted: false} | .result |= (split($k) | join("***"))' "$d/out" > "$RESULT"
   else
     # Anything else: keep the last lines of output and stderr, minus colour codes and the key.
-    # A run that got real turns (JSON with num_turns > 1) is never classified from its text.
-    real=false
-    if jq -e '(.num_turns // 0) > 1' "$d/out" > /dev/null 2>&1; then real=true; fi
+    # After real turns the text may be the agent quoting an error, so it is not classified.
+    had_turns=false
+    if jq -e '(.num_turns // 0) > 1' "$d/out" > /dev/null 2>&1; then had_turns=true; fi
     { cat "$d/out"; cat "$d/err"; } | sed $'s/\x1b\\[[0-9;]*m//g' | tail -n 20 \
-      | jq -Rs --arg k "$KEY" --argjson real "$real" '{is_error: true,
+      | jq -Rs --arg k "$KEY" --argjson real "$had_turns" '{is_error: true,
           result: ((split($k) | join("***")) | if . == "" then "agent produced no output" else . end),
           auth_failed: (($real | not) and test("API key is invalid|invalid API key|not logged in|not authenticated|Authentication required"; "i")),
-          key_exhausted: (($real | not) and test("usage limit|out of credits|quota"; "i"))}' > "$RESULT"
+          key_exhausted: (($real | not) and test("usage limit|out of credits|quota (exceeded|exhausted)"; "i"))}' > "$RESULT"
     [ "$status" -ne 0 ] || status=1
   fi
   return "$status"

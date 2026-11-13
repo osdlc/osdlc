@@ -23,9 +23,8 @@ harness_auth_failed() {
     || { ! jq -e . "$RESULT" > /dev/null 2>&1 && grep -qiE "$auth" "$RESULT"; }
 }
 
-# Out of credit: HTTP 402 or a billing message, or a 429 whose message names a
-# usage, spend or monthly limit (a plain per-minute rate limit does not match).
-# The text check has the same guard as above.
+# Out of credit. A 429 counts only when it names a usage, spend or monthly
+# limit; a per-minute rate limit does not. The text check has the guard above.
 harness_key_exhausted() {
   local re='billing_error|credit balance is too low|insufficient credit|usage limit|spend limit|monthly limit'
   jq -e --arg re "$re" '.api_error_status == 402

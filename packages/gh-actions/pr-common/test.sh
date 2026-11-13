@@ -48,6 +48,8 @@ case "$ANTHROPIC_API_KEY" in
   bad*) echo '{"is_error":true,"api_error_status":401,"num_turns":1,"result":"Invalid API key"}'; exit 1 ;;
   boom*) echo '{"is_error":true,"num_turns":5,"result":"overloaded"}'; exit 1 ;;
   exh*) echo '{"is_error":true,"api_error_status":402,"num_turns":1,"result":"Your credit balance is too low to access the API"}'; exit 1 ;;
+  lim*) echo '{"is_error":true,"api_error_status":429,"num_turns":1,"result":"You have reached your monthly limit"}'; exit 1 ;;
+  plain*) echo "Invalid API key"; exit 1 ;;
   rate*) echo '{"is_error":true,"api_error_status":429,"num_turns":1,"result":"rate_limit_error: Number of requests has exceeded your per-minute rate limit"}'; exit 1 ;;
   trap*) echo '{"is_error":true,"num_turns":5,"result":"credit balance is too low (quoted from a file)"}'; exit 1 ;;
   leak*) echo "{\"is_error\":true,\"num_turns\":5,\"result\":\"oops\"}"; exit 1 ;;
@@ -91,6 +93,7 @@ case "$CURSOR_API_KEY" in
   bad*) printf '\033[33m⚠ Warning: The provided API key is invalid.\033[0m\n' ; exit 1 ;;
   boom*) echo "Something broke"; exit 1 ;;
   exh*) echo "You have hit your usage limit. Upgrade your plan."; exit 1 ;;
+  quota*) echo "Per-minute quota reached, retry in 30s"; exit 1 ;;
   rate*) echo "Too many requests, slow down"; exit 1 ;;
   trap*) echo '{"is_error":true,"num_turns":5,"result":"usage limit quoted from a file"}'; exit 1 ;;
 esac
@@ -209,6 +212,12 @@ for agent in claude codex cursor; do
 done
 
 # --- per-harness details
+run claude answer "lim1 good"
+[ "$status" = 0 ] && [ "$(nkeys)" = 2 ] && ok "claude: 429 naming a monthly limit falls through" || bad "claude: 429 naming a monthly limit falls through"
+run claude answer "plain1 plain2"
+check "claude: non-JSON result still gets the reason line" grep -q 'All 2 keys in .* failed authentication' "$FAKE_DIR/posted"
+run cursor answer "quota1 good"
+[ "$status" != 0 ] && [ "$(nkeys)" = 1 ] && ok "cursor: bare quota wording does not fall through" || bad "cursor: bare quota wording does not fall through"
 run claude review good "@claude review the error paths"
 check "claude: skill call" grep -q -- 'by running the /craft:code-review skill with base origin/main' "$FAKE_DIR/args"
 check "claude: focus passed" grep -q 'Focus requested by the reviewer: the error paths' "$FAKE_DIR/args"

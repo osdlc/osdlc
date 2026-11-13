@@ -76,7 +76,7 @@ status=1
 tried=0
 auth_failed=0
 exhausted=0
-fell=0  # the last key tried was passed over
+last_passed_over=0
 keys=()
 while IFS= read -r k; do
   if [ -n "$k" ]; then keys+=("$k"); fi
@@ -95,16 +95,16 @@ for key in "${keys[@]}"; do
     break
   fi
   # Only an authentication failure or an exhausted key moves on to the next key.
-  fell=0
+  last_passed_over=0
   if harness_auth_failed; then
     auth_failed=$((auth_failed + 1))
-    fell=1
+    last_passed_over=1
     echo "::warning::key $n in $KEY_VAR failed authentication; remove it from the secret"
     continue
   fi
   if harness_key_exhausted; then
     exhausted=$((exhausted + 1))
-    fell=1
+    last_passed_over=1
     if [ "$n" -lt "${#keys[@]}" ]; then
       echo "::warning::key $n in $KEY_VAR is out of credit or quota; trying key $((n + 1))"
     else
@@ -115,12 +115,16 @@ for key in "${keys[@]}"; do
   break
 done
 # Every key was passed over: say why in the posted failure.
-if [ "$fell" -eq 1 ]; then
+if [ "$last_passed_over" -eq 1 ]; then
   if [ "$exhausted" -eq 0 ]; then why="All $tried keys in $KEY_VAR failed authentication."
   elif [ "$auth_failed" -eq 0 ]; then why="All $tried keys in $KEY_VAR are out of credit or quota."
   else why="No key in $KEY_VAR worked: $auth_failed failed authentication, $exhausted are out of credit or quota."
   fi
-  jq --arg w "$why" '.result = $w + "\n\n" + (.result // "")' "$RESULT" > "$RESULT.tmp" 2> /dev/null && mv "$RESULT.tmp" "$RESULT"
+  if jq -e . "$RESULT" > /dev/null 2>&1; then
+    jq --arg w "$why" '.result = $w + "\n\n" + (.result // "")' "$RESULT" > "$RESULT.tmp" && mv "$RESULT.tmp" "$RESULT"
+  else
+    jq -Rs --arg w "$why" '{is_error: true, result: ($w + "\n\n" + .)}' "$RESULT" > "$RESULT.tmp" && mv "$RESULT.tmp" "$RESULT"
+  fi
 fi
 if [ "$tried" -eq 0 ]; then
   jq -n --arg m "No $KEY_VAR secret is set" '{is_error: true, result: $m}' | tee "$RESULT"
