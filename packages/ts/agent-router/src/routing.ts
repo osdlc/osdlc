@@ -35,10 +35,7 @@ export const RoutingRuleSchema = z.strictObject({
 /** Schema for a `routing:` section: an ordered list of strict `{when, profile}` rules. */
 export const RoutingConfigSchema = z.array(RoutingRuleSchema)
 
-/**
- * The `when` of a rule: every key set must hold for a request; `tags` holds when the request
- * carries any listed tag.
- */
+/** A parsed {@link RoutingWhenSchema}. */
 export type RoutingWhen = z.infer<typeof RoutingWhenSchema>
 /**
  * A routing rule: the `when` conditions and the name of the `profile` a matching request resolves

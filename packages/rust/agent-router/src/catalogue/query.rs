@@ -22,9 +22,7 @@ pub struct FoundModel<'a> {
     pub offering: &'a Offering,
 }
 
-/// The mapping table's policy over a catalogue (decision D-06): `classify`,
-/// rules tried before the shipped ones; `order`, the chain's tool order
-/// (default [`DEFAULT_CHAIN_ORDER`]); `pins`, `tool/tier` to a name.
+/// The mapping table's policy over a catalogue (decision D-06).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MappingPolicy {
@@ -93,7 +91,7 @@ impl CatalogueQuery {
         self.catalogue.tools.values().collect()
     }
 
-    /// The tool ids: the one tool list.
+    /// The tool ids, in catalogue order.
     pub fn known_tools(&self) -> Vec<&str> {
         self.catalogue.tools.keys().map(String::as_str).collect()
     }

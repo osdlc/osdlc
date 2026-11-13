@@ -128,10 +128,7 @@ const HeadlessSchema = z
     if (problem !== null) ctx.addIssue({ code: 'custom', message: problem })
   })
 
-/**
- * Schema for a curated tool's own listing of one model: `{model, native_name, efforts?,
- * context?}`.
- */
+/** Schema for a `CuratedOffer`. */
 export const CuratedOfferSchema = z
   .object({
     model: ModelKeySchema,
@@ -343,8 +340,7 @@ export const MACHINE_CATALOGUE_VERSION = 1
 
 /**
  * One layer of the machine catalogue: what models.dev or one probe reported.
- * Probes add models (`probe:ollama`, `probe:lmstudio`) or a curated tool's own
- * list (`probe:cursor` sets `tools.cursor.offers`); models.dev adds models.
+ * Probes add models or a curated tool's own list; models.dev adds models.
  */
 const MachineLayerSchema = z
   .object({

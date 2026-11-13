@@ -13,14 +13,13 @@ import type { Catalogue, Model, Offering, Sourced, Tool } from './types.ts'
 /** A model found on a tool: the catalogue row and the tool's offering of it. */
 export type FoundModel = { model: Sourced<Model>; offering: Offering }
 
-/**
- * The mapping table's policy over a catalogue: `classify`, rules tried before the shipped ones;
- * `order`, the chain's tool order (default {@link DEFAULT_CHAIN_ORDER}); `pins`, `tool/tier` to a
- * name.
- */
+/** The mapping table's policy over a catalogue. */
 export type MappingPolicy = {
+  /** Classify rules tried before the shipped ones. */
   classify?: readonly ClassifyRule[]
+  /** The chain's tool order; default {@link DEFAULT_CHAIN_ORDER}. */
   order?: readonly string[]
+  /** `tool/tier` to a model name. */
   pins?: Pins
 }
 
@@ -35,7 +34,7 @@ export type CatalogueQuery = {
   readonly offerings: readonly Offering[]
   /** Every tool row, in catalogue order. */
   tools(): Sourced<Tool>[]
-  /** The tool ids: the one tool list. */
+  /** The tool ids, in catalogue order. */
   knownTools(): string[]
   /** The tool row for `id`, or `undefined` when the catalogue lacks it. */
   tool(id: string): Sourced<Tool> | undefined

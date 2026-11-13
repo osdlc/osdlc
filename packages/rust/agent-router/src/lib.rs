@@ -7,8 +7,8 @@
 //! files: a vector is `{ name, input, expected }` and the Rust result must
 //! equal `expected`.
 //!
-//! Not mirrored: the author rule (only PR review uses it), the `config` subpath and the
-//! models.dev fetch; see the README.
+//! Not mirrored: the author rule, the `config` subpath and the models.dev fetch; see the
+//! README.
 //!
 //! The tier and trait sets are the single enums [`Tier`] and [`Trait`]. Adding one
 //! touches several places in step; the README's "Adding a trait or tier" lists them.

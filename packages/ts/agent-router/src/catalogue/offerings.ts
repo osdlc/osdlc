@@ -1,12 +1,12 @@
 import type { Catalogue, Model, Offering, ServesEntry, Tool } from './types.ts'
 
 /**
- * What `tool` is handed for `model`, in the decision's order:
+ * What `tool` is handed for `model`, the first that applies:
  *
  *   1. the tool's alias for the model, when the tool declares aliases and sets `prefer_alias`;
- *   2. else a curated tool's own name (`curatedName`);
- *   3. else the provider's model id;
- *   4. for a multi-provider (`open`) tool, `provider/id`, as opencode and pi expect.
+ *   2. a curated tool's own name (`curatedName`);
+ *   3. for a multi-provider (`open`) tool, `provider/id`, as opencode and pi expect;
+ *   4. the provider's model id.
  */
 export function nativeName(
   tool: Pick<Tool, 'aliases' | 'prefer_alias' | 'openness'>,

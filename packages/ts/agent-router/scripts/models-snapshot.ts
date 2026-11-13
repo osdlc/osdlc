@@ -8,28 +8,23 @@
  *   node scripts/models-snapshot.ts --write          # also write the new snapshot
  *   node scripts/models-snapshot.ts --date 2026-10-09
  *
- * models.dev supplies the model rows of each snapshot provider it lists
- * (anthropic, openai, google): id, family, release date, context, cost,
- * traits, status and, where it has them, effort levels. Everything models.dev
- * lacks is kept from the current snapshot: the tools (serves, flags, effort
- * lists, aliases, curated offers, the version each was checked against), the
- * providers, the offering rows (the context window a tool runs a model with,
- * which models.dev's single `limit.context` does not give: codex's rows come
- * from its own model list, `context_window` and `max_context_window` in
- * `~/.codex/models_cache.json`), and a model's efforts and aliases when
- * models.dev has none. The
- * tier-per-tool mapping is not stored: the package's classifier generates it,
- * and the diff prints how it moves (`~ tiers <tool>/<tier>: …`). Local
- * runtimes (ollama, lmstudio) get no rows: what they hold is per machine.
+ * models.dev supplies the model rows of each snapshot provider it lists: id,
+ * family, release date, context, cost, traits, status and, where it has them,
+ * effort levels. Everything models.dev lacks is kept from the current
+ * snapshot: the tools (serves, flags, effort lists, aliases, curated offers),
+ * the providers, the offering rows (the context window a tool runs a model
+ * with, which models.dev's single `limit.context` does not give), and a
+ * model's efforts and aliases when models.dev has none. The tier-per-tool
+ * mapping is not stored: the package's classifier generates it, and the diff
+ * prints how it moves (`~ tiers <tool>/<tier>: …`). Local runtimes get no rows
+ * (see `LOCAL_KINDS` in src/catalogue/models-dev.ts): what they hold is per
+ * machine.
  *
- * The row mapping is the package's `modelsDevRows`, which a host's own
- * refresh can use too; its `kept` says which models stay (text output, and
- * image output). A dated id (`claude-haiku-4-5-20251001`) whose undated base
- * is listed becomes an alias of the base.
+ * Row mapping: see `modelsDevRows`.
  *
- * Release tooling, so it lives in `scripts/` and is not shipped. No
- * shell-out. Exit 0 with the diff (or
- * "no changes"); exit 1 on a fetch, parse or snapshot-validation error.
+ * Release tooling, so it lives in `scripts/` and is not shipped. No shell-out.
+ * Exit 0 with the diff (or "no changes"); exit 1 on a fetch, parse or
+ * snapshot-validation error.
  */
 
 import { readFileSync, writeFileSync } from 'node:fs'

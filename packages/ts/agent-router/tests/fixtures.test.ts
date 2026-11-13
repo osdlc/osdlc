@@ -1,8 +1,5 @@
-// The fixture vectors shared with the Rust twin (packages/rust/agent-router;
-// see docs/planning/decisions/D-05): this package must produce every committed
-// vector's `expected` from its `input`, as the Rust tests do. That the committed
-// files equal what scripts/fixtures.ts emits is `pnpm run check:extra`;
-// regenerate with `pnpm run fixtures`.
+// Every committed vector's `expected` must come from its `input` here, as in the
+// Rust tests; see scripts/fixtures.ts.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 

@@ -288,10 +288,8 @@ pub fn layer_catalogue(layers: &[CatalogueLayer], options: &LayerOptions) -> Cat
     cat
 }
 
-/// References to a tool, provider or model the merged catalogue lacks. Checks each tool's
-/// `serves` providers, alias targets and `offers` models; each model's provider; and that each
-/// `cat.offering_rows` entry names a known tool and a known model. Returns the problems, then the
-/// warnings: a removal row naming an unknown model only warns.
+/// References to a tool, provider or model the merged catalogue lacks, as the problems and then
+/// the warnings.
 fn reference_problems(cat: &Catalogue) -> (Vec<CatalogueProblem>, Vec<CatalogueProblem>) {
     let mut out = Vec::new();
     let mut warn = Vec::new();

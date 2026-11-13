@@ -82,7 +82,6 @@ fn newest_first(a: &Model, b: &Model) -> Ordering {
             .and_then(|c| c.max.or(c.default))
             .unwrap_or(0)
     };
-    // Later date first (an empty date sorts last), then larger context first.
     db.cmp(da).then_with(|| size(b).cmp(&size(a)))
 }
 

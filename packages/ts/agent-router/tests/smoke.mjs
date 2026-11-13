@@ -2,11 +2,8 @@
 // the TypeScript source, so a broken emit could pass them and fail on the
 // consumer's machine.
 //
-// It imports the package by name, so Node resolves it through `exports` as a
-// consumer would. `pnpm run smoke` runs it here, where the name resolves to
-// this package's own dist/. check-packages.ts copies it into a clean project
-// that installed the tarball, so it must not import other repo files. It is
-// not a test-runner suite and is not in `files`.
+// Imports the package by name and no other repo file: `pnpm run check:packages`
+// runs it from an installed tarball. See packages/README.md, "smoke check".
 
 import { strict as assert } from 'node:assert'
 

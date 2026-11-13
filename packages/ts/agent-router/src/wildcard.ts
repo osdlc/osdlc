@@ -19,7 +19,10 @@ export type WildcardSkip = { text: string; reason: WildcardSkipReason; detail: s
 export type Expansion = {
   /** The candidates, resolved, in chain order. */
   entries: Resolved[]
-  /** The candidates passed over: an embedding or non-agent model, a missing trait, an effort the tool lacks. */
+  /**
+   * The candidates passed over: an embedding or non-agent model, a pinned image-output model the
+   * entry did not ask for, a missing trait, an effort the tool lacks.
+   */
   skipped: WildcardSkip[]
 }
 
@@ -44,9 +47,10 @@ export function entryTraitsMiss(
  * when set. A tool's head (the model its tier maps
  * to, pinned or generated) is the candidate `<tool>/<tier>`; every later model
  * is named. Each candidate keeps the `ctx` qualifier and effort. The chain
- * passes over a model that is `embedding`, not `agent`, or fails the trait
- * filter; a candidate is also skipped when it does not resolve (an effort the
- * tool lacks). An empty result is the walk's to skip.
+ * passes over a model that is `embedding`, not `agent`, an image-output model
+ * the entry did not ask for, or fails the trait filter; a candidate is also
+ * skipped when it does not resolve (an effort the tool lacks). An empty result
+ * is the walk's to skip.
  */
 export function expandWildcard(ref: Ref, ctx: ResolveContext): Expansion {
   const out: Expansion = { entries: [], skipped: [] }

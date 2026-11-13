@@ -1,7 +1,5 @@
 // Validity: every candidate reference is checked against the catalogue before
-// availability. The deciding question is whether the failure holds everywhere
-// (an error) or only here and now (a skip); a model the catalogue does not know
-// is a warning.
+// availability. Decision D-06 says which failures are errors, skips or warnings.
 // An unknown model only warns because the shipped snapshot and the last refresh
 // lag new releases, and a name the tool accepts should not be refused for that;
 // `router.strict` makes it an error where drift must fail (CI).
@@ -155,10 +153,9 @@ function effortError(
  *   catalogue declares).
  *
  * An effort one step from an accepted level on `EFFORT_LEVELS` passes; the
- * resolve moves it (`adjustEffort`). An effort more than one step from any
- * supported level is an error. For a model the catalogue
- * does not know, effort is checked against the tool's own levels only, and
- * passes when the tool declares none.
+ * resolve moves it (`adjustEffort`). For a model the catalogue does not know,
+ * effort is checked against the tool's own levels only, and passes when the
+ * tool declares none.
  */
 export function checkRef(ref: Ref, catalogue: CatalogueQuery, ctx: CheckContext = {}): Validity {
   const { tool, effort } = ref

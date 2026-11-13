@@ -79,9 +79,12 @@ export const PROFILE_SKIP_REASONS = deepFreeze([
 /** One of {@link PROFILE_SKIP_REASONS}. */
 export type ProfileSkipReason = (typeof PROFILE_SKIP_REASONS)[number]
 
-/** What the entries resolve against (`catalogue`, `knownTools`, `strict`), plus the walk's inputs. */
+/** {@link ResolveContext} plus the walk's inputs. */
 export type ChooseContext = ResolveContext & {
-  /** Asked per entry, with the entry's resolved `context`; it never skips on context itself. */
+  /**
+   * Asked per entry, with the entry's resolved `context`. The callback answers availability only;
+   * context skips come from the walk.
+   */
   isAvailable: (r: Resolved) => Availability
   /**
    * The author rule, passed by a caller whose work has an author (a code review, say). Unset, no
@@ -156,10 +159,8 @@ export type Choice =
       /** Set when no entry was usable except cooling ones and the first of those was taken anyway. */
       allCooling?: true
       /**
-       * The author rule's step that decided the choice, when the rule applied
-       * (`authorRule.notTheAuthor` with an author): 1, an entry off the author's tool; 2,
-       * an author-tool entry under `different-model`; 3, the next model in the
-       * tier; 4, an author-tool entry whose model may match.
+       * The author rule's step that decided the choice, when the rule applied; steps as in
+       * {@link chooseFromProfile}.
        */
       authorStep?: AuthorStep
       /**
@@ -261,13 +262,8 @@ type Filtered = { entry: Resolved; traits: readonly Trait[] }
 type Prepared = Filtered & { skip?: Pick<ProfileSkip, 'reason' | 'detail'> }
 
 /**
- * Resolve every entry of the profile in order, as the walk sees them: a
- * wildcard is expanded into its category chain (`expandWildcard`) and its
- * passed-over candidates and an empty expansion are skips; a tier entry's
- * traits filter it; the context requirement is checked (`checkContext`), and a
- * wildcard candidate that cannot reach its `[ctx=]` is a skip, not an error; a
- * pinned tier is traced. Errors make the profile invalid; warnings are traced
- * and the entry stays.
+ * Resolve and check every entry of the profile in order, as {@link chooseFromProfile} describes. A
+ * wildcard candidate that cannot reach its `[ctx=]` is a skip, not an error.
  */
 function prepareEntries(
   profile: Profile,
@@ -546,8 +542,7 @@ export function chooseFromProfile(profile: Profile, ctx: ChooseContext): Choice 
   const { trace } = walk
   const author = ctx.author
   const notTheAuthor = ctx.authorRule?.notTheAuthor === true
-  // With no author named, an unknown one may be on any tool.
-  const unknown = author === undefined && ctx.authorUnknown === true && notTheAuthor
+  const anyToolMayBeAuthors = author === undefined && ctx.authorUnknown === true && notTheAuthor
   // Step 1 decides any choice off the author's tool, when the rule applies.
   const offAuthorStep: AuthorStep | undefined = notTheAuthor && author !== undefined ? 1 : undefined
 
@@ -561,7 +556,8 @@ export function chooseFromProfile(profile: Profile, ctx: ChooseContext): Choice 
   trace.push(...prepared.trace)
   walk.skipped.push(...prepared.skipped)
   if (prepared.errors.length > 0) return invalid(prepared.errors, walk)
-  if (unknown) trace.push("author unknown: any tool may be the author's (author rule step 1)")
+  if (anyToolMayBeAuthors)
+    trace.push("author unknown: any tool may be the author's (author rule step 1)")
 
   /** Entries on the author's tool, set aside by step 1, with their trait filters. */
   const setAside: Filtered[] = []
@@ -576,7 +572,10 @@ export function chooseFromProfile(profile: Profile, ctx: ChooseContext): Choice 
       pass(walk, { ref: entry.text, ...skip }, entry)
       continue
     }
-    if (unknown || (notTheAuthor && author !== undefined && entry.tool === author.tool)) {
+    if (
+      anyToolMayBeAuthors ||
+      (notTheAuthor && author !== undefined && entry.tool === author.tool)
+    ) {
       setAside.push({ entry, traits })
       pass(walk, { ref: entry.text, reason: 'author-tool', step: 1 }, entry)
       continue
@@ -602,7 +601,7 @@ export function chooseFromProfile(profile: Profile, ctx: ChooseContext): Choice 
     return { kind: 'none', skipped: walk.skipped, trace, summary: 'none: no entry is usable' }
   }
 
-  const left = unknown
+  const left = anyToolMayBeAuthors
     ? "the author is unknown, so any tool may be the author's"
     : "only the author's tool is left"
   switch (rule) {
@@ -613,7 +612,13 @@ export function chooseFromProfile(profile: Profile, ctx: ChooseContext): Choice 
       trace.push('author rule step 2: if_only_author_left: person')
       return { kind: 'person', skipped: walk.skipped, trace, summary: `person: ${left}` }
     case 'different-model':
-      return authorFallback(walk, setAside, cooling, { model: author?.model, unknown }, ctx)
+      return authorFallback(
+        walk,
+        setAside,
+        cooling,
+        { model: author?.model, unknown: anyToolMayBeAuthors },
+        ctx,
+      )
   }
 }
 
@@ -692,7 +697,6 @@ function authorFallback(
     )
   }
 
-  // Nothing available anywhere: a cooldown alone must not return `none`.
   const viaCooling = takeCooling(walk, cooling, 1)
   if (viaCooling !== undefined) return viaCooling
   const first = authorCooling[0]

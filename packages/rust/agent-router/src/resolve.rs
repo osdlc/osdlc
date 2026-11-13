@@ -74,9 +74,8 @@ pub struct Resolved {
     /// True when an effort was given but the catalogue declares no levels to check it against.
     #[serde(rename = "effortUnchecked")]
     pub effort_unchecked: bool,
-    /// The context in tokens the entry runs with. The TypeScript `Resolved` carries it and the
-    /// resolve vectors pin `contextUnchecked: false`, so it stays here; [`resolve_ref`] leaves it
-    /// unset and only the profile walk fills it.
+    /// The context in tokens the entry runs with; [`resolve_ref`] leaves it unset and only the
+    /// profile walk fills it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context: Option<u64>,
     /// True when a context was asked for but the catalogue knows no size for the model.

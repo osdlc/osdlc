@@ -1,8 +1,7 @@
-//! Validity (mirror of `validity.ts`, decision D-06): every candidate
-//! reference is checked against the catalogue before availability. The
-//! deciding question is whether the failure holds everywhere (an error) or
-//! only here and now (a skip); a model the catalogue does not know is a
-//! warning. Pure: machine state is an availability reason, never a result here.
+//! Validity (mirror of `validity.ts`): every candidate reference is checked
+//! against the catalogue before availability. Decision D-06 says which
+//! failures are errors, skips or warnings. Pure: machine state is an
+//! availability reason, never a result here.
 
 use serde::{Deserialize, Serialize};
 
@@ -231,8 +230,9 @@ fn effort_error(tool: &str, model: Option<&str>, effort: &str, efforts: Vec<Stri
 /// - `skip`: the model is withdrawn. A walk passes over it.
 /// - `error`: the reference cannot work anywhere: an unknown tool, a tier the
 ///   tool has no model for, a tool that does not serve the model's provider, a
-///   known model the tool does not offer, an unknown model under `strict`, or
-///   an effort the tool and model do not accept.
+///   known model the tool does not offer, an unknown model under `strict`, an
+///   effort the tool and model do not accept, or an effort not on
+///   `EFFORT_LEVELS` at all (`unknown-effort`).
 ///
 /// An effort one step from an accepted level passes; the resolve moves it
 /// (`adjust_effort`). For a model the catalogue does not know, effort is

@@ -1,6 +1,6 @@
 // The effort-mismatch policy: an effort the tool and model do not accept moves
 // at most one step on agent-call's `EFFORT_LEVELS` scale, up first. Making it
-// configurable is task T-02 in the planning folder.
+// configurable is an open task in the planning folder (docs/planning/tasks/).
 import { EFFORT_LEVELS } from '@osdlc/agent-call/models'
 
 /** How a resolve moved an effort the tool and model do not accept. */

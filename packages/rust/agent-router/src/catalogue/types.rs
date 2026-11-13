@@ -2,9 +2,9 @@
 //! about tools, providers, models and the offerings that join them. Plain
 //! data, no I/O.
 //!
-//! The `*Row` types are what one layer states (a strict subset of the fields,
-//! `deny_unknown_fields`, as the zod schemas are `.strict()`). The unsuffixed
-//! `Tool`, `Provider` and `Model` are merged rows.
+//! The unsuffixed `Tool`, `Provider` and `Model` are merged rows. One layer's
+//! statement of a row is a [`LayerRow`]; the typed per-layer tool, provider
+//! and model rows are in `schema.rs`.
 
 use std::ops::Deref;
 
@@ -17,8 +17,7 @@ use crate::reference::Trait;
 /// An insertion-ordered table keyed by id (a JS object's iteration order).
 pub type Table<T> = IndexMap<String, T>;
 
-/// The layer a fact came from (`snapshot`, `models.dev`, `config`, `probe:<tool>`)
-/// and the date (`YYYY-MM-DD`) it was observed.
+/// Where a fact came from and when it was observed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Provenance {
     /// Where the fact came from: `snapshot`, `models.dev`, `config` or `probe:<tool>`.
@@ -343,7 +342,7 @@ pub struct Model {
     /// What the model can do; see [`Trait`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub traits: Option<Vec<Trait>>,
-    /// `Deprecated` still runs, with a warning; `Withdrawn` is skipped.
+    /// The model's lifecycle status.
     #[serde(default)]
     pub status: ModelStatus,
     /// When the model was deprecated.

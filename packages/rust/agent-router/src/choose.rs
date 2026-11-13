@@ -1,16 +1,11 @@
-//! The profile walk (mirror of `choose.ts`, without the author rule): every
-//! entry of a profile is resolved and checked, then the walk takes the first
-//! entry the caller's availability callback accepts. The trace text is the
-//! TypeScript's, byte for byte, once the vectors strip what this walk does not
-//! produce (`sameToolAsAuthor`, and the message of an `invalid-shape`). The
-//! author-rule paths are not mirrored here; the vector harness
-//! (`tests/fixtures.rs`) and the TypeScript emitter strip those fields, and
-//! that stripping is what to revisit when the author rule lands.
+//! The profile walk (mirror of `choose.ts`): every entry of a profile is
+//! resolved and checked, then the walk takes the first entry the caller's
+//! availability callback accepts. The trace text is the TypeScript's, byte for
+//! byte, once the vectors strip what this walk does not produce
+//! (`sameToolAsAuthor`, and the message of an `invalid-shape`).
 //!
-//! Not mirrored: the author rule (`authorRule`, `author`, `authorUnknown`, its
-//! steps 1 to 4 and the `wait` and `person` outcomes), which only PR review
-//! uses. [`ProfileSkipReason::AuthorTool`] stays in the set so the reason codes
-//! equal the TypeScript's; this walk never produces it.
+//! The author rule is not mirrored; the README's "Differences from the
+//! TypeScript" says what that leaves out and what the vectors strip.
 
 use serde::Serialize;
 
@@ -24,11 +19,7 @@ use crate::resolve::{Check, Origin, ResolveContext, ResolveError, Resolved, reso
 use crate::validity::ValiditySkipCode;
 use crate::wildcard::{WildcardSkipReason, entry_traits_miss, expand_wildcard};
 
-/// Why an entry is unavailable: its tool is not installed or signed in, over
-/// the usage budget, or cooling down after a rate limit; its local runtime is
-/// unreachable or lacks the model; the launcher cannot launch it; it is on a
-/// tool other than the one a session runs; or the tool may not run on an
-/// untrusted fork's tree.
+/// Why an entry is unavailable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum AvailabilityReason {
@@ -79,9 +70,7 @@ pub enum Availability {
     },
 }
 
-/// Every reason the walk passes an entry over: an availability reason, a
-/// wildcard candidate's, a withdrawn model, a context the model cannot reach on
-/// its tool, a wildcard that expands to nothing, and the author rule's step 1.
+/// Every reason the walk passes an entry over.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ProfileSkipReason {
@@ -162,8 +151,7 @@ impl ProfileSkipReason {
         }
     }
 
-    /// The availability reason this is, for the nine the callback reports; `None` for the rest.
-    /// The one place the availability subset is listed.
+    /// The availability reason this is; `None` for a reason the walk produces itself.
     pub fn availability(self) -> Option<AvailabilityReason> {
         Some(match self {
             Self::NotInstalled => AvailabilityReason::NotInstalled,
@@ -240,9 +228,7 @@ pub struct ProfileEntryError {
     pub error: Option<Box<ResolveError>>,
 }
 
-/// An entry the walk passed over, and why. `ref` is the entry's text (a
-/// wildcard's candidate, or the wildcard itself when it expands to nothing);
-/// `detail` is what failed, when known.
+/// An entry the walk passed over, and why.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ProfileSkip {
     /// The entry's text: a wildcard's candidate, or the wildcard itself when it expands to nothing.
@@ -259,8 +245,7 @@ pub struct ProfileSkip {
 /// `unavailable (not-launchable: <detail>)` for an availability reason,
 /// `below context: <detail>`, `wildcard expands to no candidate`, else the
 /// detail (a withdrawn model, a wildcard candidate's), else the code. `BelowContext`
-/// without a detail reads `too small`. `AuthorTool` reads `author's tool`, but this
-/// walk never produces it; its arm is only for reason-set parity.
+/// without a detail reads `too small`. `AuthorTool` reads `author's tool`.
 pub fn skip_reason_text(reason: ProfileSkipReason, detail: Option<&str>) -> String {
     match reason {
         ProfileSkipReason::AuthorTool => "author's tool".to_string(),
@@ -443,12 +428,9 @@ fn add(r: &Ref, entry: Resolved, profile: &Profile, ctx: &ResolveContext, prep: 
     });
 }
 
-/// Resolve every entry of the profile in order, as the walk sees them: a
-/// wildcard is expanded into its category chain and its passed-over candidates
-/// and an empty expansion are skips; a tier entry's traits filter it; the
-/// context requirement is checked, and a wildcard candidate that cannot reach
-/// its `[ctx=]` is a skip, not an error; a pinned tier is traced. Errors make
-/// the profile invalid; warnings are traced and the entry stays.
+/// Resolve and check every entry of the profile in order, as
+/// [`choose_from_profile`] describes. A wildcard candidate that cannot reach
+/// its `[ctx=]` is a skip, not an error.
 fn prepare_entries(profile: &Profile, ctx: &ResolveContext) -> Prep {
     let mut prep = Prep::default();
     for r in &profile.order {
@@ -691,7 +673,6 @@ pub fn choose_from_profile(profile: &Profile, ctx: &ChooseContext) -> Choice {
         }
     }
 
-    // Nothing available: a cooldown alone must not return `none`.
     if let Some((at, first)) = cooling.first().cloned() {
         walk.trace.push(format!(
             "{}: taken: no entry is available and {} cooling down",

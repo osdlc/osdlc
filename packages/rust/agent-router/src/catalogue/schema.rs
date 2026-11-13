@@ -4,9 +4,9 @@
 //! The zod schemas are `.strict()` at every level; these types are
 //! `deny_unknown_fields` and each has a `validate` for what the type system
 //! cannot say (patterns, ranges, dates, the headless slot rules). The fixture
-//! vectors in `fixtures/catalogue/schema-*.json` hold accept and reject cases
-//! for both. Not mirrored: `RouterConfigSchema` (the `router:` config block;
-//! it belongs with the config subpath, which is out of scope).
+//! vectors in `packages/ts/agent-router/fixtures/catalogue/schema-*.json` hold
+//! accept and reject cases for both. Not mirrored: `RouterConfigSchema`, which
+//! belongs to the `config` subpath; see the [crate] docs.
 
 use std::sync::LazyLock;
 
@@ -470,11 +470,14 @@ impl SnapshotLayer {
     }
 }
 
-/// The typed rows as the untyped maps layering merges. The merge stays untyped on
-/// purpose: it mirrors `layers.ts` field for field (a per-field `fields`
-/// provenance, a later layer overriding an earlier one key by key), so do not fold
-/// it into a typed merge. A row type serializes to a JSON object, so a failure here
-/// is a bug in the row type and panics rather than hiding as an empty row.
+/// The typed rows as the untyped maps layering merges. The merge is untyped
+/// because it mirrors `layers.ts` field for field: a per-field `fields`
+/// provenance, and a later layer overriding an earlier one key by key.
+///
+/// # Panics
+///
+/// When a row does not serialize to a JSON object. Every row type is a struct,
+/// so that is a bug in the row type; it panics rather than hide as an empty row.
 fn rows<T: Serialize>(table: &Table<T>) -> Table<LayerRow> {
     table
         .iter()
@@ -568,7 +571,7 @@ impl MachineCatalogue {
         ensure(
             cat.version == MACHINE_CATALOGUE_VERSION,
             "version",
-            "must be 1",
+            &format!("must be {MACHINE_CATALOGUE_VERSION}"),
         )?;
         date(&cat.refreshed_at, "refreshed_at")?;
         for (i, layer) in cat.layers.iter().enumerate() {

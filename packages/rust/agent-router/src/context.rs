@@ -48,8 +48,8 @@ impl<'de> Deserialize<'de> for Ctx {
     }
 }
 
-/// The largest context size in tokens: JavaScript's `Number.MAX_SAFE_INTEGER`, the
-/// TypeScript's `MAX_SIZE`, above which a size is no longer an exact integer there.
+/// The largest context size in tokens, as the TypeScript's `MAX_SIZE`: JavaScript's
+/// `Number.MAX_SAFE_INTEGER`, above which a TypeScript number is no longer an exact integer.
 pub const MAX_SIZE: u64 = (1 << 53) - 1;
 
 /// Why a size text is not a size.
@@ -103,8 +103,7 @@ pub fn format_size(tokens: u64) -> String {
     }
 }
 
-/// Claude Code's default window, below which the `[1m]` long-context form is not needed; at or
-/// under its default nothing is passed.
+/// Claude Code's default window: for a size at or under it, nothing is passed.
 const CLAUDE_DEFAULT_CONTEXT: u64 = 200_000;
 
 /// Claude Code's one context variant, `[1m]`: the most a size can ask of it.

@@ -65,8 +65,7 @@ export type ClassifyRule = z.infer<typeof ClassifyRuleSchema>
 
 /**
  * The shipped rules, fixed against the shipped snapshot's families. A family
- * no rule names (`claude-fable`, `gpt-terra`, the older `gpt`, `gpt-mini` and
- * `o` lines) stays unclassified until a rule places it.
+ * no rule names stays unclassified until a rule places it.
  */
 export const BUILTIN_CLASSIFY_RULES: readonly ClassifyRule[] = deepFreeze([
   {

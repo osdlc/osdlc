@@ -1,6 +1,3 @@
-// What a refresh moved: two catalogue queries compared as the person relying on them sees
-// them. Facts are compared by model key; policy by the generated tier-per-tool
-// mapping and the classifier's unclassified families.
 import { UNCLASSIFIED } from '../classify.ts'
 import { TIERS } from '../ref.ts'
 import type { CatalogueQuery } from './query.ts'
@@ -60,7 +57,10 @@ function sortedDiff(a: readonly string[], b: ReadonlySet<string>): string[] {
   return a.filter((k) => !b.has(k)).sort()
 }
 
-/** What moved from `before` to `after`. */
+/**
+ * What moved from `before` to `after`, such as across a refresh. Facts are compared by model key;
+ * policy by the generated tier-per-tool mapping and the classifier's unclassified families.
+ */
 export function diffCatalogues(before: CatalogueQuery, after: CatalogueQuery): CatalogueDiff {
   const keysBefore = Object.keys(before.catalogue.models)
   const keysAfter = Object.keys(after.catalogue.models)

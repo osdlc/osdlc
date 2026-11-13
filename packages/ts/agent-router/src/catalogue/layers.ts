@@ -143,8 +143,9 @@ function finishModels(
  * field of a row (`serves` adds) and the row takes that layer's `source` and `observed_at`; the
  * per-field `fields` map keeps where every other field came from.
  *
- * A merged row missing a required field is left out and reported in `problems`. Inputs are never
- * mutated.
+ * A merged row missing a required field is left out and reported in `problems`. A reference that
+ * does not fail the load (a removal row naming a model the catalogue lacks) is reported in
+ * `warnings`, or in `problems` under `options.strict`. Inputs are never mutated.
  */
 export function layerCatalogue(
   layers: readonly CatalogueLayer[],

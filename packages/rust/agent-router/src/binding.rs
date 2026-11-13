@@ -1,8 +1,4 @@
-//! A task or step binding (mirror of `binding.ts`): exactly one of a profile
-//! or a single reference (`tool`). `profile` names an entry of the profiles, or
-//! is an inline list of references walked as an unnamed profile. A `tool`
-//! reference walks as a one-entry profile, so a wildcard expands through the
-//! chain order.
+//! Task and step bindings (mirror of `binding.ts`); see [`Binding`].
 
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};

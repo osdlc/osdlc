@@ -72,7 +72,7 @@ export type Tool = {
   efforts?: string[] | undefined
   /** The tool's own aliases: alias to model key (`opus` to `anthropic/claude-opus-5-5`). */
   aliases?: Record<string, string> | undefined
-  /** Hand the tool its alias rather than the model id (native-name rule 1). */
+  /** Hand the tool its alias rather than the model id; see `nativeName` in offerings.ts. */
   prefer_alias?: boolean | undefined
   /**
    * The tool calls each provider itself, with that provider's key (`key_env`, or
@@ -115,10 +115,6 @@ export type Provider = {
   key_env?: string | undefined
 }
 
-/**
- * A model trait (`TRAITS`). A wildcard expands to `agent` models, and to
- * image-output ones only when it asks for `image-out`, never to `embedding` ones.
- */
 export type { Trait }
 
 /**

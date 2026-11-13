@@ -66,8 +66,8 @@ function hasModality(list: readonly string[] | undefined, modality: string): boo
 /**
  * Kept: models that output text only (with or without tool calling, or embeddings) and models
  * whose output includes images. A model with text and image output is kept; one mixing text with
- * audio or video, and audio- or video-only ones, are dropped until something routes to them.
- * Non-tool text models stay, reachable by pin or exact name, never by a wildcard.
+ * audio or video, and audio- or video-only ones, are dropped. Non-tool text models stay,
+ * reachable by pin or exact name, never by a wildcard.
  */
 function kept(m: ModelsDevModel): boolean {
   const out = m.modalities?.output ?? ['text']

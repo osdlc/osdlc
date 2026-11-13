@@ -1,15 +1,11 @@
-// The detection report a host prints: installed tools with their catalogue
-// facts, providers, local runtimes and their models, and session hosts. The
-// probes live in the host; the schema lives here, browser-safe, so a UI
-// imports the same type the host emits.
-// No secret is ever part of it: a provider's key is reported as the variable's
-// name and whether it is set.
+// The probes for a detection report live in the host; the schema lives here,
+// browser-safe, so a UI imports the same type the host emits.
 import { z } from 'zod'
 
 import { PROVIDER_KINDS, type Trait } from './catalogue/types.ts'
 import { TRAITS } from './ref.ts'
 
-// Both lists must stay the catalogue's own: a missing member fails to compile.
+// TRAITS must equal the catalogue's Trait: a missing or extra member fails to compile.
 type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
 const traitsMatch: Exact<(typeof TRAITS)[number], Trait> = true
 void traitsMatch
@@ -41,7 +37,7 @@ export const DetectToolSchema = z.object({
   version: z.string().nullable(),
   /** How the tool was found; null when not found. */
   how: z.enum(['PATH', 'app bundle']).nullable(),
-  /** `true` when local credentials are present; `'unknown'` otherwise (and always for a tool not found). `false` is reserved for a probe that can prove signed-out; none can yet. */
+  /** `true` when local credentials are present; `'unknown'` otherwise (and always for a tool not found). `false` is reserved for a probe that can prove signed-out. */
   signedIn: TriState,
   /** The file path or environment variable name the verdict rests on, never a value; null when `unknown`. */
   signInEvidence: z.string().nullable(),
@@ -72,8 +68,7 @@ export const DetectProviderSchema = z.object({
   keySet: z.boolean().nullable(),
 })
 /**
- * One model provider in a {@link DetectReport}: its kind, endpoint host, whether it answered, and
- * the name of its key variable and whether that is set. Never the key itself.
+ * One model provider in a {@link DetectReport}; see {@link DetectProviderSchema}.
  *
  * @experimental
  */
@@ -88,7 +83,7 @@ export const DetectModelSchema = z.object({
   traits: z.array(z.enum(TRAITS)),
 })
 /**
- * One model a local runtime holds, in a {@link DetectReport}: its name, context length and traits.
+ * One model a local runtime holds, in a {@link DetectReport}; see {@link DetectModelSchema}.
  *
  * @experimental
  */
@@ -130,7 +125,7 @@ export const DetectHostSchema = z.object({
   unsupported: z.string().optional(),
 })
 /**
- * One session host in a {@link DetectReport}: whether it was found and what the probe checked.
+ * One session host in a {@link DetectReport}; see {@link DetectHostSchema}.
  *
  * @experimental
  */

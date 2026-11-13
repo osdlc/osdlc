@@ -72,9 +72,8 @@ export type ResolveContext = {
 
 /**
  * Resolve a ref against the catalogue. The reference is checked first
- * (`checkRef`): an error (an unknown tool, a tier the tool has no model for,
- * an effort more than one step from any it accepts, a model it cannot run)
- * fails the resolve, and a warning or skip rides on `check`. Then a tier maps
+ * (`checkRef`): an error ({@link ResolveError}) fails the resolve, and a
+ * warning or skip rides on `check`. Then a tier maps
  * to the tool's model for it (`tierModel`, a pin included), and an effort one
  * step off moves to the accepted level, recorded on `effortAdjusted`. A
  * wildcard is an error here: the profile walk expands it first. Qualifiers

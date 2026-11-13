@@ -1,9 +1,4 @@
 //! References: `tool/model[qualifiers]@effort` (mirror of `ref.ts`).
-//!
-//! The parser follows `parseRef` in `ref.ts`: split off the effort at the last
-//! `@` that follows the last `]`, then a trailing `[...]` group, then the tool
-//! at the first `/`. The model is passed through unchanged, unless
-//! [`model_problem`] refuses it; the effort must be one of `EFFORT_LEVELS`.
 
 use std::sync::LazyLock;
 
@@ -13,9 +8,8 @@ use serde::{Deserialize, Serialize};
 use crate::context::{Ctx, MAX_SIZE, SizeProblem, format_size, read_size};
 use crate::effort::EFFORT_LEVELS;
 
-/// A model band. The one tier set: a new tier is a new variant here, an entry in `TIERS`, and a
-/// matching `classify::Placement` variant (plus its `From<Tier>` arm); without these it is
-/// silently unreachable.
+/// A model tier, which a reference can name in place of a model. The one tier set; the README's
+/// "Adding a trait or tier" lists what a new tier touches.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Tier {
@@ -46,9 +40,8 @@ impl Tier {
     }
 }
 
-/// A model trait, which a qualifier filters on. The one trait set: a new
-/// trait is a new variant here, its name in [`Trait::as_str`] and its place in
-/// [`TRAITS`].
+/// A model trait, which a qualifier filters on. The one trait set; the
+/// README's "Adding a trait or tier" lists what a new trait touches.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Trait {
@@ -374,9 +367,13 @@ fn parse_qualifiers(text: &str, group: &str) -> Result<Qualifiers, RefParseError
     Ok(q)
 }
 
-/// Parse `tool/model[qualifiers]@effort`. See the module notes and the README's
-/// "Parsing rules". A model holds an `@` only when an effort follows and there
-/// are no qualifiers (`foo@v1@high`).
+/// Parse `tool/model[qualifiers]@effort`, as `parseRef` in `ref.ts` does:
+/// split off the effort at the last `@` that follows the last `]`, then a
+/// trailing `[...]` group, then the tool at the first `/`. The model is passed
+/// through unchanged, unless [`model_problem`] refuses it; the effort must be
+/// one of `EFFORT_LEVELS`. A model holds an `@` only when an effort follows and
+/// there are no qualifiers (`foo@v1@high`). The full rules are under "Parsing
+/// rules" in `packages/ts/agent-router/README.md`.
 pub fn parse_ref(text: &str) -> Result<Ref, RefParseError> {
     use RefParseErrorKind::*;
     if text.is_empty() {

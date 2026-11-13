@@ -1,9 +1,6 @@
 /**
  * The `router` config section: the model catalogue's facts and mapping policy.
- * Mounted by hosts; the shape is {@link RouterConfigSchema}. The shape is the
- * whole check: the section needs no host vocabulary. The host passes its
- * `consumers` paths (relative to its repository root) and, if it wants its own
- * wording, the description.
+ * The shape is the whole check.
  */
 
 import { defineConfigSection, type Stability } from '@osdlc/config-layers'

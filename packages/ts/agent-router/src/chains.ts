@@ -80,9 +80,8 @@ export type ChainEntry = {
 }
 
 /**
- * Why the chain passed a model over: it is not an agent model (an embedding or
- * a pinned image-output one included), or it lacks a trait. A tier's own image
- * models, when the entry did not ask for `image-out`, are dropped without a row.
+ * Why the chain passed a model over: it is not an agent model, or it lacks a trait. See
+ * {@link expandChain} for the image-out rule.
  */
 export type ChainSkipReason = 'not-agent' | 'missing-trait'
 
@@ -135,9 +134,7 @@ function chainMiss(
   if (model?.traits?.includes('embedding') === true) {
     return { reason: 'not-agent', detail: `${model.key} is an embedding model` }
   }
-  // `image-out` is the one exception to agent-only: an entry that asks for it
-  // takes image-output models, whether or not they call tools. Every other entry
-  // passes an image model over, even one that calls tools, so a tier never heads on one.
+  // See expandChain for the image-out rule.
   const imageOut = model?.traits?.includes('image-out') === true
   const imageAsked = traits.includes('image-out')
   if (model !== undefined && imageOut && !imageAsked) {

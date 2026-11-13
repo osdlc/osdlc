@@ -5,12 +5,12 @@ use indexmap::IndexMap;
 
 use super::types::{Catalogue, Model, Offering, Openness, Tool};
 
-/// What `tool` is handed for `model`, in the decision's order:
+/// What `tool` is handed for `model`, the first that applies:
 ///
 /// 1. the tool's alias for the model, when the tool declares aliases and sets `prefer_alias`;
-/// 2. else a curated tool's own name (`curated_name`);
-/// 3. else the provider's model id;
-/// 4. for a multi-provider (`open`) tool, `provider/id`, as opencode and pi expect.
+/// 2. a curated tool's own name (`curated_name`);
+/// 3. for a multi-provider (`open`) tool, `provider/id`, as opencode and pi expect;
+/// 4. the provider's model id.
 pub fn native_name(tool: &Tool, model: &Model, curated_name: Option<&str>) -> String {
     if tool.prefer_alias == Some(true)
         && let Some(aliases) = &tool.aliases

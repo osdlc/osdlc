@@ -3,10 +3,7 @@ import { formatSize, MAX_SIZE, readSize } from './context.ts'
 import { deepFreeze } from './freeze.ts'
 import { err, ok, type Result } from '@osdlc/result'
 
-/**
- * A model tier, a capability class a reference can name in place of a model: `fast`, `standard` or
- * `max`.
- */
+/** A model tier, a capability class a reference can name in place of a model; one of {@link TIERS}. */
 export type Tier = (typeof TIERS)[number]
 
 /** Every {@link Tier}, from the least to the most capable. */
@@ -213,8 +210,7 @@ function parseQualifiers(text: string, group: string): Result<Qualifiers, RefPar
  * `[context=1m]`) is an error that names the `[ctx=...]` form. Failures are returned as a {@link
  * RefParseError}, never thrown.
  *
- * The model is refused when a tool could misread it ({@link modelProblem}: a leading `-`,
- * whitespace, a control or invisible character) as `invalid-model`. The effort must be one of
+ * A model {@link modelProblem} refuses is `invalid-model`. The effort must be one of
  * `EFFORT_LEVELS` (`unknown-effort`). Input that is not a string is a `not-a-string` error.
  */
 export function parseRef(text: unknown): Result<Ref, RefParseError> {

@@ -1,9 +1,6 @@
 // Context sizes: the `ctx=` size grammar shared by references and a profile's
-// `context:`, and the translation of a size into each tool's own form, which
-// needs no form when the window the tool runs the model with already covers the
-// size (`defaultWindow`, `contextArgs`). Whether a model reaches a size at all
-// is `checkContext`, the one place a requirement is checked against the
-// catalogue.
+// `context:`, and a size in each tool's own form. checkContext in choose.ts
+// checks a size against the catalogue.
 
 import { err, ok, type Result } from '@osdlc/result'
 import type { CatalogueQuery } from './catalogue/query.ts'
@@ -83,8 +80,7 @@ export type ContextArgs = {
  *
  * A model's `max` is never used here. A model's largest size (models.dev's
  * `limit.context`, an Ollama model's trained `context_length`) is not the
- * window a tool gives it. Codex runs its models at 272k; Ollama runs at its
- * own `num_ctx`.
+ * window a tool gives it; Ollama runs at its own `num_ctx`.
  *
  * `undefined` when the catalogue states no `default`, or when there is no
  * model (the catalogue names no default model for a tool).
