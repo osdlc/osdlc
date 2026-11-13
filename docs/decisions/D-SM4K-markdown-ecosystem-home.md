@@ -33,6 +33,9 @@ Accepted 2026-11-12.
 - **osdlc/models folds in too.** Where the profiles, the packs, the starter
   corpus and model-schema go is not decided yet.
 - **`markdown-store` stays in sksizer/rust-ontogen for now.**
+- **Two repositories stay as places to publish from.** osdlc/marketplace
+  publishes the skill plugins. osdlc/skillwright publishes skillwright, the
+  product. osdlc/parley is not decided.
 
 ## Why
 
@@ -89,20 +92,15 @@ against the markdown packages in the same pull request.
 
 ## Consequences
 
-The work, in order. None of it needs a change to the build tooling.
+[The repatriation plan](../planning/repatriation.md) lists the work as steps
+to tick off. None of it needs a change to the build tooling. In short:
 
-1. **Bring osdlc/markdown's content here**, keeping its history, into the
-   places in the table above.
-2. **Re-apply the `corpus-schema` 0.3.0 work**
+1. Bring osdlc/markdown's plan and docs here, keeping their history.
+2. Re-apply the `corpus-schema` 0.3.0 work
    ([osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12)) onto this
-   repository's copy and release it from here. The two copies have the same
-   `src/` at 0.2.1.
-3. **Update the plan's records** that name osdlc/markdown or osdlc/models as
-   a library's home.
-4. **The models:** the profiles and the starter corpus, then model-schema and
-   the packs from sksizer/dev, once their place is decided.
-5. **The packages still in sksizer/dev** come here directly: `markdown-vault`
-   and `vault-graph-core` (as `markdown-corpus`), `markdown-vault-query`,
-   `markdown-editor` and `markdown-ui`.
-6. **The owner archives osdlc/markdown and osdlc/models** once they are
-   empty, with a README that points here.
+   repository's copy and release it from here.
+3. Update the plan's records that name another repository as a library's
+   home.
+4. Bring the models, once their place is decided.
+5. Bring the markdown packages still in sksizer/dev.
+6. The owner archives osdlc/markdown and osdlc/models.
