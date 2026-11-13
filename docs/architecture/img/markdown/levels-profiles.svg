@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 318" width="880" font-family="system-ui, -apple-system, Segoe UI, sans-serif" role="img" aria-label="Levels 0 to 2; profiles that give types through extends and uses; a starter corpus that gives records through references"><style>
+.bg{fill:#fbfaf7} .band{fill:#f0eee8}
+.rl{font-size:15px;font-weight:650;fill:#1d1d1b} .rs{font-size:12px;fill:#5d5d58}
+.lang{font-size:10.5px;font-weight:700;letter-spacing:.06em;fill:#5d5d58}
+.chip rect{fill:#ffffff;stroke-width:1.5} .chip.later rect{fill:none;stroke-dasharray:5 4}
+.cn{font-size:13px;font-weight:650;fill:#1d1d1b} .cs{font-size:11px;fill:#5d5d58}
+.r-osdlc rect{stroke:#2f855a} .r-osdlc .dot{fill:#2f855a}
+.r-md rect{stroke:#b83280} .r-md .dot{fill:#b83280}
+.r-mod rect{stroke:#0e7490} .r-mod .dot{fill:#0e7490}
+.r-dev rect{stroke:#2b6cb0} .r-dev .dot{fill:#2b6cb0}
+.r-ont rect{stroke:#6b46c1} .r-ont .dot{fill:#6b46c1}
+.r-sw rect{stroke:#c05621} .r-sw .dot{fill:#c05621}
+.fb rect{fill:#fde8e8;stroke:#c53030} .fb text{font-size:10.5px;font-weight:700;fill:#c53030}
+.dup{stroke:#c53030;stroke-width:1.6;stroke-dasharray:4 3}
+.edge{fill:none;stroke:#5d5d58;stroke-width:1.4} .ahp{fill:#5d5d58}
+.lvl rect{fill:#ffffff;stroke:#d8d5cc} .prof rect{fill:#fde7c8;stroke:#b8741a}
+.refc rect{fill:#ffffff;stroke:#b8741a;stroke-width:1.5}
+.tie{stroke:#b8741a;stroke-width:1.6;fill:none} .tie.ref{stroke-dasharray:4 3}
+@media (prefers-color-scheme: dark) {
+.bg{fill:#16161a} .band{fill:#222227}
+.rl{font-size:15px;font-weight:650;fill:#ececea} .rs{font-size:12px;fill:#a3a39d}
+.lang{font-size:10.5px;font-weight:700;letter-spacing:.06em;fill:#a3a39d}
+.chip rect{fill:#2b2b31;stroke-width:1.5} .chip.later rect{fill:none;stroke-dasharray:5 4}
+.cn{font-size:13px;font-weight:650;fill:#ececea} .cs{font-size:11px;fill:#a3a39d}
+.r-osdlc rect{stroke:#68d391} .r-osdlc .dot{fill:#68d391}
+.r-md rect{stroke:#f687b3} .r-md .dot{fill:#f687b3}
+.r-mod rect{stroke:#22d3ee} .r-mod .dot{fill:#22d3ee}
+.r-dev rect{stroke:#63b3ed} .r-dev .dot{fill:#63b3ed}
+.r-ont rect{stroke:#b794f4} .r-ont .dot{fill:#b794f4}
+.r-sw rect{stroke:#f6ad55} .r-sw .dot{fill:#f6ad55}
+.fb rect{fill:#3b1d1d;stroke:#fc8181} .fb text{font-size:10.5px;font-weight:700;fill:#fc8181}
+.dup{stroke:#fc8181;stroke-width:1.6;stroke-dasharray:4 3}
+.edge{fill:none;stroke:#a3a39d;stroke-width:1.4} .ahp{fill:#a3a39d}
+.lvl rect{fill:#2b2b31;stroke:#3a3a40} .prof rect{fill:#3d2f1c;stroke:#f6ad55}
+.refc rect{fill:#2b2b31;stroke:#f6ad55;stroke-width:1.5}
+.tie{stroke:#f6ad55;stroke-width:1.6;fill:none} .tie.ref{stroke-dasharray:4 3}
+}</style><rect class="bg" width="440" height="318"/><text class="rl" x="16" y="26">Levels, parents and references</text><text class="rs" x="16" y="44">Levels: how much a corpus declares.</text><text class="rs" x="16" y="60">Parents give types. Referenced corpora give records.</text><g class="lvl"><rect x="16" y="76" width="200" height="50" rx="8"/></g><text class="cn" x="28" y="97">2 · Typed</text><text class="cs" x="28" y="114">every type has a JSON Schema</text><g class="lvl"><rect x="16" y="136" width="200" height="50" rx="8"/></g><text class="cn" x="28" y="157">1 · Records</text><text class="cs" x="28" y="174">a root file, type folders, ids</text><g class="lvl"><rect x="16" y="196" width="200" height="50" rx="8"/></g><text class="cn" x="28" y="217">0 · Linked notes</text><text class="cs" x="28" y="234">declares nothing; any vault</text><g class="prof"><rect x="246" y="76" width="180" height="50" rx="8"/></g><text class="cn" x="258" y="97">claims profile</text><text class="cs" x="258" y="114">types, by extends or uses</text><path class="tie" d="M246,101 C232,101 232,101 217,101"/><g class="prof"><rect x="246" y="136" width="180" height="50" rx="8"/></g><text class="cn" x="258" y="157">sdlc profile</text><text class="cs" x="258" y="174">types, by extends or uses</text><path class="tie" d="M246,161 C232,161 232,101 217,101"/><g class="refc"><rect x="246" y="196" width="180" height="50" rx="8"/></g><text class="cn" x="258" y="217">sdlc starter</text><text class="cs" x="258" y="234">records, by references</text><path class="tie ref" d="M246,221 C232,221 232,221 217,221"/><text class="cs" x="16" y="266">extends and uses need level 2. references works at any level:</text><text class="cs" x="16" y="282">sync copies the records into _references/&lt;prefix&gt;/.</text><text class="cs" x="16" y="298">A corpus can name several of each, next to its own types.</text></svg>
