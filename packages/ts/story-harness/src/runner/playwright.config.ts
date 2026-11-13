@@ -1,14 +1,13 @@
 /**
  * Playwright config for the story baseline check. Read inside the Linux
  * container by the `story-shots` command (`story-shots.sh`), from the built
- * runner folder, which holds JavaScript. The command sets:
+ * runner folder, which holds JavaScript. It reads these variables, which
+ * `story-shots.sh` sets with the others the spec reads:
  *
  * - `STORYBOOK_DIR`: the mounted `storybook-static`;
  * - `BASELINE_DIR`: where the baseline PNGs are read and written;
  * - `ARTIFACTS_DIR`: where expected/actual/diff images of a failure go;
- * - `STORY_INCLUDE` / `STORY_EXCLUDE`: comma-separated story id prefixes;
- * - `SETTLE_MS`: wait after each story's `play`; empty for the default;
- * - `SHOT_WORKERS`: Playwright workers, default 6.
+ * - `SHOT_WORKERS`: Playwright workers.
  */
 import { defineConfig } from '@playwright/test'
 import { VIEWPORT } from './story.ts'

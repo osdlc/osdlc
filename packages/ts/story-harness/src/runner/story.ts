@@ -1,9 +1,7 @@
 /**
- * Story selection and page settling, shared by the baseline check
- * (`story-shots.e2e.ts`, in the Linux container), the host capture script
- * (`capture.ts`) and the host spec helpers (`../playwright`). Imports nothing
- * but Playwright types, so it runs in the container, which installs only
- * Playwright.
+ * Story selection and page settling, shared by the baseline check and the
+ * host-side helpers. Imports nothing but Playwright types: the container that
+ * runs the baseline check installs only Playwright.
  */
 import type { Page } from '@playwright/test'
 

@@ -1,8 +1,6 @@
 /**
  * Host-side helpers for interaction and perf specs against a static Storybook
- * build. Perf specs call `preparePage(page, { clock: false })`: Playwright's
- * fixed clock also fakes `performance.now()`, timers and
- * `requestAnimationFrame`.
+ * build.
  */
 import { setTimeout as sleep } from 'node:timers/promises'
 import type { Page } from '@playwright/test'
@@ -80,8 +78,8 @@ export async function longTasks(
 }
 
 /**
- * Rows mounted now: `window.__storyHarness.rows()` in a story, or the count of
- * `selector` in an app page, which has no hook.
+ * Rows mounted now: the count of `selector` when given, else
+ * `window.__storyHarness.rows()`. An app page has no hook, so pass a selector.
  */
 export async function mountedRows(page: Page, selector?: string): Promise<number> {
   return page.evaluate((sel) => {
@@ -240,7 +238,7 @@ export async function recordBrowser(page: Page): Promise<void> {
  * checks its errors. Throws when the story failed, or when no
  * `story:first-rows` lands within `timeoutMs`.
  *
- * @experimental New; its shape may change.
+ * @experimental Its shape may change.
  */
 export async function openPerfStory(
   page: Page,
@@ -281,7 +279,7 @@ export async function openPerfStory(
  * The long tasks between two marks, recorded as `<name>: long task durations
  * (ms)` and budgeted at none as `<name>: long tasks over 50 ms`.
  *
- * @experimental New; its shape may change.
+ * @experimental Its shape may change.
  */
 export async function noLongTasks(
   page: Page,
