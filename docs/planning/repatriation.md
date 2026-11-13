@@ -99,6 +99,8 @@ it does no harm.
       rewritten as in the table below (`git filter-repo --path-rename` on a
       fresh clone, then `git merge --allow-unrelated-histories`). A path the
       table does not list is dropped.
+- [ ] Title `ecosystem-plan.md` "Markdown Ecosystem Plan", and use that
+      name where the docs say "the ecosystem plan".
 - [ ] Point the plan's `extends` at the planning profile's new place, and
       check the records with `corpus-schema` 0.3.0.
 - [ ] Fix what else the new paths break: links between the docs, the
@@ -149,8 +151,9 @@ Left out of the import: `packages/` (phase 1), `profiles/claims/` (phase 4),
 
 Needs phase 2. The plan's records still describe the split.
 
-- [ ] **owner** Decide the plan's name and the folder's, if "ecosystem plan"
-      and `docs/planning/markdown/` are not right.
+- [x] **owner** The plan is the Markdown Ecosystem Plan, in
+      `docs/planning/markdown/`, laid out like a solution's planning folder
+      in sksizer/dev. Decided on #789.
 - [ ] Add a decision record to the plan that supersedes D17 (profiles, packs
       and the starter live in osdlc/models) and points to D-SM4K.
 - [ ] Update the records that name a repository: tasks 21, 59, 75 and 78–80,
