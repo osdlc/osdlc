@@ -41,4 +41,4 @@ folders, JSON Schemas per type and typed links (x-ref). Its test cases sit besid
   once its open work is brought here.
 - Proposals not built yet: a baseline and dialects (task 7), profiles through the extends key (task
   9), and sharing whole corpora (tasks 27 to 30).
-- A plain-language guide is at packages/ts/corpus-schema/docs/guide.md.
+- A plain-language guide is at packages/ts/corpus-schema/docs/guide/corpus-schema.md.
