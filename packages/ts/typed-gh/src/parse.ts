@@ -28,7 +28,9 @@ import type {
   Label,
   MergeableState,
   PrActivityItem,
+  PrActivityText,
   PrSearchHit,
+  PrStateChangeKind,
   PullRequest,
   Repository,
   Review,
@@ -321,16 +323,12 @@ function intOrNull(x: unknown): number | null {
   return typeof x === 'number' && Number.isInteger(x) ? x : null
 }
 
-/** The `oid` of a GraphQL `Commit`, or null. */
 function oidOf(x: unknown): string | null {
   return isRecord(x) ? strOrNull(x['oid']) : null
 }
 
 /** The events whose only fields are the common ones, by GraphQL type. */
-const PLAIN_EVENTS: Record<
-  string,
-  'closed' | 'reopened' | 'ready-for-review' | 'converted-to-draft'
-> = {
+const PLAIN_EVENTS: Record<string, PrStateChangeKind> = {
   ClosedEvent: 'closed',
   ReopenedEvent: 'reopened',
   ReadyForReviewEvent: 'ready-for-review',
@@ -349,12 +347,7 @@ const READ_TYPES = new Set([
 ])
 
 /** The text fields of a comment, a review or a review comment. */
-function textOf(node: Record<string, unknown>): {
-  body: string
-  editedAt: string | null
-  url: string
-  restId: string | null
-} {
+function textOf(node: Record<string, unknown>): PrActivityText {
   return {
     body: str(node['body']),
     editedAt: strOrNull(node['lastEditedAt']),
@@ -364,16 +357,18 @@ function textOf(node: Record<string, unknown>): {
   }
 }
 
+/** Items read from timeline nodes. `truncated` is true when a review held more inline comments than the query asked for. */
+type ActivityRead = { items: PrActivityItem[]; truncated: boolean }
+
 /**
  * A review followed by its inline comments. Null when the review has no
- * `comments` list or one of its comments cannot be read. `truncated` is true
- * when the review held more inline comments than the query asked for.
+ * `comments` list or one of its comments cannot be read.
  */
 function reviewActivity(
   node: Record<string, unknown>,
   id: string,
   actor: Actor | null,
-): { items: PrActivityItem[]; truncated: boolean } | null {
+): ActivityRead | null {
   const comments = node['comments']
   if (!isRecord(comments) || !Array.isArray(comments['nodes'])) return null
   const items: PrActivityItem[] = [
@@ -424,7 +419,7 @@ function reviewCommentOf(c: unknown, reviewId: string): PrActivityItem | null {
  * commit has no `oid`, or a review has no `comments` list. `truncated` is
  * true when a review held more inline comments than the query asked for.
  */
-function activityOf(node: unknown): { items: PrActivityItem[]; truncated: boolean } | null {
+function activityOf(node: unknown): ActivityRead | null {
   if (!isRecord(node)) return null
   const type = node['__typename']
   // A type the query has no fragment for comes back as its `__typename`

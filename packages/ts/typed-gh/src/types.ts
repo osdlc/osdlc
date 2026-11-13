@@ -249,7 +249,7 @@ interface PrActivityBase {
 }
 
 /** Text someone wrote on the pull request: a comment, a review, or an inline review comment. */
-interface PrActivityText {
+export interface PrActivityText {
   body: string
   /** When the text was last edited. Null when it never was. */
   editedAt: string | null
@@ -260,6 +260,9 @@ interface PrActivityText {
    */
   restId: string | null
 }
+
+/** The state changes with no fields beyond the common ones. */
+export type PrStateChangeKind = 'closed' | 'reopened' | 'ready-for-review' | 'converted-to-draft'
 
 /**
  * One entry of a pull request's activity. Narrow on `kind` to read the
@@ -275,7 +278,6 @@ export type PrActivityItem =
         kind: 'review-comment'
         /** The node id of the review this comment belongs to. The review comes before it in the list. */
         reviewId: string
-        /** The file the comment is on. */
         path: string
         /** The line in the current diff. Null when the comment is outdated. */
         line: number | null
@@ -292,7 +294,7 @@ export type PrActivityItem =
       /** The first line of the commit message. */
       headline: string
     })
-  | (PrActivityBase & { kind: 'closed' | 'reopened' | 'ready-for-review' | 'converted-to-draft' })
+  | (PrActivityBase & { kind: PrStateChangeKind })
   | (PrActivityBase & {
       kind: 'merged'
       /** The merge commit. Null when GitHub sent none. */
