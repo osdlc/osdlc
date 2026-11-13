@@ -233,3 +233,4 @@ once matured. They are not archived.
 | ----- | ----------------------------------------------- | ----- |
 | 0     | [#789](https://github.com/osdlc/osdlc/pull/789) | Open  |
 | 1     | [#790](https://github.com/osdlc/osdlc/pull/790) | Open  |
+| 2, 3  | [#791](https://github.com/osdlc/osdlc/pull/791) | Open  |
