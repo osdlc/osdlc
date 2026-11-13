@@ -572,18 +572,16 @@ struct Destination {
     end: usize,
 }
 
-/// `[text](relative/note.md)` starting at `start`, with its `destination`.
-/// `None` when it is not a link this dialect harvests: `all` reads every
-/// relative URL, and otherwise [`is_vault_link_url`] decides.
-///
-/// [`md_link_target`] decides "what does it point at". The URL is built only
-/// for a link, so a body of failed attempts stays linear.
+/// `[text](url)` starting at `start`, with its `destination`. `None` when it
+/// is not a link this dialect harvests: `all_markdown_links` reads every
+/// relative URL, and otherwise [`is_vault_link_url`] decides. The URL is built
+/// only for a link, so a body of failed attempts stays linear.
 fn spanned_markdown_link(
     start: usize,
     destination: Destination,
     at: &[usize],
     scan: &mut UrlScan,
-    all: bool,
+    all_markdown_links: bool,
 ) -> Option<BodyLink> {
     let Destination {
         url_start,
@@ -591,13 +589,12 @@ fn spanned_markdown_link(
         title,
         end,
     } = destination;
-    let harvested = if all {
+    let harvested = if all_markdown_links {
         url_end > url_start
     } else {
         scan.is_vault_link(url_start, url_end)
     };
     if !harvested || is_external(&scan.chars[url_start..url_end]) {
-        // Not a link this dialect harvests.
         return None;
     }
     let url: String = scan.chars[url_start..url_end].iter().collect();
@@ -701,11 +698,11 @@ impl UrlScan {
     /// The destination and title after the `]` at `close`, much as CommonMark
     /// reads an inline link: `(`, then a URL, then a title in `"…"`, `'…'` or
     /// `(…)` after whitespace, then `)`, with whitespace and at most one line
-    /// break between the parts, though not before an unbracketed URL. The URL
-    /// is `<…>`, which may hold spaces but no `<`, or a run with no
-    /// whitespace whose parentheses balance. A `\` escapes the next
-    /// character, but not a line break. Unlike CommonMark, a title stays on
-    /// one line, and no line break comes before an unbracketed URL.
+    /// break between the parts. The URL is `<…>`, which may hold spaces but no
+    /// `<` or line break, or a run with no whitespace whose parentheses
+    /// balance. A `\` escapes the next character, but not a line break.
+    /// Unlike CommonMark, a title stays on one line, and no line break comes
+    /// before an unbracketed URL.
     fn destination(&self, close: usize) -> Option<Destination> {
         let chars = &self.chars;
         if chars.get(close + 1) != Some(&'(') {

@@ -75,9 +75,9 @@ pub(crate) fn target_span(body: &str, link: &BodyLink) -> Option<Range<usize>> {
         }
         BodyLinkKind::Markdown => {
             let span = body.get(link.byte_start..link.byte_end)?;
-            // The URL follows a `](`, after any whitespace and a `<`. The
-            // label holds no `](` outside code whose `]` is not escaped, as a
-            // link's text holds no link, so the first such `](` is the one.
+            // The URL follows the first `](` that is outside code and whose
+            // `]` is not escaped, since a link's text holds no link; any
+            // whitespace and a `<` may come before it.
             let code = markdown_link::code::code_ranges(span, CodeRules::CommonMark);
             let escaped = |at: usize| {
                 span.as_bytes()[..at]
@@ -151,8 +151,7 @@ pub(crate) fn plan_link(post: &Corpus, to: &str, link: &BodyLink, current: &str)
 /// early or change how it is read, under this dialect's own grammar (a run
 /// with no whitespace and balanced parentheses, then an optional title) or
 /// under a markdown parser, plus `%` so a literal one survives the round trip
-/// through
-/// [`markdown_link::percent_decode`]. Non-ASCII is left alone: a
+/// through [`markdown_link::percent_decode`]. Non-ASCII is left alone: a
 /// vault full of Cyrillic and CJK note names reads better unencoded, every
 /// consumer here decodes UTF-8 fine, and encoding it would churn every
 /// such link the first time one is touched.

@@ -470,19 +470,19 @@ interface Destination {
 }
 
 /**
- * `[text](relative/note.md)` starting at `start`, with its `destination`, or
- * `null` when it is not a link this dialect harvests: `all` reads every
- * relative URL, and otherwise `isVaultLinkUrl` decides. The URL is built only
- * for a link, so a body of failed attempts stays linear.
+ * `[text](url)` starting at `start`, with its `destination`, or `null` when it
+ * is not a link this dialect harvests: `allMarkdownLinks` reads every relative
+ * URL, and otherwise `isVaultLinkUrl` decides. The URL is built only for a
+ * link, so a body of failed attempts stays linear.
  */
 function markdownLink(
   start: number,
   { urlStart, urlEnd, title, end }: Destination,
   at: number[],
   scan: UrlScan,
-  all: boolean,
+  allMarkdownLinks: boolean,
 ): BodyLink | null {
-  const harvested = all ? urlEnd > urlStart : scan.isVaultLink(urlStart, urlEnd)
+  const harvested = allMarkdownLinks ? urlEnd > urlStart : scan.isVaultLink(urlStart, urlEnd)
   if (!harvested || isExternal(scan.chars, urlStart, urlEnd)) return null
   const url = scan.chars.slice(urlStart, urlEnd).join('')
   return {
@@ -570,11 +570,11 @@ class UrlScan {
    * The destination and title after the `]` at `close`, much as CommonMark
    * reads an inline link: `(`, then a URL, then a title in `"…"`, `'…'` or
    * `(…)` after whitespace, then `)`, with whitespace and at most one line
-   * break between the parts, though not before an unbracketed URL. The URL
-   * is `<…>`, which may hold spaces but no `<`, or a run with no whitespace
-   * whose parentheses balance. A `\` escapes the next character, but not a
-   * line break. Unlike CommonMark, a title stays on one line, and no line
-   * break comes before an unbracketed URL.
+   * break between the parts. The URL is `<…>`, which may hold spaces but no
+   * `<` or line break, or a run with no whitespace whose parentheses balance.
+   * A `\` escapes the next character, but not a line break. Unlike
+   * CommonMark, a title stays on one line, and no line break comes before an
+   * unbracketed URL.
    */
   destination(close: number): Destination | null {
     const chars = this.chars
