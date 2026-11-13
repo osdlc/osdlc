@@ -155,7 +155,7 @@ test('a holder recorded with its start time, so a reused pid does not keep the l
   const claim = claimLock<Partial<Owner>>(lock, me, { isStale: holderGone(holders) })
   if (!claim.ok) throw new Error('expected a free lock')
 
-  // The same pid with another start time is another process: the lock is stale.
+  // This pid's process started after the recorded time, so it reused the pid: the lock is stale.
   const reused: HeldLock<Partial<Owner>> = {
     content: { pid: process.pid, startedAt: 'start:1' },
     mtimeMs: 0,

@@ -24,7 +24,10 @@ export interface HolderGoneOptions {
   alive?: ((pid: number) => boolean) | undefined
   /**
    * The start-time probe for holders recorded with `startedAt`. Default
-   * `processStartedAt`. Experimental, as `sameProcess` is.
+   * `processStartedAt`. A Linux `processIdentity` is checked against
+   * `/proc` and does not use it; see `SameProcessOptions.startedAt`.
+   *
+   * @experimental
    */
   startedAt?: ((pid: number) => number | null) | undefined
 }
@@ -40,17 +43,15 @@ export interface HolderGoneOptions {
 export type Holder = number | { pid: number; startedAt?: string | number | undefined }
 
 /**
- * Stale once no holder that `pids` reads from the content is alive. Values
+ * Stale once no holder that `holders` reads from the content is alive. Values
  * that are neither a number nor `{ pid }` name no live holder. A file that is
  * not a JSON object was not written by `claimLock`, so this rule never judges
  * it stale: it belongs to some other program and is left alone.
  *
- * A pid can be recycled by a later process, which would keep the lock held.
- * Record the holder's start time and return `{ pid, startedAt }` to close
- * that: the holder then counts as alive only while `sameProcess` says so.
+ * See {@link Holder}.
  */
 export function holderGone<F extends object = Record<string, unknown>>(
-  pids: (content: LockContent<F>) => readonly unknown[],
+  holders: (content: LockContent<F>) => readonly unknown[],
   options: HolderGoneOptions = {},
 ): StaleRule<F> {
   const alive = options.alive ?? pidAlive
@@ -64,7 +65,7 @@ export function holderGone<F extends object = Record<string, unknown>>(
   }
   return (held: HeldLock<F>) => {
     if (held.content === null) return false
-    return !pids(held.content).some(live)
+    return !holders(held.content).some(live)
   }
 }
 

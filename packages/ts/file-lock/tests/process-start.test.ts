@@ -46,7 +46,7 @@ function fakeProc(
 
 /** A `/proc/<pid>/stat` line whose start time, field 22, is `ticks`. */
 function statLine(pid: number, comm: string, ticks: number): string {
-  // Fields 3 to 21, then 22, then a few more.
+  // 19 fields (3-21) put ticks at field 22, then a few more.
   const middle = Array.from({ length: 19 }, (_, i) => (i === 0 ? 'S' : String(i)))
   return `${pid} (${comm}) ${middle.join(' ')} ${ticks} 1000 2000 3000\n`
 }
@@ -93,6 +93,17 @@ describe('processStartedAt', () => {
     const root = fakeProc(BOOT, {})
     expect(processStartedAt(99, { platform: 'linux', procRoot: root, ps })).toBeNull()
     expect(ps.calls).toEqual([])
+  })
+
+  test('on Linux, a stat file that cannot be read falls back to ps', () => {
+    const ps = fakePs('Sun Nov  1 01:30:00 2026\n')
+    const root = fakeProc(BOOT, {})
+    // Reading a directory fails with EISDIR, as EACCES under hidepid would.
+    mkdirSync(join(root, '42', 'stat'), { recursive: true })
+    expect(processStartedAt(42, { platform: 'linux', procRoot: root, ps })).toBe(
+      Date.UTC(2026, 10, 1, 1, 30, 0),
+    )
+    expect(ps.calls).toHaveLength(1)
   })
 
   test('on Linux, a /proc it cannot parse falls back to ps', () => {
@@ -147,7 +158,7 @@ describe('processStartedAt', () => {
 })
 
 describe('sameProcess', () => {
-  const STARTED = Date.UTC(2026, 10, 1, 8, 30, 0) // 2026-11-01T08:30:00Z
+  const STARTED = Date.parse('2026-11-01T08:30:00Z')
   const live = { alive: () => true, startedAt: () => STARTED }
 
   test('a dead pid is never the same process', () => {
@@ -282,6 +293,8 @@ describe('processIdentity', () => {
     expect(sameProcess(42, `linux:${BOOT_ID}:12345`, options)).toBe(true)
     // Started 3 s after the recorded holder: a reused pid.
     expect(sameProcess(42, `linux:${BOOT_ID}:12045`, options)).toBe(false)
+    // Started one tick after the recorded holder: a reused pid, with no margin.
+    expect(sameProcess(42, `linux:${BOOT_ID}:12344`, options)).toBe(false)
     // Started earlier than recorded: no reuser does, so it is the holder.
     expect(sameProcess(42, `linux:${BOOT_ID}:20000`, options)).toBe(true)
     // The holder's boot ended; whatever has pid 42 now is someone else.

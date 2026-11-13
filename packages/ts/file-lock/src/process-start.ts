@@ -63,11 +63,16 @@ export interface SameProcessOptions extends ProcessStartOptions {
 /** How far a recorded start time may be from the real one and still match, in ms. */
 const TOLERANCE_MS = 2000
 
-/** Clock ticks per second in `/proc/<pid>/stat`: `USER_HZ`, fixed at 100 on Linux. */
+/** Clock ticks per second in `/proc/<pid>/stat`: `USER_HZ`, 100 on every architecture Node supports. */
 const LINUX_TICKS_PER_SECOND = 100
 
 /** Field 22 of `/proc/<pid>/stat`, counted from 1: the start time in clock ticks after boot. */
 const STARTTIME_FIELD = 22
+
+/** The first field after the command name in `/proc/<pid>/stat`. */
+const FIRST_FIELD_AFTER_NAME = 3
+
+const PS_TIMEOUT_MS = 5000
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
@@ -78,7 +83,7 @@ const LSTART =
 /** An ISO-8601 time of day with a zone; without one, `Date.parse` would read local time. */
 const ISO_WITH_ZONE = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})$/
 
-/** Time-zone offsets that exist, and the step they come in, for matching zoneless text. */
+// Real UTC offsets span -12 h to +14 h in 15-minute steps.
 const MIN_OFFSET_MS = -12 * 3_600_000
 const MAX_OFFSET_MS = 14 * 3_600_000
 const OFFSET_STEP_MS = 15 * 60_000
@@ -136,14 +141,14 @@ export function processIdentity(pid: number, options: ProcessStartOptions = {}):
 }
 
 /**
- * Whether `pid` still names the process that started at `startedAt`: it is
- * alive, and it did not start after `startedAt`. False only when the pid is
- * gone, or is known to belong to a process that started later: a pid is
- * reused only after its holder exits, so a reuser always starts after the
- * holder did. A process that started earlier than `startedAt` is taken for
- * the holder, so a writer that recorded when it took the lock, rather than
- * when it started, keeps its lock. When either side cannot be read, true: the
- * owner cannot be ruled out, and a reused pid keeps the lock held.
+ * Whether `pid` still names the process that started at `startedAt`. False
+ * when the pid is gone, a Linux identity names another boot, the process
+ * started more than 2 s after an instant, or zoneless `ps` text matches its
+ * start in no time zone. A pid is reused only after its holder exits, so a
+ * reuser always starts after the holder did; an instant later than the real
+ * start still matches, so a writer that recorded when it took the lock,
+ * rather than when it started, keeps its lock. True when either side cannot
+ * be read: the owner cannot be ruled out. See D-03.
  *
  * `startedAt` may be:
  * - what {@link processIdentity} returned, the most reliable form;
@@ -168,13 +173,15 @@ export function sameProcess(
   if (recorded.kind === 'linux') return sameLinuxProcess(pid, recorded, options)
   const actual = (options.startedAt ?? ((p: number) => processStartedAt(p, options)))(pid)
   if (actual === null) return true
-  if (recorded.zoned) return actual <= recorded.ms + TOLERANCE_MS
-  return inSomeTimeZone(recorded.ms, actual)
+  if (recorded.kind === 'instant') return actual <= recorded.ms + TOLERANCE_MS
+  return inSomeTimeZone(recorded.utcMs, actual)
 }
 
 /** A recorded start: an instant, zoneless `ps` text read as if it were UTC, or a Linux identity. */
 type Recorded =
-  { kind: 'time'; ms: number; zoned: boolean } | { kind: 'linux'; bootId: string; ticks: number }
+  | { kind: 'instant'; ms: number }
+  | { kind: 'zoneless'; utcMs: number }
+  | { kind: 'linux'; bootId: string; ticks: number }
 
 /** `processIdentity` on Linux: the boot id, then the start ticks. */
 const LINUX_IDENTITY = /^linux:([0-9a-f-]{36}):(\d+)$/
@@ -182,7 +189,8 @@ const LINUX_IDENTITY = /^linux:([0-9a-f-]{36}):(\d+)$/
 /**
  * A Linux identity against this machine's `/proc`. Another boot id means the
  * holder ended at a reboot. Otherwise, as for an instant, only a process that
- * started later is a different one. When `/proc` cannot say, true.
+ * started later is a different one. When this is not Linux, or `/proc` cannot
+ * say, true.
  */
 function sameLinuxProcess(
   pid: number,
@@ -193,27 +201,27 @@ function sameLinuxProcess(
   const proc = linuxProcess(pid, options.procRoot)
   if (proc === undefined || proc === null || proc === FOREIGN || proc.bootId === null) return true
   if (proc.bootId !== recorded.bootId) return false
-  return proc.ticks <= recorded.ticks + (TOLERANCE_MS / 1000) * LINUX_TICKS_PER_SECOND
+  return proc.ticks <= recorded.ticks
 }
 
 function readRecorded(startedAt: string | number): Recorded | null {
   if (typeof startedAt === 'number') {
     if (!Number.isFinite(startedAt) || startedAt <= 0) return null
-    return { kind: 'time', ms: startedAt < 1e11 ? startedAt * 1000 : startedAt, zoned: true }
+    return { kind: 'instant', ms: startedAt < 1e11 ? startedAt * 1000 : startedAt }
   }
   const text = startedAt.trim()
   const linux = LINUX_IDENTITY.exec(text)
   if (linux !== null) return { kind: 'linux', bootId: linux[1]!, ticks: Number(linux[2]) }
   const start = /^start:(\d+)$/.exec(text)
-  if (start !== null) return { kind: 'time', ms: Number(start[1]), zoned: true }
-  if (/^\d{9,10}$/.test(text)) return { kind: 'time', ms: Number(text) * 1000, zoned: true }
-  if (/^\d{12,13}$/.test(text)) return { kind: 'time', ms: Number(text), zoned: true }
+  if (start !== null) return { kind: 'instant', ms: Number(start[1]) }
+  if (/^\d{9,10}$/.test(text)) return { kind: 'instant', ms: Number(text) * 1000 }
+  if (/^\d{12,13}$/.test(text)) return { kind: 'instant', ms: Number(text) }
   if (ISO_WITH_ZONE.test(text)) {
     const ms = Date.parse(text)
-    return Number.isNaN(ms) ? null : { kind: 'time', ms, zoned: true }
+    return Number.isNaN(ms) ? null : { kind: 'instant', ms }
   }
   const lstart = lstartAsUtcMs(text)
-  return lstart === null ? null : { kind: 'time', ms: lstart, zoned: false }
+  return lstart === null ? null : { kind: 'zoneless', utcMs: lstart }
 }
 
 /** Whether zoneless text, read as UTC, is `actualMs` shifted by a real time-zone offset. */
@@ -235,12 +243,11 @@ function lstartAsUtcMs(text: string): number | null {
 
 /**
  * The start time from `/proc`: boot time plus the process's start in ticks.
- * Null when there is no such process; undefined when `/proc` cannot say, so
- * the caller asks `ps` instead.
+ * Null when there is no such process or `/proc` is FOREIGN; undefined when
+ * `/proc` cannot say, so the caller asks `ps` instead.
  */
 function linuxStartedAt(pid: number, procRoot: string | undefined): number | null | undefined {
   const proc = linuxProcess(pid, procRoot)
-  // A foreign /proc: ps would read the same one, so there is no answer.
   if (proc === FOREIGN) return null
   if (proc === null || proc === undefined) return proc
   const boot = bootSeconds(procRoot ?? '/proc')
@@ -248,15 +255,17 @@ function linuxStartedAt(pid: number, procRoot: string | undefined): number | nul
   return (boot + Math.floor(proc.ticks / LINUX_TICKS_PER_SECOND)) * 1000
 }
 
-/** `linuxProcess`'s answer for a `/proc` that belongs to another pid namespace. */
+/**
+ * `linuxProcess`'s answer for a `/proc` that belongs to another pid namespace:
+ * it describes other processes under the same numbers, and `ps` reads the
+ * same `/proc`, so nothing here can answer.
+ */
 const FOREIGN = 'foreign'
 
 /**
  * A process's start ticks and the boot id, from `/proc`. Null when there is
  * no such process; undefined when `/proc` cannot say, so `ps` may. FOREIGN
- * when `/proc` does not list this process as itself: it was mounted for
- * another pid namespace and describes other processes under the same
- * numbers, and `ps` reads the same `/proc`, so nothing here can answer.
+ * when `/proc` does not list this process as itself.
  */
 function linuxProcess(
   pid: number,
@@ -303,12 +312,11 @@ function bootId(root: string): string | null {
 function startTicks(stat: string): number | null {
   const close = stat.lastIndexOf(')')
   if (close < 0) return null
-  // The fields after the name start at field 3.
   const rest = stat
     .slice(close + 1)
     .trim()
     .split(/\s+/)
-  const value = rest[STARTTIME_FIELD - 3]
+  const value = rest[STARTTIME_FIELD - FIRST_FIELD_AFTER_NAME]
   return value !== undefined && /^\d+$/.test(value) ? Number(value) : null
 }
 
@@ -322,12 +330,12 @@ function bootSeconds(procRoot: string): number | null {
   }
 }
 
-/** `ps` through Node's `spawnSync`, the package having no dependencies to run it with. */
+/** A {@link PsRunner} through Node's `spawnSync`. */
 function defaultPs(args: readonly string[], env: Readonly<Record<string, string>>): string | null {
   const r = spawnSync('ps', args, {
     encoding: 'utf-8',
     env: { ...process.env, ...env },
-    timeout: 5000,
+    timeout: PS_TIMEOUT_MS,
   })
   return r.error === undefined && r.status === 0 ? r.stdout : null
 }
