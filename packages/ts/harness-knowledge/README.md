@@ -51,6 +51,29 @@ fact('codex', 'skills/user-dirs')?.dirs
 Harness and subject keys are slugs such as `claude-code` and `cli/binary`; the file's `harnesses`
 and `subjects` maps list them, and each subject carries the JSON Schema of its value.
 
+## Ids, credentials and config folders
+
+Other packages name harnesses with short ids (`claude`, `copilot`, `deepseek`); the file uses
+slugs (`claude-code`, `copilot-cli`, `dsh`). `HARNESS_SLUGS` is the map. `credentialEnv` and
+`configDirEnv` read the variable names the file states under `config/credentials-env` and
+`config/config-dir-env`; both accept an id or a slug.
+
+```ts
+import {
+  HARNESS_SLUGS,
+  slugFor,
+  idFor,
+  credentialEnv,
+  configDirEnv,
+} from '@osdlc/harness-knowledge'
+
+HARNESS_SLUGS.copilot // 'copilot-cli'
+slugFor('claude') // 'claude-code'; undefined for a name with no slug
+idFor('dsh') // 'deepseek'
+credentialEnv('codex') // ['CODEX_API_KEY', 'OPENAI_API_KEY']
+configDirEnv('claude') // 'CLAUDE_CONFIG_DIR'
+```
+
 The data is also importable on its own:
 
 ```ts
