@@ -3,9 +3,12 @@ name: "@osdlc/corpus-profile-claims"
 kind: profile
 language: markdown
 layer: "[profiles](../layers/profiles.md)"
-states: [target]
-status: in-progress
+states: [present, target]
+status: unpublished
+repo_present: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
+path_present: packages/profiles/claims
 repo_target: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
+path_target: packages/profiles/claims
 tasks:
   - "[79 Markdown after the move](../tasks/79%20Markdown%20after%20the%20move.md)"
   - "[78 Bring in profiles](../tasks/78%20Models%20repo%20setup.md)"
@@ -31,9 +34,10 @@ types with x-extends instead of copying them.
 
 - Decision D10 fixed the name, the folder and the prefix claims. The architecture still marks the
   profiles layer a proposal, and its open questions ask whether to adopt profiles.
-- Built in osdlc/markdown#15 as package 0.1.0 at profiles/claims. The four type schemas are in its
-  corpus/ folder, which package.json names with "corpus". The claims example extends it.
+- Built in osdlc/markdown#15. The four type schemas are in its corpus/ folder, which package.json
+  names with "corpus". The claims example extends it.
 - Task 76 rewrites it as pack-claims.
-- It comes to osdlc/osdlc (decision D19). Its place there is not decided; the proposal is
-  packages/profiles/*.
-- Not published. The npm name does not change.
+- It came to osdlc/osdlc (decision D19, task 78), at packages/profiles/claims, with a changeset for
+  its first release, 0.1.0.
+- Not published. The owner stages the name and sets its trusted publisher (task 80), and the release
+  needs osdlc/osdlc#785. The npm name does not change.

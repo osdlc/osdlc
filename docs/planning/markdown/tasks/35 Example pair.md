@@ -16,6 +16,9 @@ prs:
 The example pair. Check in an org corpus with records (a few principles) and a project corpus that
 extends the claims profile by package name and references the org corpus by path. The project's
 local records cite the org's principles. CI installs the claims profile, runs `corpus-schema sync`
-and validates both corpora. This is the start of task 30. After 23, 29 and 36. In progress in
-[#16](https://github.com/osdlc/markdown/pull/16): `examples/org-principles/` and `examples/fernlog/`,
-with the claims profile coming in by package name through a `file:` dependency.
+and validates both corpora. This is the start of task 30. After 23, 29 and 36. Built in
+[#16](https://github.com/osdlc/markdown/pull/16) and brought to osdlc/osdlc by task 78:
+`packages/corpora/examples/org-principles/` and `packages/corpora/examples/fernlog/`, with the
+claims profile coming in by package name through a `file:` dependency on
+`packages/profiles/claims/`. `.github/workflows/profiles.yml` checks the pair. Task 79 switches
+fernlog to the claims profile from npm.

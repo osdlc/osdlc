@@ -15,5 +15,6 @@ Close osdlc/markdown [#15](https://github.com/osdlc/markdown/pull/15),
 [#16](https://github.com/osdlc/markdown/pull/16) and [#19](https://github.com/osdlc/markdown/pull/19),
 and [osdlc/models#1](https://github.com/osdlc/models/pull/1), as moved, and link the osdlc/osdlc pull
 request in each. Remove from osdlc/markdown what was brought to osdlc/osdlc, so there is one copy.
-Its README stays, as the holding pen's. In osdlc/osdlc, change the fernlog example (from #16) to
+Its README stays, as the holding pen's. In osdlc/osdlc, change the fernlog example (from
+[#16](https://github.com/osdlc/markdown/pull/16), now at `packages/corpora/examples/fernlog/`) to
 install `@osdlc/corpus-profile-claims` from npm instead of by path. After 78 and 60.
