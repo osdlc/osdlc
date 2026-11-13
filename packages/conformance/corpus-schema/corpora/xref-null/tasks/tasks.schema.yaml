@@ -1,0 +1,5 @@
+type: object
+properties:
+  parent: { type: [string, "null"], x-ref: tasks, x-ref-form: wikilink }
+  after: { type: array, items: { type: [string, "null"], x-ref: tasks, x-ref-form: id } }
+  blocks: { type: string, x-ref: tasks }
