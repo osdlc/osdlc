@@ -1,0 +1,123 @@
+# Checks the Markdown Ecosystem Plan's records in docs/planning/markdown/, the
+# planning profile they extend in its profile/ folder, and the explorer in
+# tools/explorer/ built from them.
+#
+# Both jobs build the validator from packages/ts/corpus-schema with
+# tools/build-corpus-schema.sh, not take it from npm: the plan uses `extends`
+# and `x-extends`, which corpus-schema has from 0.3.0. npm has 0.2.1, and 0.3.0
+# publishes from this repo.
+#
+# validate: the plan and the profile must pass corpus-schema with no errors and
+# no warnings. The profile is validated on its own too: the plan's report
+# carries a parent's errors, not its warnings.
+#
+# explorer: installs the workspace, which holds tools/explorer, rebuilds its
+# data/*.json and the checklist in docs/planning/markdown/BEELINE.md from the
+# records and fails when the committed files differ, then typechecks, tests and
+# builds the explorer.
+#
+# Every action is pinned to a commit SHA; the comment names its release.
+name: planning
+
+on:
+  pull_request:
+    paths:
+      - 'docs/planning/markdown/**'
+      - 'tools/explorer/**'
+      - 'packages/ts/corpus-schema/**'
+      - 'packages/ts/frontmatter-lossless/**'
+      - 'packages/ts/markdown-link/**'
+      - 'packages/ts/prettier-config/**'
+      - 'packages/ts/tsconfig/**'
+      - 'tools/build-corpus-schema.sh'
+      - 'tools/validate-strict.sh'
+      - 'tools/validator.sh'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/planning.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'docs/planning/markdown/**'
+      - 'tools/explorer/**'
+      - 'packages/ts/corpus-schema/**'
+      - 'packages/ts/frontmatter-lossless/**'
+      - 'packages/ts/markdown-link/**'
+      - 'packages/ts/prettier-config/**'
+      - 'packages/ts/tsconfig/**'
+      - 'tools/build-corpus-schema.sh'
+      - 'tools/validate-strict.sh'
+      - 'tools/validator.sh'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/planning.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: planning-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Reads the pnpm version from `packageManager` in the root package.json.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Build corpus-schema
+        run: sh tools/build-corpus-schema.sh
+
+      # Fails on a warning as well as on an error.
+      - name: Validate the plan's records
+        run: sh tools/validate-strict.sh docs/planning/markdown docs/planning/markdown/profile
+
+  explorer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: tools/explorer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      # The explorer is in the workspace, so the root lockfile pins it.
+      - name: Install
+        run: pnpm install --frozen-lockfile
+        working-directory: .
+
+      - name: Build corpus-schema
+        run: sh tools/build-corpus-schema.sh
+        working-directory: .
+
+      - name: The committed data and checklist match the records
+        run: |
+          pnpm build-data
+          git diff --exit-code -- data ../../docs/planning/markdown/BEELINE.md
+          test -z "$(git status --porcelain -- data ../../docs/planning/markdown/BEELINE.md)"
+
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build:site

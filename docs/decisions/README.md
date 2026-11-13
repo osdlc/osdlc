@@ -11,6 +11,7 @@ random keys, so parallel branches do not collide.
 | [D-DUFX](D-DUFX-vfs-walk-and-vault-layer.md)             | A general walk in `vfs-walk`, vault rules in `markdown-vault-fs`                               |
 | [D-ODPP](D-ODPP-markdown-corpus.md)                      | `markdown-corpus` is the one corpus model                                                      |
 | [D-L7N5](D-L7N5-host-cleaner.md)                         | Machine cleanup is a `host-cleaner` package over repo-cleaner, with optional detected adapters |
+| [D-SM4K](D-SM4K-markdown-ecosystem-home.md)              | The markdown ecosystem stays in this repository, flat in `packages/` for now                   |
 
 Decisions about one package live in that package's
 `docs/planning/decisions/`, such as
