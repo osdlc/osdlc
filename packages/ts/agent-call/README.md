@@ -134,14 +134,13 @@ const result = await callAgent(adapterFor('codex'), {
 })
 ```
 
-The child's environment is built in one place, for every adapter: the parent's
-environment, cut to `inheritEnv` when it is a list, minus `unsetEnv`, then the
-variables the adapter sets, then `env`. The last two are not filtered, and an
-explicit value in `env` wins over a removal. If a bare binary name would be
-looked up on a `PATH` the child does not have, the call fails with
-`spawn-failed` instead of searching the working directory. `planCall` carries
-both fields on `planned.spec`, and `--explain` and `--dry-run` print their
-names, never values.
+The child's environment is built in one place, for every adapter; the
+`inheritEnv` doc in `spec.ts` gives the order. An explicit value in `env` wins
+over a removal. If a bare binary name would be looked up on a `PATH` the child
+does not have, the call fails with `spawn-failed`. `planCall` carries both
+fields on `planned.spec`. The fields are library-only for now: the CLI spec
+file does not accept them, so the names show in `--explain` and `--dry-run`
+only for callers who build the plan themselves.
 
 `detectAgents` runs the whole command with `--version` appended, and each
 result's `command` says what answered. The Cursor CLI installs as both
