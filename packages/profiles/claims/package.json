@@ -1,0 +1,36 @@
+{
+  "name": "@osdlc/corpus-profile-claims",
+  "version": "0.0.0",
+  "description": "The claims profile for corpus-schema: record types for claims and the evidence behind them (documents, methods, study results, statements), after GA4GH VA-Spec. A corpus of types and no records, named under extends in a corpus's root file.",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/markdown.git",
+    "directory": "profiles/claims"
+  },
+  "homepage": "https://github.com/osdlc/markdown/tree/main/profiles/claims#readme",
+  "bugs": "https://github.com/osdlc/markdown/issues",
+  "keywords": [
+    "corpus-schema",
+    "corpus-profile",
+    "claims",
+    "evidence",
+    "va-spec",
+    "json-schema",
+    "markdown"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "corpus": "corpus",
+  "files": [
+    "corpus/",
+    "README.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE"
+  ],
+  "scripts": {
+    "test": "sh tests/run.sh && sh tests/package.sh"
+  }
+}
