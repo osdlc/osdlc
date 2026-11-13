@@ -4,7 +4,7 @@ The component data behind the explorer. One file, `ecosystem.json`, beside this 
 behind the Work view is `plan.json`, described in [PLAN-SCHEMA.md](PLAN-SCHEMA.md).
 
 Both files are generated. The source is the plan's records in
-[docs/planning/](../../../docs/planning/README.md): one component, layer, repo or overlap per file.
+[docs/planning/markdown/](../../../docs/planning/markdown/README.md): one component, layer, repo or overlap per file.
 Edit a record, not this file, then run `pnpm build-data` (see
 [scripts/README.md](../scripts/README.md)).
 
@@ -41,7 +41,7 @@ target is planned.
       "notes": ["Short facts worth knowing: a move, a rename, an open question."],
       "tasks": [21, 32],                // ids of the plan.json tasks that change it
       "links": [{ "label": "PR #9", "url": "https://github.com/osdlc/markdown/pull/9" }],
-      "source": "docs/planning/components/corpus-schema-ts.md"  // optional: repo-relative path of its record
+      "source": "docs/planning/markdown/components/corpus-schema-ts.md"  // optional: repo-relative path of its record
     }
   ],
   "edges": [

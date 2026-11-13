@@ -2,7 +2,7 @@
 
 The plan behind the Work view: every milestone and task between the present state and the target.
 One file, `plan.json`, beside this note. It is generated: the source is the plan's task and
-milestone records in [docs/planning/](../../../docs/planning/README.md). Edit a record, not this
+milestone records in [docs/planning/markdown/](../../../docs/planning/markdown/README.md). Edit a record, not this
 file, then run `pnpm build-data` (see [scripts/README.md](../scripts/README.md)).
 
 ```jsonc
@@ -26,7 +26,7 @@ file, then run `pnpm build-data` (see [scripts/README.md](../scripts/README.md))
       "phase": "store",                  // a phases[].id: the part of the ecosystem it builds
       "beeline": true,                   // true for the milestones the work is heading for now
       "tasks": [9, 27, 29],              // its task ids, in plan order
-      "source": "docs/planning/milestones/m-npm.md"   // optional: repo-relative path of its record
+      "source": "docs/planning/markdown/milestones/m-npm.md"   // optional: repo-relative path of its record
     }
   ],
   "tasks": [
@@ -42,7 +42,7 @@ file, then run `pnpm build-data` (see [scripts/README.md](../scripts/README.md))
         { "label": "osdlc/markdown#12", "url": "https://github.com/osdlc/markdown/pull/12" }
       ],
       "text": "The plan paragraph, with [markdown links](https://example.com) and `code`.",
-      "source": "docs/planning/tasks/27 Org corpora.md"   // optional, as for milestones
+      "source": "docs/planning/markdown/tasks/27 Org corpora.md"   // optional, as for milestones
     }
   ]
 }
@@ -64,7 +64,7 @@ Derived, not stored:
 
 - A milestone waits on another when one of its tasks waits on one of the other's.
 - A task is next up when it is not done and every task it waits on is done. The checklist in
-  [BEELINE.md](../../../docs/planning/BEELINE.md) uses the same rule.
+  [BEELINE.md](../../../docs/planning/markdown/BEELINE.md) uses the same rule.
 - A milestone's progress is its done tasks out of all its tasks.
 - A task's phase is its milestone's phase.
 - The components a task changes are the `ecosystem.json` nodes whose `tasks` hold its id.

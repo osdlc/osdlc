@@ -1,10 +1,10 @@
-// Builds data/ecosystem.json and data/plan.json from the plan's records in docs/planning, and the
-// checklist in the corpus's BEELINE.md.
+// Builds data/ecosystem.json and data/plan.json from the plan's records in docs/planning/markdown,
+// and the checklist in the corpus's BEELINE.md.
 // Usage: node scripts/build-data.mjs [--corpus <dir>] [--out <dir>]
 // The corpus is validated with @osdlc/corpus-schema first. Each problem, from the validator or from
 // a rule it cannot check, is one line on stderr, and then nothing is written. See
-// docs/planning/README.md.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+// docs/planning/markdown/README.md.
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, posix, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
@@ -21,6 +21,9 @@ const SUFFIXES = [
   ['_new', ['target']],
   ['_going', ['present']],
 ]
+
+// What ends a root file's name, as in @osdlc/corpus-schema: `<name>.corpus-schema.md`, `.yaml` or `.json`.
+const ROOT_SUFFIXES = ['.corpus-schema.md', '.corpus-schema.yaml', '.corpus-schema.json']
 
 const toPosix = (p) => p.split(sep).join('/')
 const byKey = (key) => (a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0)
@@ -128,7 +131,10 @@ function schemaChain(corpus, type) {
     const [prefix, base] = (schema['x-extends'] ?? '').split('/', 2)
     if (base === undefined) name = prefix || undefined
     else {
-      const source = data(dir, ['corpus-schema.md', 'corpus-schema.yaml', 'corpus-schema.json']).value.extends[prefix]
+      const roots = readdirSync(dir)
+        .filter((f) => ROOT_SUFFIXES.some((s) => f.endsWith(s) && f.length > s.length))
+        .sort()
+      const source = data(dir, roots.length > 0 ? roots : ROOT_SUFFIXES.map((s) => `<name>${s}`)).value.extends[prefix]
       if (!/^\.\.?\//.test(source)) throw Object.assign(new Error(`build-data reads a parent by path only, not ${source}`), { file: at })
       dir = resolve(dir, source)
       name = base
@@ -419,7 +425,7 @@ function main() {
     process.exit(2)
   }
   const out = resolve(values.out ?? join(explorer, 'data'))
-  const corpus = resolve(values.corpus ?? join(repo, 'docs/planning'))
+  const corpus = resolve(values.corpus ?? join(repo, 'docs/planning/markdown'))
   const data = buildData(corpus, repo)
   if (data.problems.length > 0) {
     for (const p of data.problems) console.error(p)

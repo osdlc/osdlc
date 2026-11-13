@@ -1,5 +1,5 @@
-// The checks in scripts/build-data.mjs. Each case copies docs/planning and the profile it extends,
-// breaks one rule, and expects the problem that names it.
+// The checks in scripts/build-data.mjs. Each case copies docs/planning/markdown, with the profile it
+// extends in its profile/ folder, breaks one rule, and expects the problem that names it.
 import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -7,18 +7,18 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { buildData } from '../scripts/build-data.mjs'
 
 const repo = resolve(import.meta.dirname, '../../..')
-const planning = join(repo, 'docs/planning')
-const profile = join(repo, 'profiles/planning')
+const planning = join(repo, 'docs/planning/markdown')
+// The plan's root file, <name>.corpus-schema.md.
+const rootFile = readdirSync(planning).find((f) => f.endsWith('.corpus-schema.md'))
 const temp = mkdtempSync(join(tmpdir(), 'build-data-'))
 afterAll(() => rmSync(temp, { recursive: true, force: true }))
 
 let n = 0
-/** The data built after `change` edits a fresh copy of the corpus and the profile. */
+/** The data built after `change` edits a fresh copy of the corpus and its profile. */
 function buildAfter(change) {
   const root = join(temp, String(n++))
-  const corpus = join(root, 'docs/planning')
+  const corpus = join(root, 'docs/planning/markdown')
   cpSync(planning, corpus, { recursive: true })
-  cpSync(profile, join(root, 'profiles/planning'), { recursive: true })
   const edit = (file, from, to) => {
     const path = join(corpus, file)
     const text = readFileSync(path, 'utf8')
@@ -72,12 +72,12 @@ describe('build-data', () => {
   it('needs both markers in BEELINE.md', () => {
     const problems = problemsAfter(({ edit }) => edit('BEELINE.md', '<!-- beeline:end -->', ''))
     expect(problems).toEqual([
-      'docs/planning/BEELINE.md: (body): needs a <!-- beeline:start --> line and a <!-- beeline:end --> line after it',
+      'docs/planning/markdown/BEELINE.md: (body): needs a <!-- beeline:start --> line and a <!-- beeline:end --> line after it',
     ])
   })
 
   it('builds no checklist for a corpus with no BEELINE.md', () => {
-    const data = buildAfter(({ root }) => rmSync(join(root, 'docs/planning/BEELINE.md')))
+    const data = buildAfter(({ root }) => rmSync(join(root, 'docs/planning/markdown/BEELINE.md')))
     expect(data.problems).toEqual([])
     expect(data.beeline).toBeNull()
   })
@@ -108,7 +108,7 @@ describe('build-data', () => {
 
   it('builds a corpus whose milestones have no phase, with no phase labels', () => {
     const data = buildAfter(({ root }) => {
-      const dir = join(root, 'docs/planning/milestones')
+      const dir = join(root, 'docs/planning/markdown/milestones')
       for (const file of readdirSync(dir)) {
         const path = join(dir, file)
         const text = readFileSync(path, 'utf8')
@@ -124,7 +124,7 @@ describe('build-data', () => {
   it('reads the status labels from a profile schema in YAML', () => {
     const { plan } = buildData(planning, repo)
     const data = buildAfter(({ root }) => {
-      const dir = join(root, 'profiles/planning/tasks')
+      const dir = join(root, 'docs/planning/markdown/profile/tasks')
       const text = readFileSync(join(dir, 'tasks.schema.md'), 'utf8')
       writeFileSync(join(dir, 'tasks.schema.yaml'), text.split('---\n')[1])
       rmSync(join(dir, 'tasks.schema.md'))
@@ -135,24 +135,24 @@ describe('build-data', () => {
 
   it('reads a parent by path only', () => {
     const problems = problemsAfter(({ edit, root }) => {
-      cpSync(join(root, 'profiles/planning'), join(root, 'node_modules/@osdlc/corpus-profile-planning'), { recursive: true })
-      edit('corpus-schema.md', 'plan: ../../profiles/planning', 'plan: "@osdlc/corpus-profile-planning"')
+      cpSync(join(root, 'docs/planning/markdown/profile'), join(root, 'node_modules/@osdlc/corpus-profile-planning'), { recursive: true })
+      edit(rootFile, 'plan: ./profile', 'plan: "@osdlc/corpus-profile-planning"')
     })
     expect(problems).toEqual([
-      'docs/planning/tasks/tasks.schema.md: x-extends: build-data reads a parent by path only, not @osdlc/corpus-profile-planning',
+      'docs/planning/markdown/tasks/tasks.schema.md: x-extends: build-data reads a parent by path only, not @osdlc/corpus-profile-planning',
     ])
   })
 
   it('names the schema file it was reading when x-extends fails', () => {
     const problems = problemsAfter(({ edit, root }) => {
-      cpSync(join(root, 'profiles/planning'), join(root, 'node_modules/@osdlc/corpus-profile-planning'), { recursive: true })
-      edit('corpus-schema.md', 'plan: ../../profiles/planning', 'plan: "@osdlc/corpus-profile-planning"')
-      const dir = join(root, 'docs/planning/tasks')
+      cpSync(join(root, 'docs/planning/markdown/profile'), join(root, 'node_modules/@osdlc/corpus-profile-planning'), { recursive: true })
+      edit(rootFile, 'plan: ./profile', 'plan: "@osdlc/corpus-profile-planning"')
+      const dir = join(root, 'docs/planning/markdown/tasks')
       writeFileSync(join(dir, 'tasks.schema.yaml'), readFileSync(join(dir, 'tasks.schema.md'), 'utf8').split('---\n')[1])
       rmSync(join(dir, 'tasks.schema.md'))
     })
     expect(problems).toEqual([
-      'docs/planning/tasks/tasks.schema.yaml: x-extends: build-data reads a parent by path only, not @osdlc/corpus-profile-planning',
+      'docs/planning/markdown/tasks/tasks.schema.yaml: x-extends: build-data reads a parent by path only, not @osdlc/corpus-profile-planning',
     ])
   })
 

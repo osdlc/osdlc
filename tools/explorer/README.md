@@ -11,17 +11,16 @@ the URL:
 ## Run it
 
 ```sh
+pnpm install
 sh ../build-corpus-schema.sh
-pnpm install --ignore-workspace
 pnpm dev
 ```
 
-Open the address Vite prints. The explorer is its own package, with its own lockfile, so it is not
-part of the repo's pnpm workspace. `--ignore-workspace` keeps pnpm from installing the workspace
-instead.
+Open the address Vite prints. The explorer is a private package in the repo's pnpm workspace, so
+`pnpm install` installs it with the rest, and its lockfile is the root `pnpm-lock.yaml`.
 
-The first line builds this repo's corpus-schema in `packages/ts/corpus-schema/`. The explorer's
-`@osdlc/corpus-schema` is a `link:` to that folder, because the plan uses `extends` and the 0.2.0
+The second line builds this repo's corpus-schema in `packages/ts/corpus-schema/`. The explorer's
+`@osdlc/corpus-schema` is `workspace:*`, that folder, because the plan uses `extends` and the 0.2.0
 on npm does not know it. Run the line again after corpus-schema changes.
 
 ### Components
@@ -80,16 +79,17 @@ on npm does not know it. Run the line again after corpus-schema changes.
 
 ## Edit the data
 
-The data is generated. The plan's records in [docs/planning/](../../docs/planning/README.md) are the
-source: one Markdown file per task, milestone, component, layer, repo and overlap. Edit a record,
-then rebuild the JSON and commit both:
+The data is generated. The plan's records in
+[docs/planning/markdown/](../../docs/planning/markdown/README.md) are the source: one Markdown file
+per task, milestone, component, layer, repo and overlap. Edit a record, then rebuild the JSON and
+commit both:
 
 ```sh
 pnpm build-data
 ```
 
 [scripts/build-data.mjs](scripts/build-data.mjs) validates the records with `@osdlc/corpus-schema`,
-the linked copy from this repo. It checks the rules the validator can't, and writes
+the workspace copy from this repo. It checks the rules the validator can't, and writes
 `data/ecosystem.json` and `data/plan.json`. Their shapes and rules are in
 [data/SCHEMA.md](data/SCHEMA.md) and [data/PLAN-SCHEMA.md](data/PLAN-SCHEMA.md). CI fails when the
 committed JSON differs from what the records build.

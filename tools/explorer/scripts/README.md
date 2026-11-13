@@ -1,8 +1,8 @@
 # Explorer scripts
 
 `build-data.mjs` builds the explorer's `data/ecosystem.json` and `data/plan.json` from the plan's
-records in [docs/planning/](../../../docs/planning/README.md). It also rewrites the checklist in
-[BEELINE.md](../../../docs/planning/BEELINE.md), between its `<!-- beeline:start -->` and
+records in [docs/planning/markdown/](../../../docs/planning/markdown/README.md). It also rewrites the checklist in
+[BEELINE.md](../../../docs/planning/markdown/BEELINE.md), between its `<!-- beeline:start -->` and
 `<!-- beeline:end -->` lines. The checklist comes from `src/model/beeline.ts`, which uses the Work
 view's next-up rule from `src/model/work.ts`. Node loads those TypeScript files directly, so their
 imports name the `.ts` file. Edit the records, not the JSON or the checklist, then run it from

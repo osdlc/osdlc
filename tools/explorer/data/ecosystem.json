@@ -129,7 +129,7 @@
         13
       ],
       "links": [],
-      "source": "docs/planning/components/determined.md"
+      "source": "docs/planning/markdown/components/determined.md"
     },
     {
       "id": "evidence-project",
@@ -163,7 +163,7 @@
         23
       ],
       "links": [],
-      "source": "docs/planning/components/evidence-project.md"
+      "source": "docs/planning/markdown/components/evidence-project.md"
     },
     {
       "id": "harness-beta-corpus",
@@ -208,7 +208,7 @@
           "url": "https://github.com/osdlc/skillwright/pull/74"
         }
       ],
-      "source": "docs/planning/components/harness-beta-corpus.md"
+      "source": "docs/planning/markdown/components/harness-beta-corpus.md"
     },
     {
       "id": "harness-reference",
@@ -259,7 +259,7 @@
           "url": "https://github.com/osdlc/osdlc/pull/750"
         }
       ],
-      "source": "docs/planning/components/harness-reference.md"
+      "source": "docs/planning/markdown/components/harness-reference.md"
     },
     {
       "id": "markdown-store",
@@ -295,7 +295,7 @@
         10
       ],
       "links": [],
-      "source": "docs/planning/components/markdown-store.md"
+      "source": "docs/planning/markdown/components/markdown-store.md"
     },
     {
       "id": "ontogen",
@@ -326,7 +326,7 @@
       ],
       "tasks": [],
       "links": [],
-      "source": "docs/planning/components/ontogen.md"
+      "source": "docs/planning/markdown/components/ontogen.md"
     },
     {
       "id": "plan-corpus",
@@ -370,7 +370,7 @@
           "url": "https://github.com/osdlc/markdown/pull/14"
         }
       ],
-      "source": "docs/planning/components/plan-corpus.md"
+      "source": "docs/planning/markdown/components/plan-corpus.md"
     },
     {
       "id": "sdlc",
@@ -409,7 +409,7 @@
           "url": "https://github.com/sksizer/dev/pull/4070"
         }
       ],
-      "source": "docs/planning/components/sdlc.md"
+      "source": "docs/planning/markdown/components/sdlc.md"
     },
     {
       "id": "skillwright",
@@ -441,7 +441,7 @@
       ],
       "tasks": [],
       "links": [],
-      "source": "docs/planning/components/skillwright.md"
+      "source": "docs/planning/markdown/components/skillwright.md"
     },
     {
       "id": "markdown-astro",
@@ -485,7 +485,7 @@
           "url": "https://github.com/osdlc/osdlc/pull/720"
         }
       ],
-      "source": "docs/planning/components/markdown-astro.md"
+      "source": "docs/planning/markdown/components/markdown-astro.md"
     },
     {
       "id": "markdown-editor",
@@ -517,7 +517,7 @@
         17
       ],
       "links": [],
-      "source": "docs/planning/components/markdown-editor.md"
+      "source": "docs/planning/markdown/components/markdown-editor.md"
     },
     {
       "id": "markdown-render",
@@ -556,7 +556,7 @@
           "url": "https://github.com/osdlc/osdlc/pull/720"
         }
       ],
-      "source": "docs/planning/components/markdown-render.md"
+      "source": "docs/planning/markdown/components/markdown-render.md"
     },
     {
       "id": "markdown-ui",
@@ -589,7 +589,7 @@
         17
       ],
       "links": [],
-      "source": "docs/planning/components/markdown-ui.md"
+      "source": "docs/planning/markdown/components/markdown-ui.md"
     },
     {
       "id": "markdown-vault-query",
@@ -628,7 +628,7 @@
         72
       ],
       "links": [],
-      "source": "docs/planning/components/markdown-vault-query.md"
+      "source": "docs/planning/markdown/components/markdown-vault-query.md"
     },
     {
       "id": "acceptance-testing-profile",
@@ -659,7 +659,7 @@
         25
       ],
       "links": [],
-      "source": "docs/planning/components/acceptance-testing-profile.md"
+      "source": "docs/planning/markdown/components/acceptance-testing-profile.md"
     },
     {
       "id": "claims-example",
@@ -711,7 +711,7 @@
           "url": "https://github.com/osdlc/markdown/pull/15"
         }
       ],
-      "source": "docs/planning/components/claims-example.md"
+      "source": "docs/planning/markdown/components/claims-example.md"
     },
     {
       "id": "corpus-profile-claims",
@@ -756,7 +756,7 @@
           "url": "https://github.com/osdlc/markdown/pull/15"
         }
       ],
-      "source": "docs/planning/components/corpus-profile-claims.md"
+      "source": "docs/planning/markdown/components/corpus-profile-claims.md"
     },
     {
       "id": "corpus-profile-planning",
@@ -795,7 +795,7 @@
           "url": "https://github.com/osdlc/markdown/pull/14"
         }
       ],
-      "source": "docs/planning/components/corpus-profile-planning.md"
+      "source": "docs/planning/markdown/components/corpus-profile-planning.md"
     },
     {
       "id": "corpus-profile-sdlc",
@@ -835,7 +835,7 @@
         62
       ],
       "links": [],
-      "source": "docs/planning/components/corpus-profile-sdlc.md"
+      "source": "docs/planning/markdown/components/corpus-profile-sdlc.md"
     },
     {
       "id": "corpus-sdlc-starter",
@@ -877,7 +877,7 @@
         68
       ],
       "links": [],
-      "source": "docs/planning/components/corpus-sdlc-starter.md"
+      "source": "docs/planning/markdown/components/corpus-sdlc-starter.md"
     },
     {
       "id": "fernlog-example",
@@ -916,7 +916,7 @@
           "url": "https://github.com/osdlc/markdown/pull/16"
         }
       ],
-      "source": "docs/planning/components/fernlog-example.md"
+      "source": "docs/planning/markdown/components/fernlog-example.md"
     },
     {
       "id": "org-principles-corpus",
@@ -949,7 +949,7 @@
         30
       ],
       "links": [],
-      "source": "docs/planning/components/org-principles-corpus.md"
+      "source": "docs/planning/markdown/components/org-principles-corpus.md"
     },
     {
       "id": "org-principles-example",
@@ -986,7 +986,7 @@
           "url": "https://github.com/osdlc/markdown/pull/16"
         }
       ],
-      "source": "docs/planning/components/org-principles-example.md"
+      "source": "docs/planning/markdown/components/org-principles-example.md"
     },
     {
       "id": "work-example",
@@ -1018,7 +1018,7 @@
         79
       ],
       "links": [],
-      "source": "docs/planning/components/work-example.md"
+      "source": "docs/planning/markdown/components/work-example.md"
     },
     {
       "id": "model-schema",
@@ -1064,7 +1064,7 @@
           "url": "https://github.com/sksizer/dev/pull/4069"
         }
       ],
-      "source": "docs/planning/components/model-schema.md"
+      "source": "docs/planning/markdown/components/model-schema.md"
     },
     {
       "id": "pack-claims",
@@ -1095,7 +1095,7 @@
         76
       ],
       "links": [],
-      "source": "docs/planning/components/pack-claims.md"
+      "source": "docs/planning/markdown/components/pack-claims.md"
     },
     {
       "id": "pack-intent",
@@ -1135,7 +1135,7 @@
           "url": "https://github.com/sksizer/dev/pull/4070"
         }
       ],
-      "source": "docs/planning/components/pack-intent.md"
+      "source": "docs/planning/markdown/components/pack-intent.md"
     },
     {
       "id": "pack-sdlc",
@@ -1176,7 +1176,7 @@
           "url": "https://github.com/sksizer/dev/pull/4070"
         }
       ],
-      "source": "docs/planning/components/pack-sdlc.md"
+      "source": "docs/planning/markdown/components/pack-sdlc.md"
     },
     {
       "id": "corpus-schema-rs",
@@ -1207,7 +1207,7 @@
         32
       ],
       "links": [],
-      "source": "docs/planning/components/corpus-schema-rs.md"
+      "source": "docs/planning/markdown/components/corpus-schema-rs.md"
     },
     {
       "id": "corpus-schema-spec",
@@ -1269,7 +1269,7 @@
           "url": "https://github.com/osdlc/osdlc/pull/729"
         }
       ],
-      "source": "docs/planning/components/corpus-schema-spec.md"
+      "source": "docs/planning/markdown/components/corpus-schema-spec.md"
     },
     {
       "id": "corpus-schema-ts",
@@ -1354,7 +1354,7 @@
           "url": "https://github.com/osdlc/osdlc/pull/733"
         }
       ],
-      "source": "docs/planning/components/corpus-schema-ts.md"
+      "source": "docs/planning/markdown/components/corpus-schema-ts.md"
     },
     {
       "id": "markdown-corpus",
@@ -1392,7 +1392,7 @@
         32
       ],
       "links": [],
-      "source": "docs/planning/components/markdown-corpus.md"
+      "source": "docs/planning/markdown/components/markdown-corpus.md"
     },
     {
       "id": "markdown-corpus-rs",
@@ -1430,7 +1430,7 @@
           "url": "https://github.com/osdlc/osdlc/pull/650"
         }
       ],
-      "source": "docs/planning/components/markdown-corpus-rs.md"
+      "source": "docs/planning/markdown/components/markdown-corpus-rs.md"
     },
     {
       "id": "markdown-relink",
@@ -1469,7 +1469,7 @@
           "url": "https://github.com/osdlc/osdlc/pull/651"
         }
       ],
-      "source": "docs/planning/components/markdown-relink.md"
+      "source": "docs/planning/markdown/components/markdown-relink.md"
     },
     {
       "id": "markdown-reshape-rs",
@@ -1509,7 +1509,7 @@
         42
       ],
       "links": [],
-      "source": "docs/planning/components/markdown-reshape-rs.md"
+      "source": "docs/planning/markdown/components/markdown-reshape-rs.md"
     },
     {
       "id": "markdown-reshape-ts",
@@ -1542,7 +1542,7 @@
         40
       ],
       "links": [],
-      "source": "docs/planning/components/markdown-reshape-ts.md"
+      "source": "docs/planning/markdown/components/markdown-reshape-ts.md"
     },
     {
       "id": "markdown-vault",
@@ -1576,7 +1576,7 @@
         13
       ],
       "links": [],
-      "source": "docs/planning/components/markdown-vault.md"
+      "source": "docs/planning/markdown/components/markdown-vault.md"
     },
     {
       "id": "vault-graph-core",
@@ -1610,7 +1610,7 @@
         13
       ],
       "links": [],
-      "source": "docs/planning/components/vault-graph-core.md"
+      "source": "docs/planning/markdown/components/vault-graph-core.md"
     },
     {
       "id": "frontmatter-lossless",
@@ -1640,7 +1640,7 @@
       ],
       "tasks": [],
       "links": [],
-      "source": "docs/planning/components/frontmatter-lossless.md"
+      "source": "docs/planning/markdown/components/frontmatter-lossless.md"
     },
     {
       "id": "frontmatter-lossless-rs",
@@ -1670,7 +1670,7 @@
       ],
       "tasks": [],
       "links": [],
-      "source": "docs/planning/components/frontmatter-lossless-rs.md"
+      "source": "docs/planning/markdown/components/frontmatter-lossless-rs.md"
     },
     {
       "id": "gfm-pipe-table",
@@ -1700,7 +1700,7 @@
       ],
       "tasks": [],
       "links": [],
-      "source": "docs/planning/components/gfm-pipe-table.md"
+      "source": "docs/planning/markdown/components/gfm-pipe-table.md"
     },
     {
       "id": "gfm-table",
@@ -1730,7 +1730,7 @@
       ],
       "tasks": [],
       "links": [],
-      "source": "docs/planning/components/gfm-table.md"
+      "source": "docs/planning/markdown/components/gfm-table.md"
     },
     {
       "id": "markdown-contract",
@@ -1763,7 +1763,7 @@
         57
       ],
       "links": [],
-      "source": "docs/planning/components/markdown-contract.md"
+      "source": "docs/planning/markdown/components/markdown-contract.md"
     },
     {
       "id": "markdown-contract-rs",
@@ -1795,7 +1795,7 @@
         56
       ],
       "links": [],
-      "source": "docs/planning/components/markdown-contract-rs.md"
+      "source": "docs/planning/markdown/components/markdown-contract-rs.md"
     },
     {
       "id": "markdown-contract-vendored",
@@ -1826,7 +1826,7 @@
       ],
       "tasks": [],
       "links": [],
-      "source": "docs/planning/components/markdown-contract-vendored.md"
+      "source": "docs/planning/markdown/components/markdown-contract-vendored.md"
     },
     {
       "id": "markdown-link",
@@ -1879,7 +1879,7 @@
           "url": "https://github.com/osdlc/osdlc/issues/635"
         }
       ],
-      "source": "docs/planning/components/markdown-link.md"
+      "source": "docs/planning/markdown/components/markdown-link.md"
     },
     {
       "id": "markdown-link-dev-copy",
@@ -1911,7 +1911,7 @@
         13
       ],
       "links": [],
-      "source": "docs/planning/components/markdown-link-dev-copy.md"
+      "source": "docs/planning/markdown/components/markdown-link-dev-copy.md"
     },
     {
       "id": "markdown-link-rs",
@@ -1957,7 +1957,7 @@
           "url": "https://github.com/osdlc/osdlc/pull/728"
         }
       ],
-      "source": "docs/planning/components/markdown-link-rs.md"
+      "source": "docs/planning/markdown/components/markdown-link-rs.md"
     },
     {
       "id": "markdown-tags",
@@ -1993,7 +1993,7 @@
           "url": "https://github.com/osdlc/osdlc/pull/714"
         }
       ],
-      "source": "docs/planning/components/markdown-tags.md"
+      "source": "docs/planning/markdown/components/markdown-tags.md"
     },
     {
       "id": "markdown-tags-dev-copy",
@@ -2027,7 +2027,7 @@
           "url": "https://github.com/osdlc/osdlc/pull/714"
         }
       ],
-      "source": "docs/planning/components/markdown-tags-dev-copy.md"
+      "source": "docs/planning/markdown/components/markdown-tags-dev-copy.md"
     },
     {
       "id": "markdown-tags-rs",
@@ -2057,7 +2057,7 @@
       ],
       "tasks": [],
       "links": [],
-      "source": "docs/planning/components/markdown-tags-rs.md"
+      "source": "docs/planning/markdown/components/markdown-tags-rs.md"
     },
     {
       "id": "yaml-splice",
@@ -2088,7 +2088,7 @@
       ],
       "tasks": [],
       "links": [],
-      "source": "docs/planning/components/yaml-splice.md"
+      "source": "docs/planning/markdown/components/yaml-splice.md"
     },
     {
       "id": "yaml-splice-rs",
@@ -2118,7 +2118,7 @@
       ],
       "tasks": [],
       "links": [],
-      "source": "docs/planning/components/yaml-splice-rs.md"
+      "source": "docs/planning/markdown/components/yaml-splice-rs.md"
     },
     {
       "id": "yaml-splice-wasm",
@@ -2148,7 +2148,7 @@
       ],
       "tasks": [],
       "links": [],
-      "source": "docs/planning/components/yaml-splice-wasm.md"
+      "source": "docs/planning/markdown/components/yaml-splice-wasm.md"
     },
     {
       "id": "etag-write",
@@ -2178,7 +2178,7 @@
       ],
       "tasks": [],
       "links": [],
-      "source": "docs/planning/components/etag-write.md"
+      "source": "docs/planning/markdown/components/etag-write.md"
     },
     {
       "id": "etag-write-rs",
@@ -2206,7 +2206,7 @@
       "notes": [],
       "tasks": [],
       "links": [],
-      "source": "docs/planning/components/etag-write-rs.md"
+      "source": "docs/planning/markdown/components/etag-write-rs.md"
     },
     {
       "id": "markdown-vault-fs",
@@ -2243,7 +2243,7 @@
           "url": "https://github.com/osdlc/osdlc/pull/650"
         }
       ],
-      "source": "docs/planning/components/markdown-vault-fs.md"
+      "source": "docs/planning/markdown/components/markdown-vault-fs.md"
     },
     {
       "id": "path-guard",
@@ -2273,7 +2273,7 @@
       ],
       "tasks": [],
       "links": [],
-      "source": "docs/planning/components/path-guard.md"
+      "source": "docs/planning/markdown/components/path-guard.md"
     },
     {
       "id": "path-guard-rs",
@@ -2303,7 +2303,7 @@
       ],
       "tasks": [],
       "links": [],
-      "source": "docs/planning/components/path-guard-rs.md"
+      "source": "docs/planning/markdown/components/path-guard-rs.md"
     },
     {
       "id": "vfs-seam",
@@ -2331,7 +2331,7 @@
       "notes": [],
       "tasks": [],
       "links": [],
-      "source": "docs/planning/components/vfs-seam.md"
+      "source": "docs/planning/markdown/components/vfs-seam.md"
     },
     {
       "id": "vfs-walk",
@@ -2359,7 +2359,7 @@
       "notes": [],
       "tasks": [],
       "links": [],
-      "source": "docs/planning/components/vfs-walk.md"
+      "source": "docs/planning/markdown/components/vfs-walk.md"
     }
   ],
   "edges": [
