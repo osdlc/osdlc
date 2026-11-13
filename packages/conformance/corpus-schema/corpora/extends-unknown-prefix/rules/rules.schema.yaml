@@ -1,0 +1,3 @@
+x-extends: nope/principles
+properties:
+  follows: { type: string, x-ref: nope/principles }
