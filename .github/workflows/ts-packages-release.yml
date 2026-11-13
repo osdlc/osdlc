@@ -203,11 +203,11 @@ jobs:
             fi
             manifests=()
             for glob in "${globs[@]}"; do
-              # Unquoted, so the glob expands. The -f test drops an entry
-              # without a wildcard, which nullglob keeps, when it is missing.
+              # Unquoted, so the glob expands.
               matched=()
               # shellcheck disable=SC2231
               for manifest in $glob/package.json; do
+                # nullglob keeps an entry with no wildcard even when it is missing.
                 if [ -f "$manifest" ]; then matched+=("$manifest"); fi
               done
               if [ "${#matched[@]}" -eq 0 ]; then

@@ -1,6 +1,4 @@
-# Runs packages/gh-actions/ts-packages/test.sh, which checks the shell of
-# ts-packages-release.yml's "not on npm yet" step against small package trees.
-# Needs no network and no secrets.
+# Runs packages/gh-actions/ts-packages/test.sh on pull requests; its header says what it checks.
 name: ts-packages test
 
 on:

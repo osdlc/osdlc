@@ -26,7 +26,6 @@ case "$2" in
   *) echo "$2" ;;
 esac
 FAKE
-# pnpm exec package-checks config tsDir prints packages/ts.
 cat > "$T/bin/pnpm" <<'FAKE'
 #!/usr/bin/env bash
 [ "$*" = "exec package-checks config tsDir" ] && echo packages/ts

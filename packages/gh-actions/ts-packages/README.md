@@ -164,11 +164,8 @@ yet, and names it.
 A workspace of packages that hold no code, such as Markdown and JSON Schema
 files, sets `ts-checks: false` and lists its package folders in
 `package-globs`, for example `profiles/* corpora/*`. It then needs no
-`package-checks.json`, and `package-checks` only to stage a new package. The
-pack job fails when `ts-checks` is false and `package-globs` is empty, when
-`package-globs` is blank, and when any one entry matches no package folder.
-Entries may be separated by spaces or newlines. `test.sh` in this folder
-checks that step, and `ts-packages-test.yml` runs it on pull requests.
+`package-checks.json`; `package-checks` is used only to stage a new package.
+Entries may be separated by spaces or newlines.
 
 ## Versioning
 
