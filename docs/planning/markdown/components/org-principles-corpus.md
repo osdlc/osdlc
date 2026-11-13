@@ -20,3 +20,5 @@ its principles, and later refine some and waive others with a reason (task 28).
 
 - The first real case for sharing across corpora. The plan does not say which repo holds it. The
   starter corpus (task 63) may become it.
+- Not the example org principles corpus at packages/corpora/examples/org-principles in osdlc/osdlc;
+  that is org-principles-example.
