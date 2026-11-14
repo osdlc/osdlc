@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/npm-binary",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Ship a compiled binary through npm: one launcher package plus one os/cpu-gated package per platform, selected through optionalDependencies. Platform names, the two package.json shapes, a dependency-free Node launcher shim, platform-first publishing and the cargo target-dir lookup.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",

@@ -1,7 +1,7 @@
 {
   "family": "corpus-schema",
   "reference": "ts",
-  "referenceVersion": "0.2.0",
+  "referenceVersion": "0.5.0",
   "sections": {
     "validate": {
       "description": "Validate one corpus, without --fix. `input.corpus` is a corpus folder relative to this file's folder. `expect` holds the `<file>: <field>` prefix of each error and of each warning, with the file relative to the corpus root: the text of a problem line up to its second `: `. Each list is sorted by UTF-16 code unit and holds each prefix once. An implementation passes a case when its two sets of prefixes match these. Message text and order are not compared.",
@@ -73,7 +73,7 @@
           },
           "expect": {
             "errors": [
-              "corpus-schema.yaml: level"
+              "level-bad.corpus-schema.yaml: level"
             ],
             "warnings": []
           }
@@ -86,9 +86,9 @@
           "expect": {
             "errors": [],
             "warnings": [
-              "corpus-schema.yaml: dialect",
-              "corpus-schema.yaml: flavour",
-              "corpus-schema.yaml: profiles"
+              "reserved-keys.corpus-schema.yaml: dialect",
+              "reserved-keys.corpus-schema.yaml: flavour",
+              "reserved-keys.corpus-schema.yaml: profiles"
             ]
           }
         },
@@ -147,6 +147,731 @@
               "methods/Survey/Survey.json: format"
             ],
             "warnings": []
+          }
+        },
+        {
+          "name": "with x-id-pattern, a record's id is the longest part of its stem that matches, and the data's id agrees",
+          "input": {
+            "corpus": "corpora/ids-prefix"
+          },
+          "expect": {
+            "errors": [],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a stem with no matching part, two files with one id, and a data id that disagrees are errors",
+          "input": {
+            "corpus": "corpora/ids-prefix-broken"
+          },
+          "expect": {
+            "errors": [
+              "principles/P-0002-b.md: id",
+              "principles/P-0003-x.md: id",
+              "principles/Q-0001-wrong.md: id"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "x-record-file makes a folder holding that file a record folder, named by its folder",
+          "input": {
+            "corpus": "corpora/record-file"
+          },
+          "expect": {
+            "errors": [],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a record folder holds one record file, and x-record-file must be a file name",
+          "input": {
+            "corpus": "corpora/record-file-broken"
+          },
+          "expect": {
+            "errors": [
+              "decisions/D-0001/README.md: (file)",
+              "notes/notes.schema.yaml: x-record-file"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a record file named for its record folder is one record",
+          "input": {
+            "corpus": "corpora/record-file-folder-name"
+          },
+          "expect": {
+            "errors": [],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a folder in a type folder whose name starts with _ holds narrative",
+          "input": {
+            "corpus": "corpora/narrative-folder"
+          },
+          "expect": {
+            "errors": [],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a null x-ref value refers to nothing, and the schema says whether it is allowed",
+          "input": {
+            "corpus": "corpora/xref-null"
+          },
+          "expect": {
+            "errors": [
+              "tasks/T-0002.md: blocks"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a schema's links sit only in its prose keywords, not in pattern or enum",
+          "input": {
+            "corpus": "corpora/schema-prose"
+          },
+          "expect": {
+            "errors": [
+              "notes/notes.schema.yaml: description"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a wikilink that matches no file names a record by id",
+          "input": {
+            "corpus": "corpora/wikilink-id"
+          },
+          "expect": {
+            "errors": [],
+            "warnings": [
+              "notes/N.md: body"
+            ]
+          }
+        },
+        {
+          "name": "a wikilink id that two records share is ambiguous",
+          "input": {
+            "corpus": "corpora/wikilink-id-ambiguous"
+          },
+          "expect": {
+            "errors": [
+              "notes/N.md: body"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a wikilink reaches records of direct references only, and the id form reaches a reference of a reference",
+          "input": {
+            "corpus": "corpora/wikilink-transitive"
+          },
+          "expect": {
+            "errors": [
+              "notes/Wikilink.md: about",
+              "notes/Wikilink.md: body"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "extends resolves a parent by a relative path, and a local type builds on the parent's type",
+          "input": {
+            "corpus": "corpora/extends-path"
+          },
+          "expect": {
+            "errors": [],
+            "warnings": []
+          }
+        },
+        {
+          "name": "extends resolves parents by package name, with and without a corpus field",
+          "input": {
+            "corpus": "corpora/extends-package"
+          },
+          "expect": {
+            "errors": [],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a three-level chain: a record passes every schema up its x-extends chain",
+          "input": {
+            "corpus": "corpora/extends-chain"
+          },
+          "expect": {
+            "errors": [],
+            "warnings": []
+          }
+        },
+        {
+          "name": "an unknown prefix in x-extends or x-ref is an error",
+          "input": {
+            "corpus": "corpora/extends-unknown-prefix"
+          },
+          "expect": {
+            "errors": [
+              "rules/rules.schema.yaml: follows",
+              "rules/rules.schema.yaml: x-extends"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a cycle of extends is an error",
+          "input": {
+            "corpus": "corpora/extends-cycle"
+          },
+          "expect": {
+            "errors": [
+              "extends-cycle.corpus-schema.md: extends.p"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a package that is not installed is an error",
+          "input": {
+            "corpus": "corpora/extends-missing-package"
+          },
+          "expect": {
+            "errors": [
+              "extends-missing-package.corpus-schema.md: extends.claims"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a parent folder or package with no root file is an error",
+          "input": {
+            "corpus": "corpora/extends-not-a-corpus"
+          },
+          "expect": {
+            "errors": [
+              "extends-not-a-corpus.corpus-schema.md: extends.pkg",
+              "extends-not-a-corpus.corpus-schema.md: extends.plain"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "extends needs level 2",
+          "input": {
+            "corpus": "corpora/extends-level-1"
+          },
+          "expect": {
+            "errors": [
+              "extends-level-1.corpus-schema.md: extends"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a record must pass its parent type's schema",
+          "input": {
+            "corpus": "corpora/extends-parent-schema"
+          },
+          "expect": {
+            "errors": [
+              "rules/No Statement.md: statement"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "x-ref to a referenced type accepts its records and local records whose type extends it",
+          "input": {
+            "corpus": "corpora/references-xref"
+          },
+          "expect": {
+            "errors": [
+              "guides/Wrong Type.md: follows"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "extends gives types only: a local record may share a parent record's id, and a link into the parent is an error",
+          "input": {
+            "corpus": "corpora/extends-types-only"
+          },
+          "expect": {
+            "errors": [
+              "notes/Why.md: body"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a link into _references/ with no copy asks for sync",
+          "input": {
+            "corpus": "corpora/references-copy-missing"
+          },
+          "expect": {
+            "errors": [
+              "_references/org: (copy)"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a stale _references/ copy reports each differing file",
+          "input": {
+            "corpus": "corpora/references-copy-stale"
+          },
+          "expect": {
+            "errors": [
+              "_references/old: (copy)",
+              "_references/org/principles/Extra.md: (copy)",
+              "_references/org/principles/Ship Small.md: (copy)"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a closed child type admits the fields of every type it extends",
+          "input": {
+            "corpus": "corpora/extends-flatten"
+          },
+          "expect": {
+            "errors": [],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a child type cannot loosen its parent, and a closed parent admits no new field",
+          "input": {
+            "corpus": "corpora/extends-flatten-loosen"
+          },
+          "expect": {
+            "errors": [
+              "howtos/Extra.md: extra",
+              "howtos/Gone.md: status",
+              "rules/Team Rule.md: team",
+              "rules/rules.schema.yaml: properties.team"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a corpus that links to none of a referenced corpus's files needs no copy",
+          "input": {
+            "corpus": "corpora/references-copy-unneeded"
+          },
+          "expect": {
+            "errors": [],
+            "warnings": []
+          }
+        },
+        {
+          "name": "references resolves a corpus by a relative path, and an x-ref links into its synced copy",
+          "input": {
+            "corpus": "corpora/references-path"
+          },
+          "expect": {
+            "errors": [],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a level 1 corpus may reference another, and link and wikilink into its copy",
+          "input": {
+            "corpus": "corpora/references-level-1"
+          },
+          "expect": {
+            "errors": [],
+            "warnings": [
+              "notes/Why.md: body"
+            ]
+          }
+        },
+        {
+          "name": "a prefix in both extends and references is an error",
+          "input": {
+            "corpus": "corpora/references-both-keys"
+          },
+          "expect": {
+            "errors": [
+              "references-both-keys.corpus-schema.yaml: references.org"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "x-extends and uses take no type from a referenced corpus",
+          "input": {
+            "corpus": "corpora/references-build"
+          },
+          "expect": {
+            "errors": [
+              "references-build.corpus-schema.yaml: uses",
+              "rules/rules.schema.yaml: x-extends"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a cycle of references is an error",
+          "input": {
+            "corpus": "corpora/references-cycle"
+          },
+          "expect": {
+            "errors": [
+              "references-cycle.corpus-schema.yaml: references.other"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a type through references, such as team/org/principles, can be an x-ref target",
+          "input": {
+            "corpus": "corpora/references-nested"
+          },
+          "expect": {
+            "errors": [],
+            "warnings": []
+          }
+        },
+        {
+          "name": "one record reached through two chains of references is one record",
+          "input": {
+            "corpus": "corpora/references-identity-same"
+          },
+          "expect": {
+            "errors": [],
+            "warnings": []
+          }
+        },
+        {
+          "name": "one id in two corpora names two records, so a reference to it is ambiguous",
+          "input": {
+            "corpus": "corpora/references-identity-different"
+          },
+          "expect": {
+            "errors": [
+              "notes/N.md: task"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "one corpus at two versions in the graph is an error",
+          "input": {
+            "corpus": "corpora/references-two-versions"
+          },
+          "expect": {
+            "errors": [
+              "references-two-versions.corpus-schema.yaml: (corpora)"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "two installed copies of one package at one version are one corpus, so their types are one type for x-ref",
+          "input": {
+            "corpus": "corpora/references-identity-copies"
+          },
+          "expect": {
+            "errors": [],
+            "warnings": []
+          }
+        },
+        {
+          "name": "uses makes a folder with no schema file hold records of a parent's type",
+          "input": {
+            "corpus": "corpora/uses"
+          },
+          "expect": {
+            "errors": [
+              "decisions/D-0002.md: status"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "uses <prefix>/* uses every type of the parent, and a folder that does not exist is fine",
+          "input": {
+            "corpus": "corpora/uses-wildcard"
+          },
+          "expect": {
+            "errors": [],
+            "warnings": []
+          }
+        },
+        {
+          "name": "uses gives types to folders at the corpus root only; a deeper folder named like a used type is narrative",
+          "input": {
+            "corpus": "corpora/uses-nested"
+          },
+          "expect": {
+            "errors": [],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a used folder that holds a schema file is an error",
+          "input": {
+            "corpus": "corpora/uses-schema"
+          },
+          "expect": {
+            "errors": [
+              "tasks/tasks.schema.yaml: (schema)"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "two used types with one name are an error",
+          "input": {
+            "corpus": "corpora/uses-clash"
+          },
+          "expect": {
+            "errors": [
+              "uses-clash.corpus-schema.yaml: uses"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "x-identity that is the type's identity passes",
+          "input": {
+            "corpus": "corpora/identity-match"
+          },
+          "expect": {
+            "errors": [],
+            "warnings": []
+          }
+        },
+        {
+          "name": "x-identity that is not the type's identity is an error",
+          "input": {
+            "corpus": "corpora/identity-mismatch"
+          },
+          "expect": {
+            "errors": [
+              "principles/principles.schema.yaml: x-identity"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a corpus's identity is its folder's package name, so an npm alias gives the real name",
+          "input": {
+            "corpus": "corpora/identity-alias"
+          },
+          "expect": {
+            "errors": [],
+            "warnings": []
+          }
+        },
+        {
+          "name": "one folder reached by a path and by a package is one package, so its two versions clash",
+          "input": {
+            "corpus": "corpora/identity-two-routes"
+          },
+          "expect": {
+            "errors": [
+              "identity-two-routes.corpus-schema.yaml: (corpora)"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "x-ref-form id and wikilink resolve a reference by id, here and in a parent",
+          "input": {
+            "corpus": "corpora/xref-id"
+          },
+          "expect": {
+            "errors": [],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a reference by id must name one record of the type, in the form the field declares",
+          "input": {
+            "corpus": "corpora/xref-id-broken"
+          },
+          "expect": {
+            "errors": [
+              "_references/org: (copy)",
+              "tasks/Ambiguous.md: depends_on",
+              "tasks/Not A String.md: depends_on",
+              "tasks/Path.md: about",
+              "tasks/Unknown.md: depends_on",
+              "tasks/tasks.schema.yaml: properties.note",
+              "tasks/tasks.schema.yaml: see"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "an x-ref list accepts a record of any listed type, or of a type that extends one",
+          "input": {
+            "corpus": "corpora/xref-types"
+          },
+          "expect": {
+            "errors": [],
+            "warnings": []
+          }
+        },
+        {
+          "name": "an x-ref list must name one or more types, and a record of another type fails",
+          "input": {
+            "corpus": "corpora/xref-types-broken"
+          },
+          "expect": {
+            "errors": [
+              "tasks/Build.md: after",
+              "tasks/tasks.schema.yaml: empty",
+              "tasks/tasks.schema.yaml: mixed"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a type folder sits at the corpus root; a deeper one is an error",
+          "input": {
+            "corpus": "corpora/types-root-only"
+          },
+          "expect": {
+            "errors": [
+              "research/studies: (folder)"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a corpus name holds only lowercase letters, digits and -",
+          "input": {
+            "corpus": "corpora/root-name-bad"
+          },
+          "expect": {
+            "errors": [
+              "My_Notes.corpus-schema.yaml: (file)"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a bare corpus-schema.yaml is not a root file",
+          "input": {
+            "corpus": "corpora/root-file-bare"
+          },
+          "expect": {
+            "errors": [
+              ".: (folder)"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a folder holds one root file",
+          "input": {
+            "corpus": "corpora/root-file-two"
+          },
+          "expect": {
+            "errors": [
+              "b.corpus-schema.md: (file)"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a wikilink holding a path from its file resolves, with no warning",
+          "input": {
+            "corpus": "corpora/wikilink-path"
+          },
+          "expect": {
+            "errors": [],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a bare-name wikilink warns, found by path suffix, in any case, or by id",
+          "input": {
+            "corpus": "corpora/wikilink-bare"
+          },
+          "expect": {
+            "errors": [],
+            "warnings": [
+              "notes/A.md: body",
+              "notes/A.md: see"
+            ]
+          }
+        },
+        {
+          "name": "a wikilink path into a copy of a copy is out of reach",
+          "input": {
+            "corpus": "corpora/wikilink-reach-path"
+          },
+          "expect": {
+            "errors": [
+              "notes/N.md: body"
+            ],
+            "warnings": []
+          }
+        }
+      ]
+    },
+    "strict": {
+      "description": "Validate one corpus with --strict. `input.corpus` and the prefixes in `expect` are as in the validate section. `expect.passes` is whether `validate --strict` passes the corpus: it does when the corpus has no errors and no warnings.",
+      "cases": [
+        {
+          "name": "a corpus with no warnings passes",
+          "input": {
+            "corpus": "corpora/strict-clean"
+          },
+          "expect": {
+            "errors": [],
+            "warnings": [],
+            "passes": true
+          }
+        },
+        {
+          "name": "a corpus whose only problem is a warning fails",
+          "input": {
+            "corpus": "corpora/strict-warning"
+          },
+          "expect": {
+            "errors": [],
+            "warnings": [
+              "notes/A.md: body"
+            ],
+            "passes": false
+          }
+        },
+        {
+          "name": "a folder named like a parent type, with no schema and not in uses, warns, so fails --strict",
+          "input": {
+            "corpus": "corpora/uses-like-type"
+          },
+          "expect": {
+            "errors": [],
+            "warnings": [
+              "task: (folder)"
+            ],
+            "passes": false
+          }
+        }
+      ]
+    },
+    "fix": {
+      "description": "Validate a copy of one corpus with --fix, so the case's own files never change. `input.corpus` and the prefixes in `expect` are as in the validate section, and describe the corpus after the rewrite. `expect.fixed` lists the files `validate --fix` rewrote, relative to the corpus root and sorted by UTF-16 code unit. The text a rewrite writes is not compared.",
+      "cases": [
+        {
+          "name": "validate --fix rewrites each bare name and keeps wikilinks that hold a path or sit in a wikilink-form field",
+          "input": {
+            "corpus": "corpora/fix-wikilink-bare"
+          },
+          "expect": {
+            "errors": [],
+            "warnings": [],
+            "fixed": [
+              "notes/A.md"
+            ]
           }
         }
       ]

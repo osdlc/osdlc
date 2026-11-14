@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/agent-seat",
-  "version": "0.7.2",
+  "version": "0.7.4",
   "description": "Open an interactive coding-agent session (claude, codex, cursor, pi and others) in the terminal app, multiplexer or editor a person already uses: a terminal tab, tmux, WezTerm, cmux, herdr, Orca, otty, VS Code or a JetBrains IDE. One host contract in optional parts, any harness in any host.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",

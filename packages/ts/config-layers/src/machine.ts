@@ -16,8 +16,8 @@
  * the same way.
  */
 
-import { copyFileSync, existsSync, readFileSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { copyFileSync, existsSync, lstatSync, readFileSync, readlinkSync, statSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 
 import { atomicWrite, etag, WriteConflictError, writeCas } from '@osdlc/etag-write'
 import type { z } from 'zod'
@@ -176,6 +176,8 @@ export interface MachineConfigFile<S extends z.ZodTypeAny> {
    * nothing, when `text` is not a YAML mapping or {@link check} finds a new
    * issue, and, given `etag`, when the file changed since it was read. Copies
    * the old file to `<path>.bak`, writes atomically and clears the cache.
+   * When {@link path} is a symlink, the write and the `.bak` go to the file
+   * it points to, and the link is left in place.
    * Given `etag`, the copy is made only once the swap went through, so a
    * conflict leaves the old `.bak` as it was.
    */
@@ -289,22 +291,26 @@ export function machineConfigFile<S extends z.ZodTypeAny>(
       const lines = added.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)
       throw new Error(`refusing to write ${file}:\n  ${lines.join('\n  ')}`)
     }
+    // A rename would replace a symlink with a regular file, so write to the file it points to.
+    const target = followLinks(file)
     if (o.etag === undefined) {
-      if (existsSync(file)) copyFileSync(file, `${file}.bak`)
+      if (existsSync(target)) copyFileSync(target, `${target}.bak`)
       cache = null
-      atomicWrite(file, text)
+      atomicWrite(target, text)
       return etag(text)
     }
     // The backup is taken only once the swap went through, so a conflict, however late it
     // lands, leaves the old `.bak` alone. It is made from these bytes: they match the etag
     // `writeCas` checked, so they are what the swap replaced.
-    const before = readOrNull(file)
+    const before = readOrNull(target)
     if (before !== null && etag(before) !== o.etag) {
       throw new WriteConflictError(file, o.etag === null ? 'exists-without-etag' : 'changed')
     }
     cache = null
-    const next = writeCas(file, text, o.etag)
-    if (before !== null) atomicWrite(`${file}.bak`, before, { mode: statSync(file).mode & 0o777 })
+    const next = writeCas(target, text, o.etag)
+    if (before !== null) {
+      atomicWrite(`${target}.bak`, before, { mode: statSync(target).mode & 0o777 })
+    }
     return next
   }
 
@@ -354,6 +360,25 @@ export function machineConfigFile<S extends z.ZodTypeAny>(
     write,
     migrate,
   }
+}
+
+/**
+ * The file a symlink at `file` points to, through every link in the chain; `file` itself when it
+ * is not a link. A link to a missing file gives that file's path, so the write creates it.
+ */
+function followLinks(file: string): string {
+  let at = file
+  // The kernel's own limit on a chain of links.
+  for (let hops = 0; hops < 40; hops++) {
+    try {
+      if (!lstatSync(at).isSymbolicLink()) return at
+    } catch {
+      return at
+    }
+    at = resolve(dirname(at), readlinkSync(at))
+  }
+  // A rename onto `at` would replace a link in the chain, so refuse rather than return it.
+  throw Object.assign(new Error(`too many levels of symbolic links: ${file}`), { code: 'ELOOP' })
 }
 
 /** The file's bytes, or `null` when it does not exist. Any other read error is thrown. */

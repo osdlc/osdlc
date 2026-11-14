@@ -350,11 +350,13 @@ describe('repair agent presets in config', () => {
     expect(r.err).toContain('mutually exclusive')
   })
 
-  test('AC-6: update --help lists each agent with a line of its own', async () => {
+  test('AC-6: update --help --all lists each agent with a line of its own', async () => {
     const { dir, env } = project()
-    const r = await run(dir, env, 'update', '--help')
-    expect(r.out).toContain('--repair-agent')
-    expect(r.out).toContain('--repair-command')
+    const short = await run(dir, env, 'update', '--help')
+    expect(short.out).toContain('--repair-agent')
+    expect(short.out).toContain('--repair-command')
+    expect(short.out).toContain('one of claude, codex, cursor, pi')
+    const r = await run(dir, env, 'update', '--help', '--all')
     for (const [name, line] of [
       ['claude', 'Claude Code'],
       ['codex', 'Codex'],

@@ -1,5 +1,26 @@
 # @osdlc/wayfinder
 
+## 0.12.8
+
+### Patch Changes
+
+- Updated dependencies [e1a5941]
+- Updated dependencies [cb8eafc]
+  - @osdlc/command-seam@0.15.0
+  - @osdlc/typed-git@0.14.0
+  - @osdlc/cli-tool@0.18.2
+  - @osdlc/detect-harness@0.7.1
+  - @osdlc/system-model@0.7.2
+  - @osdlc/trust-repo@0.5.6
+
+## 0.12.7
+
+### Patch Changes
+
+- Updated dependencies [65605cb]
+  - @osdlc/config-layers@0.10.0
+  - @osdlc/cli-tool@0.18.1
+
 ## 0.12.6
 
 ### Patch Changes

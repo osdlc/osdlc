@@ -4,7 +4,7 @@
 //
 // It imports the package by name, so Node resolves it through `exports` as a
 // consumer would. `pnpm run smoke` runs it here, where the name resolves to
-// this package's own dist/. check-packages.ts copies it into a clean project
+// this package's own dist/. `package-checks ts` copies it into a clean project
 // that installed the tarball, so it must not import other repo files. It is
 // not a test-runner suite and is not in `files`.
 
@@ -19,8 +19,11 @@ import {
   encodePath,
   findCorpora,
   fold,
+  getRecord,
   idProblem,
+  loadCorpus,
   markdownLink,
+  syncCorpus,
   validateCorpus,
 } from '@osdlc/corpus-schema'
 
@@ -35,17 +38,31 @@ const put = (rel, text) => {
   writeFileSync(join(dir, rel), text)
 }
 try {
-  put('good/corpus-schema.md', '---\ncorpus-schema: 0\n---\n')
+  put('good/good.corpus-schema.md', '---\ncorpus-schema: 0\n---\n')
   put('good/notes/notes.schema.yaml', 'type: object\nrequired: [status]\n')
   put('good/notes/A.md', '---\nstatus: done\n---\nSee [B](B.md).\n')
   put('good/notes/B.md', '---\nstatus: open\n---\n')
-  put('bad/corpus-schema.md', '---\ncorpus-schema: 0\n---\nSee [gone](gone.md).\n')
+  put('bad/bad.corpus-schema.md', '---\ncorpus-schema: 0\n---\nSee [gone](gone.md).\n')
 
   assert.deepEqual(findCorpora(dir).sort(), [join(dir, 'bad'), join(dir, 'good')])
   const good = validateCorpus(join(dir, 'good'))
   assert.deepEqual(good.errors, [])
   assert.equal(good.files.get('notes')?.get('A'), 'notes/A.md')
   assert.equal(validateCorpus(join(dir, 'bad')).errors.length, 1)
+
+  const model = JSON.parse(JSON.stringify(loadCorpus(join(dir, 'good'))))
+  assert.deepEqual(model.errors, [])
+  assert.equal(getRecord(model, 'notes', 'A').links[0].target.id, 'B')
+  assert.equal(getRecord(model, 'notes', 'B').incoming[0].from.path, 'notes/A.md')
+
+  put(
+    'child/child.corpus-schema.md',
+    '---\ncorpus-schema: 0\nlevel: 2\nextends:\n  base: ../good\nreferences:\n  good: ../good\n---\n',
+  )
+  put('child/tasks/tasks.schema.yaml', 'x-extends: base/notes\n')
+  put('child/tasks/T.md', '---\nstatus: done\n---\nSee [A](../_references/good/notes/A.md).\n')
+  assert.deepEqual(syncCorpus(join(dir, 'child')).errors, [])
+  assert.deepEqual(validateCorpus(join(dir, 'child')).errors, [])
 
   // The bin, under node and, once installed, as npm links it in node_modules/.bin.
   const bin = join(

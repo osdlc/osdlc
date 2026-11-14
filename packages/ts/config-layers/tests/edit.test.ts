@@ -117,6 +117,17 @@ describe('unsetPath', () => {
     expect(unsetPath(src, ['a', 'b', 'x'])).toBe(src)
   })
 
+  test('a key never set under an empty flow mapping leaves the text unchanged', () => {
+    const src = '# about hosts\nhosts: {}\nhost: a\n'
+    expect(unsetPath(src, ['hosts', 'wezterm'])).toBe(src)
+    expect(unsetPath('a: {b: 1}\n', ['a', 'x'])).toBe('a: {b: 1}\n')
+    expect(unsetPath('a:\n  b: {}\n', ['a', 'b', 'x'])).toBe('a:\n  b: {}\n')
+  })
+
+  test('the last key of a flow mapping still removes the emptied parent', () => {
+    expect(unsetPath('a: {x: 1}\nz: 2\n', ['a', 'x'])).toBe('z: 2\n')
+  })
+
   test('an ordinary nested unset still removes just the one key (regression guard)', () => {
     const src = 'a:\n  x: 1\n  y: 2\n'
     expect(unsetPath(src, ['a', 'x'])).toBe('a:\n  y: 2\n')

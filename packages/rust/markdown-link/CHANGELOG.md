@@ -7,15 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.9.0] - 2026-11-06
+## [0.10.0] - 2026-11-14
 
 More of a body counts as code, so fewer links are found in it, and more
 Markdown links are found: with brackets in their text, with a title, with
 parentheses in the path, or with a space in a `<…>` destination. These
-change what
-`body_links`, `body_links_spanned_with`, `scan_body_with` and `strip_code`
-return for some bodies, so this is a breaking release. `@osdlc/markdown-link`
-makes the same changes in its 0.9.0, and both suites read the new cases.
+change what `body_links`, `body_links_spanned_with`, `scan_body_with` and
+`strip_code` return for some bodies, so this is a breaking release. `@osdlc/markdown-link`
+makes the same changes in its 0.10.0, and both suites read the new cases.
 
 ### Changed
 
@@ -23,15 +22,13 @@ makes the same changes in its 0.9.0, and both suites read the new cases.
   indented code (a line indented four or more columns past its block's
   text, unless it continues a paragraph), math (`$$…$$` in its block, as a
   span stays in its block, and `$…$` on one line; a `$` right after a
-  letter or digit, as in `5$`, opens none), `<pre>`, `<script>`, `<style>` and `<textarea>`
-  blocks, and autolinks such as `<https://example.com>`. A fence may now sit
-  in a list item, up to three spaces past the item's text or on the item's
-  first line (`- ````), and ends with the item at a line indented less than
-  the item's text. The lexer follows list
-  items far enough for both, so a list item's own text indented four spaces
-  is still text. A span or `$$` stops at a line that opens a fence or raw
-  HTML block, and a line starting with `<!--` is a block of its own. The
-  lexer still does not know about block quotes.
+  letter or digit, as in `5$`, opens none), `<pre>`, `<script>`, `<style>`
+  and `<textarea>` blocks, and autolinks such as `<https://example.com>`.
+  Indented code and raw HTML blocks follow list items far enough to know
+  where an item's text starts, so a list item's own text indented four
+  spaces is still text. They do not follow block quotes. A span or `$$`
+  stops at a line that opens a fence or raw HTML block, and a line starting
+  with `<!--` is a block of its own.
 - **Comments and code in one pass.** An HTML comment is found in the same
   left-to-right pass as code, whichever starts first. A backtick, `$` or
   fence inside a comment no longer opens code, whether or not
@@ -45,8 +42,8 @@ makes the same changes in its 0.9.0, and both suites read the new cases.
   balance, so `[[WIP] Fix](fix.md)` is a link. It may not hold `[[`, so the
   wikilink in `[see [[Note]]](a.md)` stays a wikilink, nor a link, so in
   `[a [b](y.md) c](x.md)` the link is `y.md`. It may not cross a blank line
-  (a line of only code is not blank), and `\[` and `\]` are not brackets in it (`\\[` is). The destination is
-  read as written, not with code blanked, so `[a](notes/$x$.md)` is a link.
+  (a line of only code is not blank), and `\[` and `\]` are not brackets
+  in it (`\\[` is). The destination is read as written, not with code blanked, so `[a](notes/$x$.md)` is a link.
 - **Abandoned `[[`.** A `[[` whose first or second `[` opens a Markdown link
   is not reported, whatever the link's URL: `[[WIP] Fix](https://x)`,
   `[[Note](Note.md)]`, or a reference link whose label a `[label]: …`
@@ -84,8 +81,49 @@ makes the same changes in its 0.9.0, and both suites read the new cases.
   with a URI scheme, a URL starting with `//` or an empty destination is
   never read. The target keeps any `#fragment` or `?query`. A struct literal
   of `ScanOptions` must name it, or end in `..Default::default()`.
-- `tests/fixtures/conformance.json`: a `code` case may list `ranges`, a body
-  link may hold `title`, and `options` may set `allMarkdownLinks`.
+- The `code` cases of the conformance suite pin `ranges`, the output of
+  `code_ranges`, as pairs of character offsets. A body link may hold
+  `title`, and `options` may set `all_markdown_links`.
+
+## [0.9.1](https://github.com/osdlc/osdlc/compare/markdown-link/v0.9.0...markdown-link/v0.9.1) - 2026-11-10
+
+### Other
+
+- updated the following local packages: frontmatter-lossless, yaml-splice
+
+## [0.9.0](https://github.com/osdlc/osdlc/compare/markdown-link/v0.8.1...markdown-link/v0.9.0) - 2026-11-08
+
+### Fixed
+
+- `CodeRules::CommonMark` finds a fenced code block inside a list item or a
+  block quote, so the links after it are found. A fence opens when it is
+  indented to its item's content column, and an unclosed fence runs to the end
+  of its container, not of the input. `CodeRules::SkillExport` is unchanged.
+  Lazy continuation lines are not tracked.
+- `CodeRules::CommonMark` keeps a code span inside its cell of a table row (a
+  line starting with `|`): a `|` not escaped as `\|` ends the cell, so
+  ``| `a | [[x]] | b` |`` finds `[[x]]`.
+- `\![[Note]]`, an escaped `!`, is a `BodyLinkKind::Wikilink` whose span
+  starts at the `[[`, where it was an `Embed` starting at the `!`; an
+  abandoned `[[` after one has `embed: false`.
+
+### Added
+
+- `CodeRules::None` finds no code: `strip_code_with` returns its input
+  unchanged, and a `ScanOptions` with it scans text whose code a markdown
+  parser has already taken out.
+- `Fences::content_start`, where the text of the last line starts past its
+  block quote and list item markers.
+- `packages/conformance/markdown-link/suite.json` is the shared suite, with
+  cases for each of the above, and `cargo run -p markdown-link --example
+  conformance-write` writes its expected values. It replaces
+  `tests/fixtures/conformance.json`.
+
+### Changed
+
+- **Breaking:** `CodeRules` gains the variant `None`, so an exhaustive `match`
+  on it needs an arm, and `Fences` holds the open containers, so it is no
+  longer `Copy`.
 
 ## [0.8.1](https://github.com/osdlc/osdlc/compare/markdown-link/v0.8.0...markdown-link/v0.8.1) - 2026-11-08
 

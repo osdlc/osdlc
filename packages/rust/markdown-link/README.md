@@ -93,7 +93,8 @@ The defaults above are the long-standing behaviour. A tool that renders or
 publishes notes can ask for more:
 
 - `body_links_spanned_with(body, &ScanOptions { .. })` picks the code rules
-  (`CodeRules::SkillExport` for skill renderers), skips links inside HTML
+  (`CodeRules::SkillExport` for skill renderers, `CodeRules::None` for text
+  whose code a markdown parser has already taken out), skips links inside HTML
   comments, and reads `[[#Heading]]` as a link to the note it is in.
 - `scan_body_with(body, &options)` returns those links and `abandoned`: each
   `[[` the scan gave up on, with an `AbandonReason` (`Bracket`, `Code`,
@@ -165,8 +166,10 @@ not resolve or write links yet: `LinkIndex`, `relative_link` and the URI
 encoders are Rust only. It
 sits beside the crate, in
 [`packages/ts/markdown-link`](https://github.com/osdlc/osdlc/tree/main/packages/ts/markdown-link).
-Its tests read this crate's `tests/fixtures/conformance.json`, so the two
-agree on every case in it. Its offsets count UTF-16 code units, where the
+Both run the family's conformance suite,
+`packages/conformance/markdown-link/suite.json`, whose expected values this
+crate writes (`cargo run -p markdown-link --example conformance-write`), so
+the two agree on every case in it. Its offsets count UTF-16 code units, where the
 crate's count bytes.
 
 ## Source
