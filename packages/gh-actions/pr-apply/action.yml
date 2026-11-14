@@ -1,0 +1,66 @@
+name: pr-apply
+description: >-
+  The push half of "--apply" for claude-pr, codex-pr and cursor-pr. Downloads the
+  patch artifact the agent job uploaded, checks it, applies it to a fresh
+  checkout of the pull request branch, commits and pushes it (never forced)
+  with push-token, and posts the result comment. Runs no agent and nothing from
+  the pull request.
+author: osdlc
+
+inputs:
+  agent:
+    description: claude, codex or cursor (the artifact and the marker are named after it).
+    required: true
+  push-token:
+    description: >-
+      GitHub App token that pushes the commit (so CI runs on the push). Empty:
+      nothing is pushed and the comment says why; the agent's output is still posted.
+    default: ""
+  github-token:
+    description: Token for gh (read the pull request, post the comment) and for the read-only fetch.
+    default: ${{ github.token }}
+  git-user-name:
+    description: Author name of the commit.
+    default: github-actions[bot]
+  git-user-email:
+    description: Author email of the commit.
+    default: 41898282+github-actions[bot]@users.noreply.github.com
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        fetch-depth: 0
+        token: ${{ inputs.github-token }}
+
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        name: ${{ inputs.agent }}-pr-apply
+        path: ${{ runner.temp }}/${{ inputs.agent }}-pr-apply
+
+    - id: push
+      shell: bash
+      env:
+        AGENT: ${{ inputs.agent }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        PUSH_TOKEN: ${{ inputs.push-token }}
+        GIT_USER_NAME: ${{ inputs.git-user-name }}
+        GIT_USER_EMAIL: ${{ inputs.git-user-email }}
+        REPO: ${{ github.repository }}
+        PR: ${{ github.event.issue.number || github.event.pull_request.number }}
+        REQUEST: ${{ github.event.comment.body || github.event.review.body }}
+      run: '"$GITHUB_ACTION_PATH/../pr-common/apply.sh" push'
+
+    - if: always()
+      shell: bash
+      env:
+        AGENT: ${{ inputs.agent }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        PR: ${{ github.event.issue.number || github.event.pull_request.number }}
+        REPO: ${{ github.repository }}
+        MODE: skill
+        REQUEST: ${{ github.event.comment.body || github.event.review.body }}
+        RESULT: ${{ runner.temp }}/${{ inputs.agent }}-pr-apply/result.json
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: '"$GITHUB_ACTION_PATH/../pr-common/post.sh"'

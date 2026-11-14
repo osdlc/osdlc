@@ -4,6 +4,9 @@
 # The work is the cursor-pr action (packages/gh-actions/cursor-pr); this file only
 # says when it runs and with what. See that action's README for its limits.
 #
+# `@cursor /<plugin>:<skill> [args] [--apply]` runs a skill; --apply pushes its edits from a
+# second job, see packages/gh-actions/pr-apply.
+#
 # Only sksizer can trigger it: the job's `if` checks the author before a
 # runner starts. The action is taken from main, never from the pull request,
 # so a pull request cannot change what runs with the API key.
@@ -31,7 +34,40 @@ jobs:
       contents: read
       pull-requests: write
       issues: write
+    outputs:
+      apply-patch: ${{ steps.agent.outputs.apply-patch }}
     steps:
-      - uses: osdlc/osdlc/packages/gh-actions/cursor-pr@main
+      - id: agent
+        uses: osdlc/osdlc/packages/gh-actions/cursor-pr@main
         with:
           cursor-api-key: ${{ secrets.CURSOR_API_KEY }}
+
+  # The agent never runs in this job.
+  cursor-push:
+    needs: cursor
+    if: needs.cursor.outputs.apply-patch == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: pr-agent
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      # If this fails (environment or secrets missing) the next step still runs
+      # and posts the agent's output with the reason nothing was pushed.
+      - name: Get a GitHub App token
+        id: app-token
+        continue-on-error: true
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.RELEASE_PLZ_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}
+          permission-contents: write
+
+      - uses: osdlc/osdlc/packages/gh-actions/pr-apply@main
+        with:
+          agent: cursor
+          push-token: ${{ steps.app-token.outputs.token }}
+          git-user-name: osdlc-release[bot]
+          git-user-email: osdlc-release[bot]@users.noreply.github.com

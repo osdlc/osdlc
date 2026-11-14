@@ -2,8 +2,9 @@ name: codex-pr
 description: >-
   Answers @codex on a pull request with the Codex CLI, or reviews the pull
   request with the craft code-review skill when the comment starts with
-  "@codex review". Posts the result as a comment ending in a done or failed
-  marker.
+  "@codex review". Runs any installed skill from "@codex /<plugin>:<skill>"
+  (read-only, or with --apply it commits and pushes the changes). Posts the
+  result as a comment ending in a done or failed marker.
 author: osdlc
 
 inputs:
@@ -30,6 +31,13 @@ inputs:
     description: >-
       Plugins to install, plugin@marketplace, space or newline separated. Review mode needs craft.
     default: "craft@osdlc"
+
+outputs:
+  apply-patch:
+    description: >-
+      "true" when an --apply run changed files and uploaded the patch artifact
+      (name <agent>-pr-apply); the pr-apply action in a later job pushes it.
+    value: ${{ steps.patch.outputs.patch }}
 
 runs:
   using: composite
@@ -83,7 +91,29 @@ runs:
         SOURCE_URL: ${{ github.event.comment.html_url || github.event.review.html_url }}
       run: '"$GITHUB_ACTION_PATH/../pr-common/ask.sh"'
 
-    - if: always() && steps.mention.outputs.real == '1'
+    # Patch for the pr-apply job; see ../pr-apply/README.md.
+    - id: patch
+      if: steps.mention.outputs.real == '1' && steps.mention.outputs.mode == 'skill' && steps.mention.outputs.apply == '1'
+      shell: bash
+      env:
+        AGENT: codex
+        RESULT: ${{ runner.temp }}/codex-pr-result.json
+        REPO: ${{ github.repository }}
+        PR: ${{ github.event.issue.number || github.event.pull_request.number }}
+        REQUEST: ${{ github.event.comment.body || github.event.review.body }}
+      run: '"$GITHUB_ACTION_PATH/../pr-common/apply.sh" patch'
+
+    - id: upload
+      if: steps.patch.outputs.patch == 'true'
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: codex-pr-apply
+        path: ${{ runner.temp }}/codex-pr-apply
+        retention-days: 7
+        if-no-files-found: error
+
+    # An --apply run with a patch is reported by the push job, which has the agent's output too.
+    - if: always() && steps.mention.outputs.real == '1' && steps.upload.outcome != 'success'
       shell: bash
       env:
         AGENT: codex
@@ -91,6 +121,7 @@ runs:
         PR: ${{ github.event.issue.number || github.event.pull_request.number }}
         REPO: ${{ github.repository }}
         MODE: ${{ steps.mention.outputs.mode }}
+        REQUEST: ${{ github.event.comment.body || github.event.review.body }}
         RESULT: ${{ runner.temp }}/codex-pr-result.json
         RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       run: '"$GITHUB_ACTION_PATH/../pr-common/post.sh"'
