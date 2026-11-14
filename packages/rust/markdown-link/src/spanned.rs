@@ -241,18 +241,16 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
     // The body's chars, and each one's byte offset in the body, plus an end
     // sentinel so an exclusive range that runs to the end of the body is
     // representable.
-    let mut at: Vec<usize> = Vec::with_capacity(body.len() + 1);
-    let mut chars: Vec<char> = Vec::with_capacity(body.len());
-    for (offset, c) in body.char_indices() {
-        at.push(offset);
-        chars.push(c);
+    if u32::try_from(body.len()).is_err() {
+        // Offsets are `u32`. Reporting no links beats reporting wrong spans.
+        return BodyScan::default();
     }
-    at.push(body.len());
+    let (mut chars, at) = Offsets::of_body(body);
     // A destination is read as written, with no code blanked, so the chars
     // as written are kept when anything is blanked.
     let blanked =
         options.skip_html_comments || regions.iter().any(|(_, region)| *region == Region::Code);
-    let written: Option<Vec<char>> = blanked.then(|| chars.clone());
+    let mut written: Option<Vec<char>> = None;
     blank_chars(
         &mut chars,
         &at,
@@ -265,15 +263,23 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
     // first time an abandoned link needs them.
     let mut code_chars: Option<Vec<char>> = None;
 
-    let brackets = Brackets::new(&chars, body, &at);
+    // Whether any markdown link can have a destination. Built the first time
+    // a `[` could use it.
+    let has_destination = body.contains("](");
+    let mut brackets: Option<Brackets> = None;
     let mut scan = UrlScan::default();
     let mut out = Vec::new();
     let mut abandoned = Vec::new();
     let mut i = 0usize;
     while i < chars.len() {
-        if chars[i] == '[' && chars.get(i + 1) == Some(&'[') {
+        // Only a `[` starts anything.
+        match chars[i..].iter().position(|&c| c == '[') {
+            Some(step) => i += step,
+            None => break,
+        }
+        if chars.get(i + 1) == Some(&'[') {
             let embed = i > 0 && chars[i - 1] == '!' && !escaped_bang(&chars, i - 1);
-            let start = at[if embed { i - 1 } else { i }];
+            let start = at.of(if embed { i - 1 } else { i });
             let mut j = i + 2;
             let mut inner = String::new();
             let mut closed = false;
@@ -301,7 +307,7 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
                     },
                     embed,
                     byte_start: start,
-                    byte_end: if bracket { at[j] } else { body.len() },
+                    byte_end: if bracket { at.of(j) } else { body.len() },
                 });
             }
             if closed {
@@ -319,7 +325,7 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
                     let code = if options.skip_html_comments {
                         code_chars
                             .get_or_insert_with(|| {
-                                let mut code = written.clone().unwrap_or_default();
+                                let mut code: Vec<char> = body.chars().collect();
                                 blank_chars(
                                     &mut code,
                                     &at,
@@ -334,7 +340,7 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
                     } else {
                         chars.as_slice()
                     };
-                    let held_code = body[at[i + 2]..at[j]]
+                    let held_code = body[at.of(i + 2)..at.of(j)]
                         .chars()
                         .ne(code[i + 2..j].iter().copied());
                     abandoned.push(AbandonedLink {
@@ -345,7 +351,7 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
                         },
                         embed,
                         byte_start: start,
-                        byte_end: at[j + 2],
+                        byte_end: at.of(j + 2),
                     });
                 }
                 if let Some(link) = parsed {
@@ -355,10 +361,10 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
                     let alias = chars[i + 2..j]
                         .iter()
                         .position(|&c| c == '|')
-                        .map(|p| body[at[i + 3 + p]..at[j]].trim())
+                        .map(|p| body[at.of(i + 3 + p)..at.of(j)].trim())
                         .filter(|alias| !alias.is_empty())
                         .map(str::to_string);
-                    drop_overlapped(&mut abandoned, at[i]);
+                    drop_overlapped(&mut abandoned, at.of(i));
                     out.push(BodyLink {
                         kind: if embed {
                             BodyLinkKind::Embed
@@ -375,22 +381,29 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
                         // An embed's `!` is part of the syntax a rename has to
                         // rewrite, so it is inside the span.
                         byte_start: start,
-                        byte_end: at[j + 2],
+                        byte_end: at.of(j + 2),
                     });
                 }
                 i = j + 2;
                 continue;
             }
         }
-        if chars[i] == '['
-            && let Some(close) = brackets.text_end(i)
+        if (has_destination || overlaps(&abandoned, at.of(i)))
+            && let Some(close) = brackets
+                .get_or_insert_with(|| Brackets::new(&chars, body, &at))
+                .text_end(i)
         {
-            let url_chars: &[char] = written.as_deref().unwrap_or(&chars);
+            let brackets = brackets.as_ref().expect("made above");
+            let url_chars: &[char] = if blanked {
+                written.get_or_insert_with(|| body.chars().collect())
+            } else {
+                &chars
+            };
             let destination = scan.destination(url_chars, close);
-            if overlaps(&abandoned, at[i])
+            if overlaps(&abandoned, at.of(i))
                 && (destination.is_some() || brackets.is_reference(&chars, i, close))
             {
-                drop_overlapped(&mut abandoned, at[i]);
+                drop_overlapped(&mut abandoned, at.of(i));
             }
             if let Some(destination) = destination {
                 // A Markdown link, kept or not: its destination and title
@@ -415,16 +428,59 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
     }
 }
 
+/// Each char of a body's byte offset, plus an end sentinel so an exclusive
+/// range that runs to the end of the body is representable.
+#[derive(Debug)]
+enum Offsets {
+    /// A body of ASCII: a char's offset is its index.
+    Identity,
+    /// Offsets as `u32`: a body of 4 GiB or more is not scanned.
+    Table(Vec<u32>),
+}
+
+impl Offsets {
+    /// The body's chars, and where each one starts.
+    fn of_body(body: &str) -> (Vec<char>, Offsets) {
+        if body.is_ascii() {
+            return (body.bytes().map(char::from).collect(), Offsets::Identity);
+        }
+        let mut at: Vec<u32> = Vec::with_capacity(body.len() + 1);
+        let mut chars: Vec<char> = Vec::with_capacity(body.len());
+        for (offset, c) in body.char_indices() {
+            at.push(offset as u32);
+            chars.push(c);
+        }
+        at.push(body.len() as u32);
+        (chars, Offsets::Table(at))
+    }
+
+    /// The byte offset of the char at `index`.
+    fn of(&self, index: usize) -> usize {
+        match self {
+            Offsets::Identity => index,
+            Offsets::Table(at) => at[index] as usize,
+        }
+    }
+
+    /// The index of the char that starts at or after the byte `offset`.
+    fn char_index(&self, offset: usize) -> usize {
+        match self {
+            Offsets::Identity => offset,
+            Offsets::Table(at) => at.partition_point(|&start| (start as usize) < offset),
+        }
+    }
+}
+
 /// Blanks the chars of each byte range to spaces, but `\n`, as [`blank`] does
 /// to text. `at` maps a char index to its byte offset.
 fn blank_chars<'a>(
     chars: &mut [char],
-    at: &[usize],
+    at: &Offsets,
     ranges: impl IntoIterator<Item = &'a Range<usize>>,
 ) {
     for range in ranges {
-        let from = at.partition_point(|&offset| offset < range.start);
-        let to = at.partition_point(|&offset| offset < range.end);
+        let from = at.char_index(range.start);
+        let to = at.char_index(range.end);
         for c in &mut chars[from..to] {
             if *c != '\n' {
                 *c = ' ';
@@ -491,7 +547,7 @@ struct Brackets {
     /// `[`. The brackets between balance, hold no `[[` and no `](` (a link's
     /// text holds no link), and no blank line comes between them. A `\[` or `\]` is not a bracket.
     /// Zero for a `[` that opens none: a `]` is never at index 0.
-    text_end: Vec<usize>,
+    text_end: Vec<u32>,
     /// Each `[label]: …` definition's label, as [`normalize_label`] gives it.
     labels: HashSet<String>,
 }
@@ -500,7 +556,7 @@ impl Brackets {
     /// `chars` are the body's with code blanked, and `at` maps a char index
     /// to its byte offset in `body`. A blank line is read in `body`, so a
     /// line that is only code is not blank.
-    fn new(chars: &[char], body: &str, at: &[usize]) -> Self {
+    fn new(chars: &[char], body: &str, at: &Offsets) -> Self {
         let mut brackets = Brackets {
             text_end: vec![0; chars.len()],
             labels: HashSet::new(),
@@ -511,6 +567,14 @@ impl Brackets {
         let mut seen = 0usize;
         let mut k = 0usize;
         while k < chars.len() {
+            // Only a backslash, a bracket or a line break matters.
+            match chars[k..]
+                .iter()
+                .position(|&c| c == '\n' || (c as u32).wrapping_sub('[' as u32) <= 2)
+            {
+                Some(step) => k += step,
+                None => break,
+            }
             match chars[k] {
                 // An escaped character, `\[` and `\\` among them. A `\` at
                 // the end of a line escapes nothing.
@@ -525,14 +589,14 @@ impl Brackets {
                     if let Some((start, before)) = open.pop()
                         && before == seen
                     {
-                        brackets.text_end[start] = k;
+                        brackets.text_end[start] = k as u32;
                     }
                     if chars.get(k + 1) == Some(&'(') {
                         seen += 1;
                     }
                 }
                 '\n' => {
-                    let blank = body.as_bytes()[at[k + 1]..]
+                    let blank = body.as_bytes()[at.of(k + 1)..]
                         .iter()
                         .find(|b| !matches!(b, b' ' | b'\t' | b'\r'))
                         .is_none_or(|b| *b == b'\n');
@@ -555,7 +619,7 @@ impl Brackets {
 
     /// The `]` that ends the text of a link opened by the `[` at `start`.
     fn text_end(&self, start: usize) -> Option<usize> {
-        Some(self.text_end[start]).filter(|&end| end != 0)
+        Some(self.text_end[start] as usize).filter(|&end| end != 0)
     }
 
     /// Whether the `[` at `start`, whose text ends at `close`, opens a
@@ -625,7 +689,7 @@ fn spanned_markdown_link(
     start: usize,
     destination: Destination,
     chars: &[char],
-    at: &[usize],
+    at: &Offsets,
     scan: &mut UrlScan,
     all_markdown_links: bool,
 ) -> Option<BodyLink> {
@@ -653,8 +717,8 @@ fn spanned_markdown_link(
         alias: None,
         size: None,
         raw: url,
-        byte_start: at[start],
-        byte_end: at[end],
+        byte_start: at.of(start),
+        byte_end: at.of(end),
     })
 }
 

@@ -1052,12 +1052,19 @@ pub(crate) fn regions(text: &str, rules: CodeRules) -> Vec<(Range<usize>, Region
                 // Plain text: on to the next byte that starts something, or
                 // the start of the next line.
                 offset += 1;
-                while offset < bytes.len()
-                    && !matches!(bytes[offset], b'`' | b'$' | b'<')
-                    && bytes[offset - 1] != b'\n'
-                {
-                    offset += 1;
+                if bytes[offset - 1] == b'\n' {
+                    // The next line starts here.
+                    continue;
                 }
+                offset = match bytes[offset.min(bytes.len())..]
+                    .iter()
+                    .position(|&b| matches!(b, b'`' | b'$' | b'<' | b'\n'))
+                {
+                    // A line break: the next line starts after it.
+                    Some(step) if bytes[offset + step] == b'\n' => offset + step + 1,
+                    Some(step) => offset + step,
+                    None => bytes.len(),
+                };
                 continue;
             }
         };
