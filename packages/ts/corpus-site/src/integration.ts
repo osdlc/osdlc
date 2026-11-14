@@ -101,7 +101,8 @@ ${COMPONENT_NAMES.map((name) => `  export const ${name}: AstroComponent`).join('
  * ```
  *
  * It loads the corpus once, checks the config against it, and injects a home page, an index
- * page per type, a page per record, a search page and the data files under `data/`.
+ * page per type, a page per record, a page per record of a referenced corpus (under `ref/`),
+ * a search page when `search` is on, and the data files under `data/`.
  */
 export function corpusSite(options: CorpusSiteOptions): AstroIntegration {
   const astroDir = fileURLToPath(new URL('./astro/', import.meta.url))

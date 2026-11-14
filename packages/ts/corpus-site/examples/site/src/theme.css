@@ -1,4 +1,4 @@
-/* The example's own accent, light and dark. Every colour of the site is a --cs-* property. */
+/* The example's own accent, light and dark. Override the --cs-* properties to recolour the site. */
 :root {
   --cs-accent: #0f6b5c;
   --cs-accent-soft: #dcf1ec;

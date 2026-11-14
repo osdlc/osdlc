@@ -356,13 +356,14 @@ each file holds `"version": 1`.
 | `data/corpus.json`                    | The title and each type: label, count, page path and data path          |
 | `data/types/<type>.json`              | One type: its fields, columns and a slim row for each record            |
 | `data/views/<type>/<view>.json`       | One matrix: its columns, groups, rows and cells                         |
-| `data/records/<type>/<record>.json`   | One record in full: its data, Markdown body, files, links and backlinks |
+| `data/records/<page path>.json`       | One record in full: its data, Markdown body, files, links and backlinks |
 | `data/search.json`                    | The search index: a title and text for each record                      |
-| `data/files/<path in the corpus>`     | The files of record folders that a record links to                      |
+| `data/files/<path in the corpus>`     | Every file in the folder of each record that has a page                 |
 
 The types of these files are `CorpusData`, `TypeData`, `RecordData`, `MatrixData` and
 `SearchData`. A browser loads one type's file on that type's page and the search index on first
-use of the search box. A matrix page loads no data file: its table is in the HTML, and the JSON is
+use of the search box. A record page and its `data/records/` file share the page's path, so a record of a
+referenced corpus is at `data/records/ref/<corpus>/<type>/<record>.json`. A matrix page loads no data file: its table is in the HTML, and the JSON is
 there for pages of your own. No page loads the whole corpus.
 
 A column value is a string, a number, a boolean, a list of those, or for an object or a list of

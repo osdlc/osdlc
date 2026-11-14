@@ -12,7 +12,7 @@ export const FilterPanel = defineComponent({
     state: { type: Object as PropType<FilterState>, required: true },
     /** The type's data file, or null before it has loaded. */
     data: { type: Object as PropType<TypeData | null>, default: null },
-    /** Counts per field and value under the other filters. Empty before the data loads. */
+    /** Counts per field and value, from `facetCounts`. Empty before the data loads. */
     facets: {
       type: Object as PropType<Record<string, Record<string, number>>>,
       default: () => ({}),

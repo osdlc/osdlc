@@ -162,7 +162,7 @@ export interface MatrixData {
 export interface RecordDataLink {
   /** The field that holds the reference, or null for a link in a Markdown body. */
   field: string | null
-  /** The record's key, `<type>/<slug>` or `<corpus>:<type>/<slug>`, or null when the value names none. */
+  /** The record's key, as in `TypeData.targets`, or null when the value names none. */
   key: string | null
   title: string
   url: string | null
@@ -222,10 +222,7 @@ export interface CorpusData {
   search: string | null
 }
 
-/**
- * `data/search.json`: one row per record. `docs[i]` is
- * `[url, title, type index, key field text, body text, summary]`.
- */
+/** `data/search.json`: one row per record. */
 export interface SearchData {
   version: number
   types: string[]
@@ -233,5 +230,12 @@ export interface SearchData {
   weights: number[]
   /** Groups of words that find each other, lower-cased. */
   synonyms?: string[][]
-  docs: [string, string, number, string, string, string][]
+  docs: [
+    url: string,
+    title: string,
+    typeIndex: number,
+    keyText: string,
+    body: string,
+    summary: string,
+  ][]
 }

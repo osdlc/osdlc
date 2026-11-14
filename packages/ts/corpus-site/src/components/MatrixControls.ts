@@ -1,8 +1,7 @@
 /**
  * The controls of a matrix view: pick a group of rows, pick the columns, filter the rows by
- * text, and step through one row at a time. The table is plain HTML drawn by `MatrixTable`, so
- * it is whole without script. This component hides its rows and columns to fit the choice, and
- * keeps the choice in the page's address: `?group=skills&col=codex&col=goose&row=…&q=…`.
+ * text, and step through one row at a time. The table is drawn by `MatrixTable`. This component
+ * hides its rows and columns to fit the choice, and keeps the choice in the page's address: `?group=skills&col=codex&col=goose&row=…&q=…`.
  * The columns are a row of chips, or past `MAX_COLUMN_CHIPS` a list with a search box. The
  * browser remembers the chosen columns for an address that names none.
  */
@@ -34,7 +33,7 @@ export interface MatrixState {
   query: string
 }
 
-/** The state a query string holds. Keys that name no group, column or row are dropped. */
+/** The state a query string holds. A group, column or row the table does not have is dropped. */
 export function parseMatrixState(
   search: string,
   known: { groups: string[]; columns: string[]; rows: string[] },
@@ -96,7 +95,6 @@ export const MatrixControls = defineComponent({
     const columnsId = useId()
     const columnQuery = shallowRef('')
 
-    // The chosen columns, kept by the browser for an address that names none.
     const storeKey = (): string => `corpus-site:matrix:${window.location.pathname}`
     const remember = (columns: string[]): void => {
       try {
@@ -230,7 +228,6 @@ export const MatrixControls = defineComponent({
       if (now.length > 1) setColumns(now.filter((c) => c !== key))
     }
 
-    // The columns as chips: none pressed shows all, and a pressed one is among those shown.
     const columnChips = () => {
       const { columns } = state.value
       return h('div', { class: 'cs-matrix-pick' }, [
@@ -263,7 +260,6 @@ export const MatrixControls = defineComponent({
         ]),
       ])
     }
-    // Too many for chips: a list behind a button, with a box that narrows it.
     const columnList = () => {
       const { columns } = state.value
       const words = columnQuery.value.toLowerCase().split(/\s+/).filter(Boolean)

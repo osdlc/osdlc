@@ -58,7 +58,7 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
 
 type Schema = Record<string, unknown>
 
-/** What a value is shown by: a field's label, help, kind, format and enum values. */
+/** What a value is shown by. A path into an object or a list gets it from `fieldAt`. */
 type Shown = Pick<SiteField, 'label' | 'help' | 'kind' | 'format' | 'options'> &
   Partial<Pick<SiteField, 'show' | 'linkText'>> & {
     /** Nothing says how to write a string here, so one that reads as code is drawn as code. */
@@ -321,7 +321,7 @@ export function displayPath(
   return items.length === 1 ? (items[0] as Display) : { kind: 'list', items }
 }
 
-/** The longest text a tree keeps whole. Longer text is cut with `…`. */
+/** The longest `text` node of a tree kept whole. Longer text is cut with `…`. */
 export const MAX_TREE_TEXT = 400
 
 /**
@@ -426,10 +426,10 @@ export function recordFiles(site: Site, record: SiteRecord): { name: string; url
 /**
  * The records that point at `record`, grouped by their type and then by the field that holds
  * the reference, with links from Markdown bodies last in each type. A record is in a group once.
+ * A record that a related table of `record`'s type already lists is left out.
  */
 export function backlinkGroups(site: Site, record: SiteRecord): BacklinkGroup[] {
   const groups = new Map<string, BacklinkGroup>()
-  // A related table lists these records already.
   const listed = (from: SiteRecord, fieldName: string | null): boolean =>
     record.type.related.some(
       (related) =>

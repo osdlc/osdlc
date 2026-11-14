@@ -15,7 +15,8 @@ export type BadgeColor = 'neutral' | 'accent' | 'green' | 'amber' | 'red' | 'blu
 /** How a field's values are written. */
 export interface FieldFormat {
   /**
-   * `date` and `datetime` write an ISO date in the site's locale. `number` groups digits.
+   * `date` and `datetime` write an ISO date in the site's locale, read as UTC; `datetime` adds
+   * the time. `number` groups digits from five up, so a year stays whole.
    * `badge` draws each value as a badge. `code` uses the monospace face. `link` makes a URL a
    * link. `text` writes the value as it is.
    */
@@ -188,7 +189,7 @@ export interface SectionConfig {
 export interface TypeConfig {
   /** The name of the type's list, such as `Statements`. Default: the type name in words. */
   label?: string
-  /** The name of one record, such as `Statement`. Default: the schema's `title`. */
+  /** The name of one record, such as `Statement`. Default: the schema's `title`, else `label`. */
   singular?: string
   /** A short glyph shown beside the label: an emoji or one or two letters. */
   icon?: string
@@ -493,8 +494,8 @@ export function configProblems(config: CorpusSiteConfig, model: LoadedCorpus): s
     }
     const derivedOf = (t: CorpusType): string[] =>
       Object.keys(config.types?.[t.name]?.derived ?? {})
-    // `show` and `linkText` name fields of the records a field points at. `targets` are their
-    // types when the schema says them: a reference field's.
+    // `show` and `linkText` name fields of the records a field points at. `targets` are the
+    // types of those records, and are known only for a reference field.
     const checkShow = (
       at: string,
       field: Pick<FieldConfig, 'show' | 'linkText'>,
@@ -606,7 +607,7 @@ export function configProblems(config: CorpusSiteConfig, model: LoadedCorpus): s
           ['title', 'id', 'name', ...derivedNames],
         )
       checkPaths(`${at}.where`, corpusType, Object.keys(view.where ?? {}))
-      // The row's record is of the type the `rows` field names.
+      // `groupRowsBy` and `rowSummary` read the row's record, so `rows` must be a reference field.
       const rowTypes = (corpusType.fields.find((f) => f.name === view.rows)?.ref?.targets ?? [])
         .filter((t) => t.corpus === '')
         .map((t) => model.types.find((m) => m.name === t.type))
@@ -694,12 +695,12 @@ export function configProblems(config: CorpusSiteConfig, model: LoadedCorpus): s
     }
   }
 
-  // Two types may not share a path segment, and `data`, `search` and `ref` are the site's own.
+  // Two types may not share a path segment, and the routes the integration adds are the site's own.
   for (const t of model.types) {
     const typeConfig = config.types?.[t.name]
     if (typeConfig?.hidden === true) continue
     const slug = typeConfig?.slug ?? slugify(t.name)
-    if (['data', 'search', 'ref'].includes(slug))
+    if (RESERVED_SLUGS.includes(slug))
       problems.push(
         `types.${t.name}: its path "${slug}" is one the site uses. Set types.${t.name}.slug`,
       )
@@ -710,6 +711,9 @@ export function configProblems(config: CorpusSiteConfig, model: LoadedCorpus): s
   }
   return problems
 }
+
+/** The routes `injectRoute` adds in `integration.ts`, which a type's path may not take. */
+const RESERVED_SLUGS = ['data', 'search', 'ref']
 
 /**
  * Whether `path` names something in a record of `type`: a field, a place inside an object or a

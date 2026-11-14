@@ -35,7 +35,7 @@ export const TypeExplorer = defineComponent({
     /** The type's label, such as `Statements`. */
     label: { type: String, required: true },
     pageSize: { type: Number, default: 50 },
-    /** The default sort: a field name, with `-` for descending. */
+    /** The default sort, written as `parseSort` reads it. */
     defaultSort: { type: String, default: null },
     titleLabel: { type: String, default: 'Title' },
     locale: { type: String, default: 'en' },

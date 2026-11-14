@@ -50,7 +50,7 @@ const isScalar = (v: unknown): v is DataScalar =>
 const cut = (text: string): string =>
   text.length > MAX_TEXT ? `${text.slice(0, MAX_TEXT - 1).trimEnd()}…` : text
 
-/** A field's value in a type's data file, and the targets its references name. */
+/** A field's value in a type's data file. Adds the records its references name to `targets`. */
 function dataValue(
   site: Site,
   record: SiteRecord,
@@ -101,7 +101,7 @@ const dataField = (f: SiteField, tree: boolean): DataField => ({
   ...(tree ? { tree } : {}),
 })
 
-/** How many records hold each value of each enum field. */
+/** Sets `count` of each option of each enum field to the records that hold the value. */
 function countOptions(fields: DataField[], records: DataRecord[]): void {
   for (const field of fields) {
     if (field.options.length === 0 || field.tree === true) continue
@@ -483,13 +483,13 @@ export function corpusData(site: Site): CorpusData {
 /** The data file of a view: `views/<type>/<view>.json`. */
 export const viewDataFile = (view: SiteView): string => `views/${view.type.slug}/${view.slug}.json`
 
-/** The data file of a record's page: `records/<type>/<slug>.json`. */
+/** The data file of a record's page: `records/` and the page's path, as `.json`. */
 export function recordDataFile(site: Site, record: SiteRecord): string {
   const page = (record.url as string).slice(site.base.length).replace(/\/$/, '')
   return `records/${page}.json`
 }
 
-/** `data/records/<type>/<slug>.json`: one record, whole, with what it points at and what points at it. */
+/** A record page's data file (see `recordDataFile`): the record whole, with what it points at and what points at it. */
 export function recordData(site: Site, record: SiteRecord): RecordData {
   const link = (
     field: string | null,
@@ -572,9 +572,7 @@ export interface DataFile {
 }
 
 /**
- * Every file under `data/`: `corpus.json`, `search.json` when search is on, one
- * `types/<type>.json` per type, one `views/<type>/<view>.json` per view, one `records/<type>/<slug>.json` per record with a page, and
- * the files of record folders under `files/`.
+ * Every file under `data/`. The layout is in the README's table of data files.
  */
 export function dataFiles(site: Site): DataFile[] {
   const json = (value: unknown): string => JSON.stringify(value)

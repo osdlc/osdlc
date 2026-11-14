@@ -21,7 +21,6 @@ export function prepareSearch(data: SearchData): SearchIndex {
   }
 }
 
-/** One search result. */
 export interface SearchHit {
   url: string
   title: string
@@ -120,7 +119,8 @@ const WEIGHT = { titleStart: 12, title: 8, summary: 5, fields: 3, body: 1 }
 /**
  * The records that hold the words of `query`, best first. A word in the title counts most (more
  * at its start or as the whole title), then one in the summary, then one in the key fields, then
- * one in the body, all times the weight of the record's type. A query of one or two words finds
+ * one in the body, all times the weight of the record's type. A title that is the whole query
+ * adds a bonus, as does a title or a summary that holds it. A query of one or two words finds
  * the records that hold all of them. A longer one finds those that hold more than half, and a
  * record's score is scaled by the share it holds. A word of a synonym group is found by any
  * word of the group.

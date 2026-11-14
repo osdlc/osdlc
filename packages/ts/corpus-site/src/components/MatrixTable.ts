@@ -1,7 +1,8 @@
 /**
  * A matrix view as a table: a row per row item, a column per column item, and in each cell the
- * records that hold both. It is drawn once, as plain HTML. `MatrixControls` then hides rows and
- * columns by the `data-row`, `data-group` and `data-col` attributes set here.
+ * records that hold both. It is drawn once, as plain HTML, so it is whole without script.
+ * `MatrixControls` then hides rows and columns by the `data-row`, `data-col` and `data-text`
+ * attributes set here, and answers the `data-drop` buttons.
  */
 import { defineComponent, h, type PropType } from 'vue'
 import type { MatrixData, MatrixRow } from '../data-types.ts'

@@ -6,9 +6,11 @@ export const Pager = defineComponent({
   props: {
     page: { type: Number, required: true },
     pages: { type: Number, required: true },
-    /** The index of the page's first row, from 0, the rows on it and the rows in all. */
+    /** The index of the page's first row, from 0. */
     start: { type: Number, required: true },
+    /** The rows on the page. */
     shown: { type: Number, required: true },
+    /** The rows in all. */
     total: { type: Number, required: true },
   },
   emits: {

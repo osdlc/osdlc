@@ -6,7 +6,7 @@
  * `q` is the search box, `sort` a field name with `-` for descending and `page` the page. Every
  * other key is a field: repeated for the values of a select or chips, `min..max` for a range
  * (either side may be empty), `true` or `false` for a toggle, and the text for a text filter. A
- * field named `q`, `sort` or `page` is written `f.q`, `f.sort` or `f.page`.
+ * field named `q`, `sort` or `page`, or one that starts with `f.`, gets another `f.` in front.
  *
  * A type may start with filters (`defaults`). The address leaves a filter out while it is the
  * default, and writes the field with no value, `status=`, when a reader has removed it.
@@ -111,7 +111,6 @@ export function formatState(
     const filter = state.filters[field.name]
     const key = keyOf(field.name)
     if (initial[field.name] !== undefined) {
-      // The default is left out, and its removal is written as the field with no value.
       if (filter === undefined || isEmptyFilter(filter)) {
         params.set(key, '')
         continue

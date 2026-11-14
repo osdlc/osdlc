@@ -46,7 +46,7 @@ import {
 import { slugify } from './slug.ts'
 import { oneLine } from './value-text.ts'
 
-/** What `buildSite` needs beside the corpus. */
+/** What `Site` and `loadSite` need beside the corpus. */
 export interface SiteOptions {
   /** The path the site is served under, such as `/` or `/docs/corpus/`. Default `/`. */
   base?: string
@@ -104,7 +104,7 @@ export interface SiteType {
   /** The index page, or null for a hidden type and for a type of another corpus. */
   url: string | null
   count: number
-  /** Every field: the schema's top-level fields in order, then the dotted ones a config names. */
+  /** Every field: the schema's top-level fields in order, then the dotted, derived, and column or filter paths the config adds. */
   fields: SiteField[]
   columns: string[]
   filters: string[]
@@ -293,7 +293,7 @@ export class Site {
         derived,
       })
     }
-    // A column the config names and nothing else describes: a path into an object or a list.
+    // A column or filter the config names and nothing else describes: a path into an object or a list.
     for (const name of [...(config.columns ?? []), ...(config.filters ?? [])]) {
       if (name === 'title' || fields.some((f) => f.name === name)) continue
       const schema = fieldSchemaAt(type, name)

@@ -1,4 +1,4 @@
-/** A record's Markdown body as HTML, with its links to records pointing at their pages. */
+/** A record's Markdown body as HTML with its links pointing at their pages, and Markdown as plain text. */
 import type { Element, Parent, Root } from 'hast'
 import rehypeStringify from 'rehype-stringify'
 import {
@@ -13,8 +13,9 @@ import { safeDecode, type Site, type SiteRecord } from './site.ts'
 /**
  * Markdown from the file `fromPath` of the corpus with key `corpus`, as sanitized HTML. A link
  * to a record's file becomes a link to the record's page, a link to a schema file a link to the
- * type's index, and a link to a file of a record folder a link to the served file. A relative
- * link to anything else is marked missing, as the renderer marks a wikilink with no note.
+ * type's index, and a link to a file of a record folder a link to the served file. A link to
+ * a `.md` file that is none of these is marked missing, as the renderer marks a wikilink with
+ * no note. Any other relative link is left as written.
  */
 export function renderMarkdown(
   site: Site,

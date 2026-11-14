@@ -14,9 +14,9 @@ export const FilterControl = defineComponent({
     value: { type: Object as PropType<FilterValue | null>, default: null },
     /** The values a select or chips offers. */
     options: { type: Array as PropType<FilterOption[]>, default: () => [] },
-    /** How many records hold each value under the other filters, or null before the data loads. */
+    /** How many records hold each value (see `facetCounts`), or null before the data loads. */
     counts: { type: Object as PropType<Record<string, number> | null>, default: null },
-    /** The lowest and highest value the records hold, for a range's placeholders. */
+    /** The lowest and highest value the records hold: a range's `min` and `max`, and a number's placeholders. */
     bounds: { type: Object as PropType<{ min: string; max: string } | null>, default: null },
     /** The id of the control's first input, which the field's label points at. */
     inputId: { type: String, required: true },

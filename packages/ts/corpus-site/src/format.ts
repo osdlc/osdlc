@@ -59,7 +59,7 @@ export function formatNumber(value: number, format: FieldFormat, locale = 'en'):
   return format.unit === undefined ? text : `${text} ${format.unit}`
 }
 
-/** A scalar as text under `format`: a date, a number, or the value as it is. */
+/** A scalar as text under `format`: a date, a number, `Yes` or `No`, or the value as it is. */
 export function formatScalar(
   value: string | number | boolean,
   format: FieldFormat,

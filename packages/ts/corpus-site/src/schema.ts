@@ -7,7 +7,7 @@ import type { ControlKind } from './config.ts'
 
 /**
  * What a field holds. `reference` is an `x-ref` field. `enum` has a fixed set of values.
- * `json` is an object or a mixed value, which gets no column and no filter.
+ * `json` is an object or a mixed value, which gets no default column and no default filter.
  */
 export type FieldKind =
   'reference' | 'enum' | 'boolean' | 'number' | 'date' | 'datetime' | 'url' | 'text' | 'json'
@@ -163,9 +163,8 @@ export function fieldShape(type: CorpusType, path: string): FieldShape {
 export const MAX_CHIPS = 6
 
 /**
- * The control a field gets when its config names none: chips or a select for an enum, a toggle
- * for a boolean, a range for a number or a date, a select for a reference and a text box for
- * text. A json field gets none.
+ * The control a field gets when its config names none: chips for an enum of up to `MAX_CHIPS`
+ * values, else a select. Text and url get `search`; json gets `hidden`.
  */
 export function defaultControl(shape: FieldShape): ControlKind {
   switch (shape.kind) {
@@ -204,9 +203,11 @@ const COLUMN_RANK: Record<FieldKind, number> = {
 }
 
 /**
- * The columns a type gets when its config names none: `title` first, then up to four fields.
+ * The columns a type gets when its config names none: `title` first, then up to
+ * `MAX_DEFAULT_COLUMNS - 1` fields.
  * Required fields come before optional ones, then enums, references, dates, booleans and
- * numbers, then text. Lists of references, json fields and a `title` field are left out.
+ * numbers, then text. A `title` field, json and url fields, and every list that is not an enum
+ * are left out.
  */
 export function defaultColumns(fields: { field: CorpusField; shape: FieldShape }[]): string[] {
   const ranked = fields
@@ -225,8 +226,8 @@ export function defaultColumns(fields: { field: CorpusField; shape: FieldShape }
 }
 
 /**
- * The filters a type gets when its config names none: its enum, boolean, reference, date and
- * number fields in schema order, up to six. Text fields get none: the search box covers them.
+ * The filters a type gets when its config names none: every field except text, url and json,
+ * in schema order, up to `MAX_DEFAULT_FILTERS`. The search box covers text.
  */
 export function defaultFilters(fields: { field: CorpusField; shape: FieldShape }[]): string[] {
   return fields

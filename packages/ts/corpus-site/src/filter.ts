@@ -29,7 +29,7 @@ export interface SortState {
 
 /** What a reader asked a type index for. */
 export interface FilterState {
-  /** The search box: every word must appear in a record's title or values. */
+  /** The search box: every word must appear in the record's search text (`searchText`). */
   query: string
   filters: Record<string, FilterValue>
   sort: SortState | null
@@ -118,7 +118,7 @@ function matchesFilter(
   }
 }
 
-/** The lower-cased text the search box looks in: the title, the id and every value as shown. */
+/** The lower-cased text the search box looks in: the title, the id, the summary and every value as shown. */
 function searchText(record: DataRecord, fields: DataField[], data: TypeData | null): string {
   const parts = [record.title, record.id, record.summary ?? '']
   for (const field of fields)
@@ -159,7 +159,7 @@ function matcher(
   }
 }
 
-// The search text of each record, built once per data file.
+/** The search text of each record, built once per data file. */
 const TEXTS = new WeakMap<TypeData, WeakMap<DataRecord, string>>()
 
 function textsOf(data: TypeData): WeakMap<DataRecord, string> {
