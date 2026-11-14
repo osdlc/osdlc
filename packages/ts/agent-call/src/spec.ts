@@ -167,6 +167,24 @@ export interface AgentCallSpec {
   cwd?: string | undefined
   /** Extra environment variables for the agent process. */
   env?: Record<string, string> | undefined
+  /**
+   * Which of the parent's environment variables the agent process inherits.
+   * `'all'` (the default) keeps every one. A list keeps only the named ones.
+   * The list does not add the basics a CLI needs, so spread `BASELINE_ENV`
+   * into it and add the agent's own key.
+   *
+   * The environment is built in this order, a later step winning: parent,
+   * this filter, `unsetEnv`, the adapter's own variables, then `env`. A bare
+   * binary name needs `PATH` in the result, or the call fails with
+   * `spawn-failed`.
+   */
+  inheritEnv?: 'all' | readonly string[] | undefined
+  /**
+   * Names the agent process must not inherit, such as `GH_TOKEN` and
+   * `GITHUB_TOKEN`. See `inheritEnv` for the order: an explicit `env` value
+   * can set a removed name again.
+   */
+  unsetEnv?: readonly string[] | undefined
   /** Kill the process after this long (SIGTERM, then SIGKILL after 5s). */
   timeoutMs?: number | undefined
   /**
