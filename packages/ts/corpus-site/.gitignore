@@ -1,0 +1,12 @@
+# Dependencies installed for the extracted package.
+node_modules/
+
+# Build output (`npm run build`).
+dist/
+
+# Test coverage (`npm run coverage`).
+coverage/
+
+# The example site's build output and Astro's cache.
+examples/site/dist/
+examples/site/.astro/
