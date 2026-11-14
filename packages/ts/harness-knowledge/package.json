@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/harness-knowledge",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Compiled facts about coding-agent harnesses (binaries, flags, environment markers, config and skills folders, instruction files) with a lookup by harness, subject, version, platform and model. Every value links to the statement that sets it.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",

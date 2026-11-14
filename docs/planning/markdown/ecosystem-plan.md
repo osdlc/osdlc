@@ -246,7 +246,7 @@ file for two separate jobs (D15):
 
 The parts below marked decided are decisions D4, D11, D12, D15 and D16. They are built in
 [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12), brought here in
-[osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790), for corpus-schema 0.3.0 (tasks 9,
+[osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790), for corpus-schema 0.4.0 (tasks 9,
 27, 29, 70 and 71). The parts marked proposal are still open.
 
 **Other corpora are npm packages (decided, D11).** A parent or a referenced corpus is an npm package
@@ -322,7 +322,7 @@ The goal: a corpus can build on profiles and cite other corpora's records, all a
 packages, with a lockfile pinning them. We work toward it in this order. Each step names its task numbers. A task here can wait on one
 outside the milestone, such as task 26.
 
-1. **Release corpus-schema from osdlc/osdlc (task 21).** The 0.3.0 work comes back from
+1. **Release corpus-schema from osdlc/osdlc (task 21).** The work released as 0.4.0 comes back from
    [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12) in
    [osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790). osdlc/markdown's release setup
    ([osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9),
@@ -332,7 +332,7 @@ outside the milestone, such as task 26.
    resolvers, transitive loading, `x-extends`, cross-corpus `x-ref`, ids cut by `x-id-pattern`,
    `x-record-file`, and identity by Package URL.
 3. **`corpus-schema sync` and the copy check (task 29).** The copy is `_references/<prefix>/`.
-4. **Release corpus-schema 0.3.0 (task 36).**
+4. **Release corpus-schema 0.4.0 (task 36).** Done: 0.4.0 is on npm. 0.3.0 was not published.
 5. **The claims profile as an npm package (task 23).** `@osdlc/corpus-profile-claims`, a corpus with
    types only, at `packages/profiles/claims/` in osdlc/osdlc. Not published yet.
 6. **An example pair, checked in CI (task 35).** An org corpus with records, and a project corpus that
