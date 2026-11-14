@@ -35,6 +35,17 @@ test('bodyLinksSpanned is linear in link attempts, failed or not', () => {
       [`${'[](a/'.repeat(n)}.x)`, 0],
       [`[[${spaces}x${spaces}x${spaces}]]`, 1],
       ['[[a]] '.repeat(n), n],
+      ['['.repeat(n), 0],
+      ['[[a]'.repeat(n), 0],
+      ['[a]'.repeat(n), 0],
+      ['$x '.repeat(n), 0],
+      ['<a:'.repeat(n), 0],
+      ['- x\n  '.repeat(n), 0],
+      ['[a'.repeat(n) + '](x'.repeat(n), 0],
+      ['a <!-- '.repeat(n), 0],
+      ['](a'.repeat(n), 0],
+      ['$a$ [[x]] $$b$$ '.repeat(n), n],
+      ['`a` [[x]] '.repeat(n), n],
     ] as const) {
       const elapsed = timed(() => expect(bodyLinksSpanned(body)).toHaveLength(links))
       expect(elapsed).toBeLessThan(BOUND_MS)

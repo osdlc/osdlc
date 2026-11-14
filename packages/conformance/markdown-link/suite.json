@@ -1,10 +1,10 @@
 {
   "family": "markdown-link",
   "reference": "rust",
-  "referenceVersion": "0.9.1",
+  "referenceVersion": "0.10.0",
   "sections": {
     "code": {
-      "description": "Blank fenced and inline code in `source`. `expect.commonmark` is `strip_code`'s output, `expect.skill_export` the output under the skill-export rules. Both keep the number of characters, so offsets here count characters. Under CommonMark a fence is found inside a list item or a block quote (a fence indented to the item's content column opens, and it ends with its container), a backtick after an odd run of `\\` is literal, and a code span in a table row (a line starting with `|`) stays in its cell: a `|` not escaped as `\\|` ends the cell. Skill-export knows no containers, does not honour the escape and does not cut a row.",
+      "description": "Blank code in `source`: fenced and indented code, inline spans, math, raw HTML blocks (`<pre>`, `<script>`, `<style>`, `<textarea>`) and autolinks. `expect.commonmark` is `strip_code`'s output, `expect.skill_export` the output under the skill-export rules. Both keep the number of characters, so offsets here count characters. Under CommonMark a fence is found inside a list item or a block quote (a fence indented to the item's content column opens, and it ends with its container), a backtick after an odd run of `\\` is literal, and a code span in a table row (a line starting with `|`) stays in its cell: a `|` not escaped as `\\|` ends the cell. Skill-export knows no containers, does not honour the escape and does not cut a row. Under both, indented code and raw HTML blocks follow list items but not block quotes. `expect.ranges` is `code_ranges` under CommonMark, as `[start, end]` character offsets: what `strip_code` blanks, with a fence or a run of indented lines as one range.",
       "cases": [
         {
           "name": "backtick_fence",
@@ -13,7 +13,13 @@
           },
           "expect": {
             "commonmark": "a\n   \n     \n   \nb\n",
-            "skill_export": "a\n   \n     \n   \nb\n"
+            "skill_export": "a\n   \n     \n   \nb\n",
+            "ranges": [
+              [
+                2,
+                15
+              ]
+            ]
           }
         },
         {
@@ -23,7 +29,13 @@
           },
           "expect": {
             "commonmark": "a\n   \n     \n   \nb\n",
-            "skill_export": "a\n   \n     \n   \nb\n"
+            "skill_export": "a\n   \n     \n   \nb\n",
+            "ranges": [
+              [
+                2,
+                15
+              ]
+            ]
           }
         },
         {
@@ -33,7 +45,13 @@
           },
           "expect": {
             "commonmark": "     \n     \n   \nb\n",
-            "skill_export": "     \n     \n   \nb\n"
+            "skill_export": "     \n     \n   \nb\n",
+            "ranges": [
+              [
+                0,
+                15
+              ]
+            ]
           }
         },
         {
@@ -43,7 +61,13 @@
           },
           "expect": {
             "commonmark": "    \n     \n   \n     \n     \nb\n",
-            "skill_export": "    \n     \n   \n     \n     \nb\n"
+            "skill_export": "    \n     \n   \n     \n     \nb\n",
+            "ranges": [
+              [
+                0,
+                26
+              ]
+            ]
           }
         },
         {
@@ -53,7 +77,13 @@
           },
           "expect": {
             "commonmark": "   \n   \n     \n   \nb\n",
-            "skill_export": "   \n   \n     \n   \nb\n"
+            "skill_export": "   \n   \n     \n   \nb\n",
+            "ranges": [
+              [
+                0,
+                17
+              ]
+            ]
           }
         },
         {
@@ -63,7 +93,13 @@
           },
           "expect": {
             "commonmark": "      \n     \n      \nb\n",
-            "skill_export": "      \n     \n      \nb\n"
+            "skill_export": "      \n     \n      \nb\n",
+            "ranges": [
+              [
+                0,
+                19
+              ]
+            ]
           }
         },
         {
@@ -73,7 +109,13 @@
           },
           "expect": {
             "commonmark": "a\n   \n     \n\n     \n",
-            "skill_export": "a\n   \n     \n\n     \n"
+            "skill_export": "a\n   \n     \n\n     \n",
+            "ranges": [
+              [
+                2,
+                18
+              ]
+            ]
           }
         },
         {
@@ -83,7 +125,13 @@
           },
           "expect": {
             "commonmark": "    \n      \n    \nb\r\n",
-            "skill_export": "    \n      \n    \nb\r\n"
+            "skill_export": "    \n      \n    \nb\r\n",
+            "ranges": [
+              [
+                0,
+                16
+              ]
+            ]
           }
         },
         {
@@ -93,7 +141,13 @@
           },
           "expect": {
             "commonmark": "a         b",
-            "skill_export": "a         b"
+            "skill_export": "a         b",
+            "ranges": [
+              [
+                2,
+                9
+              ]
+            ]
           }
         },
         {
@@ -103,7 +157,13 @@
           },
           "expect": {
             "commonmark": "a               b",
-            "skill_export": "a               b"
+            "skill_export": "a               b",
+            "ranges": [
+              [
+                2,
+                15
+              ]
+            ]
           }
         },
         {
@@ -113,7 +173,13 @@
           },
           "expect": {
             "commonmark": "a             b",
-            "skill_export": "a             b"
+            "skill_export": "a             b",
+            "ranges": [
+              [
+                2,
+                13
+              ]
+            ]
           }
         },
         {
@@ -123,7 +189,8 @@
           },
           "expect": {
             "commonmark": "a `[[x]] b",
-            "skill_export": "a `[[x]] b"
+            "skill_export": "a `[[x]] b",
+            "ranges": []
           }
         },
         {
@@ -133,7 +200,8 @@
           },
           "expect": {
             "commonmark": "a ``[[x]]` b",
-            "skill_export": "a ``[[x]]` b"
+            "skill_export": "a ``[[x]]` b",
+            "ranges": []
           }
         },
         {
@@ -143,7 +211,13 @@
           },
           "expect": {
             "commonmark": "a   \n       b",
-            "skill_export": "a   \n       b"
+            "skill_export": "a   \n       b",
+            "ranges": [
+              [
+                2,
+                11
+              ]
+            ]
           }
         },
         {
@@ -153,7 +227,8 @@
           },
           "expect": {
             "commonmark": "a `x\n\n[[y]]` b",
-            "skill_export": "a `x\n\n[[y]]` b"
+            "skill_export": "a `x\n\n[[y]]` b",
+            "ranges": []
           }
         },
         {
@@ -163,7 +238,13 @@
           },
           "expect": {
             "commonmark": "a `x\n   \n      \n",
-            "skill_export": "a `x\n   \n      \n"
+            "skill_export": "a `x\n   \n      \n",
+            "ranges": [
+              [
+                5,
+                15
+              ]
+            ]
           }
         },
         {
@@ -173,7 +254,13 @@
           },
           "expect": {
             "commonmark": "      [[x]]",
-            "skill_export": "      [[x]]"
+            "skill_export": "      [[x]]",
+            "ranges": [
+              [
+                0,
+                5
+              ]
+            ]
           }
         },
         {
@@ -183,7 +270,13 @@
           },
           "expect": {
             "commonmark": "   \n           \n   \n",
-            "skill_export": "   \n           \n   \n"
+            "skill_export": "   \n           \n   \n",
+            "ranges": [
+              [
+                0,
+                19
+              ]
+            ]
           }
         },
         {
@@ -193,7 +286,8 @@
           },
           "expect": {
             "commonmark": "[[x]] and #tag, no code\n",
-            "skill_export": "[[x]] and #tag, no code\n"
+            "skill_export": "[[x]] and #tag, no code\n",
+            "ranges": []
           }
         },
         {
@@ -203,7 +297,13 @@
           },
           "expect": {
             "commonmark": "- press the ` key\n- see [[x]] with     ",
-            "skill_export": "- press the      \n                  ls`"
+            "skill_export": "- press the      \n                  ls`",
+            "ranges": [
+              [
+                35,
+                39
+              ]
+            ]
           }
         },
         {
@@ -213,7 +313,13 @@
           },
           "expect": {
             "commonmark": "a `b\n1. item    ",
-            "skill_export": "a   \n         c`"
+            "skill_export": "a   \n         c`",
+            "ranges": [
+              [
+                13,
+                16
+              ]
+            ]
           }
         },
         {
@@ -223,7 +329,13 @@
           },
           "expect": {
             "commonmark": "Some `text\n## Heading    ",
-            "skill_export": "Some      \n            x`"
+            "skill_export": "Some      \n            x`",
+            "ranges": [
+              [
+                22,
+                25
+              ]
+            ]
           }
         },
         {
@@ -233,7 +345,13 @@
           },
           "expect": {
             "commonmark": "Some `text\n> quote [[q]]    ",
-            "skill_export": "Some      \n               y`"
+            "skill_export": "Some      \n               y`",
+            "ranges": [
+              [
+                25,
+                28
+              ]
+            ]
           }
         },
         {
@@ -243,7 +361,8 @@
           },
           "expect": {
             "commonmark": "a `b\n***\nc`",
-            "skill_export": "a   \n   \n  "
+            "skill_export": "a   \n   \n  ",
+            "ranges": []
           }
         },
         {
@@ -253,7 +372,13 @@
           },
           "expect": {
             "commonmark": "         is inline\n[[a]]\n\n[[b]]\n",
-            "skill_export": "                  \n     \n\n     \n"
+            "skill_export": "                  \n     \n\n     \n",
+            "ranges": [
+              [
+                0,
+                8
+              ]
+            ]
           }
         },
         {
@@ -263,7 +388,13 @@
           },
           "expect": {
             "commonmark": "   \n \n         \n     \n   \n[[y]]\n",
-            "skill_export": "   \n \n         \n[[x]]\n   \n     \n"
+            "skill_export": "   \n \n         \n[[x]]\n   \n     \n",
+            "ranges": [
+              [
+                0,
+                25
+              ]
+            ]
           }
         },
         {
@@ -273,7 +404,13 @@
           },
           "expect": {
             "commonmark": "         ",
-            "skill_export": "        `"
+            "skill_export": "        `",
+            "ranges": [
+              [
+                0,
+                9
+              ]
+            ]
           }
         },
         {
@@ -283,7 +420,13 @@
           },
           "expect": {
             "commonmark": "# Title `a\nsee [[x]] and    ",
-            "skill_export": "# Title   \n               b`"
+            "skill_export": "# Title   \n               b`",
+            "ranges": [
+              [
+                25,
+                28
+              ]
+            ]
           }
         },
         {
@@ -293,7 +436,13 @@
           },
           "expect": {
             "commonmark": "| key | note |\n|---|---|\n| ` | backtick |\n| [[x]] |        |",
-            "skill_export": "| key | note |\n|---|---|\n|               \n           code` |"
+            "skill_export": "| key | note |\n|---|---|\n|               \n           code` |",
+            "ranges": [
+              [
+                52,
+                58
+              ]
+            ]
           }
         },
         {
@@ -303,7 +452,13 @@
           },
           "expect": {
             "commonmark": "a `b\n| [[x]] |     |",
-            "skill_export": "a   \n           c` |"
+            "skill_export": "a   \n           c` |",
+            "ranges": [
+              [
+                15,
+                18
+              ]
+            ]
           }
         },
         {
@@ -313,7 +468,13 @@
           },
           "expect": {
             "commonmark": "`` a         b",
-            "skill_export": "`` a         b"
+            "skill_export": "`` a         b",
+            "ranges": [
+              [
+                5,
+                12
+              ]
+            ]
           }
         },
         {
@@ -323,7 +484,8 @@
           },
           "expect": {
             "commonmark": "x ``` ` [[x]] `` y",
-            "skill_export": "x ```          ` y"
+            "skill_export": "x ```          ` y",
+            "ranges": []
           }
         },
         {
@@ -333,7 +495,13 @@
           },
           "expect": {
             "commonmark": "    [[x]]",
-            "skill_export": "    [[x]]"
+            "skill_export": "    [[x]]",
+            "ranges": [
+              [
+                0,
+                3
+              ]
+            ]
           }
         },
         {
@@ -343,7 +511,8 @@
           },
           "expect": {
             "commonmark": "See \\`[[Note]]\\` here",
-            "skill_export": "See \\            here"
+            "skill_export": "See \\            here",
+            "ranges": []
           }
         },
         {
@@ -353,7 +522,13 @@
           },
           "expect": {
             "commonmark": "a \\`b            c`",
-            "skill_export": "a \\    [[Note]]    "
+            "skill_export": "a \\    [[Note]]    ",
+            "ranges": [
+              [
+                5,
+                17
+              ]
+            ]
           }
         },
         {
@@ -363,7 +538,13 @@
           },
           "expect": {
             "commonmark": "a \\\\    c",
-            "skill_export": "a \\\\    c"
+            "skill_export": "a \\\\    c",
+            "ranges": [
+              [
+                4,
+                7
+              ]
+            ]
           }
         },
         {
@@ -373,7 +554,13 @@
           },
           "expect": {
             "commonmark": "\\`    y",
-            "skill_export": "\\``x` y"
+            "skill_export": "\\``x` y",
+            "ranges": [
+              [
+                2,
+                5
+              ]
+            ]
           }
         },
         {
@@ -383,7 +570,13 @@
           },
           "expect": {
             "commonmark": "     b",
-            "skill_export": "     b"
+            "skill_export": "     b",
+            "ranges": [
+              [
+                0,
+                4
+              ]
+            ]
           }
         },
         {
@@ -393,7 +586,13 @@
           },
           "expect": {
             "commonmark": "- item\n     \n       \n     \nafter [[b]]\n",
-            "skill_export": "- item\n     \n       \n     \nafter [[b]]\n"
+            "skill_export": "- item\n     \n       \n     \nafter [[b]]\n",
+            "ranges": [
+              [
+                7,
+                26
+              ]
+            ]
           }
         },
         {
@@ -403,7 +602,13 @@
           },
           "expect": {
             "commonmark": "- a\n  - b\n       \n         \n       \n  - c\n",
-            "skill_export": "- a\n  - b\n       \n         \n       \n  - c\n"
+            "skill_export": "- a\n  - b\n       \n         \n       \n  - c\n",
+            "ranges": [
+              [
+                10,
+                35
+              ]
+            ]
           }
         },
         {
@@ -413,7 +618,13 @@
           },
           "expect": {
             "commonmark": "10. item\n       \n         \n       \n[[y]]\n",
-            "skill_export": "10. item\n       \n         \n       \n[[y]]\n"
+            "skill_export": "10. item\n       \n         \n       \n[[y]]\n",
+            "ranges": [
+              [
+                9,
+                34
+              ]
+            ]
           }
         },
         {
@@ -423,7 +634,13 @@
           },
           "expect": {
             "commonmark": "     \n       \n     \n[[b]]\n",
-            "skill_export": ">    \n       \n     \n[[b]]\n"
+            "skill_export": ">    \n       \n     \n[[b]]\n",
+            "ranges": [
+              [
+                0,
+                19
+              ]
+            ]
           }
         },
         {
@@ -433,7 +650,13 @@
           },
           "expect": {
             "commonmark": "- item\n     \n       \n\n       \nafter [[c]]\n",
-            "skill_export": "- item\n     \n       \n\n       \n           \n"
+            "skill_export": "- item\n     \n       \n\n       \n           \n",
+            "ranges": [
+              [
+                7,
+                29
+              ]
+            ]
           }
         },
         {
@@ -443,7 +666,13 @@
           },
           "expect": {
             "commonmark": "     \n       \n\n[[b]]\n",
-            "skill_export": "> ```\n> [[a]]\n\n[[b]]\n"
+            "skill_export": "> ```\n> [[a]]\n\n[[b]]\n",
+            "ranges": [
+              [
+                0,
+                13
+              ]
+            ]
           }
         },
         {
@@ -453,7 +682,13 @@
           },
           "expect": {
             "commonmark": "| `a | b` |     |\n",
-            "skill_export": "|         |     |\n"
+            "skill_export": "|         |     |\n",
+            "ranges": [
+              [
+                12,
+                15
+              ]
+            ]
           }
         },
         {
@@ -463,7 +698,13 @@
           },
           "expect": {
             "commonmark": "|          | c |\n",
-            "skill_export": "|          | c |\n"
+            "skill_export": "|          | c |\n",
+            "ranges": [
+              [
+                2,
+                10
+              ]
+            ]
           }
         },
         {
@@ -473,7 +714,13 @@
           },
           "expect": {
             "commonmark": "- row\n  | `a | b` |     |\n",
-            "skill_export": "- row\n  |         |     |\n"
+            "skill_export": "- row\n  |         |     |\n",
+            "ranges": [
+              [
+                20,
+                23
+              ]
+            ]
           }
         },
         {
@@ -483,7 +730,13 @@
           },
           "expect": {
             "commonmark": "       \n     \n \n         \n       \n[[z]]\n",
-            "skill_export": "> -    \n     \n \n         \n       \n[[z]]\n"
+            "skill_export": "> -    \n     \n \n         \n       \n[[z]]\n",
+            "ranges": [
+              [
+                0,
+                33
+              ]
+            ]
           }
         },
         {
@@ -493,7 +746,8 @@
           },
           "expect": {
             "commonmark": "Text\n2. ```\n   [[a]]\n",
-            "skill_export": "Text\n2. ```\n   [[a]]\n"
+            "skill_export": "Text\n2. ```\n   [[a]]\n",
+            "ranges": []
           }
         },
         {
@@ -503,7 +757,13 @@
           },
           "expect": {
             "commonmark": "---\n      \n        \n      \n[[y]]",
-            "skill_export": "---\n2. ```\n   [[x]]\n      \n     "
+            "skill_export": "---\n2. ```\n   [[x]]\n      \n     ",
+            "ranges": [
+              [
+                4,
+                26
+              ]
+            ]
           }
         },
         {
@@ -513,7 +773,13 @@
           },
           "expect": {
             "commonmark": "***\n      \n        \n      \n[[y]]",
-            "skill_export": "***\n3. ```\n   [[x]]\n      \n     "
+            "skill_export": "***\n3. ```\n   [[x]]\n      \n     ",
+            "ranges": [
+              [
+                4,
+                26
+              ]
+            ]
           }
         },
         {
@@ -523,7 +789,13 @@
           },
           "expect": {
             "commonmark": "Title\n===\n      \n        \n      \n[[y]]",
-            "skill_export": "Title\n===\n2. ```\n   [[x]]\n      \n     "
+            "skill_export": "Title\n===\n2. ```\n   [[x]]\n      \n     ",
+            "ranges": [
+              [
+                10,
+                32
+              ]
+            ]
           }
         },
         {
@@ -533,7 +805,13 @@
           },
           "expect": {
             "commonmark": "Title\n---\n      \n        \n      \n[[y]]",
-            "skill_export": "Title\n---\n2. ```\n   [[x]]\n      \n     "
+            "skill_export": "Title\n---\n2. ```\n   [[x]]\n      \n     ",
+            "ranges": [
+              [
+                10,
+                32
+              ]
+            ]
           }
         },
         {
@@ -543,7 +821,13 @@
           },
           "expect": {
             "commonmark": "# H\n      \n        \n      \n[[y]]",
-            "skill_export": "# H\n2. ```\n   [[x]]\n      \n     "
+            "skill_export": "# H\n2. ```\n   [[x]]\n      \n     ",
+            "ranges": [
+              [
+                4,
+                26
+              ]
+            ]
           }
         },
         {
@@ -553,7 +837,13 @@
           },
           "expect": {
             "commonmark": "===\n2. ```\n   [[x]]\n      \n     ",
-            "skill_export": "===\n2. ```\n   [[x]]\n      \n     "
+            "skill_export": "===\n2. ```\n   [[x]]\n      \n     ",
+            "ranges": [
+              [
+                20,
+                32
+              ]
+            ]
           }
         },
         {
@@ -563,7 +853,13 @@
           },
           "expect": {
             "commonmark": "Text\n      \n        \n      \n[[b]]\n",
-            "skill_export": "Text\n1. ```\n   [[a]]\n      \n     \n"
+            "skill_export": "Text\n1. ```\n   [[a]]\n      \n     \n",
+            "ranges": [
+              [
+                5,
+                27
+              ]
+            ]
           }
         },
         {
@@ -573,7 +869,13 @@
           },
           "expect": {
             "commonmark": "Text\n\n      \n        \n      \n[[b]]\n",
-            "skill_export": "Text\n\n2. ```\n   [[a]]\n      \n     \n"
+            "skill_export": "Text\n\n2. ```\n   [[a]]\n      \n     \n",
+            "ranges": [
+              [
+                6,
+                28
+              ]
+            ]
           }
         },
         {
@@ -583,7 +885,8 @@
           },
           "expect": {
             "commonmark": "We met in\n1984. ```js\n[[Note]]\n",
-            "skill_export": "We met in\n1984. ```js\n[[Note]]\n"
+            "skill_export": "We met in\n1984. ```js\n[[Note]]\n",
+            "ranges": []
           }
         },
         {
@@ -593,7 +896,13 @@
           },
           "expect": {
             "commonmark": "     \n       \n     \n",
-            "skill_export": ">    \n       \n     \n"
+            "skill_export": ">    \n       \n     \n",
+            "ranges": [
+              [
+                0,
+                19
+              ]
+            ]
           }
         },
         {
@@ -603,7 +912,13 @@
           },
           "expect": {
             "commonmark": "      \n      \n",
-            "skill_export": " -\t```\n\t[[a]]\n"
+            "skill_export": " -\t```\n\t[[a]]\n",
+            "ranges": [
+              [
+                0,
+                13
+              ]
+            ]
           }
         },
         {
@@ -613,7 +928,8 @@
           },
           "expect": {
             "commonmark": "- - -\n[[a]]\n",
-            "skill_export": "- - -\n[[a]]\n"
+            "skill_export": "- - -\n[[a]]\n",
+            "ranges": []
           }
         },
         {
@@ -623,7 +939,8 @@
           },
           "expect": {
             "commonmark": "1.5 ```\n[[a]]\n",
-            "skill_export": "1.5 ```\n[[a]]\n"
+            "skill_export": "1.5 ```\n[[a]]\n",
+            "ranges": []
           }
         },
         {
@@ -633,7 +950,8 @@
           },
           "expect": {
             "commonmark": "> | `a | [[x]] | b` |\n",
-            "skill_export": "> |                 |\n"
+            "skill_export": "> |                 |\n",
+            "ranges": []
           }
         },
         {
@@ -643,7 +961,13 @@
           },
           "expect": {
             "commonmark": "para\r\n\r\n       \n         \n       \n[[b]]\r\n",
-            "skill_export": "para\r\n\r\n2. ```\r\n   [[a]]\r\n       \n      \n"
+            "skill_export": "para\r\n\r\n2. ```\r\n   [[a]]\r\n       \n      \n",
+            "ranges": [
+              [
+                8,
+                33
+              ]
+            ]
           }
         },
         {
@@ -653,7 +977,8 @@
           },
           "expect": {
             "commonmark": "Text\n*\n[[a]]\n",
-            "skill_export": "Text\n*\n[[a]]\n"
+            "skill_export": "Text\n*\n[[a]]\n",
+            "ranges": []
           }
         },
         {
@@ -663,7 +988,8 @@
           },
           "expect": {
             "commonmark": "Text\n1.\n[[a]]\n",
-            "skill_export": "Text\n1.\n[[a]]\n"
+            "skill_export": "Text\n1.\n[[a]]\n",
+            "ranges": []
           }
         },
         {
@@ -673,7 +999,13 @@
           },
           "expect": {
             "commonmark": "Text\n     \n       \n     \n[[b]]\n",
-            "skill_export": "Text\n- ```\n  [[a]]\n     \n     \n"
+            "skill_export": "Text\n- ```\n  [[a]]\n     \n     \n",
+            "ranges": [
+              [
+                5,
+                24
+              ]
+            ]
           }
         },
         {
@@ -683,7 +1015,13 @@
           },
           "expect": {
             "commonmark": "Text\n      \n        \n      \n[[b]]\n",
-            "skill_export": "Text\n1) ```\n   [[a]]\n      \n     \n"
+            "skill_export": "Text\n1) ```\n   [[a]]\n      \n     \n",
+            "ranges": [
+              [
+                5,
+                27
+              ]
+            ]
           }
         },
         {
@@ -693,7 +1031,8 @@
           },
           "expect": {
             "commonmark": "Text\n2) ```\n   [[a]]\n",
-            "skill_export": "Text\n2) ```\n   [[a]]\n"
+            "skill_export": "Text\n2) ```\n   [[a]]\n",
+            "ranges": []
           }
         },
         {
@@ -703,7 +1042,13 @@
           },
           "expect": {
             "commonmark": "Text\n         \n           \n         \n[[b]]\n",
-            "skill_export": "Text\n0001.    \n           \n         \n[[b]]\n"
+            "skill_export": "Text\n0001.    \n           \n         \n[[b]]\n",
+            "ranges": [
+              [
+                5,
+                36
+              ]
+            ]
           }
         },
         {
@@ -713,7 +1058,8 @@
           },
           "expect": {
             "commonmark": "- a\n  2. ```\n  [[b]]\n",
-            "skill_export": "- a\n  2. ```\n  [[b]]\n"
+            "skill_export": "- a\n  2. ```\n  [[b]]\n",
+            "ranges": []
           }
         },
         {
@@ -722,8 +1068,713 @@
             "source": "    code\n2. ```\n[[a]]\n"
           },
           "expect": {
-            "commonmark": "    code\n      \n[[a]]\n",
-            "skill_export": "    code\n2. ```\n[[a]]\n"
+            "commonmark": "        \n      \n[[a]]\n",
+            "skill_export": "        \n2. ```\n[[a]]\n",
+            "ranges": [
+              [
+                0,
+                15
+              ]
+            ]
+          }
+        },
+        {
+          "name": "indented_code_is_code",
+          "input": {
+            "source": "Text\n\n    [[x]]\n      y\n\nz"
+          },
+          "expect": {
+            "commonmark": "Text\n\n         \n       \n\nz",
+            "skill_export": "Text\n\n         \n       \n\nz",
+            "ranges": [
+              [
+                6,
+                23
+              ]
+            ]
+          }
+        },
+        {
+          "name": "indented_code_blank_lines_split_ranges",
+          "input": {
+            "source": "    [[a]]\n\n    [[b]]"
+          },
+          "expect": {
+            "commonmark": "         \n\n         ",
+            "skill_export": "         \n\n         ",
+            "ranges": [
+              [
+                0,
+                9
+              ],
+              [
+                11,
+                20
+              ]
+            ]
+          }
+        },
+        {
+          "name": "indented_line_continuing_a_paragraph_is_not_code",
+          "input": {
+            "source": "Text\n    [[x]]"
+          },
+          "expect": {
+            "commonmark": "Text\n    [[x]]",
+            "skill_export": "Text\n    [[x]]",
+            "ranges": []
+          }
+        },
+        {
+          "name": "indented_code_after_a_heading",
+          "input": {
+            "source": "# H\n    [[x]]"
+          },
+          "expect": {
+            "commonmark": "# H\n         ",
+            "skill_export": "# H\n         ",
+            "ranges": [
+              [
+                4,
+                13
+              ]
+            ]
+          }
+        },
+        {
+          "name": "tab_indented_code",
+          "input": {
+            "source": "\t[[x]]"
+          },
+          "expect": {
+            "commonmark": "      ",
+            "skill_export": "      ",
+            "ranges": [
+              [
+                0,
+                6
+              ]
+            ]
+          }
+        },
+        {
+          "name": "list_item_text_indented_four_is_not_code",
+          "input": {
+            "source": "- item\n\n    [[x]]"
+          },
+          "expect": {
+            "commonmark": "- item\n\n    [[x]]",
+            "skill_export": "- item\n\n    [[x]]",
+            "ranges": []
+          }
+        },
+        {
+          "name": "list_item_holds_indented_code",
+          "input": {
+            "source": "- item\n\n      [[x]]"
+          },
+          "expect": {
+            "commonmark": "- item\n\n           ",
+            "skill_export": "- item\n\n           ",
+            "ranges": [
+              [
+                8,
+                19
+              ]
+            ]
+          }
+        },
+        {
+          "name": "ordered_item_text_indented_four_is_not_code",
+          "input": {
+            "source": "1. item\n\n    [[x]]"
+          },
+          "expect": {
+            "commonmark": "1. item\n\n    [[x]]",
+            "skill_export": "1. item\n\n    [[x]]",
+            "ranges": []
+          }
+        },
+        {
+          "name": "lazy_line_keeps_the_list_item",
+          "input": {
+            "source": "- a\nb\n\n    [[x]]"
+          },
+          "expect": {
+            "commonmark": "- a\nb\n\n    [[x]]",
+            "skill_export": "- a\nb\n\n    [[x]]",
+            "ranges": []
+          }
+        },
+        {
+          "name": "text_ends_the_list_item",
+          "input": {
+            "source": "- a\n\nb\n\n    [[x]]"
+          },
+          "expect": {
+            "commonmark": "- a\n\nb\n\n         ",
+            "skill_export": "- a\n\nb\n\n         ",
+            "ranges": [
+              [
+                8,
+                17
+              ]
+            ]
+          }
+        },
+        {
+          "name": "fence_in_a_nested_item_after_a_blank_line",
+          "input": {
+            "source": "- a\n  - b\n\n    ```\n    [[x]]\n\n    ```\nc"
+          },
+          "expect": {
+            "commonmark": "- a\n  - b\n\n       \n         \n\n       \nc",
+            "skill_export": "- a\n  - b\n\n    ```\n    [[x]]\n\n    ```\nc",
+            "ranges": [
+              [
+                11,
+                37
+              ]
+            ]
+          }
+        },
+        {
+          "name": "fence_indented_four_at_top_level_is_indented_code",
+          "input": {
+            "source": "    ```\n    [[x]]\n    ```\n[[y]]"
+          },
+          "expect": {
+            "commonmark": "       \n         \n       \n[[y]]",
+            "skill_export": "       \n         \n       \n[[y]]",
+            "ranges": [
+              [
+                0,
+                25
+              ]
+            ]
+          }
+        },
+        {
+          "name": "inline_math",
+          "input": {
+            "source": "a $[[x]]$ b"
+          },
+          "expect": {
+            "commonmark": "a         b",
+            "skill_export": "a         b",
+            "ranges": [
+              [
+                2,
+                9
+              ]
+            ]
+          }
+        },
+        {
+          "name": "display_math",
+          "input": {
+            "source": "$$\n[[x]]\n$$\nb"
+          },
+          "expect": {
+            "commonmark": "  \n     \n  \nb",
+            "skill_export": "  \n     \n  \nb",
+            "ranges": [
+              [
+                0,
+                11
+              ]
+            ]
+          }
+        },
+        {
+          "name": "display_math_stops_at_a_blank_line",
+          "input": {
+            "source": "$$ [[x]]\n\n$$"
+          },
+          "expect": {
+            "commonmark": "$$ [[x]]\n\n$$",
+            "skill_export": "$$ [[x]]\n\n$$",
+            "ranges": []
+          }
+        },
+        {
+          "name": "dollar_amounts_are_not_math",
+          "input": {
+            "source": "$5 and $10 [[x]]"
+          },
+          "expect": {
+            "commonmark": "$5 and $10 [[x]]",
+            "skill_export": "$5 and $10 [[x]]",
+            "ranges": []
+          }
+        },
+        {
+          "name": "math_needs_text_inside_its_dollars",
+          "input": {
+            "source": "$ [[x]] $"
+          },
+          "expect": {
+            "commonmark": "$ [[x]] $",
+            "skill_export": "$ [[x]] $",
+            "ranges": []
+          }
+        },
+        {
+          "name": "escaped_dollar_is_text",
+          "input": {
+            "source": "\\$[[x]]$"
+          },
+          "expect": {
+            "commonmark": "\\$[[x]]$",
+            "skill_export": "\\$[[x]]$",
+            "ranges": []
+          }
+        },
+        {
+          "name": "math_stays_on_its_line",
+          "input": {
+            "source": "$[[x]]\n$"
+          },
+          "expect": {
+            "commonmark": "$[[x]]\n$",
+            "skill_export": "$[[x]]\n$",
+            "ranges": []
+          }
+        },
+        {
+          "name": "pre_block",
+          "input": {
+            "source": "<pre>\n[[x]]\n</pre>\n[[y]]"
+          },
+          "expect": {
+            "commonmark": "     \n     \n      \n[[y]]",
+            "skill_export": "     \n     \n      \n[[y]]",
+            "ranges": [
+              [
+                0,
+                18
+              ]
+            ]
+          }
+        },
+        {
+          "name": "pre_block_closes_on_its_first_line",
+          "input": {
+            "source": "<PRE class=\"a\">[[x]]</pre>\n[[y]]"
+          },
+          "expect": {
+            "commonmark": "                          \n[[y]]",
+            "skill_export": "                          \n[[y]]",
+            "ranges": [
+              [
+                0,
+                26
+              ]
+            ]
+          }
+        },
+        {
+          "name": "unclosed_pre_block_runs_to_the_end",
+          "input": {
+            "source": "<script>\n[[x]]\n\n[[y]]"
+          },
+          "expect": {
+            "commonmark": "        \n     \n\n     ",
+            "skill_export": "        \n     \n\n     ",
+            "ranges": [
+              [
+                0,
+                21
+              ]
+            ]
+          }
+        },
+        {
+          "name": "pre_mid_line_is_not_a_block",
+          "input": {
+            "source": "a <pre>[[x]]</pre>"
+          },
+          "expect": {
+            "commonmark": "a <pre>[[x]]</pre>",
+            "skill_export": "a <pre>[[x]]</pre>",
+            "ranges": []
+          }
+        },
+        {
+          "name": "autolink",
+          "input": {
+            "source": "<https://x/[[a]]> [[b]]"
+          },
+          "expect": {
+            "commonmark": "                  [[b]]",
+            "skill_export": "                  [[b]]",
+            "ranges": [
+              [
+                0,
+                17
+              ]
+            ]
+          }
+        },
+        {
+          "name": "autolink_needs_a_scheme",
+          "input": {
+            "source": "<x/[[a]]> <a:[[b]]>"
+          },
+          "expect": {
+            "commonmark": "<x/[[a]]> <a:[[b]]>",
+            "skill_export": "<x/[[a]]> <a:[[b]]>",
+            "ranges": []
+          }
+        },
+        {
+          "name": "backtick_in_a_comment_opens_nothing",
+          "input": {
+            "source": "<!-- ` -->[[a]]`b`"
+          },
+          "expect": {
+            "commonmark": "<!-- ` -->[[a]]   ",
+            "skill_export": "<!-- ` -->[[a]]   ",
+            "ranges": [
+              [
+                15,
+                18
+              ]
+            ]
+          }
+        },
+        {
+          "name": "fence_in_a_comment_opens_nothing",
+          "input": {
+            "source": "<!--\n```\n-->\n[[a]]"
+          },
+          "expect": {
+            "commonmark": "<!--\n```\n-->\n[[a]]",
+            "skill_export": "<!--\n```\n-->\n[[a]]",
+            "ranges": []
+          }
+        },
+        {
+          "name": "comment_inside_a_span_is_code",
+          "input": {
+            "source": "`<!--` [[a]] -->"
+          },
+          "expect": {
+            "commonmark": "       [[a]] -->",
+            "skill_export": "       [[a]] -->",
+            "ranges": [
+              [
+                0,
+                6
+              ]
+            ]
+          }
+        },
+        {
+          "name": "display_math_stops_at_a_fence",
+          "input": {
+            "source": "Costs $$ maybe\n```js\nlet x = 1 // $$\n```\n[[Real]]\n"
+          },
+          "expect": {
+            "commonmark": "Costs $$ maybe\n     \n               \n   \n[[Real]]\n",
+            "skill_export": "Costs $$ maybe\n     \n               \n   \n[[Real]]\n",
+            "ranges": [
+              [
+                15,
+                40
+              ]
+            ]
+          }
+        },
+        {
+          "name": "display_math_on_a_heading_stays_on_its_line",
+          "input": {
+            "source": "# h $$\n[[a]]\nb $$"
+          },
+          "expect": {
+            "commonmark": "# h $$\n[[a]]\nb $$",
+            "skill_export": "# h   \n     \n    ",
+            "ranges": []
+          }
+        },
+        {
+          "name": "span_stops_at_a_pre_line",
+          "input": {
+            "source": "Run `cmd\n<pre>\nx` [[Secret]]\n</pre>\n"
+          },
+          "expect": {
+            "commonmark": "Run `cmd\n     \n             \n      \n",
+            "skill_export": "Run `cmd\n     \n             \n      \n",
+            "ranges": [
+              [
+                9,
+                35
+              ]
+            ]
+          }
+        },
+        {
+          "name": "span_stops_at_a_fence_in_a_list_item",
+          "input": {
+            "source": "- a `b\n    ```\n    c` [[x]]\n    ```\n[[After]]\n"
+          },
+          "expect": {
+            "commonmark": "- a `b\n       \n            \n       \n[[After]]\n",
+            "skill_export": "- a   \n       \n            \n      `\n[[After]]\n",
+            "ranges": [
+              [
+                7,
+                35
+              ]
+            ]
+          }
+        },
+        {
+          "name": "less_indented_line_ends_a_list_item_and_its_fence",
+          "input": {
+            "source": "- item\n  ```\n  code\n\nafter [[Real]]\n"
+          },
+          "expect": {
+            "commonmark": "- item\n     \n      \n\nafter [[Real]]\n",
+            "skill_export": "- item\n     \n      \n\n              \n",
+            "ranges": [
+              [
+                7,
+                20
+              ]
+            ]
+          }
+        },
+        {
+          "name": "comment_line_is_a_block_before_indented_code",
+          "input": {
+            "source": "<!-- note -->\n    [[InCode]]\n"
+          },
+          "expect": {
+            "commonmark": "<!-- note -->\n              \n",
+            "skill_export": "<!-- note -->\n              \n",
+            "ranges": [
+              [
+                14,
+                28
+              ]
+            ]
+          }
+        },
+        {
+          "name": "escaped_backslash_before_a_dollar",
+          "input": {
+            "source": "\\\\$x$ \\$y$"
+          },
+          "expect": {
+            "commonmark": "\\\\    \\$y$",
+            "skill_export": "\\\\    \\$y$",
+            "ranges": [
+              [
+                2,
+                5
+              ]
+            ]
+          }
+        },
+        {
+          "name": "unclosed_comment_in_a_line_is_text",
+          "input": {
+            "source": "Write <!-- to open a comment.\n\n```\n[[x]]\n```\n`[[y]]`"
+          },
+          "expect": {
+            "commonmark": "Write <!-- to open a comment.\n\n   \n     \n   \n       ",
+            "skill_export": "Write <!-- to open a comment.\n\n   \n     \n   \n       ",
+            "ranges": [
+              [
+                31,
+                52
+              ]
+            ]
+          }
+        },
+        {
+          "name": "unclosed_comment_starting_a_line_runs_to_the_end",
+          "input": {
+            "source": "<!-- draft\n`[[x]]`"
+          },
+          "expect": {
+            "commonmark": "<!-- draft\n`[[x]]`",
+            "skill_export": "<!-- draft\n`[[x]]`",
+            "ranges": []
+          }
+        },
+        {
+          "name": "fence_on_a_list_marker_line",
+          "input": {
+            "source": "- ```\n  [[a]]\n  ```\n  [[b]]\n- next"
+          },
+          "expect": {
+            "commonmark": "     \n       \n     \n  [[b]]\n- next",
+            "skill_export": "- ```\n  [[a]]\n     \n       \n      ",
+            "ranges": [
+              [
+                0,
+                19
+              ]
+            ]
+          }
+        },
+        {
+          "name": "span_stops_at_a_comment_line",
+          "input": {
+            "source": "a `x\n<!-- c -->\n[[y]] `"
+          },
+          "expect": {
+            "commonmark": "a `x\n<!-- c -->\n[[y]] `",
+            "skill_export": "a `x\n<!-- c -->\n[[y]] `",
+            "ranges": []
+          }
+        },
+        {
+          "name": "display_math_stops_at_a_comment_line",
+          "input": {
+            "source": "a $$x\n<!-- c -->\n[[y]] $$"
+          },
+          "expect": {
+            "commonmark": "a $$x\n<!-- c -->\n[[y]] $$",
+            "skill_export": "a $$x\n<!-- c -->\n[[y]] $$",
+            "ranges": []
+          }
+        },
+        {
+          "name": "escaped_dollars_do_not_close_display_math",
+          "input": {
+            "source": "$$a\\$$ [[b]] $$"
+          },
+          "expect": {
+            "commonmark": "               ",
+            "skill_export": "               ",
+            "ranges": [
+              [
+                0,
+                15
+              ]
+            ]
+          }
+        },
+        {
+          "name": "comment_later_in_a_line_stays_in_its_block",
+          "input": {
+            "source": "a <!-- x\n```\n[[y]]\n-->\n[[z]]\n```\n[[w]]\n"
+          },
+          "expect": {
+            "commonmark": "a <!-- x\n   \n     \n   \n     \n   \n[[w]]\n",
+            "skill_export": "a <!-- x\n   \n     \n   \n     \n   \n[[w]]\n",
+            "ranges": [
+              [
+                9,
+                32
+              ]
+            ]
+          }
+        },
+        {
+          "name": "second_ordered_item_holds_a_fence",
+          "input": {
+            "source": "1. a\n2. ```\n   [[x]]\n   ```\n   [[y]]\n"
+          },
+          "expect": {
+            "commonmark": "1. a\n      \n        \n      \n   [[y]]\n",
+            "skill_export": "1. a\n2. ```\n   [[x]]\n      \n        \n",
+            "ranges": [
+              [
+                5,
+                27
+              ]
+            ]
+          }
+        },
+        {
+          "name": "style_block",
+          "input": {
+            "source": "<style>\n[[x]]\n</style>\n[[y]]"
+          },
+          "expect": {
+            "commonmark": "       \n     \n        \n[[y]]",
+            "skill_export": "       \n     \n        \n[[y]]",
+            "ranges": [
+              [
+                0,
+                22
+              ]
+            ]
+          }
+        },
+        {
+          "name": "textarea_block_closes_on_its_first_line",
+          "input": {
+            "source": "<textarea>[[x]]</textarea>\n[[y]]"
+          },
+          "expect": {
+            "commonmark": "                          \n[[y]]",
+            "skill_export": "                          \n[[y]]",
+            "ranges": [
+              [
+                0,
+                26
+              ]
+            ]
+          }
+        },
+        {
+          "name": "math_does_not_close_after_a_space",
+          "input": {
+            "source": "$a $ [[x]]"
+          },
+          "expect": {
+            "commonmark": "$a $ [[x]]",
+            "skill_export": "$a $ [[x]]",
+            "ranges": []
+          }
+        },
+        {
+          "name": "math_does_not_close_before_a_digit",
+          "input": {
+            "source": "$a$5 [[x]]"
+          },
+          "expect": {
+            "commonmark": "$a$5 [[x]]",
+            "skill_export": "$a$5 [[x]]",
+            "ranges": []
+          }
+        },
+        {
+          "name": "math_does_not_close_at_an_escaped_dollar",
+          "input": {
+            "source": "$a\\$ [[x]]"
+          },
+          "expect": {
+            "commonmark": "$a\\$ [[x]]",
+            "skill_export": "$a\\$ [[x]]",
+            "ranges": []
+          }
+        },
+        {
+          "name": "a_dollar_after_a_digit_opens_no_math",
+          "input": {
+            "source": "5$, [[Note]], 10$."
+          },
+          "expect": {
+            "commonmark": "5$, [[Note]], 10$.",
+            "skill_export": "5$, [[Note]], 10$.",
+            "ranges": []
+          }
+        },
+        {
+          "name": "a_dollar_after_a_digit_opens_no_math_before_a_slash",
+          "input": {
+            "source": "5$/month [[Note]] or 10$/month"
+          },
+          "expect": {
+            "commonmark": "5$/month [[Note]] or 10$/month",
+            "skill_export": "5$/month [[Note]] or 10$/month",
+            "ranges": []
           }
         }
       ]
@@ -1200,7 +2251,7 @@
       ]
     },
     "body": {
-      "description": "Scan `body` for links (`options`: `code_rules` as `commonmark`, `skill-export` or `none`, `skip_html_comments`, `self_links`; each optional). `expect.links` are the links in order, each with `kind`, `raw`, `target`, `alias`, `at` (characters before the span), `text` (the source the span covers) and, when set, `heading`, `block`, `size`. `expect.abandoned` lists each `[[` given up on, with `reason`, `at`, `text` and `embed` when a `!` came before it. Every runner also checks that the plain link list agrees with the spanned one. A `!` after an odd run of `\\` is escaped: the link is a wikilink that starts at the `[[`.",
+      "description": "Scan `body` for links (`options`: `code_rules` as `commonmark`, `skill-export` or `none`, `skip_html_comments`, `self_links`; each optional). `expect.links` are the links in order, each with `kind`, `raw`, `target`, `alias`, `at` (characters before the span), `text` (the source the span covers) and, when set, `heading`, `block`, `size`. `expect.abandoned` lists each `[[` given up on, with `reason`, `at`, `text` and `embed` when a `!` came before it. Every runner also checks that the plain link list agrees with the spanned one. A `!` after an odd run of `\\` is escaped: the link is a wikilink that starts at the `[[`. A markdown link's text may hold balanced brackets but no `[[`, no link and no blank line. A `[[` whose first or second `[` opens a markdown link is not abandoned.",
       "cases": [
         {
           "name": "wikilinks_embeds_headings_and_aliases",
@@ -2867,6 +3918,415 @@
                 "alias": null,
                 "at": 20,
                 "text": "[[y]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "markdown_link_text_may_hold_brackets_that_balance",
+          "input": {
+            "body": "[[WIP] Fix](fix.md)"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "fix.md",
+                "target": "fix",
+                "alias": null,
+                "at": 0,
+                "text": "[[WIP] Fix](fix.md)"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "abandoned_not_reported_for_a_markdown_link_with_a_bracket_in_its_text",
+          "input": {
+            "body": "[[WIP] Fix](https://example.com)"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "abandoned_not_reported_for_a_markdown_link_inside_brackets",
+          "input": {
+            "body": "[[Note](Note.md)]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "Note.md",
+                "target": "Note",
+                "alias": null,
+                "at": 1,
+                "text": "[Note](Note.md)"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "abandoned_not_reported_for_a_defined_reference_link",
+          "input": {
+            "body": "[[1] and [[WIP] x][Ref]\n\n[1]: https://example.com\n[ref]: https://example.com"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "abandoned_an_undefined_reference_link",
+          "input": {
+            "body": "[[WIP] x][1]"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": [
+              {
+                "reason": "bracket",
+                "at": 0,
+                "text": "[[WIP"
+              }
+            ]
+          }
+        },
+        {
+          "name": "abandoned_a_bracket_before_a_wikilink_label",
+          "input": {
+            "body": "[[TODO][[Other]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "Other",
+                "target": "Other",
+                "alias": null,
+                "at": 7,
+                "text": "[[Other]]"
+              }
+            ],
+            "abandoned": [
+              {
+                "reason": "bracket",
+                "at": 0,
+                "text": "[[TODO"
+              }
+            ]
+          }
+        },
+        {
+          "name": "markdown_link_text_holding_a_wikilink_is_not_a_markdown_link",
+          "input": {
+            "body": "[see [[Note]]](a.md)"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "Note",
+                "target": "Note",
+                "alias": null,
+                "at": 5,
+                "text": "[[Note]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "markdown_link_text_does_not_cross_a_blank_line",
+          "input": {
+            "body": "[a\n\nb](x.md)"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "markdown_link_text_escaped_bracket",
+          "input": {
+            "body": "[a\\](x.md) [b\\]](y.md)"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "y.md",
+                "target": "y",
+                "alias": null,
+                "at": 11,
+                "text": "[b\\]](y.md)"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "abandoned_none_in_indented_code",
+          "input": {
+            "body": "Text\n\n    x = [[1, 2], [3]]"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "abandoned_none_in_math_pre_or_autolinks",
+          "input": {
+            "body": "$[[1,2]]$\n\n<pre>\n[[a\n</pre>\n\n<https://x/[[a>"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "comment_backtick_does_not_hide_a_link",
+          "input": {
+            "body": "<!-- don't use ` here --> [[A]] `x`",
+            "options": {
+              "skip_html_comments": true
+            }
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "A",
+                "target": "A",
+                "alias": null,
+                "at": 26,
+                "text": "[[A]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "comment_backtick_does_not_hide_a_link_default",
+          "input": {
+            "body": "<!-- don't use ` here --> [[A]] `x`"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "A",
+                "target": "A",
+                "alias": null,
+                "at": 26,
+                "text": "[[A]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "markdown_link_after_an_escaped_backslash",
+          "input": {
+            "body": "\\\\[a](b.md)"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "b.md",
+                "target": "b",
+                "alias": null,
+                "at": 2,
+                "text": "[a](b.md)"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "abandoned_reported_when_no_destination_follows",
+          "input": {
+            "body": "[[WIP] Fix](has space)"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": [
+              {
+                "reason": "bracket",
+                "at": 0,
+                "text": "[[WIP"
+              }
+            ]
+          }
+        },
+        {
+          "name": "markdown_link_with_dollars_in_its_url",
+          "input": {
+            "body": "[a](notes/$x$.md)"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "notes/$x$.md",
+                "target": "notes/$x$",
+                "alias": null,
+                "at": 0,
+                "text": "[a](notes/$x$.md)"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "abandoned_not_reported_for_an_angled_url",
+          "input": {
+            "body": "[[WIP] Fix](<https://example.com>)"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "abandoned_an_empty_definition_label_defines_nothing",
+          "input": {
+            "body": "[]: x\n\n[[]"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": [
+              {
+                "reason": "unclosed",
+                "at": 7,
+                "text": "[[]"
+              }
+            ]
+          }
+        },
+        {
+          "name": "markdown_link_text_holding_a_link_is_not_a_link",
+          "input": {
+            "body": "[a [b](y.md) c](x.md)"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "y.md",
+                "target": "y",
+                "alias": null,
+                "at": 3,
+                "text": "[b](y.md)"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "a_code_span_in_parentheses_after_a_bracket_is_code",
+          "input": {
+            "body": "x](`[[b]]`) [[a]](`[[c]]`)"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "a",
+                "target": "a",
+                "alias": null,
+                "at": 12,
+                "text": "[[a]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "a_non_ascii_space_ends_a_destination",
+          "input": {
+            "body": "[a](x `[[b]]`)"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "a_dollar_inside_a_word_opens_no_math",
+          "input": {
+            "body": "[[A$B]] and [[C$D]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "A$B",
+                "target": "A$B",
+                "alias": null,
+                "at": 0,
+                "text": "[[A$B]]"
+              },
+              {
+                "kind": "wikilink",
+                "raw": "C$D",
+                "target": "C$D",
+                "alias": null,
+                "at": 12,
+                "text": "[[C$D]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "a_dollar_at_a_word_end_opens_no_math",
+          "input": {
+            "body": "[[Cost$]] and [[$Budget]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "Cost$",
+                "target": "Cost$",
+                "alias": null,
+                "at": 0,
+                "text": "[[Cost$]]"
+              },
+              {
+                "kind": "wikilink",
+                "raw": "$Budget",
+                "target": "$Budget",
+                "alias": null,
+                "at": 14,
+                "text": "[[$Budget]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "a_line_of_only_code_is_not_blank",
+          "input": {
+            "body": "[a\n`b`\nc](x.md)"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "x.md",
+                "target": "x",
+                "alias": null,
+                "at": 0,
+                "text": "[a\n`b`\nc](x.md)"
               }
             ],
             "abandoned": []

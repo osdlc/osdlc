@@ -940,12 +940,11 @@ fn double_backtick_inline_spans_are_stripped() {
     );
 }
 
-/// The fence in the list item is indented four spaces, one too many for a
-/// fence marker. Its two backtick runs still pair up as one inline span,
-/// because no line between them ends the span's block, so the link between
-/// them is stripped.
+/// The fence in the list item is indented four spaces, two past where the
+/// item's text starts, so it is a fence in the item and the link in it is
+/// code.
 #[test]
-fn agrees_a_list_item_fence_without_a_blank_line_is_stripped_as_a_span() {
+fn agrees_a_list_item_fence_is_stripped() {
     let targets = note_targets("parsing/code-spans.md");
     assert!(!targets.contains(&"indented-fence-should-not-resolve".to_string()));
     // The note yields exactly its one real reference.
@@ -959,6 +958,16 @@ fn agrees_a_list_item_fence_without_a_blank_line_is_stripped_as_a_span() {
 fn agrees_a_list_item_fence_with_a_blank_line_is_stripped() {
     let body = "- a list item\n\n    ```\n    [[a]]\n\n    [[b]]\n    ```\n";
     assert!(body_links(body).is_empty());
+}
+
+/// Indented code is code, as CommonMark reads it, so no reference is
+/// harvested from it. A line indented four spaces past a list item's text is code in
+/// the item; one indented less is the item's own text.
+#[test]
+fn indented_code_is_stripped() {
+    let body = "Text\n\n    [[a]]\n\n- item\n\n    [[b]]\n\n      [[c]]\n";
+    let targets: Vec<String> = body_links(body).into_iter().map(|l| l.target).collect();
+    assert_eq!(targets, vec!["b"]);
 }
 
 /// A line starting with `|` is a table row to `strip_code`, which cuts it at

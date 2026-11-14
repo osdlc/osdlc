@@ -8,7 +8,7 @@
 //! Offsets in the suite count characters, so neither twin's own unit (bytes
 //! here, UTF-16 code units in TypeScript) leaks into it.
 
-use markdown_link::code::{CodeRules, strip_code_with};
+use markdown_link::code::{CodeRules, code_ranges, strip_code_with};
 use markdown_link::{
     AbandonReason, BodyLinkKind, LinkKind, ScanOptions, Size, body_links, body_links_spanned,
     body_links_spanned_with, display_text, is_vault_link_url, md_link_target, parse_inner,
@@ -39,7 +39,16 @@ pub fn run(section: &str, input: &Value) -> Result<Value, String> {
                     return Err(format!("{rules} changed the character count"));
                 }
             }
-            Ok(json!({ "commonmark": commonmark, "skill_export": skill_export }))
+            let ranges: Vec<Value> = code_ranges(source, CodeRules::CommonMark)
+                .into_iter()
+                .map(|range| {
+                    json!([
+                        chars_before(source, range.start),
+                        chars_before(source, range.end)
+                    ])
+                })
+                .collect();
+            Ok(json!({ "commonmark": commonmark, "skill_export": skill_export, "ranges": ranges }))
         }
         "inner" => {
             let i = fields(input, &["inner"], &["embed"])?;

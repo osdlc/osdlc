@@ -66,21 +66,29 @@ bodyLinksSpanned('See [[Note#h|alias]] and `[[not a link]]`')
 
 ## Exports
 
-- Code: `stripCode` blanks fenced and inline code to spaces, keeping every
-  `\n` and the code point count, so links in code are not harvested.
-  `stripCodeWith(text, rules)` takes `'commonmark'` (the default),
-  `'skill-export'` or `'none'`. `'commonmark'` finds a fence inside a list item
-  or a block quote, with the item's indent, and keeps a code span inside its
-  cell of a table row: a `|` not escaped as `\|` ends the cell, backticks or
-  not. A fence in a container ends, closed or not, with the container; a
-  line of a paragraph that is not indented to its list item ends the item
-  here, where CommonMark keeps it (lazy continuation is not tracked).
-  `'skill-export'` reads one line at a time and knows no containers. `'none'`
-  finds no code and returns the text unchanged: use it to scan a run of text
-  that a markdown parser, such as remark, has already taken the code out of.
+- Code: `stripCode` blanks code to spaces, keeping every `\n` and the code
+  point count, so links in code are not harvested. Code is fenced and
+  indented code, inline spans, math (`$…$`, `$$…$$`), `<pre>`, `<script>`,
+  `<style>` and `<textarea>` blocks, and autolinks. A backtick or `$` in an
+  HTML comment opens nothing. `stripCodeWith(text, rules)` takes
+  `'commonmark'` (the default), `'skill-export'` or `'none'`. `'commonmark'`
+  finds a fence inside a list item or a block quote, with the item's indent,
+  and keeps a code span inside its cell of a table row: a `|` not escaped as
+  `\|` ends the cell, backticks or not. A fence in a container ends, closed
+  or not, with the container; a line of a paragraph that is not indented to
+  its list item ends the item here, where CommonMark keeps it (lazy
+  continuation is not tracked). `'skill-export'` reads one line at a time and
+  knows no containers for fences. Indented code and raw HTML blocks follow
+  list items under both, and do not know block quotes. `'none'` finds no code
+  and returns the text unchanged: use it to scan a run of text that a
+  markdown parser, such as remark, has already taken the code out of.
+  `codeRanges(text, rules)` returns where the code is, as `TextRange`s, for a
+  caller that must know without scanning again.
 - One link: `parseInner` splits a wikilink body into target, heading, block
   (`#^id`), alias and, for an embed, size; `targetRange` is where the target
-  sits in it. `parseInnerSelf` also reads a body with no target and a `#`
+  sits in it. `splitAlias` splits it at the first `|`, without the `\` that
+  escapes the pipe in a table cell: the destination as written, and the
+  alias. `parseInnerSelf` also reads a body with no target and a `#`
   fragment, `#Heading`, as a link to the note it is in, with an empty target.
   `isSizeSpec` and `parseSize` read `300` or `300x200`.
 - Markdown link URLs: `isVaultLinkUrl` says whether a URL is a note or an
@@ -98,10 +106,12 @@ bodyLinksSpanned('See [[Note#h|alias]] and `[[not a link]]`')
   (`reason`, `embed`, `start`, `end`), so a caller can flag link syntax left
   in the text. The reasons (`AbandonReason`) are `'bracket'` (a `[` or `]`
   before `]]`), `'code'` (the target is only code), `'empty-target'` and
-  `'unclosed'`. Its result is a `BodyScan`. A `!` after an odd run of `\` is
-  escaped: `\![[Note]]` is a `'wikilink'` whose span starts at the `[[`, so a
-  renderer shows a literal `!` and a normal link. `\\![[Note]]` is still an
-  embed.
+  `'unclosed'`. Its result is a `BodyScan`. A `[[` whose first or second `[`
+  opens a Markdown link, such as `[[WIP] Fix](https://example.com)`, is not
+  one. An inline link with a title is not read as one yet. A `!` after an odd
+  run of `\` is escaped: `\![[Note]]` is a `'wikilink'` whose span starts at
+  the `[[`, so a renderer shows a literal `!` and a normal link. `\\![[Note]]`
+  is still an embed.
 - Display text: `displayText` replaces each wikilink and embed with what a
   reader sees, its alias or else its target. An embed's `|300` or `|300x200`
   is a size, not text, so `![[img.png|300]]` shows `img.png`.
