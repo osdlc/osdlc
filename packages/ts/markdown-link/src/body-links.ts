@@ -509,24 +509,29 @@ function markdownLink(
 class UrlScan {
   readonly chars: string[]
   /** For each index, the first `)`, `>` or whitespace at or after it. */
-  private readonly stop: number[]
+  private readonly stop: Int32Array
   /** For each index, the last `.` or `/` before it, or -1. */
-  private readonly mark: number[]
+  private readonly mark: Int32Array
   /** `isVaultLinkUrl` of each URL tail asked so far, by `start,end`. */
   private readonly answers = new Map<string, boolean>()
 
   constructor(body: string) {
     const chars = Array.from(body)
+    const n = chars.length
     this.chars = chars
-    this.stop = Array.from({ length: chars.length + 1 }, () => chars.length)
-    for (let k = chars.length - 1; k >= 0; k--) {
+    const stop = new Int32Array(n + 1)
+    const mark = new Int32Array(n + 1)
+    stop[n] = n
+    for (let k = n - 1; k >= 0; k--) {
       const c = chars[k]!
-      this.stop[k] = c === ')' || c === '>' || isWhitespace(c) ? k : this.stop[k + 1]!
+      stop[k] = c === ')' || c === '>' || isWhitespace(c) ? k : stop[k + 1]!
     }
-    this.mark = Array.from({ length: chars.length + 1 }, () => -1)
-    for (let k = 0; k < chars.length; k++) {
-      this.mark[k + 1] = chars[k] === '.' || chars[k] === '/' ? k : this.mark[k]!
+    mark[0] = -1
+    for (let k = 0; k < n; k++) {
+      mark[k + 1] = chars[k] === '.' || chars[k] === '/' ? k : mark[k]!
     }
+    this.stop = stop
+    this.mark = mark
   }
 
   /**
