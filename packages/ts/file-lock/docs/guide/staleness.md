@@ -52,7 +52,8 @@ Things to know:
 - Liveness is `pidAlive(pid)`: signal 0, with `EPERM` (another user's process)
   counting as alive. Pass `{ alive }` to use your own probe.
 - A pid can be reused by an unrelated later process, which then keeps the lock
-  held. When that matters, record a start time and write your own rule (below).
+  held. Record the holder's start time and return `{ pid, startedAt }` from
+  `pids`: such a holder is alive only while `sameProcess` says so.
 - A pid only means something on one machine. Do not use this rule for a lock
   on a shared network drive.
 
@@ -94,21 +95,24 @@ Any function of `HeldLock` works. Check field types yourself: the content is
 whatever is on disk.
 
 ```ts
-import { claimLock, pidAlive, type HeldLock } from '@osdlc/file-lock'
+import { claimLock, processIdentity, sameProcess, type HeldLock } from '@osdlc/file-lock'
 
-type Owner = { pid?: number; started_at?: string }
+type Owner = { pid?: number; started_at?: string | null }
 
 // Stale when the pid is gone, or now belongs to a different process.
 function ownerGone(held: HeldLock<Owner>): boolean {
   const owner = held.content
   if (owner === null) return false // not JSON: another program's file, leave it alone
   if (typeof owner.pid !== 'number') return true
-  if (!pidAlive(owner.pid)) return true
-  return owner.started_at !== undefined && owner.started_at !== startTimeOf(owner.pid)
+  return !sameProcess(owner.pid, owner.started_at ?? '')
 }
 
-claimLock<Owner>(lock, { pid: process.pid, started_at: startTimeOf(process.pid) }, { isStale: ownerGone })
+claimLock<Owner>(lock, { pid: process.pid, started_at: processIdentity(process.pid) }, { isStale: ownerGone })
 ```
+
+`holderGone((o) => [{ pid: o.pid, startedAt: o.started_at }])` does the same.
+`sameProcess` reads a start time it cannot parse (here `''`) as unknown, so a
+live pid with no recorded start counts as the owner.
 
 ## Changing what a held lock records
 
