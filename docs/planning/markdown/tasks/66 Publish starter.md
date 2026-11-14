@@ -20,4 +20,5 @@ Publish `@osdlc/corpus-sdlc-starter` to npm from its folder in osdlc/osdlc (task
 work: merging the Version Packages pull request there publishes it. Its `package.json` depends on `@osdlc/corpus-profile-sdlc`, so that is published
 first. After 63, 65, 61, 78 and 80.
 
-Done: `@osdlc/corpus-sdlc-starter` 0.1.0 is on npm, published 2026-11-13.
+Done: `@osdlc/corpus-sdlc-starter` 0.1.0 is on npm, published 2026-11-13. That release went out with the
+leak check running on pull requests only. Running it before each publish is what is left of task 65.

@@ -13,6 +13,7 @@ prs:
 ---
 
 `uses` in the root file, as decision D15 says. `uses: [sdlc/*]` takes a parent's types as they are,
-so a corpus no longer needs a one-line schema file that holds only `x-extends` for each type. After 9. In progress in [#12](https://github.com/osdlc/markdown/pull/12).
+so a corpus no longer needs a one-line schema file that holds only `x-extends` for each type. After 9.
+Built in [#12](https://github.com/osdlc/markdown/pull/12).
 
 Done: `uses` is in `@osdlc/corpus-schema` 0.4.0, on npm since 2026-11-13 (task 36).

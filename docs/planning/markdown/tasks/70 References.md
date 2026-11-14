@@ -21,7 +21,7 @@ any level, so a plain vault with no types can reference a corpus. Nested referen
 namespace path, such as `b/c/principles`. An `x-ref` to a type also matches records of that type, or
 of a type that extends or uses it, in every referenced corpus. So a profile's field with `x-ref:
 sdlc/principles` resolves `P-0002` in the starter, whose principles use the profile's. After 27
-and 29. In progress in [#12](https://github.com/osdlc/markdown/pull/12), which also defines the
+and 29. Built in [#12](https://github.com/osdlc/markdown/pull/12), which also defines the
 namespace and identity rules.
 
 Done: `references` and `_references/` is in `@osdlc/corpus-schema` 0.4.0, on npm since 2026-11-13 (task 36).

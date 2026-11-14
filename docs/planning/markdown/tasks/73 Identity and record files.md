@@ -26,7 +26,6 @@ The rules that let sdlc's own planning folders validate as they are, and that te
 - Narrative folders: a folder in a type folder whose name starts with `_` holds narrative, not
   records.
 
-After 9 and 70. In progress in [#12](https://github.com/osdlc/markdown/pull/12). It shipped in 0.4.0
-(task 36).
+After 9 and 70. Built in [#12](https://github.com/osdlc/markdown/pull/12).
 
 Done: identity, the id cut, `x-record-file` and narrative folders is in `@osdlc/corpus-schema` 0.4.0, on npm since 2026-11-13 (task 36).

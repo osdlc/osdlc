@@ -17,7 +17,7 @@ in `docs/planning/markdown/profile/`, a corpus with only types. This plan's corp
 builds its own types on the profile's with `x-extends`. Tasks and milestones add fields, and
 decisions use the profile's type as it is. The components, layers, repos, overlaps and datasets
 stay local: they describe this ecosystem. CI in osdlc/osdlc checks the plan with its corpus-schema, which
-knows `extends`. The profile is private and not on npm. After 9. In progress in
+knows `extends`. The profile is private and not on npm. After 9. Built in
 [osdlc/markdown#14](https://github.com/osdlc/markdown/pull/14).
 
 Task 53 removes the profile: the plan moves to the sdlc profile and `profile/` is

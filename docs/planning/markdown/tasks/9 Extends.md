@@ -24,7 +24,7 @@ parent at first. This task also covers cross-corpus `x-ref`. A parent gives type
 may share an id with a parent's record (see [Sharing across
 corpora](../ecosystem-plan.md#sharing-across-corpora)).
 It no longer waits on [sksizer/dev#4069](https://github.com/sksizer/dev/pull/4069): types are plain
-JSON Schema, so moving model-schema to osdlc is separate work. After 3 and 21. In progress in
+JSON Schema, so moving model-schema to osdlc is separate work. After 3 and 21. Built in
 [#12](https://github.com/osdlc/markdown/pull/12).
 
 Done: `extends`, `x-extends` and cross-corpus `x-ref` is in `@osdlc/corpus-schema` 0.4.0, on npm since 2026-11-13 (task 36).
