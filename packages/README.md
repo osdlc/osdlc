@@ -213,6 +213,11 @@ Developed here, in this repository:
   corpus declares about itself, typed records kept as Markdown, YAML and JSON
   files in a folder, checked against the schemas, ids and links the folder
   holds; a library and a `corpus-schema` command)
+- `packages/ts/corpus-query` (`@osdlc/corpus-query` on npm, queries over one
+  corpus-schema corpus: describe its types, find records by filter and
+  full-text search, read a record with its references and backlinks, walk
+  references and count field values; one core behind a TypeScript API, a
+  `corpus-query` command, a REST server and an MCP server)
 - `packages/ts/corpus-site` (`@osdlc/corpus-site` on npm, an Astro
   integration that publishes a corpus-schema corpus as a static site: a page
   for each type with filters and search, a page for each record, the corpus
