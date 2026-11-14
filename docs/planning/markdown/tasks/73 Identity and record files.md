@@ -2,7 +2,7 @@
 number: 73
 title: Identity and record files
 detail: "purl, id cut, x-record-file, _ folders"
-status: doing
+status: done
 type: functional
 milestone: "[m-npm](../milestones/m-npm.md)"
 after:
@@ -28,3 +28,5 @@ The rules that let sdlc's own planning folders validate as they are, and that te
 
 After 9 and 70. In progress in [#12](https://github.com/osdlc/markdown/pull/12). It shipped in 0.4.0
 (task 36).
+
+Done: identity, the id cut, `x-record-file` and narrative folders is in `@osdlc/corpus-schema` 0.4.0, on npm since 2026-11-13 (task 36).

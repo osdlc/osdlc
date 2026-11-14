@@ -2,7 +2,7 @@
 number: 44
 title: Flatten extends
 detail: closed child types
-status: doing
+status: done
 type: functional
 milestone: "[m-npm](../milestones/m-npm.md)"
 after:
@@ -18,3 +18,5 @@ parent's rule, and never loosen it. After 9. Built in
 [#12](https://github.com/osdlc/markdown/pull/12), not yet merged. The plan's tasks and milestones
 types no longer list the profile's fields ([#14](https://github.com/osdlc/markdown/pull/14)). The
 task is done when #12 merges.
+
+Done: flattened `x-extends` is in `@osdlc/corpus-schema` 0.4.0, on npm since 2026-11-13 (task 36).

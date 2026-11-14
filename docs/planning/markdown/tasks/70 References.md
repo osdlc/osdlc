@@ -2,7 +2,7 @@
 number: 70
 title: References
 detail: "references, _references/"
-status: doing
+status: done
 type: functional
 milestone: "[m-npm](../milestones/m-npm.md)"
 after:
@@ -23,3 +23,5 @@ of a type that extends or uses it, in every referenced corpus. So a profile's fi
 sdlc/principles` resolves `P-0002` in the starter, whose principles use the profile's. After 27
 and 29. In progress in [#12](https://github.com/osdlc/markdown/pull/12), which also defines the
 namespace and identity rules.
+
+Done: `references` and `_references/` is in `@osdlc/corpus-schema` 0.4.0, on npm since 2026-11-13 (task 36).

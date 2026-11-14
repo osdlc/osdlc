@@ -2,11 +2,14 @@
 number: 63
 title: Starter corpus
 detail: "@osdlc/corpus-sdlc-starter"
-status: doing
+status: done
 type: functional
 milestone: "[m-upstream](../milestones/m-upstream.md)"
 after:
   - "[49 SDLC profiles](49%20SDLC%20profiles.md)"
+prs:
+  - "[osdlc/osdlc#794](https://github.com/osdlc/osdlc/pull/794)"
+  - "[osdlc/osdlc#804](https://github.com/osdlc/osdlc/pull/804)"
 ---
 
 Starter instance corpus: `@osdlc/corpus-sdlc-starter`, built in
@@ -21,3 +24,5 @@ and P-0002 "Favor deterministic over probabilistic judgement". Standards follow 
 repo names it under `references` (decision D15) with the prefix `osdlc` and cites its records by
 id. CI in osdlc/osdlc
 (`.github/workflows/profiles.yml`) validates it with `--strict`. Decision D14 says why it is a starter and not dev's own records. After 49.
+
+Done: `@osdlc/corpus-sdlc-starter` 0.1.0 is on npm (2026-11-13), from `packages/corpora/sdlc-starter/`. More content is task 64.

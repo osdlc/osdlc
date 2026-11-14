@@ -4,7 +4,9 @@ kind: profile
 language: markdown
 layer: "[profiles](../layers/profiles.md)"
 states: [present, target]
-status: unpublished
+status: published
+version: "0.1.0"
+registry: "https://www.npmjs.com/package/@osdlc/corpus-profile-claims"
 repo_present: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
 path_present: packages/profiles/claims
 repo_target: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
@@ -39,5 +41,5 @@ types with x-extends instead of copying them.
 - Task 76 rewrites it as pack-claims.
 - It came to osdlc/osdlc (decision D19, task 78), at packages/profiles/claims, with a changeset for
   its first release, 0.1.0.
-- Not published. The owner stages the name and sets its trusted publisher (task 80), and the release
-  needs osdlc/osdlc#785. The npm name does not change.
+- Published to npm at 0.1.0 on 2026-11-13, by the Version Packages pull request (#804). The release
+  needed osdlc/osdlc#785. The npm name does not change.

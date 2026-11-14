@@ -2,11 +2,13 @@
 number: 80
 title: Profile publishers
 detail: npm, owner
-status: owner
+status: done
 type: supporting
 milestone: "[m-sdlc-profile](../milestones/m-sdlc-profile.md)"
 after:
   - "[78 Bring in profiles](78%20Models%20repo%20setup.md)"
+prs:
+  - "[osdlc/osdlc#785](https://github.com/osdlc/osdlc/pull/785)"
 ---
 
 Set up npm trusted publishing for the packages that publish from osdlc/osdlc ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)):
@@ -16,3 +18,5 @@ osdlc/osdlc's release workflow, as `packages/README.md` describes for a new libr
 needs the npm account. After 78, which brings the packages in. The release also needs the
 `package-globs` input of [osdlc/osdlc#785](https://github.com/osdlc/osdlc/pull/785), set in
 `packages-publish.yml` to `packages/ts/* packages/profiles/* packages/corpora/*`. Tasks 60, 61 and 66 publish after it.
+
+Done: the three packages were published from osdlc/osdlc's release workflow, with provenance, on 2026-11-13.

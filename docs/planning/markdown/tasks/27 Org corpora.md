@@ -2,7 +2,7 @@
 number: 27
 title: Org corpora
 detail: "a parent: types only"
-status: doing
+status: done
 type: functional
 milestone: "[m-npm](../milestones/m-npm.md)"
 after:
@@ -19,3 +19,5 @@ lockfile pin), a git dependency for a private org corpus, or a local folder. Loa
 and a cycle is an error. An update arrives when the lockfile changes. After 9. See [Sharing across
 corpora](../ecosystem-plan.md#sharing-across-corpora).
 In progress in [#12](https://github.com/osdlc/markdown/pull/12).
+
+Done: `extends` and `references`, with transitive loading and cycle errors is in `@osdlc/corpus-schema` 0.4.0, on npm since 2026-11-13 (task 36).

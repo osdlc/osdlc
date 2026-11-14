@@ -2,7 +2,7 @@
 number: 23
 title: Claims profile
 detail: npm package
-status: doing
+status: done
 type: functional
 milestone: "[m-npm](../milestones/m-npm.md)"
 after:
@@ -10,6 +10,8 @@ after:
   - "[36 Release 0.4.0](36%20Release%200.3.0.md)"
 prs:
   - "[osdlc/markdown#15](https://github.com/osdlc/markdown/pull/15)"
+  - "[osdlc/osdlc#794](https://github.com/osdlc/osdlc/pull/794)"
+  - "[osdlc/osdlc#804](https://github.com/osdlc/osdlc/pull/804)"
 ---
 
 The claims profile. The example from task 4 is already in the right place. The profile's types are
@@ -27,3 +29,5 @@ the profile is checked with a corpus-schema that knows `extends`. It no longer w
 profile can ship with its statements using relative links and a pattern check for evidence lines.
 When 31 lands, a new profile version switches them to `x-ref`. What is left is the publish (tasks
 80 and 60) and the switch-over of the corpora that copy the types.
+
+Done: `@osdlc/corpus-profile-claims` 0.1.0 is on npm (2026-11-13), built from `packages/profiles/claims/`. Switching the corpora that copy its types is task 37.
