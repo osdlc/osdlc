@@ -1,0 +1,11 @@
+{
+  // Typechecks src/, tests/ and examples/. The build has its own include.
+  // The package's own name resolves through `exports` to the built `dist/`, so
+  // run the build before the typecheck. `browser/` runs in the page, so the
+  // DOM types are on.
+  "extends": "@osdlc/tsconfig/node-lib",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+  },
+  "include": ["src", "tests", "examples", "vitest.config.ts"]
+}

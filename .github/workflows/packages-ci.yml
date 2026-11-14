@@ -33,6 +33,10 @@
 # git never run against a real one. A run that is not a pull request picks
 # every package, so a failure here also blocks a release.
 #
+# `story-harness` runs story-harness's browser tests and its `story-shots`
+# command end to end in Docker, which `verify` does not set up, when
+# story-harness is picked. It blocks a release the same way.
+#
 # Every action is pinned to a commit SHA; the comment names its release.
 name: packages
 
@@ -161,6 +165,42 @@ jobs:
         run: >-
           pnpm --filter @osdlc/typed-git --filter @osdlc/pr-update --filter @osdlc/trust-repo
           --no-bail run test
+
+  # Not required by the ruleset, but packages-publish.yml calls this workflow
+  # before every release, so a failure here blocks every library's release,
+  # as old-git does. `verify` does not install Chromium or use Docker.
+  story-harness:
+    name: story-harness (browser and Docker, ubuntu-latest, node 24)
+    needs: packages
+    if: >-
+      !cancelled() && contains(fromJSON(needs.packages.outputs.packages || '[]'), 'packages/ts/story-harness')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile --filter '@osdlc/story-harness...'
+
+      - name: Build
+        run: pnpm --filter '@osdlc/story-harness...' --if-present run build
+
+      - name: Install Chromium
+        run: pnpm --filter @osdlc/story-harness exec playwright install --with-deps chromium
+
+      - name: Browser tests
+        run: pnpm --filter @osdlc/story-harness run test:browser
+
+      - name: story-shots end to end
+        run: pnpm --filter @osdlc/story-harness run test:shots
 
   windows-tier2:
     needs: packages

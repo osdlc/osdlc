@@ -1,0 +1,34 @@
+<!doctype html>
+<!-- A stand-in for a built Storybook's iframe: it emits the channel events
+     preparePage and openStory wait for, and paints a fixed card per theme. -->
+<html>
+  <body style="margin: 0; font-family: sans-serif">
+    <div id="card" style="margin: 40px; padding: 24px; border-radius: 12px; width: 320px">Card</div>
+    <script>
+      const query = new URLSearchParams(location.search)
+      const id = query.get('id')
+      const dark = (query.get('globals') ?? '').includes('theme:dark')
+      document.body.style.background = dark ? '#111' : '#fff'
+      const card = document.getElementById('card')
+      card.style.background = dark ? '#335' : '#cde'
+      card.style.color = dark ? '#fff' : '#000'
+      if (id.endsWith('--wide')) card.style.width = '800px'
+      // A story that crashes after it renders, as a broken component would.
+      if (id.endsWith('--crash'))
+        setTimeout(() => {
+          throw new Error('the story crashed')
+        }, 0)
+      const screenshot = id.endsWith('--perf') ? { skip: 'a perf scene' } : { settleMs: 0 }
+      const listeners = {}
+      window.__STORYBOOK_PREVIEW__ = {
+        channel: { on: (name, fn) => (listeners[name] ||= []).push(fn) },
+        currentRender: { story: { parameters: { screenshot } } },
+      }
+      setTimeout(
+        () =>
+          (listeners.storyFinished ?? []).forEach((fn) => fn({ storyId: id, status: 'success' })),
+        10,
+      )
+    </script>
+  </body>
+</html>

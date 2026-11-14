@@ -309,6 +309,11 @@ Developed here, in this repository:
   on git refs: create, replace and delete a ref at any git remote only if it
   still holds the sha you read, through `git push --force-with-lease`, with the
   payload as canonical JSON in the ref's commit)
+- `packages/ts/story-harness` (`@osdlc/story-harness` on npm, a component's
+  static Storybook build as its test harness: exact Linux screenshot
+  baselines from a pinned Playwright container, Playwright helpers for
+  interaction and perf specs, an in-page metrics hook and a perf report that
+  parallel workers merge)
 
 The development repository will take each TypeScript library from npm, like
 any other consumer. Today it still keeps its own copies. Open issues and pull
