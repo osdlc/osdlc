@@ -20,3 +20,4 @@ They are never reused. A decision is `proposed`, `accepted` or `superseded`.
 
 - [D-01](decisions/D-01-one-mechanism-two-shapes.md): One mechanism, two shapes
 - [D-02](decisions/D-02-only-a-regular-file-is-a-lock.md): Only a regular file is a lock
+- [D-03](decisions/D-03-a-rust-twin-for-shared-lock-files.md): A Rust twin for lock files both languages hold

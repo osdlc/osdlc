@@ -33,6 +33,21 @@ pnpm test
 `pnpm run smoke` runs `tests/smoke.mjs`, a short check of the built package
 under Node. It is not published. `pnpm run coverage` reports test coverage.
 
+`tests/conformance.test.ts` runs the `file-lock` conformance suite,
+`packages/conformance/file-lock/suite.json`, which the Rust crate
+`osdlc-file-lock` runs too. This package is the suite's reference: after
+adding a case's `input` by hand, or changing behaviour the suite records, run
+`pnpm run conformance:write` on Linux or macOS to rewrite the expected values.
+A change to the protocol in `packages/conformance/file-lock/SPEC.md` is a
+change to both implementations.
+
+`tests/interop.test.ts` runs Node.js and Rust processes against one lock. It
+is skipped unless the crate's example is built:
+
+```sh
+cargo build --manifest-path ../../rust/Cargo.toml -p osdlc-file-lock --example interop-counter
+```
+
 Other checks:
 
 ```sh

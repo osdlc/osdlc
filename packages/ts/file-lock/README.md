@@ -283,6 +283,16 @@ This comparison is from each package's documentation. Pick `proper-lockfile`
 for an async, mtime-refreshed lock with no holder check. Pick an OS lock when a
 native addon is acceptable and the kernel should release the lock on exit.
 
+## Rust
+
+The crate [`osdlc-file-lock`](https://github.com/osdlc/osdlc/tree/main/packages/rust/osdlc-file-lock)
+implements the same protocol, so a Rust process and a Node.js process can hold
+one lock file in turn: a lock written by either is claimed, taken over and
+released by the other. The two form the `file-lock` family, held to one
+[conformance suite](https://github.com/osdlc/osdlc/tree/main/packages/conformance/file-lock),
+whose `SPEC.md` states the protocol. Its README lists what each has that the
+other does not.
+
 ## Stability
 
 The package is 0.x, so any minor release may break the API. Within that, each

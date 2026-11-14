@@ -98,9 +98,9 @@ the standard.
   with expected values written by the reference implementation's generator.
   `pnpm run check:conformance` checks the suites with `@osdlc/conformance-suites`;
   `packages/conformance/config.json` holds its exemptions. `tiered-dirs`,
-  `config-layers`, `corpus-schema`, `frontmatter-lossless`, `intersect`,
-  `markdown-link`, `markdown-tags` and `path-guard` are there. Until they move,
-  `gfm-pipe-table` (the Rust implementation of `@osdlc/gfm-table`) keeps
+  `config-layers`, `corpus-schema`, `file-lock`, `frontmatter-lossless`,
+  `intersect`, `markdown-link`, `markdown-tags` and `path-guard` are there. Until
+  they move, `gfm-pipe-table` (the Rust implementation of `@osdlc/gfm-table`) keeps
   `packages/rust/gfm-pipe-table/tests/fixtures/parity.json`, and
   `markdown-contract` runs the TypeScript package's `corpus/` directly.
   `etag-write` has no shared cases yet.
@@ -165,6 +165,9 @@ Developed here, in this repository:
 - `packages/rust/markdown-relink` (`markdown-relink` on crates.io)
 - `packages/rust/markdown-vault-fs` (`markdown-vault-fs` on crates.io, the
   vault layer over `vfs-walk`)
+- `packages/rust/osdlc-file-lock` (`osdlc-file-lock` on crates.io, the Rust
+  implementation of `@osdlc/file-lock`, so a Rust process and a Node.js process
+  can hold one lock file in turn)
 - `packages/rust/path-guard` (`path-guard` on crates.io)
 - `packages/rust/slug-collate` (`slug-collate` on crates.io)
 - `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)
@@ -190,7 +193,7 @@ Developed here, in this repository:
 - `packages/ts/etag-write` (`@osdlc/etag-write` on npm, the crate's TypeScript implementation)
 - `packages/ts/file-lock` (`@osdlc/file-lock` on npm, cross-process exclusive
   file locks: a held lock with an owner token and a staleness rule, and a short
-  critical section; TypeScript only, since Rust has `File::lock`)
+  critical section; the `osdlc-file-lock` crate is its Rust implementation)
 - `packages/ts/frontmatter-lossless` (`@osdlc/frontmatter-lossless` on npm,
   the TypeScript implementation of the `frontmatter-lossless` crate)
 - `packages/ts/color` (`@osdlc/color` on npm, sRGB colour arithmetic for

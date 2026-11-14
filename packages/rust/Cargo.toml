@@ -9,7 +9,7 @@
 [workspace]
 # resolver 3 picks dependency versions that support `rust-version` (the MSRV).
 resolver = "3"
-members = ["agent-adapt", "config-layers", "etag-write", "frontmatter-lossless", "gfm-pipe-table", "glob-intersect", "markdown-contract", "markdown-corpus", "markdown-link", "markdown-relink", "markdown-tags", "markdown-vault-fs", "path-guard", "slug-collate", "tiered-dirs", "tradecraft", "typed-git", "vfs-seam", "vfs-walk", "web-access", "yaml-splice", "yaml-splice-wasm"]
+members = ["agent-adapt", "config-layers", "etag-write", "frontmatter-lossless", "gfm-pipe-table", "glob-intersect", "markdown-contract", "markdown-corpus", "markdown-link", "markdown-relink", "markdown-tags", "markdown-vault-fs", "osdlc-file-lock", "path-guard", "slug-collate", "tiered-dirs", "tradecraft", "typed-git", "vfs-seam", "vfs-walk", "web-access", "yaml-splice", "yaml-splice-wasm"]
 
 [workspace.package]
 edition = "2024"
@@ -77,6 +77,8 @@ tracing = "0.1"
 # Pinned to the version slug-collate's normalisation code is built and tested against,
 # so the minimal-versions job does not resolve an older 0.1.x that predates it.
 unicode-normalization = "0.1.26"
+# osdlc-file-lock's claim tokens: random v4 UUIDs, as @osdlc/file-lock writes.
+uuid = { version = "1", features = ["v4"] }
 walkdir = "2.5"
 # Must equal the version of the wasm-bindgen CLI that
 # yaml-splice-wasm/build.sh runs, so it is pinned exactly.
@@ -94,6 +96,7 @@ markdown-corpus = { path = "markdown-corpus", version = "0.3.1" }
 markdown-link = { path = "markdown-link", version = "0.9.1" }
 markdown-relink = { path = "markdown-relink", version = "0.4.1" }
 markdown-vault-fs = { path = "markdown-vault-fs", version = "0.6.1", default-features = false }
+osdlc-file-lock = { path = "osdlc-file-lock", version = "0.2.0" }
 path-guard = { path = "path-guard", version = "0.3.4" }
 slug-collate = { path = "slug-collate", version = "0.2.0" }
 tiered-dirs = { path = "tiered-dirs", version = "0.3" }

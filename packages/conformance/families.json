@@ -14,6 +14,14 @@
       { "language": "ts", "dir": "packages/ts/corpus-schema", "name": "@osdlc/corpus-schema" }
     ]
   },
+  "file-lock": {
+    "reference": "ts",
+    "generator": "pnpm --filter @osdlc/file-lock conformance:write",
+    "implementations": [
+      { "language": "ts", "dir": "packages/ts/file-lock", "name": "@osdlc/file-lock" },
+      { "language": "rust", "dir": "packages/rust/osdlc-file-lock", "name": "osdlc-file-lock" }
+    ]
+  },
   "frontmatter-lossless": {
     "reference": "rust",
     "generator": "cargo run -p frontmatter-lossless --example conformance-write",
