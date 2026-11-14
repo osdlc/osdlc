@@ -1,0 +1,22 @@
+---
+kind: source
+reportedIn:
+  - "[Pi source truncate.ts at v1.5.2](../../documents/github.com/Pi%20source%20truncate.ts%20at%20v1.5.2.md)"
+harness: "[Pi](../../harnesses/Pi.md)"
+version: 1.5.2
+version_basis: exact
+observed: 2026-11-14
+locator: L11-L12
+excerpt:
+  exact: export const DEFAULT_MAX_LINES = 2000; export const DEFAULT_MAX_BYTES = 50 * 1024; // 50KB
+  prefix: " tail truncation edge case). */ "
+  suffix: " export const GREP_MAX_LINE_LENG"
+contributions:
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: created
+    date: 2026-11-14T00:00:00Z
+---
+
+> export const DEFAULT_MAX_LINES = 2000; export const DEFAULT_MAX_BYTES = 50 * 1024; // 50KB

@@ -22,6 +22,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-11-09T12:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: superseded
+    date: 2026-11-14T18:00:00Z
 harness: "[Gemini CLI](../../harnesses/Gemini%20CLI.md)"
 subject: "[Session id](../../subjects/cli/Session%20id.md)"
 scope:
@@ -29,5 +34,5 @@ scope:
   until: null
   platform: []
   model: null
-status: current
+status: superseded
 ---
