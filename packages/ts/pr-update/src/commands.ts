@@ -184,6 +184,7 @@ function runEnv(
     agent: null,
     command: null,
   },
+  remote = 'origin',
 ): UpdateEnv {
   const git = gitRunner(seams)
   const gh = seams.gh ?? spawnRunner('gh', { absolutePathOnly: true })
@@ -205,7 +206,7 @@ function runEnv(
       override: layers.merged.code_host.override,
     }),
     cfg,
-    ports: standalonePorts(cfg, projectRoot),
+    ports: standalonePorts(cfg, projectRoot, remote),
   }
 }
 
@@ -468,10 +469,16 @@ export function updateCommand(seams: CliSeams) {
         throw new CommandError(refusal, { exit: EXIT_UNTRUSTED, code: 'untrusted' })
       }
       checkStart(ctx, layers, seams, flags)
-      const env: UpdateEnv = runEnv(ctx, layers, seams, {
-        agent: flags.repairAgent ?? null,
-        command: flags.repairCommand ?? null,
-      })
+      const env: UpdateEnv = runEnv(
+        ctx,
+        layers,
+        seams,
+        {
+          agent: flags.repairAgent ?? null,
+          command: flags.repairCommand ?? null,
+        },
+        flags.remote,
+      )
       let out: UpdateOutput
       try {
         out = await runUpdate(

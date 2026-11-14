@@ -48,6 +48,7 @@ import {
 
 import type {
   ConfirmPush,
+  BranchLease,
   Generator,
   PushPreview,
   Repair,
@@ -134,6 +135,8 @@ export interface UpdateSettings {
   repairOn?: readonly RepairKind[] | undefined
   /** Asked before each rebase force-push. False leaves the branch alone. */
   confirmPush?: ConfirmPush | undefined
+  /** Taken around each PR's update when `apply` is set. See `Ports.lease`. */
+  lease?: BranchLease | undefined
   /**
    * What a rebase does when the fixed resolvers cannot clear a stop: `merge`
    * (the default) retries the PR as a merge, and `fail` reports it.
@@ -845,6 +848,8 @@ export async function updateAll(
     apply: boolean
     worktreeRoot: string
     onResult?: (r: UpdateResult) => void
+    /** Receives each PR left alone because another run holds its branch's lease. */
+    onSkip?: (s: { repo: string; number: number; head: string; reason: string }) => void
     /**
      * Called before each target, with the results so far: the target to
      * run, possibly adjusted, or null to leave it out. A restack run uses it
@@ -867,10 +872,28 @@ export async function updateAll(
       if (forwardedSignal() !== undefined) break
       const target = opts.prepare === undefined ? planned : opts.prepare(planned, results)
       if (target === null) continue
-      const outcome = await updateOne(wt, target, settings, runVerb, {
-        apply: opts.apply,
-        worktree: opts.worktreeRoot,
-      })
+      // A rehearsal never takes a lease: it pushes nothing.
+      const grant = opts.apply
+        ? settings.lease?.acquire({ head: target.head, pr: target.number })
+        : undefined
+      if (grant !== undefined && !grant.ok) {
+        opts.onSkip?.({
+          repo: target.repo,
+          number: target.number,
+          head: target.head,
+          reason: `another pr-update run is updating this branch (${grant.holder})`,
+        })
+        continue
+      }
+      let outcome: UpdateOutcome
+      try {
+        outcome = await updateOne(wt, target, settings, runVerb, {
+          apply: opts.apply,
+          worktree: opts.worktreeRoot,
+        })
+      } finally {
+        grant?.release()
+      }
       const ran = 'strategyFallback' in outcome ? 'merge' : target.strategy
       const result = { ...target, strategy: ran, outcome }
       results.push(result)
