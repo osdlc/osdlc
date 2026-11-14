@@ -19,6 +19,11 @@ contributions:
       agentType: software
     activityType: verified
     date: 2026-11-09T12:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: superseded
+    date: 2026-11-14T12:00:00Z
 harness: "[Antigravity](../../harnesses/Antigravity.md)"
 subject: "[Session persistence](../../subjects/cli/Session%20persistence.md)"
 scope:
@@ -26,7 +31,7 @@ scope:
   until: null
   platform: []
   model: null
-status: open
+status: superseded
 open: *a1
 ---
 
