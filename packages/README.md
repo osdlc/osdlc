@@ -213,6 +213,11 @@ Developed here, in this repository:
   corpus declares about itself, typed records kept as Markdown, YAML and JSON
   files in a folder, checked against the schemas, ids and links the folder
   holds; a library and a `corpus-schema` command)
+- `packages/ts/corpus-query` (`@osdlc/corpus-query` on npm, queries over one
+  corpus-schema corpus: describe its types, find records by filter and
+  full-text search, read a record with its references and backlinks, walk
+  references and count field values; one core behind a TypeScript API, a
+  `corpus-query` command, a REST server and an MCP server)
 - `packages/ts/markdown-link` (`@osdlc/markdown-link` on npm, wikilink and
   relative markdown link parsing with spans, and the code lexer that keeps
   links in code out; the TypeScript implementation of the parsing half of the

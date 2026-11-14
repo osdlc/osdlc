@@ -120,7 +120,7 @@
     "commander": "^12.1.0"
   },
   "devDependencies": {
-    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@modelcontextprotocol/sdk": "catalog:",
     "@osdlc/prettier-config": "workspace:^",
     "@osdlc/trust-repo": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
