@@ -433,7 +433,8 @@ pub enum Admission {
     /// system, or another Unicode form (NFD on HFS+), as when a watcher
     /// reports a path otherwise than the disk spells it. The walk lists it
     /// only by that spelling, which this path does not give, so a cache
-    /// drops this one and walks again.
+    /// drops this one and walks again. The old name after a case-only rename
+    /// is one.
     Respelled,
     /// The walk would list it. A cache reads it.
     Listed,
@@ -469,9 +470,7 @@ impl WalkOptions {
     /// a file its folder does not list, is unlisted. So is a folder, a file
     /// under [`WalkOptions::min_bytes`] or a symlink under
     /// [`WalkOptions::refuse_symlinks`]. A name a folder does not list but
-    /// the file system still answers for is [`Admission::Respelled`]: the
-    /// old name after a case-only rename on a case-insensitive file system,
-    /// or a path in another Unicode form than the disk's.
+    /// the file system still answers for is [`Admission::Respelled`].
     ///
     /// It answers for one path. Under `refuse_symlinks` a whole walk fails
     /// on any symlink it sees, and under [`Errors::Propagate`] on any error;
@@ -591,24 +590,24 @@ impl WalkOptions {
         // The walk finds a file by listing each folder from its start down,
         // so a file is listed only when every one of them lists the next: a
         // folder it cannot list, a symlinked folder (listed as a file) or a
-        // different spelling stops it.
+        // different spelling stops it. A different spelling the file system
+        // answers for is Respelled, not Unlisted.
         let mut found = Admission::Unlisted;
         for &start in &starts {
             match listings.reach(vfs, vault_dir, rel, start) {
-                Admission::Listed => {
+                Reach::Listed => {
                     found = Admission::Listed;
                     break;
                 }
-                Admission::Respelled => found = Admission::Respelled,
-                Admission::Unlisted | Admission::Outside => {}
+                Reach::Respelled => found = Admission::Respelled,
+                Reach::Unlisted => {}
             }
         }
         if found == Admission::Unlisted {
             return found;
         }
         // A batch's listing can be older than this stat, so the stat also
-        // decides that the path is still a file the walk would list. A
-        // respelled path to one it would not list is simply unlisted.
+        // decides that the path is still a file the walk would list.
         match vfs.metadata(&join_rel(vault_dir, rel)) {
             Ok(m)
                 if !m.is_dir
@@ -672,19 +671,27 @@ struct Listings {
     /// Each folder's entry names and whether each is a folder, `None` when
     /// it cannot be listed.
     folders: HashMap<PathBuf, Option<HashMap<String, bool>>>,
-    /// Folders listed again because the file system answered for a name
-    /// the first listing lacked. Each is listed again once per batch.
+    /// Folders listed a second time this batch.
     relisted: HashSet<PathBuf>,
     /// For a name a folder does not list: whether the file system answers
     /// for it, and with a folder or not.
     answers: HashMap<PathBuf, Option<bool>>,
 }
 
+/// How a walk reaches a path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Reach {
+    Listed,
+    Respelled,
+    Unlisted,
+}
+
 /// What one folder's listing says of one name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Found {
-    /// Listed, a folder or not.
-    Entry(bool),
+    Entry {
+        is_dir: bool,
+    },
     /// Not in the listing.
     Missing,
     /// The folder cannot be listed.
@@ -692,15 +699,11 @@ enum Found {
 }
 
 impl Listings {
-    /// Whether listing each folder from the walk's start, `rel[..start]`,
-    /// down to `rel`'s own folder finds `rel`: a folder for each segment but
-    /// the last and a file for the last, spelled as `rel` spells it. How the
-    /// walk reaches a file. [`Admission::Listed`] or [`Admission::Unlisted`],
-    /// or [`Admission::Respelled`] when the path is reached so, except that
-    /// a folder lists a name on the way under another spelling: it lacks the
-    /// name, even listed afresh, but the file system answers for it. Never
-    /// [`Admission::Outside`].
-    fn reach(&mut self, vfs: &dyn Vfs, vault_dir: &Path, rel: &str, start: usize) -> Admission {
+    /// How the walk reaches `rel`: by listing each folder from `rel[..start]`
+    /// down, finding a folder for each segment but the last and a file for the
+    /// last. `Respelled` when some folder lacks a name, even listed afresh, but
+    /// the file system answers for it.
+    fn reach(&mut self, vfs: &dyn Vfs, vault_dir: &Path, rel: &str, start: usize) -> Reach {
         let mut folder = join_rel(vault_dir, &rel[..start]);
         let mut names = rel[start..].split('/').peekable();
         let mut respelled = false;
@@ -710,31 +713,31 @@ impl Listings {
                 self.list(vfs, &folder);
             }
             let mut found = self.found(&folder, name);
-            // A fresh listing separates a file created late from a
-            // respelling; below a respelled name the path follows the
-            // disk's spelling.
             if found == Found::Missing
                 && let Some(is_dir) = self.answers(vfs, folder.join(name))
             {
+                // A fresh listing separates a file created late from a respelling.
                 if self.relisted.insert(folder.clone()) {
                     self.list(vfs, &folder);
                     found = self.found(&folder, name);
                 }
                 if found == Found::Missing {
                     respelled = true;
-                    found = Found::Entry(is_dir);
+                    found = Found::Entry { is_dir };
                 }
             }
             match found {
-                Found::Entry(is_dir) if is_dir == more => {}
-                _ => return Admission::Unlisted,
+                Found::Entry { is_dir } if is_dir == more => {}
+                _ => return Reach::Unlisted,
             }
+            // Below a respelled name, the file system resolves the asked
+            // spelling to the disk's.
             folder.push(name);
         }
         if respelled {
-            Admission::Respelled
+            Reach::Respelled
         } else {
-            Admission::Listed
+            Reach::Listed
         }
     }
 
@@ -762,7 +765,7 @@ impl Listings {
             None => Found::Unlistable,
             Some(listed) => listed
                 .get(name)
-                .map_or(Found::Missing, |&d| Found::Entry(d)),
+                .map_or(Found::Missing, |&is_dir| Found::Entry { is_dir }),
         }
     }
 }
@@ -1556,6 +1559,89 @@ mod tests {
             notes.admission(&d, Path::new(V), "Notes/alpha.md"),
             Admission::Listed
         );
+    }
+
+    /// A [`Vfs`] whose listings of one folder omit the named files until the
+    /// listing numbered with each, as a file created between two listings is.
+    struct Late<'a> {
+        inner: &'a MemVfs,
+        folder: PathBuf,
+        /// A file name and the listing (counted from 1) it first appears in.
+        appears: Vec<(&'static str, usize)>,
+        listings: std::cell::Cell<usize>,
+    }
+
+    impl Vfs for Late<'_> {
+        fn metadata(&self, path: &Path) -> Result<vfs_seam::Metadata, vfs_seam::VfsError> {
+            self.inner.metadata(path)
+        }
+        fn read_file(&self, path: &Path) -> Result<Vec<u8>, vfs_seam::VfsError> {
+            self.inner.read_file(path)
+        }
+        fn read_dir(&self, path: &Path) -> Result<Vec<vfs_seam::DirEntry>, vfs_seam::VfsError> {
+            let mut entries = self.inner.read_dir(path)?;
+            if path == self.folder {
+                let n = self.listings.get() + 1;
+                self.listings.set(n);
+                entries.retain(|e| {
+                    self.appears
+                        .iter()
+                        .all(|&(name, from)| e.name != name || n >= from)
+                });
+            }
+            Ok(entries)
+        }
+        fn write_file(&self, path: &Path, bytes: &[u8]) -> Result<(), vfs_seam::VfsError> {
+            self.inner.write_file(path, bytes)
+        }
+        fn create_dir_all(&self, path: &Path) -> Result<(), vfs_seam::VfsError> {
+            self.inner.create_dir_all(path)
+        }
+        fn exists(&self, path: &Path) -> bool {
+            self.inner.exists(path)
+        }
+        fn is_executable(&self, path: &Path) -> bool {
+            self.inner.is_executable(path)
+        }
+        fn set_executable(&self, path: &Path, yes: bool) -> Result<(), vfs_seam::VfsError> {
+            self.inner.set_executable(path, yes)
+        }
+        fn rename(&self, from: &Path, to: &Path) -> Result<(), vfs_seam::VfsError> {
+            self.inner.rename(from, to)
+        }
+        fn remove(&self, path: &Path) -> Result<(), vfs_seam::VfsError> {
+            self.inner.remove(path)
+        }
+    }
+
+    #[test]
+    fn a_file_created_after_the_first_listing_is_listed() {
+        let d = fixture();
+        mk(&d, "Notes/late1.md", "x");
+        mk(&d, "Notes/late2.md", "x");
+        let notes = WalkOptions::content_notes();
+        let late = |appears| Late {
+            inner: &d,
+            folder: Path::new(V).join("Notes"),
+            appears,
+            listings: std::cell::Cell::new(0),
+        };
+        // The second listing has it, so it is a late file, not a respelling.
+        let vfs = late(vec![("late1.md", 2)]);
+        assert_eq!(
+            notes.admission(&vfs, Path::new(V), "Notes/late1.md"),
+            Admission::Listed
+        );
+        // A folder is listed again once per batch: the second late file is
+        // still missing from that listing, so it reads as respelled.
+        let vfs = late(vec![("late1.md", 2), ("late2.md", 3)]);
+        let rels = ["Notes/late1.md".to_string(), "Notes/late2.md".to_string()];
+        let got: Vec<_> = notes
+            .admissions(&vfs, Path::new(V), &rels)
+            .into_iter()
+            .map(|(_, a)| a)
+            .collect();
+        assert_eq!(got, [Admission::Listed, Admission::Respelled]);
     }
 
     #[test]

@@ -84,16 +84,11 @@ pub fn read_note(src: &str) -> Note {
 
 /// [`read_note`] with the frontmatter found by `mode`.
 ///
-/// [`Note::shape`] is always the strict split's, whatever `mode` read. It
-/// frames the block read only when both splits take the same block. Under
-/// [`SplitMode::Lenient`] they can differ: for a block only the lenient split
-/// finds, the shape is that of a note with no frontmatter; and for an oddly
-/// fenced note where both find a block but end it at different fences (a
-/// `--- ` with a trailing space before a plain `---`), it frames the strict
-/// split's block, not the one in [`Note::frontmatter_yaml`]. So a Lenient
-/// [`Note`] is not safe to put back together from its parts: a writer reads
-/// with [`SplitMode::Strict`]. The lenient split records no framing of its
-/// own.
+/// [`Note::shape`] is always the strict split's. Under [`SplitMode::Lenient`]
+/// it can frame another block than [`Note::frontmatter_yaml`]: none, for a
+/// block only the lenient split finds, or the strict split's longer block on
+/// an oddly fenced note (`--- ` before `---`). A writer reads with
+/// [`SplitMode::Strict`].
 pub fn read_note_with(src: &str, mode: SplitMode) -> Note {
     let s = split(src);
     let lenient = (mode == SplitMode::Lenient)

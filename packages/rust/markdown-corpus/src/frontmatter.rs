@@ -155,8 +155,8 @@ impl FrontmatterIndex {
     /// Walks the corpus and brings the index up to date, reusing a walk
     /// younger than the TTL over the same corpus. A reused walk reports the
     /// index as `unchanged`. A walk error leaves the index as it was (empty
-    /// when `vault_dir` is another corpus) and reports it the same way, as
-    /// it stands when the call returns; [`Self::try_refresh`] returns the
+    /// when `vault_dir` is another corpus) and reports it as it stands on
+    /// return, every note `unchanged`; [`Self::try_refresh`] returns the
     /// error. A failed walk is never fresh: the next refresh walks again.
     pub fn refresh(&self, vfs: &dyn Vfs, clock: &dyn Clock, vault_dir: &Path) -> RefreshStats {
         self.try_refresh(vfs, clock, vault_dir)
@@ -212,9 +212,7 @@ impl FrontmatterIndex {
     /// Drops the freshness stamp so the next refresh walks, keeping the
     /// entries for reuse.
     pub fn mark_stale(&self) {
-        let mut state = self.state.lock().unwrap();
-        state.walked_at = None;
-        state.stale_marks += 1;
+        mark_stale_locked(&mut self.state.lock().unwrap());
     }
 
     /// After a failed walk at `now`: the last good walk stays, and keeps
@@ -237,8 +235,6 @@ impl FrontmatterIndex {
         }
     }
 
-    /// One refresh. A failed walk spends the last good sweep's TTL, so the
-    /// next refresh walks again.
     fn sweep(
         &self,
         vfs: &dyn Vfs,
@@ -446,8 +442,7 @@ impl FrontmatterIndex {
         if respelled || rels.iter().any(|rel| self.walk.reads_rules_from(rel)) {
             let mut state = self.state.lock().unwrap();
             if state.for_vault.as_deref() == Some(vault_dir) {
-                state.walked_at = None;
-                state.stale_marks += 1;
+                mark_stale_locked(&mut state);
             }
         }
     }
@@ -505,8 +500,7 @@ impl FrontmatterIndex {
         // replaces the report.
         stale |= state.unreadable.iter().any(|e| e.path() == abs);
         if stale {
-            state.walked_at = None;
-            state.stale_marks += 1;
+            mark_stale_locked(&mut state);
         }
         let entries = Arc::make_mut(&mut state.entries);
         match parsed {
@@ -545,6 +539,12 @@ impl FrontmatterIndex {
         state.walked_at = None;
         state.applied += 1;
     }
+}
+
+/// Drops the freshness stamp so the next refresh walks.
+fn mark_stale_locked(state: &mut IndexState) {
+    state.walked_at = None;
+    state.stale_marks += 1;
 }
 
 /// The index as it stands, every note counted unchanged: what a reused

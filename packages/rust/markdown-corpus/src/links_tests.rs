@@ -681,8 +681,6 @@ fn walks(g: &LinkGraph, vfs: &dyn Vfs, c: &FixedClock) -> bool {
     let flag = Rc::clone(&walked);
     mid_sweep(move || flag.set(true));
     g.refresh(vfs, c, root());
-    // A reused sweep leaves the hook unrun; replace it with one that does
-    // nothing.
     mid_sweep(|| {});
     walked.get()
 }

@@ -390,8 +390,8 @@ impl LinkGraph {
     /// Walks the corpus and brings the graph up to date, reusing a sweep
     /// younger than the TTL over the same corpus. A reused sweep reports the
     /// cache as `unchanged`. A walk error leaves the graph as it was (empty
-    /// when `vault_dir` is another corpus) and reports it the same way, as
-    /// it stands when the call returns; [`Self::try_refresh`] returns the
+    /// when `vault_dir` is another corpus) and reports it as it stands on
+    /// return, every note `unchanged`; [`Self::try_refresh`] returns the
     /// error. A failed walk is never fresh: the next refresh walks again.
     pub fn refresh(&self, vfs: &dyn Vfs, clock: &dyn Clock, vault_dir: &Path) -> GraphStats {
         self.try_refresh(vfs, clock, vault_dir)
@@ -427,8 +427,6 @@ impl LinkGraph {
         self.sweep(vfs, clock.now_ms(), vault_dir, false)
     }
 
-    /// One refresh. A failed walk spends the last good sweep's TTL, so the
-    /// next refresh walks again.
     fn sweep(
         &self,
         vfs: &dyn Vfs,
@@ -610,10 +608,9 @@ impl LinkGraph {
     /// or a folder that cannot be listed) is dropped as if gone. So is a
     /// path its folder lists under another spelling
     /// ([`Admission::Respelled`]), which also marks the graph stale, so the
-    /// next refresh walks. A batch against another
-    /// corpus, or while no sweep is fresh, does nothing here, but marks the
-    /// graph so a sweep that read the files before the change is not stamped
-    /// fresh.
+    /// next refresh walks. A batch against another corpus, or
+    /// while no sweep is fresh, does nothing here, but marks the graph so a
+    /// sweep that read the files before the change is not stamped fresh.
     ///
     /// A change to a file the walk reads its rules from
     /// ([`WalkOptions::reads_rules_from`], the excluded files under
