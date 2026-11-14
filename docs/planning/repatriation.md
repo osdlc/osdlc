@@ -38,8 +38,8 @@ As of 2026-11-14. The content is here. What is left is cleanup.
   replaced is closed with a link here: osdlc/markdown #11 to #16 and #19, and
   osdlc/models#1. Their branches are kept.
 - Still open there: the two holding-pen READMEs (osdlc/markdown#22 and
-  osdlc/models#2, drafts) and one issue, osdlc/markdown#8. osdlc/models has
-  no issues.
+  osdlc/models#2, drafts). Neither repository has an open issue:
+  osdlc/markdown#8 was transferred here as #811.
 - osdlc/markdown `main` still holds its old copies of the docs, `packages/`,
   `profiles/` and `tools/`.
 
@@ -50,9 +50,8 @@ What is left, in order:
    [The pull request queue](pr-queue.md) has the order for every open pull
    request.
 2. Merge the two holding-pen READMEs.
-3. Transfer osdlc/markdown#8 here.
-4. Empty osdlc/markdown down to its README (phase 6).
-5. Remove `harness-reference/` from osdlc/skillwright (phase 5).
+3. Empty osdlc/markdown down to its README (phase 6).
+4. Remove `harness-reference/` from osdlc/skillwright (phase 5).
 
 ## Work, in order
 
@@ -129,8 +128,9 @@ only open a Version Packages pull request there to close.
       path. Third-party actions are pinned by SHA, as in this repository's
       other workflows. Check that the explorer's committed `data/*.json`
       match the records. (#791)
-- [ ] Transfer the open issue
+- [x] Transfer the open issue
       [osdlc/markdown#8](https://github.com/osdlc/markdown/issues/8) here.
+      (Now [#811](https://github.com/osdlc/osdlc/issues/811).)
 
 The paths for the import:
 
