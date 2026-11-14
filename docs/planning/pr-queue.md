@@ -5,10 +5,13 @@ order to merge them in. Read on 2026-11-14, with 33 open. Update a row when
 its pull request merges or closes, and delete this file when the queue is
 short enough to read on GitHub.
 
+Merged since: #802 and #801 (2026-11-14). The order numbers below are as
+first written.
+
 ## Summary
 
 - **All 33 are still wanted.** None is replaced by work already on `main`.
-- **Four need work before review:** #801, #649 and #650 were overtaken by
+- **Three need work before review:** #649 and #650 were overtaken by
   releases, and #740 by a change to the CI workflows.
 - **Five have failing checks:** #806, #807, #691, #650 and #651.
 - **None is approved.** Most have had a review pass that left one or more
@@ -40,12 +43,10 @@ State is one of: **ready** (checks pass, behind `main` only), **question**
 
 ### 1. Finish the repatriation
 
-| Order | Pull request                                    | What                                            | State    | Before it merges                                                                                                                                         |
-| ----- | ----------------------------------------------- | ----------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1     | [#802](https://github.com/osdlc/osdlc/pull/802) | Docs and plan records say `corpus-schema` 0.4.0 | ready    | Nothing. It edits `repatriation.md`, so it goes before any other change to that file                                                                     |
-| 2     | [#801](https://github.com/osdlc/osdlc/pull/801) | harness-knowledge data names osdlc/osdlc        | rework   | It conflicts. #804 released the three profile packages, so its edits to their changesets no longer apply. Keep the recompiled data and the changelog fix |
-| 3     | [#785](https://github.com/osdlc/osdlc/pull/785) | Release inputs for packages with no code        | question | Answer its one question. Then add `package-globs` to `packages-publish.yml`, so the "not on npm yet" check covers `packages/profiles` and `corpora`      |
-| 4     | [#803](https://github.com/osdlc/osdlc/pull/803) | Plan tasks 85 to 87                             | ready    | After #802: both edit the plan's records and the explorer's data                                                                                         |
+| Order | Pull request                                    | What                                     | State    | Before it merges                                                                                                                                    |
+| ----- | ----------------------------------------------- | ---------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 3     | [#785](https://github.com/osdlc/osdlc/pull/785) | Release inputs for packages with no code | question | Answer its one question. Then add `package-globs` to `packages-publish.yml`, so the "not on npm yet" check covers `packages/profiles` and `corpora` |
+| 4     | [#803](https://github.com/osdlc/osdlc/pull/803) | Plan tasks 85 to 87                      | ready    | After #802: both edit the plan's records and the explorer's data                                                                                    |
 
 ### 2. The corpus tools
 
@@ -124,8 +125,8 @@ pass.
 
 ## What to do first
 
-1. Merge #802, #783 and #787: ready, small, and nothing waits on a decision.
-2. Rework #801 and merge it, then merge the Version Packages pull request.
+1. Merge #783, #787 and #803: ready, small, and nothing waits on a decision.
+2. Merge the Version Packages pull request, which now holds #801's patch.
 3. Answer the questions on #785, #798 and #797. Each takes one decision and
    frees a pull request behind it.
 4. Review #805. Two new packages wait on it.

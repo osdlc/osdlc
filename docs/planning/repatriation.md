@@ -45,8 +45,8 @@ As of 2026-11-14. The content is here. What is left is cleanup.
 
 What is left, in order:
 
-1. Merge the follow-ups here: #802 (docs say 0.4.0), then #801 (the harness
-   knowledge data names this repository), then #785.
+1. Merge the last follow-up here, #785. #802 (docs say 0.4.0) and #801 (the
+   harness knowledge data names this repository) are merged.
    [The pull request queue](pr-queue.md) has the order for every open pull
    request.
 2. Merge the two holding-pen READMEs.
@@ -87,9 +87,11 @@ Both copies have the same paths and the same `src/`.
       version. (#790)
 - [x] Remove the two notes that say the spec moves to osdlc/markdown
       (`packages/conformance/corpus-schema/README.md` and `SPEC.md`). (#790)
-- [ ] Merge, then merge the Version Packages pull request. 0.3.0 is
-      published from here.
-- [x] Close osdlc/markdown#12 with a link to the new pull request. (Closed when #790 merged.)
+- [x] Merge, then merge the Version Packages pull request. 0.3.0 is
+      published from here. (0.3.0 was not published; the work was released
+      as 0.4.0 on 2026-11-13.)
+- [x] Close osdlc/markdown#12 with a link to the new pull request. (Closed
+      when #790 merged.)
 
 ### Phase 2: the plan and docs
 
@@ -225,7 +227,7 @@ are in one place.
       `packages/corpora/harness-reference/`, with history: the corpus
       (`corpus/`, about 2,500 files), its notes and probes, and the `capture`,
       `lint` and `compile` code in `src/`.
-- [x] Rename its root file to `<name>.corpus-schema.md`, as 0.3.0 requires,
+- [x] Rename its root file to `<name>.corpus-schema.md`, as 0.4.0 requires,
       and validate it with this repository's corpus-schema.
 - [ ] Extend the claims profile (`@osdlc/corpus-profile-claims`) where its
       types match, if that does not change the compiled file. Tried and left
@@ -240,8 +242,9 @@ are in one place.
       values, and its links still name osdlc/skillwright.
 - [x] A path-filtered workflow that validates and lints the corpus, runs its
       tests, and checks the committed compiled file matches.
-- [ ] Rewrite `packages/ts/harness-knowledge/data/` with `sync` once the
+- [x] Rewrite `packages/ts/harness-knowledge/data/` with `sync` once the
       corpus is on `main`, so each `basis` names a commit of this repository.
+      (#801)
 - [ ] Remove `harness-reference/` from osdlc/skillwright, and point
       skillwright at `@osdlc/harness-knowledge` for anything it read from
       `dist/harness-knowledge.json`.
@@ -286,6 +289,6 @@ once matured. They are not archived.
 | 4     | [#794](https://github.com/osdlc/osdlc/pull/794) | Merged |
 | 5     | [#793](https://github.com/osdlc/osdlc/pull/793) | Merged |
 | 5     | [#800](https://github.com/osdlc/osdlc/pull/800) | Merged |
-| 1     | [#802](https://github.com/osdlc/osdlc/pull/802) | Open   |
-| 5     | [#801](https://github.com/osdlc/osdlc/pull/801) | Open   |
+| 1     | [#802](https://github.com/osdlc/osdlc/pull/802) | Merged |
+| 5     | [#801](https://github.com/osdlc/osdlc/pull/801) | Merged |
 | 4     | [#785](https://github.com/osdlc/osdlc/pull/785) | Open   |
