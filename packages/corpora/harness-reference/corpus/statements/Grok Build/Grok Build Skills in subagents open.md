@@ -21,7 +21,7 @@ scope:
   until: null
   platform: []
   model: null
-status: open
+status: superseded
 open: *a1
 imported_from: fact:skills/subagent-visibility@grok-build#open
 ---
