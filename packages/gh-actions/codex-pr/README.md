@@ -21,7 +21,7 @@ request when the comment starts with `@codex review`. It works like
   (it ignores `OPENAI_API_KEY`, checked on 0.162.0), so the action passes the
   key under that name. An authentication failure is a failed turn whose message
   says `401 Unauthorized`, `invalid_api_key`, `Incorrect API key` or `Missing
-bearer`; nothing else rotates to the next key.
+bearer`. A failed turn that says `insufficient_quota`, `exceeded your current quota`, `billing_hard_limit` or `402 Payment Required` means the key is out of quota. Those two reasons, and nothing else, move on to the next key; the failure comment says which applied.
 - **Read-only:** `codex exec --sandbox read-only`: no writes and no network. So
   the action writes the pull request text and diff to files in `$RUNNER_TEMP` and
   tells codex to read them. `GH_TOKEN` is kept out of codex's environment.
@@ -113,14 +113,14 @@ before a runner starts or the key is in reach.
 
 ## Inputs
 
-| Input            | Default               |                                                                                                                                                                      |
-| ---------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `openai-api-key` | required              | One key, or several separated by spaces, commas or newlines. Tried in order; only an authentication failure moves on, with a warning naming the dead key's position. |
-| `github-token`   | `github.token`        | Reads the pull request and posts the comment.                                                                                                                        |
-| `codex-version`  | `0.162.0`             |                                                                                                                                                                      |
-| `model`          | empty                 | Passed as `-m`. Empty is codex's default model.                                                                                                                      |
-| `marketplaces`   | the osdlc marketplace | One per line, `name=https-git-url` with an optional ` ref` (agent-setup's format).                                                                                   |
-| `plugins`        | `craft@osdlc`         | `plugin@marketplace`, separated by spaces or newlines; each must name a listed marketplace. Review mode needs craft.                                                 |
+| Input            | Default               |                                                                                                                                                                                                                                                                                                                                                                           |
+| ---------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `openai-api-key` | required              | One key, or several separated by spaces, commas or newlines. Tried in order, so the list order is the priority. A key is passed over, with a warning naming its position, when it fails authentication or its account is out of quota (`insufficient_quota`, "exceeded your current quota", a billing hard limit, `402 Payment Required`); any other error stops the run. |
+| `github-token`   | `github.token`        | Reads the pull request and posts the comment.                                                                                                                                                                                                                                                                                                                             |
+| `codex-version`  | `0.162.0`             |                                                                                                                                                                                                                                                                                                                                                                           |
+| `model`          | empty                 | Passed as `-m`. Empty is codex's default model.                                                                                                                                                                                                                                                                                                                           |
+| `marketplaces`   | the osdlc marketplace | One per line, `name=https-git-url` with an optional ` ref` (agent-setup's format).                                                                                                                                                                                                                                                                                        |
+| `plugins`        | `craft@osdlc`         | `plugin@marketplace`, separated by spaces or newlines; each must name a listed marketplace. Review mode needs craft.                                                                                                                                                                                                                                                      |
 
 ## Pinning
 

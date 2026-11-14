@@ -42,3 +42,15 @@ harness_auth_failed() {
       "$RESULT" > /dev/null 2>&1 \
     || { ! jq -e . "$RESULT" > /dev/null 2>&1 && grep -qiE "$auth" "$RESULT"; }
 }
+
+# Out of credit. A 429 counts only when it names a usage, spend or monthly
+# limit; a per-minute rate limit does not. The text check has the guard above.
+harness_key_exhausted() {
+  local lim='usage limit|spend limit|monthly limit'
+  local re="billing_error|credit balance is too low|insufficient credit|$lim"
+  jq -e --arg re "$re" --arg lim "$lim" '.api_error_status == 402
+      or (.api_error_status == 429 and ((.result // "") | test($lim; "i")))
+      or (.is_error == true and (.num_turns // 0) <= 1 and ((.result // "") | test($re; "i")))' \
+      "$RESULT" > /dev/null 2>&1 \
+    || { ! jq -e . "$RESULT" > /dev/null 2>&1 && grep -qiE "$re" "$RESULT"; }
+}
