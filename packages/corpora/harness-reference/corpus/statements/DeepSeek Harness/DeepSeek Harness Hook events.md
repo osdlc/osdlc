@@ -13,12 +13,12 @@ proposition:
       - SubagentStop
     via: Claude Code hooks bridge
 direction: supports
-strength: strong
+strength: moderate
 hasEvidenceLines:
   - hasEvidenceItems:
       - "[2026-10-08 DeepSeek Harness Hook events](../../study-results/DeepSeek%20Harness/2026-10-08%20DeepSeek%20Harness%20Hook%20events.md)"
     directionOfEvidenceProvided: supports
-    strengthOfEvidenceProvided: strong
+    strengthOfEvidenceProvided: moderate
     description: source observed 2026-10-08.
 reportedIn:
   - "[DeepSeek Harness (dsh) harness notes for a dispatcher](../../documents/skillwright/DeepSeek%20Harness%20%28dsh%29%20harness%20notes%20for%20a%20dispatcher.md)"
@@ -28,6 +28,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-10-08T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: strength lowered
+    date: 2026-11-14T18:00:00Z
 harness: "[DeepSeek Harness](../../harnesses/DeepSeek%20Harness.md)"
 subject: "[Hook events](../../subjects/hooks/Hook%20events.md)"
 scope:
@@ -40,3 +45,5 @@ imported_from: fact:hooks/events@dsh#scope-[null,null,null]
 ---
 
 Imported from `facts/dsh/hooks/events.md`.
+
+Strength lowered on 2026-11-14: the evidence rated strong is README or guide prose in the repository, which this corpus counts as docs (moderate), not source. The study results keep their `kind`, since study results are not edited.
