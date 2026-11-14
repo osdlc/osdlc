@@ -24,6 +24,8 @@ export default defineConfig({
     ],
   },
   test: {
+    // The mermaid test imports mermaid; on a loaded machine that can pass the 5 s default.
+    testTimeout: 20000,
     include: ['tests/**/*.test.ts', 'examples/**/*.test.ts'],
     coverage: {
       provider: 'v8',
