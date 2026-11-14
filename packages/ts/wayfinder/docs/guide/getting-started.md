@@ -89,7 +89,8 @@ repository has agent skills:
   hand, from lefthook, husky or pre-commit.
 - **Skills**: the repository's agent skills. These rows are not tasks: they
   sit in a separate `skills` array, and Run copies `/<name>` instead of
-  spawning anything.
+  spawning anything. `way run /<name> --agent`, or `^g` in the terminal
+  UI, starts an agent CLI such as `claude` with the skill instead.
 
 Every row in the first four groups is a task, so search, run and arguments
 work the same for all of them. The tab bars in the terminal UI and the web view show where one group

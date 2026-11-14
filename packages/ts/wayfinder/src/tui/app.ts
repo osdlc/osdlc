@@ -31,9 +31,10 @@ import { COPY_REFUSED, skillCopyText, taskCopyText } from '../core/copy-text.ts'
 import type { TaskHit } from '../core/filter.ts'
 import type { HandOffResult } from '../core/run.ts'
 import { SessionError, type CacheState, type RunPlan, type Session } from '../core/session.ts'
-import { skillLine, type SkillHit, type SkillRow } from '../core/skills.ts'
+import { skillLine, skillPrompt, type SkillHit, type SkillRow } from '../core/skills.ts'
 import { groupOf, SKILLS_GROUP } from '../groups.ts'
 import { footerHints, keyLines, keysFor } from '../keys.ts'
+import { agentClis, planSkillHandOff, SkillHandOffError, type AgentCli } from '../skills.ts'
 import { terminalSafe } from '../terminal-text.ts'
 import {
   countRunners,
@@ -71,8 +72,8 @@ export interface TuiHost {
   clipboard(text: string): Promise<boolean>
   /** Give the terminal back: leave raw mode and the alternate screen. Idempotent. */
   release(): void
-  /** Run a task with the terminal, after {@link release}. */
-  handOff(plan: RunPlan): HandOffResult
+  /** Run a task, or an agent CLI with a skill, with the terminal, after {@link release}. */
+  handOff(plan: Pick<RunPlan, 'argv' | 'env' | 'cwd'>): HandOffResult
   /** End the process. The real host never returns. */
   exit(code: number): void
 }
@@ -166,8 +167,14 @@ export interface TuiState {
   confirmingTrust: boolean
   /** The tool the pending grant is for, or null for the whole repository. */
   trustScope: string | null
-  /** The task whose arguments are being typed, and the text so far. */
-  entering: { task: Task; text: string } | null
+  /**
+   * The task whose arguments are being typed, or the skill whose prompt is,
+   * before it is handed to an agent; and the text so far.
+   */
+  entering:
+    | { task: Task; skill?: undefined; text: string }
+    | { skill: SkillRow; agent: AgentCli; task?: undefined; text: string }
+    | null
   view: 'list' | 'settings' | 'help'
   /** The view `?` was pressed in, to go back to. */
   helpFrom: 'list' | 'settings'
@@ -299,6 +306,17 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
   /** `argv` quoted for the shell, as the CLI prints the run line. */
   const commandLine = (argv: readonly string[]): string =>
     commandString(argv, { platform: host.platform })
+  /** The agent CLIs that can start each skill, looked up once: `PATH` is fixed for a run. */
+  const agentsBySkill = new Map<string, AgentCli[]>()
+  const agentsFor = (skill: SkillRow): AgentCli[] => {
+    const key = skill.harnesses.join(',')
+    let found = agentsBySkill.get(key)
+    if (found === undefined) {
+      found = agentClis(skill, session.env, host.platform)
+      agentsBySkill.set(key, found)
+    }
+    return found
+  }
   const state: TuiState = {
     catalog: null,
     partial: null,
@@ -714,7 +732,9 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
       { text: '' },
       { text: 'SKILLS', heading: true },
       { text: '  An agent skill is typed in the agent as /<name>. Enter and ^y copy it;' },
-      { text: '  nothing runs here.' },
+      { text: '  nothing runs. ^g starts an agent CLI with it instead: the first of claude,' },
+      { text: '  codex and cursor-agent on PATH that reads it, asking first for what the' },
+      { text: "  skill's argument hint names." },
     ]
     return lines.flatMap((l) =>
       l.heading === true ? [l] : wrapHanging(l.text, width).map((text) => ({ text })),
@@ -871,7 +891,11 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     if (currentEntry?.skill !== undefined) {
       const skill = currentEntry.skill.skill
       const text = terminalSafe(skillLine(skill))
-      const where = terminalSafe(`skill for ${skill.harnesses.join(', ')}`)
+      const agent = agentsFor(skill)[0]
+      const where = terminalSafe(
+        `skill for ${skill.harnesses.join(', ')}` +
+          (agent !== undefined ? ` · ^g starts ${agent.binary}` : ''),
+      )
       const gap = width - text.length - where.length - 1
       out.push(
         line(
@@ -915,7 +939,29 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
       out.push(line([], width))
     }
 
-    if (state.entering) {
+    if (state.entering?.skill !== undefined) {
+      const { skill, agent, text } = state.entering
+      out.push(
+        line(
+          [
+            { text: `${agent.binary} ▸ `, paint: s.dim },
+            { text: terminalSafe(skillPrompt(skill, agent.harness)) + ' ', paint: s.bold },
+            { text },
+            { text: '█', paint: s.accent },
+          ],
+          width,
+        ),
+      )
+      const hints = footerHints(keysFor('tui', 'arguments'), width)
+      const about = `takes ${skill.argumentHint!}; type any, or none`
+      const aboutRoom = Math.max(0, width - hints.length - 6)
+      out.push(
+        line(
+          [{ text: `  ${fitWidth(terminalSafe(about), aboutRoom)}    ${hints}`, paint: s.dim }],
+          width,
+        ),
+      )
+    } else if (state.entering) {
       const { task, text } = state.entering
       out.push(
         line(
@@ -1275,6 +1321,49 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     )
   }
 
+  /**
+   * `^g` on a skill: hand it to the first agent CLI on `PATH` that reads it.
+   * A skill with an argument hint asks for its arguments first, on the entry
+   * line; one without starts at once. With no such CLI it says why.
+   */
+  function startSkill(skill: SkillRow): void {
+    const agent = agentsFor(skill)[0]
+    if (agent === undefined || skill.argumentHint === null) {
+      handOverSkill(skill, '', agent)
+      return
+    }
+    state.entering = { skill, agent, text: '' }
+  }
+
+  /** Hand the terminal to an agent CLI started with `skill`, and exit with its code. */
+  function handOverSkill(skill: SkillRow, args: string, agent: AgentCli | undefined): void {
+    let plan: ReturnType<typeof planSkillHandOff>
+    try {
+      plan = planSkillHandOff(skill, {
+        root: session.root,
+        env: session.env,
+        args,
+        platform: host.platform,
+        ...(agent !== undefined ? { harness: agent.harness } : {}),
+      })
+    } catch (err) {
+      if (err instanceof SkillHandOffError) {
+        say(err.hint !== undefined ? `${err.message} — ${err.hint}` : err.message, 'error')
+        return
+      }
+      throw err
+    }
+    state.inFlight?.abort()
+    ended = true
+    host.release()
+    host.write(`$ ${terminalSafe(commandLine(plan.argv))}\n`)
+    const result = host.handOff(plan)
+    if (result.error !== undefined) {
+      host.write(terminalSafe(`${BIN}: ${plan.argv[0]}: ${result.error}`) + '\n')
+    }
+    host.exit(result.exit)
+  }
+
   /** Copy `text`; null is text that holds a control character, which is refused. */
   async function toClipboard(text: string | null, done: string): Promise<void> {
     if (text === null) {
@@ -1537,7 +1626,9 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
       if (key === '\x1b' || key === '\x03') state.entering = null
       else if (key === '\r' || key === '\n') {
         state.entering = null
-        run(entering.task, splitArgs(entering.text))
+        if (entering.skill !== undefined)
+          handOverSkill(entering.skill, entering.text, entering.agent)
+        else run(entering.task, splitArgs(entering.text))
       } else if (key === '\x7f' || key === '\x08') entering.text = entering.text.slice(0, -1)
       else if (key === '\x15') entering.text = ''
       else if (isText(key)) entering.text += key
@@ -1566,6 +1657,13 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
         const entry = entries()[cursor()]
         if (entry?.skill !== undefined) track(copySkill(entry.skill.skill))
         else if (entry?.task !== undefined) track(copy(entry.task.task))
+        return
+      }
+      case '\x07': {
+        // ctrl-g: hand a skill to an agent CLI. A task has no agent to go to.
+        const entry = entries()[cursor()]
+        if (entry?.skill !== undefined) startSkill(entry.skill.skill)
+        else if (entry?.task !== undefined) say('^g starts an agent with a skill; this is a task')
         return
       }
       case '\x05': // ctrl-e
