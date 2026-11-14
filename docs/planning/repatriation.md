@@ -49,9 +49,10 @@ What is left, in order:
    for every open pull request. The follow-ups here are merged: #802 (docs
    say 0.4.0), #801 (the harness knowledge data names this repository) and
    #785 (release inputs for packages with no code).
-2. Merge the two holding-pen READMEs.
-3. Empty osdlc/markdown down to its README (phase 6).
-4. Remove `harness-reference/` from osdlc/skillwright (phase 5).
+2. Empty osdlc/markdown down to its README (phase 6):
+   [osdlc/markdown#23](https://github.com/osdlc/markdown/pull/23).
+3. Remove `harness-reference/` from osdlc/skillwright (phase 5):
+   [osdlc/skillwright#165](https://github.com/osdlc/skillwright/pull/165).
 
 ## Work, in order
 
@@ -67,13 +68,13 @@ needs phase 1 and a decision. Phase 5 needs phase 4. Phase 6 is last.
       into the old layout. All three were closed on 2026-11-13, after #794
       brought them here, so the planned comments were not needed. #20 has the
       note but is closed.
-- [ ] Merge the holding-pen READMEs:
+- [x] Merge the holding-pen READMEs:
       [osdlc/markdown#22](https://github.com/osdlc/markdown/pull/22) and
       [osdlc/models#2](https://github.com/osdlc/models/pull/2). Each says the
       work happens here for now, and that the repository is where it lives
-      once matured.
-- [ ] Delete the branch `corpus-schema-moved` here (its pull request, #788,
-      was closed).
+      once matured. (Merged 2026-11-14.)
+- [x] Delete the branch `corpus-schema-moved` here (its pull request, #788,
+      was closed). (Deleted 2026-11-14.)
 
 ### Phase 1: `corpus-schema` 0.3.0
 
