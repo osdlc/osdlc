@@ -7,8 +7,7 @@
 # needs-manual-update and commented on once.
 #
 # When it runs
-#   schedule            once a night, 09:00 UTC (03:00 US Central standard
-#                       time, 04:00 in daylight time). Not on every push to
+#   schedule            once a night, see the cron below. Not on every push to
 #                       main: each merge to main would push a merge commit to
 #                       every open PR, and each push starts that PR's full CI,
 #                       so one merge became a CI storm across every open PR.
@@ -45,7 +44,7 @@ name: pr-update
 
 on:
   schedule:
-    - cron: "0 9 * * *"
+    - cron: "30 8 * * *" # 02:30 US Central standard time, 03:30 daylight
   workflow_dispatch:
     inputs:
       pr:
