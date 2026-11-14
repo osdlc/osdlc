@@ -12,24 +12,16 @@ import { describe, expect, test } from 'vitest'
 // By path, not by package name: agent-call does not depend on the knowledge
 // package (tests/exports.test.ts pins its dependencies), it only checks itself
 // against the sibling package in this workspace.
-import { fact, loadKnowledge } from '../../harness-knowledge/src/index.js'
+import { HARNESS_SLUGS, fact, loadKnowledge } from '../../harness-knowledge/src/index.js'
 import { opencodeAdapter } from '../src/adapters/opencode.js'
 import { adapterFor } from '../src/registry.js'
 import type { AgentName } from '../src/spec.js'
 import type { AgentCallSpec } from '../src/spec.js'
 
-/** Adapter name to the harness slug in the knowledge file. */
-const HARNESS: Record<string, string> = {
-  antigravity: 'antigravity',
-  claude: 'claude-code',
-  codex: 'codex',
-  copilot: 'copilot-cli',
-  cursor: 'cursor',
-  deepseek: 'dsh',
-  opencode: 'opencode',
-  pi: 'pi',
-  qwen: 'qwen-code',
-}
+const HARNESS: Record<string, string> = Object.fromEntries(
+  // droid has no `cli/binary` value in the knowledge file, so its binary check would fail.
+  Object.entries(HARNESS_SLUGS).filter(([adapter]) => adapter !== 'droid'),
+)
 
 /** `--flag=value` as two tokens, so the equals form and the spaced form compare equal. */
 const split = (tokens: readonly string[]): string[] =>
