@@ -45,6 +45,7 @@ import {
   type RecordHeader,
   type RecordHit,
   type RecordRef,
+  type ReferenceVia,
   traverse,
   type TraverseOptions,
   type TraverseResult,
@@ -136,6 +137,8 @@ test('the core: every function over one loaded corpus', () => {
   expect(corpus.get(ref, options)).toEqual(record)
 
   const out: OutgoingReference[] = getReferences(model, ref)
+  const via: ReferenceVia = 'reference'
+  expect(out.map((r) => r.via)).toEqual([via, via])
   expect(out.map((r) => r.target?.ref)).toEqual(['authors/Ada Palmer', 'books/Seven Surrenders'])
   expect(corpus.references(ref)).toEqual(out)
   const back: IncomingReference[] = getBacklinks(model, 'authors/Ada Palmer')

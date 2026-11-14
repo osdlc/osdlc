@@ -234,6 +234,16 @@ describe('traverse', () => {
     expect(two.edges.filter((e) => e.to === 'authors/Ada Palmer')).toHaveLength(2)
   })
 
+  test('via is a string, a comma-joined string or a list of strings, and nothing else', () => {
+    const from = 'books/Too Like the Lightning'
+    const both = refs(traverse(library, from, { via: ['author', 'sequel'] }))
+    expect(refs(traverse(library, from, { via: 'author,sequel' }))).toEqual(both)
+    expect(refs(traverse(library, from, { via: ['author,sequel'] }))).toEqual(both)
+    expect(() => traverse(library, from, { via: [1] as never })).toThrow(
+      'via: expected a string or a list of strings',
+    )
+  })
+
   test('inward: what refers to a record, then what refers to those', () => {
     expect(refs(traverse(library, 'authors/Ada Palmer', { direction: 'in' }))).toEqual([
       '1 books/Seven Surrenders',

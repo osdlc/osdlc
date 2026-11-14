@@ -108,7 +108,6 @@ function table(
   const widths = head.map((_, i) => Math.max(...cells.map((r) => (r[i] ?? '').length)))
   const last = widths.length - 1
   const before = widths.slice(0, last).reduce((sum, w) => sum + w + 2, 0)
-  // A table wider than the terminal keeps its first columns whole and cuts the last.
   const room = Math.max(12, width - before)
   return cells
     .map((r) =>

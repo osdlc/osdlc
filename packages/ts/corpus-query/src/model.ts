@@ -41,6 +41,17 @@ export class QueryError extends Error {
   }
 }
 
+/** The most bytes a POST body may hold. */
+export const MAX_BODY = 1024 * 1024
+
+/** A string or a list of strings, as the list; anything else is a `bad-query` naming `key`. */
+export function stringList(key: string, v: unknown): string[] | undefined {
+  if (v === undefined) return undefined
+  if (typeof v === 'string') return [v]
+  if (Array.isArray(v) && v.every((s) => typeof s === 'string')) return v as string[]
+  throw new QueryError('bad-query', `${key}: expected a string or a list of strings`)
+}
+
 /**
  * A record by name: `<type>/<id>`, `<corpus key>/<type>/<id>` for a record of a referenced
  * corpus, the record's path in the loaded corpus, or a bare `<id>` when one type has it. An

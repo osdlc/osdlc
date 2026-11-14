@@ -1,8 +1,7 @@
 /**
  * `@osdlc/corpus-query/mcp`: the query functions as an MCP server, so an agent can read a
  * corpus. Each function is a tool whose input is the same JSON the function takes. Answers are
- * small by default: a find returns 20 records without their data, and a record's body is cut at
- * 8000 characters. Each answer says how to ask for more.
+ * small by default (see `McpOptions`), and each answer says how to ask for more.
  */
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
@@ -53,6 +52,12 @@ export interface McpOptions {
 type Args = Record<string, unknown>
 type Schema = Tool['inputSchema']
 
+/** How many characters of a body `get_record` returns when the call gives no `bodyLimit`. */
+const DEFAULT_BODY_LIMIT = 8000
+
+/** How many items `get_references`, `get_backlinks` and `traverse` return when the call gives no `limit`. */
+const DEFAULT_PAGE = 50
+
 const RECORD = {
   type: 'string',
   description:
@@ -60,7 +65,11 @@ const RECORD = {
 }
 const PAGE = {
   offset: { type: 'integer', minimum: 0, description: 'How many to skip. Default 0.' },
-  limit: { type: 'integer', minimum: 0, description: 'How many to return. Default 50.' },
+  limit: {
+    type: 'integer',
+    minimum: 0,
+    description: `How many to return. Default ${DEFAULT_PAGE}.`,
+  },
 }
 const object = (properties: Record<string, object>, required: string[] = []): Schema => ({
   type: 'object',
@@ -116,7 +125,7 @@ const TOOLS: Tool[] = [
         bodyLimit: {
           type: 'integer',
           minimum: 0,
-          description: 'How many characters of the body to return. Default 8000.',
+          description: `How many characters of the body to return. Default ${DEFAULT_BODY_LIMIT}.`,
         },
       },
       ['record'],
@@ -159,7 +168,7 @@ const TOOLS: Tool[] = [
         limit: {
           type: 'integer',
           minimum: 1,
-          description: 'How many records at most. Default 50.',
+          description: `How many records at most. Default ${DEFAULT_PAGE}.`,
         },
       },
       ['record'],
@@ -181,6 +190,9 @@ const TOOLS: Tool[] = [
 export const mcpTools = (): Tool[] => TOOLS.map((t) => ({ ...t }))
 
 const SCHEME = 'corpus:'
+
+/** The MCP error code for a resource that does not exist. */
+const RESOURCE_NOT_FOUND = -32002
 
 function need(args: Args, name: string): string {
   const value = args[name]
@@ -209,16 +221,15 @@ function keys(args: Args, tool: Tool): void {
 
 function page<T>(all: T[], args: Args, most: number, name: string): Record<string, unknown> {
   const offset = whole(args, 'offset', 0)
-  const limit = whole(args, 'limit', 50, most)
+  const limit = whole(args, 'limit', DEFAULT_PAGE, most)
   const items = all.slice(offset, offset + limit)
   const end = offset + items.length
   return { total: all.length, offset, limit, next: end < all.length ? end : null, [name]: items }
 }
 
 /**
- * A result with each record header in it cut to what an agent needs: `ref`, whose parts are the
- * type and the id, `title` when it differs from the id, and `identity` when there is one. The
- * result's own keys stay, so `get_record` still says the record's path.
+ * Cuts each nested record header as `createMcpServer` describes. The result's own keys stay, so
+ * `get_record` still says the record's path.
  */
 function slim(value: unknown, top = true): unknown {
   if (Array.isArray(value)) return value.map((v) => slim(v, false))
@@ -241,9 +252,10 @@ function slim(value: unknown, top = true): unknown {
  *
  * Tools: `describe_corpus`, `describe_type`, `find_records`, `get_record`, `get_references`,
  * `get_backlinks`, `traverse` and `count_facets`. A record inside a result is cut to its `ref`,
- * its `title` when that is not the id, and its `identity` when it has one. An error a query can make, such as an unknown
- * type or field, is a tool result with `isError` whose text lists what exists. Each record of
- * the loaded corpus is also a resource, `corpus://<corpus name>/<type>/<id>`, read as JSON.
+ * its `title` when that is not the id, and its `identity` when it has one. An error a query can
+ * make, such as an unknown type or field, is a tool result with `isError` whose text lists what
+ * exists. Each record of the loaded corpus is also a resource,
+ * `corpus://<corpus name>/<type>/<id>`, read as JSON.
  *
  * @experimental
  */
@@ -280,7 +292,7 @@ export function createMcpServer(
         return countFacets(m, args as unknown as FacetQuery)
       case 'get_record': {
         const offset = whole(args, 'bodyOffset', 0)
-        const limit = whole(args, 'bodyLimit', options.bodyLimit ?? 8000)
+        const limit = whole(args, 'bodyLimit', options.bodyLimit ?? DEFAULT_BODY_LIMIT)
         const {
           body,
           backlinks = [],
@@ -310,7 +322,7 @@ export function createMcpServer(
         const { record: _record, ...rest } = args
         return traverse(m, need(args, 'record'), {
           ...(rest as TraverseOptions),
-          limit: Math.max(1, whole(args, 'limit', 50, maxLimit)),
+          limit: Math.max(1, whole(args, 'limit', DEFAULT_PAGE, maxLimit)),
         })
       }
       default:
@@ -387,10 +399,10 @@ export function createMcpServer(
       const record = readRecord(model(), ref, { backlinks: false })
       return { contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(record) }] }
     } catch (e) {
-      throw new McpError(
-        ErrorCode.InvalidParams,
-        e instanceof Error ? e.message : `no resource ${uri}`,
-      )
+      const message = e instanceof Error ? e.message : `no resource ${uri}`
+      if (e instanceof QueryError && e.code === 'not-found')
+        throw new McpError(RESOURCE_NOT_FOUND, message, { uri })
+      throw new McpError(ErrorCode.InvalidParams, message)
     }
   })
   return server

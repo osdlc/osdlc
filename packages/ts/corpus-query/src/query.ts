@@ -9,6 +9,7 @@ import {
   headerOf,
   less,
   QueryError,
+  stringList,
   type RecordHeader,
   recordsOfType,
   refOf,
@@ -153,14 +154,15 @@ interface Match {
   score: number
 }
 
-const strings = (v: string | string[] | undefined): string[] =>
-  v === undefined
-    ? []
-    : (typeof v === 'string' ? v.split(',') : v).map((s) => s.trim()).filter((s) => s !== '')
+const strings = (key: string, v: unknown): string[] =>
+  (stringList(key, v) ?? [])
+    .flatMap((s) => s.split(','))
+    .map((s) => s.trim())
+    .filter((s) => s !== '')
 
 function scopeOf(model: LoadedCorpus, query: Pick<Query, 'type' | 'corpus'>): Scope[] {
   const corpora = corporaOf(model, query.corpus)
-  const names = typeof query.type === 'string' ? [query.type] : (query.type ?? [])
+  const names = stringList('type', query.type) ?? []
   if (names.length === 0)
     return corpora.flatMap((corpus) => corpus.types.map((type) => ({ corpus, type })))
   const out = new Map<string, Scope>()
@@ -354,7 +356,11 @@ function checkValue(scope: readonly Scope[], filter: Filter, sel: Selector): voi
   const wanted = filter.op === 'in' || filter.op === 'nin' ? flat(filter.value) : [filter.value]
   if (declared.every((d) => isNumeric(d.field.schema))) {
     const word = wanted.find(
-      (w) => typeof w !== 'number' && !(typeof w === 'string' && compare(0, w) !== undefined),
+      (w) =>
+        w !== null &&
+        w !== 'null' &&
+        typeof w !== 'number' &&
+        !(typeof w === 'string' && compare(0, w) !== undefined),
     )
     if (word !== undefined)
       throw new QueryError(
@@ -465,7 +471,7 @@ export function findRecords(model: LoadedCorpus, query: Query = {}): QueryResult
   const offset = count('offset', query.offset, 0)
   const { scope, matches, terms } = select(model, query)
 
-  const sorts = strings(query.sort).map((spec) => {
+  const sorts = strings('sort', query.sort).map((spec) => {
     const desc = spec.startsWith('-')
     return { sel: selectorOf(model, scope, desc ? spec.slice(1) : spec), desc }
   })
@@ -489,7 +495,7 @@ export function findRecords(model: LoadedCorpus, query: Query = {}): QueryResult
     matches.sort((a, b) => b.score - a.score || (at.get(a) as number) - (at.get(b) as number))
   }
 
-  const fields = strings(query.fields)
+  const fields = strings('fields', query.fields)
   const all = fields.includes('*')
   const picked = fields.filter((f) => f !== '*').map((f) => selectorOf(model, scope, f))
   const records = matches.slice(offset, offset + limit).map((m): RecordHit => {
@@ -524,7 +530,7 @@ export function findRecords(model: LoadedCorpus, query: Query = {}): QueryResult
 export function countFacets(model: LoadedCorpus, query: FacetQuery): FacetResult {
   checkKeys('facet query', query, FACET_KEYS)
   const top = count('top', query.top, 20)
-  const fields = strings(query.fields)
+  const fields = strings('fields', query.fields)
   if (fields.length === 0)
     throw new QueryError('bad-query', 'fields: name at least one field to count')
   const { scope, matches } = select(model, query)

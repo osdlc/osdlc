@@ -68,6 +68,7 @@ export {
   getReferences,
   type IncomingReference,
   type OutgoingReference,
+  type ReferenceVia,
   type ReadOptions,
   readRecord,
   type RecordDetail,
@@ -84,23 +85,23 @@ export {
 export interface CorpusQuery {
   /** The corpus the functions read. */
   readonly model: LoadedCorpus
-  /** `describeCorpus`. */
+  /** See {@link describeCorpus}. */
   describe(): CorpusSummary
-  /** `listTypes`. */
+  /** See {@link listTypes}. */
   types(corpus?: string): TypeSummary[]
-  /** `describeType`. */
+  /** See {@link describeType}. */
   type(name: string, corpus?: string): TypeDescription
-  /** `findRecords`. */
+  /** See {@link findRecords}. */
   find(query?: Query): QueryResult
-  /** `countFacets`. */
+  /** See {@link countFacets}. */
   facets(query: FacetQuery): FacetResult
-  /** `readRecord`. */
+  /** See {@link readRecord}. */
   get(ref: RecordRef, options?: ReadOptions): RecordDetail
-  /** `getReferences`. */
+  /** See {@link getReferences}. */
   references(ref: RecordRef): OutgoingReference[]
-  /** `getBacklinks`. */
+  /** See {@link getBacklinks}. */
   backlinks(ref: RecordRef): IncomingReference[]
-  /** `traverse`. */
+  /** See {@link traverse}. */
   traverse(ref: RecordRef, options?: TraverseOptions): TraverseResult
 }
 

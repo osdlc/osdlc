@@ -122,7 +122,7 @@ test('the main entry loads no node: module and no code of another package', () =
   visit(join(PACKAGE_DIR, 'src', 'index.ts'))
   expect(runtime).toEqual([])
   expect(seen.size).toBeGreaterThan(5)
-  // The REST handler is web-standard too, but for the generated version it has no part in.
+  // `./rest` loads no `node:` module and no other package's code either.
   seen.clear()
   visit(join(PACKAGE_DIR, 'src', 'rest.ts'))
   expect(runtime).toEqual([])

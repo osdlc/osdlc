@@ -559,7 +559,7 @@ The experimental exports of `@osdlc/corpus-query`:
 `CorpusLink`, `CorpusQuery`, `CorpusSummary`, `Facet`, `FacetQuery`, `FacetResult`,
 `FieldDescription`, `FieldValue`, `Filter`, `FilterOp`, `IncomingReference`, `OutgoingReference`,
 `Query`, `QueryError`, `QueryErrorCode`, `QueryResult`, `ReadOptions`, `RecordDetail`,
-`RecordHeader`, `RecordHit`, `RecordRef`, `TraverseOptions`, `TraverseResult`, `TypeDescription`,
+`RecordHeader`, `RecordHit`, `RecordRef`, `ReferenceVia`, `TraverseOptions`, `TraverseResult`, `TypeDescription`,
 `TypeSummary`, `corpusQuery`, `countFacets`, `describeCorpus`, `describeType`, `findRecords`,
 `formatFilter`, `getBacklinks`, `getReferences`, `listTypes`, `parseFilter`, `parseTerm`,
 `readRecord`, `traverse`

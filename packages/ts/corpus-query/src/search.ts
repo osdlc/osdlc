@@ -1,7 +1,7 @@
 /**
  * Full-text search: each record's title, string fields and body, lowercased the first time a
  * search reads the record. A record matches when it holds every term. There is no index beyond
- * that text: a scan of a few megabytes takes a few milliseconds.
+ * that text; see D-04.
  */
 import type { CorpusRecord } from '@osdlc/corpus-schema'
 

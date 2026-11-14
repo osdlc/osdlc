@@ -24,9 +24,12 @@ describe('queryFromParams', () => {
       sort: ['-pages'],
       limit: 5,
       offset: 10,
-      fields: ['pages,rating'],
+      fields: ['pages', 'rating'],
       body: true,
     })
+    expect(
+      queryFromParams(new URLSearchParams('sort=-rating,title&sort=pages&fields=a&fields=b,c')),
+    ).toEqual({ sort: ['-rating', 'title', 'pages'], fields: ['a', 'b', 'c'] })
     expect(queryFromParams(new URLSearchParams(''))).toEqual({})
     expect(
       queryFromParams(new URLSearchParams('q=status%3Dread+tags%3Dutopia&body=false')),
@@ -191,6 +194,80 @@ describe('the handler', () => {
     const small = createRestHandler(library, { maxLimit: 2 })
     const r = await small(new Request('http://corpus.test/records?limit=500'))
     expect(((await r.json()) as { limit: number }).limit).toBe(2)
+  })
+
+  test('comma-joined sort, fields and via work end to end', async () => {
+    const sorted = await get('/records?type=books&sort=-rating,title&fields=pages,rating')
+    expect(sorted.status).toBe(200)
+    const joined = sorted.body.records.map((r: { ref: string }) => r.ref)
+    const repeated = await get(
+      '/records?type=books&sort=-rating&sort=title&fields=pages&fields=rating',
+    )
+    expect(repeated.body.records.map((r: { ref: string }) => r.ref)).toEqual(joined)
+    expect(sorted.body.records[0].data).toHaveProperty('pages')
+    const facets = await get('/facets?type=books&fields=status,owned')
+    expect(facets.status).toBe(200)
+    expect(facets.body.facets.map((f: { field: string }) => f.field)).toEqual(['status', 'owned'])
+    const walk = (via: string) =>
+      get(`/records/books/Too%20Like%20the%20Lightning/traverse?via=${via}`).then(
+        (r) => r.body.nodes,
+      )
+    expect((await walk('author,sequel')).map((n: { ref: string }) => n.ref)).toEqual([
+      'authors/Ada Palmer',
+      'books/Seven Surrenders',
+    ])
+    expect(await walk('author&via=sequel')).toEqual(await walk('author,sequel'))
+  })
+
+  test('a null or non-object body to POST /query is a 400, not a 500', async () => {
+    for (const body of ['null', '5', '"x"', '[1]']) {
+      const r = await post('/query', body)
+      expect([body, r.status, r.body.error.code]).toEqual([body, 400, 'bad-query'])
+    }
+    expect((await post('/query', { limit: '2000' })).status).toBe(400)
+    expect((await post('/facets', 'null')).status).toBe(400)
+  })
+
+  test('a value of the wrong shape is a bad-query', async () => {
+    for (const body of [{ sort: 1 }, { fields: [1] }, { type: 5 }, { type: [1] }]) {
+      const r = await post('/query', body)
+      expect([JSON.stringify(body), r.status, r.body.error.code]).toEqual([
+        JSON.stringify(body),
+        400,
+        'bad-query',
+      ])
+    }
+  })
+
+  test('the limit of a traversal is cut to maxLimit', async () => {
+    const small = createRestHandler(library, { maxLimit: 1 })
+    const r = await small(
+      new Request(
+        'http://corpus.test/records/authors/Ada%20Palmer/traverse?direction=in&limit=500',
+      ),
+    )
+    const walk = (await r.json()) as { nodes: unknown[]; truncated: boolean }
+    expect(walk.nodes).toHaveLength(1)
+    expect(walk.truncated).toBe(true)
+  })
+
+  test('a body is counted in bytes, and its length is checked first', async () => {
+    const big = JSON.stringify({ search: 'あ'.repeat(400_000) })
+    expect(big.length).toBeLessThan(1024 * 1024)
+    expect((await post('/query', big)).status).toBe(413)
+    const declared = await get('/query', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'content-length': String(2 * 1024 * 1024) },
+      body: '{}',
+    })
+    expect(declared.status).toBe(413)
+  })
+
+  test('a per-route 405 names the methods the route takes', async () => {
+    expect((await get('/query')).headers.get('allow')).toBe('POST, OPTIONS')
+    const r = await post('/records', {})
+    expect(r.status).toBe(405)
+    expect(r.headers.get('allow')).toBe('GET, HEAD, OPTIONS')
   })
 
   test('cors: any origin, or one', async () => {

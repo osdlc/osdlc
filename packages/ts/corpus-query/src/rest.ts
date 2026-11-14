@@ -7,7 +7,7 @@ import type { LoadedCorpus } from '@osdlc/corpus-schema'
 
 import { describeCorpus, describeType, listTypes } from './describe.ts'
 import { given } from './given.ts'
-import { QueryError } from './model.ts'
+import { MAX_BODY, QueryError } from './model.ts'
 import { openApi } from './openapi.ts'
 import { countFacets, type FacetQuery, findRecords, type Query } from './query.ts'
 import {
@@ -31,7 +31,7 @@ export interface RestOptions {
    * false, which sends no CORS header.
    */
   cors?: boolean | string
-  /** The most records one request may ask for. A larger `limit` is cut to it. Default 1000. */
+  /** The most records or nodes one request may ask for. A larger `limit` is cut to it. Default 1000. */
   maxLimit?: number
 }
 
@@ -42,18 +42,19 @@ export interface RestOptions {
  */
 export type RestHandler = (request: Request) => Promise<Response>
 
-/** The most bytes a POST body may hold. */
-const MAX_BODY = 1024 * 1024
-
 class HttpError extends Error {
   readonly status: number
   readonly code: string
-  constructor(status: number, code: string, message: string) {
+  readonly headers: Record<string, string>
+  constructor(status: number, code: string, message: string, headers: Record<string, string> = {}) {
     super(message)
     this.status = status
     this.code = code
+    this.headers = headers
   }
 }
+
+const ALLOW = 'GET, HEAD, POST, OPTIONS'
 
 const STATUS: Record<string, number> = { 'not-found': 404, ambiguous: 409 }
 
@@ -72,6 +73,10 @@ const all = (p: URLSearchParams, name: string): string[] | undefined => {
   return values.length === 0 ? undefined : values
 }
 
+/** The values of a parameter that may repeat or join its values with commas. */
+const list = (p: URLSearchParams, name: string): string[] | undefined =>
+  all(p, name)?.flatMap((v) => v.split(','))
+
 /**
  * A query from URL parameters: `type`, `corpus`, `search`, `sort`, `limit`, `offset`, `fields`
  * and `body` as the query's keys, `where` once per term, and `q` for a whole filter in the
@@ -84,14 +89,14 @@ export function queryFromParams(params: URLSearchParams): Query {
   const q = params.get('q')
   const where = all(params, 'where')
   return given({
-    type: all(params, 'type')?.flatMap((t) => t.split(',')),
+    type: list(params, 'type'),
     corpus: params.get('corpus') ?? undefined,
     where: q === null ? where : where === undefined ? q : undefined,
     search: params.get('search') ?? undefined,
-    sort: all(params, 'sort'),
+    sort: list(params, 'sort'),
     limit: whole('limit', params.get('limit')),
     offset: whole('offset', params.get('offset')),
-    fields: all(params, 'fields'),
+    fields: list(params, 'fields'),
     body: flag(params.get('body')),
   })
 }
@@ -105,7 +110,7 @@ function facetsFromParams(params: URLSearchParams): FacetQuery {
     corpus,
     where,
     search,
-    fields: all(params, 'fields') ?? all(params, 'field') ?? [],
+    fields: list(params, 'fields') ?? list(params, 'field') ?? [],
     top: whole('top', params.get('top')),
   })
 }
@@ -148,7 +153,7 @@ export function createRestHandler(
       ? {}
       : {
           'access-control-allow-origin': origin,
-          'access-control-allow-methods': 'GET, HEAD, POST, OPTIONS',
+          'access-control-allow-methods': ALLOW,
           'access-control-allow-headers': 'content-type',
           ...(origin === '*' ? {} : { vary: 'origin' }),
         }
@@ -158,16 +163,43 @@ export function createRestHandler(
       headers: { 'content-type': 'application/json; charset=utf-8', ...cors, ...headers },
     })
   const capped = <Q extends { limit?: number }>(query: Q): Q =>
-    query.limit !== undefined && query.limit > maxLimit ? { ...query, limit: maxLimit } : query
+    typeof query === 'object' &&
+    query !== null &&
+    typeof query.limit === 'number' &&
+    query.limit > maxLimit
+      ? { ...query, limit: maxLimit }
+      : query
 
   async function bodyOf(request: Request): Promise<unknown> {
     const type = request.headers.get('content-type') ?? ''
     if (!/^application\/json\b/i.test(type))
       throw new HttpError(415, 'unsupported-media-type', 'send the query as application/json')
-    const text = await request.text()
-    if (text.length > MAX_BODY) throw new HttpError(413, 'too-large', 'the body is over 1 MiB')
+    const tooLarge = new HttpError(413, 'too-large', 'the body is over 1 MiB')
+    const declared = Number(request.headers.get('content-length'))
+    if (declared > MAX_BODY) throw tooLarge
+    const chunks: Uint8Array[] = []
+    let size = 0
+    if (request.body !== null) {
+      const reader = request.body.getReader()
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        size += value.byteLength
+        if (size > MAX_BODY) {
+          await reader.cancel()
+          throw tooLarge
+        }
+        chunks.push(value)
+      }
+    }
+    const bytes = new Uint8Array(size)
+    let at = 0
+    for (const chunk of chunks) {
+      bytes.set(chunk, at)
+      at += chunk.byteLength
+    }
     try {
-      return JSON.parse(text)
+      return JSON.parse(new TextDecoder().decode(bytes))
     } catch {
       throw new HttpError(400, 'bad-query', 'the body is not JSON')
     }
@@ -182,7 +214,7 @@ export function createRestHandler(
         405,
         { error: { code: 'method-not-allowed', message: 'the API is read-only' } },
         {
-          allow: 'GET, HEAD, POST, OPTIONS',
+          allow: ALLOW,
         },
       )
     if (base !== '' && url.pathname !== base && !url.pathname.startsWith(`${base}/`))
@@ -202,7 +234,9 @@ export function createRestHandler(
     const [head, second, third, fourth] = parts
     const get = (): void => {
       if (method !== 'GET')
-        throw new HttpError(405, 'method-not-allowed', `${url.pathname} takes GET`)
+        throw new HttpError(405, 'method-not-allowed', `${url.pathname} takes GET`, {
+          allow: 'GET, HEAD, OPTIONS',
+        })
     }
 
     if (head === undefined) {
@@ -222,7 +256,10 @@ export function createRestHandler(
       )
     }
     if (head === 'query' && parts.length === 1) {
-      if (method !== 'POST') throw new HttpError(405, 'method-not-allowed', '/query takes POST')
+      if (method !== 'POST')
+        throw new HttpError(405, 'method-not-allowed', '/query takes POST', {
+          allow: 'POST, OPTIONS',
+        })
       return json(200, findRecords(model, capped((await bodyOf(request)) as Query)))
     }
     if (head === 'facets' && parts.length === 1)
@@ -266,10 +303,10 @@ export function createRestHandler(
             ref,
             given({
               direction: (p.get('direction') ?? undefined) as TraverseOptions['direction'],
-              via: all(p, 'via'),
+              via: list(p, 'via'),
               links: flag(p.get('links')),
               depth: whole('depth', p.get('depth')),
-              limit: whole('limit', p.get('limit')),
+              limit: Math.min(whole('limit', p.get('limit')) ?? 200, maxLimit),
             }),
           ),
         )
@@ -285,7 +322,7 @@ export function createRestHandler(
         : response
     } catch (e) {
       if (e instanceof HttpError)
-        return json(e.status, { error: { code: e.code, message: e.message } })
+        return json(e.status, { error: { code: e.code, message: e.message } }, e.headers)
       if (e instanceof QueryError)
         return json(STATUS[e.code] ?? 400, { error: { code: e.code, message: e.message } })
       return json(500, { error: { code: 'internal', message: 'the query failed' } })

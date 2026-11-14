@@ -9,7 +9,15 @@ import {
   type RecordRef,
   recordOfTarget,
   resolveRef,
+  stringList,
 } from './model.ts'
+
+/**
+ * `reference` for a value of an `x-ref` field, `link` for a link in the Markdown body.
+ *
+ * @experimental
+ */
+export type ReferenceVia = 'reference' | 'link'
 
 /**
  * A value of a reference field, or a link in the body, with the record it points at.
@@ -17,8 +25,8 @@ import {
  * @experimental
  */
 export interface OutgoingReference {
-  /** `reference` for a value of an `x-ref` field, `link` for a link in the Markdown body. */
-  via: 'reference' | 'link'
+  /** See {@link ReferenceVia}. */
+  via: ReferenceVia
   /** The field that holds the value. Null for a body link. */
   field: string | null
   /** The value's place in the record's data, as a JSON Pointer. Null for a body link. */
@@ -37,8 +45,8 @@ export interface OutgoingReference {
  * @experimental
  */
 export interface IncomingReference {
-  /** `reference` for a value of an `x-ref` field, `link` for a link in the Markdown body. */
-  via: 'reference' | 'link'
+  /** See {@link ReferenceVia}. */
+  via: ReferenceVia
   /** The field of the holding record. Null for a body link. */
   field: string | null
   /** The value's place in the holding record's data, as a JSON Pointer. Null for a body link. */
@@ -114,7 +122,7 @@ export interface TraverseResult {
   /** Each record reached, once, with the fewest hops that reach it. */
   nodes: (RecordHeader & { depth: number })[]
   /** Each reference followed, `from` the record that holds it `to` the record it names, by `ref`. */
-  edges: { from: string; to: string; via: 'reference' | 'link'; field: string | null }[]
+  edges: { from: string; to: string; via: ReferenceVia; field: string | null }[]
   /** Whether `limit` stopped the walk before `depth` did. */
   truncated: boolean
 }
@@ -227,9 +235,7 @@ export function traverse(
     options.via === undefined
       ? undefined
       : new Set(
-          (typeof options.via === 'string' ? options.via.split(',') : options.via).map((v) =>
-            v.trim(),
-          ),
+          (stringList('via', options.via) ?? []).flatMap((v) => v.split(',')).map((v) => v.trim()),
         )
   const start = resolveRef(model, ref)
   const root = headerOf(start.key, start.record)
@@ -242,17 +248,16 @@ export function traverse(
   for (let hop = 1; hop <= depth && frontier.length > 0; hop++) {
     const next: typeof frontier = []
     for (const { header, record } of frontier) {
-      const steps: { other: RecordTarget; via: 'reference' | 'link'; field: string | null }[] =
-        inward
-          ? record.incoming.map((b) => ({ other: b.from, via: b.via, field: fieldOf(b.pointer) }))
-          : [
-              ...record.references.flatMap((r) =>
-                r.target === null
-                  ? []
-                  : [{ other: r.target, via: 'reference' as const, field: r.field }],
-              ),
-              ...record.links.map((l) => ({ other: l.target, via: 'link' as const, field: null })),
-            ]
+      const steps: { other: RecordTarget; via: ReferenceVia; field: string | null }[] = inward
+        ? record.incoming.map((b) => ({ other: b.from, via: b.via, field: fieldOf(b.pointer) }))
+        : [
+            ...record.references.flatMap((r) =>
+              r.target === null
+                ? []
+                : [{ other: r.target, via: 'reference' as const, field: r.field }],
+            ),
+            ...record.links.map((l) => ({ other: l.target, via: 'link' as const, field: null })),
+          ]
       for (const step of steps) {
         if (
           step.via === 'link'

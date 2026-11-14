@@ -9,6 +9,7 @@ import { dirname, resolve } from 'node:path'
 import { findCorpora, type LoadedCorpus, loadCorpus } from '@osdlc/corpus-schema'
 
 import { type CorpusQuery, corpusQuery } from './index.ts'
+import { MAX_BODY } from './model.ts'
 import { createRestHandler, type RestHandler, type RestOptions } from './rest.ts'
 
 const ROOT_FILE = /.\.corpus-schema\.(md|yaml|json)$/
@@ -115,7 +116,6 @@ export interface RestServer {
 }
 
 const LOOPBACK = new Set(['127.0.0.1', 'localhost', '::1', '[::1]'])
-const MAX_BODY = 1024 * 1024
 
 function hostName(header: string | undefined): string {
   const host = header ?? ''

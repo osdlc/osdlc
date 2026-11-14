@@ -390,6 +390,15 @@ describe('errors say what exists', () => {
     expect(findRecords(library, { type: 'books', where: 'status!=done' }).total).toBe(6)
   })
 
+  test('null is a value of a number field, in the string and the JSON form', () => {
+    const count = (where: NonNullable<Query['where']>) =>
+      findRecords(library, { type: 'books', where }).total
+    expect(count('rating=null') + count('rating!=null')).toBe(6)
+    const absent = count([{ field: 'rating', op: 'eq', value: null }])
+    expect(absent).toBe(2)
+    expect(count([{ field: 'rating', op: 'ne', value: null }])).toBe(6 - absent)
+  })
+
   test('a query of the wrong shape', () => {
     expect(fails(() => findRecords(library, { limit: -1 }))).toEqual([
       'bad-query',
@@ -408,6 +417,13 @@ describe('errors say what exists', () => {
       'bad-filter',
       "'status': no operator; write <field><op><value> with one of = != ~ !~ > >= < <=",
     ])
+    for (const query of [{ sort: 1 }, { fields: [1] }, { type: 5 }, { type: [1] }])
+      expect([JSON.stringify(query), fails(() => findRecords(library, query as never))[0]]).toEqual(
+        [JSON.stringify(query), 'bad-query'],
+      )
+    expect(fails(() => findRecords(library, { sort: 1 } as never))[1]).toBe(
+      'sort: expected a string or a list of strings',
+    )
     expect(fails(() => countFacets(library, { fields: [] }))).toEqual([
       'bad-query',
       'fields: name at least one field to count',

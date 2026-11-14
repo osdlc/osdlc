@@ -209,8 +209,8 @@ describe('resources', () => {
     expect(record['body']).toMatch(/Marco Polo/)
     const { resourceTemplates } = await client.listResourceTemplates()
     expect(resourceTemplates[0]?.uriTemplate).toBe('corpus://library/{type}/{id}')
-    await expect(client.readResource({ uri: 'corpus://library/books/Dune' })).rejects.toThrow(
-      /no record 'Dune'/,
+    await expect(client.readResource({ uri: 'corpus://library/books/Dune' })).rejects.toMatchObject(
+      { code: -32002, message: expect.stringMatching(/no record 'Dune'/) as unknown },
     )
     await client.close()
   })
