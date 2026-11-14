@@ -321,7 +321,7 @@ export class AsyncGit {
     return this.backend.execute(this.cwd, { kind: 'statusPorcelain', ...req }, call)
   }
 
-  /** Every changed or untracked file. See {@link Git.statusEntries}. */
+  /** Every changed or untracked file, and ignored ones with `ignored`. See {@link Git.statusEntries}. */
   statusEntries(opts: GitCallOptions & StatusEntriesOptions = {}): Promise<StatusEntry[]> {
     const [call, req] = splitCallOptions(opts)
     return this.backend.execute(this.cwd, { kind: 'statusEntries', ...req }, call)

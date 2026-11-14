@@ -495,9 +495,7 @@ export class Git {
     return this.exec(v.statusPorcelain(opts), opts)
   }
 
-  /**
-   * Every changed or untracked file, from `status --porcelain -z`.
-   */
+  /** Every changed or untracked file, and ignored ones with `ignored`. See {@link statusEntries} in `verbs.ts`. */
   statusEntries(opts: GitSyncCallOptions & StatusEntriesOptions = {}): StatusEntry[] {
     return this.exec(v.statusEntries(opts), opts)
   }
