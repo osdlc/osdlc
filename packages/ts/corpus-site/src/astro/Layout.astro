@@ -1,0 +1,50 @@
+---
+// The page shell: head, header, navigation, content and footer. Replace it with the
+// integration's `components.Layout`, or use it for a page of your own:
+//
+//   import { Layout } from 'virtual:corpus-site/components'
+//
+// Props: `title`, `description`, `active` (the page's place in the navigation, as `Sidebar.astro`
+// describes it) and `wide` (the content may be wider, for a page with a side column).
+// Slots: the default one and `head`.
+import '@osdlc/markdown-render/theme.css'
+import '../corpus-site.css'
+import 'virtual:corpus-site/user-css'
+import { Footer, Header, Sidebar } from 'virtual:corpus-site/components'
+import { getSite } from '../context.js'
+
+const { title, description, active = null, wide = false } = Astro.props
+const site = getSite()
+const pageTitle = title === undefined || title === site.title ? site.title : `${title} · ${site.title}`
+const pageDescription = description ?? site.description
+---
+
+<!doctype html>
+<html lang={site.locale}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{pageTitle}</title>
+    {pageDescription && <meta name="description" content={pageDescription} />}
+    <meta name="generator" content={Astro.generator} />
+    <script is:inline>
+      // Before the first paint, so a chosen theme does not flash.
+      try {
+        const theme = localStorage.getItem('cs-theme')
+        if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme
+      } catch {}
+    </script>
+    <slot name="head" />
+  </head>
+  <body>
+    <a class="cs-skip" href="#cs-main">Skip to content</a>
+    <Header />
+    <div class="cs-frame">
+      <Sidebar active={active} />
+      <main id="cs-main" class="cs-main" data-pagefind-body>
+        <div class="cs-content" data-wide={wide ? '' : undefined}><slot /></div>
+      </main>
+    </div>
+    <Footer />
+  </body>
+</html>

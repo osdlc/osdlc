@@ -78,7 +78,7 @@ The spec, and the validator that checks a corpus against it.
 - It owns: the root file `<name>.corpus-schema.md` (or `.yaml` or `.json`) that marks a corpus, type folders,
   record ids, record folders, JSON Schemas for types, links between types (`x-ref`), other corpora
   (`extends`, `uses` and `references` in the root file, `x-extends` on a type), identity, and the
-  `validate`, `validate --fix` and `sync` commands. These come in the next release, 0.3.0 (the
+  `validate`, `validate --fix` and `sync` commands. These came in release 0.4.0 (the
   plan's task 36), built in [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12) and
   brought back here: `extends`, `uses`, `references`, `x-extends`, identity and `sync`.
 - A record's id comes from its file name. A type's `x-id-pattern` cuts it: the id is the longest
@@ -101,9 +101,9 @@ The spec, and the validator that checks a corpus against it.
   corpus, so a record reached through two chains of references is one record. A schema may state
   its type's identity in `x-identity`, and the validator checks it. This is the plan's D16.
 - Packages: `@osdlc/corpus-schema` (TypeScript), in this repo's `packages/ts/corpus-schema`, with its
-  spec and cases in `packages/conformance/corpus-schema`. It publishes from here: 0.2.1 is on npm,
-  and 0.3.0, which adds `extends`, comes next. A copy went to osdlc/markdown for a time, where the
-  0.3.0 work was done, and that work comes back here. skillwright's harness-reference uses the npm
+  spec and cases in `packages/conformance/corpus-schema`. It publishes from here: 0.4.0 is on npm,
+  and it adds `extends`. A copy went to osdlc/markdown for a time, where that
+  work was done, and the work came back here. skillwright's harness-reference uses the npm
   package. A Rust validator comes later and runs the same tests (the plan's task 32).
 
 ### 5. The model
@@ -129,7 +129,7 @@ Kinds of records, declared once, above any one way of storing them. This is the 
 ### 6. Profiles
 
 Shared sets of types, and shared corpora of records. How a corpus names them is decided (the plan's
-D4, D11 and D15) and built for the next corpus-schema release, 0.3.0 (the plan's task 36). Refine
+D4, D11 and D15) and built in corpus-schema 0.4.0 (the plan's task 36). Refine
 and waive are still proposals.
 
 - A profile is a set of types and rules that many corpora can use. It is a corpus that has only
@@ -138,7 +138,7 @@ and waive are still proposals.
   for claims backed by evidence. Its types are Statement, Study Result, Method and Document. A
   statement holds its evidence lines, and Contribution is a field on records. It starts as an
   example corpus, `profiles/claims/example/` in osdlc/markdown, with a README that maps each type to
-  VA-Spec. Until 0.3.0 ships `extends`, a corpus copies the type folders from the example. Then the
+  VA-Spec. Until 0.4.0 shipped `extends`, a corpus copied the type folders from the example. Next the
   profile is published as the npm package `@osdlc/corpus-profile-claims`. It is a general starting
   profile that research corpora use or extend. Later it may be written as a pack.
 - The profiles, the claims example and the starter come to osdlc/osdlc in phase 4 of the move back
@@ -240,8 +240,8 @@ references:
 ```
 
 As `my-corpus.corpus-schema.md`, the same keys go in YAML frontmatter between `---` lines. Today only
-`corpus-schema: 0` is required. Version 0 has `level`. `extends`, `uses` and `references` come in
-corpus-schema 0.3.0 (the plan's task 36). `extends` and `uses` need `level: 2`. `extends` replaces
+`corpus-schema: 0` is required. Version 0 has `level`. `extends`, `uses` and `references` came in
+corpus-schema 0.4.0 (the plan's task 36). `extends` and `uses` need `level: 2`. `extends` replaces
 `profiles`, which stays reserved and unused.
 `dialect` is reserved too: a validator says it does not check it. The `dialect` setting is still a
 proposal.

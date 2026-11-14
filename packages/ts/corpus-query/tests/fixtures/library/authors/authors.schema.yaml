@@ -1,0 +1,7 @@
+title: Author
+description: A person who wrote a book.
+type: object
+required: [born]
+properties:
+  born: { type: integer, description: The year of birth. }
+  country: { type: string }
