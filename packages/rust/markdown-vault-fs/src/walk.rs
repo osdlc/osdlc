@@ -425,10 +425,17 @@ pub enum Admission {
     /// a change to it.
     Outside,
     /// The path is the walk's, but the walk would not list it now: it is
-    /// gone, too small, a folder, a refused symlink, under a symlinked
-    /// folder or a folder that cannot be listed, or spelled otherwise than
-    /// its folder lists it. A cache drops it.
+    /// gone, too small, a folder, a refused symlink, or under a symlinked
+    /// folder or a folder that cannot be listed. A cache drops it.
     Unlisted,
+    /// The file system answers for the path, but a folder on the way lists
+    /// it under another spelling: another case on a case-insensitive file
+    /// system, or another Unicode form (NFD on HFS+), as when a watcher
+    /// reports a path otherwise than the disk spells it. The walk lists it
+    /// only by that spelling, which this path does not give, so a cache
+    /// drops this one and walks again. The old name after a case-only rename
+    /// is one.
+    Respelled,
     /// The walk would list it. A cache reads it.
     Listed,
 }
@@ -460,10 +467,10 @@ impl WalkOptions {
     /// the file system decides [`Admission::Unlisted`], as the walk reaches
     /// a file: by listing each folder from the walk's start down. A folder
     /// on the way that cannot be listed or is a symlink (never entered), or
-    /// a file its folder does not list by that spelling (gone, or the old
-    /// name after a case-only rename on a case-insensitive file system), is
-    /// unlisted. So is a folder, a file under [`WalkOptions::min_bytes`] or
-    /// a symlink under [`WalkOptions::refuse_symlinks`].
+    /// a file its folder does not list, is unlisted. So is a folder, a file
+    /// under [`WalkOptions::min_bytes`] or a symlink under
+    /// [`WalkOptions::refuse_symlinks`]. A name a folder does not list but
+    /// the file system still answers for is [`Admission::Respelled`].
     ///
     /// It answers for one path. Under `refuse_symlinks` a whole walk fails
     /// on any symlink it sees, and under [`Errors::Propagate`] on any error;
@@ -476,7 +483,8 @@ impl WalkOptions {
     /// [`Admission::Unlisted`].
     ///
     /// Each call lists the folders on the path; [`WalkOptions::admissions`]
-    /// lists each folder once for the whole batch.
+    /// lists each folder once for the whole batch, and a second time only
+    /// when the file system answers for a name the first listing lacked.
     ///
     /// Expects the normalised form [`crate::path::lexical::validate_relative`]
     /// returns. A path with an empty, `.` or `..` segment is outside.
@@ -493,7 +501,8 @@ impl WalkOptions {
     }
 
     /// [`WalkOptions::admission`] for each of `rels`, in order, reading the
-    /// excluded files once and each folder's listing once.
+    /// excluded files once and each folder's listing once (twice at most,
+    /// see [`WalkOptions::admission`]).
     pub fn admissions<'r>(
         &self,
         vfs: &dyn Vfs,
@@ -512,15 +521,19 @@ impl WalkOptions {
     }
 
     /// Whether this walk reads its rules from the file at vault-relative
-    /// `rel`: the vault's excluded files ([`hide::OBSIDIAN_APP_JSON`]) under
-    /// [`Hide::Vault`], unless the walk sees `Everything`. A change to that
-    /// file can change what the walk lists anywhere, which
-    /// [`WalkOptions::admission`] cannot say path by path, so a cache walks
-    /// again.
+    /// `rel`, or from a file inside the folder `rel`: the vault's excluded
+    /// files ([`hide::OBSIDIAN_APP_JSON`]) under [`Hide::Vault`], unless the
+    /// walk sees `Everything`. So `.obsidian/app.json` and `.obsidian`
+    /// (a watcher that reports the folder, as on its removal or rename)
+    /// both answer yes. A change to that file can change what the walk
+    /// lists anywhere, which [`WalkOptions::admission`] cannot say path by
+    /// path, so a cache walks again.
     pub fn reads_rules_from(&self, rel: &str) -> bool {
         matches!(self.hide, Hide::Vault)
             && self.visibility != Visibility::Everything
-            && rel == hide::OBSIDIAN_APP_JSON
+            && hide::OBSIDIAN_APP_JSON
+                .strip_prefix(rel)
+                .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
     }
 
     fn admission_with(
@@ -577,22 +590,31 @@ impl WalkOptions {
         // The walk finds a file by listing each folder from its start down,
         // so a file is listed only when every one of them lists the next: a
         // folder it cannot list, a symlinked folder (listed as a file) or a
-        // different spelling stops it.
-        if !starts
-            .iter()
-            .any(|&start| listings.lists(vfs, vault_dir, rel, start))
-        {
-            return Admission::Unlisted;
+        // different spelling stops it. A different spelling the file system
+        // answers for is Respelled, not Unlisted.
+        let mut found = Admission::Unlisted;
+        for &start in &starts {
+            match listings.reach(vfs, vault_dir, rel, start) {
+                Reach::Listed => {
+                    found = Admission::Listed;
+                    break;
+                }
+                Reach::Respelled => found = Admission::Respelled,
+                Reach::Unlisted => {}
+            }
+        }
+        if found == Admission::Unlisted {
+            return found;
         }
         // A batch's listing can be older than this stat, so the stat also
-        // decides that the path is still a file.
+        // decides that the path is still a file the walk would list.
         match vfs.metadata(&join_rel(vault_dir, rel)) {
             Ok(m)
                 if !m.is_dir
                     && m.len >= self.min_bytes
                     && !(m.is_symlink && self.refuse_symlinks) =>
             {
-                Admission::Listed
+                found
             }
             Ok(_) => Admission::Unlisted,
             // A walk that skips or reports errors lists a file it cannot
@@ -600,7 +622,7 @@ impl WalkOptions {
             Err(e)
                 if !e.is_not_found() && self.errors != Errors::Propagate && self.min_bytes == 0 =>
             {
-                Admission::Listed
+                found
             }
             Err(_) => Admission::Unlisted,
         }
@@ -643,36 +665,108 @@ fn relative_root(root: &str) -> String {
         .join("/")
 }
 
-/// Folder listings read for one admission or one batch: each folder's
-/// entry names and whether each is a folder, `None` when it cannot be
-/// listed.
+/// Folder listings read for one admission or one batch.
 #[derive(Default)]
-struct Listings(HashMap<PathBuf, Option<HashMap<String, bool>>>);
+struct Listings {
+    /// Each folder's entry names and whether each is a folder, `None` when
+    /// it cannot be listed.
+    folders: HashMap<PathBuf, Option<HashMap<String, bool>>>,
+    /// Folders listed a second time this batch.
+    relisted: HashSet<PathBuf>,
+    /// For a name a folder does not list: whether the file system answers
+    /// for it, and with a folder or not.
+    answers: HashMap<PathBuf, Option<bool>>,
+}
+
+/// How a walk reaches a path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Reach {
+    Listed,
+    Respelled,
+    Unlisted,
+}
+
+/// What one folder's listing says of one name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Found {
+    Entry {
+        is_dir: bool,
+    },
+    /// Not in the listing.
+    Missing,
+    /// The folder cannot be listed.
+    Unlistable,
+}
 
 impl Listings {
-    /// Whether listing each folder from the walk's start, `rel[..start]`,
-    /// down to `rel`'s own folder finds `rel`: a folder for each segment but
-    /// the last and a file for the last, spelled as `rel` spells it. How the
-    /// walk reaches a file.
-    fn lists(&mut self, vfs: &dyn Vfs, vault_dir: &Path, rel: &str, start: usize) -> bool {
+    /// How the walk reaches `rel`: by listing each folder from `rel[..start]`
+    /// down, finding a folder for each segment but the last and a file for the
+    /// last. `Respelled` when some folder lacks a name, even listed afresh, but
+    /// the file system answers for it.
+    fn reach(&mut self, vfs: &dyn Vfs, vault_dir: &Path, rel: &str, start: usize) -> Reach {
         let mut folder = join_rel(vault_dir, &rel[..start]);
         let mut names = rel[start..].split('/').peekable();
+        let mut respelled = false;
         while let Some(name) = names.next() {
             let more = names.peek().is_some();
-            if !self.0.contains_key(&folder) {
-                let entries = vfs
-                    .read_dir(&folder)
-                    .ok()
-                    .map(|entries| entries.into_iter().map(|e| (e.name, e.is_dir)).collect());
-                self.0.insert(folder.clone(), entries);
+            if !self.folders.contains_key(&folder) {
+                self.list(vfs, &folder);
             }
-            let found = self.0[&folder].as_ref().and_then(|e| e.get(name));
-            if found != Some(&more) {
-                return false;
+            let mut found = self.found(&folder, name);
+            if found == Found::Missing
+                && let Some(is_dir) = self.answers(vfs, folder.join(name))
+            {
+                // A fresh listing separates a file created late from a respelling.
+                if self.relisted.insert(folder.clone()) {
+                    self.list(vfs, &folder);
+                    found = self.found(&folder, name);
+                }
+                if found == Found::Missing {
+                    respelled = true;
+                    found = Found::Entry { is_dir };
+                }
             }
+            match found {
+                Found::Entry { is_dir } if is_dir == more => {}
+                _ => return Reach::Unlisted,
+            }
+            // Below a respelled name, the file system resolves the asked
+            // spelling to the disk's.
             folder.push(name);
         }
-        true
+        if respelled {
+            Reach::Respelled
+        } else {
+            Reach::Listed
+        }
+    }
+
+    /// Lists `folder` into the cache, `None` when it cannot be listed.
+    fn list(&mut self, vfs: &dyn Vfs, folder: &Path) {
+        let entries = vfs
+            .read_dir(folder)
+            .ok()
+            .map(|entries| entries.into_iter().map(|e| (e.name, e.is_dir)).collect());
+        self.folders.insert(folder.to_path_buf(), entries);
+    }
+
+    /// Whether a stat of `path`, a name its folder does not list, succeeds,
+    /// and whether it is a folder if so.
+    fn answers(&mut self, vfs: &dyn Vfs, path: PathBuf) -> Option<bool> {
+        *self
+            .answers
+            .entry(path)
+            .or_insert_with_key(|path| vfs.metadata(path).ok().map(|m| m.is_dir))
+    }
+
+    /// What the cached listing of `folder` says of `name`.
+    fn found(&self, folder: &Path, name: &str) -> Found {
+        match &self.folders[folder] {
+            None => Found::Unlistable,
+            Some(listed) => listed
+                .get(name)
+                .map_or(Found::Missing, |&is_dir| Found::Entry { is_dir }),
+        }
     }
 }
 
@@ -1191,6 +1285,10 @@ mod tests {
         /// The file at `path` stats as a folder, as one replaced by a folder
         /// after its folder was listed does.
         Folder,
+        /// A stat of `path`, or of a path under it, answers for this other
+        /// path, as a case-insensitive or normalization-insensitive file
+        /// system answers for another spelling of a file or folder.
+        Alias(PathBuf),
     }
 
     fn denied(path: &Path) -> vfs_seam::VfsError {
@@ -1200,11 +1298,21 @@ mod tests {
 
     impl Vfs for Denied<'_> {
         fn metadata(&self, path: &Path) -> Result<vfs_seam::Metadata, vfs_seam::VfsError> {
+            if let Call::Alias(real) = &self.call
+                && let Ok(rest) = path.strip_prefix(&self.path)
+            {
+                let real = if rest.as_os_str().is_empty() {
+                    real.clone()
+                } else {
+                    real.join(rest)
+                };
+                return self.inner.metadata(&real);
+            }
             if path == self.path {
-                match self.call {
+                match &self.call {
                     Call::Stat => return Err(denied(path)),
                     Call::Folder => return Ok(vfs_seam::Metadata::dir_ns(None)),
-                    Call::List => {}
+                    Call::Alias(_) | Call::List => {}
                 }
             }
             self.inner.metadata(path)
@@ -1215,6 +1323,11 @@ mod tests {
         fn read_dir(&self, path: &Path) -> Result<Vec<vfs_seam::DirEntry>, vfs_seam::VfsError> {
             if self.call == Call::List && path == self.path {
                 return Err(denied(path));
+            }
+            if let Call::Alias(real) = &self.call
+                && let Ok(rest) = path.strip_prefix(&self.path)
+            {
+                return self.inner.read_dir(&real.join(rest));
             }
             self.inner.read_dir(path)
         }
@@ -1448,6 +1561,142 @@ mod tests {
         );
     }
 
+    /// A [`Vfs`] whose listings of one folder omit the named files until the
+    /// listing numbered with each, as a file created between two listings is.
+    struct Late<'a> {
+        inner: &'a MemVfs,
+        folder: PathBuf,
+        /// A file name and the listing (counted from 1) it first appears in.
+        appears: Vec<(&'static str, usize)>,
+        listings: std::cell::Cell<usize>,
+    }
+
+    impl Vfs for Late<'_> {
+        fn metadata(&self, path: &Path) -> Result<vfs_seam::Metadata, vfs_seam::VfsError> {
+            self.inner.metadata(path)
+        }
+        fn read_file(&self, path: &Path) -> Result<Vec<u8>, vfs_seam::VfsError> {
+            self.inner.read_file(path)
+        }
+        fn read_dir(&self, path: &Path) -> Result<Vec<vfs_seam::DirEntry>, vfs_seam::VfsError> {
+            let mut entries = self.inner.read_dir(path)?;
+            if path == self.folder {
+                let n = self.listings.get() + 1;
+                self.listings.set(n);
+                entries.retain(|e| {
+                    self.appears
+                        .iter()
+                        .all(|&(name, from)| e.name != name || n >= from)
+                });
+            }
+            Ok(entries)
+        }
+        fn write_file(&self, path: &Path, bytes: &[u8]) -> Result<(), vfs_seam::VfsError> {
+            self.inner.write_file(path, bytes)
+        }
+        fn create_dir_all(&self, path: &Path) -> Result<(), vfs_seam::VfsError> {
+            self.inner.create_dir_all(path)
+        }
+        fn exists(&self, path: &Path) -> bool {
+            self.inner.exists(path)
+        }
+        fn is_executable(&self, path: &Path) -> bool {
+            self.inner.is_executable(path)
+        }
+        fn set_executable(&self, path: &Path, yes: bool) -> Result<(), vfs_seam::VfsError> {
+            self.inner.set_executable(path, yes)
+        }
+        fn rename(&self, from: &Path, to: &Path) -> Result<(), vfs_seam::VfsError> {
+            self.inner.rename(from, to)
+        }
+        fn remove(&self, path: &Path) -> Result<(), vfs_seam::VfsError> {
+            self.inner.remove(path)
+        }
+    }
+
+    #[test]
+    fn a_file_created_after_the_first_listing_is_listed() {
+        let d = fixture();
+        mk(&d, "Notes/late1.md", "x");
+        mk(&d, "Notes/late2.md", "x");
+        let notes = WalkOptions::content_notes();
+        let late = |appears| Late {
+            inner: &d,
+            folder: Path::new(V).join("Notes"),
+            appears,
+            listings: std::cell::Cell::new(0),
+        };
+        // The second listing has it, so it is a late file, not a respelling.
+        let vfs = late(vec![("late1.md", 2)]);
+        assert_eq!(
+            notes.admission(&vfs, Path::new(V), "Notes/late1.md"),
+            Admission::Listed
+        );
+        // A folder is listed again once per batch: the second late file is
+        // still missing from that listing, so it reads as respelled.
+        let vfs = late(vec![("late1.md", 2), ("late2.md", 3)]);
+        let rels = ["Notes/late1.md".to_string(), "Notes/late2.md".to_string()];
+        let got: Vec<_> = notes
+            .admissions(&vfs, Path::new(V), &rels)
+            .into_iter()
+            .map(|(_, a)| a)
+            .collect();
+        assert_eq!(got, [Admission::Listed, Admission::Respelled]);
+    }
+
+    #[test]
+    fn a_spelling_the_file_system_answers_for_is_respelled() {
+        let d = fixture();
+        let notes = WalkOptions::content_notes();
+        // The folders list `Notes/alpha.md`. A file system that ignores case
+        // or Unicode form also answers for another spelling of the file, or
+        // of a folder on the way.
+        for (asked, real, rel) in [
+            ("Notes/Alpha.md", "Notes/alpha.md", "Notes/Alpha.md"),
+            ("notes", "Notes", "notes/alpha.md"),
+        ] {
+            let vfs = Denied {
+                inner: &d,
+                path: Path::new(V).join(asked),
+                call: Call::Alias(Path::new(V).join(real)),
+            };
+            assert_eq!(
+                notes.admission(&vfs, Path::new(V), rel),
+                Admission::Respelled
+            );
+            assert!(!rels(walk(&vfs, Path::new(V), &notes).unwrap()).contains(&rel.to_string()));
+        }
+        // Below a respelled folder the rest of the path is still checked.
+        let vfs = Denied {
+            inner: &d,
+            path: Path::new(V).join("notes"),
+            call: Call::Alias(Path::new(V).join("Notes")),
+        };
+        assert_eq!(
+            notes.admission(&vfs, Path::new(V), "notes/missing.md"),
+            Admission::Unlisted
+        );
+        // A spelling nothing answers for is gone, and a respelled path to a
+        // file the walk would not list is simply unlisted.
+        assert_eq!(
+            notes.admission(&d, Path::new(V), "Notes/gone.md"),
+            Admission::Unlisted
+        );
+        let vfs = Denied {
+            inner: &d,
+            path: Path::new(V).join("Notes/Alpha.md"),
+            call: Call::Alias(Path::new(V).join("Notes/alpha.md")),
+        };
+        let sized = WalkOptions {
+            min_bytes: 2,
+            ..WalkOptions::content_notes()
+        };
+        assert_eq!(
+            sized.admission(&vfs, Path::new(V), "Notes/Alpha.md"),
+            Admission::Unlisted
+        );
+    }
+
     #[cfg(unix)]
     #[test]
     fn admits_nothing_under_a_native_folder_it_cannot_list() {
@@ -1480,6 +1729,15 @@ mod tests {
         let app = ".obsidian/app.json";
         assert!(WalkOptions::content_notes().reads_rules_from(app));
         assert!(!WalkOptions::content_notes().reads_rules_from("Notes/alpha.md"));
+        // The folder that holds the file, reported on its own when it is
+        // removed or renamed, but nothing else in it.
+        assert!(WalkOptions::content_notes().reads_rules_from(".obsidian"));
+        for other in [".obsidian/workspace.json", ".obsidian/app.json.bak", ".obs"] {
+            assert!(
+                !WalkOptions::content_notes().reads_rules_from(other),
+                "{other}"
+            );
+        }
         let off = WalkOptions {
             hide: Hide::Off,
             ..WalkOptions::content_notes()
