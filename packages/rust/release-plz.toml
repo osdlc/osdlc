@@ -31,6 +31,13 @@ name = "yaml-splice-wasm"
 publish = false
 release = false
 
+# The Rust twin of @osdlc/agent-router: unreleased, its tests read the TypeScript
+# package's fixtures; see its Cargo.toml.
+[[package]]
+name = "agent-router"
+publish = false
+release = false
+
 # Held back until its first release can have a release-plz run of its own; see its Cargo.toml.
 [[package]]
 name = "gfm-pipe-table"

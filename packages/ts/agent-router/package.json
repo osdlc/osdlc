@@ -1,0 +1,93 @@
+{
+  "name": "@osdlc/agent-router",
+  "version": "0.4.0",
+  "description": "Picks the coding-agent CLI, model and effort to launch: a model catalogue (tools, providers, models, offerings) with a shipped snapshot, a resolver for references (tool/model[ctx=\u2026]@effort), and an ordered profile walk with first-available fallback, tier chains across tools and an author rule for reviews. The main entry is pure and browser-safe; the experimental ./config subpath holds config sections for a host and is not.",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/ts/agent-router"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/ts/agent-router#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "keywords": [
+    "coding-agent",
+    "agent-router",
+    "model-routing",
+    "model-catalogue",
+    "fallback",
+    "claude-code",
+    "codex",
+    "agent-harness"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./config": {
+      "types": "./dist/config/index.d.ts",
+      "default": "./dist/config/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "SECURITY.md",
+    "CONTRIBUTING.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
+    "fixtures": "node scripts/emit-fixtures.ts",
+    "check:extra": "node scripts/emit-fixtures.ts --check",
+    "models-snapshot": "node scripts/models-snapshot.ts",
+    "smoke": "node tests/smoke.mjs",
+    "prepublishOnly": "npm run clean && npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
+  },
+  "dependencies": {
+    "@osdlc/agent-call": "workspace:^",
+    "@osdlc/result": "workspace:^"
+  },
+  "devDependencies": {
+    "@osdlc/config-layers": "workspace:^",
+    "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/tsconfig": "workspace:^",
+    "@types/node": "catalog:",
+    "@types/semver": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "semver": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:",
+    "zod": "catalog:"
+  },
+  "peerDependencies": {
+    "zod": "^4",
+    "@osdlc/config-layers": "^0.8.0 || ^0.9.0 || ^0.10.0"
+  },
+  "peerDependenciesMeta": {
+    "@osdlc/config-layers": {
+      "optional": true
+    }
+  }
+}

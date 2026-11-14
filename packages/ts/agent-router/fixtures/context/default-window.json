@@ -1,0 +1,100 @@
+[
+  {
+    "name": "snap-codex-offering-default",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "tool": "codex",
+      "model": "gpt-6.1-sol"
+    },
+    "expected": 272000
+  },
+  {
+    "name": "snap-claude-no-default",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "tool": "claude",
+      "model": "opus"
+    },
+    "expected": null
+  },
+  {
+    "name": "snap-no-model",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "tool": "codex"
+    },
+    "expected": null
+  },
+  {
+    "name": "snap-unknown-model",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "tool": "codex",
+      "model": "nosuch"
+    },
+    "expected": null
+  },
+  {
+    "name": "snap-unknown-tool",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "tool": "nosuch",
+      "model": "opus"
+    },
+    "expected": null
+  },
+  {
+    "name": "mini-offering-wins-over-model",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "tool": "alpha",
+      "model": "big"
+    },
+    "expected": 200000
+  },
+  {
+    "name": "mini-curated-offering-default",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "tool": "delta",
+      "model": "large"
+    },
+    "expected": 100000
+  },
+  {
+    "name": "mini-model-default-when-offering-has-none",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "tool": "gamma",
+      "model": "anthropic/big-2"
+    },
+    "expected": 200000
+  },
+  {
+    "name": "mini-max-is-never-a-default",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "tool": "alpha",
+      "model": "anthropic/mid-1"
+    },
+    "expected": null
+  }
+]

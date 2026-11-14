@@ -1,0 +1,1445 @@
+[
+  {
+    "name": "accept-full",
+    "input": {
+      "document": {
+        "version": 1,
+        "refreshed_at": "2026-10-20",
+        "layers": [
+          {
+            "source": "models.dev",
+            "observed_at": "2026-10-20",
+            "models": {
+              "anthropic/new-1": {
+                "family": "claude-opus",
+                "release_date": "2026-10-19",
+                "traits": [
+                  "agent"
+                ]
+              }
+            }
+          },
+          {
+            "source": "probe:ollama",
+            "observed_at": "2026-10-20",
+            "models": {
+              "ollama/qwen3:4b": {
+                "traits": [
+                  "agent",
+                  "local"
+                ],
+                "context": {
+                  "default": 4096
+                }
+              }
+            }
+          },
+          {
+            "source": "probe:cursor",
+            "observed_at": "2026-10-20",
+            "tools": {
+              "cursor": {
+                "offers": [
+                  {
+                    "model": "anthropic/new-1",
+                    "native_name": "new-1-high"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected": {
+      "accepted": true
+    }
+  },
+  {
+    "name": "accept-no-layers",
+    "input": {
+      "document": {
+        "version": 1,
+        "refreshed_at": "2026-10-20",
+        "layers": []
+      }
+    },
+    "expected": {
+      "accepted": true
+    }
+  },
+  {
+    "name": "accept-layer-without-tables",
+    "input": {
+      "document": {
+        "version": 1,
+        "refreshed_at": "2026-10-20",
+        "layers": [
+          {
+            "source": "models.dev",
+            "observed_at": "2026-10-20"
+          }
+        ]
+      }
+    },
+    "expected": {
+      "accepted": true
+    }
+  },
+  {
+    "name": "accept-probe-with-hyphen",
+    "input": {
+      "document": {
+        "version": 1,
+        "refreshed_at": "2026-10-20",
+        "layers": [
+          {
+            "source": "models.dev",
+            "observed_at": "2026-10-20",
+            "models": {
+              "anthropic/new-1": {
+                "family": "claude-opus",
+                "release_date": "2026-10-19",
+                "traits": [
+                  "agent"
+                ]
+              }
+            }
+          },
+          {
+            "source": "probe:my-runtime2",
+            "observed_at": "2026-10-20",
+            "models": {
+              "ollama/qwen3:4b": {
+                "traits": [
+                  "agent",
+                  "local"
+                ],
+                "context": {
+                  "default": 4096
+                }
+              }
+            }
+          },
+          {
+            "source": "probe:cursor",
+            "observed_at": "2026-10-20",
+            "tools": {
+              "cursor": {
+                "offers": [
+                  {
+                    "model": "anthropic/new-1",
+                    "native_name": "new-1-high"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected": {
+      "accepted": true
+    }
+  },
+  {
+    "name": "reject-version-2",
+    "input": {
+      "document": {
+        "version": 2,
+        "refreshed_at": "2026-10-20",
+        "layers": [
+          {
+            "source": "models.dev",
+            "observed_at": "2026-10-20",
+            "models": {
+              "anthropic/new-1": {
+                "family": "claude-opus",
+                "release_date": "2026-10-19",
+                "traits": [
+                  "agent"
+                ]
+              }
+            }
+          },
+          {
+            "source": "probe:ollama",
+            "observed_at": "2026-10-20",
+            "models": {
+              "ollama/qwen3:4b": {
+                "traits": [
+                  "agent",
+                  "local"
+                ],
+                "context": {
+                  "default": 4096
+                }
+              }
+            }
+          },
+          {
+            "source": "probe:cursor",
+            "observed_at": "2026-10-20",
+            "tools": {
+              "cursor": {
+                "offers": [
+                  {
+                    "model": "anthropic/new-1",
+                    "native_name": "new-1-high"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected": {
+      "accepted": false
+    }
+  },
+  {
+    "name": "reject-version-string",
+    "input": {
+      "document": {
+        "version": "1",
+        "refreshed_at": "2026-10-20",
+        "layers": [
+          {
+            "source": "models.dev",
+            "observed_at": "2026-10-20",
+            "models": {
+              "anthropic/new-1": {
+                "family": "claude-opus",
+                "release_date": "2026-10-19",
+                "traits": [
+                  "agent"
+                ]
+              }
+            }
+          },
+          {
+            "source": "probe:ollama",
+            "observed_at": "2026-10-20",
+            "models": {
+              "ollama/qwen3:4b": {
+                "traits": [
+                  "agent",
+                  "local"
+                ],
+                "context": {
+                  "default": 4096
+                }
+              }
+            }
+          },
+          {
+            "source": "probe:cursor",
+            "observed_at": "2026-10-20",
+            "tools": {
+              "cursor": {
+                "offers": [
+                  {
+                    "model": "anthropic/new-1",
+                    "native_name": "new-1-high"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected": {
+      "accepted": false
+    }
+  },
+  {
+    "name": "reject-missing-version",
+    "input": {
+      "document": {
+        "refreshed_at": "2026-10-20",
+        "layers": [
+          {
+            "source": "models.dev",
+            "observed_at": "2026-10-20",
+            "models": {
+              "anthropic/new-1": {
+                "family": "claude-opus",
+                "release_date": "2026-10-19",
+                "traits": [
+                  "agent"
+                ]
+              }
+            }
+          },
+          {
+            "source": "probe:ollama",
+            "observed_at": "2026-10-20",
+            "models": {
+              "ollama/qwen3:4b": {
+                "traits": [
+                  "agent",
+                  "local"
+                ],
+                "context": {
+                  "default": 4096
+                }
+              }
+            }
+          },
+          {
+            "source": "probe:cursor",
+            "observed_at": "2026-10-20",
+            "tools": {
+              "cursor": {
+                "offers": [
+                  {
+                    "model": "anthropic/new-1",
+                    "native_name": "new-1-high"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected": {
+      "accepted": false
+    }
+  },
+  {
+    "name": "reject-missing-refreshed-at",
+    "input": {
+      "document": {
+        "version": 1,
+        "layers": [
+          {
+            "source": "models.dev",
+            "observed_at": "2026-10-20",
+            "models": {
+              "anthropic/new-1": {
+                "family": "claude-opus",
+                "release_date": "2026-10-19",
+                "traits": [
+                  "agent"
+                ]
+              }
+            }
+          },
+          {
+            "source": "probe:ollama",
+            "observed_at": "2026-10-20",
+            "models": {
+              "ollama/qwen3:4b": {
+                "traits": [
+                  "agent",
+                  "local"
+                ],
+                "context": {
+                  "default": 4096
+                }
+              }
+            }
+          },
+          {
+            "source": "probe:cursor",
+            "observed_at": "2026-10-20",
+            "tools": {
+              "cursor": {
+                "offers": [
+                  {
+                    "model": "anthropic/new-1",
+                    "native_name": "new-1-high"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected": {
+      "accepted": false
+    }
+  },
+  {
+    "name": "reject-bad-refreshed-at",
+    "input": {
+      "document": {
+        "version": 1,
+        "refreshed_at": "20 Oct 2026",
+        "layers": [
+          {
+            "source": "models.dev",
+            "observed_at": "2026-10-20",
+            "models": {
+              "anthropic/new-1": {
+                "family": "claude-opus",
+                "release_date": "2026-10-19",
+                "traits": [
+                  "agent"
+                ]
+              }
+            }
+          },
+          {
+            "source": "probe:ollama",
+            "observed_at": "2026-10-20",
+            "models": {
+              "ollama/qwen3:4b": {
+                "traits": [
+                  "agent",
+                  "local"
+                ],
+                "context": {
+                  "default": 4096
+                }
+              }
+            }
+          },
+          {
+            "source": "probe:cursor",
+            "observed_at": "2026-10-20",
+            "tools": {
+              "cursor": {
+                "offers": [
+                  {
+                    "model": "anthropic/new-1",
+                    "native_name": "new-1-high"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected": {
+      "accepted": false
+    }
+  },
+  {
+    "name": "reject-missing-layers",
+    "input": {
+      "document": {
+        "version": 1,
+        "refreshed_at": "2026-10-20"
+      }
+    },
+    "expected": {
+      "accepted": false
+    }
+  },
+  {
+    "name": "reject-unknown-top-level-key",
+    "input": {
+      "document": {
+        "version": 1,
+        "refreshed_at": "2026-10-20",
+        "layers": [
+          {
+            "source": "models.dev",
+            "observed_at": "2026-10-20",
+            "models": {
+              "anthropic/new-1": {
+                "family": "claude-opus",
+                "release_date": "2026-10-19",
+                "traits": [
+                  "agent"
+                ]
+              }
+            }
+          },
+          {
+            "source": "probe:ollama",
+            "observed_at": "2026-10-20",
+            "models": {
+              "ollama/qwen3:4b": {
+                "traits": [
+                  "agent",
+                  "local"
+                ],
+                "context": {
+                  "default": 4096
+                }
+              }
+            }
+          },
+          {
+            "source": "probe:cursor",
+            "observed_at": "2026-10-20",
+            "tools": {
+              "cursor": {
+                "offers": [
+                  {
+                    "model": "anthropic/new-1",
+                    "native_name": "new-1-high"
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        "extra": true
+      }
+    },
+    "expected": {
+      "accepted": false
+    }
+  },
+  {
+    "name": "reject-source-snapshot",
+    "input": {
+      "document": {
+        "version": 1,
+        "refreshed_at": "2026-10-20",
+        "layers": [
+          {
+            "source": "snapshot",
+            "observed_at": "2026-10-20",
+            "models": {
+              "anthropic/new-1": {
+                "family": "claude-opus",
+                "release_date": "2026-10-19",
+                "traits": [
+                  "agent"
+                ]
+              }
+            }
+          },
+          {
+            "source": "probe:ollama",
+            "observed_at": "2026-10-20",
+            "models": {
+              "ollama/qwen3:4b": {
+                "traits": [
+                  "agent",
+                  "local"
+                ],
+                "context": {
+                  "default": 4096
+                }
+              }
+            }
+          },
+          {
+            "source": "probe:cursor",
+            "observed_at": "2026-10-20",
+            "tools": {
+              "cursor": {
+                "offers": [
+                  {
+                    "model": "anthropic/new-1",
+                    "native_name": "new-1-high"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected": {
+      "accepted": false
+    }
+  },
+  {
+    "name": "reject-source-config",
+    "input": {
+      "document": {
+        "version": 1,
+        "refreshed_at": "2026-10-20",
+        "layers": [
+          {
+            "source": "config",
+            "observed_at": "2026-10-20",
+            "models": {
+              "anthropic/new-1": {
+                "family": "claude-opus",
+                "release_date": "2026-10-19",
+                "traits": [
+                  "agent"
+                ]
+              }
+            }
+          },
+          {
+            "source": "probe:ollama",
+            "observed_at": "2026-10-20",
+            "models": {
+              "ollama/qwen3:4b": {
+                "traits": [
+                  "agent",
+                  "local"
+                ],
+                "context": {
+                  "default": 4096
+                }
+              }
+            }
+          },
+          {
+            "source": "probe:cursor",
+            "observed_at": "2026-10-20",
+            "tools": {
+              "cursor": {
+                "offers": [
+                  {
+                    "model": "anthropic/new-1",
+                    "native_name": "new-1-high"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected": {
+      "accepted": false
+    }
+  },
+  {
+    "name": "reject-source-probe-uppercase",
+    "input": {
+      "document": {
+        "version": 1,
+        "refreshed_at": "2026-10-20",
+        "layers": [
+          {
+            "source": "models.dev",
+            "observed_at": "2026-10-20",
+            "models": {
+              "anthropic/new-1": {
+                "family": "claude-opus",
+                "release_date": "2026-10-19",
+                "traits": [
+                  "agent"
+                ]
+              }
+            }
+          },
+          {
+            "source": "probe:Ollama",
+            "observed_at": "2026-10-20",
+            "models": {
+              "ollama/qwen3:4b": {
+                "traits": [
+                  "agent",
+                  "local"
+                ],
+                "context": {
+                  "default": 4096
+                }
+              }
+            }
+          },
+          {
+            "source": "probe:cursor",
+            "observed_at": "2026-10-20",
+            "tools": {
+              "cursor": {
+                "offers": [
+                  {
+                    "model": "anthropic/new-1",
+                    "native_name": "new-1-high"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected": {
+      "accepted": false
+    }
+  },
+  {
+    "name": "reject-source-probe-empty",
+    "input": {
+      "document": {
+        "version": 1,
+        "refreshed_at": "2026-10-20",
+        "layers": [
+          {
+            "source": "models.dev",
+            "observed_at": "2026-10-20",
+            "models": {
+              "anthropic/new-1": {
+                "family": "claude-opus",
+                "release_date": "2026-10-19",
+                "traits": [
+                  "agent"
+                ]
+              }
+            }
+          },
+          {
+            "source": "probe:",
+            "observed_at": "2026-10-20",
+            "models": {
+              "ollama/qwen3:4b": {
+                "traits": [
+                  "agent",
+                  "local"
+                ],
+                "context": {
+                  "default": 4096
+                }
+              }
+            }
+          },
+          {
+            "source": "probe:cursor",
+            "observed_at": "2026-10-20",
+            "tools": {
+              "cursor": {
+                "offers": [
+                  {
+                    "model": "anthropic/new-1",
+                    "native_name": "new-1-high"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected": {
+      "accepted": false
+    }
+  },
+  {
+    "name": "reject-source-bare-probe",
+    "input": {
+      "document": {
+        "version": 1,
+        "refreshed_at": "2026-10-20",
+        "layers": [
+          {
+            "source": "models.dev",
+            "observed_at": "2026-10-20",
+            "models": {
+              "anthropic/new-1": {
+                "family": "claude-opus",
+                "release_date": "2026-10-19",
+                "traits": [
+                  "agent"
+                ]
+              }
+            }
+          },
+          {
+            "source": "probe",
+            "observed_at": "2026-10-20",
+            "models": {
+              "ollama/qwen3:4b": {
+                "traits": [
+                  "agent",
+                  "local"
+                ],
+                "context": {
+                  "default": 4096
+                }
+              }
+            }
+          },
+          {
+            "source": "probe:cursor",
+            "observed_at": "2026-10-20",
+            "tools": {
+              "cursor": {
+                "offers": [
+                  {
+                    "model": "anthropic/new-1",
+                    "native_name": "new-1-high"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected": {
+      "accepted": false
+    }
+  },
+  {
+    "name": "reject-layer-missing-observed-at",
+    "input": {
+      "document": {
+        "version": 1,
+        "refreshed_at": "2026-10-20",
+        "layers": [
+          {
+            "source": "models.dev",
+            "models": {
+              "anthropic/new-1": {
+                "family": "claude-opus",
+                "release_date": "2026-10-19",
+                "traits": [
+                  "agent"
+                ]
+              }
+            }
+          },
+          {
+            "source": "probe:ollama",
+            "observed_at": "2026-10-20",
+            "models": {
+              "ollama/qwen3:4b": {
+                "traits": [
+                  "agent",
+                  "local"
+                ],
+                "context": {
+                  "default": 4096
+                }
+              }
+            }
+          },
+          {
+            "source": "probe:cursor",
+            "observed_at": "2026-10-20",
+            "tools": {
+              "cursor": {
+                "offers": [
+                  {
+                    "model": "anthropic/new-1",
+                    "native_name": "new-1-high"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected": {
+      "accepted": false
+    }
+  },
+  {
+    "name": "reject-layer-bad-observed-at",
+    "input": {
+      "document": {
+        "version": 1,
+        "refreshed_at": "2026-10-20",
+        "layers": [
+          {
+            "source": "models.dev",
+            "observed_at": "2026-02-30",
+            "models": {
+              "anthropic/new-1": {
+                "family": "claude-opus",
+                "release_date": "2026-10-19",
+                "traits": [
+                  "agent"
+                ]
+              }
+            }
+          },
+          {
+            "source": "probe:ollama",
+            "observed_at": "2026-10-20",
+            "models": {
+              "ollama/qwen3:4b": {
+                "traits": [
+                  "agent",
+                  "local"
+                ],
+                "context": {
+                  "default": 4096
+                }
+              }
+            }
+          },
+          {
+            "source": "probe:cursor",
+            "observed_at": "2026-10-20",
+            "tools": {
+              "cursor": {
+                "offers": [
+                  {
+                    "model": "anthropic/new-1",
+                    "native_name": "new-1-high"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected": {
+      "accepted": false
+    }
+  },
+  {
+    "name": "reject-layer-unknown-key",
+    "input": {
+      "document": {
+        "version": 1,
+        "refreshed_at": "2026-10-20",
+        "layers": [
+          {
+            "source": "models.dev",
+            "observed_at": "2026-10-20",
+            "models": {
+              "anthropic/new-1": {
+                "family": "claude-opus",
+                "release_date": "2026-10-19",
+                "traits": [
+                  "agent"
+                ]
+              }
+            },
+            "providers": {}
+          },
+          {
+            "source": "probe:ollama",
+            "observed_at": "2026-10-20",
+            "models": {
+              "ollama/qwen3:4b": {
+                "traits": [
+                  "agent",
+                  "local"
+                ],
+                "context": {
+                  "default": 4096
+                }
+              }
+            }
+          },
+          {
+            "source": "probe:cursor",
+            "observed_at": "2026-10-20",
+            "tools": {
+              "cursor": {
+                "offers": [
+                  {
+                    "model": "anthropic/new-1",
+                    "native_name": "new-1-high"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected": {
+      "accepted": false
+    }
+  },
+  {
+    "name": "reject-layer-null-models",
+    "input": {
+      "document": {
+        "version": 1,
+        "refreshed_at": "2026-10-20",
+        "layers": [
+          {
+            "source": "models.dev",
+            "observed_at": "2026-10-20",
+            "models": null
+          },
+          {
+            "source": "probe:ollama",
+            "observed_at": "2026-10-20",
+            "models": {
+              "ollama/qwen3:4b": {
+                "traits": [
+                  "agent",
+                  "local"
+                ],
+                "context": {
+                  "default": 4096
+                }
+              }
+            }
+          },
+          {
+            "source": "probe:cursor",
+            "observed_at": "2026-10-20",
+            "tools": {
+              "cursor": {
+                "offers": [
+                  {
+                    "model": "anthropic/new-1",
+                    "native_name": "new-1-high"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected": {
+      "accepted": false
+    }
+  },
+  {
+    "name": "reject-layer-model-key-bad",
+    "input": {
+      "document": {
+        "version": 1,
+        "refreshed_at": "2026-10-20",
+        "layers": [
+          {
+            "source": "models.dev",
+            "observed_at": "2026-10-20",
+            "models": {
+              "new": {}
+            }
+          },
+          {
+            "source": "probe:ollama",
+            "observed_at": "2026-10-20",
+            "models": {
+              "ollama/qwen3:4b": {
+                "traits": [
+                  "agent",
+                  "local"
+                ],
+                "context": {
+                  "default": 4096
+                }
+              }
+            }
+          },
+          {
+            "source": "probe:cursor",
+            "observed_at": "2026-10-20",
+            "tools": {
+              "cursor": {
+                "offers": [
+                  {
+                    "model": "anthropic/new-1",
+                    "native_name": "new-1-high"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected": {
+      "accepted": false
+    }
+  },
+  {
+    "name": "reject-layer-model-unknown-key",
+    "input": {
+      "document": {
+        "version": 1,
+        "refreshed_at": "2026-10-20",
+        "layers": [
+          {
+            "source": "models.dev",
+            "observed_at": "2026-10-20",
+            "models": {
+              "anthropic/new-1": {
+                "family": "claude-opus",
+                "release_date": "2026-10-19",
+                "traits": [
+                  "agent"
+                ],
+                "provider": "anthropic"
+              }
+            }
+          },
+          {
+            "source": "probe:ollama",
+            "observed_at": "2026-10-20",
+            "models": {
+              "ollama/qwen3:4b": {
+                "traits": [
+                  "agent",
+                  "local"
+                ],
+                "context": {
+                  "default": 4096
+                }
+              }
+            }
+          },
+          {
+            "source": "probe:cursor",
+            "observed_at": "2026-10-20",
+            "tools": {
+              "cursor": {
+                "offers": [
+                  {
+                    "model": "anthropic/new-1",
+                    "native_name": "new-1-high"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected": {
+      "accepted": false
+    }
+  },
+  {
+    "name": "reject-layer-tool-id-bad",
+    "input": {
+      "document": {
+        "version": 1,
+        "refreshed_at": "2026-10-20",
+        "layers": [
+          {
+            "source": "models.dev",
+            "observed_at": "2026-10-20",
+            "models": {
+              "anthropic/new-1": {
+                "family": "claude-opus",
+                "release_date": "2026-10-19",
+                "traits": [
+                  "agent"
+                ]
+              }
+            }
+          },
+          {
+            "source": "probe:ollama",
+            "observed_at": "2026-10-20",
+            "models": {
+              "ollama/qwen3:4b": {
+                "traits": [
+                  "agent",
+                  "local"
+                ],
+                "context": {
+                  "default": 4096
+                }
+              }
+            }
+          },
+          {
+            "source": "probe:cursor",
+            "observed_at": "2026-10-20",
+            "tools": {
+              "Cursor": {
+                "offers": []
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected": {
+      "accepted": false
+    }
+  },
+  {
+    "name": "reject-layer-tool-missing-offers",
+    "input": {
+      "document": {
+        "version": 1,
+        "refreshed_at": "2026-10-20",
+        "layers": [
+          {
+            "source": "models.dev",
+            "observed_at": "2026-10-20",
+            "models": {
+              "anthropic/new-1": {
+                "family": "claude-opus",
+                "release_date": "2026-10-19",
+                "traits": [
+                  "agent"
+                ]
+              }
+            }
+          },
+          {
+            "source": "probe:ollama",
+            "observed_at": "2026-10-20",
+            "models": {
+              "ollama/qwen3:4b": {
+                "traits": [
+                  "agent",
+                  "local"
+                ],
+                "context": {
+                  "default": 4096
+                }
+              }
+            }
+          },
+          {
+            "source": "probe:cursor",
+            "observed_at": "2026-10-20",
+            "tools": {
+              "cursor": {}
+            }
+          }
+        ]
+      }
+    },
+    "expected": {
+      "accepted": false
+    }
+  },
+  {
+    "name": "reject-layer-tool-only-offers-allowed",
+    "input": {
+      "document": {
+        "version": 1,
+        "refreshed_at": "2026-10-20",
+        "layers": [
+          {
+            "source": "models.dev",
+            "observed_at": "2026-10-20",
+            "models": {
+              "anthropic/new-1": {
+                "family": "claude-opus",
+                "release_date": "2026-10-19",
+                "traits": [
+                  "agent"
+                ]
+              }
+            }
+          },
+          {
+            "source": "probe:ollama",
+            "observed_at": "2026-10-20",
+            "models": {
+              "ollama/qwen3:4b": {
+                "traits": [
+                  "agent",
+                  "local"
+                ],
+                "context": {
+                  "default": 4096
+                }
+              }
+            }
+          },
+          {
+            "source": "probe:cursor",
+            "observed_at": "2026-10-20",
+            "tools": {
+              "cursor": {
+                "offers": [
+                  {
+                    "model": "anthropic/new-1",
+                    "native_name": "new-1-high"
+                  }
+                ],
+                "serves": [
+                  "anthropic"
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected": {
+      "accepted": false
+    }
+  },
+  {
+    "name": "reject-layer-offer-bad-model-key",
+    "input": {
+      "document": {
+        "version": 1,
+        "refreshed_at": "2026-10-20",
+        "layers": [
+          {
+            "source": "models.dev",
+            "observed_at": "2026-10-20",
+            "models": {
+              "anthropic/new-1": {
+                "family": "claude-opus",
+                "release_date": "2026-10-19",
+                "traits": [
+                  "agent"
+                ]
+              }
+            }
+          },
+          {
+            "source": "probe:ollama",
+            "observed_at": "2026-10-20",
+            "models": {
+              "ollama/qwen3:4b": {
+                "traits": [
+                  "agent",
+                  "local"
+                ],
+                "context": {
+                  "default": 4096
+                }
+              }
+            }
+          },
+          {
+            "source": "probe:cursor",
+            "observed_at": "2026-10-20",
+            "tools": {
+              "cursor": {
+                "offers": [
+                  {
+                    "model": "new-1",
+                    "native_name": "new-1-high"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected": {
+      "accepted": false
+    }
+  },
+  {
+    "name": "reject-layer-offer-bad-native-name",
+    "input": {
+      "document": {
+        "version": 1,
+        "refreshed_at": "2026-10-20",
+        "layers": [
+          {
+            "source": "models.dev",
+            "observed_at": "2026-10-20",
+            "models": {
+              "anthropic/new-1": {
+                "family": "claude-opus",
+                "release_date": "2026-10-19",
+                "traits": [
+                  "agent"
+                ]
+              }
+            }
+          },
+          {
+            "source": "probe:ollama",
+            "observed_at": "2026-10-20",
+            "models": {
+              "ollama/qwen3:4b": {
+                "traits": [
+                  "agent",
+                  "local"
+                ],
+                "context": {
+                  "default": 4096
+                }
+              }
+            }
+          },
+          {
+            "source": "probe:cursor",
+            "observed_at": "2026-10-20",
+            "tools": {
+              "cursor": {
+                "offers": [
+                  {
+                    "model": "anthropic/new-1",
+                    "native_name": "-x"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected": {
+      "accepted": false
+    }
+  },
+  {
+    "name": "reject-layer-offer-extra-key",
+    "input": {
+      "document": {
+        "version": 1,
+        "refreshed_at": "2026-10-20",
+        "layers": [
+          {
+            "source": "models.dev",
+            "observed_at": "2026-10-20",
+            "models": {
+              "anthropic/new-1": {
+                "family": "claude-opus",
+                "release_date": "2026-10-19",
+                "traits": [
+                  "agent"
+                ]
+              }
+            }
+          },
+          {
+            "source": "probe:ollama",
+            "observed_at": "2026-10-20",
+            "models": {
+              "ollama/qwen3:4b": {
+                "traits": [
+                  "agent",
+                  "local"
+                ],
+                "context": {
+                  "default": 4096
+                }
+              }
+            }
+          },
+          {
+            "source": "probe:cursor",
+            "observed_at": "2026-10-20",
+            "tools": {
+              "cursor": {
+                "offers": [
+                  {
+                    "model": "anthropic/new-1",
+                    "native_name": "new-1-high",
+                    "via": "x"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected": {
+      "accepted": false
+    }
+  },
+  {
+    "name": "reject-layers-not-an-array",
+    "input": {
+      "document": {
+        "version": 1,
+        "refreshed_at": "2026-10-20",
+        "layers": {}
+      }
+    },
+    "expected": {
+      "accepted": false
+    }
+  },
+  {
+    "name": "reject-string-document",
+    "input": {
+      "document": "catalogue"
+    },
+    "expected": {
+      "accepted": false
+    }
+  }
+]

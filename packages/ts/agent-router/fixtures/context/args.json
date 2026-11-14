@@ -1,0 +1,200 @@
+[
+  {
+    "name": "claude-under-default-unchanged",
+    "input": {
+      "tool": "claude",
+      "model": "opus",
+      "ctx": 200000
+    },
+    "expected": {
+      "model": "opus",
+      "contextUnchecked": false
+    }
+  },
+  {
+    "name": "claude-above-default-gets-1m",
+    "input": {
+      "tool": "claude",
+      "model": "opus",
+      "ctx": 1000000
+    },
+    "expected": {
+      "model": "opus[1m]",
+      "contextUnchecked": false
+    }
+  },
+  {
+    "name": "claude-above-default-no-model",
+    "input": {
+      "tool": "claude",
+      "ctx": 500000
+    },
+    "expected": {
+      "contextUnchecked": true
+    }
+  },
+  {
+    "name": "claude-above-1m-unchecked",
+    "input": {
+      "tool": "claude",
+      "model": "opus",
+      "ctx": 5000000
+    },
+    "expected": {
+      "contextUnchecked": true
+    }
+  },
+  {
+    "name": "claude-just-above-1m-unchecked",
+    "input": {
+      "tool": "claude",
+      "model": "opus",
+      "ctx": 1001000
+    },
+    "expected": {
+      "contextUnchecked": true
+    }
+  },
+  {
+    "name": "claude-under-default-no-model",
+    "input": {
+      "tool": "claude",
+      "ctx": 100000
+    },
+    "expected": {
+      "contextUnchecked": false
+    }
+  },
+  {
+    "name": "cursor-bracket",
+    "input": {
+      "tool": "cursor",
+      "model": "claude-opus-5-5-medium",
+      "ctx": 1000000
+    },
+    "expected": {
+      "model": "claude-opus-5-5-medium[context=1m]",
+      "contextUnchecked": false
+    }
+  },
+  {
+    "name": "cursor-bracket-rounds-down",
+    "input": {
+      "tool": "cursor",
+      "model": "x",
+      "ctx": 1048576
+    },
+    "expected": {
+      "model": "x[context=1048k]",
+      "contextUnchecked": false
+    }
+  },
+  {
+    "name": "cursor-no-model",
+    "input": {
+      "tool": "cursor",
+      "ctx": 1000000
+    },
+    "expected": {
+      "contextUnchecked": true
+    }
+  },
+  {
+    "name": "ollama-num-ctx",
+    "input": {
+      "tool": "ollama",
+      "model": "qwen3:4b",
+      "ctx": 32000
+    },
+    "expected": {
+      "options": {
+        "num_ctx": 32000
+      },
+      "contextUnchecked": false
+    }
+  },
+  {
+    "name": "ollama-num-ctx-no-model",
+    "input": {
+      "tool": "ollama",
+      "ctx": 8000
+    },
+    "expected": {
+      "options": {
+        "num_ctx": 8000
+      },
+      "contextUnchecked": false
+    }
+  },
+  {
+    "name": "codex-covered-by-default-window",
+    "input": {
+      "tool": "codex",
+      "model": "gpt-6.1-sol",
+      "ctx": 200000,
+      "defaultContext": 272000
+    },
+    "expected": {
+      "model": "gpt-6.1-sol",
+      "contextUnchecked": false
+    }
+  },
+  {
+    "name": "codex-equal-to-default-window",
+    "input": {
+      "tool": "codex",
+      "model": "gpt-6.1-sol",
+      "ctx": 272000,
+      "defaultContext": 272000
+    },
+    "expected": {
+      "model": "gpt-6.1-sol",
+      "contextUnchecked": false
+    }
+  },
+  {
+    "name": "codex-above-default-window",
+    "input": {
+      "tool": "codex",
+      "model": "gpt-6.1-sol",
+      "ctx": 500000,
+      "defaultContext": 272000
+    },
+    "expected": {
+      "contextUnchecked": true
+    }
+  },
+  {
+    "name": "codex-no-known-window",
+    "input": {
+      "tool": "codex",
+      "model": "gpt-6.1-sol",
+      "ctx": 100000
+    },
+    "expected": {
+      "contextUnchecked": true
+    }
+  },
+  {
+    "name": "unknown-tool-covered-no-model",
+    "input": {
+      "tool": "grok",
+      "ctx": 10000,
+      "defaultContext": 20000
+    },
+    "expected": {
+      "contextUnchecked": false
+    }
+  },
+  {
+    "name": "pi-no-form",
+    "input": {
+      "tool": "pi",
+      "model": "x",
+      "ctx": 64000
+    },
+    "expected": {
+      "contextUnchecked": true
+    }
+  }
+]

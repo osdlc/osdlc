@@ -1,0 +1,295 @@
+[
+  {
+    "name": "none-shadowed",
+    "input": {
+      "rules": [
+        {
+          "when": {
+            "workflow": "implement",
+            "complexity": "small"
+          },
+          "profile": "small"
+        },
+        {
+          "when": {
+            "workflow": "implement",
+            "complexity": "large"
+          },
+          "profile": "deep"
+        }
+      ]
+    },
+    "expected": []
+  },
+  {
+    "name": "identical-rule-is-shadowed",
+    "input": {
+      "rules": [
+        {
+          "when": {
+            "workflow": "w"
+          },
+          "profile": "a"
+        },
+        {
+          "when": {
+            "workflow": "w"
+          },
+          "profile": "b"
+        }
+      ]
+    },
+    "expected": [
+      {
+        "index": 1,
+        "by": 0
+      }
+    ]
+  },
+  {
+    "name": "broader-earlier-shadows-narrower",
+    "input": {
+      "rules": [
+        {
+          "when": {
+            "workflow": "w"
+          },
+          "profile": "a"
+        },
+        {
+          "when": {
+            "workflow": "w",
+            "complexity": "small"
+          },
+          "profile": "b"
+        }
+      ]
+    },
+    "expected": [
+      {
+        "index": 1,
+        "by": 0
+      }
+    ]
+  },
+  {
+    "name": "narrower-earlier-does-not-shadow",
+    "input": {
+      "rules": [
+        {
+          "when": {
+            "workflow": "w",
+            "complexity": "small"
+          },
+          "profile": "a"
+        },
+        {
+          "when": {
+            "workflow": "w"
+          },
+          "profile": "b"
+        }
+      ]
+    },
+    "expected": []
+  },
+  {
+    "name": "empty-when-shadows-everything-after",
+    "input": {
+      "rules": [
+        {
+          "when": {},
+          "profile": "a"
+        },
+        {
+          "when": {
+            "workflow": "w"
+          },
+          "profile": "b"
+        },
+        {
+          "when": {
+            "tags": [
+              "ui"
+            ]
+          },
+          "profile": "c"
+        }
+      ]
+    },
+    "expected": [
+      {
+        "index": 1,
+        "by": 0
+      },
+      {
+        "index": 2,
+        "by": 0
+      }
+    ]
+  },
+  {
+    "name": "reports-the-first-shadowing-rule",
+    "input": {
+      "rules": [
+        {
+          "when": {
+            "stage": "s"
+          },
+          "profile": "a"
+        },
+        {
+          "when": {
+            "workflow": "w"
+          },
+          "profile": "b"
+        },
+        {
+          "when": {
+            "workflow": "w",
+            "stage": "s"
+          },
+          "profile": "c"
+        }
+      ]
+    },
+    "expected": [
+      {
+        "index": 2,
+        "by": 0
+      }
+    ]
+  },
+  {
+    "name": "tags-subset-is-shadowed",
+    "input": {
+      "rules": [
+        {
+          "when": {
+            "tags": [
+              "ui",
+              "db"
+            ]
+          },
+          "profile": "a"
+        },
+        {
+          "when": {
+            "tags": [
+              "ui"
+            ]
+          },
+          "profile": "b"
+        }
+      ]
+    },
+    "expected": [
+      {
+        "index": 1,
+        "by": 0
+      }
+    ]
+  },
+  {
+    "name": "tags-superset-is-not-shadowed",
+    "input": {
+      "rules": [
+        {
+          "when": {
+            "tags": [
+              "ui"
+            ]
+          },
+          "profile": "a"
+        },
+        {
+          "when": {
+            "tags": [
+              "ui",
+              "db"
+            ]
+          },
+          "profile": "b"
+        }
+      ]
+    },
+    "expected": []
+  },
+  {
+    "name": "tags-broad-without-tags-narrow-is-not-shadowed",
+    "input": {
+      "rules": [
+        {
+          "when": {
+            "tags": [
+              "ui"
+            ]
+          },
+          "profile": "a"
+        },
+        {
+          "when": {
+            "workflow": "w"
+          },
+          "profile": "b"
+        }
+      ]
+    },
+    "expected": []
+  },
+  {
+    "name": "tags-absent-in-broad-is-covered",
+    "input": {
+      "rules": [
+        {
+          "when": {
+            "workflow": "w"
+          },
+          "profile": "a"
+        },
+        {
+          "when": {
+            "workflow": "w",
+            "tags": [
+              "ui"
+            ]
+          },
+          "profile": "b"
+        }
+      ]
+    },
+    "expected": [
+      {
+        "index": 1,
+        "by": 0
+      }
+    ]
+  },
+  {
+    "name": "different-values-do-not-shadow",
+    "input": {
+      "rules": [
+        {
+          "when": {
+            "workflow": "a"
+          },
+          "profile": "x"
+        },
+        {
+          "when": {
+            "workflow": "b"
+          },
+          "profile": "y"
+        }
+      ]
+    },
+    "expected": []
+  },
+  {
+    "name": "no-rules",
+    "input": {
+      "rules": []
+    },
+    "expected": []
+  }
+]

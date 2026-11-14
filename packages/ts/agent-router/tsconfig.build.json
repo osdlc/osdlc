@@ -1,0 +1,12 @@
+{
+  // Emit config for the published dist/; the dev tsconfig.json stays noEmit.
+  // The source only. The main entry imports nothing from Node; Node types cover ./config.
+  "extends": ["./tsconfig.json", "@osdlc/tsconfig/build"],
+  "compilerOptions": {
+    "rootDir": "src",
+    "types": ["node"],
+    // src/ is not published, so a declaration map would point at nothing.
+    "declarationMap": false
+  },
+  "include": ["src"]
+}
