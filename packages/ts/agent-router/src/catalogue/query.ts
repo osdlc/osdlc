@@ -50,7 +50,10 @@ export type CatalogueQuery = {
   offering(tool: string, modelKey: string): Offering | undefined
   /** Where the classifier places a model, by key; `unclassified` for a key it does not know. */
   tierOf(modelKey: string): Placement
-  /** The chain's tool order: a frozen copy of `policy.order`, else of {@link DEFAULT_CHAIN_ORDER}. */
+  /**
+   * The chain's tool order: a frozen copy of `policy.order`, else of {@link DEFAULT_CHAIN_ORDER},
+   * each tool once at its first place.
+   */
   readonly chainOrder: readonly string[]
   /** `router.pins`: a frozen copy of `policy.pins`. */
   readonly pins: Readonly<Pins>
@@ -80,7 +83,9 @@ export function queryCatalogue(catalogue: Catalogue, policy: MappingPolicy = {})
   const offerings: readonly Offering[] = Object.freeze(deriveOfferings(catalogue))
   const placements = classify(catalogue, [...(policy.classify ?? []), ...BUILTIN_CLASSIFY_RULES])
   const pins: Readonly<Pins> = Object.freeze({ ...policy.pins })
-  const chainOrder: readonly string[] = Object.freeze([...(policy.order ?? DEFAULT_CHAIN_ORDER)])
+  const chainOrder: readonly string[] = Object.freeze([
+    ...new Set(policy.order ?? DEFAULT_CHAIN_ORDER),
+  ])
   const chains = new Map<Tier, Chain>()
   const byTool = new Map<string, Offering[]>()
   for (const o of offerings) {

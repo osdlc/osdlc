@@ -24,7 +24,8 @@
  *
  * Release tooling, so it lives in `scripts/` and is not shipped. No shell-out.
  * Exit 0 with the diff (or "no changes"); exit 1 on a fetch, parse or
- * snapshot-validation error.
+ * snapshot-validation error, or when a kept alias, offer or offering row names
+ * a model the new rows lack (the diff is printed first, nothing is written).
  */
 
 import { readFileSync, writeFileSync } from 'node:fs'
@@ -153,6 +154,12 @@ export async function main(argv: readonly string[], io: Io = realIo): Promise<nu
     }
     const diff = diffSnapshots(current, next)
     for (const line of diff.length > 0 ? diff : ['no changes']) io.out(line)
+    // The kept tool aliases, offers and offering rows must still name models the new rows have.
+    const { problems } = layerCatalogue([next as CatalogueLayer])
+    if (problems.length > 0) {
+      for (const p of problems) io.out(`regenerated snapshot does not merge: ${p.message}`)
+      return 1
+    }
     if (argv.includes('--write')) io.writeText(SNAPSHOT_PATH, await formatJson(next))
     return 0
   } catch (e) {

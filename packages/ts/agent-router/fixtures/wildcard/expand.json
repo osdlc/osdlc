@@ -709,6 +709,83 @@
     }
   },
   {
+    "name": "mini-max-order-policy-repeats-a-tool",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "policy": {
+        "order": [
+          "alpha",
+          "delta",
+          "alpha"
+        ]
+      },
+      "ref": "*/max"
+    },
+    "expected": {
+      "entries": [
+        {
+          "tool": "alpha",
+          "model": "big",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "alpha/max",
+          "from": {
+            "kind": "tier",
+            "tier": "max"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "delta",
+          "model": "large",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "delta/max",
+          "from": {
+            "kind": "tier",
+            "tier": "max"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "gamma",
+          "model": "anthropic/big-2",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "gamma/max",
+          "from": {
+            "kind": "tier",
+            "tier": "max"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        {
+          "tool": "gamma",
+          "model": "ollama/llama3:70b",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "gamma/ollama/llama3:70b",
+          "from": {
+            "kind": "name",
+            "name": "ollama/llama3:70b"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        }
+      ],
+      "skipped": []
+    }
+  },
+  {
     "name": "image-standard-image-out",
     "input": {
       "layers": [

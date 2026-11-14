@@ -231,6 +231,50 @@
     }
   },
   {
+    "name": "an-unknown-key-is-ignored",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profiles": {
+        "review": [
+          "alpha/standard",
+          "beta/standard"
+        ]
+      },
+      "binding": {
+        "profile": "review",
+        "note": "x"
+      }
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "alpha",
+          "model": "mid-1",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "alpha/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [],
+        "trace": [
+          "alpha/standard: taken"
+        ],
+        "summary": "chosen: alpha/standard"
+      }
+    }
+  },
+  {
     "name": "error-inline-profile-bad-ref",
     "input": {
       "layers": [

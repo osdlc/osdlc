@@ -7,9 +7,9 @@ use crate::choose::{Choice, ChooseContext, choose_from_profile, ref_profile};
 use crate::profile::{Profile, ProfileError, parse_profile};
 use crate::reference::{RefParseError, parse_ref};
 
-/// A task or step binding: exactly one of a profile or a single reference (`tool`).
+/// A task or step binding: exactly one of a profile or a single reference (`tool`). Other keys
+/// are ignored, as in TypeScript.
 #[derive(Debug, Clone, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Binding {
     /// A profile name, or an inline list of references walked as an unnamed profile.
     #[serde(default, deserialize_with = "present_profile")]

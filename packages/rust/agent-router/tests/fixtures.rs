@@ -41,8 +41,9 @@ fn ts_dir() -> PathBuf {
 }
 
 /// The vectors the TypeScript package emits (`pnpm run fixtures` there). The path is
-/// spelled whole, not built from [`ts_dir`], so `scripts/conformance.ts` sees this
-/// crate read the other language's fixtures (it lists the crate in `UNMIGRATED`).
+/// spelled whole, not built from [`ts_dir`], so the conformance suites' scan
+/// (`@osdlc/conformance-suites`) sees this crate read the other language's fixtures; the
+/// crate is listed in `unmigrated` in `packages/conformance/config.json`.
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../ts/agent-router/fixtures/")
 }
@@ -707,4 +708,25 @@ fn the_manifest_matches_the_files() {
             "{file}"
         );
     }
+}
+
+/// Every file the manifest names is checked by a test here, and every file a test checks is in
+/// the manifest, so a file the emitter adds cannot pass unread. The checked files are read from
+/// this file's own `check` calls.
+#[test]
+fn every_manifest_file_is_checked() {
+    let needle = concat!("check", "(\"");
+    let checked: std::collections::BTreeSet<&str> = include_str!("fixtures.rs")
+        .split(needle)
+        .skip(1)
+        .map(|rest| rest.split('"').next().expect("a closing quote"))
+        .collect();
+    let manifest = read_json(fixtures_dir().join("manifest.json"));
+    let listed: std::collections::BTreeSet<&str> = manifest
+        .as_array()
+        .expect("an array")
+        .iter()
+        .map(|entry| str_of(&entry["file"]))
+        .collect();
+    assert_eq!(checked, listed);
 }

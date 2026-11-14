@@ -4662,6 +4662,293 @@
     }
   },
   {
+    "name": "reject-null-family",
+    "input": {
+      "document": {
+        "source": "snapshot",
+        "observed_at": "2026-10-09",
+        "tools": {
+          "claude": {
+            "binary": "claude",
+            "serves": [
+              "anthropic"
+            ],
+            "openness": "closed",
+            "modes": [
+              "headless",
+              "interactive"
+            ],
+            "model": {
+              "via": "flag",
+              "name": "--model"
+            },
+            "effort": {
+              "via": "flag",
+              "name": "--effort"
+            },
+            "context": {
+              "via": "suffix",
+              "name": "[1m]"
+            },
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "aliases": {
+              "opus": "anthropic/claude-opus-5-5"
+            },
+            "prefer_alias": true,
+            "checked_against": "2.1.295",
+            "verify": [
+              "aliases"
+            ],
+            "observed_at": "2026-10-09"
+          }
+        },
+        "providers": {
+          "anthropic": {
+            "kind": "anthropic",
+            "endpoint": "https://api.anthropic.com",
+            "key_env": "ANTHROPIC_API_KEY"
+          }
+        },
+        "models": {
+          "anthropic/claude-opus-5-5": {
+            "family": null,
+            "release_date": "2026-09-01",
+            "context": {
+              "default": 200000,
+              "max": 1000000,
+              "variants": [
+                "1m"
+              ]
+            },
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "cost": {
+              "input": 5,
+              "output": 25.5
+            },
+            "traits": [
+              "agent",
+              "reasoning"
+            ],
+            "status": "current",
+            "observed_at": "2026-10-09"
+          }
+        },
+        "offerings": [
+          {
+            "tool": "claude",
+            "model": "anthropic/claude-opus-5-5",
+            "native_name": "opus",
+            "via": "x",
+            "efforts": [
+              "low"
+            ],
+            "context": {
+              "default": 1000
+            },
+            "remove": false
+          }
+        ]
+      }
+    },
+    "expected": {
+      "accepted": false
+    }
+  },
+  {
+    "name": "reject-null-serves",
+    "input": {
+      "document": {
+        "source": "snapshot",
+        "observed_at": "2026-10-09",
+        "tools": {
+          "claude": {
+            "binary": "claude",
+            "serves": null,
+            "openness": "closed",
+            "modes": [
+              "headless",
+              "interactive"
+            ],
+            "model": {
+              "via": "flag",
+              "name": "--model"
+            },
+            "effort": {
+              "via": "flag",
+              "name": "--effort"
+            },
+            "context": {
+              "via": "suffix",
+              "name": "[1m]"
+            },
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "aliases": {
+              "opus": "anthropic/claude-opus-5-5"
+            },
+            "prefer_alias": true,
+            "checked_against": "2.1.295",
+            "verify": [
+              "aliases"
+            ],
+            "observed_at": "2026-10-09"
+          }
+        },
+        "providers": {
+          "anthropic": {
+            "kind": "anthropic",
+            "endpoint": "https://api.anthropic.com",
+            "key_env": "ANTHROPIC_API_KEY"
+          }
+        },
+        "models": {
+          "anthropic/claude-opus-5-5": {
+            "family": "claude-opus",
+            "release_date": "2026-09-01",
+            "context": {
+              "default": 200000,
+              "max": 1000000,
+              "variants": [
+                "1m"
+              ]
+            },
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "cost": {
+              "input": 5,
+              "output": 25.5
+            },
+            "traits": [
+              "agent",
+              "reasoning"
+            ],
+            "status": "current",
+            "observed_at": "2026-10-09"
+          }
+        },
+        "offerings": [
+          {
+            "tool": "claude",
+            "model": "anthropic/claude-opus-5-5",
+            "native_name": "opus",
+            "via": "x",
+            "efforts": [
+              "low"
+            ],
+            "context": {
+              "default": 1000
+            },
+            "remove": false
+          }
+        ]
+      }
+    },
+    "expected": {
+      "accepted": false
+    }
+  },
+  {
+    "name": "reject-null-offerings",
+    "input": {
+      "document": {
+        "source": "snapshot",
+        "observed_at": "2026-10-09",
+        "tools": {
+          "claude": {
+            "binary": "claude",
+            "serves": [
+              "anthropic"
+            ],
+            "openness": "closed",
+            "modes": [
+              "headless",
+              "interactive"
+            ],
+            "model": {
+              "via": "flag",
+              "name": "--model"
+            },
+            "effort": {
+              "via": "flag",
+              "name": "--effort"
+            },
+            "context": {
+              "via": "suffix",
+              "name": "[1m]"
+            },
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "aliases": {
+              "opus": "anthropic/claude-opus-5-5"
+            },
+            "prefer_alias": true,
+            "checked_against": "2.1.295",
+            "verify": [
+              "aliases"
+            ],
+            "observed_at": "2026-10-09"
+          }
+        },
+        "providers": {
+          "anthropic": {
+            "kind": "anthropic",
+            "endpoint": "https://api.anthropic.com",
+            "key_env": "ANTHROPIC_API_KEY"
+          }
+        },
+        "models": {
+          "anthropic/claude-opus-5-5": {
+            "family": "claude-opus",
+            "release_date": "2026-09-01",
+            "context": {
+              "default": 200000,
+              "max": 1000000,
+              "variants": [
+                "1m"
+              ]
+            },
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "cost": {
+              "input": 5,
+              "output": 25.5
+            },
+            "traits": [
+              "agent",
+              "reasoning"
+            ],
+            "status": "current",
+            "observed_at": "2026-10-09"
+          }
+        },
+        "offerings": null
+      }
+    },
+    "expected": {
+      "accepted": false
+    }
+  },
+  {
     "name": "reject-empty-family",
     "input": {
       "document": {

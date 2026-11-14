@@ -67,12 +67,23 @@ pub fn query_catalogue(catalogue: Catalogue, policy: MappingPolicy) -> Catalogue
         offerings,
         placements,
         pins: policy.pins,
-        chain_order: policy
-            .order
-            .unwrap_or_else(|| DEFAULT_CHAIN_ORDER.iter().map(|s| s.to_string()).collect()),
+        chain_order: first_of_each(
+            policy
+                .order
+                .unwrap_or_else(|| DEFAULT_CHAIN_ORDER.iter().map(|s| s.to_string()).collect()),
+        ),
         by_tool,
         chains: TIERS.iter().map(|_| OnceLock::new()).collect(),
     }
+}
+
+/// `order` with each tool once, at its first place, so a repeated tool's models are walked once.
+fn first_of_each(order: Vec<String>) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    order
+        .into_iter()
+        .filter(|t| seen.insert(t.clone()))
+        .collect()
 }
 
 impl CatalogueQuery {
@@ -101,7 +112,8 @@ impl CatalogueQuery {
         self.catalogue.tools.get(id)
     }
 
-    /// The chain's tool order.
+    /// The chain's tool order: `policy.order`, else [`DEFAULT_CHAIN_ORDER`], each tool once at
+    /// its first place.
     pub fn chain_order(&self) -> &[String] {
         &self.chain_order
     }

@@ -42,12 +42,12 @@
   {
     "file": "catalogue/schema-snapshot.json",
     "description": "SnapshotLayerSchema: documents the strict schema accepts and rejects",
-    "vectors": 84
+    "vectors": 87
   },
   {
     "file": "catalogue/schema-machine.json",
     "description": "MachineCatalogueSchema: documents the strict schema accepts and rejects",
-    "vectors": 29
+    "vectors": 30
   },
   {
     "file": "catalogue/layers.json",
@@ -77,7 +77,7 @@
   {
     "file": "wildcard/expand.json",
     "description": "expandWildcard: a wildcard becomes the tier chain, kept to knownTools; the candidates resolved, the others skipped with a code",
-    "vectors": 19
+    "vectors": 20
   },
   {
     "file": "profile/parse.json",
@@ -107,7 +107,7 @@
   {
     "file": "binding/resolve.json",
     "description": "resolveBinding: a named profile, an inline profile list or a single reference (a wildcard walks the chain), and the binding errors; an inline list of the wrong shape drops its zod text, which is not mirrored",
-    "vectors": 23
+    "vectors": 24
   },
   {
     "file": "routing/parse.json",

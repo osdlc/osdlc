@@ -977,6 +977,12 @@ const SNAPSHOT_DOCS: [string, Doc][] = [
     mut(SNAPSHOT_BASE, (d) => (d.models['anthropic/claude-opus-5-5'].efforts = ['low', ''])),
   ],
   [
+    'reject-null-family',
+    mut(SNAPSHOT_BASE, (d) => (d.models['anthropic/claude-opus-5-5'].family = null)),
+  ],
+  ['reject-null-serves', mut(SNAPSHOT_BASE, (d) => (d.tools.claude.serves = null))],
+  ['reject-null-offerings', mut(SNAPSHOT_BASE, (d) => (d.offerings = null))],
+  [
     'reject-empty-family',
     mut(SNAPSHOT_BASE, (d) => (d.models['anthropic/claude-opus-5-5'].family = '')),
   ],
@@ -1194,6 +1200,7 @@ const MACHINE_DOCS: [string, Doc][] = [
     mut(MACHINE_BASE, (d) => (d.layers[0].observed_at = '2026-02-30')),
   ],
   ['reject-layer-unknown-key', mut(MACHINE_BASE, (d) => (d.layers[0].providers = {}))],
+  ['reject-layer-null-models', mut(MACHINE_BASE, (d) => (d.layers[0].models = null))],
   ['reject-layer-model-key-bad', mut(MACHINE_BASE, (d) => (d.layers[0].models = { new: {} }))],
   [
     'reject-layer-model-unknown-key',
@@ -1941,6 +1948,12 @@ const WILDCARD_CASES: WildcardCase[] = [
     policy: { order: ['delta', 'alpha'] },
     ref: '*/max',
   },
+  {
+    name: 'mini-max-order-policy-repeats-a-tool',
+    layers: [MINI],
+    policy: { order: ['alpha', 'delta', 'alpha'] },
+    ref: '*/max',
+  },
   { name: 'image-standard-image-out', layers: [SNAP, IMAGE], ref: '*/standard[image-out]' },
   { name: 'image-standard-plain', layers: [SNAP, IMAGE], ref: '*/standard' },
   {
@@ -2427,6 +2440,13 @@ const BINDING_CASES: BindingCase[] = [
     profiles: {},
     binding: { profile: ['alpha/standard', 'beta/standard'] },
     availability: { 'alpha/standard': { reason: 'not-installed' } },
+  },
+  {
+    // Config read from YAML can carry other keys; the walk ignores them.
+    name: 'an-unknown-key-is-ignored',
+    layers: [MINI],
+    profiles: { review: ['alpha/standard', 'beta/standard'] },
+    binding: { profile: 'review', note: 'x' } as Binding,
   },
   {
     name: 'error-inline-profile-bad-ref',

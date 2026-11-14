@@ -3,7 +3,8 @@
 //!
 //! The zod schemas are `.strict()` at every level; these types are
 //! `deny_unknown_fields` and each has a `validate` for what the type system
-//! cannot say (patterns, ranges, dates, the headless slot rules). The fixture
+//! cannot say (patterns, ranges, dates, the headless slot rules). An explicit
+//! `null` is refused anywhere, as zod refuses it. The fixture
 //! vectors in `packages/ts/agent-router/fixtures/catalogue/schema-*.json` hold
 //! accept and reject cases for both. Not mirrored: `RouterConfigSchema`, which
 //! belongs to the `config` subpath; see the [crate] docs.
@@ -37,6 +38,30 @@ type Check = Result<(), SchemaError>;
 
 fn invalid(path: &str, message: &str) -> SchemaError {
     SchemaError::Invalid(format!("{path}: {message}"))
+}
+
+/// Refuses an explicit `null` anywhere in a document. Serde reads `null` into an `Option` as
+/// absent, but no field of the TypeScript schemas is nullable, so zod refuses it.
+fn no_null(value: &Value, path: &str) -> Check {
+    let at = |key: &str| {
+        if path.is_empty() {
+            key.to_string()
+        } else {
+            format!("{path}.{key}")
+        }
+    };
+    match value {
+        Value::Null => Err(invalid(
+            if path.is_empty() { "document" } else { path },
+            "must not be null",
+        )),
+        Value::Array(items) => items
+            .iter()
+            .enumerate()
+            .try_for_each(|(i, item)| no_null(item, &format!("{path}[{i}]"))),
+        Value::Object(fields) => fields.iter().try_for_each(|(k, v)| no_null(v, &at(k))),
+        _ => Ok(()),
+    }
 }
 
 fn ensure(cond: bool, path: &str, message: &str) -> Check {
@@ -440,6 +465,7 @@ pub struct SnapshotLayer {
 impl SnapshotLayer {
     /// Parse and check a snapshot document.
     pub fn parse(value: Value) -> Result<SnapshotLayer, SchemaError> {
+        no_null(&value, "")?;
         let layer: SnapshotLayer = serde_json::from_value(value)?;
         layer.validate()?;
         Ok(layer)
@@ -567,6 +593,7 @@ pub struct MachineCatalogue {
 impl MachineCatalogue {
     /// Parse and check a machine catalogue document.
     pub fn parse(value: Value) -> Result<MachineCatalogue, SchemaError> {
+        no_null(&value, "")?;
         let cat: MachineCatalogue = serde_json::from_value(value)?;
         ensure(
             cat.version == MACHINE_CATALOGUE_VERSION,

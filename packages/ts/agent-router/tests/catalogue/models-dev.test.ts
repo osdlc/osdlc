@@ -165,6 +165,24 @@ describe('modelsDevRows: rows that may head a tier', () => {
     ])
   })
 
+  test('a field of the wrong type refuses its row, and the other rows stay', () => {
+    const odd = api(
+      ...([
+        { ...agent('claude-a'), family: 7 },
+        { ...agent('claude-b'), limit: { context: 1.5 } },
+        { ...agent('claude-c'), cost: { input: 1, output: null } },
+        agent('claude-d'),
+      ] as ReturnType<typeof agent>[]),
+    )
+    const out = rows(odd)
+    expect(out.rejected.map((r) => [r.key, r.reason])).toEqual([
+      ['anthropic/claude-a', 'row is malformed'],
+      ['anthropic/claude-b', 'row is malformed'],
+      ['anthropic/claude-c', 'row is malformed'],
+    ])
+    expect(Object.keys(out.models)).toEqual(['anthropic/claude-d'])
+  })
+
   test('a dated id whose base is refused stays a row of its own', () => {
     const out = rows(api(agent('claude-x', '9999-01-01'), agent('claude-x-20261001', '2026-10-01')))
     expect(Object.keys(out.models)).toEqual(['anthropic/claude-x-20261001'])

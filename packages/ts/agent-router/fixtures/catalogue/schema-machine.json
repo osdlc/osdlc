@@ -938,6 +938,54 @@
     }
   },
   {
+    "name": "reject-layer-null-models",
+    "input": {
+      "document": {
+        "version": 1,
+        "refreshed_at": "2026-10-20",
+        "layers": [
+          {
+            "source": "models.dev",
+            "observed_at": "2026-10-20",
+            "models": null
+          },
+          {
+            "source": "probe:ollama",
+            "observed_at": "2026-10-20",
+            "models": {
+              "ollama/qwen3:4b": {
+                "traits": [
+                  "agent",
+                  "local"
+                ],
+                "context": {
+                  "default": 4096
+                }
+              }
+            }
+          },
+          {
+            "source": "probe:cursor",
+            "observed_at": "2026-10-20",
+            "tools": {
+              "cursor": {
+                "offers": [
+                  {
+                    "model": "anthropic/new-1",
+                    "native_name": "new-1-high"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected": {
+      "accepted": false
+    }
+  },
+  {
     "name": "reject-layer-model-key-bad",
     "input": {
       "document": {

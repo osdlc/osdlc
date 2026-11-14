@@ -20,14 +20,37 @@ const FIXTURE = resolve(import.meta.dirname, 'fixtures/models-dev-api.json')
 const current = JSON.parse(readFileSync(SNAPSHOT_PATH, 'utf8')) as Snapshot
 const api = JSON.parse(readFileSync(FIXTURE, 'utf8'))
 
-function io() {
+/**
+ * The current snapshot without the aliases, offers and offering rows that name a model the
+ * recorded subset lacks (models added to the snapshot after it was recorded), so a regeneration
+ * from the fixture merges.
+ */
+function mergeable(date: string): Snapshot {
+  const kept = new Set(Object.keys(regenerate(current, api, date).models))
+  const s = structuredClone(current)
+  for (const tool of Object.values(s.tools)) {
+    const aliases = tool.aliases as Record<string, string> | undefined
+    for (const [name, key] of Object.entries(aliases ?? {}))
+      if (!kept.has(key)) delete aliases![name]
+    const offers = tool.offers as { model: string }[] | undefined
+    if (offers) tool.offers = offers.filter((o) => kept.has(o.model))
+  }
+  if (s.offerings) s.offerings = s.offerings.filter((o) => kept.has(o.model))
+  return s
+}
+
+/** Recording io; `snapshot` stands in for the committed snapshot file. */
+function io(snapshot?: Snapshot) {
   const out: string[] = []
   const writes: string[] = []
   return {
     out,
     writes,
     io: {
-      readText: (path: string) => readFileSync(path, 'utf8'),
+      readText: (path: string) =>
+        path === SNAPSHOT_PATH && snapshot !== undefined
+          ? JSON.stringify(snapshot)
+          : readFileSync(path, 'utf8'),
       writeText: (path: string) => void writes.push(path),
       fetchText: () => Promise.reject(new Error('no network in tests')),
       out: (line: string) => void out.push(line),
@@ -38,7 +61,7 @@ function io() {
 
 describe('models-snapshot', () => {
   test('AC-9: exits 0 against the recorded fixture and prints a diff', async () => {
-    const run = io()
+    const run = io(mergeable('2026-10-10'))
     expect(await main(['--from', FIXTURE, '--date', '2026-10-10'], run.io)).toBe(0)
     expect(run.out).toContain(`~ observed_at: ${current.observed_at} -> 2026-10-10`)
     expect(run.out).toContain('- models anthropic/claude-fable-5-1')
@@ -47,7 +70,7 @@ describe('models-snapshot', () => {
   })
 
   test('--write writes the snapshot; a fetch failure exits 1', async () => {
-    const run = io()
+    const run = io(mergeable('2026-10-09'))
     expect(await main(['--from', FIXTURE, '--write'], run.io)).toBe(0)
     expect(run.writes).toEqual([SNAPSHOT_PATH])
     const offline = io()
@@ -57,6 +80,16 @@ describe('models-snapshot', () => {
     expect(await main(['--from', '--write'], missing.io)).toBe(1)
     expect(missing.out[0]).toBe('models-snapshot: --from needs a value')
     expect(missing.writes).toEqual([])
+  })
+
+  test('a kept reference left dangling prints the diff, then exits 1 and writes nothing', async () => {
+    const run = io()
+    expect(await main(['--from', FIXTURE, '--date', '2026-10-10', '--write'], run.io)).toBe(1)
+    expect(run.out).toContain('- models anthropic/claude-fable-5-1')
+    expect(run.out).toContain(
+      "regenerated snapshot does not merge: tool 'claude' alias 'fable' names unknown model 'anthropic/claude-fable-5-1'",
+    )
+    expect(run.writes).toEqual([])
   })
 
   test('keeps text models (tool-calling or not), embeddings and image-output models; folds dated ids into aliases', () => {
@@ -113,7 +146,7 @@ describe('models-snapshot', () => {
   })
 
   test('the regenerated fixture reports the tier moves for review', async () => {
-    const run = io()
+    const run = io(mergeable('2026-10-10'))
     expect(await main(['--from', FIXTURE, '--date', '2026-10-10'], run.io)).toBe(0)
     expect(run.out.some((l) => l.startsWith('~ tiers '))).toBe(true)
   })

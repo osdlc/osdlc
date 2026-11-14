@@ -1,7 +1,7 @@
 // models.dev rows as catalogue model rows: the one mapper the snapshot release
 // step and a machine-catalogue refresh share. Pure: the caller fetches `api.json`.
 import { isEffortLevel } from '../ref.ts'
-import { NATIVE_NAME_PATTERN } from './schema.ts'
+import { ModelRowSchema, NATIVE_NAME_PATTERN } from './schema.ts'
 import type { ModelRow, ProviderRow } from './types.ts'
 
 /** Where models.dev publishes its catalogue. */
@@ -165,7 +165,10 @@ export function modelsDevRows(
       }
       const key = `${provider}/${m.id}`
       try {
-        models[key] = modelsDevRow(m, Object.hasOwn(prior, key) ? prior[key] : undefined)
+        const row = modelsDevRow(m, Object.hasOwn(prior, key) ? prior[key] : undefined)
+        // models.dev is untrusted: a field of the wrong type refuses its row, not the whole layer.
+        if (ModelRowSchema.safeParse(row).success) models[key] = row
+        else reject(m, MALFORMED)
       } catch {
         reject(m, MALFORMED)
       }

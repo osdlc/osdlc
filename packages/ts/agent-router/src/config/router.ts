@@ -22,7 +22,7 @@ export interface RouterSectionOptions {
 }
 
 const DEFAULT_DESCRIPTION =
-  'Model catalogue facts layered over the snapshot `@osdlc/agent-router` ships: `providers` (`{kind, endpoint, key_env}`; `key_env` names an environment variable, never a key), `tools`, `offerings` (rows that add one tool and model combination, or remove one with `remove: true`), `strict` (default false: an unknown model only warns; true refuses the load), and the mapping policy: `classify`, `chains.order` and `pins`. Unknown keys, an incomplete new tool or provider, a row naming an unknown tool, provider or model, and a pin its tool cannot run fail the load. A `remove: true` row for an unknown model only warns, unless `strict` is true.'
+  'Model catalogue facts layered over the snapshot `@osdlc/agent-router` ships: `providers` (`{kind, endpoint, key_env}`; `key_env` names an environment variable, never a key), `tools`, `offerings` (rows that add one tool and model combination, or remove one with `remove: true`), `strict` (default false: an unknown model only warns; true makes it an error), and the mapping policy: `classify`, `chains.order` and `pins`. The section checks the shape: an unknown key, a malformed id or a pin a CLI would read as a flag fails the load. Whether a new tool or provider is complete, whether a row names a known tool, provider or model, and whether a tool can run its pins are checks the host makes, against the merged catalogue; there a `remove: true` row for an unknown model only warns, unless `strict` is true.'
 
 /**
  * Build the `router` config section, which holds the model catalogue's facts and mapping policy;
