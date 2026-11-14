@@ -29,7 +29,7 @@ import {
   type CommandRunner,
   type GitRequest,
 } from '../src/index.ts'
-import { makeGitFixture } from '../src/testing.ts'
+import { IDENTITY, makeGitFixture } from '../src/testing.ts'
 
 const CWD = '/tmp/repo'
 
@@ -68,6 +68,9 @@ describe('AsyncGit — parity with Git', () => {
     const counts = {
       'rev-list --left-right --count main...task/x': { stdout: '1\t2\n' },
       'commit-tree abc -p def -m msg': { stdout: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n' },
+      'hash-object --stdin': { stdout: `${'b'.repeat(40)}\n` },
+      'hash-object -w --stdin': { stdout: `${'b'.repeat(40)}\n` },
+      'mktree -z': { stdout: `${'c'.repeat(40)}\n` },
       'merge-tree --write-tree --name-only -z --merge-base=abc x main': {
         stdout: 'deadbeef\x00',
       },
@@ -140,6 +143,11 @@ describe('AsyncGit — parity with Git', () => {
     sync.cherry('main', 'task/x')
     sync.cherry('main')
     sync.commitTree('abc', { parents: ['def'], message: 'msg' })
+    sync.hashObject('data\n')
+    sync.hashObject('data\n', { write: true })
+    sync.mktree([{ mode: '100644', sha: 'a'.repeat(40), path: 'data' }])
+    sync.updateRef('refs/heads/data', 'a'.repeat(40), { oldSha: null })
+    sync.updateRef('refs/heads/data', 'a'.repeat(40), { oldSha: 'b'.repeat(40), reason: 'r' })
     sync.statusPorcelain({ paths: ['docs'] })
     sync.statusEntries()
     sync.diffCheck({ paths: ['docs'] })
@@ -250,6 +258,14 @@ describe('AsyncGit — parity with Git', () => {
     await asyncGit.cherry('main', 'task/x')
     await asyncGit.cherry('main')
     await asyncGit.commitTree('abc', { parents: ['def'], message: 'msg' })
+    await asyncGit.hashObject('data\n')
+    await asyncGit.hashObject('data\n', { write: true })
+    await asyncGit.mktree([{ mode: '100644', sha: 'a'.repeat(40), path: 'data' }])
+    await asyncGit.updateRef('refs/heads/data', 'a'.repeat(40), { oldSha: null })
+    await asyncGit.updateRef('refs/heads/data', 'a'.repeat(40), {
+      oldSha: 'b'.repeat(40),
+      reason: 'r',
+    })
     await asyncGit.statusPorcelain({ paths: ['docs'] })
     await asyncGit.statusEntries()
     await asyncGit.diffCheck({ paths: ['docs'] })
@@ -884,5 +900,71 @@ describe('AsyncGit — commit({ messageStdin })', () => {
       messageStdin: 'no newline',
     })
     expect(inputs).toEqual(['no newline'])
+  })
+})
+
+describe('AsyncGit — the plumbing verbs', () => {
+  test('hashObject and mktree hand the same stdin to the backend as the sync client', async () => {
+    const inputs: Array<string | undefined> = []
+    const reply = { exitCode: 0, stdout: `${'a'.repeat(40)}\n`, stderr: '' }
+    const sync = new Git(CWD, {
+      runner: {
+        run(_argv, opts) {
+          inputs.push(opts.input)
+          return reply
+        },
+      },
+    })
+    const asyncGit = new AsyncGit(CWD, {
+      backend: cliBackend({
+        runner: {
+          run(_argv, opts) {
+            inputs.push(opts.input)
+            return Promise.resolve(reply)
+          },
+        },
+      }),
+    })
+    const entries = [{ mode: '100644', sha: 'b'.repeat(40), path: 'a b' }]
+    expect(await asyncGit.hashObject('x\n', { write: true })).toBe(sync.hashObject('x\n'))
+    expect(await asyncGit.mktree(entries)).toBe(sync.mktree(entries))
+    expect(inputs).toEqual([
+      'x\n',
+      'x\n',
+      `100644 blob ${'b'.repeat(40)}\ta b\x00`,
+      `100644 blob ${'b'.repeat(40)}\ta b\x00`,
+    ])
+  })
+
+  test('a refused entry or ref name rejects before the backend runs', async () => {
+    const r = recorder()
+    const git = new AsyncGit(CWD, { backend: cliBackend({ runner: r.async }) })
+    await expect(
+      git.mktree([{ mode: '100644', sha: 'a'.repeat(40), path: 'a/b' }]),
+    ).rejects.toThrow(TypeError)
+    await expect(git.updateRef('main', 'a'.repeat(40), { oldSha: null })).rejects.toThrow(TypeError)
+    await expect(
+      git.updateRef('refs/heads/main', 'a'.repeat(40), { oldSha: 'main' }),
+    ).rejects.toThrow(TypeError)
+    expect(r.calls).toEqual([])
+  })
+
+  test('an orphan commit end to end, and a lost race rejects', async () => {
+    const fx = makeGitFixture()
+    try {
+      const git = new AsyncGit(fx.dir, { backend: cliBackend({ env: { ...IDENTITY } }) })
+      const blob = await git.hashObject('state\n', { write: true })
+      const tree = await git.mktree([{ mode: '100644', sha: blob, path: 'state' }])
+      const commit = await git.commitTree(tree, { message: 'state' })
+      await git.updateRef('refs/heads/state', commit, { oldSha: null })
+      expect(await git.resolveRef('refs/heads/state')).toBe(commit)
+      expect(await git.showAtRev('refs/heads/state', 'state')).toBe('state\n')
+      await expect(git.updateRef('refs/heads/state', commit, { oldSha: null })).rejects.toThrow(
+        FailureError,
+      )
+      expect((await git.try.updateRef('refs/heads/state', commit, { oldSha: tree })).ok).toBe(false)
+    } finally {
+      fx.cleanup()
+    }
   })
 })
