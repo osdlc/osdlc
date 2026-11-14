@@ -21,7 +21,7 @@ scope:
   until: null
   platform: []
   model: null
-status: open
+status: superseded
 open: *a1
 imported_from: fact:skills/duplicate-names@antigravity#open
 ---
