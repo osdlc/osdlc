@@ -40,6 +40,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Codex CLI Skill body size open](Codex%20CLI%20Skill%20body%20size%20open.md)"
 open:
   - Which of the two paths injects a mentioned skill in the released CLI, and so whether a plain local SKILL.md over 8,000 bytes is cut, was not run.
 ---

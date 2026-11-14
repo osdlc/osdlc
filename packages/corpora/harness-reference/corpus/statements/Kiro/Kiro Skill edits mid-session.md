@@ -34,4 +34,5 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Kiro Skill edits mid-session open](Kiro%20Skill%20edits%20mid-session%20open.md)"
 ---

@@ -30,6 +30,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[OpenCode Skill edits mid-session open](OpenCode%20Skill%20edits%20mid-session%20open.md)"
 ---
 
 Read from `packages/core/src/config/plugin/skill.ts` at v2.3.0, not observed in a run.

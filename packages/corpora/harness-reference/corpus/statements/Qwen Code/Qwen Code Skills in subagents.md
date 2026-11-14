@@ -35,6 +35,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Qwen Code Skills in subagents open](Qwen%20Code%20Skills%20in%20subagents%20open.md)"
 ---
 
 Read from the source, not run. A subagent keeps the session skill manager and is shown the skills listing when its tool policy includes the Skill tool. An agent whose tool policy leaves out the Skill tool gets neither.

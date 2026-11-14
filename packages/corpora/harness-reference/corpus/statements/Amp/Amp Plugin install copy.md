@@ -35,6 +35,9 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Amp Plugin install copy open](Amp%20Plugin%20install%20copy%20open.md)"
+open:
+  - "Does amp plugins add or amp skill add copy the folder whole, and do exec bits and symlinks survive?"
 ---
 
-What happens to exec bits and symlinks is not stated; see the open statement for this subject.
+What happens to exec bits and symlinks is not stated; the question is kept in `open`.

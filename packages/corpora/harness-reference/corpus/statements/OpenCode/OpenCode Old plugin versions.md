@@ -41,6 +41,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[OpenCode Old plugin versions open](OpenCode%20Old%20plugin%20versions%20open.md)"
 ---
 
 Read from `packages/util/src/npm.ts` at v2.3.0. This covers package plugins; a local plugin directory is loaded in place.

@@ -28,6 +28,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Qwen Code Old plugin versions open](Qwen%20Code%20Old%20plugin%20versions%20open.md)"
 ---
 
 Read from the extension store source, not run. The store replaces the installed directory in one transaction and removes the backup of the old copy afterwards. If that cleanup fails, the store retries it on its next operation.

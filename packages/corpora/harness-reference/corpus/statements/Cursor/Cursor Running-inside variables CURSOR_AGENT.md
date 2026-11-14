@@ -32,6 +32,9 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Cursor Running-inside variables](Cursor%20Running-inside%20variables.md)"
+open:
+  - "Does the Cursor CLI also set CURSOR_TRACE_ID for the commands it runs?"
 ---
 
 The docs do not give the value. `set_by` is read from the docs placing the test in the shell config of the shell Cursor starts.

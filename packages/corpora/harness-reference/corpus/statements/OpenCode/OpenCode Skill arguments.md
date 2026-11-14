@@ -40,6 +40,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[OpenCode Skill arguments open](OpenCode%20Skill%20arguments%20open.md)"
 ---
 
 Read from source and docs at v2.3.0, not observed in a run, so the strength is lowered to moderate.

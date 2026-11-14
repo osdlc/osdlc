@@ -37,6 +37,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Codex CLI Relative paths in SKILL.md open](Codex%20CLI%20Relative%20paths%20in%20SKILL.md%20open.md)"
 open:
   - Does the model follow the line? No run was made, so this statement names no model.
 ---

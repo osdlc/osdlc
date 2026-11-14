@@ -50,6 +50,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[GitHub Copilot CLI Unknown frontmatter keys open](GitHub%20Copilot%20CLI%20Unknown%20frontmatter%20keys%20open.md)"
 ---
 
 From 0.0.403 a skill with an unknown frontmatter field loads with a warning. From 1.0.3 the warning is suppressed.

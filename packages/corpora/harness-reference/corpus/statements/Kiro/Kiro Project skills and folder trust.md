@@ -30,4 +30,5 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Kiro Project skills and folder trust open](Kiro%20Project%20skills%20and%20folder%20trust%20open.md)"
 ---

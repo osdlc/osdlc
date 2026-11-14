@@ -39,6 +39,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Codex CLI Project skills and folder trust open](Codex%20CLI%20Project%20skills%20and%20folder%20trust%20open.md)"
 ---
 
 Codex 0.167.2 does not hold project skills back until the folder is trusted. Trust decides whether a project's `.codex/config.toml` applies, not whether its skills are listed.

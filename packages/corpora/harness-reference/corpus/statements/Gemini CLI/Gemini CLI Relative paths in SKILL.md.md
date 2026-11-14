@@ -32,6 +32,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Gemini CLI Relative paths in SKILL.md open](Gemini%20CLI%20Relative%20paths%20in%20SKILL.md%20open.md)"
 open:
   - Which folder does a relative path in the SKILL.md body resolve from in practice, and does the model follow it? No run was made.
 ---

@@ -48,6 +48,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Pi Unknown frontmatter keys open](Pi%20Unknown%20frontmatter%20keys%20open.md)"
 ---
 
 Read from the loader at v1.5.2. The open statement for this subject asked this question; the source answers it.

@@ -35,6 +35,9 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Pi Plugin root variable open](Pi%20Plugin%20root%20variable%20open.md)"
+open:
+  - "Does Pi substitute any variable naming the package folder in extension or MCP config? Only skills were checked."
 ---
 
 A search of `packages/coding-agent/src` at v1.5.2 finds no `PLUGIN_ROOT` or similar variable. This covers skills only; variables in extension or MCP config were not checked.

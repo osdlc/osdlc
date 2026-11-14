@@ -52,6 +52,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Gemini CLI Skill discovery walk open](Gemini%20CLI%20Skill%20discovery%20walk%20open.md)"
 open:
   - Are symlinked skill folders followed? The loader sets no symlink option; no run was made.
 ---

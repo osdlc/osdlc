@@ -36,5 +36,6 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Amp Skill arguments open](Amp%20Skill%20arguments%20open.md)"
 ---
 

@@ -30,6 +30,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[goose Project skills and folder trust open](goose%20Project%20skills%20and%20folder%20trust%20open.md)"
 ---
 
 goose has no folder trust step for skills: the project skill folders are always searched. A search of the source and the docs for a folder trust setting found none.

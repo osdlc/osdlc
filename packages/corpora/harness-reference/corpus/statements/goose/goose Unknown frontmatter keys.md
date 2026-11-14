@@ -32,6 +32,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[goose Unknown frontmatter keys open](goose%20Unknown%20frontmatter%20keys%20open.md)"
 open:
   - Not confirmed by a run.
 ---

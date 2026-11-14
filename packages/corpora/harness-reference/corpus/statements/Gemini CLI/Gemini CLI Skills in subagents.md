@@ -33,6 +33,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Gemini CLI Skills in subagents open](Gemini%20CLI%20Skills%20in%20subagents%20open.md)"
 open:
   - Does a subagent see skills the parent already activated? Not checked.
 ---

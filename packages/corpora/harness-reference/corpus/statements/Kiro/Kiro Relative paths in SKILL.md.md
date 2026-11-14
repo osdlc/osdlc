@@ -29,4 +29,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Kiro Relative paths in SKILL.md open](Kiro%20Relative%20paths%20in%20SKILL.md%20open.md)"
+open:
+  - "Is the folder that relative paths in SKILL.md resolve from shown to the model?"
 ---

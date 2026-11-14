@@ -30,6 +30,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Gemini CLI Skill body size open](Gemini%20CLI%20Skill%20body%20size%20open.md)"
 open:
   - Is the body cut at some size when a skill is activated? The activation tool returns the whole body; a later cap on tool output was not checked.
 ---

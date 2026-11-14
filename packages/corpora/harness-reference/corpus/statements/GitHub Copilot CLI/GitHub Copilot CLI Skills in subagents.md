@@ -29,6 +29,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[GitHub Copilot CLI Skills in subagents open](GitHub%20Copilot%20CLI%20Skills%20in%20subagents%20open.md)"
 open:
   - Does a subagent see and load the session's skills when its definition has no `skills` field?
 ---

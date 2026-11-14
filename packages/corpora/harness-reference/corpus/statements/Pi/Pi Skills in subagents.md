@@ -30,6 +30,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Pi Skills in subagents open](Pi%20Skills%20in%20subagents%20open.md)"
 ---
 
 The question does not apply to Pi itself. What a sub-agent built by an extension sees depends on that extension.

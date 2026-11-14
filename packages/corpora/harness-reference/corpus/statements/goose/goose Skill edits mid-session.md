@@ -45,6 +45,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[goose Skill edits mid-session open](goose%20Skill%20edits%20mid-session%20open.md)"
 open:
   - Not confirmed by a run. The docs say plugin skills are discovered at session startup.
 ---

@@ -14,6 +14,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-11-04T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: superseded
+    date: 2026-11-14T12:00:00Z
 harness: "[Antigravity](../../harnesses/Antigravity.md)"
 subject: "[Skills in subagents](../../subjects/skills/Skills%20in%20subagents.md)"
 scope:

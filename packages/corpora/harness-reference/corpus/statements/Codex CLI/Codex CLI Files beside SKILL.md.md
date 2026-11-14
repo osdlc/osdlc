@@ -39,6 +39,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Codex CLI Files beside SKILL.md open](Codex%20CLI%20Files%20beside%20SKILL.md%20open.md)"
 ---
 
 When a skill is selected, Codex puts only SKILL.md into the conversation, inside a `<skill>` block with the name and path. Other files are read by the model when SKILL.md points at them.

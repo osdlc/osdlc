@@ -35,6 +35,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[GitHub Copilot CLI Plugin install copy open](GitHub%20Copilot%20CLI%20Plugin%20install%20copy%20open.md)"
 open:
   - Does install copy the whole plugin folder, and do exec bits and symlinks survive?
 ---

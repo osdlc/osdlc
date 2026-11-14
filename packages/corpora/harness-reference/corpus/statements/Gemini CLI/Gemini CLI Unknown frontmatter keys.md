@@ -33,6 +33,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Gemini CLI Unknown frontmatter keys open](Gemini%20CLI%20Unknown%20frontmatter%20keys%20open.md)"
 ---
 
 Any key other than `name` and `description` is dropped after parsing, with no warning and no error.

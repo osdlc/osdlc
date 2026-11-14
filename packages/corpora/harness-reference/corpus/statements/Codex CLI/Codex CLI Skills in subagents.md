@@ -38,6 +38,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Codex CLI Skills in subagents open](Codex%20CLI%20Skills%20in%20subagents%20open.md)"
 ---
 
 The docs say skills inherit from the parent. The statement is moderate because that sentence is from the docs; the source line supports only the note.

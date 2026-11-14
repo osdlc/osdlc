@@ -76,6 +76,9 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Cursor Unknown frontmatter keys open](Cursor%20Unknown%20frontmatter%20keys%20open.md)"
+open:
+  - "What happens with a frontmatter key outside name, description, paths, disable-model-invocation, icon, color and metadata: ignored, warned or rejected?"
 ---
 
 Only the documented keys are recorded. Whether an unknown key is ignored, warned about or rejected stays open.

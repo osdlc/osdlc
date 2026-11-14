@@ -43,6 +43,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Pi Skill body size open](Pi%20Skill%20body%20size%20open.md)"
 ---
 
 The skill loader has no body limit; that part is an absence, so the statement is held at moderate. The docs give no size advice.

@@ -29,4 +29,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Kiro Plugin install location open](Kiro%20Plugin%20install%20location%20open.md)"
+open:
+  - "Is a local power or plugin folder copied to the install location or used in place?"
 ---

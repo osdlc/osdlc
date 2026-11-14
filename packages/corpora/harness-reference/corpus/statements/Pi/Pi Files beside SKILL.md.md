@@ -39,6 +39,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Pi Files beside SKILL.md open](Pi%20Files%20beside%20SKILL.md%20open.md)"
 ---
 
 Neither load path reads any file but SKILL.md.

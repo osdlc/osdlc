@@ -30,6 +30,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Codex CLI Old plugin versions open](Codex%20CLI%20Old%20plugin%20versions%20open.md)"
 ---
 
 Installing a version that is not yet in the cache renames the staged copy into place and then deletes the other version folders. Installing the same version again swaps the whole plugin folder.

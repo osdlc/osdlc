@@ -14,6 +14,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-11-04T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: superseded
+    date: 2026-11-14T00:00:00Z
 harness: "[Grok Build](../../harnesses/Grok%20Build.md)"
 subject: "[Old plugin versions](../../subjects/plugins/Old%20plugin%20versions.md)"
 scope:

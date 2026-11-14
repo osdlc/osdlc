@@ -40,6 +40,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Codex CLI Skill arguments open](Codex%20CLI%20Skill%20arguments%20open.md)"
 ---
 
 A `$skill-name` mention selects the skill; the rest of the message is the request the model reads next to the skill text. The statement is moderate because "no placeholder" rests on the code having no substitution step.

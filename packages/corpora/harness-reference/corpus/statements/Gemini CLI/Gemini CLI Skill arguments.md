@@ -40,6 +40,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Gemini CLI Skill arguments open](Gemini%20CLI%20Skill%20arguments%20open.md)"
 ---
 
 Text typed after `/skill-name` does not go into the skill. The skill is activated, and the text is then sent as the next prompt.

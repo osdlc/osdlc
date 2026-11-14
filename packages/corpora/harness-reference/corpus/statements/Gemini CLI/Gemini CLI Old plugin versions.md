@@ -38,6 +38,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Gemini CLI Old plugin versions open](Gemini%20CLI%20Old%20plugin%20versions%20open.md)"
 ---
 
 An update calls `uninstallExtension` for the installed copy, which removes its directory, and then copies the new files to the same path. The previous version does not stay on disk.

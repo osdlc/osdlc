@@ -31,6 +31,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[OpenCode Plugin root variable open](OpenCode%20Plugin%20root%20variable%20open.md)"
 ---
 
 Read from source at v2.3.0. Plugins are code packages and register skills in code, so there is no plugin folder variable for a skill body.

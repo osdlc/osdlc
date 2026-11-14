@@ -36,6 +36,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Pi Old plugin versions open](Pi%20Old%20plugin%20versions%20open.md)"
 ---
 
 Read from the source at v1.5.2, not run. Pi keeps no versioned cache folder for packages.

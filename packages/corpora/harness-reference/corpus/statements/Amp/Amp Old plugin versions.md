@@ -35,6 +35,9 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Amp Old plugin versions open](Amp%20Old%20plugin%20versions%20open.md)"
+open:
+  - "After amp plugins update or amp skill update, do old versions stay on disk?"
 ---
 
-Whether an earlier version stays on disk is not stated; see the open statement for this subject.
+Whether an earlier version stays on disk is not stated; the question is kept in `open`.

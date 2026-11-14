@@ -39,6 +39,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[Codex CLI Unknown frontmatter keys open](Codex%20CLI%20Unknown%20frontmatter%20keys%20open.md)"
 ---
 
 The frontmatter struct does not refuse unknown fields, and the test `repairs_unrecognized_frontmatter_fields_that_need_quotes` parses a skill that carries `argument-hint` and `tags`. Load errors are kept for every root except the bundled system skills.

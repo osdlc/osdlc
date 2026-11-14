@@ -14,6 +14,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-11-04T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: superseded
+    date: 2026-11-14T00:00:00Z
 harness: "[Amp](../../harnesses/Amp.md)"
 subject: "[Plugin install copy](../../subjects/plugins/Plugin%20install%20copy.md)"
 scope:
@@ -21,7 +26,7 @@ scope:
   until: null
   platform: []
   model: null
-status: open
+status: superseded
 open: *a1
 imported_from: fact:plugins/install-copy@amp#open
 ---

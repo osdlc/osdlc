@@ -39,6 +39,7 @@ scope:
   platform: []
   model: null
 status: current
+supersedes: "[DeepSeek Harness Plugin root variable open](DeepSeek%20Harness%20Plugin%20root%20variable%20open.md)"
 ---
 
 This is the only plugin-folder variable found. No source read shows a variable substituted in a skill body.
