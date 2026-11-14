@@ -19,7 +19,9 @@ import {
   encodePath,
   findCorpora,
   fold,
+  getRecord,
   idProblem,
+  loadCorpus,
   markdownLink,
   syncCorpus,
   validateCorpus,
@@ -47,6 +49,11 @@ try {
   assert.deepEqual(good.errors, [])
   assert.equal(good.files.get('notes')?.get('A'), 'notes/A.md')
   assert.equal(validateCorpus(join(dir, 'bad')).errors.length, 1)
+
+  const model = JSON.parse(JSON.stringify(loadCorpus(join(dir, 'good'))))
+  assert.deepEqual(model.errors, [])
+  assert.equal(getRecord(model, 'notes', 'A').links[0].target.id, 'B')
+  assert.equal(getRecord(model, 'notes', 'B').incoming[0].from.path, 'notes/A.md')
 
   put(
     'child/child.corpus-schema.md',
