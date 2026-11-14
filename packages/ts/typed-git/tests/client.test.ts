@@ -76,6 +76,8 @@ const DOTGIT_ALIASES = [
   '.git:x',
   '.Git::$INDEX_ALLOCATION',
   '.git\\x',
+  'x\\.git',
+  'a\\git~1',
   'git~1 .',
   'git~1:x',
   '.g‌it',

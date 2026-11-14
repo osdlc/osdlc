@@ -1650,22 +1650,24 @@ function hfsReadsAs(name: string, needle: string): boolean {
 
 /**
  * NTFS drops trailing dots and spaces, and a `:` starts an alternate data
- * stream. True when `rest` holds only dots and spaces before its end, a `:`,
- * or, with `backslash`, a `\` (git checks that one for `.git` only).
+ * stream. True when `rest` holds only dots and spaces before its end or a `:`.
  */
-function ntfsTailIsEmpty(rest: string, backslash: boolean): boolean {
-  return (backslash ? /^[. ]*(?:$|[:\\])/ : /^[. ]*(?:$|:)/).test(rest)
+function ntfsTailIsEmpty(rest: string): boolean {
+  return /^[. ]*(?:$|:)/.test(rest)
 }
 
 /**
  * A name git's fsck reports as `hasDotgit` (git's `is_hfs_dotgit` and
- * `is_ntfs_dotgit`), and checkout refuses on every platform.
+ * `is_ntfs_dotgit`, which checks each part between backslashes), and checkout refuses on every platform.
  */
 function readsAsDotGit(name: string): boolean {
   if (hfsReadsAs(name, 'git')) return true
-  const lower = asciiLower(name)
-  if (lower.startsWith('.git')) return ntfsTailIsEmpty(name.slice(4), true)
-  if (lower.startsWith('git~1')) return ntfsTailIsEmpty(name.slice(5), true)
+  for (const part of name.split('\\')) {
+    const lower = asciiLower(part)
+    if (lower.startsWith('.git') && ntfsTailIsEmpty(part.slice(4))) return true
+    if (lower.startsWith('git~1') && ntfsTailIsEmpty(part.slice(5))) return true
+    if (part.includes(':')) return false
+  }
   return false
 }
 
@@ -1678,8 +1680,8 @@ function readsAsDotGit(name: string): boolean {
 function readsAsDotGitmodules(name: string): boolean {
   if (hfsReadsAs(name, 'gitmodules')) return true
   const lower = asciiLower(name)
-  if (lower.startsWith('.gitmodules')) return ntfsTailIsEmpty(name.slice(11), false)
-  if (/^gitmod~[1-4]/.test(lower)) return ntfsTailIsEmpty(name.slice(8), false)
+  if (lower.startsWith('.gitmodules')) return ntfsTailIsEmpty(name.slice(11))
+  if (/^gitmod~[1-4]/.test(lower)) return ntfsTailIsEmpty(name.slice(8))
   // The fallback: a leading part of `gi7eba` (at most six characters), `~`,
   // a digit 1-9, then digits up to eight characters. This follows git's loop
   // step for step, so a `~` at index 7 reads one character past eight.
@@ -1700,7 +1702,7 @@ function readsAsDotGitmodules(name: string): boolean {
       return false
     }
   }
-  return ntfsTailIsEmpty(name.slice(i), false)
+  return ntfsTailIsEmpty(name.slice(i))
 }
 
 /**
