@@ -10,18 +10,37 @@ import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 
 import {
+  type Backlink,
+  type CorpusField,
+  type CorpusModel,
+  type CorpusRecord,
   type CorpusReport,
+  type CorpusType,
   type Data,
   encodePath,
+  type FieldRef,
   findCorpora,
   fold,
+  getCorpus,
+  getRecord,
+  getType,
   idProblem,
+  loadCorpus,
+  type LoadedCorpus,
+  type LoadOptions,
   markdownLink,
   npmPackageUrl,
   type PackageUrl,
   packageUrl,
+  type RecordLink,
+  type RecordReference,
+  recordsOf,
+  type RecordTarget,
+  type RefForm,
+  resolveTarget,
   type SyncReport,
   syncCorpus,
+  type TypeRef,
   validateCorpus,
 } from '@osdlc/corpus-schema'
 
@@ -50,7 +69,7 @@ describe('reading a corpus', () => {
     // The README's ts block, as written. The Vitest alias resolves the package name from any folder.
     const readme = readFileSync(join(import.meta.dirname, '../README.md'), 'utf8')
     const blocks = [...readme.matchAll(/```ts\n([\s\S]*?)```/g)].map((m) => m[1] as string)
-    expect(blocks).toHaveLength(1)
+    expect(blocks).toHaveLength(2)
     put('readme.ts', blocks[0] as string)
     const { check } = (await import(join(dir, 'readme.ts'))) as {
       check: (folder: string) => string[]
@@ -162,6 +181,119 @@ describe('extends, references and uses', () => {
     )
     const github: PackageUrl = { type: 'github', namespace: ['Acme'], name: 'org', version: 'v3' }
     expect(packageUrl(github)).toBe('pkg:github/acme/org@v3')
+  })
+})
+
+describe('loading a corpus as data', () => {
+  /** A reading list: authors, and books that name their author and link to other books. */
+  const readingList = (): string => {
+    put('list/list.corpus-schema.md', '---\ncorpus-schema: 0\nformats: [md, yaml]\n---\n')
+    put('list/authors/authors.schema.yaml', 'title: Author\ntype: object\n')
+    put('list/authors/Frank Herbert.yaml', 'born: 1920\n')
+    put(
+      'list/books/books.schema.yaml',
+      'required: [author]\nproperties:\n  author: { x-ref: authors, x-ref-form: id }\n  title: { type: string }\n',
+    )
+    put('list/books/Dune.md', '---\nauthor: Frank Herbert\n---\nThe first one.\n')
+    put(
+      'list/books/Dune Messiah.md',
+      '---\nauthor: Frank Herbert\ntitle: Dune Messiah (1969)\n---\nFollows [Dune](Dune.md).\n',
+    )
+    put('list/books/Lost.md', '---\nauthor: Nobody\n---\n')
+    return join(dir, 'list')
+  }
+
+  test('the README example runs: what a record refers to, and what refers to it', async () => {
+    const root = readingList()
+    const readme = readFileSync(join(import.meta.dirname, '../README.md'), 'utf8')
+    const block = [...readme.matchAll(/```ts\n([\s\S]*?)```/g)].map((m) => m[1] as string)[1]
+    put('readme.ts', block as string)
+    const { neighbours } = (await import(join(dir, 'readme.ts'))) as {
+      neighbours: (root: string, type: string, id: string) => string[]
+    }
+    expect(neighbours(root, 'books', 'Dune')).toEqual([
+      '/author: Frank Herbert',
+      'from books/Dune Messiah',
+    ])
+    expect(neighbours(root, 'books', 'Lost')).toEqual([
+      '/author: unresolved, "Nobody" is not the id of a record of type authors',
+    ])
+  })
+
+  test('a type lists its fields, and a field its x-ref', () => {
+    const corpus: LoadedCorpus = loadCorpus(readingList())
+    const books: CorpusType | undefined = getType(corpus, 'books')
+    const fields: CorpusField[] = books?.fields ?? []
+    expect(fields.map((f) => [f.name, f.required])).toEqual([
+      ['author', true],
+      ['title', false],
+    ])
+    const ref: FieldRef | null | undefined = fields[0]?.ref
+    const form: RefForm | undefined = ref?.form
+    const targets: TypeRef[] = ref?.targets ?? []
+    expect([form, targets]).toEqual(['id', [{ corpus: '', type: 'authors', name: 'authors' }]])
+    expect(getType(corpus, 'authors')?.title).toBe('Author')
+  })
+
+  test('a record holds its data, its body, its references, its links and its backlinks', () => {
+    const corpus = loadCorpus(readingList())
+    const books: CorpusRecord[] = recordsOf(corpus, 'books')
+    expect(books.map((b) => [b.id, b.title, b.format])).toEqual([
+      ['Dune', 'Dune', 'md'],
+      ['Dune Messiah', 'Dune Messiah (1969)', 'md'],
+      ['Lost', 'Lost', 'md'],
+    ])
+    const messiah = getRecord(corpus, 'books', 'dune messiah')
+    expect(messiah?.body).toBe('Follows [Dune](Dune.md).\n')
+    const reference: RecordReference | undefined = messiah?.references[0]
+    const author: RecordTarget = { corpus: '', type: 'authors', id: 'Frank Herbert', path: 'authors/Frank Herbert.yaml' } // prettier-ignore
+    expect(reference).toEqual({
+      field: 'author',
+      pointer: '/author',
+      value: 'Frank Herbert',
+      form: 'id',
+      target: author,
+      unresolved: null,
+    })
+    expect(resolveTarget(corpus, author)?.data).toEqual({ born: 1920 })
+    const link: RecordLink | undefined = messiah?.links[0]
+    expect([link?.text, link?.target.id]).toEqual(['Dune', 'Dune'])
+    const incoming: Backlink[] = getRecord(corpus, 'authors', 'Frank Herbert')?.incoming ?? []
+    expect(incoming.map((b) => `${b.from.id} ${b.via} ${b.pointer}`)).toEqual([
+      'Dune reference /author',
+      'Dune Messiah reference /author',
+    ])
+  })
+
+  test('the model is JSON: write it, read it back, and look things up in the copy', () => {
+    const options: LoadOptions = { bodies: false }
+    const corpus = loadCorpus(readingList(), options)
+    const copy = JSON.parse(JSON.stringify(corpus)) as LoadedCorpus
+    expect(copy).toEqual(corpus)
+    expect(getRecord(copy, 'books', 'Dune')?.body).toBeNull()
+    // The errors are the validator's, and the corpus still loads.
+    expect(copy.errors).toEqual(validateCorpus(corpus.root).errors)
+    expect(copy.errors).toHaveLength(1)
+  })
+
+  test('a referenced corpus is in the model, by the prefix that names it', () => {
+    put('org/org.corpus-schema.md', '---\ncorpus-schema: 0\n---\n')
+    put('org/principles/principles.schema.yaml', 'type: object\n')
+    put('org/principles/Be Kind.md', '')
+    put('team/team.corpus-schema.md', '---\ncorpus-schema: 0\nreferences:\n  org: ../org\n---\n')
+    put(
+      'team/rules/rules.schema.yaml',
+      'properties:\n  follows: { x-ref: org/principles, x-ref-form: id }\n',
+    )
+    put('team/rules/Review Kindly.md', '---\nfollows: Be Kind\n---\n')
+
+    const team = loadCorpus(join(dir, 'team'))
+    expect(team.errors).toEqual([])
+    const org: CorpusModel | undefined = getCorpus(team, team.references['org'])
+    expect([org?.key, org?.name, org?.records.length]).toEqual(['org', 'org', 1])
+    const target = team.records[0]?.references[0]?.target
+    expect(target?.corpus).toBe('org')
+    expect(resolveTarget(team, target!)?.incoming[0]?.from.id).toBe('Review Kindly')
   })
 })
 

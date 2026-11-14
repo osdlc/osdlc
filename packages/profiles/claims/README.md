@@ -31,7 +31,7 @@ pnpm add -D @osdlc/corpus-profile-claims
 Install it in the folder that holds your corpus, or in any folder above it. The validator finds the
 package the way Node.js does. The package's `"corpus"` field names its corpus folder, `corpus/`.
 
-You need a corpus-schema validator that reads `extends`: `@osdlc/corpus-schema` 0.3.0 or later.
+You need a corpus-schema validator that reads `extends`: `@osdlc/corpus-schema` 0.4.0 or later.
 
 ## Use it
 
@@ -77,7 +77,7 @@ To add fields to a type, list them beside `x-extends`. See
 Validate as usual:
 
 ```sh
-npx --yes @osdlc/corpus-schema@^0.3.0 validate my-corpus
+npx --yes @osdlc/corpus-schema@^0.4.0 validate my-corpus
 ```
 
 `extends` brings in types only, so your corpus keeps no copy of the profile, and
