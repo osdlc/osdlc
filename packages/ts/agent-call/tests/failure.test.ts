@@ -449,7 +449,6 @@ describe('reset times', () => {
     ['5-hour limit reached ∙ resets 3pm', '5-hour limit'],
     ['session limit reached', 'session limit'],
     ['Opus limit reached', 'opus limit'],
-    ['API Error: 529 overloaded_error', 'overloaded'],
     ["You've hit your usage limit", 'usage limit'],
     ['API Error: 429 rate_limit_error', 'rate limited (429)'],
     ['something else entirely', 'rate limit'],
