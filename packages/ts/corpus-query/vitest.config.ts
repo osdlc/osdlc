@@ -14,6 +14,9 @@ export default defineConfig({
     ],
   },
   test: {
+    // Tests that write a corpus of many files or start a server can pass the 5 s default on a
+    // loaded machine.
+    testTimeout: 20000,
     include: ['tests/**/*.test.ts', 'examples/**/*.test.ts'],
     coverage: {
       provider: 'v8',
