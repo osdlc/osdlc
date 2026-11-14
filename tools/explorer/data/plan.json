@@ -18,6 +18,10 @@
       "label": "not started"
     },
     {
+      "id": "deferred",
+      "label": "deferred"
+    },
+    {
       "id": "dropped",
       "label": "dropped"
     }
@@ -445,35 +449,35 @@
       "id": 12,
       "title": "One TS model",
       "detail": "vault + graph",
-      "status": "dropped",
+      "status": "deferred",
       "milestone": "m-model",
       "type": "functional",
       "after": [
         11
       ],
       "prs": [],
-      "text": "One TypeScript corpus model, markdown-corpus: markdown-vault and vault-graph-core merged into osdlc on top of markdown-link's resolver. After 11.\n\nOut of scope for now: markdown-vault and vault-graph-core are in sksizer/dev, and [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) keeps them there. The merge waits until they move.\n\nDropped: out of scope under [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md). It is opened again if markdown-vault and vault-graph-core move here.",
+      "text": "One TypeScript corpus model, markdown-corpus: markdown-vault and vault-graph-core merged into osdlc on top of markdown-link's resolver. After 11.\n\nOut of scope for now: markdown-vault and vault-graph-core are in sksizer/dev, and [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) keeps them there. The merge waits until they move.\n\nDeferred: out of scope under [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md). It is opened again if markdown-vault and vault-graph-core move here.",
       "source": "docs/planning/markdown/tasks/12 One TS model.md"
     },
     {
       "id": 13,
       "title": "Switch users",
       "detail": "query, astro, apps",
-      "status": "dropped",
+      "status": "deferred",
       "milestone": "m-model",
       "type": "functional",
       "after": [
         12
       ],
       "prs": [],
-      "text": "Switch the users to the new model and resolver: markdown-vault-query, markdown-astro, and determined (its vault-graph app and its graph and notes experiences). They already use the published markdown-link (sksizer/dev 48b62783). After 12.\n\nDropped: it follows task 12, which is out of scope under [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md). It is opened again with task 12.",
+      "text": "Switch the users to the new model and resolver: markdown-vault-query, markdown-astro, and determined (its vault-graph app and its graph and notes experiences). They already use the published markdown-link (sksizer/dev 48b62783). After 12.\n\nDeferred: it follows task 12, which is out of scope under [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md). It is opened again with task 12.",
       "source": "docs/planning/markdown/tasks/13 Switch users.md"
     },
     {
       "id": 14,
       "title": "Validator",
       "detail": "reads model; needs 3",
-      "status": "dropped",
+      "status": "deferred",
       "milestone": "m-model",
       "type": "functional",
       "after": [
@@ -481,35 +485,35 @@
         12
       ],
       "prs": [],
-      "text": "The validator reads the corpus model instead of walking the folder itself. After 3 and 12.\n\nDropped: it follows task 12, which is out of scope under [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md). It is opened again with task 12.",
+      "text": "The validator reads the corpus model instead of walking the folder itself. After 3 and 12.\n\nDeferred: it follows task 12, which is out of scope under [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md). It is opened again with task 12.",
       "source": "docs/planning/markdown/tasks/14 Validator.md"
     },
     {
       "id": 15,
       "title": "Query layer",
       "detail": "one, on the model",
-      "status": "dropped",
+      "status": "deferred",
       "milestone": "m-query",
       "type": "functional",
       "after": [
         12
       ],
       "prs": [],
-      "text": "One query layer. Move markdown-vault-query to osdlc on top of the corpus model. After 12 and D5.\n\nOut of scope for now: markdown-vault-query is in sksizer/dev, and [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) keeps it there.\n\nDropped: out of scope under [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md). It is opened again if markdown-vault-query moves here.",
+      "text": "One query layer. Move markdown-vault-query to osdlc on top of the corpus model. After 12 and D5.\n\nOut of scope for now: markdown-vault-query is in sksizer/dev, and [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) keeps it there.\n\nDeferred: out of scope under [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md). It is opened again if markdown-vault-query moves here.",
       "source": "docs/planning/markdown/tasks/15 Query layer.md"
     },
     {
       "id": 16,
       "title": "JSON / SQLite",
       "detail": "after query layer",
-      "status": "todo",
+      "status": "deferred",
       "milestone": "m-query",
       "type": "functional",
       "after": [
         15
       ],
       "prs": [],
-      "text": "The JSON/SQLite build: write every valid record to JSON files and a SQLite file. After 15.",
+      "text": "The JSON/SQLite build: write every valid record to JSON files and a SQLite file. After 15.\n\nDeferred: it follows task 15, which is deferred. `@osdlc/corpus-query` (task 72) now answers queries over a corpus, so if this build is wanted it is opened again on top of that package, not on markdown-vault-query.",
       "source": "docs/planning/markdown/tasks/16 JSON and SQLite.md"
     },
     {
@@ -783,7 +787,7 @@
       "id": 32,
       "title": "Rust validator",
       "detail": "after 12 and 14",
-      "status": "todo",
+      "status": "deferred",
       "milestone": "m-model",
       "type": "functional",
       "after": [
@@ -791,7 +795,7 @@
         14
       ],
       "prs": [],
-      "text": "A Rust validator. It runs the same conformance cases as the TypeScript validator, built on the markdown-corpus crate. The architecture already mentions it. After 12 and 14.",
+      "text": "A Rust validator. It runs the same conformance cases as the TypeScript validator, built on the markdown-corpus crate. The architecture already mentions it. After 12 and 14.\n\nDeferred: it follows tasks 12 and 14, which are deferred. It is opened again with task 12.",
       "source": "docs/planning/markdown/tasks/32 Rust validator.md"
     },
     {
@@ -926,7 +930,7 @@
       "id": 40,
       "title": "Reshape in TS",
       "detail": "@osdlc/markdown-reshape",
-      "status": "todo",
+      "status": "deferred",
       "milestone": "m-model",
       "type": "functional",
       "after": [
@@ -934,7 +938,7 @@
         39
       ],
       "prs": [],
-      "text": "The TypeScript twin, `@osdlc/markdown-reshape`, built on markdown-corpus. After 39 and 12.\n\nOpen question: a TypeScript port, or a WebAssembly build of the crate, as yaml-splice-wasm does for yaml-splice? A port needs TypeScript versions of markdown-vault-fs and vfs-seam, which do not exist yet. A WebAssembly build avoids that.",
+      "text": "The TypeScript twin, `@osdlc/markdown-reshape`, built on markdown-corpus. After 39 and 12.\n\nOpen question: a TypeScript port, or a WebAssembly build of the crate, as yaml-splice-wasm does for yaml-splice? A port needs TypeScript versions of markdown-vault-fs and vfs-seam, which do not exist yet. A WebAssembly build avoids that.\n\nDeferred: it follows task 12, which is deferred. It is opened again with task 12.",
       "source": "docs/planning/markdown/tasks/40 Reshape in TS.md"
     },
     {
@@ -1306,7 +1310,7 @@
       "id": 62,
       "title": "Packs in public",
       "detail": "regenerate in public",
-      "status": "dropped",
+      "status": "deferred",
       "milestone": "m-sdlc-profile",
       "type": "functional",
       "after": [
@@ -1316,7 +1320,7 @@
         78
       ],
       "prs": [],
-      "text": "Move `@osdlc/model-schema` and the intent and sdlc packs to a public repo, so the sdlc profile is regenerated in public. [D17](../decisions/D17%20Profiles%20and%20corpora%20live%20in%20osdlc%20models.md) put them in osdlc/models. [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) keeps them in sksizer/dev for now, so this task is out of scope until they move. Today the generator and the packs are in sksizer/dev, which is private. Until this task is done, regenerating the sdlc profile is manual: run the generator in dev and copy its output into osdlc/osdlc.\n\nOnce they move, CI regenerates the sdlc profile from the packs and checks that the committed copy matches. Not on the beeline's critical path. After 47, 49, 75 and 78.\n\nDropped: out of scope under [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md). It is opened again if model-schema and the packs move to a public repository.",
+      "text": "Move `@osdlc/model-schema` and the intent and sdlc packs to a public repo, so the sdlc profile is regenerated in public. [D17](../decisions/D17%20Profiles%20and%20corpora%20live%20in%20osdlc%20models.md) put them in osdlc/models. [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) keeps them in sksizer/dev for now, so this task is out of scope until they move. Today the generator and the packs are in sksizer/dev, which is private. Until this task is done, regenerating the sdlc profile is manual: run the generator in dev and copy its output into osdlc/osdlc.\n\nOnce they move, CI regenerates the sdlc profile from the packs and checks that the committed copy matches. Not on the beeline's critical path. After 47, 49, 75 and 78.\n\nDeferred: out of scope under [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md). It is opened again if model-schema and the packs move to a public repository.",
       "source": "docs/planning/markdown/tasks/62 Packs in public.md"
     },
     {
@@ -1563,7 +1567,7 @@
       "id": 76,
       "title": "Claims as a pack",
       "detail": "pack-claims",
-      "status": "dropped",
+      "status": "deferred",
       "milestone": "m-model-layer",
       "type": "functional",
       "after": [
@@ -1571,21 +1575,21 @@
         62
       ],
       "prs": [],
-      "text": "Write the claims types as `pack-claims`, and generate `@osdlc/corpus-profile-claims` from it. The package name does not change, so corpora that extend it see no change. The type folders of the profile become generated output, as decided in [D17](../decisions/D17%20Profiles%20and%20corpora%20live%20in%20osdlc%20models.md). D17 put `pack-claims` in osdlc/models. [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) folds that repo into osdlc/osdlc and keeps model-schema and the packs in sksizer/dev for now, so where `pack-claims` lives is not decided. After 23 and 62.\n\nDropped: it follows task 62, which is out of scope under [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md). It is opened again with task 62.",
+      "text": "Write the claims types as `pack-claims`, and generate `@osdlc/corpus-profile-claims` from it. The package name does not change, so corpora that extend it see no change. The type folders of the profile become generated output, as decided in [D17](../decisions/D17%20Profiles%20and%20corpora%20live%20in%20osdlc%20models.md). D17 put `pack-claims` in osdlc/models. [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) folds that repo into osdlc/osdlc and keeps model-schema and the packs in sksizer/dev for now, so where `pack-claims` lives is not decided. After 23 and 62.\n\nDeferred: it follows task 62, which is out of scope under [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md). It is opened again with task 62.",
       "source": "docs/planning/markdown/tasks/76 Claims as a pack.md"
     },
     {
       "id": 77,
       "title": "Profile catalog",
       "detail": "index of profiles",
-      "status": "todo",
+      "status": "deferred",
       "milestone": "m-model-layer",
       "type": "supporting",
       "after": [
         62
       ],
       "prs": [],
-      "text": "A generated index of the shared profiles and of the corpora built on them. Each entry has the package's purl, its version and its types. Build it once a few research corpora exist. Low priority. After 62.",
+      "text": "A generated index of the shared profiles and of the corpora built on them. Each entry has the package's purl, its version and its types. Build it once a few research corpora exist. Low priority. After 62.\n\nDeferred: it follows task 62, which is deferred. It is opened again with task 62.",
       "source": "docs/planning/markdown/tasks/77 Profile catalog.md"
     },
     {
