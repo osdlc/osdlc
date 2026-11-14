@@ -45,10 +45,10 @@ As of 2026-11-14. The content is here. What is left is cleanup.
 
 What is left, in order:
 
-1. Merge the last follow-up here, #785. #802 (docs say 0.4.0) and #801 (the
-   harness knowledge data names this repository) are merged.
-   [The pull request queue](pr-queue.md) has the order for every open pull
-   request.
+1. Work through [the pull request queue](pr-queue.md), which has the order
+   for every open pull request. The follow-ups here are merged: #802 (docs
+   say 0.4.0), #801 (the harness knowledge data names this repository) and
+   #785 (release inputs for packages with no code).
 2. Merge the two holding-pen READMEs.
 3. Empty osdlc/markdown down to its README (phase 6).
 4. Remove `harness-reference/` from osdlc/skillwright (phase 5).
@@ -63,8 +63,10 @@ needs phase 1 and a decision. Phase 5 needs phase 4. Phase 6 is last.
 
 - [x] Merge the decision record and this plan
       ([#789](https://github.com/osdlc/osdlc/pull/789)).
-- [x] Comment on osdlc/markdown #15, #16 and #19 with a link to #789, so no
-      more work goes into the old layout. #20 has the note but is closed. Not needed: all three were closed on 2026-11-13, after #794 brought them here.
+- [x] Stop further work on osdlc/markdown #15, #16 and #19, so no more goes
+      into the old layout. All three were closed on 2026-11-13, after #794
+      brought them here, so the planned comments were not needed. #20 has the
+      note but is closed.
 - [ ] Merge the holding-pen READMEs:
       [osdlc/markdown#22](https://github.com/osdlc/markdown/pull/22) and
       [osdlc/models#2](https://github.com/osdlc/models/pull/2). Each says the
@@ -201,11 +203,13 @@ Needs phase 1, because the profiles use `extends`.
       starter corpus (#19). osdlc/models#1 holds the same three packages
       moved; use whichever is newer. (#794, as one pull request.)
 - [x] Add the new packages to the pnpm workspace, the package checks and the
-      changeset config. (#794. `check:packages` still covers `packages/ts` only; `profiles.yml` checks these.)
-- [ ] Decide [#785](https://github.com/osdlc/osdlc/pull/785) (release
+      changeset config. (#794. `check:packages` still covers `packages/ts`
+      only; `profiles.yml` checks these.)
+- [x] Decide [#785](https://github.com/osdlc/osdlc/pull/785) (release
       inputs for packages with no code). It was written for osdlc/markdown's
-      profile packages. Merge it if the profile packages need it here, or
-      close it.
+      profile packages. Merged 2026-11-14: `packages-publish.yml` passes
+      `package-globs`, so the release checks cover `packages/profiles` and
+      `packages/corpora`.
 - [x] **owner** Publish each new package's placeholder version and set its
       trusted publisher to osdlc/osdlc, as `packages/README.md` describes
       for a new library. Done 2026-11-13.
@@ -285,10 +289,10 @@ once matured. They are not archived.
 | ----- | ----------------------------------------------- | ------ |
 | 0     | [#789](https://github.com/osdlc/osdlc/pull/789) | Merged |
 | 1     | [#790](https://github.com/osdlc/osdlc/pull/790) | Merged |
+| 1     | [#802](https://github.com/osdlc/osdlc/pull/802) | Merged |
 | 2, 3  | [#791](https://github.com/osdlc/osdlc/pull/791) | Merged |
 | 4     | [#794](https://github.com/osdlc/osdlc/pull/794) | Merged |
+| 4     | [#785](https://github.com/osdlc/osdlc/pull/785) | Merged |
 | 5     | [#793](https://github.com/osdlc/osdlc/pull/793) | Merged |
 | 5     | [#800](https://github.com/osdlc/osdlc/pull/800) | Merged |
-| 1     | [#802](https://github.com/osdlc/osdlc/pull/802) | Merged |
 | 5     | [#801](https://github.com/osdlc/osdlc/pull/801) | Merged |
-| 4     | [#785](https://github.com/osdlc/osdlc/pull/785) | Open   |

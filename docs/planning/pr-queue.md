@@ -5,15 +5,15 @@ order to merge them in. Read on 2026-11-14, with 33 open. Update a row when
 its pull request merges or closes, and delete this file when the queue is
 short enough to read on GitHub.
 
-Merged since: #802, #801, #803, #783 and #787 (2026-11-14). The order
-numbers below are as first written.
+Merged since: #802, #801, #803, #783, #787, #785 and #805 (2026-11-14). The
+order numbers below are as first written.
 
 ## Summary
 
-- **All 33 are still wanted.** None is replaced by work already on `main`.
+- **All 33 open on 2026-11-14 were still wanted.** None is replaced by work already on `main`.
 - **Three need work before review:** #649 and #650 were overtaken by
   releases, and #740 by a change to the CI workflows.
-- **Five have failing checks:** #806, #807, #691, #650 and #651.
+- **Three have failing checks:** #691, #650 and #651.
 - **None is approved.** Most have had a review pass that left one or more
   questions for the owner. Those questions are the main thing holding the
   queue.
@@ -43,23 +43,22 @@ State is one of: **ready** (checks pass, behind `main` only), **question**
 
 ### 1. Finish the repatriation
 
-| Order | Pull request                                    | What                                     | State    | Before it merges                                                                                                                                    |
-| ----- | ----------------------------------------------- | ---------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 3     | [#785](https://github.com/osdlc/osdlc/pull/785) | Release inputs for packages with no code | question | Answer its one question. Then add `package-globs` to `packages-publish.yml`, so the "not on npm yet" check covers `packages/profiles` and `corpora` |
+Done. #785 is merged, and `packages-publish.yml` passes `package-globs`, so
+the "not on npm yet" check covers `packages/profiles` and `packages/corpora`.
 
 ### 2. The corpus tools
 
-A stack on #805. These are the first new packages built on what was brought
-back.
+Both are built on `loadCorpus` (#805, merged) and now point at `main`. These
+are the first new packages built on what was brought back.
 
-| Order | Pull request                                    | What                              | State   | Before it merges                                                                    |
-| ----- | ----------------------------------------------- | --------------------------------- | ------- | ----------------------------------------------------------------------------------- |
-| 5     | [#805](https://github.com/osdlc/osdlc/pull/805) | `corpus-schema`: `loadCorpus`     | ready   | Review. No review pass yet                                                          |
-| 6     | [#806](https://github.com/osdlc/osdlc/pull/806) | New package `@osdlc/corpus-query` | failing | Fix `verify`. Point it at `main` once #805 merges. It edits `cli-tool`: see group 6 |
-| 7     | [#807](https://github.com/osdlc/osdlc/pull/807) | New package `@osdlc/corpus-site`  | failing | Fix `verify`. Point it at `main` once #805 merges. 16,700 lines: the largest review |
+| Order | Pull request                                    | What                              | State | Before it merges                                                                    |
+| ----- | ----------------------------------------------- | --------------------------------- | ----- | ----------------------------------------------------------------------------------- |
+| 6     | [#806](https://github.com/osdlc/osdlc/pull/806) | New package `@osdlc/corpus-query` | ready | Review findings are answered. Its npm placeholder. It edits `cli-tool`: see group 6 |
+| 7     | [#807](https://github.com/osdlc/osdlc/pull/807) | New package `@osdlc/corpus-site`  | ready | Review findings are answered. Its npm placeholder. 16,700 lines: the largest review |
 
-Each new package needs its placeholder version and trusted publisher on npm
-before its first release, as `packages/README.md` describes.
+Neither package is on npm yet. Each needs its placeholder version and trusted
+publisher before it merges, as `packages/README.md` describes: the release
+stops on a package npm does not know.
 
 ### 3. The markdown libraries
 
@@ -75,14 +74,14 @@ All three were written before releases that changed their base.
 
 `docs/planning/agent-ci.md` is the plan for this group, and #722 updates it.
 
-| Order | Pull request                                    | What                                          | State    | Before it merges                                                               |
-| ----- | ----------------------------------------------- | --------------------------------------------- | -------- | ------------------------------------------------------------------------------ |
-| 13    | [#798](https://github.com/osdlc/osdlc/pull/798) | agent-call: `inheritEnv`, `unsetEnv`          | question | One design question                                                            |
-| 14    | [#799](https://github.com/osdlc/osdlc/pull/799) | agent-call: why a run failed                  | ready    | After #798: same package                                                       |
-| 15    | [#797](https://github.com/osdlc/osdlc/pull/797) | harness-knowledge: short-id map               | question | Two design questions. After #801 (same package) and #799 (it edits agent-call) |
-| 16    | [#764](https://github.com/osdlc/osdlc/pull/764) | Run any skill from a PR comment               | draft    | After #787: both edit `pr-common`. Three remarks left for the owner            |
-| 17    | [#622](https://github.com/osdlc/osdlc/pull/622) | Proposal: session meta and native transcripts | draft    | A design to accept or change. No code                                          |
-| 18    | [#722](https://github.com/osdlc/osdlc/pull/722) | The agents-in-CI plan and its review queue    | draft    | Last in the group, so its tracker is right when it merges                      |
+| Order | Pull request                                    | What                                          | State    | Before it merges                                          |
+| ----- | ----------------------------------------------- | --------------------------------------------- | -------- | --------------------------------------------------------- |
+| 13    | [#798](https://github.com/osdlc/osdlc/pull/798) | agent-call: `inheritEnv`, `unsetEnv`          | question | One design question                                       |
+| 14    | [#799](https://github.com/osdlc/osdlc/pull/799) | agent-call: why a run failed                  | ready    | After #798: same package                                  |
+| 15    | [#797](https://github.com/osdlc/osdlc/pull/797) | harness-knowledge: short-id map               | question | Two design questions. After #799: it edits agent-call     |
+| 16    | [#764](https://github.com/osdlc/osdlc/pull/764) | Run any skill from a PR comment               | draft    | Three remarks left for the owner                          |
+| 17    | [#622](https://github.com/osdlc/osdlc/pull/622) | Proposal: session meta and native transcripts | draft    | A design to accept or change. No code                     |
+| 18    | [#722](https://github.com/osdlc/osdlc/pull/722) | The agents-in-CI plan and its review queue    | draft    | Last in the group, so its tracker is right when it merges |
 
 ### 5. pr-update
 
@@ -122,10 +121,9 @@ pass.
 
 ## What to do first
 
-1. Merge #785 once its one question is answered, then add `package-globs` to
-   `packages-publish.yml`.
-2. Merge the Version Packages pull request, which holds #801's patch.
-3. Review #805. Two new packages wait on it.
-4. Answer the questions on #798 and #797. Each takes one decision and frees
+1. Merge the Version Packages pull request, which holds #801's patch.
+2. Publish the npm placeholders for `@osdlc/corpus-query` and
+   `@osdlc/corpus-site`, then merge #806 and #807.
+3. Answer the questions on #798 and #797. Each takes one decision and frees
    a pull request behind it.
-5. Decide #744 and #672, since the answer is about scope, not code.
+4. Decide #744 and #672, since the answer is about scope, not code.
