@@ -22,6 +22,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-08-08T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: superseded
+    date: 2026-11-14T18:00:00Z
 harness: "[OpenCode](../../harnesses/OpenCode.md)"
 subject: "[Version seen](../../subjects/meta/Version%20seen.md)"
 scope:
@@ -29,7 +34,7 @@ scope:
   until: null
   platform: []
   model: null
-status: current
+status: superseded
 imported_from: fact:meta/version-seen@opencode#sighting-1
 ---
 

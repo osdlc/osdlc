@@ -22,6 +22,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-11-14T12:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: superseded
+    date: 2026-11-14T18:00:00Z
 harness: "[Antigravity](../../harnesses/Antigravity.md)"
 subject: "[Version seen](../../subjects/meta/Version%20seen.md)"
 scope:
@@ -29,7 +34,7 @@ scope:
   until: null
   platform: []
   model: null
-status: current
+status: superseded
 ---
 
 The docs changelog marks v1.5.8 as the latest CLI release and says new versions roll out gradually. On the same day the `CHANGELOG.md` in the GitHub repository already had a 1.5.9 section, with no date.

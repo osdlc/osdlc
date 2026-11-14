@@ -35,6 +35,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-11-04T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: superseded
+    date: 2026-11-14T18:00:00Z
 harness: "[GitHub Copilot CLI](../../harnesses/GitHub%20Copilot%20CLI.md)"
 subject: "[Duplicate skill names](../../subjects/skills/Duplicate%20skill%20names.md)"
 scope:
@@ -42,7 +47,7 @@ scope:
   until: null
   platform: []
   model: null
-status: current
+status: superseded
 imported_from: fact:skills/duplicate-names@copilot-cli#scope-[null,null,null]
 ---
 

@@ -10,7 +10,6 @@ proposition:
       - the workspace, with the manifests in its .agents folders
       - ~/.gemini/config, with personal manifests
       - built-in skills
-    plugin_skills: named <plugin>:<skill>, so they do not collide with other skills
     within_root: in a plugin skills folder the earlier skill is kept and the later one skipped; agy plugin validate warns
 direction: supports
 strength: moderate
@@ -19,7 +18,6 @@ hasEvidenceLines:
       - "[2026-11-14 discovery which skill wins](../../study-results/Antigravity/2026-11-14%20discovery%20which%20skill%20wins.md)"
       - "[2026-11-14 discovery priority list](../../study-results/Antigravity/2026-11-14%20discovery%20priority%20list.md)"
       - "[2026-11-14 discovery cli skill folders win](../../study-results/Antigravity/2026-11-14%20discovery%20cli%20skill%20folders%20win.md)"
-      - "[2026-11-14 discovery plugin skill names](../../study-results/Antigravity/2026-11-14%20discovery%20plugin%20skill%20names.md)"
     directionOfEvidenceProvided: supports
     strengthOfEvidenceProvided: moderate
     description: The Customization discovery page gives the priority order.
@@ -37,6 +35,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-11-14T12:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-14T18:00:00Z
 harness: "[Antigravity](../../harnesses/Antigravity.md)"
 subject: "[Duplicate skill names](../../subjects/skills/Duplicate%20skill%20names.md)"
 scope:
@@ -49,3 +52,5 @@ supersedes: "[Antigravity Duplicate skill names open](Antigravity%20Duplicate%20
 ---
 
 `order` runs from highest to lowest priority. The two CLI-only folders win over everything else, and a manifest `exclude` list does not hide them.
+
+How a plugin skill is named, and so whether it can collide with another skill, is on the Plugin skill runtime name statement, which is disputed.

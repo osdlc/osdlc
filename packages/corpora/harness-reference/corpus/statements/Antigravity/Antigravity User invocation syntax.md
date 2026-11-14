@@ -5,14 +5,13 @@ proposition:
   object:
     syntax: /<skill-name>
     also: name the skill in the prompt
-    note: "plugin skills are named <plugin>:<skill>; `disable-slash-command: true` in the frontmatter hides a skill from the / menu"
+    note: "`disable-slash-command: true` in the frontmatter hides a skill from the / menu"
 direction: supports
 strength: moderate
 hasEvidenceLines:
   - hasEvidenceItems:
       - "[2026-11-14 skills slash command conversion](../../study-results/Antigravity/2026-11-14%20skills%20slash%20command%20conversion.md)"
       - "[2026-11-14 skills mention by name](../../study-results/Antigravity/2026-11-14%20skills%20mention%20by%20name.md)"
-      - "[2026-11-14 discovery plugin skill names](../../study-results/Antigravity/2026-11-14%20discovery%20plugin%20skill%20names.md)"
     directionOfEvidenceProvided: supports
     strengthOfEvidenceProvided: moderate
     description: The skills page says each skill becomes a slash command.
@@ -31,6 +30,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-11-14T12:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-14T18:00:00Z
 harness: "[Antigravity](../../harnesses/Antigravity.md)"
 subject: "[User invocation syntax](../../subjects/skills/User%20invocation%20syntax.md)"
 scope:
@@ -42,3 +46,5 @@ status: current
 ---
 
 In the CLI every skill becomes a slash command named after it. In headless mode the same call works at the start of a `-p` prompt.
+
+What a user types for a plugin skill depends on how the skill is named. That is on the Plugin skill runtime name statement, which is disputed.
