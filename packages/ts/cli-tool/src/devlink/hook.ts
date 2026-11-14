@@ -13,7 +13,7 @@ import { runDevCli } from './cli.ts'
 import { missingDependency, missingDependencyLine } from './deps.ts'
 import { execSelection, type ExecOptions } from './exec.ts'
 import { cwdCheckout, resolve, type Selection } from './resolve.ts'
-import { homeVar, launchLayerVar, quietVar, type ToolSpec } from './spec.ts'
+import { homeVar, launchLayerVar, quietVar, runtimeOf, type ToolSpec } from './spec.ts'
 import { homePath } from './state.ts'
 
 /**
@@ -39,7 +39,7 @@ export interface DevlinkHookOptions {
  * the tool) resolves for itself. It keeps the value for its `describe`, which
  * `runMain` asks when it answers `--where`. A checkout chosen by the env, cwd
  * or link layer whose `node_modules` is incomplete is refused with exit 1 and
- * a line saying to run `bun install` there.
+ * the line from {@link missingDependencyLine}.
  * @experimental
  */
 export function devlinkHook(spec: ToolSpec, opts: DevlinkHookOptions = {}): DevlinkHook {
@@ -88,7 +88,8 @@ export function devlinkHook(spec: ToolSpec, opts: DevlinkHookOptions = {}): Devl
       // project copy is an install, which its package manager completed.
       const missing = missingDependency(selection.checkout, selection.entry)
       if (missing !== null) {
-        ctx.io.stderr(`${missingDependencyLine(spec.name, selection.checkout, missing)}\n`)
+        const line = missingDependencyLine(spec.name, selection.checkout, missing, runtimeOf(spec))
+        ctx.io.stderr(`${line}\n`)
         return 1
       }
     }

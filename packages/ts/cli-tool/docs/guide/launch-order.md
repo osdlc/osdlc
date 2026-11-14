@@ -29,8 +29,8 @@ flowchart TD
   guard -- no --> env{"TOOL_HOME names a checkout?"}
   env -- yes --> ownE{"is it this checkout?"}
   ownE -- no --> deps{"is the checkout's node_modules complete?"}
-  deps -- yes --> bun["hand off: checkout source under bun"]
-  deps -- no --> refuse["print: run 'bun install' there; exit 1"]
+  deps -- yes --> bun["hand off: checkout source under bun, or node with runtime: 'node'"]
+  deps -- no --> refuse["print: run 'bun install' (or the package manager's install) there; exit 1"]
   ownE -- yes --> self2["run this copy's main"]
   env -- no --> sup{"a suppressor is set?"}
   sup -- yes --> self3["run this copy's main"]
@@ -102,7 +102,9 @@ back, in order. Each step either finishes the run or passes to the next.
    `tool: <checkout> has no node_modules. Run 'bun install' there.` or
    `tool: <checkout> is missing package '<name>'. Run 'bun install' there.`
    and the run ends with exit 1. The first line is for a checkout with no
-   `node_modules` at all. A checkout with no dependencies needs none.
+   `node_modules` at all. A checkout with no dependencies needs none. For a
+   spec with `runtime: 'node'` the lines end
+   `Run its package manager's install there.`
 6. **Hand off, or not.** For local the hook returns and runMain goes on to
    step 7. Otherwise:
    - The hook prints `tool: running <file> (<why>)` to stderr. For the
@@ -114,8 +116,9 @@ back, in order. Each step either finishes the run or passes to the next.
      process is bun, else the first `bun` on an absolute `PATH` entry. Reusing
      the running bun matters because the first `bun` on `PATH` can be a proto
      shim, and a proto shim refuses to start bun from inside bun ("re-entered
-     proto … would loop"). A project copy runs under node, or bun when its
-     `#!` line says bun.
+     proto … would loop"). With `runtime: 'node'` in the spec a checkout runs
+     under node instead, chosen as a project copy's node is. A project copy
+     runs under node, or bun when its `#!` line says bun.
    - On macOS and Linux it calls `process.execve`: this process becomes the
      other copy, with the same pid. On Windows, on Node before 22.15, or when
      `execve` fails for a reason other than a missing or unrunnable file, it
@@ -196,7 +199,10 @@ project's `node_modules` copy, which is itself.
   Node, so the Node version that started the tool carries over. Under Bun it
   is the `node` found on the absolute entries of `PATH`.
 - **The runtime for a checkout** is bun: `process.execPath` when running
-  under Bun, else the `bun` found on the absolute entries of `PATH`.
+  under Bun, else the `bun` found on the absolute entries of `PATH`. A spec
+  with `runtime: 'node'` runs a checkout under node instead, found as for a
+  project copy, and a TypeScript entry needs Node 22.18 or later, which
+  `tool dev link` checks.
 - **Deno** is not supported for hand-offs. When `process.versions.deno` is set,
   the hook runs the copy that started, as local, and prints nothing.
 
@@ -204,9 +210,9 @@ project's `node_modules` copy, which is itself.
 
 | Order | Layer | How it turns on | How it turns off | What runs |
 |---|---|---|---|---|
-| 1 | env | `TOOL_HOME=<absolute checkout path>` | unset it; a relative path is ignored | that checkout's source entry under bun |
-| 2 | cwd | the spec sets `cwdLayer: true` and you stand inside a checkout | `TOOL_CWD_DEV=0`, a suppressor, or the spec leaves it off (the default) | that checkout's source entry under bun |
-| 3 | link | `tool dev link <checkout>` | `tool dev off`, or a suppressor | the linked checkout's source entry under bun; when it is gone and the spec sets `onDeadLink: 'newest-surviving'`, the newest earlier checkout that survives |
+| 1 | env | `TOOL_HOME=<absolute checkout path>` | unset it; a relative path is ignored | that checkout's source entry under bun (or node, with `runtime: 'node'`) |
+| 2 | cwd | the spec sets `cwdLayer: true` and you stand inside a checkout | `TOOL_CWD_DEV=0`, a suppressor, or the spec leaves it off (the default) | that checkout's source entry under the spec's runtime |
+| 3 | link | `tool dev link <checkout>` | `tool dev off`, or a suppressor | the linked checkout's source entry under the spec's runtime; when it is gone and the spec sets `onDeadLink: 'newest-surviving'`, the newest earlier checkout that survives |
 | 4 | project | the spec sets `packageName` and a project above the cwd has it in `node_modules` | `TOOL_PROJECT=0`, `projectLayer: false` in the spec, or a suppressor | the package's `bin` file under node (or bun, when its `#!` line says bun), run by its path |
 | 5 | local | none of the above | never | this copy |
 
@@ -302,7 +308,9 @@ There are two ways to write one:
   `package.json`, which the launcher does not parse; `renderLauncher` refuses
   a spec that sets `packageName`. For `local` it runs the launcher's own
   checkout: the built entry under node when one is present and the checkout
-  is not a development checkout, else the source under bun.
+  is not a development checkout, else the source under bun (under node with
+  `runtime: 'node'`, where a checkout under a `node_modules` folder is never
+  a development checkout).
   `launcherDrift` tells a committed launcher that no longer matches its spec.
 
 ## Adopting devlink in a new CLI
@@ -314,8 +322,10 @@ There are two ways to write one:
    - `marker`: a file, relative to the checkout root, that only this tool's
      checkout has (usually its source entry, `src/cli.ts`).
    - `packageName`: the npm name; it turns the project layer on.
-   - `entry`: the source file a hand-off runs under bun, relative to the
-     checkout (defaults to `marker`).
+   - `entry`: the source file a hand-off runs, relative to the checkout
+     (defaults to `marker`).
+   - `runtime`: `node` when the source runs under node (a `.ts` entry needs
+     Node 22.18 or later); leave it out for bun.
    - `launcher`: the bin, relative to the checkout.
    - `vendorDirs`: where the link file and history live, and the variables
      that move them (`{ vendor, envVars: envVars('TOOL') }`).

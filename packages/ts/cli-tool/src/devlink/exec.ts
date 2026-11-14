@@ -2,7 +2,8 @@
  * The JavaScript launcher, for a tool whose canonical install is an npm bin
  * shim rather than a bash script. The shim resolves. When a checkout other
  * than its own is selected, it hands the process over to that checkout's
- * source under Bun. When a project's installed copy is selected, it runs that
+ * source under the spec's runtime: Bun, or Node when the spec says
+ * `runtime: 'node'`. When a project's installed copy is selected, it runs that
  * copy's bin under the runtime its `#!` line names, given the bin's path, so
  * on Windows no `.cmd` shim is involved.
  *
@@ -28,7 +29,7 @@ import { basename } from 'node:path'
 import { which } from '@osdlc/command-seam'
 
 import type { Selected, Selection } from './resolve.ts'
-import { launchLayerVar, projectVar, quietVar, type ToolSpec } from './spec.ts'
+import { launchLayerVar, projectVar, quietVar, runtimeOf, type ToolSpec } from './spec.ts'
 
 /**
  * Bun's flags for running a checkout's entry from any cwd. Bun reads `.env*`
@@ -58,10 +59,7 @@ export interface ExecOptions {
    * A hand-off to a project's copy of the same version runs silently.
    */
   version?: string | null
-  /**
-   * The `node` to run a project's bin with, used as given. Defaults to this
-   * process's own binary under Node, else the `node` found as `bun` is.
-   */
+  /** The `node` to run, used as given. Defaults to {@link defaultNode}. */
   node?: string
   /**
    * The `bun` to run, used as given. Defaults to this process's own binary
@@ -100,8 +98,21 @@ export function execSelection(
   // The layer that chose it, as the bash launcher exports it, so the started
   // process knows it was handed off and runs its own code.
   const childEnv = { ...env, [launchLayerVar(spec)]: selection.source }
-  if (selection.runtime === 'node') {
+  if ((selection.runtime ?? runtimeOf(spec)) === 'node') {
     const node = opts.node ?? defaultNode(env)
+    if (selection.source !== 'project') {
+      // A checkout's entry runs by its path: a TypeScript one through Node's
+      // own type stripping, whose node `dev link` checks.
+      const what = 'the selected checkout runs from source under node and'
+      const fix = `Install Node (https://nodejs.org), or run '${spec.name} dev off' to use the local install.`
+      if (node === undefined) {
+        announce(`${spec.name}: ${what} needs node on an absolute PATH entry. ${fix}`)
+        return 1
+      }
+      return run(node, [selection.entry, ...argv], childEnv, opts, (why) =>
+        announce(`${spec.name}: ${what} could not start ${node} (${why}). ${fix}`),
+      )
+    }
     if (node === undefined) {
       announce(
         `${spec.name}: the project's copy at ${selection.checkout} needs node on an absolute PATH entry. ` +
@@ -222,7 +233,12 @@ export function runningBun(
   return isBun ? execPath : undefined
 }
 
-function defaultNode(env: Record<string, string | undefined>): string | undefined {
+/**
+ * The `node` a hand-off runs when none is given: this process's own binary
+ * under Node, else the `node` on the absolute entries of `env`'s `PATH`.
+ * @internal
+ */
+export function defaultNode(env: Record<string, string | undefined>): string | undefined {
   if (process.versions['bun'] === undefined) return process.execPath
   return which('node', {
     absolutePathOnly: true,

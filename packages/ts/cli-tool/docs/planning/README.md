@@ -26,6 +26,8 @@ They are never reused. Each decision has a `state`: `accepted` or
   spec's own state directory is a path under the home
 - [D-03](decisions/D-03-devlink-dead-link-falls-back-through-a-candidates-file.md):
   A dead devlink link can fall back through a plain-text candidates file
+- [D-05](decisions/D-05-node-checkouts-run-their-ts-source.md): A node
+  checkout runs its TypeScript source through Node's type stripping
 
 ## Backlog
 
