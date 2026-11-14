@@ -39,6 +39,11 @@ describe('progress', () => {
     expect(progressText(progress)).toBe('1 of 3 done')
   })
 
+  it('leaves dropped tasks out of the progress', () => {
+    const tasks = index.tasksOf.get('m-b')!.map((t) => (t.id === 3 ? { ...t, status: 'dropped' as const } : t))
+    expect(progressOf(tasks)).toEqual({ done: 1, total: 2 })
+  })
+
   it('groups tasks by status, waiting work first', () => {
     const groups = groupByStatus(index, index.plan.tasks)
     expect(groups.map((g) => [g.status, g.label, ids(g.tasks)])).toEqual([
