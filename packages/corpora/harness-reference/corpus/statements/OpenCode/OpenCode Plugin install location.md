@@ -21,6 +21,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-11-04T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: superseded
+    date: 2026-11-14T18:00:00Z
 harness: "[OpenCode](../../harnesses/OpenCode.md)"
 subject: "[Plugin install location](../../subjects/plugins/Plugin%20install%20location.md)"
 scope:
@@ -28,7 +33,7 @@ scope:
   until: null
   platform: []
   model: null
-status: current
+status: superseded
 open:
   - Does OpenCode have a plugin or package format that installs skills? The plugins page describes JavaScript or TypeScript plugin modules and never mentions skills.
 imported_from: fact:plugins/install-location@opencode#scope-[null,null,null]
