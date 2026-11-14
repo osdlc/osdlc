@@ -5,15 +5,15 @@ order to merge them in. Read on 2026-11-14, with 33 open. Update a row when
 its pull request merges or closes, and delete this file when the queue is
 short enough to read on GitHub.
 
-Merged since: #802, #801, #803, #783, #787, #785 and #805 (2026-11-14). The
-order numbers below are as first written.
+Merged since, all on 2026-11-14: #802, #801, #803, #783, #787, #785, #805,
+#806, #807, #631 and #630. The order numbers below are as first written.
 
 ## Summary
 
 - **All 33 open on 2026-11-14 were still wanted.** None is replaced by work already on `main`.
-- **Three need work before review:** #649 and #650 were overtaken by
-  releases, and #740 by a change to the CI workflows.
-- **Three have failing checks:** #691, #650 and #651.
+- **One needs work before review:** #740, overtaken by a change to the CI
+  workflows. #649, #650 and #651 were reworked on 2026-11-14.
+- **Two have a failing check:** #691 (Rust) and #651 (the perf gate).
 - **None is approved.** Most have had a review pass that left one or more
   questions for the owner. Those questions are the main thing holding the
   queue.
@@ -48,27 +48,20 @@ the "not on npm yet" check covers `packages/profiles` and `packages/corpora`.
 
 ### 2. The corpus tools
 
-Both are built on `loadCorpus` (#805, merged) and now point at `main`. These
-are the first new packages built on what was brought back.
-
-| Order | Pull request                                    | What                              | State | Before it merges                                                                    |
-| ----- | ----------------------------------------------- | --------------------------------- | ----- | ----------------------------------------------------------------------------------- |
-| 6     | [#806](https://github.com/osdlc/osdlc/pull/806) | New package `@osdlc/corpus-query` | ready | Review findings are answered. Its npm placeholder. It edits `cli-tool`: see group 6 |
-| 7     | [#807](https://github.com/osdlc/osdlc/pull/807) | New package `@osdlc/corpus-site`  | ready | Review findings are answered. Its npm placeholder. 16,700 lines: the largest review |
-
-Neither package is on npm yet. Each needs its placeholder version and trusted
-publisher before it merges, as `packages/README.md` describes: the release
-stops on a package npm does not know.
+Done. #806 (`@osdlc/corpus-query`) and #807 (`@osdlc/corpus-site`) are
+merged, and both packages have their placeholder on npm. Their first release
+is the next Version Packages pull request.
 
 ### 3. The markdown libraries
 
-All three were written before releases that changed their base.
+All three were reworked on 2026-11-14: `main` is merged in and the versions
+are the next ones.
 
-| Order | Pull request                                    | What                                                              | State   | Before it merges                                                                                                                                                  |
-| ----- | ----------------------------------------------- | ----------------------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 8     | [#649](https://github.com/osdlc/osdlc/pull/649) | `markdown-link`: indented code, math, raw HTML, autolinks as code | rework  | It conflicts in the crate and the lockfile. It is titled 0.9, and 0.9.0 is released with other changes, so it becomes the next minor. skillwright needs it (#638) |
-| 9     | [#651](https://github.com/osdlc/osdlc/pull/651) | `markdown-link`: link titles, parentheses, every relative link    | failing | Stacked on #649. Update it after #649 is reworked, then point it at `main`                                                                                        |
-| 10    | [#650](https://github.com/osdlc/osdlc/pull/650) | `markdown-corpus`, `markdown-vault-fs`: four edge cases           | rework  | Its base, #648, merged on 2026-11-08 and was released. Point it at `main`. Its breaking change now needs vault-fs 0.7.0 and corpus 0.4.0, as its own note says    |
+| Order | Pull request                                    | What                                                              | State    | Before it merges                                                                                                    |
+| ----- | ----------------------------------------------- | ----------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------- |
+| 8     | [#649](https://github.com/osdlc/osdlc/pull/649) | `markdown-link`: indented code, math, raw HTML, autolinks as code | question | The crate is 0.10.0. The scanner is about three times slower: speed it up or accept it. skillwright needs it (#638) |
+| 9     | [#651](https://github.com/osdlc/osdlc/pull/651) | `markdown-link`: link titles, parentheses, every relative link    | failing  | Stacked on #649. The perf gate fails. Point it at `main` once #649 merges                                           |
+| 10    | [#650](https://github.com/osdlc/osdlc/pull/650) | `markdown-corpus`, `markdown-vault-fs`: four edge cases           | question | It targets `main`, at vault-fs 0.7.0 and corpus 0.4.0. One review finding (a dead `Outside` arm) is for the owner   |
 
 ### 4. Agents in CI
 
@@ -85,11 +78,10 @@ All three were written before releases that changed their base.
 
 ### 5. pr-update
 
-| Order | Pull request                                    | What                                              | State    | Before it merges                                                                                   |
-| ----- | ----------------------------------------------- | ------------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------- |
-| 19    | [#631](https://github.com/osdlc/osdlc/pull/631) | `survey` and `update` on cli-tool's command model | ready    | No open questions                                                                                  |
-| 20    | [#736](https://github.com/osdlc/osdlc/pull/736) | Attempts and the update lease on git refs         | question | Five design questions. After #631: same package                                                    |
-| 21    | [#740](https://github.com/osdlc/osdlc/pull/740) | CI: less load from pull requests                  | rework   | It conflicts: `verify` moved into the shared `ts-packages-ci.yml`, which cannot express its change |
+| Order | Pull request                                    | What                                      | State    | Before it merges                                                                                   |
+| ----- | ----------------------------------------------- | ----------------------------------------- | -------- | -------------------------------------------------------------------------------------------------- |
+| 20    | [#736](https://github.com/osdlc/osdlc/pull/736) | Attempts and the update lease on git refs | question | Five design questions                                                                              |
+| 21    | [#740](https://github.com/osdlc/osdlc/pull/740) | CI: less load from pull requests          | rework   | It conflicts: `verify` moved into the shared `ts-packages-ci.yml`, which cannot express its change |
 
 #740 is worth doing early if the queue is merged quickly: every merge to
 `main` pushes into every open pull request and starts its CI again.
@@ -99,16 +91,15 @@ All three were written before releases that changed their base.
 Independent of each other, apart from the pairs marked. All have had a review
 pass.
 
-| Order | Pull request                                    | What                                           | State    | Before it merges                                                         |
-| ----- | ----------------------------------------------- | ---------------------------------------------- | -------- | ------------------------------------------------------------------------ |
-| 22    | [#629](https://github.com/osdlc/osdlc/pull/629) | cli-tool: text and choice prompts              | ready    | Nothing. Before #636 and #806, which also edit `cli-tool`                |
-| 23    | [#636](https://github.com/osdlc/osdlc/pull/636) | cli-tool: devlink runs a checkout under node   | ready    | Update the branch by hand: pr-update's push was rejected                 |
-| 24    | [#630](https://github.com/osdlc/osdlc/pull/630) | typed-git: `hashObject`, `mktree`, `updateRef` | question | One question                                                             |
-| 25    | [#633](https://github.com/osdlc/osdlc/pull/633) | typed-git: exact bytes with `rawBytes`         | ready    | After #630: same package                                                 |
-| 26    | [#632](https://github.com/osdlc/osdlc/pull/632) | typed-gh: `prActivity`                         | ready    | Nothing                                                                  |
-| 27    | [#634](https://github.com/osdlc/osdlc/pull/634) | wayfinder: hand a skill to an agent CLI        | ready    | Update the branch by hand: pr-update's push was rejected                 |
-| 28    | [#786](https://github.com/osdlc/osdlc/pull/786) | file-lock: a holder's start time               | question | One remark left for the owner                                            |
-| 29    | [#691](https://github.com/osdlc/osdlc/pull/691) | `osdlc-file-lock`, the Rust twin               | failing  | The Rust checks fail. After #786, so the crate follows the same protocol |
+| Order | Pull request                                    | What                                         | State    | Before it merges                                                         |
+| ----- | ----------------------------------------------- | -------------------------------------------- | -------- | ------------------------------------------------------------------------ |
+| 22    | [#629](https://github.com/osdlc/osdlc/pull/629) | cli-tool: text and choice prompts            | question | One naming question (`isTerminal`). Before #636: same package            |
+| 23    | [#636](https://github.com/osdlc/osdlc/pull/636) | cli-tool: devlink runs a checkout under node | ready    | Update the branch by hand: pr-update's push was rejected                 |
+| 25    | [#633](https://github.com/osdlc/osdlc/pull/633) | typed-git: exact bytes with `rawBytes`       | ready    | Nothing                                                                  |
+| 26    | [#632](https://github.com/osdlc/osdlc/pull/632) | typed-gh: `prActivity`                       | ready    | Nothing                                                                  |
+| 27    | [#634](https://github.com/osdlc/osdlc/pull/634) | wayfinder: hand a skill to an agent CLI      | ready    | Update the branch by hand: pr-update's push was rejected                 |
+| 28    | [#786](https://github.com/osdlc/osdlc/pull/786) | file-lock: a holder's start time             | question | One remark left for the owner                                            |
+| 29    | [#691](https://github.com/osdlc/osdlc/pull/691) | `osdlc-file-lock`, the Rust twin             | failing  | The Rust checks fail. After #786, so the crate follows the same protocol |
 
 ### 7. For the owner to decide
 
@@ -121,9 +112,11 @@ pass.
 
 ## What to do first
 
-1. Merge the Version Packages pull request, which holds #801's patch.
-2. Publish the npm placeholders for `@osdlc/corpus-query` and
-   `@osdlc/corpus-site`, then merge #806 and #807.
-3. Answer the questions on #798 and #797. Each takes one decision and frees
-   a pull request behind it.
-4. Decide #744 and #672, since the answer is about scope, not code.
+1. Merge #825, which compiles the harness knowledge data again after #823
+   and #824 added and corrected answers. `corpus-schema` 0.5.0 and the first
+   releases of `corpus-query` and `corpus-site` are on npm.
+2. Merge the ones with nothing open: #633 and #632.
+3. Answer the questions on #798, #629, #786 and #797. Each takes one decision
+   and frees a pull request behind it.
+4. Decide the scanner's speed on #649, which also holds #651.
+5. Decide #744 and #672, since the answer is about scope, not code.
