@@ -15,6 +15,7 @@ import {
   type Data,
   flattened,
   type Found,
+  type FoundRef,
   load,
   recordFileOf,
   type RefForm,
@@ -75,7 +76,10 @@ export interface CorpusField {
   name: string
   /** The property's JSON Schema, from the nearest type in the chain that declares it. */
   schema: unknown
-  /** That type. A record's value also passes the field's schema in every type further up the chain. */
+  /**
+   * The nearest type in the chain that declares the field. A record's value also passes the
+   * field's schema in each type further up.
+   */
   declaredBy: TypeRef
   /** Whether the root `required` of a schema in the chain names the field. */
   required: boolean
@@ -178,9 +182,9 @@ export interface RecordLink {
   href: string
   /** The part after `#`, or `''`. */
   fragment: string
-  /** The offsets of the whole link in the record's `body`, in UTF-16 code units. */
+  /** Where the link starts in `body`, in UTF-16 code units. */
   start: number
-  /** The offset just past the link. */
+  /** Just past the link's end in `body`, in UTF-16 code units. */
   end: number
   /** The record the link points at. */
   target: RecordTarget
@@ -228,13 +232,20 @@ export interface CorpusRecord {
   identity: string | null
   /** The frontmatter of a `.md` record, or the whole of a `.yaml` or `.json` one. `{}` when it does not parse. */
   data: Data
-  /** The Markdown after the frontmatter of a `.md` record. Null for `.yaml` and `.json`. */
+  /**
+   * The Markdown after the frontmatter of a `.md` record, or `''` when the file cannot be read.
+   * Null for `.yaml` and `.json`.
+   */
   body: string | null
   /** The record folder the file is the record of, relative to the corpus root, or null. */
   folder: string | null
   /** The other files in the record folder, at any depth, relative to the corpus root. Empty with no folder. */
   files: string[]
-  /** Each value of each `x-ref` field, by `pointer`. */
+  /**
+   * Each value of each `x-ref` field, by field, then by list index. One entry per value: when
+   * types in the chain give one field an `x-ref` each, the nearest type's is the one here, as in
+   * `CorpusField.ref`.
+   */
   references: RecordReference[]
   /** Each link in `body` that points at a record, in the order they appear. */
   links: RecordLink[]
@@ -274,7 +285,7 @@ export interface CorpusModel {
   extends: Record<string, string>
   /** The corpora `references` names that loaded: each prefix and the key of its corpus. */
   references: Record<string, string>
-  /** The corpus's types, by name. */
+  /** The corpus's types, sorted by name. */
   types: CorpusType[]
   /** The corpus's records, by type, then id, then path. Records with errors are here too. */
   records: CorpusRecord[]
@@ -286,6 +297,9 @@ export interface CorpusModel {
 
 /**
  * What `loadCorpus` returns: the corpus, and every other corpus of its graph once, by key.
+ *
+ * `getType`, `recordsOf`, `getRecord` and `resolveTarget` index a model the first time one of
+ * them reads it, so do not change a model after that.
  *
  * @experimental
  */
@@ -339,19 +353,33 @@ function byFile<T extends { file: string }>(found: T[]): Map<string, T[]> {
   return out
 }
 
-/** The files of sorted `files` under `dir`, but for `file`. */
-function under(files: string[], dir: string, file: string): string[] {
+/**
+ * One entry per value. A type may give an inherited field an `x-ref` of its own, and the validator
+ * checks a value against each. `check` lists the nearest type's first, and the model keeps that one.
+ */
+function nearest(refs: FoundRef[]): FoundRef[] {
+  const seen = new Set<string>()
+  return refs.filter((r) => {
+    const at = pointer(r.ref.field, r.index)
+    if (seen.has(at)) return false
+    seen.add(at)
+    return true
+  })
+}
+
+/** The entries of `sortedFiles` under `dir`, except `file`. */
+function under(sortedFiles: string[], dir: string, file: string): string[] {
   const start = `${dir}/`
   let lo = 0
-  let hi = files.length
+  let hi = sortedFiles.length
   while (lo < hi) {
     const mid = (lo + hi) >> 1
-    if ((files[mid] as string) < start) lo = mid + 1
+    if ((sortedFiles[mid] as string) < start) lo = mid + 1
     else hi = mid
   }
   const out: string[] = []
-  for (let i = lo; files[i]?.startsWith(start); i++)
-    if (files[i] !== file) out.push(files[i] as string)
+  for (let i = lo; sortedFiles[i]?.startsWith(start); i++)
+    if (sortedFiles[i] !== file) out.push(sortedFiles[i] as string)
   return out
 }
 
@@ -424,6 +452,7 @@ function model(
     }
   })
 
+  // Sorted, as `under` needs: `walk` lists a corpus's files in order.
   const files = [...c.files]
   const refs = byFile(c.refs)
   const links = byFile(c.links)
@@ -443,7 +472,7 @@ function model(
       body: ext === '.md' && bodies ? split(checked?.text ?? '').body : null,
       folder: record.folder ?? null,
       files: record.folder === undefined ? [] : under(files, record.folder, path),
-      references: (refs.get(path) ?? [])
+      references: nearest(refs.get(path) ?? [])
         .map((r) => ({
           field: r.ref.field,
           pointer: pointer(r.ref.field, r.index),
@@ -582,9 +611,6 @@ export const getCorpus = (model: LoadedCorpus, key = ''): CorpusModel | undefine
 
 /**
  * The type named `name` in the corpus with key `corpus`, by default the loaded one, or undefined.
- *
- * `getType`, `recordsOf`, `getRecord` and `resolveTarget` index a model the first time one of
- * them reads it, so do not change a model after that.
  *
  * @experimental
  */

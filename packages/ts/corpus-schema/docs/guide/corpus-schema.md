@@ -1232,9 +1232,10 @@ publish from here. The rename from markdown-db and the levels came in
 [osdlc/osdlc#729](https://github.com/osdlc/osdlc/pull/729). The release pull request,
 [osdlc/osdlc#726](https://github.com/osdlc/osdlc/pull/726), cut 0.1.0, but it was never published.
 Record folders landed as a second minor bump, so the first version on npm is 0.2.0, from
-[osdlc/osdlc#733](https://github.com/osdlc/osdlc/pull/733). 0.2.1 followed, and is the version on
-npm today. A copy went to osdlc/markdown for a time, and the 0.3.0 work, which adds `extends`, was
-done there. That work comes back here, and 0.3.0 publishes from this repository. The npm name does
+[osdlc/osdlc#733](https://github.com/osdlc/osdlc/pull/733). 0.2.1 followed. A copy went to
+osdlc/markdown for a time, and the work planned as 0.3.0, which adds `extends`, was
+done there. That work came back here and was published from this repository as 0.4.0. 0.3.0 was
+never published. The npm name does
 not change.
 
 The evidence work comes first:
@@ -1258,7 +1259,7 @@ Then the spec grows:
 - `extends`, `references`, `uses`, identity and `corpus-schema sync` are built. Next come `refines`
   and `waives`, then a real org principles corpus as the first case.
 - `validate --strict`, flattened `x-extends`, references by id (`x-ref-form`) and `x-ref` lists of
-  types are built, for the 0.3.0 release.
+  types are built, and released in 0.4.0.
 
 And the code under it changes:
 
@@ -1396,7 +1397,7 @@ jobs:
       - run: npx --yes @osdlc/corpus-schema@0.2 validate corpora/
 ```
 
-Version 0.2.1 is on npm. 0.3.0, which adds `extends`, publishes from this repository next. For
+Version 0.4.0 is on npm, published from this repository. It adds `extends`. For
 the current usage, check the
 [package README](../../README.md). A
 corpus's schemas run on its data, and a badly written `pattern` or `x-id-pattern` can take a very

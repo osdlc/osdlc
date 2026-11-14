@@ -173,8 +173,9 @@ export interface Corpus {
   types: Map<string, Type>
   /** Every record file, with its type and id. */
   recordFiles: Map<string, RecordFile>
-  /** What `check` resolved: each `x-ref` value of a record, and each body link to a record. */
+  /** Each `x-ref` value of a record, as `check` resolved it, valid record or not. */
   refs: FoundRef[]
+  /** Each body link of a record to a record file, as `check` resolved it. */
   links: FoundLink[]
   /** Every schema file, a rejected type's included. Only their prose keywords hold links. */
   schemaFiles: Set<string>
@@ -1514,7 +1515,7 @@ function checkLinks(c: Corpus): void {
         const r = resolveRef(c, file, ref, ref.targets, v)
         if ('to' in r) found.to = r.to
         else found.why = r.problem
-        // Only a valid record's references are checked.
+        // An invalid record's references are still resolved, for loadCorpus, but not reported.
         if (!record.valid) continue
         if ('problem' in r && !r.reported) c.errors.push(`${file}: ${ref.field}: ${r.problem}`)
         if ('to' in r && r.via !== undefined) c.linked.add(r.via)
@@ -1530,12 +1531,18 @@ function recordAt(c: Corpus, r: Resolution): Found | undefined {
   return to.corpus.recordFiles.has(to.file) ? to : undefined
 }
 
-/**
- * The record one value of an `x-ref` field names, or why it names none. `via` is the prefix whose
- * copy the value needs. `reported` marks a problem that is no error of the field: the link's own
- * check reports it, or the corpus it points into did not load.
- */
-type RefResult = { to: Found; via?: string } | { problem: string; reported?: true }
+/** The record one value of an `x-ref` field names, or why it names none. */
+type RefResult =
+  | {
+      to: Found
+      /** The prefix whose copy the value needs. */
+      via?: string
+    }
+  | {
+      problem: string
+      /** The problem is no error of the field: the link's own check reports it, or its corpus did not load. */
+      reported?: true
+    }
 
 /** `names` as a phrase: `a`, `a or b`, `a, b or c`. */
 const anyOf = (names: string[]): string =>
@@ -1544,7 +1551,7 @@ const anyOf = (names: string[]): string =>
 /** `[[<id>]]` or `[[<id>|<text>]]`, with no path, heading or block. */
 const WIKI_ID = /^\[\[([^[\]|#^/\\]+)(?:\|[^[\]]*)?\]\]$/
 
-/** Resolve one value of an `x-ref` field to the record it names, which must be one it may name. */
+/** The record one value of an `x-ref` field names, or why it names none it may. */
 function resolveRef(c: Corpus, file: string, ref: Ref, targets: Type[], v: unknown): RefResult {
   // Named as this corpus names them: a parent type's own x-ref names a type in its own corpus.
   const of = `of type ${anyOf(ref.corpus === c ? ref.types : targets.map((t) => typeLabel(t, c)))}`
@@ -1624,9 +1631,10 @@ function recordsById(c: Corpus, targets: Type[] | undefined, id: string, direct 
   return [...found.values()]
 }
 
-/** A record found by id: its label, the first prefix of the chain to it, its corpus and its file. */
+/** A record found by id. */
 interface ById {
   label: string
+  /** The first prefix of the chain to the record, or undefined for this corpus. */
   via: string | undefined
   corpus: Corpus
   file: string
