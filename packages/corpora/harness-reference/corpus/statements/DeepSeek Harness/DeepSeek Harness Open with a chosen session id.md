@@ -11,7 +11,7 @@ hasEvidenceLines:
   - hasEvidenceItems:
       - "[2026-10-08 DeepSeek Harness Open with a chosen session id](../../study-results/DeepSeek%20Harness/2026-10-08%20DeepSeek%20Harness%20Open%20with%20a%20chosen%20session%20id.md)"
     directionOfEvidenceProvided: supports
-    strengthOfEvidenceProvided: strong
+    strengthOfEvidenceProvided: moderate
     description: source observed 2026-10-08.
   - hasEvidenceItems:
       - "[2026-11-09 headless help session-id](../../study-results/DeepSeek%20Harness/2026-11-09%20headless%20help%20session-id.md)"
@@ -32,6 +32,11 @@ contributions:
       agentType: software
     activityType: verified
     date: 2026-11-09T12:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: strength lowered
+    date: 2026-11-14T18:00:00Z
 harness: "[DeepSeek Harness](../../harnesses/DeepSeek%20Harness.md)"
 subject: "[Open with a chosen session id](../../subjects/cli/Open%20with%20a%20chosen%20session%20id.md)"
 scope:
@@ -44,3 +49,5 @@ imported_from: fact:cli/open-with-id@dsh#scope-[null,null,null]
 ---
 
 Imported from `facts/dsh/cli/open-with-id.md`.
+
+Strength lowered on 2026-11-14: the evidence rated strong is README or guide prose in the repository, which this corpus counts as docs (moderate), not source. The study results keep their `kind`, since study results are not edited.

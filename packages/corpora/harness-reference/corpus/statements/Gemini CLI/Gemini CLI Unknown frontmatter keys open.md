@@ -14,6 +14,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-11-04T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: superseded
+    date: 2026-11-14T12:00:00Z
 harness: "[Gemini CLI](../../harnesses/Gemini%20CLI.md)"
 subject: "[Unknown frontmatter keys](../../subjects/skill-frontmatter/Unknown%20frontmatter%20keys.md)"
 scope:
@@ -21,7 +26,7 @@ scope:
   until: null
   platform: []
   model: null
-status: open
+status: superseded
 open: *a1
 imported_from: fact:skill-frontmatter/unknown-keys@gemini-cli#open
 ---
