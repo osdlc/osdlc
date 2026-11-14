@@ -20,6 +20,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-11-09T12:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: superseded
+    date: 2026-11-14T18:00:00Z
 harness: "[Codex CLI](../../harnesses/Codex%20CLI.md)"
 subject: "[Version seen](../../subjects/meta/Version%20seen.md)"
 scope:
@@ -27,6 +32,6 @@ scope:
   until: null
   platform: []
   model: null
-status: current
+status: superseded
 supersedes: "[Codex CLI Version seen 0.159.2](Codex%20CLI%20Version%20seen%200.159.2.md)"
 ---

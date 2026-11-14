@@ -220,10 +220,13 @@ function buildPlan(corpus, problems, { refId, refs }) {
   }
   for (const t of tasks) visit(t.id, [])
 
-  // Done when every task is done; in progress when any is in progress or done.
+  // Dropped tasks do not count, unless every task is dropped. Otherwise done when every task is
+  // done; in progress when any is in progress or done.
   const statusOf = new Map(tasks.map((t) => [t.id, t.status]))
   const milestoneStatus = (ids) => {
-    const states = new Set(ids.map((n) => statusOf.get(n)))
+    const all = ids.map((n) => statusOf.get(n))
+    if (all.length > 0 && all.every((s) => s === 'dropped')) return 'dropped'
+    const states = new Set(all.filter((s) => s !== 'dropped'))
     if (states.size > 0 && [...states].every((s) => s === 'done')) return 'done'
     return states.has('doing') || states.has('done') ? 'doing' : 'todo'
   }

@@ -2,7 +2,7 @@
 number: 21
 title: Release here
 detail: markdown PR 10
-status: doing
+status: dropped
 type: functional
 milestone: "[m-release](../milestones/m-release.md)"
 after:
@@ -25,4 +25,8 @@ not made a release.
 reverse the move. corpus-schema releases from osdlc/osdlc, and its npm publisher does not change.
 osdlc/markdown's copy is retired once its open work, released as 0.4.0, in [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12), is brought back
 ([osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790)). That pull request also removes the note in SPEC.md that the spec moves to
-osdlc/markdown. In progress.
+osdlc/markdown.
+
+Dropped: the move this task set up was reversed.
+[osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790) merged and brought corpus-schema back, and osdlc/markdown holds only its README
+([osdlc/markdown#23](https://github.com/osdlc/markdown/pull/23)).
