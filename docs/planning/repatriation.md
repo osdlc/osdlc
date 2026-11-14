@@ -50,15 +50,14 @@ What is left, in order:
    for every open pull request. The follow-ups here are merged: #802 (docs
    say 0.4.0), #801 (the harness knowledge data names this repository) and
    #785 (release inputs for packages with no code).
-2. Remove `harness-reference/` from osdlc/skillwright (phase 5):
-   [osdlc/skillwright#164](https://github.com/osdlc/skillwright/pull/164).
-   It keeps one copy of the compiled data in the Rust crate, cut from
-   `@osdlc/harness-knowledge` by a script, with a test that fails when the
-   copy is stale. osdlc/skillwright#165 did the same removal without that
-   check and was closed.
-3. Delete the branches of the closed pull requests in osdlc/markdown and
-   osdlc/models (phase 6). Each was compared with `main` here and holds
-   nothing that was not brought over or replaced.
+2. Update osdlc/skillwright's copy of the compiled data once the next
+   `@osdlc/harness-knowledge` is on npm (#825). The removal of
+   `harness-reference/` there is merged
+   ([osdlc/skillwright#164](https://github.com/osdlc/skillwright/pull/164)):
+   the Rust crate keeps one copy, cut from the package by a script, with a
+   test that fails when the copy is stale.
+3. The two owner decisions: osdlc/parley's home (phase 6), and whether the
+   harness reference extends the claims profile (phase 5).
 
 ## Work, in order
 
@@ -256,23 +255,24 @@ are in one place.
 - [x] Rewrite `packages/ts/harness-knowledge/data/` with `sync` once the
       corpus is on `main`, so each `basis` names a commit of this repository.
       (#801)
-- [ ] Remove `harness-reference/` from osdlc/skillwright, and point
+- [x] Remove `harness-reference/` from osdlc/skillwright, and point
       skillwright at `@osdlc/harness-knowledge` for anything it read from
       `dist/harness-knowledge.json`.
       ([osdlc/skillwright#164](https://github.com/osdlc/skillwright/pull/164),
-      open.)
+      merged
+      2026-11-14.)
 
 ### Phase 6: empty the holding pens
 
 osdlc/markdown and osdlc/models stay open, as the places the work moves to
 once matured. They are not archived.
 
-- [ ] Check nothing is left: no open pull requests or issues, no branch with
-      unmerged work, in osdlc/markdown and osdlc/models.
-      Checked 2026-11-14: no open pull request or issue in either. Nine
-      branches in osdlc/markdown and two in osdlc/models are left from closed
-      or merged pull requests. They hold nothing wanted that is not on `main`
-      here. This is ticked when they are deleted.
+- [x] Check nothing is left: no open pull requests or issues, no branch with
+      unmerged work, in osdlc/markdown and osdlc/models. Checked 2026-11-14:
+      no open pull request or issue in either. The nine branches left in
+      osdlc/markdown and the two in osdlc/models came from closed or merged
+      pull requests and held nothing wanted that is not on `main` here. They
+      are deleted; each repository has only `main`.
 - [x] Remove from osdlc/markdown what was brought here, so there is one copy:
       the docs, `packages/`, `profiles/`, `tools/`, and the workflows that
       build and release them. Its README loses "What is still here".
