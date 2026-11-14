@@ -426,13 +426,83 @@ checkout, or `this install` / `this checkout` when nothing handed off. The
 hook reports this through its `describe()`, which `runMain` calls; a custom
 `DevlinkHook` without one gets no `chosen by` line.
 
-### Asking yes or no
+### Asking
 
-`askYesNo(question, { defaultYes })` writes the question to stderr with a
-`[y/N]` or `[Y/n]` hint and reads one line from stdin. An empty answer takes
-the default. Otherwise only `y` or `yes` is yes. It is synchronous, so a
-caller inside a synchronous loop can ask between two steps. Check
-`canPrompt()` first. It is true only when stdin and stderr are both terminals.
+The prompts are synchronous, so a caller inside a synchronous loop can ask
+between two steps. Each writes its question to stderr and reads one line from
+stdin. On a terminal, keys typed before the question are thrown away first, so
+a key pressed while a long step ran cannot answer it.
+
+- `askYesNo(question, { defaultYes })` adds a `[y/N]` or `[Y/n]` hint. An
+  empty answer takes the default. Otherwise only `y` or `yes` is yes.
+- `askText(question, { default })` returns the line, trimmed. An empty answer
+  gives the default, shown in brackets, or the empty string.
+- `askChoice(question, choices, { default })` prints the choices as a numbered
+  list and returns the one named by its number or its text (in any case, when
+  only one choice matches). A number in range is read as a position first.
+  On a terminal, anything else says what to type
+  and asks again. When stdin is not a terminal it throws instead, so
+  `yes | tooly` cannot loop and a bad line does not eat the next question's
+  answer.
+  The return type is the union of the choices.
+
+```ts
+const format = askChoice('Output format?', ['text', 'json'], { default: 'text' })
+// Output format?
+//   1) text
+//   2) json
+// Choose 1-2 [1]:
+```
+
+A default, and each choice, is printed on one line with terminal controls
+removed (a line feed or tab shows as `\n` or `\t`), since it is often data from
+outside the tool. The question is printed as given.
+
+At the end of input each prompt gives its default; `askChoice` with no
+default throws `NotInteractiveError`. Check `canPrompt()` before asking. It is
+true only when stdin and stderr are both terminals. The [CLI
+standard](../../../standards/cli-interface.md) asks a tool not to prompt
+otherwise, and to take a flag instead.
+
+**Requiring an answer.** With `required: true`, a prompt throws
+`NotInteractiveError` rather than let a pipe or the end of input answer for a
+person: reason `no-terminal` before asking, when the input is not a terminal
+(or, writing to stderr, stderr is not), and `end-of-input` when input ends
+before an answer. Pass `flag` to name the flag that answers instead.
+`runMain` and a command tree's `run` print the error's message and exit with
+its `exit`: 2 for `no-terminal`, as the standard asks, and 1 for
+`end-of-input`. Under `--json` the error document's `code` is
+`not-interactive`.
+
+```ts
+if (!flags.yes && !askYesNo('Delete 3 branches?', { required: true, flag: '--yes' })) return EXIT.ok
+// with stdin piped: "tooly: cannot ask: there is no terminal to answer on. Pass --yes instead." and exit 2
+```
+
+**Asking when stdin is a pipe.** A command that reads its data from stdin
+(`generate | tooly apply`) can still ask the person at the keyboard.
+`openTty()` returns stdin and stderr when both are terminals, and otherwise
+opens the controlling terminal, `/dev/tty`, for reading and writing. It
+returns `null` when there is none: in CI, under cron, on Windows.
+`requireInteractive({ flag })` does the same but throws `NotInteractiveError`
+instead of returning `null`; call it before the work starts, so a run that
+will need an answer fails at once. Hand the terminal's `fd` and `write` to the
+prompts, and close it when done:
+
+```ts
+const tty = requireInteractive({ flag: '--yes' })
+try {
+  const plan = readPlan(0) // the data, from the pipe
+  if (askYesNo(`Apply ${plan.length} changes?`, { fd: tty.fd, write: tty.write, required: true })) apply(plan)
+} finally {
+  tty.close()
+}
+```
+
+Use `openTty` only where stdin carries data. A command that only asks should
+read the answer from stdin, so a script can still answer it. See
+[D-04](docs/planning/decisions/D-04-prompts-fail-instead-of-guessing.md) for
+why.
 
 ### Whose directories
 
@@ -555,6 +625,7 @@ Errors:
 | a parse error, or `UsageError` | `<name>: <message>`, the usage line and where the help is | 2 |
 | `CommandError(message, { exit, hint, code })` | `<name>: <message>` and the hint | `exit`, default 1 |
 | a `Failure`, or an error carrying one | the failure line | its category code (22-25), else 1 |
+| `NotInteractiveError`, from a prompt nobody could answer | `<name>: <message>` | 2 with no terminal, 1 when input ended |
 | anything else, such as a plain `Error` | `<name>: <message>` | 1 |
 
 A group with no default, run with no command word, is a usage error too
@@ -566,8 +637,9 @@ Under `--json` or `--output jsonl`, each of these also prints an error
 document on stdout, where a caller reads data:
 `{ schemaVersion: 1, kind: "error", code, message, exit, hint }`. `code` is
 `usage` for exit 2, the failure's kind for a `Failure`, the `CommandError`'s
-`code`, or else `error`. `ErrorDocumentSchema` is its Zod schema, and
-`App.call` and the HTTP adapter answer a failed call with the same fields.
+`code`, `not-interactive` for a `NotInteractiveError`, or else `error`.
+`ErrorDocumentSchema` is its Zod schema, and `App.call` and the HTTP adapter
+answer a failed call with the same fields.
 
 `checkOutput: true` on the app checks each output against its schema before
 printing it. `runApp` in `@osdlc/cli-tool/testing` always checks a `--json` (or `--output json`)
@@ -844,15 +916,19 @@ context, the exit codes, `defineCli` and its types, `runMain` and the yes/no
 prompt.
 
 Experimental: the `devlink`, `command`, `config-command`, `trust-command`,
-`guide`, `testing`, `mcp` and `http` entries; the wrapping and color helpers; and
+`guide`, `testing`, `mcp` and `http` entries; the wrapping and color helpers;
+the text and choice prompts, `openTty`, `requireInteractive`,
+`NotInteractiveError` and the `required` and `flag` prompt options; and
 `systemDirs`, `VendorDirs`, `closestMatches` and `didYouMean`, which the root
 re-exports from `@osdlc/config-layers`. `TieredDirs`, `envVars` and their types
 follow `@osdlc/tiered-dirs`.
 
 The experimental exports of `@osdlc/cli-tool`:
 
-`DEFAULT_WIDTH`, `DevlinkWhere`, `MAX_WIDTH`, `Terminal`, `VendorDirs`, `closestMatches`, `colorEnabled`, `columns`,
-`didYouMean`, `helpWidth`, `systemDirs`, `wrapText`
+`AskChoiceOptions`, `AskTextOptions`, `AskYesNoOptions`, `DEFAULT_WIDTH`, `DevlinkWhere`, `MAX_WIDTH`, `NotInteractiveError`,
+`NotInteractiveReason`, `OpenTtyOptions`, `PromptTerminal`, `RequireInteractiveOptions`, `Terminal`, `VendorDirs`, `askChoice`, `askText`,
+`closestMatches`, `colorEnabled`, `columns`, `didYouMean`, `helpWidth`, `openTty`, `requireInteractive`, `systemDirs`,
+`wrapText`
 
 The experimental exports of `@osdlc/cli-tool/command`:
 

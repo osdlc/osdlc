@@ -12,3 +12,12 @@ import { stripControls } from '@osdlc/ux'
 export function safe(text: string): string {
   return stripControls(text, { newline: true, tab: true })
 }
+
+/**
+ * {@link safe} for text that must stay on one line (a list entry, a value in
+ * brackets): line feeds and tabs show as `\n` and `\t` instead of breaking
+ * the line, and every other terminal control is removed.
+ */
+export function safeLine(text: string): string {
+  return stripControls(text.replaceAll('\n', '\\n').replaceAll('\t', '\\t'))
+}
