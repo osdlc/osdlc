@@ -93,7 +93,7 @@ pass.
 
 | Order | Pull request                                    | What                                         | State    | Before it merges                                                         |
 | ----- | ----------------------------------------------- | -------------------------------------------- | -------- | ------------------------------------------------------------------------ |
-| 22    | [#629](https://github.com/osdlc/osdlc/pull/629) | cli-tool: text and choice prompts            | ready    | One naming question (`isTerminal`). Before #636: same package            |
+| 22    | [#629](https://github.com/osdlc/osdlc/pull/629) | cli-tool: text and choice prompts            | question | One naming question (`isTerminal`). Before #636: same package            |
 | 23    | [#636](https://github.com/osdlc/osdlc/pull/636) | cli-tool: devlink runs a checkout under node | ready    | Update the branch by hand: pr-update's push was rejected                 |
 | 25    | [#633](https://github.com/osdlc/osdlc/pull/633) | typed-git: exact bytes with `rawBytes`       | ready    | Nothing                                                                  |
 | 26    | [#632](https://github.com/osdlc/osdlc/pull/632) | typed-gh: `prActivity`                       | ready    | Nothing                                                                  |
@@ -112,10 +112,11 @@ pass.
 
 ## What to do first
 
-1. Merge the Version Packages pull request once `corpus-schema` 0.5.0 is on
-   npm. It is the first release of `corpus-query` and `corpus-site`.
-2. Merge the ones with nothing open: #633, #632 and #786.
-3. Answer the questions on #798, #629 and #797. Each takes one decision and
-   frees a pull request behind it.
+1. Merge #825, which compiles the harness knowledge data again after #823
+   and #824 added and corrected answers. `corpus-schema` 0.5.0 and the first
+   releases of `corpus-query` and `corpus-site` are on npm.
+2. Merge the ones with nothing open: #633 and #632.
+3. Answer the questions on #798, #629, #786 and #797. Each takes one decision
+   and frees a pull request behind it.
 4. Decide the scanner's speed on #649, which also holds #651.
 5. Decide #744 and #672, since the answer is about scope, not code.
