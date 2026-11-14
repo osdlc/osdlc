@@ -107,8 +107,8 @@ expired credential would read as "nothing to do".
 A missing item is an answer, not a failure. A query for one thing (`prView`, `issueView`,
 `repoView`, `prActivity`, and `prFind` and `openPrFor`, which use them) returns `null` in all
 three call styles when GitHub says there is no such thing: "Could not resolve to a
-PullRequest" or "no pull requests found for branch" for `prView` and `prActivity`, "Could not
-resolve to an Issue" for `issueView`, "Could not resolve to a Repository" for
+PullRequest" or "no pull requests found for branch" for `prView`, "Could not resolve to a
+PullRequest" for `prActivity`, "Could not resolve to an Issue" for `issueView`, "Could not resolve to a Repository" for
 `repoView`. `gh.try.prView(99)` is `{ ok: true, value: null }`. Every other
 failure is a failure, including a wrong repository. `prView(7)` against a
 mistyped `--repo` is a `not-found` failure, not an absent PR. The check reads
@@ -695,7 +695,7 @@ experimental.
 - `GhOptions` and `AsyncGhOptions`: the runner, `repo` and `hostname` a client is built with.
 - `GhRepoOptions` and `AsyncGhRepoOptions`: the same with `repo` required, for a client built
   without a directory.
-- `AsyncCallOptions`: `timeoutMs` and `signal`, accepted by seventeen methods of `AsyncGh`.
+- `AsyncCallOptions`: `timeoutMs` and `signal`, accepted by the `AsyncGh` methods listed under Async.
 - `defaultRunnerFactory` and `RunnerFactory`: how a client makes its default runner for `gh`.
 - `runVerb` and `runVerbAsync`, with `RunVerbOptions` and `RunVerbAsyncOptions`: run one verb through
   a runner you own, with its `env`, `input`, timeout and checked contract applied. With the verb

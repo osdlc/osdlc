@@ -38,7 +38,7 @@ import type {
 } from './verbs.ts'
 
 /**
- * Per-call options for {@link AsyncGh}. Seventeen methods accept them: `raw`, `rawChecked`,
+ * Per-call options for {@link AsyncGh}. These methods accept them: `raw`, `rawChecked`,
  * `prList`, `prView`, `prFind`, `openPrFor`, `prViewSettled`, `prBody`, `prActivity`, `api`,
  * `graphql`, `labelList`, `issueList`, `issueView`, `repoList`, `repoView` and `searchPrs`.
  */

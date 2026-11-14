@@ -304,7 +304,7 @@ export type PrActivityItem =
       kind: 'head-force-pushed'
       /** The head before the push. Null when GitHub no longer has that commit. */
       beforeSha: string | null
-      /** The head after the push. */
+      /** The head after the push. Null when GitHub sent none. */
       afterSha: string | null
     })
   | (PrActivityBase & {

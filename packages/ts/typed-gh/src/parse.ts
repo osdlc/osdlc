@@ -423,7 +423,7 @@ function activityOf(node: unknown): ActivityRead | null {
   if (!isRecord(node)) return null
   const type = node['__typename']
   // A type the query has no fragment for comes back as its `__typename`
-  // alone, with no `id`. GitHub may add one; skip it.
+  // alone, with no `id`. Skip it.
   if (typeof type === 'string' && !READ_TYPES.has(type)) return { items: [], truncated: false }
   const id = strOrNull(node['id'])
   if (id === null) return null

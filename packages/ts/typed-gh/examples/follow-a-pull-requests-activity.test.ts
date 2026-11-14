@@ -67,6 +67,6 @@ test("a pull request's activity, and what is new since the last look", () => {
   expect(asks).toEqual(['src/fetch.ts:12'])
   expect(rows.some((r) => r.actor?.isBot === true)).toBe(true)
 
-  // The verb is data: `since` goes to GitHub in UTC.
+  // `prActivity(...)` builds the argv without running gh; `since` is sent in UTC.
   expect(prActivity(9, opts).argv).toContain('since=2026-11-05T09:00:00.000Z')
 })
