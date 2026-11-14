@@ -12,4 +12,4 @@ tasks:
 A plain Obsidian vault extends a profile and references a corpus with no `package.json` and no
 `node_modules`. Packages install into a cache outside the vault, and a lockfile beside the root file
 pins them ([D18](../decisions/D18%20Vaults%20install%20corpora%20outside%20the%20vault.md)). It is
-not on the beeline and comes after corpus-schema 0.3.0.
+not on the beeline and comes after corpus-schema 0.4.0.
