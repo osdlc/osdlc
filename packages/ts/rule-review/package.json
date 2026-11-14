@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/rule-review",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Review a code change against the rule files that govern it. Finds every CLAUDE.md, AGENTS.md or other rule source whose path scope covers a changed file, and asks a headless coding agent (Claude Code, Codex, Antigravity or opencode) about each one, over only the files it governs. Also runs a folder of path-scoped check scripts. For CI and git hooks.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
