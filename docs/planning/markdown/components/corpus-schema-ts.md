@@ -5,7 +5,7 @@ language: ts
 layer: "[spec](../layers/spec.md)"
 states: [present, target]
 status: published
-version: "0.2.1"
+version: "0.4.0"
 registry: "https://www.npmjs.com/package/@osdlc/corpus-schema"
 repo_present: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
 path_present: packages/ts/corpus-schema
@@ -73,13 +73,14 @@ records against their schemas, ids, links and typed references.
 
 ## Notes
 
-- 0.2.0 is its first version on npm, and 0.2.1 the latest. 0.1.0 was cut but never published (task 3).
+- 0.2.0 is its first version on npm, and 0.4.0 the latest. 0.1.0 was cut but never published (task 3),
+  and 0.3.0 was never published.
 - Today it walks the folder and checks links itself (problem F8). Task 14 makes it read the corpus
   model instead.
 - It stays in osdlc/osdlc and releases from here, with the same npm publisher (decision D19). The
   copy that osdlc/markdown#9 and #10 set up in osdlc/markdown is retired.
-- The 0.3.0 work (extends, x-extends and sync) comes here from osdlc/markdown#12 and releases from
-  here. It is not released yet.
+- The work planned as 0.3.0 (extends, x-extends and sync) came here from osdlc/markdown#12 and was
+  released from here as 0.4.0 on 2026-11-13 (task 36).
 - validate --fix exists today. Task 29 adds the corpus-schema sync command: it writes a read-only
   copy of each referenced corpus into _references/<prefix>/, such as _references/org/, so Obsidian
   and GitHub links resolve. The validator then checks that the copy matches the installed corpus.
