@@ -1,5 +1,14 @@
 # @osdlc/harness-knowledge
 
+## 0.1.2
+
+### Patch Changes
+
+- d2d2486: The data is recompiled from the harness reference corpus in osdlc/osdlc
+  (`packages/corpora/harness-reference`). The values are unchanged. Each `basis` link, and the
+  `corpus` block, now name osdlc/osdlc and the commit the corpus was compiled at, in place of
+  osdlc/skillwright.
+
 ## 0.1.1
 
 ### Patch Changes
