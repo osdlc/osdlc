@@ -14,6 +14,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-11-04T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: superseded
+    date: 2026-11-14T00:00:00Z
 harness: "[Pi](../../harnesses/Pi.md)"
 subject: "[Skills in subagents](../../subjects/skills/Skills%20in%20subagents.md)"
 scope:
@@ -21,7 +26,7 @@ scope:
   until: null
   platform: []
   model: null
-status: open
+status: superseded
 open: *a1
 imported_from: fact:skills/subagent-visibility@pi#open
 ---

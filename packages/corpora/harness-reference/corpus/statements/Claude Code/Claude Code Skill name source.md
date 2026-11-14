@@ -21,6 +21,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-10-01T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: superseded
+    date: 2026-11-14T18:00:00Z
 harness: "[Claude Code](../../harnesses/Claude%20Code.md)"
 subject: "[Skill name source](../../subjects/skills/Skill%20name%20source.md)"
 scope:
@@ -28,7 +33,7 @@ scope:
   until: null
   platform: []
   model: null
-status: current
+status: superseded
 imported_from: fact:skills/name-source@claude-code#scope-[null,null,null]
 ---
 
