@@ -19,17 +19,17 @@ hasEvidenceLines:
   - hasEvidenceItems:
       - "[2026-11-09 persona cwd unresolved](../../study-results/DeepSeek%20Harness/2026-11-09%20persona%20cwd%20unresolved.md)"
     directionOfEvidenceProvided: supports
-    strengthOfEvidenceProvided: strong
+    strengthOfEvidenceProvided: moderate
     description: The README says to remove the {{cwd}} clause from personaSuffix settings.
   - hasEvidenceItems:
       - "[2026-11-09 persona prefix global](../../study-results/DeepSeek%20Harness/2026-11-09%20persona%20prefix%20global.md)"
     directionOfEvidenceProvided: supports
-    strengthOfEvidenceProvided: strong
+    strengthOfEvidenceProvided: moderate
     description: The README lists personaPrefix, the global persona prefix template.
   - hasEvidenceItems:
       - "[2026-11-09 persona cwd not registered](../../study-results/DeepSeek%20Harness/2026-11-09%20persona%20cwd%20not%20registered.md)"
     directionOfEvidenceProvided: supports
-    strengthOfEvidenceProvided: strong
+    strengthOfEvidenceProvided: moderate
     description: The README says the loop does not register {{cwd}}, so an unresolved reference fails prompt assembly.
 reportedIn:
   - "[deepseek-ai deepseek-harness system-prompt README at fcc0ad4](../../documents/github.com/deepseek-ai%20deepseek-harness%20system-prompt%20README%20at%20fcc0ad4.md)"
@@ -44,6 +44,11 @@ contributions:
       agentType: software
     activityType: verified
     date: 2026-11-09T12:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: strength lowered
+    date: 2026-11-14T18:00:00Z
 harness: "[DeepSeek Harness](../../harnesses/DeepSeek%20Harness.md)"
 subject: "[System prompt flags](../../subjects/instructions/System%20prompt%20flags.md)"
 scope:
@@ -54,4 +59,4 @@ scope:
 status: current
 ---
 
-
+Strength lowered on 2026-11-14: the evidence rated strong is README or guide prose in the repository, which this corpus counts as docs (moderate), not source. The study results keep their `kind`, since study results are not edited.

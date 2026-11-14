@@ -1395,7 +1395,7 @@ importers:
         specifier: workspace:^
         version: link:../command-seam
       '@osdlc/typed-git':
-        specifier: workspace:^0.14.0
+        specifier: workspace:^0.15.0
         version: link:../typed-git
     devDependencies:
       '@osdlc/prettier-config':

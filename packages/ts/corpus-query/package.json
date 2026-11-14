@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/corpus-query",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Query one corpus-schema corpus: describe its types, find records by filter and full-text search, read a record with its references and backlinks, walk references and count field values. One core behind a TypeScript API, a corpus-query command, a REST server and an MCP server.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",

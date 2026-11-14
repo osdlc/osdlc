@@ -17,6 +17,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-11-09T12:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: superseded
+    date: 2026-11-14T12:00:00Z
 harness: "[Cursor](../../harnesses/Cursor.md)"
 subject: "[Running-inside variables](../../subjects/cli/Running-inside%20variables.md)"
 scope:
@@ -24,7 +29,7 @@ scope:
   until: null
   platform: []
   model: null
-status: open
+status: superseded
 ---
 
 Left open: nothing documents a marker variable.
