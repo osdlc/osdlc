@@ -52,7 +52,6 @@ scope:
   platform: []
   model: null
 status: current
-supersedes: "[OpenCode Plugin install location](OpenCode%20Plugin%20install%20location.md)"
 ---
 
-The 2026-11-04 statement gave the cache as `~/.cache/opencode/node_modules`, installed with Bun at startup. At v2.3.0 each package plugin has its own generation directories under `npm/` in the cache. Its open question, whether a plugin can install skills, is answered: there is no skills folder in a plugin, but a server plugin can register skills through `ctx.skill.transform`.
+The statement for versions before 2.3.0 gives the cache as `~/.cache/opencode/node_modules`, installed with Bun at startup. At v2.3.0 each package plugin has its own generation directories under `npm/` in the cache. That statement's open question, whether a plugin can install skills, is answered: there is no skills folder in a plugin, but a server plugin can register skills through `ctx.skill.transform`.

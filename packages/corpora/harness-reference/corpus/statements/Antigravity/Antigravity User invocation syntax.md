@@ -5,14 +5,13 @@ proposition:
   object:
     syntax: /<skill-name>
     also: name the skill in the prompt
-    note: "plugin skills are named <plugin>:<skill>; `disable-slash-command: true` in the frontmatter hides a skill from the / menu"
+    note: "`disable-slash-command: true` in the frontmatter hides a skill from the / menu"
 direction: supports
 strength: moderate
 hasEvidenceLines:
   - hasEvidenceItems:
       - "[2026-11-14 skills slash command conversion](../../study-results/Antigravity/2026-11-14%20skills%20slash%20command%20conversion.md)"
       - "[2026-11-14 skills mention by name](../../study-results/Antigravity/2026-11-14%20skills%20mention%20by%20name.md)"
-      - "[2026-11-14 discovery plugin skill names](../../study-results/Antigravity/2026-11-14%20discovery%20plugin%20skill%20names.md)"
     directionOfEvidenceProvided: supports
     strengthOfEvidenceProvided: moderate
     description: The skills page says each skill becomes a slash command.
@@ -21,15 +20,10 @@ hasEvidenceLines:
     directionOfEvidenceProvided: supports
     strengthOfEvidenceProvided: moderate
     description: The 1.1.12 changelog adds the opt-out.
-  - hasEvidenceItems:
-      - "[2026-11-14 plugins skill slash command](../../study-results/Antigravity/2026-11-14%20plugins%20skill%20slash%20command.md)"
-    directionOfEvidenceProvided: neutral
-    description: For a plugin skill the Plugins page shows the bare /<skill-name>, where the discovery page gives <plugin>:<skill>. The disagreement is recorded on the Plugin skill runtime name statement.
 reportedIn:
   - "[Antigravity docs Agent skills](../../documents/antigravity.google/Antigravity%20docs%20Agent%20skills.md)"
   - "[Antigravity docs Customization discovery](../../documents/antigravity.google/Antigravity%20docs%20Customization%20discovery.md)"
   - "[Antigravity CLI CHANGELOG at f51cb8d](../../documents/Google/Antigravity%20CLI%20CHANGELOG%20at%20f51cb8d.md)"
-  - "[Antigravity docs Plugins](../../documents/antigravity.google/Antigravity%20docs%20Plugins.md)"
 contributions:
   - contributor:
       name: harness-reference research
@@ -53,4 +47,4 @@ status: current
 
 In the CLI every skill becomes a slash command named after it. In headless mode the same call works at the start of a `-p` prompt.
 
-The note on plugin skills follows the Customization discovery page. The Plugins page shows a plugin skill run by its bare name; see Plugin skill runtime name, which is disputed.
+What a user types for a plugin skill depends on how the skill is named. That is on the Plugin skill runtime name statement, which is disputed.

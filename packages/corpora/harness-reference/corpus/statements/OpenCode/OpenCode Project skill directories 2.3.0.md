@@ -35,7 +35,7 @@ contributions:
 harness: "[OpenCode](../../harnesses/OpenCode.md)"
 subject: "[Project skill directories](../../subjects/skills/Project%20skill%20directories.md)"
 scope:
-  since: 2.3.0
+  since: null
   until: null
   platform: []
   model: null
@@ -44,3 +44,5 @@ supersedes: "[OpenCode Project skill directories](OpenCode%20Project%20skill%20d
 ---
 
 The 2026-08-08 statement listed `.opencode` with no subfolder and asked which folder is meant. At v2.3.0 the project folder is `.opencode/skills`; the source also reads a `skill` folder beside it, which the docs do not list. The `.claude/skills` and `.agents/skills` entries rest on the docs table; their loader was not read.
+
+This corrects a vague value, so it has no starting version. It was read at v2.3.0; earlier versions were not read.

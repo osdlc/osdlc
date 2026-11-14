@@ -21,25 +21,22 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-11-04T00:00:00Z
-  - contributor:
-      name: harness-reference research
-      agentType: software
-    activityType: superseded
-    date: 2026-11-14T18:00:00Z
 harness: "[OpenCode](../../harnesses/OpenCode.md)"
 subject: "[Plugin install location](../../subjects/plugins/Plugin%20install%20location.md)"
 scope:
   since: null
-  until: null
+  until: 2.3.0
   platform: []
   model: null
-status: superseded
+status: current
 open:
   - Does OpenCode have a plugin or package format that installs skills? The plugins page describes JavaScript or TypeScript plugin modules and never mentions skills.
 imported_from: fact:plugins/install-location@opencode#scope-[null,null,null]
 ---
 
 Imported from `facts/opencode/plugins/install-location.md`.
+
+This holds for versions before 2.3.0. The statement for 2.3.0 gives the newer cache layout. 2.3.0 is where the new layout was read; releases between the 2026-11-04 docs and 2.3.0 were not checked, so the change may have come earlier.
 
 Open questions:
 - Does OpenCode have a plugin or package format that installs skills? The plugins page describes JavaScript or TypeScript plugin modules and never mentions skills.
