@@ -22,6 +22,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-10-09T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: superseded
+    date: 2026-11-14T18:00:00Z
 harness: "[Gemini CLI](../../harnesses/Gemini%20CLI.md)"
 subject: "[Version seen](../../subjects/meta/Version%20seen.md)"
 scope:
@@ -29,7 +34,7 @@ scope:
   until: null
   platform: []
   model: null
-status: current
+status: superseded
 supersedes: "[Gemini CLI Version seen 0.54.4](Gemini%20CLI%20Version%20seen%200.54.4.md)"
 imported_from: fact:meta/version-seen@gemini-cli#sighting-2
 ---

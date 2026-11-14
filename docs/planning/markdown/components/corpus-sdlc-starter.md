@@ -4,7 +4,9 @@ kind: corpus
 language: markdown
 layer: "[profiles](../layers/profiles.md)"
 states: [present, target]
-status: unpublished
+status: published
+version: "0.1.0"
+registry: "https://www.npmjs.com/package/@osdlc/corpus-sdlc-starter"
 repo_present: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
 path_present: packages/corpora/sdlc-starter
 repo_target: "[osdlc/osdlc](../repos/osdlc-osdlc.md)"
@@ -41,8 +43,8 @@ _references/osdlc/ and cite its records by id.
 - Decision D14. It starts with two principles, P-0001 and P-0002, and the owner adds more (task 64).
 - Built in osdlc/markdown#19. It came to osdlc/osdlc (decision D19, task 78), at
   packages/corpora/sdlc-starter, with a changeset for its first release, 0.1.0.
-- Not published. The owner stages the name and sets its trusted publisher (task 80), and the release
-  needs osdlc/osdlc#785.
+- Published to npm at 0.1.0 on 2026-11-13, by the Version Packages pull request (#804). The release
+  needed osdlc/osdlc#785.
 - dev's own intent records are not the upstream for now.
 - A CI check keeps private data out of it (task 65): tools/leak-check.sh, run by
   .github/workflows/profiles.yml.
