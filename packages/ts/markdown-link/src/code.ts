@@ -805,7 +805,15 @@ export function regions(text: string, rules: CodeRules): Region[] {
       offset = end
       push(start, offset, 'code')
     } else {
+      // Plain text: on to the next character that starts something, or the
+      // start of the next line.
       offset++
+      while (offset < text.length) {
+        const next = text.charCodeAt(offset)
+        if (next === BACKTICK || next === DOLLAR || next === LESS) break
+        if (text.charCodeAt(offset - 1) === NEWLINE) break
+        offset++
+      }
     }
   }
   return out

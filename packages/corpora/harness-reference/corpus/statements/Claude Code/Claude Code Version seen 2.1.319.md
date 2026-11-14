@@ -20,6 +20,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-11-09T07:53:54Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: superseded
+    date: 2026-11-14T18:00:00Z
 harness: "[Claude Code](../../harnesses/Claude%20Code.md)"
 subject: "[Version seen](../../subjects/meta/Version%20seen.md)"
 scope:
@@ -27,6 +32,6 @@ scope:
   until: null
   platform: []
   model: null
-status: current
+status: superseded
 supersedes: "[Claude Code Version seen 2.1.286](Claude%20Code%20Version%20seen%202.1.286.md)"
 ---

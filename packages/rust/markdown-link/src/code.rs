@@ -1049,7 +1049,15 @@ pub(crate) fn regions(text: &str, rules: CodeRules) -> Vec<(Range<usize>, Region
                 }
             },
             _ => {
+                // Plain text: on to the next byte that starts something, or
+                // the start of the next line.
                 offset += 1;
+                while offset < bytes.len()
+                    && !matches!(bytes[offset], b'`' | b'$' | b'<')
+                    && bytes[offset - 1] != b'\n'
+                {
+                    offset += 1;
+                }
                 continue;
             }
         };

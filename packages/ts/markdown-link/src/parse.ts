@@ -135,7 +135,7 @@ export function splitAlias(inner: string): [string, string | null] {
  * reads it. Every White_Space character is in the BMP. JavaScript's `trim` and
  * `\s` differ: they treat U+FEFF as space and U+0085 as not.
  */
-function isSpaceUnit(unit: number): boolean {
+export function isSpaceUnit(unit: number): boolean {
   return (
     (unit >= 0x09 && unit <= 0x0d) ||
     unit === 0x20 ||
