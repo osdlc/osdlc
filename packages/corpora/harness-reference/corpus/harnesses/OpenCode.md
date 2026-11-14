@@ -10,14 +10,15 @@ cli: opencode
 surfaces: [cli, desktop, ide]
 status: current
 versioning: semver
-checked: '2026-11-05'
+checked: '2026-11-14'
 sources:
   - "[OpenCode docs](../documents/Anomaly/OpenCode%20docs.md)"
   - "[OpenCode README](../documents/Anomaly/OpenCode%20README.md)"
   - "[OpenCode releases](../documents/Anomaly/OpenCode%20releases.md)"
+  - "[OpenCode CHANGELOG at a6b15d3](../documents/github.com/OpenCode%20CHANGELOG%20at%20a6b15d3.md)"
 ---
 
 OpenCode is an open-source coding agent from Anomaly, with a terminal UI started with `opencode`, a
 desktop app and an IDE extension. Its repository is `anomalyco/opencode`. OpenCode 2 uses the same
 `opencode` command as OpenCode 1, so the two cannot be installed side by side. Releases are semver,
-such as v2.2.5.
+such as v2.3.0.

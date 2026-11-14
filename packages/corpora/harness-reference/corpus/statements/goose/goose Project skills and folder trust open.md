@@ -14,6 +14,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-11-04T00:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: superseded
+    date: 2026-11-14T00:00:00Z
 harness: "[goose](../../harnesses/goose.md)"
 subject: "[Project skills and folder trust](../../subjects/skills/Project%20skills%20and%20folder%20trust.md)"
 scope:
@@ -21,7 +26,7 @@ scope:
   until: null
   platform: []
   model: null
-status: open
+status: superseded
 open: *a1
 imported_from: fact:skills/project-trust@goose#open
 ---
