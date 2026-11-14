@@ -9,8 +9,9 @@
 // that installed the tarball, so it must not import other repo files. It is
 // not a test-runner suite and is not in `files`.
 //
-// Also runs the installed command: `story-shots` with no arguments prints its
-// usage and exits 2, before it looks for Docker.
+// Also runs the installed command: with no arguments, or with a bad
+// `--settle-ms` or `SHOT_WORKERS`, `story-shots` exits 2 before it looks for
+// the build or Docker.
 
 import { strict as assert } from 'node:assert'
 import { spawnSync } from 'node:child_process'
@@ -55,5 +56,19 @@ assert.ok(existsSync(join(dist, 'runner', 'story-shots.sh')), 'dist/runner/story
 const usage = spawnSync(process.execPath, [bin], { encoding: 'utf8' })
 assert.equal(usage.status, 2, `story-shots exited ${usage.status}: ${usage.stderr}`)
 assert.match(usage.stderr, /usage: story-shots <package dir>/)
+
+const refused = (args, env, message) => {
+  const run = spawnSync(process.execPath, [bin, tmpdir(), ...args], {
+    encoding: 'utf8',
+    env: { ...process.env, ...env },
+  })
+  assert.equal(run.status, 2, `story-shots ${args.join(' ')} exited ${run.status}: ${run.stderr}`)
+  assert.match(run.stderr, message)
+}
+refused(['--settle-ms', 'abc'], {}, /--settle-ms takes a whole number/)
+refused(['--settle-ms', '1.5'], {}, /--settle-ms takes a whole number/)
+refused(['--settle-ms'], {}, /--settle-ms needs a value/)
+refused([], { SHOT_WORKERS: '0' }, /SHOT_WORKERS takes a whole number of at least 1/)
+refused([], { SHOT_WORKERS: 'two' }, /SHOT_WORKERS takes a whole number of at least 1/)
 
 console.log('story-harness smoke: OK')
