@@ -1,5 +1,12 @@
 # @osdlc/detect-harness
 
+## 0.7.3
+
+### Patch Changes
+
+- Updated dependencies [ee8458a]
+  - @osdlc/harness-knowledge@0.2.0
+
 ## 0.7.2
 
 ### Patch Changes

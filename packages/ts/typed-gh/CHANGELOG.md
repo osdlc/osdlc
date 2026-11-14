@@ -1,5 +1,12 @@
 # @osdlc/typed-gh
 
+## 0.17.2
+
+### Patch Changes
+
+- Updated dependencies [912296d]
+  - @osdlc/typed-git@0.15.0
+
 ## 0.17.1
 
 ### Patch Changes

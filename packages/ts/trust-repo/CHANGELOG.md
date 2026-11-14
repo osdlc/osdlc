@@ -1,5 +1,12 @@
 # @osdlc/trust-repo
 
+## 0.5.7
+
+### Patch Changes
+
+- Updated dependencies [912296d]
+  - @osdlc/typed-git@0.15.0
+
 ## 0.5.6
 
 ### Patch Changes
