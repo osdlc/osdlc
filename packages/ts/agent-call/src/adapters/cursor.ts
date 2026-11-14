@@ -1,3 +1,4 @@
+import { classifyCursor, failureClassifier } from './failure.js'
 import {
   CONVERSATION_SCHEMA,
   type Conversation,
@@ -84,6 +85,7 @@ export function cursorAdapter(options: CursorAdapterOptions = {}): AgentAdapter 
     parseResult(planned, raw) {
       return parseCursor(planned, raw)
     },
+    classifyFailure: failureClassifier(classifyCursor),
     toConversation(planned, raw) {
       return cursorConversation(planned, raw)
     },
