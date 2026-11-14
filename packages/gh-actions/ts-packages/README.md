@@ -154,9 +154,18 @@ by default.
 | `version-prepare` | empty                       | Shell run after the install, before `version-script`.              |
 | `version-script`  | `pnpm run version-packages` | One command, run without a shell, that versions the packages.      |
 | `npm-version`     | `11.19.1`                   | The npm that publishes. Trusted publishing needs 11.5.1 or later.  |
+| `ts-checks`       | `true`                      | Build the packages and run `package-checks ts` before the pack.    |
+| `package-globs`   | empty                       | Globs of the package folders. Empty means `tsDir`.                 |
 
 The pack job refuses to go on while any package in `tsDir` (from
-`package-checks.json`) is not on npm yet, and names it.
+`package-checks.json`), or in `package-globs` when it is set, is not on npm
+yet, and names it.
+
+A workspace of packages that hold no code, such as Markdown and JSON Schema
+files, sets `ts-checks: false` and lists its package folders in
+`package-globs`, for example `profiles/* corpora/*`. It then needs no
+`package-checks.json`; `package-checks` is used only to stage a new package.
+Entries may be separated by spaces or newlines.
 
 ## Versioning
 
