@@ -1,4 +1,5 @@
 import type { PlannedCall } from './plan.js'
+import { isBarePathLookup } from './spawn.js'
 import type { AgentCallSpec } from './spec.js'
 
 /**
@@ -82,17 +83,16 @@ export function missingPathReason(
   binary: string,
   spec: AgentCallSpec,
   env: NodeJS.ProcessEnv,
+  win: boolean = windows(),
 ): string | undefined {
   const touched =
     (spec.inheritEnv !== undefined && spec.inheritEnv !== 'all') ||
     (spec.unsetEnv !== undefined && spec.unsetEnv.length > 0)
   if (!touched) return undefined
-  if (binary.includes('/') || (windows() && binary.includes('\\'))) return undefined
-  const has = Object.keys(env).some(
-    (k) => envNameFolder(windows())(k) === 'PATH' && env[k] !== undefined,
-  )
+  if (!isBarePathLookup(binary, win)) return undefined
+  const has = Object.keys(env).some((k) => envNameFolder(win)(k) === 'PATH' && env[k] !== undefined)
   if (has) return undefined
-  return `spawn ${binary}: the child environment has no PATH (inheritEnv or unsetEnv dropped it). Add 'PATH' to inheritEnv, set it in env, or give the binary as a path`
+  return `spawn ${binary}: the child environment has no PATH (the parent has none, or inheritEnv/unsetEnv dropped it). Add 'PATH' to inheritEnv, set it in env, or give the binary as a path`
 }
 
 /** Plan lines naming the environment policy of a spec. Names only, never values. */

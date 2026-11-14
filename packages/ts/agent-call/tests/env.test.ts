@@ -4,7 +4,7 @@ import { customAdapter } from '../src/adapters/custom.js'
 import { deepseekAdapter } from '../src/adapters/deepseek.js'
 import type { AgentAdapter } from '../src/adapters/types.js'
 import { explainText } from '../src/cli/main.js'
-import { BASELINE_ENV, buildChildEnv } from '../src/env.js'
+import { BASELINE_ENV, buildChildEnv, missingPathReason } from '../src/env.js'
 import { callAgent, planCall } from '../src/run.js'
 import type { AgentCallSpec } from '../src/spec.js'
 
@@ -203,5 +203,19 @@ describe('a real spawn', () => {
     const result = await callAgent(bare, { prompt: 'x', inheritEnv: ['PATH'] })
     expect(result.ok).toBe(true)
     expect(result.raw.stdout.trim()).toBe('hi')
+  })
+})
+
+describe('missingPathReason', () => {
+  const spec: AgentCallSpec = { prompt: 'x', inheritEnv: [] }
+
+  test('a mixed-case Path entry counts as PATH on Windows only', () => {
+    expect(missingPathReason('claude', spec, { Path: 'C:\\bin' }, true)).toBeUndefined()
+    expect(missingPathReason('claude', spec, { Path: 'C:\\bin' }, false)).toContain('no PATH')
+  })
+
+  test('a binary given as a Windows path skips the check', () => {
+    expect(missingPathReason('C:\\tools\\claude.exe', spec, {}, true)).toBeUndefined()
+    expect(missingPathReason('C:\\tools\\claude.exe', spec, {}, false)).toContain('no PATH')
   })
 })
