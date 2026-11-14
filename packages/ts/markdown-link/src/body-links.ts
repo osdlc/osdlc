@@ -531,19 +531,19 @@ function markdownLink(
 class UrlScan {
   readonly chars: string[]
   /** For each index, the first whitespace at or after it. */
-  private readonly space: number[]
+  private readonly space: Int32Array
   /**
    * For each index, how many unescaped `(` before it are not closed by an
    * unescaped `)` before it, less any `)` with no `(`.
    */
-  private readonly depth: number[]
+  private readonly depth: Int32Array
   /**
    * For each index, the first unescaped `)` at or after it that closes a `(`
    * before it: where a destination starting there ends.
    */
-  private readonly unopenedClose: number[]
+  private readonly unopenedClose: Int32Array
   /** For each index, the last `.` or `/` before it, or -1. */
-  private readonly mark: number[]
+  private readonly mark: Int32Array
   /** `isVaultLinkUrl` of each URL tail asked so far, by `start,end`. */
   private readonly answers = new Map<string, boolean>()
 
@@ -551,37 +551,43 @@ class UrlScan {
     const chars = Array.from(body)
     const n = chars.length
     this.chars = chars
-    this.space = Array.from({ length: n + 1 }, () => n)
+    const space = new Int32Array(n + 1)
+    const depth = new Int32Array(n + 1)
+    const mark = new Int32Array(n + 1)
+    const unopenedClose = new Int32Array(n + 1)
+    space[n] = n
     for (let k = n - 1; k >= 0; k--) {
-      this.space[k] = isWhitespace(chars[k]!) ? k : this.space[k + 1]!
+      space[k] = isWhitespace(chars[k]!) ? k : space[k + 1]!
     }
-    // Which code points a `\` escapes, and the paren depth before each one.
-    this.depth = Array.from({ length: n + 1 }, () => 0)
+    // Which code points a `\` escapes, the paren depth before each one, and
+    // the last `.` or `/` before each one.
+    mark[0] = -1
     let escaped = false
     let lowest = 0
     let highest = 0
     for (let k = 0; k < n; k++) {
       const c = chars[k]
-      const d = this.depth[k]! + (escaped ? 0 : c === '(' ? 1 : c === ')' ? -1 : 0)
-      this.depth[k + 1] = d
-      lowest = Math.min(lowest, d)
-      highest = Math.max(highest, d)
+      const d = depth[k]! + (escaped ? 0 : c === '(' ? 1 : c === ')' ? -1 : 0)
+      depth[k + 1] = d
+      if (d < lowest) lowest = d
+      else if (d > highest) highest = d
       escaped = !escaped && c === '\\'
+      mark[k + 1] = c === '.' || c === '/' ? k : mark[k]!
     }
     // The first unescaped `)` at each depth, from the right: the first `)` at
     // a code point's own depth is where the depth first falls below it. An
     // unescaped `)` is where the depth falls.
-    this.unopenedClose = Array.from({ length: n + 1 }, () => n)
-    const firstClose: number[] = Array.from({ length: highest - lowest + 1 }, () => n)
+    unopenedClose[n] = n
+    const firstClose = new Int32Array(highest - lowest + 1).fill(n)
     for (let k = n - 1; k >= 0; k--) {
-      const slot = this.depth[k]! - lowest
-      if (this.depth[k + 1]! < this.depth[k]!) firstClose[slot] = k
-      this.unopenedClose[k] = firstClose[slot]!
+      const slot = depth[k]! - lowest
+      if (depth[k + 1]! < depth[k]!) firstClose[slot] = k
+      unopenedClose[k] = firstClose[slot]!
     }
-    this.mark = Array.from({ length: n + 1 }, () => -1)
-    for (let k = 0; k < n; k++) {
-      this.mark[k + 1] = chars[k] === '.' || chars[k] === '/' ? k : this.mark[k]!
-    }
+    this.space = space
+    this.depth = depth
+    this.mark = mark
+    this.unopenedClose = unopenedClose
   }
 
   /**
