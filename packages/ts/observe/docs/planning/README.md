@@ -32,5 +32,4 @@ superseded decision names the one that replaces it.
   model types
 - [D-08](decisions/D-08-platforms.md): Platforms
 - [D-09](decisions/D-09-the-redactor-lives-here.md): The redactor lives here
-  (proposed)
-- [D-10](decisions/D-10-hook-envelope.md): The hook envelope (proposed)
+- [D-10](decisions/D-10-hook-envelope.md): The hook envelope

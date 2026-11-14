@@ -113,11 +113,11 @@ The tasks in the order the work goes. Each line says why it comes there.
    several kinds.
 10. [43 Strict mode](tasks/43%20Strict%20mode.md): CI fails on a warning, not only an error.
 11. [21 Release here](tasks/21%20Release%20here.md): corpus-schema releases from osdlc/osdlc, and
-    the 0.3.0 work comes back from osdlc/markdown.
+    the work released as 0.4.0 comes back from osdlc/markdown.
 12. [59 Corpus-schema publisher](tasks/59%20Corpus-schema%20publisher.md): dropped. corpus-schema
     publishes from osdlc/osdlc, so its npm trusted publisher does not change.
-13. [36 Release 0.3.0](tasks/36%20Release%200.3.0.md) (owner): a published corpus-schema that knows
-    all of the above. Every consumer installs it.
+13. [36 Release 0.4.0](tasks/36%20Release%200.3.0.md): done. corpus-schema 0.4.0 is on npm and
+    knows all of the above. Every consumer installs it.
 14. [23 Claims profile](tasks/23%20Claims%20profile.md): the claims profile, which task 60
     publishes.
 15. [78 Bring in profiles](tasks/78%20Models%20repo%20setup.md): the profiles and the starter came
@@ -147,11 +147,11 @@ The tasks in the order the work goes. Each line says why it comes there.
     installs the profile and the starter from npm, moves its records to sdlc ids, syncs
     `_references/osdlc/` and cites `P-0002`. It deletes the planning profile.
 26. [52 Work extends](tasks/52%20Work%20extends.md): the work repo installs the profile and
-    corpus-schema 0.3.0 from npm and extends the profile.
+    corpus-schema 0.4.0 from npm and extends the profile.
 27. [68 Work cites starter](tasks/68%20Work%20cites%20starter.md): the end state, copied from this
     plan's setup.
 
-In short: 9, 27, 29, 70, 71, 73, 44, 45, 46, 43, 21, 59 (dropped), 36 (owner), 23, 78, 80 (owner),
+In short: 9, 27, 29, 70, 71, 73, 44, 45, 46, 43, 21, 59 (dropped), 36, 23, 78, 80 (owner),
 48, 49, 61 (owner), 63, 65, 66 (owner), 60 (owner), 79, 53, 52 and 68. Each task comes after every
 task it waits on.
 
@@ -162,7 +162,7 @@ Off the critical path, but in a beeline milestone:
 [50 Dev on sdlc](tasks/50%20Dev%20on%20sdlc.md),
 [62 Packs in public](tasks/62%20Packs%20in%20public.md) (model-schema and the packs),
 [64 Starter content](tasks/64%20Starter%20content.md),
-[74 Skillwright on 0.3.0](tasks/74%20Skillwright%20on%200.3.0.md) and the optional
+[74 Skillwright on 0.4.0](tasks/74%20Skillwright%20on%200.3.0.md) and the optional
 [69 Add command](tasks/69%20Add%20command.md).
 [67 Work example](tasks/67%20Work%20example.md) is no longer on the path: task 53 covers it.
 
@@ -191,7 +191,7 @@ Each item: the task, its status, who does it, its pull requests, and the tasks i
 - [ ] [48 Profile generator](tasks/48%20Profile%20generator.md) · in progress · agent · [sksizer/dev#4163](https://github.com/sksizer/dev/pull/4163)
 - [ ] [80 Profile publishers](tasks/80%20Models%20publishers.md) · waiting on owner · owner
 
-### Waiting (29)
+### Waiting (28)
 
 - [ ] [9 Extends](tasks/9%20Extends.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12), [osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790) · waits on 21
 - [ ] [38 Planning profile](tasks/38%20Planning%20profile.md) · in progress · agent · [osdlc/markdown#14](https://github.com/osdlc/markdown/pull/14) · waits on 9
@@ -203,17 +203,16 @@ Each item: the task, its status, who does it, its pull requests, and the tasks i
 - [ ] [70 References](tasks/70%20References.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12), [osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790) · waits on 27, 29
 - [ ] [71 Uses](tasks/71%20Uses.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12), [osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790) · waits on 9
 - [ ] [73 Identity and record files](tasks/73%20Identity%20and%20record%20files.md) · in progress · agent · [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12), [osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790) · waits on 9, 70
-- [ ] [36 Release 0.3.0](tasks/36%20Release%200.3.0.md) · waiting on owner · owner · waits on 9, 21, 27, 29, 43, 44, 45, 46, 70, 71, 73
-- [ ] [74 Skillwright on 0.3.0](tasks/74%20Skillwright%20on%200.3.0.md) · not started · agent · waits on 36, 60
-- [ ] [23 Claims profile](tasks/23%20Claims%20profile.md) · in progress · agent · [osdlc/markdown#15](https://github.com/osdlc/markdown/pull/15) · waits on 21, 36
+- [ ] [74 Skillwright on 0.4.0](tasks/74%20Skillwright%20on%200.3.0.md) · not started · agent · waits on 60
+- [ ] [23 Claims profile](tasks/23%20Claims%20profile.md) · in progress · agent · [osdlc/markdown#15](https://github.com/osdlc/markdown/pull/15) · waits on 21
 - [ ] [60 Publish claims](tasks/60%20Publish%20claims.md) · waiting on owner · owner · waits on 23, 80
-- [ ] [35 Example pair](tasks/35%20Example%20pair.md) · in progress · agent · [osdlc/markdown#16](https://github.com/osdlc/markdown/pull/16) · waits on 23, 29, 36
-- [ ] [37 Use extends](tasks/37%20Use%20extends.md) · not started · agent · waits on 36, 60
+- [ ] [35 Example pair](tasks/35%20Example%20pair.md) · in progress · agent · [osdlc/markdown#16](https://github.com/osdlc/markdown/pull/16) · waits on 23, 29
+- [ ] [37 Use extends](tasks/37%20Use%20extends.md) · not started · agent · waits on 60
 - [ ] [69 Add command](tasks/69%20Add%20command.md) · not started · agent · waits on 29
 - [ ] [49 SDLC profiles](tasks/49%20SDLC%20profiles.md) · in progress · agent · waits on 44, 45, 46, 48
 - [ ] [61 Publish sdlc](tasks/61%20Publish%20sdlc.md) · waiting on owner · owner · waits on 49, 80
-- [ ] [50 Dev on sdlc](tasks/50%20Dev%20on%20sdlc.md) · not started · agent · waits on 36, 49, 61
-- [ ] [52 Work extends](tasks/52%20Work%20extends.md) · not started · agent · waits on 36, 49, 61
+- [ ] [50 Dev on sdlc](tasks/50%20Dev%20on%20sdlc.md) · not started · agent · waits on 49, 61
+- [ ] [52 Work extends](tasks/52%20Work%20extends.md) · not started · agent · waits on 49, 61
 - [ ] [62 Packs in public](tasks/62%20Packs%20in%20public.md) · not started · agent · waits on 49
 - [ ] [63 Starter corpus](tasks/63%20Starter%20corpus.md) · in progress · agent · waits on 49
 - [ ] [65 Leak check](tasks/65%20Leak%20check.md) · in progress · agent · waits on 63
@@ -223,9 +222,10 @@ Each item: the task, its status, who does it, its pull requests, and the tasks i
 - [ ] [68 Work cites starter](tasks/68%20Work%20cites%20starter.md) · not started · agent · waits on 52, 53, 66
 - [ ] [64 Starter content](tasks/64%20Starter%20content.md) · waiting on owner · owner · waits on 63
 
-### Done (4)
+### Done (5)
 
 - [x] [59 Corpus-schema publisher](tasks/59%20Corpus-schema%20publisher.md) · done
+- [x] [36 Release 0.4.0](tasks/36%20Release%200.3.0.md) · done · waits on 9, 21, 27, 29, 43, 44, 45, 46, 70, 71, 73
 - [x] [47 Merge packs](tasks/47%20Merge%20packs.md) · done · [sksizer/dev#4069](https://github.com/sksizer/dev/pull/4069), [sksizer/dev#4070](https://github.com/sksizer/dev/pull/4070)
 - [x] [75 Create models repo](tasks/75%20Create%20models%20repo.md) · done
 - [x] [78 Bring in profiles](tasks/78%20Models%20repo%20setup.md) · done

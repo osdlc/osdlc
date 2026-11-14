@@ -3,8 +3,8 @@
 #
 # Both jobs build the validator from packages/ts/corpus-schema with
 # tools/build-corpus-schema.sh, not take it from npm: the profiles and corpora
-# use `extends` and `references`, which corpus-schema has from 0.3.0. npm has
-# 0.2.1, and 0.3.0 publishes from this repo.
+# use `extends` and `references`, which corpus-schema has from 0.4.0. 0.4.0 is
+# on npm; building here uses this repo's source, with changes not yet released.
 #
 # packages: the leak check fails on private data in a package folder, and its
 # own test plants each kind of leak to check that it is caught. Every profile

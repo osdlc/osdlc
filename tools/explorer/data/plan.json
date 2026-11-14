@@ -171,7 +171,9 @@
         8,
         26,
         22,
-        5
+        5,
+        86,
+        87
       ],
       "source": "docs/planning/markdown/milestones/m-evidence.md"
     },
@@ -250,14 +252,15 @@
         57,
         58,
         76,
-        77
+        77,
+        85
       ],
       "source": "docs/planning/markdown/milestones/m-model-layer.md"
     },
     {
       "id": "m-vault-install",
       "title": "Vault install",
-      "goal": "A plain Obsidian vault extends a profile and references a corpus with no `package.json` and no `node_modules`. Packages install into a cache outside the vault, and a lockfile beside the root file pins them ([D18](../decisions/D18%20Vaults%20install%20corpora%20outside%20the%20vault.md)). It is not on the beeline and comes after corpus-schema 0.3.0.",
+      "goal": "A plain Obsidian vault extends a profile and references a corpus with no `package.json` and no `node_modules`. Packages install into a cache outside the vault, and a lockfile beside the root file pins them ([D18](../decisions/D18%20Vaults%20install%20corpora%20outside%20the%20vault.md)). It is not on the beeline and comes after corpus-schema 0.4.0.",
       "status": "todo",
       "phase": "store",
       "beeline": false,
@@ -578,7 +581,7 @@
           "url": "https://github.com/osdlc/osdlc/pull/790"
         }
       ],
-      "text": "Release setup, then the corpus-schema move. This task gave osdlc/markdown its own release setup and moved `@osdlc/corpus-schema` and its spec family there from osdlc/osdlc. [osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9) has merged: it moved the package and its spec family, with their history. [osdlc/markdown#10](https://github.com/osdlc/markdown/pull/10) has merged (2026-11-10): osdlc/markdown uses the shared CI and release workflows and checks from osdlc/osdlc ([osdlc/osdlc#749](https://github.com/osdlc/osdlc/pull/749), with fixes in [osdlc/osdlc#767](https://github.com/osdlc/osdlc/pull/767) and [osdlc/osdlc#774](https://github.com/osdlc/osdlc/pull/774)). osdlc/markdown has not made a release.\n\n[D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) and the repository decision [D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md) reverse the move. corpus-schema releases from osdlc/osdlc, and its npm publisher does not change. osdlc/markdown's copy is retired once its open work, 0.3.0 in [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12), is brought back ([osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790)). That pull request also removes the note in SPEC.md that the spec moves to osdlc/markdown. In progress.",
+      "text": "Release setup, then the corpus-schema move. This task gave osdlc/markdown its own release setup and moved `@osdlc/corpus-schema` and its spec family there from osdlc/osdlc. [osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9) has merged: it moved the package and its spec family, with their history. [osdlc/markdown#10](https://github.com/osdlc/markdown/pull/10) has merged (2026-11-10): osdlc/markdown uses the shared CI and release workflows and checks from osdlc/osdlc ([osdlc/osdlc#749](https://github.com/osdlc/osdlc/pull/749), with fixes in [osdlc/osdlc#767](https://github.com/osdlc/osdlc/pull/767) and [osdlc/osdlc#774](https://github.com/osdlc/osdlc/pull/774)). osdlc/markdown has not made a release.\n\n[D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) and the repository decision [D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md) reverse the move. corpus-schema releases from osdlc/osdlc, and its npm publisher does not change. osdlc/markdown's copy is retired once its open work, released as 0.4.0, in [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12), is brought back ([osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790)). That pull request also removes the note in SPEC.md that the spec moves to osdlc/markdown. In progress.",
       "source": "docs/planning/markdown/tasks/21 Release here.md"
     },
     {
@@ -816,9 +819,9 @@
     },
     {
       "id": 36,
-      "title": "Release 0.3.0",
-      "detail": "corpus-schema",
-      "status": "owner",
+      "title": "Release 0.4.0",
+      "detail": "corpus-schema, on npm",
+      "status": "done",
       "milestone": "m-npm",
       "type": "supporting",
       "after": [
@@ -835,7 +838,7 @@
         73
       ],
       "prs": [],
-      "text": "Release corpus-schema 0.3.0. (supporting) The first version with `extends`, `x-extends`, cross-corpus `x-ref` and `sync`, published from osdlc/osdlc. It also carries `--strict`, flattened `x-extends`, refs by id and `x-ref` to several types, which the sdlc profile needs. It also carries `references` and `uses` (tasks 70 and 71, decision D15), and identity, the id cut, `x-record-file` and narrative folders (task 73, decision D16). After 9, 21, 27, 29, 43 to 46, 70, 71 and 73. The changeset is in [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12), which [osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790) brings to osdlc/osdlc as one commit ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)). Owner work: merging #790 and then the Version Packages pull request publishes it.",
+      "text": "Release corpus-schema 0.4.0. (supporting) Done: `@osdlc/corpus-schema` 0.4.0 is on npm, published on 2026-11-13. The release was planned as 0.3.0, which was never published. The first version with `extends`, `x-extends`, cross-corpus `x-ref` and `sync`, published from osdlc/osdlc. It also carries `--strict`, flattened `x-extends`, refs by id and `x-ref` to several types, which the sdlc profile needs. It also carries `references` and `uses` (tasks 70 and 71, decision D15), and identity, the id cut, `x-record-file` and narrative folders (task 73, decision D16). After 9, 21, 27, 29, 43 to 46, 70, 71 and 73. The changeset is in [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12), which [osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790) brings to osdlc/osdlc as one commit ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)). Merging #790 and then the Version Packages pull request published it.",
       "source": "docs/planning/markdown/tasks/36 Release 0.3.0.md"
     },
     {
@@ -1090,13 +1093,13 @@
         61
       ],
       "prs": [],
-      "text": "dev's `docs/planning/` validates against the sdlc profile. dev installs the profile and corpus-schema 0.3.0 from npm. After 49, 36 and 61, which publishes the profile.",
+      "text": "dev's `docs/planning/` validates against the sdlc profile. dev installs the profile and corpus-schema 0.4.0 from npm. After 49, 36 and 61, which publishes the profile.",
       "source": "docs/planning/markdown/tasks/50 Dev on sdlc.md"
     },
     {
       "id": 52,
       "title": "Work extends",
-      "detail": "from npm, on 0.3.0",
+      "detail": "from npm, on 0.4.0",
       "status": "todo",
       "milestone": "m-sdlc-profile",
       "type": "functional",
@@ -1106,7 +1109,7 @@
         61
       ],
       "prs": [],
-      "text": "The work repo keeps its sdlc records as a corpus. It installs the sdlc profile from npm, names it under `extends`, takes its types with `uses: [sdlc/*]` (task 71, decision D15) and uses corpus-schema 0.3.0. This is the first use of the sdlc corpus at work. Before 1.0 there is no older form to start on, so it waits for 49, 36 and 61, which publishes the profile.",
+      "text": "The work repo keeps its sdlc records as a corpus. It installs the sdlc profile from npm, names it under `extends`, takes its types with `uses: [sdlc/*]` (task 71, decision D15) and uses corpus-schema 0.4.0. This is the first use of the sdlc corpus at work. Before 1.0 there is no older form to start on, so it waits for 49, 36 and 61, which publishes the profile.",
       "source": "docs/planning/markdown/tasks/52 Work extends.md"
     },
     {
@@ -1442,12 +1445,12 @@
           "url": "https://github.com/osdlc/osdlc/pull/790"
         }
       ],
-      "text": "The rules that let sdlc's own planning folders validate as they are, and that tell corpora apart.\n\n- Identity: every corpus, type and record in a package has a Package URL, derived from the nearest `package.json` (decision D16). A corpus's graph holds one version of each corpus. Records reached through two chains collapse by identity. A schema may state its type's identity in `x-identity`.\n- The id cut: with `x-id-pattern`, a record's id is the longest part of its file name that the pattern matches, followed by `-` or the end of the name. So `P-0002-favor-deterministic.md` has the id `P-0002`, and a record's `id` field must equal it.\n- `x-record-file`: a type names the file that holds a record kept in a folder of its own, such as `README.md` for `decisions/D-0001-a-slug/README.md`.\n- Narrative folders: a folder in a type folder whose name starts with `_` holds narrative, not records.\n\nAfter 9 and 70. In progress in [#12](https://github.com/osdlc/markdown/pull/12). It ships in 0.3.0 (task 36).",
+      "text": "The rules that let sdlc's own planning folders validate as they are, and that tell corpora apart.\n\n- Identity: every corpus, type and record in a package has a Package URL, derived from the nearest `package.json` (decision D16). A corpus's graph holds one version of each corpus. Records reached through two chains collapse by identity. A schema may state its type's identity in `x-identity`.\n- The id cut: with `x-id-pattern`, a record's id is the longest part of its file name that the pattern matches, followed by `-` or the end of the name. So `P-0002-favor-deterministic.md` has the id `P-0002`, and a record's `id` field must equal it.\n- `x-record-file`: a type names the file that holds a record kept in a folder of its own, such as `README.md` for `decisions/D-0001-a-slug/README.md`.\n- Narrative folders: a folder in a type folder whose name starts with `_` holds narrative, not records.\n\nAfter 9 and 70. In progress in [#12](https://github.com/osdlc/markdown/pull/12). It shipped in 0.4.0 (task 36).",
       "source": "docs/planning/markdown/tasks/73 Identity and record files.md"
     },
     {
       "id": 74,
-      "title": "Skillwright on 0.3.0",
+      "title": "Skillwright on 0.4.0",
       "detail": "skillwright",
       "status": "todo",
       "milestone": "m-npm",
@@ -1457,7 +1460,7 @@
         60
       ],
       "prs": [],
-      "text": "Skillwright's `harness-reference/corpus` (in osdlc/skillwright) validates with `@osdlc/corpus-schema` `^0.2.0` from npm. Move it to 0.3.0 once that is published. Later, extend the claims profile: its claims types come from `@osdlc/corpus-profile-claims` (task 60) instead of copies. After 36 and 60.",
+      "text": "Skillwright's `harness-reference/corpus` (in osdlc/skillwright) validates with `@osdlc/corpus-schema` `^0.2.0` from npm. Move it to 0.4.0, which is published. Later, extend the claims profile: its claims types come from `@osdlc/corpus-profile-claims` (task 60) instead of copies. After 36 and 60.",
       "source": "docs/planning/markdown/tasks/74 Skillwright on 0.3.0.md"
     },
     {
@@ -1510,7 +1513,7 @@
       "type": "supporting",
       "after": [],
       "prs": [],
-      "text": "Bring the profiles and the starter corpus into osdlc/osdlc, so they publish from it ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)). They do not go to osdlc/models, as D17 planned. The owner decided their place: `packages/profiles/*` and `packages/corpora/*`, as members of the pnpm workspace.\n\nDone in osdlc/osdlc, as phase 4 of `docs/planning/repatriation.md`:\n\n- `packages/profiles/claims/` comes from osdlc/markdown's `example-pair` branch ([osdlc/markdown#16](https://github.com/osdlc/markdown/pull/16), on top of [#15](https://github.com/osdlc/markdown/pull/15)), with its history, and the example pair with it, at `packages/corpora/examples/fernlog/` and `packages/corpora/examples/org-principles/`.\n- `packages/profiles/claims/`, `packages/profiles/sdlc/` and `packages/corpora/sdlc-starter/` then take the newest content, from [osdlc/models#1](https://github.com/osdlc/models/pull/1), which holds the packages of [#15](https://github.com/osdlc/markdown/pull/15) and [#19](https://github.com/osdlc/markdown/pull/19) moved. Its changesets for each package's first release, 0.1.0, come too.\n- `.github/workflows/profiles.yml` validates every profile and corpus with `--strict`, runs each package's tests, the example pair's check and the leak check (task 65). It builds corpus-schema from `packages/ts/corpus-schema`, so it does not wait on the 0.3.0 release. The changeset config covers the packages as it is. `check:packages` reads only `packages/ts/`, so it does not check these packages.\n\nNone of the three is published. Releasing them needs the `package-globs` input of [osdlc/osdlc#785](https://github.com/osdlc/osdlc/pull/785) in `packages-publish.yml`, and the owner's trusted publishers (task 80).",
+      "text": "Bring the profiles and the starter corpus into osdlc/osdlc, so they publish from it ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md)). They do not go to osdlc/models, as D17 planned. The owner decided their place: `packages/profiles/*` and `packages/corpora/*`, as members of the pnpm workspace.\n\nDone in osdlc/osdlc, as phase 4 of `docs/planning/repatriation.md`:\n\n- `packages/profiles/claims/` comes from osdlc/markdown's `example-pair` branch ([osdlc/markdown#16](https://github.com/osdlc/markdown/pull/16), on top of [#15](https://github.com/osdlc/markdown/pull/15)), with its history, and the example pair with it, at `packages/corpora/examples/fernlog/` and `packages/corpora/examples/org-principles/`.\n- `packages/profiles/claims/`, `packages/profiles/sdlc/` and `packages/corpora/sdlc-starter/` then take the newest content, from [osdlc/models#1](https://github.com/osdlc/models/pull/1), which holds the packages of [#15](https://github.com/osdlc/markdown/pull/15) and [#19](https://github.com/osdlc/markdown/pull/19) moved. Its changesets for each package's first release, 0.1.0, come too.\n- `.github/workflows/profiles.yml` validates every profile and corpus with `--strict`, runs each package's tests, the example pair's check and the leak check (task 65). It builds corpus-schema from `packages/ts/corpus-schema`, so it does not wait on the 0.4.0 release. The changeset config covers the packages as it is. `check:packages` reads only `packages/ts/`, so it does not check these packages.\n\nNone of the three is published. Releasing them needs the `package-globs` input of [osdlc/osdlc#785](https://github.com/osdlc/osdlc/pull/785) in `packages-publish.yml`, and the owner's trusted publishers (task 80).",
       "source": "docs/planning/markdown/tasks/78 Models repo setup.md"
     },
     {
@@ -1597,6 +1600,42 @@
       "prs": [],
       "text": "A guide to set up a plain Obsidian vault that extends a profile and references a corpus with no `package.json`: write the root file, run `corpus-schema install`, commit the lockfile, then run `sync` and `validate`. After 83.",
       "source": "docs/planning/markdown/tasks/84 Vault guide.md"
+    },
+    {
+      "id": 85,
+      "title": "Fitness corpus trial",
+      "detail": "sksizer/dev fitness vault",
+      "status": "todo",
+      "milestone": "m-model-layer",
+      "type": "functional",
+      "after": [],
+      "prs": [],
+      "text": "An experiment: convert the fitness vault in sksizer/dev (`packages/vaults/fitness/vault/`) to a corpus-schema corpus and open it as a pull request here, under `packages/corpora/`.\n\nThe vault is the case this trial is for: a useful data model backed by the research behind it. It holds about 5,000 records in 18 folders. The model is exercises, muscles, muscle groups, movement families, equipment, foods and nutrients. The research is about 2,700 evidence records and 700 sources: each evidence record names one field of one model record, the claim, and the source that supports it. Every relationship is a wikilink.\n\nWhat the trial should answer:\n\n- Can the research half be a claims corpus (statements, study results and documents from `@osdlc/corpus-profile-claims`) that the model corpus names in `references`? Or is one corpus with both halves the better shape?\n- How does a model record point at the evidence for one of its fields? Today the evidence record points at the model record and names the field. Say whether `x-ref` covers that or the spec needs something new.\n- What does the vault have that corpus-schema cannot yet check? List each gap.\n- The vault is generated by `build.mjs` from `research/`. Say whether the generator should write the corpus directly, or a converter should run after it.\n\nDone when the corpus validates with `--strict`, the pull request is open, and the answers are written in this record. A trial that ends with a list of gaps and no merged corpus is still done.\n\nBefore the pull request opens, the owner confirms the content may be public. sksizer/dev is private. The vault's own content is CC BY 4.0, and imported rows (free-exercise-db, wger, OpenPowerlifting, FoodData Central) keep their upstream licences, listed in the vault's `Attributions.md`.",
+      "source": "docs/planning/markdown/tasks/85 Fitness corpus trial.md"
+    },
+    {
+      "id": 86,
+      "title": "Evidence locators",
+      "detail": "harness-reference",
+      "status": "todo",
+      "milestone": "m-evidence",
+      "type": "functional",
+      "after": [],
+      "prs": [],
+      "text": "Make every study result in the harness reference lead a reader to the exact source.\n\nA study result says what a document said or a run found. Many say too little to check. Of 1,189 study results, 116 name no source document in `reportedIn`, and at most 854 have a `locator` (where in the source) or an `excerpt` (the words quoted). A reader who follows the link lands on a page and has to find the line.\n\nWhat to do:\n\n- Count the gaps by `kind`: no `reportedIn`, no `locator`, no `excerpt`. A run or an inference may rightly have no document; say which kinds must have which fields.\n- Put that rule in the study-results schema, so the validator reports a new result that breaks it.\n- Fill the gaps: open each source, find the passage, and record the locator and the excerpt. Mark a result whose source no longer says it, so its statement can be reviewed.\n- Check each document's URL and set `url_status`.\n\nDone when every study result of a kind that needs a source has `reportedIn`, a locator and an excerpt, and the validator enforces it.\n\nThe steps are the first use of [87 Knowledge plugin](87%20Knowledge%20plugin.md): write them as a skill, then run the skill on this corpus.",
+      "source": "docs/planning/markdown/tasks/86 Evidence locators.md"
+    },
+    {
+      "id": 87,
+      "title": "Knowledge plugin",
+      "detail": "a pack of skills for corpora",
+      "status": "todo",
+      "milestone": "m-evidence",
+      "type": "functional",
+      "after": [],
+      "prs": [],
+      "text": "A proposal, not yet decided: a new plugin, `knowledge`, beside `craft` and `sdlc` in this repo's marketplace. It holds the skills for building and keeping a knowledge corpus: a data model backed by the claims research behind it.\n\nThe first skill comes from [86 Evidence locators](86%20Evidence%20locators.md): given a claims corpus, find the study results that do not lead to their source, open each source, and record the document, the locator and the excerpt. It reads and writes the corpus through `@osdlc/corpus-query` and checks its work with `corpus-schema validate`.\n\nSkills that may follow, each when a real corpus needs it:\n\n- Capture: turn a source into a document record and study results.\n- Answer: ask a question of a corpus and get the answer with its sources.\n- Review: find statements whose evidence is weak, old or dead.\n- Convert: turn a vault into a corpus, from [85 Fitness corpus trial](85%20Fitness%20corpus%20trial.md).\n\nDecide first: whether this is a new plugin or skills in an existing one, and its name. Then write the first skill and prove it on the harness reference.",
+      "source": "docs/planning/markdown/tasks/87 Knowledge plugin.md"
     }
   ]
 }

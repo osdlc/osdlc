@@ -7,7 +7,7 @@ type: functional
 milestone: "[m-npm](../milestones/m-npm.md)"
 after:
   - "[21 Release here](21%20Release%20here.md)"
-  - "[36 Release 0.3.0](36%20Release%200.3.0.md)"
+  - "[36 Release 0.4.0](36%20Release%200.3.0.md)"
 prs:
   - "[osdlc/markdown#15](https://github.com/osdlc/markdown/pull/15)"
 ---
