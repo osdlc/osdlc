@@ -105,10 +105,10 @@ has no open PRs. A failed call throws, or is `{ ok: false }` through `try`, or
 expired credential would read as "nothing to do".
 
 A missing item is an answer, not a failure. A query for one thing (`prView`, `issueView`,
-`repoView`, and `prFind` and `openPrFor`, which use them) returns `null` in all
+`repoView`, `prActivity`, and `prFind` and `openPrFor`, which use them) returns `null` in all
 three call styles when GitHub says there is no such thing: "Could not resolve to a
-PullRequest" or "no pull requests found for branch" for `prView`, "Could not
-resolve to an Issue" for `issueView`, "Could not resolve to a Repository" for
+PullRequest" or "no pull requests found for branch" for `prView`, "Could not resolve to a
+PullRequest" for `prActivity`, "Could not resolve to an Issue" for `issueView`, "Could not resolve to a Repository" for
 `repoView`. `gh.try.prView(99)` is `{ ok: true, value: null }`. Every other
 failure is a failure, including a wrong repository. `prView(7)` against a
 mistyped `--repo` is a `not-found` failure, not an absent PR. The check reads
@@ -385,6 +385,39 @@ URL.
 GraphQL node id, which this REST path does not accept. An id that is not all digits throws
 `RangeError` before `gh` runs (`AsyncGh` returns a rejected Promise).
 
+## A pull request's activity
+
+`prActivity` (experimental) returns what happened on a pull request as one list, oldest first:
+conversation comments, reviews and their inline comments, commits, force pushes, and changes of
+state (closed, reopened, merged, ready for review, back to draft, a new base branch).
+
+```ts
+const activity = gh.prActivity(9, { since: '2026-11-05T09:00:00Z' })
+
+for (const item of activity?.rows ?? []) {
+  if (item.kind === 'review-comment') console.log(item.path, item.line, item.body)
+}
+```
+
+Each `PrActivityItem` has a `kind`, a GraphQL node `id`, a time in `at` and an `actor`. A bot
+actor has `isBot: true`. Narrow on `kind` to read the rest: the text, `editedAt`, `url` and
+numeric `restId` of a comment, review or inline comment (a comment's `restId` is what
+`issueCommentEdit` takes), a review's `state`, an inline comment's `path`, `line` and
+`replyToId`, a commit's `sha`, the shas of a force push, and the old and new base branch.
+
+It reads the pull request's GraphQL `timelineItems` and follows every page. The list keeps
+GitHub's timeline order, and each review comes right before its inline comments. A review's
+inline comments are read up to 100. When a review has more, `truncated` is `true`. The method
+returns `null` when there is no such pull request, and throws, as `graphql` does, when a call
+fails or a page cannot be read whole.
+
+`since` is an ISO 8601 date and time with a zone. It is sent in UTC, and GitHub filters the
+timeline itself, so a poll reads only what is new. GitHub's times are to the second, and it does
+not say whether an item at exactly `since` is kept. To poll, pass the newest `at` you have seen and
+drop the ids you already have. GitHub does not say that an older comment edited later comes back
+either. Read without `since` to see edits. A `since` that is not a date and time with a zone throws
+`RangeError`. `null` and `''` mean no `since`.
+
 ## Verbs and parsers, for running calls yourself
 
 The verb table and every parser have no side effects. So code that runs many
@@ -468,8 +501,8 @@ await gh.prUpdateBranch(42, 'rebase')
 ```
 
 These methods take `AsyncCallOptions`: `raw`, `rawChecked`, `prList`, `prView`, `prFind`,
-`openPrFor`, `prViewSettled`, `prBody`, `api`, `graphql`, `labelList`, `issueList`, `issueView`,
-`repoList`, `repoView` and `searchPrs`. The options are `timeoutMs` and an `AbortSignal` in
+`openPrFor`, `prViewSettled`, `prBody`, `prActivity`, `api`, `graphql`, `labelList`, `issueList`,
+`issueView`, `repoList`, `repoView` and `searchPrs`. The options are `timeoutMs` and an `AbortSignal` in
 `signal`.
 
 `api(endpoint, opts)` (on `Gh` and `AsyncGh`) is a REST GET through `gh api`.
@@ -662,7 +695,7 @@ experimental.
 - `GhOptions` and `AsyncGhOptions`: the runner, `repo` and `hostname` a client is built with.
 - `GhRepoOptions` and `AsyncGhRepoOptions`: the same with `repo` required, for a client built
   without a directory.
-- `AsyncCallOptions`: `timeoutMs` and `signal`, accepted by sixteen methods of `AsyncGh`.
+- `AsyncCallOptions`: `timeoutMs` and `signal`, accepted by the `AsyncGh` methods listed under Async.
 - `defaultRunnerFactory` and `RunnerFactory`: how a client makes its default runner for `gh`.
 - `runVerb` and `runVerbAsync`, with `RunVerbOptions` and `RunVerbAsyncOptions`: run one verb through
   a runner you own, with its `env`, `input`, timeout and checked contract applied. With the verb
@@ -675,7 +708,7 @@ Methods on both clients:
   exit. `at` returns the same client rooted at another directory, and `withRepo` the same client
   aimed at another repository.
 - Pull request queries: `prList`, `prView`, `prFind`, `openPrFor`, `prViewSettled`, `prBody`,
-  `prReviewThreads` and `searchPrs`.
+  `prReviewThreads`, `prActivity` and `searchPrs`.
 - Pull request changes: `createPr`, `editPr`, `editPrBody`, `prComment`, `prUpdateBranch`,
   `prSetDraft`, `prMerge`, `prDiff` and `createReview`.
 - Issue and label queries: `issueList`, `issueView` and `labelList`.
@@ -702,7 +735,8 @@ a verb before running it. Each verb takes an optional `GhTarget` last, except `r
 `openPrsForBranch` is a verb with no method.
 
 - `GhVerb`: the shape of a verb. `GhTarget`: the `repo` and `hostname` a verb talks to.
-- Verb builders: `prList`, `prView`, `prBody`, `openPrsForBranch`, `prReviewThreads`, `prDiff`,
+- Verb builders: `prList`, `prView`, `prBody`, `openPrsForBranch`, `prReviewThreads`,
+  `prActivity`, `prDiff`,
   `createPr`, `editPr`, `editPrBody`, `prComment`, `prUpdateBranch`, `prSetDraft`, `prMerge`,
   `createReview`, `issueList`, `issueView`, `labelList`, `setIssueLabel`, `createLabel`,
   `editLabel`, `issueCommentEdit`, `repoList`, `repoView`, `searchPrs`, `api`, `graphql`,
@@ -720,8 +754,8 @@ a verb before running it. Each verb takes an optional `GhTarget` last, except `r
 - Option and result types: `ListResult`, `PrListOptions`, `IssueListOptions`, `RepoListOptions`,
   `SearchPrsOptions`, `CreatePrOptions`, `CreateReviewOptions`, `ReviewComment`,
   `CreateLabelOptions`, `ApiOptions`, `ApiResponse`, `GraphqlOptions`, `GraphqlPartialOptions`,
-  `GraphqlPage`, `GraphqlError`, `PartialNodes`, `GraphqlVariable`, `AuthStatus`, `PrMergeMethod`
-  and `ReviewThread`.
+  `GraphqlPage`, `GraphqlError`, `PartialNodes`, `GraphqlVariable`, `AuthStatus`, `PrMergeMethod`,
+  `ReviewThread` and `PrActivityOptions`.
 
 ### Parsers
 
@@ -739,7 +773,7 @@ a verb before running it. Each verb takes an optional `GhTarget` last, except `r
 ### Types
 
 - Model: `PullRequest`, `Review`, `Comment`, `CheckRun`, `Actor`, `Label`, `IssueRow`,
-  `Repository` and `PrSearchHit`.
+  `Repository`, `PrSearchHit`, and `PrActivityItem` with its `PrActivityKind`.
 - Enums: `PullRequestState`, `MergeableState`, `MergeStateStatus`, `ReviewDecision`, `ReviewState`,
   `CheckConclusion` and `RepositoryVisibility`.
 - `OwnerRepo`, `PullRequestRef` and `PrRef`: a repository, a pull request in one, and what a person
@@ -772,6 +806,8 @@ The experimental items:
 - `GraphqlPage`, `GraphqlError` and `PartialNodes`
 - `GraphqlVariable`
 - `fromTarget` and `FromTarget`
+- `prActivity`, the verb and the method on both clients
+- `PrActivityOptions`, `PrActivityItem` and `PrActivityKind`
 
 Every other export and method is stable, `prDiff` included. So is `@osdlc/typed-gh/testing`: its
 builders and their row types. Their default values may change in any minor release.

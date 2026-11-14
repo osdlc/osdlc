@@ -27,7 +27,10 @@ import type {
   Comment,
   Label,
   MergeableState,
+  PrActivityItem,
+  PrActivityText,
   PrSearchHit,
+  PrStateChangeKind,
   PullRequest,
   Repository,
   Review,
@@ -302,6 +305,208 @@ export function parsePrSearchHit(raw: unknown): PrSearchHit | null {
     updatedAt: strOrNull(raw['updatedAt']),
     closedAt: searchTime(raw['closedAt']),
   }
+}
+
+// ── a pull request's activity ───────────────────────────────────────────────
+
+/**
+ * A GraphQL `Actor`, whose `__typename` says whether it is a bot. GraphQL
+ * sends a bot's bare login, with no `[bot]` or `app/` to mark it.
+ */
+function graphqlActor(x: unknown): Actor | null {
+  const actor = parseActor(x)
+  if (actor === null || !isRecord(x) || x['__typename'] !== 'Bot') return actor
+  return { ...actor, isBot: true }
+}
+
+function intOrNull(x: unknown): number | null {
+  return typeof x === 'number' && Number.isInteger(x) ? x : null
+}
+
+function oidOf(x: unknown): string | null {
+  return isRecord(x) ? strOrNull(x['oid']) : null
+}
+
+/** The events whose only fields are the common ones, by GraphQL type. */
+const PLAIN_EVENTS: Record<string, PrStateChangeKind> = {
+  ClosedEvent: 'closed',
+  ReopenedEvent: 'reopened',
+  ReadyForReviewEvent: 'ready-for-review',
+  ConvertToDraftEvent: 'converted-to-draft',
+}
+
+/** The timeline types the `prActivity` query has a fragment for. */
+const READ_TYPES = new Set([
+  'IssueComment',
+  'PullRequestReview',
+  'PullRequestCommit',
+  ...Object.keys(PLAIN_EVENTS),
+  'MergedEvent',
+  'HeadRefForcePushedEvent',
+  'BaseRefChangedEvent',
+])
+
+/** The text fields of a comment, a review or a review comment. */
+function textOf(node: Record<string, unknown>): PrActivityText {
+  return {
+    body: str(node['body']),
+    editedAt: strOrNull(node['lastEditedAt']),
+    url: str(node['url']),
+    // `fullDatabaseId` is a BigInt, which GraphQL sends as a string.
+    restId: idOrNull(node['fullDatabaseId']),
+  }
+}
+
+/** Items read from timeline nodes. `truncated` is true when a review held more inline comments than the query asked for. */
+type ActivityRead = { items: PrActivityItem[]; truncated: boolean }
+
+/**
+ * A review followed by its inline comments. Null when the review has no
+ * `comments` list or one of its comments cannot be read.
+ */
+function reviewActivity(
+  node: Record<string, unknown>,
+  id: string,
+  actor: Actor | null,
+): ActivityRead | null {
+  const comments = node['comments']
+  if (!isRecord(comments) || !Array.isArray(comments['nodes'])) return null
+  const items: PrActivityItem[] = [
+    {
+      kind: 'review',
+      id,
+      at: strOrNull(node['submittedAt']),
+      actor,
+      state: str(node['state']),
+      ...textOf(node),
+    },
+  ]
+  for (const c of comments['nodes']) {
+    const comment = reviewCommentOf(c, id)
+    if (comment === null) return null
+    items.push(comment)
+  }
+  const total = comments['totalCount']
+  const truncated = typeof total === 'number' && total > comments['nodes'].length
+  return { items, truncated }
+}
+
+/** One inline comment of the review `reviewId`, or null when it is not an object or has no `id`. */
+function reviewCommentOf(c: unknown, reviewId: string): PrActivityItem | null {
+  if (!isRecord(c)) return null
+  const id = strOrNull(c['id'])
+  if (id === null) return null
+  const replyTo = c['replyTo']
+  return {
+    kind: 'review-comment',
+    id,
+    at: strOrNull(c['createdAt']),
+    actor: graphqlActor(c['author']),
+    ...textOf(c),
+    reviewId,
+    path: str(c['path']),
+    line: intOrNull(c['line']),
+    originalLine: intOrNull(c['originalLine']),
+    outdated: bool(c['outdated']),
+    replyToId: isRecord(replyTo) ? strOrNull(replyTo['id']) : null,
+  }
+}
+
+/**
+ * The items of one timeline node: one, none for a type this package does not
+ * read, or a review followed by its inline comments. Null when the node
+ * cannot be read: it is not an object, a type it reads has no `id`, a
+ * commit has no `oid`, or a review has no `comments` list. `truncated` is
+ * true when a review held more inline comments than the query asked for.
+ */
+function activityOf(node: unknown): ActivityRead | null {
+  if (!isRecord(node)) return null
+  const type = node['__typename']
+  // A type the query has no fragment for comes back as its `__typename`
+  // alone, with no `id`. Skip it.
+  if (typeof type === 'string' && !READ_TYPES.has(type)) return { items: [], truncated: false }
+  const id = strOrNull(node['id'])
+  if (id === null) return null
+  const actor = graphqlActor(node['author'] ?? node['actor'])
+  const one = (item: PrActivityItem) => ({ items: [item], truncated: false })
+
+  if (type === 'IssueComment') {
+    return one({ kind: 'comment', id, at: strOrNull(node['createdAt']), actor, ...textOf(node) })
+  }
+  if (type === 'PullRequestReview') return reviewActivity(node, id, actor)
+  if (type === 'PullRequestCommit') {
+    const commit = node['commit']
+    const sha = oidOf(commit)
+    if (!isRecord(commit) || sha === null) return null
+    const author = commit['author']
+    return one({
+      kind: 'commit',
+      id,
+      at: strOrNull(commit['committedDate']),
+      actor: isRecord(author) ? graphqlActor(author['user']) : null,
+      sha,
+      headline: str(commit['messageHeadline']),
+    })
+  }
+  const at = strOrNull(node['createdAt'])
+  const plain = typeof type === 'string' ? PLAIN_EVENTS[type] : undefined
+  if (plain !== undefined) return one({ kind: plain, id, at, actor })
+  if (type === 'MergedEvent') {
+    return one({ kind: 'merged', id, at, actor, sha: oidOf(node['mergeCommit']) })
+  }
+  if (type === 'HeadRefForcePushedEvent') {
+    return one({
+      kind: 'head-force-pushed',
+      id,
+      at,
+      actor,
+      beforeSha: oidOf(node['beforeCommit']),
+      afterSha: oidOf(node['afterCommit']),
+    })
+  }
+  if (type === 'BaseRefChangedEvent') {
+    return one({
+      kind: 'base-changed',
+      id,
+      at,
+      actor,
+      from: str(node['previousRefName']),
+      to: str(node['currentRefName']),
+    })
+  }
+  // A node with no `__typename`, which the query always asks for.
+  return { items: [], truncated: false }
+}
+
+/**
+ * A pull request's activity from the `data` of each page of the
+ * `prActivity` query, in GitHub's timeline order: oldest first, and each
+ * review followed by its inline comments.
+ *
+ * Null when any page lacks `repository.pullRequest.timelineItems.nodes`, or
+ * any node cannot be read, so a page that came back short is never read as
+ * less activity. `truncated` is true when a review held more inline comments
+ * than were read.
+ */
+export function parsePrActivity(
+  pages: readonly unknown[],
+): { rows: PrActivityItem[]; truncated: boolean } | null {
+  const rows: PrActivityItem[] = []
+  let truncated = false
+  for (const page of pages) {
+    const repository = isRecord(page) ? page['repository'] : null
+    const pr = isRecord(repository) ? repository['pullRequest'] : null
+    const timeline = isRecord(pr) ? pr['timelineItems'] : null
+    const nodes = isRecord(timeline) ? timeline['nodes'] : null
+    if (!Array.isArray(nodes)) return null
+    for (const node of nodes) {
+      const read = activityOf(node)
+      if (read === null) return null
+      rows.push(...read.items)
+      truncated ||= read.truncated
+    }
+  }
+  return { rows, truncated }
 }
 
 /**
