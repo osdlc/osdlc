@@ -12,8 +12,7 @@ field and not through a cast.
 
 `loadCorpus` ([osdlc/osdlc#805](https://github.com/osdlc/osdlc/pull/805)) returns each record's
 `data` as an untyped object. Each type already has a flattened JSON Schema in the loaded model, so
-the types can be made from it. This task starts after #805 merges, and after the open pull requests
-are caught up.
+the types can be made from it. This task starts after the open pull requests are caught up.
 
 What to do, in order:
 
@@ -29,9 +28,9 @@ What to do, in order:
    give, as `check:data` does for the harness knowledge file.
 3. **Try it on the harness reference's own code.**
    `packages/corpora/harness-reference/src` compiles, lints and captures the corpus with its own
-   110-line loader and about 70 casts and string-keyed reads. Replace the loader with `loadCorpus`
-   and the casts with the generated types.
-4. **Typed `fact()` in `@osdlc/harness-knowledge`.** Each of the 86 subjects holds a `valueSchema`
+   110-line loader and about 70 casts and string-keyed reads, counted when #805 merged. Replace the
+   loader with `loadCorpus` and the casts with the generated types.
+4. **Typed `fact()` in `@osdlc/harness-knowledge`.** Each subject holds a `valueSchema`
    for its answer. The compile step also writes a union of the subject slugs, a map from slug to
    value type, and a union of the harness ids. `detect-harness` reads
    `fact(harness, 'skills/user-dirs')?.['dirs']` today, and is the consumer that shows it works.
