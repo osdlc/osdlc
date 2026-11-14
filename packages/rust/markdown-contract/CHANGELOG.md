@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.3](https://github.com/osdlc/osdlc/compare/markdown-contract/v0.4.2...markdown-contract/v0.4.3) - 2026-11-10
+
+### Other
+
+- update Cargo.toml dependencies
+
+## [0.4.2](https://github.com/osdlc/osdlc/compare/markdown-contract/v0.4.1...markdown-contract/v0.4.2) - 2026-11-08
+
+### Other
+
+- updated the following local packages: markdown-link
+
 ## [0.4.1] - 2026-11-05
 
 ### Changed

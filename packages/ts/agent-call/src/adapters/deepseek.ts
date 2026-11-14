@@ -1,3 +1,5 @@
+import { resolve } from 'node:path'
+
 import {
   CONVERSATION_SCHEMA,
   type Conversation,
@@ -19,6 +21,9 @@ import {
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
+// The binary and flags below are asserted against the harness knowledge file in
+// tests/knowledge-facts.test.ts; policy (which mode, which default) stays here.
+
 /** Options for {@link deepseekAdapter}. */
 export interface DeepseekAdapterOptions extends CommandOptions {}
 
@@ -27,9 +32,12 @@ const PATCH_FILE = 'dsh-patch.yml'
 /** The shipped default model, restated when only the effort changes (a patch replaces the whole row). */
 const DEFAULT_PROVIDER = 'deepseek-official'
 const DEFAULT_MODEL = 'deepseek-flash'
-/** The headless bundle's persona prefix and suffix, restated when a patch replaces the row. */
+/**
+ * The headless bundle's persona prefix, restated when a patch replaces the row.
+ * The suffix is not: its "Your working directory is {{cwd}}." clause fails prompt
+ * assembly, because the loop registers no `{{cwd}}`, so the row carries only appended text.
+ */
 const HEADLESS_PERSONA_PREFIX = 'You are a coding agent powered by the {{model}} model.'
-const HEADLESS_PERSONA_SUFFIX = 'Your working directory is {{cwd}}.'
 
 /** Maps `permissions.mode` to `DSH_PERMISSION_MODE`, the preset the sandbox and approval rows read. */
 const PERMISSION_ENV: Record<Exclude<PermissionMode, 'default'>, string> = {
@@ -137,13 +145,8 @@ function planDeepseek(command: readonly string[], spec: AgentCallSpec): PlannedC
     } else {
       config['personaPrefix'] = HEADLESS_PERSONA_PREFIX
     }
-    // The headless suffix tells the model its working directory. Keep it before
-    // any appended text.
-    config['personaSuffix'] =
-      spec.appendSystemPrompt === undefined
-        ? HEADLESS_PERSONA_SUFFIX
-        : `${HEADLESS_PERSONA_SUFFIX}\n\n${spec.appendSystemPrompt}`
     if (spec.appendSystemPrompt !== undefined) {
+      config['personaSuffix'] = spec.appendSystemPrompt
       note(notes, 'appendSystemPrompt', 'native', 'personaSuffix in a --patch overlay')
     }
     patch.push({ id: 'system-prompt', config })
@@ -218,7 +221,14 @@ function planDeepseek(command: readonly string[], spec: AgentCallSpec): PlannedC
         'edits mapped to DSH_PERMISSION_MODE=workspace-write (also permits workspace commands)',
       )
     } else {
-      note(notes, 'permissions.mode', 'native', `DSH_PERMISSION_MODE=${env['DSH_PERMISSION_MODE']}`)
+      note(
+        notes,
+        'permissions.mode',
+        'native',
+        mode === 'read-only'
+          ? 'DSH_PERMISSION_MODE=read-only (dsh ships no read-only preset: it must be configured, or the run fails)'
+          : `DSH_PERMISSION_MODE=${env['DSH_PERMISSION_MODE']}`,
+      )
     }
   }
   if ((permissions?.allowTools ?? []).length > 0) {
@@ -238,12 +248,14 @@ function planDeepseek(command: readonly string[], spec: AgentCallSpec): PlannedC
     )
   }
 
-  if ((spec.context?.dirs ?? []).length > 0) {
+  const dirs = spec.context?.dirs ?? []
+  if (dirs.length > 0) {
+    for (const dir of dirs) argv.push('--add-dir', resolve(spec.cwd ?? process.cwd(), dir))
     note(
       notes,
       'context.dirs',
-      'dropped',
-      'dsh scopes the sandbox to the session working directory; no add-dir option',
+      'native',
+      '--add-dir (relative dirs resolved against cwd; applies under workspace-write)',
     )
   }
 
@@ -281,6 +293,10 @@ function planDeepseek(command: readonly string[], spec: AgentCallSpec): PlannedC
   }
   if (spec.budgetUsd !== undefined) {
     note(notes, 'budgetUsd', 'dropped', 'dsh has no budget cap')
+  }
+
+  if (spec.limits?.maxTurns !== undefined) {
+    note(notes, 'limits.maxTurns', 'dropped', 'dsh has no turn limit flag')
   }
 
   argv.push(...(spec.extraArgs ?? []))

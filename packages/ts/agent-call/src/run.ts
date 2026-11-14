@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './adapters/types.js'
 import type { Conversation } from './conversation.js'
 import { TMP_TOKEN, type PlannedCall } from './plan.js'
+import { applyProjectFile } from './project-files.js'
 import { spawnCollect } from './spawn.js'
 import type { AgentCallSpec } from './spec.js'
 
@@ -17,7 +18,8 @@ import type { AgentCallSpec } from './spec.js'
  */
 export interface CallError {
   /**
-   * - `spawn-failed` — the process never started (binary missing, empty argv).
+   * - `spawn-failed` — the process never started (binary missing, empty argv,
+   *   or the host is stopping after a forwarded signal).
    * - `timeout` — `timeoutMs` elapsed or the caller aborted.
    * - `nonzero-exit` — the process exited with a nonzero code, or ended on a
    *   signal the runner did not send (such as an out-of-memory kill). For a
@@ -87,9 +89,15 @@ export function planCall(adapter: AgentAdapter, spec: AgentCallSpec): PlannedCal
  * the parent's environment plus `spec.env`.
  *
  * Because the agent has its own process group, a terminal Ctrl+C or a kill of
- * the host does not reach it, and it keeps running. A host that can be
- * interrupted must pass a `signal` and abort it from its own SIGINT/SIGTERM
- * handler. The runner installs no exit handlers.
+ * the host does not reach it, and it keeps running. The group is registered
+ * with `@osdlc/command-seam`, so a host that calls
+ * `installGroupSignalForwarding()` once gets the fix: SIGINT, SIGTERM or SIGHUP
+ * to the host then kills the agent's group, and the host exits `128 + signal`.
+ * Once that signal has been forwarded the host is stopping, and a new call
+ * starts no agent: it resolves `ok: false` with reason `spawn-failed` and the
+ * refusal as `detail`. A host without forwarding must instead pass a `signal`
+ * and abort it from its own SIGINT/SIGTERM handler. Both work together. The
+ * runner installs no signal handlers of its own.
  *
  * @throws The returned promise rejects, rather than resolving `ok: false`,
  * with a `RangeError` when `spec.maxOutputBytes` is `0`, negative or `NaN`,
@@ -237,11 +245,23 @@ async function execute(
       throw new Error(`temp file name ${JSON.stringify(file.name)} is not a plain file name`)
     }
   }
-  let tempDir: string | undefined
-  if (planned.tempFiles.length > 0) {
-    tempDir = await mkdtemp(join(tmpdir(), 'agent-call-'))
+  const restores: Array<() => Promise<void>> = []
+  const restoreAll = async (): Promise<void> => {
+    for (const restore of restores.splice(0).reverse()) await restore()
   }
   try {
+    for (const edit of planned.projectFiles ?? []) {
+      restores.push(await applyProjectFile(planned.cwd ?? process.cwd(), edit))
+    }
+  } catch (err) {
+    await restoreAll()
+    return { stdout: '', stderr: errorMessage(err), exitCode: null, durationMs: 0, timedOut: false }
+  }
+  let tempDir: string | undefined
+  try {
+    if (planned.tempFiles.length > 0) {
+      tempDir = await mkdtemp(join(tmpdir(), 'agent-call-'))
+    }
     if (tempDir !== undefined) {
       for (const file of planned.tempFiles) {
         await writeFile(join(tempDir, file.name), file.content, 'utf8')
@@ -282,8 +302,12 @@ async function execute(
     }
     return raw
   } finally {
-    if (tempDir !== undefined) {
-      await rm(tempDir, { recursive: true, force: true })
+    try {
+      if (tempDir !== undefined) {
+        await rm(tempDir, { recursive: true, force: true })
+      }
+    } finally {
+      await restoreAll()
     }
   }
 }

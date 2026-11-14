@@ -10,14 +10,14 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { spawnRunner, type CommandResult, type CommandRunner } from '@osdlc/command-seam'
+import { type CommandResult } from '@osdlc/command-seam'
 import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeOriginAndCheckout } from '@osdlc/typed-git/testing'
 
 import { assessLanding, patchEquivalent } from '../src/landing.ts'
-import { sweepRepo } from '../src/sweep.ts'
-import type { RepoInfo, SweepItem } from '../src/types.ts'
-import { cannedGh, commitFile, git, newRepo, sh } from './helpers.ts'
+import { sweep as sweepTargets, type SweepOptions } from '../src/sweep.ts'
+import type { Kind, RepoInfo, RepoSweep, Row } from '../src/types.ts'
+import { cannedGh, commitFile, git, interposedRunner, newRepo, sh } from './helpers.ts'
 
 const HOOK_TIMEOUT_MS = 60_000
 
@@ -56,33 +56,31 @@ function rebaseMerge(dir: string, branch: string): void {
   sh(dir, ['branch', '-q', '-D', `${branch}-copy`])
 }
 
-const sweep = (dir: string, opts: Parameters<typeof sweepRepo>[1] = {}) =>
-  sweepRepo(dir, { noProvider: true, cwd: dir, ...opts })
+/** The one repository at `dir`, swept from inside it. A provider is asked only with `remote`. */
+function sweep(dir: string, opts: SweepOptions = {}): RepoSweep {
+  const swept = sweepTargets([dir], { cwd: dir, ...opts }).repos[0]
+  if (swept === undefined) throw new Error(`no repository at ${dir}`)
+  if (swept.error !== null) throw new Error(`sweep of ${dir} failed: ${swept.error}`)
+  return swept
+}
 
-function row(items: SweepItem[], category: string, id: string): SweepItem {
-  const found = items.find((item) => item.category === category && item.id === id)
-  if (found === undefined) throw new Error(`no ${category} row ${id}`)
+/** Remote branches too, against the remote-tracking refs on disk, with no provider asked. */
+const withRemote: SweepOptions = { remote: true, provider: 'none' }
+
+function row<K extends Kind>(rows: Row[], kind: K, name: string): Extract<Row, { kind: K }> {
+  const found = rows.find((r): r is Extract<Row, { kind: K }> => r.kind === kind && r.name === name)
+  if (found === undefined) throw new Error(`no ${kind} row ${name}`)
   return found
 }
 
-const branchRow = (dir: string, name: string, opts?: Parameters<typeof sweepRepo>[1]) =>
-  row(sweep(dir, opts).items, 'local_branch', name)
+const branchRow = (dir: string, name: string, opts?: SweepOptions) =>
+  row(sweep(dir, opts).rows, 'branch', name)
 
 /** The repository facts a landing check takes, read from a real sweep. */
 function repoInfo(dir: string): RepoInfo {
   const info = sweep(dir).repo
   if (info === null) throw new Error('not a repository')
   return info
-}
-
-/** A runner that answers some argv itself and runs the rest for real. */
-function interposedRunner(answer: (argv: string[]) => CommandResult | undefined): CommandRunner {
-  const real = spawnRunner('git', { absolutePathOnly: true })
-  return {
-    run(argv, opts) {
-      return answer(argv) ?? real.run(argv, opts)
-    },
-  }
 }
 
 /** A client over {@link interposedRunner}. */
@@ -100,9 +98,9 @@ describe('merge styles', () => {
     branchOff(dir, 'feat', [['a.txt', 'a\n']])
     sh(dir, ['merge', '-q', '--no-ff', '-m', 'merge feat', 'feat'])
     const item = branchRow(dir, 'feat')
-    expect(item.classification).toBe('safe-to-delete')
-    expect(item.reason).toBe('fully merged into main')
-    expect(item.facts['landing']).toBeUndefined()
+    expect(item.verdict).toBe('delete')
+    expect(item.why).toBe('fully merged into main')
+    expect(item.evidence.landing).toBeUndefined()
   })
 
   test('a rebase merge counts as landed, commit by commit', () => {
@@ -115,10 +113,10 @@ describe('merge styles', () => {
     commitFile(dir, 'main.txt', 'main moved on\n', 'main: moves on')
     rebaseMerge(dir, 'feat')
     const item = branchRow(dir, 'feat')
-    expect(item.classification).toBe('safe-to-delete')
-    expect(item.facts['landing']).toBe('patch-equivalent')
-    expect(item.facts['landing_check']).toBe('per-commit')
-    expect(item.facts['ancestor_of_remote_main']).toBe(false)
+    expect(item.verdict).toBe('delete')
+    expect(item.evidence.landing).toBe('patch-equivalent')
+    expect(item.evidence.landingCheck).toBe('per-commit')
+    expect(item.evidence.ancestorOfRemoteMain).toBe(false)
     expect(item.commands).toEqual([expect.stringContaining('update-ref -d refs/heads/feat')])
   })
 
@@ -131,8 +129,8 @@ describe('merge styles', () => {
     commitFile(dir, 'main.txt', 'main moved on\n', 'main: moves on')
     for (const sha of shas) sh(dir, ['cherry-pick', sha])
     const item = branchRow(dir, 'feat')
-    expect(item.classification).toBe('safe-to-delete')
-    expect(item.facts['landing_check']).toBe('per-commit')
+    expect(item.verdict).toBe('delete')
+    expect(item.evidence.landingCheck).toBe('per-commit')
   })
 
   test('a squash merge of three commits counts as landed with no PR data', () => {
@@ -145,11 +143,11 @@ describe('merge styles', () => {
     commitFile(dir, 'main.txt', 'main moved on\n', 'main: moves on')
     squashMerge(dir, 'feat')
     const item = branchRow(dir, 'feat')
-    expect(item.classification).toBe('safe-to-delete')
-    expect(item.reason).toContain('patch-equivalent')
-    expect(item.facts['landing']).toBe('patch-equivalent')
-    expect(item.facts['landing_check']).toBe('squashed')
-    expect(item.facts['pr']).toBeUndefined()
+    expect(item.verdict).toBe('delete')
+    expect(item.why).toContain('patch-equivalent')
+    expect(item.evidence.landing).toBe('patch-equivalent')
+    expect(item.evidence.landingCheck).toBe('squashed')
+    expect(item.evidence.pr).toBeUndefined()
   })
 
   test('a squash merge is found after main has moved well past it', () => {
@@ -161,7 +159,7 @@ describe('merge styles', () => {
     squashMerge(dir, 'feat')
     commitFile(dir, 'later-1.txt', '1\n', 'main: later 1')
     commitFile(dir, 'later-2.txt', '2\n', 'main: later 2')
-    expect(branchRow(dir, 'feat').facts['landing_check']).toBe('squashed')
+    expect(branchRow(dir, 'feat').evidence.landingCheck).toBe('squashed')
   })
 
   test('a squash merge of a branch that merged main in is found', () => {
@@ -173,7 +171,7 @@ describe('merge styles', () => {
     commitFile(dir, 'b.txt', 'b\n', 'feat: b')
     sh(dir, ['checkout', '-q', 'main'])
     squashMerge(dir, 'feat')
-    expect(branchRow(dir, 'feat').facts['landing_check']).toBe('squashed')
+    expect(branchRow(dir, 'feat').evidence.landingCheck).toBe('squashed')
   })
 })
 
@@ -186,8 +184,8 @@ describe('what stays unlanded', () => {
     commitFile(dir, 'extra.txt', 'extra\n', 'feat: extra work')
     sh(dir, ['checkout', '-q', 'main'])
     const item = branchRow(dir, 'feat')
-    expect(item.classification).toBe('needs-investigation')
-    expect(item.facts['landing']).toBeUndefined()
+    expect(item.verdict).toBe('review')
+    expect(item.evidence.landing).toBeUndefined()
   })
 
   test('a rebase merge missing its last commit is not landed, and the commit is named', () => {
@@ -201,10 +199,10 @@ describe('what stays unlanded', () => {
     sh(dir, ['cherry-pick', shas[0]!])
     sh(dir, ['cherry-pick', shas[1]!])
     const item = branchRow(dir, 'feat')
-    expect(item.classification).toBe('needs-investigation')
-    expect(item.facts['landing']).toBeUndefined()
-    expect(item.facts['unmatched_commits']).toEqual([expect.stringContaining('feat: c.txt')])
-    expect(item.investigationParts.join(' ')).toContain('feat: c.txt')
+    expect(item.verdict).toBe('review')
+    expect(item.evidence.landing).toBeUndefined()
+    expect(item.evidence.unmatchedCommits).toEqual([expect.stringContaining('feat: c.txt')])
+    expect(item.notes.join(' ')).toContain('feat: c.txt')
   })
 
   test('an unmatched commit with an empty subject is named without a trailing space', () => {
@@ -218,7 +216,7 @@ describe('what stays unlanded', () => {
     sh(dir, ['checkout', '-q', 'main'])
     commitFile(dir, 'main.txt', 'main moved on\n', 'main: moves on')
     sh(dir, ['cherry-pick', a!])
-    const unmatched = branchRow(dir, 'feat').facts['unmatched_commits'] as string[]
+    const unmatched = branchRow(dir, 'feat').evidence.unmatchedCommits ?? []
     expect(unmatched).toHaveLength(1)
     expect(unmatched[0]).toBe(unmatched[0]!.trim())
     expect(short.startsWith(unmatched[0]!.slice(0, 7))).toBe(true)
@@ -229,8 +227,8 @@ describe('what stays unlanded', () => {
     branchOff(dir, 'feat', [['a.txt', 'a\n']])
     commitFile(dir, 'main.txt', 'main moved on\n', 'main: moves on')
     const item = branchRow(dir, 'feat')
-    expect(item.classification).toBe('needs-investigation')
-    expect(item.facts['unmatched_commits']).toBeUndefined()
+    expect(item.verdict).toBe('review')
+    expect(item.evidence.unmatchedCommits).toBeUndefined()
   })
 
   test('a squash merge edited during conflict resolution is not landed', () => {
@@ -239,7 +237,7 @@ describe('what stays unlanded', () => {
     sh(dir, ['checkout', '-q', 'main'])
     sh(dir, ['merge', '--squash', 'feat'])
     commitFile(dir, 'a.txt', 'a, edited by hand\n', 'squash feat, with an edit')
-    expect(branchRow(dir, 'feat').classification).toBe('needs-investigation')
+    expect(branchRow(dir, 'feat').verdict).toBe('review')
   })
 
   test('a branch whose changes cancel out matches nothing', () => {
@@ -254,8 +252,8 @@ describe('what stays unlanded', () => {
     sh(dir, ['commit', '-q', '--allow-empty', '-m', 'main: empty'])
     commitFile(dir, 'other.txt', 'other\n', 'main: other')
     const item = branchRow(dir, 'feat')
-    expect(item.classification).toBe('needs-investigation')
-    expect(item.facts['landing']).toBeUndefined()
+    expect(item.verdict).toBe('review')
+    expect(item.evidence.landing).toBeUndefined()
   })
 
   test('a branch of one empty commit is not landed', () => {
@@ -266,8 +264,8 @@ describe('what stays unlanded', () => {
     sh(dir, ['commit', '-q', '--allow-empty', '-m', 'main: nothing too'])
     commitFile(dir, 'other.txt', 'other\n', 'main: other')
     const item = branchRow(dir, 'feat')
-    expect(item.classification).toBe('needs-investigation')
-    expect(item.facts['landing']).toBeUndefined()
+    expect(item.verdict).toBe('review')
+    expect(item.evidence.landing).toBeUndefined()
   })
 
   test('an empty commit never counts by itself, so only the combined change decides', () => {
@@ -280,8 +278,8 @@ describe('what stays unlanded', () => {
     sh(dir, ['commit', '-q', '--allow-empty', '-m', 'main: empty too'])
     sh(dir, ['cherry-pick', a])
     const item = branchRow(dir, 'feat')
-    expect(item.classification).toBe('safe-to-delete')
-    expect(item.facts['landing_check']).toBe('squashed')
+    expect(item.verdict).toBe('delete')
+    expect(item.evidence.landingCheck).toBe('squashed')
   })
 
   test('a merge commit that carries a change of its own is not skipped', () => {
@@ -300,8 +298,8 @@ describe('what stays unlanded', () => {
     sh(dir, ['cherry-pick', a!])
     sh(dir, ['cherry-pick', side!])
     const item = branchRow(dir, 'feat')
-    expect(item.classification).toBe('needs-investigation')
-    expect(item.facts['landing']).toBeUndefined()
+    expect(item.verdict).toBe('review')
+    expect(item.evidence.landing).toBeUndefined()
   })
 
   test('unrelated histories are not landed', () => {
@@ -310,12 +308,12 @@ describe('what stays unlanded', () => {
     commitFile(dir, 'stray.txt', 'stray\n', 'stray: one')
     commitFile(dir, 'stray2.txt', 'stray2\n', 'stray: two')
     sh(dir, ['checkout', '-q', 'main'])
-    expect(branchRow(dir, 'stray').classification).toBe('needs-investigation')
+    expect(branchRow(dir, 'stray').verdict).toBe('review')
   })
 })
 
 /** True when deleting the row needs the `abandon-unmerged` grant. */
-const needsGrant = (item: SweepItem): boolean => item.requires.includes('abandon-unmerged')
+const needsGrant = (item: Row): boolean => item.risks.includes('abandon-unmerged')
 
 describe('a patch match alone needs the grant', () => {
   /**
@@ -360,25 +358,25 @@ describe('a patch match alone needs the grant', () => {
     sh(dir, ['checkout', '-q', 'main'])
     commitFile(dir, 'cfg.yaml', 'a:\n      x: 2\n', 'main: x is 2, indented differently')
     const item = branchRow(dir, 'feat')
-    expect(item.facts['landing_check']).toBe('per-commit')
-    expect(item.facts['landing_content_confirmed']).toBe(false)
-    expect(item.reason).toContain('not confirmed')
+    expect(item.evidence.landingCheck).toBe('per-commit')
+    expect(item.evidence.landingContentConfirmed).toBe(false)
+    expect(item.why).toContain('not confirmed')
     expect(needsGrant(item)).toBe(true)
   })
 
   test('a small edit made independently on main matches a one-commit branch but needs the grant', () => {
     const dir = independentEdit('landing-fp-generic', false)
     const item = branchRow(dir, 'feat')
-    expect(item.facts['landing_check']).toBe('per-commit')
-    expect(item.facts['landing_content_confirmed']).toBe(false)
+    expect(item.evidence.landingCheck).toBe('per-commit')
+    expect(item.evidence.landingContentConfirmed).toBe(false)
     expect(needsGrant(item)).toBe(true)
   })
 
   test('a multi-commit branch whose net change equals that edit needs the grant', () => {
     const dir = independentEdit('landing-fp-multi', true)
     const item = branchRow(dir, 'feat')
-    expect(item.facts['landing_check']).toBe('squashed')
-    expect(item.facts['landing_content_confirmed']).toBe(false)
+    expect(item.evidence.landingCheck).toBe('squashed')
+    expect(item.evidence.landingContentConfirmed).toBe(false)
     expect(needsGrant(item)).toBe(true)
   })
 
@@ -389,8 +387,8 @@ describe('a patch match alone needs the grant', () => {
     sh(dir, ['cherry-pick', a!])
     sh(dir, ['revert', '--no-edit', 'HEAD'])
     const item = branchRow(dir, 'feat')
-    expect(item.facts['landing_check']).toBe('per-commit')
-    expect(item.facts['landing_content_confirmed']).toBe(false)
+    expect(item.evidence.landingCheck).toBe('per-commit')
+    expect(item.evidence.landingContentConfirmed).toBe(false)
     expect(needsGrant(item)).toBe(true)
   })
 
@@ -398,11 +396,11 @@ describe('a patch match alone needs the grant', () => {
     const dir = independentEdit('landing-fp-wt', false)
     const wt = join(dir, 'wt', 'feat')
     sh(dir, ['worktree', 'add', '-q', wt, 'feat'])
-    const wtItem = row(sweep(dir).items, 'worktree', wt)
-    expect(wtItem.facts['landing_content_confirmed']).toBe(false)
-    expect(wtItem.classification).toBe('needs-investigation')
+    const wtItem = row(sweep(dir).rows, 'worktree', wt)
+    expect(wtItem.evidence.landingContentConfirmed).toBe(false)
+    expect(wtItem.verdict).toBe('review')
     expect(needsGrant(wtItem)).toBe(true)
-    expect(wtItem.investigationParts.join(' ')).toContain('not confirmed')
+    expect(wtItem.notes.join(' ')).toContain('not confirmed')
   })
 
   test('a remote branch with a patch match but different content needs the grant', () => {
@@ -419,9 +417,9 @@ describe('a patch match alone needs the grant', () => {
     sh(dir, ['checkout', '-q', 'main'])
     commitFile(dir, 'main.py', inserted(4), 'main: insert NEW')
     sh(dir, ['push', '-q', 'origin', 'main'])
-    const remote = row(sweep(dir).items, 'remote_branch', 'origin/feat')
-    expect(remote.facts['landing_check']).toBe('per-commit')
-    expect(remote.facts['landing_content_confirmed']).toBe(false)
+    const remote = row(sweep(dir, withRemote).rows, 'remote', 'origin/feat')
+    expect(remote.evidence.landingCheck).toBe('per-commit')
+    expect(remote.evidence.landingContentConfirmed).toBe(false)
     expect(needsGrant(remote)).toBe(true)
   })
 
@@ -432,8 +430,8 @@ describe('a patch match alone needs the grant', () => {
     sh(dir, ['checkout', '-q', 'main'])
     commitFile(dir, 'main.py', inserted(3), 'main: insert NEW')
     const item = branchRow(dir, 'feat')
-    expect(item.facts['landing_content_confirmed']).toBe(true)
-    expect(item.reason).toContain('content confirmed')
+    expect(item.evidence.landingContentConfirmed).toBe(true)
+    expect(item.why).toContain('content confirmed')
     expect(needsGrant(item)).toBe(false)
   })
 
@@ -451,15 +449,15 @@ describe('a patch match alone needs the grant', () => {
     }
     const wt = join(dir, 'wt', 'wt-branch')
     sh(dir, ['worktree', 'add', '-q', wt, 'wt-branch'])
-    const items = sweep(dir).items
+    const items = sweep(dir).rows
     for (const item of [
-      row(items, 'local_branch', 'rebased'),
-      row(items, 'local_branch', 'squashed'),
+      row(items, 'branch', 'rebased'),
+      row(items, 'branch', 'squashed'),
       row(items, 'worktree', wt),
     ]) {
-      expect(item.facts['landing_content_confirmed'], item.id).toBe(true)
-      expect(item.classification, item.id).toBe('safe-to-delete')
-      expect(needsGrant(item), item.id).toBe(false)
+      expect(item.evidence.landingContentConfirmed, item.name).toBe(true)
+      expect(item.verdict, item.name).toBe('delete')
+      expect(needsGrant(item), item.name).toBe(false)
     }
   })
 
@@ -499,7 +497,7 @@ describe('a patch match alone needs the grant', () => {
     sh(dir, ['checkout', '-q', 'main'])
     sh(dir, ['cherry-pick', a!])
     const item = branchRow(dir, 'feat')
-    expect(item.facts['landing_check']).toBe('squashed')
+    expect(item.evidence.landingCheck).toBe('squashed')
   })
 
   test('squashed accepts any one landed commit with the same net patch', () => {
@@ -510,12 +508,14 @@ describe('a patch match alone needs the grant', () => {
     commitFile(dir, 'a.txt', 'one\ntwo\n', 'feat: two')
     sh(dir, ['checkout', '-q', 'main'])
     commitFile(dir, 'a.txt', 'one\ntwo\n', 'main: written by someone else')
-    expect(branchRow(dir, 'feat').facts['landing_check']).toBe('squashed')
+    expect(branchRow(dir, 'feat').evidence.landingCheck).toBe('squashed')
   })
 })
 
 describe('merged PR at an earlier head', () => {
   const prFor = (dir: string, head: string) => ({
+    // There is no remote, so name the provider: `auto` asks none.
+    provider: 'github' as const,
     gh: cannedGh([{ number: 7, state: 'MERGED', headRefName: 'feat', headRefOid: head }]),
   })
 
@@ -530,10 +530,10 @@ describe('merged PR at an earlier head', () => {
     const later = commitFile(dir, 'later.txt', 'later\n', 'feat: after the merge')
     sh(dir, ['checkout', '-q', 'main'])
     sh(dir, ['cherry-pick', later])
-    const item = branchRow(dir, 'feat', { noProvider: false, ...prFor(dir, first!) })
-    expect(item.classification).toBe('safe-to-delete')
-    expect(item.facts['landing_check']).toBe('head-moved')
-    expect((item.facts['pr'] as Record<string, unknown>)['evidence']).toBe('head-moved')
+    const item = branchRow(dir, 'feat', { remote: true, ...prFor(dir, first!) })
+    expect(item.verdict).toBe('delete')
+    expect(item.evidence.landingCheck).toBe('head-moved')
+    expect(item.evidence.pr?.proof).toBe('head-moved')
   })
 
   test('the same branch with a commit that is not on main stays, and names that commit', () => {
@@ -546,13 +546,13 @@ describe('merged PR at an earlier head', () => {
     sh(dir, ['checkout', '-q', 'feat'])
     commitFile(dir, 'later.txt', 'later\n', 'feat: after the merge')
     sh(dir, ['checkout', '-q', 'main'])
-    const item = branchRow(dir, 'feat', { noProvider: false, ...prFor(dir, first!) })
-    expect(item.classification).toBe('needs-investigation')
-    expect(item.facts['landing']).toBeUndefined()
-    expect(item.facts['unmatched_commits']).toEqual([
+    const item = branchRow(dir, 'feat', { remote: true, ...prFor(dir, first!) })
+    expect(item.verdict).toBe('review')
+    expect(item.evidence.landing).toBeUndefined()
+    expect(item.evidence.unmatchedCommits).toEqual([
       expect.stringContaining('feat: after the merge'),
     ])
-    expect(item.investigationParts.join(' ')).toContain('feat: after the merge')
+    expect(item.notes.join(' ')).toContain('feat: after the merge')
   })
 
   test('a PR head that was never squash-merged does not lend its trust', () => {
@@ -566,8 +566,8 @@ describe('merged PR at an earlier head', () => {
     sh(dir, ['checkout', '-q', 'main'])
     commitFile(dir, 'main.txt', 'main moved on\n', 'main: moves on')
     sh(dir, ['cherry-pick', later])
-    const item = branchRow(dir, 'feat', { noProvider: false, ...prFor(dir, first!) })
-    expect(item.classification).toBe('needs-investigation')
+    const item = branchRow(dir, 'feat', { remote: true, ...prFor(dir, first!) })
+    expect(item.verdict).toBe('review')
   })
 
   test('a PR head that is not in this clone does not count', () => {
@@ -577,11 +577,8 @@ describe('merged PR at an earlier head', () => {
     sh(dir, ['checkout', '-q', 'feat'])
     commitFile(dir, 'later.txt', 'later\n', 'feat: after')
     sh(dir, ['checkout', '-q', 'main'])
-    const item = branchRow(dir, 'feat', {
-      noProvider: false,
-      ...prFor(dir, 'f'.repeat(40)),
-    })
-    expect(item.classification).toBe('needs-investigation')
+    const item = branchRow(dir, 'feat', { remote: true, ...prFor(dir, 'f'.repeat(40)) })
+    expect(item.verdict).toBe('review')
   })
 })
 
@@ -595,10 +592,10 @@ describe('worktrees and remote branches', () => {
     const wt = join(dir, 'wt', 'feat')
     sh(dir, ['worktree', 'add', '-q', wt, 'feat'])
     squashMerge(dir, 'feat')
-    const item = row(sweep(dir).items, 'worktree', wt)
-    expect(item.classification).toBe('safe-to-delete')
-    expect(item.facts['landing_check']).toBe('squashed')
-    expect(item.facts['unpushed_commits']).toBe(2)
+    const item = row(sweep(dir).rows, 'worktree', wt)
+    expect(item.verdict).toBe('delete')
+    expect(item.evidence.landingCheck).toBe('squashed')
+    expect(item.evidence.unpushedCommits).toBe(2)
   })
 
   test('a dirty worktree on a squash-merged branch is still held back', () => {
@@ -608,9 +605,9 @@ describe('worktrees and remote branches', () => {
     sh(dir, ['worktree', 'add', '-q', wt, 'feat'])
     squashMerge(dir, 'feat')
     writeFileSync(join(wt, 'scratch.txt'), 'uncommitted\n')
-    const item = row(sweep(dir).items, 'worktree', wt)
-    expect(item.classification).toBe('needs-investigation')
-    expect(item.facts['dirty_files']).toBe(1)
+    const item = row(sweep(dir).rows, 'worktree', wt)
+    expect(item.verdict).toBe('review')
+    expect(item.evidence.dirtyFiles).toBe(1)
   })
 
   test('a worktree with an unlanded commit is held back', () => {
@@ -620,9 +617,9 @@ describe('worktrees and remote branches', () => {
     sh(dir, ['worktree', 'add', '-q', wt, 'feat'])
     squashMerge(dir, 'feat')
     commitFile(wt, 'extra.txt', 'extra\n', 'feat: extra')
-    const item = row(sweep(dir).items, 'worktree', wt)
-    expect(item.classification).toBe('needs-investigation')
-    expect(item.facts['landing']).toBeUndefined()
+    const item = row(sweep(dir).rows, 'worktree', wt)
+    expect(item.verdict).toBe('review')
+    expect(item.evidence.landing).toBeUndefined()
   })
 
   describe('with a remote', () => {
@@ -643,13 +640,13 @@ describe('worktrees and remote branches', () => {
       sh(dir, ['checkout', '-q', 'main'])
       squashMerge(dir, 'feat')
       sh(dir, ['push', '-q', 'origin', 'main'])
-      const items = sweep(dir).items
-      const local = row(items, 'local_branch', 'feat')
-      const remote = row(items, 'remote_branch', 'origin/feat')
-      expect(local.classification).toBe('safe-to-delete')
-      expect(local.reason).toContain('origin/main')
-      expect(remote.classification).toBe('safe-to-delete')
-      expect(remote.facts['landing_check']).toBe('squashed')
+      const items = sweep(dir, withRemote).rows
+      const local = row(items, 'branch', 'feat')
+      const remote = row(items, 'remote', 'origin/feat')
+      expect(local.verdict).toBe('delete')
+      expect(local.why).toContain('origin/main')
+      expect(remote.verdict).toBe('delete')
+      expect(remote.evidence.landingCheck).toBe('squashed')
     })
 
     test('work merged only into an unpushed local main is not landed', () => {
@@ -659,7 +656,7 @@ describe('worktrees and remote branches', () => {
       commitFile(dir, 'a.txt', 'a\n', 'feat: a')
       sh(dir, ['checkout', '-q', 'main'])
       squashMerge(dir, 'feat')
-      expect(branchRow(dir, 'feat').classification).toBe('needs-investigation')
+      expect(branchRow(dir, 'feat').verdict).toBe('review')
     })
 
     test('a shallow clone is not trusted', () => {
@@ -675,7 +672,7 @@ describe('worktrees and remote branches', () => {
       sh(shallow, ['checkout', '-q', '-b', 'feat', 'origin/feat'])
       sh(shallow, ['checkout', '-q', 'main'])
       expect(sh(shallow, ['rev-parse', '--is-shallow-repository'])).toBe('true')
-      expect(branchRow(shallow, 'feat').classification).toBe('needs-investigation')
+      expect(branchRow(shallow, 'feat').verdict).toBe('review')
       expect(patchEquivalent(repoInfo(shallow), 'feat', new Git(shallow))).toBeNull()
     })
   })
@@ -862,12 +859,8 @@ describe('failing closed', () => {
 
   test('a sweep over a failing check keeps the branch for a person', () => {
     const git = interposedRunner((argv) => (is(argv, 'cherry') ? failure() : undefined))
-    const item = row(
-      sweepRepo(dir, { noProvider: true, cwd: dir, git }).items,
-      'local_branch',
-      'feat',
-    )
-    expect(item.classification).toBe('needs-investigation')
-    expect(item.facts['landing']).toBeUndefined()
+    const item = row(sweep(dir, { git }).rows, 'branch', 'feat')
+    expect(item.verdict).toBe('review')
+    expect(item.evidence.landing).toBeUndefined()
   })
 })

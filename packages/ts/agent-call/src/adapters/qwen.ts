@@ -12,6 +12,9 @@ import {
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
+// The binary and flags below are asserted against the harness knowledge file in
+// tests/knowledge-facts.test.ts; policy (which mode, which default) stays here.
+
 const MCP_CONFIG_FILE = 'mcp.json'
 const SETTINGS_DEFAULTS_FILE = 'qwen-system-defaults.json'
 
@@ -191,6 +194,11 @@ function planQwen(command: readonly string[], spec: AgentCallSpec): PlannedCall 
       'dropped',
       'qwen has no dollar cap (only --max-session-turns / --max-tool-calls)',
     )
+  }
+
+  if (spec.limits?.maxTurns !== undefined) {
+    argv.push('--max-session-turns', String(spec.limits.maxTurns))
+    note(notes, 'limits.maxTurns', 'native', '--max-session-turns')
   }
 
   argv.push(...(spec.extraArgs ?? []))

@@ -1,5 +1,22 @@
 # @osdlc/typed-git
 
+## 0.14.0
+
+### Minor Changes
+
+- cb8eafc: `rebase` takes an `upstream` option: `git.rebase(onto, { upstream })` runs `git rebase --onto <onto> <upstream>`, replaying only the commits after `upstream`. Restacking a branch whose base was rewritten needs it, so the base's old commits are left behind instead of replayed onto its new ones.
+
+### Patch Changes
+
+- Updated dependencies [e1a5941]
+  - @osdlc/command-seam@0.15.0
+
+## 0.13.0
+
+### Minor Changes
+
+- 25ccd9e: `submodules()` is a new read verb: the submodules the index records, as `{ path, commit }` rows (`git ls-files --stage -z`, the mode `160000` gitlink entries). It reads the index, not `.gitmodules`, and says nothing of whether a submodule is checked out; its directory holds a `.git` when it is. A path in conflict appears once. `git.soft.submodules()` answers `[]` on failure.
+
 ## 0.12.0
 
 ### Minor Changes

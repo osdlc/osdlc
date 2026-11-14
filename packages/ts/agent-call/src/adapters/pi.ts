@@ -21,6 +21,9 @@ import {
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
+// The binary and flags below are asserted against the harness knowledge file in
+// tests/knowledge-facts.test.ts; policy (which mode, which default) stays here.
+
 /** Options for {@link piAdapter}. */
 export interface PiAdapterOptions extends CommandOptions {}
 
@@ -216,6 +219,10 @@ function planPi(command: readonly string[], spec: AgentCallSpec): PlannedCall {
   for (const file of files) argv.push(`@${file}`)
   if (files.length > 0) {
     note(notes, 'context.files', 'native', '@path arguments')
+  }
+
+  if (spec.limits?.maxTurns !== undefined) {
+    note(notes, 'limits.maxTurns', 'dropped', 'pi has no turn limit flag')
   }
 
   argv.push(...(spec.extraArgs ?? []))

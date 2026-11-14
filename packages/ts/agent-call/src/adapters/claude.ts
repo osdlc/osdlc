@@ -12,6 +12,9 @@ import {
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
+// The binary and flags below are asserted against the harness knowledge file in
+// tests/knowledge-facts.test.ts; policy (which mode, which default) stays here.
+
 const MCP_CONFIG_FILE = 'mcp.json'
 
 /** Options for {@link claudeAdapter}. */
@@ -186,6 +189,11 @@ function planClaude(command: readonly string[], spec: AgentCallSpec): PlannedCal
   if (spec.budgetUsd !== undefined) {
     argv.push('--max-budget-usd', String(spec.budgetUsd))
     note(notes, 'budgetUsd', 'native', '--max-budget-usd')
+  }
+
+  if (spec.limits?.maxTurns !== undefined) {
+    argv.push('--max-turns', String(spec.limits.maxTurns))
+    note(notes, 'limits.maxTurns', 'native', '--max-turns')
   }
 
   argv.push(...(spec.extraArgs ?? []))

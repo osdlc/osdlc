@@ -1,0 +1,1031 @@
+{
+  "family": "markdown-tags",
+  "reference": "rust",
+  "referenceVersion": "0.4.1",
+  "sections": {
+    "inline_tags": {
+      "description": "Inline tags of `body` in encounter order, not deduplicated, under each dialect: `expect` maps `obsidian`, `unicode` and `ascii` to the tag names found, without the `#`. Offsets are not part of the answer.",
+      "cases": [
+        {
+          "name": "ordinary_tag",
+          "input": {
+            "body": "see #health today"
+          },
+          "expect": {
+            "obsidian": [
+              "health"
+            ],
+            "unicode": [
+              "health"
+            ],
+            "ascii": [
+              "health"
+            ]
+          }
+        },
+        {
+          "name": "tag_at_start",
+          "input": {
+            "body": "#at-start"
+          },
+          "expect": {
+            "obsidian": [
+              "at-start"
+            ],
+            "unicode": [
+              "at-start"
+            ],
+            "ascii": [
+              "at-start"
+            ]
+          }
+        },
+        {
+          "name": "nested_tag",
+          "input": {
+            "body": "#a/b nested"
+          },
+          "expect": {
+            "obsidian": [
+              "a/b"
+            ],
+            "unicode": [
+              "a/b"
+            ],
+            "ascii": [
+              "a/b"
+            ]
+          }
+        },
+        {
+          "name": "tag_on_a_later_line",
+          "input": {
+            "body": "first line\n#second"
+          },
+          "expect": {
+            "obsidian": [
+              "second"
+            ],
+            "unicode": [
+              "second"
+            ],
+            "ascii": [
+              "second"
+            ]
+          }
+        },
+        {
+          "name": "adjacent_tags",
+          "input": {
+            "body": "#a #b #c"
+          },
+          "expect": {
+            "obsidian": [
+              "a",
+              "b",
+              "c"
+            ],
+            "unicode": [
+              "a",
+              "b",
+              "c"
+            ],
+            "ascii": [
+              "a",
+              "b",
+              "c"
+            ]
+          }
+        },
+        {
+          "name": "hash_inside_a_word",
+          "input": {
+            "body": "colour#fff"
+          },
+          "expect": {
+            "obsidian": [],
+            "unicode": [],
+            "ascii": []
+          }
+        },
+        {
+          "name": "c_sharp_and_mid_word",
+          "input": {
+            "body": "C# and foo#bar"
+          },
+          "expect": {
+            "obsidian": [],
+            "unicode": [],
+            "ascii": []
+          }
+        },
+        {
+          "name": "heading_marker",
+          "input": {
+            "body": "# Heading"
+          },
+          "expect": {
+            "obsidian": [],
+            "unicode": [],
+            "ascii": []
+          }
+        },
+        {
+          "name": "wikilink_heading_fragment",
+          "input": {
+            "body": "[[Note#Section]]"
+          },
+          "expect": {
+            "obsidian": [],
+            "unicode": [],
+            "ascii": []
+          }
+        },
+        {
+          "name": "digit_initial",
+          "input": {
+            "body": "#2024-review"
+          },
+          "expect": {
+            "obsidian": [
+              "2024-review"
+            ],
+            "unicode": [
+              "2024-review"
+            ],
+            "ascii": []
+          }
+        },
+        {
+          "name": "one_digit",
+          "input": {
+            "body": "#1"
+          },
+          "expect": {
+            "obsidian": [],
+            "unicode": [
+              "1"
+            ],
+            "ascii": []
+          }
+        },
+        {
+          "name": "all_digits",
+          "input": {
+            "body": "#2024"
+          },
+          "expect": {
+            "obsidian": [],
+            "unicode": [
+              "2024"
+            ],
+            "ascii": []
+          }
+        },
+        {
+          "name": "digits_then_slash",
+          "input": {
+            "body": "#2024/"
+          },
+          "expect": {
+            "obsidian": [
+              "2024/"
+            ],
+            "unicode": [
+              "2024/"
+            ],
+            "ascii": []
+          }
+        },
+        {
+          "name": "hyphen_only",
+          "input": {
+            "body": "#-"
+          },
+          "expect": {
+            "obsidian": [
+              "-"
+            ],
+            "unicode": [
+              "-"
+            ],
+            "ascii": []
+          }
+        },
+        {
+          "name": "underscore_only",
+          "input": {
+            "body": "#_"
+          },
+          "expect": {
+            "obsidian": [
+              "_"
+            ],
+            "unicode": [
+              "_"
+            ],
+            "ascii": [
+              "_"
+            ]
+          }
+        },
+        {
+          "name": "accented",
+          "input": {
+            "body": "#santé"
+          },
+          "expect": {
+            "obsidian": [
+              "santé"
+            ],
+            "unicode": [
+              "santé"
+            ],
+            "ascii": [
+              "sant"
+            ]
+          }
+        },
+        {
+          "name": "non_latin_script",
+          "input": {
+            "body": "#日本語 and #кириллица"
+          },
+          "expect": {
+            "obsidian": [
+              "日本語",
+              "кириллица"
+            ],
+            "unicode": [
+              "日本語",
+              "кириллица"
+            ],
+            "ascii": []
+          }
+        },
+        {
+          "name": "combining_marks",
+          "input": {
+            "body": "#हिंदी"
+          },
+          "expect": {
+            "obsidian": [
+              "हिंदी"
+            ],
+            "unicode": [
+              "हिंदी"
+            ],
+            "ascii": []
+          }
+        },
+        {
+          "name": "superscript_and_fraction",
+          "input": {
+            "body": "#² and #½"
+          },
+          "expect": {
+            "obsidian": [],
+            "unicode": [
+              "²",
+              "½"
+            ],
+            "ascii": []
+          }
+        },
+        {
+          "name": "roman_numeral",
+          "input": {
+            "body": "#Ⅻ"
+          },
+          "expect": {
+            "obsidian": [
+              "Ⅻ"
+            ],
+            "unicode": [
+              "Ⅻ"
+            ],
+            "ascii": []
+          }
+        },
+        {
+          "name": "parenthesized",
+          "input": {
+            "body": "(#draft)"
+          },
+          "expect": {
+            "obsidian": [
+              "draft"
+            ],
+            "unicode": [],
+            "ascii": [
+              "draft"
+            ]
+          }
+        },
+        {
+          "name": "bracketed",
+          "input": {
+            "body": "[#draft]"
+          },
+          "expect": {
+            "obsidian": [],
+            "unicode": [],
+            "ascii": []
+          }
+        },
+        {
+          "name": "braced",
+          "input": {
+            "body": "{#draft}"
+          },
+          "expect": {
+            "obsidian": [],
+            "unicode": [],
+            "ascii": []
+          }
+        },
+        {
+          "name": "double_quoted",
+          "input": {
+            "body": "\"#draft\""
+          },
+          "expect": {
+            "obsidian": [],
+            "unicode": [],
+            "ascii": []
+          }
+        },
+        {
+          "name": "single_quoted",
+          "input": {
+            "body": "'#draft'"
+          },
+          "expect": {
+            "obsidian": [],
+            "unicode": [],
+            "ascii": []
+          }
+        },
+        {
+          "name": "next_line_before_hash",
+          "input": {
+            "body": "a#tag"
+          },
+          "expect": {
+            "obsidian": [],
+            "unicode": [
+              "tag"
+            ],
+            "ascii": [
+              "tag"
+            ]
+          }
+        },
+        {
+          "name": "byte_order_mark_before_hash",
+          "input": {
+            "body": "a﻿#tag"
+          },
+          "expect": {
+            "obsidian": [
+              "tag"
+            ],
+            "unicode": [],
+            "ascii": []
+          }
+        },
+        {
+          "name": "backtick_fence",
+          "input": {
+            "body": "prose\n\n```\n#nottag\n```\n"
+          },
+          "expect": {
+            "obsidian": [],
+            "unicode": [
+              "nottag"
+            ],
+            "ascii": []
+          }
+        },
+        {
+          "name": "tilde_fence",
+          "input": {
+            "body": "prose\n\n~~~\n#nottag\n~~~\n"
+          },
+          "expect": {
+            "obsidian": [],
+            "unicode": [
+              "nottag"
+            ],
+            "ascii": []
+          }
+        },
+        {
+          "name": "code_span",
+          "input": {
+            "body": "more ` #alsonot ` prose"
+          },
+          "expect": {
+            "obsidian": [],
+            "unicode": [
+              "alsonot"
+            ],
+            "ascii": []
+          }
+        },
+        {
+          "name": "code_span_touching_the_hash",
+          "input": {
+            "body": "a `#x` b"
+          },
+          "expect": {
+            "obsidian": [],
+            "unicode": [],
+            "ascii": []
+          }
+        },
+        {
+          "name": "hash_after_a_code_span",
+          "input": {
+            "body": "`x`#tag"
+          },
+          "expect": {
+            "obsidian": [
+              "tag"
+            ],
+            "unicode": [],
+            "ascii": [
+              "tag"
+            ]
+          }
+        },
+        {
+          "name": "link_destination",
+          "input": {
+            "body": "[see](#section)"
+          },
+          "expect": {
+            "obsidian": [],
+            "unicode": [],
+            "ascii": [
+              "section"
+            ]
+          }
+        },
+        {
+          "name": "image_destination",
+          "input": {
+            "body": "![alt](#img)"
+          },
+          "expect": {
+            "obsidian": [],
+            "unicode": [],
+            "ascii": [
+              "img"
+            ]
+          }
+        },
+        {
+          "name": "reference_definition",
+          "input": {
+            "body": "[x]: #def"
+          },
+          "expect": {
+            "obsidian": [],
+            "unicode": [
+              "def"
+            ],
+            "ascii": [
+              "def"
+            ]
+          }
+        },
+        {
+          "name": "destination_with_title",
+          "input": {
+            "body": "[a](https://x.com \"see #title\") #after"
+          },
+          "expect": {
+            "obsidian": [
+              "after"
+            ],
+            "unicode": [
+              "title",
+              "after"
+            ],
+            "ascii": [
+              "title",
+              "after"
+            ]
+          }
+        },
+        {
+          "name": "destination_with_nested_parens",
+          "input": {
+            "body": "[a](x_(#y)) #z"
+          },
+          "expect": {
+            "obsidian": [
+              "z"
+            ],
+            "unicode": [
+              "z"
+            ],
+            "ascii": [
+              "y",
+              "z"
+            ]
+          }
+        },
+        {
+          "name": "angle_bracket_destination",
+          "input": {
+            "body": "[a](<#x y>)"
+          },
+          "expect": {
+            "obsidian": [],
+            "unicode": [],
+            "ascii": []
+          }
+        },
+        {
+          "name": "image_inside_link",
+          "input": {
+            "body": "[![alt](#i)](#l)"
+          },
+          "expect": {
+            "obsidian": [],
+            "unicode": [],
+            "ascii": [
+              "i",
+              "l"
+            ]
+          }
+        },
+        {
+          "name": "unclosed_destination",
+          "input": {
+            "body": "[a](#x"
+          },
+          "expect": {
+            "obsidian": [
+              "x"
+            ],
+            "unicode": [],
+            "ascii": [
+              "x"
+            ]
+          }
+        },
+        {
+          "name": "destination_inside_an_unclosed_destination",
+          "input": {
+            "body": "[a](x [b](#y) #in"
+          },
+          "expect": {
+            "obsidian": [
+              "in"
+            ],
+            "unicode": [
+              "in"
+            ],
+            "ascii": [
+              "y",
+              "in"
+            ]
+          }
+        },
+        {
+          "name": "bracket_without_link_text",
+          "input": {
+            "body": "see](#x)"
+          },
+          "expect": {
+            "obsidian": [
+              "x"
+            ],
+            "unicode": [],
+            "ascii": [
+              "x"
+            ]
+          }
+        },
+        {
+          "name": "escaped_bracket",
+          "input": {
+            "body": "\\[a](#x)"
+          },
+          "expect": {
+            "obsidian": [
+              "x"
+            ],
+            "unicode": [],
+            "ascii": [
+              "x"
+            ]
+          }
+        },
+        {
+          "name": "destination_across_a_blank_line",
+          "input": {
+            "body": "[a](#x\n\n#y)"
+          },
+          "expect": {
+            "obsidian": [
+              "x",
+              "y"
+            ],
+            "unicode": [
+              "y"
+            ],
+            "ascii": [
+              "x",
+              "y"
+            ]
+          }
+        },
+        {
+          "name": "footnote_definition",
+          "input": {
+            "body": "x[^1]\n\n[^1]: see #note"
+          },
+          "expect": {
+            "obsidian": [
+              "note"
+            ],
+            "unicode": [
+              "note"
+            ],
+            "ascii": [
+              "note"
+            ]
+          }
+        },
+        {
+          "name": "definition_inside_a_paragraph",
+          "input": {
+            "body": "text\n[x]: #def"
+          },
+          "expect": {
+            "obsidian": [
+              "def"
+            ],
+            "unicode": [
+              "def"
+            ],
+            "ascii": [
+              "def"
+            ]
+          }
+        },
+        {
+          "name": "definition_after_a_definition",
+          "input": {
+            "body": "[a]: /x\n[b]: #def"
+          },
+          "expect": {
+            "obsidian": [],
+            "unicode": [
+              "def"
+            ],
+            "ascii": [
+              "def"
+            ]
+          }
+        },
+        {
+          "name": "definition_after_a_heading",
+          "input": {
+            "body": "# Title\n[ref]: #anchor\n"
+          },
+          "expect": {
+            "obsidian": [],
+            "unicode": [
+              "anchor"
+            ],
+            "ascii": [
+              "anchor"
+            ]
+          }
+        },
+        {
+          "name": "definition_after_an_indented_heading",
+          "input": {
+            "body": "   ## Title\n[ref]: #anchor"
+          },
+          "expect": {
+            "obsidian": [],
+            "unicode": [
+              "anchor"
+            ],
+            "ascii": [
+              "anchor"
+            ]
+          }
+        },
+        {
+          "name": "hash_line_is_not_a_heading",
+          "input": {
+            "body": "#Title\n[ref]: #anchor"
+          },
+          "expect": {
+            "obsidian": [
+              "Title",
+              "anchor"
+            ],
+            "unicode": [
+              "Title",
+              "anchor"
+            ],
+            "ascii": [
+              "Title",
+              "anchor"
+            ]
+          }
+        },
+        {
+          "name": "definition_after_a_blank_line_crlf",
+          "input": {
+            "body": "a\r\n\r\n[ref]: #anchor\r\n"
+          },
+          "expect": {
+            "obsidian": [],
+            "unicode": [
+              "anchor"
+            ],
+            "ascii": [
+              "anchor"
+            ]
+          }
+        },
+        {
+          "name": "destination_across_a_blank_line_crlf",
+          "input": {
+            "body": "[a](#x\r\n\r\n#y)"
+          },
+          "expect": {
+            "obsidian": [
+              "x",
+              "y"
+            ],
+            "unicode": [
+              "y"
+            ],
+            "ascii": [
+              "x",
+              "y"
+            ]
+          }
+        }
+      ]
+    },
+    "tag_at": {
+      "description": "The tag whose `#` is at `index` in `text` under `dialect`, as `expect.tag`, or null. `index` is an offset in UTF-8 bytes; the TypeScript runner converts to its UTF-16 index, and an `index` that is not on a character boundary or is past the end gives null. The dialect's character rule only: no code or link blanking.",
+      "cases": [
+        {
+          "name": "after_a_paren",
+          "input": {
+            "text": "(#draft) #2024 x#no",
+            "index": 1,
+            "dialect": "obsidian"
+          },
+          "expect": {
+            "tag": "draft"
+          }
+        },
+        {
+          "name": "digits_only_obsidian",
+          "input": {
+            "text": "(#draft) #2024 x#no",
+            "index": 9,
+            "dialect": "obsidian"
+          },
+          "expect": {
+            "tag": null
+          }
+        },
+        {
+          "name": "digits_only_unicode",
+          "input": {
+            "text": "(#draft) #2024 x#no",
+            "index": 9,
+            "dialect": "unicode"
+          },
+          "expect": {
+            "tag": "2024"
+          }
+        },
+        {
+          "name": "paren_before_unicode",
+          "input": {
+            "text": "(#draft) #2024 x#no",
+            "index": 1,
+            "dialect": "unicode"
+          },
+          "expect": {
+            "tag": null
+          }
+        },
+        {
+          "name": "paren_before_ascii",
+          "input": {
+            "text": "(#draft) #2024 x#no",
+            "index": 1,
+            "dialect": "ascii"
+          },
+          "expect": {
+            "tag": "draft"
+          }
+        },
+        {
+          "name": "inside_a_word",
+          "input": {
+            "text": "(#draft) #2024 x#no",
+            "index": 17,
+            "dialect": "obsidian"
+          },
+          "expect": {
+            "tag": null
+          }
+        },
+        {
+          "name": "not_a_hash",
+          "input": {
+            "text": "(#draft) #2024 x#no",
+            "index": 0,
+            "dialect": "obsidian"
+          },
+          "expect": {
+            "tag": null
+          }
+        },
+        {
+          "name": "at_start",
+          "input": {
+            "text": "#start tag",
+            "index": 0,
+            "dialect": "unicode"
+          },
+          "expect": {
+            "tag": "start"
+          }
+        },
+        {
+          "name": "past_the_end",
+          "input": {
+            "text": "#a",
+            "index": 2,
+            "dialect": "unicode"
+          },
+          "expect": {
+            "tag": null
+          }
+        },
+        {
+          "name": "empty_text",
+          "input": {
+            "text": "",
+            "index": 0,
+            "dialect": "unicode"
+          },
+          "expect": {
+            "tag": null
+          }
+        },
+        {
+          "name": "astral_letter_after_hash",
+          "input": {
+            "text": "#𝐀b",
+            "index": 0,
+            "dialect": "obsidian"
+          },
+          "expect": {
+            "tag": "𝐀b"
+          }
+        },
+        {
+          "name": "astral_letter_before_hash",
+          "input": {
+            "text": "𝐀#b",
+            "index": 4,
+            "dialect": "obsidian"
+          },
+          "expect": {
+            "tag": null
+          }
+        },
+        {
+          "name": "inside_a_character",
+          "input": {
+            "text": "é#a",
+            "index": 1,
+            "dialect": "unicode"
+          },
+          "expect": {
+            "tag": null
+          }
+        },
+        {
+          "name": "code_is_not_blanked",
+          "input": {
+            "text": "` #code`",
+            "index": 2,
+            "dialect": "obsidian"
+          },
+          "expect": {
+            "tag": "code"
+          }
+        },
+        {
+          "name": "link_destination_is_not_blanked",
+          "input": {
+            "text": "[see](#section)",
+            "index": 6,
+            "dialect": "obsidian"
+          },
+          "expect": {
+            "tag": "section"
+          }
+        },
+        {
+          "name": "ascii_stops_at_non_ascii",
+          "input": {
+            "text": "#santé",
+            "index": 0,
+            "dialect": "ascii"
+          },
+          "expect": {
+            "tag": "sant"
+          }
+        },
+        {
+          "name": "nested_tag",
+          "input": {
+            "text": "x #a/b-c d",
+            "index": 2,
+            "dialect": "obsidian"
+          },
+          "expect": {
+            "tag": "a/b-c"
+          }
+        }
+      ]
+    },
+    "renderer_only": {
+      "description": "Tags a renderer that reads the syntax tree shows in `body`, as `expect.tags`. A source scan cannot match these (markup right before a `#`, link text), so the Rust crate and the TypeScript package skip the section; a renderer runs it. Its `expect` values are written by hand, not by the generator.",
+      "cases": [
+        {
+          "name": "bold_then_hash",
+          "input": {
+            "body": "**bold**#tag"
+          },
+          "expect": {
+            "tags": [
+              "tag"
+            ]
+          }
+        },
+        {
+          "name": "link_text",
+          "input": {
+            "body": "[text #tag](https://example.com)"
+          },
+          "expect": {
+            "tags": []
+          }
+        },
+        {
+          "name": "link_text_in_emphasis",
+          "input": {
+            "body": "[see *#tag* here](https://example.com)"
+          },
+          "expect": {
+            "tags": []
+          }
+        },
+        {
+          "name": "strikethrough_then_hash",
+          "input": {
+            "body": "~~s~~#tag"
+          },
+          "expect": {
+            "tags": [
+              "tag"
+            ]
+          }
+        },
+        {
+          "name": "entity_space_before_hash",
+          "input": {
+            "body": "a&nbsp;#tag"
+          },
+          "expect": {
+            "tags": [
+              "tag"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

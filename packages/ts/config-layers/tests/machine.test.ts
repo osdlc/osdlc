@@ -1,7 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  lstatSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { dirname, join } from 'node:path'
 
+import { etag, etagOfFile, WriteConflictError } from '@osdlc/etag-write'
 import { z } from 'zod'
 
 import { envStem } from '../src/dirs.ts'
@@ -11,6 +20,12 @@ import {
   migrateMachineRaw,
   type MachineMigration,
 } from '../src/machine-migrate.ts'
+import {
+  currentConfigVersion,
+  defineMigrations,
+  migrateConfigRaw,
+  type ConfigMigration,
+} from '../src/migrate.ts'
 import { MachineSchema, sandbox, type Sandbox, VENDOR_DIRS } from './support.ts'
 
 let sb: Sandbox
@@ -231,6 +246,144 @@ describe('write', () => {
     expect(readFileSync(sb.machine.path(), 'utf-8')).toBe('repos: [/one]\n')
     expect(existsSync(`${sb.machine.path()}.bak`)).toBe(false)
   })
+
+  test.skipIf(process.platform === 'win32')(
+    'a symlinked file is written through: the link stays, the target and its .bak change',
+    () => {
+      const real = join(sb.root, 'real.yaml')
+      const link = join(sb.root, 'link.yaml')
+      writeFileSync(real, 'repos: [/one]\n')
+      symlinkSync(real, link)
+      process.env[sb.machine.env] = link
+      sb.machine.write('repos: [/two]\n', { etag: sb.machine.read()!.etag })
+      expect(lstatSync(link).isSymbolicLink()).toBe(true)
+      expect(readFileSync(real, 'utf-8')).toBe('repos: [/two]\n')
+      expect(readFileSync(`${real}.bak`, 'utf-8')).toBe('repos: [/one]\n')
+      expect(existsSync(`${link}.bak`)).toBe(false)
+      sb.machine.write('repos: [/three]\n')
+      expect(lstatSync(link).isSymbolicLink()).toBe(true)
+      expect(readFileSync(real, 'utf-8')).toBe('repos: [/three]\n')
+      expect(readFileSync(`${real}.bak`, 'utf-8')).toBe('repos: [/two]\n')
+    },
+  )
+
+  test.skipIf(process.platform === 'win32')(
+    'a chain of links, the last one relative and dangling, creates the file at its end',
+    () => {
+      const real = join(sb.root, 'sub', 'real.yaml')
+      const mid = join(sb.root, 'mid.yaml')
+      const link = join(sb.root, 'link.yaml')
+      symlinkSync(join('sub', 'real.yaml'), mid)
+      symlinkSync(mid, link)
+      process.env[sb.machine.env] = link
+      sb.machine.write('repos: [/x]\n', { etag: null })
+      expect(lstatSync(link).isSymbolicLink()).toBe(true)
+      expect(lstatSync(mid).isSymbolicLink()).toBe(true)
+      expect(readFileSync(real, 'utf-8')).toBe('repos: [/x]\n')
+    },
+  )
+
+  test.skipIf(process.platform === 'win32')(
+    'without an etag, a dangling link creates its target and no .bak',
+    () => {
+      const real = join(sb.root, 'real.yaml')
+      const link = join(sb.root, 'link.yaml')
+      symlinkSync(real, link)
+      process.env[sb.machine.env] = link
+      sb.machine.write('repos: [/x]\n')
+      expect(lstatSync(link).isSymbolicLink()).toBe(true)
+      expect(readFileSync(real, 'utf-8')).toBe('repos: [/x]\n')
+      expect(existsSync(`${real}.bak`)).toBe(false)
+    },
+  )
+
+  test.skipIf(process.platform === 'win32')(
+    'a symlink loop throws and leaves both links in place, with or without an etag',
+    () => {
+      const a = join(sb.root, 'a.yaml')
+      const link = join(sb.root, 'link.yaml')
+      symlinkSync(a, link)
+      symlinkSync(link, a)
+      process.env[sb.machine.env] = link
+      expect(() => sb.machine.write('repos: [/x]\n')).toThrow(/too many levels/)
+      expect(() => sb.machine.write('repos: [/x]\n', { etag: null })).toThrow(/too many levels/)
+      expect(lstatSync(link).isSymbolicLink()).toBe(true)
+      expect(lstatSync(a).isSymbolicLink()).toBe(true)
+    },
+  )
+
+  test('returns the etag of what it wrote', () => {
+    expect(sb.machine.write('repos: [/x]\n')).toBe(etag('repos: [/x]\n'))
+  })
+})
+
+describe('read, and write with an etag', () => {
+  test('read gives the text and its etag, or null when there is no file', () => {
+    process.env[sb.machine.env] = join(sb.root, 'absent.yaml')
+    expect(sb.machine.read()).toBeNull()
+    loadText('repos: [/one]\n')
+    expect(sb.machine.read()).toEqual({ text: 'repos: [/one]\n', etag: etag('repos: [/one]\n') })
+  })
+
+  test('a read-modify-write with the etag goes through', () => {
+    loadText('# mine\nrepos: [/one]\n')
+    const seen = sb.machine.read()!
+    const next = sb.machine.write(seen.text.replace('/one', '/two'), { etag: seen.etag })
+    expect(readFileSync(sb.machine.path(), 'utf-8')).toBe('# mine\nrepos: [/two]\n')
+    expect(next).toBe(etagOfFile(sb.machine.path()))
+  })
+
+  test('the etag is of the bytes, so a file that is not valid UTF-8 can still be written', () => {
+    loadText('repos: [/one]\n')
+    // A Latin-1 `é` in a comment: decoding replaces it, so a text etag would never match.
+    writeFileSync(sb.machine.path(), Buffer.from('# caf\xe9\nrepos: [/one]\n', 'latin1'))
+    const seen = sb.machine.read()!
+    expect(seen.etag).toBe(etagOfFile(sb.machine.path()))
+    sb.machine.write('repos: [/two]\n', { etag: seen.etag })
+    expect(readFileSync(sb.machine.path(), 'utf-8')).toBe('repos: [/two]\n')
+  })
+
+  test('an edit saved since the read is not overwritten, and the .bak is left alone', () => {
+    loadText('repos: [/one]\n')
+    const p = sb.machine.path()
+    writeFileSync(`${p}.bak`, 'older backup\n')
+    const seen = sb.machine.read()!
+    writeFileSync(p, 'repos: [/edited]\n')
+    let err: unknown
+    try {
+      sb.machine.write('repos: [/two]\n', { etag: seen.etag })
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(WriteConflictError)
+    expect((err as WriteConflictError).reason).toBe('changed')
+    expect(readFileSync(p, 'utf-8')).toBe('repos: [/edited]\n')
+    expect(readFileSync(`${p}.bak`, 'utf-8')).toBe('older backup\n')
+  })
+
+  test('etag null means "I read no file": a file created since is a conflict', () => {
+    process.env[sb.machine.env] = join(sb.root, 'new.yaml')
+    expect(sb.machine.read()).toBeNull()
+    writeFileSync(sb.machine.path(), 'repos: [/someone]\n')
+    expect(() => sb.machine.write('repos: [/me]\n', { etag: null })).toThrow(
+      expect.objectContaining({ reason: 'exists-without-etag' }),
+    )
+    expect(readFileSync(sb.machine.path(), 'utf-8')).toBe('repos: [/someone]\n')
+  })
+
+  test('etag null creates the file when there still is none', () => {
+    process.env[sb.machine.env] = join(sb.root, 'new.yaml')
+    sb.machine.write('repos: [/me]\n', { etag: null })
+    expect(readFileSync(sb.machine.path(), 'utf-8')).toBe('repos: [/me]\n')
+  })
+
+  test('a file deleted since the read is created again', () => {
+    loadText('repos: [/one]\n')
+    const seen = sb.machine.read()!
+    rmSync(sb.machine.path())
+    sb.machine.write('repos: [/two]\n', { etag: seen.etag })
+    expect(readFileSync(sb.machine.path(), 'utf-8')).toBe('repos: [/two]\n')
+  })
 })
 
 describe('check', () => {
@@ -258,84 +411,170 @@ describe('check', () => {
 })
 
 describe('migrations', () => {
-  const toV2: MachineMigration = {
+  const toV2: ConfigMigration = {
     from: 1,
     to: 2,
-    run: ({ dirs, ...rest }) => ({ ...rest, repos: dirs }),
+    run: ({ dirs, ...rest }, warn) => {
+      warn('dirs is now repos')
+      return { ...rest, repos: dirs }
+    },
   }
-  const toV3: MachineMigration = {
+  const toV3: ConfigMigration = {
     from: 2,
     to: 3,
     run: (raw) => ({ ...raw, paths: { dev: '~/dev' } }),
   }
-  const migrating = () =>
+  const migrating = (migrations: readonly ConfigMigration[] = [toV2, toV3]) =>
     machineConfigFile({
       tool: 'tooly',
       schema: MachineSchema.extend({ version: z.number().int().min(1).optional() }),
       vendorDirs: VENDOR_DIRS,
       dirs: () => sb.dirs,
-      migrations: [toV2, toV3],
+      migrations,
     })
+  const fileAt = (m: { env: string }, name: string, text: string): string => {
+    const p = join(sb.root, name)
+    writeFileSync(p, text)
+    process.env[m.env] = p
+    return p
+  }
 
-  test('migrateMachineRaw runs each step from the file version on', () => {
-    expect(migrateMachineRaw({ dirs: ['/a'] }, [toV2, toV3])).toEqual({
-      raw: { repos: ['/a'], paths: { dev: '~/dev' }, version: 3 },
-      applied: [2, 3],
-    })
-    expect(migrateMachineRaw({ version: 2, repos: [] }, [toV2, toV3]).applied).toEqual([3])
-    expect(migrateMachineRaw({ version: 3 }, [toV2, toV3])).toEqual({
-      raw: { version: 3 },
-      applied: [],
-    })
-    expect(currentMachineVersion([])).toBe(1)
-    expect(currentMachineVersion([toV2, toV3])).toBe(3)
+  test('the machine names are the generic driver', () => {
+    const steps: MachineMigration[] = [toV2, toV3]
+    expect(migrateMachineRaw).toBe(migrateConfigRaw)
+    expect(currentMachineVersion).toBe(currentConfigVersion)
+    expect(migrateMachineRaw({ dirs: ['/a'] }, steps).applied).toEqual([2, 3])
   })
 
   test('load migrates in memory; migrate persists once', () => {
     const m = migrating()
-    const p = join(sb.root, 'old.yaml')
-    writeFileSync(p, 'dirs: [/a]\n')
-    process.env[m.env] = p
+    const p = fileAt(m, 'old.yaml', 'dirs: [/a]\n')
     expect(m.loadWithIssues()).toMatchObject({ value: { repos: ['/a'], version: 3 }, issues: [] })
+    expect(readFileSync(p, 'utf-8')).toBe('dirs: [/a]\n')
+    const text = 'repos:\n  - /a\npaths:\n  dev: ~/dev\nversion: 3\n'
     expect(m.migrate({ dryRun: true })).toEqual({
       path: p,
       from: 1,
       to: 3,
       applied: [2, 3],
       written: false,
+      warnings: [{ to: 2, message: 'dirs is now repos' }],
+      rewrite: 'edited',
+      text,
     })
+    expect(readFileSync(p, 'utf-8')).toBe('dirs: [/a]\n')
     expect(m.migrate().written).toBe(true)
+    expect(readFileSync(p, 'utf-8')).toBe(text)
     expect(readFileSync(`${p}.bak`, 'utf-8')).toBe('dirs: [/a]\n')
-    expect(m.migrate()).toMatchObject({ from: 3, to: 3, applied: [], written: false })
+    expect(m.migrate()).toMatchObject({ from: 3, to: 3, applied: [], written: false, text: null })
+  })
+
+  test('the rewrite keeps every comment outside the values that changed', () => {
+    const m = migrating(
+      defineMigrations([{ to: 2, moves: [['checkout.proto', 'checkout.protocol']] }]),
+    )
+    const src = [
+      '# My machine. Hand-edited; keep these notes.',
+      '',
+      'repos:',
+      '  - ~/dev   # the main one',
+      '',
+      '# How checkouts are made.',
+      'checkout:',
+      '  layout: "{dev}/{repo}"   # flat',
+      '  proto: ssh',
+      'trust:',
+      '  owners: [me]',
+      '',
+    ].join('\n')
+    const p = fileAt(m, 'commented.yaml', src)
+    const result = m.migrate()
+    expect(result).toMatchObject({ written: true, rewrite: 'edited', applied: [2] })
+    expect(result.warnings).toEqual([
+      { to: 2, message: "moved 'checkout.proto' to 'checkout.protocol'" },
+    ])
+    expect(readFileSync(p, 'utf-8')).toBe(
+      src.replace('  proto: ssh\n', '  protocol: ssh\n') + 'version: 2\n',
+    )
+    m.clearCache()
+    expect(m.loadWithIssues()).toMatchObject({
+      value: { checkout: { protocol: 'ssh' } },
+      issues: [],
+    })
+  })
+
+  test('when the change cannot be made as edits, the document is rendered again', () => {
+    // `trust` merges an anchor defined outside it, so a nested edit inside it is refused.
+    const src = '# lost\nanchors: &t\n  paths: [/p]\ntrust:\n  <<: *t\n  owners: [me]\n'
+    const m = migrating([
+      {
+        from: 1,
+        to: 2,
+        run: (raw) => ({ ...raw, trust: { ...(raw.trust as object), owners: ['x'] } }),
+      },
+    ])
+    const p = fileAt(m, 'anchored.yaml', src)
+    const out = m.migrate({ dryRun: true })
+    expect(out.rewrite).toBe('reserialized')
+    expect(out.text).not.toContain('# lost')
+    expect(readFileSync(p, 'utf-8')).toBe(src)
+    expect(m.migrate()).toMatchObject({ written: true, rewrite: 'reserialized' })
+    expect(readFileSync(`${p}.bak`, 'utf-8')).toBe(src)
+  })
+
+  test('an edit saved while the migration ran is not overwritten', () => {
+    const edited = 'dirs: [/edited]\n'
+    let p = ''
+    const m = migrating([
+      {
+        from: 1,
+        to: 2,
+        run: (raw) => {
+          writeFileSync(p, edited)
+          return raw
+        },
+      },
+    ])
+    p = fileAt(m, 'racy.yaml', 'dirs: [/a]\n')
+    expect(() => m.migrate()).toThrow(WriteConflictError)
+    expect(readFileSync(p, 'utf-8')).toBe(edited)
+    expect(existsSync(`${p}.bak`)).toBe(false)
   })
 
   test('migrate on a missing file writes nothing and creates no file', () => {
     const m = migrating()
     const p = join(sb.root, 'absent.yaml')
     process.env[m.env] = p
-    expect(m.migrate()).toEqual({ path: p, from: 3, to: 3, applied: [], written: false })
+    expect(m.migrate()).toEqual({
+      path: p,
+      from: 3,
+      to: 3,
+      applied: [],
+      written: false,
+      warnings: [],
+      rewrite: null,
+      text: null,
+    })
     expect(existsSync(p)).toBe(false)
   })
 
   test('migrate on a non-mapping file throws and writes nothing', () => {
     const m = migrating()
-    const p = join(sb.root, 'list.yaml')
-    writeFileSync(p, '- a\n')
-    process.env[m.env] = p
+    const p = fileAt(m, 'list.yaml', '- a\n')
     expect(() => m.migrate()).toThrow(/not a mapping/)
     expect(readFileSync(p, 'utf-8')).toBe('- a\n')
     expect(existsSync(`${p}.bak`)).toBe(false)
   })
 
-  test('a newer file is read as-is with a newer_version issue', () => {
+  test('a newer file is read as-is with a newer_version issue, and migrate leaves it', () => {
     const m = migrating()
-    const p = join(sb.root, 'new.yaml')
-    writeFileSync(p, 'version: 9\nrepos: [/a]\n')
-    process.env[m.env] = p
+    const p = fileAt(m, 'new.yaml', 'version: 9\nrepos: [/a]\n')
     const { value, issues } = m.loadWithIssues()
     expect(value.repos).toEqual(['/a'])
     expect(issues.map((i) => ({ code: i.code, path: i.path.join('.') }))).toEqual([
       { code: 'newer_version', path: 'version' },
     ])
+    expect(m.migrate()).toMatchObject({ from: 9, to: 9, applied: [], written: false })
+    expect(readFileSync(p, 'utf-8')).toBe('version: 9\nrepos: [/a]\n')
   })
 })

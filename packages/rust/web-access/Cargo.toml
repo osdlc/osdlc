@@ -1,0 +1,46 @@
+[package]
+name = "web-access"
+version = "0.5.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Put an axum app on the local network safely: listen settings, minted tokens, a request guard with grants and access contexts, a route permission table and a server that can be stopped."
+license.workspace = true
+repository.workspace = true
+homepage = "https://github.com/osdlc/osdlc/tree/main/packages/rust/web-access"
+readme = "README.md"
+keywords = ["axum", "lan", "token", "guard", "sharing"]
+categories = ["web-programming::http-server", "authentication", "network-programming"]
+include = [
+  "src/**/*.rs",
+  "examples/**/*.rs",
+  "tests/**/*.rs",
+  "README.md",
+  "docs/guide.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+  # `README.md` above matches at any depth; the planning notes do not ship.
+  "!docs/planning/**",
+]
+
+[dependencies]
+axum = { workspace = true, features = ["http1", "tokio"] }
+base64 = { workspace = true }
+getrandom = { workspace = true }
+if-addrs = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+subtle = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["net", "rt", "sync", "time"] }
+
+[dev-dependencies]
+futures-util = { workspace = true }
+hyper = { workspace = true }
+hyper-util = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["io-util", "macros", "rt-multi-thread"] }
+tower = { workspace = true }
+
+[lints]
+workspace = true

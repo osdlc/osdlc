@@ -602,8 +602,10 @@ pub fn may_hold_frontmatter_paths(yaml: &str) -> bool {
 /// Replace each wikilink and embed with what a reader sees for it, for
 /// snippets and search: its alias, or else its target. An embed's trailing
 /// `|300` or `|300x200` is a size, not an alias, so
-/// `![[img.png|300]]` shows `img.png`. An empty alias shows the target.
-/// Code is not skipped.
+/// `![[img.png|300]]` shows `img.png`. An empty alias shows the target. A
+/// link into the same note, such as `[[#Setup]]`, shows its alias, or else
+/// its heading or `^block`; a link with none of these, such as `[[]]`, shows
+/// nothing. Code is not skipped.
 ///
 /// # Examples
 ///
@@ -613,6 +615,7 @@ pub fn may_hold_frontmatter_paths(yaml: &str) -> bool {
 /// assert_eq!(display_text("See [[Note#h|the note]]."), "See the note.");
 /// assert_eq!(display_text("[[Note]] and ![[img.png|300]]"), "Note and img.png");
 /// assert_eq!(display_text("[[Note|]]"), "Note"); // empty alias shows the target
+/// assert_eq!(display_text("Jump to [[#Setup]]."), "Jump to Setup.");
 /// ```
 pub fn display_text(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
@@ -624,8 +627,8 @@ pub fn display_text(text: &str) -> String {
             && chars.get(i + 2) == Some(&'[')
             && let Some((inner, next)) = take_link(&chars, i + 1)
         {
-            if let Some(l) = parse_inner(&inner, true) {
-                out.push_str(shown(&l));
+            if let Some(l) = parse_inner_self(&inner, true) {
+                out.push_str(&shown(&l));
             }
             i = next;
             continue;
@@ -634,8 +637,8 @@ pub fn display_text(text: &str) -> String {
             && chars.get(i + 1) == Some(&'[')
             && let Some((inner, next)) = take_link(&chars, i)
         {
-            if let Some(l) = parse_inner(&inner, false) {
-                out.push_str(shown(&l));
+            if let Some(l) = parse_inner_self(&inner, false) {
+                out.push_str(&shown(&l));
             }
             i = next;
             continue;
@@ -647,7 +650,7 @@ pub fn display_text(text: &str) -> String {
 }
 
 /// What a reader sees for one link. See [`display_text`].
-fn shown(link: &WikiLink) -> &str {
+fn shown(link: &WikiLink) -> std::borrow::Cow<'_, str> {
     let alias = link.alias.as_deref().map(|alias| {
         if !link.embed {
             return alias;
@@ -659,7 +662,18 @@ fn shown(link: &WikiLink) -> &str {
             alias
         }
     });
-    alias.filter(|a| !a.is_empty()).unwrap_or(&link.target)
+    if let Some(alias) = alias.filter(|a| !a.is_empty()) {
+        return alias.into();
+    }
+    if !link.target.is_empty() {
+        return link.target.as_str().into();
+    }
+    // A link into the same note: its heading, or else its block.
+    match (&link.heading, &link.block) {
+        (Some(heading), _) => heading.as_str().into(),
+        (None, Some(block)) => format!("^{block}").into(),
+        (None, None) => "".into(),
+    }
 }
 
 /// A typed reference, `[[type/slug]]` or `[[type/slug|Alias]]`: a

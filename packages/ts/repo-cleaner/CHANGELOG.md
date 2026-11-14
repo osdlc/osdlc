@@ -1,5 +1,68 @@
 # @osdlc/repo-cleaner
 
+## 0.20.2
+
+### Patch Changes
+
+- Updated dependencies [e1a5941]
+- Updated dependencies [cb8eafc]
+  - @osdlc/command-seam@0.15.0
+  - @osdlc/typed-git@0.14.0
+  - @osdlc/cli-tool@0.18.2
+  - @osdlc/typed-gh@0.17.1
+
+## 0.20.1
+
+### Patch Changes
+
+- Updated dependencies [0703abd]
+- Updated dependencies [61b12ce]
+  - @osdlc/cli-tool@0.18.0
+  - @osdlc/typed-gh@0.17.0
+
+## 0.20.0
+
+### Minor Changes
+
+- 9171850: Run with no target from a subdirectory of a checkout, `repo-cleaner` now sweeps that checkout instead of finding nothing and exiting 10. It widens only when the search below finds no checkout and the checkout around tracks files in the directory, so `~/Developer` under a home directory kept in git still sweeps the checkouts below it. A subdirectory named as a target is read as written, as before.
+
+## 0.19.1
+
+### Patch Changes
+
+- bfac1ae: The note that suggests `--provider none` now names what the provider lists ("if this remote has no PRs", or "no merge requests" for GitLab) instead of "if this remote has no forge", and the README drops "forge" the same way.
+
+## 0.19.0
+
+### Minor Changes
+
+- b1c3209: A lookup that fails now costs its evidence, not the repository. See "When a lookup fails" in the README.
+  
+  - A pull request listing that fails, such as `gh pr list` for a repository the account cannot see, no longer turns the repository into an error with no rows. Its rows are judged on git evidence, `RepoInfo.provider.listError` says why, and the repository carries a note.
+  - While open pull requests cannot be checked (the listing failed, or `gh`/`glab` is missing or signed out), deleting a remote branch with no known PR needs `confirm-open-pr`, since deleting an open PR's head branch closes it. `--provider none` asks nothing and gates nothing.
+  - `--offline` reads remote branches from the remote-tracking refs on disk, as documented, instead of calling `git ls-remote`. After a fetch, an `ls-remote` that fails falls back to those refs. A failed fetch still fails the repository.
+  - `clean`'s re-check, and its preview, read the remote's tips with `ls-remote`, so an offline plan's stale tracking refs never decide a delete: a branch the remote already deleted, or pushed past, is skipped, and a spared one refuses the run. If that `ls-remote` fails, the run is refused before anything runs. A branch deleted between the re-check and the push is reported gone, not a failure (`Step.gone`, `RunSummary.gone`).
+  - `--provider auto` asks no provider for a remote that names no host, such as a local path, which can have no pull requests.
+  - New in the library: `RepoSweep.notes`, `Preview.notes`, `RunOptions.onNotes` and the `RepoNote` type. A `PrProvider` reports a failure by returning null or by throwing.
+
+## 0.18.0
+
+### Minor Changes
+
+- 25ccd9e: **Breaking:** a new command line and library, with no aliases for the old names, and worktrees with submodules can now be cleaned up.
+  
+  Command line. `repo-cleaner [target...]` is the report (`status` is gone; a directory named `status` is now a target). `apply` is `clean`. `summary` and `--commands` are `--format summary` and `--format commands`; `--output json` is `--format json`; the report's `--keep` is `--all`. `--row` is `--pick`, and `--keep` is `--spare`, which now takes a row of any kind (a spared remote branch is still tip-checked, and sparing a worktree spares its branch). `--remotes` is `--remote`, `--no-fetch` is `--offline`, `--measure-remote` is `--against`, and `--remote-url <url>` is a remote URL given as a target (a local bare repository as `file:///…`). `--repo-root` is gone: sweep or plan only the repository a row is in. `--only` takes `worktree`, `branch`, `remote`. Rows are named `worktree:<path>`, `branch:<name>`, `remote:<remote>/<name>`, or by a bare name when only one row has it. Verdicts are `delete`, `review`, `keep` and the new `blocked` (shown as `review` before). Every command takes `--help --extended` for the full reference. Combinations that contradict themselves, or with an option that would have no effect (`--yes --dry-run`, `--offline` or `--provider` without `--remote`, the same row picked and spared, and the rest in the README's "Refused combinations"), are refused with exit 2 before anything is deleted, most of them before anything is swept.
+  
+  Library. The exports are `sweep(targets, opts)`, `plan(sweep)`, `check(plan, { pick, spare, allow })`, `run(preview)`, `inspectWorktree(path)`, `readPlan`, `writePlan`, `render`, `defaultProcessProbe`, `providers` and `RepoCleanerError` (with a `code`), and their types. `sweepRepo`, `sweepRepos`, `applyPlan`, `planRepo`, `holdFreedBranches`, the gather and classify functions, the command builders and the other helpers are no longer exported. A row is a `WorktreeRow`, `BranchRow` or `RemoteRow` with `verdict`, `action` (null when it can never be deleted), `why`, `risks`, `blockers`, `commands`, `notes`, and typed camelCase `evidence` in place of the `facts` bag. `annotate` is a `sweep`, `check` and `run` option, and the sweep holds a held-back worktree's branch itself. Plans are version 2 and receipts version 2, both camelCase; a version 1 plan is refused.
+  
+  Submodules. Plain `git worktree remove` refuses any worktree with a checked-out submodule, or with a submodule git dir a `git submodule deinit` left behind, so the old `apply` failed on every such worktree. The sweep now reads each submodule, nested ones included, and each left-over submodule git dir. A worktree whose submodules are clean and pushed is `delete`, with a `git worktree remove --force` command (`evidence.forcedForSubmodules`), and just before that remove `clean` checks the worktree's own files and every submodule again, since `--force` skips git's own check. A linked worktree's submodules keep their history in the worktree's own git dir, so a submodule's commits and stashes that no remote has carry `abandon-unmerged`, and its modified files carry `discard-changes`: one `--allow` on the worktree row covers its submodules. A submodule that cannot be read is the new `submodule-unreadable` blocker. A worktree whose directory is gone is now removed by its own record (`git worktree remove <path>`) rather than by a repository-wide `git worktree prune`; one whose directory is left without its `.git` still needs that prune, so it runs last and only while every other gone worktree the prune would drop goes in the same run (otherwise it is dropped as `blocked`). A run no longer ends with a repository-wide prune, so it never drops the record of a gone worktree it did not select, a spared one included. Submodule state is part of the plan fingerprint.
+
+### Patch Changes
+
+- Updated dependencies [25ccd9e]
+  - @osdlc/typed-git@0.13.0
+  - @osdlc/typed-gh@0.16.1
+
 ## 0.17.2
 
 ### Patch Changes

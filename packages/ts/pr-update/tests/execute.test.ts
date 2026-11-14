@@ -12,14 +12,20 @@
  * forward, the one branch the tests could not move.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { chmodSync, existsSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 
 import { Git } from '@osdlc/typed-git'
 import { makeBareAndWorker } from '@osdlc/typed-git/testing'
 
 import type { CommandResult } from '@osdlc/command-seam'
+import { forwarded } from './support-signal.ts'
+
+vi.mock('@osdlc/command-seam', async (original) =>
+  (await import('./support-signal.ts')).mockForwarding(original),
+)
 import type { Generator, PushPreview, Repair, RepairRequest, RepairResult } from '../src/ports.ts'
 import { toResult } from '../src/update.ts'
 import { noHooksEnv } from '../src/update/execute.ts'
@@ -162,6 +168,27 @@ describe('the executor against real git', () => {
     expect(git.isAncestor(before!, after!)).toBe(true)
   })
 
+  test('the merge commit names the PR branches, not the temporary local branch', async () => {
+    makeBehindPr('msg-m', { 'a.txt': 'a\n' }, { 'b.txt': 'b\n' })
+    const { git } = fx.worker
+    const out = await inWorktree((wt) =>
+      updateOne(wt, target({ head: 'msg-m' }), SETTINGS, recorder(), {
+        apply: true,
+        worktree: wtRoot,
+      }),
+    )
+    expect(out.status).toBe('updated')
+    git.fetch('origin')
+    const baseSha = git.resolveRef('origin/main')
+    const msg = execFileSync('git', ['log', '-1', '--format=%B', 'origin/msg-m'], {
+      cwd: fx.worker.dir,
+      encoding: 'utf8',
+    })
+    expect(msg.split('\n')[0]).toBe('Merge main into msg-m')
+    expect(msg).toContain(`Base: main at ${baseSha}`)
+    expect(msg).not.toContain('pr-update/')
+  })
+
   test('a clean rebase rewrites, and the old tip is left behind', async () => {
     const oid = makeBehindPr('clean-r', { 'a.txt': 'a\n' }, { 'b.txt': 'b\n' })
     const { git } = fx.worker
@@ -199,7 +226,12 @@ describe('the executor against real git', () => {
         worktree: wtRoot,
       }),
     )
-    expect(out).toEqual({ status: 'updated', resolved: [], pushed: false })
+    expect(out).toEqual({
+      status: 'updated',
+      resolved: [],
+      pushed: false,
+      builtOid: expect.any(String),
+    })
 
     git.fetch('origin')
     expect(git.resolveRef('origin/dry')).toBe(before!)
@@ -605,6 +637,7 @@ describe('the executor against real git', () => {
       )
       expect(out).toEqual({
         status: 'updated',
+        builtOid: expect.any(String),
         resolved: [],
         pushed: false,
         declined: 'push declined',
@@ -729,6 +762,7 @@ describe('the executor against real git', () => {
       )
       expect(out).toEqual({
         status: 'updated',
+        builtOid: expect.any(String),
         resolved: [{ kind: 'generator', path: 'api.schema.json', generator: 'schema' }],
         pushed: true,
         pushedOid: expect.any(String),
@@ -756,6 +790,7 @@ describe('the executor against real git', () => {
       )
       expect(out).toEqual({
         status: 'updated',
+        builtOid: expect.any(String),
         resolved: [],
         pushed: true,
         pushedOid: expect.any(String),
@@ -1141,6 +1176,33 @@ describe('updateAll', () => {
     // Reported as each PR finishes, so a caller can show progress during a long run.
     expect(streamed).toEqual([1, 2])
     expect(tally(results)).toEqual({ updated: 1, 'up-to-date': 0, conflict: 1, failed: 0 })
+  })
+
+  test('a forwarded signal stops the run before the next PR is updated', async () => {
+    const { git } = fx.worker
+    for (const branch of ['a', 'b']) {
+      git.checkout('main', { branch })
+      fx.worker.commit(`${branch} work`, { [`${branch}.txt`]: `${branch}\n` })
+      git.push('origin', branch)
+    }
+    git.checkout('main')
+    git.fetch('origin')
+
+    const results = await updateAll(
+      git,
+      [target({ number: 1, head: 'a' }), target({ number: 2, head: 'b' })],
+      SETTINGS,
+      recorder(),
+      {
+        apply: true,
+        worktreeRoot: join(fx.worker.dir, '.pr-update', 'abort'),
+        onResult: () => {
+          forwarded.signal = 'SIGINT'
+        },
+      },
+    )
+    expect(results.map((r) => r.number)).toEqual([1])
+    forwarded.signal = undefined
   })
 
   test("untracked output one PR's verify left is not committed into the next PR", async () => {

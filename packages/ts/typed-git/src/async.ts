@@ -31,6 +31,9 @@ import {
   type CherryEntry,
   type CommitTreeOptions,
   type CommitOptions,
+  type HashObjectOptions,
+  type MktreeEntry,
+  type UpdateRefOptions,
   type CheckoutOptions,
   type ConfigGetOptions,
   type CloneOptions,
@@ -42,6 +45,7 @@ import {
   type RebaseOptions,
   type RebaseOutcome,
   type RemoteGetUrlOptions,
+  type IndexSubmodule,
   type TaggedFile,
   type UnmergedEntry,
   type ConfigSetOptions,
@@ -396,6 +400,11 @@ export class AsyncGit {
     return this.backend.execute(this.cwd, { kind: 'lsFilesTagged' }, opts)
   }
 
+  /** The submodules the index records. See {@link Git.submodules}. */
+  submodules(opts: GitCallOptions = {}): Promise<IndexSubmodule[]> {
+    return this.backend.execute(this.cwd, { kind: 'submodules' }, opts)
+  }
+
   /**
    * The unified diff; `""` when nothing differs. A bad rev, or a cwd outside a
    * repository, rejects. See {@link Git.diffText}.
@@ -531,6 +540,17 @@ export class AsyncGit {
     opts: GitCallOptions = {},
   ): Promise<string> {
     return this.backend.execute(this.cwd, { kind: 'commitTree', tree, ...commitOpts }, opts)
+  }
+
+  /** The blob sha of `content`; `{ write: true }` also writes the blob. See {@link Git.hashObject}. */
+  hashObject(content: string, opts: GitCallOptions & HashObjectOptions = {}): Promise<string> {
+    const [call, req] = splitCallOptions(opts)
+    return this.backend.execute(this.cwd, { kind: 'hashObject', content, ...req }, call)
+  }
+
+  /** Write a tree of `entries` and return its sha; no ref moves. See {@link Git.mktree}. */
+  mktree(entries: readonly MktreeEntry[], opts: GitCallOptions = {}): Promise<string> {
+    return this.backend.execute(this.cwd, { kind: 'mktree', entries }, opts)
   }
 
   /** Configured remote names (`git remote`); `[]` when there are none. */
@@ -681,6 +701,15 @@ export class AsyncGit {
   /** Delete `ref` only while it points at `expected`. See `deleteRef` in `verbs.ts`. */
   deleteRef(ref: string, opts: GitCallOptions & { expected: string }): Promise<void> {
     return this.backend.execute(this.cwd, { kind: 'deleteRef', ref, expected: opts.expected }, opts)
+  }
+
+  /**
+   * Point `ref` at `sha` only while it holds `oldSha` (`null`: only while it
+   * does not exist). See {@link Git.updateRef}.
+   */
+  updateRef(ref: string, sha: string, opts: GitCallOptions & UpdateRefOptions): Promise<void> {
+    const [call, req] = splitCallOptions(opts)
+    return this.backend.execute(this.cwd, { kind: 'updateRef', ref, sha, ...req }, call)
   }
 
   /** `git worktree add [--detach] [-b|-B branch] <path> [startPoint]`. See {@link Git.worktreeAdd}. */

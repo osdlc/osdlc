@@ -1,0 +1,100 @@
+{
+  "name": "@osdlc/corpus-site",
+  "version": "0.0.0",
+  "description": "An Astro integration that publishes a corpus-schema corpus as a static site: a page per type and per record, filters and search in the browser with Vue, field metadata from a typed config, and the data as static JSON for small apps.",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/ts/corpus-site"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/ts/corpus-site#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "keywords": [
+    "astro",
+    "astro-integration",
+    "withastro",
+    "corpus-schema",
+    "markdown",
+    "static-site",
+    "vue",
+    "search",
+    "filter",
+    "typescript"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": [
+    "**/*.css",
+    "**/*.astro"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
+    },
+    "./components": {
+      "types": "./dist/components/index.d.ts",
+      "default": "./dist/components/index.js"
+    },
+    "./corpus-site.css": "./dist/corpus-site.css"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "SECURITY.md",
+    "CONTRIBUTING.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-assets.mjs",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
+    "smoke": "node tests/smoke.mjs",
+    "example": "astro build --root examples/site",
+    "prepublishOnly": "npm run clean && npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
+  },
+  "dependencies": {
+    "@osdlc/corpus-schema": "workspace:^",
+    "@osdlc/frontmatter-lossless": "workspace:^",
+    "@osdlc/markdown-render": "workspace:^",
+    "rehype-stringify": "^10.0.1"
+  },
+  "peerDependencies": {
+    "@astrojs/vue": "^7.0.0",
+    "astro": "^7.0.0",
+    "vue": "^3.5"
+  },
+  "devDependencies": {
+    "@astrojs/vue": "7.0.3",
+    "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/tsconfig": "workspace:^",
+    "@types/hast": "^3.0.5",
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "astro": "7.3.5",
+    "jsdom": "^26.0.0",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:",
+    "vue": "^3.5.25"
+  }
+}

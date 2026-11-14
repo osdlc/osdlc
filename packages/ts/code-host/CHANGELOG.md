@@ -1,5 +1,39 @@
 # @osdlc/code-host
 
+## 0.7.11
+
+### Patch Changes
+
+- Updated dependencies [e1a5941]
+- Updated dependencies [cb8eafc]
+  - @osdlc/command-seam@0.15.0
+  - @osdlc/typed-git@0.14.0
+  - @osdlc/typed-gh@0.17.1
+
+## 0.7.10
+
+### Patch Changes
+
+- Updated dependencies [65605cb]
+  - @osdlc/config-layers@0.10.0
+
+## 0.7.9
+
+### Patch Changes
+
+- Updated dependencies [a148598]
+- Updated dependencies [61b12ce]
+  - @osdlc/config-layers@0.9.0
+  - @osdlc/typed-gh@0.17.0
+
+## 0.7.8
+
+### Patch Changes
+
+- Updated dependencies [25ccd9e]
+  - @osdlc/typed-git@0.13.0
+  - @osdlc/typed-gh@0.16.1
+
 ## 0.7.7
 
 ### Patch Changes

@@ -1,5 +1,33 @@
 # @osdlc/agent-call
 
+## 0.12.0
+
+### Minor Changes
+
+- 20dfeb4: The adapters' binary names, flags and permission-mode arguments are now asserted against the harness knowledge file by a test. Fixes the research showed wrong: Antigravity passes `context.dirs` with `--add-dir` and `permissions.mode: edits` with `--mode accept-edits`; dsh passes `context.dirs` with `--add-dir`, no longer restates the `{{cwd}}` persona suffix that fails prompt assembly (dsh headless runs no longer get the "Your working directory is {{cwd}}" persona clause), resolves relative `context.dirs` to absolute paths for `--add-dir`, and says its read-only mode needs a configured preset (dsh ships none); opencode 2.x has no `--variant`, so `opencodeAdapter({ version: '2.x' })` sends the effort as a `#variant` suffix on `--model`. Without `version` opencode keeps `--variant`.
+
+## 0.11.0
+
+### Minor Changes
+
+- e1a5941: The agent's process group is now registered with `@osdlc/command-seam`. A host that calls `installGroupSignalForwarding()` once has SIGINT, SIGTERM and SIGHUP kill the agent (and what it started) before the host exits; before, the agent, in its own group, outlived a Ctrl-C or kill of the host unless the host passed a `signal`. Once such a signal has been forwarded, `callAgent` starts no agent and resolves `ok: false` with reason `spawn-failed`. Passing `signal` still works, and the timeout and abort kills are unchanged.
+
+### Patch Changes
+
+- Updated dependencies [e1a5941]
+  - @osdlc/command-seam@0.15.0
+
+## 0.10.0
+
+### Minor Changes
+
+- 3a8af1e: cursor: `permissions.allowTools` and `permissions.denyTools` now take effect. The adapter maps tool names (`Read`, `Edit`, `Bash(git:*)`, `mcp__server__tool`, cursor-form rules) to cursor permission rules and writes them to `.cursor/cli.json` in the working directory for the length of the call, then restores the original file. Existing `permissions.deny` entries in the file are kept and the call's denies are added; the call's `allow` replaces the file's. A second cursor call in the same directory is refused while one runs; a stale lock from a killed run is recovered. `PlannedCall.projectFiles` shows the planned file edit. Unmappable names are dropped with a note.
+- 3d4a6d7: Add an `agent-call run` command that runs one call from a YAML or JSON spec file: prompt parts from files, text with `{{input}}` placeholders and `--input` values, context files, `--explain` and `--dry-run`, and a `strict` mode that refuses approximated or dropped fields. Paths are confined to `--root`. The library import is unchanged; the package gains a second runtime dependency, `yaml`, loaded only by the command. The spec gains `limits.maxTurns`, a turn limit: native on claude (`--max-turns`) and qwen (`--max-session-turns`), dropped with a note elsewhere. `run.maxTurns` in a spec file maps to it.
+
+### Patch Changes
+
+- 6422022: Make `agent-call run` forward SIGINT and SIGTERM to the agent run, so interrupting the command kills the agent's process group instead of leaving it running. An interrupted run exits 130.
+
 ## 0.9.0
 
 ### Minor Changes

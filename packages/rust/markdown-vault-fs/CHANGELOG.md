@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-14
+
+A path the disk spells otherwise than a watcher reported it is told apart
+from one the walk never lists.
+
+### Changed
+
+- `Admission` has a new variant, `Respelled`: the file system answers for
+  the path, but a folder on the way lists it under another spelling
+  (another case on a case-insensitive file system, or another Unicode form,
+  as on HFS+). Before, such a path was `Unlisted`. A name the file system
+  answers for but a folder's listing lacks makes the batch list that
+  folder again, once, so a file that came after the first listing is still
+  `Listed`. Below a respelled folder the rest of the path is checked as
+  usual, and a respelled path to a file the walk would not list (a folder,
+  under `min_bytes`, a refused symlink) is `Unlisted`. The roots,
+  `skip_names`, `prune_dirs` and `exclude` still match the path as given.
+- `WalkOptions::reads_rules_from` also answers yes for the folder that
+  holds the excluded-files list (`.obsidian`), as a watcher reports it on
+  its removal or rename.
+
+## [0.6.1](https://github.com/osdlc/osdlc/compare/markdown-vault-fs/v0.6.0...markdown-vault-fs/v0.6.1) - 2026-11-10
+
+### Other
+
+- update Cargo.toml dependencies
+
 ## [0.6.0] - 2026-11-06
 
 A walk can keep going past what it cannot read and say what that was.
@@ -18,22 +45,6 @@ A walk can keep going past what it cannot read and say what that was.
   `Propagate` (was `true`) or the new `Report`.
 - `WalkOutcome` is no longer `Clone`: its new `errors` field holds
   `VfsError`s, which are not.
-- `Admission` has a new variant, `Respelled`: the file system answers for
-  the path, but a folder on the way lists it under another spelling
-  (another case on a case-insensitive file system, or another Unicode form,
-  as on HFS+). Before, such a path was `Unlisted`, so a cache dropped it
-  and kept the file under the disk's spelling as it was. A name the file
-  system answers for but a folder's listing lacks makes the batch list that
-  folder again, once, so a file that came after the first listing is still
-  `Listed`; a file created after that second listing is `Respelled`, which
-  costs a cache one walk. Below a respelled folder the rest of the path is
-  checked as usual, and a respelled path to a file the walk would not list
-  (a folder, under `min_bytes`, a refused symlink) is `Unlisted`. The
-  roots, `skip_names`, `prune_dirs` and `exclude` still match the path as
-  given.
-- `WalkOptions::reads_rules_from` also answers yes for the folder that
-  holds the excluded-files list (`.obsidian`), as a watcher reports it on
-  its removal or rename.
 
 ### Added
 

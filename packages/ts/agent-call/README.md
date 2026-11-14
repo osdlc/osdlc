@@ -9,8 +9,9 @@ output shape and the session. Each adapter turns that into a command line for
 approximation. The result comes back normalized (final text, structured
 output, session id, token usage, cost) with the raw output kept. On request,
 the whole transcript is also converted into one conversation model for
-analysis afterwards. One dependency, `@osdlc/command-seam`, for its `PATH`
-lookup.
+analysis afterwards. Two dependencies: `@osdlc/command-seam`, for its `PATH`
+lookup, and `yaml`, which only the `agent-call run` command loads. The library
+import does not.
 
 ## Why
 
@@ -222,6 +223,59 @@ A parser that throws on the output does not reject: the result is `ok: false`
 with reason `agent-error`. `planCall` throws the same way as planning. The
 `callAgent` TSDoc is the full list.
 
+## Command line: `agent-call run`
+
+The package installs an `agent-call` command that runs one call from a spec
+file reviewed in a repository. The library import never loads it or the `yaml`
+parser.
+
+```yaml
+# .github/agents/pr-answer.yml (YAML or JSON)
+setup: { harness: claude } # only harness is read, as the default agent
+run:
+  agent: claude # optional; --agent overrides; falls back to setup.harness
+  model: claude-sonnet-5-5
+  strict: true # exit 3 instead of approximating or dropping a field
+  permissions: { mode: read-only, allowTools: [Read, Grep, Glob] }
+  prompt: # parts joined in order with a blank line
+    - file: .github/agents/prompts/pr-answer.md
+    - text: "Answer the request about pull request {{pr}}."
+    - input: request
+  context:
+    - input: pr-context # needs --input pr-context=@path
+```
+
+```sh
+agent-call run spec.yml [--agent <id>] [--root <dir>] \
+  [--input name=value | name=@file]... [--explain] [--dry-run]
+```
+
+- `file:` paths, in prompt and context, resolve against `--root` (default: the
+  current directory). Absolute paths and `..` escapes are refused, so a CI job
+  can read the spec and prompts from a trusted checkout while the agent runs
+  in another one. The agent's working directory is the current directory.
+- `{{name}}` in a `text:` part is replaced by the input's value. An unknown
+  placeholder, or an `input:` part with no matching `--input`, is an error.
+- `--input name=@path` reads the file for prompt parts. A `context` `input:`
+  entry takes the path and must come from `name=@path`.
+- `--explain` prints to stderr the agent, the exact argv, the names (never
+  values) of the environment variables set, and every capability note. Then it
+  runs. `--dry-run` prints the same and exits 0 without running.
+- `strict: true` exits 3 before running if any note is `approximated` or
+  `dropped` (`emulated` is allowed), or if a field has no home in the library
+  spec.
+- `run.maxTurns` (a positive integer) is passed to the call as
+  `limits.maxTurns`. It is native on claude (`--max-turns`) and qwen
+  (`--max-session-turns`). Other agents have no turn limit flag, so it is
+  reported as dropped, which fails a strict spec.
+- stdout is the normalized result as one JSON document (`ok`, `text`,
+  `structured`, `sessionId`, `usage`, `costUsd`, `model`, `error`, `exitCode`,
+  `durationMs`, `agent`, `notes`). `raw`, `planned` and `events` are left out.
+- Exit codes: `0` success, `1` the run failed (`ok: false`), `2` usage or spec
+  error, `3` strict mode refused the call, `130` SIGINT or SIGTERM stopped the
+  run (the agent's process group is stopped first, and the result is still
+  printed).
+
 ## API
 
 Everything is exported from `@osdlc/agent-call`. `@osdlc/agent-call/models`
@@ -314,17 +368,17 @@ that did not map one to one:
 |---|---|---|---|---|
 | `prompt` | stdin | stdin (`-`) | `-p <prompt>` | positional |
 | `model` | `--model` | `--model` | `--model` | `--model` (provider/model) |
-| `effort` (`none` to `max`, least to most reasoning) | `--effort` (`none`, `minimal` → `low`) | `model_reasoning_effort` | `--effort` (`none`, `minimal` → `low`; `xhigh`, `max` → `high`) | `--variant` |
+| `effort` (`none` to `max`, least to most reasoning) | `--effort` (`none`, `minimal` → `low`) | `model_reasoning_effort` | `--effort` (`none`, `minimal` → `low`; `xhigh`, `max` → `high`) | `--variant` (2.x with `version`: `#variant` on `--model`) |
 | `systemPrompt` | `--system-prompt` | prompt-emulated | prompt-emulated | prompt-emulated |
 | `appendSystemPrompt` | `--append-system-prompt` | prompt-emulated | prompt-emulated | prompt-emulated |
 | `permissions.mode: read-only` | `--permission-mode plan` (approximated) | `--sandbox read-only` | `--sandbox` (approximated) | `OPENCODE_PERMISSION` deny map |
-| `permissions.mode: edits` | `--permission-mode acceptEdits` | `--sandbox workspace-write` | dropped | `OPENCODE_PERMISSION` |
+| `permissions.mode: edits` | `--permission-mode acceptEdits` | `--sandbox workspace-write` | `--mode accept-edits` | `OPENCODE_PERMISSION` |
 | `permissions.mode: full-auto` | acceptEdits + allowed Bash/Web (approximated) | `--sandbox workspace-write` | `--dangerously-skip-permissions` | `OPENCODE_PERMISSION` allow map |
 | `permissions.mode: bypass` | `--dangerously-skip-permissions` | `--dangerously-bypass-approvals-and-sandbox` | `--dangerously-skip-permissions` | `OPENCODE_PERMISSION` allow map |
 | `permissions.allowTools` | `--allowedTools` | dropped | dropped | dropped |
 | `permissions.denyTools` | `--disallowedTools` | dropped | dropped | dropped |
 | `context.files` | prompt preamble | prompt preamble | `@path` in prompt | `--file` |
-| `context.dirs` | `--add-dir` | `--add-dir` | dropped | dropped |
+| `context.dirs` | `--add-dir` | `--add-dir` | `--add-dir` | dropped |
 | `context.text` | prompt preamble | prompt preamble | prompt preamble | prompt preamble |
 | `output.format` | `text\|json\|stream-json` | `--json` events | `text\|json\|stream-json` | `--format json` events |
 | `output.schema` | `--json-schema` | `--output-schema` file | `--json-schema` | prompt-emulated |
@@ -334,6 +388,7 @@ that did not map one to one:
 | `session.persist: false` | `--no-session-persistence` | `--ephemeral` | dropped | dropped |
 | `mcp.servers` | `--mcp-config` | `-c mcp_servers.*` | dropped | dropped |
 | `budgetUsd` | `--max-budget-usd` | dropped | dropped | dropped |
+| `limits.maxTurns` | `--max-turns` | dropped | dropped | dropped |
 | `timeoutMs` | library-level (SIGTERM → SIGKILL) on all agents | | | |
 | `maxOutputBytes` | library-level per-stream cap (SIGTERM → SIGKILL, reason `output-limit`) on all agents | | | |
 | `extraArgs` | appended verbatim on all agents | | | |
@@ -351,10 +406,10 @@ The same rows for the other six agents:
 | `permissions.mode: edits` | `--allow-tool=write` | `--tools read,grep,find,ls,edit,write` (approximated) | `--approval-mode auto-edit` | `--auto low` (approximated) | no flag (print mode applies edits, rejects commands) | `DSH_PERMISSION_MODE` `workspace-write` (approximated) |
 | `permissions.mode: full-auto` | `--allow-all-tools` (approximated) | `--tools` all built-ins (approximated) | auto-edit + allowed shell and web fetch (approximated) | `--auto medium` (approximated) | `--sandbox enabled` | `DSH_PERMISSION_MODE` `workspace-write` |
 | `permissions.mode: bypass` | `--allow-all` | `--tools` all built-ins | `--approval-mode yolo` | `--skip-permissions-unsafe` | `--force --sandbox disabled` | `DSH_PERMISSION_MODE` `danger-full-access` |
-| `permissions.allowTools` | `--allow-tool` | `--tools` (approximated) | `--allowed-tools` | `--add-tools` (approximated) | dropped | dropped |
-| `permissions.denyTools` | `--deny-tool` | `--exclude-tools` | `--exclude-tools` | `--remove-tools` (approximated) | dropped | dropped |
+| `permissions.allowTools` | `--allow-tool` | `--tools` (approximated) | `--allowed-tools` | `--add-tools` (approximated) | `.cursor/cli.json` rules (approximated) | dropped |
+| `permissions.denyTools` | `--deny-tool` | `--exclude-tools` | `--exclude-tools` | `--remove-tools` (approximated) | `.cursor/cli.json` rules (approximated) | dropped |
 | `context.files` | prompt preamble | `@path` arguments | `@path` in prompt | prompt preamble | prompt preamble | prompt preamble |
-| `context.dirs` | `--add-dir` | dropped | `--include-directories` | dropped | `--add-dir` | dropped |
+| `context.dirs` | `--add-dir` | dropped | `--include-directories` | dropped | `--add-dir` | `--add-dir` |
 | `context.text` | prompt preamble | prompt preamble | prompt preamble | prompt preamble | prompt preamble | prompt preamble |
 | `output.format` | `--output-format json` events; text is `-s` | `--mode json` events; text is `-p` | `text\|json\|stream-json` | `text\|json\|stream-json` | `text\|json\|stream-json` | `--json` events |
 | `output.schema` | prompt-emulated | prompt-emulated | `--json-schema` | prompt-emulated | prompt-emulated | prompt-emulated |
@@ -364,6 +419,7 @@ The same rows for the other six agents:
 | `session.persist: false` | dropped | `--no-session` | `--chat-recording false` (approximated) | dropped | dropped | dropped |
 | `mcp.servers` | `--additional-mcp-config` | dropped | `--mcp-config` | dropped | `--plugin-dir` temp plugin (approximated) | `--patch` mcp-client rows (approximated) |
 | `budgetUsd` | dropped | dropped | dropped | dropped | dropped | dropped |
+| `limits.maxTurns` | dropped | dropped | `--max-session-turns` | dropped | dropped | dropped |
 | `timeoutMs` | library-level (SIGTERM → SIGKILL) on all agents | | | | | |
 | `maxOutputBytes` | library-level per-stream cap (SIGTERM → SIGKILL, reason `output-limit`) on all agents | | | | | |
 | `extraArgs` | appended verbatim on all agents | | | | | |
@@ -391,9 +447,14 @@ format (a JSON envelope or an event stream), so metadata is captured.
   process groups. On Windows the group kill fails and the call falls back to
   killing the direct child, so a grandchild process can outlive a timeout.
 - **Interrupts:** the agent runs in its own process group, so Ctrl+C or a kill
-  of the host does not reach it. The package installs no exit handlers. A host
-  that can be interrupted must pass a `signal` to `callAgent` and abort it from
-  its own SIGINT/SIGTERM handler, or the agent keeps running.
+  of the host does not reach it. The group is registered with
+  `@osdlc/command-seam`: a host that calls `installGroupSignalForwarding()` once
+  has SIGINT, SIGTERM and SIGHUP kill the agent's group, and exits
+  `128 + signal`. After that signal a new call starts no agent and resolves
+  `ok: false` with reason `spawn-failed`. Forwarding acts only while an agent
+  is running. A host without it must pass a `signal` to `callAgent` and abort
+  it from its own SIGINT/SIGTERM handler, or the agent keeps running. The
+  package installs no signal handlers of its own.
 
 ## Security
 
@@ -442,6 +503,32 @@ format (a JSON envelope or an event stream), so metadata is captured.
   working directory and each `context.dirs` entry trusted under
   `~/.cursor/projects/` for good, interactive sessions included. Do not use it
   on a checkout you would not open in Cursor yourself.
+- cursor has no tool-rule flag, so `permissions.allowTools` and `denyTools`
+  are written to `.cursor/cli.json` (`permissions.allow` / `permissions.deny`)
+  in the call's working directory (`spec.cwd`, else the process's) for the
+  length of the call. Other keys in the file are kept, and so are existing
+  `permissions.deny` entries (the call's denies are added to them); the call's
+  `allow` replaces the file's `allow`. The original bytes are
+  restored afterwards (the file and a `.cursor` directory the call created are
+  deleted), also on error, timeout and abort. `planCall` shows the rules in
+  `planned.projectFiles`. Names map as: `Read`, `Write`, `Read(p)`, `Write(p)`
+  and cursor-form rules such as `Shell(rm)` pass as `native`; `Grep`, `Glob`,
+  `LS` -> `Read(**)`; `Edit`, `MultiEdit`, `NotebookEdit` -> `Write(**)` (or
+  `Write(p)`); `Bash` -> `Shell(*)`; `Bash(git push:*)` -> `Shell(git)` (cursor
+  matches command names; an allow entry with arguments is dropped because it
+  would widen the grant); `mcp__server__tool` -> `Mcp(server:tool)`;
+  `WebFetch(domain:x)` -> `WebFetch(x)`; these are `approximated`. Any other
+  name is `dropped` with a note. Denies held under `--force` on agent
+  2026.10.19. A second cursor call in the same directory is refused
+  (`spawn-failed`) while one runs: a lock file `.cursor/cli.json.agent-call.lock`
+  holds the owner pid and the original bytes. A hard kill (SIGKILL, power loss)
+  leaves both files behind; the next call sees the dead pid, restores the
+  original from the lock and carries on (if two calls find the same stale lock,
+  one wins and the other is refused). If restoring fails at the end of a call,
+  the lock is left in place so the original stays recoverable. To recover by hand, put back
+  `.cursor/cli.json` (the `original` field of the lock, base64; or drop the
+  `permissions` key) and delete the lock. Keep other tools out of that file
+  while a call runs.
 - cursor's default binary is `agent`, and deepseek's is `dsh`. Both names are
   generic. `detectAgents` counts `agent` as Cursor only when it prints a
   date-stamped version, but for `dsh` it only checks that `dsh --version`

@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.1](https://github.com/osdlc/osdlc/compare/markdown-link/v0.9.0...markdown-link/v0.9.1) - 2026-11-10
+
+### Other
+
+- updated the following local packages: frontmatter-lossless, yaml-splice
+
+## [0.9.0](https://github.com/osdlc/osdlc/compare/markdown-link/v0.8.1...markdown-link/v0.9.0) - 2026-11-08
+
+### Fixed
+
+- `CodeRules::CommonMark` finds a fenced code block inside a list item or a
+  block quote, so the links after it are found. A fence opens when it is
+  indented to its item's content column, and an unclosed fence runs to the end
+  of its container, not of the input. `CodeRules::SkillExport` is unchanged.
+  Lazy continuation lines are not tracked.
+- `CodeRules::CommonMark` keeps a code span inside its cell of a table row (a
+  line starting with `|`): a `|` not escaped as `\|` ends the cell, so
+  ``| `a | [[x]] | b` |`` finds `[[x]]`.
+- `\![[Note]]`, an escaped `!`, is a `BodyLinkKind::Wikilink` whose span
+  starts at the `[[`, where it was an `Embed` starting at the `!`; an
+  abandoned `[[` after one has `embed: false`.
+
+### Added
+
+- `CodeRules::None` finds no code: `strip_code_with` returns its input
+  unchanged, and a `ScanOptions` with it scans text whose code a markdown
+  parser has already taken out.
+- `Fences::content_start`, where the text of the last line starts past its
+  block quote and list item markers.
+- `packages/conformance/markdown-link/suite.json` is the shared suite, with
+  cases for each of the above, and `cargo run -p markdown-link --example
+  conformance-write` writes its expected values. It replaces
+  `tests/fixtures/conformance.json`.
+
+### Changed
+
+- **Breaking:** `CodeRules` gains the variant `None`, so an exhaustive `match`
+  on it needs an arm, and `Fences` holds the open containers, so it is no
+  longer `Copy`.
+
+## [0.8.1](https://github.com/osdlc/osdlc/compare/markdown-link/v0.8.0...markdown-link/v0.8.1) - 2026-11-08
+
+### Fixed
+
+- *(markdown-link)* escaped backticks are literal; same-note links display ([#694](https://github.com/osdlc/osdlc/pull/694))
+
+### Fixed
+
+- `strip_code`: under `CodeRules::CommonMark` a backtick after an odd run of
+  `\` is a literal backtick and opens no code span, so a link in
+  ``See \`[[Note]]\` here`` is found. `CodeRules::SkillExport` does not honour
+  the escape, as before.
+- `display_text` shows a link into the same note, `[[#Setup|steps]]` or
+  `[[#Setup]]`, as its alias, or else its heading or `^block`, where it
+  dropped the link.
+- `tests/fixtures/conformance.json` carries both as `code` and `display`
+  cases, which `@osdlc/markdown-link` reads too.
+
 ## [0.8.0] - 2026-11-04
 
 The scanner reports each `[[` it gave up on. Nothing is removed or changed.

@@ -1,5 +1,21 @@
 # @osdlc/config-layers
 
+## 0.10.0
+
+### Minor Changes
+
+- 65605cb: Fixed: `machineConfigFile(...).write` writes through a symlinked config file. The link stays, and the new text and the `.bak` go to the file it points to (through a chain of links; a link to a missing file creates it). Before, the write replaced the link with a regular file and left the target as it was.
+  
+  Fixed: `unsetPath` on a key that was never set returns the text unchanged when its parent is a flow mapping. Before, `unsetPath('hosts: {}\n', ['hosts', 'wezterm'])` removed `hosts`.
+  
+  New: a `defineMigrations` step takes `before(raw, warn)`, which runs ahead of its `moves`, so a clean-up the moves depend on no longer forces a hand-written step.
+
+## 0.9.0
+
+### Minor Changes
+
+- a148598: Fixed: `machineConfigFile(...).migrate()` no longer drops the file's comments. It edits only the values the migration changed, through the new `reconcileYaml(text, target)`, and says how it wrote in `rewrite` (`'edited'`, or `'reserialized'` when the change cannot be made as edits, as under a `<<: *anchor` defined elsewhere; the `.bak` then keeps the comments). Fixed: `migrate()` writes with a compare-and-swap against the text it read, so an edit saved while it ran is not overwritten (`WriteConflictError` from `@osdlc/etag-write`). New: `read()` gives `{ text, etag }`, and `write(text, { etag })` is a compare-and-swap that leaves the file and its `.bak` alone on a conflict; `write` returns the new etag. New: `defineMigrations([{ to, moves, pruneEmpty?, run? }])` builds migration steps from declarative moves: a value already at the destination wins, a destination under a scalar leaves the source in place, and the mappings a move empties are pruned. A step's `run(raw, warn)` can report what it changed. New: the project file is versioned when `assembleConfig` gets `migrations`. The file and its overlay each carry their own integer `version`, migrate in memory on load (`loadLayers(root).migrated` lists them), a newer file is read as-is with one stderr line, and `handle.migrate(root, { dryRun })` rewrites them, keeping comments, with a compare-and-swap. New: `migrateConfigRaw`, `currentConfigVersion`, `BASE_CONFIG_VERSION`, and the types `ConfigMigration`, `MigrationStep`, `MigrationPath`, `MigrationWarning`, `MigratedRaw`, `LayerMigration`, `ConfigFileMigrateResult` and `MachineWriteOptions`. `MachineMigration`, `migrateMachineRaw` and `currentMachineVersion` are now deprecated names for `ConfigMigration`, `migrateConfigRaw` and `currentConfigVersion`. Changed shapes: `migrateMachineRaw` also returns `warnings`; `MachineMigrateResult` gains `warnings`, `rewrite` and `text`; `ConfigLayers` gains `migrated` and `ConfigHandle` gains `migrate` and `currentVersion` (the last step's `to`, or `null` without `migrations`), so code that builds either object itself must add them. New: `scaffoldYaml`, `scaffoldLocalYaml` and `starterYaml` take `version` and write a live `version: <n>` line under the header, so a new file is created at the current version; a file without `version` reads as version 1 and would go through every step.
+
 ## 0.8.1
 
 ### Patch Changes

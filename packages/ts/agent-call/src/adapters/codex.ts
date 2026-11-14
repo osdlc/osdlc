@@ -20,6 +20,9 @@ import {
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
+// The binary and flags below are asserted against the harness knowledge file in
+// tests/knowledge-facts.test.ts; policy (which mode, which default) stays here.
+
 /** Options for {@link codexAdapter}. */
 export interface CodexAdapterOptions extends CommandOptions {}
 
@@ -200,6 +203,10 @@ function planCodex(command: readonly string[], spec: AgentCallSpec): PlannedCall
   }
   if (spec.budgetUsd !== undefined) {
     note(notes, 'budgetUsd', 'dropped', 'codex has no budget cap flag')
+  }
+
+  if (spec.limits?.maxTurns !== undefined) {
+    note(notes, 'limits.maxTurns', 'dropped', 'codex has no turn limit flag')
   }
 
   argv.push(...(spec.extraArgs ?? []))

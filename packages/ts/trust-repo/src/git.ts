@@ -56,10 +56,13 @@ function withoutGitOverrides<T>(fn: () => T): T {
 const URL_REMOTE = /^[a-z][a-z0-9+.-]*:\/\//i
 const SCP_REMOTE = /^(?:[^@/:\s]+@)?[^@/:\s]+:(?!\/\/)/
 /**
- * hosted-git-info shortcuts (`github:owner/repo`). Git reads these as scp-style
- * ssh to a host called `github`, so they have no owner here.
+ * hosted-git-info shortcuts (`github:owner/repo`), matched case-insensitively
+ * because `parseGitUrl` reads `GitHub://x/owner/repo` as GitHub too. Git reads
+ * `github:owner/repo` as scp-style ssh to a host called `github`, and
+ * `github://...` as a URL for a `git-remote-github` helper. Neither is the
+ * hosted site, so they have no owner here.
  */
-const SHORTCUT_REMOTE = /^(?:github|gitlab|bitbucket|gist|sourcehut):/
+const SHORTCUT_REMOTE = /^(?:github|gitlab|bitbucket|gist|sourcehut):/i
 
 /**
  * `root`'s `origin` remote host and owner as `host/owner`
