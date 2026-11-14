@@ -40,6 +40,7 @@ import {
   isDomainExit,
   isYes,
   NotInteractiveError,
+  type NotInteractiveReason,
   openTty,
   processContext,
   processIo,
@@ -342,6 +343,8 @@ test('finding a terminal to ask on when stdin is a pipe', () => {
     error = e
   }
   expect(error).toBeInstanceOf(NotInteractiveError)
+  const reason: NotInteractiveReason = (error as NotInteractiveError).reason
+  expect(reason).toBe('no-terminal')
   expect((error as NotInteractiveError).exit).toBe(EXIT.usage)
 })
 

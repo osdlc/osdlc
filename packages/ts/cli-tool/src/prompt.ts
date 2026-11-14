@@ -123,23 +123,29 @@ export function canPrompt(): boolean {
 }
 
 /**
+ * Why a question got no answer.
+ * @experimental
+ */
+export type NotInteractiveReason = 'no-terminal' | 'end-of-input'
+
+/**
  * A question that needed a person to answer it and got no answer. `reason`
  * says why: `no-terminal` when there was no terminal to ask on, and
  * `end-of-input` when input ended before an answer was typed.
  *
  * `runMain` and a command tree's `run` print its message and exit with
- * {@link NotInteractiveError.exit}. See D-04 for why `no-terminal` is a usage
- * error.
+ * {@link NotInteractiveError.exit}. Why `no-terminal` is a usage error: D-04
+ * (docs/planning/decisions/D-04-prompts-fail-instead-of-guessing.md).
  * @experimental
  */
 export class NotInteractiveError extends Error {
   /** Why there was no answer. */
-  readonly reason: 'no-terminal' | 'end-of-input'
+  readonly reason: NotInteractiveReason
   /** The flag that answers instead, when the caller named one. The message names it too. */
   readonly flag: string | undefined
   /** The exit code for this error: 2 for `no-terminal`, 1 for `end-of-input`. */
   readonly exit: number
-  constructor(reason: 'no-terminal' | 'end-of-input', options: { flag?: string | undefined } = {}) {
+  constructor(reason: NotInteractiveReason, options: { flag?: string | undefined } = {}) {
     const what =
       reason === 'no-terminal'
         ? 'cannot ask: there is no terminal to answer on'
@@ -194,7 +200,6 @@ export interface OpenTtyOptions {
   isTerminal?: (fd: number) => boolean
 }
 
-/** Write all of `text` to `fd`. */
 function writeAll(fd: number, text: string): void {
   const buf = Buffer.from(text)
   let written = 0
@@ -209,10 +214,8 @@ function writeAll(fd: number, text: string): void {
  * Returns `null` when there is no terminal: no controlling terminal (a CI job,
  * cron, a detached process) or no `/dev/tty` (Windows).
  *
- * The prompts read stdin unless given another `fd`; this is how a caller
- * gives them one. Use it in a command whose stdin carries data. A command
- * that only asks a question should read the answer from stdin, so a script
- * can still answer it.
+ * Use it in a command whose stdin carries data. A command that only asks a
+ * question should read the answer from stdin, so a script can still answer it.
  * @experimental
  */
 export function openTty(opts: OpenTtyOptions = {}): PromptTerminal | null {
@@ -277,7 +280,7 @@ export function requireInteractive(opts: RequireInteractiveOptions = {}): Prompt
  * is read from, and what happens when nobody can answer.
  */
 export interface PromptOptions {
-  /** Receives the question text. Default: stderr. */
+  /** Receives the question text. Default stderr. */
   write?: (text: string) => void
   /** File descriptor the answer is read from. Default 0, stdin. */
   fd?: number
@@ -308,8 +311,8 @@ export interface PromptOptions {
 }
 
 /**
- * Options for asking a yes/no question on the terminal: the default answer,
- * and the options every prompt takes.
+ * Options for {@link askYesNo}.
+ * @experimental
  */
 export interface AskYesNoOptions extends PromptOptions {
   /** The answer an empty line gives. */
@@ -385,9 +388,8 @@ export interface AskTextOptions extends PromptOptions {
  * one line. White space around the answer is trimmed. An empty answer, or end
  * of input, gives `default`, or the empty string when there is none.
  *
- * The default is printed on one line with terminal controls removed (a line
- * feed or tab shows as `\n` or `\t`), since it is often data from outside the
- * tool (a branch name, a path). The question is printed as given.
+ * The default is printed on one line with terminal controls escaped or
+ * removed, since it is often outside data. The question is printed as given.
  *
  * @throws {@link NotInteractiveError} when `required` is set and nobody can answer.
  * @experimental
@@ -429,21 +431,14 @@ function choiceFor<T extends string>(answer: string, choices: readonly T[]): T |
  * and return the choice it names: its number, or its text (in any case, when
  * only one choice matches). A number in range is read as a position first,
  * since the list shows numbers: with choices `['2', '1']`, `2` picks `'1'`.
- * An empty answer gives `default`. Any other
- * answer, or an empty one with no default, says what to type and asks again
- * when `fd` is a terminal. When it is not (a pipe, a file), nobody reads the
- * re-ask and the next line belongs to whatever reads next, so it throws a
- * plain `Error`, not {@link NotInteractiveError}: input was there and gave an
- * answer, just not a choice, so it fails as a bad answer does (exit 1, code
- * `error` under `--json`).
+ * An empty answer, or end of input, gives `default`.
  *
- * End of input gives `default`. With no default there is nothing to give,
- * so it throws.
+ * An answer that names no choice is asked again on a terminal. Otherwise it
+ * throws a plain `Error` (exit 1, code `error`): input gave an answer, just
+ * not a choice, and the next line belongs to whatever reads next.
  *
- * Each choice, the default and an answer echoed back are printed on one line
- * with terminal controls removed (a line feed or tab shows as `\n` or `\t`),
- * since they are often data from outside the tool (branch names, remotes).
- * The question is printed as given.
+ * Each choice, the default and an echoed answer are printed on one line with
+ * terminal controls escaped or removed; the question is printed as given.
  *
  * @throws Error when `choices` is empty or lists a choice twice, or `default`
  *   is not one of them; and when `fd` is not a terminal and the answer names

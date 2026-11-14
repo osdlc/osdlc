@@ -767,6 +767,8 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
     } catch (err) {
       if (err instanceof UsageError) return usageFailed(err.message)
       if (err instanceof CommandError) return failed(err.code, err.exit, err.message, err.hint)
+      if (err instanceof NotInteractiveError)
+        return failed('not-interactive', err.exit, err.message)
       const failure = failureOf(err)
       if (failure !== null) {
         return failed(failure.kind, exitCodeFor(failure), failure.message, failure.hint)

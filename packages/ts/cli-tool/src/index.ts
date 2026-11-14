@@ -73,6 +73,7 @@ export type {
   AskTextOptions,
   AskYesNoOptions,
   DiscardTypeAheadOptions,
+  NotInteractiveReason,
   OpenTtyOptions,
   PromptOptions,
   PromptTerminal,
