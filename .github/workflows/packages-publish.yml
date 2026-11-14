@@ -50,5 +50,8 @@ jobs:
       # suite records its reference's version. It reads wayfinder's dist/ and
       # runs the conformance-suites command, so both are built first.
       version-prepare: pnpm --filter '@osdlc/wayfinder...' --filter '@osdlc/conformance-suites...' run build
+      # Every folder that holds published packages, so the "not on npm yet" check sees the
+      # profiles and corpora as well as the libraries.
+      package-globs: packages/ts/* packages/profiles/* packages/corpora/*
     secrets:
       RELEASE_PLZ_APP_PRIVATE_KEY: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}
