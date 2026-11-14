@@ -24,7 +24,7 @@ Done in osdlc/osdlc, as phase 4 of `docs/planning/repatriation.md`:
   release, 0.1.0, come too.
 - `.github/workflows/profiles.yml` validates every profile and corpus with `--strict`, runs each
   package's tests, the example pair's check and the leak check (task 65). It builds corpus-schema
-  from `packages/ts/corpus-schema`, so it does not wait on the 0.3.0 release. The changeset config
+  from `packages/ts/corpus-schema`, so it does not wait on the 0.4.0 release. The changeset config
   covers the packages as it is. `check:packages` reads only `packages/ts/`, so it does not check
   these packages.
 
