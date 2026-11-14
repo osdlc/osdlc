@@ -41,6 +41,9 @@ import {
   type AheadBehind,
   type CherryEntry,
   type CommitTreeOptions,
+  type HashObjectOptions,
+  type MktreeEntry,
+  type UpdateRefOptions,
   type CheckoutOptions,
   type CloneOptions,
   type CommitOptions,
@@ -163,6 +166,8 @@ export type GitRequest =
   | { kind: 'aheadBehind'; base: string; tip: string }
   | { kind: 'cherry'; upstream: string; head?: string | undefined }
   | ({ kind: 'commitTree'; tree: string } & CommitTreeOptions)
+  | ({ kind: 'hashObject'; content: string } & HashObjectOptions)
+  | { kind: 'mktree'; entries: readonly MktreeEntry[] }
   // These requests reuse their verb's options type rather than restating its
   // fields. The option types live in `verbs.ts` beside the argv they build,
   // and a copy written out by hand would drift from it.
@@ -198,6 +203,7 @@ export type GitRequest =
   | ({ kind: 'clean' } & CleanOptions)
   | { kind: 'deleteBranch'; name: string; force?: boolean | undefined }
   | { kind: 'deleteRef'; ref: string; expected: string }
+  | ({ kind: 'updateRef'; ref: string; sha: string } & UpdateRefOptions)
   | ({ kind: 'worktreeAdd'; path: string } & WorktreeAddOptions)
   | { kind: 'worktreeRemove'; path: string; force?: boolean | undefined }
   | ({ kind: 'worktreeMove'; from: string; to: string } & WorktreeMoveOptions)
@@ -256,6 +262,8 @@ export interface GitResults {
   aheadBehind: AheadBehind
   cherry: CherryEntry[]
   commitTree: string
+  hashObject: string
+  mktree: string
   lsFiles: string[]
   lsFilesTagged: TaggedFile[]
   submodules: IndexSubmodule[]
@@ -284,6 +292,7 @@ export interface GitResults {
   clean: void
   deleteBranch: void
   deleteRef: void
+  updateRef: void
   worktreeAdd: void
   worktreeRemove: void
   worktreeMove: void
@@ -403,6 +412,10 @@ function toVerb(request: GitRequest): GitVerb<unknown> {
       return v.cherry(request.upstream, request.head)
     case 'commitTree':
       return v.commitTree(request.tree, request)
+    case 'hashObject':
+      return v.hashObject(request.content, request)
+    case 'mktree':
+      return v.mktree(request.entries)
     case 'checkIgnore':
       return v.checkIgnore(request.relPaths)
     case 'checkIgnoreVerbose':
@@ -463,6 +476,8 @@ function toVerb(request: GitRequest): GitVerb<unknown> {
       return v.deleteBranch(request.name, { force: request.force })
     case 'deleteRef':
       return v.deleteRef(request.ref, { expected: request.expected })
+    case 'updateRef':
+      return v.updateRef(request.ref, request.sha, request)
     case 'worktreeAdd':
       return v.worktreeAdd(request.path, request)
     case 'worktreeRemove':

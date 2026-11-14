@@ -32,7 +32,6 @@ maintainer's sign-off. A superseded decision names the one that replaces it.
   model types
 - [D-08](decisions/D-08-platforms.md): Platforms
 - [D-09](decisions/D-09-the-redactor-lives-here.md): The redactor lives here
-  (proposed)
-- [D-10](decisions/D-10-hook-envelope.md): The hook envelope (proposed)
+- [D-10](decisions/D-10-hook-envelope.md): The hook envelope
 - [D-11](decisions/D-11-meta-transcript-index-and-folder-names.md): Session
   meta, a transcript index and safe folder names (proposed; stable exports)
