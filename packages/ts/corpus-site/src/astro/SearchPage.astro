@@ -1,0 +1,13 @@
+---
+// The search page's content: a box, and the results under it.
+import { SearchApp } from '../components/index.js'
+import { getSite } from '../context.js'
+
+const site = getSite()
+---
+
+<header class="cs-page-head">
+  <h1>Search</h1>
+</header>
+<SearchApp client:load indexUrl={site.dataUrl('search.json')} />
+<noscript><p class="cs-noscript">Search needs JavaScript.</p></noscript>

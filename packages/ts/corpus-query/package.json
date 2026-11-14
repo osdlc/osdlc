@@ -1,0 +1,97 @@
+{
+  "name": "@osdlc/corpus-query",
+  "version": "0.0.0",
+  "description": "Query one corpus-schema corpus: describe its types, find records by filter and full-text search, read a record with its references and backlinks, walk references and count field values. One core behind a TypeScript API, a corpus-query command, a REST server and an MCP server.",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/ts/corpus-query"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/ts/corpus-query#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "keywords": [
+    "corpus-schema",
+    "markdown",
+    "markdown-as-data",
+    "query",
+    "search",
+    "mcp",
+    "rest",
+    "cli",
+    "typescript"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "default": "./dist/node.js"
+    },
+    "./rest": {
+      "types": "./dist/rest.d.ts",
+      "default": "./dist/rest.js"
+    },
+    "./mcp": {
+      "types": "./dist/mcp.d.ts",
+      "default": "./dist/mcp.js"
+    },
+    "./cli": {
+      "types": "./dist/cli.d.ts",
+      "default": "./dist/cli.js"
+    }
+  },
+  "bin": {
+    "corpus-query": "./bin/corpus-query.js"
+  },
+  "files": [
+    "dist/",
+    "bin/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "SECURITY.md",
+    "CONTRIBUTING.md"
+  ],
+  "scripts": {
+    "build": "cli-tool-stamp-version && tsc -p tsconfig.build.json",
+    "stamp-version": "cli-tool-stamp-version",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
+    "smoke": "node tests/smoke.mjs",
+    "prepublishOnly": "npm run clean && npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "catalog:",
+    "@osdlc/cli-tool": "workspace:^",
+    "@osdlc/corpus-schema": "workspace:^",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/tsconfig": "workspace:^",
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
