@@ -21,7 +21,7 @@ Open the address Vite prints. The explorer is a private package in the repo's pn
 
 The second line builds this repo's corpus-schema in `packages/ts/corpus-schema/`. The explorer's
 `@osdlc/corpus-schema` is `workspace:*`, that folder, because the plan uses `extends`, which
-corpus-schema has from 0.3.0. npm has 0.2.1, and 0.3.0 publishes from this repo. Run the line again
+corpus-schema has from 0.4.0. 0.4.0 is on npm; the workspace copy also has changes not yet released. Run the line again
 after corpus-schema changes.
 
 ### Components
