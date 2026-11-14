@@ -3,6 +3,8 @@
  * text, and step through one row at a time. The table is plain HTML drawn by `MatrixTable`, so
  * it is whole without script. This component hides its rows and columns to fit the choice, and
  * keeps the choice in the page's address: `?group=skills&col=codex&col=goose&row=…&q=…`.
+ * The columns are a row of chips, or past `MAX_COLUMN_CHIPS` a list with a search box. The
+ * browser remembers the chosen columns for an address that names none.
  */
 import {
   computed,
@@ -16,6 +18,9 @@ import {
   type PropType,
 } from 'vue'
 import type { MatrixItem } from '../data-types.ts'
+
+/** The most columns shown as chips. More are a list behind a button, with a search box. */
+export const MAX_COLUMN_CHIPS = 24
 
 /** What a reader chose on a matrix view. */
 export interface MatrixState {
@@ -88,12 +93,38 @@ export const MatrixControls = defineComponent({
     const texts = shallowRef(new Map<string, string>())
     const queryId = useId()
     const rowId = useId()
+    const columnsId = useId()
+    const columnQuery = shallowRef('')
 
-    const set = (next: MatrixState): void => {
+    // The chosen columns, kept by the browser for an address that names none.
+    const storeKey = (): string => `corpus-site:matrix:${window.location.pathname}`
+    const remember = (columns: string[]): void => {
+      try {
+        if (columns.length === 0) window.localStorage.removeItem(storeKey())
+        else window.localStorage.setItem(storeKey(), JSON.stringify(columns))
+      } catch {
+        // No storage: the address still holds the choice.
+      }
+    }
+    const remembered = (): string[] => {
+      try {
+        const held: unknown = JSON.parse(window.localStorage.getItem(storeKey()) ?? '[]')
+        const columns = known().columns
+        return Array.isArray(held) ? held.filter((c) => columns.includes(c)) : []
+      } catch {
+        return []
+      }
+    }
+
+    /** Take a new state. A choice is a step in the history, and typing is not. */
+    const set = (next: MatrixState, step = true): void => {
+      const columnsChanged = next.columns.join('\0') !== state.value.columns.join('\0')
       state.value = next
+      if (columnsChanged) remember(next.columns)
       const query = formatMatrixState(next)
       const url = `${window.location.pathname}${query === '' ? '' : `?${query}`}${window.location.hash}`
-      window.history.replaceState(window.history.state, '', url)
+      if (step) window.history.pushState(window.history.state, '', url)
+      else window.history.replaceState(window.history.state, '', url)
     }
     const read = (): void => {
       state.value = parseMatrixState(window.location.search, known())
@@ -126,13 +157,23 @@ export const MatrixControls = defineComponent({
     const onMedia = (): void => {
       isNarrow.value = media?.matches ?? false
     }
+    const onDrop = (event: Event): void => {
+      const button = (event.target as Element | null)?.closest?.('[data-drop]')
+      const key = button?.getAttribute('data-drop')
+      if (key !== null && key !== undefined) dropColumn(key)
+    }
     onMounted(() => {
       read()
+      if (!new URLSearchParams(window.location.search).has('col')) {
+        const columns = remembered()
+        if (columns.length > 0) set({ ...state.value, columns }, false)
+      }
       window.addEventListener('popstate', read)
       media = window.matchMedia?.(props.narrow)
       media?.addEventListener('change', onMedia)
       onMedia()
       const table = document.getElementById(props.target)
+      table?.addEventListener('click', onDrop)
       texts.value = new Map(
         [...(table?.querySelectorAll<HTMLElement>('tr[data-row]') ?? [])].map((tr) => [
           tr.dataset['row'] ?? '',
@@ -144,6 +185,7 @@ export const MatrixControls = defineComponent({
     onUnmounted(() => {
       window.removeEventListener('popstate', read)
       media?.removeEventListener('change', onMedia)
+      document.getElementById(props.target)?.removeEventListener('click', onDrop)
     })
 
     // Hide what the choice leaves out. The table is outside this component, so this is plain DOM.
@@ -159,6 +201,10 @@ export const MatrixControls = defineComponent({
         body.hidden = body.querySelector('tr[data-row]:not([hidden])') === null
       for (const cell of table.querySelectorAll<HTMLElement>('[data-col]'))
         cell.hidden = columns.length > 0 && !columns.includes(cell.dataset['col'] ?? '')
+      // A column can be taken away from its header while another is left.
+      const left = columns.length === 0 ? props.columns.length : columns.length
+      for (const button of table.querySelectorAll<HTMLElement>('[data-drop]'))
+        button.hidden = left <= 1
       table.toggleAttribute('data-one-row', current.value !== null)
     })
 
@@ -167,12 +213,106 @@ export const MatrixControls = defineComponent({
       const next = candidates.value[at + by]
       if (next !== undefined) set({ ...state.value, row: next.key })
     }
-    const toggleColumn = (key: string): void => {
+    const setColumns = (chosen: string[]): void => {
       const all = props.columns.map((c) => c.key)
-      const now = state.value.columns.length === 0 ? all : state.value.columns
-      const next = now.includes(key) ? now.filter((c) => c !== key) : [...now, key]
-      const ordered = all.filter((c) => next.includes(c))
+      const ordered = all.filter((c) => chosen.includes(c))
       set({ ...state.value, columns: ordered.length === all.length ? [] : ordered })
+    }
+    /** Pick a column, or let go of a picked one. With none picked every column shows. */
+    const toggleColumn = (key: string): void => {
+      const now = state.value.columns
+      setColumns(now.includes(key) ? now.filter((c) => c !== key) : [...now, key])
+    }
+    /** Take one column away from what shows. */
+    const dropColumn = (key: string): void => {
+      const now =
+        state.value.columns.length === 0 ? props.columns.map((c) => c.key) : state.value.columns
+      if (now.length > 1) setColumns(now.filter((c) => c !== key))
+    }
+
+    // The columns as chips: none pressed shows all, and a pressed one is among those shown.
+    const columnChips = () => {
+      const { columns } = state.value
+      return h('div', { class: 'cs-matrix-pick' }, [
+        h('span', { id: columnsId, class: 'cs-matrix-pick-label' }, props.columnLabel),
+        h('div', { class: 'cs-chips', role: 'group', 'aria-labelledby': columnsId }, [
+          h(
+            'button',
+            {
+              type: 'button',
+              class: 'cs-chip',
+              'aria-pressed': columns.length === 0,
+              onClick: () => setColumns([]),
+            },
+            ['All', h('span', { class: 'cs-count' }, String(props.columns.length))],
+          ),
+          ...props.columns.map((column) =>
+            h(
+              'button',
+              {
+                key: column.key,
+                type: 'button',
+                class: 'cs-chip',
+                'data-column': column.key,
+                'aria-pressed': columns.includes(column.key),
+                onClick: () => toggleColumn(column.key),
+              },
+              column.title,
+            ),
+          ),
+        ]),
+      ])
+    }
+    // Too many for chips: a list behind a button, with a box that narrows it.
+    const columnList = () => {
+      const { columns } = state.value
+      const words = columnQuery.value.toLowerCase().split(/\s+/).filter(Boolean)
+      const listed = props.columns.filter((column) =>
+        words.every((word) => column.title.toLowerCase().includes(word)),
+      )
+      return h('details', { class: 'cs-matrix-columns' }, [
+        h('summary', { class: 'cs-filter-toggle' }, [
+          props.columnLabel,
+          h(
+            'span',
+            { class: 'cs-count' },
+            columns.length === 0 ? 'All' : `${columns.length} of ${props.columns.length}`,
+          ),
+        ]),
+        h('div', { class: 'cs-matrix-column-list' }, [
+          h('input', {
+            class: 'cs-input',
+            type: 'search',
+            value: columnQuery.value,
+            placeholder: `Find ${props.columnLabel.toLowerCase()}`,
+            'aria-label': `Find ${props.columnLabel.toLowerCase()}`,
+            autocomplete: 'off',
+            onInput: (event: Event) => {
+              columnQuery.value = (event.target as HTMLInputElement).value
+            },
+          }),
+          h(
+            'button',
+            {
+              type: 'button',
+              class: 'cs-link-button',
+              disabled: columns.length === 0,
+              onClick: () => setColumns([]),
+            },
+            'Show all',
+          ),
+          ...listed.map((column) =>
+            h('label', { key: column.key, class: 'cs-check' }, [
+              h('input', {
+                type: 'checkbox',
+                checked: columns.includes(column.key),
+                onChange: () => toggleColumn(column.key),
+              }),
+              h('span', column.title),
+            ]),
+          ),
+        ]),
+      ])
     }
 
     return () => {
@@ -182,7 +322,7 @@ export const MatrixControls = defineComponent({
       return h('div', { class: 'cs-matrix-controls' }, [
         props.groups.length === 0
           ? null
-          : h('div', { class: 'cs-chips', role: 'group', 'aria-label': 'Group' }, [
+          : h('div', { class: 'cs-chips cs-matrix-groups', role: 'group', 'aria-label': 'Group' }, [
               h(
                 'button',
                 {
@@ -207,6 +347,7 @@ export const MatrixControls = defineComponent({
                 ),
               ),
             ]),
+        props.columns.length > MAX_COLUMN_CHIPS ? columnList() : columnChips(),
         h('div', { class: 'cs-matrix-tools' }, [
           h('div', { class: 'cs-search' }, [
             h('label', { for: queryId, class: 'cs-sr' }, `Filter ${props.rowLabel.toLowerCase()}`),
@@ -218,36 +359,11 @@ export const MatrixControls = defineComponent({
               placeholder: `Filter ${props.rowLabel.toLowerCase()}`,
               autocomplete: 'off',
               onInput: (event: Event) =>
-                set({ ...state.value, query: (event.target as HTMLInputElement).value, row: null }),
+                set(
+                  { ...state.value, query: (event.target as HTMLInputElement).value, row: null },
+                  false,
+                ),
             }),
-          ]),
-          h('details', { class: 'cs-matrix-columns' }, [
-            h('summary', { class: 'cs-filter-toggle' }, [
-              props.columnLabel,
-              h('span', { class: 'cs-count' }, `${columnCount} of ${props.columns.length}`),
-            ]),
-            h('div', { class: 'cs-matrix-column-list' }, [
-              h(
-                'button',
-                {
-                  type: 'button',
-                  class: 'cs-link-button',
-                  disabled: columns.length === 0,
-                  onClick: () => set({ ...state.value, columns: [] }),
-                },
-                'Show all',
-              ),
-              ...props.columns.map((column) =>
-                h('label', { key: column.key, class: 'cs-check' }, [
-                  h('input', {
-                    type: 'checkbox',
-                    checked: columns.length === 0 || columns.includes(column.key),
-                    onChange: () => toggleColumn(column.key),
-                  }),
-                  h('span', column.title),
-                ]),
-              ),
-            ]),
           ]),
         ]),
         h(

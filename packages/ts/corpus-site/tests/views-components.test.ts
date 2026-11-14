@@ -14,6 +14,7 @@ afterEach(() => {
   for (const unmount of unmounts.splice(0)) unmount()
   vi.unstubAllGlobals()
   window.history.replaceState(null, '', '/')
+  window.localStorage.clear()
 })
 
 function mount(component: Component, props: Record<string, unknown>): HTMLElement {
@@ -207,7 +208,7 @@ describe('the matrix', () => {
   test('the table is whole in the HTML: headers, groups, cells with a link, and empty cells', () => {
     const { table } = both()
     expect(table.querySelector('#m')!.getAttribute('aria-label')).toBe('Compare')
-    expect(texts(table, 'thead th')).toEqual(['Questions', 'Alpha', 'Beta'])
+    expect(texts(table, 'thead th')).toEqual(['Questions', 'Alpha×', 'Beta×'])
     expect(texts(table, '.cs-group-row th')).toEqual(['setup1', 'use2'])
     const run = table.querySelector('tr[data-row=run]')!
     expect(run.getAttribute('data-group')).toBe('use')
@@ -228,7 +229,7 @@ describe('the matrix', () => {
     expect(shown('tr[data-row]')).toEqual(['config', 'run', 'args'])
     expect(text(controls.querySelector('[role=status]'))).toBe('3 of 3 questions, 2 of 2 tools')
 
-    const chips = [...controls.querySelectorAll<HTMLElement>('.cs-chip')]
+    const chips = [...controls.querySelectorAll<HTMLElement>('.cs-matrix-groups .cs-chip')]
     expect(chips.map((c) => text(c))).toEqual(['All3', 'setup1', 'use2'])
     chips[2]!.click()
     await settle()
@@ -236,9 +237,18 @@ describe('the matrix', () => {
     expect(chips[2]!.getAttribute('aria-pressed')).toBe('true')
     expect(window.location.search).toBe('?group=use')
 
-    const boxes = [...controls.querySelectorAll<HTMLInputElement>('.cs-check input')]
-    boxes[0]!.click()
+    // The columns are chips: none pressed shows all, and a pressed one is among those shown.
+    const pick = controls.querySelector('.cs-matrix-pick')!
+    expect(text(pick.querySelector('.cs-matrix-pick-label'))).toBe('Tools')
+    const columns = [...pick.querySelectorAll<HTMLElement>('.cs-chip')]
+    expect(columns.map((c) => [text(c), c.getAttribute('aria-pressed')])).toEqual([
+      ['All2', 'true'],
+      ['Alpha', 'false'],
+      ['Beta', 'false'],
+    ])
+    columns[2]!.click()
     await settle()
+    expect(columns.map((c) => c.getAttribute('aria-pressed'))).toEqual(['false', 'false', 'true'])
     expect(window.location.search).toBe('?group=use&col=beta')
     expect([...new Set(shown('[data-col]'))]).toEqual(['beta'])
     expect(text(controls.querySelector('[role=status]'))).toBe('2 of 3 questions, 1 of 2 tools')
@@ -266,6 +276,78 @@ describe('the matrix', () => {
     await settle()
     expect(shown('tr[data-row]')).toEqual(['args'])
     expect(window.location.search).toBe('?group=use&row=args')
+  })
+
+  test('a column leaves from its header, All brings every column back, and the choice is remembered', async () => {
+    window.localStorage.clear()
+    const { table, controls, shown } = both()
+    await settle()
+    const drop = table.querySelector<HTMLElement>('th[data-col=alpha] [data-drop]')!
+    expect([drop.hidden, drop.getAttribute('aria-label')]).toEqual([false, 'Hide Alpha'])
+    drop.click()
+    await settle()
+    expect(window.location.search).toBe('?col=beta')
+    expect([...new Set(shown('[data-col]'))]).toEqual(['beta'])
+    // The last column cannot be taken away.
+    expect(table.querySelector<HTMLElement>('th[data-col=beta] [data-drop]')!.hidden).toBe(true)
+    expect(window.localStorage.getItem('corpus-site:matrix:/')).toBe('["beta"]')
+
+    // A page opened without a column in its address starts from the remembered ones.
+    window.history.replaceState(null, '', '/')
+    mount(MatrixControls, { target: 'm', columns: matrix.columns, rows: [] })
+    await settle()
+    expect(window.location.search).toBe('?col=beta')
+
+    controls.querySelector<HTMLElement>('.cs-matrix-pick .cs-chip')!.click()
+    await settle()
+    expect(window.location.search).toBe('')
+    expect([...new Set(shown('[data-col]'))]).toEqual(['alpha', 'beta'])
+    expect(window.localStorage.getItem('corpus-site:matrix:/')).toBeNull()
+  })
+
+  test('a choice is a step in the history and typing is not', async () => {
+    window.localStorage.clear()
+    const { controls } = both()
+    await settle()
+    const before = window.history.length
+    controls.querySelector<HTMLElement>('.cs-matrix-pick [data-column=alpha]')!.click()
+    await settle()
+    expect(window.history.length).toBe(before + 1)
+    const input = controls.querySelector<HTMLInputElement>('input[type=search]')!
+    input.value = 'run'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await settle()
+    expect(window.history.length).toBe(before + 1)
+    expect(window.location.search).toBe('?col=alpha&q=run')
+  })
+
+  test('many columns are a list with a search box in place of chips', async () => {
+    window.localStorage.clear()
+    const many = Array.from({ length: 30 }, (_, i) => ({
+      key: `c${i}`,
+      title: `Column ${i}`,
+      url: null,
+    }))
+    const controls = mount(MatrixControls, {
+      target: 'none',
+      columns: many,
+      rows: [],
+      columnLabel: 'Tools',
+    })
+    await settle()
+    expect(controls.querySelector('.cs-matrix-pick')).toBeNull()
+    const list = controls.querySelector('.cs-matrix-columns')!
+    expect(text(list.querySelector('summary'))).toBe('ToolsAll')
+    expect(list.querySelectorAll('.cs-check')).toHaveLength(30)
+    const find = list.querySelector<HTMLInputElement>('input[type=search]')!
+    find.value = 'column 29'
+    find.dispatchEvent(new Event('input', { bubbles: true }))
+    await settle()
+    expect(texts(list, '.cs-check')).toEqual(['Column 29'])
+    list.querySelector<HTMLInputElement>('.cs-check input')!.click()
+    await settle()
+    expect(window.location.search).toBe('?col=c29')
+    expect(text(list.querySelector('summary'))).toBe('Tools1 of 30')
   })
 
   test('on a narrow screen it shows one row at a time from the start', async () => {

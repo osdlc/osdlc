@@ -297,8 +297,12 @@ record the row field can name gets a row, with or without cells. `cell` is a fie
 template. `groupRowsBy` and `rowSummary` read the row's record. A column with no cell is left out.
 
 The page holds the whole table. Its header row and first column stay in place while it scrolls.
-Above it are a chip for each group, a text box that filters the rows and a list of the columns to
-show or hide. The choice is in the address: `?group=skills&col=claude-code&col=codex-cli&q=name`.
+Above it are a chip for each group, a chip for each column and a text box that filters the rows.
+With no column chip pressed every column shows, and pressing chips shows only those. A column
+also has a small button in its header that takes it away. Past 24 columns the chips become a list
+with a search box. The choice is in the address:
+`?group=skills&col=claude-code&col=codex-cli&q=name`, and each choice is a step the back button
+undoes. The browser remembers the chosen columns for an address that names none.
 Below 50rem wide the page shows one row at a time as a list, with a picker and Previous and Next
 (`row=` in the address). The home page and the navigation link to each view, and the home page
 links to each group.

@@ -1009,6 +1009,7 @@ mark {
 .cs-table tbody th {
   width: 36%;
   min-width: 14rem;
+  max-width: calc(100vw - 2rem);
   font-weight: 500;
 }
 
@@ -1495,6 +1496,41 @@ abbr.cs-term {
   margin-bottom: 1rem;
 }
 
+.cs-matrix-pick {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem 0.75rem;
+}
+
+.cs-matrix-pick-label {
+  flex: none;
+  color: var(--cs-text-strong);
+  font-size: var(--cs-small);
+  font-weight: 600;
+}
+
+.cs-matrix-drop {
+  margin-left: 0.35rem;
+  padding: 0 0.3rem;
+  border: 0;
+  border-radius: 0.25rem;
+  background: none;
+  color: var(--cs-muted);
+  font: inherit;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.cs-matrix-drop:hover,
+.cs-matrix-drop:focus-visible {
+  background: var(--cs-bg-soft);
+  color: var(--cs-text-strong);
+}
+
+.cs-matrix-drop[hidden] {
+  display: none;
+}
+
 .cs-matrix-tools {
   display: flex;
   flex-wrap: wrap;
@@ -1911,6 +1947,11 @@ abbr.cs-term {
 }
 
 @media (max-width: 50rem) {
+  .cs-matrix-pick {
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
   .cs-table tbody .cs-group-row {
     padding: 1rem 0 0.4rem;
   }

@@ -86,6 +86,19 @@ export const MatrixTable = defineComponent({
                 ...matrix.columns.map((column) =>
                   h('th', { key: column.key, scope: 'col', 'data-col': column.key }, [
                     column.url === null ? column.title : h('a', { href: column.url }, column.title),
+                    // `MatrixControls` shows the button and answers it. Without script it stays hidden.
+                    h(
+                      'button',
+                      {
+                        type: 'button',
+                        class: 'cs-matrix-drop',
+                        'data-drop': column.key,
+                        'aria-label': `Hide ${column.title}`,
+                        title: `Hide ${column.title}`,
+                        hidden: true,
+                      },
+                      '×',
+                    ),
                   ]),
                 ),
               ]),
