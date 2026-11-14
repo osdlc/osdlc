@@ -487,6 +487,8 @@ describe('order and JSON', () => {
     expect(resolveTarget(copy, follows!)?.id).toBe('Be Kind')
   })
 
+  // Validates and loads every conformance corpus, each twice: about 3 s alone, and more than
+  // vitest's 5 s default when CI tests the whole workspace at once.
   test('every conformance corpus loads, with the validator’s lines, the same twice and through JSON', () => {
     const dir = join(FAMILY_DIR, 'corpora')
     const roots = readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory())
@@ -509,7 +511,7 @@ describe('order and JSON', () => {
           name,
         ).toBe(true)
     }
-  })
+  }, 30_000)
 })
 
 describe('a corpus with errors', () => {
