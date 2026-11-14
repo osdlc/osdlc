@@ -7,6 +7,8 @@ crate to what it depends on. Versions are the ones in each `Cargo.toml`.
 The [decisions](../decisions/README.md) give the reasons, and
 [crate-dependencies.md](crate-dependencies.md) shows how skillwright and
 determined use these crates.
+The shape the whole markdown ecosystem is building toward, TypeScript
+packages included, is in [markdown-target.md](markdown-target.md).
 
 ## Before (osdlc `main`)
 

@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/corpus-schema",
-  "version": "0.2.0",
+  "version": "0.5.0",
   "description": "Validator for the corpus-schema spec: what a folder of notes declares about itself, with typed records kept as Markdown, YAML and JSON files, checked against the schemas and links the folder holds. A library and a corpus-schema command.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
