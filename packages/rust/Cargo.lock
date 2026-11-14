@@ -912,7 +912,7 @@ dependencies = [
 
 [[package]]
 name = "markdown-corpus"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "frontmatter-lossless",
  "markdown-link",
@@ -960,7 +960,7 @@ dependencies = [
 
 [[package]]
 name = "markdown-vault-fs"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "path-guard",
  "regex",
