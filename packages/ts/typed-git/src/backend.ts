@@ -9,8 +9,8 @@
  * the same client work with either.
  *
  * It also means a request can be logged, queued, or replayed as data. The
- * exception is `raw`, which is argv by definition. A non-CLI backend rejects
- * it with {@link UnsupportedRequest}.
+ * exceptions are `raw` and `rawBytes`, which are argv by definition. A non-CLI
+ * backend rejects them with {@link UnsupportedRequest}.
  *
  * The interface is experimental: `GitBackend`, `GitRequest`, `GitResults` and
  * `partialBackend`. Each new verb adds a request kind, which breaks a backend
@@ -20,11 +20,14 @@
 
 import {
   spawnRunnerAsync,
+  spawnRunnerBytesAsync,
+  type AsyncBytesCommandRunner,
   type AsyncCommandRunner,
   type AsyncCommandRunOptions,
   type CommandResult,
 } from '@osdlc/command-seam'
 
+import { UnsupportedRequest } from './failure.ts'
 import { versionedVerb } from './features.ts'
 import {
   pinnedGitVersion,
@@ -34,7 +37,9 @@ import {
 } from './git-version.ts'
 import * as v from './verbs.ts'
 import {
+  bytesRunnerFor,
   gate,
+  gateBytes,
   mergeEnv,
   repoPrefix,
   type AddOptions,
@@ -84,6 +89,7 @@ import {
   type CleanOptions,
   type DiffCheckOptions,
   type DiffCheckResult,
+  type StatusEntriesOptions,
   type StatusEntry,
   type StatusPorcelainOptions,
   type TreeEntry,
@@ -150,7 +156,7 @@ export type GitRequest =
   | { kind: 'symbolicRef'; ref: string }
   | { kind: 'currentBranch' }
   | ({ kind: 'statusPorcelain' } & StatusPorcelainOptions)
-  | { kind: 'statusEntries' }
+  | ({ kind: 'statusEntries' } & StatusEntriesOptions)
   | { kind: 'branches'; pattern?: string | undefined }
   | { kind: 'worktrees' }
   | { kind: 'mergeBase'; a: string; b: string }
@@ -227,6 +233,8 @@ export type GitRequest =
   | ({ kind: 'remoteSetBranches'; remote: string; branches: string[] } & RemoteSetBranchesOptions)
   | ({ kind: 'gc' } & GcOptions)
   | { kind: 'raw'; argv: string[]; input?: string | undefined; checked?: boolean | undefined }
+  // `raw` with stdout kept as the bytes git wrote.
+  | { kind: 'rawBytes'; argv: string[]; input?: string | undefined; checked?: boolean | undefined }
 
 /**
  * The result type each request kind resolves to.
@@ -316,6 +324,7 @@ export interface GitResults {
   remoteSetBranches: void
   gc: void
   raw: CommandResult
+  rawBytes: CommandResult<Buffer>
 }
 
 /** Every request kind, as a union of string literals. */
@@ -347,18 +356,8 @@ export interface GitBackend {
   ): Promise<GitResults[R['kind']]>
 }
 
-/** Thrown by a backend asked for an operation it cannot perform. */
-export class UnsupportedRequest extends Error {
-  readonly kind: string
-  constructor(kind: string, backend: string) {
-    super(`${backend} cannot perform '${kind}'`)
-    this.name = 'UnsupportedRequest'
-    this.kind = kind
-  }
-}
-
 /** Translate a request into the CLI verb that performs it. */
-function toVerb(request: GitRequest): GitVerb<unknown> {
+function toVerb(request: Exclude<GitRequest, { kind: 'rawBytes' }>): GitVerb<unknown> {
   switch (request.kind) {
     case 'version':
       return versionVerb()
@@ -385,7 +384,7 @@ function toVerb(request: GitRequest): GitVerb<unknown> {
     case 'statusPorcelain':
       return v.statusPorcelain(request)
     case 'statusEntries':
-      return v.statusEntries()
+      return v.statusEntries(request)
     case 'branches':
       return v.branches(request.pattern)
     case 'worktrees':
@@ -542,10 +541,22 @@ function toVerb(request: GitRequest): GitVerb<unknown> {
  * (and tests inject a fake). The default runner spawns the `git` found on an
  * absolute `PATH` entry, so a `git` file in the checkout cannot run in its
  * place.
+ *
+ * `rawBytes` runs on a second runner, `bytesRunner`, which keeps stdout as
+ * bytes. Without `runner` it defaults to `spawnRunnerBytesAsync` with the same
+ * `PATH` rule. A backend given a `runner` and no `bytesRunner` rejects
+ * `rawBytes` with {@link UnsupportedRequest}, so a fake or a supervised runner
+ * is never bypassed by a default spawn.
  */
 export function cliBackend(
   opts: {
     runner?: AsyncCommandRunner | undefined
+    /**
+     * The runner for `rawBytes`. See the function doc for its default.
+     *
+     * @experimental command-seam's bytes runners are experimental.
+     */
+    bytesRunner?: AsyncBytesCommandRunner | undefined
     /**
      * The repository to work on, added to every call as `--git-dir` /
      * `--work-tree`. They are set on the backend, not on `GitRequest`, because
@@ -570,6 +581,9 @@ export function cliBackend(
   } = {},
 ): GitBackend {
   const runner = opts.runner ?? spawnRunnerAsync('git', { absolutePathOnly: true })
+  const bytesRunner = bytesRunnerFor(opts, () =>
+    spawnRunnerBytesAsync('git', { absolutePathOnly: true }),
+  )
   const pinned = pinnedGitVersion(opts.gitVersion)
   // A failed probe names `report`: the gated verb's argv, so a missing git
   // reads `git worktree: …` rather than `git --version: …`.
@@ -589,7 +603,6 @@ export function cliBackend(
       request: R,
       callOpts: GitCallOptions = {},
     ): Promise<GitResults[R['kind']]> {
-      const gated = toVerb(request)
       const runOpts: AsyncCommandRunOptions = { cwd }
       if (callOpts.timeoutMs !== undefined) runOpts.timeoutMs = callOpts.timeoutMs
       if (callOpts.signal !== undefined) runOpts.signal = callOpts.signal
@@ -603,6 +616,16 @@ export function cliBackend(
       if (req.kind === 'version') {
         return (await versionOf(runOpts, ['--version'])) as GitResults[R['kind']]
       }
+      if (req.kind === 'rawBytes') {
+        if (bytesRunner === undefined) {
+          throw new UnsupportedRequest(req.kind, 'cliBackend with a runner and no bytesRunner')
+        }
+        if (req.input !== undefined) runOpts.input = req.input
+        const argv = prefix.length === 0 ? req.argv : [...prefix, ...req.argv]
+        const result = await bytesRunner.run(argv, runOpts)
+        return (req.checked === true ? gateBytes(result, argv) : result) as GitResults[R['kind']]
+      }
+      const gated = toVerb(req)
       // A verb that needs a git feature runs in the form this git supports,
       // or rejects as `unsupported-git`. Others never probe.
       const verb =
@@ -614,9 +637,9 @@ export function cliBackend(
       if (verb.env !== undefined) runOpts.env = { ...runOpts.env, ...verb.env }
       const argv = prefix.length === 0 ? verb.argv : [...prefix, ...verb.argv]
       const result = await runner.run(argv, runOpts)
-      // Unchecked `raw` is the only request that skips `gate`: it returns the
-      // result at any exit code. Everything else goes through the same `gate`
-      // the sync client uses.
+      // Unchecked `raw`, and unchecked `rawBytes` above, are the only requests
+      // that skip `gate`: they return the result at any exit code. Everything
+      // else goes through the same `gate` the sync client uses.
       const checked = req.kind !== 'raw' || req.checked === true
       // The prefixed argv is what ran, so it is what a `CommandFailed` reports.
       const value = checked ? gate(verb, result, argv) : verb.parse(result, argv)
