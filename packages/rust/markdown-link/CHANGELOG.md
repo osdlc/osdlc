@@ -9,10 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [0.10.0] - 2026-11-14
 
-More of a body counts as code, so fewer links are found in it, and a
-Markdown link with brackets in its text is found. These change what
-`body_links`, `body_links_spanned_with`, `scan_body_with` and `strip_code`
-return for some bodies, so this is a breaking release. `@osdlc/markdown-link`
+More of a body counts as code, so fewer links are found in it, and more
+Markdown links are found: with brackets in their text, with a title, with
+parentheses in the path, or with a space in a `<…>` destination. These
+change what `body_links`, `body_links_spanned_with`, `scan_body_with` and
+`strip_code` return for some bodies, so this is a breaking release. `@osdlc/markdown-link`
 makes the same changes in its 0.10.0, and both suites read the new cases.
 
 ### Changed
@@ -48,7 +49,21 @@ makes the same changes in its 0.10.0, and both suites read the new cases.
   `[[Note](Note.md)]`, or a reference link whose label a `[label]: …`
   definition in the body names, such as `[[1]`. An inline link needs a
   destination of the shape the scanner reads, so `[[WIP] x](has space)` is
-  still reported, and so, for now, is a link with a title.
+  still reported.
+- **Markdown link destinations** are read much as CommonMark reads an
+  inline link. A title in `"…"`, `'…'` or `(…)` may follow the URL after
+  whitespace, so `[a](a.md "Hint")` is a link. Parentheses that balance may
+  sit in the URL, so `[Notes](notes/Foo%20(beta).md)` is a link to
+  `notes/Foo (beta)`, and an unbalanced one is no longer read: `[a](a(b.md)`
+  was a link and is not. A `<…>` destination may hold spaces, so
+  `[c](<sp ace.md>)` is a link to `sp ace`. Whitespace, with at most one
+  line break, may come around the URL and the title. A `\` escapes the next
+  character, and the URL and title keep it as written. Unlike CommonMark, a
+  title stays on one line, and no line break comes before an unbracketed
+  URL, so it cannot start on a block-quote, heading or list line. A URL starting with `//` names a
+  host, so `[a](//example.com/x.md)` is no longer a link. A Markdown link
+  the scanner does not keep, such as one to an `https:` URL, is stepped over
+  whole, so a `[[x]]` in its title is not a wikilink.
 
 ### Added
 
@@ -57,8 +72,18 @@ makes the same changes in its 0.10.0, and both suites read the new cases.
   separates them. HTML comments are in none.
 - `split_alias` is public: a wikilink body split at its first `|`, without
   the `\` that escapes the pipe in a table cell.
+- `BodyLink::title`: a markdown link's title, as written between its
+  delimiters. `None` for a wikilink or embed, and for a link with none. A
+  struct literal of `BodyLink` must name it.
+- `ScanOptions::all_markdown_links`: read every relative inline Markdown
+  link, whatever its target (a `.yaml` file, a folder, a name with no
+  extension), where by default only a note or an attachment counts. A link
+  with a URI scheme, a URL starting with `//` or an empty destination is
+  never read. The target keeps any `#fragment` or `?query`. A struct literal
+  of `ScanOptions` must name it, or end in `..Default::default()`.
 - The `code` cases of the conformance suite pin `ranges`, the output of
-  `code_ranges`, as pairs of character offsets.
+  `code_ranges`, as pairs of character offsets. A body link may hold
+  `title`, and `options` may set `all_markdown_links`.
 
 ## [0.9.1](https://github.com/osdlc/osdlc/compare/markdown-link/v0.9.0...markdown-link/v0.9.1) - 2026-11-10
 

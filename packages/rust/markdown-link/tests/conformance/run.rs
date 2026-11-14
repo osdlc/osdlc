@@ -119,6 +119,9 @@ fn body(body: &str, options: Option<ScanOptions>) -> Result<Value, String> {
             if link.heading.is_some() {
                 out["heading"] = json!(link.heading);
             }
+            if link.title.is_some() {
+                out["title"] = json!(link.title);
+            }
             if link.block.is_some() {
                 out["block"] = json!(link.block);
             }
@@ -182,7 +185,12 @@ fn scan_options(input: &Map<String, Value>) -> Result<Option<ScanOptions>, Strin
     let options = fields(
         options,
         &[],
-        &["code_rules", "skip_html_comments", "self_links"],
+        &[
+            "code_rules",
+            "skip_html_comments",
+            "self_links",
+            "all_markdown_links",
+        ],
     )?;
     Ok(Some(ScanOptions {
         code_rules: match options.get("code_rules").map(Value::as_str) {
@@ -193,6 +201,7 @@ fn scan_options(input: &Map<String, Value>) -> Result<Option<ScanOptions>, Strin
         },
         skip_html_comments: flag(options, "skip_html_comments")?,
         self_links: flag(options, "self_links")?,
+        all_markdown_links: flag(options, "all_markdown_links")?,
     }))
 }
 

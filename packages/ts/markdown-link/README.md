@@ -60,8 +60,8 @@ npm install @osdlc/markdown-link
 import { bodyLinksSpanned } from '@osdlc/markdown-link'
 
 bodyLinksSpanned('See [[Note#h|alias]] and `[[not a link]]`')
-// [{ kind: 'wikilink', raw: 'Note#h|alias', target: 'Note', heading: 'h', block: null,
-//    alias: 'alias', size: null, start: 4, end: 20 }]
+// [{ kind: 'wikilink', raw: 'Note#h|alias', target: 'Note', heading: 'h', title: null,
+//    block: null, alias: 'alias', size: null, start: 4, end: 20 }]
 ```
 
 ## Exports
@@ -99,8 +99,14 @@ bodyLinksSpanned('See [[Note#h|alias]] and `[[not a link]]`')
   link, with its span; `bodyLinks` is the same scan without spans.
   `bodyLinksSpannedWith(body, options)` takes `ScanOptions`: `codeRules`
   (`'none'` turns code rules off),
-  `skipHtmlComments` (links in `<!-- -->` are not links) and `selfLinks`
-  (`[[#Heading]]` is a link with an empty target). The defaults are
+  `skipHtmlComments` (links in `<!-- -->` are not links), `selfLinks`
+  (`[[#Heading]]` is a link with an empty target) and `allMarkdownLinks`
+  (every relative Markdown link, whatever its target). A markdown link's
+  destination is read much as CommonMark reads it, with its `title`,
+  balanced parentheses in the path and spaces in a `<…>` URL. Unlike
+  CommonMark, a title stays on one line, no line break comes before an
+  unbracketed URL, and backslash
+  escapes stay in the URL and title as written. The defaults are
   `bodyLinksSpanned`'s. `scanBodyWith(body, options)` returns those links
   and `abandoned`, each `[[` the scan gave up on as an `AbandonedLink`
   (`reason`, `embed`, `start`, `end`), so a caller can flag link syntax left
@@ -108,10 +114,9 @@ bodyLinksSpanned('See [[Note#h|alias]] and `[[not a link]]`')
   before `]]`), `'code'` (the target is only code), `'empty-target'` and
   `'unclosed'`. Its result is a `BodyScan`. A `[[` whose first or second `[`
   opens a Markdown link, such as `[[WIP] Fix](https://example.com)`, is not
-  one. An inline link with a title is not read as one yet. A `!` after an odd
-  run of `\` is escaped: `\![[Note]]` is a `'wikilink'` whose span starts at
-  the `[[`, so a renderer shows a literal `!` and a normal link. `\\![[Note]]`
-  is still an embed.
+  one. A `!` after an odd run of `\` is escaped: `\![[Note]]` is a
+  `'wikilink'` whose span starts at the `[[`, so a renderer shows a literal
+  `!` and a normal link. `\\![[Note]]` is still an embed.
 - Display text: `displayText` replaces each wikilink and embed with what a
   reader sees, its alias or else its target. An embed's `|300` or `|300x200`
   is a size, not text, so `![[img.png|300]]` shows `img.png`.

@@ -90,7 +90,11 @@ function flag(map: Record<string, unknown>, key: string): boolean {
 
 function scanOptions(input: Record<string, unknown>): ScanOptions | undefined {
   if (!('options' in input)) return undefined
-  const options = fields(input['options'], [], ['code_rules', 'skip_html_comments', 'self_links'])
+  const options = fields(
+    input['options'],
+    [],
+    ['code_rules', 'skip_html_comments', 'self_links', 'all_markdown_links'],
+  )
   const rules = options['code_rules'] ?? 'commonmark'
   if (rules !== 'commonmark' && rules !== 'skill-export' && rules !== 'none') {
     throw new Error('code_rules is not commonmark, skill-export or none')
@@ -99,6 +103,7 @@ function scanOptions(input: Record<string, unknown>): ScanOptions | undefined {
     codeRules: rules as CodeRules,
     skipHtmlComments: flag(options, 'skip_html_comments'),
     selfLinks: flag(options, 'self_links'),
+    allMarkdownLinks: flag(options, 'all_markdown_links'),
   }
 }
 
@@ -120,6 +125,7 @@ function body(source: string, options: ScanOptions | undefined): unknown {
       text: source.slice(link.start, link.end),
     }
     setUnlessNull(out, 'heading', link.heading)
+    setUnlessNull(out, 'title', link.title)
     setUnlessNull(out, 'block', link.block)
     setUnlessNull(out, 'size', link.size)
     return out

@@ -2251,7 +2251,7 @@
       ]
     },
     "body": {
-      "description": "Scan `body` for links (`options`: `code_rules` as `commonmark`, `skill-export` or `none`, `skip_html_comments`, `self_links`; each optional). `expect.links` are the links in order, each with `kind`, `raw`, `target`, `alias`, `at` (characters before the span), `text` (the source the span covers) and, when set, `heading`, `block`, `size`. `expect.abandoned` lists each `[[` given up on, with `reason`, `at`, `text` and `embed` when a `!` came before it. Every runner also checks that the plain link list agrees with the spanned one. A `!` after an odd run of `\\` is escaped: the link is a wikilink that starts at the `[[`. A markdown link's text may hold balanced brackets but no `[[`, no link and no blank line. A `[[` whose first or second `[` opens a markdown link is not abandoned.",
+      "description": "Scan `body` for links (`options`: `code_rules` as `commonmark`, `skill-export` or `none`, `skip_html_comments`, `self_links`, `all_markdown_links`; each optional). `expect.links` are the links in order, each with `kind`, `raw`, `target`, `alias`, `at` (characters before the span), `text` (the source the span covers) and, when set, `heading`, `title`, `block`, `size`. `expect.abandoned` lists each `[[` given up on, with `reason`, `at`, `text` and `embed` when a `!` came before it. Every runner also checks that the plain link list agrees with the spanned one. A `!` after an odd run of `\\` is escaped: the link is a wikilink that starts at the `[[`. A markdown link's text may hold balanced brackets but no `[[`, no link and no blank line. A `[[` whose first or second `[` opens a markdown link is not abandoned.",
       "cases": [
         {
           "name": "wikilinks_embeds_headings_and_aliases",
@@ -2338,25 +2338,6 @@
                 "alias": null,
                 "at": 5,
                 "text": "[[Yes]]"
-              }
-            ],
-            "abandoned": []
-          }
-        },
-        {
-          "name": "absolute_urls_and_spaces_are_not_links",
-          "input": {
-            "body": "[a](Notes/x.md) [b](https://example.com/y.md) [c](<sp ace.md>)"
-          },
-          "expect": {
-            "links": [
-              {
-                "kind": "markdown",
-                "raw": "Notes/x.md",
-                "target": "Notes/x",
-                "alias": null,
-                "at": 0,
-                "text": "[a](Notes/x.md)"
               }
             ],
             "abandoned": []
@@ -4327,6 +4308,705 @@
                 "alias": null,
                 "at": 0,
                 "text": "[a\n`b`\nc](x.md)"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "absolute_urls_are_not_links_and_angled_urls_may_hold_spaces",
+          "input": {
+            "body": "[a](Notes/x.md) [b](https://example.com/y.md) [c](<sp ace.md>)"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "Notes/x.md",
+                "target": "Notes/x",
+                "alias": null,
+                "at": 0,
+                "text": "[a](Notes/x.md)"
+              },
+              {
+                "kind": "markdown",
+                "raw": "sp ace.md",
+                "target": "sp ace",
+                "alias": null,
+                "at": 46,
+                "text": "[c](<sp ace.md>)"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "title_in_double_quotes",
+          "input": {
+            "body": "[Claude Code](harnesses/Claude%20Code.md \"Anthropic's CLI\")"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "harnesses/Claude%20Code.md",
+                "target": "harnesses/Claude Code",
+                "alias": null,
+                "at": 0,
+                "text": "[Claude Code](harnesses/Claude%20Code.md \"Anthropic's CLI\")",
+                "title": "Anthropic's CLI"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "title_in_single_quotes",
+          "input": {
+            "body": "[a](a.md 'Hint')"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "a.md",
+                "target": "a",
+                "alias": null,
+                "at": 0,
+                "text": "[a](a.md 'Hint')",
+                "title": "Hint"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "title_in_parentheses",
+          "input": {
+            "body": "[a](a.md (Hint))"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "a.md",
+                "target": "a",
+                "alias": null,
+                "at": 0,
+                "text": "[a](a.md (Hint))",
+                "title": "Hint"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "title_on_the_next_line",
+          "input": {
+            "body": "[a](a.md\n  \"Hint\"\n)"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "a.md",
+                "target": "a",
+                "alias": null,
+                "at": 0,
+                "text": "[a](a.md\n  \"Hint\"\n)",
+                "title": "Hint"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "title_keeps_its_escapes",
+          "input": {
+            "body": "[a](a.md \"say \\\"hi\\\"\")"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "a.md",
+                "target": "a",
+                "alias": null,
+                "at": 0,
+                "text": "[a](a.md \"say \\\"hi\\\"\")",
+                "title": "say \\\"hi\\\""
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "title_needs_space_before_it",
+          "input": {
+            "body": "[a](a.md\"x\")"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "title_does_not_cross_a_blank_line",
+          "input": {
+            "body": "[a](a.md \"x\n\ny\")"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "unclosed_title_is_not_a_link",
+          "input": {
+            "body": "[a](a.md \"x) [b](b.md)"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "b.md",
+                "target": "b",
+                "alias": null,
+                "at": 13,
+                "text": "[b](b.md)"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "parentheses_in_the_path_balance",
+          "input": {
+            "body": "[Notes](notes/Foo%20(beta).md) [n](x(y(z)).md)"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "notes/Foo%20(beta).md",
+                "target": "notes/Foo (beta)",
+                "alias": null,
+                "at": 0,
+                "text": "[Notes](notes/Foo%20(beta).md)"
+              },
+              {
+                "kind": "markdown",
+                "raw": "x(y(z)).md",
+                "target": "x(y(z))",
+                "alias": null,
+                "at": 31,
+                "text": "[n](x(y(z)).md)"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "unbalanced_parenthesis_is_not_a_link",
+          "input": {
+            "body": "[a](x(y.md) [b](b.md)"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "b.md",
+                "target": "b",
+                "alias": null,
+                "at": 12,
+                "text": "[b](b.md)"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "escaped_parenthesis_in_the_path",
+          "input": {
+            "body": "[a](x\\)y.md)"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "x\\)y.md",
+                "target": "x\\)y",
+                "alias": null,
+                "at": 0,
+                "text": "[a](x\\)y.md)"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "angled_url_with_a_title",
+          "input": {
+            "body": "[c](<a b.md> \"t\")"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "a b.md",
+                "target": "a b",
+                "alias": null,
+                "at": 0,
+                "text": "[c](<a b.md> \"t\")",
+                "title": "t"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "angled_url_holds_no_line_break",
+          "input": {
+            "body": "[c](<a\nb.md>)"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "space_around_the_destination",
+          "input": {
+            "body": "[a]( a.md )"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "a.md",
+                "target": "a",
+                "alias": null,
+                "at": 0,
+                "text": "[a]( a.md )"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "all_markdown_links_option",
+          "input": {
+            "body": "[y](data/x.yaml \"Y\") [d](folder/) [r](README) [e]() [w](https://x) [m](a.md)",
+            "options": {
+              "all_markdown_links": true
+            }
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "data/x.yaml",
+                "target": "data/x.yaml",
+                "alias": null,
+                "at": 0,
+                "text": "[y](data/x.yaml \"Y\")",
+                "title": "Y"
+              },
+              {
+                "kind": "markdown",
+                "raw": "folder/",
+                "target": "folder/",
+                "alias": null,
+                "at": 21,
+                "text": "[d](folder/)"
+              },
+              {
+                "kind": "markdown",
+                "raw": "README",
+                "target": "README",
+                "alias": null,
+                "at": 34,
+                "text": "[r](README)"
+              },
+              {
+                "kind": "markdown",
+                "raw": "a.md",
+                "target": "a",
+                "alias": null,
+                "at": 67,
+                "text": "[m](a.md)"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "all_markdown_links_is_off_by_default",
+          "input": {
+            "body": "[y](data/x.yaml) [d](folder/) [r](README) [m](a.md)"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "a.md",
+                "target": "a",
+                "alias": null,
+                "at": 42,
+                "text": "[m](a.md)"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "abandoned_not_reported_for_a_link_with_a_title",
+          "input": {
+            "body": "[[WIP] Fix](https://example.com \"Title\")"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "title_stays_on_its_line",
+          "input": {
+            "body": "[a](a.md \"start\n- [[Real]] item\")"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "Real",
+                "target": "Real",
+                "alias": null,
+                "at": 18,
+                "text": "[[Real]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "escaped_line_break_does_not_join_a_title",
+          "input": {
+            "body": "[a](a.md \"x\\\n\ny\")"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "escaped_line_break_does_not_join_an_angled_url",
+          "input": {
+            "body": "[a](<a\\\nb.md>)"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "protocol_relative_url_is_external",
+          "input": {
+            "body": "[a](//example.com/x.md)"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "protocol_relative_url_is_external_for_all_markdown_links",
+          "input": {
+            "body": "[a](//example.com/x) [b](/root/y)",
+            "options": {
+              "all_markdown_links": true
+            }
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "/root/y",
+                "target": "/root/y",
+                "alias": null,
+                "at": 21,
+                "text": "[b](/root/y)"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "a_link_not_kept_is_stepped_over_whole",
+          "input": {
+            "body": "[y](data/x.yaml \"[[z]]\") [a](https://x \"[[x]]\") [[w]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "w",
+                "target": "w",
+                "alias": null,
+                "at": 48,
+                "text": "[[w]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "a_link_in_parentheses_in_prose",
+          "input": {
+            "body": "(see [a](a.md))"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "a.md",
+                "target": "a",
+                "alias": null,
+                "at": 5,
+                "text": "[a](a.md)"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "angled_url_refuses_a_less_than",
+          "input": {
+            "body": "[a](<b<c>.md>)"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "angled_url_with_an_escaped_greater_than",
+          "input": {
+            "body": "[a](<b\\>c.md>)"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "b\\>c.md",
+                "target": "b\\>c",
+                "alias": null,
+                "at": 0,
+                "text": "[a](<b\\>c.md>)"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "parenthesised_title_refuses_a_parenthesis",
+          "input": {
+            "body": "[a](a.md (x(y))) [b](b.md (z))"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "b.md",
+                "target": "b",
+                "alias": null,
+                "at": 17,
+                "text": "[b](b.md (z))",
+                "title": "z"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "nothing_but_space_after_the_title",
+          "input": {
+            "body": "[a](a.md \"t\"x) [b](b.md \"t\" )"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "b.md",
+                "target": "b",
+                "alias": null,
+                "at": 15,
+                "text": "[b](b.md \"t\" )",
+                "title": "t"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "a_lone_carriage_return_is_not_space",
+          "input": {
+            "body": "[a](\r\r\ra.md) [b](b.md\r\n\"t\")"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "b.md",
+                "target": "b",
+                "alias": null,
+                "at": 13,
+                "text": "[b](b.md\r\n\"t\")",
+                "title": "t"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "an_empty_url_takes_no_title",
+          "input": {
+            "body": "[a](\n\n\"[[Note]]\") [b](\n) [[c]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "Note",
+                "target": "Note",
+                "alias": null,
+                "at": 7,
+                "text": "[[Note]]"
+              },
+              {
+                "kind": "wikilink",
+                "raw": "c",
+                "target": "c",
+                "alias": null,
+                "at": 25,
+                "text": "[[c]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "no_line_break_before_an_unbracketed_url",
+          "input": {
+            "body": "[a](\n>[[W]]) [b](\n<b.md>)"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "W",
+                "target": "W",
+                "alias": null,
+                "at": 6,
+                "text": "[[W]]"
+              },
+              {
+                "kind": "markdown",
+                "raw": "b.md",
+                "target": "b",
+                "alias": null,
+                "at": 13,
+                "text": "[b](\n<b.md>)"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "no_line_break_before_an_unbracketed_url_for_all_markdown_links",
+          "input": {
+            "body": "[a](\n#) [b](\n- \"x\")",
+            "options": {
+              "all_markdown_links": true
+            }
+          },
+          "expect": {
+            "links": [],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "image_with_a_title",
+          "input": {
+            "body": "![d](img/a.png \"t\")"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "img/a.png",
+                "target": "img/a.png",
+                "alias": null,
+                "at": 1,
+                "text": "[d](img/a.png \"t\")",
+                "title": "t"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "image_with_an_angled_url",
+          "input": {
+            "body": "![d](<img/a b.png>)"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "img/a b.png",
+                "target": "img/a b.png",
+                "alias": null,
+                "at": 1,
+                "text": "[d](<img/a b.png>)"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "blank_line_between_the_url_and_the_title",
+          "input": {
+            "body": "[a](a.md\n\n\"t\")"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "escapes_in_titles",
+          "input": {
+            "body": "[a](a.md 'it\\'s') [b](b.md (x\\)y))"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "a.md",
+                "target": "a",
+                "alias": null,
+                "at": 0,
+                "text": "[a](a.md 'it\\'s')",
+                "title": "it\\'s"
+              },
+              {
+                "kind": "markdown",
+                "raw": "b.md",
+                "target": "b",
+                "alias": null,
+                "at": 18,
+                "text": "[b](b.md (x\\)y))",
+                "title": "x\\)y"
               }
             ],
             "abandoned": []
