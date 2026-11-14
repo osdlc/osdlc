@@ -209,6 +209,35 @@ describe('types', () => {
     ])
   })
 
+  test('a type that repeats an inherited x-ref gives one reference and one backlink per value', () => {
+    s.root('profile')
+    s.put('profile/people/people.schema.yaml', 'type: object\n')
+    s.put(
+      'profile/tasks/tasks.schema.yaml',
+      'type: object\nproperties:\n  owner: { x-ref: people, x-ref-form: id }\n  helpers: { type: array, items: { x-ref: people, x-ref-form: id } }\n',
+    )
+    s.root('c', { extends: { p: '../profile' }, uses: 'p/people' })
+    s.put('c/people/Ada.md', '')
+    s.put('c/people/Bob.md', '')
+    s.put(
+      'c/tasks/tasks.schema.yaml',
+      'x-extends: p/tasks\nproperties:\n  owner: { x-ref: people, x-ref-form: id }\n  helpers: { type: array, items: { x-ref: people, x-ref-form: id } }\n',
+    )
+    s.put('c/tasks/T1.md', '---\nowner: Ada\nhelpers: [Bob, Ada]\n---\n')
+    const c = loadCorpus(s.at('c'))
+    expect(c.errors).toEqual([])
+    expect(getRecord(c, 'tasks', 'T1')?.references.map((r) => [r.pointer, r.target?.id])).toEqual([
+      ['/helpers/0', 'Bob'],
+      ['/helpers/1', 'Ada'],
+      ['/owner', 'Ada'],
+    ])
+    expect(getRecord(c, 'people', 'Ada')?.incoming.map((b) => b.pointer)).toEqual([
+      '/helpers/1',
+      '/owner',
+    ])
+    expect(getRecord(c, 'people', 'Bob')?.incoming).toHaveLength(1)
+  })
+
   test('an x-ref that names no type has null targets, and its values are unresolved', () => {
     s.root('c')
     s.put('c/notes/notes.schema.yaml', 'properties:\n  about: { x-ref: nope, x-ref-form: id }\n')
