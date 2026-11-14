@@ -1,0 +1,12 @@
+---
+import { Layout, TypeIndex } from 'virtual:corpus-site/components'
+import { getSite } from '../../context.js'
+import { typeBySlug, typePaths } from '../../routes.js'
+
+export const getStaticPaths = () => typePaths(getSite())
+
+const type = typeBySlug(getSite(), Astro.params.type)
+if (type === undefined) return new Response(null, { status: 404 })
+---
+
+<Layout title={type.label} description={type.blurb} active={type.slug}><TypeIndex type={type} /></Layout>
