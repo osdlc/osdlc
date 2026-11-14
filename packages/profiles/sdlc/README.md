@@ -77,7 +77,7 @@ Install it in the folder that holds your corpus, or in any folder above it. The 
 package the way Node.js does. The package's `"corpus"` field names its corpus folder, `corpus/`.
 
 You need a corpus-schema validator that reads `extends`, `x-ref-form` and lists in `x-ref`:
-`@osdlc/corpus-schema` 0.3.0 or later.
+`@osdlc/corpus-schema` 0.4.0 or later.
 
 ## Use it
 
