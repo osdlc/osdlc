@@ -2,41 +2,15 @@
  * `pr-update`: the standalone CLI, a `@osdlc/cli-tool` command tree.
  *
  * `survey` and `update` are declared in `commands.ts`; `config` and `trust`
- * are cli-tool's shared commands over pr-update's files (`config-cli.ts`). The
- * app parses each command line, prints the answer as text or, under `--json`
- * (`--output json`), as one document with `schemaVersion` and `kind`, and
- * generates `help`, `--help` and `schema` from the declarations. `pr-update`
- * alone prints the help and exits 0.
+ * are cli-tool's shared commands over pr-update's files (`config-cli.ts`).
+ * `pr-update` alone prints the help and exits 0.
  *
- * Config layers, highest first: a flag, `pr-update.local.yaml`,
- * `pr-update.yaml` (the `pr_update:` and `code_host:` blocks), the built-in
- * defaults (see `config-file.ts`). `PR_UPDATE_CONFIG` points the two files at
- * another path. Every `PrUpdateConfig` key has a default, so `survey` and
- * `update` work with no config file. The binary reads no other file. `config`
- * reads and edits those files, and `trust` records consent to the commands a
- * project's config names.
+ * Config layers and exit codes: see README.md (## Config, ## Exit codes); each
+ * command's own exits are declared in commands.ts.
  *
- * Exit codes:
- *
- * - `0`: a clean run. `survey` always; `update` when every target ended
- *   `updated`, `up-to-date` or skipped on purpose.
- * - `1`: the command ran but did not fully succeed. Either an unexpected error,
- *   or, for `update`, a target left `conflict` or `failed` (`results` and
- *   `counts` say which).
- * - `2`: a malformed command line.
- * - `14`: the config file is invalid or unreadable.
- * - `21`: `update` was refused because the repository is not trusted.
- * - `22` to `25`: the codes every `@osdlc/cli-tool` tool shares
- *   (`EXIT_FAILURE`). `22`: a tool the run needs (`git`, and `gh` or `curl`)
- *   is not installed. `23`: the code host refused the caller or answered
- *   unusably (not signed in, no Forgejo token, not found). `24`: there is no
- *   repository or git remote to read. `25`: the code host could not be
- *   reached or rate-limited the caller.
- *
- * `selectCodeHost` chooses the code host from the `origin` remote, or from
- * `code_host.override`, whatever `--remote` names. `--remote` is the remote
- * fetched, measured against (`<remote>/<branch>`) and, for `update`, pushed to.
- * A failed PR listing is an error, never "no open PRs". `@osdlc/cli-tool` prints every classified failure and picks its exit code.
+ * `--remote` is the remote fetched, measured against (`<remote>/<branch>`) and,
+ * for `update`, pushed to. `selectedCodeHostFor` in `code-host.ts` says how the
+ * code host is chosen.
  */
 
 import type { CliContext } from '@osdlc/cli-tool'
@@ -141,14 +115,13 @@ export function expandBareBranch(argv: readonly string[]): string[] {
   return out
 }
 
-/** `main(argv, ctx)`: returns an exit code and never exits. It reads nothing outside `ctx` and `seams`. */
+/** Returns an exit code and never exits. Reads nothing outside `ctx` and `seams`. */
 export async function main(
   argv: readonly string[],
   ctx: CliContext,
   seams: CliSeams = {},
 ): Promise<number> {
   const app = createApp(seams)
-  // `pr-update` alone lists the commands on stdout and exits 0, as it always has.
   if (argv.length === 0) return app.run(['help'], ctx)
   return app.run(expandBareBranch(argv), ctx)
 }

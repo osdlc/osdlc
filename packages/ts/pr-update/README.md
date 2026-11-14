@@ -322,17 +322,18 @@ some other way than the terminal.
 ## A report a host can read
 
 `update --report <file>` writes the run's result as JSON (the same document
-`--json` prints, `schemaVersion` and `kind` included) through a temp file and
-a rename, so a reader never sees half of it. Any report left by an earlier run
-is removed first, so a file that is there belongs to this run. It is written whenever the run produced a result,
-on a clean exit and on a conflict or failure alike. Each PR's entry carries its
-`repo` and `number`, `status`, the `strategy` that ran, `strategyFallback`,
-`repaired`, `conflicts` and `localCheckout`, so a host can act on each outcome
-without parsing text. `skipped` lists the PRs left alone, each with its `repo`,
-`number` and `reason`. `notFound` lists the `--pr` selectors no surveyed PR
-matched (`#N` or `owner/name#N`). `repos` lists the repositories surveyed,
-exactly as `survey` reports them. A run that throws writes `{ "error": "<message>" }` instead. A run refused before
-it starts (a flag usage error, or no trust) writes none.
+`--json` prints, `schemaVersion` and `kind` included) through a temp file and a
+rename, so a reader never sees half of it. Any report left by an earlier run is
+removed first, so a file that is there belongs to this run. It is written
+whenever the run produced a result, on a clean exit and on a conflict or failure
+alike. Each PR's entry carries its `repo` and `number`, `status`, the `strategy`
+that ran, `strategyFallback`, `repaired`, `conflicts` and `localCheckout`, so a
+host can act on each outcome without parsing text. `skipped` lists the PRs left
+alone, each with its `repo`, `number` and `reason`. `notFound` lists the `--pr`
+selectors no surveyed PR matched (`#N` or `owner/name#N`). `repos` lists the
+repositories surveyed, exactly as `survey` reports them. A run that throws
+writes `{ "error": "<message>" }` instead. A run refused before it starts (a
+flag usage error, or no trust) writes none.
 
 There is no interactive checklist. `--confirm-push` is the way to ask before a
 force-push.

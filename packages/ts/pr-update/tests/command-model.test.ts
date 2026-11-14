@@ -73,6 +73,12 @@ describe('the top level', () => {
     expect(r.out).toBe((await run(cwd, env)).out)
   })
 
+  test('--branch given twice is a usage error', async () => {
+    const r = await run(cwd, env, 'survey', '--branch', '--branch', 'main')
+    expect(r.code).toBe(EXIT.usage)
+    expect(r.err).toContain('give it once')
+  })
+
   test('an unknown command is a usage error that suggests the close one', async () => {
     const r = await run(cwd, env, 'survy')
     expect(r.code).toBe(EXIT.usage)

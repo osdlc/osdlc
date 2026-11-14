@@ -234,7 +234,6 @@ describe('update --report', () => {
       const file = join(worker.dir, 'out', 'report.json')
       const r = await go('update', '--branch', '--apply', '--no-fetch', '--json', '--report', file)
       expect(r.code).toBe(EXIT.ok)
-      // The report is the document --json prints, schemaVersion and kind included.
       const written = JSON.parse(readFileSync(file, 'utf8'))
       expect(written).toEqual(JSON.parse(r.out))
       expect(written).toMatchObject({ schemaVersion: 1, kind: 'update' })

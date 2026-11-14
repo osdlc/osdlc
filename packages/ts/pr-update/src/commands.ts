@@ -1,10 +1,6 @@
 /**
- * `pr-update survey` and `pr-update update`, declared once on
- * `@osdlc/cli-tool`'s command model. Each command declares its flags, its exit
- * codes and its output schema (`survey.ts` and `update.ts` own the schemas);
- * the app in `cli.ts` parses the command line, prints the answer as text or,
- * under `--json`, as one document with `schemaVersion` and `kind`, and
- * generates `--help` and `schema` from the same declarations.
+ * `survey` and `update` declared on `@osdlc/cli-tool`'s command model; the app
+ * is `createApp` in cli.ts.
  *
  * Each command loads the config layers, checks the run's tools before any PR
  * is listed (`preflight.ts`), and runs the engine. Classified failures are
@@ -72,7 +68,7 @@ export interface CliSeams {
 /** The schema version of the `survey` and `update` documents. */
 const SCHEMA_VERSION = 1
 
-/** The injected git runner, else one that runs git only from an absolute PATH entry. */
+/** The injected git runner, else one that runs git only from an absolute PATH entry. Git and gh run in the project, so a bare name could be planted there. */
 function gitRunner(seams: CliSeams): CommandRunner {
   return seams.git ?? spawnRunner('git', { absolutePathOnly: true })
 }
@@ -80,7 +76,7 @@ function gitRunner(seams: CliSeams): CommandRunner {
 const BRANCH_HELP =
   'Only the PR whose head is this branch. A bare --branch (no name) means the branch checked out in the current directory. No such PR is a usage error.'
 
-/** The flags `survey` and `update` both take. `repo` and `remote` say what the command does with them. */
+/** The flags `survey` and `update` both take. `verb` and `remoteHelp` fill in the help of `--repo` and `--remote`. */
 function scopeFlags(verb: 'survey' | 'update', remoteHelp: string) {
   return {
     author: {
@@ -189,7 +185,6 @@ function runEnv(
     command: null,
   },
 ): UpdateEnv {
-  // Both run in the project, so a bare name runs only from an absolute PATH entry.
   const git = gitRunner(seams)
   const gh = seams.gh ?? spawnRunner('gh', { absolutePathOnly: true })
   const projectRoot = ctx.cwd
@@ -252,7 +247,7 @@ function reportRepoFailures(
   return code
 }
 
-/** A thrown {@link SurveyUsageError} (no PR for `--branch`, a bad flag pairing) as a usage error. */
+/** Rethrows a {@link SurveyUsageError} as a {@link UsageError}; anything else, a classified failure included, is rethrown for the app to print. */
 function asUsage(e: unknown): never {
   if (e instanceof SurveyUsageError) throw new UsageError(e.message)
   throw e
@@ -305,7 +300,6 @@ export function surveyCommand(seams: CliSeams) {
           env,
         )
       } catch (e) {
-        // A classified failure (a failed listing) goes to the app, which prints it.
         asUsage(e)
       }
       const failed = reportRepoFailures(ctx, report)
@@ -324,9 +318,7 @@ function updateDocument(out: UpdateOutput): Record<string, unknown> {
 }
 
 /**
- * Write `out` as JSON through a temp file and a rename, so a host reading the
- * report never sees half of one. Written for every run that produced a result,
- * whether it ended clean or left a conflict or failure.
+ * Write `out` atomically, so a host reading the report never sees half of one.
  */
 function writeReport(file: string, out: UpdateOutput): void {
   mkdirSync(dirname(file), { recursive: true })
@@ -509,7 +501,6 @@ export function updateCommand(seams: CliSeams) {
             // Report the original error, not this one.
           }
         }
-        // A classified failure (a failed listing) goes to the app, which prints it.
         asUsage(e)
       }
       if (reportFile !== undefined) {
@@ -519,13 +510,10 @@ export function updateCommand(seams: CliSeams) {
           throw new CommandError(`cannot write the report ${flags.report}: ${(e as Error).message}`)
         }
       }
-      // Exit `1` means the command was well formed and the run completed: every
-      // target was attempted and nothing was left half applied. But a conflict or
-      // push failure left some PR not updated. A script that runs this in a loop
-      // needs that in the exit code, not only in the JSON `counts`.
       const listingFailure = reportRepoFailures(ctx, out)
       // A forwarded signal stopped the run: exit 128 + its number, as forwarding itself would.
       const interrupted = forwardedExitCode()
+      // A conflict or failed push exits 1 though the run completed, so a script need not read `counts`.
       const exit =
         interrupted ??
         listingFailure ??
