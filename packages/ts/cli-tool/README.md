@@ -925,7 +925,7 @@ follow `@osdlc/tiered-dirs`.
 
 The experimental exports of `@osdlc/cli-tool`:
 
-`AskChoiceOptions`, `AskTextOptions`, `DEFAULT_WIDTH`, `DevlinkWhere`, `MAX_WIDTH`, `NotInteractiveError`,
+`AskChoiceOptions`, `AskTextOptions`, `AskYesNoOptions`, `DEFAULT_WIDTH`, `DevlinkWhere`, `MAX_WIDTH`, `NotInteractiveError`,
 `NotInteractiveReason`, `OpenTtyOptions`, `PromptTerminal`, `RequireInteractiveOptions`, `Terminal`, `VendorDirs`, `askChoice`, `askText`,
 `closestMatches`, `colorEnabled`, `columns`, `didYouMean`, `helpWidth`, `openTty`, `requireInteractive`, `systemDirs`,
 `wrapText`
