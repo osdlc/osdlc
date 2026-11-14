@@ -47,6 +47,12 @@ const GAPS: Record<string, readonly string[]> = {
   'pi skills/user-dirs': ['~/.agents/skills'],
   'pi skills/project-dirs': ['.agents/skills'],
   'antigravity skills/user-dirs': ['~/.gemini/skills'],
+  'opencode skills/user-dirs': [
+    '~/.config/opencode/skills',
+    '~/.claude/skills',
+    '~/.agents/skills',
+  ],
+  'opencode skills/project-dirs': ['.opencode/skills', '.claude/skills', '.agents/skills'],
 }
 
 describe('the location table and the knowledge file agree', () => {
