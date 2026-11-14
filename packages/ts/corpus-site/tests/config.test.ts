@@ -112,6 +112,19 @@ describe('configProblems', () => {
     expect(problems({ types: { notes: { slug: 'data' } } })[0]).toContain('is one the site uses')
     expect(problems({ types: { notes: { slug: 'data', hidden: true } } })).toEqual([])
   })
+
+  test('a path is checked as a slug, as the routes make it', () => {
+    const named = (...names: string[]): typeof model => ({
+      ...model,
+      types: names.map((name) => ({ ...(model.types[0] as (typeof model.types)[0]), name })),
+    })
+    expect(configProblems({}, named('Search'))[0]).toContain('"search" is one the site uses')
+    expect(configProblems({}, named('Data'))[0]).toContain('"data" is one the site uses')
+    expect(configProblems({}, named('task_runs', 'task-runs'))).toEqual([
+      'types.task-runs.slug: "task-runs" is also the path of type "task_runs"',
+    ])
+    expect(configProblems({ types: { Search: { slug: 'find' } } }, named('Search'))).toEqual([])
+  })
 })
 
 test('validateConfig throws every problem at once', () => {

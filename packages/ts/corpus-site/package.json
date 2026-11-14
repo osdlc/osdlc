@@ -74,7 +74,8 @@
   "dependencies": {
     "@osdlc/corpus-schema": "workspace:^",
     "@osdlc/frontmatter-lossless": "workspace:^",
-    "@osdlc/markdown-render": "workspace:^"
+    "@osdlc/markdown-render": "workspace:^",
+    "rehype-stringify": "^10.0.1"
   },
   "peerDependencies": {
     "@astrojs/vue": "^7.0.0",
@@ -85,6 +86,7 @@
     "@astrojs/vue": "7.0.3",
     "@osdlc/prettier-config": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
+    "@types/hast": "^3.0.5",
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "astro": "7.3.5",

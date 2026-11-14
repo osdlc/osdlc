@@ -4,6 +4,7 @@
  */
 import type { CorpusType, LoadedCorpus } from '@osdlc/corpus-schema'
 import { fieldSchemaAt } from './schema.ts'
+import { slugify } from './slug.ts'
 
 /** How a filter is drawn. `hidden` keeps a field out of the filters. */
 export type ControlKind = 'select' | 'chips' | 'range' | 'toggle' | 'search' | 'hidden'
@@ -697,7 +698,7 @@ export function configProblems(config: CorpusSiteConfig, model: LoadedCorpus): s
   for (const t of model.types) {
     const typeConfig = config.types?.[t.name]
     if (typeConfig?.hidden === true) continue
-    const slug = typeConfig?.slug ?? t.name
+    const slug = typeConfig?.slug ?? slugify(t.name)
     if (['data', 'search', 'ref'].includes(slug))
       problems.push(
         `types.${t.name}: its path "${slug}" is one the site uses. Set types.${t.name}.slug`,

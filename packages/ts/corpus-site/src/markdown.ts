@@ -1,5 +1,13 @@
 /** A record's Markdown body as HTML, with its links to records pointing at their pages. */
-import { renderToHtmlSync, type LinkResolution } from '@osdlc/markdown-render'
+import type { Element, Parent, Root } from 'hast'
+import rehypeStringify from 'rehype-stringify'
+import {
+  createMarkdownProcessor,
+  embedMedia,
+  embedPlaceholder,
+  isMediaKind,
+  type LinkResolution,
+} from '@osdlc/markdown-render'
 import { safeDecode, type Site, type SiteRecord } from './site.ts'
 
 /**
@@ -21,24 +29,52 @@ export function renderMarkdown(
       return { kind: 'missing', display: found?.title ?? display }
     return { kind: 'note', path: found.url, display: found.title }
   }
-  const html = renderToHtmlSync(markdown, { resolveLink, notePath: fromPath, comments: false })
-  // The renderer resolves links to Markdown files only. A relative link or image that names
-  // another file of the corpus, such as one in a record folder, is pointed at the served file.
-  return html.replace(/ (href|src)="([^"]+)"/g, (whole, attribute: string, value: string) => {
-    if (/^([a-z][a-z0-9+.-]*:|\/|#)/i.test(value)) return whole
-    const [path = '', fragment] = unescapeAttribute(value).split('#')
-    const found = site.resolveLink(corpus, fromPath, safeDecode(path))
-    if (found === null || found.url === null) return whole
-    const url = fragment === undefined ? found.url : `${found.url}#${fragment}`
-    return ` ${attribute}="${url.replace(/&/g, '&#x26;').replace(/"/g, '&#x22;')}"`
-  })
+  // Runs after sanitizing. The URLs it writes come from the site, and only elements are touched,
+  // so the text of a code sample stays as written.
+  const serve = () => (tree: Root) => servePage(site, corpus, fromPath, tree)
+  const processor = createMarkdownProcessor({ resolveLink, notePath: fromPath, comments: false })
+    .use(serve)
+    .use(rehypeStringify, { allowDangerousHtml: false })
+  return String(processor.processSync(markdown))
 }
 
-const unescapeAttribute = (value: string): string =>
-  value
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16)))
-    .replace(/&quot;/g, '"')
-    .replace(/&amp;/g, '&')
+/**
+ * The renderer resolves links to Markdown files only, and leaves an embed for the host. Point a
+ * relative link or image that names another file of the corpus, such as one in a record folder,
+ * at the served file, and draw each image, video, audio and PDF embed.
+ */
+function servePage(site: Site, corpus: string, fromPath: string, tree: Root): void {
+  const served = (value: string): string | null => {
+    if (/^([a-z][a-z0-9+.-]*:|\/|#)/i.test(value)) return null
+    const [path = '', fragment] = value.split('#')
+    const found = site.resolveLink(corpus, fromPath, safeDecode(path))
+    if (found === null || found.url === null) return null
+    return fragment === undefined ? found.url : `${found.url}#${fragment}`
+  }
+  const visit = (parent: Parent): void => {
+    parent.children = parent.children.map((child) => {
+      if (child.type !== 'element') return child
+      if (child.tagName === 'markdown-embed') return embedded(child) ?? child
+      for (const name of ['href', 'src'] as const) {
+        const value = child.properties[name]
+        const url = typeof value === 'string' ? served(value) : null
+        if (url !== null) child.properties[name] = url
+      }
+      visit(child)
+      return child
+    })
+  }
+  visit(tree)
+}
+
+/** The element for a media embed, or null for an embed of a note. */
+function embedded(embed: Element): Element | null {
+  const { dataEmbedKind: kind, dataEmbedTarget: target, dataEmbedPath: path } = embed.properties
+  const display = embed.properties['dataEmbedDisplay']
+  if (typeof kind !== 'string' || typeof target !== 'string' || !isMediaKind(kind)) return null
+  if (typeof path !== 'string') return embedPlaceholder('missing-attachment', target)
+  return embedMedia(kind, path, target, typeof display === 'string' ? display : undefined)
+}
 
 /** The HTML of a record's body, or null for a record with none. */
 export function renderBody(site: Site, record: SiteRecord): string | null {

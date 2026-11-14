@@ -32,7 +32,13 @@ export function formatDate(value: string, format: FieldFormat, locale = 'en'): s
   const date = new Date(
     Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!, +(m[4] ?? 0), +(m[5] ?? 0), +(m[6] ?? 0)),
   )
-  if (Number.isNaN(date.getTime())) return value
+  // `Date.UTC` rolls an impossible day or month over, so check that the date is the one written.
+  if (
+    date.getUTCFullYear() !== +m[1]! ||
+    date.getUTCMonth() !== +m[2]! - 1 ||
+    date.getUTCDate() !== +m[3]!
+  )
+    return value
   const withTime = format.kind === 'datetime' && m[4] !== undefined
   return new Intl.DateTimeFormat(locale, {
     dateStyle: format.dateStyle ?? 'medium',

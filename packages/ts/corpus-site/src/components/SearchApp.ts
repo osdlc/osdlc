@@ -40,7 +40,10 @@ export const SearchApp = defineComponent({
       if (asked) return
       asked = true
       fetchData<SearchData>(props.indexUrl).then(
-        (data) => (index.value = prepareSearch(data)),
+        (data) => {
+          error.value = null
+          index.value = prepareSearch(data)
+        },
         (reason: unknown) => {
           asked = false
           error.value = reason instanceof Error ? reason : new Error(String(reason))

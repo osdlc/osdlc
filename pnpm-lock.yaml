@@ -498,6 +498,9 @@ importers:
       '@osdlc/markdown-render':
         specifier: workspace:^
         version: link:../markdown-render
+      rehype-stringify:
+        specifier: ^10.0.1
+        version: 10.0.1
     devDependencies:
       '@astrojs/vue':
         specifier: 7.0.3
@@ -508,6 +511,9 @@ importers:
       '@osdlc/tsconfig':
         specifier: workspace:^
         version: link:../tsconfig
+      '@types/hast':
+        specifier: ^3.0.5
+        version: 3.0.5
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.5

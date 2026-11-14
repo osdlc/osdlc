@@ -351,11 +351,32 @@ function matrixAxis(
   const titles = [...seen].sort(
     (a, b) => rank(order, a) - rank(order, b) || a.localeCompare(b, undefined, { numeric: true }),
   )
+  const keys = keysFor(titles)
   return {
     label: field.label,
-    items: titles.map((title) => ({ key: slugify(title), title, url: null, record: null })),
-    keysOf: (r) => site.textOf(r, fieldName).map(slugify),
+    items: titles.map((title) => ({
+      key: keys.get(title) as string,
+      title,
+      url: null,
+      record: null,
+    })),
+    keysOf: (r) => site.textOf(r, fieldName).map((title) => keys.get(title) ?? slugify(title)),
   }
+}
+
+/** A key for each title: its slug, with `-2`, `-3` after it when another title has the slug. */
+function keysFor(titles: Iterable<string>): Map<string, string> {
+  const keys = new Map<string, string>()
+  const taken = new Set<string>()
+  for (const title of titles) {
+    if (keys.has(title)) continue
+    const stem = slugify(title)
+    let key = stem
+    for (let n = 2; taken.has(key); n++) key = `${stem}-${n}`
+    taken.add(key)
+    keys.set(title, key)
+  }
+  return keys
 }
 
 const MATRICES = new WeakMap<SiteView, MatrixData>()
@@ -392,10 +413,15 @@ export function matrixData(site: Site, view: SiteView): MatrixData {
   const withGroup = rows.items
     .map((item) => ({ item, group: groupOf(item.record) }))
     .sort((a, b) => (a.group ?? '\uffff').localeCompare(b.group ?? '\uffff'))
+  const groupKeys = keysFor(withGroup.flatMap(({ group }) => (group === null ? [] : [group])))
   const groups = new Map<string, { key: string; label: string; count: number }>()
   for (const { group } of withGroup) {
     if (group === null) continue
-    const held = groups.get(group) ?? { key: slugify(group), label: group, count: 0 }
+    const held = groups.get(group) ?? {
+      key: groupKeys.get(group) as string,
+      label: group,
+      count: 0,
+    }
     held.count++
     groups.set(group, held)
   }
@@ -415,7 +441,7 @@ export function matrixData(site: Site, view: SiteView): MatrixData {
         view.rowSummary === undefined || item.record === null
           ? null
           : site.fill(view.rowSummary, item.record) || null,
-      group: group === null ? null : slugify(group),
+      group: group === null ? null : (groupKeys.get(group) as string),
       cells: shown.map((column) => cells.get(`${item.key}\0${column.key}`) ?? []),
     })),
   }

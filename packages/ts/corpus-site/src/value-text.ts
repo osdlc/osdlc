@@ -71,6 +71,9 @@ function line(value: unknown, top: boolean): string {
   return String(value)
 }
 
+/** Whether a field value may become a link: `http`, `https` and `mailto` only. */
+export const isLinkable = (url: string): boolean => /^(https?|mailto):/i.test(url.trim())
+
 /** A URL as a reader sees it: no scheme, no `www.` and no trailing `/`. */
 export function shortUrl(url: string): string {
   return url.replace(/^[a-z][a-z0-9+.-]*:\/\/(www\.)?/i, '').replace(/\/$/, '')

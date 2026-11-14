@@ -5,7 +5,7 @@
 import { defineComponent, h, type PropType, type VNodeChild } from 'vue'
 import type { DataField, DataScalar, DataTarget, DataTree, DataValue } from '../data-types.ts'
 import { formatScalar } from '../format.ts'
-import { shortUrl } from '../value-text.ts'
+import { isLinkable, shortUrl } from '../value-text.ts'
 import { link, TreeValue } from './TreeValue.ts'
 
 /** The most values of a list a cell shows before `+n`. */
@@ -42,6 +42,7 @@ export const ValueCell = defineComponent({
       }
       if (
         typeof value === 'string' &&
+        isLinkable(value) &&
         (field.kind === 'url' || field.format.kind === 'link' || /^https?:\/\/\S+$/.test(value))
       )
         return link(value, true, shortUrl(value))

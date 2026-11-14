@@ -99,7 +99,7 @@ Node.js 22.18 or later.
 | `/ref/<corpus>/<type>/<record>/`    | A record of a corpus this one references or extends                 |
 | `/search/`                          | Search across every type                                            |
 
-A type's path is its name, or `slug` from its config. `data`, `search` and `ref` are the site's
+A type's path is its name as a slug (lower case, with `-` between words), or `slug` from its config. `data`, `search` and `ref` are the site's
 own, so a type with one of those names needs a `slug`.
 
 The state of a type page is in its address, so a filtered view can be shared:

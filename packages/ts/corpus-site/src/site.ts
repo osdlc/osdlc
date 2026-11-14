@@ -43,6 +43,7 @@ import {
   shapeOf,
   type FieldShape,
 } from './schema.ts'
+import { slugify } from './slug.ts'
 import { oneLine } from './value-text.ts'
 
 /** What `buildSite` needs beside the corpus. */
@@ -135,19 +136,10 @@ export interface SiteRecord {
   key: string
 }
 
+export { slugify }
+
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
-
-/** A path segment for an id: lower-case letters and digits, with `-` for every other run. */
-export function slugify(id: string): string {
-  const slug = id
-    .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, '-')
-    .replace(/^-+|-+$/g, '')
-  return slug === '' ? 'record' : slug
-}
 
 /**
  * The value at a dotted path in a record's data, or undefined. A path steps through a list to

@@ -16,7 +16,7 @@ import {
   type SiteType,
 } from './site.ts'
 import { templateFields } from './config.ts'
-import { keyLabel, looksLikeCode, shortUrl } from './value-text.ts'
+import { isLinkable, keyLabel, looksLikeCode, shortUrl } from './value-text.ts'
 
 /** A value as a page shows it. */
 export type Display =
@@ -214,7 +214,7 @@ function scalar(
         external: false,
       }
     }
-    if (link !== null)
+    if (link !== null && isLinkable(link.href))
       return {
         kind: 'link',
         text: link.text || shortUrl(link.href),

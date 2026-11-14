@@ -507,4 +507,18 @@ describe('SearchApp', () => {
     expect((host.querySelector('input') as HTMLInputElement).value).toBe('the')
     expect(host.querySelectorAll('.cs-hit')).toHaveLength(2)
   })
+  test('a retry that works clears the error', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 500, statusText: 'Error', json: () => null })
+      .mockResolvedValue({ ok: true, json: () => Promise.resolve(index) })
+    vi.stubGlobal('fetch', fetch)
+    const host = mount(SearchApp, { indexUrl: '/data/search-retry.json' })
+    type(host.querySelector('input'), 'rows')
+    await settle()
+    expect(text(host.querySelector('[role=status]'))).toContain('could not be loaded')
+    type(host.querySelector('input'), 'row')
+    await settle()
+    expect(text(host.querySelector('[role=status]'))).toBe('2 records match.')
+  })
 })
