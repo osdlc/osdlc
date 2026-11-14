@@ -7,7 +7,7 @@
 # another validator to run that one instead.
 #
 # validate <folder>... is corpus_schema validate. tools/validate-strict.sh
-# passes it --strict, which @osdlc/corpus-schema has from 0.3.0.
+# passes it --strict, which @osdlc/corpus-schema has from 0.4.0.
 corpus_schema() {
   if [ -n "${CORPUS_SCHEMA:-}" ]; then
     $CORPUS_SCHEMA "$@"

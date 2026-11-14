@@ -7,7 +7,7 @@ type: functional
 milestone: "[m-npm](../milestones/m-npm.md)"
 after:
   - "[26 Adopt claims](26%20Adopt%20claims.md)"
-  - "[36 Release 0.3.0](36%20Release%200.3.0.md)"
+  - "[36 Release 0.4.0](36%20Release%200.3.0.md)"
   - "[60 Publish claims](60%20Publish%20claims.md)"
 ---
 

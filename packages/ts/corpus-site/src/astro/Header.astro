@@ -1,0 +1,53 @@
+---
+// The top bar: the site title, the search box and the theme choice.
+import { getSite } from '../context.js'
+
+const site = getSite()
+---
+
+<header class="cs-header">
+  <a class="cs-site-title" href={site.homeUrl}>{site.title}</a>
+  {
+    site.searchEnabled && (
+      <form class="cs-header-search" role="search" action={site.searchUrl} method="get">
+        <label class="cs-sr" for="cs-header-q">Search</label>
+        <input id="cs-header-q" class="cs-input" type="search" name="q" placeholder="Search" autocomplete="off" />
+      </form>
+    )
+  }
+  <div class="cs-theme">
+    <label class="cs-sr" for="cs-theme">Theme</label>
+    <select id="cs-theme" class="cs-select">
+      <option value="auto">Auto</option>
+      <option value="light">Light</option>
+      <option value="dark">Dark</option>
+    </select>
+  </div>
+</header>
+<script is:inline>
+  ;(() => {
+    const select = document.getElementById('cs-theme')
+    if (!select) return
+    const root = document.documentElement
+    select.value = root.dataset.theme || 'auto'
+    select.addEventListener('change', () => {
+      const theme = select.value
+      if (theme === 'auto') delete root.dataset.theme
+      else root.dataset.theme = theme
+      try {
+        if (theme === 'auto') localStorage.removeItem('cs-theme')
+        else localStorage.setItem('cs-theme', theme)
+      } catch {}
+    })
+    // "/" puts the cursor in the search box, unless the reader is typing somewhere.
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return
+      const at = document.activeElement
+      if (at && (at.tagName === 'INPUT' || at.tagName === 'TEXTAREA' || at.tagName === 'SELECT' || at.isContentEditable)) return
+      const box = document.querySelector('.cs-search-app input, .cs-search input') || document.getElementById('cs-header-q')
+      if (!box) return
+      event.preventDefault()
+      box.focus()
+    })
+  })()
+</script>

@@ -1,7 +1,8 @@
-# Releases a pnpm workspace of TypeScript packages with Changesets: either the
-# Version Packages pull request, or the publish of the versions not on npm
-# yet. Call it from the repository's own `packages-publish.yml` on a push to
-# the default branch, after that workflow's checks pass;
+# Releases a pnpm workspace of packages with Changesets: either the Version
+# Packages pull request, or the publish of the versions not on npm yet. The
+# packages are TypeScript unless the caller sets `ts-checks: false` and
+# `package-globs`. Call it from the repository's own `packages-publish.yml` on
+# a push to the default branch, after that workflow's checks pass;
 # packages/gh-actions/ts-packages/README.md shows how. osdlc/osdlc's
 # packages-publish.yml calls it too.
 #
@@ -48,6 +49,20 @@ on:
         description: The npm that publishes. Trusted publishing needs 11.5.1 or later.
         type: string
         default: 11.19.1
+      ts-checks:
+        description: >-
+          Build the packages and run `package-checks ts` before the pack. Set
+          false for packages that hold no code, such as Markdown and JSON
+          Schema files, and set `package-globs` with it.
+        type: boolean
+        default: true
+      package-globs:
+        description: >-
+          Globs of the package folders, separated by spaces or newlines, such
+          as `profiles/* corpora/*`, which the pack job checks are on npm.
+          Empty means the `tsDir` of package-checks.json.
+        type: string
+        default: ''
     secrets:
       RELEASE_PLZ_APP_PRIVATE_KEY:
         description: >-
@@ -163,22 +178,57 @@ jobs:
         run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Build
+        if: inputs.ts-checks
         run: pnpm -r --if-present run build
 
       # Trusted publishing cannot create a package: the owner stages each new
       # one first with `package-checks stage`. After the build, since a
-      # repository may build package-checks in its own workspace. The packages' folder is
-      # `tsDir`, read through package-checks, which refuses a bad
-      # package-checks.json.
+      # repository may build package-checks in its own workspace. Without
+      # `package-globs`, the packages' folder is `tsDir`, read through
+      # package-checks, which refuses a bad package-checks.json.
       - name: Refuse a package that is not on npm yet
+        env:
+          TS_CHECKS: ${{ inputs.ts-checks }}
+          PACKAGE_GLOBS: ${{ inputs.package-globs }}
         run: |
           set -euo pipefail
           shopt -s nullglob
-          dir="$(pnpm exec package-checks config tsDir)"
-          manifests=("$dir"/*/package.json)
-          if [ "${#manifests[@]}" -eq 0 ]; then
-            echo "::error::no packages in $dir, the tsDir of package-checks.json"
-            exit 1
+          if [ -n "$PACKAGE_GLOBS" ]; then
+            # Split on any whitespace, newlines included, so a YAML block
+            # list works too.
+            read -ra globs -d '' <<<"$PACKAGE_GLOBS" || true
+            if [ "${#globs[@]}" -eq 0 ]; then
+              echo "::error::package-globs is set but names no folder"
+              exit 1
+            fi
+            manifests=()
+            for glob in "${globs[@]}"; do
+              # Unquoted, so the glob expands.
+              matched=()
+              # shellcheck disable=SC2231
+              for manifest in $glob/package.json; do
+                # nullglob keeps an entry with no wildcard even when it is missing.
+                if [ -f "$manifest" ]; then matched+=("$manifest"); fi
+              done
+              if [ "${#matched[@]}" -eq 0 ]; then
+                echo "::error::the package-globs entry $glob matches no package folder"
+                exit 1
+              fi
+              manifests+=("${matched[@]}")
+            done
+          else
+            # package-checks may be built in the skipped Build step, and a
+            # workspace with no code has no package-checks.json.
+            if [ "$TS_CHECKS" = false ]; then
+              echo "::error::ts-checks: false needs package-globs, the folders of the packages"
+              exit 1
+            fi
+            dir="$(pnpm exec package-checks config tsDir)"
+            manifests=("$dir"/*/package.json)
+            if [ "${#manifests[@]}" -eq 0 ]; then
+              echo "::error::no packages in $dir, the tsDir of package-checks.json"
+              exit 1
+            fi
           fi
           for manifest in "${manifests[@]}"; do
             name="$(node -p "const p = require('./$manifest'); p.private ? '' : p.name")"
@@ -194,6 +244,7 @@ jobs:
           done
 
       - name: Pack, publint, attw
+        if: inputs.ts-checks
         run: pnpm exec package-checks ts
 
       - id: pack
