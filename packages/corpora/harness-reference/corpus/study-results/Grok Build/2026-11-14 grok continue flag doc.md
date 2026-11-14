@@ -1,0 +1,22 @@
+---
+kind: docs
+reportedIn:
+  - "[Grok Build user guide Headless mode](../../documents/github.com/Grok%20Build%20user%20guide%20Headless%20mode.md)"
+harness: "[Grok Build](../../harnesses/Grok%20Build.md)"
+version: 1.0.45
+version_basis: exact
+observed: 2026-11-14
+locator: Continue (`-c`)
+excerpt:
+  exact: "The `-c/--continue` flag continues the most recent session in the current working directory:"
+  prefix: " abc123 ``` ### Continue (`-c`) "
+  suffix: ' ```bash grok -p "Continue where'
+contributions:
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: created
+    date: 2026-11-14T00:00:00Z
+---
+
+> The `-c/--continue` flag continues the most recent session in the current working directory:
