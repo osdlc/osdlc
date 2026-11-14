@@ -2,7 +2,9 @@
 
 The steps to fold osdlc/markdown and osdlc/models back into this repository.
 [D-SM4K](../decisions/D-SM4K-markdown-ecosystem-home.md) is the decision.
-Started 2026-11-12.
+Started 2026-11-12 and finished 2026-11-14. One piece of work was moved out
+to the Markdown Ecosystem Plan: the harness reference extending the claims
+profile ([task 37](markdown/tasks/37%20Use%20extends.md)).
 
 Tick an item when its pull request merges, and put the pull request's number
 beside it. An item marked **owner** needs sksizer: a decision, or a setting
@@ -17,14 +19,14 @@ only the owner can change.
 | osdlc/models         | Content folded in here. Kept as a holding pen                     |
 | osdlc/marketplace    | Stays: where the skill plugins are published                      |
 | osdlc/skillwright    | Stays: where skillwright is published. Harness reference leaves   |
-| osdlc/parley         | Not decided. Low priority                                         |
+| osdlc/parley         | Stays where it is (decided 2026-11-14)                            |
 | osdlc/homebrew-tap   | Stays                                                             |
 | sksizer/dev          | Stays as it is. Not part of this plan                             |
 | sksizer/rust-ontogen | `markdown-store` stays there for now                              |
 
 ## Where it stands
 
-As of 2026-11-14. The content is here. What is left is cleanup.
+As of 2026-11-14. The content is here and the cleanup is done.
 
 - `@osdlc/corpus-schema` is on npm at 0.5.0, released from this repository.
   0.4.0 holds the work planned as 0.3.0, and 0.5.0 adds `loadCorpus`.
@@ -36,7 +38,7 @@ As of 2026-11-14. The content is here. What is left is cleanup.
 - The harness reference is in `packages/corpora/harness-reference/` (#800).
 - Every pull request in osdlc/markdown and osdlc/models that this work
   replaced is closed with a link here: osdlc/markdown #11 to #16 and #19, and
-  osdlc/models#1. Their branches are kept.
+  osdlc/models#1. Their branches are deleted.
 - The two holding-pen READMEs (osdlc/markdown#22 and osdlc/models#2) merged
   on 2026-11-14. Neither repository has an open pull request or issue:
   osdlc/markdown#8 was transferred here as #811.
@@ -44,20 +46,16 @@ As of 2026-11-14. The content is here. What is left is cleanup.
   ([osdlc/markdown#23](https://github.com/osdlc/markdown/pull/23), merged
   2026-11-14).
 
-What is left, in order:
+Nothing is left in this plan. Two things carry on elsewhere:
 
-1. Work through [the pull request queue](pr-queue.md), which has the order
-   for every open pull request. The follow-ups here are merged: #802 (docs
-   say 0.4.0), #801 (the harness knowledge data names this repository) and
-   #785 (release inputs for packages with no code).
-2. Update osdlc/skillwright's copy of the compiled data once the next
-   `@osdlc/harness-knowledge` is on npm (#825). The removal of
-   `harness-reference/` there is merged
-   ([osdlc/skillwright#164](https://github.com/osdlc/skillwright/pull/164)):
-   the Rust crate keeps one copy, cut from the package by a script, with a
-   test that fails when the copy is stale.
-3. The two owner decisions: osdlc/parley's home (phase 6), and whether the
-   harness reference extends the claims profile (phase 5).
+- The open pull requests are in [the pull request queue](pr-queue.md).
+- The harness reference extends the claims profile: decided yes on
+  2026-11-14, and tracked as
+  [task 37](markdown/tasks/37%20Use%20extends.md).
+
+osdlc/skillwright's copy of the compiled data is cut from
+`@osdlc/harness-knowledge` 0.2.0
+([osdlc/skillwright#166](https://github.com/osdlc/skillwright/pull/166)).
 
 ## Work, in order
 
@@ -239,9 +237,11 @@ are in one place.
       `lint` and `compile` code in `src/`.
 - [x] Rename its root file to `<name>.corpus-schema.md`, as 0.4.0 requires,
       and validate it with this repository's corpus-schema.
-- [ ] Extend the claims profile (`@osdlc/corpus-profile-claims`) where its
-      types match, if that does not change the compiled file. Tried and left
-      out: the compiled file is the same, but the profile's `doi` pattern
+- [x] **owner** Decide whether the harness reference extends the claims
+      profile (`@osdlc/corpus-profile-claims`) where its types match. Decided
+      yes on 2026-11-14; the work is
+      [task 37](markdown/tasks/37%20Use%20extends.md). It was tried during
+      the move and left out: the compiled file is the same, but the profile's `doi` pattern
       refuses DOIs the corpus's own pattern accepts, and a copy of the corpus
       outside the workspace no longer validates, which the corpus's tests and
       `sync --commit` rely on.
@@ -278,7 +278,8 @@ once matured. They are not archived.
       build and release them. Its README loses "What is still here".
       ([osdlc/markdown#23](https://github.com/osdlc/markdown/pull/23), merged
       2026-11-14.)
-- [ ] **owner** Decide osdlc/parley's home.
+- [x] **owner** Decide osdlc/parley's home. Decided 2026-11-14: it stays
+      where it is.
 
 ## Not part of this
 
