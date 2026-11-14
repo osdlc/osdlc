@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/corpus-site",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "An Astro integration that publishes a corpus-schema corpus as a static site: a page per type and per record, filters and search in the browser with Vue, field metadata from a typed config, and the data as static JSON for small apps.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
