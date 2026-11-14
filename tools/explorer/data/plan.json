@@ -16,6 +16,10 @@
     {
       "id": "todo",
       "label": "not started"
+    },
+    {
+      "id": "dropped",
+      "label": "dropped"
     }
   ],
   "types": [
@@ -47,7 +51,7 @@
       "id": "m-release",
       "title": "Release from osdlc/osdlc",
       "goal": "osdlc/osdlc publishes corpus-schema with its own release setup and npm publisher. osdlc/markdown does not release it (decision D-SM4K).",
-      "status": "doing",
+      "status": "dropped",
       "phase": "store",
       "beeline": true,
       "tasks": [
@@ -441,35 +445,35 @@
       "id": 12,
       "title": "One TS model",
       "detail": "vault + graph",
-      "status": "todo",
+      "status": "dropped",
       "milestone": "m-model",
       "type": "functional",
       "after": [
         11
       ],
       "prs": [],
-      "text": "One TypeScript corpus model, markdown-corpus: markdown-vault and vault-graph-core merged into osdlc on top of markdown-link's resolver. After 11.\n\nOut of scope for now: markdown-vault and vault-graph-core are in sksizer/dev, and [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) keeps them there. The merge waits until they move.",
+      "text": "One TypeScript corpus model, markdown-corpus: markdown-vault and vault-graph-core merged into osdlc on top of markdown-link's resolver. After 11.\n\nOut of scope for now: markdown-vault and vault-graph-core are in sksizer/dev, and [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) keeps them there. The merge waits until they move.\n\nDropped: out of scope under [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md). It is opened again if markdown-vault and vault-graph-core move here.",
       "source": "docs/planning/markdown/tasks/12 One TS model.md"
     },
     {
       "id": 13,
       "title": "Switch users",
       "detail": "query, astro, apps",
-      "status": "todo",
+      "status": "dropped",
       "milestone": "m-model",
       "type": "functional",
       "after": [
         12
       ],
       "prs": [],
-      "text": "Switch the users to the new model and resolver: markdown-vault-query, markdown-astro, and determined (its vault-graph app and its graph and notes experiences). They already use the published markdown-link (sksizer/dev 48b62783). After 12.",
+      "text": "Switch the users to the new model and resolver: markdown-vault-query, markdown-astro, and determined (its vault-graph app and its graph and notes experiences). They already use the published markdown-link (sksizer/dev 48b62783). After 12.\n\nDropped: it follows task 12, which is out of scope under [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md). It is opened again with task 12.",
       "source": "docs/planning/markdown/tasks/13 Switch users.md"
     },
     {
       "id": 14,
       "title": "Validator",
       "detail": "reads model; needs 3",
-      "status": "todo",
+      "status": "dropped",
       "milestone": "m-model",
       "type": "functional",
       "after": [
@@ -477,21 +481,21 @@
         12
       ],
       "prs": [],
-      "text": "The validator reads the corpus model instead of walking the folder itself. After 3 and 12.",
+      "text": "The validator reads the corpus model instead of walking the folder itself. After 3 and 12.\n\nDropped: it follows task 12, which is out of scope under [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md). It is opened again with task 12.",
       "source": "docs/planning/markdown/tasks/14 Validator.md"
     },
     {
       "id": 15,
       "title": "Query layer",
       "detail": "one, on the model",
-      "status": "todo",
+      "status": "dropped",
       "milestone": "m-query",
       "type": "functional",
       "after": [
         12
       ],
       "prs": [],
-      "text": "One query layer. Move markdown-vault-query to osdlc on top of the corpus model. After 12 and D5.\n\nOut of scope for now: markdown-vault-query is in sksizer/dev, and [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) keeps it there.",
+      "text": "One query layer. Move markdown-vault-query to osdlc on top of the corpus model. After 12 and D5.\n\nOut of scope for now: markdown-vault-query is in sksizer/dev, and [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) keeps it there.\n\nDropped: out of scope under [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md). It is opened again if markdown-vault-query moves here.",
       "source": "docs/planning/markdown/tasks/15 Query layer.md"
     },
     {
@@ -575,7 +579,7 @@
       "id": 21,
       "title": "Release here",
       "detail": "markdown PR 10",
-      "status": "doing",
+      "status": "dropped",
       "milestone": "m-release",
       "type": "functional",
       "after": [
@@ -595,7 +599,7 @@
           "url": "https://github.com/osdlc/osdlc/pull/790"
         }
       ],
-      "text": "Release setup, then the corpus-schema move. This task gave osdlc/markdown its own release setup and moved `@osdlc/corpus-schema` and its spec family there from osdlc/osdlc. [osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9) has merged: it moved the package and its spec family, with their history. [osdlc/markdown#10](https://github.com/osdlc/markdown/pull/10) has merged (2026-11-10): osdlc/markdown uses the shared CI and release workflows and checks from osdlc/osdlc ([osdlc/osdlc#749](https://github.com/osdlc/osdlc/pull/749), with fixes in [osdlc/osdlc#767](https://github.com/osdlc/osdlc/pull/767) and [osdlc/osdlc#774](https://github.com/osdlc/osdlc/pull/774)). osdlc/markdown has not made a release.\n\n[D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) and the repository decision [D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md) reverse the move. corpus-schema releases from osdlc/osdlc, and its npm publisher does not change. osdlc/markdown's copy is retired once its open work, released as 0.4.0, in [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12), is brought back ([osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790)). That pull request also removes the note in SPEC.md that the spec moves to osdlc/markdown. In progress.",
+      "text": "Release setup, then the corpus-schema move. This task gave osdlc/markdown its own release setup and moved `@osdlc/corpus-schema` and its spec family there from osdlc/osdlc. [osdlc/markdown#9](https://github.com/osdlc/markdown/pull/9) has merged: it moved the package and its spec family, with their history. [osdlc/markdown#10](https://github.com/osdlc/markdown/pull/10) has merged (2026-11-10): osdlc/markdown uses the shared CI and release workflows and checks from osdlc/osdlc ([osdlc/osdlc#749](https://github.com/osdlc/osdlc/pull/749), with fixes in [osdlc/osdlc#767](https://github.com/osdlc/osdlc/pull/767) and [osdlc/osdlc#774](https://github.com/osdlc/osdlc/pull/774)). osdlc/markdown has not made a release.\n\n[D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) and the repository decision [D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md) reverse the move. corpus-schema releases from osdlc/osdlc, and its npm publisher does not change. osdlc/markdown's copy is retired once its open work, released as 0.4.0, in [osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12), is brought back ([osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790)). That pull request also removes the note in SPEC.md that the spec moves to osdlc/markdown.\n\nDropped: the move this task set up was reversed. [osdlc/osdlc#790](https://github.com/osdlc/osdlc/pull/790) merged and brought corpus-schema back, and osdlc/markdown holds only its README ([osdlc/markdown#23](https://github.com/osdlc/markdown/pull/23)).",
       "source": "docs/planning/markdown/tasks/21 Release here.md"
     },
     {
@@ -1302,7 +1306,7 @@
       "id": 62,
       "title": "Packs in public",
       "detail": "regenerate in public",
-      "status": "todo",
+      "status": "dropped",
       "milestone": "m-sdlc-profile",
       "type": "functional",
       "after": [
@@ -1312,7 +1316,7 @@
         78
       ],
       "prs": [],
-      "text": "Move `@osdlc/model-schema` and the intent and sdlc packs to a public repo, so the sdlc profile is regenerated in public. [D17](../decisions/D17%20Profiles%20and%20corpora%20live%20in%20osdlc%20models.md) put them in osdlc/models. [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) keeps them in sksizer/dev for now, so this task is out of scope until they move. Today the generator and the packs are in sksizer/dev, which is private. Until this task is done, regenerating the sdlc profile is manual: run the generator in dev and copy its output into osdlc/osdlc.\n\nOnce they move, CI regenerates the sdlc profile from the packs and checks that the committed copy matches. Not on the beeline's critical path. After 47, 49, 75 and 78.",
+      "text": "Move `@osdlc/model-schema` and the intent and sdlc packs to a public repo, so the sdlc profile is regenerated in public. [D17](../decisions/D17%20Profiles%20and%20corpora%20live%20in%20osdlc%20models.md) put them in osdlc/models. [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) keeps them in sksizer/dev for now, so this task is out of scope until they move. Today the generator and the packs are in sksizer/dev, which is private. Until this task is done, regenerating the sdlc profile is manual: run the generator in dev and copy its output into osdlc/osdlc.\n\nOnce they move, CI regenerates the sdlc profile from the packs and checks that the committed copy matches. Not on the beeline's critical path. After 47, 49, 75 and 78.\n\nDropped: out of scope under [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md). It is opened again if model-schema and the packs move to a public repository.",
       "source": "docs/planning/markdown/tasks/62 Packs in public.md"
     },
     {
@@ -1532,7 +1536,7 @@
       "id": 74,
       "title": "Skillwright on 0.4.0",
       "detail": "skillwright",
-      "status": "todo",
+      "status": "dropped",
       "milestone": "m-npm",
       "type": "functional",
       "after": [
@@ -1540,7 +1544,7 @@
         60
       ],
       "prs": [],
-      "text": "Skillwright's `harness-reference/corpus` (in osdlc/skillwright) validates with `@osdlc/corpus-schema` `^0.2.0` from npm. Move it to 0.4.0, which is published. Later, extend the claims profile: its claims types come from `@osdlc/corpus-profile-claims` (task 60) instead of copies. After 36 and 60.",
+      "text": "Skillwright's `harness-reference/corpus` (in osdlc/skillwright) validates with `@osdlc/corpus-schema` `^0.2.0` from npm. Move it to 0.4.0, which is published. Later, extend the claims profile: its claims types come from `@osdlc/corpus-profile-claims` (task 60) instead of copies. After 36 and 60.\n\nDropped: the harness reference moved to osdlc/osdlc (`packages/corpora/harness-reference/`), where it validates with this repository's corpus-schema, and left osdlc/skillwright ([osdlc/skillwright#164](https://github.com/osdlc/skillwright/pull/164)). Whether it extends the claims profile is an open item in [the repatriation plan](https://github.com/osdlc/osdlc/blob/main/docs/planning/repatriation.md).",
       "source": "docs/planning/markdown/tasks/74 Skillwright on 0.3.0.md"
     },
     {
@@ -1559,7 +1563,7 @@
       "id": 76,
       "title": "Claims as a pack",
       "detail": "pack-claims",
-      "status": "todo",
+      "status": "dropped",
       "milestone": "m-model-layer",
       "type": "functional",
       "after": [
@@ -1567,7 +1571,7 @@
         62
       ],
       "prs": [],
-      "text": "Write the claims types as `pack-claims`, and generate `@osdlc/corpus-profile-claims` from it. The package name does not change, so corpora that extend it see no change. The type folders of the profile become generated output, as decided in [D17](../decisions/D17%20Profiles%20and%20corpora%20live%20in%20osdlc%20models.md). D17 put `pack-claims` in osdlc/models. [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) folds that repo into osdlc/osdlc and keeps model-schema and the packs in sksizer/dev for now, so where `pack-claims` lives is not decided. After 23 and 62.",
+      "text": "Write the claims types as `pack-claims`, and generate `@osdlc/corpus-profile-claims` from it. The package name does not change, so corpora that extend it see no change. The type folders of the profile become generated output, as decided in [D17](../decisions/D17%20Profiles%20and%20corpora%20live%20in%20osdlc%20models.md). D17 put `pack-claims` in osdlc/models. [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) folds that repo into osdlc/osdlc and keeps model-schema and the packs in sksizer/dev for now, so where `pack-claims` lives is not decided. After 23 and 62.\n\nDropped: it follows task 62, which is out of scope under [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md). It is opened again with task 62.",
       "source": "docs/planning/markdown/tasks/76 Claims as a pack.md"
     },
     {
