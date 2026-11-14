@@ -79,12 +79,12 @@ export const classifyClaude: Classifier = (output, now) => {
   const envelope = errorEnvelope(output.stdout)
   if (output.exitCode === 0 && !envelope.isError) return undefined
   const text = failureText(output, envelope)
-  const status = envelope.status ?? Number(/API Error:?\s*(\d{3})/i.exec(text)?.[1])
   const short = envelope.turns === undefined || envelope.turns <= 1
   const outsideAnswer = short ? text : text.replace(envelope.text, '')
+  const status = envelope.status ?? Number(/API Error:?\s*(\d{3})/i.exec(outsideAnswer)?.[1])
   if (status === 402 || CLAUDE_QUOTA.test(outsideAnswer)) return { kind: 'quota' }
-  if (status === 429 && CLAUDE_QUOTA_429.test(text)) return { kind: 'quota' }
-  if (CLAUDE_RATE_LIMIT.test(text) || status === 429) return rateLimit(text, now)
+  if (status === 429 && CLAUDE_QUOTA_429.test(outsideAnswer)) return { kind: 'quota' }
+  if (CLAUDE_RATE_LIMIT.test(outsideAnswer) || status === 429) return rateLimit(text, now)
   if (status === 401 || CLAUDE_AUTH.test(outsideAnswer)) return { kind: 'auth' }
   return undefined
 }

@@ -16,8 +16,8 @@ import type { AgentName, OutputFormat } from './spec.js'
  * fills `model` with the model that used the most tokens.
  *
  * Never throws. Empty or malformed output, or an unknown agent name, gives
- * `{ text: '' }` with every other field `undefined`; an
- * adapter that reads the output but finds no result sets `isError`. A
+ * `{ text: '' }` with every other field `undefined`; an adapter that reads the
+ * output but finds no result sets `isError`. A
  * `codex` text run reads its answer from a file the runner arranges, so
  * `text` is stdout. Call `adapter.parseResult` directly if you need that.
  *

@@ -149,6 +149,17 @@ describe('claude', () => {
     expect(claude({ stdout })).toBeUndefined()
   })
 
+  test("status and rate-limit words in a long run's answer are the agent talking", () => {
+    const answer =
+      'the upstream returned API Error: 401 and the client retried on 429 too many requests'
+    expect(claude({ stdout: envelope(answer, { num_turns: 5 }) })).toBeUndefined()
+  })
+
+  test('a real 429 on a long run still classifies', () => {
+    const stdout = envelope('Request rejected', { num_turns: 5, api_error_status: 429 })
+    expect(claude({ stdout })).toMatchObject({ kind: 'rate-limit' })
+  })
+
   test('any other failure has no cause', () => {
     expect(claude({ stdout: envelope('Error: tool crashed') })).toBeUndefined()
     expect(claude({ stderr: 'spawn claude ENOENT' })).toBeUndefined()

@@ -162,7 +162,6 @@ export function limitLabel(text: string): string {
   if (/session limit|hit your session/i.test(text)) return 'session limit'
   const model = /\b(opus|sonnet) limit/i.exec(text)
   if (model !== null) return `${model[1]!.toLowerCase()} limit`
-  if (/overloaded/i.test(text)) return 'overloaded'
   if (/usage limit|hit your (?:usage )?limit/i.test(text)) return 'usage limit'
   if (/\b429\b|too many requests|rate_limit/i.test(text)) return 'rate limited (429)'
   return 'rate limit'
