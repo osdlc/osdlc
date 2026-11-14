@@ -1559,21 +1559,24 @@ const PR_ACTIVITY_ITEM_TYPES = [
 ]
 
 /**
- * The most inline comments read per review. A review with more makes the
- * answer `truncated`. gh follows only the timeline's own pages.
+ * The most inline comments read per review and per review thread, and the
+ * most review threads read. More makes the answer `truncated`. gh follows
+ * only the timeline's own pages.
  */
 const PR_ACTIVITY_REVIEW_COMMENTS = 100
+const PR_ACTIVITY_REVIEW_THREADS = 100
 
 const ACTOR = 'author { __typename login }'
 const TEXT = 'fullDatabaseId body lastEditedAt url'
+const REVIEW_COMMENT = `id ${ACTOR} createdAt ${TEXT} path line originalLine outdated replyTo { id fullDatabaseId }`
 
 /**
- * The query {@link prActivity} sends. `pageInfo` comes before `nodes`: gh
- * follows the first `pageInfo` in the answer, so it must be the timeline's.
- * The inline comments under a review carry `totalCount`, not a `pageInfo`,
- * for the same reason. A merge's `commit` is aliased `mergeCommit`: it is
- * `Commit` where a commit's is `Commit!`, and GraphQL refuses two fields of
- * one name and different types in the same selection.
+ * The query {@link prActivity} sends. gh follows the first `pageInfo` in the
+ * answer, so the timeline's is the only one, and comes first.
+ *
+ * The timeline leaves out a review that only replies in an existing thread,
+ * and so its comments. `reviewThreads` holds every inline comment, and is
+ * sent again on every page.
  */
 const PR_ACTIVITY_QUERY = [
   'query($owner: String!, $name: String!, $number: Int!, $since: DateTime, $endCursor: String) {',
@@ -1585,10 +1588,11 @@ const PR_ACTIVITY_QUERY = [
   '          __typename',
   `          ... on IssueComment { id ${ACTOR} createdAt ${TEXT} }`,
   `          ... on PullRequestReview { id ${ACTOR} state submittedAt ${TEXT}`,
-  `            comments(first: ${PR_ACTIVITY_REVIEW_COMMENTS}) { totalCount nodes { id ${ACTOR} createdAt ${TEXT} path line originalLine outdated replyTo { id } } } }`,
+  `            comments(first: ${PR_ACTIVITY_REVIEW_COMMENTS}) { totalCount nodes { ${REVIEW_COMMENT} } } }`,
   '          ... on PullRequestCommit { id commit { oid committedDate messageHeadline author { user { __typename login } } } }',
   '          ... on ClosedEvent { id actor { __typename login } createdAt }',
   '          ... on ReopenedEvent { id actor { __typename login } createdAt }',
+  // `Commit` here, `Commit!` on a commit: one response key may not have both.
   '          ... on MergedEvent { id actor { __typename login } createdAt mergeCommit: commit { oid } }',
   '          ... on ReadyForReviewEvent { id actor { __typename login } createdAt }',
   '          ... on ConvertToDraftEvent { id actor { __typename login } createdAt }',
@@ -1596,6 +1600,9 @@ const PR_ACTIVITY_QUERY = [
   '          ... on BaseRefChangedEvent { id actor { __typename login } createdAt previousRefName currentRefName }',
   '        }',
   '      }',
+  `      reviewThreads(first: ${PR_ACTIVITY_REVIEW_THREADS}) { totalCount nodes {`,
+  `        comments(first: ${PR_ACTIVITY_REVIEW_COMMENTS}) { totalCount nodes { ${REVIEW_COMMENT}`,
+  `          pullRequestReview { id ${ACTOR} state submittedAt ${TEXT} } } } } }`,
   '    }',
   '  }',
   '}',
@@ -1647,15 +1654,20 @@ export interface PrActivityOptions {
  * the PR's GraphQL `timelineItems` and follows every page.
  *
  * The rows are in GitHub's timeline order, oldest first, and each review is
- * followed by its inline comments. `truncated` is true when a review held
- * more than 100 inline comments: only the first 100 are read.
+ * followed by its inline comments. The timeline leaves out a review that
+ * only replies in an existing thread. Such a review and its replies are read
+ * from the PR's review threads and placed by time, before the first timeline
+ * row that is newer. `truncated` is true when a review or a thread held more
+ * than 100 inline comments, or the PR has more than 100 review threads: only
+ * the first 100 are read.
  *
  * With `since`, GitHub filters the timeline itself and returns only the
  * items it dates from that time on. GitHub does not say whether an item at
  * exactly `since` is kept, and its times are to the second, so to poll, pass
  * the newest `at` seen and drop the ids already seen. Nor does it say that
  * an older item edited later comes back, so read without `since` to see
- * edits.
+ * edits. Review threads take no `since`, so a reply read from them is kept
+ * when its own time is at or after `since`.
  *
  * Null when the call failed or a page could not be read whole, as for
  * {@link graphql}. GitHub's "Could not resolve to a PullRequest" is `absent`,
@@ -1687,13 +1699,14 @@ export function prActivity(
     }
     variables['since'] = new Date(time).toISOString()
   }
+  const sinceTime = typeof variables['since'] === 'string' ? Date.parse(variables['since']) : null
   const query = graphql(PR_ACTIVITY_QUERY, variables, { paginate: true }, target)
   return {
     ...query,
     absent: noSuch('pr'),
     parse(r) {
       const pages = query.parse(r)
-      return pages === null ? null : parsePrActivity(pages)
+      return pages === null ? null : parsePrActivity(pages, sinceTime)
     },
   }
 }

@@ -1,7 +1,8 @@
 ---
 type: decision
-state: proposed
+state: accepted
 created: 2026-11-05
+accepted: 2026-11-14
 ---
 
 # A pull request's activity is one GraphQL timeline read
@@ -36,6 +37,16 @@ since a point in time, and asked whether the REST timeline under
   by its inline comments, read up to 100 per review. `truncated` is true
   when a review has more. gh's `--paginate` follows one connection, the
   timeline, so the nested list cannot be paged in the same call.
+- The timeline leaves out a review that only replies in an existing
+  thread, and with it the reply. (On #632, the REST `pulls/<n>/comments`
+  listed 6 inline comments and the timeline 3.) So the same query also
+  reads `reviewThreads`, up to 100 threads of up to 100 comments, and
+  adds each comment the timeline did not have, after its review when that
+  review is missing too, placed by time. `truncated` covers these limits
+  too. Review threads take no `since`, so such a reply is kept when its
+  own time is at or after `since`.
+- An inline comment carries `replyToRestId`, the REST id of the comment it
+  replies to, besides the node id in `replyToId`.
 - `since` goes to GitHub's own `since` argument, normalized to UTC. The
   verb does not filter again on its side, because GitHub decides which date
   of an item `since` compares (a commit's is not its push time). A value
@@ -47,9 +58,9 @@ since a point in time, and asked whether the REST timeline under
   `at` and `actor`. Text items carry `restId` from `fullDatabaseId`, the
   REST id `issueCommentEdit` takes. A GraphQL `Bot` actor has
   `isBot: true`.
-- The verb, the methods and the three types are experimental. The query
-  was checked against GitHub's published GraphQL schema, not against a live
-  pull request.
+- The verb, the methods and the three types are experimental; the owner
+  agreed on 2026-11-14. The query was checked against GitHub's published
+  GraphQL schema, then run against live pull requests (#632, #650, #822).
 
 ## Why GraphQL and not the REST timeline
 
@@ -81,8 +92,15 @@ semantics are its own. Both are documented on the verb.
 - Labels, assignees, review requests, references and other timeline items.
   None was asked for, and each adds fields to keep total. `itemTypes` makes
   adding one a small change.
-- Adopting the verb in `@osdlc/code-host`. `getPr`'s activity carries REST
-  ids for inline comments and a `threadId` derived from REST fields, and
-  its callers sign entries by id. Moving it to this verb changes the ids
-  every caller sees, so it is a change for that package to decide, in its
-  own pull request.
+
+## Adopted in `@osdlc/code-host`
+
+`GithubCodeHost.getPr` reads its activity through this verb, in the same
+pull request. Callers sign entries by id, so the ids stay as they were:
+comments and reviews keep their node ids, and an inline comment takes its
+`restId`, with its thread the `replyToRestId` of a reply or its own
+`restId`. Checked on #632, #650 and #822: the same entries with the same
+ids and threads as the old `prView` plus REST read. Two things change: an
+activity read that fails, or cannot be read whole, fails `getPr` instead of
+leaving the inline comments out; and comments and reviews carry their
+`editedAt`. `getPr` still ignores its own `since`.

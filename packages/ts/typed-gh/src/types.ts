@@ -287,6 +287,8 @@ export type PrActivityItem =
         outdated: boolean
         /** The node id of the comment this one replies to. Null for the first comment of a thread. */
         replyToId: string | null
+        /** The REST id of the comment this one replies to, as text. Null for the first comment of a thread. */
+        replyToRestId: string | null
       })
   | (PrActivityBase & {
       kind: 'commit'

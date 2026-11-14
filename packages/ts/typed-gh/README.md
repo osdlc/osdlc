@@ -402,20 +402,24 @@ for (const item of activity?.rows ?? []) {
 Each `PrActivityItem` has a `kind`, a GraphQL node `id`, a time in `at` and an `actor`. A bot
 actor has `isBot: true`. Narrow on `kind` to read the rest: the text, `editedAt`, `url` and
 numeric `restId` of a comment, review or inline comment (a comment's `restId` is what
-`issueCommentEdit` takes), a review's `state`, an inline comment's `path`, `line` and
-`replyToId`, a commit's `sha`, the shas of a force push, and the old and new base branch.
+`issueCommentEdit` takes), a review's `state`, an inline comment's `path`, `line`, and
+`replyToId` and `replyToRestId`, a commit's `sha`, the shas of a force push, and the old and new
+base branch.
 
 It reads the pull request's GraphQL `timelineItems` and follows every page. The list keeps
-GitHub's timeline order, and each review comes right before its inline comments. A review's
-inline comments are read up to 100. When a review has more, `truncated` is `true`. The method
-returns `null` when there is no such pull request, and throws, as `graphql` does, when a call
-fails or a page cannot be read whole.
+GitHub's timeline order, and each review comes right before its inline comments. The timeline
+leaves out a review that only replies in an existing thread, so the same call also reads the pull
+request's review threads. Such a review and its replies go into the list by time. Up to 100 review
+threads are read, and up to 100 inline comments per review or thread. When there are more,
+`truncated` is `true`. The method returns `null` when there is no such pull request, and throws,
+as `graphql` does, when a call fails or a page cannot be read whole.
 
 `since` is an ISO 8601 date and time with a zone. It is sent in UTC, and GitHub filters the
 timeline itself, so a poll reads only what is new. GitHub's times are to the second, and it does
 not say whether an item at exactly `since` is kept. To poll, pass the newest `at` you have seen and
 drop the ids you already have. GitHub does not say that an older comment edited later comes back
-either. Read without `since` to see edits. A `since` that is not a date and time with a zone throws
+either. Read without `since` to see edits. Review threads take no `since`, so a reply read from
+them is kept when its own time is at or after `since`. A `since` that is not a date and time with a zone throws
 `RangeError`. `null` and `''` mean no `since`.
 
 ## Verbs and parsers, for running calls yourself

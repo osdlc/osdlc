@@ -357,8 +357,26 @@ function textOf(node: Record<string, unknown>): PrActivityText {
   }
 }
 
-/** Items read from timeline nodes. `truncated` is true when a review held more inline comments than the query asked for. */
+/** Items read from the answer. `truncated` is true when a list held more than the query asked for. */
 type ActivityRead = { items: PrActivityItem[]; truncated: boolean }
+
+/** The `nodes` of a connection, and whether its `totalCount` says some were not read. Null when it has no `nodes` list. */
+function connectionOf(x: unknown): { nodes: unknown[]; truncated: boolean } | null {
+  if (!isRecord(x) || !Array.isArray(x['nodes'])) return null
+  const total = x['totalCount']
+  return { nodes: x['nodes'], truncated: typeof total === 'number' && total > x['nodes'].length }
+}
+
+function reviewOf(node: Record<string, unknown>, id: string, actor: Actor | null): PrActivityItem {
+  return {
+    kind: 'review',
+    id,
+    at: strOrNull(node['submittedAt']),
+    actor,
+    state: str(node['state']),
+    ...textOf(node),
+  }
+}
 
 /**
  * A review followed by its inline comments. Null when the review has no
@@ -369,26 +387,15 @@ function reviewActivity(
   id: string,
   actor: Actor | null,
 ): ActivityRead | null {
-  const comments = node['comments']
-  if (!isRecord(comments) || !Array.isArray(comments['nodes'])) return null
-  const items: PrActivityItem[] = [
-    {
-      kind: 'review',
-      id,
-      at: strOrNull(node['submittedAt']),
-      actor,
-      state: str(node['state']),
-      ...textOf(node),
-    },
-  ]
-  for (const c of comments['nodes']) {
+  const comments = connectionOf(node['comments'])
+  if (comments === null) return null
+  const items: PrActivityItem[] = [reviewOf(node, id, actor)]
+  for (const c of comments.nodes) {
     const comment = reviewCommentOf(c, id)
     if (comment === null) return null
     items.push(comment)
   }
-  const total = comments['totalCount']
-  const truncated = typeof total === 'number' && total > comments['nodes'].length
-  return { items, truncated }
+  return { items, truncated: comments.truncated }
 }
 
 /** One inline comment of the review `reviewId`, or null when it is not an object or has no `id`. */
@@ -409,6 +416,7 @@ function reviewCommentOf(c: unknown, reviewId: string): PrActivityItem | null {
     originalLine: intOrNull(c['originalLine']),
     outdated: bool(c['outdated']),
     replyToId: isRecord(replyTo) ? strOrNull(replyTo['id']) : null,
+    replyToRestId: isRecord(replyTo) ? idOrNull(replyTo['fullDatabaseId']) : null,
   }
 }
 
@@ -416,8 +424,7 @@ function reviewCommentOf(c: unknown, reviewId: string): PrActivityItem | null {
  * The items of one timeline node: one, none for a type this package does not
  * read, or a review followed by its inline comments. Null when the node
  * cannot be read: it is not an object, a type it reads has no `id`, a
- * commit has no `oid`, or a review has no `comments` list. `truncated` is
- * true when a review held more inline comments than the query asked for.
+ * commit has no `oid`, or a review has no `comments` list.
  */
 function activityOf(node: unknown): ActivityRead | null {
   if (!isRecord(node)) return null
@@ -479,26 +486,84 @@ function activityOf(node: unknown): ActivityRead | null {
 }
 
 /**
+ * The groups the timeline left out: each review thread comment that is not
+ * in `seen`, after its review when that review is not in `seen` either.
+ * Those reviews only reply in an existing thread. A comment older than
+ * `since` is dropped. Null when the threads cannot be read, or a comment has
+ * no `id` or no review.
+ */
+function threadReplies(
+  pr: Record<string, unknown>,
+  seen: Set<string>,
+  since: number | null,
+): { groups: PrActivityItem[][]; truncated: boolean } | null {
+  const threads = connectionOf(pr['reviewThreads'])
+  if (threads === null) return null
+  const groups: PrActivityItem[][] = []
+  let truncated = threads.truncated
+  for (const thread of threads.nodes) {
+    const comments = connectionOf(isRecord(thread) ? thread['comments'] : null)
+    if (comments === null) return null
+    truncated ||= comments.truncated
+    for (const c of comments.nodes) {
+      const review = isRecord(c) ? c['pullRequestReview'] : null
+      const reviewId = isRecord(review) ? strOrNull(review['id']) : null
+      const comment = reviewId === null ? null : reviewCommentOf(c, reviewId)
+      if (comment === null || !isRecord(review) || reviewId === null) return null
+      if (seen.has(comment.id)) continue
+      const at = comment.at === null ? Number.NaN : Date.parse(comment.at)
+      if (since !== null && !(at >= since)) continue
+      const group: PrActivityItem[] = []
+      if (!seen.has(reviewId))
+        group.push(reviewOf(review, reviewId, graphqlActor(review['author'])))
+      group.push(comment)
+      for (const item of group) seen.add(item.id)
+      groups.push(group)
+    }
+  }
+  return { groups, truncated }
+}
+
+/**
+ * Puts each group before the first top-level row (not an inline comment)
+ * that is newer than the group's last item, or at the end.
+ */
+function placeByTime(rows: PrActivityItem[], groups: PrActivityItem[][]): PrActivityItem[] {
+  const out = [...rows]
+  for (const group of groups) {
+    const at = group.at(-1)?.at
+    const time = at === null || at === undefined ? Number.NaN : Date.parse(at)
+    const index = out.findIndex(
+      (r) => r.kind !== 'review-comment' && r.at !== null && Date.parse(r.at) > time,
+    )
+    out.splice(index === -1 ? out.length : index, 0, ...group)
+  }
+  return out
+}
+
+/**
  * A pull request's activity from the `data` of each page of the
- * `prActivity` query, in GitHub's timeline order: oldest first, and each
- * review followed by its inline comments.
+ * `prActivity` query. See {@link prActivity} for the order and `truncated`.
+ * `since` is the `since` sent, in milliseconds.
  *
- * Null when any page lacks `repository.pullRequest.timelineItems.nodes`, or
- * any node cannot be read, so a page that came back short is never read as
- * less activity. `truncated` is true when a review held more inline comments
- * than were read.
+ * Null when any page lacks `repository.pullRequest.timelineItems.nodes`, the
+ * first page lacks its `reviewThreads`, or any node cannot be read, so a page
+ * that came back short is never read as less activity.
  */
 export function parsePrActivity(
   pages: readonly unknown[],
+  since: number | null = null,
 ): { rows: PrActivityItem[]; truncated: boolean } | null {
   const rows: PrActivityItem[] = []
   let truncated = false
+  let first: Record<string, unknown> | null = null
   for (const page of pages) {
     const repository = isRecord(page) ? page['repository'] : null
     const pr = isRecord(repository) ? repository['pullRequest'] : null
     const timeline = isRecord(pr) ? pr['timelineItems'] : null
     const nodes = isRecord(timeline) ? timeline['nodes'] : null
-    if (!Array.isArray(nodes)) return null
+    if (!isRecord(pr) || !Array.isArray(nodes)) return null
+    first ??= pr
     for (const node of nodes) {
       const read = activityOf(node)
       if (read === null) return null
@@ -506,7 +571,10 @@ export function parsePrActivity(
       truncated ||= read.truncated
     }
   }
-  return { rows, truncated }
+  if (first === null) return { rows, truncated }
+  const replies = threadReplies(first, new Set(rows.map((r) => r.id)), since)
+  if (replies === null) return null
+  return { rows: placeByTime(rows, replies.groups), truncated: truncated || replies.truncated }
 }
 
 /**

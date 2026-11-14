@@ -17,7 +17,15 @@ import {
 
 /** What `gh api graphql --paginate --slurp` prints for a one-page timeline. */
 const timeline = (nodes: unknown[]) =>
-  JSON.stringify([{ data: { repository: { pullRequest: { timelineItems: { nodes } } } } }])
+  JSON.stringify([
+    {
+      data: {
+        repository: {
+          pullRequest: { timelineItems: { nodes }, reviewThreads: { totalCount: 0, nodes: [] } },
+        },
+      },
+    },
+  ])
 
 test("a pull request's activity, and what is new since the last look", () => {
   const runner: CommandRunner = {

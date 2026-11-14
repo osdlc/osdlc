@@ -44,9 +44,16 @@ const ok = (body: unknown): CommandResult => ({
   stderr: '',
 })
 
-/** One `--slurp`ed page's `data` with these timeline nodes. */
-const page = (nodes: unknown[]) => ({
-  data: { repository: { pullRequest: { timelineItems: { nodes } } } },
+/** One `--slurp`ed page's `data` with these timeline nodes and review threads. */
+const page = (nodes: unknown[], threads: unknown[] = []) => ({
+  data: {
+    repository: {
+      pullRequest: {
+        timelineItems: { nodes },
+        reviewThreads: { totalCount: threads.length, nodes: threads },
+      },
+    },
+  },
 })
 
 const user = (login: string) => ({ __typename: 'User', login })
@@ -180,6 +187,13 @@ describe('the prActivity verb', () => {
     expect(query.indexOf('pageInfo')).toBeLessThan(query.indexOf('nodes'))
   })
 
+  test('reads every review thread, with the REST id each comment replies to', () => {
+    const query = variables(prActivity(7).argv)['query']!
+    expect(query).toContain('reviewThreads(first: 100) { totalCount nodes {')
+    expect(query).toContain('replyTo { id fullDatabaseId }')
+    expect(query.indexOf('reviewThreads')).toBeGreaterThan(query.indexOf('pageInfo'))
+  })
+
   test("aliases a merge's commit, whose type differs from a commit's", () => {
     const query = variables(prActivity(7).argv)['query']!
     expect(query).toContain('... on MergedEvent {')
@@ -303,6 +317,7 @@ describe('reading the timeline', () => {
       originalLine: 10,
       outdated: false,
       replyToId: null,
+      replyToRestId: null,
     })
     expect(c2).toMatchObject({ replyToId: 'PRRC_1', line: null })
   })
@@ -366,6 +381,7 @@ describe('reading the timeline', () => {
         originalLine: null,
         outdated: false,
         replyToId: null,
+        replyToRestId: null,
       },
       { kind: 'commit', id: 'PURC_2', at: null, actor: null, sha: 'aaa', headline: '' },
       {
@@ -406,6 +422,97 @@ describe('reading the timeline', () => {
     ).toEqual(['IC_1'])
   })
 
+  describe('a review that only replies in a thread', () => {
+    // The timeline leaves such a review out; its reply is in the review threads.
+    const replyReview = {
+      id: 'PRR_2',
+      author: user('octocat'),
+      state: 'COMMENTED',
+      submittedAt: '2026-11-01T11:30:00Z',
+      fullDatabaseId: '56',
+      body: '',
+      lastEditedAt: null,
+      url: 'https://github.com/o/r/pull/7#pullrequestreview-56',
+    }
+    const reply = {
+      ...inline,
+      id: 'PRRC_9',
+      author: user('octocat'),
+      createdAt: '2026-11-01T11:30:00Z',
+      fullDatabaseId: '109',
+      body: 'Done.',
+      lastEditedAt: null,
+      replyTo: { id: 'PRRC_1', fullDatabaseId: '99' },
+      pullRequestReview: replyReview,
+    }
+    const thread = {
+      comments: {
+        totalCount: 2,
+        nodes: [{ ...inline, pullRequestReview: review }, reply],
+      },
+    }
+    const read = prActivity(7).parse(ok([page([comment, review, commit], [thread])]))
+
+    test('comes from the threads, placed by time', () => {
+      expect(read?.rows.map((r) => [r.kind, r.id])).toEqual([
+        ['comment', 'IC_1'],
+        ['review', 'PRR_1'],
+        ['review-comment', 'PRRC_1'],
+        ['review-comment', 'PRRC_2'],
+        ['review', 'PRR_2'],
+        ['review-comment', 'PRRC_9'],
+        ['commit', 'PURC_1'],
+      ])
+      expect(read?.truncated).toBe(false)
+    })
+
+    test('carries the REST id of the comment it replies to', () => {
+      expect(read?.rows[5]).toMatchObject({
+        kind: 'review-comment',
+        reviewId: 'PRR_2',
+        restId: '109',
+        replyToId: 'PRRC_1',
+        replyToRestId: '99',
+      })
+      expect(read?.rows[4]).toMatchObject({ kind: 'review', state: 'COMMENTED', restId: '56' })
+    })
+
+    test('is read from the first page only', () => {
+      const twice = prActivity(7).parse(ok([page([review], [thread]), page([commit], [thread])]))
+      expect(twice?.rows.filter((r) => r.id === 'PRRC_9')).toHaveLength(1)
+    })
+
+    test('is kept with since only when it is at or after since', () => {
+      const answer = ok([page([], [thread])])
+      const ids = (since: string) =>
+        prActivity(7, { since })
+          .parse(answer)
+          ?.rows.map((r) => r.id)
+      expect(ids('2026-11-01T11:30:00Z')).toEqual(['PRR_2', 'PRRC_9'])
+      expect(ids('2026-11-01T11:30:01Z')).toEqual([])
+    })
+
+    test('more threads, or thread comments, than were read is truncated', () => {
+      const many = { totalCount: 101, nodes: [thread] }
+      const long = { comments: { ...thread.comments, totalCount: 101 } }
+      const wide = page([])
+      wide.data.repository.pullRequest.reviewThreads = many
+      expect(prActivity(7).parse(ok([wide]))?.truncated).toBe(true)
+      expect(prActivity(7).parse(ok([page([], [long])]))?.truncated).toBe(true)
+    })
+
+    test.each([
+      ['a thread with no comment list', [{ comments: null }]],
+      [
+        'a thread comment with no review',
+        [{ comments: { nodes: [{ ...reply, pullRequestReview: null }] } }],
+      ],
+      ['a thread comment with no id', [{ comments: { nodes: [{ ...reply, id: undefined }] } }]],
+    ])('%s is no answer', (_name, threads) => {
+      expect(prActivity(7).parse(ok([page([comment], threads)]))).toBeNull()
+    })
+  })
+
   test('no activity is an empty list, not null', () => {
     expect(prActivity(7).parse(ok([page([])]))).toEqual({ rows: [], truncated: false })
   })
@@ -422,6 +529,10 @@ describe('reading the timeline', () => {
     ['a review with no comment list', [page([{ ...review, comments: null }])]],
     ['an inline comment with no id', [page([{ ...review, comments: { nodes: [{ body: 'x' }] } }])]],
     ['an answer that is not a list of pages', page([comment])],
+    [
+      'a first page without review threads',
+      [{ data: { repository: { pullRequest: { timelineItems: { nodes: [comment] } } } } }],
+    ],
   ])('%s is no answer', (_name, body) => {
     expect(prActivity(7).parse(ok(body))).toBeNull()
   })
