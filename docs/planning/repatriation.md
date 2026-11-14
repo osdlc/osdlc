@@ -80,8 +80,9 @@ Both copies have the same paths and the same `src/`.
       version. (#790)
 - [x] Remove the two notes that say the spec moves to osdlc/markdown
       (`packages/conformance/corpus-schema/README.md` and `SPEC.md`). (#790)
-- [ ] Merge, then merge the Version Packages pull request. 0.3.0 is
-      published from here.
+- [x] Merge, then merge the Version Packages pull request. 0.3.0 is
+      published from here. (0.3.0 was not published; the work was released
+      as 0.4.0 on 2026-11-13.)
 - [ ] Close osdlc/markdown#12 with a link to the new pull request.
 
 ### Phase 2: the plan and docs
@@ -217,7 +218,7 @@ are in one place.
       `packages/corpora/harness-reference/`, with history: the corpus
       (`corpus/`, about 2,500 files), its notes and probes, and the `capture`,
       `lint` and `compile` code in `src/`.
-- [x] Rename its root file to `<name>.corpus-schema.md`, as 0.3.0 requires,
+- [x] Rename its root file to `<name>.corpus-schema.md`, as 0.4.0 requires,
       and validate it with this repository's corpus-schema.
 - [ ] Extend the claims profile (`@osdlc/corpus-profile-claims`) where its
       types match, if that does not change the compiled file. Tried and left
