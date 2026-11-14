@@ -9,6 +9,9 @@ export default defineConfig({
   },
   test: {
     include: ['tests/**/*.test.ts', 'examples/**/*.test.ts'],
+    // One test loads every conformance corpus three times. It took 8 s on a loaded CI runner,
+    // past the default 5 s.
+    testTimeout: 20000,
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
