@@ -21,16 +21,26 @@ hasEvidenceLines:
     directionOfEvidenceProvided: supports
     strengthOfEvidenceProvided: moderate
     description: The 1.1.12 changelog adds the opt-out.
+  - hasEvidenceItems:
+      - "[2026-11-14 plugins skill slash command](../../study-results/Antigravity/2026-11-14%20plugins%20skill%20slash%20command.md)"
+    directionOfEvidenceProvided: neutral
+    description: For a plugin skill the Plugins page shows the bare /<skill-name>, where the discovery page gives <plugin>:<skill>. The disagreement is recorded on the Plugin skill runtime name statement.
 reportedIn:
   - "[Antigravity docs Agent skills](../../documents/antigravity.google/Antigravity%20docs%20Agent%20skills.md)"
   - "[Antigravity docs Customization discovery](../../documents/antigravity.google/Antigravity%20docs%20Customization%20discovery.md)"
   - "[Antigravity CLI CHANGELOG at f51cb8d](../../documents/Google/Antigravity%20CLI%20CHANGELOG%20at%20f51cb8d.md)"
+  - "[Antigravity docs Plugins](../../documents/antigravity.google/Antigravity%20docs%20Plugins.md)"
 contributions:
   - contributor:
       name: harness-reference research
       agentType: software
     activityType: created
     date: 2026-11-14T12:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: verified
+    date: 2026-11-14T18:00:00Z
 harness: "[Antigravity](../../harnesses/Antigravity.md)"
 subject: "[User invocation syntax](../../subjects/skills/User%20invocation%20syntax.md)"
 scope:
@@ -42,3 +52,5 @@ status: current
 ---
 
 In the CLI every skill becomes a slash command named after it. In headless mode the same call works at the start of a `-p` prompt.
+
+The note on plugin skills follows the Customization discovery page. The Plugins page shows a plugin skill run by its bare name; see Plugin skill runtime name, which is disputed.

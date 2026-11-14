@@ -7,7 +7,7 @@ proposition:
     namespace: "<plugin>:"
     bare_alias: the Plugins page shows a plugin skill run as /<skill-name>, such as /hello
 direction: supports
-strength: moderate
+strength: weak
 hasEvidenceLines:
   - hasEvidenceItems:
       - "[2026-11-14 discovery plugin skill names](../../study-results/Antigravity/2026-11-14%20discovery%20plugin%20skill%20names.md)"
@@ -17,9 +17,9 @@ hasEvidenceLines:
     description: The Customization discovery page and the 1.2.7 changelog give the <plugin>:<skill> form.
   - hasEvidenceItems:
       - "[2026-11-14 plugins skill slash command](../../study-results/Antigravity/2026-11-14%20plugins%20skill%20slash%20command.md)"
-    directionOfEvidenceProvided: supports
+    directionOfEvidenceProvided: disputes
     strengthOfEvidenceProvided: moderate
-    description: The Plugins page shows a plugin skill invoked by its bare name.
+    description: The Plugins page shows a plugin skill invoked by its bare name, /<skill-name>, with no plugin prefix.
 reportedIn:
   - "[Antigravity docs Customization discovery](../../documents/antigravity.google/Antigravity%20docs%20Customization%20discovery.md)"
   - "[Antigravity CLI CHANGELOG at f51cb8d](../../documents/Google/Antigravity%20CLI%20CHANGELOG%20at%20f51cb8d.md)"
@@ -30,6 +30,11 @@ contributions:
       agentType: software
     activityType: created
     date: 2026-11-14T12:00:00Z
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: disputed
+    date: 2026-11-14T18:00:00Z
 harness: "[Antigravity](../../harnesses/Antigravity.md)"
 subject: "[Plugin skill runtime name](../../subjects/skills/Plugin%20skill%20runtime%20name.md)"
 scope:
@@ -37,10 +42,12 @@ scope:
   until: null
   platform: []
   model: null
-status: current
+status: disputed
 open:
   - Does the bare /review also run a plugin skill, or only /acme-tools:review?
   - Does the prefix come from the manifest name or from the plugin folder?
 ---
 
 The Customization discovery page says a plugin skill is named `<plugin>:<skill>`, and the changelog writes the slash command as `/<plugin>:<skill>`. The Plugins and Build plugins pages show the bare `/<skill-name>` form. The sources do not reconcile the two.
+
+Marked disputed on 2026-11-14: the two docs pages disagree on the name a user types, so the bare-name line is a disputing line and the strength drops one step. The value keeps the `<plugin>:<skill>` form, which the discovery page and the changelog give.
