@@ -5,8 +5,8 @@ order to merge them in. Read on 2026-11-14, with 33 open. Update a row when
 its pull request merges or closes, and delete this file when the queue is
 short enough to read on GitHub.
 
-Merged since: #802 and #801 (2026-11-14). The order numbers below are as
-first written.
+Merged since: #802, #801, #803, #783 and #787 (2026-11-14). The order
+numbers below are as first written.
 
 ## Summary
 
@@ -46,7 +46,6 @@ State is one of: **ready** (checks pass, behind `main` only), **question**
 | Order | Pull request                                    | What                                     | State    | Before it merges                                                                                                                                    |
 | ----- | ----------------------------------------------- | ---------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 3     | [#785](https://github.com/osdlc/osdlc/pull/785) | Release inputs for packages with no code | question | Answer its one question. Then add `package-globs` to `packages-publish.yml`, so the "not on npm yet" check covers `packages/profiles` and `corpora` |
-| 4     | [#803](https://github.com/osdlc/osdlc/pull/803) | Plan tasks 85 to 87                      | ready    | After #802: both edit the plan's records and the explorer's data                                                                                    |
 
 ### 2. The corpus tools
 
@@ -76,16 +75,14 @@ All three were written before releases that changed their base.
 
 `docs/planning/agent-ci.md` is the plan for this group, and #722 updates it.
 
-| Order | Pull request                                    | What                                               | State    | Before it merges                                                               |
-| ----- | ----------------------------------------------- | -------------------------------------------------- | -------- | ------------------------------------------------------------------------------ |
-| 11    | [#783](https://github.com/osdlc/osdlc/pull/783) | pr-update runs at 08:30 UTC                        | ready    | Nothing. Two lines                                                             |
-| 12    | [#787](https://github.com/osdlc/osdlc/pull/787) | PR actions move to the next key when out of credit | ready    | Nothing left from its review pass                                              |
-| 13    | [#798](https://github.com/osdlc/osdlc/pull/798) | agent-call: `inheritEnv`, `unsetEnv`               | question | One design question                                                            |
-| 14    | [#799](https://github.com/osdlc/osdlc/pull/799) | agent-call: why a run failed                       | ready    | After #798: same package                                                       |
-| 15    | [#797](https://github.com/osdlc/osdlc/pull/797) | harness-knowledge: short-id map                    | question | Two design questions. After #801 (same package) and #799 (it edits agent-call) |
-| 16    | [#764](https://github.com/osdlc/osdlc/pull/764) | Run any skill from a PR comment                    | draft    | After #787: both edit `pr-common`. Three remarks left for the owner            |
-| 17    | [#622](https://github.com/osdlc/osdlc/pull/622) | Proposal: session meta and native transcripts      | draft    | A design to accept or change. No code                                          |
-| 18    | [#722](https://github.com/osdlc/osdlc/pull/722) | The agents-in-CI plan and its review queue         | draft    | Last in the group, so its tracker is right when it merges                      |
+| Order | Pull request                                    | What                                          | State    | Before it merges                                                               |
+| ----- | ----------------------------------------------- | --------------------------------------------- | -------- | ------------------------------------------------------------------------------ |
+| 13    | [#798](https://github.com/osdlc/osdlc/pull/798) | agent-call: `inheritEnv`, `unsetEnv`          | question | One design question                                                            |
+| 14    | [#799](https://github.com/osdlc/osdlc/pull/799) | agent-call: why a run failed                  | ready    | After #798: same package                                                       |
+| 15    | [#797](https://github.com/osdlc/osdlc/pull/797) | harness-knowledge: short-id map               | question | Two design questions. After #801 (same package) and #799 (it edits agent-call) |
+| 16    | [#764](https://github.com/osdlc/osdlc/pull/764) | Run any skill from a PR comment               | draft    | After #787: both edit `pr-common`. Three remarks left for the owner            |
+| 17    | [#622](https://github.com/osdlc/osdlc/pull/622) | Proposal: session meta and native transcripts | draft    | A design to accept or change. No code                                          |
+| 18    | [#722](https://github.com/osdlc/osdlc/pull/722) | The agents-in-CI plan and its review queue    | draft    | Last in the group, so its tracker is right when it merges                      |
 
 ### 5. pr-update
 
@@ -125,9 +122,10 @@ pass.
 
 ## What to do first
 
-1. Merge #783, #787 and #803: ready, small, and nothing waits on a decision.
-2. Merge the Version Packages pull request, which now holds #801's patch.
-3. Answer the questions on #785, #798 and #797. Each takes one decision and
-   frees a pull request behind it.
-4. Review #805. Two new packages wait on it.
+1. Merge #785 once its one question is answered, then add `package-globs` to
+   `packages-publish.yml`.
+2. Merge the Version Packages pull request, which holds #801's patch.
+3. Review #805. Two new packages wait on it.
+4. Answer the questions on #798 and #797. Each takes one decision and frees
+   a pull request behind it.
 5. Decide #744 and #672, since the answer is about scope, not code.
