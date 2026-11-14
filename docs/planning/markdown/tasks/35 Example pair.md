@@ -8,7 +8,7 @@ milestone: "[m-npm](../milestones/m-npm.md)"
 after:
   - "[23 Claims profile](23%20Claims%20profile.md)"
   - "[29 Sync](29%20Sync.md)"
-  - "[36 Release 0.3.0](36%20Release%200.3.0.md)"
+  - "[36 Release 0.4.0](36%20Release%200.3.0.md)"
 prs:
   - "[osdlc/markdown#16](https://github.com/osdlc/markdown/pull/16)"
 ---

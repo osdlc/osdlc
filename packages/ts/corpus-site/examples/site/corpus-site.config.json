@@ -1,0 +1,128 @@
+{
+  "typeOrder": ["books", "authors", "notes"],
+  "types": {
+    "books": {
+      "icon": "📚",
+      "summary": "{author}, {year}",
+      "columns": ["title", "author", "status", "genres", "year", "rating"],
+      "filters": ["status", "genres", "author", "fiction", "year", "finished", "edition.format"],
+      "sort": "-year",
+      "sections": [
+        {
+          "label": "Reading",
+          "fields": ["status", "finished", "rating"],
+          "note": "Where the book is on the way from the shelf to done."
+        }
+      ],
+      "fields": {
+        "status": {
+          "note": "Abandoned books stay on the list.",
+          "info": "A book moves from To read to Reading to Finished. Abandoned is for a book that was started and set aside.",
+          "values": {
+            "to-read": {
+              "color": "neutral",
+              "description": "On the shelf, not opened."
+            },
+            "reading": {
+              "color": "blue",
+              "description": "Open now."
+            },
+            "finished": {
+              "color": "green",
+              "description": "Read to the last page."
+            },
+            "abandoned": {
+              "color": "amber",
+              "description": "Started and set aside."
+            }
+          }
+        },
+        "rating": {
+          "label": "Rating",
+          "format": {
+            "kind": "number",
+            "unit": "/ 5"
+          }
+        },
+        "year": {
+          "label": "First published",
+          "format": "text"
+        },
+        "pages": {
+          "format": {
+            "kind": "number",
+            "unit": "pages"
+          }
+        },
+        "fiction": {
+          "help": "Novels and poetry count as fiction here."
+        },
+        "source": {
+          "label": "Free copy",
+          "link": {
+            "href": "https://www.gutenberg.org/about/",
+            "label": "About Project Gutenberg"
+          }
+        },
+        "edition.format": {
+          "label": "Format",
+          "control": "select"
+        }
+      },
+      "views": [
+        {
+          "kind": "matrix",
+          "label": "Shelf by status",
+          "slug": "by-status",
+          "intro": "Each writer down the side, each reading status across the top, and the books where they meet.",
+          "rows": "author",
+          "columns": "status",
+          "cell": "{title} ({year})",
+          "groupRowsBy": "country",
+          "rowSummary": "{country}, born {born}"
+        }
+      ]
+    },
+    "authors": {
+      "icon": "✍️",
+      "summary": "{country}, born {born}",
+      "fields": {
+        "born": {
+          "format": "text"
+        },
+        "died": {
+          "format": "text"
+        },
+        "country": {
+          "control": "chips"
+        }
+      },
+      "filters": ["country", "pen_name", "born"],
+      "derived": {
+        "books": {
+          "label": "Books",
+          "help": "How many of the writer's books are on the shelf.",
+          "count": {
+            "from": "books",
+            "via": "author"
+          }
+        }
+      },
+      "columns": ["title", "country", "born", "books"],
+      "related": [
+        {
+          "label": "On the shelf",
+          "note": "The writer's books, newest first.",
+          "from": "books",
+          "via": "author",
+          "columns": ["title", "status", "year", "edition"],
+          "sort": "-year"
+        }
+      ]
+    },
+    "notes": {
+      "icon": "🗒️",
+      "sort": "-written"
+    }
+  }
+}
