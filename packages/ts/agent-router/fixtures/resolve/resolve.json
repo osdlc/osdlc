@@ -1,0 +1,750 @@
+[
+  {
+    "name": "tool-only",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "alpha"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "tool": "alpha",
+        "effortUnchecked": false,
+        "contextUnchecked": false,
+        "text": "alpha",
+        "from": {
+          "kind": "default"
+        },
+        "check": {
+          "kind": "ok"
+        }
+      }
+    }
+  },
+  {
+    "name": "tier",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "alpha/standard"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "tool": "alpha",
+        "model": "mid-1",
+        "effortUnchecked": false,
+        "contextUnchecked": false,
+        "text": "alpha/standard",
+        "from": {
+          "kind": "tier",
+          "tier": "standard"
+        },
+        "check": {
+          "kind": "ok"
+        }
+      }
+    }
+  },
+  {
+    "name": "tier-via-alias-head",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "alpha/max"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "tool": "alpha",
+        "model": "big",
+        "effortUnchecked": false,
+        "contextUnchecked": false,
+        "text": "alpha/max",
+        "from": {
+          "kind": "tier",
+          "tier": "max"
+        },
+        "check": {
+          "kind": "ok"
+        }
+      }
+    }
+  },
+  {
+    "name": "tier-pinned",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "policy": {
+        "pins": {
+          "alpha/max": "big-2"
+        }
+      },
+      "ref": "alpha/max"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "tool": "alpha",
+        "model": "big-2",
+        "effortUnchecked": false,
+        "contextUnchecked": false,
+        "text": "alpha/max",
+        "from": {
+          "kind": "tier",
+          "tier": "max",
+          "pinned": true
+        },
+        "check": {
+          "kind": "ok"
+        }
+      }
+    }
+  },
+  {
+    "name": "named-model",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "alpha/mid-1"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "tool": "alpha",
+        "model": "mid-1",
+        "effortUnchecked": false,
+        "contextUnchecked": false,
+        "text": "alpha/mid-1",
+        "from": {
+          "kind": "name",
+          "name": "mid-1"
+        },
+        "check": {
+          "kind": "ok"
+        }
+      }
+    }
+  },
+  {
+    "name": "named-by-native-name",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "delta/tiny"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "tool": "delta",
+        "model": "tiny",
+        "effortUnchecked": false,
+        "contextUnchecked": false,
+        "text": "delta/tiny",
+        "from": {
+          "kind": "name",
+          "name": "tiny"
+        },
+        "check": {
+          "kind": "ok"
+        }
+      }
+    }
+  },
+  {
+    "name": "qualifiers-ride-on-text",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "alpha/standard[reasoning,ctx=200k]"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "tool": "alpha",
+        "model": "mid-1",
+        "effortUnchecked": false,
+        "contextUnchecked": false,
+        "text": "alpha/standard[ctx=200k,reasoning]",
+        "from": {
+          "kind": "tier",
+          "tier": "standard"
+        },
+        "check": {
+          "kind": "ok"
+        }
+      }
+    }
+  },
+  {
+    "name": "effort-accepted",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "alpha/standard@medium"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "tool": "alpha",
+        "model": "mid-1",
+        "effort": "medium",
+        "effortUnchecked": false,
+        "contextUnchecked": false,
+        "text": "alpha/standard@medium",
+        "from": {
+          "kind": "tier",
+          "tier": "standard"
+        },
+        "check": {
+          "kind": "ok"
+        }
+      }
+    }
+  },
+  {
+    "name": "effort-moved-up",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "alpha/standard@minimal"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "tool": "alpha",
+        "model": "mid-1",
+        "effort": "low",
+        "effortAdjusted": {
+          "requested": "minimal",
+          "direction": "up",
+          "used": "low"
+        },
+        "effortUnchecked": false,
+        "contextUnchecked": false,
+        "text": "alpha/standard@minimal",
+        "from": {
+          "kind": "tier",
+          "tier": "standard"
+        },
+        "check": {
+          "kind": "ok"
+        }
+      }
+    }
+  },
+  {
+    "name": "effort-moved-up-on-beta",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "beta/standard@low"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "tool": "beta",
+        "model": "gpt-x",
+        "effort": "medium",
+        "effortAdjusted": {
+          "requested": "low",
+          "direction": "up",
+          "used": "medium"
+        },
+        "effortUnchecked": false,
+        "contextUnchecked": false,
+        "text": "beta/standard@low",
+        "from": {
+          "kind": "tier",
+          "tier": "standard"
+        },
+        "check": {
+          "kind": "ok"
+        }
+      }
+    }
+  },
+  {
+    "name": "effort-moved-down",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "beta/standard@xhigh"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "tool": "beta",
+        "model": "gpt-x",
+        "effort": "high",
+        "effortAdjusted": {
+          "requested": "xhigh",
+          "direction": "down",
+          "used": "high"
+        },
+        "effortUnchecked": false,
+        "contextUnchecked": false,
+        "text": "beta/standard@xhigh",
+        "from": {
+          "kind": "tier",
+          "tier": "standard"
+        },
+        "check": {
+          "kind": "ok"
+        }
+      }
+    }
+  },
+  {
+    "name": "effort-unchecked-without-declared-levels",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "delta@high"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "tool": "delta",
+        "effort": "high",
+        "effortUnchecked": true,
+        "contextUnchecked": false,
+        "text": "delta@high",
+        "from": {
+          "kind": "default"
+        },
+        "check": {
+          "kind": "ok"
+        }
+      }
+    }
+  },
+  {
+    "name": "effort-kept-on-text-as-asked",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "alpha/big@xhigh"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "tool": "alpha",
+        "model": "big",
+        "effort": "high",
+        "effortAdjusted": {
+          "requested": "xhigh",
+          "direction": "down",
+          "used": "high"
+        },
+        "effortUnchecked": false,
+        "contextUnchecked": false,
+        "text": "alpha/big@xhigh",
+        "from": {
+          "kind": "name",
+          "name": "big"
+        },
+        "check": {
+          "kind": "ok"
+        }
+      }
+    }
+  },
+  {
+    "name": "wildcard-is-an-error",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "*/fast"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "wildcard",
+        "tool": "*",
+        "model": "fast",
+        "message": "'*/fast' names every tool; only a profile walk expands it"
+      }
+    }
+  },
+  {
+    "name": "wildcard-with-effort-is-an-error",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "*/max@high"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "wildcard",
+        "tool": "*",
+        "model": "max",
+        "message": "'*/max@high' names every tool; only a profile walk expands it"
+      }
+    }
+  },
+  {
+    "name": "error-unknown-tool",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "nope/fast"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "unknown-tool",
+        "tool": "nope",
+        "model": "fast",
+        "message": "unknown tool 'nope'; known: alpha, beta, gamma, delta"
+      }
+    }
+  },
+  {
+    "name": "error-tool-outside-known-tools",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "knownTools": [
+        "alpha"
+      ],
+      "ref": "beta/standard"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "unknown-tool",
+        "tool": "beta",
+        "model": "standard",
+        "message": "unknown tool 'beta'; known: alpha"
+      }
+    }
+  },
+  {
+    "name": "error-no-tier-entry",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "beta/fast"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "no-tier-entry",
+        "tool": "beta",
+        "model": "fast",
+        "message": "tool 'beta' has no model for tier 'fast'"
+      }
+    }
+  },
+  {
+    "name": "error-provider-not-served-with-hint",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "ref": "codex/sonnet"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "provider-not-served",
+        "tool": "codex",
+        "model": "sonnet",
+        "message": "'codex' does not serve anthropic, the provider of 'sonnet'; nearest valid: claude/sonnet",
+        "hint": "claude/sonnet"
+      }
+    }
+  },
+  {
+    "name": "error-provider-not-served-by-the-tool",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "beta/anthropic/small-1"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "provider-not-served",
+        "tool": "beta",
+        "model": "anthropic/small-1",
+        "message": "'beta' does not serve anthropic, the provider of 'anthropic/small-1'; nearest valid: alpha/anthropic/small-1",
+        "hint": "alpha/anthropic/small-1"
+      }
+    }
+  },
+  {
+    "name": "error-model-not-offered",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "delta/mid-1"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "model-not-offered",
+        "tool": "delta",
+        "model": "mid-1",
+        "message": "'delta' does not offer anthropic/mid-1; nearest valid: alpha/mid-1",
+        "hint": "alpha/mid-1"
+      }
+    }
+  },
+  {
+    "name": "error-unsupported-effort",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "alpha/big@none"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "unsupported-effort",
+        "tool": "alpha",
+        "model": "big",
+        "message": "effort 'none' is not supported for model 'big' on 'alpha'; supported: low, medium, high",
+        "effort": "none",
+        "supported": [
+          "low",
+          "medium",
+          "high"
+        ]
+      }
+    }
+  },
+  {
+    "name": "error-effort-on-a-tool-that-takes-none",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "gamma/anthropic/small-1@high"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "unsupported-effort",
+        "tool": "gamma",
+        "model": "anthropic/small-1",
+        "message": "effort 'high' is not supported for model 'anthropic/small-1' on 'gamma'; it takes no effort",
+        "effort": "high",
+        "supported": []
+      }
+    }
+  },
+  {
+    "name": "error-unknown-model-under-strict",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "strict": true,
+      "ref": "alpha/not-a-model"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "unknown-model",
+        "tool": "alpha",
+        "model": "not-a-model",
+        "message": "model 'not-a-model' is not in the model catalogue for 'alpha', and router.strict refuses unknown models"
+      }
+    }
+  },
+  {
+    "name": "warning-unknown-model",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "alpha/not-a-model"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "tool": "alpha",
+        "model": "not-a-model",
+        "effortUnchecked": false,
+        "contextUnchecked": false,
+        "text": "alpha/not-a-model",
+        "from": {
+          "kind": "name",
+          "name": "not-a-model"
+        },
+        "check": {
+          "kind": "warning",
+          "code": "unknown-model",
+          "message": "model 'not-a-model' is not in the model catalogue for 'alpha'; it is passed as written"
+        }
+      }
+    }
+  },
+  {
+    "name": "warning-deprecated-model",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "alpha/big-1"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "tool": "alpha",
+        "model": "big-1",
+        "effortUnchecked": false,
+        "contextUnchecked": false,
+        "text": "alpha/big-1",
+        "from": {
+          "kind": "name",
+          "name": "big-1"
+        },
+        "check": {
+          "kind": "warning",
+          "code": "deprecated-model",
+          "message": "model 'big-1' (anthropic/big-1) is deprecated since 2026-09-01"
+        }
+      }
+    }
+  },
+  {
+    "name": "warning-deprecated-model-under-strict",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "strict": true,
+      "ref": "alpha/big-1"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "tool": "alpha",
+        "model": "big-1",
+        "effortUnchecked": false,
+        "contextUnchecked": false,
+        "text": "alpha/big-1",
+        "from": {
+          "kind": "name",
+          "name": "big-1"
+        },
+        "check": {
+          "kind": "warning",
+          "code": "deprecated-model",
+          "message": "model 'big-1' (anthropic/big-1) is deprecated since 2026-09-01"
+        }
+      }
+    }
+  },
+  {
+    "name": "skip-withdrawn-model",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "ref": "alpha/gone-1"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "tool": "alpha",
+        "model": "gone-1",
+        "effortUnchecked": false,
+        "contextUnchecked": false,
+        "text": "alpha/gone-1",
+        "from": {
+          "kind": "name",
+          "name": "gone-1"
+        },
+        "check": {
+          "kind": "skip",
+          "code": "withdrawn-model",
+          "message": "model 'gone-1' (anthropic/gone-1) is withdrawn"
+        }
+      }
+    }
+  },
+  {
+    "name": "snapshot-family-name",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "ref": "claude/opus-5.5@high"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "tool": "claude",
+        "model": "opus-5.5",
+        "effort": "high",
+        "effortUnchecked": false,
+        "contextUnchecked": false,
+        "text": "claude/opus-5.5@high",
+        "from": {
+          "kind": "name",
+          "name": "opus-5.5"
+        },
+        "check": {
+          "kind": "warning",
+          "code": "unknown-model",
+          "message": "model 'opus-5.5' is not in the model catalogue for 'claude'; it is passed as written"
+        }
+      }
+    }
+  },
+  {
+    "name": "snapshot-tier-effort",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "ref": "claude/max@high"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "tool": "claude",
+        "model": "opus",
+        "effort": "high",
+        "effortUnchecked": false,
+        "contextUnchecked": false,
+        "text": "claude/max@high",
+        "from": {
+          "kind": "tier",
+          "tier": "max"
+        },
+        "check": {
+          "kind": "ok"
+        }
+      }
+    }
+  }
+]

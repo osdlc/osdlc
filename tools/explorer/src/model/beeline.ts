@@ -1,7 +1,7 @@
 // The checklist in docs/planning/markdown/BEELINE.md, generated from the plan by scripts/build-data.mjs.
 // Imports name the .ts file, so that the script can load this module under plain Node.
 import type { Plan, PlanTask } from './plan.ts'
-import { isClosed } from './plan.ts'
+import { isClosed, isSetAside } from './plan.ts'
 import { indexPlan, isNextUp, STATUS_ORDER, type PlanIndex } from './work.ts'
 
 export const BEELINE_START = '<!-- beeline:start -->'
@@ -20,6 +20,7 @@ export interface BeelineGroups {
   /** Not closed, and waiting on a task that is not done. In beelineTasks order. */
   waiting: PlanTask[]
   done: PlanTask[]
+  deferred: PlanTask[]
   dropped: PlanTask[]
 }
 
@@ -36,6 +37,7 @@ export function beelineGroups(index: PlanIndex): BeelineGroups {
     nextUp: open.filter((t) => isNextUp(index, t)).sort((a, b) => rank(a) - rank(b)),
     waiting: open.filter((t) => !isNextUp(index, t)),
     done: tasks.filter((t) => t.status === 'done'),
+    deferred: tasks.filter((t) => t.status === 'deferred'),
     dropped: tasks.filter((t) => t.status === 'dropped'),
   }
 }
@@ -45,11 +47,11 @@ export function openAfter(index: PlanIndex, task: PlanTask): number[] {
   return task.after.filter((id) => index.task.get(id)?.status !== 'done')
 }
 
-/** One checklist line. `href` is the link to the task's record. A dropped task gets no box: there is nothing to tick. */
+/** One checklist line. `href` is the link to the task's record. A deferred or dropped task gets no box: there is nothing to tick. */
 export function checklistItem(index: PlanIndex, task: PlanTask, href: string): string {
   const done = task.status === 'done'
   const parts = [`[${task.id} ${task.title}](${href})`, index.statusLabel(task.status)]
-  if (task.status === 'dropped') return `- ${parts.join(' · ')}`
+  if (isSetAside(task.status)) return `- ${parts.join(' · ')}`
   if (!done) parts.push(doerOf(task))
   if (task.prs.length > 0) parts.push(task.prs.map((pr) => `[${pr.label}](${pr.url})`).join(', '))
   const waits = openAfter(index, task)
@@ -57,7 +59,7 @@ export function checklistItem(index: PlanIndex, task: PlanTask, href: string): s
   return `- [${done ? 'x' : ' '}] ${parts.join(' · ')}`
 }
 
-/** The Markdown between the markers: next up first, then waiting, done and dropped. */
+/** The Markdown between the markers: next up first, then waiting, done, deferred and dropped. */
 export function beelineChecklist(plan: Plan, href: (task: PlanTask) => string): string {
   const index = indexPlan(plan)
   const milestones = plan.milestones.filter((m) => m.beeline).map((m) => `\`${m.id}\``)
@@ -66,6 +68,7 @@ export function beelineChecklist(plan: Plan, href: (task: PlanTask) => string): 
     ['Next up', groups.nextUp],
     ['Waiting', groups.waiting],
     ['Done', groups.done],
+    ['Deferred', groups.deferred],
     ['Dropped', groups.dropped],
   ]
   const lines = [
