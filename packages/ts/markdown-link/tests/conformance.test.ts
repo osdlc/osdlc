@@ -19,6 +19,7 @@ import {
   bodyLinks,
   bodyLinksSpanned,
   bodyLinksSpannedWith,
+  codeRanges,
   displayText,
   isVaultLinkUrl,
   mdLinkTarget,
@@ -151,7 +152,11 @@ function run(section: string, input: unknown): unknown {
       const skillExport = stripCodeWith(source, 'skill-export')
       expect(codePoints(commonmark)).toBe(codePoints(source))
       expect(codePoints(skillExport)).toBe(codePoints(source))
-      return { commonmark, skill_export: skillExport }
+      const ranges = codeRanges(source, 'commonmark').map((range) => [
+        pointsBefore(source, range.start),
+        pointsBefore(source, range.end),
+      ])
+      return { commonmark, skill_export: skillExport, ranges }
     }
     case 'inner': {
       const i = fields(input, ['inner'], ['embed'])
