@@ -201,9 +201,53 @@ export const prUpdateConfigSchema = z
 
 /**
  * What a standalone run's `pr_update:` block accepts: the shared block plus
- * `test_command`, the one key only a standalone run reads (`standalonePorts`).
+ * `test_command`, `attempts` and `lease`, the keys only a standalone run reads
+ * (`standalonePorts`). A host that embeds the package supplies `Ports.attempts` and
+ * `Ports.lease` itself.
  */
 export const prUpdateStandaloneSchema = prUpdateConfigSchema.extend({
+  attempts: z
+    .object({
+      store: z
+        .enum(['file', 'git-ref'])
+        .default('file')
+        .describe(
+          'Where failed updates are recorded. `file` (default) keeps them in `.pr-update/attempts/` in the project root, so they are per machine. `git-ref` keeps them as refs on the `--remote` (one per repo, head and base branch, under `ref_prefix`), so every machine and CI job that updates the repository shares them, and also turns on the per-branch update lease (see `lease`). The remote must accept refs outside `refs/heads` and `refs/tags`; a host that refuses them fails the run with an error naming this setting.',
+        ),
+      ref_prefix: z
+        .string()
+        .trim()
+        .regex(/^refs\/(?!(heads|tags|remotes)(\/|$))[^\s~^:?*[\\]+$/, {
+          message:
+            'must be a ref path under refs/ outside refs/heads, refs/tags and refs/remotes, with no spaces or ~^:?*[\\',
+        })
+        .default('refs/pr-update/')
+        .describe(
+          'Where `git-ref` keeps its refs: failed-attempt records under `<ref_prefix>attempts/` and update leases under `<ref_prefix>lock/`. Must start with `refs/` and stay out of `refs/heads`, `refs/tags` and `refs/remotes`. Only read when `store` is `git-ref`.',
+        ),
+    })
+    .strict()
+    .prefault({})
+    .describe(
+      'Where a failed update is remembered between runs (`store`) and, for `git-ref`, which refs hold it (`ref_prefix`).',
+    ),
+  lease: z
+    .object({
+      ttl_seconds: z
+        .number()
+        .int()
+        .min(1)
+        .nullable()
+        .default(null)
+        .describe(
+          'How long a run holds the update lease on a head branch before another run may take it over. Nothing renews it, so it must outlast one PR update, repair included. Null (the default) means `repair.timeout_seconds` plus 600, or 1800 when repair has no timeout. The lease exists only with `attempts.store: git-ref`; a rehearsal never takes one.',
+        ),
+    })
+    .strict()
+    .prefault({})
+    .describe(
+      'The per-branch update lease, a ref `<ref_prefix>lock/<branch>` that one `update --apply` run holds while it updates that head branch. A PR whose lease another run holds is skipped. Active only with `attempts.store: git-ref`.',
+    ),
   test_command: z
     .string()
     .trim()
@@ -214,7 +258,7 @@ export const prUpdateStandaloneSchema = prUpdateConfigSchema.extend({
 })
 
 const PR_UPDATE_DESCRIPTION =
-  'Configures the `survey` and `update` verbs: which PRs are in scope (`author`, `include_drafts`), how an out-of-date branch is brought up to date (`strategy`, `overrides`), the cases that automatically avoid a history rewrite (`guards`), and how conflicts are resolved without a human (`lockfile_install`, `resolvers`, `verify`, `repair`), and when a failed update is retried (`max_failed_attempts`). Every key has a default and the whole block is optional, so both verbs work with no config file at all.'
+  'Configures the `survey` and `update` verbs: which PRs are in scope (`author`, `include_drafts`), how an out-of-date branch is brought up to date (`strategy`, `overrides`), the cases that automatically avoid a history rewrite (`guards`), and how conflicts are resolved without a human (`lockfile_install`, `resolvers`, `verify`, `repair`), and when a failed update is retried (`max_failed_attempts`; a standalone run also reads `attempts` and `lease`). Every key has a default and the whole block is optional, so both verbs work with no config file at all.'
 
 const PR_UPDATE_META: ConfigKeyMeta = {
   category: 'automation',
