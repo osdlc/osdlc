@@ -13,6 +13,10 @@
 # total to its job summary, beside the change from main. A run on main stores
 # its report as a workflow artifact, which later runs compare with.
 #
+# `comment` leaves one line on the pull request with the line coverage and a
+# link to the run's summary page, and rewrites that line on later runs. It is
+# the only job with a write permission.
+#
 # Every action is pinned to a commit SHA; the comment names its release.
 name: reports
 
@@ -130,3 +134,42 @@ jobs:
       - uses: k1LoW/octocov-action@a167dc0dee441b7ffc45e1b862ab55ec0d87f278 # v1.5.2
         with:
           version: v0.83.5
+
+  # One line on the pull request, kept up to date, that links to the run's
+  # summary page. It has no checkout and runs nothing from the pull request.
+  # A pull request from a fork gets a read-only token, so it is left out.
+  comment:
+    needs: [ts, rust]
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: coverage-*
+          path: coverage
+          merge-multiple: true
+
+      - name: Comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPORT: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          # pct <lcov file>...: the share of lines covered, from the LF and LH records.
+          pct() {
+            awk -F: '/^LF:/ { found += $2 } /^LH:/ { hit += $2 } END { if (found == 0) print "–"; else printf "%.2f%%", hit * 100 / found }' "$@"
+          }
+          marker='<!-- reports: coverage -->'
+          body="$marker
+          **Coverage** $(pct coverage/ts.lcov coverage/rust.lcov) of lines (TypeScript $(pct coverage/ts.lcov), Rust $(pct coverage/rust.lcov)). [Full report]($REPORT)"
+          id="$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \
+            --jq "[.[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\")))][0].id // empty" | head -n 1)"
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$body" > /dev/null
+          else
+            gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -f body="$body" > /dev/null
+          fi
