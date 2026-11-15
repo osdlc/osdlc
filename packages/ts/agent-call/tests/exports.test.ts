@@ -71,8 +71,8 @@ function sourceFiles(dir: string): string[] {
   })
 }
 
-test('the entry point exports 71 names', () => {
-  expect(EXPORTS.size).toBe(71)
+test('the entry point exports 72 names', () => {
+  expect(EXPORTS.size).toBe(72)
 })
 
 test('the runtime exports are the functions and constants, no more', () => {
@@ -81,6 +81,7 @@ test('the runtime exports are the functions and constants, no more', () => {
       'adapterFor',
       'antigravityAdapter',
       'assistantText',
+      'BASELINE_ENV',
       'BUILTIN_AGENTS',
       'callAgent',
       'classifyFailure',
