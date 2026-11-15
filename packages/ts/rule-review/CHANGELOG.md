@@ -1,5 +1,12 @@
 # @osdlc/rule-review
 
+## 0.4.2
+
+### Patch Changes
+
+- Updated dependencies [9a1d13c]
+  - @osdlc/agent-call@0.13.0
+
 ## 0.4.1
 
 ### Patch Changes
