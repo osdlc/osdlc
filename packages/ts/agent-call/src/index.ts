@@ -23,6 +23,10 @@ export { BASELINE_ENV } from './env.js'
 export { callAgent, planCall } from './run.js'
 export type { AgentResult, CallError, CallOptions } from './run.js'
 
+export { classifyFailure } from './failure.js'
+export type { FailureCause, FailureOutput } from './failure.js'
+export { parseOutput } from './parse.js'
+
 export { adapterFor, BUILTIN_AGENTS, detectAgents } from './registry.js'
 export type { AgentAvailability } from './registry.js'
 
