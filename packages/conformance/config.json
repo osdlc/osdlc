@@ -6,6 +6,7 @@
   "unmigrated": [
     "packages/ts/gfm-table",
     "packages/ts/yaml-splice",
+    "packages/rust/agent-router",
     "packages/rust/markdown-contract"
   ],
   "skipScan": {
