@@ -1,0 +1,395 @@
+[
+  {
+    "name": "no-section-gives-the-builtins",
+    "input": {
+      "value": {}
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "default": {
+          "order": [
+            {
+              "tool": "*",
+              "model": "standard"
+            }
+          ]
+        },
+        "small": {
+          "order": [
+            {
+              "tool": "*",
+              "model": "fast"
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "a-section-beside-the-builtins",
+    "input": {
+      "value": {
+        "mechanical": [
+          "pi/qwen2.5-coder:7b",
+          "claude/fast",
+          "codex/fast"
+        ],
+        "reviewer": {
+          "order": [
+            "codex/max",
+            "claude/opus-5.5@high"
+          ],
+          "host": "tmux",
+          "context": "200k"
+        }
+      }
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "default": {
+          "order": [
+            {
+              "tool": "*",
+              "model": "standard"
+            }
+          ]
+        },
+        "small": {
+          "order": [
+            {
+              "tool": "*",
+              "model": "fast"
+            }
+          ]
+        },
+        "mechanical": {
+          "order": [
+            {
+              "tool": "pi",
+              "model": "qwen2.5-coder:7b"
+            },
+            {
+              "tool": "claude",
+              "model": "fast"
+            },
+            {
+              "tool": "codex",
+              "model": "fast"
+            }
+          ]
+        },
+        "reviewer": {
+          "order": [
+            {
+              "tool": "codex",
+              "model": "max"
+            },
+            {
+              "tool": "claude",
+              "model": "opus-5.5",
+              "effort": "high"
+            }
+          ],
+          "host": "tmux",
+          "context": 200000
+        }
+      }
+    }
+  },
+  {
+    "name": "redefining-default-replaces-it-whole",
+    "input": {
+      "value": {
+        "default": [
+          "claude/max"
+        ]
+      }
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "default": {
+          "order": [
+            {
+              "tool": "claude",
+              "model": "max"
+            }
+          ]
+        },
+        "small": {
+          "order": [
+            {
+              "tool": "*",
+              "model": "fast"
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "redefining-small-keeps-the-builtin-position",
+    "input": {
+      "value": {
+        "zeta": [
+          "claude/fast"
+        ],
+        "small": {
+          "order": [
+            "codex/fast"
+          ],
+          "context": "1m"
+        }
+      }
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "default": {
+          "order": [
+            {
+              "tool": "*",
+              "model": "standard"
+            }
+          ]
+        },
+        "small": {
+          "order": [
+            {
+              "tool": "codex",
+              "model": "fast"
+            }
+          ],
+          "context": 1000000
+        },
+        "zeta": {
+          "order": [
+            {
+              "tool": "claude",
+              "model": "fast"
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "a-profile-with-a-shape-error",
+    "input": {
+      "value": {
+        "good": [
+          "claude/fast"
+        ],
+        "bad": []
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape"
+      }
+    }
+  },
+  {
+    "name": "a-profile-with-an-unknown-key",
+    "input": {
+      "value": {
+        "bad": {
+          "order": [
+            "claude/fast"
+          ],
+          "nope": 1
+        }
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape"
+      }
+    }
+  },
+  {
+    "name": "a-bad-ref-names-the-profile",
+    "input": {
+      "value": {
+        "mine": [
+          "claude/fast",
+          "claude/opus[1m]"
+        ]
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-ref",
+        "index": 1,
+        "error": {
+          "kind": "native-bracket",
+          "text": "claude/opus[1m]",
+          "message": "a context size is written [ctx=1m], not a tool's own [1m]: \"claude/opus[1m]\""
+        },
+        "message": "profile 'mine': order[1]: a context size is written [ctx=1m], not a tool's own [1m]: \"claude/opus[1m]\""
+      }
+    }
+  },
+  {
+    "name": "a-bad-context-names-the-profile",
+    "input": {
+      "value": {
+        "mine": {
+          "order": [
+            "claude/fast"
+          ],
+          "context": "x"
+        }
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-context",
+        "message": "profile 'mine': context: must be digits plus k or m (1m, 200k); got 'x'"
+      }
+    }
+  },
+  {
+    "name": "the-first-bad-profile-wins",
+    "input": {
+      "value": {
+        "a": [
+          "bad ref"
+        ],
+        "b": {
+          "order": [
+            "claude/fast"
+          ],
+          "context": "x"
+        }
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-ref",
+        "index": 0,
+        "error": {
+          "kind": "whitespace",
+          "text": "bad ref",
+          "message": "model reference contains whitespace: \"bad ref\""
+        },
+        "message": "profile 'a': order[0]: model reference contains whitespace: \"bad ref\""
+      }
+    }
+  },
+  {
+    "name": "profile-order-follows-the-section-not-the-alphabet",
+    "input": {
+      "value": {
+        "zeta": [
+          "bad ref"
+        ],
+        "alpha": [
+          "claude/opus[1m]"
+        ]
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-ref",
+        "index": 0,
+        "error": {
+          "kind": "whitespace",
+          "text": "bad ref",
+          "message": "model reference contains whitespace: \"bad ref\""
+        },
+        "message": "profile 'zeta': order[0]: model reference contains whitespace: \"bad ref\""
+      }
+    }
+  },
+  {
+    "name": "a-builtin-is-checked-too-when-overridden-badly",
+    "input": {
+      "value": {
+        "default": [
+          "claude/opus[1m]"
+        ]
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-ref",
+        "index": 0,
+        "error": {
+          "kind": "native-bracket",
+          "text": "claude/opus[1m]",
+          "message": "a context size is written [ctx=1m], not a tool's own [1m]: \"claude/opus[1m]\""
+        },
+        "message": "profile 'default': order[0]: a context size is written [ctx=1m], not a tool's own [1m]: \"claude/opus[1m]\""
+      }
+    }
+  },
+  {
+    "name": "top-level-array",
+    "input": {
+      "value": [
+        [
+          "claude/fast"
+        ]
+      ]
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape"
+      }
+    }
+  },
+  {
+    "name": "top-level-null",
+    "input": {
+      "value": null
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape"
+      }
+    }
+  },
+  {
+    "name": "top-level-string",
+    "input": {
+      "value": "default"
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape"
+      }
+    }
+  },
+  {
+    "name": "a-proto-key-is-refused",
+    "input": {
+      "value": {
+        "ok": [
+          "claude"
+        ],
+        "__proto__": [
+          "claude/fast"
+        ]
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape"
+      }
+    }
+  }
+]

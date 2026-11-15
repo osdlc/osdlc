@@ -1,0 +1,623 @@
+[
+  {
+    "name": "empty-list",
+    "input": {
+      "value": []
+    },
+    "expected": {
+      "ok": true,
+      "value": []
+    }
+  },
+  {
+    "name": "two-rules",
+    "input": {
+      "value": [
+        {
+          "when": {
+            "workflow": "implement",
+            "complexity": "small"
+          },
+          "profile": "small"
+        },
+        {
+          "when": {
+            "workflow": "implement",
+            "complexity": "large",
+            "tags": [
+              "ui",
+              "db"
+            ]
+          },
+          "profile": "deep"
+        }
+      ]
+    },
+    "expected": {
+      "ok": true,
+      "value": [
+        {
+          "when": {
+            "workflow": "implement",
+            "complexity": "small"
+          },
+          "profile": "small"
+        },
+        {
+          "when": {
+            "workflow": "implement",
+            "complexity": "large",
+            "tags": [
+              "ui",
+              "db"
+            ]
+          },
+          "profile": "deep"
+        }
+      ]
+    }
+  },
+  {
+    "name": "every-key",
+    "input": {
+      "value": [
+        {
+          "when": {
+            "workflow": "w",
+            "stage": "s",
+            "complexity": "c",
+            "impact": "i",
+            "autonomy": "a",
+            "tags": [
+              "t"
+            ]
+          },
+          "profile": "p"
+        }
+      ]
+    },
+    "expected": {
+      "ok": true,
+      "value": [
+        {
+          "when": {
+            "workflow": "w",
+            "stage": "s",
+            "complexity": "c",
+            "impact": "i",
+            "autonomy": "a",
+            "tags": [
+              "t"
+            ]
+          },
+          "profile": "p"
+        }
+      ]
+    }
+  },
+  {
+    "name": "empty-when-matches-everything",
+    "input": {
+      "value": [
+        {
+          "when": {},
+          "profile": "fallback"
+        }
+      ]
+    },
+    "expected": {
+      "ok": true,
+      "value": [
+        {
+          "when": {},
+          "profile": "fallback"
+        }
+      ]
+    }
+  },
+  {
+    "name": "values-are-trimmed",
+    "input": {
+      "value": [
+        {
+          "when": {
+            "workflow": "  implement  ",
+            "tags": [
+              " ui "
+            ]
+          },
+          "profile": "  deep "
+        }
+      ]
+    },
+    "expected": {
+      "ok": true,
+      "value": [
+        {
+          "when": {
+            "workflow": "implement",
+            "tags": [
+              "ui"
+            ]
+          },
+          "profile": "deep"
+        }
+      ]
+    }
+  },
+  {
+    "name": "vocabulary-accepts",
+    "input": {
+      "value": [
+        {
+          "when": {
+            "complexity": "small",
+            "autonomy": "autonomous"
+          },
+          "profile": "small"
+        }
+      ],
+      "vocabulary": {
+        "complexity": [
+          "small",
+          "medium",
+          "large"
+        ],
+        "autonomy": [
+          "supervised",
+          "autonomous"
+        ]
+      }
+    },
+    "expected": {
+      "ok": true,
+      "value": [
+        {
+          "when": {
+            "complexity": "small",
+            "autonomy": "autonomous"
+          },
+          "profile": "small"
+        }
+      ]
+    }
+  },
+  {
+    "name": "vocabulary-rejects-a-value",
+    "input": {
+      "value": [
+        {
+          "when": {
+            "complexity": "small"
+          },
+          "profile": "small"
+        },
+        {
+          "when": {
+            "complexity": "low"
+          },
+          "profile": "small"
+        }
+      ],
+      "vocabulary": {
+        "complexity": [
+          "small",
+          "medium",
+          "large"
+        ],
+        "autonomy": [
+          "supervised",
+          "autonomous"
+        ]
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-value",
+        "index": 1,
+        "key": "complexity",
+        "value": "low",
+        "valid": [
+          "small",
+          "medium",
+          "large"
+        ],
+        "message": "routing[1]: when.complexity: 'low' is not one of small, medium, large"
+      }
+    }
+  },
+  {
+    "name": "vocabulary-rejects-a-tag",
+    "input": {
+      "value": [
+        {
+          "when": {
+            "tags": [
+              "ui",
+              "nope"
+            ]
+          },
+          "profile": "x"
+        }
+      ],
+      "vocabulary": {
+        "tags": [
+          "ui",
+          "db"
+        ]
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-value",
+        "index": 0,
+        "key": "tags",
+        "value": "nope",
+        "valid": [
+          "ui",
+          "db"
+        ],
+        "message": "routing[0]: when.tags: 'nope' is not one of ui, db"
+      }
+    }
+  },
+  {
+    "name": "vocabulary-first-rule-first-key-wins",
+    "input": {
+      "value": [
+        {
+          "when": {
+            "autonomy": "wild",
+            "complexity": "huge"
+          },
+          "profile": "x"
+        }
+      ],
+      "vocabulary": {
+        "complexity": [
+          "small",
+          "medium",
+          "large"
+        ],
+        "autonomy": [
+          "supervised",
+          "autonomous"
+        ]
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-value",
+        "index": 0,
+        "key": "complexity",
+        "value": "huge",
+        "valid": [
+          "small",
+          "medium",
+          "large"
+        ],
+        "message": "routing[0]: when.complexity: 'huge' is not one of small, medium, large"
+      }
+    }
+  },
+  {
+    "name": "a-key-without-a-vocabulary-takes-any-value",
+    "input": {
+      "value": [
+        {
+          "when": {
+            "workflow": "anything"
+          },
+          "profile": "x"
+        }
+      ],
+      "vocabulary": {
+        "complexity": [
+          "small",
+          "medium",
+          "large"
+        ],
+        "autonomy": [
+          "supervised",
+          "autonomous"
+        ]
+      }
+    },
+    "expected": {
+      "ok": true,
+      "value": [
+        {
+          "when": {
+            "workflow": "anything"
+          },
+          "profile": "x"
+        }
+      ]
+    }
+  },
+  {
+    "name": "shape-not-an-array",
+    "input": {
+      "value": {
+        "when": {},
+        "profile": "x"
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape"
+      }
+    }
+  },
+  {
+    "name": "shape-null",
+    "input": {
+      "value": null
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape"
+      }
+    }
+  },
+  {
+    "name": "shape-rule-not-an-object",
+    "input": {
+      "value": [
+        {
+          "when": {},
+          "profile": "x"
+        },
+        "nope"
+      ]
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape",
+        "index": 1
+      }
+    }
+  },
+  {
+    "name": "shape-unknown-when-key",
+    "input": {
+      "value": [
+        {
+          "when": {
+            "size": "small"
+          },
+          "profile": "x"
+        }
+      ]
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape",
+        "index": 0
+      }
+    }
+  },
+  {
+    "name": "shape-unknown-rule-key",
+    "input": {
+      "value": [
+        {
+          "when": {},
+          "profile": "x",
+          "extra": 1
+        }
+      ]
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape",
+        "index": 0
+      }
+    }
+  },
+  {
+    "name": "shape-missing-profile",
+    "input": {
+      "value": [
+        {
+          "when": {
+            "workflow": "w"
+          }
+        }
+      ]
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape",
+        "index": 0
+      }
+    }
+  },
+  {
+    "name": "shape-missing-when",
+    "input": {
+      "value": [
+        {
+          "profile": "x"
+        }
+      ]
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape",
+        "index": 0
+      }
+    }
+  },
+  {
+    "name": "shape-empty-profile",
+    "input": {
+      "value": [
+        {
+          "when": {},
+          "profile": ""
+        }
+      ]
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape",
+        "index": 0
+      }
+    }
+  },
+  {
+    "name": "shape-blank-profile",
+    "input": {
+      "value": [
+        {
+          "when": {},
+          "profile": "   "
+        }
+      ]
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape",
+        "index": 0
+      }
+    }
+  },
+  {
+    "name": "shape-empty-value",
+    "input": {
+      "value": [
+        {
+          "when": {
+            "workflow": ""
+          },
+          "profile": "x"
+        }
+      ]
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape",
+        "index": 0
+      }
+    }
+  },
+  {
+    "name": "shape-empty-tags",
+    "input": {
+      "value": [
+        {
+          "when": {
+            "tags": []
+          },
+          "profile": "x"
+        }
+      ]
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape",
+        "index": 0
+      }
+    }
+  },
+  {
+    "name": "shape-tags-not-an-array",
+    "input": {
+      "value": [
+        {
+          "when": {
+            "tags": "ui"
+          },
+          "profile": "x"
+        }
+      ]
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape",
+        "index": 0
+      }
+    }
+  },
+  {
+    "name": "shape-blank-tag",
+    "input": {
+      "value": [
+        {
+          "when": {
+            "tags": [
+              "ui",
+              " "
+            ]
+          },
+          "profile": "x"
+        }
+      ]
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape",
+        "index": 0
+      }
+    }
+  },
+  {
+    "name": "shape-value-not-a-string",
+    "input": {
+      "value": [
+        {
+          "when": {
+            "workflow": 3
+          },
+          "profile": "x"
+        }
+      ]
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape",
+        "index": 0
+      }
+    }
+  },
+  {
+    "name": "shape-second-rule-index",
+    "input": {
+      "value": [
+        {
+          "when": {},
+          "profile": "x"
+        },
+        {
+          "when": {},
+          "profile": 3
+        }
+      ]
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-shape",
+        "index": 1
+      }
+    }
+  }
+]
