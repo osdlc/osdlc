@@ -1,0 +1,517 @@
+[
+  {
+    "name": "first-rule",
+    "input": {
+      "rules": [
+        {
+          "when": {
+            "workflow": "implement",
+            "complexity": "small"
+          },
+          "profile": "small"
+        },
+        {
+          "when": {
+            "workflow": "implement",
+            "complexity": "large"
+          },
+          "profile": "deep"
+        },
+        {
+          "when": {
+            "tags": [
+              "ui",
+              "design"
+            ]
+          },
+          "profile": "visual"
+        },
+        {
+          "when": {
+            "workflow": "review",
+            "stage": "pr",
+            "impact": "high",
+            "autonomy": "supervised"
+          },
+          "profile": "reviewer"
+        },
+        {
+          "when": {
+            "workflow": "implement"
+          },
+          "profile": "implement"
+        },
+        {
+          "when": {},
+          "profile": "fallback"
+        }
+      ],
+      "request": {
+        "workflow": "implement",
+        "complexity": "small"
+      }
+    },
+    "expected": {
+      "index": 0,
+      "rule": {
+        "when": {
+          "workflow": "implement",
+          "complexity": "small"
+        },
+        "profile": "small"
+      }
+    }
+  },
+  {
+    "name": "second-rule",
+    "input": {
+      "rules": [
+        {
+          "when": {
+            "workflow": "implement",
+            "complexity": "small"
+          },
+          "profile": "small"
+        },
+        {
+          "when": {
+            "workflow": "implement",
+            "complexity": "large"
+          },
+          "profile": "deep"
+        },
+        {
+          "when": {
+            "tags": [
+              "ui",
+              "design"
+            ]
+          },
+          "profile": "visual"
+        },
+        {
+          "when": {
+            "workflow": "review",
+            "stage": "pr",
+            "impact": "high",
+            "autonomy": "supervised"
+          },
+          "profile": "reviewer"
+        },
+        {
+          "when": {
+            "workflow": "implement"
+          },
+          "profile": "implement"
+        },
+        {
+          "when": {},
+          "profile": "fallback"
+        }
+      ],
+      "request": {
+        "workflow": "implement",
+        "complexity": "large"
+      }
+    },
+    "expected": {
+      "index": 1,
+      "rule": {
+        "when": {
+          "workflow": "implement",
+          "complexity": "large"
+        },
+        "profile": "deep"
+      }
+    }
+  },
+  {
+    "name": "tags-match-any-listed",
+    "input": {
+      "rules": [
+        {
+          "when": {
+            "workflow": "implement",
+            "complexity": "small"
+          },
+          "profile": "small"
+        },
+        {
+          "when": {
+            "workflow": "implement",
+            "complexity": "large"
+          },
+          "profile": "deep"
+        },
+        {
+          "when": {
+            "tags": [
+              "ui",
+              "design"
+            ]
+          },
+          "profile": "visual"
+        },
+        {
+          "when": {
+            "workflow": "review",
+            "stage": "pr",
+            "impact": "high",
+            "autonomy": "supervised"
+          },
+          "profile": "reviewer"
+        },
+        {
+          "when": {
+            "workflow": "implement"
+          },
+          "profile": "implement"
+        },
+        {
+          "when": {},
+          "profile": "fallback"
+        }
+      ],
+      "request": {
+        "tags": [
+          "bug",
+          "design"
+        ]
+      }
+    },
+    "expected": {
+      "index": 2,
+      "rule": {
+        "when": {
+          "tags": [
+            "ui",
+            "design"
+          ]
+        },
+        "profile": "visual"
+      }
+    }
+  },
+  {
+    "name": "tags-none-listed",
+    "input": {
+      "rules": [
+        {
+          "when": {
+            "tags": [
+              "ui",
+              "design"
+            ]
+          },
+          "profile": "visual"
+        }
+      ],
+      "request": {
+        "tags": [
+          "bug"
+        ]
+      }
+    },
+    "expected": null
+  },
+  {
+    "name": "request-without-tags-misses-a-tags-rule",
+    "input": {
+      "rules": [
+        {
+          "when": {
+            "tags": [
+              "ui",
+              "design"
+            ]
+          },
+          "profile": "visual"
+        }
+      ],
+      "request": {
+        "workflow": "x"
+      }
+    },
+    "expected": null
+  },
+  {
+    "name": "every-key-must-hold",
+    "input": {
+      "rules": [
+        {
+          "when": {
+            "workflow": "review",
+            "stage": "pr",
+            "impact": "high",
+            "autonomy": "supervised"
+          },
+          "profile": "reviewer"
+        }
+      ],
+      "request": {
+        "workflow": "review",
+        "stage": "pr",
+        "impact": "high",
+        "autonomy": "supervised"
+      }
+    },
+    "expected": {
+      "index": 0,
+      "rule": {
+        "when": {
+          "workflow": "review",
+          "stage": "pr",
+          "impact": "high",
+          "autonomy": "supervised"
+        },
+        "profile": "reviewer"
+      }
+    }
+  },
+  {
+    "name": "one-key-off-misses",
+    "input": {
+      "rules": [
+        {
+          "when": {
+            "workflow": "review",
+            "stage": "pr",
+            "impact": "high",
+            "autonomy": "supervised"
+          },
+          "profile": "reviewer"
+        }
+      ],
+      "request": {
+        "workflow": "review",
+        "stage": "pr",
+        "impact": "low",
+        "autonomy": "supervised"
+      }
+    },
+    "expected": null
+  },
+  {
+    "name": "a-key-the-request-lacks-does-not-hold",
+    "input": {
+      "rules": [
+        {
+          "when": {
+            "workflow": "review",
+            "stage": "pr",
+            "impact": "high",
+            "autonomy": "supervised"
+          },
+          "profile": "reviewer"
+        }
+      ],
+      "request": {
+        "workflow": "review",
+        "stage": "pr",
+        "impact": "high"
+      }
+    },
+    "expected": null
+  },
+  {
+    "name": "falls-through-to-the-fallback",
+    "input": {
+      "rules": [
+        {
+          "when": {
+            "workflow": "implement",
+            "complexity": "small"
+          },
+          "profile": "small"
+        },
+        {
+          "when": {
+            "workflow": "implement",
+            "complexity": "large"
+          },
+          "profile": "deep"
+        },
+        {
+          "when": {
+            "tags": [
+              "ui",
+              "design"
+            ]
+          },
+          "profile": "visual"
+        },
+        {
+          "when": {
+            "workflow": "review",
+            "stage": "pr",
+            "impact": "high",
+            "autonomy": "supervised"
+          },
+          "profile": "reviewer"
+        },
+        {
+          "when": {
+            "workflow": "implement"
+          },
+          "profile": "implement"
+        },
+        {
+          "when": {},
+          "profile": "fallback"
+        }
+      ],
+      "request": {
+        "workflow": "triage"
+      }
+    },
+    "expected": {
+      "index": 5,
+      "rule": {
+        "when": {},
+        "profile": "fallback"
+      }
+    }
+  },
+  {
+    "name": "empty-request-matches-the-empty-when",
+    "input": {
+      "rules": [
+        {
+          "when": {
+            "workflow": "implement",
+            "complexity": "small"
+          },
+          "profile": "small"
+        },
+        {
+          "when": {
+            "workflow": "implement",
+            "complexity": "large"
+          },
+          "profile": "deep"
+        },
+        {
+          "when": {
+            "tags": [
+              "ui",
+              "design"
+            ]
+          },
+          "profile": "visual"
+        },
+        {
+          "when": {
+            "workflow": "review",
+            "stage": "pr",
+            "impact": "high",
+            "autonomy": "supervised"
+          },
+          "profile": "reviewer"
+        },
+        {
+          "when": {
+            "workflow": "implement"
+          },
+          "profile": "implement"
+        },
+        {
+          "when": {},
+          "profile": "fallback"
+        }
+      ],
+      "request": {}
+    },
+    "expected": {
+      "index": 5,
+      "rule": {
+        "when": {},
+        "profile": "fallback"
+      }
+    }
+  },
+  {
+    "name": "no-rule-matches",
+    "input": {
+      "rules": [
+        {
+          "when": {
+            "workflow": "implement",
+            "complexity": "small"
+          },
+          "profile": "small"
+        },
+        {
+          "when": {
+            "workflow": "implement",
+            "complexity": "large"
+          },
+          "profile": "deep"
+        }
+      ],
+      "request": {
+        "workflow": "triage"
+      }
+    },
+    "expected": null
+  },
+  {
+    "name": "no-rules",
+    "input": {
+      "rules": [],
+      "request": {
+        "workflow": "implement"
+      }
+    },
+    "expected": null
+  },
+  {
+    "name": "order-decides",
+    "input": {
+      "rules": [
+        {
+          "when": {
+            "workflow": "implement"
+          },
+          "profile": "broad"
+        },
+        {
+          "when": {
+            "workflow": "implement",
+            "complexity": "small"
+          },
+          "profile": "narrow"
+        }
+      ],
+      "request": {
+        "workflow": "implement",
+        "complexity": "small"
+      }
+    },
+    "expected": {
+      "index": 0,
+      "rule": {
+        "when": {
+          "workflow": "implement"
+        },
+        "profile": "broad"
+      }
+    }
+  },
+  {
+    "name": "values-compare-exactly",
+    "input": {
+      "rules": [
+        {
+          "when": {
+            "workflow": "implement"
+          },
+          "profile": "x"
+        }
+      ],
+      "request": {
+        "workflow": "Implement"
+      }
+    },
+    "expected": null
+  }
+]
