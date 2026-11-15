@@ -64,11 +64,12 @@ after corpus-schema changes.
   The fit button in the corner shows the whole map.
 - A task card shows its number, title, detail line and status. Not started is grey with an empty
   circle, in progress has a thick blue outline and a half circle, done is faded with a filled
-  check, and waiting on the owner has an orange "you" marker. Dropped is faded with a cross:
-  no work is planned on the task, and a task that waits on it stays waiting. Supporting work has a dashed outline
+  check, and waiting on the owner has an orange "you" marker. Deferred (on hold) is
+  faded with a pause mark and dropped (will not be done) is faded with a cross: no work is planned
+  on either, and a task that waits on one stays waiting. Supporting work has a dashed outline
   and a "support" label. Colour is never the only signal.
 - A solid dark arrow still holds work up. A faded dashed arrow comes from a task that is done.
-- **Next up** highlights the tasks that are not done or dropped and wait only on done tasks. The filters
+- **Next up** highlights the tasks that are not done, deferred or dropped and wait only on done tasks. The filters
   narrow by status, type, phase and milestone; Functional and Supporting are both on at first. A
   task's phase is its milestone's.
 - Click a task to see its plan paragraph, what it waits on, what it unblocks, and the components it
