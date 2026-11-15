@@ -227,11 +227,14 @@ Each item: the task, its status, who does it, its pull requests, and the tasks i
 - [x] [63 Starter corpus](tasks/63%20Starter%20corpus.md) · done · [osdlc/osdlc#794](https://github.com/osdlc/osdlc/pull/794), [osdlc/osdlc#804](https://github.com/osdlc/osdlc/pull/804)
 - [x] [66 Publish starter](tasks/66%20Publish%20starter.md) · done · [osdlc/osdlc#794](https://github.com/osdlc/osdlc/pull/794), [osdlc/osdlc#804](https://github.com/osdlc/osdlc/pull/804) · waits on 65
 
-### Dropped (3)
+### Deferred (1)
+
+- [62 Packs in public](tasks/62%20Packs%20in%20public.md) · deferred
+
+### Dropped (2)
 
 - [21 Release here](tasks/21%20Release%20here.md) · dropped
 - [74 Skillwright on 0.4.0](tasks/74%20Skillwright%20on%200.3.0.md) · dropped
-- [62 Packs in public](tasks/62%20Packs%20in%20public.md) · dropped
 
 <!-- beeline:end -->
 
