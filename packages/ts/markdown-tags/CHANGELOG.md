@@ -1,5 +1,12 @@
 # @osdlc/markdown-tags
 
+## 0.4.2
+
+### Patch Changes
+
+- Updated dependencies [8694223]
+  - @osdlc/markdown-link@0.10.0
+
 ## 0.4.1
 
 ### Patch Changes
