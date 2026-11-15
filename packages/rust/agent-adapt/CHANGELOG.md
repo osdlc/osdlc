@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.19.4](https://github.com/osdlc/osdlc/compare/agent-adapt/v0.19.3...agent-adapt/v0.19.4) - 2026-11-10
+
+### Other
+
+- update Cargo.toml dependencies
+
 ## [0.19.3](https://github.com/osdlc/osdlc/compare/agent-adapt/v0.19.2...agent-adapt/v0.19.3) - 2026-10-31
 
 ### Other

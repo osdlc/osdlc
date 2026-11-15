@@ -20,6 +20,9 @@ import {
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
+// The binary and flags below are asserted against the harness knowledge file in
+// tests/knowledge-facts.test.ts; policy (which mode, which default) stays here.
+
 /** Options for {@link codexAdapter}. */
 export interface CodexAdapterOptions extends CommandOptions {}
 

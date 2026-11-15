@@ -27,7 +27,7 @@ describe('package boundary', () => {
     expect(sources.map((s) => s.file)).toContain('model.ts')
   })
 
-  test('imports only node builtins, zod, command-seam, etag-write, tiered-dirs and its own modules', () => {
+  test('imports only node builtins, zod, command-seam, etag-write, tiered-dirs, secretlint and its own modules', () => {
     const outside = sources.flatMap(({ file, text }) =>
       specifiers(text)
         .filter(
@@ -37,6 +37,11 @@ describe('package boundary', () => {
             s !== '@osdlc/command-seam' &&
             s !== '@osdlc/etag-write' &&
             s !== '@osdlc/tiered-dirs' &&
+            // The redactor only, and loaded on first use.
+            !(
+              file === 'redactor.ts' &&
+              /^@secretlint\/(core|secretlint-rule-preset-recommend)$/.test(s)
+            ) &&
             !/^\.\/[a-z-]+\.ts$/.test(s),
         )
         .map((s) => `${file}: ${s}`),

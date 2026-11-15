@@ -2,9 +2,12 @@
 
 ## Decision
 
-The parsing rules live in one language-neutral case file,
-`tests/fixtures/conformance.json`. This crate's tests and the TypeScript
-port's tests both read that same file. There is one copy, not two.
+The parsing rules live in one language-neutral conformance suite,
+`packages/conformance/markdown-link/suite.json`, which S-conformance-suites
+describes. This crate's tests and the TypeScript port's tests both run that
+same file. There is one copy, not two. This crate is the reference: its
+generator, `cargo run -p markdown-link --example conformance-write`, writes
+every expected value.
 
 ## Why
 
@@ -18,9 +21,10 @@ them in step.
 The file has one section per concern:
 
 - `code`: what counts as code and is blanked before links are found.
-- `parse`: one-link parsing, Markdown link URLs, and body scans with offsets.
+- `inner`, `url` and `body`: one-link parsing, Markdown link URLs, and body
+  scans with offsets.
 - `display`: the text a reader sees for each link.
-- `typedRef`: whole `[[type/slug|alias]]` values.
+- `typed_ref`: whole `[[type/slug|alias]]` values.
 
 Offsets count characters, so neither language's string unit leaks into the
 file. Resolution against a vault is not in the file. It is covered by the
@@ -30,4 +34,4 @@ differential test.
 
 - A change to parsing behaviour adds or changes a case in the file. Both test
   suites then have to pass.
-- The file is part of the published package, so other ports can use it too.
+- The file is not part of the published crate. It lives in the repository.

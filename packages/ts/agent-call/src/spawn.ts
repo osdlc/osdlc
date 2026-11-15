@@ -1,7 +1,13 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { StringDecoder } from 'node:string_decoder'
 
-import { which } from '@osdlc/command-seam'
+import {
+  groupStartRefusal,
+  releaseWhenEmpty,
+  settleGroup,
+  spawnTrackedGroup,
+  which,
+} from '@osdlc/command-seam'
 
 import type { RawProcessOutput } from './adapters/types.js'
 
@@ -139,20 +145,39 @@ export function spawnCollect(argv: string[], options: SpawnOptions): Promise<Raw
       return
     }
 
-    // Raw `node:child_process`, not the command seam's runners: this manages
-    // a long-lived process group (D-07).
-    let child: ChildProcessWithoutNullStreams
-    try {
-      child = spawn(target, args, {
-        cwd: options.cwd,
-        env: options.env,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        // Own process group, so a timeout or abort can kill the whole tree.
-        // Without it, a shell child (such as `sh -c "sleep 30"`) leaves its
-        // grandchild running with the stdio pipe open, and `close` never fires.
-        // The call then waits until the real command ends, past timeoutMs.
-        detached: true,
+    // The host got a termination signal that command-seam's group forwarding
+    // owns (`installGroupSignalForwarding`), so it is stopping. Start nothing.
+    const refusal = groupStartRefusal()
+    if (refusal !== undefined) {
+      resolve({
+        stdout: '',
+        stderr: refusal,
+        exitCode: null,
+        durationMs: 0,
+        timedOut: false,
       })
+      return
+    }
+
+    // Raw `node:child_process`, not the command seam's runners: this manages
+    // a long-lived process group (D-07). The group is registered with the
+    // seam, so a host that installed signal forwarding kills it when the host
+    // gets SIGINT, SIGTERM or SIGHUP.
+    let child: ChildProcessWithoutNullStreams
+    let untrackGroup: (() => void) | undefined
+    try {
+      ;({ child, untrack: untrackGroup } = spawnTrackedGroup(() =>
+        spawn(target, args, {
+          cwd: options.cwd,
+          env: options.env,
+          stdio: ['pipe', 'pipe', 'pipe'],
+          // Own process group, so a timeout or abort can kill the whole tree.
+          // Without it, a shell child (such as `sh -c "sleep 30"`) leaves its
+          // grandchild running with the stdio pipe open, and `close` never fires.
+          // The call then waits until the real command ends, past timeoutMs.
+          detached: true,
+        }),
+      ))
     } catch (e) {
       // Node rejects some arguments before it starts anything, by throwing
       // (a NUL byte in argv or env, say). The process never started, the same
@@ -195,6 +220,8 @@ export function spawnCollect(argv: string[], options: SpawnOptions): Promise<Raw
     let stdinError: string | undefined
     let settled = false
 
+    // Set once this call stops the group itself (timeout, abort or output cap).
+    let stopping = false
     let killTimer: ReturnType<typeof setTimeout> | undefined
     let graceTimer: ReturnType<typeof setTimeout> | undefined
     const killTree = (signal: NodeJS.Signals): void => {
@@ -216,6 +243,7 @@ export function spawnCollect(argv: string[], options: SpawnOptions): Promise<Raw
     }
     const terminate = (): void => {
       if (graceTimer !== undefined) return
+      stopping = true
       killTree('SIGTERM')
       graceTimer = setTimeout(() => killTree('SIGKILL'), KILL_GRACE_MS)
     }
@@ -243,6 +271,13 @@ export function spawnCollect(argv: string[], options: SpawnOptions): Promise<Raw
     ): void => {
       if (settled) return
       settled = true
+      // Members the agent left behind keep the group registered until it is
+      // empty, so a signal to the host still reaches them. Unless this call is
+      // stopping the group, the host's normal exit leaves them running.
+      if (untrackGroup !== undefined && child.pid !== undefined) {
+        if (!stopping) settleGroup(child.pid)
+        releaseWhenEmpty(child.pid, untrackGroup)
+      }
       if (killTimer !== undefined) clearTimeout(killTimer)
       if (graceTimer !== undefined) clearTimeout(graceTimer)
       options.signal?.removeEventListener('abort', onAbort)

@@ -117,7 +117,7 @@ unmet need.
 | `clearCache()` | drop the memoised value (tests) |
 | `check(raw)` | the load issues `raw` would have that the file on disk does not |
 | `read()` | `{ text, etag }` of the file, or `null` when there is none |
-| `write(text, { etag? })` | replace the file atomically, keep the old one as `<file>.bak` and return the new etag. Throws, writing nothing, if `text` is not a mapping or `check` finds a new issue. Given the `etag` that `read()` returned (or `null` for no file), the write is a compare-and-swap: a file changed since throws `WriteConflictError` from `@osdlc/etag-write` and is left as it is, `.bak` included, because the `.bak` is written from the replaced bytes only once the swap went through |
+| `write(text, { etag? })` | replace the file atomically, keep the old one as `<file>.bak` and return the new etag. Throws, writing nothing, if `text` is not a mapping or `check` finds a new issue. Given the `etag` that `read()` returned (or `null` for no file), the write is a compare-and-swap: a file changed since throws `WriteConflictError` from `@osdlc/etag-write` and is left as it is, `.bak` included, because the `.bak` is written from the replaced bytes only once the swap went through. When the path is a symlink, as a dotfile manager leaves it, the write and the `.bak` go to the file the link points to, and the link stays |
 | `migrate({ dryRun? })` | run the migrations on the file and return `{ path, from, to, applied, warnings, written, rewrite, text }`. Writes only when a step applied |
 | `currentVersion` | the last migration's `to`, or 1 |
 | `env` | the override variable's name |
@@ -185,7 +185,10 @@ const migrations = defineMigrations([
 Each step goes from the previous step's `to` (1 for the first) to its own. `to` must be an integer
 that grows from step to step. Within a step:
 
-- `moves` run first, in order. Each `[from, to]` is a dotted path, or a list of segments for a key
+- `before(raw, warn)`, when given, runs first, on the document as the previous step left it. A
+  clean-up the moves depend on goes there, so a hand-written step can adopt `moves` one key at a
+  time.
+- `moves` run next, in order. Each `[from, to]` is a dotted path, or a list of segments for a key
   that holds a dot. An absent `from` is no change.
 - The destination wins. When `to` is already set, even to `null`, that value is kept and the one at
   `from` is dropped, with a warning.

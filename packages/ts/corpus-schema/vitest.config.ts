@@ -9,6 +9,9 @@ export default defineConfig({
   },
   test: {
     include: ['tests/**/*.test.ts', 'examples/**/*.test.ts'],
+    // One test loads every conformance corpus three times; on a loaded machine it can pass the 5 s
+    // default.
+    testTimeout: 20000,
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],

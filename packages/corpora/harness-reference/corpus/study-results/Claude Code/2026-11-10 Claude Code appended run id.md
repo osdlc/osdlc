@@ -1,0 +1,30 @@
+---
+kind: run
+specifiedBy: "[Slash command arguments in a headless prompt](../../methods/Slash%20command%20arguments%20in%20a%20headless%20prompt/Slash%20command%20arguments%20in%20a%20headless%20prompt.md)"
+harness: "[Claude Code](../../harnesses/Claude%20Code.md)"
+version: 2.1.319
+version_basis: exact
+observed: 2026-11-10
+locator: claude -p --model haiku "/runid" --append-system-prompt
+excerpt:
+  exact: RUNID=ZEBRA-42
+  prefix: ""
+  suffix: ""
+qualityMeasures:
+  model: haiku
+  runs: 1
+contributions:
+  - contributor:
+      name: harness-reference research
+      agentType: software
+    activityType: created
+    date: 2026-11-10T01:05:59Z
+---
+
+> RUNID=ZEBRA-42
+
+The appended system prompt held the run id `ZEBRA-42`. The `/runid` command asks the model for the
+run id in its context, and the reply named it, so the appended text reached the model.
+
+Ported from the alpha fact `facts/claude-code/cli/append-system-prompt.md` in
+[#109](https://github.com/osdlc/skillwright/pull/109).

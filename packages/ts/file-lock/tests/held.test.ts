@@ -1,7 +1,6 @@
 import {
   existsSync,
   linkSync,
-  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -16,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 
 import { claimLock, releaseLock, touchLock, updateLock } from '../src/index.ts'
 
-import { afterMarkersExpire, age, markerFor } from './helpers.ts'
+import { afterMarkersExpire, age, always, claimed, markerFor, never } from './helpers.ts'
 
 let dir: string
 let lock: string
@@ -25,9 +24,6 @@ beforeEach(() => {
   lock = join(dir, 'x.lock')
 })
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
-
-const never = { isStale: (): boolean => false }
-const always = { isStale: (): boolean => true }
 
 /** What the rule was shown when a claim found `lock` held. */
 function judged(): unknown {
@@ -43,11 +39,6 @@ function judged(): unknown {
     },
   )
   return seen
-}
-
-function claimed(r: ReturnType<typeof claimLock>): string {
-  if (!r.ok) throw new Error('expected the claim to succeed')
-  return r.token
 }
 
 describe('claimLock', () => {
@@ -218,22 +209,5 @@ describe('releaseLock', () => {
     writeFileSync(lock, JSON.stringify({ pid: 1 }))
     expect(releaseLock(lock, 'any')).toBe(false)
     expect(existsSync(lock)).toBe(true)
-  })
-})
-
-describe('errors other than "gone" are thrown, not reported as a lost lock', () => {
-  // A directory where the lock should be: every read fails with EISDIR, as EACCES or EIO would.
-  beforeEach(() => mkdirSync(lock))
-
-  test('touchLock', () => {
-    expect(() => touchLock(lock, 'any')).toThrow(/EISDIR/)
-  })
-
-  test('updateLock', () => {
-    expect(() => updateLock(lock, 'any', () => ({}))).toThrow(/EISDIR/)
-  })
-
-  test('releaseLock', () => {
-    expect(() => releaseLock(lock, 'any')).toThrow(/EISDIR/)
   })
 })

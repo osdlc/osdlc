@@ -34,6 +34,20 @@ export interface Generator {
 /** Which verb list a `verify` setting other than `none` names. */
 export type VerifyWhich = 'check' | 'test'
 
+/** What `resolveVerifyVerbs` is asked: which list, for which repository. */
+export interface VerifyVerbsRequest {
+  which: VerifyWhich
+  /** This run's `--trust`: the user's consent for this run. */
+  trust: boolean
+  /** `owner/name` of the repository whose PRs the verbs will verify. */
+  repo: string
+  /**
+   * That repository's local checkout, the one the survey measured it in. The
+   * verbs run in a temporary worktree of it, not in this directory.
+   */
+  checkout: string
+}
+
 export type RepairKind = 'conflict' | 'verify-failed'
 
 export interface RepairRequest {
@@ -109,15 +123,21 @@ export interface Ports {
    * has none. Only asked about a repository the run was pointed at with
    * `--repo`, never used to widen the scope.
    */
-  locate: (slug: string) => string | null
+  locate: (repo: string) => string | null
   /** Runs the shell verbs of resolvers and verify. See {@link RunVerb}. */
   runVerb: RunVerb
   /**
    * Resolve the verb list `pr_update.verify: <which>` runs before a push,
    * applying the host's trust rules for a verb list from the project. Throws
    * when the list is missing or may not run in this repository for this run.
+   *
+   * Asked once per repository the run surveyed in a local checkout, so
+   * repositories that build differently can each get their own list. Every
+   * call comes before the first update, and comes whether or not that
+   * repository has a PR to update, so a refused list stops the run before
+   * anything is pushed.
    */
-  resolveVerifyVerbs: (opts: { which: VerifyWhich; trust: boolean }) => Promise<readonly string[]>
+  resolveVerifyVerbs: (opts: VerifyVerbsRequest) => Promise<readonly string[]>
   generators?: readonly Generator[] | undefined
   /** Called at most once per kind in `PrUpdateConfig.repair.on`. Absent means no repair. */
   repair?: Repair | undefined

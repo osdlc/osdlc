@@ -2,9 +2,17 @@ import assert from 'node:assert/strict'
 import { afterEach, beforeEach, describe, test } from 'vitest'
 
 import { spawnSync } from 'node:child_process'
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 
 // The built program, as npm installs it. Build first (`pnpm run build`).
 const CLI = join(import.meta.dirname, '../bin/corpus-schema.js')
@@ -19,8 +27,13 @@ const cli = (...args: string[]): { status: number | null; stdout: string; stderr
   const r = spawnSync(process.execPath, [CLI, ...args], { cwd: dir, encoding: 'utf8' })
   return { status: r.status, stdout: r.stdout, stderr: r.stderr }
 }
+const USAGE =
+  'usage: corpus-schema validate [--fix] [--strict] <folder>...\n       corpus-schema sync [<folder>...]\n'
 const corpus = (rel: string, id: string): void => {
-  put(`${rel}/corpus-schema.yaml`, `corpus-schema: 0\nid: ${id}\nformats: [md, yaml, json]\n`)
+  put(
+    `${rel}/${basename(rel)}.corpus-schema.yaml`,
+    `corpus-schema: 0\nid: ${id}\nformats: [md, yaml, json]\n`,
+  )
   put(`${rel}/notes/notes.schema.json`, '{}')
   put(`${rel}/notes/A.md`, '---\n---\nA.\n')
 }
@@ -57,7 +70,10 @@ describe('corpus-schema validate', () => {
     put('notes/A.md', 'A.\n')
     const r = cli('validate', '.')
     assert.equal(r.status, 1)
-    assert.equal(r.stderr, '.: no corpus-schema root file at or below it\n')
+    assert.equal(
+      r.stderr,
+      '.: no root file (<name>.corpus-schema.md, .yaml or .json) at or below it\n',
+    )
     assert.equal(cli('validate', 'missing').status, 1)
   })
 
@@ -71,7 +87,10 @@ describe('corpus-schema validate', () => {
     const bad = cli('validate', 'one', 'empty')
     assert.equal(bad.status, 1)
     assert.equal(bad.stdout, 'ok: one: 1 notes\n')
-    assert.equal(bad.stderr, 'empty: no corpus-schema root file at or below it\n')
+    assert.equal(
+      bad.stderr,
+      'empty: no root file (<name>.corpus-schema.md, .yaml or .json) at or below it\n',
+    )
   })
 
   test('validates a parent and a child folder once per corpus', () => {
@@ -116,16 +135,40 @@ describe('corpus-schema validate', () => {
       ['validate'],
       ['validate', '--fix'],
       ['validate', '.', '--bogus'],
+      ['sync', '--fix'],
+      ['sync', '--strict'],
     ]) {
       const r = cli(...args)
       assert.equal(r.status, 2, args.join(' '))
-      assert.equal(r.stderr, 'usage: corpus-schema validate [--fix] <folder>...\n')
+      assert.equal(r.stderr, USAGE)
     }
   })
 
-  test('--fix rewrites wikilinks in .json and .yaml records', () => {
+  test('--strict fails a corpus with warnings, and passes one with none', () => {
+    corpus('clean', 'a')
+    corpus('warns', 'b')
+    put('warns/notes/B.md', 'See [[notes/A]].\n')
+    const plain = cli('validate', '.')
+    assert.equal(plain.status, 0, plain.stderr)
+    const r = cli('validate', '--strict', '.')
+    assert.equal(r.status, 1)
+    assert.equal(r.stdout, 'ok: clean: 1 notes\n')
+    assert.match(r.stderr, /^warning: notes\/B\.md: body: \[\[notes\/A\]\] is a bare name/m)
+    assert.match(r.stderr, /^warns: 1 warning\(s\), and --strict fails on them$/m)
+    assert.equal(cli('validate', '--strict', 'clean').status, 0)
+  })
+
+  test('--strict counts two corpora sharing an id as a warning', () => {
+    corpus('one', 'shared')
+    corpus('two', 'shared')
+    const r = cli('validate', '--strict', '.')
+    assert.equal(r.status, 1)
+    assert.match(r.stderr, /^two: 1 warning\(s\), and --strict fails on them$/m)
+  })
+
+  test('--fix rewrites bare-name wikilinks in .json and .yaml records', () => {
     corpus('c', 'c')
-    put('c/notes/B.json', '{"see": "[[A]]"}\n')
+    put('c/notes/B.json', '{"see": "[[a]]"}\n')
     put('c/notes/C.yaml', 'see: "[[notes/A|the A note]]"\n')
     const r = cli('validate', '--fix', 'c')
     assert.equal(r.status, 0, r.stderr)
@@ -133,5 +176,74 @@ describe('corpus-schema validate', () => {
     assert.equal(r.stderr, '')
     assert.equal(read('c/notes/B.json'), '{"see": "[A](A.md)"}\n')
     assert.equal(read('c/notes/C.yaml'), 'see: "[the A note](A.md)"\n')
+  })
+})
+
+describe('corpus-schema sync', () => {
+  const corpusAt = (rel: string, refs = ''): void => {
+    put(`${rel}/${basename(rel)}.corpus-schema.yaml`, `corpus-schema: 0\nlevel: 2\n${refs}`)
+    put(`${rel}/notes/notes.schema.yaml`, 'type: object\n')
+    put(`${rel}/notes/A.md`, `${rel}\n`)
+  }
+
+  test('syncs every corpus below the folder, referenced ones first, and a second run changes nothing', () => {
+    corpusAt('z')
+    corpusAt('y', 'references:\n  z: ../z\n')
+    corpusAt('x', 'references:\n  y: ../y\n')
+    put('x/notes/B.md', 'See [A](../_references/y/_references/z/notes/A.md).\n')
+    const before = cli('validate', 'x')
+    assert.equal(before.status, 1)
+    assert.match(before.stderr, /^_references\/y: \(copy\): missing/m)
+    assert.equal(existsSync(join(dir, 'x/_references')), false)
+
+    // x is found first, but syncs after y, which syncs after z.
+    const r = cli('sync')
+    assert.equal(r.status, 0, r.stderr)
+    const synced = [...r.stdout.matchAll(/^synced: (.*)$/gm)].map((m) => m[1])
+    assert.deepEqual(synced, [
+      'z: 0 written, 0 removed',
+      'y: 3 written, 0 removed',
+      'x: 6 written, 0 removed',
+    ])
+    assert.match(r.stdout, /^wrote: _references\/y\/_references\/z\/notes\/A\.md$/m)
+    assert.equal(cli('validate', '.').status, 0)
+
+    const again = cli('sync', '.')
+    assert.equal(again.status, 0, again.stderr)
+    assert.doesNotMatch(again.stdout, /^(wrote|removed):/m)
+  })
+
+  test('a corpus syncs after a parent it extends, so a parent with a stale copy is fixed first', () => {
+    corpusAt('base')
+    corpusAt('org', 'references:\n  base: ../base\n')
+    put('org/notes/B.md', 'See [A](../_references/base/notes/A.md).\n')
+    put('aa/aa.corpus-schema.yaml', 'corpus-schema: 0\nlevel: 2\nextends:\n  org: ../org\n')
+    assert.equal(cli('sync', 'org').status, 0)
+    put('base/notes/A.md', 'base, changed\n')
+
+    // aa is found before org, but syncs after it.
+    const r = cli('sync')
+    assert.equal(r.status, 0, r.stderr)
+    const synced = [...r.stdout.matchAll(/^synced: (.*)$/gm)].map((m) => m[1]?.split(':')[0])
+    assert.deepEqual(synced, ['base', 'org', 'aa'])
+    const again = cli('sync', '.')
+    assert.equal(again.status, 0, again.stderr)
+    assert.doesNotMatch(again.stdout, /^(wrote|removed):/m)
+  })
+
+  test('prints what it removes, and exits 1 when a reference does not resolve', () => {
+    corpusAt('a')
+    put('a/_references/old/x.md', 'stale\n')
+    const r = cli('sync', 'a')
+    assert.equal(r.status, 0, r.stderr)
+    assert.equal(r.stdout, 'removed: _references/old/x.md\nsynced: a: 0 written, 1 removed\n')
+
+    corpusAt('b', 'references:\n  gone: "@acme/gone"\n')
+    const bad = cli('sync', 'b')
+    assert.equal(bad.status, 1)
+    assert.equal(
+      bad.stderr,
+      'b.corpus-schema.yaml: references.gone: package @acme/gone is not installed\nb: 1 error(s)\n',
+    )
   })
 })

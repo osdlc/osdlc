@@ -1,0 +1,4 @@
+type: object
+required: [statement]
+properties:
+  statement: { type: string, minLength: 1 }

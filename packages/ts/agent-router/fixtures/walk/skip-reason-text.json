@@ -1,0 +1,242 @@
+[
+  {
+    "name": "not-installed-without-detail",
+    "input": {
+      "reason": "not-installed"
+    },
+    "expected": "unavailable (not-installed)"
+  },
+  {
+    "name": "not-installed-with-detail",
+    "input": {
+      "reason": "not-installed",
+      "detail": "the detail text"
+    },
+    "expected": "unavailable (not-installed: the detail text)"
+  },
+  {
+    "name": "not-signed-in-without-detail",
+    "input": {
+      "reason": "not-signed-in"
+    },
+    "expected": "unavailable (not-signed-in)"
+  },
+  {
+    "name": "not-signed-in-with-detail",
+    "input": {
+      "reason": "not-signed-in",
+      "detail": "the detail text"
+    },
+    "expected": "unavailable (not-signed-in: the detail text)"
+  },
+  {
+    "name": "over-budget-without-detail",
+    "input": {
+      "reason": "over-budget"
+    },
+    "expected": "unavailable (over-budget)"
+  },
+  {
+    "name": "over-budget-with-detail",
+    "input": {
+      "reason": "over-budget",
+      "detail": "the detail text"
+    },
+    "expected": "unavailable (over-budget: the detail text)"
+  },
+  {
+    "name": "cooling-down-without-detail",
+    "input": {
+      "reason": "cooling-down"
+    },
+    "expected": "unavailable (cooling-down)"
+  },
+  {
+    "name": "cooling-down-with-detail",
+    "input": {
+      "reason": "cooling-down",
+      "detail": "the detail text"
+    },
+    "expected": "unavailable (cooling-down: the detail text)"
+  },
+  {
+    "name": "provider-unreachable-without-detail",
+    "input": {
+      "reason": "provider-unreachable"
+    },
+    "expected": "unavailable (provider-unreachable)"
+  },
+  {
+    "name": "provider-unreachable-with-detail",
+    "input": {
+      "reason": "provider-unreachable",
+      "detail": "the detail text"
+    },
+    "expected": "unavailable (provider-unreachable: the detail text)"
+  },
+  {
+    "name": "model-not-present-without-detail",
+    "input": {
+      "reason": "model-not-present"
+    },
+    "expected": "unavailable (model-not-present)"
+  },
+  {
+    "name": "model-not-present-with-detail",
+    "input": {
+      "reason": "model-not-present",
+      "detail": "the detail text"
+    },
+    "expected": "unavailable (model-not-present: the detail text)"
+  },
+  {
+    "name": "not-launchable-without-detail",
+    "input": {
+      "reason": "not-launchable"
+    },
+    "expected": "unavailable (not-launchable)"
+  },
+  {
+    "name": "not-launchable-with-detail",
+    "input": {
+      "reason": "not-launchable",
+      "detail": "the detail text"
+    },
+    "expected": "unavailable (not-launchable: the detail text)"
+  },
+  {
+    "name": "other-tool-without-detail",
+    "input": {
+      "reason": "other-tool"
+    },
+    "expected": "unavailable (other-tool)"
+  },
+  {
+    "name": "other-tool-with-detail",
+    "input": {
+      "reason": "other-tool",
+      "detail": "the detail text"
+    },
+    "expected": "unavailable (other-tool: the detail text)"
+  },
+  {
+    "name": "untrusted-fork-without-detail",
+    "input": {
+      "reason": "untrusted-fork"
+    },
+    "expected": "unavailable (untrusted-fork)"
+  },
+  {
+    "name": "untrusted-fork-with-detail",
+    "input": {
+      "reason": "untrusted-fork",
+      "detail": "the detail text"
+    },
+    "expected": "unavailable (untrusted-fork: the detail text)"
+  },
+  {
+    "name": "not-agent-without-detail",
+    "input": {
+      "reason": "not-agent"
+    },
+    "expected": "not-agent"
+  },
+  {
+    "name": "not-agent-with-detail",
+    "input": {
+      "reason": "not-agent",
+      "detail": "the detail text"
+    },
+    "expected": "the detail text"
+  },
+  {
+    "name": "missing-trait-without-detail",
+    "input": {
+      "reason": "missing-trait"
+    },
+    "expected": "missing-trait"
+  },
+  {
+    "name": "missing-trait-with-detail",
+    "input": {
+      "reason": "missing-trait",
+      "detail": "the detail text"
+    },
+    "expected": "the detail text"
+  },
+  {
+    "name": "unresolved-without-detail",
+    "input": {
+      "reason": "unresolved"
+    },
+    "expected": "unresolved"
+  },
+  {
+    "name": "unresolved-with-detail",
+    "input": {
+      "reason": "unresolved",
+      "detail": "the detail text"
+    },
+    "expected": "the detail text"
+  },
+  {
+    "name": "withdrawn-model-without-detail",
+    "input": {
+      "reason": "withdrawn-model"
+    },
+    "expected": "withdrawn-model"
+  },
+  {
+    "name": "withdrawn-model-with-detail",
+    "input": {
+      "reason": "withdrawn-model",
+      "detail": "the detail text"
+    },
+    "expected": "the detail text"
+  },
+  {
+    "name": "below-context-without-detail",
+    "input": {
+      "reason": "below-context"
+    },
+    "expected": "below context: too small"
+  },
+  {
+    "name": "below-context-with-detail",
+    "input": {
+      "reason": "below-context",
+      "detail": "the detail text"
+    },
+    "expected": "below context: the detail text"
+  },
+  {
+    "name": "no-candidate-without-detail",
+    "input": {
+      "reason": "no-candidate"
+    },
+    "expected": "wildcard expands to no candidate"
+  },
+  {
+    "name": "no-candidate-with-detail",
+    "input": {
+      "reason": "no-candidate",
+      "detail": "the detail text"
+    },
+    "expected": "wildcard expands to no candidate"
+  },
+  {
+    "name": "author-tool-without-detail",
+    "input": {
+      "reason": "author-tool"
+    },
+    "expected": "author's tool"
+  },
+  {
+    "name": "author-tool-with-detail",
+    "input": {
+      "reason": "author-tool",
+      "detail": "the detail text"
+    },
+    "expected": "author's tool"
+  }
+]

@@ -1,0 +1,724 @@
+/*
+ * @osdlc/markdown-render — theme contract.
+ *
+ * Every colour and border is a `--markdown-*` custom property with a neutral
+ * fallback — as are the two geometry tokens, `--markdown-chrome-radius` and
+ * `--markdown-table-max-height` — so a host themes the renderer by setting
+ * variables rather than by overriding selectors. Set them on `:root`, on
+ * `.markdown-render`, or on any ancestor.
+ *
+ * Dark mode: the fallbacks flip under `prefers-color-scheme: dark` and under a
+ * `.dark` ancestor.
+ *
+ * Shiki's token colours are the one exception — `.dark` only, no
+ * `prefers-color-scheme` companion. Not for specificity: a `.dark` rule
+ * out-specifies a media rule and would win wherever the class is set. It is the
+ * case the class cannot reach — there is no `.light`, so an app that themes
+ * explicitly and is currently in light mode on a dark-OS machine would get dark
+ * tokens on a light block, with nothing to override them. Every consumer here
+ * themes with `.dark`, so that trade is right, and it is a real one:
+ * `--markdown-code-bg` still flips on OS preference, so a host that themes by OS
+ * preference alone gets light-theme tokens on a dark block — roughly 1.3:1,
+ * invisible code, not merely mismatched colours. It has to set `.dark`.
+ */
+
+.markdown-render {
+  --markdown-text: var(--markdown-text-override, #1f2328);
+  --markdown-muted: var(--markdown-muted-override, #656d76);
+  --markdown-link: var(--markdown-link-override, #0969da);
+  --markdown-link-missing: var(--markdown-link-missing-override, #bc4c00);
+  --markdown-tag-bg: var(--markdown-tag-bg-override, #ddf4ff);
+  --markdown-tag-fg: var(--markdown-tag-fg-override, #0969da);
+  --markdown-highlight-bg: var(--markdown-highlight-bg-override, #fff8c5);
+  --markdown-code-bg: var(--markdown-code-bg-override, #f6f8fa);
+  --markdown-blockquote-border: var(--markdown-blockquote-border-override, #d0d7de);
+  --markdown-table-border: var(--markdown-table-border-override, #d0d7de);
+  --markdown-hr: var(--markdown-hr-override, #d0d7de);
+  --markdown-surface: var(--markdown-surface-override, #ffffff);
+  --markdown-chrome-fg: var(--markdown-chrome-fg-override, #656d76);
+  --markdown-chrome-bg: var(--markdown-chrome-bg-override, #ffffff);
+  --markdown-chrome-hover-bg: var(--markdown-chrome-hover-bg-override, #eaeef2);
+  --markdown-chrome-border: var(--markdown-chrome-border-override, #d0d7de);
+  --markdown-chrome-ok: var(--markdown-chrome-ok-override, #1a7f37);
+  --markdown-focus-ring: var(--markdown-focus-ring-override, #0969da);
+  /* The one geometry token: chrome corners follow the host control radius. */
+  --markdown-chrome-radius: var(--markdown-chrome-radius-override, 0.3em);
+  /* Table extras. `max-height` is geometry and `header-bg` resolves through
+     `--markdown-surface`, which flips already — so neither wants a twin in the
+     two dark blocks below, the same way `--markdown-chrome-radius` does not. */
+  --markdown-table-header-bg: var(--markdown-table-header-bg-override, var(--markdown-surface));
+  --markdown-table-max-height: var(--markdown-table-max-height-override, 70vh);
+
+  --markdown-callout-note: var(--markdown-callout-note-override, #0969da);
+  --markdown-callout-info: var(--markdown-callout-info-override, #0969da);
+  --markdown-callout-tip: var(--markdown-callout-tip-override, #1a7f37);
+  --markdown-callout-warning: var(--markdown-callout-warning-override, #9a6700);
+  --markdown-callout-danger: var(--markdown-callout-danger-override, #cf222e);
+  --markdown-callout-quote: var(--markdown-callout-quote-override, #656d76);
+
+  color: var(--markdown-text);
+  line-height: 1.6;
+  word-wrap: break-word;
+}
+
+@media (prefers-color-scheme: dark) {
+  .markdown-render {
+    --markdown-text: var(--markdown-text-override, #e6edf3);
+    --markdown-muted: var(--markdown-muted-override, #8b949e);
+    --markdown-link: var(--markdown-link-override, #4493f8);
+    --markdown-link-missing: var(--markdown-link-missing-override, #db6d28);
+    --markdown-tag-bg: var(--markdown-tag-bg-override, #121d2f);
+    --markdown-tag-fg: var(--markdown-tag-fg-override, #4493f8);
+    --markdown-highlight-bg: var(--markdown-highlight-bg-override, #4a3c00);
+    --markdown-code-bg: var(--markdown-code-bg-override, #161b22);
+    --markdown-blockquote-border: var(--markdown-blockquote-border-override, #30363d);
+    --markdown-table-border: var(--markdown-table-border-override, #30363d);
+    --markdown-hr: var(--markdown-hr-override, #30363d);
+    --markdown-surface: var(--markdown-surface-override, #0d1117);
+    --markdown-chrome-fg: var(--markdown-chrome-fg-override, #8b949e);
+    /* Lighter than --markdown-code-bg, never darker: the bar has to read as
+       raised off the block it floats over. */
+    --markdown-chrome-bg: var(--markdown-chrome-bg-override, #21262d);
+    --markdown-chrome-hover-bg: var(--markdown-chrome-hover-bg-override, #30363d);
+    --markdown-chrome-border: var(--markdown-chrome-border-override, #3d444d);
+    --markdown-chrome-ok: var(--markdown-chrome-ok-override, #3fb950);
+    --markdown-focus-ring: var(--markdown-focus-ring-override, #4493f8);
+  }
+}
+
+.dark .markdown-render,
+.markdown-render.dark {
+  --markdown-text: var(--markdown-text-override, #e6edf3);
+  --markdown-muted: var(--markdown-muted-override, #8b949e);
+  --markdown-link: var(--markdown-link-override, #4493f8);
+  --markdown-link-missing: var(--markdown-link-missing-override, #db6d28);
+  --markdown-tag-bg: var(--markdown-tag-bg-override, #121d2f);
+  --markdown-tag-fg: var(--markdown-tag-fg-override, #4493f8);
+  --markdown-highlight-bg: var(--markdown-highlight-bg-override, #4a3c00);
+  --markdown-code-bg: var(--markdown-code-bg-override, #161b22);
+  --markdown-blockquote-border: var(--markdown-blockquote-border-override, #30363d);
+  --markdown-table-border: var(--markdown-table-border-override, #30363d);
+  --markdown-hr: var(--markdown-hr-override, #30363d);
+  --markdown-surface: var(--markdown-surface-override, #0d1117);
+  --markdown-chrome-fg: var(--markdown-chrome-fg-override, #8b949e);
+  /* Lighter than --markdown-code-bg, never darker: the bar has to read as
+     raised off the block it floats over. */
+  --markdown-chrome-bg: var(--markdown-chrome-bg-override, #21262d);
+  --markdown-chrome-hover-bg: var(--markdown-chrome-hover-bg-override, #30363d);
+  --markdown-chrome-border: var(--markdown-chrome-border-override, #3d444d);
+  --markdown-chrome-ok: var(--markdown-chrome-ok-override, #3fb950);
+  --markdown-focus-ring: var(--markdown-focus-ring-override, #4493f8);
+}
+
+/* ---------- inline ---------- */
+
+.markdown-render a {
+  color: var(--markdown-link);
+  text-decoration: none;
+}
+
+.markdown-render a:hover {
+  text-decoration: underline;
+}
+
+.markdown-render a.wikilink {
+  cursor: pointer;
+}
+
+.markdown-render a.wikilink-missing {
+  color: var(--markdown-link-missing);
+  text-decoration: underline dotted;
+  cursor: default;
+}
+
+.markdown-render a.tag {
+  background: var(--markdown-tag-bg);
+  color: var(--markdown-tag-fg);
+  border-radius: 0.75em;
+  padding: 0.05em 0.5em;
+  font-size: 0.9em;
+  text-decoration: none;
+}
+
+.markdown-render mark {
+  background: var(--markdown-highlight-bg);
+  color: inherit;
+  border-radius: 0.15em;
+  padding: 0 0.1em;
+}
+
+.markdown-render code {
+  background: var(--markdown-code-bg);
+  border-radius: 0.3em;
+  padding: 0.15em 0.35em;
+  font-size: 0.9em;
+}
+
+.markdown-render pre {
+  background: var(--markdown-code-bg);
+  border-radius: 0.4em;
+  padding: 0.85em 1em;
+  overflow-x: auto;
+}
+
+.markdown-render pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.9em;
+}
+
+/* ---------- block chrome ---------- */
+
+/*
+ * The chrome is one opaque bar straddling the top edge of the block, and both
+ * halves of that are load-bearing.
+ *
+ * *One* bar, not three floating chips: a fence's first line is often the
+ * longest, and separate controls let the code show through the gaps between
+ * them.
+ *
+ * *Straddling the edge* is what keeps it off the first line without reserving a
+ * strip of empty space above every block for chrome that is usually not on
+ * screen. Half the bar therefore hangs in the block's top margin, which is why
+ * that margin lives on the fence's wrapper and has a floor: the bar is
+ * `1.65em + 2px` tall, so its overhang is `0.825em + 1px`, and `max(1em, 14px)`
+ * clears that at every font size rather than only at the one this was drawn at.
+ *
+ * Moving the margin off the `<pre>` also keeps `.callout-content`'s
+ * first-child / last-child spacing working: those rules match the wrapper now,
+ * and a `<pre>` margin would collapse straight through it. `flow-root` holds
+ * that line even if a host puts a `<pre>` margin back — a wrapper with no
+ * border, padding or block formatting context of its own is exactly the shape
+ * a child's margin escapes through.
+ *
+ * The bar is a sibling of the block rather than a child because the block is
+ * what scrolls; a child would slide out of reach on the first long line — of
+ * code, or of a wide table.
+ *
+ * A table's wrapper takes no margin of its own. A `<table>` has none today and
+ * every gap around one comes from the blocks either side, so reserving one here
+ * would move every table that already exists; the bar hangs in that
+ * neighbouring gap instead.
+ */
+
+.markdown-render .markdown-code-block,
+.markdown-render .markdown-table-block {
+  display: flow-root;
+  position: relative;
+}
+
+.markdown-render .markdown-code-block {
+  margin: max(1em, 14px) 0 1em;
+}
+
+.markdown-render .markdown-code-block pre {
+  margin: 0;
+}
+
+.markdown-render .markdown-code-chrome,
+.markdown-render .markdown-table-chrome {
+  align-items: center;
+  background: var(--markdown-chrome-bg);
+  border: 1px solid var(--markdown-chrome-border);
+  border-radius: var(--markdown-chrome-radius);
+  color: var(--markdown-chrome-fg);
+  display: flex;
+  gap: 0.15em;
+  opacity: 0;
+  padding: 0.15em;
+  /* Hidden chrome must not be a hit target: `opacity: 0` still takes taps, and
+     a stray tap in the strip above a fence would copy it silently. Not
+     `visibility: hidden`, which would drop the buttons out of the tab order and
+     take the `:focus-within` reveal with them. */
+  pointer-events: none;
+  position: absolute;
+  right: 0.5em;
+  top: 0;
+  transform: translateY(-50%);
+  transition: opacity 0.12s ease-in-out;
+  /* Above the pinned table header, and ranked rather than left to chance.
+     `position: sticky` makes a `<th>` a positioned box, and neither wrapper
+     opens a stacking context of its own (`position: relative` with
+     `z-index: auto` does not), so the bar and the header compete in the same
+     one — where a tie goes to whichever is later in DOM order, and that is the
+     header. It would then paint over the copy button and swallow the click.
+     Both values are stated: anything positioned added to either block belongs
+     below 2, and the pinned header below that. */
+  z-index: 2;
+}
+
+.markdown-render .markdown-code-block:hover .markdown-code-chrome,
+.markdown-render .markdown-code-block:focus-within .markdown-code-chrome,
+.markdown-render .markdown-table-block:hover .markdown-table-chrome,
+.markdown-render .markdown-table-block:focus-within .markdown-table-chrome {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* No pointer, no hover and no reveal — so on touch the chrome simply stays. */
+@media (hover: none) {
+  .markdown-render .markdown-code-chrome,
+  .markdown-render .markdown-table-chrome {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .markdown-render .markdown-code-chrome,
+  .markdown-render .markdown-table-chrome {
+    transition: none;
+  }
+}
+
+.markdown-render .markdown-code-lang {
+  font-size: 0.72em;
+  line-height: 1;
+  padding: 0 0.4em;
+  user-select: none;
+}
+
+.markdown-render .markdown-code-action,
+.markdown-render .markdown-table-action {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--markdown-chrome-radius);
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  justify-content: center;
+  line-height: 1;
+  padding: 0.2em;
+}
+
+.markdown-render .markdown-code-action:hover,
+.markdown-render .markdown-code-action[aria-pressed='true'],
+.markdown-render .markdown-table-action:hover {
+  background: var(--markdown-chrome-hover-bg);
+  color: var(--markdown-text);
+}
+
+/* Outranks the hover above on specificity, not on source order: the pointer is
+   sitting on the very button that just fired. */
+.markdown-render .markdown-code-block .markdown-code-action.markdown-code-copied,
+.markdown-render .markdown-table-block .markdown-table-action.markdown-table-copied {
+  color: var(--markdown-chrome-ok);
+}
+
+/* Chrome that is invisible until hover would be unreachable without this. */
+.markdown-render .markdown-code-action:focus-visible,
+.markdown-render .markdown-table-action:focus-visible,
+.markdown-render .markdown-table-sort:focus-visible {
+  outline: 2px solid var(--markdown-focus-ring);
+  outline-offset: 1px;
+}
+
+.markdown-render .markdown-code-action svg,
+.markdown-render .markdown-table-action svg {
+  display: block;
+  height: 0.95em;
+  width: 0.95em;
+}
+
+/* The copy confirmation, for a reader who cannot see the checkmark. A changed
+   accessible name is not reliably re-announced and would leave the button
+   describing a past event, so the button's name is fixed and this says it. */
+.markdown-render .markdown-code-status,
+.markdown-render .markdown-table-status,
+/* A header cell with no words still owes its sort button a name. It is real
+   text rather than an `aria-label`, which would rename the `<th>` around it. */
+.markdown-render .markdown-table-sort-name {
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+/* Soft wrap, one block at a time. Nothing persists it: it is this reader's
+   answer to this fence, not a setting. */
+.markdown-render .markdown-code-wrapped pre {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* ---------- blocks ---------- */
+
+.markdown-render blockquote {
+  border-left: 3px solid var(--markdown-blockquote-border);
+  color: var(--markdown-muted);
+  margin-inline: 0;
+  padding-left: 1em;
+}
+
+.markdown-render hr {
+  border: 0;
+  border-top: 1px solid var(--markdown-hr);
+}
+
+.markdown-render table {
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.markdown-render th,
+.markdown-render td {
+  border: 1px solid var(--markdown-table-border);
+  padding: 0.35em 0.7em;
+}
+
+.markdown-render ul.contains-task-list {
+  list-style: none;
+  padding-left: 1.2em;
+}
+
+.markdown-render .task-list-item-checkbox {
+  margin-right: 0.4em;
+  cursor: pointer;
+}
+
+/* ---------- table extras ---------- */
+
+/*
+ * Everything here is scoped under the wrapper `TableBlock` draws, so a host
+ * that opts out with `{ table: undefined }` gets the plain table above and
+ * none of this — and so `renderToHtml`'s string output styles exactly as it
+ * did before any of it existed.
+ */
+
+/*
+ * A cap is what turns the table into a real vertical scroller and gives
+ * `position: sticky` a scrollport to stick in. `overflow-x: auto` above
+ * already made it a scroll container in both axes; without a bounded height
+ * its scroll box is simply as tall as the table, and a sticky header has
+ * nowhere to go. Generous on purpose: a table that fits under the cap is
+ * geometrically identical to one rendered before this feature existed.
+ */
+.markdown-render .markdown-table-block table {
+  max-height: var(--markdown-table-max-height);
+}
+
+/*
+ * The pinned header. `TableBlock` measures the overflow and sets the class,
+ * because a pinned header needs an opaque fill and a table that never scrolls
+ * has nothing to hide behind one — an unconditional fill would paint a
+ * coloured band across every short table in the corpus.
+ *
+ * The shadow is the header's bottom border. Under `border-collapse: collapse`
+ * the border belongs to the table grid rather than to the cell, so it stays
+ * behind when the header pins and the header floats over the rows with an open
+ * bottom edge.
+ *
+ * `z-index: 1` puts the header over the rows it floats above and one rung
+ * BELOW the chrome bar — see the bar's own note. The two share a stacking
+ * context and the header is later in DOM order, so leaving either value to the
+ * default hands the header a click that belongs to the copy button.
+ */
+.markdown-render .markdown-table-scrolls thead th {
+  background: var(--markdown-table-header-bg);
+  box-shadow: inset 0 -1px 0 var(--markdown-table-border);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+/*
+ * The sort control fills its header cell, so the whole cell is the click
+ * target rather than the width of a word. It inherits every text property and
+ * contributes no box of its own, so a header carrying one lays out exactly
+ * like a header without one — parity measured against the pre-feature markup,
+ * cell box by cell box.
+ *
+ * Filling also keeps the focus ring clear of the scrollport: the button's box
+ * is the cell's CONTENT box, so a ring drawn 1px outside it still sits inside
+ * the cell's own padding and cannot be clipped by the scrolling table when the
+ * header is pinned.
+ *
+ * The indicator is rendered only while the column is sorted — reserving space
+ * for it at rest would widen every column in the corpus by a glyph.
+ */
+.markdown-render .markdown-table-sort {
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: block;
+  font: inherit;
+  margin: 0;
+  padding: 0;
+  text-align: inherit;
+  width: 100%;
+}
+
+.markdown-render .markdown-table-sort:hover {
+  text-decoration: underline;
+}
+
+.markdown-render .markdown-table-arrow {
+  font-size: 0.75em;
+  margin-left: 0.35em;
+}
+
+/* ---------- heading sections (R-02) ---------- */
+
+/*
+ * Always visible, not hover-revealed like the code/table chrome bars: a fold
+ * toggle is a primary reading affordance (Obsidian's own chevron before a
+ * heading), not incidental decoration on a block.
+ *
+ * Deliberately NOT a flex row around the heading, and nothing here may become
+ * one. A heading's vertical margins belong to the host (this stylesheet sets
+ * none), and they are meant to COLLAPSE with the neighbouring paragraph's —
+ * a flex item's margins never collapse, so boxing the heading in a flex
+ * container stacked both margins instead of merging them and added space
+ * above and below every heading in the document, folded or not. With no
+ * formatting context established here and no vertical padding or border on
+ * either wrapper, the heading's own margins collapse straight out through
+ * both of them to its siblings, whatever values the host chose. The toggle is
+ * taken out of flow so it cannot reopen that hole; the gutter it sits in is
+ * HORIZONTAL padding, which margin collapsing does not care about.
+ */
+
+.markdown-render .markdown-heading-section-head {
+  padding-right: 1.2em;
+  position: relative;
+}
+
+.markdown-render .markdown-heading-fold-toggle {
+  all: unset;
+  color: var(--markdown-chrome-fg);
+  cursor: pointer;
+  font-size: 0.7em;
+  position: absolute;
+  right: 0;
+  /* The wrapper's box IS the heading's box (its margins collapsed out), so
+     this centres on the heading itself without knowing its line-height. */
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.markdown-render .markdown-heading-fold-toggle::before {
+  content: '▾';
+}
+
+.markdown-render
+  .markdown-heading-section.is-collapsed
+  > .markdown-heading-section-head
+  .markdown-heading-fold-toggle::before {
+  content: '▸';
+}
+
+/* ---------- list item folds (R-02) ---------- */
+
+.markdown-render .markdown-list-fold-toggle {
+  all: unset;
+  color: var(--markdown-chrome-fg);
+  cursor: pointer;
+  font-size: 0.7em;
+  margin-left: 0.5em;
+}
+
+.markdown-render .markdown-list-fold-toggle::before {
+  content: '▾';
+}
+
+.markdown-render li.markdown-list-foldable.is-collapsed > .markdown-list-fold-toggle::before {
+  content: '▸';
+}
+
+/* Both fold toggles take keyboard focus, and `all: unset` took the UA ring
+   with it. Same treatment as the code/table chrome above. */
+.markdown-render .markdown-heading-fold-toggle:focus-visible,
+.markdown-render .markdown-list-fold-toggle:focus-visible {
+  outline: 2px solid var(--markdown-focus-ring);
+  outline-offset: 1px;
+}
+
+/* ---------- callouts ---------- */
+
+.markdown-render .callout {
+  --markdown-callout-accent: var(--markdown-callout-note);
+  border-left: 3px solid var(--markdown-callout-accent);
+  border-radius: 0.35em;
+  background: color-mix(in srgb, var(--markdown-callout-accent) 8%, transparent);
+  margin: 1em 0;
+  padding: 0.75em 1em;
+}
+
+.markdown-render .callout[data-callout='info'] {
+  --markdown-callout-accent: var(--markdown-callout-info);
+}
+.markdown-render .callout[data-callout='todo'] {
+  --markdown-callout-accent: var(--markdown-callout-info);
+}
+.markdown-render .callout[data-callout='tip'],
+.markdown-render .callout[data-callout='hint'],
+.markdown-render .callout[data-callout='important'],
+.markdown-render .callout[data-callout='success'],
+.markdown-render .callout[data-callout='check'],
+.markdown-render .callout[data-callout='done'] {
+  --markdown-callout-accent: var(--markdown-callout-tip);
+}
+.markdown-render .callout[data-callout='warning'],
+.markdown-render .callout[data-callout='caution'],
+.markdown-render .callout[data-callout='attention'] {
+  --markdown-callout-accent: var(--markdown-callout-warning);
+}
+.markdown-render .callout[data-callout='danger'],
+.markdown-render .callout[data-callout='error'],
+.markdown-render .callout[data-callout='bug'],
+.markdown-render .callout[data-callout='failure'],
+.markdown-render .callout[data-callout='missing'] {
+  --markdown-callout-accent: var(--markdown-callout-danger);
+}
+.markdown-render .callout[data-callout='quote'],
+.markdown-render .callout[data-callout='cite'],
+.markdown-render .callout[data-callout='abstract'],
+.markdown-render .callout[data-callout='summary'],
+.markdown-render .callout[data-callout='example'] {
+  --markdown-callout-accent: var(--markdown-callout-quote);
+}
+
+.markdown-render .callout-title {
+  color: var(--markdown-callout-accent);
+  font-weight: 600;
+}
+
+.markdown-render .callout-content > :first-child {
+  margin-top: 0.4em;
+}
+
+.markdown-render .callout-content > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-render .callout-fold-toggle {
+  all: unset;
+  cursor: pointer;
+  display: block;
+  width: 100%;
+}
+
+.markdown-render .callout-fold-toggle::before {
+  content: '▾ ';
+  color: var(--markdown-callout-accent);
+}
+
+.markdown-render .callout.is-collapsed .callout-fold-toggle::before {
+  content: '▸ ';
+}
+
+/* ---------- embeds ---------- */
+
+.markdown-render .markdown-embed-note {
+  border-left: 2px solid var(--markdown-blockquote-border);
+  padding-left: 1em;
+  margin: 1em 0;
+}
+
+.markdown-render .markdown-embed-image,
+.markdown-render .markdown-embed-video {
+  max-width: 100%;
+  height: auto;
+}
+
+.markdown-render .markdown-embed-audio {
+  display: block;
+  width: 100%;
+  margin: 1em 0;
+}
+
+/* A PDF embed is a link, not a frame — see `Embed`. */
+.markdown-render .markdown-embed-pdf {
+  display: inline-block;
+  border: 1px solid var(--markdown-blockquote-border);
+  border-radius: 0.35em;
+  padding: 0.5em 0.75em;
+  margin: 1em 0;
+  text-decoration: none;
+}
+
+.markdown-render .markdown-embed-loading,
+.markdown-render .markdown-embed-missing,
+.markdown-render .markdown-embed-cycle,
+.markdown-render .markdown-embed-too-deep,
+.markdown-render .markdown-embed-over-budget,
+.markdown-render .markdown-embed-inert {
+  border: 1px dashed var(--markdown-blockquote-border);
+  border-radius: 0.35em;
+  color: var(--markdown-muted);
+  font-size: 0.9em;
+  padding: 0.5em 0.75em;
+  margin: 1em 0;
+}
+
+.markdown-render .markdown-embed-missing,
+.markdown-render .markdown-embed-cycle,
+.markdown-render .markdown-embed-over-budget {
+  color: var(--markdown-link-missing);
+}
+
+/* ---------- diagrams and math ---------- */
+
+.markdown-render .markdown-mermaid {
+  overflow-x: auto;
+  margin: 1em 0;
+}
+
+.markdown-render .markdown-math-block {
+  overflow-x: auto;
+  margin: 1em 0;
+}
+
+/*
+ * KaTeX renders every equation twice: a MathML copy for assistive tech and a
+ * span-positioned copy for eyes (`output: 'htmlAndMathml'` in MathBlock.ts).
+ * Exactly one of them is meant to be visible, and the rule that clips the
+ * MathML one lives in `katex/dist/katex.min.css` — which this package
+ * deliberately does not inject, and which a host can therefore forget.
+ *
+ * Forgetting it should cost unstyled math, not doubled math, so the clip is
+ * repeated here. It is the same declaration KaTeX ships; loading both changes
+ * nothing. The visual copy carries `aria-hidden`, so screen readers are on the
+ * other side of this either way.
+ */
+.markdown-render .katex-mathml {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+/* ---------- Shiki dual themes ---------- */
+
+/*
+ * Shiki emits both themes as custom properties (`defaultColor: false`), so the
+ * page swaps themes by swapping which property wins — no re-render.
+ *
+ * Foreground only. Shiki's `--shiki-*-bg` is deliberately ignored so a
+ * highlighted fence and an unhighlighted one (`base`, `mermaid`, a grammar
+ * Shiki could not load) share the one `--markdown-code-bg` the `pre` rule sets,
+ * and the block chrome stays tuned against a single background.
+ *
+ * `.dark` only, with no `prefers-color-scheme` companion — the exception the
+ * file header explains.
+ */
+.markdown-render .shiki,
+.markdown-render .shiki span {
+  color: var(--shiki-light);
+}
+
+.dark .markdown-render .shiki,
+.dark .markdown-render .shiki span,
+.markdown-render.dark .shiki,
+.markdown-render.dark .shiki span {
+  color: var(--shiki-dark);
+}

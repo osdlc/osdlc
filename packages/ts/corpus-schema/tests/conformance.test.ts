@@ -30,6 +30,6 @@ for (const [name, section] of Object.entries(suite.sections))
     for (const c of section.cases)
       test(c.name, () => {
         assert.ok(c.expect !== undefined, 'run conformance:write to fill in expect')
-        assert.deepEqual(run(c.input), c.expect)
+        assert.deepEqual(run(name, c.input), c.expect)
       })
   })

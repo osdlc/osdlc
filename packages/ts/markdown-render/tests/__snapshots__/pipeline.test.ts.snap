@@ -1,0 +1,38 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`pipeline > the kitchen-sink document renders stably 1`] = `
+"<h1 id="kitchen-sink" data-line="1">Kitchen Sink</h1>
+<p id="intro" data-block-id="intro" data-line="3">Prose with a <a class="wikilink" data-wikilink="Note" data-kind="note" href="/vault/Note" data-path="/vault/Note">Note</a>, a <a class="wikilink" data-wikilink="Folder/Other" data-kind="note" href="/vault/Folder/Other" data-path="/vault/Folder/Other" data-heading="Section">labelled link</a>, a <a class="wikilink wikilink-missing" data-wikilink="Gone" data-kind="missing">Gone</a>,
+a <a class="tag" data-tag="project/alpha">#project/alpha</a> tag, some <mark>highlighted text</mark>, and  removed.</p>
+<div class="callout" data-callout="warning" data-fold="-" data-line="6"><div class="callout-title">Fold me</div><div class="callout-content"><p data-line="7">Body with a nested list:</p><ul data-line="9">
+<li data-line="9">one</li>
+<li data-line="10">two</li>
+</ul></div></div>
+<markdown-embed data-embed-target="diagram.png" data-embed-kind="image" data-resolved-kind="attachment" data-embed-path="/vault/diagram.png" data-line="12"></markdown-embed>
+<markdown-embed data-embed-target="Note" data-embed-kind="heading" data-resolved-kind="note" data-embed-path="/vault/Note" data-embed-heading="Section" data-line="14"></markdown-embed>
+<table data-line="16">
+<thead>
+<tr data-line="16">
+<th>col</th>
+<th>val</th>
+</tr>
+</thead>
+<tbody>
+<tr data-line="18">
+<td>a</td>
+<td>1</td>
+</tr>
+</tbody>
+</table>
+<ul class="contains-task-list" data-line="20">
+<li class="task-list-item" data-line="20"><input type="checkbox" disabled> open task</li>
+<li class="task-list-item" data-line="21"><input type="checkbox" checked disabled> done task</li>
+</ul>
+<pre data-line="23" data-lang="ts"><code class="language-ts">const answer = 42
+</code></pre>
+<pre data-line="27" data-lang="mermaid"><code class="language-mermaid">graph TD; A --> B;
+</code></pre>
+<p data-line="31">Literal <code>[[not a link]]</code> and <code>#nottag</code> survive.</p>
+<hr data-line="33">
+<p data-line="35">Final paragraph.</p>"
+`;

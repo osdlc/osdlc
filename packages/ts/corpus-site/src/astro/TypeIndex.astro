@@ -1,0 +1,63 @@
+---
+// A type's index: its label and intro, then the explorer. The first page of rows is drawn
+// here as plain HTML, inside the explorer, which swaps in its own table once the type's data
+// file has loaded. Props: `type`, a SiteType.
+import { TypeExplorer, ResultTable } from '../components/index.js'
+import { getSite } from '../context.js'
+import { typeData } from '../data.js'
+import { filterRecords, paginate } from '../filter.js'
+import { renderMarkdown } from '../markdown.js'
+import { formatSort, parseState } from '../url-state.js'
+
+const { type } = Astro.props
+const site = getSite()
+const data = typeData(site, type)
+// The view a reader starts with: the default sort and the default filters.
+const start = parseState('', data.fields, type.sort, type.defaultFilters)
+const matching = filterRecords(data, start)
+const first = paginate(matching, 1, site.pageSize)
+// Only the records these rows name, so the page does not carry every target.
+const targets = {}
+for (const row of first.rows)
+  for (const value of Object.values(row.values))
+    for (const v of Array.isArray(value) ? value : [value])
+      if (typeof v === 'string' && data.targets[v] !== undefined) targets[v] = data.targets[v]
+const intro = type.intro === null ? null : renderMarkdown(site, type.intro, type.source.schemaFile ?? `${type.source.dir}/x`)
+const count = new Intl.NumberFormat(site.locale)
+---
+
+<header class="cs-page-head">
+  <h1>{type.label}</h1>
+  {intro && <div class="cs-lead cs-prose markdown-render" set:html={intro} />}
+  {
+    type.views.length > 0 && (
+      <ul class="cs-meta">
+        {type.views.map((view) => <li><a href={view.url}>{view.label}</a></li>)}
+      </ul>
+    )
+  }
+</header>
+
+<TypeExplorer
+  client:load
+  dataUrl={site.dataUrl(`types/${type.slug}.json`)}
+  fields={data.fields}
+  total={data.count}
+  label={type.label}
+  pageSize={site.pageSize}
+  defaultSort={type.sort === null ? null : formatSort(type.sort)}
+  defaults={type.defaultFilters}
+  titleLabel={type.singular}
+  locale={site.locale}
+>
+  <ResultTable fields={data.fields} columns={data.columns} rows={first.rows} targets={targets} titleLabel={type.singular} locale={site.locale} />
+  {
+    first.pages > 1 && (
+      <noscript>
+        <p class="cs-noscript">
+          The first {count.format(first.rows.length)} of {count.format(matching.length)} are shown. Filters, sorting and the other pages need JavaScript.
+        </p>
+      </noscript>
+    )
+  }
+</TypeExplorer>

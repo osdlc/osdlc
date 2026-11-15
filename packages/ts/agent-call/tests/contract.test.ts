@@ -135,7 +135,7 @@ const ROWS: Row[] = [
     cells: {
       claude: { support: 'native', readme: '--permission-mode acceptEdits' },
       codex: { support: 'approximated', readme: '--sandbox workspace-write' },
-      antigravity: { support: 'dropped', planned: '' },
+      antigravity: { support: 'native', readme: '--mode accept-edits' },
       opencode: { support: 'approximated', readme: 'OPENCODE_PERMISSION' },
       copilot: { support: 'native', readme: '--allow-tool=write' },
       pi: { support: 'approximated', readme: '--tools read,grep,find,ls,edit,write' },
@@ -257,14 +257,14 @@ const ROWS: Row[] = [
     cells: {
       claude: { support: 'native', readme: '--add-dir' },
       codex: { support: 'native', readme: '--add-dir' },
-      antigravity: { support: 'dropped', planned: '' },
+      antigravity: { support: 'native', readme: '--add-dir' },
       opencode: { support: 'dropped', planned: '' },
       copilot: { support: 'native', readme: '--add-dir' },
       pi: { support: 'dropped', planned: '' },
       qwen: { support: 'native', readme: '--include-directories' },
       droid: { support: 'dropped', planned: '' },
       cursor: { support: 'native', readme: '--add-dir' },
-      deepseek: { support: 'dropped', planned: '' },
+      deepseek: { support: 'native', readme: '--add-dir' },
     },
   },
   {

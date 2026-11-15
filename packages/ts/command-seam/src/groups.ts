@@ -98,7 +98,12 @@ export function trackGroup(pid: number): () => void {
  * would kill the host by default and orphan the group. `untrack` is `undefined` when the
  * child got no pid.
  *
- * @internal
+ * For a caller that spawns its own detached child (`detached: true`, so it
+ * leads a group) rather than using a runner. Check {@link groupStartRefusal}
+ * first. When the run ends, call {@link settleGroup} unless the caller is
+ * itself stopping the group, then {@link releaseWhenEmpty} with `untrack`.
+ *
+ * @experimental
  */
 export function spawnTrackedGroup<C extends { readonly pid?: number | undefined }>(
   start: () => C,
@@ -119,7 +124,7 @@ export function spawnTrackedGroup<C extends { readonly pid?: number | undefined 
  * longer kills what is left of the group. A forwarded signal still does. A runner
  * does not call this for a group it is stopping itself.
  *
- * @internal
+ * @experimental
  */
 export function settleGroup(pid: number): void {
   const entry = live.get(pid)
@@ -130,7 +135,7 @@ export function settleGroup(pid: number): void {
  * Why a new group must not start, or `undefined` when it may. The runners call
  * this before they spawn with `processGroup: true`.
  *
- * @internal
+ * @experimental
  */
 export function groupStartRefusal(): string | undefined {
   if (forwarded === undefined) return undefined
@@ -147,7 +152,7 @@ export function groupStartRefusal(): string | undefined {
  * listeners then stay attached and a signal still kills that member, which
  * is the safe failure.
  *
- * @internal
+ * @experimental
  */
 export function releaseWhenEmpty(pid: number, release: () => void): void {
   if (!groupExists(pid)) {

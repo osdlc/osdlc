@@ -1,0 +1,40 @@
+# Checks that the Markdown Ecosystem Plan's committed SVGs match what
+# tools/diagrams writes. The scripts use only the standard library, so the
+# runner's python3 is enough.
+name: diagrams
+
+on:
+  pull_request:
+    paths:
+      - 'tools/diagrams/**'
+      - 'docs/architecture/img/markdown/**'
+      - '.github/workflows/diagrams.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/diagrams/**'
+      - 'docs/architecture/img/markdown/**'
+      - '.github/workflows/diagrams.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: diagrams-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  up-to-date:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: The committed SVGs match the scripts
+        run: |
+          rm -f docs/architecture/img/markdown/*.svg
+          python3 tools/diagrams/build.py
+          python3 tools/diagrams/architecture.py
+          git diff --exit-code docs/architecture/img/markdown
+          test -z "$(git status --porcelain docs/architecture/img/markdown)"

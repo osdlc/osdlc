@@ -1,0 +1,5 @@
+type: object
+x-id-pattern: "^T-[0-9]{4}$"
+properties:
+  depends_on: { type: array, items: { type: string, x-ref: tasks, x-ref-form: id } }
+  about: { type: string, x-ref: org/notes, x-ref-form: wikilink }

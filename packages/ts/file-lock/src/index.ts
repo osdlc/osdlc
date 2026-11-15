@@ -16,5 +16,6 @@ export {
   type LockContent,
   type StaleRule,
 } from './held.ts'
+export { NotALockError, type NotALockKind } from './lock-file.ts'
 export { holderGone, pidAlive, untouchedFor, type HolderGoneOptions } from './rules.ts'
 export { LockTimeoutError, withLock, type LockOptions, type SectionHolder } from './section.ts'

@@ -1,0 +1,11 @@
+# lefthook.yml
+# The check scripts are fast, so they run on every commit, on the staged files.
+# The agent review takes longer, so it runs once per push, on the whole branch.
+pre-commit:
+  commands:
+    checks:
+      run: npx --no-install rule-review checks checks.d --staged
+pre-push:
+  commands:
+    rule-review:
+      run: npx --no-install rule-review --base main --blocking

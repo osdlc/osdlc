@@ -1,0 +1,2 @@
+type: object
+x-id-pattern: "^P-[0-9]{4}$"

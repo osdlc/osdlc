@@ -367,6 +367,13 @@ running, unless the runner was stopping the group (an abort, a timeout or
 `kill()`). `SIGKILL` of the host cannot be caught. POSIX only. On Windows it
 does nothing. `liveProcessGroups()` lists the registered group pids.
 
+A host that spawns its own detached child instead of using a runner can
+register it with `spawnTrackedGroup(() => spawn(..., { detached: true }))`.
+Check `groupStartRefusal()` first (it returns a reason while the host is
+stopping, else `undefined`). When the run ends, call `settleGroup(pid)` unless
+the host is itself stopping the group, then `releaseWhenEmpty(pid, untrack)`
+with the `untrack` the spawn returned. These four are experimental.
+
 When forwarding owns the exit (the host has no listener of its own for the
 signal), the first forwarded signal puts the host in a stopping state. A new
 run with `processGroup: true` is refused: it starts nothing and settles with
@@ -1105,6 +1112,7 @@ The experimental exports:
 - `stopProcess`
 - `installGroupSignalForwarding`, `GroupSignalForwardingOptions`
 - `liveProcessGroups`, `forwardedSignal`, `forwardedExitCode`
+- `spawnTrackedGroup`, `settleGroup`, `releaseWhenEmpty`, `groupStartRefusal` (register a detached child the caller spawned itself)
 - `fakeRunner`, `fakeNeverExited`, `fakeProcess` (from `@osdlc/command-seam/testing`)
 - `FakeRunner`, `FakeCall`, `FakeProcess`, `FakeProcessOptions` (from `/testing`)
 

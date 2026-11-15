@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.2](https://github.com/osdlc/osdlc/compare/config-layers/v0.8.1...config-layers/v0.8.2) - 2026-11-10
+
+### Other
+
+- update Cargo.toml dependencies
+
 ## [0.8.1](https://github.com/osdlc/osdlc/compare/config-layers/v0.8.0...config-layers/v0.8.1) - 2026-10-31
 
 ### Other

@@ -12,7 +12,7 @@ created: 2026-11-07
 - The first public version is 0.4.1. The versions before it were rebuilt from
   the crate's history and are listed in the changelog as unpublished.
 - The crate stays on 0.x. A breaking change bumps the minor version.
-- Every public item is stable within the 0.4 line except the ones the README
+- Every public item is stable within the 0.5 line except the ones the README
   lists as experimental, which may change in a patch release. Today that is
   `Tokens::with_label`. An experimental item says `**Experimental.**` in its
   docs, and `tests/stability.rs` checks that the README list and those markers

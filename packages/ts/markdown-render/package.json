@@ -1,0 +1,116 @@
+{
+  "name": "@osdlc/markdown-render",
+  "version": "0.8.0",
+  "description": "Markdown to HTML on unified and remark for CommonMark, GFM and the Obsidian extensions (wikilinks, embeds, callouts, tags, block ids, comments, highlights), with injected link resolution and sanitized output. Framework-free: every feature is a remark or rehype plugin. Vue components are in @osdlc/markdown-render-vue.",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/ts/markdown-render"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/ts/markdown-render#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "keywords": [
+    "markdown",
+    "commonmark",
+    "gfm",
+    "obsidian",
+    "wikilink",
+    "unified",
+    "remark",
+    "rehype",
+    "renderer",
+    "typescript"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": [
+    "./dist/theme.css"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./plugins": {
+      "types": "./dist/plugins/index.d.ts",
+      "default": "./dist/plugins/index.js"
+    },
+    "./shiki": {
+      "types": "./dist/shiki.d.ts",
+      "default": "./dist/shiki.js"
+    },
+    "./theme.css": "./dist/theme.css"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "SECURITY.md",
+    "CONTRIBUTING.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && node -e \"require('node:fs').cpSync('src/theme.css', 'dist/theme.css')\"",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
+    "bench": "vitest bench --run",
+    "smoke": "node tests/smoke.mjs",
+    "prepublishOnly": "npm run clean && npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
+  },
+  "dependencies": {
+    "@osdlc/markdown-tags": "workspace:^",
+    "@osdlc/markdown-link": "workspace:^",
+    "@types/hast": "^3.0.4",
+    "@types/mdast": "^4.0.4",
+    "@types/unist": "^3.0.3",
+    "github-slugger": "^2.0.0",
+    "rehype-raw": "^7.0.0",
+    "rehype-sanitize": "^6.0.0",
+    "rehype-stringify": "^10.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
+    "remark-parse": "^11.0.0",
+    "remark-rehype": "^11.1.2",
+    "shiki": "^4.4.1",
+    "unified": "^11.0.5",
+    "unist-util-visit": "^5.0.0"
+  },
+  "peerDependencies": {
+    "katex": "^0.19.1",
+    "mermaid": "^11.12.2"
+  },
+  "peerDependenciesMeta": {
+    "katex": {
+      "optional": true
+    },
+    "mermaid": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "katex": "^0.19.1",
+    "mermaid": "^11.12.2",
+    "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/tsconfig": "workspace:^",
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "jsdom": "^26.0.0",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

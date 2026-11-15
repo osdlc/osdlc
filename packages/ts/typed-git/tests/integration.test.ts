@@ -49,6 +49,16 @@ describe('integration verbs — argv', () => {
     expect(calls[0]).toEqual(['merge', '--no-edit', '--ff-only', 'x'])
   })
 
+  test('rebase with an upstream replays only the commits after it, with --onto', () => {
+    const { runner, calls } = recorder(res(0))
+    const git = new Git('/repo', { runner })
+    git.rebase('origin/main')
+    git.rebase('abc123', { upstream: 'def456' })
+    expect(calls[0]).toEqual(['rebase', 'origin/main'])
+    expect(calls[1]).toEqual(['rebase', '--onto', 'abc123', 'def456'])
+    expect(() => git.rebase('abc123', { upstream: '-x' })).toThrow(/upstream must not start/)
+  })
+
   test('rebase --continue stubs the editor through git config, not an env var', () => {
     const { runner, calls } = recorder(res(0))
     new Git('/repo', { runner }).rebaseContinue()

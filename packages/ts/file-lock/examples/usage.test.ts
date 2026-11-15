@@ -3,7 +3,7 @@
  * export appears here at least once; `tests/exports.test.ts` checks that.
  */
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -14,6 +14,7 @@ import {
   holderGone,
   LockTimeoutError,
   MARKER_STALE_MS,
+  NotALockError,
   pidAlive,
   releaseLock,
   touchLock,
@@ -26,6 +27,7 @@ import {
   type LockClaim,
   type LockContent,
   type LockOptions,
+  type NotALockKind,
   type SectionHolder,
   type StaleRule,
 } from '@osdlc/file-lock'
@@ -112,4 +114,26 @@ test('a lock kept alive by its holder touching it', () => {
   if (!claim.ok) throw new Error('expected a free lock')
   expect(touchLock(lock, claim.token)).toBe(true)
   expect(releaseLock(lock, claim.token)).toBe(true)
+})
+
+test('a lock only its owner can read', () => {
+  const lock = join(dir, 'publisher.lock')
+  const claim = claimLock(lock, { pid: process.pid }, { isStale: () => false, mode: 0o600 })
+  if (!claim.ok) throw new Error('expected a free lock')
+  expect(statSync(lock).mode & 0o777).toBe(0o600)
+  expect(releaseLock(lock, claim.token)).toBe(true)
+})
+
+test('something other than a lock file at the path is reported, not retried', () => {
+  // A directory left by an older mkdir-based lock.
+  const lock = join(dir, 'old.lock')
+  mkdirSync(lock)
+  let kind: NotALockKind | undefined
+  try {
+    claimLock(lock, { pid: process.pid }, { isStale: () => true })
+  } catch (err) {
+    if (!(err instanceof NotALockError)) throw err
+    kind = err.kind
+  }
+  expect(kind).toBe('directory')
 })

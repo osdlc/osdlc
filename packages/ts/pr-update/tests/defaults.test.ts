@@ -69,22 +69,37 @@ describe('standalonePorts', () => {
 
   test('verify: test runs test_command', async () => {
     const cfg = prUpdateStandaloneSchema.parse({ verify: 'test', test_command: 'make test' })
-    expect(await standalonePorts(cfg).resolveVerifyVerbs({ which: 'test', trust: false })).toEqual([
-      'make test',
-    ])
+    expect(
+      await standalonePorts(cfg).resolveVerifyVerbs({
+        which: 'test',
+        trust: false,
+        repo: 'o/r',
+        checkout: '/repo',
+      }),
+    ).toEqual(['make test'])
   })
 
   test.each([undefined, null])('verify: test with test_command %p fails loudly', async (cmd) => {
     const cfg = prUpdateStandaloneSchema.parse({ verify: 'test', test_command: cmd })
     await expect(
-      standalonePorts(cfg).resolveVerifyVerbs({ which: 'test', trust: false }),
+      standalonePorts(cfg).resolveVerifyVerbs({
+        which: 'test',
+        trust: false,
+        repo: 'o/r',
+        checkout: '/repo',
+      }),
     ).rejects.toThrow('verify: test needs test_command')
   })
 
   test('verify: check fails loudly even with test_command set', async () => {
     const cfg = prUpdateStandaloneSchema.parse({ verify: 'check', test_command: 'make test' })
     await expect(
-      standalonePorts(cfg).resolveVerifyVerbs({ which: 'check', trust: false }),
+      standalonePorts(cfg).resolveVerifyVerbs({
+        which: 'check',
+        trust: false,
+        repo: 'o/r',
+        checkout: '/repo',
+      }),
     ).rejects.toThrow('verify: check has no meaning in a standalone run')
   })
 })

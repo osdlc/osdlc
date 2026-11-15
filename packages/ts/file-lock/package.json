@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/file-lock",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Cross-process exclusive file locks for Node.js: a held lock with an owner token, a staleness rule you choose (holder process gone, untouched too long) and race-safe takeover of a stale lock, plus a short synchronous critical section built on it.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",

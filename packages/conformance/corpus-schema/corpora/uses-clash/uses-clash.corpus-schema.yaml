@@ -1,0 +1,6 @@
+corpus-schema: 0
+level: 2
+extends:
+  sdlc: "./sdlc"
+  other: "./other"
+uses: [sdlc/*, other/tasks]

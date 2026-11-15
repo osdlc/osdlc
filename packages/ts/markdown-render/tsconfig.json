@@ -1,0 +1,16 @@
+{
+  "extends": "@osdlc/tsconfig/vue",
+  "compilerOptions": {
+    // A renderer for ES2022 hosts: the DOM (the mermaid seam), and no ambient types but node's.
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"]
+  },
+  "include": [
+    "src/**/*.ts",
+    "tests/**/*.ts",
+    "examples/**/*.ts",
+    "benches/**/*.ts",
+    "vitest.config.ts"
+  ]
+}

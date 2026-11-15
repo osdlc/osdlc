@@ -1,0 +1,12 @@
+#!/bin/sh
+# .git/hooks/pre-push: review what this branch changes before it is pushed.
+#
+# Compares against the upstream branch when there is one, else main. Advisory:
+# findings are printed and the push goes ahead. Add --blocking to stop the push
+# on a violation; `git push --no-verify` skips the hook once.
+if git rev-parse --verify --quiet '@{u}' >/dev/null; then
+  base='@{u}'
+else
+  base=main
+fi
+exec npx --no-install rule-review --base "$base"

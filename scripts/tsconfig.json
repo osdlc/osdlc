@@ -1,9 +1,10 @@
 {
   // Typechecks the TypeScript repo tooling in this directory. Node runs these
   // files directly (type stripping), so this only checks; nothing is emitted.
-  // Standalone rather than extending @osdlc/tsconfig: the root project does not
-  // depend on the workspace packages, and Node's type stripping needs settings
-  // the library presets do not set (erasableSyntaxOnly, .ts import paths).
+  // Standalone rather than extending @osdlc/tsconfig: Node's type stripping
+  // needs settings the library presets do not set (erasableSyntaxOnly, .ts
+  // import paths). The scripts import @osdlc/package-checks through its built
+  // dist/, so run `pnpm run build:tooling` before `typecheck:scripts`.
   "compilerOptions": {
     "target": "ES2023",
     "lib": ["ES2023"],

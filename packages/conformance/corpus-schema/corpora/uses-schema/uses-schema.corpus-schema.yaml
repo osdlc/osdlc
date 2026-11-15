@@ -1,0 +1,5 @@
+corpus-schema: 0
+level: 2
+extends:
+  sdlc: "./sdlc"
+uses: [sdlc/tasks]

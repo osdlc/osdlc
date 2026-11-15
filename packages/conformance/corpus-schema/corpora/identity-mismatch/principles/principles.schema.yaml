@@ -1,0 +1,2 @@
+type: object
+x-identity: "pkg:npm/%40acme/org@1.0.0#principles"

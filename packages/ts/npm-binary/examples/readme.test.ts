@@ -167,6 +167,8 @@ test.skipIf(!posixHost)(
     expect(result.stderr).toContain(`package=@acme/tool-${platformKey(host!)}`)
     expect(result.exitCode).toBe(7)
   },
+  // The first call to install() runs `npm pack` twice, which overruns the 5 s default on a busy CI runner.
+  30_000,
 )
 
 test.skipIf(!posixHost)(

@@ -1,0 +1,3220 @@
+{
+  "family": "markdown-link",
+  "reference": "rust",
+  "referenceVersion": "0.9.1",
+  "sections": {
+    "code": {
+      "description": "Blank fenced and inline code in `source`. `expect.commonmark` is `strip_code`'s output, `expect.skill_export` the output under the skill-export rules. Both keep the number of characters, so offsets here count characters. Under CommonMark a fence is found inside a list item or a block quote (a fence indented to the item's content column opens, and it ends with its container), a backtick after an odd run of `\\` is literal, and a code span in a table row (a line starting with `|`) stays in its cell: a `|` not escaped as `\\|` ends the cell. Skill-export knows no containers, does not honour the escape and does not cut a row.",
+      "cases": [
+        {
+          "name": "backtick_fence",
+          "input": {
+            "source": "a\n```\n[[x]]\n```\nb\n"
+          },
+          "expect": {
+            "commonmark": "a\n   \n     \n   \nb\n",
+            "skill_export": "a\n   \n     \n   \nb\n"
+          }
+        },
+        {
+          "name": "tilde_fence",
+          "input": {
+            "source": "a\n~~~\n[[x]]\n~~~\nb\n"
+          },
+          "expect": {
+            "commonmark": "a\n   \n     \n   \nb\n",
+            "skill_export": "a\n   \n     \n   \nb\n"
+          }
+        },
+        {
+          "name": "fence_with_info_string",
+          "input": {
+            "source": "```md\n[[x]]\n```\nb\n"
+          },
+          "expect": {
+            "commonmark": "     \n     \n   \nb\n",
+            "skill_export": "     \n     \n   \nb\n"
+          }
+        },
+        {
+          "name": "longer_fence_needs_a_close_at_least_as_long",
+          "input": {
+            "source": "````\n[[x]]\n```\n[[y]]\n`````\nb\n"
+          },
+          "expect": {
+            "commonmark": "    \n     \n   \n     \n     \nb\n",
+            "skill_export": "    \n     \n   \n     \n     \nb\n"
+          }
+        },
+        {
+          "name": "fence_closes_only_on_its_own_character",
+          "input": {
+            "source": "```\n~~~\n[[x]]\n```\nb\n"
+          },
+          "expect": {
+            "commonmark": "   \n   \n     \n   \nb\n",
+            "skill_export": "   \n   \n     \n   \nb\n"
+          }
+        },
+        {
+          "name": "fence_indented_up_to_three_spaces",
+          "input": {
+            "source": "   ~~~\n[[x]]\n   ~~~\nb\n"
+          },
+          "expect": {
+            "commonmark": "      \n     \n      \nb\n",
+            "skill_export": "      \n     \n      \nb\n"
+          }
+        },
+        {
+          "name": "unclosed_fence_runs_to_the_end",
+          "input": {
+            "source": "a\n```\n[[x]]\n\n[[y]]\n"
+          },
+          "expect": {
+            "commonmark": "a\n   \n     \n\n     \n",
+            "skill_export": "a\n   \n     \n\n     \n"
+          }
+        },
+        {
+          "name": "crlf_fence",
+          "input": {
+            "source": "```\r\n[[x]]\r\n```\r\nb\r\n"
+          },
+          "expect": {
+            "commonmark": "    \n      \n    \nb\r\n",
+            "skill_export": "    \n      \n    \nb\r\n"
+          }
+        },
+        {
+          "name": "inline_span",
+          "input": {
+            "source": "a `[[x]]` b"
+          },
+          "expect": {
+            "commonmark": "a         b",
+            "skill_export": "a         b"
+          }
+        },
+        {
+          "name": "double_backtick_span_holds_a_backtick",
+          "input": {
+            "source": "a ``x ` [[y]]`` b"
+          },
+          "expect": {
+            "commonmark": "a               b",
+            "skill_export": "a               b"
+          }
+        },
+        {
+          "name": "triple_backtick_span_inside_a_line",
+          "input": {
+            "source": "a ```[[x]]``` b"
+          },
+          "expect": {
+            "commonmark": "a             b",
+            "skill_export": "a             b"
+          }
+        },
+        {
+          "name": "unmatched_backtick_is_text",
+          "input": {
+            "source": "a `[[x]] b"
+          },
+          "expect": {
+            "commonmark": "a `[[x]] b",
+            "skill_export": "a `[[x]] b"
+          }
+        },
+        {
+          "name": "unmatched_double_backtick_is_text",
+          "input": {
+            "source": "a ``[[x]]` b"
+          },
+          "expect": {
+            "commonmark": "a ``[[x]]` b",
+            "skill_export": "a ``[[x]]` b"
+          }
+        },
+        {
+          "name": "span_crosses_a_line_break",
+          "input": {
+            "source": "a `x\n[[y]]` b"
+          },
+          "expect": {
+            "commonmark": "a   \n       b",
+            "skill_export": "a   \n       b"
+          }
+        },
+        {
+          "name": "span_stops_at_a_blank_line",
+          "input": {
+            "source": "a `x\n\n[[y]]` b"
+          },
+          "expect": {
+            "commonmark": "a `x\n\n[[y]]` b",
+            "skill_export": "a `x\n\n[[y]]` b"
+          }
+        },
+        {
+          "name": "span_stops_at_a_fence_line",
+          "input": {
+            "source": "a `x\n~~~\n[[y]]`\n"
+          },
+          "expect": {
+            "commonmark": "a `x\n   \n      \n",
+            "skill_export": "a `x\n   \n      \n"
+          }
+        },
+        {
+          "name": "multibyte_inside_a_span",
+          "input": {
+            "source": "`日本語` [[x]]"
+          },
+          "expect": {
+            "commonmark": "      [[x]]",
+            "skill_export": "      [[x]]"
+          }
+        },
+        {
+          "name": "multibyte_inside_a_fence",
+          "input": {
+            "source": "~~~\nsanté [[x]]\n~~~\n"
+          },
+          "expect": {
+            "commonmark": "   \n           \n   \n",
+            "skill_export": "   \n           \n   \n"
+          }
+        },
+        {
+          "name": "plain_text_is_unchanged",
+          "input": {
+            "source": "[[x]] and #tag, no code\n"
+          },
+          "expect": {
+            "commonmark": "[[x]] and #tag, no code\n",
+            "skill_export": "[[x]] and #tag, no code\n"
+          }
+        },
+        {
+          "name": "span_stops_at_a_list_item",
+          "input": {
+            "source": "- press the ` key\n- see [[x]] with `ls`"
+          },
+          "expect": {
+            "commonmark": "- press the ` key\n- see [[x]] with     ",
+            "skill_export": "- press the      \n                  ls`"
+          }
+        },
+        {
+          "name": "span_stops_at_an_ordered_list_item",
+          "input": {
+            "source": "a `b\n1. item `c`"
+          },
+          "expect": {
+            "commonmark": "a `b\n1. item    ",
+            "skill_export": "a   \n         c`"
+          }
+        },
+        {
+          "name": "span_stops_at_a_heading",
+          "input": {
+            "source": "Some `text\n## Heading `x`"
+          },
+          "expect": {
+            "commonmark": "Some `text\n## Heading    ",
+            "skill_export": "Some      \n            x`"
+          }
+        },
+        {
+          "name": "span_stops_at_a_block_quote",
+          "input": {
+            "source": "Some `text\n> quote [[q]] `y`"
+          },
+          "expect": {
+            "commonmark": "Some `text\n> quote [[q]]    ",
+            "skill_export": "Some      \n               y`"
+          }
+        },
+        {
+          "name": "span_stops_at_a_thematic_break",
+          "input": {
+            "source": "a `b\n***\nc`"
+          },
+          "expect": {
+            "commonmark": "a `b\n***\nc`",
+            "skill_export": "a   \n   \n  "
+          }
+        },
+        {
+          "name": "line_start_triple_backtick_span_is_inline",
+          "input": {
+            "source": "```js``` is inline\n[[a]]\n\n[[b]]\n"
+          },
+          "expect": {
+            "commonmark": "         is inline\n[[a]]\n\n[[b]]\n",
+            "skill_export": "                  \n     \n\n     \n"
+          }
+        },
+        {
+          "name": "closing_fence_line_holds_only_the_marker",
+          "input": {
+            "source": "```\na\n```python\n[[x]]\n```\n[[y]]\n"
+          },
+          "expect": {
+            "commonmark": "   \n \n         \n     \n   \n[[y]]\n",
+            "skill_export": "   \n \n         \n[[x]]\n   \n     \n"
+          }
+        },
+        {
+          "name": "longer_run_does_not_close_a_shorter_span",
+          "input": {
+            "source": "``a```b``"
+          },
+          "expect": {
+            "commonmark": "         ",
+            "skill_export": "        `"
+          }
+        },
+        {
+          "name": "span_does_not_leave_a_heading_line",
+          "input": {
+            "source": "# Title `a\nsee [[x]] and `b`"
+          },
+          "expect": {
+            "commonmark": "# Title `a\nsee [[x]] and    ",
+            "skill_export": "# Title   \n               b`"
+          }
+        },
+        {
+          "name": "span_does_not_cross_table_rows",
+          "input": {
+            "source": "| key | note |\n|---|---|\n| ` | backtick |\n| [[x]] | `code` |"
+          },
+          "expect": {
+            "commonmark": "| key | note |\n|---|---|\n| ` | backtick |\n| [[x]] |        |",
+            "skill_export": "| key | note |\n|---|---|\n|               \n           code` |"
+          }
+        },
+        {
+          "name": "span_stops_at_a_line_starting_with_a_pipe",
+          "input": {
+            "source": "a `b\n| [[x]] | `c` |"
+          },
+          "expect": {
+            "commonmark": "a `b\n| [[x]] |     |",
+            "skill_export": "a   \n           c` |"
+          }
+        },
+        {
+          "name": "a_later_span_closes_after_an_unclosed_run",
+          "input": {
+            "source": "`` a `[[x]]` b"
+          },
+          "expect": {
+            "commonmark": "`` a         b",
+            "skill_export": "`` a         b"
+          }
+        },
+        {
+          "name": "a_later_span_closes_on_a_longer_run_after_an_unclosed_run",
+          "input": {
+            "source": "x ``` ` [[x]] `` y"
+          },
+          "expect": {
+            "commonmark": "x ``` ` [[x]] `` y",
+            "skill_export": "x ```          ` y"
+          }
+        },
+        {
+          "name": "astral_character_inside_a_span",
+          "input": {
+            "source": "`😀` [[x]]"
+          },
+          "expect": {
+            "commonmark": "    [[x]]",
+            "skill_export": "    [[x]]"
+          }
+        },
+        {
+          "name": "escaped_backtick_is_literal",
+          "input": {
+            "source": "See \\`[[Note]]\\` here"
+          },
+          "expect": {
+            "commonmark": "See \\`[[Note]]\\` here",
+            "skill_export": "See \\            here"
+          }
+        },
+        {
+          "name": "escaped_backtick_then_a_real_span",
+          "input": {
+            "source": "a \\`b` [[Note]] `c`"
+          },
+          "expect": {
+            "commonmark": "a \\`b            c`",
+            "skill_export": "a \\    [[Note]]    "
+          }
+        },
+        {
+          "name": "escaped_backslash_does_not_escape_the_backtick",
+          "input": {
+            "source": "a \\\\`b` c"
+          },
+          "expect": {
+            "commonmark": "a \\\\    c",
+            "skill_export": "a \\\\    c"
+          }
+        },
+        {
+          "name": "only_the_first_backtick_of_a_run_is_escaped",
+          "input": {
+            "source": "\\``x` y"
+          },
+          "expect": {
+            "commonmark": "\\`    y",
+            "skill_export": "\\``x` y"
+          }
+        },
+        {
+          "name": "backslash_inside_a_span_does_not_stop_the_close",
+          "input": {
+            "source": "`a\\` b"
+          },
+          "expect": {
+            "commonmark": "     b",
+            "skill_export": "     b"
+          }
+        },
+        {
+          "name": "fence_in_a_list_item",
+          "input": {
+            "source": "- item\n  ```\n  [[a]]\n  ```\nafter [[b]]\n"
+          },
+          "expect": {
+            "commonmark": "- item\n     \n       \n     \nafter [[b]]\n",
+            "skill_export": "- item\n     \n       \n     \nafter [[b]]\n"
+          }
+        },
+        {
+          "name": "fence_in_a_nested_list_item",
+          "input": {
+            "source": "- a\n  - b\n    ```\n    [[x]]\n    ```\n  - c\n"
+          },
+          "expect": {
+            "commonmark": "- a\n  - b\n       \n         \n       \n  - c\n",
+            "skill_export": "- a\n  - b\n       \n         \n       \n  - c\n"
+          }
+        },
+        {
+          "name": "fence_indented_to_a_wide_content_column",
+          "input": {
+            "source": "10. item\n    ```\n    [[x]]\n    ```\n[[y]]\n"
+          },
+          "expect": {
+            "commonmark": "10. item\n       \n         \n       \n[[y]]\n",
+            "skill_export": "10. item\n       \n         \n       \n[[y]]\n"
+          }
+        },
+        {
+          "name": "fence_in_a_block_quote",
+          "input": {
+            "source": "> ```\n> [[a]]\n> ```\n[[b]]\n"
+          },
+          "expect": {
+            "commonmark": "     \n       \n     \n[[b]]\n",
+            "skill_export": ">    \n       \n     \n[[b]]\n"
+          }
+        },
+        {
+          "name": "unterminated_fence_in_a_list_item",
+          "input": {
+            "source": "- item\n  ```\n  [[a]]\n\n  [[b]]\nafter [[c]]\n"
+          },
+          "expect": {
+            "commonmark": "- item\n     \n       \n\n       \nafter [[c]]\n",
+            "skill_export": "- item\n     \n       \n\n       \n           \n"
+          }
+        },
+        {
+          "name": "unterminated_fence_in_a_block_quote",
+          "input": {
+            "source": "> ```\n> [[a]]\n\n[[b]]\n"
+          },
+          "expect": {
+            "commonmark": "     \n       \n\n[[b]]\n",
+            "skill_export": "> ```\n> [[a]]\n\n[[b]]\n"
+          }
+        },
+        {
+          "name": "table_cell_span_is_cut_at_a_pipe",
+          "input": {
+            "source": "| `a | b` | `c` |\n"
+          },
+          "expect": {
+            "commonmark": "| `a | b` |     |\n",
+            "skill_export": "|         |     |\n"
+          }
+        },
+        {
+          "name": "table_cell_span_keeps_an_escaped_pipe",
+          "input": {
+            "source": "| `a \\| b` | c |\n"
+          },
+          "expect": {
+            "commonmark": "|          | c |\n",
+            "skill_export": "|          | c |\n"
+          }
+        },
+        {
+          "name": "table_row_in_a_list_item",
+          "input": {
+            "source": "- row\n  | `a | b` | `c` |\n"
+          },
+          "expect": {
+            "commonmark": "- row\n  | `a | b` |     |\n",
+            "skill_export": "- row\n  |         |     |\n"
+          }
+        },
+        {
+          "name": "blank_line_in_a_block_quote_keeps_a_list_item_fence",
+          "input": {
+            "source": "> - ```\n>   x\n>\n>   [[y]]\n>   ```\n[[z]]\n"
+          },
+          "expect": {
+            "commonmark": "       \n     \n \n         \n       \n[[z]]\n",
+            "skill_export": "> -    \n     \n \n         \n       \n[[z]]\n"
+          }
+        },
+        {
+          "name": "ordered_item_not_from_one_does_not_interrupt_a_paragraph",
+          "input": {
+            "source": "Text\n2. ```\n   [[a]]\n"
+          },
+          "expect": {
+            "commonmark": "Text\n2. ```\n   [[a]]\n",
+            "skill_export": "Text\n2. ```\n   [[a]]\n"
+          }
+        },
+        {
+          "name": "thematic_break_dashes_then_ordered_item_not_from_one",
+          "input": {
+            "source": "---\n2. ```\n   [[x]]\n   ```\n[[y]]"
+          },
+          "expect": {
+            "commonmark": "---\n      \n        \n      \n[[y]]",
+            "skill_export": "---\n2. ```\n   [[x]]\n      \n     "
+          }
+        },
+        {
+          "name": "thematic_break_stars_then_ordered_item_not_from_one",
+          "input": {
+            "source": "***\n3. ```\n   [[x]]\n   ```\n[[y]]"
+          },
+          "expect": {
+            "commonmark": "***\n      \n        \n      \n[[y]]",
+            "skill_export": "***\n3. ```\n   [[x]]\n      \n     "
+          }
+        },
+        {
+          "name": "setext_equals_underline_then_ordered_item_not_from_one",
+          "input": {
+            "source": "Title\n===\n2. ```\n   [[x]]\n   ```\n[[y]]"
+          },
+          "expect": {
+            "commonmark": "Title\n===\n      \n        \n      \n[[y]]",
+            "skill_export": "Title\n===\n2. ```\n   [[x]]\n      \n     "
+          }
+        },
+        {
+          "name": "setext_dashes_underline_then_ordered_item_not_from_one",
+          "input": {
+            "source": "Title\n---\n2. ```\n   [[x]]\n   ```\n[[y]]"
+          },
+          "expect": {
+            "commonmark": "Title\n---\n      \n        \n      \n[[y]]",
+            "skill_export": "Title\n---\n2. ```\n   [[x]]\n      \n     "
+          }
+        },
+        {
+          "name": "atx_heading_then_ordered_item_not_from_one",
+          "input": {
+            "source": "# H\n2. ```\n   [[x]]\n   ```\n[[y]]"
+          },
+          "expect": {
+            "commonmark": "# H\n      \n        \n      \n[[y]]",
+            "skill_export": "# H\n2. ```\n   [[x]]\n      \n     "
+          }
+        },
+        {
+          "name": "equals_without_a_paragraph_is_paragraph_text",
+          "input": {
+            "source": "===\n2. ```\n   [[x]]\n   ```\n[[y]]"
+          },
+          "expect": {
+            "commonmark": "===\n2. ```\n   [[x]]\n      \n     ",
+            "skill_export": "===\n2. ```\n   [[x]]\n      \n     "
+          }
+        },
+        {
+          "name": "ordered_item_from_one_interrupts_a_paragraph",
+          "input": {
+            "source": "Text\n1. ```\n   [[a]]\n   ```\n[[b]]\n"
+          },
+          "expect": {
+            "commonmark": "Text\n      \n        \n      \n[[b]]\n",
+            "skill_export": "Text\n1. ```\n   [[a]]\n      \n     \n"
+          }
+        },
+        {
+          "name": "ordered_item_not_from_one_after_a_blank_line_opens",
+          "input": {
+            "source": "Text\n\n2. ```\n   [[a]]\n   ```\n[[b]]\n"
+          },
+          "expect": {
+            "commonmark": "Text\n\n      \n        \n      \n[[b]]\n",
+            "skill_export": "Text\n\n2. ```\n   [[a]]\n      \n     \n"
+          }
+        },
+        {
+          "name": "year_before_a_fence_is_paragraph_text",
+          "input": {
+            "source": "We met in\n1984. ```js\n[[Note]]\n"
+          },
+          "expect": {
+            "commonmark": "We met in\n1984. ```js\n[[Note]]\n",
+            "skill_export": "We met in\n1984. ```js\n[[Note]]\n"
+          }
+        },
+        {
+          "name": "tab_after_a_quote_marker_takes_one_column",
+          "input": {
+            "source": "> ```\n>\t[[a]]\n> ```\n"
+          },
+          "expect": {
+            "commonmark": "     \n       \n     \n",
+            "skill_export": ">    \n       \n     \n"
+          }
+        },
+        {
+          "name": "tab_after_a_list_marker_sets_the_content_column",
+          "input": {
+            "source": " -\t```\n\t[[a]]\n"
+          },
+          "expect": {
+            "commonmark": "      \n      \n",
+            "skill_export": " -\t```\n\t[[a]]\n"
+          }
+        },
+        {
+          "name": "thematic_break_is_not_a_list_item",
+          "input": {
+            "source": "- - -\n[[a]]\n"
+          },
+          "expect": {
+            "commonmark": "- - -\n[[a]]\n",
+            "skill_export": "- - -\n[[a]]\n"
+          }
+        },
+        {
+          "name": "number_with_a_dot_inside_is_not_a_list_item",
+          "input": {
+            "source": "1.5 ```\n[[a]]\n"
+          },
+          "expect": {
+            "commonmark": "1.5 ```\n[[a]]\n",
+            "skill_export": "1.5 ```\n[[a]]\n"
+          }
+        },
+        {
+          "name": "table_row_in_a_block_quote",
+          "input": {
+            "source": "> | `a | [[x]] | b` |\n"
+          },
+          "expect": {
+            "commonmark": "> | `a | [[x]] | b` |\n",
+            "skill_export": "> |                 |\n"
+          }
+        },
+        {
+          "name": "a_crlf_blank_line_ends_a_paragraph",
+          "input": {
+            "source": "para\r\n\r\n2. ```\r\n   [[a]]\r\n   ```\r\n[[b]]\r\n"
+          },
+          "expect": {
+            "commonmark": "para\r\n\r\n       \n         \n       \n[[b]]\r\n",
+            "skill_export": "para\r\n\r\n2. ```\r\n   [[a]]\r\n       \n      \n"
+          }
+        },
+        {
+          "name": "empty_bullet_does_not_interrupt_a_paragraph",
+          "input": {
+            "source": "Text\n*\n[[a]]\n"
+          },
+          "expect": {
+            "commonmark": "Text\n*\n[[a]]\n",
+            "skill_export": "Text\n*\n[[a]]\n"
+          }
+        },
+        {
+          "name": "empty_ordered_item_does_not_interrupt_a_paragraph",
+          "input": {
+            "source": "Text\n1.\n[[a]]\n"
+          },
+          "expect": {
+            "commonmark": "Text\n1.\n[[a]]\n",
+            "skill_export": "Text\n1.\n[[a]]\n"
+          }
+        },
+        {
+          "name": "bullet_interrupts_a_paragraph",
+          "input": {
+            "source": "Text\n- ```\n  [[a]]\n  ```\n[[b]]\n"
+          },
+          "expect": {
+            "commonmark": "Text\n     \n       \n     \n[[b]]\n",
+            "skill_export": "Text\n- ```\n  [[a]]\n     \n     \n"
+          }
+        },
+        {
+          "name": "ordered_item_with_paren_delimiter_from_one_interrupts_a_paragraph",
+          "input": {
+            "source": "Text\n1) ```\n   [[a]]\n   ```\n[[b]]\n"
+          },
+          "expect": {
+            "commonmark": "Text\n      \n        \n      \n[[b]]\n",
+            "skill_export": "Text\n1) ```\n   [[a]]\n      \n     \n"
+          }
+        },
+        {
+          "name": "ordered_item_with_paren_delimiter_not_from_one_does_not_interrupt_a_paragraph",
+          "input": {
+            "source": "Text\n2) ```\n   [[a]]\n"
+          },
+          "expect": {
+            "commonmark": "Text\n2) ```\n   [[a]]\n",
+            "skill_export": "Text\n2) ```\n   [[a]]\n"
+          }
+        },
+        {
+          "name": "ordered_item_from_one_with_leading_zeros_interrupts_a_paragraph",
+          "input": {
+            "source": "Text\n0001. ```\n      [[a]]\n      ```\n[[b]]\n"
+          },
+          "expect": {
+            "commonmark": "Text\n         \n           \n         \n[[b]]\n",
+            "skill_export": "Text\n0001.    \n           \n         \n[[b]]\n"
+          }
+        },
+        {
+          "name": "nested_ordered_item_not_from_one_does_not_interrupt_a_continuation",
+          "input": {
+            "source": "- a\n  2. ```\n  [[b]]\n"
+          },
+          "expect": {
+            "commonmark": "- a\n  2. ```\n  [[b]]\n",
+            "skill_export": "- a\n  2. ```\n  [[b]]\n"
+          }
+        },
+        {
+          "name": "indented_code_line_is_not_paragraph_text_for_a_following_item",
+          "input": {
+            "source": "    code\n2. ```\n[[a]]\n"
+          },
+          "expect": {
+            "commonmark": "    code\n      \n[[a]]\n",
+            "skill_export": "    code\n2. ```\n[[a]]\n"
+          }
+        }
+      ]
+    },
+    "inner": {
+      "description": "Parse a wikilink body `inner` (`embed` true reads it as an embed). `expect` is null when there is no link; else `target`, `heading`, `alias`, `target_at` (characters before the target in `inner`) and, when set, `block` and `size`.",
+      "cases": [
+        {
+          "name": "plain_target",
+          "input": {
+            "inner": "Note"
+          },
+          "expect": {
+            "target": "Note",
+            "heading": null,
+            "alias": null,
+            "target_at": 0
+          }
+        },
+        {
+          "name": "heading_and_alias",
+          "input": {
+            "inner": "a#h|Alias"
+          },
+          "expect": {
+            "target": "a",
+            "heading": "h",
+            "alias": "Alias",
+            "target_at": 0
+          }
+        },
+        {
+          "name": "whitespace_is_trimmed",
+          "input": {
+            "inner": " Note | a "
+          },
+          "expect": {
+            "target": "Note",
+            "heading": null,
+            "alias": "a",
+            "target_at": 1
+          }
+        },
+        {
+          "name": "escaped_pipe",
+          "input": {
+            "inner": "Note\\|a"
+          },
+          "expect": {
+            "target": "Note",
+            "heading": null,
+            "alias": "a",
+            "target_at": 0
+          }
+        },
+        {
+          "name": "escaped_pipe_after_a_heading",
+          "input": {
+            "inner": "Note#H\\|a"
+          },
+          "expect": {
+            "target": "Note",
+            "heading": "H",
+            "alias": "a",
+            "target_at": 0
+          }
+        },
+        {
+          "name": "only_one_backslash_is_the_escape",
+          "input": {
+            "inner": "Note\\\\|a"
+          },
+          "expect": {
+            "target": "Note\\",
+            "heading": null,
+            "alias": "a",
+            "target_at": 0
+          }
+        },
+        {
+          "name": "backslash_without_a_pipe_stays",
+          "input": {
+            "inner": "Note\\"
+          },
+          "expect": {
+            "target": "Note\\",
+            "heading": null,
+            "alias": null,
+            "target_at": 0
+          }
+        },
+        {
+          "name": "heading_keeps_later_hashes",
+          "input": {
+            "inner": "a#b#c"
+          },
+          "expect": {
+            "target": "a",
+            "heading": "b#c",
+            "alias": null,
+            "target_at": 0
+          }
+        },
+        {
+          "name": "alias_keeps_later_pipes",
+          "input": {
+            "inner": "a|b|c"
+          },
+          "expect": {
+            "target": "a",
+            "heading": null,
+            "alias": "b|c",
+            "target_at": 0
+          }
+        },
+        {
+          "name": "hash_in_the_alias_is_not_a_heading",
+          "input": {
+            "inner": "a#b|c#d"
+          },
+          "expect": {
+            "target": "a",
+            "heading": "b",
+            "alias": "c#d",
+            "target_at": 0
+          }
+        },
+        {
+          "name": "block_reference_is_split_from_the_heading",
+          "input": {
+            "inner": "Note#^block"
+          },
+          "expect": {
+            "target": "Note",
+            "heading": null,
+            "alias": null,
+            "target_at": 0,
+            "block": "block"
+          }
+        },
+        {
+          "name": "heading_only_has_no_target",
+          "input": {
+            "inner": "#H"
+          },
+          "expect": null
+        },
+        {
+          "name": "escaped_pipe_only_has_no_target",
+          "input": {
+            "inner": "\\|a"
+          },
+          "expect": null
+        },
+        {
+          "name": "blank_has_no_target",
+          "input": {
+            "inner": " "
+          },
+          "expect": null
+        },
+        {
+          "name": "alias_only_has_no_target",
+          "input": {
+            "inner": "|alias"
+          },
+          "expect": null
+        },
+        {
+          "name": "unicode_whitespace_is_trimmed",
+          "input": {
+            "inner": " Note|a"
+          },
+          "expect": {
+            "target": "Note",
+            "heading": null,
+            "alias": "a",
+            "target_at": 1
+          }
+        },
+        {
+          "name": "byte_order_mark_is_not_whitespace",
+          "input": {
+            "inner": "﻿Note"
+          },
+          "expect": {
+            "target": "﻿Note",
+            "heading": null,
+            "alias": null,
+            "target_at": 0
+          }
+        },
+        {
+          "name": "target_offset_counts_characters",
+          "input": {
+            "inner": " Café#x"
+          },
+          "expect": {
+            "target": "Café",
+            "heading": "x",
+            "alias": null,
+            "target_at": 1
+          }
+        },
+        {
+          "name": "heading_path_keeps_inner_hashes",
+          "input": {
+            "inner": "Note#Parent#Child"
+          },
+          "expect": {
+            "target": "Note",
+            "heading": "Parent#Child",
+            "alias": null,
+            "target_at": 0
+          }
+        },
+        {
+          "name": "block_id_is_trimmed",
+          "input": {
+            "inner": "Note#^ abc "
+          },
+          "expect": {
+            "target": "Note",
+            "heading": null,
+            "alias": null,
+            "target_at": 0,
+            "block": "abc"
+          }
+        },
+        {
+          "name": "embed_size_is_read_from_the_alias",
+          "input": {
+            "inner": "img.png|300",
+            "embed": true
+          },
+          "expect": {
+            "target": "img.png",
+            "heading": null,
+            "alias": "300",
+            "target_at": 0,
+            "size": {
+              "width": 300,
+              "height": null
+            }
+          }
+        },
+        {
+          "name": "embed_size_with_height_after_a_label",
+          "input": {
+            "inner": "img.png|alt text|640x480",
+            "embed": true
+          },
+          "expect": {
+            "target": "img.png",
+            "heading": null,
+            "alias": "alt text|640x480",
+            "target_at": 0,
+            "size": {
+              "width": 640,
+              "height": 480
+            }
+          }
+        },
+        {
+          "name": "a_link_has_no_size",
+          "input": {
+            "inner": "Note|300"
+          },
+          "expect": {
+            "target": "Note",
+            "heading": null,
+            "alias": "300",
+            "target_at": 0
+          }
+        },
+        {
+          "name": "embed_alias_that_is_not_a_size",
+          "input": {
+            "inner": "img.png|300px",
+            "embed": true
+          },
+          "expect": {
+            "target": "img.png",
+            "heading": null,
+            "alias": "300px",
+            "target_at": 0
+          }
+        }
+      ]
+    },
+    "url": {
+      "description": "A markdown link URL. `expect.vault_link` is `is_vault_link_url`, `expect.target` is `md_link_target`.",
+      "cases": [
+        {
+          "name": "note",
+          "input": {
+            "url": "Notes/x.md"
+          },
+          "expect": {
+            "vault_link": true,
+            "target": "Notes/x"
+          }
+        },
+        {
+          "name": "bare_extension_is_not_a_note",
+          "input": {
+            "url": ".md"
+          },
+          "expect": {
+            "vault_link": false,
+            "target": ""
+          }
+        },
+        {
+          "name": "upper_case_extension_is_not_a_note",
+          "input": {
+            "url": "x.MD"
+          },
+          "expect": {
+            "vault_link": false,
+            "target": "x"
+          }
+        },
+        {
+          "name": "repeated_extension_is_stripped_repeatedly",
+          "input": {
+            "url": "a.md.md"
+          },
+          "expect": {
+            "vault_link": true,
+            "target": "a"
+          }
+        },
+        {
+          "name": "lower_then_upper_extension",
+          "input": {
+            "url": "a.md.MD"
+          },
+          "expect": {
+            "vault_link": false,
+            "target": "a.md"
+          }
+        },
+        {
+          "name": "mixed_case_extension_is_stripped_once",
+          "input": {
+            "url": "a.Md"
+          },
+          "expect": {
+            "vault_link": false,
+            "target": "a"
+          }
+        },
+        {
+          "name": "percent_encoded_space",
+          "input": {
+            "url": "My%20Note.md"
+          },
+          "expect": {
+            "vault_link": true,
+            "target": "My Note"
+          }
+        },
+        {
+          "name": "percent_encoded_utf8",
+          "input": {
+            "url": "Caf%C3%A9.md"
+          },
+          "expect": {
+            "vault_link": true,
+            "target": "Café"
+          }
+        },
+        {
+          "name": "invalid_utf8_keeps_the_url",
+          "input": {
+            "url": "%C3.md"
+          },
+          "expect": {
+            "vault_link": true,
+            "target": "%C3"
+          }
+        },
+        {
+          "name": "bad_hex_stays",
+          "input": {
+            "url": "%ZZ.md"
+          },
+          "expect": {
+            "vault_link": true,
+            "target": "%ZZ"
+          }
+        },
+        {
+          "name": "short_escape_at_the_end_stays",
+          "input": {
+            "url": "a%2"
+          },
+          "expect": {
+            "vault_link": false,
+            "target": "a%2"
+          }
+        },
+        {
+          "name": "a_sign_is_not_a_hex_digit",
+          "input": {
+            "url": "a%+41.md"
+          },
+          "expect": {
+            "vault_link": true,
+            "target": "a%+41"
+          }
+        },
+        {
+          "name": "byte_order_mark_survives_decoding",
+          "input": {
+            "url": "%EF%BB%BFa.md"
+          },
+          "expect": {
+            "vault_link": true,
+            "target": "﻿a"
+          }
+        },
+        {
+          "name": "attachment_extension_ignores_case",
+          "input": {
+            "url": "img/photo.PNG"
+          },
+          "expect": {
+            "vault_link": true,
+            "target": "img/photo.PNG"
+          }
+        },
+        {
+          "name": "no_extension",
+          "input": {
+            "url": "folder.png/README"
+          },
+          "expect": {
+            "vault_link": false,
+            "target": "folder.png/README"
+          }
+        },
+        {
+          "name": "hidden_file_is_not_an_extension",
+          "input": {
+            "url": "dir/.png"
+          },
+          "expect": {
+            "vault_link": false,
+            "target": "dir/.png"
+          }
+        },
+        {
+          "name": "trailing_dot_is_no_extension",
+          "input": {
+            "url": "file."
+          },
+          "expect": {
+            "vault_link": false,
+            "target": "file."
+          }
+        },
+        {
+          "name": "scheme_is_not_checked_here",
+          "input": {
+            "url": "https://example.com/y.md"
+          },
+          "expect": {
+            "vault_link": true,
+            "target": "https://example.com/y"
+          }
+        }
+      ]
+    },
+    "body": {
+      "description": "Scan `body` for links (`options`: `code_rules` as `commonmark`, `skill-export` or `none`, `skip_html_comments`, `self_links`; each optional). `expect.links` are the links in order, each with `kind`, `raw`, `target`, `alias`, `at` (characters before the span), `text` (the source the span covers) and, when set, `heading`, `block`, `size`. `expect.abandoned` lists each `[[` given up on, with `reason`, `at`, `text` and `embed` when a `!` came before it. Every runner also checks that the plain link list agrees with the spanned one. A `!` after an odd run of `\\` is escaped: the link is a wikilink that starts at the `[[`.",
+      "cases": [
+        {
+          "name": "wikilinks_embeds_headings_and_aliases",
+          "input": {
+            "body": "See [[Target]] and ![[img.png]] and [[a#h|Alias]]."
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "Target",
+                "target": "Target",
+                "alias": null,
+                "at": 4,
+                "text": "[[Target]]"
+              },
+              {
+                "kind": "embed",
+                "raw": "img.png",
+                "target": "img.png",
+                "alias": null,
+                "at": 19,
+                "text": "![[img.png]]"
+              },
+              {
+                "kind": "wikilink",
+                "raw": "a#h|Alias",
+                "target": "a",
+                "alias": "Alias",
+                "at": 36,
+                "text": "[[a#h|Alias]]",
+                "heading": "h"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "links_come_in_order",
+          "input": {
+            "body": "[a](x.md) [[y]] [b](z.md)"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "x.md",
+                "target": "x",
+                "alias": null,
+                "at": 0,
+                "text": "[a](x.md)"
+              },
+              {
+                "kind": "wikilink",
+                "raw": "y",
+                "target": "y",
+                "alias": null,
+                "at": 10,
+                "text": "[[y]]"
+              },
+              {
+                "kind": "markdown",
+                "raw": "z.md",
+                "target": "z",
+                "alias": null,
+                "at": 16,
+                "text": "[b](z.md)"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "links_in_code_are_not_harvested",
+          "input": {
+            "body": "real [[Yes]]\n\n```\nfake [[No]]\n```\n\ninline `[[AlsoNo]]` done\n"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "Yes",
+                "target": "Yes",
+                "alias": null,
+                "at": 5,
+                "text": "[[Yes]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "absolute_urls_and_spaces_are_not_links",
+          "input": {
+            "body": "[a](Notes/x.md) [b](https://example.com/y.md) [c](<sp ace.md>)"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "Notes/x.md",
+                "target": "Notes/x",
+                "alias": null,
+                "at": 0,
+                "text": "[a](Notes/x.md)"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "other_schemes_are_not_links",
+          "input": {
+            "body": "[a](app:note.md) [b](mailto:x.md)"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "angled_url",
+          "input": {
+            "body": "[a](<x.md>)"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "x.md",
+                "target": "x",
+                "alias": null,
+                "at": 0,
+                "text": "[a](<x.md>)"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "percent_encoded_url",
+          "input": {
+            "body": "[a](Notes/My%20Note.md)"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "Notes/My%20Note.md",
+                "target": "Notes/My Note",
+                "alias": null,
+                "at": 0,
+                "text": "[a](Notes/My%20Note.md)"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "attachment_url",
+          "input": {
+            "body": "[p](img/photo.PNG) [see](README)"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "img/photo.PNG",
+                "target": "img/photo.PNG",
+                "alias": null,
+                "at": 0,
+                "text": "[p](img/photo.PNG)"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "empty_targets_are_dropped",
+          "input": {
+            "body": "[[]] [[ ]] [[|alias]]"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": [
+              {
+                "reason": "empty-target",
+                "at": 0,
+                "text": "[[]]"
+              },
+              {
+                "reason": "empty-target",
+                "at": 5,
+                "text": "[[ ]]"
+              },
+              {
+                "reason": "empty-target",
+                "at": 11,
+                "text": "[[|alias]]"
+              }
+            ]
+          }
+        },
+        {
+          "name": "a_bracket_inside_ends_the_link",
+          "input": {
+            "body": "[[a[b]] [[c]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "c",
+                "target": "c",
+                "alias": null,
+                "at": 8,
+                "text": "[[c]]"
+              }
+            ],
+            "abandoned": [
+              {
+                "reason": "bracket",
+                "at": 0,
+                "text": "[[a"
+              }
+            ]
+          }
+        },
+        {
+          "name": "markdown_link_starts_at_an_inner_bracket",
+          "input": {
+            "body": "[a[b](x.md)"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "x.md",
+                "target": "x",
+                "alias": null,
+                "at": 2,
+                "text": "[b](x.md)"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "unclosed_links",
+          "input": {
+            "body": "[[abc [a](x.md"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": [
+              {
+                "reason": "bracket",
+                "at": 0,
+                "text": "[[abc "
+              }
+            ]
+          }
+        },
+        {
+          "name": "wikilink_may_cross_a_line_break",
+          "input": {
+            "body": "[[a\nb]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "a\nb",
+                "target": "a\nb",
+                "alias": null,
+                "at": 0,
+                "text": "[[a\nb]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "embed_span_includes_the_bang",
+          "input": {
+            "body": "x ![[img.png|100]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "embed",
+                "raw": "img.png|100",
+                "target": "img.png",
+                "alias": "100",
+                "at": 2,
+                "text": "![[img.png|100]]",
+                "size": {
+                  "width": 100,
+                  "height": null
+                }
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "escaped_pipe_in_a_table_cell",
+          "input": {
+            "body": "| [[Note\\|alias]] |"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "Note\\|alias",
+                "target": "Note",
+                "alias": "alias",
+                "at": 2,
+                "text": "[[Note\\|alias]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "code_inside_a_wikilink_is_blanked_in_raw",
+          "input": {
+            "body": "[[a `x` b]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "a     b",
+                "target": "a     b",
+                "alias": null,
+                "at": 0,
+                "text": "[[a `x` b]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "offsets_count_characters",
+          "input": {
+            "body": "日本 [[x]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "x",
+                "target": "x",
+                "alias": null,
+                "at": 3,
+                "text": "[[x]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "offsets_after_astral_characters_and_code",
+          "input": {
+            "body": "📝 [[x]] `😀` [[y]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "x",
+                "target": "x",
+                "alias": null,
+                "at": 2,
+                "text": "[[x]]"
+              },
+              {
+                "kind": "wikilink",
+                "raw": "y",
+                "target": "y",
+                "alias": null,
+                "at": 12,
+                "text": "[[y]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "next_line_character_ends_a_url",
+          "input": {
+            "body": "[a](xy.md)"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "byte_order_mark_does_not_end_a_url",
+          "input": {
+            "body": "[a](x﻿y.md)"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "markdown",
+                "raw": "x﻿y.md",
+                "target": "x﻿y",
+                "alias": null,
+                "at": 0,
+                "text": "[a](x﻿y.md)"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "alias_keeps_code_inside_it",
+          "input": {
+            "body": "[[Note|the `a|b` label]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "Note|the       label",
+                "target": "Note",
+                "alias": "the `a|b` label",
+                "at": 0,
+                "text": "[[Note|the `a|b` label]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "an_empty_alias_is_none",
+          "input": {
+            "body": "[[Note|]] and [[Other| ]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "Note|",
+                "target": "Note",
+                "alias": null,
+                "at": 0,
+                "text": "[[Note|]]"
+              },
+              {
+                "kind": "wikilink",
+                "raw": "Other| ",
+                "target": "Other",
+                "alias": null,
+                "at": 14,
+                "text": "[[Other| ]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "a_pipe_in_code_in_the_target_is_not_the_alias_pipe",
+          "input": {
+            "body": "[[a `x|y` b|Label]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "a       b|Label",
+                "target": "a       b",
+                "alias": "Label",
+                "at": 0,
+                "text": "[[a `x|y` b|Label]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "a_pipe_only_in_code_gives_no_alias",
+          "input": {
+            "body": "[[a`|`b]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "a   b",
+                "target": "a   b",
+                "alias": null,
+                "at": 0,
+                "text": "[[a`|`b]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "body_block_and_size_fields",
+          "input": {
+            "body": "![[Note#^b1]] ![[pic.png|20x30]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "embed",
+                "raw": "Note#^b1",
+                "target": "Note",
+                "alias": null,
+                "at": 0,
+                "text": "![[Note#^b1]]",
+                "block": "b1"
+              },
+              {
+                "kind": "embed",
+                "raw": "pic.png|20x30",
+                "target": "pic.png",
+                "alias": "20x30",
+                "at": 14,
+                "text": "![[pic.png|20x30]]",
+                "size": {
+                  "width": 20,
+                  "height": 30
+                }
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "self_links_are_dropped_by_default",
+          "input": {
+            "body": "[[#Intro]] [[#^b1]]"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": [
+              {
+                "reason": "empty-target",
+                "at": 0,
+                "text": "[[#Intro]]"
+              },
+              {
+                "reason": "empty-target",
+                "at": 11,
+                "text": "[[#^b1]]"
+              }
+            ]
+          }
+        },
+        {
+          "name": "self_links_option_reads_a_bare_fragment",
+          "input": {
+            "body": "[[#Intro]] ![[#^b1|x]] [[|alias]]",
+            "options": {
+              "self_links": true
+            }
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "#Intro",
+                "target": "",
+                "alias": null,
+                "at": 0,
+                "text": "[[#Intro]]",
+                "heading": "Intro"
+              },
+              {
+                "kind": "embed",
+                "raw": "#^b1|x",
+                "target": "",
+                "alias": "x",
+                "at": 11,
+                "text": "![[#^b1|x]]",
+                "block": "b1"
+              }
+            ],
+            "abandoned": [
+              {
+                "reason": "empty-target",
+                "at": 23,
+                "text": "[[|alias]]"
+              }
+            ]
+          }
+        },
+        {
+          "name": "html_comment_links_are_found_by_default",
+          "input": {
+            "body": "a <!-- [[Hidden]] --> b"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "Hidden",
+                "target": "Hidden",
+                "alias": null,
+                "at": 7,
+                "text": "[[Hidden]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "html_comment_option_skips_links_inside",
+          "input": {
+            "body": "<!-- [[Hidden]] -->[[Shown]]\n<!-- open [[Gone]]",
+            "options": {
+              "skip_html_comments": true
+            }
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "Shown",
+                "target": "Shown",
+                "alias": null,
+                "at": 19,
+                "text": "[[Shown]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "html_comment_inside_code_does_not_open",
+          "input": {
+            "body": "`<!--` [[Kept]] -->",
+            "options": {
+              "skip_html_comments": true
+            }
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "Kept",
+                "target": "Kept",
+                "alias": null,
+                "at": 7,
+                "text": "[[Kept]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "commonmark_code_rules_end_a_span_at_a_heading",
+          "input": {
+            "body": "`a\n# [[H]] `\n[[In]]",
+            "options": {
+              "code_rules": "commonmark"
+            }
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "H",
+                "target": "H",
+                "alias": null,
+                "at": 5,
+                "text": "[[H]]"
+              },
+              {
+                "kind": "wikilink",
+                "raw": "In",
+                "target": "In",
+                "alias": null,
+                "at": 13,
+                "text": "[[In]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "skill_export_code_rules_option",
+          "input": {
+            "body": "`a\n# [[H]] `\n[[In]]",
+            "options": {
+              "code_rules": "skill-export"
+            }
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "In",
+                "target": "In",
+                "alias": null,
+                "at": 13,
+                "text": "[[In]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "abandoned_a_bracket_inside",
+          "input": {
+            "body": "A [[Shared|see [1]]] B [[x]y]] C"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": [
+              {
+                "reason": "bracket",
+                "at": 2,
+                "text": "[[Shared|see "
+              },
+              {
+                "reason": "bracket",
+                "at": 23,
+                "text": "[[x"
+              }
+            ]
+          }
+        },
+        {
+          "name": "abandoned_only_code_in_the_target",
+          "input": {
+            "body": "[[`Shared`]] [[`a` b]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "    b",
+                "target": "b",
+                "alias": null,
+                "at": 13,
+                "text": "[[`a` b]]"
+              }
+            ],
+            "abandoned": [
+              {
+                "reason": "code",
+                "at": 0,
+                "text": "[[`Shared`]]"
+              }
+            ]
+          }
+        },
+        {
+          "name": "abandoned_never_closed",
+          "input": {
+            "body": "é [[open\nto the end"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": [
+              {
+                "reason": "unclosed",
+                "at": 2,
+                "text": "[[open\nto the end"
+              }
+            ]
+          }
+        },
+        {
+          "name": "abandoned_an_embed_keeps_its_bang",
+          "input": {
+            "body": "![[]] ![[img [x]]]"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": [
+              {
+                "reason": "empty-target",
+                "at": 0,
+                "text": "![[]]",
+                "embed": true
+              },
+              {
+                "reason": "bracket",
+                "at": 6,
+                "text": "![[img ",
+                "embed": true
+              }
+            ]
+          }
+        },
+        {
+          "name": "abandoned_not_reported_in_code_or_a_skipped_comment",
+          "input": {
+            "body": "`[[]]` <!-- [[ --> [[ok]]",
+            "options": {
+              "skip_html_comments": true
+            }
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "ok",
+                "target": "ok",
+                "alias": null,
+                "at": 19,
+                "text": "[[ok]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "abandoned_not_reported_inside_a_link_found_after_it",
+          "input": {
+            "body": "[[[Note]]] [[a](x.md) [[[[Deep]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "Note",
+                "target": "Note",
+                "alias": null,
+                "at": 1,
+                "text": "[[Note]]"
+              },
+              {
+                "kind": "markdown",
+                "raw": "x.md",
+                "target": "x",
+                "alias": null,
+                "at": 12,
+                "text": "[a](x.md)"
+              },
+              {
+                "kind": "wikilink",
+                "raw": "Deep",
+                "target": "Deep",
+                "alias": null,
+                "at": 24,
+                "text": "[[Deep]]"
+              }
+            ],
+            "abandoned": [
+              {
+                "reason": "bracket",
+                "at": 22,
+                "text": "[["
+              }
+            ]
+          }
+        },
+        {
+          "name": "abandoned_a_run_of_brackets_is_one_span",
+          "input": {
+            "body": "[[[TODO and [[[[x"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": [
+              {
+                "reason": "bracket",
+                "at": 0,
+                "text": "[[[TODO and "
+              },
+              {
+                "reason": "unclosed",
+                "at": 12,
+                "text": "[[[[x"
+              }
+            ]
+          }
+        },
+        {
+          "name": "abandoned_a_run_takes_the_last_reason",
+          "input": {
+            "body": "[[[]] ![[[x"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": [
+              {
+                "reason": "empty-target",
+                "at": 0,
+                "text": "[[[]]"
+              },
+              {
+                "reason": "unclosed",
+                "at": 6,
+                "text": "![[[x",
+                "embed": true
+              }
+            ]
+          }
+        },
+        {
+          "name": "abandoned_an_embed_after_an_abandoned_link_is_not_part_of_its_run",
+          "input": {
+            "body": "[[x![[y [[![[z"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": [
+              {
+                "reason": "bracket",
+                "at": 0,
+                "text": "[[x!"
+              },
+              {
+                "reason": "bracket",
+                "at": 3,
+                "text": "![[y ",
+                "embed": true
+              },
+              {
+                "reason": "bracket",
+                "at": 8,
+                "text": "[[!"
+              },
+              {
+                "reason": "unclosed",
+                "at": 10,
+                "text": "![[z",
+                "embed": true
+              }
+            ]
+          }
+        },
+        {
+          "name": "abandoned_kept_before_an_embed",
+          "input": {
+            "body": "[[x![[B]] [[![[C]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "embed",
+                "raw": "B",
+                "target": "B",
+                "alias": null,
+                "at": 3,
+                "text": "![[B]]"
+              },
+              {
+                "kind": "embed",
+                "raw": "C",
+                "target": "C",
+                "alias": null,
+                "at": 12,
+                "text": "![[C]]"
+              }
+            ],
+            "abandoned": [
+              {
+                "reason": "bracket",
+                "at": 0,
+                "text": "[[x!"
+              },
+              {
+                "reason": "bracket",
+                "at": 10,
+                "text": "[[!"
+              }
+            ]
+          }
+        },
+        {
+          "name": "abandoned_a_skipped_comment_is_an_empty_target_not_code",
+          "input": {
+            "body": "[[<!-- todo -->]] [[`x`<!-- y -->]]",
+            "options": {
+              "skip_html_comments": true
+            }
+          },
+          "expect": {
+            "links": [],
+            "abandoned": [
+              {
+                "reason": "empty-target",
+                "at": 0,
+                "text": "[[<!-- todo -->]]"
+              },
+              {
+                "reason": "code",
+                "at": 18,
+                "text": "[[`x`<!-- y -->]]"
+              }
+            ]
+          }
+        },
+        {
+          "name": "fence_in_a_tight_list_item",
+          "input": {
+            "body": "- item\n  ```\n  [[a]]\n  ```\n- next [[b]]\n[[c]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "b",
+                "target": "b",
+                "alias": null,
+                "at": 34,
+                "text": "[[b]]"
+              },
+              {
+                "kind": "wikilink",
+                "raw": "c",
+                "target": "c",
+                "alias": null,
+                "at": 40,
+                "text": "[[c]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "fence_in_a_loose_list_item",
+          "input": {
+            "body": "- one\n\n  ```js\n  [[a]]\n\n  [[b]]\n  ```\n\n- two [[c]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "c",
+                "target": "c",
+                "alias": null,
+                "at": 45,
+                "text": "[[c]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "fence_in_a_nested_list_item",
+          "input": {
+            "body": "- a\n  - b\n    ```\n    [[x]]\n    ```\n  - [[c]]\n[[d]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "c",
+                "target": "c",
+                "alias": null,
+                "at": 40,
+                "text": "[[c]]"
+              },
+              {
+                "kind": "wikilink",
+                "raw": "d",
+                "target": "d",
+                "alias": null,
+                "at": 46,
+                "text": "[[d]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "fence_indented_to_a_wide_content_column",
+          "input": {
+            "body": "10. item\n    ```\n    [[x]]\n    ```\n\n[[y]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "y",
+                "target": "y",
+                "alias": null,
+                "at": 36,
+                "text": "[[y]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "tilde_fence_in_an_ordered_item",
+          "input": {
+            "body": "1. item\n   ~~~\n   [[x]]\n   ~~~\n2. [[y]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "y",
+                "target": "y",
+                "alias": null,
+                "at": 34,
+                "text": "[[y]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "fence_in_a_block_quote",
+          "input": {
+            "body": "> ```\n> [[a]]\n> ```\n\n[[b]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "b",
+                "target": "b",
+                "alias": null,
+                "at": 21,
+                "text": "[[b]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "fence_in_a_block_quote_in_a_list_item",
+          "input": {
+            "body": "- > ```\n  > [[a]]\n  > ```\n[[b]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "b",
+                "target": "b",
+                "alias": null,
+                "at": 26,
+                "text": "[[b]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "unterminated_fence_in_a_list_item_ends_with_the_item",
+          "input": {
+            "body": "- item\n  ```\n  [[a]]\n\n  [[b]]\nafter [[c]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "c",
+                "target": "c",
+                "alias": null,
+                "at": 36,
+                "text": "[[c]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "unterminated_fence_in_the_last_list_item_runs_to_the_end",
+          "input": {
+            "body": "- item\n  ```\n  [[a]]\n\n  [[b]]"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "unterminated_fence_in_a_block_quote_ends_with_the_quote",
+          "input": {
+            "body": "> ```\n> [[a]]\n\n[[b]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "b",
+                "target": "b",
+                "alias": null,
+                "at": 15,
+                "text": "[[b]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "fence_after_a_list_without_indent_is_not_in_the_item",
+          "input": {
+            "body": "- item\n\n```\n[[a]]\n```\n[[b]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "b",
+                "target": "b",
+                "alias": null,
+                "at": 22,
+                "text": "[[b]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "list_marker_without_a_space_is_not_a_container",
+          "input": {
+            "body": "-```\n[[a]]\n"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "a",
+                "target": "a",
+                "alias": null,
+                "at": 5,
+                "text": "[[a]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "code_span_in_a_table_cell",
+          "input": {
+            "body": "| `[[a]]` | [[x]] |"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "x",
+                "target": "x",
+                "alias": null,
+                "at": 12,
+                "text": "[[x]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "backtick_run_cut_by_a_cell_boundary",
+          "input": {
+            "body": "| `a | [[x]] | b` |"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "x",
+                "target": "x",
+                "alias": null,
+                "at": 7,
+                "text": "[[x]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "pipe_inside_backticks_still_ends_the_cell",
+          "input": {
+            "body": "| `[[a]]|b` | [[x]] |"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "a",
+                "target": "a",
+                "alias": null,
+                "at": 3,
+                "text": "[[a]]"
+              },
+              {
+                "kind": "wikilink",
+                "raw": "x",
+                "target": "x",
+                "alias": null,
+                "at": 14,
+                "text": "[[x]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "escaped_pipe_stays_in_the_code_span",
+          "input": {
+            "body": "| `[[a]] \\| b` | [[x]] |"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "x",
+                "target": "x",
+                "alias": null,
+                "at": 17,
+                "text": "[[x]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "table_row_in_a_list_item",
+          "input": {
+            "body": "- row\n  | `a | [[x]] | b` |\n[[y]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "x",
+                "target": "x",
+                "alias": null,
+                "at": 15,
+                "text": "[[x]]"
+              },
+              {
+                "kind": "wikilink",
+                "raw": "y",
+                "target": "y",
+                "alias": null,
+                "at": 28,
+                "text": "[[y]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "table_row_in_a_block_quote",
+          "input": {
+            "body": "> | `a | [[x]] | b` |\n\n[[y]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "x",
+                "target": "x",
+                "alias": null,
+                "at": 9,
+                "text": "[[x]]"
+              },
+              {
+                "kind": "wikilink",
+                "raw": "y",
+                "target": "y",
+                "alias": null,
+                "at": 23,
+                "text": "[[y]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "link_after_a_table_with_code_cells",
+          "input": {
+            "body": "| h |\n|---|\n| `a | [[x]] | b` |\n\nlater [[y]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "x",
+                "target": "x",
+                "alias": null,
+                "at": 19,
+                "text": "[[x]]"
+              },
+              {
+                "kind": "wikilink",
+                "raw": "y",
+                "target": "y",
+                "alias": null,
+                "at": 39,
+                "text": "[[y]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "escaped_bang_before_a_wikilink",
+          "input": {
+            "body": "\\![[Note]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "Note",
+                "target": "Note",
+                "alias": null,
+                "at": 2,
+                "text": "[[Note]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "escaped_bang_keeps_alias_and_heading",
+          "input": {
+            "body": "a \\![[Note#h|alias]] b"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "Note#h|alias",
+                "target": "Note",
+                "alias": "alias",
+                "at": 4,
+                "text": "[[Note#h|alias]]",
+                "heading": "h"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "escaped_backslash_leaves_an_embed",
+          "input": {
+            "body": "\\\\![[Note]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "embed",
+                "raw": "Note",
+                "target": "Note",
+                "alias": null,
+                "at": 2,
+                "text": "![[Note]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "three_backslashes_escape_the_bang",
+          "input": {
+            "body": "\\\\\\![[Note]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "Note",
+                "target": "Note",
+                "alias": null,
+                "at": 4,
+                "text": "[[Note]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "escaped_bang_before_an_unclosed_link",
+          "input": {
+            "body": "\\![[Note"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": [
+              {
+                "reason": "unclosed",
+                "at": 2,
+                "text": "[[Note"
+              }
+            ]
+          }
+        },
+        {
+          "name": "escaped_bang_before_an_empty_link",
+          "input": {
+            "body": "\\![[]]"
+          },
+          "expect": {
+            "links": [],
+            "abandoned": [
+              {
+                "reason": "empty-target",
+                "at": 2,
+                "text": "[[]]"
+              }
+            ]
+          }
+        },
+        {
+          "name": "escaped_bang_with_a_size_is_a_wikilink",
+          "input": {
+            "body": "\\![[img.png|300]]"
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "img.png|300",
+                "target": "img.png",
+                "alias": "300",
+                "at": 2,
+                "text": "[[img.png|300]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "no_code_rules_finds_a_link_in_a_span",
+          "input": {
+            "body": "`[[a]]` and [[b]]",
+            "options": {
+              "code_rules": "none"
+            }
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "a",
+                "target": "a",
+                "alias": null,
+                "at": 1,
+                "text": "[[a]]"
+              },
+              {
+                "kind": "wikilink",
+                "raw": "b",
+                "target": "b",
+                "alias": null,
+                "at": 12,
+                "text": "[[b]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "no_code_rules_finds_a_link_in_a_fence",
+          "input": {
+            "body": "```\n[[a]]\n```\n[[b]]",
+            "options": {
+              "code_rules": "none"
+            }
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "a",
+                "target": "a",
+                "alias": null,
+                "at": 4,
+                "text": "[[a]]"
+              },
+              {
+                "kind": "wikilink",
+                "raw": "b",
+                "target": "b",
+                "alias": null,
+                "at": 14,
+                "text": "[[b]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "no_code_rules_finds_a_link_in_a_list_fence",
+          "input": {
+            "body": "- ```\n  [[a]]\n  ```",
+            "options": {
+              "code_rules": "none"
+            }
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "a",
+                "target": "a",
+                "alias": null,
+                "at": 8,
+                "text": "[[a]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "no_code_rules_keeps_html_comments_working",
+          "input": {
+            "body": "<!-- [[a]] --> [[b]]",
+            "options": {
+              "code_rules": "none",
+              "skip_html_comments": true
+            }
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "b",
+                "target": "b",
+                "alias": null,
+                "at": 15,
+                "text": "[[b]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "skill_export_knows_no_containers",
+          "input": {
+            "body": "- item\n  ```\n  [[a]]\n  ```\n[[b]]",
+            "options": {
+              "code_rules": "skill-export"
+            }
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "b",
+                "target": "b",
+                "alias": null,
+                "at": 27,
+                "text": "[[b]]"
+              }
+            ],
+            "abandoned": []
+          }
+        },
+        {
+          "name": "skill_export_table_cell_is_not_cut",
+          "input": {
+            "body": "| `a | [[x]] | b` | [[y]] |",
+            "options": {
+              "code_rules": "skill-export"
+            }
+          },
+          "expect": {
+            "links": [
+              {
+                "kind": "wikilink",
+                "raw": "y",
+                "target": "y",
+                "alias": null,
+                "at": 20,
+                "text": "[[y]]"
+              }
+            ],
+            "abandoned": []
+          }
+        }
+      ]
+    },
+    "display": {
+      "description": "`display_text` of `text`.",
+      "cases": [
+        {
+          "name": "alias_or_target",
+          "input": {
+            "text": "See [[Target|the thing]] and ![[img.png]] and [[Plain]]."
+          },
+          "expect": {
+            "display": "See the thing and img.png and Plain."
+          }
+        },
+        {
+          "name": "embed_width",
+          "input": {
+            "text": "![[img.png|300]]"
+          },
+          "expect": {
+            "display": "img.png"
+          }
+        },
+        {
+          "name": "embed_width_and_height",
+          "input": {
+            "text": "![[assets/diagram.png|300x200]]"
+          },
+          "expect": {
+            "display": "assets/diagram.png"
+          }
+        },
+        {
+          "name": "embed_caption_then_size",
+          "input": {
+            "text": "![[img.png|a caption|300]]"
+          },
+          "expect": {
+            "display": "a caption"
+          }
+        },
+        {
+          "name": "embed_alias_that_is_not_a_size",
+          "input": {
+            "text": "![[img.png|300px]]"
+          },
+          "expect": {
+            "display": "300px"
+          }
+        },
+        {
+          "name": "link_alias_that_looks_like_a_size",
+          "input": {
+            "text": "[[Note|300]]"
+          },
+          "expect": {
+            "display": "300"
+          }
+        },
+        {
+          "name": "empty_alias",
+          "input": {
+            "text": "[[Note|]]"
+          },
+          "expect": {
+            "display": "Note"
+          }
+        },
+        {
+          "name": "heading_shows_the_target",
+          "input": {
+            "text": "[[Note#Heading]]"
+          },
+          "expect": {
+            "display": "Note"
+          }
+        },
+        {
+          "name": "escaped_pipe",
+          "input": {
+            "text": "[[Note\\|alias]]"
+          },
+          "expect": {
+            "display": "alias"
+          }
+        },
+        {
+          "name": "empty_link_is_dropped",
+          "input": {
+            "text": "a [[]] b"
+          },
+          "expect": {
+            "display": "a  b"
+          }
+        },
+        {
+          "name": "unclosed_link_is_kept",
+          "input": {
+            "text": "[[Note and ![[img"
+          },
+          "expect": {
+            "display": "[[Note and ![[img"
+          }
+        },
+        {
+          "name": "bang_before_a_link",
+          "input": {
+            "text": "Hi! [[A]]"
+          },
+          "expect": {
+            "display": "Hi! A"
+          }
+        },
+        {
+          "name": "markdown_link_is_kept",
+          "input": {
+            "text": "[a](b.md)"
+          },
+          "expect": {
+            "display": "[a](b.md)"
+          }
+        },
+        {
+          "name": "same_note_heading_with_alias",
+          "input": {
+            "text": "See [[#Setup|the setup steps]] first."
+          },
+          "expect": {
+            "display": "See the setup steps first."
+          }
+        },
+        {
+          "name": "same_note_heading",
+          "input": {
+            "text": "Jump to [[#Setup]]."
+          },
+          "expect": {
+            "display": "Jump to Setup."
+          }
+        },
+        {
+          "name": "same_note_block_embed_with_alias",
+          "input": {
+            "text": "![[#^block|quote]]"
+          },
+          "expect": {
+            "display": "quote"
+          }
+        },
+        {
+          "name": "same_note_block_embed_with_size",
+          "input": {
+            "text": "![[#^block|300]]"
+          },
+          "expect": {
+            "display": "^block"
+          }
+        },
+        {
+          "name": "same_note_heading_with_empty_alias",
+          "input": {
+            "text": "[[# Setup |]]"
+          },
+          "expect": {
+            "display": "Setup"
+          }
+        },
+        {
+          "name": "links_with_nothing_to_show",
+          "input": {
+            "text": "a [[]] b [[ ]] c [[#]] d"
+          },
+          "expect": {
+            "display": "a  b  c  d"
+          }
+        }
+      ]
+    },
+    "typed_ref": {
+      "description": "`parse_typed_ref` of `value`: `expect` is null or `kind`, `slug` and `alias`.",
+      "cases": [
+        {
+          "name": "plain",
+          "input": {
+            "value": "[[location/home]]"
+          },
+          "expect": {
+            "kind": "location",
+            "slug": "home",
+            "alias": null
+          }
+        },
+        {
+          "name": "alias",
+          "input": {
+            "value": "[[location/home|Home Base]]"
+          },
+          "expect": {
+            "kind": "location",
+            "slug": "home",
+            "alias": "Home Base"
+          }
+        },
+        {
+          "name": "nested_slug",
+          "input": {
+            "value": "[[events/2026/spring]]"
+          },
+          "expect": {
+            "kind": "events",
+            "slug": "2026/spring",
+            "alias": null
+          }
+        },
+        {
+          "name": "escaped_pipe",
+          "input": {
+            "value": "[[events/a\\|Alias]]"
+          },
+          "expect": {
+            "kind": "events",
+            "slug": "a",
+            "alias": "Alias"
+          }
+        },
+        {
+          "name": "alias_holding_a_pipe",
+          "input": {
+            "value": "[[events/a|b|c]]"
+          },
+          "expect": {
+            "kind": "events",
+            "slug": "a",
+            "alias": "b|c"
+          }
+        },
+        {
+          "name": "empty_alias",
+          "input": {
+            "value": "[[events/a|]]"
+          },
+          "expect": {
+            "kind": "events",
+            "slug": "a",
+            "alias": ""
+          }
+        },
+        {
+          "name": "heading_stays_in_the_slug",
+          "input": {
+            "value": "[[events/a#h]]"
+          },
+          "expect": {
+            "kind": "events",
+            "slug": "a#h",
+            "alias": null
+          }
+        },
+        {
+          "name": "no_slash",
+          "input": {
+            "value": "[[home]]"
+          },
+          "expect": null
+        },
+        {
+          "name": "empty_type",
+          "input": {
+            "value": "[[/home]]"
+          },
+          "expect": null
+        },
+        {
+          "name": "empty_slug",
+          "input": {
+            "value": "[[events/]]"
+          },
+          "expect": null
+        },
+        {
+          "name": "empty_slug_segment",
+          "input": {
+            "value": "[[events/a//b]]"
+          },
+          "expect": null
+        },
+        {
+          "name": "space_in_slug",
+          "input": {
+            "value": "[[events/a b]]"
+          },
+          "expect": null
+        },
+        {
+          "name": "space_in_type",
+          "input": {
+            "value": "[[my events/a]]"
+          },
+          "expect": null
+        },
+        {
+          "name": "unicode_space_in_slug",
+          "input": {
+            "value": "[[events/a b]]"
+          },
+          "expect": null
+        },
+        {
+          "name": "text_before",
+          "input": {
+            "value": "see [[events/a]]"
+          },
+          "expect": null
+        },
+        {
+          "name": "text_after",
+          "input": {
+            "value": "[[events/a]] x"
+          },
+          "expect": null
+        },
+        {
+          "name": "bracket_inside",
+          "input": {
+            "value": "[[events/a]]b]]"
+          },
+          "expect": null
+        },
+        {
+          "name": "line_break_in_alias",
+          "input": {
+            "value": "[[events/a|x\ny]]"
+          },
+          "expect": null
+        },
+        {
+          "name": "empty",
+          "input": {
+            "value": "[[]]"
+          },
+          "expect": null
+        }
+      ]
+    }
+  }
+}

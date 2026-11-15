@@ -44,10 +44,11 @@ pnpm run format:check
 
 ## The case file
 
-`packages/rust/markdown-link/tests/fixtures/conformance.json` is read by this
-package's `tests/conformance.test.ts` and by the Rust crate's
-`tests/conformance.rs`. A new case goes into that file, so both suites cover
-it. A change to the parsing behaviour lands in both packages in one pull
+`packages/conformance/markdown-link/suite.json` is run by this package's
+`tests/conformance.test.ts` and by the Rust crate's `tests/conformance.rs`.
+Write a new case's `input` by hand, then run
+`cargo run -p markdown-link --example conformance-write` in `packages/rust`
+to write its `expect`; never write that by hand. Both suites then cover it. A change to the parsing behaviour lands in both packages in one pull
 request.
 
 ## Code style

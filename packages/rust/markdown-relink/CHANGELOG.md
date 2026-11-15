@@ -7,6 +7,12 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.1](https://github.com/osdlc/osdlc/compare/markdown-relink/v0.4.0...markdown-relink/v0.4.1) - 2026-11-10
+
+### Other
+
+- updated the following local packages: yaml-splice, markdown-vault-fs, markdown-link, markdown-corpus
+
 ## [0.4.0] - 2026-11-06
 
 ### Changed

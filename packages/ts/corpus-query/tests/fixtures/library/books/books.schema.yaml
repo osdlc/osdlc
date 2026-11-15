@@ -1,0 +1,24 @@
+title: Book
+description: One book on the shelf.
+type: object
+required: [author, status]
+properties:
+  title: { type: string }
+  author: { type: string, x-ref: authors, description: A link to the author. }
+  status:
+    description: Where the book is in the reading list.
+    oneOf:
+      - { const: read, title: Read }
+      - { const: reading, title: Reading now }
+      - { const: queued, title: On the list }
+  rating: { type: number, description: Out of five. }
+  pages: { type: integer }
+  published: { type: string, format: date }
+  tags: { type: array, items: { type: string } }
+  owned: { type: boolean }
+  edition:
+    type: object
+    properties:
+      publisher: { type: string }
+      year: { type: integer }
+  sequel: { type: string, x-ref: books }

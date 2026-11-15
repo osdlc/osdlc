@@ -1,7 +1,7 @@
 {
   "family": "frontmatter-lossless",
   "reference": "rust",
-  "referenceVersion": "1.1.2",
+  "referenceVersion": "1.1.3",
   "sections": {
     "split": {
       "description": "Strict split of `source`. `yaml` is null when there is no block. `yaml_range` ({start, end}) and `body_start` are offsets into `source` in UTF-8 bytes, and `yaml_range` is {0, 0} when `yaml` is null. `open_eol` and `close_eol` are the line endings after the fences, `close_eol` empty when the file ends at the closing fence. `close_sep` is false only for an empty block with no line between its fences. `unterminated` is true when an opening fence never closes. Every runner also checks that composing the result with its shape gives `source` back byte for byte, and that the offsets index `yaml` and `body` in `source`.",

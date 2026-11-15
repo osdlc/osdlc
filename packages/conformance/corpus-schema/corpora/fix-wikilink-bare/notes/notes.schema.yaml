@@ -1,0 +1,4 @@
+type: object
+properties:
+  see: { type: string, x-ref: principles }
+  about: { type: string, x-ref: principles, x-ref-form: wikilink }

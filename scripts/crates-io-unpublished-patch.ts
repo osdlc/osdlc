@@ -36,8 +36,8 @@ import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { indexEntries, publishesToCratesIo } from './crates-io-index.ts'
-import type { CargoMetadata, CargoPackage, IndexEntry } from './crates-io-index.ts'
+import { indexEntries, publishesToCratesIo } from '@osdlc/package-checks'
+import type { CargoMetadata, CargoPackage, IndexEntry } from '@osdlc/package-checks'
 
 /**
  * The names of the `[[package]]` entries in a release-plz.toml that set

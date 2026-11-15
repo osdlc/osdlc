@@ -1,0 +1,5 @@
+type: object
+properties:
+  after: { type: string, x-ref: [tasks, decisions] }
+  empty: { type: string, x-ref: [] }
+  mixed: { type: string, x-ref: [tasks, 3] }

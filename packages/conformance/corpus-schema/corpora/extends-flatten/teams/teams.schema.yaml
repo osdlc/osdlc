@@ -1,0 +1,4 @@
+x-extends: rules
+unevaluatedProperties: false
+properties:
+  lead: { type: string }

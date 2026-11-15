@@ -4,4 +4,4 @@ status: current
 successor: "[Google](../vendors/Google.yaml)"
 ---
 
-See [[Antigravity]].
+See [[harnesses/Antigravity]].

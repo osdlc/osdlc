@@ -27,7 +27,8 @@ describe('antigravity plan', () => {
 
     const edits = adapter.plan({ prompt: 'x', permissions: { mode: 'edits' } })
     expect(edits.argv).not.toContain('--dangerously-skip-permissions')
-    expect(edits.notes.find((n) => n.field === 'permissions.mode')?.support).toBe('dropped')
+    expect(edits.argv.join(' ')).toContain('--mode accept-edits')
+    expect(edits.notes.find((n) => n.field === 'permissions.mode')?.support).toBe('native')
 
     const fullAuto = adapter.plan({ prompt: 'x', permissions: { mode: 'full-auto' } })
     expect(fullAuto.argv).toContain('--dangerously-skip-permissions')
@@ -68,13 +69,14 @@ describe('antigravity plan', () => {
     expect(planned.notes.find((n) => n.field === 'systemPrompt')?.support).toBe('emulated')
   })
 
-  test('context files use @ syntax; dirs are dropped', () => {
+  test('context files use @ syntax; dirs ride --add-dir', () => {
     const planned = adapter.plan({
       prompt: 'x',
       context: { files: ['src/a.ts'], dirs: ['/x'] },
     })
     expect(planned.argv[planned.argv.length - 1]).toContain('@src/a.ts')
-    expect(planned.notes.find((n) => n.field === 'context.dirs')?.support).toBe('dropped')
+    expect(planned.argv.join(' ')).toContain('--add-dir /x')
+    expect(planned.notes.find((n) => n.field === 'context.dirs')?.support).toBe('native')
   })
 
   test('resume and continue map natively, session pinning is dropped', () => {

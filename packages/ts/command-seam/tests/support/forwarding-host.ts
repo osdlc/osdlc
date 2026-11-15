@@ -12,6 +12,8 @@
  * - `--own-once`: a `process.once` listener, added before the group starts,
  *   that starts one more group run after 700 ms, prints `later=<result>` and
  *   exits 7.
+ * - `--own-spawn`: the group is a detached child the host spawns itself
+ *   with `node:child_process`, registered through `spawnTrackedGroup`.
  * - `--long-grace`: `graceMs` is 30 s.
  * - `--unref`: the group starts with `unref: true`, so forwarding does not
  *   track it.
@@ -26,8 +28,14 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { spawn } from 'node:child_process'
+
 import {
+  groupStartRefusal,
   installGroupSignalForwarding,
+  releaseWhenEmpty,
+  settleGroup,
+  spawnTrackedGroup,
   managedProcessRunner,
   spawnRunnerAsync,
 } from '../../src/index.ts'
@@ -40,6 +48,7 @@ const ownHandlerImmediate = process.argv.includes('--own-handler-immediate')
 const ownOnce = process.argv.includes('--own-once')
 const unref = process.argv.includes('--unref')
 const asyncBackground = process.argv.includes('--async-background')
+const ownSpawn = process.argv.includes('--own-spawn')
 const exitOnOwn = process.argv.includes('--exit')
 const inFlight = process.argv.includes('--in-flight')
 
@@ -66,7 +75,20 @@ if (ownOnce) {
 const script = stubborn
   ? `trap "" TERM; sleep 30 & echo grandchild=$!; wait`
   : `sleep 30 & echo grandchild=$!; wait`
-if (inFlight) {
+if (ownSpawn) {
+  // A caller-spawned detached child, registered through the public API.
+  const refusal = groupStartRefusal()
+  if (refusal !== undefined) throw new Error(refusal)
+  const { child, untrack } = spawnTrackedGroup(() =>
+    spawn('sh', ['-c', script], { detached: true, stdio: ['ignore', 'inherit', 'inherit'] }),
+  )
+  child.on('close', () => {
+    if (child.pid !== undefined && untrack !== undefined) {
+      settleGroup(child.pid)
+      releaseWhenEmpty(child.pid, untrack)
+    }
+  })
+} else if (inFlight) {
   // The async runner captures output, so `sh` hands over the grandchild's pid
   // through a file. The run never settles before the host exits.
   const dir = mkdtempSync(join(tmpdir(), 'forwarding-host-'))

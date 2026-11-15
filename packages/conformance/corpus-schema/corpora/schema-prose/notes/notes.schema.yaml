@@ -1,0 +1,4 @@
+type: object
+description: "Notes. See [the guide](gone.md)."
+properties:
+  ref: { type: string, pattern: "^\\[\\[[^\\]]+\\]\\]$", enum: ["[[Home]]", "[[Away]]"] }

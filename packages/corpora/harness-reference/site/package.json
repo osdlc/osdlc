@@ -1,0 +1,23 @@
+{
+  "name": "harness-reference-site",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "The harness reference as a static site, built with @osdlc/corpus-site.",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "build:site": "astro build",
+    "preview": "astro preview --host 0.0.0.0 --port 4310"
+  },
+  "dependencies": {
+    "@astrojs/vue": "7.0.3",
+    "@osdlc/corpus-site": "workspace:^",
+    "astro": "7.3.5",
+    "vue": "3.5.45"
+  }
+}

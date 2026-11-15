@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.4](https://github.com/osdlc/osdlc/compare/path-guard/v0.3.3...path-guard/v0.3.4) - 2026-11-10
+
+### Other
+
+- update Cargo.toml dependencies
+
 ## [0.3.3](https://github.com/osdlc/osdlc/compare/path-guard/v0.3.2...path-guard/v0.3.3) - 2026-11-02
 
 ### Other

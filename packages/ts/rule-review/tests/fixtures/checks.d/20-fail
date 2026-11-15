@@ -1,0 +1,3 @@
+#!/bin/sh
+echo "lint broke" >&2
+exit 3

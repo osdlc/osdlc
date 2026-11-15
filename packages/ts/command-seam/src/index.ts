@@ -128,8 +128,12 @@ export {
 export {
   forwardedExitCode,
   forwardedSignal,
+  groupStartRefusal,
   installGroupSignalForwarding,
   liveProcessGroups,
+  releaseWhenEmpty,
+  settleGroup,
+  spawnTrackedGroup,
   type GroupSignalForwardingOptions,
 } from './groups.ts'
 

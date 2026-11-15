@@ -1,0 +1,12 @@
+#!/bin/sh
+# Fail when a changed file still holds a merge conflict marker.
+# No applies_to line, so every changed file is in scope.
+status=0
+while IFS= read -r file; do
+  [ -f "$file" ] || continue
+  if grep -nE '^(<<<<<<<|>>>>>>>)( |$)' "$file"; then
+    echo "conflict marker in $file" >&2
+    status=1
+  fi
+done
+exit $status

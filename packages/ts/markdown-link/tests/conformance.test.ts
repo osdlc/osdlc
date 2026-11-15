@@ -1,15 +1,21 @@
 /**
- * The TypeScript half of the shared case file. It reads the `conformance.json`
- * that the `markdown-link` crate's `tests/conformance.rs` reads, whose doc
- * describes each section. Offsets in the file count code points.
+ * Runs the markdown-link conformance suite,
+ * `packages/conformance/markdown-link/suite.json`, against this package.
+ *
+ * The suite holds the cases this package and the Rust `markdown-link` crate
+ * must agree on: what counts as code, the link parsers, the body scanner,
+ * `displayText` and `parseTypedRef`. The crate is the family's reference: its
+ * generator writes every `expect`. Offsets in the suite count code points, so
+ * this package's UTF-16 indices are converted before they are compared.
+ *
+ * Every section and case runs. A missing section, and a section, case key or
+ * input key the runner does not know, fails it.
  */
 import { describe, expect, test } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
-  type AbandonReason,
-  type BodyLinkKind,
+  type CodeRules,
   type ScanOptions,
-  type Size,
   bodyLinks,
   bodyLinksSpanned,
   bodyLinksSpannedWith,
@@ -19,204 +25,201 @@ import {
   parseInner,
   parseTypedRef,
   scanBodyWith,
-  stripCode,
   stripCodeWith,
   targetRange,
 } from '../src/index.ts'
 
-interface CodeCase {
+interface Case {
   name: string
-  source: string
-  stripped: string
-  strippedSkillExport?: string
+  input: Record<string, unknown>
+  expect: unknown
 }
 
-interface InnerCase {
-  name: string
-  inner: string
-  embed?: boolean
-  parsed: {
-    target: string
-    heading: string | null
-    alias: string | null
-    targetAt: number
-    block?: string | null
-    size?: Size | null
-  } | null
+interface Suite {
+  family: string
+  reference: string
+  referenceVersion: string
+  sections: Record<string, { description: string; cases: Case[] }>
 }
 
-interface UrlCase {
-  name: string
-  url: string
-  vaultLink: boolean
-  target: string
-}
+const suite = JSON.parse(
+  readFileSync(new URL('../../../conformance/markdown-link/suite.json', import.meta.url), 'utf8'),
+) as Suite
 
-interface BodyCase {
-  name: string
-  body: string
-  options?: ScanOptions
-  links: {
-    kind: BodyLinkKind
-    raw: string
-    target: string
-    alias: string | null
-    at: number
-    text: string
-    heading?: string | null
-    block?: string | null
-    size?: Size | null
-  }[]
-  /** Each `[[` the scan gave up on. Left out: none. */
-  abandoned?: { reason: AbandonReason; embed?: boolean; at: number; text: string }[]
-}
+/** The sections this package runs. A missing or extra one fails the suite. */
+const SECTIONS = ['code', 'inner', 'url', 'body', 'display', 'typed_ref']
 
-/**
- * Adds `key` to `actual` when the expected case names it or the value is not
- * null, so a case that leaves an optional key out still pins it to null.
- */
-function optional(
-  actual: Record<string, unknown>,
-  expected: object | undefined,
-  key: string,
-  value: unknown,
-): void {
-  if ((expected !== undefined && key in expected) || value !== null) actual[key] = value
-}
-
-type ParseCase = InnerCase | UrlCase | BodyCase
-
-interface DisplayCase {
-  name: string
-  text: string
-  display: string
-}
-
-interface TypedRefCase {
-  name: string
-  value: string
-  typedRef: { kind: string; slug: string; alias: string | null } | null
-}
-
-const cases = JSON.parse(
-  readFileSync(
-    new URL('../../../rust/markdown-link/tests/fixtures/conformance.json', import.meta.url),
-    'utf8',
-  ),
-) as {
-  code: CodeCase[]
-  parse: ParseCase[]
-  display: DisplayCase[]
-  typedRef: TypedRefCase[]
-}
+/** The keys a case may have. */
+const CASE_KEYS = ['name', 'input', 'expect']
 
 const codePoints = (s: string): number => Array.from(s).length
 
-describe('code cases', () => {
-  test('the section is not empty', () => {
-    expect(cases.code.length).toBeGreaterThan(0)
-  })
+/** The number of code points in `text` before UTF-16 index `index`. */
+const pointsBefore = (text: string, index: number): number => codePoints(text.slice(0, index))
 
-  for (const c of cases.code) {
-    test(c.name, () => {
-      const commonmark = stripCode(c.source)
-      const skillExport = stripCodeWith(c.source, 'skill-export')
-      expect(commonmark).toBe(c.stripped)
-      expect(skillExport).toBe(c.strippedSkillExport ?? c.stripped)
-      expect(codePoints(commonmark)).toBe(codePoints(c.source))
-      expect(codePoints(skillExport)).toBe(codePoints(c.source))
-    })
+/** `input` as an object whose keys are `required` and, optionally, `optional`. */
+function fields(
+  input: unknown,
+  required: string[],
+  optional: string[] = [],
+): Record<string, unknown> {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+    throw new Error('input is not an object')
   }
-})
+  const map = input as Record<string, unknown>
+  for (const k of Object.keys(map)) {
+    if (!required.includes(k) && !optional.includes(k)) throw new Error(`unknown input key ${k}`)
+  }
+  for (const k of required) if (!(k in map)) throw new Error(`input has no ${k}`)
+  return map
+}
 
-describe('parse cases', () => {
-  test('the section is not empty', () => {
-    expect(cases.parse.length).toBeGreaterThan(0)
+function text(map: Record<string, unknown>, key: string): string {
+  const value = map[key]
+  if (typeof value !== 'string') throw new Error(`${key} is not a string`)
+  return value
+}
+
+function flag(map: Record<string, unknown>, key: string): boolean {
+  const value = map[key]
+  if (value === undefined) return false
+  if (typeof value !== 'boolean') throw new Error(`${key} is not a boolean`)
+  return value
+}
+
+function scanOptions(input: Record<string, unknown>): ScanOptions | undefined {
+  if (!('options' in input)) return undefined
+  const options = fields(input['options'], [], ['code_rules', 'skip_html_comments', 'self_links'])
+  const rules = options['code_rules'] ?? 'commonmark'
+  if (rules !== 'commonmark' && rules !== 'skill-export' && rules !== 'none') {
+    throw new Error('code_rules is not commonmark, skill-export or none')
+  }
+  return {
+    codeRules: rules as CodeRules,
+    skipHtmlComments: flag(options, 'skip_html_comments'),
+    selfLinks: flag(options, 'self_links'),
+  }
+}
+
+/** Sets `key` on `out` only when `value` is not null, as the reference leaves it out. */
+function setUnlessNull(out: Record<string, unknown>, key: string, value: unknown): void {
+  if (value !== null) out[key] = value
+}
+
+function body(source: string, options: ScanOptions | undefined): unknown {
+  const spanned =
+    options === undefined ? bodyLinksSpanned(source) : bodyLinksSpannedWith(source, options)
+  const links = spanned.map((link) => {
+    const out: Record<string, unknown> = {
+      kind: link.kind,
+      raw: link.raw,
+      target: link.target,
+      alias: link.alias,
+      at: pointsBefore(source, link.start),
+      text: source.slice(link.start, link.end),
+    }
+    setUnlessNull(out, 'heading', link.heading)
+    setUnlessNull(out, 'block', link.block)
+    setUnlessNull(out, 'size', link.size)
+    return out
+  })
+  const scan = scanBodyWith(source, options ?? {})
+  expect(scan.links).toEqual(spanned)
+  const abandoned = scan.abandoned.map((a) => ({
+    reason: a.reason,
+    at: pointsBefore(source, a.start),
+    text: source.slice(a.start, a.end),
+    ...(a.embed ? { embed: true } : {}),
+  }))
+  if (options === undefined) {
+    expect(bodyLinks(source)).toEqual(
+      spanned.map((link) => ({
+        target: link.target,
+        kind: link.kind === 'embed' ? 'embed' : 'wikilink',
+      })),
+    )
+  }
+  return { links, abandoned }
+}
+
+/** What this package gives for `input` in `section`, as the suite's `expect`. */
+function run(section: string, input: unknown): unknown {
+  switch (section) {
+    case 'code': {
+      const source = text(fields(input, ['source']), 'source')
+      const commonmark = stripCodeWith(source, 'commonmark')
+      const skillExport = stripCodeWith(source, 'skill-export')
+      expect(codePoints(commonmark)).toBe(codePoints(source))
+      expect(codePoints(skillExport)).toBe(codePoints(source))
+      return { commonmark, skill_export: skillExport }
+    }
+    case 'inner': {
+      const i = fields(input, ['inner'], ['embed'])
+      const inner = text(i, 'inner')
+      const link = parseInner(inner, flag(i, 'embed'))
+      const range = targetRange(inner)
+      if (link === null || range === null) return null
+      expect(inner.slice(range.start, range.end)).toBe(link.target)
+      const out: Record<string, unknown> = {
+        target: link.target,
+        heading: link.heading,
+        alias: link.alias,
+        target_at: pointsBefore(inner, range.start),
+      }
+      setUnlessNull(out, 'block', link.block)
+      setUnlessNull(out, 'size', link.size)
+      return out
+    }
+    case 'url': {
+      const url = text(fields(input, ['url']), 'url')
+      return { vault_link: isVaultLinkUrl(url), target: mdLinkTarget(url) }
+    }
+    case 'body': {
+      const i = fields(input, ['body'], ['options'])
+      return body(text(i, 'body'), scanOptions(i))
+    }
+    case 'display':
+      return { display: displayText(text(fields(input, ['text']), 'text')) }
+    case 'typed_ref':
+      return parseTypedRef(text(fields(input, ['value']), 'value'))
+    default:
+      throw new Error(`unknown section ${section}`)
+  }
+}
+
+const all = Object.entries(suite.sections).flatMap(([s, section]) =>
+  section.cases.map((c) => `${s}/${c.name}`),
+)
+const ran = new Set<string>()
+
+describe('conformance suite', () => {
+  test('is the markdown-link suite, with Rust as its reference', () => {
+    expect([suite.family, suite.reference]).toEqual(['markdown-link', 'rust'])
+    expect(all.length).toBeGreaterThan(0)
   })
 
-  for (const c of cases.parse) {
-    test(c.name, () => {
-      if ('inner' in c) {
-        const link = parseInner(c.inner, c.embed ?? false)
-        const range = targetRange(c.inner)
-        let actual: Record<string, unknown> | null = null
-        if (link !== null && range !== null) {
-          actual = {
-            target: link.target,
-            heading: link.heading,
-            alias: link.alias,
-            targetAt: codePoints(c.inner.slice(0, range.start)),
-          }
-          optional(actual, c.parsed ?? undefined, 'block', link.block)
-          optional(actual, c.parsed ?? undefined, 'size', link.size)
-        }
-        expect(actual).toEqual(c.parsed)
-        if (range !== null) expect(c.inner.slice(range.start, range.end)).toBe(link!.target)
-      } else if ('url' in c) {
-        expect(isVaultLinkUrl(c.url)).toBe(c.vaultLink)
-        expect(mdLinkTarget(c.url)).toBe(c.target)
-      } else {
-        const spanned =
-          c.options === undefined
-            ? bodyLinksSpanned(c.body)
-            : bodyLinksSpannedWith(c.body, c.options)
-        expect(
-          spanned.map((link, n) => {
-            const actual: Record<string, unknown> = {
-              kind: link.kind,
-              raw: link.raw,
-              target: link.target,
-              alias: link.alias,
-              at: codePoints(c.body.slice(0, link.start)),
-              text: c.body.slice(link.start, link.end),
-            }
-            const want = c.links[n]
-            optional(actual, want, 'heading', link.heading)
-            optional(actual, want, 'block', link.block)
-            optional(actual, want, 'size', link.size)
-            return actual
-          }),
-        ).toEqual(c.links)
-        const scan = scanBodyWith(c.body, c.options ?? {})
-        expect(scan.links).toEqual(spanned)
-        expect(
-          scan.abandoned.map((a) => ({
-            reason: a.reason,
-            ...(a.embed ? { embed: true } : {}),
-            at: codePoints(c.body.slice(0, a.start)),
-            text: c.body.slice(a.start, a.end),
-          })),
-        ).toEqual(c.abandoned ?? [])
-        if (c.options !== undefined) return
-        expect(bodyLinks(c.body)).toEqual(
-          spanned.map((link) => ({
-            target: link.target,
-            kind: link.kind === 'embed' ? 'embed' : 'wikilink',
-          })),
-        )
+  test('has exactly the sections this package runs', () => {
+    expect(Object.keys(suite.sections).sort()).toEqual([...SECTIONS].sort())
+  })
+
+  for (const [section, { cases }] of Object.entries(suite.sections)) {
+    if (!SECTIONS.includes(section)) continue
+    describe(section, () => {
+      for (const c of cases) {
+        test(c.name, () => {
+          expect(
+            Object.keys(c).filter((k) => !CASE_KEYS.includes(k)),
+            'unknown case keys',
+          ).toEqual([])
+          expect(run(section, c.input)).toStrictEqual(c.expect)
+          ran.add(`${section}/${c.name}`)
+        })
       }
     })
   }
-})
 
-describe('display cases', () => {
-  test('the section is not empty', () => {
-    expect(cases.display.length).toBeGreaterThan(0)
+  // Vitest runs a file's tests in order, so this runs last.
+  test('ran every case', () => {
+    expect(all.filter((n) => !ran.has(n))).toEqual([])
   })
-  for (const c of cases.display) {
-    test(c.name, () => {
-      expect(displayText(c.text)).toBe(c.display)
-    })
-  }
-})
-
-describe('typedRef cases', () => {
-  test('the section is not empty', () => {
-    expect(cases.typedRef.length).toBeGreaterThan(0)
-  })
-  for (const c of cases.typedRef) {
-    test(c.name, () => {
-      expect(parseTypedRef(c.value)).toEqual(c.typedRef)
-    })
-  }
 })

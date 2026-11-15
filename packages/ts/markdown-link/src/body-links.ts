@@ -16,7 +16,11 @@ import {
 
 /** What a body scan counts as a link. Every field is optional; the defaults are what `bodyLinksSpanned` uses. */
 export interface ScanOptions {
-  /** Which rules decide what is code. Default `'commonmark'`. */
+  /**
+   * Which rules decide what is code. Default `'commonmark'`. `'none'` finds
+   * no code, for text that a markdown parser has already taken the code out
+   * of.
+   */
   codeRules?: CodeRules
   /** Skip links inside HTML comments, `<!--` to `-->` or the end. Default `false`. */
   skipHtmlComments?: boolean
@@ -86,7 +90,7 @@ export type AbandonReason = 'bracket' | 'code' | 'empty-target' | 'unclosed'
  */
 export interface AbandonedLink {
   reason: AbandonReason
-  /** Whether a `!` came before the `[[`. */
+  /** Whether an unescaped `!` came before the `[[`. */
   embed: boolean
   /**
    * UTF-16 offsets of what the scanner read, from the `[[` (or the `!` before
@@ -135,6 +139,10 @@ export function bodyLinks(body: string): RawLink[] {
  *
  * Code is blanked before matching, `[[` never nests, and a markdown link
  * counts only when `isVaultLinkUrl` accepts its URL and it carries no scheme.
+ * A `!` after an odd run of `\` is escaped: `\![[Note]]` is a `'wikilink'`
+ * that starts at the `[[`, with the `!` left outside its span as literal
+ * text, where `![[Note]]` is an `'embed'` that starts at the `!`. An even
+ * run, as in `\\![[Note]]`, escapes the backslash and leaves an embed.
  *
  * The scan walks code points. `stripCode` keeps the code point count of its
  * input, not its UTF-16 length, so a code point index into the stripped text
@@ -184,7 +192,7 @@ export function scanBodyWith(body: string, options: ScanOptions): BodyScan {
   let i = 0
   while (i < chars.length) {
     if (chars[i] === '[' && chars[i + 1] === '[') {
-      const embed = i > 0 && chars[i - 1] === '!'
+      const embed = i > 0 && chars[i - 1] === '!' && !escapedBang(chars, i - 1)
       const start = at[embed ? i - 1 : i]!
       let j = i + 2
       let inner = ''
@@ -266,6 +274,16 @@ export function scanBodyWith(body: string, options: ScanOptions): BodyScan {
     i++
   }
   return { links: out, abandoned: mergeRuns(abandoned) }
+}
+
+/**
+ * Whether the `!` at `bang` follows an odd run of `\`: `\![[Note]]` is a
+ * literal `!` and a wikilink, not an embed.
+ */
+function escapedBang(chars: string[], bang: number): boolean {
+  let i = bang
+  while (i > 0 && chars[i - 1] === '\\') i--
+  return (bang - i) % 2 === 1
 }
 
 /**

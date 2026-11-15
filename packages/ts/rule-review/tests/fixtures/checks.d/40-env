@@ -1,0 +1,6 @@
+#!/bin/sh
+echo "CHECK_ROOT=$CHECK_ROOT"
+echo "CHECK_NAME=$CHECK_NAME"
+echo "CHECK_ORDER=$CHECK_ORDER"
+echo "CHECK_DIR=$CHECK_DIR"
+echo "PWD=$(pwd -P)"

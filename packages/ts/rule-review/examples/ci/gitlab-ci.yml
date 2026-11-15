@@ -1,0 +1,14 @@
+# .gitlab-ci.yml
+# Review each merge request against the CLAUDE.md and AGENTS.md files that
+# govern the files it changes. Set ANTHROPIC_API_KEY as a masked CI/CD variable.
+rule-review:
+  image: node:24
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  variables:
+    # The review diffs against the fork point, so it needs the history.
+    GIT_DEPTH: 0
+  script:
+    - npm install -g @anthropic-ai/claude-code
+    - git fetch origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+    - npx -y @osdlc/rule-review@0.4 --base "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" --blocking --strict

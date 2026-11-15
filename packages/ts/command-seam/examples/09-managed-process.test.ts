@@ -12,9 +12,11 @@
  * `installGroupSignalForwarding` once. On SIGINT, SIGTERM or SIGHUP every
  * live group is killed before the host exits. `forwardedSignal` tells a loop that
  * starts one command after another to stop, and `forwardedExitCode` gives the
- * host its exit code.
+ * host its exit code. A host that spawns its own detached child registers it
+ * with `spawnTrackedGroup`, and checks `groupStartRefusal` before it starts one.
  */
 
+import { spawn } from 'node:child_process'
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -24,9 +26,13 @@ import { afterAll, expect, test } from 'vitest'
 import {
   forwardedExitCode,
   forwardedSignal,
+  groupStartRefusal,
   installGroupSignalForwarding,
   liveProcessGroups,
   managedProcessRunner,
+  releaseWhenEmpty,
+  settleGroup,
+  spawnTrackedGroup,
   stopProcess,
   type GroupSignalForwardingOptions,
   type ManagedProcessExit,
@@ -225,6 +231,36 @@ test.skipIf(process.platform === 'win32')(
         await new Promise((r) => setTimeout(r, 25))
       }
       expect(liveProcessGroups()).not.toContain(server.pid)
+    } finally {
+      uninstall()
+    }
+  },
+  15_000,
+)
+
+test.skipIf(process.platform === 'win32')(
+  'a host registers a detached child it spawned itself',
+  async () => {
+    const uninstall = installGroupSignalForwarding({ graceMs: 200 })
+    try {
+      // Undefined until a signal has been forwarded; a host would not start a group otherwise.
+      expect(groupStartRefusal()).toBeUndefined()
+      const { child, untrack } = spawnTrackedGroup(() =>
+        spawn('node', ['-e', 'setInterval(() => {}, 1000)'], { detached: true, stdio: 'ignore' }),
+      )
+      const pid = child.pid!
+      expect(liveProcessGroups()).toContain(pid)
+      const closed = new Promise((res) => child.on('close', res))
+      process.kill(-pid, 'SIGKILL')
+      await closed
+      // The run ended: leave what the group left behind, then drop the entry once it is empty.
+      settleGroup(pid)
+      releaseWhenEmpty(pid, untrack!)
+      const end = performance.now() + 3_000
+      while (liveProcessGroups().includes(pid) && performance.now() < end) {
+        await new Promise((r) => setTimeout(r, 25))
+      }
+      expect(liveProcessGroups()).not.toContain(pid)
     } finally {
       uninstall()
     }

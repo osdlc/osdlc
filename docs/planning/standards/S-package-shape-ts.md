@@ -55,16 +55,19 @@ each. This standard says what that shape is.
 
 ## Enforcement
 
-`scripts/package-shape-ts.ts` holds the checks, as functions over data that
-`scripts/check-packages.ts` reads from each package and from its packed
-tarball. `scripts/package-shape-ts.test.ts` tests them.
+[`@osdlc/package-checks`](../../../packages/ts/package-checks/README.md)
+holds the checks, as functions over data that `package-checks ts` reads from
+each package and from its packed tarball. The root `package-checks.json`
+names the config packages (`tsconfig`, `prettier-config`).
 
 ```sh
 pnpm run build
 pnpm run check:packages
 ```
 
-CI runs the same two steps in `.github/workflows/packages-ci.yml`. The check
+CI runs the same two steps in `.github/workflows/ts-packages-ci.yml`, which
+`packages-ci.yml` calls, and again before a publish in
+`ts-packages-release.yml`. The check
 also packs each library, runs publint and Are The Types Wrong on the tarball,
 and loads it in a clean consumer project.
 

@@ -20,12 +20,16 @@ pub mod token;
 
 pub use config::{Listen, WebAccessConfig};
 pub use context::{AccessContext, Grant};
-pub use guard::{Denial, DenialReason, GuardPolicy, GuardState, Tokens, origin_matches_host};
+pub use guard::{
+    Denial, DenialReason, GuardPolicy, GuardState, PublicHost, Tokens, TokensError,
+    normalize_public_host, origin_matches_host, origin_matches_public_host,
+};
 pub use interfaces::{InterfaceAddr, interfaces};
 pub use origin::{is_local_authority, is_local_origin};
 pub use permissions::{HostPolicy, RouteRule, host_policy_layer};
 pub use runtime::{ConfigStore, RuntimeError, ShareUrls, SharingRuntime, WebAccessStatus};
 pub use serve::{ServeError, ServeOptions, ServerHandle, serve, serve_opts, share_url};
+pub use token::{Token, TokenError};
 
 // Runs the README's and the guide's code blocks as doc-tests, so they stay true.
 #[doc = include_str!("../README.md")]

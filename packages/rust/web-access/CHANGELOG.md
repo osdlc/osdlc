@@ -7,6 +7,114 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Public names behind a TLS-terminating reverse proxy:
+  `GuardState::with_public_hosts` and `ServeOptions::public_hosts`. Each name
+  is an allowed `Host`. It is an allowed `Origin` only as `https://<name>`,
+  and only on a request whose `Host` is a public name. A share cookie set on a
+  public name carries `Secure`. A request for a public name needs a token,
+  even from a loopback peer under `loopback_open`.
+- `guard::PublicHost`, which the guard puts in the request extensions of a
+  request whose `Host` is a public name, and `origin_matches_public_host`, the
+  Origin check for a handler on such a request.
+- `guard::normalize_public_host`, the rule `with_public_hosts` keeps or drops
+  a name by. It drops IP addresses and bad ports, and a written port 80 or
+  443.
+- `ServerHandle::public_share_urls_for`: `https://<name>/?token=` links for
+  the public names.
+- `ServeError::BadPublicHost` and
+  `ServeError::AdminPublicOnlyWithoutPublicHosts`: `serve` refuses to start
+  on a public name `normalize_public_host` drops, or on `admin_public_only`
+  with no public name.
+- `GuardState::with_admin_over_public_only` and
+  `ServeOptions::admin_public_only`: the admin token gives `Admin` only on a
+  public name and `Full` elsewhere. Its link is refused there with 401, sets
+  no cookie, and is reported as `DenialReason::AdminNotPublic`. The runtime's
+  admin share links are then the `https://` links on the public names.
+- `GuardState::with_cookie_max_age` and `ServeOptions::cookie_max_age`: a
+  `Max-Age` for the share cookie. The default is still a session cookie. The
+  admin cookie never gets one.
+- `guard::admin_cookie_name`. An admin token's share link sets
+  `web_access_admin_<port>`, so opening a full or read link no longer replaces
+  it. The guard reads both cookies, and the highest grant wins.
+  `is_cookie_name` matches both names.
+
+### Changed
+
+- Breaking: `ServeOptions` has three new public fields. Code that builds it
+  with every field named must add them. Code that ends with
+  `..ServeOptions::default()` is unaffected.
+- An admin token's share link sets the `web_access_admin_<port>` cookie, not
+  `web_access_<port>`. An admin token already in `web_access_<port>` still
+  works.
+
+## [0.5.0](https://github.com/osdlc/osdlc/compare/web-access/v0.4.1...web-access/v0.5.0) - 2026-11-10
+
+### Fixed
+
+- *(web-access)* cut open connections on stop, admit new interface addresses ([#704](https://github.com/osdlc/osdlc/pull/704))
+
+### Added
+
+- `token::Token`, a type that always holds a well-formed token. Only
+  `Token::mint()` and `Token::parse` build one. `mint` gives 32 random bytes in
+  base64url. `parse` accepts at least `token::MIN_TOKEN_LEN` (32) characters of
+  `A-Z a-z 0-9 - _` and nothing else. Minted tokens and 64-character hex
+  digests both pass. `Display` and `as_str` give the text. `Debug` hides it.
+  Comparing two tokens takes the same time whatever their contents. Only a
+  difference in length ends the compare early.
+- `token::TokenError`. It never holds token text. Its variants are
+  `Malformed`, `BadFile` (names the file), `BadOverride` (names the override)
+  and `Io`.
+- `token::override_from_env` and `token::parse_override`. They read an
+  override and refuse one that is set but is not a token.
+- The `mint_token` example, which prints a new token.
+
+### Changed
+
+- Breaking: tokens must be well formed. A hand-set token of any other form is
+  refused. Only a `Token` can join a `Tokens` set: `Tokens::with`,
+  `Tokens::with_label` and `Tokens::full_only` take a `Token`, and
+  `Tokens::share_token` returns one. A token file or override that holds
+  anything else is an error that names the file or variable. This includes an
+  empty or whitespace-only file. `SharingRuntime` does not start, and the file
+  is left as it is. Before, a new token was minted over an empty file, and any
+  text was accepted as a token.
+- Breaking: the `token` file helpers (`load_or_mint*`, `resolve*`,
+  `rotate*`) return `Result<Token, TokenError>`. `resolve` and
+  `SharingRuntime::with_full_token_override` take an `Option<Token>`.
+  `RuntimeError::Token` holds a `TokenError`. `share_url` and
+  `ServerHandle::share_urls_for` take a `&Token`.
+- Breaking: `token::mint` is removed. Use `Token::mint`.
+- Breaking: `Tokens::with` and `Tokens::with_label` return
+  `Result<Tokens, TokensError>`. They refuse a token that is already in the set
+  with a different grant (`TokensError::Duplicate`). The guard gives a token
+  its highest grant, so matching read and admin files made the Read link grant
+  Admin. The same token with the same grant is ignored. Chain calls with `?` or
+  `and_then`. `Tokens::full_only` cannot fail.
+- A share link carries the token as written. A `?token=` or cookie value is
+  compared as written. A token never needs escaping, so nothing is
+  percent-encoded or decoded any more.
+
+### Fixed
+
+- A token file whose bytes are not UTF-8 is now `TokenError::BadFile`, like
+  any other malformed file. It used to be `TokenError::Io`, so a caller that
+  falls back to a one-process token on `Io` did so for a bad file.
+- `ShareUrls` and `WebAccessStatus` no longer print the token in `Debug`. Each
+  share link shows `token=<redacted>`.
+- `ServerHandle::stop` now ends connections that are still open, such as a
+  stream or an upgraded WebSocket. After the grace period for in-flight
+  requests, every further read and write on them fails. They used to keep
+  running on the old guard after `stop` returned. So turning sharing off, or
+  rotating a token through `SharingRuntime`, did not end them.
+- With `Listen::AllInterfaces`, the guard now serves an interface address that
+  the machine gains after the server started, on the bound port. It used to
+  answer 421 until sharing was restarted. `serve` rereads the interface list at
+  most every two seconds. Share links still list only the addresses present at
+  start.
+
 ## [0.4.1] - 2026-11-07
 
 First public release. web-access puts an axum app on the local network

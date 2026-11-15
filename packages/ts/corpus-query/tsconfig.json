@@ -1,0 +1,7 @@
+{
+  // Typechecks src/, tests/ and examples/. The build has its own include.
+  // Workspace packages resolve through `exports` to their built `dist/`, so
+  // build them before the typecheck.
+  "extends": "@osdlc/tsconfig/node-lib",
+  "include": ["src", "tests", "examples", "vitest.config.ts"]
+}

@@ -9,6 +9,8 @@ export default defineConfig({
     // The examples import the package by name; run them on the source.
     alias: [
       { find: /^@osdlc\/observe\/session$/, replacement: here('src/session.ts') },
+      { find: /^@osdlc\/observe\/redact$/, replacement: here('src/redact.ts') },
+      { find: /^@osdlc\/observe\/hook$/, replacement: here('src/hook.ts') },
       { find: /^@osdlc\/observe$/, replacement: here('src/index.ts') },
     ],
   },

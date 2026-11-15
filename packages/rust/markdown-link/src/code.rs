@@ -5,7 +5,7 @@
 //! any tool that rewrites markdown all ask "is this code", and a second copy
 //! would be a second answer.
 //!
-//! [`CodeRules`] picks between two rule sets.
+//! [`CodeRules`] picks between three rule sets.
 //!
 //! [`CodeRules::CommonMark`], the default, follows CommonMark:
 //!
@@ -29,19 +29,45 @@
 //! - A longer backtick run closes a shorter span.
 //! - Only a blank line or a fence marker line ends a span's block.
 //!
-//! Both rule sets read one line at a time, so neither knows about container
-//! blocks. Indented code blocks are not code. A fence is found only when its
-//! marker starts within three spaces of the line start, so a fence nested in
-//! a list item or a block quote is missed. A list item or block quote marker
-//! ends a span's block at any indent and with any start number, even with no
-//! text after it, so it may end a span that CommonMark would continue. Nested
+//! [`CodeRules::None`] finds no code: [`strip_code_with`] returns its input
+//! unchanged. A caller that has already parsed the code, with a markdown
+//! parser, uses it to scan a run of text without code rules.
+//!
+//! Indented code blocks are not code.
+//!
+//! Under [`CodeRules::CommonMark`] a fence is found inside a list item or a
+//! block quote too, as CommonMark has it. The lexer tracks the open block
+//! quotes and list items line by line. A fence opens on a line whose marker
+//! is indented at most three columns past its container's content, so
+//! `10. item` followed by a fence indented to column 4 opens one. A fence
+//! closes on a line of its own container, and it ends, closed or not, at the
+//! first line that is no longer in that container: a line with no `>` for a
+//! block quote, a non-blank line indented less than the content column for a
+//! list item, or a blank line inside a block quote. An unclosed fence in a
+//! container runs to the end of that container, not of the input. A fence
+//! marker line, container markers included, becomes spaces. Lazy
+//! continuation lines are not tracked: a line of a paragraph that is not
+//! indented to its list item ends the item here, where CommonMark keeps it.
+//! A list item interrupts a paragraph only as CommonMark lets it: an ordered
+//! item must start at 1 and no item may be empty. The line before is taken to
+//! be a paragraph when it is text outside a fence other than a heading, a
+//! thematic break or a setext underline, so a table row counts as one.
+//! [`CodeRules::SkillExport`] reads one line at a time and knows no
+//! containers, as the renderers it matches do.
+//!
+//! Under [`CodeRules::CommonMark`] a list item or block quote marker ends a
+//! span's block at any indent and with any start number, even with no text
+//! after it, so it may end a span that CommonMark would continue. Nested
 //! items are indented, and ending a span early keeps text visible.
 //!
 //! [`CodeRules::CommonMark`] also treats a line starting with `|` after up to
-//! three spaces as a one-line block, table or not. A span cannot enter or
-//! leave that line, but a span in it may cross a cell. GFM reads a pipe line
-//! without a delimiter row as paragraph text, and splits a table row into
-//! cells before it reads spans.
+//! three spaces as a one-line block, table or not, and reads it as a table
+//! row: GFM splits a row into cells at every `|` that is not escaped as `\|`
+//! before it reads spans, so a span cannot cross a cell, and a `|` inside
+//! backticks still ends the cell. The row is found after a container's
+//! markers too, so a table in a list item or a block quote works the same. GFM
+//! reads a pipe line without a delimiter row as paragraph text; this lexer
+//! cannot tell, so a span in such a line stays inside one cell.
 //!
 //! Every marker is ASCII, so a byte scan never splits a UTF-8 character.
 //!
@@ -74,6 +100,9 @@ pub enum CodeRules {
     CommonMark,
     /// The looser rules of some agent-skill renderers. See the module doc.
     SkillExport,
+    /// No code: nothing is blanked. For a caller that has already parsed the
+    /// code and scans a run of text that holds none.
+    None,
 }
 
 /// `^ {0,3}(`{3,}|~{3,})` — the character and run length of a fence marker
@@ -91,6 +120,9 @@ fn fence_run(line: &[u8]) -> Option<(u8, usize, usize)> {
 }
 
 fn opens_fence(line: &[u8], rules: CodeRules) -> Option<(u8, usize)> {
+    if rules == CodeRules::None {
+        return None;
+    }
     let (character, length, end) = fence_run(line)?;
     let backtick_in_info = character == b'`' && line[end..].contains(&b'`');
     if rules == CodeRules::CommonMark && backtick_in_info {
@@ -120,7 +152,25 @@ pub enum FenceLine {
     Outside,
 }
 
-/// The fence state of a line-by-line scan: which fence, if any, is open.
+/// A block that can hold a fence: a block quote, or a list item with the
+/// column its content starts at.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Container {
+    Quote,
+    Item(usize),
+}
+
+/// A fence that is open, and how many containers it is inside.
+#[derive(Debug, Clone, Copy)]
+struct OpenFence {
+    character: u8,
+    length: usize,
+    depth: usize,
+}
+
+/// The fence state of a line-by-line scan: which fence, if any, is open, and
+/// under [`CodeRules::CommonMark`] the block quotes and list items around
+/// it.
 ///
 /// # Examples
 ///
@@ -133,40 +183,321 @@ pub enum FenceLine {
 /// assert_eq!(fences.line(b"[[not-a-link]]"), FenceLine::Inside);
 /// assert_eq!(fences.line(b"```"), FenceLine::Marker);
 /// assert_eq!(fences.line(b"text"), FenceLine::Outside);
+///
+/// // A fence in a list item closes on a line of the same item.
+/// assert_eq!(fences.line(b"- ```"), FenceLine::Marker);
+/// assert_eq!(fences.line(b"  code"), FenceLine::Inside);
+/// assert_eq!(fences.line(b"  ```"), FenceLine::Marker);
 /// ```
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Fences {
     rules: CodeRules,
-    open: Option<(u8, usize)>,
+    open: Option<OpenFence>,
+    containers: Vec<Container>,
+    /// Where the outermost block quote in `containers` is.
+    first_quote: Option<usize>,
+    /// Whether the last line was paragraph text, which a list item may
+    /// interrupt only as CommonMark lets it.
+    paragraph: bool,
+    content: usize,
 }
 
 impl Fences {
     /// A scan with no fence open, following `rules`.
     pub fn new(rules: CodeRules) -> Self {
-        Self { rules, open: None }
+        Self {
+            rules,
+            ..Self::default()
+        }
     }
 
     /// Classify the next line and step past it. `line` excludes its `\n`.
     pub fn line(&mut self, line: &[u8]) -> FenceLine {
+        self.content = 0;
+        match self.rules {
+            CodeRules::None => FenceLine::Outside,
+            CodeRules::SkillExport => self.line_flat(line),
+            CodeRules::CommonMark => self.line_in_containers(line),
+        }
+    }
+
+    /// Where the text of the line last given to [`Fences::line`] starts, past
+    /// the block quote and list item markers and the indent they take, as a
+    /// byte index into it. Zero outside [`CodeRules::CommonMark`]. A line of
+    /// four columns of indent or more starts up to four bytes early, so a
+    /// block quote's marker is never part of the text but an indented-code
+    /// line still reads as one.
+    pub fn content_start(&self) -> usize {
+        self.content
+    }
+
+    /// One line at a time, knowing no containers.
+    fn line_flat(&mut self, line: &[u8]) -> FenceLine {
+        let rules = self.rules;
         match self.open {
-            None => match opens_fence(line, self.rules) {
-                Some(fence) => {
-                    self.open = Some(fence);
+            None => match opens_fence(line, rules) {
+                Some((character, length)) => {
+                    self.open = Some(OpenFence {
+                        character,
+                        length,
+                        depth: 0,
+                    });
                     FenceLine::Marker
                 }
                 None => FenceLine::Outside,
             },
             Some(fence) => {
-                if closes_fence(line, fence, self.rules) {
+                if closes_fence(line, (fence.character, fence.length), rules) {
                     self.open = None;
                     FenceLine::Marker
-                } else if self.rules == CodeRules::SkillExport && fence_run(line).is_some() {
+                } else if fence_run(line).is_some() {
                     FenceLine::Marker
                 } else {
                     FenceLine::Inside
                 }
             }
         }
+    }
+
+    fn truncate(&mut self, depth: usize) {
+        self.containers.truncate(depth);
+        if self.first_quote.is_some_and(|at| at >= depth) {
+            self.first_quote = None;
+        }
+    }
+
+    fn push(&mut self, container: Container) {
+        if container == Container::Quote && self.first_quote.is_none() {
+            self.first_quote = Some(self.containers.len());
+        }
+        self.containers.push(container);
+    }
+
+    /// CommonMark's containers, as far as a fence needs them. The blocks that
+    /// continue on this line are matched first, then a new block quote or
+    /// list item may start, then the rest of the line may open a fence. A
+    /// pass costs the characters of the markers and indent it reads.
+    fn line_in_containers(&mut self, line: &[u8]) -> FenceLine {
+        // The common line: outside every block, and starting with a byte that
+        // opens no container and no fence.
+        if self.open.is_none()
+            && self.containers.is_empty()
+            && !matches!(
+                line.first(),
+                Some(b' ' | b'\t' | b'>' | b'-' | b'*' | b'+' | b'0'..=b'9' | b'`' | b'~')
+            )
+        {
+            // A lone `\r` is the blank line of a CRLF file.
+            let text = line.strip_suffix(b"\r").unwrap_or(line);
+            self.paragraph = !text.is_empty() && !leaves_paragraph(text, self.paragraph);
+            return FenceLine::Outside;
+        }
+        let line = line.strip_suffix(b"\r").unwrap_or(line);
+        let blank = is_blank(line);
+        let depth = self.containers.len();
+        let mut cursor = Cursor::start(line);
+        let was_paragraph = std::mem::take(&mut self.paragraph);
+        let mut matched = 0;
+        if blank {
+            // A blank line continues every list item and ends a block quote.
+            matched = self.first_quote.unwrap_or(depth);
+        } else {
+            while matched < depth {
+                match self.containers[matched] {
+                    Container::Quote if cursor.quote() => {}
+                    // A line blank after its markers continues a list item.
+                    Container::Item(content)
+                        if cursor.text_pos >= line.len() || cursor.text_col >= content =>
+                    {
+                        cursor.base = content;
+                    }
+                    _ => break,
+                }
+                matched += 1;
+            }
+        }
+
+        if let Some(fence) = self.open {
+            if matched >= fence.depth {
+                self.content = cursor.content_start();
+                if !blank
+                    && cursor.indent() <= 3
+                    && closes_fence(
+                        &line[cursor.text_pos..],
+                        (fence.character, fence.length),
+                        self.rules,
+                    )
+                {
+                    self.open = None;
+                    return FenceLine::Marker;
+                }
+                return FenceLine::Inside;
+            }
+            // The fence's container ended before this line.
+            self.open = None;
+        }
+
+        self.truncate(matched);
+        if !blank {
+            // A list item starting on a paragraph's continuation line may only
+            // interrupt it as CommonMark lets it.
+            let mut interrupts = was_paragraph && matched == depth;
+            while cursor.indent() <= 3 {
+                if cursor.quote() {
+                    self.push(Container::Quote);
+                } else if let Some(content) = cursor.item_start(interrupts) {
+                    self.push(Container::Item(content));
+                } else {
+                    break;
+                }
+                interrupts = false;
+            }
+            if cursor.indent() <= 3
+                && let Some((character, length)) = opens_fence(&line[cursor.text_pos..], self.rules)
+            {
+                self.open = Some(OpenFence {
+                    character,
+                    length,
+                    depth: self.containers.len(),
+                });
+                self.content = cursor.content_start();
+                return FenceLine::Marker;
+            }
+        }
+        self.content = cursor.content_start();
+        // An indented line starts code, not a paragraph, unless it continues one.
+        let text = &line[cursor.text_pos..];
+        self.paragraph = cursor.text_pos < line.len()
+            && (cursor.indent() <= 3 || was_paragraph)
+            && !(cursor.indent() <= 3 && leaves_paragraph(text, was_paragraph));
+        FenceLine::Outside
+    }
+}
+
+/// Where a line has been read to: `base` is the column that containers have
+/// taken, and `text_pos` and `text_col` are the first byte that is not a
+/// space or tab from there on, with its column. A tab goes to the next
+/// multiple of four.
+struct Cursor<'a> {
+    line: &'a [u8],
+    base: usize,
+    text_pos: usize,
+    text_col: usize,
+}
+
+fn next_col(byte: u8, col: usize) -> usize {
+    if byte == b'\t' {
+        col + 4 - col % 4
+    } else {
+        col + 1
+    }
+}
+
+impl<'a> Cursor<'a> {
+    fn start(line: &'a [u8]) -> Self {
+        let mut cursor = Self {
+            line,
+            base: 0,
+            text_pos: 0,
+            text_col: 0,
+        };
+        cursor.skip_space(0, 0);
+        cursor
+    }
+
+    /// Set the text position to the first byte from `pos`, at column `col`,
+    /// that is not a space or tab.
+    fn skip_space(&mut self, mut pos: usize, mut col: usize) {
+        while let Some(&byte) = self.line.get(pos)
+            && (byte == b' ' || byte == b'\t')
+        {
+            col = next_col(byte, col);
+            pos += 1;
+        }
+        self.text_pos = pos;
+        self.text_col = col;
+    }
+
+    /// Columns of indent between what containers took and the text.
+    fn indent(&self) -> usize {
+        self.text_col.saturating_sub(self.base)
+    }
+
+    /// Where the text starts for a caller that reads its first characters,
+    /// or four bytes before it when it is indented four columns or more.
+    fn content_start(&self) -> usize {
+        if self.indent() > 3 {
+            self.text_pos.saturating_sub(4)
+        } else {
+            self.text_pos
+        }
+    }
+
+    /// Step past a `>` at the text and the one space or tab after it.
+    fn after_quote_marker(&mut self) {
+        let pos = self.text_pos + 1;
+        let col = self.text_col + 1;
+        // The marker takes one space or the first column of a tab after it.
+        self.base = if matches!(self.line.get(pos), Some(b' ' | b'\t')) {
+            col + 1
+        } else {
+            col
+        };
+        self.skip_space(pos, col);
+    }
+
+    /// A block quote's `>` continues the quote: step past it.
+    fn quote(&mut self) -> bool {
+        let found = self.indent() <= 3 && self.line.get(self.text_pos) == Some(&b'>');
+        if found {
+            self.after_quote_marker();
+        }
+        found
+    }
+
+    /// A list marker at the text starts a list item: step past it, and give
+    /// the column its content starts at.
+    fn item_start(&mut self, interrupts: bool) -> Option<usize> {
+        let rest = &self.line[self.text_pos..];
+        let marker = match rest.first()? {
+            b'-' | b'*' | b'+' => 1,
+            b'0'..=b'9' => {
+                let digits = rest.iter().take_while(|b| b.is_ascii_digit()).count();
+                if digits > 9 || !matches!(rest.get(digits), Some(b'.' | b')')) {
+                    return None;
+                }
+                // An ordered list interrupts a paragraph only when it starts at 1.
+                if interrupts
+                    && rest[..digits]
+                        .iter()
+                        .fold(0u32, |n, &b| n * 10 + u32::from(b - b'0'))
+                        != 1
+                {
+                    return None;
+                }
+                digits + 1
+            }
+            _ => return None,
+        };
+        if !matches!(rest.get(marker), None | Some(b' ' | b'\t')) || thematic_break(rest) {
+            return None;
+        }
+        // An empty item cannot interrupt a paragraph.
+        if interrupts && is_blank(&rest[marker..]) {
+            return None;
+        }
+        let marker_end = self.text_col + marker;
+        let after = self.text_pos + marker;
+        self.skip_space(after, marker_end);
+        let content = if self.text_pos >= self.line.len() || self.text_col - marker_end >= 5 {
+            // Nothing after the marker, or an indented code block: the
+            // content starts one column past the marker.
+            marker_end + 1
+        } else {
+            self.text_col
+        };
+        self.base = content;
+        Some(content)
     }
 }
 
@@ -198,9 +529,20 @@ impl Fences {
 pub struct Spans<'a> {
     bytes: &'a [u8],
     rules: CodeRules,
-    /// Whether the current line is one a span cannot leave.
-    one_line: bool,
+    /// What the current line lets a span do.
+    block: SpanBlock,
     no_close: Option<BlockRuns>,
+}
+
+/// What the line a span opened on lets it do.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SpanBlock {
+    /// The span may run on to later lines of its block.
+    Paragraph,
+    /// The span stays on its line.
+    Heading,
+    /// The span stays in its cell of a table row.
+    TableRow,
 }
 
 /// The backtick runs in `start..end`, the rest of a block from where a search
@@ -221,16 +563,30 @@ impl<'a> Spans<'a> {
         Self {
             bytes,
             rules,
-            one_line: false,
+            block: SpanBlock::Paragraph,
             no_close: None,
         }
     }
 
-    /// Note the line the scan has reached. `line` excludes its `\n`. Under
-    /// [`CodeRules::CommonMark`], a span opened on an ATX heading or a line
-    /// starting with `|` stays on that line.
+    /// Note the line the scan has reached. `line` excludes its `\n`; for a
+    /// line in a list item or a block quote, pass the text past the markers
+    /// ([`Fences::content_start`]). Under [`CodeRules::CommonMark`], a span
+    /// opened on an ATX heading stays on that line, and one opened on a line
+    /// starting with `|` stays in its cell: it closes before the next `|`
+    /// that is not escaped as `\|`, or not at all.
     pub fn line(&mut self, line: &[u8]) {
-        self.one_line = self.rules == CodeRules::CommonMark && is_one_line_block(line);
+        self.block = if self.rules != CodeRules::CommonMark {
+            SpanBlock::Paragraph
+        } else {
+            let indented = &line[leading_spaces(line, 3)..];
+            if atx_heading(indented) {
+                SpanBlock::Heading
+            } else if indented.first() == Some(&b'|') {
+                SpanBlock::TableRow
+            } else {
+                SpanBlock::Paragraph
+            }
+        };
     }
 
     /// The backtick run that starts at `start`: its length, and where the
@@ -263,6 +619,9 @@ impl<'a> Spans<'a> {
         let mut at = from;
         loop {
             while at < bytes.len() && bytes[at] != b'\n' {
+                if self.block == SpanBlock::TableRow && bytes[at] == b'|' && !escaped(bytes, at) {
+                    return Err(at);
+                }
                 if bytes[at] != b'`' {
                     at += 1;
                     continue;
@@ -274,7 +633,7 @@ impl<'a> Spans<'a> {
                 at += run;
             }
             let next = at + 1;
-            if self.one_line || next >= bytes.len() {
+            if self.block != SpanBlock::Paragraph || next >= bytes.len() {
                 return Err(next.min(bytes.len()));
             }
             if ends_span_block(&bytes[next..line_end(bytes, next)], self.rules) {
@@ -327,6 +686,7 @@ fn closes(run: usize, length: usize, rules: CodeRules) -> bool {
     match rules {
         CodeRules::CommonMark => run == length,
         CodeRules::SkillExport => run >= length,
+        CodeRules::None => false,
     }
 }
 
@@ -343,6 +703,7 @@ fn ends_span_block(line: &[u8], rules: CodeRules) -> bool {
     match rules {
         CodeRules::SkillExport => fence_run(line).is_some(),
         CodeRules::CommonMark => opens_fence(line, rules).is_some() || starts_block(line),
+        CodeRules::None => false,
     }
 }
 
@@ -357,6 +718,18 @@ fn is_one_line_block(line: &[u8]) -> bool {
 fn atx_heading(line: &[u8]) -> bool {
     let hashes = line.iter().take_while(|b| **b == b'#').count();
     (1..=6).contains(&hashes) && matches!(line.get(hashes), None | Some(b' ' | b'\t' | b'\r'))
+}
+
+/// Whether a line outside a fence, starting after any indent, is not
+/// paragraph text: an ATX heading, a thematic break, or a setext underline
+/// directly under a paragraph.
+fn leaves_paragraph(text: &[u8], after_paragraph: bool) -> bool {
+    let underline = text.first().is_some_and(|&c| c == b'=' || c == b'-') && {
+        let mark = text[0];
+        let run = text.iter().take_while(|b| **b == mark).count();
+        text[run..].iter().all(|b| matches!(b, b' ' | b'\t'))
+    };
+    atx_heading(text) || thematic_break(text) || (after_paragraph && underline)
 }
 
 /// An ATX heading, a line starting with `|`, a setext underline, a thematic
@@ -442,6 +815,9 @@ pub fn strip_code(text: &str) -> String {
 /// assert_eq!(blanked, "    x"); // 3 chars of code, now 3 one-byte spaces
 /// ```
 pub fn strip_code_with(text: &str, rules: CodeRules) -> String {
+    if rules == CodeRules::None {
+        return text.to_string();
+    }
     let bytes = text.as_bytes();
     let mut out = String::with_capacity(text.len());
     let mut fences = Fences::new(rules);
@@ -467,7 +843,7 @@ pub fn strip_code_with(text: &str, rules: CodeRules) -> String {
                 offset = end + 1;
                 continue;
             }
-            spans.line(line);
+            spans.line(&line[fences.content_start()..]);
         }
         if bytes[offset] == b'`' {
             if rules == CodeRules::CommonMark && escaped(bytes, offset) {
@@ -573,7 +949,7 @@ mod tests {
                 .collect();
             let inner_marker = match rules {
                 CodeRules::CommonMark => FenceLine::Inside,
-                CodeRules::SkillExport => FenceLine::Marker,
+                CodeRules::SkillExport | CodeRules::None => FenceLine::Marker,
             };
             assert_eq!(
                 kinds,
@@ -654,8 +1030,14 @@ mod tests {
         }
         let rising = unclosed(1..=2000);
         let falling = unclosed((1..=2000).rev());
+        // Container blocks: a deep chain of list items and block quotes, then
+        // a long run of blank lines and indented lines under it, and a table
+        // row of many cells each holding an unclosed run.
+        let nested = format!("{}x\n{}", "- > ".repeat(20_000), "\n    y\n".repeat(20_000));
+        let quotes = format!("{}x\n{}", "> ".repeat(100_000), "> text\n".repeat(50_000));
+        let cells = format!("| {}|\n", "`a | ".repeat(200_000));
         for rules in BOTH {
-            for text in [&long_line, &rising, &falling] {
+            for text in [&long_line, &rising, &falling, &nested, &quotes, &cells] {
                 let started = std::time::Instant::now();
                 let out = strip_code_with(text, rules);
                 let elapsed = started.elapsed();
@@ -673,5 +1055,26 @@ mod tests {
     fn commonmark_closes_a_span_only_on_a_run_of_its_own_length() {
         assert_eq!(find_span_close(b"`a``b`", CodeRules::CommonMark), Some(5));
         assert_eq!(find_span_close(b"`a``b`", CodeRules::SkillExport), Some(2));
+    }
+
+    // The cases for fences in containers and table rows are in the shared suite.
+    #[test]
+    fn skill_export_and_none_know_no_containers() {
+        let text = "- ```\n  [[a]]\n  ```\n[[b]]";
+        assert_eq!(strip_code_with(text, CodeRules::None), text);
+        // Flat rules: the first line opens no fence, the third does, and
+        // nothing closes it.
+        assert_eq!(
+            strip_code_with(text, CodeRules::SkillExport),
+            "- ```\n  [[a]]\n     \n     "
+        );
+    }
+
+    #[test]
+    fn skill_export_reads_a_table_row_as_any_line() {
+        assert_eq!(
+            strip_code_with("| `a | [[x]] | b` |", CodeRules::SkillExport),
+            "|                 |"
+        );
     }
 }

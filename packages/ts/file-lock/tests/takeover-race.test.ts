@@ -18,22 +18,21 @@ const hooks = vi.hoisted(() => ({
   writes: [] as string[],
 }))
 
-vi.mock('node:fs', async (importOriginal) => {
-  const real = await importOriginal<typeof import('node:fs')>()
-  const readFileSync = ((...args: Parameters<typeof real.readFileSync>) => {
-    const out = real.readFileSync(...args)
-    hooks.afterRead?.(String(args[0]))
-    return out
-  }) as typeof real.readFileSync
-  const writeFileSync = ((...args: Parameters<typeof real.writeFileSync>) => {
-    hooks.writes.push(String(args[0]))
-    return real.writeFileSync(...args)
-  }) as typeof real.writeFileSync
+// Every read of a lock goes through readLock, and every claim or update file
+// through createLockFile, so hooking the two sees what the package does on disk.
+vi.mock('../src/lock-file.ts', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../src/lock-file.ts')>()
   return {
     ...real,
-    default: { ...real, readFileSync, writeFileSync },
-    readFileSync,
-    writeFileSync,
+    readLock: (path: string) => {
+      const out = real.readLock(path)
+      hooks.afterRead?.(path)
+      return out
+    },
+    createLockFile: (path: string, data: string, mode?: number) => {
+      hooks.writes.push(path)
+      real.createLockFile(path, data, mode)
+    },
   }
 })
 

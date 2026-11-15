@@ -1,0 +1,22 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    devDependencies:
+      '@osdlc/corpus-profile-claims':
+        specifier: file:../../../profiles/claims
+        version: file:../../../profiles/claims
+
+packages:
+
+  '@osdlc/corpus-profile-claims@file:../../../profiles/claims':
+    resolution: {directory: ../../../profiles/claims, type: directory}
+
+snapshots:
+
+  '@osdlc/corpus-profile-claims@file:../../../profiles/claims': {}

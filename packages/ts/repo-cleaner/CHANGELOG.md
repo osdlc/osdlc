@@ -1,5 +1,24 @@
 # @osdlc/repo-cleaner
 
+## 0.20.3
+
+### Patch Changes
+
+- Updated dependencies [912296d]
+  - @osdlc/typed-git@0.15.0
+  - @osdlc/typed-gh@0.17.2
+
+## 0.20.2
+
+### Patch Changes
+
+- Updated dependencies [e1a5941]
+- Updated dependencies [cb8eafc]
+  - @osdlc/command-seam@0.15.0
+  - @osdlc/typed-git@0.14.0
+  - @osdlc/cli-tool@0.18.2
+  - @osdlc/typed-gh@0.17.1
+
 ## 0.20.1
 
 ### Patch Changes

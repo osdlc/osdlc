@@ -952,26 +952,23 @@ fn agrees_a_list_item_fence_without_a_blank_line_is_stripped_as_a_span() {
     assert_eq!(targets, vec!["glossary/terms/unique-term"]);
 }
 
-/// A blank line inside that list-item fence ends the span's block, so the two
-/// backtick runs no longer pair up and the links inside leak. `strip_code`
-/// reads one line at a time and does not know the fence belongs to the list
-/// item (src/code.rs).
+/// A blank line inside that list-item fence stays in the item, and `strip_code`
+/// tracks the item (src/code.rs), so the fence is code to its end and the
+/// links inside it are not harvested.
 #[test]
-fn diverges_a_list_item_fence_with_a_blank_line_leaks_its_links() {
+fn agrees_a_list_item_fence_with_a_blank_line_is_stripped() {
     let body = "- a list item\n\n    ```\n    [[a]]\n\n    [[b]]\n    ```\n";
-    let targets: Vec<String> = body_links(body).into_iter().map(|l| l.target).collect();
-    assert_eq!(targets, vec!["a", "b"]);
-    // Obsidian: no reference harvested.
+    assert!(body_links(body).is_empty());
 }
 
-/// A line starting with `|` is a one-line block to `strip_code`, so a span in
-/// a table row may cross a cell. GFM splits the row into cells first, so
-/// neither backtick here opens a span (src/code.rs).
+/// A line starting with `|` is a table row to `strip_code`, which cuts it at
+/// every unescaped `|` before it reads spans, as GFM does. Neither backtick
+/// here opens a span, so `[[x]]` is harvested.
 #[test]
-fn diverges_a_span_in_a_table_row_crosses_cells() {
+fn agrees_a_span_in_a_table_row_stays_in_its_cell() {
     let body = "| a | b |\n|---|---|\n| `[[x]] | y` |\n";
-    assert!(body_links(body).is_empty());
-    // Obsidian: [[x]] is harvested.
+    let targets: Vec<String> = body_links(body).into_iter().map(|l| l.target).collect();
+    assert_eq!(targets, vec!["x"]);
 }
 
 /// `strip_code` (src/code.rs) keeps CHAR offsets, not byte offsets: each

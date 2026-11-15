@@ -1,0 +1,7 @@
+type: object
+required: [statement]
+properties:
+  statement: { type: string }
+  status: { enum: [draft, kept] }
+patternProperties:
+  "^x-": { type: string }

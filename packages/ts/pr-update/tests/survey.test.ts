@@ -19,6 +19,7 @@ import {
   measure,
   nearestBehindAncestor,
   parentEdges,
+  prKey,
   renderSurveyText,
   repoFailuresOf,
   statusFor,
@@ -364,10 +365,10 @@ describe('surveyRows', () => {
 
 describe('resolveTargets', () => {
   /** A stand-in for the host's own repo-registry scan. */
-  const locate = (known: Record<string, string>) => (slug: string) => known[slug] ?? null
+  const locate = (known: Record<string, string>) => (repo: string) => known[repo] ?? null
 
   test('the repository you are standing in needs no config', () => {
-    expect(resolveTargets('o/r', '/repo', [], locate({}))).toEqual([{ slug: 'o/r', path: '/repo' }])
+    expect(resolveTargets('o/r', '/repo', [], locate({}))).toEqual([{ repo: 'o/r', path: '/repo' }])
   })
 
   test('a bare run stays local, however many containers are configured', () => {
@@ -375,31 +376,31 @@ describe('resolveTargets', () => {
     // in scope. Surveying every checkout on the machine by default would be a
     // surprise.
     const out = resolveTargets('o/r', '/repo', [], locate({ 'x/y': '/x', 'a/b': '/a' }))
-    expect(out).toEqual([{ slug: 'o/r', path: '/repo' }])
+    expect(out).toEqual([{ repo: 'o/r', path: '/repo' }])
   })
 
   test('--repo names the repositories to survey, and they are located', () => {
     const out = resolveTargets('o/r', '/repo', ['x/y'], locate({ 'x/y': '/x' }))
-    expect(out).toEqual([{ slug: 'x/y', path: '/x' }])
+    expect(out).toEqual([{ repo: 'x/y', path: '/x' }])
   })
 
-  test('the local checkout is used for its own slug without a scan', () => {
+  test('the local checkout is used for its own repo without a scan', () => {
     // Running inside the repository is enough. No registry needs to list it.
     expect(resolveTargets('o/r', '/repo', ['o/r'], locate({}))).toEqual([
-      { slug: 'o/r', path: '/repo' },
+      { repo: 'o/r', path: '/repo' },
     ])
   })
 
   test('a repeated --repo yields one target', () => {
     const out = resolveTargets('o/r', '/repo', ['x/y', 'x/y'], locate({ 'x/y': '/x' }))
-    expect(out).toEqual([{ slug: 'x/y', path: '/x' }])
+    expect(out).toEqual([{ repo: 'x/y', path: '/x' }])
   })
 
   test('a named repository with no checkout is listed, not dropped', () => {
     // Surveying fewer repositories than asked for is the worse failure. The
     // caller would read a short list as "nothing to do there".
     expect(resolveTargets('o/r', '/repo', ['far/away'], locate({}))).toEqual([
-      { slug: 'far/away', path: null },
+      { repo: 'far/away', path: null },
     ])
   })
 
@@ -407,7 +408,7 @@ describe('resolveTargets', () => {
     expect(resolveTargets(null, '/repo', [], locate({}))).toEqual([])
     // But an explicit --repo still works, located by the scan.
     expect(resolveTargets(null, '/repo', ['x/y'], locate({ 'x/y': '/x' }))).toEqual([
-      { slug: 'x/y', path: '/x' },
+      { repo: 'x/y', path: '/x' },
     ])
   })
 })
@@ -556,7 +557,7 @@ describe('unpushedLocalWork — real git', () => {
 })
 
 describe('runSurvey through the CodeHost port', () => {
-  test('lists each target via env.codeHost, naming --repo only for a non-local slug', () => {
+  test('lists each target via env.codeHost, naming --repo only for a non-local repo', () => {
     const queries: Record<string, unknown>[] = []
     const cwds: string[] = []
     const git: CommandRunner = {
@@ -582,7 +583,7 @@ describe('runSurvey through the CodeHost port', () => {
           } as unknown as CodeHost
         },
         cfg: prUpdateConfigSchema.parse({}),
-        ports: { locate: (slug) => (slug === 'o/r' ? '/repo' : null) },
+        ports: { locate: (repo) => (repo === 'o/r' ? '/repo' : null) },
       },
     )
     expect(queries).toEqual([
@@ -591,6 +592,46 @@ describe('runSurvey through the CodeHost port', () => {
     ])
     expect(cwds).toEqual(['/repo', '/repo'])
     expect(report.prs.map((p) => p.repo)).toEqual(['o/r', 'x/y'])
+  })
+
+  describe('--pr owner/name#N', () => {
+    const git: CommandRunner = {
+      run: (argv) =>
+        argv.join(' ') === 'remote get-url origin'
+          ? { exitCode: 0, stdout: 'git@github.com:o/r.git\n', stderr: '' }
+          : { exitCode: 128, stdout: '', stderr: 'no reply' },
+    }
+    const surveyWith = (selectors: (number | string)[]) =>
+      runSurvey(surveyInput.parse({ repo: ['o/r', 'x/y'], pr: selectors, noFetch: true }), {
+        projectRoot: '/repo',
+        dryRun: false,
+        git,
+        gh: git,
+        codeHost: () =>
+          ({
+            listPrDetails: () => ({
+              ok: true,
+              value: [pr(1, 'one', 'main'), pr(2, 'two', 'main')],
+            }),
+          }) as unknown as CodeHost,
+        cfg: prUpdateConfigSchema.parse({}),
+        ports: { locate: () => null },
+      })
+
+    test('selects that PR in its repository only', () => {
+      const report = surveyWith(['x/y#2'])
+      expect(report.prs.map((p) => prKey(p.repo, p.number))).toEqual(['x/y#2'])
+    })
+
+    test('a bare number still selects that PR in every repository', () => {
+      const report = surveyWith([1])
+      expect(report.prs.map((p) => prKey(p.repo, p.number))).toEqual(['o/r#1', 'x/y#1'])
+    })
+
+    test('a repository outside the run is a usage error, not an empty selection', () => {
+      expect(() => surveyWith(['a/b#1'])).toThrow(SurveyUsageError)
+      expect(() => surveyWith(['a/b#1'])).toThrow('add --repo a/b')
+    })
   })
 
   test('--remote is the remote measured against, not only the one fetched', () => {
@@ -647,12 +688,12 @@ describe('runSurvey over several repositories', () => {
       dryRun: false,
       git,
       gh: git,
-      codeHost: ({ slug }) =>
+      codeHost: ({ repo }) =>
         ({
           listPrDetails: () =>
-            failing.includes(slug)
+            failing.includes(repo)
               ? { ok: false, error: refused }
-              : { ok: true, value: [pr(1, `head-${slug.replace('/', '-')}`, 'main')] },
+              : { ok: true, value: [pr(1, `head-${repo.replace('/', '-')}`, 'main')] },
         }) as unknown as CodeHost,
       cfg: prUpdateConfigSchema.parse({}),
       ports: { locate: () => '/repo' },
@@ -660,7 +701,7 @@ describe('runSurvey over several repositories', () => {
 
   test('one failed listing does not abort the others: it is recorded on its repo entry', () => {
     const report = surveyOf(['x/y', 'o/a'], ['x/y'])
-    expect(report.repos.map((r) => [r.slug, r.failure?.kind])).toEqual([
+    expect(report.repos.map((r) => [r.repo, r.failure?.kind])).toEqual([
       ['x/y', 'not-authenticated'],
       ['o/a', undefined],
     ])
@@ -873,7 +914,7 @@ describe('renderSurveyText', () => {
 
   test('prints the notes, the cycle line and the counts line', () => {
     const text = renderSurveyText({
-      repos: [{ slug: 'o/r', measurable: true, fetched: true }],
+      repos: [{ repo: 'o/r', measurable: true, fetched: true, cycles: [7, 8] }],
       prs: [
         { ...base, number: 1, head: 'root' },
         {
@@ -891,7 +932,6 @@ describe('renderSurveyText', () => {
           strategyReason: 'reviewed',
         },
       ],
-      cycles: [7, 8],
       counts: {
         total: 2,
         upToDate: 0,
@@ -905,7 +945,8 @@ describe('renderSurveyText', () => {
       },
     })
     expect(text).toContain('← blocked on #1; conflicts: a, b, c (+2); reviewed')
-    expect(text).toContain('unordered (base/head cycle): #7, #8')
+    expect(text).toContain('o/r#2  blocked')
+    expect(text).toContain('unordered (base/head cycle): o/r#7, o/r#8')
     expect(text).toContain(
       'PR-SURVEY: total=2 up-to-date=0 behind=1 blocked=1 conflicted=1 unknown=0 | plan rebase=1 merge=1 skip=0',
     )

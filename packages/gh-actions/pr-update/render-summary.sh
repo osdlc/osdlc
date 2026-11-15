@@ -91,9 +91,12 @@ jq -r -L "$here" --arg base "$server/$repo/pull" 'include "rows";
   "updated \(.counts.updated), up to date \(.counts.upToDate), conflict \(.counts.conflict), failed \(.counts.failed), skipped \(.counts.skipped)"
 ' "$report"
 
-if jq -e '(.repoFailures // []) | length > 0' "$report" >/dev/null; then
+# pr-update 0.10 records a listing failure on its `repos` entry; earlier
+# versions listed it under `repoFailures`.
+failed_repos='def failed: (.repoFailures // []) + [(.repos // [])[] | select(.failure) | {repo, message: .failure.message}];'
+if jq -e "$failed_repos"' failed | length > 0' "$report" >/dev/null; then
   echo
-  jq -r '.repoFailures[] | "- repository \(.repo) could not be listed: \(.message)"' "$report"
+  jq -r "$failed_repos"' failed[] | "- repository \(.repo) could not be listed: \(.message)"' "$report"
 fi
 
 if [ -n "$excluded" ] && [ -s "$excluded" ]; then

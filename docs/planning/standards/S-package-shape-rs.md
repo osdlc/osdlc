@@ -38,18 +38,18 @@ categories or `include`.
 
 ## Enforcement
 
-`scripts/package-shape-rs.ts` holds the checks, as functions over data that
-its entry point reads from `packages/rust/`. It takes the crate list from
-`members` in `packages/rust/Cargo.toml`. `scripts/package-shape-rs.test.ts`
-tests the checks and runs them over every crate in the repository.
+[`@osdlc/package-checks`](../../../packages/ts/package-checks/README.md)
+holds the checks, as functions over data that `package-checks rust` reads
+from `packages/rust/`. It takes the crate list from `members` in
+`packages/rust/Cargo.toml`. Its tests check the rules and run them over every
+crate in this repository.
 
 ```sh
 pnpm run check:crates
 ```
 
-CI runs the tests and the check in the `lint` job of
-`.github/workflows/rust-ci.yml`. The job also runs when a change touches
-`scripts/package-shape-rs*`.
+CI runs the check in the `lint` job of `.github/workflows/rust-ci.yml`. The
+job also runs when a change touches `packages/ts/package-checks/`.
 
 ## Exemptions
 

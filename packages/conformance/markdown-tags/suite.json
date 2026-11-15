@@ -1,7 +1,7 @@
 {
   "family": "markdown-tags",
   "reference": "rust",
-  "referenceVersion": "0.4.0",
+  "referenceVersion": "0.4.1",
   "sections": {
     "inline_tags": {
       "description": "Inline tags of `body` in encounter order, not deduplicated, under each dialect: `expect` maps `obsidian`, `unicode` and `ascii` to the tag names found, without the `#`. Offsets are not part of the answer.",

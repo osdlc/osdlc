@@ -235,11 +235,10 @@ function edit(text: string, path: readonly string[], op: Op): string {
 
   // Fallback: re-render the whole top-level section from its merged value.
   const current: unknown = node === null || node === undefined ? undefined : doc.toJS()[head]
-  if (op.kind === 'unset' && !isPlainObject(current)) {
-    // Nothing to descend into (a scalar, sequence, or absent value), so the
-    // nested path was never set. Recursing through `applyPlain` here would
-    // build a new `{}`, find no keys left, and delete `head` itself: a plain
-    // `a: 1` would lose `a` when unsetting `a.x`. Return the text unchanged.
+  if (op.kind === 'unset' && !hasPath(current, rest)) {
+    // The nested path was never set. `applyPlain` would still drop `head` when
+    // it ends up with no keys: `a: 1` or `a: {}` would lose `a` when unsetting
+    // `a.x`. Return the text unchanged.
     return text
   }
   const next = applyPlain(current, rest, op)
@@ -280,6 +279,16 @@ function findPair(map: YAMLMap, key: string): Pair | undefined {
 /** `['a','b']`, v → `{ a: { b: v } }`. */
 function nest(path: readonly string[], value: unknown): unknown {
   return path.reduceRight<unknown>((acc, seg) => ({ [seg]: acc }), value)
+}
+
+/** Whether `path` names an own key, each segment before it a mapping. */
+function hasPath(value: unknown, path: readonly string[]): boolean {
+  let cur = value
+  for (const seg of path) {
+    if (!isPlainObject(cur) || !Object.hasOwn(cur, seg)) return false
+    cur = cur[seg]
+  }
+  return true
 }
 
 /** Set/unset `path` on a plain value; `undefined` when nothing is left. */

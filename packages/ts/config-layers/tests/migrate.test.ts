@@ -123,6 +123,23 @@ describe('defineMigrations — the step list', () => {
       warnings: ["moved 'old' to 'new'", 'new is 1'],
     })
   })
+  test('before runs ahead of the moves, so a clean-up can shape what they move', () => {
+    const steps = defineMigrations([
+      {
+        to: 2,
+        before: (raw, warn) => {
+          warn('legacy flattened')
+          return { ...raw, old: (raw.legacy as { old: unknown }).old, legacy: undefined }
+        },
+        moves: [['old', 'new']],
+      },
+    ])
+    expect(run({ legacy: { old: 1 } }, steps)).toEqual({
+      raw: { new: 1, legacy: undefined, version: 2 },
+      applied: [2],
+      warnings: ['legacy flattened', "moved 'old' to 'new'"],
+    })
+  })
 })
 
 describe('defineMigrations — moves', () => {

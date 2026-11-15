@@ -1,0 +1,46 @@
+# .github/workflows/rule-review.yml
+# Review each pull request against the CLAUDE.md and AGENTS.md files that
+# govern the files it changes. Findings become annotations on the diff.
+name: rule-review
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  rule-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The review diffs against the fork point, so it needs the history.
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      # The agent that judges each rule file. Codex, Antigravity and opencode
+      # work too: install that CLI and pass --engine.
+      - run: npm install -g @anthropic-ai/claude-code
+      - name: Review the change against its rule files
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BASE: ${{ github.base_ref }}
+        # --blocking fails the job on a violation. --strict also fails it
+        # when a judgement could not complete, such as a missing API key.
+        run: npx -y @osdlc/rule-review@0.4 --base "$BASE" --blocking --strict --json > rule-review.json
+      # Findings hold model text, so it is escaped before it reaches a
+      # workflow command: a newline or "::" in it cannot start another one.
+      - name: Annotate the findings
+        if: always()
+        run: |
+          jq -r '
+            def msg: gsub("%"; "%25") | gsub("\r"; "%0D") | gsub("\n"; "%0A");
+            def prop: msg | gsub(":"; "%3A") | gsub(","; "%2C");
+            .findings[]?
+            | "::\(if .severity == "violation" then "error" else "warning" end)"
+              + " file=\(.file | prop)\(if .line then ",line=\(.line)" else "" end)"
+              + ",title=\(.sourcePath | prop)::\(.why | msg)"
+          ' rule-review.json

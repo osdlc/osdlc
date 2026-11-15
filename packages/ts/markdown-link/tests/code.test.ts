@@ -99,3 +99,18 @@ describe('stripCode', () => {
     }
   }, 120_000)
 })
+
+describe('container blocks', () => {
+  // The cases for fences in containers are in the shared suite.
+  test("'skill-export' knows no containers and 'none' finds no code", () => {
+    const text = '- ```\n  [[a]]\n  ```\n[[b]]'
+    expect(stripCodeWith(text, 'none')).toBe(text)
+    expect(stripCodeWith(text, 'skill-export')).toBe('- ```\n  [[a]]\n     \n     ')
+  })
+})
+
+describe('table rows', () => {
+  test("'skill-export' reads a row as any line", () => {
+    expect(stripCodeWith('| `a | [[x]] | b` |', 'skill-export')).toBe('|                 |')
+  })
+})

@@ -1,0 +1,4 @@
+x-extends: org/principles
+properties:
+  team: { type: string }
+  status: { enum: [kept] }

@@ -1,0 +1,3 @@
+x-extends: base/principles
+properties:
+  team: { type: string }
