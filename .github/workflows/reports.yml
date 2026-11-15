@@ -4,9 +4,10 @@
 # are in packages-ci.yml and rust-ci.yml.
 #
 # `ts` and `rust` run scripts/quality-report.sh, whose header says what it
-# measures, and write its tables to their job summary: coverage per package
-# or crate, and the functions over a complexity threshold. A failing test is
-# named in the summary and leaves the job green.
+# measures, and write its tables to their job summary: first a row per
+# package or crate with its test result, line coverage and complexity
+# findings, then the coverage and the functions over a complexity threshold
+# in full. A failing test is named in the summary and leaves the job green.
 #
 # `coverage` totals both languages with octocov (.octocov.yml) and writes the
 # total to its job summary, beside the change from main. A run on main stores
