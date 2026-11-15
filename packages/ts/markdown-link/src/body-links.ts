@@ -676,7 +676,9 @@ class UrlScan {
   readonly body: string
   readonly chars: Int32Array
   readonly at: Int32Array
-  /** The tables below, made the first time a URL is too long to read in place. */
+  /** The run of non-whitespace code points the last long URL started in. */
+  private run: UrlRun | null = null
+  /** Made when a long URL is not answered by `run`. */
   private tables: UrlTables | null = null
   /** The last `.` or `/` in `[markLow, markEnd)`, or -1, as `lastMark` found it. */
   private markLow = 0
@@ -699,6 +701,8 @@ class UrlScan {
    */
   private bareUrlEnd(from: number): number {
     const chars = this.chars
+    const inRun = this.run?.urlEnd(from, chars.length)
+    if (inRun !== undefined) return inRun
     // Once the tables are made, they answer every read.
     const stop = this.tables === null ? Math.min(chars.length, from + IN_PLACE) : from
     let depth = 0
@@ -716,6 +720,13 @@ class UrlScan {
       escaped = !escaped && c === BACKSLASH
     }
     if (stop === chars.length) return -1
+    // A run is made for a start past the last run, so that runs do not
+    // overlap and reading them stays linear.
+    if (this.tables === null && (this.run === null || from >= this.run.end)) {
+      this.run = UrlRun.of(chars, from)
+      const made = this.run?.urlEnd(from, chars.length)
+      if (made !== undefined) return made
+    }
     const { space, depth: depths, unopenedClose } = (this.tables ??= new UrlTables(chars))
     const paren = unopenedClose[from]!
     const white = space[from]!
@@ -859,6 +870,75 @@ class UrlScan {
 const CLOSE_PAREN = 0x29
 /** How many code points of a URL are read in place before the tables take over. */
 const IN_PLACE = 64
+
+/**
+ * What a run of non-whitespace code points from `start` to `end` holds of
+ * parentheses, when it holds at most one unescaped `)`. It answers where an
+ * unbracketed URL starting in the run ends, in constant time.
+ */
+class UrlRun {
+  private constructor(
+    readonly start: number,
+    /** The first whitespace after `start`, or the body's length. */
+    readonly end: number,
+    /** The unescaped `)`, or -1. */
+    private readonly close: number,
+    /**
+     * The last two unescaped `(` before `close`, or before `end` when there is
+     * no `)`, latest first; -1 for none.
+     */
+    private readonly lastOpen: number,
+    private readonly priorOpen: number,
+    /** The last unescaped `(` after `close`, or -1. */
+    private readonly openAfter: number,
+  ) {}
+
+  /** The run from `start` to the next whitespace, or null when it holds more than one unescaped `)`. */
+  static of(chars: Int32Array, start: number): UrlRun | null {
+    const n = chars.length
+    let close = -1
+    let end = n
+    let lastOpen = -1
+    let priorOpen = -1
+    let openAfter = -1
+    // The index of the code point a `\` just before it escapes.
+    let escaped = -1
+    for (let k = start; k < n; k++) {
+      const c = chars[k]!
+      if (c === BACKSLASH) {
+        if (escaped !== k) escaped = k + 1
+      } else if (c === PAREN) {
+        if (escaped !== k) {
+          if (close >= 0) openAfter = k
+          else {
+            priorOpen = lastOpen
+            lastOpen = k
+          }
+        }
+      } else if (c === CLOSE_PAREN) {
+        if (escaped !== k) {
+          if (close >= 0) return null
+          close = k
+        }
+      } else if (isSpace(c)) {
+        end = k
+        break
+      }
+    }
+    return new UrlRun(start, end, close, lastOpen, priorOpen, openAfter)
+  }
+
+  /** Where the URL at `from` ends, -1 when it is not one, or undefined when `from` is not in the run. */
+  urlEnd(from: number, bodyLength: number): number | undefined {
+    if (from < this.start || from >= this.end) return undefined
+    const toSpace = (balanced: boolean): number =>
+      balanced && this.end < bodyLength ? this.end : -1
+    if (this.close < 0) return toSpace(this.lastOpen < from)
+    if (from > this.close) return toSpace(this.openAfter < from)
+    if (this.lastOpen < from) return this.close
+    return this.priorOpen < from ? toSpace(this.openAfter < 0) : -1
+  }
+}
 
 /** Tables over a body's code points that give a URL's end in constant time. */
 class UrlTables {
