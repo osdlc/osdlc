@@ -79,6 +79,12 @@ const SKIPPED: Record<string, string> = {
     'without a delimiter row the line is a paragraph, and remark reads the code span',
   table_row_in_a_block_quote:
     'without a delimiter row the line is a paragraph, and remark reads the code span',
+  markdown_link_text_holding_a_wikilink_is_not_a_markdown_link:
+    'remark makes the wikilink part of a link node, and the plugin leaves a link node alone',
+  a_code_span_in_parentheses_after_a_bracket_is_code:
+    'remark reads `[[a]](...)` as a link node, and the plugin leaves a link node alone',
+  comment_backtick_does_not_hide_a_link_default:
+    'the parse makes the whole line an html node, not text',
 }
 
 interface Found {
