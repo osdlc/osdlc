@@ -2,7 +2,7 @@
 number: 76
 title: Claims as a pack
 detail: pack-claims
-status: dropped
+status: deferred
 type: functional
 milestone: "[m-model-layer](../milestones/m-model-layer.md)"
 after:
@@ -16,4 +16,4 @@ profile become generated output, as decided in [D17](../decisions/D17%20Profiles
 [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) folds that repo into osdlc/osdlc and keeps model-schema and the packs in sksizer/dev for now,
 so where `pack-claims` lives is not decided. After 23 and 62.
 
-Dropped: it follows task 62, which is out of scope under [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md). It is opened again with task 62.
+Deferred: it follows task 62, which is out of scope under [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md). It is opened again with task 62.

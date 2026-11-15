@@ -2,7 +2,7 @@
 number: 40
 title: Reshape in TS
 detail: "@osdlc/markdown-reshape"
-status: todo
+status: deferred
 type: functional
 milestone: "[m-model](../milestones/m-model.md)"
 after:
@@ -15,3 +15,5 @@ The TypeScript twin, `@osdlc/markdown-reshape`, built on markdown-corpus. After 
 Open question: a TypeScript port, or a WebAssembly build of the crate, as yaml-splice-wasm does for
 yaml-splice? A port needs TypeScript versions of markdown-vault-fs and vfs-seam, which do not exist
 yet. A WebAssembly build avoids that.
+
+Deferred: it follows task 12, which is deferred. It is opened again with task 12.
