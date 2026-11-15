@@ -1,0 +1,48 @@
+[
+  {
+    "name": "empty",
+    "input": {
+      "when": {}
+    },
+    "expected": "{}"
+  },
+  {
+    "name": "one-key",
+    "input": {
+      "when": {
+        "workflow": "implement"
+      }
+    },
+    "expected": "{workflow: implement}"
+  },
+  {
+    "name": "display-order-not-insertion-order",
+    "input": {
+      "when": {
+        "tags": [
+          "ui",
+          "db"
+        ],
+        "complexity": "small",
+        "workflow": "implement"
+      }
+    },
+    "expected": "{workflow: implement, complexity: small, tags: [ui, db]}"
+  },
+  {
+    "name": "every-key",
+    "input": {
+      "when": {
+        "workflow": "w",
+        "stage": "s",
+        "complexity": "c",
+        "impact": "i",
+        "autonomy": "a",
+        "tags": [
+          "t"
+        ]
+      }
+    },
+    "expected": "{workflow: w, stage: s, complexity: c, impact: i, autonomy: a, tags: [t]}"
+  }
+]

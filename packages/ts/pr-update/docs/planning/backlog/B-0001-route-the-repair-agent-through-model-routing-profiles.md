@@ -27,7 +27,8 @@ What routing adds:
 - **Author rule.** A repair is never routed to the same agent that wrote the
   PR, when the PR's author agent is known.
 
-Candidate building block: a model-routing library that is not yet published.
+Candidate building block: `@osdlc/agent-router` (`packages/ts/agent-router`), whose first
+release is 0.4.1.
 It resolves `tool/model[ctx=…]@effort` references and profiles against a model
 catalogue, needs an availability callback, and imports only agent-call's
 `./models` subpath, so it composes with the agent-call presets from D-0001. It
@@ -36,7 +37,7 @@ also exports `profiles`/`routing` config sections a host can mount next to
 
 Before this can be built:
 
-- The tool router publishes under osdlc.
+- `@osdlc/agent-router` publishes under osdlc (its first release, 0.4.1).
 - Undecided (owner, 2026-10-20): where routing config lives. pr-update
   could mount the router's config sections itself, or take a resolved
   route from its host through a port, or the binary could do one while
