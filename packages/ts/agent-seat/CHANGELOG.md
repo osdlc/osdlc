@@ -1,5 +1,12 @@
 # @osdlc/agent-seat
 
+## 0.7.6
+
+### Patch Changes
+
+- Updated dependencies [9a1d13c]
+  - @osdlc/agent-call@0.13.0
+
 ## 0.7.5
 
 ### Patch Changes
