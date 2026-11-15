@@ -1,0 +1,11 @@
+{
+  // Typechecks src/, tests/, examples/ and scripts/. The build has its own include.
+  // Workspace siblings and the package's own name resolve through `exports` to
+  // the built `dist/`, so run the build before the typecheck.
+  "extends": "@osdlc/tsconfig/node-lib",
+  "compilerOptions": {
+    // The shipped catalogue snapshot is a JSON import (src/catalogue/snapshot.ts).
+    "resolveJsonModule": true
+  },
+  "include": ["src", "tests", "examples", "scripts", "vitest.config.ts"]
+}

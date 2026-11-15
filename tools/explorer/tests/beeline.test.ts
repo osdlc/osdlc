@@ -66,6 +66,20 @@ describe('beeline checklist', () => {
     expect(checklistItem(dropped, dropped.task.get(4)!, 'tasks/4.md')).toContain('waits on 3')
   })
 
+  it('lists a deferred task in its own section, with no box', () => {
+    const deferred = indexPlan(
+      parsePlan({
+        ...rawPlan,
+        milestones: rawPlan.milestones.map((m) => ({ ...m, beeline: true })),
+        tasks: rawPlan.tasks.map((t) => (t.id === 5 ? { ...t, status: 'deferred' } : t)),
+      }).plan,
+    )
+    const groups = beelineGroups(deferred)
+    expect(ids(groups.nextUp)).toEqual([2])
+    expect(ids(groups.deferred)).toEqual([5])
+    expect(checklistItem(deferred, deferred.task.get(5)!, 'tasks/5.md')).toBe('- [5 Five](tasks/5.md) · deferred')
+  })
+
   it('covers only the tasks of beeline milestones', () => {
     const text = beelineChecklist(plan, href)
     expect(text).toContain('beeline milestones: `m-a`.')

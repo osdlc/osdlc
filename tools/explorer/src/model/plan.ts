@@ -2,19 +2,24 @@
 
 import type { Link } from './types'
 
-export type TaskStatus = 'done' | 'doing' | 'owner' | 'todo' | 'dropped'
+export type TaskStatus = 'done' | 'doing' | 'owner' | 'todo' | 'deferred' | 'dropped'
 export type TaskType = 'functional' | 'supporting'
 /** The part of the ecosystem a milestone builds. */
 export type MilestonePhase = 'store' | 'model' | 'harness'
 
-export const TASK_STATUSES: readonly TaskStatus[] = ['done', 'doing', 'owner', 'todo', 'dropped']
+export const TASK_STATUSES: readonly TaskStatus[] = ['done', 'doing', 'owner', 'todo', 'deferred', 'dropped']
+
+/** Not done and not planned: on hold (deferred) or never to be done (dropped). */
+export function isSetAside(status: TaskStatus | undefined): boolean {
+  return status === 'deferred' || status === 'dropped'
+}
 
 /**
- * No work is planned on it: done, or dropped. A dropped task still holds up the tasks that wait on
- * it, since what they need was never built.
+ * No work is planned on it: done, deferred or dropped. A task that is set aside still holds up the
+ * tasks that wait on it, since what they need was never built.
  */
 export function isClosed(status: TaskStatus | undefined): boolean {
-  return status === 'done' || status === 'dropped'
+  return status === 'done' || isSetAside(status)
 }
 export const TASK_TYPES: readonly TaskType[] = ['functional', 'supporting']
 export const MILESTONE_PHASES: readonly MilestonePhase[] = ['store', 'model', 'harness']
@@ -71,6 +76,7 @@ export const DEFAULT_STATUS_LABEL: Record<TaskStatus, string> = {
   doing: 'in progress',
   owner: 'waiting on owner',
   todo: 'not started',
+  deferred: 'deferred',
   dropped: 'dropped',
 }
 
