@@ -1,0 +1,1395 @@
+[
+  {
+    "name": "snap-efforts-claude",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "effortsFor",
+      "args": [
+        "claude"
+      ]
+    },
+    "expected": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ]
+  },
+  {
+    "name": "snap-efforts-antigravity",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "effortsFor",
+      "args": [
+        "antigravity"
+      ]
+    },
+    "expected": [
+      "low",
+      "medium",
+      "high"
+    ]
+  },
+  {
+    "name": "snap-efforts-claude-fable",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "effortsFor",
+      "args": [
+        "claude",
+        "fable"
+      ]
+    },
+    "expected": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ]
+  },
+  {
+    "name": "snap-efforts-unknown-tool",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "effortsFor",
+      "args": [
+        "nosuch"
+      ]
+    },
+    "expected": null
+  },
+  {
+    "name": "snap-find-claude-fable",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "findModel",
+      "args": [
+        "claude",
+        "fable"
+      ]
+    },
+    "expected": {
+      "model": "anthropic/claude-fable-5-1",
+      "native_name": "fable"
+    }
+  },
+  {
+    "name": "snap-find-claude-opus",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "findModel",
+      "args": [
+        "claude",
+        "opus"
+      ]
+    },
+    "expected": {
+      "model": "anthropic/claude-opus-5-5",
+      "native_name": "opus"
+    }
+  },
+  {
+    "name": "snap-find-codex-by-key",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "findModel",
+      "args": [
+        "codex",
+        "openai/gpt-6.1-sol"
+      ]
+    },
+    "expected": {
+      "model": "openai/gpt-6.1-sol",
+      "native_name": "gpt-6.1-sol"
+    }
+  },
+  {
+    "name": "snap-find-pi-provider-id",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "findModel",
+      "args": [
+        "pi",
+        "anthropic/claude-opus-5-5"
+      ]
+    },
+    "expected": {
+      "model": "anthropic/claude-opus-5-5",
+      "native_name": "anthropic/claude-opus-5-5"
+    }
+  },
+  {
+    "name": "snap-find-missing",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "findModel",
+      "args": [
+        "claude",
+        "gpt-6-sol"
+      ]
+    },
+    "expected": null
+  },
+  {
+    "name": "snap-known-tools",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "knownTools",
+      "args": []
+    },
+    "expected": [
+      "antigravity",
+      "claude",
+      "codex",
+      "cursor",
+      "opencode",
+      "pi"
+    ]
+  },
+  {
+    "name": "snap-tier-claude-fast",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "tierModel",
+      "args": [
+        "claude",
+        "fast"
+      ]
+    },
+    "expected": "haiku"
+  },
+  {
+    "name": "snap-tier-claude-standard",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "tierModel",
+      "args": [
+        "claude",
+        "standard"
+      ]
+    },
+    "expected": "sonnet"
+  },
+  {
+    "name": "snap-tier-claude-max",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "tierModel",
+      "args": [
+        "claude",
+        "max"
+      ]
+    },
+    "expected": "opus"
+  },
+  {
+    "name": "snap-tier-codex-fast",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "tierModel",
+      "args": [
+        "codex",
+        "fast"
+      ]
+    },
+    "expected": "gpt-6-luna"
+  },
+  {
+    "name": "snap-tier-codex-standard",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "tierModel",
+      "args": [
+        "codex",
+        "standard"
+      ]
+    },
+    "expected": "gpt-6.1-sol"
+  },
+  {
+    "name": "snap-tier-codex-max",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "tierModel",
+      "args": [
+        "codex",
+        "max"
+      ]
+    },
+    "expected": "gpt-6-astra"
+  },
+  {
+    "name": "snap-tier-pi-max",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "tierModel",
+      "args": [
+        "pi",
+        "max"
+      ]
+    },
+    "expected": "anthropic/claude-opus-5-5"
+  },
+  {
+    "name": "snap-tier-opencode-standard",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "tierModel",
+      "args": [
+        "opencode",
+        "standard"
+      ]
+    },
+    "expected": "openai/gpt-6.1-sol"
+  },
+  {
+    "name": "snap-tier-cursor-fast-none",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "tierModel",
+      "args": [
+        "cursor",
+        "fast"
+      ]
+    },
+    "expected": null
+  },
+  {
+    "name": "snap-tier-antigravity-standard",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "tierModel",
+      "args": [
+        "antigravity",
+        "standard"
+      ]
+    },
+    "expected": "gemini-3.8-flash"
+  },
+  {
+    "name": "snap-tier-unknown-tool",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "tierModel",
+      "args": [
+        "nosuch",
+        "max"
+      ]
+    },
+    "expected": null
+  },
+  {
+    "name": "snap-pin-moves-tier",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "tierModel",
+      "args": [
+        "codex",
+        "max"
+      ],
+      "policy": {
+        "pins": {
+          "codex/max": "gpt-6.1-sol"
+        }
+      }
+    },
+    "expected": "gpt-6.1-sol"
+  },
+  {
+    "name": "snap-pinned-true",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "pinned",
+      "args": [
+        "codex",
+        "max"
+      ],
+      "policy": {
+        "pins": {
+          "codex/max": "gpt-6.1-sol"
+        }
+      }
+    },
+    "expected": true
+  },
+  {
+    "name": "snap-pinned-false",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "pinned",
+      "args": [
+        "codex",
+        "fast"
+      ],
+      "policy": {
+        "pins": {
+          "codex/max": "gpt-6.1-sol"
+        }
+      }
+    },
+    "expected": false
+  },
+  {
+    "name": "snap-offering-opencode",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "offering",
+      "args": [
+        "opencode",
+        "anthropic/claude-opus-5-5"
+      ]
+    },
+    "expected": {
+      "tool": "opencode",
+      "model": "anthropic/claude-opus-5-5",
+      "native_name": "anthropic/claude-opus-5-5",
+      "source": "snapshot",
+      "observed_at": "2026-10-09"
+    }
+  },
+  {
+    "name": "snap-offering-codex-context",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "offering",
+      "args": [
+        "codex",
+        "openai/gpt-6.1-sol"
+      ]
+    },
+    "expected": {
+      "tool": "codex",
+      "model": "openai/gpt-6.1-sol",
+      "native_name": "gpt-6.1-sol",
+      "source": "snapshot",
+      "observed_at": "2026-10-28",
+      "context": {
+        "default": 272000,
+        "max": 872000
+      }
+    }
+  },
+  {
+    "name": "snap-offering-missing",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "offering",
+      "args": [
+        "codex",
+        "anthropic/claude-opus-5-5"
+      ]
+    },
+    "expected": null
+  },
+  {
+    "name": "snap-tier-of-opus",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "tierOf",
+      "args": [
+        "anthropic/claude-opus-5-5"
+      ]
+    },
+    "expected": "max"
+  },
+  {
+    "name": "snap-tier-of-fable-unclassified",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "tierOf",
+      "args": [
+        "anthropic/claude-fable-5-1"
+      ]
+    },
+    "expected": "unclassified"
+  },
+  {
+    "name": "snap-tier-of-unknown-key",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "tierOf",
+      "args": [
+        "nosuch/model"
+      ]
+    },
+    "expected": "unclassified"
+  },
+  {
+    "name": "snap-models-for-claude",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "modelsFor",
+      "args": [
+        "claude"
+      ]
+    },
+    "expected": [
+      "anthropic/claude-fable-5",
+      "anthropic/claude-fable-5-1",
+      "anthropic/claude-haiku-4-5",
+      "anthropic/claude-haiku-5-5",
+      "anthropic/claude-opus-4-5",
+      "anthropic/claude-opus-4-6",
+      "anthropic/claude-opus-4-7",
+      "anthropic/claude-opus-4-8",
+      "anthropic/claude-opus-5",
+      "anthropic/claude-opus-5-5",
+      "anthropic/claude-sonnet-4-5",
+      "anthropic/claude-sonnet-4-6",
+      "anthropic/claude-sonnet-5",
+      "anthropic/claude-sonnet-5-5"
+    ]
+  },
+  {
+    "name": "snap-models-for-cursor",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "modelsFor",
+      "args": [
+        "cursor"
+      ]
+    },
+    "expected": [
+      "anthropic/claude-opus-5-5",
+      "anthropic/claude-sonnet-5",
+      "anthropic/claude-fable-5",
+      "openai/gpt-5.6-sol",
+      "openai/gpt-5.3-codex",
+      "google/gemini-3.7-flash"
+    ]
+  },
+  {
+    "name": "snap-models-for-unknown-tool",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "op": "modelsFor",
+      "args": [
+        "nosuch"
+      ]
+    },
+    "expected": []
+  },
+  {
+    "name": "mini-find-by-native-name",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "findModel",
+      "args": [
+        "alpha",
+        "big"
+      ]
+    },
+    "expected": {
+      "model": "anthropic/big-2",
+      "native_name": "big"
+    }
+  },
+  {
+    "name": "mini-find-by-key",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "findModel",
+      "args": [
+        "alpha",
+        "anthropic/big-2"
+      ]
+    },
+    "expected": {
+      "model": "anthropic/big-2",
+      "native_name": "big"
+    }
+  },
+  {
+    "name": "mini-find-by-id",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "findModel",
+      "args": [
+        "alpha",
+        "big-2"
+      ]
+    },
+    "expected": {
+      "model": "anthropic/big-2",
+      "native_name": "big"
+    }
+  },
+  {
+    "name": "mini-find-by-tool-alias-after-native-name-miss",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "findModel",
+      "args": [
+        "gamma",
+        "big"
+      ]
+    },
+    "expected": null
+  },
+  {
+    "name": "mini-find-curated-native-name",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "findModel",
+      "args": [
+        "delta",
+        "tiny"
+      ]
+    },
+    "expected": {
+      "model": "anthropic/small-1",
+      "native_name": "tiny"
+    }
+  },
+  {
+    "name": "mini-find-curated-hides-id",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "findModel",
+      "args": [
+        "delta",
+        "small-1"
+      ]
+    },
+    "expected": {
+      "model": "anthropic/small-1",
+      "native_name": "tiny"
+    }
+  },
+  {
+    "name": "mini-find-open-tool-provider-id",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "findModel",
+      "args": [
+        "gamma",
+        "ollama/qwen3:4b"
+      ]
+    },
+    "expected": {
+      "model": "ollama/qwen3:4b",
+      "native_name": "ollama/qwen3:4b"
+    }
+  },
+  {
+    "name": "mini-efforts-tool-only",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "effortsFor",
+      "args": [
+        "alpha"
+      ]
+    },
+    "expected": [
+      "low",
+      "medium",
+      "high"
+    ]
+  },
+  {
+    "name": "mini-efforts-model-intersects-tool",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "effortsFor",
+      "args": [
+        "alpha",
+        "big"
+      ]
+    },
+    "expected": [
+      "low",
+      "medium",
+      "high"
+    ]
+  },
+  {
+    "name": "mini-efforts-model-without-own-list",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "effortsFor",
+      "args": [
+        "beta",
+        "gpt-x"
+      ]
+    },
+    "expected": [
+      "medium",
+      "high"
+    ]
+  },
+  {
+    "name": "mini-efforts-offering-own-list",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "effortsFor",
+      "args": [
+        "delta",
+        "tiny"
+      ]
+    },
+    "expected": [
+      "low"
+    ]
+  },
+  {
+    "name": "mini-efforts-tool-with-empty-list",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "effortsFor",
+      "args": [
+        "gamma",
+        "big-2"
+      ]
+    },
+    "expected": []
+  },
+  {
+    "name": "mini-efforts-unknown-model-falls-back-to-tool",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "effortsFor",
+      "args": [
+        "alpha",
+        "nosuch"
+      ]
+    },
+    "expected": [
+      "low",
+      "medium",
+      "high"
+    ]
+  },
+  {
+    "name": "mini-efforts-tool-without-list-uses-model",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "effortsFor",
+      "args": [
+        "delta",
+        "large"
+      ]
+    },
+    "expected": [
+      "low",
+      "medium",
+      "high"
+    ]
+  },
+  {
+    "name": "mini-models-for-alpha-in-offering-order",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "modelsFor",
+      "args": [
+        "alpha"
+      ]
+    },
+    "expected": [
+      "anthropic/big-2",
+      "anthropic/big-1",
+      "anthropic/small-1",
+      "anthropic/mid-1",
+      "anthropic/gone-1",
+      "anthropic/embed-1",
+      "anthropic/plain-1"
+    ]
+  },
+  {
+    "name": "mini-models-for-open-tool",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "modelsFor",
+      "args": [
+        "gamma"
+      ]
+    },
+    "expected": [
+      "anthropic/big-2",
+      "anthropic/big-1",
+      "anthropic/small-1",
+      "anthropic/mid-1",
+      "anthropic/gone-1",
+      "anthropic/embed-1",
+      "anthropic/plain-1",
+      "ollama/qwen3:4b",
+      "ollama/llama3:70b",
+      "ollama/nomic:1b"
+    ]
+  },
+  {
+    "name": "mini-models-for-curated",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "modelsFor",
+      "args": [
+        "delta"
+      ]
+    },
+    "expected": [
+      "anthropic/small-1",
+      "anthropic/big-2"
+    ]
+  },
+  {
+    "name": "mini-tools",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "tools",
+      "args": []
+    },
+    "expected": [
+      "alpha",
+      "beta",
+      "gamma",
+      "delta"
+    ]
+  },
+  {
+    "name": "mini-known-tools",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "knownTools",
+      "args": []
+    },
+    "expected": [
+      "alpha",
+      "beta",
+      "gamma",
+      "delta"
+    ]
+  },
+  {
+    "name": "mini-tier-alpha-max-newest-current",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "tierModel",
+      "args": [
+        "alpha",
+        "max"
+      ]
+    },
+    "expected": "big"
+  },
+  {
+    "name": "mini-tier-alpha-fast-skips-embedding-and-plain",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "tierModel",
+      "args": [
+        "alpha",
+        "fast"
+      ]
+    },
+    "expected": "small-1"
+  },
+  {
+    "name": "mini-tier-alpha-standard-skips-withdrawn",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "tierModel",
+      "args": [
+        "alpha",
+        "standard"
+      ]
+    },
+    "expected": "mid-1"
+  },
+  {
+    "name": "mini-tier-gamma-max-open-tool-native-name",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "tierModel",
+      "args": [
+        "gamma",
+        "max"
+      ]
+    },
+    "expected": "anthropic/big-2"
+  },
+  {
+    "name": "mini-tier-gamma-fast",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "tierModel",
+      "args": [
+        "gamma",
+        "fast"
+      ]
+    },
+    "expected": "anthropic/small-1"
+  },
+  {
+    "name": "mini-tier-beta-standard",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "tierModel",
+      "args": [
+        "beta",
+        "standard"
+      ]
+    },
+    "expected": "gpt-x"
+  },
+  {
+    "name": "mini-tier-beta-max-none",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "tierModel",
+      "args": [
+        "beta",
+        "max"
+      ]
+    },
+    "expected": null
+  },
+  {
+    "name": "mini-tier-delta-max-curated-name",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "tierModel",
+      "args": [
+        "delta",
+        "max"
+      ]
+    },
+    "expected": "large"
+  },
+  {
+    "name": "mini-tier-delta-fast-curated-name",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "tierModel",
+      "args": [
+        "delta",
+        "fast"
+      ]
+    },
+    "expected": "tiny"
+  },
+  {
+    "name": "mini-pin-heads-the-tool",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "tierModel",
+      "args": [
+        "alpha",
+        "max"
+      ],
+      "policy": {
+        "pins": {
+          "alpha/max": "big-1",
+          "beta/fast": "future-model",
+          "gamma/standard": "mid-1"
+        }
+      }
+    },
+    "expected": "big-1"
+  },
+  {
+    "name": "mini-pin-for-unknown-model-is-returned-as-written",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "tierModel",
+      "args": [
+        "beta",
+        "fast"
+      ],
+      "policy": {
+        "pins": {
+          "alpha/max": "big-1",
+          "beta/fast": "future-model",
+          "gamma/standard": "mid-1"
+        }
+      }
+    },
+    "expected": "future-model"
+  },
+  {
+    "name": "mini-pin-other-tier-untouched",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "tierModel",
+      "args": [
+        "alpha",
+        "fast"
+      ],
+      "policy": {
+        "pins": {
+          "alpha/max": "big-1",
+          "beta/fast": "future-model",
+          "gamma/standard": "mid-1"
+        }
+      }
+    },
+    "expected": "small-1"
+  },
+  {
+    "name": "mini-pinned-true",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "pinned",
+      "args": [
+        "gamma",
+        "standard"
+      ],
+      "policy": {
+        "pins": {
+          "alpha/max": "big-1",
+          "beta/fast": "future-model",
+          "gamma/standard": "mid-1"
+        }
+      }
+    },
+    "expected": true
+  },
+  {
+    "name": "mini-pinned-false",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "pinned",
+      "args": [
+        "gamma",
+        "max"
+      ],
+      "policy": {
+        "pins": {
+          "alpha/max": "big-1",
+          "beta/fast": "future-model",
+          "gamma/standard": "mid-1"
+        }
+      }
+    },
+    "expected": false
+  },
+  {
+    "name": "mini-classify-policy-unclassifies-haiku",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "tierModel",
+      "args": [
+        "alpha",
+        "fast"
+      ],
+      "policy": {
+        "classify": [
+          {
+            "provider": "anthropic",
+            "families": {
+              "claude-haiku": "unclassified"
+            }
+          },
+          {
+            "match": [
+              {
+                "id": "qwen*",
+                "tier": "standard"
+              },
+              {
+                "id": "*:70b",
+                "tier": "max"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "expected": null
+  },
+  {
+    "name": "mini-classify-policy-match-globs",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "tierOf",
+      "args": [
+        "ollama/qwen3:4b"
+      ],
+      "policy": {
+        "classify": [
+          {
+            "provider": "anthropic",
+            "families": {
+              "claude-haiku": "unclassified"
+            }
+          },
+          {
+            "match": [
+              {
+                "id": "qwen*",
+                "tier": "standard"
+              },
+              {
+                "id": "*:70b",
+                "tier": "max"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "expected": "standard"
+  },
+  {
+    "name": "mini-classify-policy-glob-70b",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "tierOf",
+      "args": [
+        "ollama/llama3:70b"
+      ],
+      "policy": {
+        "classify": [
+          {
+            "provider": "anthropic",
+            "families": {
+              "claude-haiku": "unclassified"
+            }
+          },
+          {
+            "match": [
+              {
+                "id": "qwen*",
+                "tier": "standard"
+              },
+              {
+                "id": "*:70b",
+                "tier": "max"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "expected": "max"
+  },
+  {
+    "name": "mini-tier-of-local-by-parameters-fast",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "tierOf",
+      "args": [
+        "ollama/qwen3:4b"
+      ]
+    },
+    "expected": "fast"
+  },
+  {
+    "name": "mini-tier-of-local-by-parameters-max",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "tierOf",
+      "args": [
+        "ollama/llama3:70b"
+      ]
+    },
+    "expected": "max"
+  },
+  {
+    "name": "mini-tier-of-embedding-needs-agent-trait",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "tierOf",
+      "args": [
+        "ollama/nomic:1b"
+      ]
+    },
+    "expected": "unclassified"
+  },
+  {
+    "name": "mini-tier-of-family-rule",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "tierOf",
+      "args": [
+        "anthropic/big-2"
+      ]
+    },
+    "expected": "max"
+  },
+  {
+    "name": "mini-tier-of-unclassified-family",
+    "input": {
+      "layers": [
+        "mini",
+        "mini-config"
+      ],
+      "op": "tierOf",
+      "args": [
+        "corp/house-1"
+      ]
+    },
+    "expected": "unclassified"
+  },
+  {
+    "name": "mini-offering-with-via",
+    "input": {
+      "layers": [
+        "mini",
+        "mini-config"
+      ],
+      "op": "offering",
+      "args": [
+        "gamma",
+        "ollama/qwen3:4b"
+      ]
+    },
+    "expected": {
+      "tool": "gamma",
+      "model": "ollama/qwen3:4b",
+      "native_name": "ollama/qwen3:4b",
+      "source": "config",
+      "observed_at": "2026-10-20",
+      "via": "--oss"
+    }
+  },
+  {
+    "name": "mini-offering-curated-efforts",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "offering",
+      "args": [
+        "delta",
+        "anthropic/small-1"
+      ]
+    },
+    "expected": {
+      "tool": "delta",
+      "model": "anthropic/small-1",
+      "native_name": "tiny",
+      "source": "snapshot",
+      "observed_at": "2026-10-01",
+      "efforts": [
+        "low"
+      ]
+    }
+  },
+  {
+    "name": "mini-offering-row-context",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "offering",
+      "args": [
+        "alpha",
+        "anthropic/big-2"
+      ]
+    },
+    "expected": {
+      "tool": "alpha",
+      "model": "anthropic/big-2",
+      "native_name": "big",
+      "source": "snapshot",
+      "observed_at": "2026-10-01",
+      "context": {
+        "default": 200000,
+        "max": 200000
+      }
+    }
+  },
+  {
+    "name": "mini-config-adds-tool-model",
+    "input": {
+      "layers": [
+        "mini",
+        "mini-config"
+      ],
+      "op": "findModel",
+      "args": [
+        "epsilon",
+        "house-1"
+      ]
+    },
+    "expected": {
+      "model": "corp/house-1",
+      "native_name": "corp/house-1"
+    }
+  },
+  {
+    "name": "mini-config-borrowed-offering",
+    "input": {
+      "layers": [
+        "mini",
+        "mini-config"
+      ],
+      "op": "findModel",
+      "args": [
+        "beta",
+        "borrowed"
+      ]
+    },
+    "expected": {
+      "model": "anthropic/small-1",
+      "native_name": "borrowed"
+    }
+  },
+  {
+    "name": "mini-chain-order-policy",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "op": "tierModel",
+      "args": [
+        "beta",
+        "standard"
+      ],
+      "policy": {
+        "order": [
+          "gamma",
+          "beta"
+        ]
+      }
+    },
+    "expected": "gpt-x"
+  }
+]
