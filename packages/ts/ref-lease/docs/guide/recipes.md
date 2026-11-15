@@ -5,8 +5,9 @@ sidebar:
   order: 3
 ---
 
-Each recipe is a function you can copy. They all come from
-[examples/recipes.test.ts](../../examples/recipes.test.ts), which tests them against a real git
+`claim`, `updateWithRetry` and `release` are exported by the library. They take every payload rule
+as a callback, so the payload stays yours. The other recipes are functions you can copy. They all
+come from [examples/recipes.test.ts](../../examples/recipes.test.ts), which tests them against a real git
 repository.
 
 The library does not know what is in your lease. These recipes store a holder and an expiry time:
@@ -34,61 +35,33 @@ const inMinutes = (now: Date, minutes: number) =>
 
 ## Claim, or take over an expired lease
 
-Three steps. Create the ref if nobody has it. If somebody has it, read their lease. If it has
-expired, replace it, but only if it is still the lease you read. The lease can change between any
-two of these calls, so the function looks again a few times before it gives up.
+`claim` does three steps. It creates the ref if nobody has it. If somebody has it, it reads their
+lease. If `isLive` says it is no longer live (or `isMine` says it is yours), it replaces it, but
+only if it is still the lease it read. Otherwise it returns `{ won: false, payload }`, the lease
+that is held. The lease can change between any two of these calls, so it looks again up to
+`attempts` times (default 5) and then throws the last `CasFailed`. A payload it cannot read counts
+as not live. `build` gets the lease being replaced, or `null` for a create.
 
 <!-- snippet: claim -->
 ```ts
-type ClaimResult = { won: true; sha: string } | { won: false; holder: string }
-
 /**
  * Take `ref` for `holder`, or take it over when the current lease has expired.
- * Returns who holds it afterwards.
+ * The library does the create, the read and the guarded replace, and looks again
+ * when another caller moves first. The meaning of "expired" is the callback's.
  */
-function claim(
+function takeLease(
   authority: string,
   ref: string,
   holder: string,
   opts: { cwd: string; now: Date; ttlMinutes: number },
-): ClaimResult {
-  const { cwd, now } = opts
-  const payload: Lease = { holder, expiresAt: inMinutes(now, opts.ttlMinutes) }
-
-  // The lease can change between any two calls: created, taken over, released.
-  // Each pass looks again, so a few passes settle every such race.
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    // 1. Nobody holds it: create the ref. Exactly one concurrent caller wins.
-    try {
-      const sha = buildLeaseCommit(payload, { cwd })
-      casCreate(authority, ref, sha, { cwd })
-      return { won: true, sha }
-    } catch (e) {
-      if (!(e instanceof CasFailed)) throw e
-    }
-
-    // 2. Somebody holds it. Read the lease and the sha it sits at.
-    let current
-    try {
-      current = fetchRef(authority, ref, { cwd, decode })
-    } catch (e) {
-      if (e instanceof RefNotFound) continue // released meanwhile: try the create again
-      throw e
-    }
-    if (new Date(current.payload.expiresAt) > now) {
-      return { won: false, holder: current.payload.holder }
-    }
-
-    // 3. It has expired: replace it, but only if it is still the lease we read.
-    try {
-      const sha = buildLeaseCommit(payload, { cwd, parentSha: current.sha })
-      casReplace(authority, ref, current.sha, sha, { cwd })
-      return { won: true, sha }
-    } catch (e) {
-      if (!(e instanceof CasFailed)) throw e // someone else moved first: look again
-    }
-  }
-  throw new Error(`the lease at ${ref} keeps changing; try again later`)
+) {
+  return claim<Lease>(authority, ref, {
+    cwd: opts.cwd,
+    decode,
+    build: () => ({ holder, expiresAt: inMinutes(opts.now, opts.ttlMinutes) }),
+    isLive: (lease) => new Date(lease.expiresAt) > opts.now,
+    isMine: (lease) => lease.holder === holder, // a leftover of our own run
+  })
 }
 ```
 
@@ -130,7 +103,17 @@ over). Stop the work it protects.
 
 ## Release, keeping the history
 
-Deleting the ref ends the lease, and only if it is still yours. An archive ref, pushed first, keeps
+`release(authority, ref, sha, { cwd })` deletes the ref only if it still points at the `sha` you
+wrote, and returns whether it did. A lease that was taken over, or is already gone, gives `false`:
+
+<!-- snippet: release-pinned -->
+```ts
+/** Give the lease up if `sha` is still the one we hold. False means it is no longer ours. */
+const giveUp = (authority: string, ref: string, sha: string, cwd: string): boolean =>
+  release(authority, ref, sha, { cwd })
+```
+
+To keep the history too, delete the ref only if it is still yours. An archive ref, pushed first, keeps
 its history, so a crash between the two pushes loses nothing. If the delete finds the lease is no
 longer yours, the archive is taken back.
 
@@ -142,7 +125,7 @@ longer yours, the archive is taken back.
  * pushes leaves the history kept; if the delete then finds the lease is no
  * longer ours, the archive is taken back.
  */
-function release(authority: string, ref: string, sha: string, cwd: string): void {
+function releaseKeepingHistory(authority: string, ref: string, sha: string, cwd: string): void {
   const archive = `refs/lease-archive/${ref.replace(/^refs\//, '')}/${sha.slice(0, 12)}`
   casCreate(authority, archive, sha, { cwd })
   try {
@@ -177,43 +160,57 @@ function listLeases(authority: string, prefix: string, cwd: string): Map<string,
 
 ## Update with retry
 
-For a change that should win eventually, re-read and try again on `CasFailed`. Each attempt sees
-the latest lease, so the change is applied to what is really there.
+`updateWithRetry` is for a change that should win eventually. It re-reads and tries again on
+`CasFailed`, so `change` always sees the latest payload. `change` gets `null` when the ref is
+absent (the write is a create). Returning `null` deletes the ref. It returns
+`{ kind: 'written', sha, payload }`, `{ kind: 'deleted' }` or `{ kind: 'unchanged' }`.
 
 <!-- snippet: update-with-retry -->
 ```ts
 /**
- * Change a lease's payload with read-modify-write, retrying when another writer
- * gets in between. Each attempt re-reads, so `change` always sees the latest lease.
+ * Change a lease's payload with read-modify-write. The library re-reads and tries
+ * again when another writer gets in between, so `change` always sees the latest lease.
  */
-function updateWithRetry(
+function updateLease(
   authority: string,
   ref: string,
   change: (lease: Lease) => Lease,
   opts: { cwd: string; attempts?: number },
 ): Lease {
-  const { cwd, attempts = 5 } = opts
-  for (let attempt = 1; ; attempt++) {
-    const current = fetchRef(authority, ref, { cwd, decode })
-    const next = change(current.payload)
-    try {
-      casReplace(
-        authority,
-        ref,
-        current.sha,
-        buildLeaseCommit(next, { cwd, parentSha: current.sha }),
-        { cwd },
-      )
-      return next
-    } catch (e) {
-      if (!(e instanceof CasFailed) || attempt >= attempts) throw e
-    }
-  }
+  const out = updateWithRetry<Lease>(
+    authority,
+    ref,
+    (current) => {
+      if (current === null) throw new Error(`no lease at ${ref}`)
+      return change(current.payload)
+    },
+    { cwd: opts.cwd, decode, attempts: opts.attempts ?? 5 },
+  )
+  if (out.kind !== 'written') throw new Error('unreachable: change never returns null')
+  return out.payload
 }
 ```
 
-Bound the attempts. Under heavy contention on one lease, back off between attempts with some
-jitter.
+The attempts are bounded (`attempts`, default 5) and the last `CasFailed` is thrown. Under heavy
+contention on one lease, pass `backoffMs(attempt)` to wait between attempts, with some jitter.
+
+## A keyed store of records
+
+For one record per key (per branch, per job) rather than one lease, `refStore` keeps a ref per key
+under a prefix you own. `refKey(prefix, key)` names the ref: the key with unsafe characters
+replaced by `_`, cut to 60 characters, then `--` and 10 hex digits of the key's sha256, so any
+string is a valid ref name and two keys never share one.
+
+```ts
+const store = refStore<Lease>({ remote: 'origin', prefix: 'refs/my-tool/jobs/', decode })
+store.update('nightly/build', (current) => ({ holder: 'a', expiresAt: '...' })) // null = delete
+store.get('nightly/build') // from one fetch of the prefix, kept in sync by this store's writes
+store.prune((lease) => new Date(lease.expiresAt) < new Date()) // re-reads before each delete
+```
+
+`update` is `updateWithRetry`, so concurrent updates on one key each see the other's result.
+`prune` deletes a record only if it is still stale when read again, and only at the sha it read.
+`load()` is one `fetchNamespace`; the view does not see other writers until a new store loads.
 
 ## Before the first write
 
