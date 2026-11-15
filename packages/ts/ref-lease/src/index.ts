@@ -23,6 +23,17 @@ export {
   type BuildLeaseCommitOptions,
   type LeaseIdentity,
 } from './commit.ts'
+export {
+  claim,
+  release,
+  updateWithRetry,
+  type ClaimOptions,
+  type ClaimResult,
+  type RetryOptions,
+  type UpdateOutcome,
+} from './recipes.ts'
+export { refKey } from './ref-key.ts'
+export { refStore, type RefStore, type RefStoreOptions, type StoredRef } from './ref-store.ts'
 export { checkNamespaceConflict, type CheckNamespaceConflictOptions } from './guard.ts'
 export { canonicalJson } from './canonical-json.ts'
 export {
