@@ -74,6 +74,7 @@ const label = computed(() => {
 }
 
 .task--done,
+.task--deferred,
 .task--dropped {
   background: var(--surface-2);
   box-shadow: none;
