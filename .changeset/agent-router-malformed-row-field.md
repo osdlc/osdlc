@@ -1,5 +1,5 @@
 ---
-'@osdlc/agent-router': patch
+"@osdlc/agent-router": patch
 ---
 
 `modelsDevRows` names the field when it refuses a malformed models.dev row. The reason was
