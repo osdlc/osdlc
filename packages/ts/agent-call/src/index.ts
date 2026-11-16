@@ -19,6 +19,7 @@ export type { CapabilityNote, PlannedCall, Support, TempFile } from './plan.js'
 export { modelArgs, modelArgsRefusal } from './model-args.js'
 export type { ModelChoice } from './model-args.js'
 
+export { BASELINE_ENV } from './env.js'
 export { callAgent, planCall } from './run.js'
 export type { AgentResult, CallError, CallOptions } from './run.js'
 
