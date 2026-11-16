@@ -22,15 +22,35 @@ function fail(stderr = 'gh failed'): CommandResult {
   return { exitCode: 1, stdout: '', stderr }
 }
 
-/** Scripts `pr view` and `pr list` from fixed payloads; anything else (the review-comments REST call) reads `restResponses`, shifted in call order. */
+/** One `--slurp`ed `prActivity` page with these timeline nodes and review threads. */
+function activityPage(nodes: unknown[], threads: unknown[] = []) {
+  return {
+    data: {
+      repository: {
+        pullRequest: {
+          timelineItems: { nodes },
+          reviewThreads: { totalCount: threads.length, nodes: threads },
+        },
+      },
+    },
+  }
+}
+
+/**
+ * Scripts `pr view` and `pr list` from fixed payloads, and `prActivity`'s GraphQL call from
+ * `activity` (no activity by default). Any other `api` call reads `restResponses`, shifted in
+ * call order.
+ */
 function fakeGh(opts: {
   view?: Record<string, unknown> | null
   list?: Record<string, unknown>[] | null
+  activity?: CommandResult
   restResponses?: CommandResult[]
 }): { runner: CommandRunner; calls: string[][] } {
   const calls: string[][] = []
   let restIdx = 0
   const restResponses = opts.restResponses ?? [ok('[]')]
+  const activity = opts.activity ?? ok(JSON.stringify([activityPage([])]))
   return {
     calls,
     runner: {
@@ -46,6 +66,7 @@ function fakeGh(opts: {
             ? fail()
             : ok(JSON.stringify(opts.list))
         }
+        if (argv[0] === 'api' && argv[1] === 'graphql') return activity
         if (argv[0] === 'api') {
           const r = restResponses[Math.min(restIdx, restResponses.length - 1)]!
           restIdx += 1
@@ -81,27 +102,9 @@ const BASE_PR = {
 }
 
 describe('GithubCodeHost.getPr', () => {
-  test('maps a settled PR to CodeHostPr, folding in the REST review-comments', () => {
-    const { runner, calls } = fakeGh({
-      view: BASE_PR,
-      restResponses: [
-        ok(
-          JSON.stringify([
-            {
-              id: 9,
-              path: 'a.ts',
-              line: 3,
-              body: 'nit',
-              user: { login: 'reviewer' },
-              created_at: '2026-01-01T00:00:00Z',
-              updated_at: '2026-01-01T00:05:00Z',
-            },
-          ]),
-        ),
-      ],
-    })
-    const codeHost = new GithubCodeHost('/repo', { runner })
-    const pr = unwrap(codeHost.getPr(42, { since: null }))
+  test('maps a settled PR and its activity to CodeHostPr', () => {
+    const { runner, calls } = fakeGh({ view: BASE_PR })
+    const pr = unwrap(new GithubCodeHost('/repo', { runner }).getPr(42, { since: null }))
 
     expect(pr).not.toBeNull()
     expect(pr!.number).toBe(42)
@@ -110,33 +113,128 @@ describe('GithubCodeHost.getPr', () => {
     expect(pr!.reviewDecision).toBeNull()
     expect(pr!.headRef).toBe('task/x')
     expect(pr!.headSha).toBe('sha1')
-    expect(pr!.activity).toHaveLength(1)
-    expect(pr!.activity[0]).toMatchObject({
-      id: '9',
-      kind: 'review-comment',
-      at: '2026-01-01T00:00:00Z',
-      editedAt: '2026-01-01T00:05:00Z',
-    })
+    expect(pr!.activity).toEqual([])
     expect(calls[0]).toEqual(['pr', 'view', '42', '--json', expect.anything()])
-    expect(calls[1]).toEqual([
-      'api',
-      '--paginate',
-      '--slurp',
-      'repos/{owner}/{repo}/pulls/42/comments?per_page=100',
-    ])
+    // Comments and reviews come from `prActivity`, not `pr view`.
+    expect(calls[0]![4]!.split(',')).not.toContain('comments')
+    expect(calls[1]!.slice(0, 2)).toEqual(['api', 'graphql'])
   })
 
-  test('review comments past the first page are all read: every slurped page is folded in', () => {
-    // GitHub's default page is 30; the 31st comment sits on the second page.
-    const first = Array.from({ length: 30 }, (_, i) => ({ id: i + 1, body: 'c' }))
-    const second = [{ id: 31, body: 'late' }]
+  test('activity: comments and reviews keep node ids; an inline comment takes REST ids', () => {
+    const user = (login: string) => ({ __typename: 'User', login })
+    const text = (restId: string, body: string) => ({
+      fullDatabaseId: restId,
+      body,
+      lastEditedAt: null,
+      url: `https://github.com/o/r/pull/42#${restId}`,
+    })
+    const inline = {
+      id: 'PRRC_1',
+      author: user('reviewer'),
+      createdAt: '2026-01-01T00:00:00Z',
+      ...text('9', 'nit'),
+      lastEditedAt: '2026-01-01T00:05:00Z',
+      path: 'a.ts',
+      line: null,
+      originalLine: 3,
+      outdated: true,
+      replyTo: null,
+    }
+    const review = {
+      __typename: 'PullRequestReview',
+      id: 'PRR_1',
+      author: user('reviewer'),
+      state: 'COMMENTED',
+      submittedAt: '2026-01-01T00:01:00Z',
+      ...text('55', ''),
+      comments: { totalCount: 1, nodes: [inline] },
+    }
+    // A reply-only review: GitHub's timeline leaves it out, the review threads hold it.
+    const reply = {
+      ...inline,
+      id: 'PRRC_2',
+      author: { __typename: 'Bot', login: 'github-actions' },
+      createdAt: '2026-01-01T00:10:00Z',
+      ...text('10', 'fixed'),
+      replyTo: { id: 'PRRC_1', fullDatabaseId: '9' },
+      pullRequestReview: {
+        ...review,
+        id: 'PRR_2',
+        submittedAt: '2026-01-01T00:10:00Z',
+        ...text('56', ''),
+      },
+    }
+    const comment = {
+      __typename: 'IssueComment',
+      id: 'IC_1',
+      author: user('author-one'),
+      createdAt: '2026-01-01T00:20:00Z',
+      ...text('4204154439', 'thanks'),
+      lastEditedAt: '2026-01-01T00:21:00Z',
+    }
+    const commit = {
+      __typename: 'PullRequestCommit',
+      id: 'PURC_1',
+      commit: { oid: 'abc', committedDate: '2026-01-01T00:15:00Z', messageHeadline: 'fix' },
+    }
+    const thread = {
+      comments: { totalCount: 2, nodes: [{ ...inline, pullRequestReview: review }, reply] },
+    }
     const { runner } = fakeGh({
       view: BASE_PR,
-      restResponses: [ok(JSON.stringify([first, second]))],
+      activity: ok(JSON.stringify([activityPage([review, commit, comment], [thread])])),
     })
     const pr = unwrap(new GithubCodeHost('/repo', { runner }).getPr(42, { since: null }))!
-    expect(pr.activity).toHaveLength(31)
-    expect(pr.activity.at(-1)).toMatchObject({ id: '31', kind: 'review-comment' })
+    expect(pr.activity.map((a) => [a.kind, a.id])).toEqual([
+      ['review', 'PRR_1'],
+      ['review-comment', '9'],
+      ['review', 'PRR_2'],
+      ['review-comment', '10'],
+      ['comment', 'IC_1'],
+    ])
+    expect(pr.activity[1]).toEqual({
+      id: '9',
+      kind: 'review-comment',
+      author: { login: 'reviewer', isBot: false },
+      at: '2026-01-01T00:00:00Z',
+      editedAt: '2026-01-01T00:05:00Z',
+      body: 'nit',
+      reviewState: null,
+      location: { file: 'a.ts', line: 3, threadId: '9', url: 'https://github.com/o/r/pull/42#9' },
+    })
+    expect(pr.activity[3]).toMatchObject({
+      author: { login: 'github-actions', isBot: true },
+      location: { threadId: '9' },
+    })
+    expect(pr.activity[0]).toMatchObject({ reviewState: 'COMMENTED', location: null })
+    expect(pr.activity[4]).toMatchObject({ editedAt: '2026-01-01T00:21:00Z', body: 'thanks' })
+  })
+
+  test('activity that cannot be read is a failure, never less activity', () => {
+    const { runner } = fakeGh({ view: BASE_PR, activity: ok(JSON.stringify([{ data: {} }])) })
+    expect(new GithubCodeHost('/repo', { runner }).getPr(42, { since: null })).toMatchObject({
+      ok: false,
+      error: { kind: 'unreadable', host: 'github' },
+    })
+  })
+
+  test('a failed activity call is a failure', () => {
+    const { runner } = fakeGh({ view: BASE_PR, activity: fail('HTTP 502') })
+    expect(new GithubCodeHost('/repo', { runner }).getPr(42, { since: null })).toMatchObject({
+      ok: false,
+      error: { host: 'github' },
+    })
+  })
+
+  test('a PR gone by the time its activity is read is absent', () => {
+    const { runner } = fakeGh({
+      view: BASE_PR,
+      activity: fail('gh: Could not resolve to a PullRequest with the number of 42.'),
+    })
+    expect(new GithubCodeHost('/repo', { runner }).getPr(42, { since: null })).toEqual({
+      ok: true,
+      value: null,
+    })
   })
 
   test('mergeStateStatus DIRTY maps to conflicting even when mergeable alone would not', () => {
@@ -154,24 +252,6 @@ describe('GithubCodeHost.getPr', () => {
       ok: false,
       error: { kind: 'exit', host: 'github' },
     })
-  })
-
-  test('a review-comment author login is normalized, like every other activity kind', () => {
-    const { runner } = fakeGh({
-      view: BASE_PR,
-      restResponses: [
-        ok(JSON.stringify([{ id: 1, body: 'x', user: { login: 'github-actions[bot]' } }])),
-      ],
-    })
-    const pr = unwrap(new GithubCodeHost('/repo', { runner }).getPr(42, { since: null }))!
-    expect(pr.activity[0]!.author).toEqual({ login: 'github-actions', isBot: true })
-  })
-
-  test('a failing review-comments REST call degrades to no review-comment activity, not a throw', () => {
-    const { runner } = fakeGh({ view: BASE_PR, restResponses: [fail()] })
-    const codeHost = new GithubCodeHost('/repo', { runner })
-    const pr = unwrap(codeHost.getPr(42, { since: null }))
-    expect(pr!.activity).toEqual([])
   })
 
   test('checks rollup: any failure wins, else any pending, else none/success', () => {
@@ -218,11 +298,11 @@ describe('GithubCodeHost.getPr', () => {
     expect(pr.checks.blocked).toEqual([])
   })
 
-  test('no failing checks: never fetches annotations (only the review-comments REST call runs)', () => {
+  test('no failing checks: never fetches annotations (only the activity call runs)', () => {
     const { runner, calls } = fakeGh({ view: BASE_PR })
     const pr = unwrap(new GithubCodeHost('/repo', { runner }).getPr(42, { since: null }))!
     expect(pr.checks.blocked).toEqual([])
-    expect(calls.filter((c) => c[0] === 'api')).toHaveLength(1) // the review-comments fetch only
+    expect(calls.filter((c) => c[0] === 'api')).toHaveLength(1) // the activity fetch only
   })
 
   test('a billing/spending-limit-blocked check is classified into `checks.blocked`, not silently dropped', () => {
@@ -233,7 +313,6 @@ describe('GithubCodeHost.getPr', () => {
         statusCheckRollup: [{ name: 'ci', conclusion: 'FAILURE', detailsUrl: jobUrl }],
       },
       restResponses: [
-        ok('[]'), // review-comments
         // The shape GitHub sends for this system annotation, copied from a
         // real blocked check run (`gh api repos/<owner>/<repo>/check-runs/<id>/annotations`).
         ok(
@@ -268,7 +347,6 @@ describe('GithubCodeHost.getPr', () => {
         statusCheckRollup: [{ name: 'e2e', conclusion: 'FAILURE', detailsUrl: jobUrl }],
       },
       restResponses: [
-        ok('[]'),
         ok(
           JSON.stringify([
             {
@@ -291,10 +369,7 @@ describe('GithubCodeHost.getPr', () => {
         ...BASE_PR,
         statusCheckRollup: [{ name: 'ci', conclusion: 'FAILURE', detailsUrl: jobUrl }],
       },
-      restResponses: [
-        ok('[]'),
-        ok(JSON.stringify([{ message: 'Process completed with exit code 1.' }])),
-      ],
+      restResponses: [ok(JSON.stringify([{ message: 'Process completed with exit code 1.' }]))],
     })
     const pr = unwrap(new GithubCodeHost('/repo', { runner }).getPr(42, { since: null }))!
     expect(pr.checks.blocked).toEqual([])
@@ -307,7 +382,7 @@ describe('GithubCodeHost.getPr', () => {
         ...BASE_PR,
         statusCheckRollup: [{ name: 'ci', conclusion: 'FAILURE', detailsUrl: jobUrl }],
       },
-      restResponses: [ok('[]'), fail('rate limited')],
+      restResponses: [fail('rate limited')],
     })
     const pr = unwrap(new GithubCodeHost('/repo', { runner }).getPr(42, { since: null }))!
     expect(pr.checks.blocked).toEqual([])
@@ -487,12 +562,38 @@ const PARSED_PR: PullRequest = {
 }
 
 describe('codeHostPrFrom', () => {
-  test('a comment/review with no id lands at empty string, not a crash', () => {
-    const pr = codeHostPrFrom(
-      { ...PARSED_PR, comments: [{ id: null, author: null, body: 'x', createdAt: null }] },
-      [],
-    )
-    expect(pr.activity[0]!.id).toBe('')
+  test('commits and changes of state are not activity', () => {
+    const pr = codeHostPrFrom(PARSED_PR, [
+      { kind: 'commit', id: 'PURC_1', at: null, actor: null, sha: 'a', headline: 'h' },
+      { kind: 'closed', id: 'CE_1', at: null, actor: null },
+    ])
+    expect(pr.activity).toEqual([])
+  })
+
+  test('an inline comment GitHub sent no REST id for keeps its node id', () => {
+    const pr = codeHostPrFrom(PARSED_PR, [
+      {
+        kind: 'review-comment',
+        id: 'PRRC_1',
+        at: null,
+        actor: null,
+        body: '',
+        editedAt: null,
+        url: '',
+        restId: null,
+        reviewId: 'PRR_1',
+        path: 'a.ts',
+        line: null,
+        originalLine: null,
+        outdated: false,
+        replyToId: null,
+        replyToRestId: null,
+      },
+    ])
+    expect(pr.activity[0]).toMatchObject({
+      id: 'PRRC_1',
+      location: { file: 'a.ts', threadId: 'PRRC_1' },
+    })
   })
 
   test('headIsFork follows isCrossRepository', () => {

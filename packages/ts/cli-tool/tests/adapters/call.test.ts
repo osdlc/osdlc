@@ -366,6 +366,31 @@ describe('App.call', () => {
     })
   })
 
+  test('a prompt with no terminal is not-interactive with exit 2', async () => {
+    const { defineApp, defineCommand } = await import('../../src/command/index.ts')
+    const { NotInteractiveError } = await import('../../src/prompt.ts')
+    const { z } = await import('zod')
+    const app = defineApp({
+      name: 't',
+      version: '0',
+      summary: 's',
+      commands: {
+        asks: defineCommand({
+          summary: 'asks',
+          output: z.object({}),
+          run() {
+            throw new NotInteractiveError('no-terminal', { flag: '--yes' })
+          },
+        }),
+      },
+    })
+    expect(await app.call(['asks'], {}, CTX, { surface: 'mcp' })).toMatchObject({
+      status: 'error',
+      exit: 2,
+      code: 'not-interactive',
+    })
+  })
+
   test('refuses a missing, interactive or cli-only command', async () => {
     const { app } = fixture()
     expect(await app.call(['nope'], {}, CTX, { surface: 'mcp' })).toMatchObject({
