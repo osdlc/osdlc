@@ -251,14 +251,14 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
     let blanked =
         options.skip_html_comments || regions.iter().any(|(_, region)| *region == Region::Code);
     let mut written: Option<Vec<char>> = None;
-    blank_chars(
-        &mut chars,
-        &at,
-        regions
-            .iter()
-            .filter(|(_, region)| options.skip_html_comments || *region == Region::Code)
-            .map(|(range, _)| range),
-    );
+    // The char ranges blanked, in order: where none reaches, `chars` are the
+    // body's bytes.
+    let blanked_chars: Vec<Range<usize>> = regions
+        .iter()
+        .filter(|(_, region)| options.skip_html_comments || *region == Region::Code)
+        .map(|(range, _)| at.char_range(range))
+        .collect();
+    blank_chars(&mut chars, blanked_chars.iter().cloned());
     // With comments blanked too, the chars with only code blanked, made the
     // first time an abandoned link needs them.
     let mut code_chars: Option<Vec<char>> = None;
@@ -281,7 +281,6 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
             let embed = i > 0 && chars[i - 1] == '!' && !escaped_bang(&chars, i - 1);
             let start = at.of(if embed { i - 1 } else { i });
             let mut j = i + 2;
-            let mut inner = String::new();
             let mut closed = false;
             let mut bracket = false;
             while j + 1 < chars.len() {
@@ -295,7 +294,6 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
                     bracket = true;
                     break;
                 }
-                inner.push(chars[j]);
                 j += 1;
             }
             if !closed {
@@ -311,6 +309,7 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
                 });
             }
             if closed {
+                let inner = inner_text(body, &chars, &at, &blanked_chars, i + 2..j);
                 let parsed = if inner.is_empty() {
                     None
                 } else if options.self_links {
@@ -328,11 +327,10 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
                                 let mut code: Vec<char> = body.chars().collect();
                                 blank_chars(
                                     &mut code,
-                                    &at,
                                     regions
                                         .iter()
                                         .filter(|(_, region)| *region == Region::Code)
-                                        .map(|(range, _)| range),
+                                        .map(|(range, _)| at.char_range(range)),
                                 );
                                 code
                             })
@@ -469,23 +467,40 @@ impl Offsets {
             Offsets::Table(at) => at.partition_point(|&start| (start as usize) < offset),
         }
     }
+
+    /// The chars of a byte range.
+    fn char_range(&self, bytes: &Range<usize>) -> Range<usize> {
+        self.char_index(bytes.start)..self.char_index(bytes.end)
+    }
 }
 
-/// Blanks the chars of each byte range to spaces, but `\n`, as [`blank`] does
-/// to text. `at` maps a char index to its byte offset.
-fn blank_chars<'a>(
-    chars: &mut [char],
-    at: &Offsets,
-    ranges: impl IntoIterator<Item = &'a Range<usize>>,
-) {
+/// Blanks the chars of each range to spaces, but `\n`, as [`blank`] does to
+/// text.
+fn blank_chars(chars: &mut [char], ranges: impl IntoIterator<Item = Range<usize>>) {
     for range in ranges {
-        let from = at.char_index(range.start);
-        let to = at.char_index(range.end);
-        for c in &mut chars[from..to] {
+        for c in &mut chars[range] {
             if *c != '\n' {
                 *c = ' ';
             }
         }
+    }
+}
+
+/// The chars of `range` as a string: a copy of the body's bytes there, unless
+/// a blanked range reaches into it. `blanked` is in order and disjoint, so
+/// only the first range that ends after `range` starts can.
+fn inner_text(
+    body: &str,
+    chars: &[char],
+    at: &Offsets,
+    blanked: &[Range<usize>],
+    range: Range<usize>,
+) -> String {
+    let next = blanked.partition_point(|b| b.end <= range.start);
+    if blanked.get(next).is_some_and(|b| b.start < range.end) {
+        chars[range].iter().collect()
+    } else {
+        body[at.of(range.start)..at.of(range.end)].to_string()
     }
 }
 
