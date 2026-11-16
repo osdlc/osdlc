@@ -30,6 +30,8 @@ A decision is named for its topic, not numbered. Each has a `state`.
   judged
 - [List truncation](decisions/lists-report-truncation.md): a list says when its
   limit cut it short
+- [A pull request's activity](decisions/pr-activity.md): one GraphQL timeline
+  read, not the REST timeline
 - [GraphQL partial answers and page cap](decisions/graphql-partial-and-page-cap.md):
   `partial: true` reads `{ data, errors }` per page; no `maxPages`, callers page
   themselves

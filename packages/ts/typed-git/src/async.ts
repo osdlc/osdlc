@@ -70,6 +70,7 @@ import {
   type CleanOptions,
   type DiffCheckOptions,
   type DiffCheckResult,
+  type StatusEntriesOptions,
   type StatusEntry,
   type StatusPorcelainOptions,
   type TreeEntry,
@@ -132,9 +133,9 @@ export class AsyncGit {
    * Every method again, resolving to a `Result<T, GitFailure>` instead of
    * rejecting. A declared absence is `ok: true`; see `./outcome.ts`.
    *
-   * The type leaves out `raw`, `rawChecked` and `at`, but at runtime the proxy
-   * wraps them too: `git.try.raw(argv)` resolves to `{ ok: true, value }`.
-   * Call those three on the client itself.
+   * The type leaves out the `raw*` methods
+   * and `at`, but at runtime the proxy wraps them too: `git.try.raw(argv)`
+   * resolves to `{ ok: true, value }`. Call those on the client itself.
    */
   get try(): TriedAsync<AsyncGit> {
     return (this.tried ??= triedAsync(this))
@@ -147,7 +148,7 @@ export class AsyncGit {
    * `null` both for a missing ref and for a broken repo. Use `try` when the
    * failure itself matters.
    *
-   * As with `try`, the proxy also wraps `raw`, `rawChecked` and `at` at
+   * As with `try`, the proxy also wraps the `raw*` methods and `at` at
    * runtime, though the type leaves them out.
    */
   get soft(): Soft<AsyncGit> {
@@ -180,6 +181,37 @@ export class AsyncGit {
     return this.backend.execute(
       this.cwd,
       { kind: 'raw', argv, checked: true, input: opts.input },
+      opts,
+    )
+  }
+
+  /**
+   * {@link AsyncGit.raw} with stdout as the bytes git wrote, never decoded.
+   * Rejects with `UnsupportedRequest` when the backend has no bytes
+   * runner (see `cliBackend`), as a non-CLI backend does. See {@link Git.rawBytes}.
+   *
+   * @experimental command-seam's bytes runners are experimental.
+   */
+  rawBytes(
+    argv: string[],
+    opts: GitCallOptions & { input?: string | undefined } = {},
+  ): Promise<CommandResult<Buffer>> {
+    return this.backend.execute(this.cwd, { kind: 'rawBytes', argv, input: opts.input }, opts)
+  }
+
+  /**
+   * {@link AsyncGit.rawBytes} that rejects with the classified failure, as
+   * {@link AsyncGit.rawChecked} does. See {@link Git.rawBytesChecked}.
+   *
+   * @experimental command-seam's bytes runners are experimental.
+   */
+  rawBytesChecked(
+    argv: string[],
+    opts: GitCallOptions & { input?: string | undefined } = {},
+  ): Promise<CommandResult<Buffer>> {
+    return this.backend.execute(
+      this.cwd,
+      { kind: 'rawBytes', argv, checked: true, input: opts.input },
       opts,
     )
   }
@@ -289,9 +321,10 @@ export class AsyncGit {
     return this.backend.execute(this.cwd, { kind: 'statusPorcelain', ...req }, call)
   }
 
-  /** Every changed or untracked file, from `status --porcelain -z`. */
-  statusEntries(opts: GitCallOptions = {}): Promise<StatusEntry[]> {
-    return this.backend.execute(this.cwd, { kind: 'statusEntries' }, opts)
+  /** Every changed or untracked file, and ignored ones with `ignored`. See {@link Git.statusEntries}. */
+  statusEntries(opts: GitCallOptions & StatusEntriesOptions = {}): Promise<StatusEntry[]> {
+    const [call, req] = splitCallOptions(opts)
+    return this.backend.execute(this.cwd, { kind: 'statusEntries', ...req }, call)
   }
 
   /** True iff anything is staged. See {@link Git.hasStagedChanges}. */
@@ -413,7 +446,7 @@ export class AsyncGit {
     const [call, req] = splitCallOptions(opts)
     return this.backend.execute(
       this.cwd,
-      { kind: 'diffText', rev, staged: req.staged, paths: req.paths },
+      { kind: 'diffText', rev, staged: req.staged, binary: req.binary, paths: req.paths },
       call,
     )
   }
