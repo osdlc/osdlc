@@ -19,8 +19,7 @@
  *   - `Activity` has an `id`, an `editedAt`, and a third kind,
  *     `'review-comment'` (with an optional `location`), beside `comment` and
  *     `review`. A caller can then sign every feedback item by id, and tell a
- *     per-line diff comment (GitHub's REST `pulls/<n>/comments`) from a
- *     top-level comment or review.
+ *     per-line diff comment from a top-level comment or review.
  *   - `PrFacts.behind` and `ahead` come from local git, in `./facts.ts`. Drift
  *     is not a code host field, so no adapter sets them.
  */
