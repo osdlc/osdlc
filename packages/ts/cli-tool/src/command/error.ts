@@ -24,7 +24,8 @@ export const ErrorDocumentSchema = z.object({
  * A failed run as JSON. `code` is a stable name a script can branch on:
  * `usage` for a command line that cannot run as typed, a failure's kind (such
  * as `not-installed`) for a classified failure, the `code` a `CommandError`
- * was given, or else `error`.
+ * was given, `not-interactive` for a prompt nobody could answer, or else
+ * `error`.
  * @experimental
  */
 export type ErrorDocument = z.infer<typeof ErrorDocumentSchema>
