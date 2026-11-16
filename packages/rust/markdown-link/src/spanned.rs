@@ -280,21 +280,18 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
         if chars.get(i + 1) == Some(&'[') {
             let embed = i > 0 && chars[i - 1] == '!' && !escaped_bang(&chars, i - 1);
             let start = at.of(if embed { i - 1 } else { i });
+            // `[[` never nests, and `[`/`]` inside would be a malformed
+            // link — bail rather than swallow the rest of the note.
             let mut j = i + 2;
             let mut closed = false;
             let mut bracket = false;
-            while j + 1 < chars.len() {
+            if let Some(end) = next_bracket(&chars, j) {
+                j = end;
                 if chars[j] == ']' && chars[j + 1] == ']' {
                     closed = true;
-                    break;
-                }
-                // `[[` never nests, and `[`/`]` inside would be a malformed
-                // link — bail rather than swallow the rest of the note.
-                if chars[j] == '[' || chars[j] == ']' {
+                } else {
                     bracket = true;
-                    break;
                 }
-                j += 1;
             }
             if !closed {
                 abandoned.push(AbandonedLink {
@@ -356,9 +353,7 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
                     // Split at the pipe `parse_inner` used, found in the
                     // stripped chars so a `|` in code is not one, then read
                     // the alias from the body so code inside it is kept.
-                    let alias = chars[i + 2..j]
-                        .iter()
-                        .position(|&c| c == '|')
+                    let alias = find_char(&chars[i + 2..j], |c| c == '|')
                         .map(|p| body[at.of(i + 3 + p)..at.of(j)].trim())
                         .filter(|alias| !alias.is_empty())
                         .map(str::to_string);
@@ -484,6 +479,40 @@ fn blank_chars(chars: &mut [char], ranges: impl IntoIterator<Item = Range<usize>
             }
         }
     }
+}
+
+/// The index of the first `[` or `]` at or after `from` that another char
+/// follows: where a `[[` opened before `from` ends, in a `]]` or in a bracket
+/// inside it. `None` when there is none before the last char.
+fn next_bracket(chars: &[char], from: usize) -> Option<usize> {
+    let (_, text) = chars.get(from..)?.split_last()?;
+    find_char(text, |c| c == '[' || c == ']').map(|p| from + p)
+}
+
+/// The index of the first char `is` accepts, as `position` would find it.
+///
+/// The first sixteen chars are tested one by one: most links are short. After
+/// them, sixteen at a time, as one or-reduction the compiler vectorizes, and
+/// the char is found in the chunk that holds one. The text inside a `[[` is
+/// read this way: it is where a body's scan spends its time, and a loop that
+/// moves once per sixteen chars costs the same whether `scan_body_with`, a
+/// large function, gives its index a register or a stack slot.
+fn find_char(chars: &[char], is: impl Fn(char) -> bool) -> Option<usize> {
+    let head = chars.len().min(16);
+    if let Some(p) = chars[..head].iter().position(|&c| is(c)) {
+        return Some(p);
+    }
+    let mut skipped = head;
+    for chunk in chars[head..].as_chunks::<16>().0 {
+        if chunk.iter().fold(false, |any, &c| any | is(c)) {
+            break;
+        }
+        skipped += 16;
+    }
+    chars[skipped..]
+        .iter()
+        .position(|&c| is(c))
+        .map(|p| skipped + p)
 }
 
 /// The chars of `range` as a string: a copy of the body's bytes there, unless
