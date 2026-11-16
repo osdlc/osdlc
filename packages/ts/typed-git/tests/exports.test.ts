@@ -18,6 +18,10 @@ import {
   runCheckedAsync,
   spawnRunner,
   spawnRunnerAsync,
+  spawnRunnerBytes,
+  spawnRunnerBytesAsync,
+  type AsyncBytesCommandRunner,
+  type BytesCommandRunner,
   type CleanOptions,
   type CommitFlags,
   type ConfigGetOptions,
@@ -32,6 +36,7 @@ import {
   type RemoteGetUrlOptions,
   type RemoteSetBranchesOptions,
   type RemoteSetHeadOptions,
+  type StatusEntriesOptions,
   type StatusEntry,
   type UpdateRefOptions,
   type WorktreeAddOptions,
@@ -66,6 +71,19 @@ describe('re-exported runners', () => {
     const r = await spawnRunnerAsync('git').run(['--version'], { cwd: CWD })
     expect(r.exitCode).toBe(0)
     expect(r.stdout.startsWith('git version')).toBe(true)
+  })
+
+  test('spawnRunnerBytes and spawnRunnerBytesAsync return stdout as bytes', async () => {
+    const sync: BytesCommandRunner = spawnRunnerBytes('git')
+    const async: AsyncBytesCommandRunner = spawnRunnerBytesAsync('git')
+    for (const r of [
+      sync.run(['--version'], { cwd: CWD }),
+      await async.run(['--version'], { cwd: CWD }),
+    ]) {
+      expect(r.exitCode).toBe(0)
+      expect(Buffer.isBuffer(r.stdout)).toBe(true)
+      expect(r.stdout.toString().startsWith('git version')).toBe(true)
+    }
   })
 
   test('runChecked returns the result on exit 0 and throws CommandFailed otherwise', () => {
@@ -137,6 +155,7 @@ describe('public surface', () => {
     const setHead: RemoteSetHeadOptions = { auto: true }
     const setBranches: RemoteSetBranchesOptions = { add: true }
     const gc: GcOptions = { prune: false }
+    const statusEntries: StatusEntriesOptions = { ignored: true }
     const hashObject: HashObjectOptions = { write: true }
     const mktree: MktreeEntry = { mode: '100644', sha: 'a'.repeat(40), path: 'a' }
     const updateRef: UpdateRefOptions = { oldSha: null }
@@ -156,10 +175,11 @@ describe('public surface', () => {
       setHead,
       setBranches,
       gc,
+      statusEntries,
       hashObject,
       mktree,
       updateRef,
-    ]).toHaveLength(18)
+    ]).toHaveLength(19)
   })
 
   test('the backend seam is marked experimental', () => {
