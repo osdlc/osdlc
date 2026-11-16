@@ -54,5 +54,16 @@ describe.skipIf(process.platform === 'win32')('a git file in the working directo
       expect(result.exitCode).toBe(0)
       expect(result.stdout).toMatch(/^git version /)
     })
+
+    test(`the default bytes runners run the real git too, through ${name}`, async () => {
+      process.env['PATH'] = prefix + (savedPath ?? '')
+      for (const result of [
+        new Git(dir).rawBytes(['--version']),
+        await new AsyncGit(dir).rawBytes(['--version']),
+      ]) {
+        expect(result.exitCode).toBe(0)
+        expect(result.stdout.toString()).toMatch(/^git version /)
+      }
+    })
   }
 })
