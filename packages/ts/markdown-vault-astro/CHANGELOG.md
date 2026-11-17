@@ -1,5 +1,13 @@
 # @osdlc/markdown-vault-astro
 
+## 0.8.3
+
+### Patch Changes
+
+- Updated dependencies [c2c14f1]
+  - @osdlc/markdown-link@0.11.0
+  - @osdlc/markdown-render@0.8.2
+
 ## 0.8.2
 
 ### Patch Changes
