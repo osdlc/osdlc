@@ -940,6 +940,14 @@ fn diff_name_status_staged_only() {
     assert!(limited.is_empty());
 }
 
+/// A name with spaces and, where the file system allows one, a double quote,
+/// which git quotes and escapes in output that is not NUL-separated. Windows
+/// refuses a double quote in a file name.
+#[cfg(not(windows))]
+const SPACED_NAME: &str = "a b \"q\".txt";
+#[cfg(windows)]
+const SPACED_NAME: &str = "a b q.txt";
+
 #[test]
 #[serial]
 fn diff_name_status_exact_paths() {
@@ -950,7 +958,7 @@ fn diff_name_status_exact_paths() {
     let head = commit_files(
         repo,
         &[
-            ("a b \"q\".txt", "x\n"),
+            (SPACED_NAME, "x\n"),
             ("caf\u{e9} \u{65e5}\u{672c}.txt", "y\n"),
         ],
         "odd names",
@@ -958,7 +966,7 @@ fn diff_name_status_exact_paths() {
     let opts = DiffNameStatusOptions::new().between(&base, &head);
     let changes = diff::diff_name_status(repo, &opts).unwrap();
     assert_eq!(changes.len(), 2, "{changes:?}");
-    assert_eq!(find(&changes, "a b \"q\".txt").kind, ChangeKind::Added);
+    assert_eq!(find(&changes, SPACED_NAME).kind, ChangeKind::Added);
     assert_eq!(
         find(&changes, "caf\u{e9} \u{65e5}\u{672c}.txt").kind,
         ChangeKind::Added
