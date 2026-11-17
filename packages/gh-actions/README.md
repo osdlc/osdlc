@@ -24,6 +24,8 @@ reusable workflows that check and release a pnpm workspace of TypeScript
 packages, `.github/workflows/ts-packages-ci.yml` and
 `ts-packages-release.yml`. GitHub runs a reusable workflow only from
 `.github/workflows/`. Its changelog puts them under the shared version.
+pr-update has a reusable workflow as well,
+`.github/workflows/pr-update-reusable.yml`; its README shows the caller.
 
 ## Using an action
 

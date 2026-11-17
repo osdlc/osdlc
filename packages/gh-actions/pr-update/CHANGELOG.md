@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- New reusable workflow `.github/workflows/pr-update-reusable.yml`: the App
+  token, the checkout, the git identity, the `/pr-update` comment and the
+  concurrency rules that osdlc/osdlc's `pr-update.yml` held, so another
+  repository calls it from a short workflow of its own. It takes the App's
+  client ID as the input `app-client-id`, in place of the deprecated `app-id`
+  of `actions/create-github-app-token`. osdlc/osdlc's `pr-update.yml` now
+  calls it.
+
 - The summary reads the report shape of `@osdlc/pr-update` 0.10 as well as
   earlier ones: a repository that could not be listed is read from its `repos`
   entry as well as from `repoFailures`, and a `--pr` that matched no open PR
