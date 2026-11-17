@@ -240,25 +240,35 @@ pub fn diff_name_status(
 ///
 /// Exit 1 from git is read as `None`, with or without a warning on stderr,
 /// unless stderr holds a line that starts with `error:` or `fatal:`. Then it
-/// is a [`GitError::Command`]: some git versions, 2.34 among them, also exit
-/// 1 when they cannot read a commit. A revision that does not resolve is a
-/// [`GitError::Command`], as is one that begins with `-`.
+/// is a [`GitError::Command`]: some git versions also exit 1 when they cannot
+/// read a commit. The command runs with `LC_ALL=C`, so git writes those two
+/// words in English whatever the caller's locale. A revision that does not
+/// resolve is a [`GitError::Command`], as is one that begins with `-`.
 pub fn merge_base(repo: &Path, a: &str, b: &str) -> Result<Option<String>, GitError> {
     refuse_option("merge-base", a)?;
     refuse_option("merge-base", b)?;
     let mut cmd = git();
-    cmd.dir(repo).args(&["merge-base", a, b]);
+    // The answer is read from stderr's words, so git must write them in
+    // English.
+    cmd.dir(repo).env("LC_ALL", "C").args(&["merge-base", a, b]);
     let out = cmd.run_raw()?;
-    match out.status.code() {
+    merge_base_answer(out.status.code(), &out.stdout, &out.stderr).ok_or_else(|| cmd.failure(&out))
+}
+
+/// What one run of `git merge-base` answers: the sha, `Some(None)` for no
+/// common ancestor, or `None` when the run failed.
+///
+/// Exit 1 is git's answer for no common ancestor, with or without a warning
+/// on stderr. An `error:` or `fatal:` line with it is a failed read, not an
+/// answer. A revision that does not resolve exits 128.
+fn merge_base_answer(code: Option<i32>, stdout: &[u8], stderr: &[u8]) -> Option<Option<String>> {
+    match code {
         Some(0) => {
-            let sha = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            Ok((!sha.is_empty()).then_some(sha))
+            let sha = String::from_utf8_lossy(stdout).trim().to_string();
+            Some((!sha.is_empty()).then_some(sha))
         }
-        // Exit 1 is git's answer for no common ancestor, with or without a
-        // warning on stderr. An error line with it is a failed read, not an
-        // answer. A revision that does not resolve exits 128.
-        Some(1) if !has_error_line(&out.stderr) => Ok(None),
-        _ => Err(cmd.failure(&out)),
+        Some(1) if !has_error_line(stderr) => Some(None),
+        _ => None,
     }
 }
 
@@ -292,7 +302,8 @@ fn has_error_line(stderr: &[u8]) -> bool {
 /// `Subproject commit` patch, whatever `diff.submodule` says, and the context
 /// at three lines, whatever `diff.context` says. Other settings still apply:
 /// rename detection (`diff.renames`), `diff.ignoreSubmodules` and
-/// `diff.algorithm`.
+/// `diff.algorithm`. The `GIT_DIFF_OPTS` environment variable also still
+/// applies: `-u0` there overrides the three lines of context.
 ///
 /// [`paths`](DiffTextOptions::paths) are read as git pathspecs, not as
 /// literal file names: `*.md` and `pages/[slug].astro` are globs, and a name
@@ -440,5 +451,29 @@ mod tests {
         assert!(has_error_line(
             b"warning: refname 'side' is ambiguous.\nfatal: bad object\n"
         ));
+    }
+
+    #[test]
+    fn merge_base_answer_reads_the_exit_code_and_stderr() {
+        let sha = Some(Some("abc123".to_string()));
+        assert_eq!(merge_base_answer(Some(0), b"abc123\n", b""), sha);
+        assert_eq!(merge_base_answer(Some(0), b"", b""), Some(None));
+        // Exit 1 is "no common ancestor", with or without a warning.
+        assert_eq!(merge_base_answer(Some(1), b"", b""), Some(None));
+        let warning = b"warning: refname 'side' is ambiguous.\n";
+        assert_eq!(merge_base_answer(Some(1), b"", warning), Some(None));
+        // An error line with exit 1 is a failed read. Only stderr is looked at.
+        assert_eq!(
+            merge_base_answer(Some(1), b"", b"error: Could not read 1234\n"),
+            None
+        );
+        assert_eq!(merge_base_answer(Some(1), b"error: x\n", b""), Some(None));
+        // Any other exit, or a signal, is a failure.
+        assert_eq!(
+            merge_base_answer(Some(128), b"", b"fatal: Not a valid object name nope\n"),
+            None
+        );
+        assert_eq!(merge_base_answer(Some(255), b"", b""), None);
+        assert_eq!(merge_base_answer(None, b"", b""), None);
     }
 }

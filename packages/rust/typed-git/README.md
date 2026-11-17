@@ -122,7 +122,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   under the user's colour, external diff, textconv, prefix, `diff.relative`,
   `diff.submodule` and `diff.context` settings. Other settings still apply:
   rename detection (`diff.renames`), `diff.ignoreSubmodules` and
-  `diff.algorithm`.
+  `diff.algorithm`. The `GIT_DIFF_OPTS` environment variable also still
+  applies: `-u0` there overrides the three lines of context.
 - `diff_name_status` passes `--no-relative`, so its paths are relative to the
   repository root and cover the whole repository. It passes `--no-color` as a
   guard: git does not colour that output. An unmerged path can be two rows in

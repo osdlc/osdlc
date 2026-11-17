@@ -1429,7 +1429,8 @@ export interface DiffTextOptions {
  * change as a `Subproject commit` patch, whatever `diff.submodule` says, and
  * the context at three lines, whatever `diff.context` says. Other settings
  * still apply: rename detection (`diff.renames`), `diff.ignoreSubmodules` and
- * `diff.algorithm`. The rev is followed by `--`, so git never reads it as a
+ * `diff.algorithm`; so does the `GIT_DIFF_OPTS` environment variable, where
+ * `-u0` overrides the three lines of context. The rev is followed by `--`, so git never reads it as a
  * path: a rev that names a file but no revision throws, and a branch that
  * shares its name with a file works.
  *

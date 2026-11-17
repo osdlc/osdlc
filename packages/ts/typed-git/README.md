@@ -326,7 +326,8 @@ prefixes and three lines of context. Both always pass `--no-color`,
 `diff.relative`, `diff.submodule` and `diff.context` do not change the text,
 and none of them stops `git apply` taking it. Other settings still apply:
 rename detection (`diff.renames`), `diff.ignoreSubmodules` and
-`diff.algorithm`.
+`diff.algorithm`. The `GIT_DIFF_OPTS` environment variable also still applies:
+`-u0` there overrides the three lines of context.
 
 `diffNameStatus` passes `--no-relative`, so its paths are relative to the
 repository root and cover the whole repository when the cwd is below the
