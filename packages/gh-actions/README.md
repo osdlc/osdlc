@@ -24,6 +24,8 @@ reusable workflows that check and release a pnpm workspace of TypeScript
 packages, `.github/workflows/ts-packages-ci.yml` and
 `ts-packages-release.yml`. GitHub runs a reusable workflow only from
 `.github/workflows/`. Its changelog puts them under the shared version.
+osdlc/osdlc's coverage and complexity report, `.github/workflows/reports.yml`,
+can be called too; [Reports](#reports) below shows how.
 
 ## Using an action
 
@@ -46,6 +48,55 @@ from a checkout of the default branch, not of a pull request, so a pull
 request cannot change the action that runs with the workflow's secrets.
 [`.github/workflows/claude.yml`](../../.github/workflows/claude.yml) is the
 place a workflow would do this.
+
+## Reports
+
+[`.github/workflows/reports.yml`](../../.github/workflows/reports.yml) reports
+line coverage and complexity for Rust crates and pnpm TypeScript packages,
+writes the tables to the run's summary, compares the total with the default
+branch through octocov, and keeps one line about it on each pull request. It
+reports only; nothing fails a run. osdlc/osdlc runs it on its own triggers;
+another repository calls it:
+
+```yaml
+name: reports
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  reports:
+    permissions:
+      contents: read
+      actions: read # octocov reads the default branch's report
+      pull-requests: write # the coverage comment
+    uses: osdlc/osdlc/.github/workflows/reports.yml@<commit-sha> # gh-actions/v1
+```
+
+Leave out a `concurrency` group named `quality-reports-…`: the workflow uses
+one. The settings are the calling repository's variables, each overridable by
+an input of the workflow under `with:`. A language whose folder setting is
+empty is skipped.
+
+| Variable                | Input           | Default              | Meaning                                                                            |
+| ----------------------- | --------------- | -------------------- | ---------------------------------------------------------------------------------- |
+| `REPORTS_RUST_DIR`      | `rust-dir`      | empty: no Rust       | The Cargo workspace folder, from the root (`.` for a workspace at the root).       |
+| `REPORTS_RUST_ARGS`     | `rust-args`     | `--workspace`        | Which packages `cargo llvm-cov` and clippy take, e.g. `--workspace --exclude app`. |
+| `REPORTS_TS_PACKAGES`   | `ts-packages`   | empty: no TypeScript | A glob of the package folders. Needs a pnpm workspace with vitest and oxlint.      |
+| `REPORTS_TS_BUILD`      | `ts-build`      | `pnpm run build`     | Run after `pnpm install --frozen-lockfile`, before the tests.                      |
+| `REPORTS_OXLINT_CONFIG` | `oxlint-config` | osdlc's              | The oxlint complexity thresholds.                                                  |
+| `REPORTS_NODE_VERSION`  | `node-version`  | none                 | Node for the Rust job, when its tests run Node.                                    |
+| `REPORTS_ENV`           | `env`           | none                 | `NAME=value` lines added to both jobs' environment.                                |
+
+The Rust toolchain is the workspace's `rust-toolchain.toml`, or stable when it
+has none. The script and the Rust actions the workflow runs come from the
+same osdlc/osdlc commit as the workflow, so the ref after `@` pins all of
+them. It needs no secret.
 
 ## Shape
 
