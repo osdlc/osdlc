@@ -83,15 +83,37 @@ one. The settings are the calling repository's variables, each overridable by
 an input of the workflow under `with:`. A language whose folder setting is
 empty is skipped.
 
-| Variable                | Input           | Default              | Meaning                                                                            |
-| ----------------------- | --------------- | -------------------- | ---------------------------------------------------------------------------------- |
-| `REPORTS_RUST_DIR`      | `rust-dir`      | empty: no Rust       | The Cargo workspace folder, from the root (`.` for a workspace at the root).       |
-| `REPORTS_RUST_ARGS`     | `rust-args`     | `--workspace`        | Which packages `cargo llvm-cov` and clippy take, e.g. `--workspace --exclude app`. |
-| `REPORTS_TS_PACKAGES`   | `ts-packages`   | empty: no TypeScript | A glob of the package folders. Needs a pnpm workspace with vitest and oxlint.      |
-| `REPORTS_TS_BUILD`      | `ts-build`      | `pnpm run build`     | Run after `pnpm install --frozen-lockfile`, before the tests.                      |
-| `REPORTS_OXLINT_CONFIG` | `oxlint-config` | osdlc's              | The oxlint complexity thresholds.                                                  |
-| `REPORTS_NODE_VERSION`  | `node-version`  | none                 | Node for the Rust job, when its tests run Node.                                    |
-| `REPORTS_ENV`           | `env`           | none                 | `NAME=value` lines added to both jobs' environment.                                |
+| Variable                | Input           | Default                | Meaning                                                                            |
+| ----------------------- | --------------- | ---------------------- | ---------------------------------------------------------------------------------- |
+| `REPORTS_RUST_DIR`      | `rust-dir`      | empty: no Rust         | The Cargo workspace folder, from the root (`.` for a workspace at the root).       |
+| `REPORTS_RUST_ARGS`     | `rust-args`     | `--workspace`          | Which packages `cargo llvm-cov` and clippy take, e.g. `--workspace --exclude app`. |
+| `REPORTS_TS_PACKAGES`   | `ts-packages`   | empty: no TypeScript   | The package folders, space separated, globs allowed: `packages/ts/*`, `web site`.  |
+| `REPORTS_TS_SETUP`      | `ts-setup`      | install, then build    | Shell run at the root before the report, one line. `none` runs nothing.            |
+| `REPORTS_TS_BUILD`      | `ts-build`      | `pnpm run build`       | The default setup's build, after `pnpm install --frozen-lockfile`.                 |
+| `REPORTS_TS_COVERAGE`   | `ts-coverage`   | each `coverage` script | A command run in each package instead of vitest. See below.                        |
+| `REPORTS_OXLINT_CONFIG` | `oxlint-config` | osdlc's                | The oxlint complexity thresholds.                                                  |
+| `REPORTS_OXLINT_IGNORE` | `oxlint-ignore` | none                   | More globs, space separated, that oxlint leaves out, e.g. committed build output.  |
+| `REPORTS_NODE_VERSION`  | `node-version`  | none                   | Node for the Rust job, when its tests run Node.                                    |
+| `REPORTS_ENV`           | `env`           | none                   | `NAME=value` lines added to both jobs' environment.                                |
+
+By default each TypeScript package runs its `coverage` script, which must be
+`vitest run --coverage`, in a pnpm workspace with oxlint installed. A package
+tested some other way sets `REPORTS_TS_COVERAGE` to a command, one line, that
+runs in each package folder, writes `coverage/lcov.info` there (the folder
+exists and is empty when it starts) and exits non-zero when a test fails. Its
+lines, functions and branches come from the lcov file; its test counts come
+from the last `pass`/`fail`/`skipped` summary lines of node's test runner, and
+are left out with another runner. Packages with their own lockfiles and no
+root workspace, tested with `node --test`:
+
+```text
+REPORTS_TS_PACKAGES  web site
+REPORTS_TS_SETUP     none
+REPORTS_TS_COVERAGE  node --test --experimental-test-coverage --test-reporter=spec --test-reporter-destination=stderr --test-reporter=lcov --test-reporter-destination=coverage/lcov.info test/*.test.ts
+```
+
+With no oxlint at the root, the report runs oxlint through `npx`, at the
+version osdlc/osdlc locks.
 
 The Rust toolchain is the workspace's `rust-toolchain.toml`, or stable when it
 has none. The script and the Rust actions the workflow runs come from the
