@@ -25,14 +25,15 @@
 #                       other comment ends at the gate, which reads no secret.
 #
 # Settings, from the running repository (input, else variable, else default):
-#   RELEASE_PLZ_APP_CLIENT_ID       the GitHub App's client ID (required)
+#   PR_UPDATE_APP_CLIENT_ID         the GitHub App's client ID (required)
 #   PR_UPDATE_TRIGGER_USERS         logins that may use /pr-update, comma separated
 #   PR_UPDATE_TRIGGER_ASSOCIATIONS  author associations that may (OWNER, MEMBER, ...)
 #   PR_UPDATE_ENVIRONMENT           environment holding the App key, if any
 #   PR_UPDATE_STRATEGY              merge (default) or rebase
 #   PR_UPDATE_REPAIR_AGENT          claude (default), codex, cursor, pi, or none
-# Secrets: RELEASE_PLZ_APP_PRIVATE_KEY (required) and ANTHROPIC_API_KEY (for
-# the claude repair). The client ID is not a secret; the private key is.
+# Secrets: PR_UPDATE_APP_PRIVATE_KEY (required) and ANTHROPIC_API_KEY (for
+# the claude repair). The client ID is not a secret; the private key is. Any
+# App with the permissions below will do; osdlc uses its release App.
 #
 # Concurrency: two jobs.
 #   gate      decides what this event asks for. Cheap, no secrets.
@@ -58,9 +59,11 @@
 # `permission-*` below can only narrow what the App was granted. The commits
 # are authored as the App's bot user.
 #
-# The action is taken from osdlc/osdlc's main, and a comment, a schedule and a
-# dispatch all run the default branch's workflow, so a pull request cannot
-# change what runs with the App token and the API key.
+# The action comes from the same osdlc/osdlc commit as this file: a caller
+# that pins the workflow to a SHA pins the action too, so later changes here
+# cannot reach its keys. A comment, a schedule and a dispatch all run the
+# default branch's workflow, so a pull request cannot change what runs with
+# the App token and the API key.
 #
 # No loop: nothing here listens for push or pull_request events, and the bot's
 # comments and reactions never start the comment trigger (a comment from the
@@ -87,7 +90,7 @@ on:
   workflow_call:
     inputs:
       app-client-id:
-        description: Client ID of the GitHub App that pushes. Default the variable RELEASE_PLZ_APP_CLIENT_ID.
+        description: Client ID of the GitHub App that pushes. Default the variable PR_UPDATE_APP_CLIENT_ID.
         type: string
         default: ""
       environment:
@@ -111,7 +114,7 @@ on:
         type: string
         default: ""
     secrets:
-      RELEASE_PLZ_APP_PRIVATE_KEY:
+      PR_UPDATE_APP_PRIVATE_KEY:
         description: "The App's private key. `secrets: inherit` passes it."
         required: false
       ANTHROPIC_API_KEY:
@@ -207,16 +210,16 @@ jobs:
     steps:
       - name: Check the App settings
         env:
-          APP_CLIENT_ID: ${{ inputs.app-client-id || vars.RELEASE_PLZ_APP_CLIENT_ID }}
-          APP_KEY: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}
+          APP_CLIENT_ID: ${{ inputs.app-client-id || vars.PR_UPDATE_APP_CLIENT_ID }}
+          APP_KEY: ${{ secrets.PR_UPDATE_APP_PRIVATE_KEY }}
         run: |
           ok=true
           if [ -z "$APP_CLIENT_ID" ]; then
-            echo "::error::No GitHub App client ID. Set the variable RELEASE_PLZ_APP_CLIENT_ID on the repository or the organization, or pass the input app-client-id."
+            echo "::error::No GitHub App client ID. Set the variable PR_UPDATE_APP_CLIENT_ID on the repository or the organization, or pass the input app-client-id."
             ok=false
           fi
           if [ -z "$APP_KEY" ]; then
-            echo "::error::RELEASE_PLZ_APP_PRIVATE_KEY is empty. Set it as a repository, organization or environment secret; a caller passes it with \`secrets: inherit\` or by name."
+            echo "::error::PR_UPDATE_APP_PRIVATE_KEY is empty. Set it as a repository, organization or environment secret; a caller passes it with \`secrets: inherit\` or by name."
             ok=false
           fi
           [ "$ok" = true ]
@@ -225,8 +228,8 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          client-id: ${{ inputs.app-client-id || vars.RELEASE_PLZ_APP_CLIENT_ID }}
-          private-key: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}
+          client-id: ${{ inputs.app-client-id || vars.PR_UPDATE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.PR_UPDATE_APP_PRIVATE_KEY }}
           permission-contents: write
           permission-pull-requests: write
           permission-issues: write
@@ -254,8 +257,23 @@ jobs:
           git config user.name "$APP_SLUG[bot]"
           git config user.email "$APP_SLUG[bot]@users.noreply.github.com"
 
+      # The pr-update action at the commit of this workflow file:
+      # job_workflow_sha when another repository calls it, else this run's own
+      # commit. `uses:` cannot take an expression, so it is checked out and run
+      # by path. It sits inside the repository checkout (the action runs there),
+      # hidden from git through .git/info/exclude.
+      - name: Check out the pr-update action
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: osdlc/osdlc
+          ref: ${{ github.job_workflow_sha || github.sha }}
+          path: .pr-update-action
+          sparse-checkout: packages/gh-actions
+          persist-credentials: false
+      - run: echo /.pr-update-action/ >> .git/info/exclude
+
       - id: update
-        uses: osdlc/osdlc/packages/gh-actions/pr-update@main
+        uses: ./.pr-update-action/packages/gh-actions/pr-update
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}

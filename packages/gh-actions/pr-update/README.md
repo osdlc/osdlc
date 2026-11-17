@@ -66,23 +66,42 @@ A called workflow sees the calling repository's variables and secrets, so the
 settings live there, as repository or organization variables. An input of the
 same meaning under `with:` overrides a variable.
 
-| Variable                         | Input                  | Default  | Meaning                                                                          |
-| -------------------------------- | ---------------------- | -------- | -------------------------------------------------------------------------------- |
-| `RELEASE_PLZ_APP_CLIENT_ID`      | `app-client-id`        | required | Client ID of the GitHub App that pushes (see Token). It is not a secret.         |
-| `PR_UPDATE_TRIGGER_USERS`        | `trigger-users`        | empty    | Logins that may use the `/pr-update` comment, comma separated. Empty: nobody.    |
+| Variable                         | Input                  | Default  | Meaning                                                                            |
+| -------------------------------- | ---------------------- | -------- | ---------------------------------------------------------------------------------- |
+| `PR_UPDATE_APP_CLIENT_ID`        | `app-client-id`        | required | Client ID of the GitHub App that pushes (see Token). It is not a secret.           |
+| `PR_UPDATE_TRIGGER_USERS`        | `trigger-users`        | empty    | Logins that may use the `/pr-update` comment, comma separated. Empty: nobody.      |
 | `PR_UPDATE_TRIGGER_ASSOCIATIONS` | `trigger-associations` | empty    | Author associations that may (`OWNER`, `MEMBER`, `COLLABORATOR`), comma separated. |
-| `PR_UPDATE_ENVIRONMENT`          | `environment`          | none     | The environment that holds the App key.                                          |
-| `PR_UPDATE_STRATEGY`             | `strategy`             | `merge`  | The action's `strategy`.                                                         |
-| `PR_UPDATE_REPAIR_AGENT`         | `repair-agent`         | `claude` | The action's `repair-agent`; `none` for no repair.                               |
+| `PR_UPDATE_ENVIRONMENT`          | `environment`          | none     | The environment that holds the App key.                                            |
+| `PR_UPDATE_STRATEGY`             | `strategy`             | `merge`  | The action's `strategy`.                                                           |
+| `PR_UPDATE_REPAIR_AGENT`         | `repair-agent`         | `claude` | The action's `repair-agent`; `none` for no repair.                                 |
 
-Secrets: `RELEASE_PLZ_APP_PRIVATE_KEY` (required) is the App's private key, and
+Secrets: `PR_UPDATE_APP_PRIVATE_KEY` (required) is the App's private key, and
 `ANTHROPIC_API_KEY` is the key for the claude repair; without it a conflict is
 left for a person. `secrets: inherit` passes both, from the repository, the
-organization, or the environment named by `PR_UPDATE_ENVIRONMENT`.
+organization, or the environment named by `PR_UPDATE_ENVIRONMENT`. It works
+only inside one organization or enterprise; a repository elsewhere passes them
+by name:
 
-The commits are authored as the App's bot user (`<app-slug>[bot]`). The
-workflow takes the action from osdlc/osdlc's `main`, whatever ref the caller
-names for the workflow itself.
+```yaml
+    secrets:
+      PR_UPDATE_APP_PRIVATE_KEY: ${{ secrets.MY_APP_PRIVATE_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+Any GitHub App with the permissions under Token will do; it must be installed
+on the calling repository. The commits are authored as its bot user
+(`<app-slug>[bot]`).
+
+### Pinning
+
+The workflow runs the pr-update action from its own commit of osdlc/osdlc, so
+the ref after `@` pins both. `@main` takes every change as soon as it merges.
+The workflow sees your App key and API key, so outside osdlc pin a commit SHA
+instead, and name the release in a comment:
+
+```yaml
+    uses: osdlc/osdlc/.github/workflows/pr-update.yml@<commit-sha> # gh-actions/v1
+```
 
 ## Use the action
 
