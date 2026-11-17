@@ -29,6 +29,15 @@ const LOCAL_KINDS = new Set(['ollama', 'lmstudio'])
 const LONG_CONTEXT = 1_000_000
 /** Why a row whose fields are not the types models.dev documents is refused. */
 const MALFORMED = 'row is malformed'
+
+/** The first schema issue as `field.path: message`, so a refused row says which field is wrong. */
+function firstIssue(issues: readonly { path: readonly PropertyKey[]; message: string }[]): string {
+  const issue = issues[0]
+  if (issue === undefined) return 'invalid'
+  return issue.path.length === 0
+    ? issue.message
+    : `${issue.path.map(String).join('.')}: ${issue.message}`
+}
 const DATED = /^(.+)-(\d{8})$/
 const ISO_DAY = /^(\d{4}-\d{2}-\d{2})(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})?)?$/
 
@@ -119,7 +128,10 @@ export type ModelsDevRows = {
   models: Record<string, ModelRow>
   /** models.dev providers the catalogue does not know, dropped, sorted. */
   unknownProviders: string[]
-  /** Kept models refused as rows (`rowProblem`), keyed `provider/id`, sorted by key. */
+  /**
+   * Kept models refused as rows, keyed `provider/id`, sorted by key. The reason is `rowProblem`'s,
+   * or `row is malformed: <field>: <issue>` for a mapped row the model-row schema refuses.
+   */
   rejected: { key: string; reason: string }[]
 }
 
@@ -167,8 +179,9 @@ export function modelsDevRows(
       try {
         const row = modelsDevRow(m, Object.hasOwn(prior, key) ? prior[key] : undefined)
         // models.dev is untrusted: a field of the wrong type refuses its row, not the whole layer.
-        if (ModelRowSchema.safeParse(row).success) models[key] = row
-        else reject(m, MALFORMED)
+        const checked = ModelRowSchema.safeParse(row)
+        if (checked.success) models[key] = row
+        else reject(m, `${MALFORMED}: ${firstIssue(checked.error.issues)}`)
       } catch {
         reject(m, MALFORMED)
       }
