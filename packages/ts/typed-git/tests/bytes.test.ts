@@ -35,6 +35,16 @@ import { makeGitFixture, type GitFixture } from '../src/testing.ts'
 
 const CWD = '/repo'
 
+/** The flags `diffText` and `diffAddedFile` always pass, after `diff`. */
+const PLAIN_PATCH = [
+  '--no-color',
+  '--no-ext-diff',
+  '--no-textconv',
+  '--src-prefix=a/',
+  '--dst-prefix=b/',
+  '--no-relative',
+]
+
 /** Bytes that are not valid UTF-8: a lone continuation byte and 0xff. */
 const NOT_UTF8 = Buffer.from([0x68, 0x69, 0x80, 0xff, 0x0a])
 
@@ -286,8 +296,8 @@ describe('statusEntries({ ignored }) and diffText({ binary }) — argv', () => {
     expect(s.calls).toEqual([
       ['status', '--porcelain', '-z', '--untracked-files=all', '--ignored'],
       ['status', '--porcelain', '-z', '--untracked-files=all'],
-      ['diff', '--no-color', '--cached', '--binary', 'HEAD', '--', 'img.png'],
-      ['diff', '--no-color'],
+      ['diff', ...PLAIN_PATCH, '--cached', '--binary', 'HEAD', '--', 'img.png'],
+      ['diff', ...PLAIN_PATCH],
     ])
     expect(a.calls).toEqual(s.calls)
   })

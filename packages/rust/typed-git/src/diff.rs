@@ -1,6 +1,6 @@
-//! What changed: the files that differ between two revisions or between the
-//! index and HEAD, the unified diff text for the same selections, and the
-//! merge base of two revisions.
+//! What changed: the changed paths with their status, for a range, the index
+//! or the working tree, the unified diff, and the merge base of two
+//! revisions.
 //!
 //! ```
 //! use std::fs;
@@ -31,6 +31,7 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::cmd::refuse_option;
 use crate::{GitError, git};
 
 /// How git classifies one changed path in a `--name-status` diff.
@@ -52,13 +53,22 @@ pub enum ChangeKind {
     Copied,
     /// The file type changed, such as a file replaced by a symlink (`T`).
     TypeChanged,
-    /// The path is unmerged (`U`).
+    /// The path is unmerged (`U`). A diff of the working tree lists an
+    /// unmerged path twice: this row, then a second row for the same path
+    /// ([`Modified`](Self::Modified) after a conflicting merge). A caller
+    /// that keys rows by path must keep both.
     Unmerged,
     /// A status letter this crate has no variant for, as git printed it.
     Other(char),
 }
 
 /// One row of a `--name-status` diff.
+///
+/// The paths are [`PathBuf`], where the rest of the crate uses `String`. The
+/// NUL separated output gives each name's bytes, and on Unix a `PathBuf`
+/// keeps them, where a `String` would lose a name that is not UTF-8. The
+/// `paths` setters of the option structs take `&str`, so such a name cannot
+/// be passed back to them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Change {
@@ -82,6 +92,8 @@ pub struct Change {
 pub struct DiffNameStatusOptions {
     cached: bool,
     range: Option<String>,
+    /// Set by `between` when `from` or `to` is empty.
+    empty_side: bool,
     no_renames: bool,
     paths: Vec<String>,
 }
@@ -93,8 +105,10 @@ impl DiffNameStatusOptions {
         Self::default()
     }
 
-    /// Diff the index against HEAD (`--cached`), or against the range's first
-    /// revision when a range is also set.
+    /// Diff the index against HEAD (`--cached`), or against that revision
+    /// when the range is a single revision. Git refuses `--cached` with two
+    /// revisions, so it does not combine with [`between`](Self::between) or
+    /// with a range such as `a..b`.
     pub fn cached(mut self) -> Self {
         self.cached = true;
         self
@@ -103,12 +117,17 @@ impl DiffNameStatusOptions {
     /// Diff a range given as one token, such as `origin/main..HEAD`.
     pub fn range(mut self, range: impl Into<String>) -> Self {
         self.range = Some(range.into());
+        self.empty_side = false;
         self
     }
 
-    /// Diff `from` against `to` (`from..to`).
-    pub fn between(self, from: &str, to: &str) -> Self {
-        self.range(format!("{from}..{to}"))
+    /// Diff `from` against `to` (`from..to`). An empty `from` or `to` is
+    /// refused when the diff runs, because git reads a missing side as
+    /// `HEAD`.
+    pub fn between(mut self, from: &str, to: &str) -> Self {
+        self.range = Some(format!("{from}..{to}"));
+        self.empty_side = from.is_empty() || to.is_empty();
+        self
     }
 
     /// Report a rename as a delete plus an add (`--no-renames`).
@@ -118,7 +137,8 @@ impl DiffNameStatusOptions {
     }
 
     /// Limit the diff to these pathspecs. Git reads them as pathspecs, so
-    /// `*.md` is a glob.
+    /// `*.md` is a glob and a name that begins with `:` is pathspec magic.
+    /// Prefix a path with `:(literal)` to match it as a file name.
     pub fn paths(mut self, paths: &[&str]) -> Self {
         self.paths = paths.iter().map(|p| p.to_string()).collect();
         self
@@ -143,7 +163,8 @@ impl DiffTextOptions {
     }
 
     /// Diff the index against the revision, or against HEAD when there is no
-    /// revision (`--cached`).
+    /// revision (`--cached`). Git refuses it with a `rev` of two revisions,
+    /// such as `a..b`.
     pub fn staged(mut self) -> Self {
         self.staged = true;
         self
@@ -157,7 +178,8 @@ impl DiffTextOptions {
     }
 
     /// Limit the diff to these pathspecs. Git reads them as pathspecs, so
-    /// `*.md` is a glob.
+    /// `*.md` is a glob and a name that begins with `:` is pathspec magic.
+    /// Prefix a path with `:(literal)` to match it as a file name.
     pub fn paths(mut self, paths: &[&str]) -> Self {
         self.paths = paths.iter().map(|p| p.to_string()).collect();
         self
@@ -165,20 +187,28 @@ impl DiffTextOptions {
 }
 
 /// The changed paths with their status
-/// (`git diff --no-color --name-status -z`).
+/// (`git diff --no-color --no-relative --name-status -z`).
 ///
 /// An empty result means nothing differs, including before the first commit
 /// with [`cached`](DiffNameStatusOptions::cached). Paths come from NUL
 /// separated output, so a name holding a space, a quote, a newline or
-/// non-ASCII characters is exact. `--no-color` is always passed, so the
-/// user's `color.ui` or `color.diff` setting cannot put escape codes in the
-/// output. A range or revision that does not resolve is a
-/// [`GitError::Command`], as is a range that begins with `-`.
+/// non-ASCII characters is exact. A path can be in more than one row: see
+/// [`ChangeKind::Unmerged`].
+///
+/// `--no-relative` is always passed, so with a subdirectory as `repo` the
+/// paths are still relative to the repository root and changes outside the
+/// subdirectory are still listed, whatever the user's `diff.relative` says.
+/// `--no-color` is passed as a guard: git does not colour this output.
+///
+/// The range is followed by `--`, so git never reads it as a path. A range
+/// that does not resolve is a [`GitError::Command`], even when it names a
+/// file, as is a range that begins with `-` and a
+/// [`between`](DiffNameStatusOptions::between) with an empty side.
 pub fn diff_name_status(
     repo: &Path,
     opts: &DiffNameStatusOptions,
 ) -> Result<Vec<Change>, GitError> {
-    let mut args = vec!["diff", "--no-color", "--name-status", "-z"];
+    let mut args = vec!["diff", "--no-color", "--no-relative", "--name-status", "-z"];
     if opts.cached {
         args.push("--cached");
     }
@@ -186,36 +216,50 @@ pub fn diff_name_status(
         args.push("--no-renames");
     }
     if let Some(range) = &opts.range {
-        refuse_option(&args, range)?;
-        args.push(range);
+        if opts.empty_side {
+            return Err(GitError::Command {
+                command: "diff".to_string(),
+                stderr: format!("refusing a range with an empty side: {range}"),
+            });
+        }
+        refuse_option("diff", range)?;
     }
-    push_paths(&mut args, &opts.paths);
-    Ok(parse_name_status(&run_bytes(repo, &args)?))
+    push_rev_and_paths(&mut args, opts.range.as_deref(), &opts.paths);
+    let stdout = git().dir(repo).args(&args).run_bytes()?;
+    Ok(parse_name_status(&stdout))
 }
 
 /// The merge base of two revisions: the best common ancestor, as a full sha.
 ///
-/// `None` when the histories share no commit. A revision that does not
-/// resolve is a [`GitError::Command`], as is one that begins with `-`.
+/// `None` when git finds no common ancestor. In a full clone that means the
+/// histories are unrelated. In a shallow clone it is also the answer when the
+/// common ancestor is past the shallow boundary. When there is more than one
+/// best common ancestor git prints one of them, and which one depends on the
+/// order of `a` and `b`.
+///
+/// A revision that does not resolve is a [`GitError::Command`], as is one
+/// that begins with `-`.
 pub fn merge_base(repo: &Path, a: &str, b: &str) -> Result<Option<String>, GitError> {
-    let args = ["merge-base", a, b];
-    refuse_option(&args[..1], a)?;
-    refuse_option(&args[..1], b)?;
-    let out = git().dir(repo).args(&args).run_raw()?;
+    refuse_option("merge-base", a)?;
+    refuse_option("merge-base", b)?;
+    let mut cmd = git();
+    cmd.dir(repo).args(&["merge-base", a, b]);
+    let out = cmd.run_raw()?;
     match out.status.code() {
         Some(0) => {
             let sha = String::from_utf8_lossy(&out.stdout).trim().to_string();
             Ok((!sha.is_empty()).then_some(sha))
         }
-        // Exit 1 is git's answer for histories with no common ancestor. A
-        // revision that does not resolve exits 128 and falls through.
-        Some(1) if out.stderr.is_empty() => Ok(None),
-        _ => Err(failure(&args, &out.stderr)),
+        // Exit 1 is git's answer for no common ancestor, with or without a
+        // warning on stderr. A revision that does not resolve exits 128.
+        Some(1) => Ok(None),
+        _ => Err(cmd.failure(&out)),
     }
 }
 
-/// The unified diff
-/// (`git diff --no-color [--cached] [--binary] [rev] [-- paths]`).
+/// The unified diff (`git diff --no-color --no-ext-diff --no-textconv
+/// --src-prefix=a/ --dst-prefix=b/ --no-relative [--cached] [--binary]
+/// [rev --] [-- paths]`).
 ///
 /// With no `rev` the diff is the working tree against the index, or the index
 /// against HEAD with [`staged`](DiffTextOptions::staged). With a `rev` it is
@@ -223,22 +267,38 @@ pub fn merge_base(repo: &Path, a: &str, b: &str) -> Result<Option<String>, GitEr
 /// text is empty when nothing differs, and it is not trimmed, so the
 /// trailing newline of the last line stays. It is decoded as UTF-8 with
 /// invalid bytes replaced, so a patch of a file that is not UTF-8 may not
-/// apply. `--no-color` is always passed, so the text holds no escape codes
-/// whatever the user's `color.ui` or `color.diff` says.
+/// apply.
+///
+/// The text is a plain unified diff with `a/` and `b/` prefixes whatever the
+/// user's git configuration says. The flags that are always passed turn off
+/// escape codes (`color.ui`, `color.diff`), an external diff tool
+/// (`diff.external`, a `diff.<driver>.command`), textconv conversion, other
+/// prefixes (`diff.noprefix`, `diff.mnemonicPrefix`, `diff.srcPrefix`,
+/// `diff.dstPrefix`) and `diff.relative`, which with a subdirectory as `repo`
+/// would drop changes outside it.
 ///
 /// [`paths`](DiffTextOptions::paths) are read as git pathspecs, not as
-/// literal file names: `*.md` and `pages/[slug].astro` are globs. The
-/// function takes no environment, so a caller cannot set
-/// `GIT_LITERAL_PATHSPECS` through it.
+/// literal file names: `*.md` and `pages/[slug].astro` are globs, and a name
+/// that begins with `:` is read as pathspec magic, so it does not match the
+/// file. Prefix a path with `:(literal)` to match it as a file name.
 ///
-/// A `rev` that does not resolve is a [`GitError::Command`], as is one that
-/// begins with `-`.
+/// The `rev` is followed by `--`, so git never reads it as a path. A `rev`
+/// that does not resolve is a [`GitError::Command`], even when it names a
+/// file, as is one that begins with `-`.
 pub fn diff_text(
     repo: &Path,
     rev: Option<&str>,
     opts: &DiffTextOptions,
 ) -> Result<String, GitError> {
-    let mut args = vec!["diff", "--no-color"];
+    let mut args = vec![
+        "diff",
+        "--no-color",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--src-prefix=a/",
+        "--dst-prefix=b/",
+        "--no-relative",
+    ];
     if opts.staged {
         args.push("--cached");
     }
@@ -246,51 +306,24 @@ pub fn diff_text(
         args.push("--binary");
     }
     if let Some(rev) = rev {
-        refuse_option(&args, rev)?;
-        args.push(rev);
+        refuse_option("diff", rev)?;
     }
-    push_paths(&mut args, &opts.paths);
-    Ok(String::from_utf8_lossy(&run_bytes(repo, &args)?).into_owned())
+    push_rev_and_paths(&mut args, rev, &opts.paths);
+    let stdout = git().dir(repo).args(&args).run_bytes()?;
+    // Valid UTF-8, the usual case, reuses the buffer. Only invalid bytes
+    // cost a copy.
+    Ok(String::from_utf8(stdout)
+        .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned()))
 }
 
-/// Appends `-- <paths>` when there are paths.
-fn push_paths<'a>(args: &mut Vec<&'a str>, paths: &'a [String]) {
-    if paths.is_empty() {
-        return;
+/// Appends the revision, then `--`, then the paths. `--` follows a revision
+/// even when there are no paths, so git cannot read the revision as a path.
+fn push_rev_and_paths<'a>(args: &mut Vec<&'a str>, rev: Option<&'a str>, paths: &'a [String]) {
+    args.extend(rev);
+    if rev.is_some() || !paths.is_empty() {
+        args.push("--");
     }
-    args.push("--");
     args.extend(paths.iter().map(String::as_str));
-}
-
-/// Runs git and returns stdout untrimmed. `run` trims, which would cost a
-/// diff its last newline.
-fn run_bytes(repo: &Path, args: &[&str]) -> Result<Vec<u8>, GitError> {
-    let out = git().dir(repo).args(args).run_raw()?;
-    if out.status.success() {
-        Ok(out.stdout)
-    } else {
-        Err(failure(args, &out.stderr))
-    }
-}
-
-/// A `GitError::Command` for a git call that exited non-zero.
-fn failure(args: &[&str], stderr: &[u8]) -> GitError {
-    GitError::Command {
-        command: format!("git {}", args.join(" ")),
-        stderr: String::from_utf8_lossy(stderr).trim().to_string(),
-    }
-}
-
-/// Refuses a value that git would read as an option. `args` is the command
-/// line so far, for the error.
-fn refuse_option(args: &[&str], value: &str) -> Result<(), GitError> {
-    if value.starts_with('-') {
-        return Err(GitError::Command {
-            command: format!("git {}", args.join(" ")),
-            stderr: format!("refusing a value that begins with '-': {value}"),
-        });
-    }
-    Ok(())
 }
 
 /// Parses `--name-status -z`.

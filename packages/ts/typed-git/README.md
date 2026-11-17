@@ -125,8 +125,9 @@ release, with a CHANGELOG entry that starts with `Breaking:`.
 This package exists for plain TypeScript callers that want a synchronous form,
 typed results and a declared absence value per verb.
 
-The Rust crate `typed-git` is this package's twin. The two keep the same major
-and minor version. Their APIs differ. The crate is not on crates.io yet.
+The Rust crate [`typed-git`](https://crates.io/crates/typed-git) is this
+package's twin. The two keep the same major and minor version. Their APIs
+differ.
 
 ## Quick look
 
@@ -312,6 +313,27 @@ record is two. A split written by hand often gets this wrong.
 `{ mode, type, sha, sizeBytes, path }` rows. `sizeBytes` is set only for a blob
 under `{ long: true }`; a tree or submodule reports `null`, because `--long`
 prints `-` there and a fabricated `0` would be worse than nothing.
+
+## Diff output and the user's git configuration
+
+`diffText` and `diffAddedFile` return a plain unified diff with `a/` and `b/`
+prefixes whatever the user's git configuration says. Both always pass
+`--no-color`, `--no-ext-diff`, `--no-textconv`, `--src-prefix=a/`,
+`--dst-prefix=b/` and `--no-relative`. So `color.ui`, `color.diff`,
+`diff.external`, a `diff.<driver>.command` or textconv driver,
+`diff.noprefix`, `diff.mnemonicPrefix`, `diff.srcPrefix`, `diff.dstPrefix` and
+`diff.relative` do not change the text, and `git apply` takes it.
+
+`diffNameStatus` passes `--no-relative`, so its paths are relative to the
+repository root and cover the whole repository when the cwd is below the
+root. It passes `--no-color` as a guard: git does not colour that output.
+
+These verbs follow the user's colour setting. Under `color.ui=always` their
+output holds escape codes: `diffStat`, `diffCheck`, `log` with no `format`,
+`logLines`, and `grep` without `noColor`. Verbs that read a fixed machine
+format, such as `diffNameOnly`, `diffTree`, `statusPorcelain`,
+`statusEntries`, `branches` and `worktrees`, get no escape codes: git does not
+colour that output.
 
 ## Exit codes that are answers
 
@@ -728,11 +750,11 @@ exit throws the classified failure.
 | `forEachRef(pattern, { format, sort, count })` | `for-each-ref` | none — lines verbatim |
 | `refs(pattern)` | `forEachRef` + `parseRefRows` | none |
 | `diffNameOnly({ cached, diffFilter, rangeArgs, paths })` | `diff --name-only -z` | none |
-| `diffNameStatus({ cached, range, noRenames, paths })` | `diff --no-color --name-status -z` | none |
+| `diffNameStatus({ cached, range, noRenames, paths })` | `diff --no-color --no-relative --name-status -z [--cached] [--no-renames] [range --] [-- paths]` | none — `--` follows the range, so git never reads it as a path |
 | `diffStat({ rangeArgs, paths })` | `diff --stat` | none — raw stdout |
 | `diffCheck({ paths })` | `diff --check` | `1`, `2` → `{ ok: false, output }` |
-| `diffText(rev?, { staged, binary, paths })` | `diff --no-color [--cached] [--binary] [rev]` | none — empty string only when nothing differs; a bad rev or a non-repository throws; the text has no colour codes whatever `color.ui` says; `binary` writes a binary file's change as a patch `git apply` replays |
-| `diffAddedFile(relPath)` | `diff --no-index -- /dev/null <path>` | none — exit 1 with output is success; exit 1 with no output, or exit 2, throws |
+| `diffText(rev?, { staged, binary, paths })` | `diff --no-color --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --no-relative [--cached] [--binary] [rev --] [-- paths]` | none — empty string only when nothing differs; a bad rev or a non-repository throws; `--` follows the rev, so git never reads it as a path; the text is [plain](#diff-output-and-the-users-git-configuration) whatever the user's git configuration says; `binary` writes a binary file's change as a patch `git apply` replays |
+| `diffAddedFile(relPath)` | `diff --no-color --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --no-relative --no-index -- /dev/null <path>` | none — exit 1 with output is success; exit 1 with no output, or exit 2, throws; the text is plain, as for `diffText` |
 | `log(opts)` | `log` | none — raw stdout, unsplit |
 | `logLines(opts)` | `log`, split and filtered | none |
 | `lsTree(rev, { recursive, long, paths })` | `ls-tree -z` | none |
