@@ -62,7 +62,7 @@ please keep behaviour identical
 - **`--apply`** (a word in the first line's args; it is removed before the args
   reach the skill) lets the agent edit files: the temporary `.cursor/cli.json` allows `Write(**)` (still denying `Shell(gh)`, `Shell(curl)`, `Shell(wget)`), `--mode ask` is dropped and `--force` is passed so the allowed tools run without a prompt nobody could answer. Afterwards the agent job makes a patch
   (`git diff --binary`) of the working tree and uploads it as the
-  `cursor-pr-apply` artifact. A **second job** in the `pr-agent` environment, which
+  `cursor-pr-apply` artifact. A **second job**, which
   never runs the agent, checks the patch and pushes it with a GitHub App token
   (see [`pr-apply`](../pr-apply/)). That job posts the one comment: the agent's
   output, the diffstat and commit sha, or why nothing was pushed. If the agent
@@ -86,10 +86,15 @@ or the PR's base branch, a head that moved since the agent ran, and patches that
 touch `.github/`, `.git*`, paths outside the repository, symlinks, submodules or
 add an executable bit. It pushes only `HEAD:refs/heads/<PR head branch>`,
 never forced. The repository's own rules also protect main (PRs required, no
-force-push). If the `pr-agent` environment or its secrets are missing, the push
-job posts the agent's output and says nothing was pushed.
+force-push). If the App's client ID or private key is missing, the push job
+posts the agent's output and says nothing was pushed.
 
-## Use
+## Use the workflow
+
+[`.github/workflows/cursor.yml`](../../../.github/workflows/cursor.yml) wraps this
+action and [`pr-apply`](../pr-apply/) in the two jobs `--apply` needs, with the
+author check and the App token. osdlc/osdlc runs it on its own triggers.
+Another repository calls it from a short workflow of its own:
 
 ```yaml
 name: cursor
@@ -100,27 +105,59 @@ on:
 permissions: {}
 jobs:
   cursor:
+    permissions: { contents: read, pull-requests: write, issues: write }
+    uses: osdlc/osdlc/.github/workflows/cursor.yml@main
+    secrets: inherit
+```
+
+A called workflow sees the calling repository's event, variables and secrets,
+so the settings live there, as repository or organization variables. An input
+of the same meaning under `with:` overrides a variable.
+
+| Variable                 | Input           | Default | Meaning                                                                    |
+| ------------------------ | --------------- | ------- | -------------------------------------------------------------------------- |
+| `PR_AGENT_TRIGGER_USERS` | `trigger-users` | empty   | Logins that may call the agent, comma separated, no spaces. Empty: nobody. |
+| `PR_AGENT_APP_CLIENT_ID` | `app-client-id` | none    | Client ID of the GitHub App that pushes `--apply` commits. Not a secret.   |
+| `PR_AGENT_ENVIRONMENT`   | `environment`   | none    | Environment for the push job, for example one that holds the App key.      |
+
+Secrets: `CURSOR_API_KEY` for the agent, and `PR_AGENT_APP_PRIVATE_KEY`, the App's
+private key, for `--apply`. `secrets: inherit` passes them inside one
+organization or enterprise; a repository elsewhere names them under `secrets:`.
+Without the App settings, read-only modes work and `--apply` posts the agent's
+output with "no push token".
+
+The author check is in the workflow's job `if`: another person's comment stops
+before a runner starts or a key is in reach. The workflow fetches this action
+and `pr-apply` from its own commit of osdlc/osdlc, next to the repository
+checkout, so the ref after `@` pins both, and the agent's tree and patch never
+contain them. `@main` takes every change as soon as it merges; outside osdlc,
+pin a commit SHA, since the workflow sees your keys.
+
+## Use the action
+
+For a job of your own, instead of the workflow:
+
+```yaml
+jobs:
+  cursor:
     if: >-
-      (github.event.comment.user.login || github.event.review.user.login) == 'sksizer'
+      (github.event.comment.user.login || github.event.review.user.login) == '<login>'
       && contains(github.event.comment.body || github.event.review.body, '@cursor')
       && (github.event_name != 'issue_comment' || github.event.issue.pull_request)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions: { contents: read, pull-requests: write, issues: write }
     steps:
-      - uses: osdlc/osdlc/packages/gh-actions/cursor-pr@main
+      - uses: osdlc/osdlc/packages/gh-actions/cursor-pr@<commit-sha> # gh-actions/v1
         with:
           cursor-api-key: ${{ secrets.CURSOR_API_KEY }}
 ```
 
-`--apply` needs the second job, as in this repository's
-`.github/workflows/cursor.yml`: `cursor-push` runs `needs: cursor` when the action's
-`apply-patch` output is `true`, with `environment: pr-agent`, mints the App
-token and calls `osdlc/osdlc/packages/gh-actions/pr-apply`. One setup for
-all three events. Without that job `--apply` still runs the agent but nothing is pushed.
-
 Keep the author check in the job's `if`: it stops other people's comments
-before a runner starts or the key is in reach.
+before a runner starts or the key is in reach. `--apply` needs a second job
+that runs [`pr-apply`](../pr-apply/) when this action's `apply-patch` output is
+`true`; copy it from the workflow. Without it `--apply` runs the agent but
+nothing is pushed.
 
 ## Inputs
 

@@ -42,11 +42,15 @@ jobs:
     uses: osdlc/osdlc/.github/workflows/ts-packages-ci.yml@<commit-sha> # gh-actions/v1
 ```
 
-Inside this repository, call it by local path (`./packages/gh-actions/<name>`)
-from a checkout of the default branch, not of a pull request, so a pull
-request cannot change the action that runs with the workflow's secrets.
-[`.github/workflows/claude.yml`](../../.github/workflows/claude.yml) is the
-place a workflow would do this.
+The agent workflows `claude.yml`, `codex.yml` and `cursor.yml` are reusable
+too: another repository calls them with `secrets: inherit` and sets a few
+variables (see [`claude-pr`](claude-pr/#use-the-workflow)). They fetch their
+actions from their own commit, so the pin covers the actions as well.
+
+Inside this repository, call an action by local path
+(`./packages/gh-actions/<name>`) from a checkout of the default branch, not of a
+pull request, so a pull request cannot change the action that runs with the
+workflow's secrets.
 
 ## Shape
 

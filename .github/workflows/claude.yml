@@ -23,12 +23,12 @@
 # Only a trigger user can start it: the job's `if` checks the comment's author
 # before a runner starts or a secret is in reach.
 #
-# The actions run from a copy of osdlc/osdlc fetched outside the repository
-# checkout, so the agent's working tree, its patch and the push never contain
-# them. When another repository calls this file, the copy is the commit it
-# pinned (job_workflow_sha), so a pin covers the actions too. Here it is main,
-# never the pull request, so a pull request cannot change the actions that run
-# with the API key.
+# The actions run from a copy of this file's repository fetched next to the
+# repository checkout, so the agent's working tree, its patch and the push
+# never contain them. When another repository calls this file, the copy is the
+# commit it pinned (job.workflow_sha), so a pin covers the actions too. Here it
+# is the default branch, never the pull request, so a pull request cannot
+# change the actions that run with the API key.
 name: claude
 
 on:
@@ -82,16 +82,20 @@ jobs:
       # public: no token.
       - name: Fetch the agent actions
         env:
-          REF: ${{ github.repository == 'osdlc/osdlc' && github.event.repository.default_branch || github.job_workflow_sha }}
+          # job.workflow_* name this file's repository and commit, the caller's
+          # pin when called. In its own repository it runs the default branch,
+          # so a pull request never supplies the actions.
+          TOOLS_REPO: ${{ job.workflow_repository }}
+          TOOLS_REF: ${{ job.workflow_repository == github.repository && github.event.repository.default_branch || job.workflow_sha }}
         run: |
           set -euo pipefail
           d="$GITHUB_WORKSPACE/../pr-agent-tools"
           rm -rf "$d"
           git init -q "$d"
           git -C "$d" sparse-checkout set --no-cone /packages/gh-actions/
-          git -C "$d" fetch -q --depth 1 --filter=blob:none https://github.com/osdlc/osdlc.git "$REF"
+          git -C "$d" fetch -q --depth 1 --filter=blob:none "https://github.com/$TOOLS_REPO.git" "$TOOLS_REF"
           git -C "$d" checkout -q FETCH_HEAD
-          git -C "$d" log -1 --format='pr-agent actions: osdlc/osdlc@%H'
+          git -C "$d" log -1 --format="pr-agent actions: $TOOLS_REPO@%H"
 
       - id: agent
         uses: ./../pr-agent-tools/packages/gh-actions/claude-pr
@@ -112,16 +116,20 @@ jobs:
     steps:
       - name: Fetch the agent actions
         env:
-          REF: ${{ github.repository == 'osdlc/osdlc' && github.event.repository.default_branch || github.job_workflow_sha }}
+          # job.workflow_* name this file's repository and commit, the caller's
+          # pin when called. In its own repository it runs the default branch,
+          # so a pull request never supplies the actions.
+          TOOLS_REPO: ${{ job.workflow_repository }}
+          TOOLS_REF: ${{ job.workflow_repository == github.repository && github.event.repository.default_branch || job.workflow_sha }}
         run: |
           set -euo pipefail
           d="$GITHUB_WORKSPACE/../pr-agent-tools"
           rm -rf "$d"
           git init -q "$d"
           git -C "$d" sparse-checkout set --no-cone /packages/gh-actions/
-          git -C "$d" fetch -q --depth 1 --filter=blob:none https://github.com/osdlc/osdlc.git "$REF"
+          git -C "$d" fetch -q --depth 1 --filter=blob:none "https://github.com/$TOOLS_REPO.git" "$TOOLS_REF"
           git -C "$d" checkout -q FETCH_HEAD
-          git -C "$d" log -1 --format='pr-agent actions: osdlc/osdlc@%H'
+          git -C "$d" log -1 --format="pr-agent actions: $TOOLS_REPO@%H"
 
       # If this fails (client ID or key missing) the next step still runs and
       # posts the agent's output with the reason nothing was pushed.

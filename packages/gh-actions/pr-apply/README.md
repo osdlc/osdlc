@@ -11,15 +11,13 @@ no push token and no App key. When `--apply` is used and files changed, that job
 uploads a `<agent>-pr-apply` artifact (`patch` from `git diff --binary`,
 `meta.json` with the head sha it ran on and the changed paths, and `result.json`
 with the agent's output) and sets the output `apply-patch` to `true`. This
-action runs in a later job (`needs`) in the `pr-agent` environment, on a fresh
-checkout: no agent, no node or pnpm, nothing from the pull request, only `git`
+action runs in a later job (`needs`), on a fresh checkout: no agent, no node or pnpm, nothing from the pull request, only `git`
 and `gh`. Because only this job's comment is posted for a patched run, the agent
 job stays silent on success (on failure, or when nothing changed, it posts).
 
 ## What it checks, in order
 
-1. A push token exists; else the comment says so (and to set up `pr-agent`) and
-   keeps the agent's output.
+1. A push token exists; else the comment says so and keeps the agent's output.
 2. The PR head is in this repository (no forks), is not the repository's default
    branch and is not the PR's base branch.
 3. The PR's current head sha equals the sha the agent ran on (no moved head).
@@ -28,7 +26,7 @@ job stays silent on success (on failure, or when nothing changed, it posts).
    with `.git`, is absolute or contains `..`, any side is a symlink (120000) or a
    submodule (160000), or a file gains the executable bit.
 5. One commit, `<agent>: /<skill> <args> (requested in #<pr> comment)`, author
-   `git-user-name` / `git-user-email` (the callers here use `osdlc-release[bot]`),
+   `git-user-name` / `git-user-email` (the workflows here use the App's bot user),
    no trailers. Pushed with `git push --no-verify origin HEAD:refs/heads/<PR head branch>`:
    never forced, only that ref. The token reaches git through a credential helper
    reading the environment, not argv or a file.
@@ -38,19 +36,22 @@ Main is also protected by the repository's rules (PRs required, no force-push).
 
 ## Owner setup
 
-Create the environment once (Settings, Environments, New environment):
+The workflows `claude.yml`, `codex.yml` and `cursor.yml` in osdlc/osdlc run this
+action; another repository calls them (see [`claude-pr`](../claude-pr/#use-the-workflow)).
+They mint the push token from a GitHub App that needs Contents: write, installed
+on the repository:
 
-- Name: `pr-agent`.
-- Deployment branches and tags: **All branches** (inline review comments and
-  reviews run on `refs/pull/N/merge`, which a "main only" policy would block).
-- No required reviewers (they would block every `--apply`), unless you want an approval click.
-- Environment secrets `RELEASE_PLZ_APP_ID` and `RELEASE_PLZ_APP_PRIVATE_KEY`
-  (the same names `pr-update.yml` uses; the osdlc-release App needs Contents:
-  write; the mint step asks for `contents: write` only). Repository-level
-  secrets of the same names also work.
+- Variable `PR_AGENT_APP_CLIENT_ID`: the App's client ID (not a secret).
+- Secret `PR_AGENT_APP_PRIVATE_KEY`: its private key. A repository or
+  organization secret is enough.
+- Optional variable `PR_AGENT_ENVIRONMENT`: an environment for the push job, if
+  you keep the key there or want an approval click per `--apply`. Its
+  deployment branches must allow **all branches** (inline review comments and
+  reviews run on `refs/pull/N/merge`).
 
-Without the environment or secrets the push job posts the agent's output and
-"no push token"; the artifact still holds the patch for 7 days.
+The commit's author is the App's bot user (`<app-slug>[bot]`). Without the
+client ID or key the push job posts the agent's output and "no push token"; the
+artifact still holds the patch for 7 days.
 
 ## Inputs
 
