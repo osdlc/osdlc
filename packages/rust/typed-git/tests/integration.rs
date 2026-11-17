@@ -5,6 +5,7 @@ use std::fs;
 use std::path::Path;
 
 use serial_test::serial;
+use typed_git::diff::{self, Change, ChangeKind, DiffNameStatusOptions, DiffTextOptions};
 use typed_git::{GitError, commit, git, query, worktree};
 
 const NULL_DEVICE: &str = if cfg!(windows) { "NUL" } else { "/dev/null" };
@@ -810,4 +811,322 @@ fn short_sha_is_a_prefix_of_the_full_sha() {
     assert!(short.len() >= 4 && short.len() < full.len(), "{short}");
     assert!(full.starts_with(&short));
     assert_eq!(query::resolve_commit(repo, &short).unwrap(), full);
+}
+
+// ── diff tests ────────────────────────────────────────────────────────
+
+/// Writes `files` (path, content), stages everything and commits.
+fn commit_files(repo: &Path, files: &[(&str, &str)], message: &str) -> String {
+    for (path, content) in files {
+        fs::write(repo.join(path), content).unwrap();
+    }
+    test_git(repo).dir(repo).args(&["add", "-A"]).run().unwrap();
+    test_git(repo)
+        .dir(repo)
+        .args(&["commit", "-m", message])
+        .run()
+        .unwrap();
+    query::head_sha(repo).unwrap()
+}
+
+fn find<'a>(changes: &'a [Change], path: &str) -> &'a Change {
+    changes
+        .iter()
+        .find(|c| c.path == Path::new(path))
+        .unwrap_or_else(|| panic!("no change for {path}: {changes:?}"))
+}
+
+const BODY: &str = "line one\nline two\nline three\nline four\nline five\nline six\n";
+
+#[test]
+#[serial]
+fn diff_name_status_added_modified_deleted_renamed() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path();
+    init_repo(repo);
+    let base = commit_files(
+        repo,
+        &[
+            ("mod.txt", "one\n"),
+            ("del.txt", "gone\n"),
+            ("old.txt", BODY),
+        ],
+        "base",
+    );
+    fs::remove_file(repo.join("del.txt")).unwrap();
+    fs::remove_file(repo.join("old.txt")).unwrap();
+    let head = commit_files(
+        repo,
+        &[
+            ("mod.txt", "two\n"),
+            ("add.txt", "new\n"),
+            ("new.txt", BODY),
+        ],
+        "change",
+    );
+
+    let opts = DiffNameStatusOptions::new().between(&base, &head);
+    let changes = diff::diff_name_status(repo, &opts).unwrap();
+    assert_eq!(changes.len(), 4, "{changes:?}");
+    assert_eq!(find(&changes, "add.txt").kind, ChangeKind::Added);
+    assert_eq!(find(&changes, "mod.txt").kind, ChangeKind::Modified);
+    assert_eq!(find(&changes, "del.txt").kind, ChangeKind::Deleted);
+    assert_eq!(find(&changes, "add.txt").from, None);
+    let renamed = find(&changes, "new.txt");
+    assert_eq!(renamed.kind, ChangeKind::Renamed);
+    assert_eq!(renamed.from.as_deref(), Some(Path::new("old.txt")));
+    assert_eq!(renamed.score, Some(100));
+
+    let split = diff::diff_name_status(repo, &opts.clone().no_renames()).unwrap();
+    assert_eq!(find(&split, "new.txt").kind, ChangeKind::Added);
+    assert_eq!(find(&split, "old.txt").kind, ChangeKind::Deleted);
+}
+
+#[test]
+#[serial]
+fn diff_name_status_rename_with_a_changed_file() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path();
+    init_repo(repo);
+    let base = commit_files(repo, &[("old.txt", BODY), ("keep.txt", "k\n")], "base");
+    fs::remove_file(repo.join("old.txt")).unwrap();
+    let edited = BODY.replace("line six", "line 6");
+    let head = commit_files(
+        repo,
+        &[("new.txt", edited.as_str()), ("keep.txt", "changed\n")],
+        "rename and edit",
+    );
+
+    let opts = DiffNameStatusOptions::new().between(&base, &head);
+    let changes = diff::diff_name_status(repo, &opts).unwrap();
+    assert_eq!(changes.len(), 2, "{changes:?}");
+    let renamed = find(&changes, "new.txt");
+    assert_eq!(renamed.kind, ChangeKind::Renamed);
+    assert_eq!(renamed.from.as_deref(), Some(Path::new("old.txt")));
+    assert!(renamed.score.is_some_and(|s| s < 100));
+    // The record after the three-field rename is still read as its own row.
+    assert_eq!(find(&changes, "keep.txt").kind, ChangeKind::Modified);
+}
+
+#[test]
+#[serial]
+fn diff_name_status_staged_only() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path();
+    init_repo(repo);
+    commit_files(repo, &[("a.txt", "a\n")], "base");
+    fs::write(repo.join("staged.txt"), "s\n").unwrap();
+    fs::write(repo.join("a.txt"), "edited\n").unwrap();
+    test_git(repo)
+        .dir(repo)
+        .args(&["add", "staged.txt"])
+        .run()
+        .unwrap();
+
+    let cached = diff::diff_name_status(repo, &DiffNameStatusOptions::new().cached()).unwrap();
+    assert_eq!(cached.len(), 1, "{cached:?}");
+    assert_eq!(find(&cached, "staged.txt").kind, ChangeKind::Added);
+
+    // Without `cached` the worktree is compared with the index.
+    let worktree = diff::diff_name_status(repo, &DiffNameStatusOptions::new()).unwrap();
+    assert_eq!(worktree.len(), 1, "{worktree:?}");
+    assert_eq!(find(&worktree, "a.txt").kind, ChangeKind::Modified);
+
+    let limited = diff::diff_name_status(
+        repo,
+        &DiffNameStatusOptions::new().cached().paths(&["a.txt"]),
+    )
+    .unwrap();
+    assert!(limited.is_empty());
+}
+
+#[test]
+#[serial]
+fn diff_name_status_exact_paths() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path();
+    init_repo(repo);
+    let base = query::head_sha(repo).unwrap();
+    let head = commit_files(
+        repo,
+        &[
+            ("a b \"q\".txt", "x\n"),
+            ("caf\u{e9} \u{65e5}\u{672c}.txt", "y\n"),
+        ],
+        "odd names",
+    );
+    let opts = DiffNameStatusOptions::new().between(&base, &head);
+    let changes = diff::diff_name_status(repo, &opts).unwrap();
+    assert_eq!(changes.len(), 2, "{changes:?}");
+    assert_eq!(find(&changes, "a b \"q\".txt").kind, ChangeKind::Added);
+    assert_eq!(
+        find(&changes, "caf\u{e9} \u{65e5}\u{672c}.txt").kind,
+        ChangeKind::Added
+    );
+}
+
+#[test]
+#[serial]
+fn diff_name_status_unknown_revision_is_a_command_error() {
+    let tmp = tempfile::tempdir().unwrap();
+    init_repo(tmp.path());
+    let opts = DiffNameStatusOptions::new().between("HEAD", "no-such-rev");
+    assert!(matches!(
+        diff::diff_name_status(tmp.path(), &opts),
+        Err(GitError::Command { .. })
+    ));
+    assert!(matches!(
+        diff::diff_name_status(
+            tmp.path(),
+            &DiffNameStatusOptions::new().range("--output=x")
+        ),
+        Err(GitError::Command { .. })
+    ));
+}
+
+#[test]
+#[serial]
+fn merge_base_of_branches_and_unrelated_histories() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path();
+    init_repo(repo);
+    let fork = commit_files(repo, &[("a.txt", "a\n")], "fork point");
+    test_git(repo)
+        .dir(repo)
+        .args(&["checkout", "-b", "side"])
+        .run()
+        .unwrap();
+    commit_files(repo, &[("side.txt", "s\n")], "on side");
+    test_git(repo)
+        .dir(repo)
+        .args(&["checkout", "-"])
+        .run()
+        .unwrap();
+    commit_files(repo, &[("main.txt", "m\n")], "on main");
+
+    assert_eq!(
+        diff::merge_base(repo, "HEAD", "side").unwrap(),
+        Some(fork.clone())
+    );
+    assert!(matches!(
+        diff::merge_base(repo, "HEAD", "no-such-rev"),
+        Err(GitError::Command { .. })
+    ));
+    assert!(matches!(
+        diff::merge_base(repo, "--all", "HEAD"),
+        Err(GitError::Command { .. })
+    ));
+
+    test_git(repo)
+        .dir(repo)
+        .args(&["checkout", "--orphan", "unrelated"])
+        .run()
+        .unwrap();
+    commit_files(repo, &[("u.txt", "u\n")], "unrelated root");
+    assert_eq!(diff::merge_base(repo, "HEAD", "side").unwrap(), None);
+}
+
+#[test]
+#[serial]
+fn diff_text_limited_to_a_path() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path();
+    init_repo(repo);
+    commit_files(repo, &[("a.txt", "a\n"), ("b.txt", "b\n")], "base");
+    fs::write(repo.join("a.txt"), "a2\n").unwrap();
+    fs::write(repo.join("b.txt"), "b2\n").unwrap();
+
+    let all = diff::diff_text(repo, None, &DiffTextOptions::new()).unwrap();
+    assert!(all.contains("+a2") && all.contains("+b2"));
+    assert!(all.ends_with('\n'), "the text is not trimmed");
+
+    let only_a = diff::diff_text(
+        repo,
+        Some("HEAD"),
+        &DiffTextOptions::new().paths(&["a.txt"]),
+    )
+    .unwrap();
+    assert!(only_a.contains("+a2"));
+    assert!(!only_a.contains("b.txt"));
+}
+
+#[test]
+#[serial]
+fn diff_text_staged_binary_and_empty() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path();
+    init_repo(repo);
+    assert_eq!(
+        diff::diff_text(repo, None, &DiffTextOptions::new()).unwrap(),
+        ""
+    );
+    fs::write(repo.join("img.bin"), [0u8, 159, 146, 150, 0, 1]).unwrap();
+    fs::write(repo.join("t.txt"), "t\n").unwrap();
+    test_git(repo).dir(repo).args(&["add", "-A"]).run().unwrap();
+
+    let staged = diff::diff_text(repo, None, &DiffTextOptions::new().staged()).unwrap();
+    assert!(staged.contains("+t"));
+    assert!(staged.contains("Binary files"));
+    let binary = diff::diff_text(repo, None, &DiffTextOptions::new().staged().binary()).unwrap();
+    assert!(binary.contains("GIT binary patch"));
+}
+
+#[test]
+#[serial]
+fn diff_text_unknown_revision_is_a_command_error() {
+    let tmp = tempfile::tempdir().unwrap();
+    init_repo(tmp.path());
+    assert!(matches!(
+        diff::diff_text(tmp.path(), Some("no-such-rev"), &DiffTextOptions::new()),
+        Err(GitError::Command { .. })
+    ));
+    assert!(matches!(
+        diff::diff_text(tmp.path(), Some("--stat"), &DiffTextOptions::new()),
+        Err(GitError::Command { .. })
+    ));
+}
+
+/// Makes git colour every diff, as a user's `color.ui=always` would.
+fn force_color(repo: &Path) {
+    for key in ["color.ui", "color.diff"] {
+        test_git(repo)
+            .dir(repo)
+            .args(&["config", key, "always"])
+            .run()
+            .unwrap();
+    }
+}
+
+#[test]
+#[serial]
+fn diff_text_has_no_color_codes_when_color_is_always() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path();
+    init_repo(repo);
+    commit_files(repo, &[("a.txt", "a\n")], "base");
+    force_color(repo);
+    fs::write(repo.join("a.txt"), "a2\n").unwrap();
+
+    let text = diff::diff_text(repo, None, &DiffTextOptions::new()).unwrap();
+    assert!(text.contains("+a2"), "{text:?}");
+    assert!(!text.contains('\u{1b}'), "{text:?}");
+}
+
+#[test]
+#[serial]
+fn diff_name_status_has_no_color_codes_when_color_is_always() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path();
+    init_repo(repo);
+    commit_files(repo, &[("a.txt", "a\n")], "base");
+    force_color(repo);
+    fs::write(repo.join("a.txt"), "a2\n").unwrap();
+
+    let changes = diff::diff_name_status(repo, &DiffNameStatusOptions::new()).unwrap();
+    assert_eq!(changes.len(), 1, "{changes:?}");
+    assert_eq!(find(&changes, "a.txt").kind, ChangeKind::Modified);
+    for change in &changes {
+        let path = change.path.to_string_lossy();
+        assert!(!path.contains('\u{1b}'), "{path:?}");
+    }
 }

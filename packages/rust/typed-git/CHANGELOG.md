@@ -7,7 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.4.0] - Unreleased
+### Added
+
+- `diff`: `diff_name_status` (changed paths with their status, and the old
+  path of a rename or copy, for a range or for the index), `diff_text` and
+  `merge_base` (`None` for unrelated histories), with the `Change`,
+  `ChangeKind`, `DiffNameStatusOptions` and `DiffTextOptions` types.
+  `--no-color` is always passed, so `color.ui=always` puts no escape codes in
+  the result. `diff_text` reads its paths as git pathspecs, so `*.md` is a
+  glob.
+
+## [0.4.0] - 2026-10-27
 
 The first public release. `typed-git` is a typed Rust layer over the `git`
 command line. It reads repository facts, makes commits and reverts limited to

@@ -1175,7 +1175,9 @@ export interface DiffNameStatusOptions {
 }
 
 /**
- * Changed paths with their status (`git diff --name-status -z`).
+ * Changed paths with their status (`git diff --no-color --name-status -z`).
+ * `--no-color` is always passed, so `color.ui=always` puts no escape codes in
+ * the output.
  *
  * `absent: []` — no changes is exit 0 with empty stdout, including before the
  * first commit, where `--cached` diffs against the empty tree. Outside a
@@ -1184,7 +1186,7 @@ export interface DiffNameStatusOptions {
  * See {@link DiffEntry} for what a rename record costs a naive parser.
  */
 export function diffNameStatus(opts: DiffNameStatusOptions = {}): GitVerb<DiffEntry[]> {
-  const argv = ['diff', '--name-status', '-z']
+  const argv = ['diff', '--no-color', '--name-status', '-z']
   if (opts.cached) argv.push('--cached')
   if (opts.noRenames) argv.push('--no-renames')
   if (opts.range !== undefined) argv.push(positional('diffNameStatus', 'range', opts.range))
@@ -1372,9 +1374,11 @@ export interface DiffTextOptions {
 }
 
 /**
- * The unified diff text (`git diff [--cached] [--binary] [rev] [-- paths]`),
- * for the same rev and staged shape {@link diffNameOnly} selects paths for.
- * Empty when nothing differs.
+ * The unified diff text
+ * (`git diff --no-color [--cached] [--binary] [rev] [-- paths]`), for the same
+ * rev and staged shape {@link diffNameOnly} selects paths for. Empty when
+ * nothing differs. `--no-color` is always passed, so `color.ui=always` puts no
+ * escape codes in the text.
  *
  * The text is decoded as UTF-8. A text file whose lines are not valid UTF-8
  * comes back with U+FFFD in them, and the patch no longer applies. For a
@@ -1386,7 +1390,7 @@ export interface DiffTextOptions {
  * "no diff". `git.try.diffText` reports them as `{ ok: false }`.
  */
 export function diffText(rev?: string | undefined, opts: DiffTextOptions = {}): GitVerb<string> {
-  const argv = ['diff']
+  const argv = ['diff', '--no-color']
   if (opts.staged === true) argv.push('--cached')
   if (opts.binary === true) argv.push('--binary')
   const from = optionalPositional('diffText', 'rev', rev)

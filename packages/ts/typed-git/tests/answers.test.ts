@@ -1,6 +1,7 @@
 /**
- * The `diffText` and `diffAddedFile` failure contract, call options on
- * `revParse`, `diffText` and `diffAddedFile`, `checkoutSide` with no paths,
+ * The `diffText` and `diffAddedFile` failure contract, `diffText` and
+ * `diffNameStatus` under `color.ui=always`, call options on `revParse`,
+ * `diffText` and `diffAddedFile`, `checkoutSide` with no paths,
  * the `remotes()` name, and `soft` without `configRemoveSection`.
  */
 
@@ -88,6 +89,32 @@ describe('diffText and diffAddedFile follow the failure contract', () => {
   })
 })
 
+describe('diffText and diffNameStatus under a colour setting', () => {
+  test('diffText and diffNameStatus print no escape codes under color.ui=always', async () => {
+    const fx = makeGitFixture()
+    try {
+      fx.commit('first', { 'a.md': 'one\n' })
+      const git = fx.git
+      git.configSet('color.ui', 'always')
+      git.configSet('color.diff', 'always')
+      writeFileSync(join(fx.dir, 'a.md'), 'two\n')
+
+      const text = git.diffText()
+      expect(text).toContain('+two')
+      expect(text).not.toContain('\u001b')
+      const rows = git.diffNameStatus()
+      expect(rows).toEqual([{ status: 'M', path: 'a.md' }])
+      for (const row of rows) expect(row.path).not.toContain('\u001b')
+
+      const asyncGit = new AsyncGit(fx.dir)
+      expect(await asyncGit.diffText()).toBe(text)
+      expect(await asyncGit.diffNameStatus()).toEqual(rows)
+    } finally {
+      fx.cleanup()
+    }
+  })
+})
+
 describe('call options on revParse, diffText and diffAddedFile', () => {
   const call = { timeoutMs: 5000, env: { PROBE: '1' } }
 
@@ -101,7 +128,7 @@ describe('call options on revParse, diffText and diffAddedFile', () => {
     expect(r.calls.map((c) => c.argv)).toEqual([
       ['rev-parse', '--show-toplevel'],
       ['rev-parse', 'HEAD'],
-      ['diff', '--cached', 'HEAD', '--', 'a.md'],
+      ['diff', '--no-color', '--cached', 'HEAD', '--', 'a.md'],
       ['diff', '--no-index', '--', '/dev/null', 'a.md'],
     ])
     for (const i of [0, 2, 3]) {
@@ -119,7 +146,7 @@ describe('call options on revParse, diffText and diffAddedFile', () => {
     await git.diffAddedFile('a.md', call)
     expect(r.calls.map((c) => c.argv)).toEqual([
       ['rev-parse', '--show-toplevel'],
-      ['diff', '--cached', 'HEAD', '--', 'a.md'],
+      ['diff', '--no-color', '--cached', 'HEAD', '--', 'a.md'],
       ['diff', '--no-index', '--', '/dev/null', 'a.md'],
     ])
     for (const c of r.calls) {

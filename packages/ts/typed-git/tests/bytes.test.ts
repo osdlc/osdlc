@@ -286,8 +286,8 @@ describe('statusEntries({ ignored }) and diffText({ binary }) — argv', () => {
     expect(s.calls).toEqual([
       ['status', '--porcelain', '-z', '--untracked-files=all', '--ignored'],
       ['status', '--porcelain', '-z', '--untracked-files=all'],
-      ['diff', '--cached', '--binary', 'HEAD', '--', 'img.png'],
-      ['diff'],
+      ['diff', '--no-color', '--cached', '--binary', 'HEAD', '--', 'img.png'],
+      ['diff', '--no-color'],
     ])
     expect(a.calls).toEqual(s.calls)
   })

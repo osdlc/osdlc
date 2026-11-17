@@ -13,6 +13,12 @@ path, runs git there and returns a typed value or a `GitError`.
   clean, a parsed `StatusReport` (branch, upstream, ahead and behind counts,
   and the state of each changed path), merge and rebase state, the paths a
   commit changed, a config value, and a file's bytes at a revision.
+- `diff`: what changed. The files that differ between two revisions or
+  between the index and HEAD (`diff_name_status`, with the status of each,
+  and the old path of a rename or copy), the unified diff text for the same
+  selections (`diff_text`, with an optional `--binary` and path limits), and
+  the merge base of two revisions (`merge_base`, `None` for unrelated
+  histories).
 - `commit`: commits of named paths only (`commit_only`), which leave other
   staged work alone, a commit of everything, a revert that stays inside the
   reverted commit's paths, and a push to the branch's upstream that never
@@ -103,6 +109,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   meant for a cache, not a checkout with local work.
 - `worktree::create` reads a relative base directory from the repository
   root. When the worktree path already exists, it is returned as it is.
+- `diff_name_status` and `diff_text` read their pathspecs as git does, so
+  `*.md` is a glob. A revision or range that begins with `-` is refused.
+  `diff_text` returns the diff untrimmed. Both pass `--no-color`, so the
+  user's `color.ui` setting puts no escape codes in the result.
 - `query::current_branch` returns the text `HEAD` when HEAD is detached.
   `StatusReport::branch` is `None` then.
 - `StatusReport::ahead` and `behind` are `None` when the branch has no
@@ -147,12 +157,13 @@ and want its behaviour with typed results.
 The crate is on 0.x. A breaking change ships only in a new 0.x minor release,
 with an entry in the [changelog](CHANGELOG.md).
 
-- `GitError`, `FileState`, `RepoState`, `StatusEntry`, `StatusReport`,
+- `GitError`, `ChangeKind`, `Change`, `DiffNameStatusOptions`,
+  `DiffTextOptions`, `FileState`, `RepoState`, `StatusEntry`, `StatusReport`,
   `Checkout`, `GitInfo` and `Version` are `#[non_exhaustive]`. A later
   release can add a variant or a field without a breaking change. A `match`
   on an enum needs a `_` arm, and the structs cannot be built outside the
   crate.
-- The functions in `query`, `commit`, `clone`, `worktree` and `info`, and
+- The functions in `query`, `diff`, `commit`, `clone`, `worktree` and `info`, and
   `git()` and `GitCommand`, are the public API.
 
 ## Version numbers and the TypeScript package

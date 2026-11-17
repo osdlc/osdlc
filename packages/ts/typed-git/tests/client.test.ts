@@ -346,6 +346,7 @@ describe('Git — argv construction (fake runner)', () => {
     })
     expect(calls[0]!.argv).toEqual([
       'diff',
+      '--no-color',
       '--name-status',
       '-z',
       '--cached',

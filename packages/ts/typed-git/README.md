@@ -728,10 +728,10 @@ exit throws the classified failure.
 | `forEachRef(pattern, { format, sort, count })` | `for-each-ref` | none — lines verbatim |
 | `refs(pattern)` | `forEachRef` + `parseRefRows` | none |
 | `diffNameOnly({ cached, diffFilter, rangeArgs, paths })` | `diff --name-only -z` | none |
-| `diffNameStatus({ cached, range, noRenames, paths })` | `diff --name-status -z` | none |
+| `diffNameStatus({ cached, range, noRenames, paths })` | `diff --no-color --name-status -z` | none |
 | `diffStat({ rangeArgs, paths })` | `diff --stat` | none — raw stdout |
 | `diffCheck({ paths })` | `diff --check` | `1`, `2` → `{ ok: false, output }` |
-| `diffText(rev?, { staged, binary, paths })` | `diff [--cached] [--binary] [rev]` | none — empty string only when nothing differs; a bad rev or a non-repository throws; `binary` writes a binary file's change as a patch `git apply` replays |
+| `diffText(rev?, { staged, binary, paths })` | `diff --no-color [--cached] [--binary] [rev]` | none — empty string only when nothing differs; a bad rev or a non-repository throws; the text has no colour codes whatever `color.ui` says; `binary` writes a binary file's change as a patch `git apply` replays |
 | `diffAddedFile(relPath)` | `diff --no-index -- /dev/null <path>` | none — exit 1 with output is success; exit 1 with no output, or exit 2, throws |
 | `log(opts)` | `log` | none — raw stdout, unsplit |
 | `logLines(opts)` | `log`, split and filtered | none |
