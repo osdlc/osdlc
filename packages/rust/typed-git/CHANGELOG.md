@@ -19,10 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `--submodule=short` and `--unified=3`, so the text is a plain unified diff
   with three lines of context under the user's colour, external diff,
   textconv, prefix, `diff.relative`, `diff.submodule` and `diff.context`
-  settings. `diff.renames`, `diff.ignoreSubmodules`, `diff.algorithm`
-  and the `GIT_DIFF_OPTS` environment variable still apply. `diff_name_status` passes `--no-relative`, and `--no-color` as
-  a guard. Both pass `--` after the revision, so git never reads it as a
-  path, and both read their paths as git pathspecs, so `*.md` is a glob.
+  settings. `diff.renames`, `diff.ignoreSubmodules`, `diff.algorithm` and the
+  `GIT_DIFF_OPTS` environment variable still apply. `diff_name_status` passes
+  `--no-relative`, and `--no-color` as a guard. Both pass `--` after the
+  revision, so git never reads it as a path, and both read their paths as git
+  pathspecs, so `*.md` is a glob. `merge_base` runs git with `LC_ALL=C`,
+  because it reads git's `error:` and `fatal:` words.
 
 ## [0.4.0] - 2026-10-27
 
