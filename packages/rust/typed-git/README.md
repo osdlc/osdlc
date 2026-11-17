@@ -116,14 +116,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   path: a branch that shares its name with a file works, and a name that is a
   file but no revision is an error.
 - `diff_text` returns the diff untrimmed. It passes `--no-color`,
-  `--no-ext-diff`, `--no-textconv`, `--src-prefix=a/`, `--dst-prefix=b/` and
-  `--no-relative`, so the text is a plain unified diff with `a/` and `b/`
-  prefixes whatever the user's colour, external diff, textconv, prefix and
-  `diff.relative` settings say.
+  `--no-ext-diff`, `--no-textconv`, `--src-prefix=a/`, `--dst-prefix=b/`,
+  `--no-relative`, `--submodule=short` and `--unified=3`, so the text is a
+  plain unified diff with `a/` and `b/` prefixes and three lines of context
+  under the user's colour, external diff, textconv, prefix, `diff.relative`,
+  `diff.submodule` and `diff.context` settings. Other settings still apply:
+  rename detection (`diff.renames`), `diff.ignoreSubmodules` and
+  `diff.algorithm`.
 - `diff_name_status` passes `--no-relative`, so its paths are relative to the
   repository root and cover the whole repository. It passes `--no-color` as a
-  guard: git does not colour that output. An unmerged path is two rows in a
-  working tree diff.
+  guard: git does not colour that output. An unmerged path can be two rows in
+  a working tree diff: a content conflict gives a second row, a modify/delete
+  conflict does not.
 - `query::current_branch` returns the text `HEAD` when HEAD is detached.
   `StatusReport::branch` is `None` then.
 - `StatusReport::ahead` and `behind` are `None` when the branch has no

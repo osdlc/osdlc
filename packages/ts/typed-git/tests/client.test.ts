@@ -42,6 +42,8 @@ const PLAIN_PATCH = [
   '--src-prefix=a/',
   '--dst-prefix=b/',
   '--no-relative',
+  '--submodule=short',
+  '--unified=3',
 ]
 
 /**

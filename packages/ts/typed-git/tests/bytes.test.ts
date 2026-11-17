@@ -43,6 +43,8 @@ const PLAIN_PATCH = [
   '--src-prefix=a/',
   '--dst-prefix=b/',
   '--no-relative',
+  '--submodule=short',
+  '--unified=3',
 ]
 
 /** Bytes that are not valid UTF-8: a lone continuation byte and 0xff. */

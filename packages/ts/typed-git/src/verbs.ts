@@ -370,10 +370,10 @@ function pushRevAndPaths(
 }
 
 /**
- * The `git diff` flags that keep patch text the same under any git
- * configuration: no colour codes, no external diff tool, no textconv
- * conversion, the `a/` and `b/` prefixes, and paths that are not cut to the
- * cwd.
+ * The `git diff` flags that pin patch text against the user's git settings:
+ * no colour codes, no external diff tool, no textconv conversion, the `a/`
+ * and `b/` prefixes, paths that are not cut to the cwd, a submodule change as
+ * a `Subproject commit` patch, and three lines of context.
  */
 const PLAIN_PATCH: readonly string[] = [
   '--no-color',
@@ -382,6 +382,8 @@ const PLAIN_PATCH: readonly string[] = [
   '--src-prefix=a/',
   '--dst-prefix=b/',
   '--no-relative',
+  '--submodule=short',
+  '--unified=3',
 ]
 
 /** The child env that makes git print English, whatever the caller's locale. */
@@ -1410,19 +1412,26 @@ export interface DiffTextOptions {
 
 /**
  * The unified diff text (`git diff --no-color --no-ext-diff --no-textconv
- * --src-prefix=a/ --dst-prefix=b/ --no-relative [--cached] [--binary]
- * [rev --] [-- paths]`), for the same rev and staged shape
- * {@link diffNameOnly} selects paths for. Empty when nothing differs.
+ * --src-prefix=a/ --dst-prefix=b/ --no-relative --submodule=short
+ * --unified=3 [--cached] [--binary] [rev] [--] [paths]`), for the same rev
+ * and staged shape {@link diffNameStatus} lists paths for. `--` is passed
+ * once, when there is a rev or a path. Empty when nothing differs.
+ * {@link diffNameOnly} selects the same paths except under `diff.relative`,
+ * which it still follows.
  *
- * The text is a plain unified diff with `a/` and `b/` prefixes whatever the
- * user's git configuration says. The flags that are always passed turn off
- * colour codes (`color.ui`, `color.diff`), an external diff tool
- * (`diff.external`, a `diff.<driver>.command`), textconv conversion, other
- * prefixes (`diff.noprefix`, `diff.mnemonicPrefix`, `diff.srcPrefix`,
+ * The text is a plain unified diff with `a/` and `b/` prefixes and three
+ * lines of context. The flags that are always passed turn off colour codes
+ * (`color.ui`, `color.diff`), an external diff tool (`diff.external`, a
+ * `diff.<driver>.command`), textconv conversion, other prefixes
+ * (`diff.noprefix`, `diff.mnemonicPrefix`, `diff.srcPrefix`,
  * `diff.dstPrefix`) and `diff.relative`, which with a cwd below the
- * repository root would drop changes outside it. The rev is followed by `--`,
- * so git never reads it as a path: a rev that names a file but no revision
- * throws, and a branch that shares its name with a file works.
+ * repository root would drop changes outside it. They also keep a submodule
+ * change as a `Subproject commit` patch, whatever `diff.submodule` says, and
+ * the context at three lines, whatever `diff.context` says. Other settings
+ * still apply: rename detection (`diff.renames`), `diff.ignoreSubmodules` and
+ * `diff.algorithm`. The rev is followed by `--`, so git never reads it as a
+ * path: a rev that names a file but no revision throws, and a branch that
+ * shares its name with a file works.
  *
  * The text is decoded as UTF-8. A text file whose lines are not valid UTF-8
  * comes back with U+FFFD in them, and the patch no longer applies. For a
@@ -1444,10 +1453,10 @@ export function diffText(rev?: string | undefined, opts: DiffTextOptions = {}): 
 /**
  * One untracked file rendered as an all-added diff (`diff --no-color
  * --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --no-relative
- * --no-index -- /dev/null <path>`), so a new file reaches a consumer in the
- * same shape as a modified one: the flags are the ones {@link diffText}
- * passes, and the text is as plain. An empty existing file still gives a diff
- * header.
+ * --submodule=short --unified=3 --no-index -- /dev/null <path>`), so a new
+ * file reaches a consumer in the same shape as a modified one: the flags are
+ * the ones {@link diffText} passes, and the text is as plain. An empty
+ * existing file still gives a diff header.
  *
  * `--no-index` exits 1 whenever the inputs differ, which for a real file is
  * always, so exit 1 is the success case. git also exits 1, with empty stdout,

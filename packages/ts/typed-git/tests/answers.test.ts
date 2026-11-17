@@ -50,6 +50,8 @@ const PLAIN_PATCH = [
   '--src-prefix=a/',
   '--dst-prefix=b/',
   '--no-relative',
+  '--submodule=short',
+  '--unified=3',
 ]
 
 describe('diffText and diffAddedFile follow the failure contract', () => {
@@ -184,6 +186,49 @@ describe("diffText, diffAddedFile and diffNameStatus under the user's diff confi
       const text = below.diffText()
       expect(text).toContain('diff --git a/sub/in.md b/sub/in.md\n')
       expect(text).toContain('diff --git a/top.md b/top.md\n')
+    } finally {
+      fx.cleanup()
+    }
+  })
+
+  test('three lines of context stay under diff.context=0', () => {
+    const fx = makeGitFixture()
+    try {
+      const before = Array.from({ length: 12 }, (_, i) => `${i + 1}\n`).join('')
+      fx.commit('first', { 'a.md': before })
+      fx.git.configSet('diff.context', '0')
+      writeFileSync(join(fx.dir, 'a.md'), before.replace('6\n', ''))
+
+      const text = fx.git.diffText()
+      expect(text).toContain('\n@@ -3,7 +3,6 @@\n')
+
+      // `git apply` refuses a hunk with no context lines.
+      writeFileSync(join(fx.dir, 'a.md'), before)
+      fx.git.rawChecked(['apply', '--check'], { input: text })
+    } finally {
+      fx.cleanup()
+    }
+  })
+
+  test('a submodule change is a Subproject commit patch under diff.submodule=log', () => {
+    const fx = makeGitFixture()
+    try {
+      fx.commit('first', { 'a.md': 'one\n' })
+      // A repository inside the work tree is added as a submodule commit.
+      const sub = makeGitFixture({ dir: join(fx.dir, 'sub') })
+      const before = sub.commit('in sub', { 'f.md': 'f\n' })
+      fx.commit('add sub')
+      const after = sub.commit('more in sub', { 'f.md': 'f2\n' })
+      fx.git.add(['sub'])
+      fx.git.configSet('diff.submodule', 'log')
+
+      const text = fx.git.diffText(undefined, { staged: true })
+      expect(text).toMatch(/^diff --git a\/sub b\/sub\n/)
+      expect(text).toContain(`\n-Subproject commit ${before}\n+Subproject commit ${after}\n`)
+
+      // The `log` form is a list of commits, which `git apply` cannot read.
+      fx.git.rawChecked(['reset', '--quiet', 'HEAD', '--', 'sub'])
+      fx.git.rawChecked(['apply', '--cached', '--check'], { input: text })
     } finally {
       fx.cleanup()
     }

@@ -15,12 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   to paths) and `merge_base` (`None` for unrelated histories), with the
   `Change`, `ChangeKind`, `DiffNameStatusOptions` and `DiffTextOptions`
   types. `diff_text` always passes `--no-color`, `--no-ext-diff`,
-  `--no-textconv`, `--src-prefix=a/`, `--dst-prefix=b/` and `--no-relative`,
-  so the text is a plain unified diff whatever the user's colour, external
-  diff, textconv, prefix and `diff.relative` settings say. `diff_name_status`
-  passes `--no-relative`, and `--no-color` as a guard. Both pass `--` after
-  the revision, so git never reads it as a path, and both read their paths
-  as git pathspecs, so `*.md` is a glob.
+  `--no-textconv`, `--src-prefix=a/`, `--dst-prefix=b/`, `--no-relative`,
+  `--submodule=short` and `--unified=3`, so the text is a plain unified diff
+  with three lines of context under the user's colour, external diff,
+  textconv, prefix, `diff.relative`, `diff.submodule` and `diff.context`
+  settings. `diff.renames`, `diff.ignoreSubmodules` and `diff.algorithm`
+  still apply. `diff_name_status` passes `--no-relative`, and `--no-color` as
+  a guard. Both pass `--` after the revision, so git never reads it as a
+  path, and both read their paths as git pathspecs, so `*.md` is a glob.
 
 ## [0.4.0] - 2026-10-27
 

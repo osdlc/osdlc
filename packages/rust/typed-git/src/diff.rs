@@ -53,10 +53,11 @@ pub enum ChangeKind {
     Copied,
     /// The file type changed, such as a file replaced by a symlink (`T`).
     TypeChanged,
-    /// The path is unmerged (`U`). A diff of the working tree lists an
-    /// unmerged path twice: this row, then a second row for the same path
-    /// ([`Modified`](Self::Modified) after a conflicting merge). A caller
-    /// that keys rows by path must keep both.
+    /// The path is unmerged (`U`). A diff of the working tree can list an
+    /// unmerged path twice: a content conflict gives this row, then a second
+    /// row for the same path ([`Modified`](Self::Modified)), and a
+    /// modify/delete conflict gives this row alone. A caller that keys rows
+    /// by path must keep both.
     Unmerged,
     /// A status letter this crate has no variant for, as git printed it.
     Other(char),
@@ -234,11 +235,14 @@ pub fn diff_name_status(
 /// `None` when git finds no common ancestor. In a full clone that means the
 /// histories are unrelated. In a shallow clone it is also the answer when the
 /// common ancestor is past the shallow boundary. When there is more than one
-/// best common ancestor git prints one of them, and which one depends on the
-/// order of `a` and `b`.
+/// best common ancestor git prints one of them: which one is git's choice,
+/// and it can change with the order of `a` and `b`.
 ///
-/// A revision that does not resolve is a [`GitError::Command`], as is one
-/// that begins with `-`.
+/// Exit 1 from git is read as `None`, with or without a warning on stderr,
+/// unless stderr holds a line that starts with `error:` or `fatal:`. Then it
+/// is a [`GitError::Command`]: some git versions, 2.34 among them, also exit
+/// 1 when they cannot read a commit. A revision that does not resolve is a
+/// [`GitError::Command`], as is one that begins with `-`.
 pub fn merge_base(repo: &Path, a: &str, b: &str) -> Result<Option<String>, GitError> {
     refuse_option("merge-base", a)?;
     refuse_option("merge-base", b)?;
@@ -251,15 +255,24 @@ pub fn merge_base(repo: &Path, a: &str, b: &str) -> Result<Option<String>, GitEr
             Ok((!sha.is_empty()).then_some(sha))
         }
         // Exit 1 is git's answer for no common ancestor, with or without a
-        // warning on stderr. A revision that does not resolve exits 128.
-        Some(1) => Ok(None),
+        // warning on stderr. An error line with it is a failed read, not an
+        // answer. A revision that does not resolve exits 128.
+        Some(1) if !has_error_line(&out.stderr) => Ok(None),
         _ => Err(cmd.failure(&out)),
     }
 }
 
+/// Whether git's stderr holds a line that starts with `error:` or `fatal:`.
+fn has_error_line(stderr: &[u8]) -> bool {
+    String::from_utf8_lossy(stderr)
+        .lines()
+        .any(|line| line.starts_with("error:") || line.starts_with("fatal:"))
+}
+
 /// The unified diff (`git diff --no-color --no-ext-diff --no-textconv
-/// --src-prefix=a/ --dst-prefix=b/ --no-relative [--cached] [--binary]
-/// [rev --] [-- paths]`).
+/// --src-prefix=a/ --dst-prefix=b/ --no-relative --submodule=short
+/// --unified=3 [--cached] [--binary] [rev] [--] [paths]`). `--` is passed
+/// once, when there is a `rev` or a path.
 ///
 /// With no `rev` the diff is the working tree against the index, or the index
 /// against HEAD with [`staged`](DiffTextOptions::staged). With a `rev` it is
@@ -269,13 +282,17 @@ pub fn merge_base(repo: &Path, a: &str, b: &str) -> Result<Option<String>, GitEr
 /// invalid bytes replaced, so a patch of a file that is not UTF-8 may not
 /// apply.
 ///
-/// The text is a plain unified diff with `a/` and `b/` prefixes whatever the
-/// user's git configuration says. The flags that are always passed turn off
-/// escape codes (`color.ui`, `color.diff`), an external diff tool
-/// (`diff.external`, a `diff.<driver>.command`), textconv conversion, other
-/// prefixes (`diff.noprefix`, `diff.mnemonicPrefix`, `diff.srcPrefix`,
+/// The text is a plain unified diff with `a/` and `b/` prefixes and three
+/// lines of context. The flags that are always passed turn off escape codes
+/// (`color.ui`, `color.diff`), an external diff tool (`diff.external`, a
+/// `diff.<driver>.command`), textconv conversion, other prefixes
+/// (`diff.noprefix`, `diff.mnemonicPrefix`, `diff.srcPrefix`,
 /// `diff.dstPrefix`) and `diff.relative`, which with a subdirectory as `repo`
-/// would drop changes outside it.
+/// would drop changes outside it. They also keep a submodule change as a
+/// `Subproject commit` patch, whatever `diff.submodule` says, and the context
+/// at three lines, whatever `diff.context` says. Other settings still apply:
+/// rename detection (`diff.renames`), `diff.ignoreSubmodules` and
+/// `diff.algorithm`.
 ///
 /// [`paths`](DiffTextOptions::paths) are read as git pathspecs, not as
 /// literal file names: `*.md` and `pages/[slug].astro` are globs, and a name
@@ -298,6 +315,8 @@ pub fn diff_text(
         "--src-prefix=a/",
         "--dst-prefix=b/",
         "--no-relative",
+        "--submodule=short",
+        "--unified=3",
     ];
     if opts.staged {
         args.push("--cached");
@@ -411,5 +430,15 @@ mod tests {
     fn keeps_an_unknown_letter() {
         let rows = parse_name_status(b"X\0p\0");
         assert_eq!(rows[0].kind, ChangeKind::Other('X'));
+    }
+
+    #[test]
+    fn an_error_or_fatal_line_is_not_a_warning() {
+        assert!(!has_error_line(b""));
+        assert!(!has_error_line(b"warning: refname 'side' is ambiguous.\n"));
+        assert!(has_error_line(b"error: Could not read 1234\n"));
+        assert!(has_error_line(
+            b"warning: refname 'side' is ambiguous.\nfatal: bad object\n"
+        ));
     }
 }

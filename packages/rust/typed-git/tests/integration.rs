@@ -1062,10 +1062,15 @@ fn merge_base_of_branches_and_unrelated_histories() {
         diff::merge_base(repo, "HEAD", "no-such-rev"),
         Err(GitError::Command { .. })
     ));
-    assert!(matches!(
-        diff::merge_base(repo, "--all", "HEAD"),
-        Err(GitError::Command { .. })
-    ));
+    // Git takes `--independent` in either place and prints a sha.
+    for (a, b) in [("--independent", "HEAD"), ("HEAD", "--independent")] {
+        let refused = diff::merge_base(repo, a, b).unwrap_err();
+        assert_eq!(
+            refused.to_string(),
+            "git merge-base failed: refusing a value that begins with '-': --independent",
+            "{a} {b}"
+        );
+    }
 
     run(repo, &["checkout", "--orphan", "unrelated"]);
     commit_files(repo, &[("u.txt", "u\n")], "unrelated root");
@@ -1075,6 +1080,44 @@ fn merge_base_of_branches_and_unrelated_histories() {
     // ambiguous. The answer is still that there is no common ancestor.
     run(repo, &["tag", "side", "side"]);
     assert_eq!(diff::merge_base(repo, "HEAD", "side").unwrap(), None);
+}
+
+#[test]
+#[serial]
+fn merge_base_is_an_error_when_a_commit_cannot_be_read() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path();
+    init_repo(repo);
+    let tree = test_git(repo)
+        .dir(repo)
+        .args(&["write-tree"])
+        .run()
+        .unwrap();
+    // Two commits whose parent is not in the object store. Git 2.34 exits 1
+    // on them with an `error:` line, the exit code it also gives for no
+    // common ancestor. Git 2.47 exits with another code.
+    let commit_on_missing_parent = |message: &str| {
+        let body = format!(
+            "tree {tree}\nparent {}\nauthor Test <test@test.com> 1700000000 +0000\n\
+             committer Test <test@test.com> 1700000000 +0000\n\n{message}\n",
+            "1234567890".repeat(4)
+        );
+        test_git(repo)
+            .dir(repo)
+            .args(&["hash-object", "-t", "commit", "-w", "--stdin"])
+            .stdin(body)
+            .run()
+            .unwrap()
+    };
+    let (a, b) = (
+        commit_on_missing_parent("one"),
+        commit_on_missing_parent("two"),
+    );
+
+    assert!(matches!(
+        diff::merge_base(repo, &a, &b),
+        Err(GitError::Command { .. })
+    ));
 }
 
 #[test]
@@ -1210,6 +1253,67 @@ fn diff_text_keeps_the_a_and_b_prefixes_under_noprefix() {
 fn diff_text_keeps_the_a_and_b_prefixes_under_mnemonic_prefix() {
     let text = diff_text_under("diff.mnemonicPrefix", "true");
     assert!(text.starts_with(PLAIN_HEADER), "{text:?}");
+}
+
+/// Asserts that `git apply --check` takes `patch` in `repo`.
+fn assert_applies(repo: &Path, flags: &[&str], patch: &str) {
+    test_git(repo)
+        .dir(repo)
+        .args(&["apply", "--check"])
+        .args(flags)
+        .stdin(patch)
+        .run()
+        .unwrap_or_else(|e| panic!("{e}\n{patch}"));
+}
+
+#[test]
+#[serial]
+fn diff_text_keeps_three_lines_of_context_under_diff_context() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path();
+    init_repo(repo);
+    let before: String = (1..=12).map(|n| format!("{n}\n")).collect();
+    commit_files(repo, &[("a.txt", before.as_str())], "base");
+    run(repo, &["config", "diff.context", "0"]);
+    fs::write(repo.join("a.txt"), before.replace("6\n", "")).unwrap();
+
+    let text = diff::diff_text(repo, None, &DiffTextOptions::new()).unwrap();
+    assert!(text.contains("\n@@ -3,7 +3,6 @@\n"), "{text:?}");
+
+    // `git apply` refuses a hunk with no context lines.
+    fs::write(repo.join("a.txt"), &before).unwrap();
+    assert_applies(repo, &[], &text);
+}
+
+#[test]
+#[serial]
+fn diff_text_writes_a_submodule_change_as_a_patch_under_diff_submodule() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path();
+    init_repo(repo);
+    // A repository inside the work tree is added as a submodule commit.
+    let sub = repo.join("sub");
+    fs::create_dir(&sub).unwrap();
+    init_repo(&sub);
+    let old = query::head_sha(&sub).unwrap();
+    run(repo, &["add", "sub"]);
+    run(repo, &["commit", "-m", "add sub"]);
+    let new = commit_files(&sub, &[("f.txt", "f\n")], "in sub");
+    run(repo, &["add", "sub"]);
+    run(repo, &["config", "diff.submodule", "log"]);
+
+    let text = diff::diff_text(repo, None, &DiffTextOptions::new().staged()).unwrap();
+    assert!(text.starts_with("diff --git a/sub b/sub\n"), "{text:?}");
+    assert!(
+        text.ends_with(&format!(
+            "-Subproject commit {old}\n+Subproject commit {new}\n"
+        )),
+        "{text:?}"
+    );
+
+    // The `log` form is a list of commits, which `git apply` cannot read.
+    run(repo, &["reset", "--quiet", "HEAD", "--", "sub"]);
+    assert_applies(repo, &["--cached"], &text);
 }
 
 #[test]
