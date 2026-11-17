@@ -165,7 +165,7 @@ describe('modelsDevRows: rows that may head a tier', () => {
     ])
   })
 
-  test('a field of the wrong type refuses its row, and the other rows stay', () => {
+  test('a field of the wrong type refuses its row, naming the field, and the other rows stay', () => {
     const odd = api(
       ...([
         { ...agent('claude-a'), family: 7 },
@@ -176,9 +176,18 @@ describe('modelsDevRows: rows that may head a tier', () => {
     )
     const out = rows(odd)
     expect(out.rejected.map((r) => [r.key, r.reason])).toEqual([
-      ['anthropic/claude-a', 'row is malformed'],
-      ['anthropic/claude-b', 'row is malformed'],
-      ['anthropic/claude-c', 'row is malformed'],
+      [
+        'anthropic/claude-a',
+        'row is malformed: family: Invalid input: expected string, received number',
+      ],
+      [
+        'anthropic/claude-b',
+        'row is malformed: context.max: Invalid input: expected int, received number',
+      ],
+      [
+        'anthropic/claude-c',
+        'row is malformed: cost.output: Invalid input: expected number, received null',
+      ],
     ])
     expect(Object.keys(out.models)).toEqual(['anthropic/claude-d'])
   })
