@@ -355,6 +355,37 @@ function optionalPositional(
   return value === undefined ? undefined : positional(verb, param, value)
 }
 
+/**
+ * Appends `[rev] [--] [paths]` to a `git diff` argv. `--` follows a rev even
+ * with no paths, so git never reads the rev as a path.
+ */
+function pushRevAndPaths(
+  argv: string[],
+  rev: string | undefined,
+  paths: readonly string[] | undefined,
+): void {
+  if (rev !== undefined) argv.push(rev)
+  if (rev !== undefined || (paths !== undefined && paths.length > 0)) argv.push('--')
+  argv.push(...(paths ?? []))
+}
+
+/**
+ * The `git diff` flags that pin patch text against the user's git settings:
+ * no colour codes, no external diff tool, no textconv conversion, the `a/`
+ * and `b/` prefixes, paths that are not cut to the cwd, a submodule change as
+ * a `Subproject commit` patch, and three lines of context.
+ */
+const PLAIN_PATCH: readonly string[] = [
+  '--no-color',
+  '--no-ext-diff',
+  '--no-textconv',
+  '--src-prefix=a/',
+  '--dst-prefix=b/',
+  '--no-relative',
+  '--submodule=short',
+  '--unified=3',
+]
+
 /** The child env that makes git print English, whatever the caller's locale. */
 const C_LOCALE: Readonly<Record<string, string>> = Object.freeze({ LC_ALL: 'C' })
 
@@ -1175,7 +1206,15 @@ export interface DiffNameStatusOptions {
 }
 
 /**
- * Changed paths with their status (`git diff --name-status -z`).
+ * Changed paths with their status
+ * (`git diff --no-color --no-relative --name-status -z`).
+ *
+ * `--no-relative` is always passed, so with a cwd below the repository root
+ * the paths are still relative to the root and changes outside the cwd are
+ * still listed, whatever `diff.relative` says. `--no-color` is passed as a
+ * guard: git does not colour this output. The range is followed by `--`, so
+ * git never reads it as a path: a range that names a file but no revision
+ * throws, and a branch that shares its name with a file works.
  *
  * `absent: []` — no changes is exit 0 with empty stdout, including before the
  * first commit, where `--cached` diffs against the empty tree. Outside a
@@ -1184,11 +1223,11 @@ export interface DiffNameStatusOptions {
  * See {@link DiffEntry} for what a rename record costs a naive parser.
  */
 export function diffNameStatus(opts: DiffNameStatusOptions = {}): GitVerb<DiffEntry[]> {
-  const argv = ['diff', '--name-status', '-z']
+  const argv = ['diff', '--no-color', '--no-relative', '--name-status', '-z']
   if (opts.cached) argv.push('--cached')
   if (opts.noRenames) argv.push('--no-renames')
-  if (opts.range !== undefined) argv.push(positional('diffNameStatus', 'range', opts.range))
-  if (opts.paths !== undefined && opts.paths.length > 0) argv.push('--', ...opts.paths)
+  const range = optionalPositional('diffNameStatus', 'range', opts.range)
+  pushRevAndPaths(argv, range, opts.paths)
   return { argv, absent: NONE, parse: nameStatusEntries }
 }
 
@@ -1372,9 +1411,28 @@ export interface DiffTextOptions {
 }
 
 /**
- * The unified diff text (`git diff [--cached] [--binary] [rev] [-- paths]`),
- * for the same rev and staged shape {@link diffNameOnly} selects paths for.
- * Empty when nothing differs.
+ * The unified diff text (`git diff --no-color --no-ext-diff --no-textconv
+ * --src-prefix=a/ --dst-prefix=b/ --no-relative --submodule=short
+ * --unified=3 [--cached] [--binary] [rev] [--] [paths]`), for the same rev
+ * and staged shape {@link diffNameStatus} lists paths for. `--` is passed
+ * once, when there is a rev or a path. Empty when nothing differs.
+ * {@link diffNameOnly} selects the same paths except under `diff.relative`,
+ * which it still follows.
+ *
+ * The text is a plain unified diff with `a/` and `b/` prefixes and three
+ * lines of context. The flags that are always passed turn off colour codes
+ * (`color.ui`, `color.diff`), an external diff tool (`diff.external`, a
+ * `diff.<driver>.command`), textconv conversion, other prefixes
+ * (`diff.noprefix`, `diff.mnemonicPrefix`, `diff.srcPrefix`,
+ * `diff.dstPrefix`) and `diff.relative`, which with a cwd below the
+ * repository root would drop changes outside it. They also keep a submodule
+ * change as a `Subproject commit` patch, whatever `diff.submodule` says, and
+ * the context at three lines, whatever `diff.context` says. Other settings
+ * still apply: rename detection (`diff.renames`), `diff.ignoreSubmodules` and
+ * `diff.algorithm`; so does the `GIT_DIFF_OPTS` environment variable, where
+ * `-u0` overrides the three lines of context. The rev is followed by `--`, so git never reads it as a
+ * path: a rev that names a file but no revision throws, and a branch that
+ * shares its name with a file works.
  *
  * The text is decoded as UTF-8. A text file whose lines are not valid UTF-8
  * comes back with U+FFFD in them, and the patch no longer applies. For a
@@ -1386,20 +1444,20 @@ export interface DiffTextOptions {
  * "no diff". `git.try.diffText` reports them as `{ ok: false }`.
  */
 export function diffText(rev?: string | undefined, opts: DiffTextOptions = {}): GitVerb<string> {
-  const argv = ['diff']
+  const argv = ['diff', ...PLAIN_PATCH]
   if (opts.staged === true) argv.push('--cached')
   if (opts.binary === true) argv.push('--binary')
-  const from = optionalPositional('diffText', 'rev', rev)
-  if (from !== undefined) argv.push(from)
-  if (opts.paths !== undefined && opts.paths.length > 0) argv.push('--', ...opts.paths)
+  pushRevAndPaths(argv, optionalPositional('diffText', 'rev', rev), opts.paths)
   return { argv, absent: NONE, parse: (r) => r.stdout }
 }
 
 /**
- * One untracked file rendered as an all-added diff
- * (`diff --no-index -- /dev/null <path>`), so a new file reaches a consumer in
- * the same shape as a modified one. An empty existing file still gives a diff
- * header.
+ * One untracked file rendered as an all-added diff (`diff --no-color
+ * --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --no-relative
+ * --submodule=short --unified=3 --no-index -- /dev/null <path>`), so a new
+ * file reaches a consumer in the same shape as a modified one: the flags are
+ * the ones {@link diffText} passes, and the text is as plain. An empty
+ * existing file still gives a diff header.
  *
  * `--no-index` exits 1 whenever the inputs differ, which for a real file is
  * always, so exit 1 is the success case. git also exits 1, with empty stdout,
@@ -1408,7 +1466,7 @@ export function diffText(rev?: string | undefined, opts: DiffTextOptions = {}): 
  */
 export function diffAddedFile(relPath: string): GitVerb<string> {
   return {
-    argv: ['diff', '--no-index', '--', '/dev/null', relPath],
+    argv: ['diff', ...PLAIN_PATCH, '--no-index', '--', '/dev/null', relPath],
     absent: [1],
     parse(r, ranArgv) {
       if (r.exitCode !== 0 && r.stdout === '') throw new CommandFailed(ranArgv, r)
