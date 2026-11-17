@@ -257,16 +257,17 @@ jobs:
           git config user.name "$APP_SLUG[bot]"
           git config user.email "$APP_SLUG[bot]@users.noreply.github.com"
 
-      # The pr-update action at the commit of this workflow file:
-      # job_workflow_sha when another repository calls it, else this run's own
-      # commit. `uses:` cannot take an expression, so it is checked out and run
-      # by path. It sits inside the repository checkout (the action runs there),
-      # hidden from git through .git/info/exclude.
+      # The pr-update action at this workflow file's own repository and commit
+      # (job.workflow_repository, job.workflow_sha; github.job_workflow_sha is
+      # empty when another repository calls it). `uses:` cannot take an
+      # expression, so it is checked out and run by path. It sits inside the
+      # repository checkout (the action runs there), hidden from git through
+      # .git/info/exclude.
       - name: Check out the pr-update action
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: osdlc/osdlc
-          ref: ${{ github.job_workflow_sha || github.sha }}
+          repository: ${{ job.workflow_repository || 'osdlc/osdlc' }}
+          ref: ${{ job.workflow_sha || github.sha }}
           path: .pr-update-action
           sparse-checkout: packages/gh-actions
           persist-credentials: false
