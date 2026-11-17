@@ -1,19 +1,24 @@
 # Installs a Rust toolchain with rustup and makes it the toolchain for every
 # later step of the job (RUSTUP_TOOLCHAIN in GITHUB_ENV).
 #
-# With no `toolchain` input it installs the pin in
-# packages/rust/rust-toolchain.toml. RUSTUP_TOOLCHAIN overrides that file, so
-# a job that passes another toolchain (the MSRV, nightly) gets that one, even
-# when it runs cargo under packages/rust/. Every GitHub-hosted runner ships
-# rustup, so no third-party action is needed.
+# With no `toolchain` input it installs the pin in the workspace's
+# rust-toolchain.toml (default packages/rust/), or stable when the workspace
+# has none. RUSTUP_TOOLCHAIN overrides that file, so a job that passes another
+# toolchain (the MSRV, nightly) gets that one, even when it runs cargo in the
+# workspace. Every GitHub-hosted runner ships rustup, so no third-party action
+# is needed.
 name: rust-toolchain
 description: Install a Rust toolchain and select it for the rest of the job.
 
 inputs:
   toolchain:
-    description: Toolchain to install, for example 1.89 or nightly. Empty means the pin in packages/rust/rust-toolchain.toml.
+    description: Toolchain to install, for example 1.89 or nightly. Empty means the pin in the workspace's rust-toolchain.toml, else stable.
     required: false
     default: ''
+  workspace:
+    description: The Cargo workspace folder, from the repository root.
+    required: false
+    default: packages/rust
   components:
     description: Space-separated rustup components, for example "rustfmt clippy".
     required: false
@@ -32,15 +37,20 @@ runs:
         TOOLCHAIN: ${{ inputs.toolchain }}
         COMPONENTS: ${{ inputs.components }}
         TARGETS: ${{ inputs.targets }}
+        PIN: ${{ inputs.workspace }}/rust-toolchain.toml
       run: |
         set -euo pipefail
         tc="$TOOLCHAIN"
-        if [ -z "$tc" ]; then
-          tc="$(sed -n 's/^channel = "\(.*\)"$/\1/p' packages/rust/rust-toolchain.toml)"
+        if [ -z "$tc" ] && [ -e "$PIN" ]; then
+          tc="$(sed -n 's/^channel = "\(.*\)"$/\1/p' "$PIN")"
+          if [ -z "$tc" ]; then
+            echo "::error::no channel in $PIN"
+            exit 1
+          fi
         fi
         if [ -z "$tc" ]; then
-          echo "::error::no toolchain input and no channel in packages/rust/rust-toolchain.toml"
-          exit 1
+          echo "::notice::no toolchain input and no $PIN; installing stable"
+          tc=stable
         fi
         args=(--profile minimal --no-self-update)
         for c in $COMPONENTS; do args+=(--component "$c"); done

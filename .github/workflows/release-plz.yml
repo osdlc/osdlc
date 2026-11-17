@@ -26,10 +26,11 @@
 #
 # Tokens. The GitHub App `osdlc-release` opens the release pull request and
 # creates the tags. A pull request opened with GITHUB_TOKEN would not start
-# the required checks. Its secrets, RELEASE_PLZ_APP_ID and
-# RELEASE_PLZ_APP_PRIVATE_KEY, are environment secrets, so only the two jobs
-# that need them can read them: `release-pr` in the `release-plz`
-# environment (main only, no reviewer) and `release` in `crates-io`.
+# the required checks. Its private key, RELEASE_PLZ_APP_PRIVATE_KEY, is an
+# environment secret, so only the two jobs that need it can read it:
+# `release-pr` in the `release-plz` environment (main only, no reviewer) and
+# `release` in `crates-io`. The App's client ID is not a secret: it is the
+# variable RELEASE_PLZ_APP_CLIENT_ID.
 #
 # Prerequisite, created by the owner: a tag ruleset on `*/v*` that lets only
 # the App (and admins) create those tags.
@@ -86,7 +87,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ secrets.RELEASE_PLZ_APP_ID }}
+          client-id: ${{ vars.RELEASE_PLZ_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}
           permission-contents: write
           permission-pull-requests: write
@@ -271,7 +272,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ secrets.RELEASE_PLZ_APP_ID }}
+          client-id: ${{ vars.RELEASE_PLZ_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}
           permission-contents: write
           permission-pull-requests: read
