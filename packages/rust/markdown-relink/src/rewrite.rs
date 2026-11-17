@@ -27,6 +27,7 @@ use std::ops::Range;
 
 use markdown_link::BodyLink;
 use markdown_link::BodyLinkKind;
+use markdown_link::code::CodeRules;
 
 use crate::plan::{Corpus, Resolution};
 
@@ -74,18 +75,35 @@ pub(crate) fn target_span(body: &str, link: &BodyLink) -> Option<Range<usize>> {
         }
         BodyLinkKind::Markdown => {
             let span = body.get(link.byte_start..link.byte_end)?;
-            // The label cannot contain `]` — the scanner stops there — so
-            // there is exactly one `](` and it is the one before the URL.
-            let paren = span.find("](")?;
-            let mut url_start = paren + 2;
+            // The URL follows the first `](` that is outside code and whose
+            // `]` is not escaped, since a link's text holds no link; any
+            // whitespace and a `<` may come before it.
+            let code = markdown_link::code::code_ranges(span, CodeRules::CommonMark);
+            let escaped = |at: usize| {
+                span.as_bytes()[..at]
+                    .iter()
+                    .rev()
+                    .take_while(|b| **b == b'\\')
+                    .count()
+                    % 2
+                    == 1
+            };
+            let paren = span
+                .match_indices("](")
+                .map(|(at, _)| at)
+                .find(|&at| !escaped(at) && !code.iter().any(|range| range.contains(&at)))?;
+            let mut url_start = paren
+                + 2
+                + span[paren + 2..]
+                    .bytes()
+                    .take_while(|b| matches!(b, b' ' | b'\t' | b'\r' | b'\n'))
+                    .count();
             if span.as_bytes().get(url_start) == Some(&b'<') {
                 url_start += 1;
             }
             let url_end = url_start + link.raw.len();
-            if span.get(url_start..url_end) != Some(link.raw.as_str()) {
-                return None;
-            }
-            Some(link.byte_start + url_start..link.byte_start + url_end)
+            (span.get(url_start..url_end) == Some(link.raw.as_str()))
+                .then(|| link.byte_start + url_start..link.byte_start + url_end)
         }
     }
 }
@@ -129,10 +147,11 @@ pub(crate) fn plan_link(post: &Corpus, to: &str, link: &BodyLink, current: &str)
 
 /// Percent-encode a vault-relative path for a markdown link URL.
 ///
-/// The set is deliberately minimal — exactly the characters that would end the
-/// URL early under this dialect's own grammar (`[^)>\s]+?\.md`) or under a
-/// markdown parser, plus `%` so a literal one survives the round trip through
-/// [`markdown_link::percent_decode`]. Non-ASCII is left alone: a
+/// The set is deliberately minimal — the characters that would end the URL
+/// early or change how it is read, under this dialect's own grammar (a run
+/// with no whitespace and balanced parentheses, then an optional title) or
+/// under a markdown parser, plus `%` so a literal one survives the round trip
+/// through [`markdown_link::percent_decode`]. Non-ASCII is left alone: a
 /// vault full of Cyrillic and CJK note names reads better unencoded, every
 /// consumer here decodes UTF-8 fine, and encoding it would churn every
 /// such link the first time one is touched.
@@ -182,6 +201,20 @@ mod tests {
         assert_eq!(span_text("| [[ Alpha \\|a]] |"), "Alpha");
         assert_eq!(span_text("see [t](Projects/Alpha.md)"), "Projects/Alpha.md");
         assert_eq!(span_text("see [t](My%20Note.md)"), "My%20Note.md");
+        // Space before the URL and a title after it are not part of it.
+        assert_eq!(span_text("see [t]( \n<My Note.md> \"Hint\")"), "My Note.md");
+        assert_eq!(span_text("see [[WIP] t](a(b).md 'x')"), "a(b).md");
+        // A `](` in code in the label is not the one, even before the
+        // same URL.
+        assert_eq!(span_text("see [`](`](a.md)"), "a.md");
+        let body = "see [`](a.md` x](a.md)";
+        let span = target_span(body, &one(body)).expect("span");
+        assert_eq!(span.start, body.rfind("a.md").unwrap());
+        // Nor is a `](` whose `]` is escaped.
+        let body = "see [a\\](c.md) x](c.md)";
+        let span = target_span(body, &one(body)).expect("span");
+        assert_eq!(span.start, body.rfind("c.md").unwrap());
+        assert_eq!(span_text("see [a\\](b.md) x](c.md)"), "c.md");
     }
 
     #[test]
