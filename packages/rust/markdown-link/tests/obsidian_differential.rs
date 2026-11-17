@@ -1023,15 +1023,18 @@ fn agrees_relative_markdown_links_are_references_and_urls_are_not() {
     assert!(!targets.iter().any(|t| t.starts_with("obsidian:")));
 }
 
-/// Obsidian caches `[text](<sp ace.md>)`; the harvest regex (src/lib.rs:160)
-/// excludes whitespace from the captured path, so an angle-bracketed target
-/// containing a space is silently dropped.
+/// Obsidian caches `[text](<sp ace.md>)`, and so does the scanner: an
+/// angle-bracketed destination may hold a space.
 #[test]
-fn diverges_angle_bracketed_markdown_paths_with_spaces_are_dropped() {
+fn angle_bracketed_markdown_paths_may_hold_spaces() {
     let body = note_body("parsing/markdown-links.md");
     assert!(body.contains("[angled](<sp ace.md>)"));
-    assert!(body_links("[c](<sp ace.md>)").is_empty());
-    // Percent-encoded spaces do work, and the same note writes one.
+    let targets: Vec<String> = body_links("[c](<sp ace.md>)")
+        .into_iter()
+        .map(|l| l.target)
+        .collect();
+    assert_eq!(targets, ["sp ace"]);
+    // The percent-encoded spelling, which the same note also writes, agrees.
     assert!(body.contains("[spaced](sp%20ace.md)"));
     assert!(note_targets("parsing/markdown-links.md").contains(&"sp ace".to_string()));
 }
