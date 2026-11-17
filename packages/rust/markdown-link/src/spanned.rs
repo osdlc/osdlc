@@ -27,6 +27,7 @@ use crate::{Size, is_vault_link_url, md_link_target, parse_inner, parse_inner_se
 ///     code_rules: CodeRules::SkillExport,
 ///     skip_html_comments: true,
 ///     self_links: true,
+///     all_markdown_links: false,
 /// };
 /// let links = body_links_spanned_with("<!-- [[hidden]] --> [[#Intro]]", &options);
 /// assert_eq!(links.len(), 1);
@@ -46,6 +47,14 @@ pub struct ScanOptions {
     /// `[[#^block]]`, as a link to the note it is written in, with an empty
     /// [`BodyLink::target`]. Off by default: such a link is dropped.
     pub self_links: bool,
+    /// Read every relative inline Markdown link, whatever its target: a
+    /// `.yaml` file, a folder, a name with no extension. Off by default: a
+    /// Markdown link counts only when [`crate::is_vault_link_url`] accepts
+    /// its URL. A link with a URI scheme, a URL starting with `//` or an empty
+    /// destination is never read. The target keeps any `#fragment` or
+    /// `?query` as written, and loses `.md` only at its end:
+    /// `[a](a.md#Intro)` targets `a.md#Intro`, and `[x](#h)` targets `#h`.
+    pub all_markdown_links: bool,
 }
 
 /// What syntax produced a [`BodyLink`].
@@ -85,6 +94,10 @@ pub struct BodyLink {
     /// A wikilink's `#heading`, as [`crate::WikiLink::heading`]. `None` for a
     /// markdown link.
     pub heading: Option<String>,
+    /// A markdown link's title, as written between its quotes or
+    /// parentheses: `Hint` in `[a](a.md "Hint")`. `None` when it has none,
+    /// and for a wikilink or embed.
+    pub title: Option<String>,
     /// A wikilink's `#^block`, as [`crate::WikiLink::block`]. `None` for a
     /// markdown link.
     pub block: Option<String>,
@@ -361,6 +374,7 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
                         raw: inner,
                         target: link.target,
                         heading: link.heading,
+                        title: None,
                         block: link.block,
                         size: link.size,
                         alias,
@@ -391,11 +405,18 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
             {
                 drop_overlapped(&mut abandoned, at.of(i));
             }
-            if let Some(destination) = destination
-                && let Some(link) = spanned_markdown_link(i, destination, url_chars, &at, &mut scan)
-            {
+            if let Some(destination) = destination {
+                // A Markdown link, kept or not: its destination and title
+                // hold no link, so the scan moves past it.
+                out.extend(spanned_markdown_link(
+                    i,
+                    destination,
+                    url_chars,
+                    &at,
+                    &mut scan,
+                    options.all_markdown_links,
+                ));
                 i = destination.end;
-                out.push(link);
                 continue;
             }
         }
@@ -646,40 +667,44 @@ fn normalize_label(label: &[char]) -> String {
         .to_lowercase()
 }
 
-/// An inline link's destination: `(url)` or `(<url>)` after the `]` that
-/// ends its text.
+/// An inline link's destination and title, after the `]` that ends its
+/// text.
 #[derive(Debug, Clone, Copy)]
 struct Destination {
     /// The char index where the URL starts.
     url_start: usize,
     /// The char index just past the URL.
     url_end: usize,
+    /// The char range of the title between its delimiters, if there is one.
+    title: Option<(usize, usize)>,
     /// The char index just past the `)`.
     end: usize,
 }
 
-/// `[text](relative/note.md)` starting at `start`, with its `destination`.
-/// `None` when it is not a link this dialect harvests.
-///
-/// [`is_vault_link_url`] decides "is this a reference" and [`md_link_target`]
-/// "what does it point at". The URL is built only for a link, so a body of
-/// failed attempts stays linear.
+/// `[text](url)` starting at `start`, with its `destination`. `None` when it
+/// is not a link this dialect harvests: `all_markdown_links` reads every
+/// relative URL, and otherwise [`is_vault_link_url`] decides. The URL is built
+/// only for a link, so a body of failed attempts stays linear.
 fn spanned_markdown_link(
     start: usize,
     destination: Destination,
     chars: &[char],
     at: &Offsets,
     scan: &mut UrlScan,
+    all_markdown_links: bool,
 ) -> Option<BodyLink> {
     let Destination {
         url_start,
         url_end,
+        title,
         end,
     } = destination;
-    if !scan.is_vault_link(chars, url_start, url_end) || has_scheme(&chars[url_start..url_end]) {
-        // Not a link this dialect harvests. The caller advances ONE character
-        // rather than skipping past the `[text](…)` it just walked, so a match
-        // may start at an inner `[`: `[a[b](x.md)` is a link.
+    let harvested = if all_markdown_links {
+        url_end > url_start
+    } else {
+        scan.is_vault_link(chars, url_start, url_end)
+    };
+    if !harvested || is_external(&chars[url_start..url_end]) {
         return None;
     }
     let url: String = chars[url_start..url_end].iter().collect();
@@ -687,6 +712,7 @@ fn spanned_markdown_link(
         kind: BodyLinkKind::Markdown,
         target: md_link_target(&url),
         heading: None,
+        title: title.map(|(from, to)| chars[from..to].iter().collect()),
         block: None,
         alias: None,
         size: None,
@@ -696,20 +722,185 @@ fn spanned_markdown_link(
     })
 }
 
-/// What earlier markdown link attempts learned about the URLs they read, in a
-/// body's chars as written. Each attempt starts later than the one before, so
-/// remembering the last answer of each kind keeps a body of failed attempts
-/// linear.
+/// How many chars of a URL are read in place before the tables take over.
+const IN_PLACE: usize = 64;
+
+/// What earlier markdown link attempts learned about the destinations they
+/// read, in a body's chars as written. Each attempt starts later than the one
+/// before, so remembering the last answer of each kind, the parentheses of the last
+/// run of a URL too long to read in place, and tables when a run is not enough,
+/// keep a body of failed attempts linear.
 ///
-/// A destination is read as written, not with code blanked: a link's
-/// destination is read where its `](` is, so no code or math starts in it,
-/// and `[a](notes/$x$.md)` is a link.
+/// A destination and title are read as written, not with code blanked, as
+/// CommonMark reads them where the link's `](` is: `[a](notes/$x$.md)` is a
+/// link, and the title of ``[a](a.md "`")`` is a backtick. The code lexer
+/// does not know links, so it may still open code at such a backtick, which
+/// can hide text after the link.
 #[derive(Debug, Default)]
 struct UrlScan {
-    /// `(from, stop)`: the first `)`, `>` or whitespace at or after `from` is
-    /// at `stop`.
-    stop: Option<(usize, usize)>,
+    /// The run of non-whitespace chars the last long URL started in.
+    run: Option<Run>,
+    /// Made when a long URL is not answered by `run`.
+    tables: Option<UrlTables>,
     tail: Option<UrlTail>,
+}
+
+/// What a run of non-whitespace chars from `start` to `end` holds of
+/// parentheses, when it holds at most one unescaped `)`. It answers where an
+/// unbracketed URL starting in the run ends, in constant time.
+#[derive(Debug)]
+struct Run {
+    start: usize,
+    /// The first whitespace after `start`, or the body's length.
+    end: usize,
+    /// The unescaped `)`, if there is one.
+    close: Option<usize>,
+    /// The last two unescaped `(` before `close`, or before `end` when there
+    /// is no `)`, latest first.
+    opens: [Option<usize>; 2],
+    /// The last unescaped `(` after `close`.
+    open_after: Option<usize>,
+}
+
+impl Run {
+    /// The run from `start` to the next whitespace, or `None` when it holds
+    /// more than one unescaped `)`.
+    fn new(chars: &[char], start: usize) -> Option<Self> {
+        let n = chars.len();
+        let mut close = None;
+        let mut end = n;
+        // The index of the char a `\` just before it escapes.
+        let mut escaped = usize::MAX;
+        let mut k = start;
+        loop {
+            k = next_stop(chars, k);
+            let Some(&c) = chars.get(k) else { break };
+            match c {
+                '\\' if escaped != k => escaped = k + 1,
+                ')' if escaped != k => {
+                    if close.is_some() {
+                        return None;
+                    }
+                    close = Some(k);
+                }
+                _ if is_space(c) => {
+                    end = k;
+                    break;
+                }
+                _ => {}
+            }
+            k += 1;
+        }
+        let mut opens = unescaped_opens(chars, start, close.unwrap_or(end));
+        let open_after = close.and_then(|close| unescaped_opens(chars, close + 1, end).next());
+        Some(Run {
+            start,
+            end,
+            close,
+            opens: [opens.next(), opens.next()],
+            open_after,
+        })
+    }
+
+    /// Where the URL at `from` ends, if `from` is in the run.
+    fn url_end(&self, from: usize, body_len: usize) -> Option<Option<usize>> {
+        if !(self.start..self.end).contains(&from) {
+            return None;
+        }
+        let at_or_after = |open: Option<usize>| open.is_some_and(|open| open >= from);
+        let to_space = |balanced: bool| (balanced && self.end < body_len).then_some(self.end);
+        Some(match self.close {
+            Some(close) if from <= close => {
+                match (at_or_after(self.opens[0]), at_or_after(self.opens[1])) {
+                    (false, _) => Some(close),
+                    (true, false) => to_space(self.open_after.is_none()),
+                    (true, true) => None,
+                }
+            }
+            Some(_) => to_space(!at_or_after(self.open_after)),
+            None => to_space(!at_or_after(self.opens[0])),
+        })
+    }
+}
+
+/// A table over a body's chars that gives a URL's end in constant time.
+#[derive(Debug)]
+struct UrlTables {
+    /// For each char index, where an unbracketed URL starting there ends, or
+    /// `NONE` when none does.
+    end: Vec<u32>,
+}
+
+/// An entry of [`UrlTables::end`] for a start that no URL ends.
+const NONE: u32 = u32::MAX;
+
+impl UrlTables {
+    fn new(chars: &[char]) -> Self {
+        let n = chars.len();
+        let mut end = vec![NONE; n + 1];
+        // From the right, within the run of non-whitespace chars after
+        // `space`: the unescaped `)` that no `(` after the char `k` closes,
+        // nearest first, and how many unescaped `(` after `k` close no `)`.
+        let mut space = n;
+        let mut closes: Vec<u32> = Vec::new();
+        let mut unclosed = 0usize;
+        for k in (0..n).rev() {
+            let c = chars[k];
+            if is_space(c) {
+                space = k;
+                closes.clear();
+                unclosed = 0;
+                continue;
+            }
+            if (c == '(' || c == ')') && !is_escaped(chars, k) {
+                if c == ')' {
+                    closes.push(k as u32);
+                } else if closes.pop().is_none() {
+                    unclosed += 1;
+                }
+            }
+            if let Some(&paren) = closes.last() {
+                end[k] = paren;
+            } else if space < n && unclosed == 0 {
+                end[k] = space as u32;
+            }
+        }
+        Self { end }
+    }
+}
+
+/// How many chars [`Run::new`] tests at once.
+const CHUNK: usize = 32;
+
+/// Whether `c` may end a run or hold a `)` for [`Run::new`] to read: it is
+/// whitespace, `)`, `\`, or not ASCII.
+fn is_stop(c: char) -> bool {
+    (c <= ' ') | (c == ')') | (c == '\\') | (c >= '\u{80}')
+}
+
+/// The index of the first char at or after `from` that [`is_stop`], or the
+/// body's length.
+fn next_stop(chars: &[char], from: usize) -> usize {
+    let mut at = from;
+    for chunk in chars[from..].chunks(CHUNK) {
+        if chunk.iter().fold(false, |any, &c| any | is_stop(c)) {
+            return at + chunk.iter().position(|&c| is_stop(c)).unwrap_or(0);
+        }
+        at += chunk.len();
+    }
+    at
+}
+
+/// The indexes of the unescaped `(` in `chars[from..to]`, last first.
+fn unescaped_opens(chars: &[char], from: usize, to: usize) -> impl Iterator<Item = usize> + '_ {
+    (from..to)
+        .rev()
+        .filter(move |&k| chars[k] == '(' && !is_escaped(chars, k))
+}
+
+/// Whether an odd run of `\` comes just before `chars[at]`.
+fn is_escaped(chars: &[char], at: usize) -> bool {
+    chars[..at].iter().rev().take_while(|&&c| c == '\\').count() % 2 == 1
 }
 
 /// URLs ending at `end`: the last `.` or `/` at or after `from`, and
@@ -723,43 +914,105 @@ struct UrlTail {
 }
 
 impl UrlScan {
-    /// The destination after the `]` at `close`, when its shape is the regex
-    /// `\(<?([^)>\s]*)>?\)`. A URL containing whitespace is not one:
-    /// `[c](<sp ace.md>)` has none.
+    /// The destination and title after the `]` at `close`, much as CommonMark
+    /// reads an inline link: `(`, then a URL, then a title in `"…"`, `'…'` or
+    /// `(…)` after whitespace, then `)`, with whitespace and at most one line
+    /// break between the parts. The URL is `<…>`, which may hold spaces but no
+    /// `<` or line break, or a run with no whitespace whose parentheses
+    /// balance. A `\` escapes the next character, but not a line break.
+    /// Unlike CommonMark, a title stays on one line, and no line break comes
+    /// before an unbracketed URL.
     fn destination(&mut self, chars: &[char], close: usize) -> Option<Destination> {
         if chars.get(close + 1) != Some(&'(') {
             return None;
         }
-        let angled = chars.get(close + 2) == Some(&'<');
-        let url_start = if angled { close + 3 } else { close + 2 };
-        let url_end = self.url_end(chars, url_start);
-        let mut end = url_end;
-        if angled {
-            if chars.get(end) != Some(&'>') {
-                return None;
+        let from = skip_space(chars, close + 2);
+        let (url_start, url_end, after_url) = if chars.get(from) == Some(&'<') {
+            let end = delimited(chars, from + 1, '>', &['<'])?;
+            (from + 1, end, end + 1)
+        } else if chars[close + 2..from].contains(&'\n') {
+            // A line break before an unbracketed URL could put it on a line
+            // that starts a block quote, heading or list item.
+            return None;
+        } else {
+            let end = self.bare_url_end(chars, from)?;
+            (from, end, end)
+        };
+        let mut end = skip_space(chars, after_url);
+        let mut title = None;
+        if end > after_url {
+            let close_with = match chars.get(end) {
+                Some('"') => Some(('"', &[][..])),
+                Some('\'') => Some(('\'', &[][..])),
+                Some('(') => Some((')', &['('][..])),
+                _ => None,
+            };
+            if let Some((delimiter, refused)) = close_with {
+                let title_end = delimited(chars, end + 1, delimiter, refused)?;
+                title = Some((end + 1, title_end));
+                end = skip_space(chars, title_end + 1);
             }
-            end += 1;
         }
         (chars.get(end) == Some(&')')).then_some(Destination {
             url_start,
             url_end,
+            title,
             end: end + 1,
         })
     }
 
-    /// Where a URL starting at `from` ends: the first `)`, `>` or whitespace.
-    fn url_end(&mut self, chars: &[char], from: usize) -> usize {
-        if let Some((start, stop)) = self.stop
-            && (start..=stop).contains(&from)
+    /// Where the unbracketed URL at `from` ends, or `None` when it is not
+    /// one: it runs to the first whitespace or the first unescaped `)` that no
+    /// `(` in it opens, and its parentheses balance. A short URL is read in
+    /// place; a long one from tables, so that a body of long failed attempts
+    /// stays linear.
+    fn bare_url_end(&mut self, chars: &[char], from: usize) -> Option<usize> {
+        if let Some(answer) = self
+            .run
+            .as_ref()
+            .and_then(|run| run.url_end(from, chars.len()))
         {
-            return stop;
+            return answer;
         }
-        let mut k = from;
-        while k < chars.len() && !matches!(chars[k], ')' | '>') && !chars[k].is_whitespace() {
-            k += 1;
+        // Once the tables are made, they answer every read.
+        let stop = if self.tables.is_none() {
+            chars.len().min(from + IN_PLACE)
+        } else {
+            from
+        };
+        let mut depth = 0usize;
+        let mut escaped = false;
+        for (k, &c) in chars[from..stop].iter().enumerate() {
+            let k = from + k;
+            if is_space(c) {
+                return (k > from && depth == 0).then_some(k);
+            }
+            match (c, escaped) {
+                ('(', false) => depth += 1,
+                (')', false) if depth == 0 => return Some(k),
+                (')', false) => depth -= 1,
+                _ => {}
+            }
+            escaped = !escaped && c == '\\';
         }
-        self.stop = Some((from, k));
-        k
+        if stop == chars.len() {
+            return None;
+        }
+        // A run is made for a start past the last run, so that runs do not
+        // overlap and reading them stays linear.
+        if self.tables.is_none() && self.run.as_ref().is_none_or(|run| from >= run.end) {
+            self.run = Run::new(chars, from);
+            if let Some(answer) = self
+                .run
+                .as_ref()
+                .and_then(|run| run.url_end(from, chars.len()))
+            {
+                return answer;
+            }
+        }
+        let tables = self.tables.get_or_insert_with(|| UrlTables::new(chars));
+        let end = tables.end[from];
+        (end != NONE).then_some(end as usize)
     }
 
     /// [`is_vault_link_url`] of `chars[from..end]`. That answer depends only
@@ -793,6 +1046,53 @@ impl UrlScan {
     }
 }
 
+/// [`char::is_whitespace`], with a quick path for ASCII.
+fn is_space(c: char) -> bool {
+    matches!(c, ' ' | '\t'..='\r') || (!c.is_ascii() && c.is_whitespace())
+}
+
+/// The index past the spaces and tabs from `at`, and at most one line break
+/// among them. A `\r` counts only before a `\n`.
+fn skip_space(chars: &[char], mut at: usize) -> usize {
+    let mut line_break = false;
+    loop {
+        match chars.get(at) {
+            Some(' ' | '\t') => at += 1,
+            Some('\r') if chars.get(at + 1) == Some(&'\n') => at += 1,
+            Some('\n') if !line_break => {
+                line_break = true;
+                at += 1;
+            }
+            _ => return at,
+        }
+    }
+}
+
+/// The index of the first unescaped `close` at or after `from` on the same
+/// line, when no unescaped char of `refused` comes before it.
+fn delimited(chars: &[char], from: usize, close: char, refused: &[char]) -> Option<usize> {
+    let mut at = from;
+    loop {
+        let c = *chars.get(at)?;
+        if c == close {
+            return Some(at);
+        }
+        if c == '\n' || refused.contains(&c) {
+            return None;
+        }
+        if c == '\\' && chars.get(at + 1).is_some_and(|next| *next != '\n') {
+            at += 1;
+        }
+        at += 1;
+    }
+}
+
+/// Whether a URL points outside the vault: it has a URI scheme, or starts
+/// with `//` and names a host.
+fn is_external(url: &[char]) -> bool {
+    url.starts_with(&['/', '/']) || has_scheme(url)
+}
+
 /// `http:`, `mailto:`, an app-specific scheme — anything with a URI scheme is external.
 fn has_scheme(url: &[char]) -> bool {
     let mut chars = url.iter();
@@ -815,6 +1115,65 @@ fn has_scheme(url: &[char]) -> bool {
 mod tests {
     use super::*;
 
+    /// The end of the unbracketed URL at `from`, read char by char.
+    fn url_end_by_hand(chars: &[char], from: usize) -> Option<usize> {
+        let mut depth = 0usize;
+        let mut escaped = false;
+        for (k, &c) in chars.iter().enumerate().skip(from) {
+            if is_space(c) {
+                return (k > from && depth == 0).then_some(k);
+            }
+            match (c, escaped) {
+                ('(', false) => depth += 1,
+                (')', false) if depth == 0 => return Some(k),
+                (')', false) => depth -= 1,
+                _ => {}
+            }
+            escaped = !escaped && c == '\\';
+        }
+        None
+    }
+
+    #[test]
+    fn long_urls_end_where_reading_them_char_by_char_ends() {
+        let alphabet: Vec<char> = "((()))\\\\ \na\u{a0}é".chars().collect();
+        let mut seed = 7u64;
+        let mut next = move |bound: usize| {
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            (seed >> 33) as usize % bound
+        };
+        for round in 0..400 {
+            let n = 70 + next(160);
+            let spread = 1 + next(alphabet.len());
+            let chars: Vec<char> = (0..n)
+                .map(|_| {
+                    if next(8) == 0 {
+                        alphabet[next(spread)]
+                    } else {
+                        'a'
+                    }
+                })
+                .collect();
+            let mut scan = UrlScan::default();
+            let mut from = 0;
+            while from < n {
+                if round % 2 == 1 {
+                    from = next(n);
+                }
+                if from == 0 || chars[from - 1] != '\\' {
+                    assert_eq!(
+                        scan.bare_url_end(&chars, from),
+                        url_end_by_hand(&chars, from),
+                        "{from} in {chars:?}"
+                    );
+                }
+                from += 1 + next(30);
+            }
+        }
+    }
+
     /// A quadratic URL, bracket or code scan takes tens of seconds on the
     /// largest of these in a debug build; a linear one takes well under a second, even on a loaded
     /// machine. The bound is that wide on purpose: it catches the shape of the
@@ -836,6 +1195,12 @@ mod tests {
                 format!("{}{}", "[a".repeat(n), "](x".repeat(n)),
                 "a <!-- ".repeat(n),
                 "](a".repeat(n),
+                "[](a \"".repeat(n),
+                "[](a '".repeat(n),
+                "[](a (".repeat(n),
+                "[](<a ".repeat(n),
+                "[](a(".repeat(n),
+                format!("{}{}", "[](a ".repeat(n), "\"".repeat(n)),
             ] {
                 let started = std::time::Instant::now();
                 assert!(body_links_spanned(&body).is_empty());
