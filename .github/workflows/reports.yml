@@ -13,9 +13,18 @@
 # setting is empty is skipped.
 #   REPORTS_RUST_DIR       the Cargo workspace, from the root; osdlc: packages/rust
 #   REPORTS_RUST_ARGS      packages for cargo llvm-cov and clippy; default --workspace
-#   REPORTS_TS_PACKAGES    glob of the pnpm packages; osdlc: packages/ts/*
-#   REPORTS_TS_BUILD       run after `pnpm install`; default `pnpm run build`
+#   REPORTS_TS_PACKAGES    TypeScript package folders, space separated globs;
+#                          osdlc: packages/ts/*
+#   REPORTS_TS_SETUP       shell run at the root before the report; default
+#                          `pnpm install --frozen-lockfile` then REPORTS_TS_BUILD;
+#                          `none` runs nothing
+#   REPORTS_TS_BUILD       the default setup's build; default `pnpm run build`
+#   REPORTS_TS_COVERAGE    a command run in each package instead of vitest; it
+#                          writes coverage/lcov.info, and its exit status is the
+#                          package's test result. Default empty: each package's
+#                          `coverage` script, which is vitest
 #   REPORTS_OXLINT_CONFIG  oxlint complexity config; default osdlc's
+#   REPORTS_OXLINT_IGNORE  more globs, space separated, for oxlint to leave out
 #   REPORTS_NODE_VERSION   Node for the Rust job, if its tests need one
 #   REPORTS_ENV            NAME=value lines added to both jobs' environment
 #
@@ -69,12 +78,24 @@ on:
         description: Glob of the pnpm packages. Default the variable REPORTS_TS_PACKAGES; empty skips TypeScript.
         type: string
         default: ""
+      ts-setup:
+        description: Shell run at the root before the report; none runs nothing. Default the variable REPORTS_TS_SETUP, else pnpm install and ts-build.
+        type: string
+        default: ""
       ts-build:
         description: Run after pnpm install. Default the variable REPORTS_TS_BUILD, else pnpm run build.
         type: string
         default: ""
+      ts-coverage:
+        description: A command run in each package instead of vitest, writing coverage/lcov.info. Default the variable REPORTS_TS_COVERAGE.
+        type: string
+        default: ""
       oxlint-config:
         description: oxlint complexity config. Default the variable REPORTS_OXLINT_CONFIG, else osdlc's.
+        type: string
+        default: ""
+      oxlint-ignore:
+        description: More globs for oxlint to leave out. Default the variable REPORTS_OXLINT_IGNORE.
         type: string
         default: ""
       node-version:
@@ -102,8 +123,10 @@ jobs:
       rust-dir: ${{ steps.s.outputs.rust-dir }}
       rust-args: ${{ steps.s.outputs.rust-args }}
       ts-packages: ${{ steps.s.outputs.ts-packages }}
-      ts-build: ${{ steps.s.outputs.ts-build }}
+      ts-setup: ${{ steps.s.outputs.ts-setup }}
+      ts-coverage: ${{ steps.s.outputs.ts-coverage }}
       oxlint-config: ${{ steps.s.outputs.oxlint-config }}
+      oxlint-ignore: ${{ steps.s.outputs.oxlint-ignore }}
       node-version: ${{ steps.s.outputs.node-version }}
       env: ${{ steps.s.outputs.env }}
     steps:
@@ -112,8 +135,11 @@ jobs:
           RUST_DIR: ${{ inputs.rust-dir || vars.REPORTS_RUST_DIR }}
           RUST_ARGS: ${{ inputs.rust-args || vars.REPORTS_RUST_ARGS || '--workspace' }}
           TS_PACKAGES: ${{ inputs.ts-packages || vars.REPORTS_TS_PACKAGES }}
+          TS_SETUP: ${{ inputs.ts-setup || vars.REPORTS_TS_SETUP }}
           TS_BUILD: ${{ inputs.ts-build || vars.REPORTS_TS_BUILD || 'pnpm run build' }}
+          TS_COVERAGE: ${{ inputs.ts-coverage || vars.REPORTS_TS_COVERAGE }}
           OXLINT_CONFIG: ${{ inputs.oxlint-config || vars.REPORTS_OXLINT_CONFIG }}
+          OXLINT_IGNORE: ${{ inputs.oxlint-ignore || vars.REPORTS_OXLINT_IGNORE }}
           NODE_VERSION: ${{ inputs.node-version || vars.REPORTS_NODE_VERSION }}
           JOB_ENV: ${{ inputs.env || vars.REPORTS_ENV }}
         run: |
@@ -124,6 +150,12 @@ jobs:
             [ -z "$line" ] || [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] ||
               { echo "::error::REPORTS_ENV: not NAME=value: $line"; exit 1; }
           done <<< "$JOB_ENV"
+          # Commands are single lines here: outputs are one line each.
+          for v in TS_SETUP TS_BUILD TS_COVERAGE; do
+            [[ "${!v}" != *$'\n'* ]] || { echo "::error::REPORTS_$v: one line, please (join commands with &&)"; exit 1; }
+          done
+          [ -n "$TS_SETUP" ] || TS_SETUP="pnpm install --frozen-lockfile && $TS_BUILD"
+          [ "$TS_SETUP" != none ] || TS_SETUP=
           if [ -z "$RUST_DIR" ] && [ -z "$TS_PACKAGES" ]; then
             echo "::warning::REPORTS_RUST_DIR and REPORTS_TS_PACKAGES are both empty; nothing to report"
           fi
@@ -131,8 +163,10 @@ jobs:
             echo "rust-dir=$RUST_DIR"
             echo "rust-args=$RUST_ARGS"
             echo "ts-packages=$TS_PACKAGES"
-            echo "ts-build=$TS_BUILD"
+            echo "ts-setup=$TS_SETUP"
+            echo "ts-coverage=$TS_COVERAGE"
             echo "oxlint-config=$OXLINT_CONFIG"
+            echo "oxlint-ignore=$OXLINT_IGNORE"
             echo "node-version=$NODE_VERSION"
             echo "env<<REPORTS_ENV_END"
             printf '%s\n' "$JOB_ENV"
@@ -166,33 +200,45 @@ jobs:
           persist-credentials: false
 
       - name: Set up the environment
+        id: env
         env:
           JOB_ENV: ${{ needs.settings.outputs.env }}
         run: |
           printf '%s\n' /.reports-tools/ /.reports-coverage/ /.oxlintrc.quality-report.json >> .git/info/exclude
           printf '%s\n' "$JOB_ENV" | sed '/^$/d; s/\r$//' >> "$GITHUB_ENV"
+          # pnpm/action-setup takes its version from packageManager, if the
+          # root package.json names one.
+          if jq -e '.packageManager // empty' package.json > /dev/null 2>&1; then
+            echo "pnpm-version=" >> "$GITHUB_OUTPUT"
+          else
+            echo "pnpm-version=10" >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ steps.env.outputs.pnpm-version }}
 
+      # The pnpm cache needs a lockfile at the root.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24'
-          cache: pnpm
+          cache: ${{ hashFiles('pnpm-lock.yaml') != '' && 'pnpm' || '' }}
 
-      - name: Install
-        run: pnpm install --frozen-lockfile
-
-      # Build first: osdlc's tests resolve the workspace packages through dist/.
-      - name: Build
+      # By default install, then build: osdlc's tests resolve the workspace
+      # packages through dist/.
+      - name: Set up the packages
+        if: needs.settings.outputs.ts-setup != ''
         env:
-          TS_BUILD: ${{ needs.settings.outputs.ts-build }}
-        run: bash -c "$TS_BUILD"
+          TS_SETUP: ${{ needs.settings.outputs.ts-setup }}
+        run: bash -c "$TS_SETUP"
 
       - name: Report
         env:
           QR_ROOT: ${{ github.workspace }}
           QR_TS_PACKAGES: ${{ needs.settings.outputs.ts-packages }}
+          QR_TS_COVERAGE: ${{ needs.settings.outputs.ts-coverage }}
           QR_OXLINT_CONFIG: ${{ needs.settings.outputs.oxlint-config }}
+          QR_OXLINT_IGNORE: ${{ needs.settings.outputs.oxlint-ignore }}
           QR_OUT: .reports-coverage
         run: .reports-tools/scripts/quality-report.sh ts >> "$GITHUB_STEP_SUMMARY"
 

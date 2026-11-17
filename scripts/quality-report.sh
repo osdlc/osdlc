@@ -9,9 +9,12 @@
 # It also writes $QR_OUT/<ts|rust>.lcov, which `octocov` reads to total both
 # languages and compare them with main.
 #
-# `ts` needs the packages installed and built (`pnpm install && pnpm run
-# build`), with vitest and oxlint. `rust` needs cargo-llvm-cov and the
-# llvm-tools-preview rustup component. Both need jq. Tool output goes to stderr.
+# `ts` runs each package's `coverage` script (vitest), so it needs the
+# packages installed and built (`pnpm install && pnpm run build`); or, with
+# QR_TS_COVERAGE, a command of the repository's own in each package. It lints
+# with the repository's oxlint, else a pinned one through npx. `rust` needs
+# cargo-llvm-cov and the llvm-tools-preview rustup component. Both need jq.
+# Tool output goes to stderr.
 #
 # Complexity thresholds: .oxlintrc.complexity.json for TypeScript, clippy's
 # defaults for Rust (cognitive complexity 25, 100 lines a function).
@@ -21,7 +24,14 @@
 #   QR_ROOT           the repository to measure; default this script's repository
 #   QR_RUST_DIR       the Cargo workspace; default packages/rust
 #   QR_RUST_ARGS      which packages, for cargo llvm-cov and clippy; default --workspace
-#   QR_TS_PACKAGES    a glob of the TypeScript package folders; default packages/ts/*
+#   QR_TS_PACKAGES    TypeScript package folders, space separated, globs allowed;
+#                     default packages/ts/*
+#   QR_TS_COVERAGE    a shell command run in each of those folders instead of
+#                     vitest; it writes coverage/lcov.info there, and its exit
+#                     status is the package's test result. The folder
+#                     coverage/ exists, empty, when it starts.
+#   QR_OXLINT_IGNORE  more paths for oxlint to leave out, space separated globs,
+#                     such as built files that are committed
 #   QR_OUT            where the lcov files go; default packages/coverage
 #   QR_OXLINT_CONFIG  the oxlint config; default this script's .oxlintrc.complexity.json
 #
@@ -35,6 +45,10 @@ rust_dir="${QR_RUST_DIR:-packages/rust}"
 rust_dir="${rust_dir%/}"
 rust_args="${QR_RUST_ARGS---workspace}"
 ts_packages="${QR_TS_PACKAGES:-packages/ts/*}"
+ts_coverage="${QR_TS_COVERAGE:-}"
+oxlint_ignore="${QR_OXLINT_IGNORE:-}"
+# The oxlint run through npx when the repository has none: osdlc/osdlc's locked one.
+oxlint_version=1.88.0
 oxlint_config="${QR_OXLINT_CONFIG:-$tools/.oxlintrc.complexity.json}"
 out="${QR_OUT:-packages/coverage}"
 mkdir -p "$out"
@@ -48,9 +62,40 @@ warn() {
   if [ -n "${GITHUB_ACTIONS:-}" ]; then echo "::warning::$1" >&2; fi
 }
 
+# lcov_summary <lcov.info>: its totals in the shape of vitest's
+# coverage-summary.json, which the tables read.
+lcov_summary() {
+  awk -F: '{ n[$1] += $2 } END { printf "%d %d %d %d %d %d\n", n["LF"], n["LH"], n["FNF"], n["FNH"], n["BRF"], n["BRH"] }' "$1" |
+    jq -R 'split(" ") | map(tonumber) as [$lf, $lh, $fnf, $fnh, $brf, $brh]
+      | def m(t; c): {total: t, covered: c, pct: (if t == 0 then 100 else (c * 10000 / t | round) / 100 end)};
+      {total: {lines: m($lf; $lh), functions: m($fnf; $fnh), branches: m($brf; $brh)}}'
+}
+
+# custom_tests <log> <exit status>: the Tests cell for a QR_TS_COVERAGE run.
+# The counts come from the summary node's test runner prints (`ℹ pass 3`, or
+# `# pass 3` in TAP); with another runner the cell says only passed or failed.
+custom_tests() {
+  local pass fail skipped
+  pass="$(sed -nE 's/^(ℹ|#) pass ([0-9]+)$/\2/p' "$1" | tail -n 1)"
+  fail="$(sed -nE 's/^(ℹ|#) fail ([0-9]+)$/\2/p' "$1" | tail -n 1)"
+  skipped="$(sed -nE 's/^(ℹ|#) skipped ([0-9]+)$/\2/p' "$1" | tail -n 1)"
+  if [ -z "$pass" ]; then
+    if [ "$2" -eq 0 ]; then echo '✅ passed'; else echo "❌ failed (exit $2)"; fi
+    return
+  fi
+  if [ "$2" -eq 0 ]; then
+    printf '✅ %s passed' "$pass"
+  else
+    printf '❌ %s failed, %s passed' "${fail:-?}" "$pass"
+  fi
+  if [ "${skipped:-0}" -gt 0 ]; then printf ', %s skipped' "$skipped"; fi
+  echo
+}
+
 ts() {
   # Every package's `coverage` script is `vitest run --coverage`; the flags
   # add the reporters this script reads, and report a package whose tests fail.
+  # QR_TS_COVERAGE replaces that with a command run in each package.
   local failed=0 dirs=() d
   # shellcheck disable=SC2206 # the glob is meant to expand
   for d in $ts_packages; do
@@ -61,12 +106,28 @@ ts() {
     exit 1
   fi
   for d in "${dirs[@]}"; do rm -rf "$d/coverage"; done
-  pnpm -r --no-bail --if-present run coverage \
-    --coverage.reporter=lcovonly --coverage.reporter=json-summary \
-    --coverage.reportOnFailure \
-    --reporter=default --reporter=json --outputFile.json=coverage/test-results.json >&2 || failed=1
+  if [ -n "$ts_coverage" ]; then
+    local status log
+    for d in "${dirs[@]}"; do
+      status=0
+      log="$tmp/tests-${d//\//_}.log"
+      mkdir -p "$d/coverage"
+      (cd "$d" && bash -c "$ts_coverage") > "$log" 2>&1 || status=$?
+      cat "$log" >&2
+      [ "$status" -eq 0 ] || failed=1
+      custom_tests "$log" "$status" > "$d/coverage/tests-cell.txt"
+      if [ -s "$d/coverage/lcov.info" ]; then
+        lcov_summary "$d/coverage/lcov.info" > "$d/coverage/coverage-summary.json"
+      fi
+    done
+  else
+    pnpm -r --no-bail --if-present run coverage \
+      --coverage.reporter=lcovonly --coverage.reporter=json-summary \
+      --coverage.reportOnFailure \
+      --reporter=default --reporter=json --outputFile.json=coverage/test-results.json >&2 || failed=1
+  fi
 
-  # vitest writes paths relative to the package; octocov wants them from the
+  # The lcov names files from the package; octocov wants them from the
   # repository root.
   : > "$out/ts.lcov"
   local f dir
@@ -86,7 +147,13 @@ ts() {
     trap 'rm -rf "$tmp" .oxlintrc.quality-report.json' EXIT
     config=.oxlintrc.quality-report.json
   fi
-  pnpm exec oxlint -c "$config" -f json "${dirs[@]}" > "$tmp/oxlint.json"
+  local oxlint=(npx --yes "oxlint@$oxlint_version") pattern
+  [ -x node_modules/.bin/oxlint ] && oxlint=(pnpm exec oxlint)
+  set -f
+  # shellcheck disable=SC2086 # one glob per word, not expanded here
+  for pattern in $oxlint_ignore; do oxlint+=(--ignore-pattern "$pattern"); done
+  set +f
+  "${oxlint[@]}" -c "$config" -f json "${dirs[@]}" > "$tmp/oxlint.json"
   # The package folder a file is in: the longest folder that starts its path.
   printf '%s\n' "${dirs[@]}" | jq -R . | jq -s . > "$tmp/dirs.json"
 
@@ -100,10 +167,13 @@ ts() {
   local name tests lines findings
   for dir in "${dirs[@]}"; do
     name="${dir##*/}"
-    # A package with no `coverage` script has no tests to report.
-    jq -e '.scripts.coverage' "$dir/package.json" > /dev/null 2>&1 || continue
     tests='⚠️ no result'
-    if [ -e "$dir/coverage/test-results.json" ]; then
+    if [ -n "$ts_coverage" ]; then
+      tests="$(cat "$dir/coverage/tests-cell.txt")"
+    # A package with no `coverage` script has no tests to report.
+    elif ! jq -e '.scripts.coverage' "$dir/package.json" > /dev/null 2>&1; then
+      continue
+    elif [ -e "$dir/coverage/test-results.json" ]; then
       tests="$(jq -r '
         (if .numFailedTests > 0 or (.success | not) then "❌ \(.numFailedTests) failed, \(.numPassedTests) passed"
           else "✅ \(.numPassedTests) passed" end)
