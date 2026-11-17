@@ -25,8 +25,9 @@
 # result, line coverage and complexity findings, then the coverage and the
 # functions over a complexity threshold in full. A failing test is named in
 # the summary and leaves the job green. The script and the Rust composite
-# actions come from a checkout of osdlc/osdlc at this file's own commit, so a
-# caller that pins the workflow to a SHA pins them too.
+# actions come from a checkout of this file's own repository and commit
+# (job.workflow_repository, job.workflow_sha), so a caller that pins the
+# workflow to a SHA pins them too.
 #
 # `coverage` totals the languages with octocov and writes the total to its job
 # summary, beside the change from the default branch. A run there stores its
@@ -149,13 +150,14 @@ jobs:
         with:
           persist-credentials: false
 
-      # The script at this workflow's commit: job_workflow_sha when another
-      # repository calls it, else this run's own commit.
+      # The script at this workflow file's own repository and commit
+      # (job.workflow_*; GitHub Enterprise Server lacks them, hence the
+      # fallbacks), which differ from the run's when another repository calls it.
       - name: Check out the report tools
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: osdlc/osdlc
-          ref: ${{ github.job_workflow_sha || github.sha }}
+          repository: ${{ job.workflow_repository || 'osdlc/osdlc' }}
+          ref: ${{ job.workflow_sha || github.sha }}
           path: .reports-tools
           sparse-checkout: |
             /scripts/quality-report.sh
@@ -217,8 +219,8 @@ jobs:
       - name: Check out the report tools
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: osdlc/osdlc
-          ref: ${{ github.job_workflow_sha || github.sha }}
+          repository: ${{ job.workflow_repository || 'osdlc/osdlc' }}
+          ref: ${{ job.workflow_sha || github.sha }}
           path: .reports-tools
           sparse-checkout: |
             /scripts/quality-report.sh
