@@ -19,7 +19,9 @@ fixed tool and model, you do not need it.
 The main export is pure and browser-safe. Everything environmental is passed in: catalogue
 layers, an availability callback, and the author of the change. It never spawns
 a process, touches the filesystem or the network, or knows about git. Its one
-import from `@osdlc/agent-call` is the `./models` subpath, which imports nothing.
+import from `@osdlc/agent-call` is the `./models` subpath, which imports nothing. That
+subpath's `EFFORT_LEVELS` is the same in every agent-call from 0.12, so the dependency accepts
+`>=0.12.0 <1`, and a host with any of those installs one copy of agent-call.
 
 The `@osdlc/agent-router/config` subpath is the exception. It exports the `profiles`, `routing`
 and `router` config sections for a host to mount, needs the optional peer `@osdlc/config-layers`

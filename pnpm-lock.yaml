@@ -156,7 +156,7 @@ importers:
   packages/ts/agent-router:
     dependencies:
       '@osdlc/agent-call':
-        specifier: workspace:^
+        specifier: workspace:>=0.12.0 <1
         version: link:../agent-call
       '@osdlc/result':
         specifier: workspace:^
