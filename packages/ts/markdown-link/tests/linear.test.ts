@@ -44,6 +44,12 @@ test('bodyLinksSpanned is linear in link attempts, failed or not', () => {
       ['[a'.repeat(n) + '](x'.repeat(n), 0],
       ['a <!-- '.repeat(n), 0],
       ['](a'.repeat(n), 0],
+      ['[](a "'.repeat(n), 0],
+      ["[](a '".repeat(n), 0],
+      ['[](a ('.repeat(n), 0],
+      ['[](<a '.repeat(n), 0],
+      ['[](a('.repeat(n), 0],
+      ['[](a '.repeat(n) + '"'.repeat(n), 0],
       ['$a$ [[x]] $$b$$ '.repeat(n), n],
       ['`a` [[x]] '.repeat(n), n],
     ] as const) {

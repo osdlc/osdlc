@@ -32,6 +32,15 @@ export interface ScanOptions {
    * in, with an empty `target`. Default `false`: such a link is dropped.
    */
   selfLinks?: boolean
+  /**
+   * Read every relative inline Markdown link, whatever its target: a `.yaml`
+   * file, a folder, a name with no extension. Default `false`: a Markdown link
+   * counts only when `isVaultLinkUrl` accepts its URL. A link with a URI
+   * scheme, a URL starting with `//` or an empty destination is never read.
+   * The target keeps any `#fragment` or `?query` as written, and loses `.md`
+   * only at its end: `[a](a.md#Intro)` targets `a.md#Intro`.
+   */
+  allMarkdownLinks?: boolean
 }
 
 /** What syntax produced a `BodyLink`. */
@@ -54,6 +63,12 @@ export interface BodyLink {
   target: string
   /** A wikilink's `#heading`, as `WikiLink.heading`. `null` for a markdown link. */
   heading: string | null
+  /**
+   * A markdown link's title, as written between its quotes or parentheses:
+   * `Hint` in `[a](a.md "Hint")`. `null` when it has none, and for a wikilink
+   * or embed.
+   */
+  title: string | null
   /** A wikilink's `#^block`, as `WikiLink.block`. `null` for a markdown link. */
   block: string | null
   /** An embed's size, as `WikiLink.size`. */
@@ -282,6 +297,7 @@ export function scanBodyWith(body: string, options: ScanOptions): BodyScan {
             raw: inner,
             target: link.target,
             heading: link.heading,
+            title: null,
             block: link.block,
             alias,
             size: link.size,
@@ -304,10 +320,12 @@ export function scanBodyWith(body: string, options: ScanOptions): BodyScan {
       ) {
         dropOverlapped(abandoned, at[i]!)
       }
-      const link = destination === null ? null : markdownLink(i, destination, scan!)
-      if (link !== null) {
-        out.push(link)
-        i = destination!.end
+      if (destination !== null) {
+        // A Markdown link, kept or not: its destination and title hold no
+        // link, so the scan moves past it.
+        const link = markdownLink(i, destination, scan!, options.allMarkdownLinks === true)
+        if (link !== null) out.push(link)
+        i = destination.end
         continue
       }
     }
@@ -601,37 +619,39 @@ function normalizeLabel(label: string): string {
   return words.join(' ').toLowerCase()
 }
 
-/** An inline link's destination: `(url)` or `(<url>)` after the `]` that ends its text. */
+/** An inline link's destination and title, after the `]` that ends its text. */
 interface Destination {
   /** The code point index where the URL starts. */
   urlStart: number
   /** The code point index just past the URL. */
   urlEnd: number
+  /** The code point range of the title between its delimiters, if there is one. */
+  title: [number, number] | null
   /** The code point index just past the `)`. */
   end: number
 }
 
 /**
- * `[text](relative/note.md)` starting at `start`, with its `destination`, or
- * `null` when it is not a link this dialect harvests. The URL is built only
- * for a link, so a body of failed attempts stays linear.
+ * `[text](url)` starting at `start`, with its `destination`, or `null` when it
+ * is not a link this dialect harvests: `allMarkdownLinks` reads every relative
+ * URL, and otherwise `isVaultLinkUrl` decides. The URL is built only for a
+ * link, so a body of failed attempts stays linear.
  */
 function markdownLink(
   start: number,
-  { urlStart, urlEnd, end }: Destination,
+  { urlStart, urlEnd, title, end }: Destination,
   scan: UrlScan,
+  allMarkdownLinks: boolean,
 ): BodyLink | null {
-  // Not a link this dialect harvests. The caller advances one code point, so
-  // a match may start at an inner `[`: `[a[b](x.md)` is a link.
-  if (!scan.isVaultLink(urlStart, urlEnd) || hasScheme(scan.chars, urlStart, urlEnd)) {
-    return null
-  }
+  const harvested = allMarkdownLinks ? urlEnd > urlStart : scan.isVaultLink(urlStart, urlEnd)
+  if (!harvested || isExternal(scan.chars, urlStart, urlEnd)) return null
   const url = scan.body.slice(scan.at[urlStart], scan.at[urlEnd])
   return {
     kind: 'markdown',
     raw: url,
     target: mdLinkTarget(url),
     heading: null,
+    title: title === null ? null : scan.body.slice(scan.at[title[0]], scan.at[title[1]]),
     block: null,
     alias: null,
     size: null,
@@ -641,24 +661,25 @@ function markdownLink(
 }
 
 /**
- * A body's code points as written, with the reads a markdown link attempt
- * needs of its URL: where it stops, and where its last `.` or `/` is. The
- * attempts come in order of their `[`, and the link texts that a `(` follows
- * do not nest, so the URLs of attempts that read the same stop overlap and
- * the rest are disjoint. Each read remembers its last answer, and a body of
- * failed attempts stays linear.
+ * A body's code points as written, and tables over them that let each
+ * markdown link attempt read its destination in constant time, so a body of
+ * failed attempts stays linear. The last `.` or `/` before a URL's end is
+ * remembered from the attempt before it, as the attempts come in order.
  *
- * A destination is read as written, not with code blanked: a link's
- * destination is read where its `](` is, so no code or math starts in it, and
- * `[a](notes/$x$.md)` is a link.
+ * A destination and title are read as written, not with code blanked, as
+ * CommonMark reads them where the link's `](` is: `[a](notes/$x$.md)` is a
+ * link, and the title of ``[a](a.md "`")`` is a backtick. The code lexer does
+ * not know links, so it may still open code at such a backtick, which can hide
+ * text after the link.
  */
 class UrlScan {
   readonly body: string
   readonly chars: Int32Array
   readonly at: Int32Array
-  /** The last stop found: the one for every start from `stopFrom` through `stopAt`. */
-  private stopFrom = 0
-  private stopAt = -1
+  /** The run of non-whitespace code points the last long URL started in. */
+  private run: UrlRun | null = null
+  /** Made when a long URL is not answered by `run`. */
+  private tables: UrlTables | null = null
   /** The last `.` or `/` in `[markLow, markEnd)`, or -1, as `lastMark` found it. */
   private markLow = 0
   private markEnd = -1
@@ -672,20 +693,45 @@ class UrlScan {
     this.at = at
   }
 
-  /** The first `)`, `>` or whitespace at or after `from`, or the end. */
-  private stop(from: number): number {
-    if (from >= this.stopFrom && from <= this.stopAt) return this.stopAt
+  /**
+   * Where the unbracketed URL at `from` ends, or -1 when it is not one: it
+   * runs to the first whitespace or the first unescaped `)` that no `(` in it
+   * opens, and its parentheses balance. A short URL is read in place; a long
+   * one from tables, so that a body of long failed attempts stays linear.
+   */
+  private bareUrlEnd(from: number): number {
     const chars = this.chars
-    const n = chars.length
-    let k = from
-    while (k < n) {
+    const inRun = this.run?.urlEnd(from, chars.length)
+    if (inRun !== undefined) return inRun
+    // Once the tables are made, they answer every read.
+    const stop = this.tables === null ? Math.min(chars.length, from + IN_PLACE) : from
+    let depth = 0
+    let escaped = false
+    for (let k = from; k < stop; k++) {
       const c = chars[k]!
-      if (c === CLOSE_PAREN || c === GT || isSpace(c)) break
-      k++
+      if (isSpace(c)) return k > from && depth === 0 ? k : -1
+      if (!escaped) {
+        if (c === PAREN) depth++
+        else if (c === CLOSE_PAREN) {
+          if (depth === 0) return k
+          depth--
+        }
+      }
+      escaped = !escaped && c === BACKSLASH
     }
-    this.stopFrom = from
-    this.stopAt = k
-    return k
+    if (stop === chars.length) return -1
+    // A run is made for a start past the last run, so that runs do not
+    // overlap and reading them stays linear.
+    if (this.tables === null && (this.run === null || from >= this.run.end)) {
+      this.run = UrlRun.of(chars, from)
+      const made = this.run?.urlEnd(from, chars.length)
+      if (made !== undefined) return made
+    }
+    const { space, depth: depths, unopenedClose } = (this.tables ??= new UrlTables(chars))
+    const paren = unopenedClose[from]!
+    const white = space[from]!
+    if (paren < white) return paren
+    return white > from && depths[white] === depths[from] && white < chars.length ? white : -1
   }
 
   /** The last `.` or `/` in `chars[from, end)`, or -1. */
@@ -703,21 +749,101 @@ class UrlScan {
   }
 
   /**
-   * The destination after the `]` at `close`, when its shape is the regex
-   * `\(<?([^)>\s]*)>?\)`. A URL containing whitespace is not one.
+   * The destination and title after the `]` at `close`, much as CommonMark
+   * reads an inline link: `(`, then a URL, then a title in `"…"`, `'…'` or
+   * `(…)` after whitespace, then `)`, with whitespace and at most one line
+   * break between the parts. The URL is `<…>`, which may hold spaces but no
+   * `<` or line break, or a run with no whitespace whose parentheses balance.
+   * A `\` escapes the next character, but not a line break. Unlike
+   * CommonMark, a title stays on one line, and no line break comes before an
+   * unbracketed URL.
    */
   destination(close: number): Destination | null {
     const chars = this.chars
     if (chars[close + 1] !== PAREN) return null
-    const angled = chars[close + 2] === LT
-    const urlStart = angled ? close + 3 : close + 2
-    const urlEnd = this.stop(Math.min(urlStart, chars.length))
-    let end = urlEnd
-    if (angled) {
-      if (chars[end] !== GT) return null
-      end++
+    const from = this.skipSpace(close + 2)
+    let urlStart: number
+    let urlEnd: number
+    let afterUrl: number
+    if (chars[from] === LT) {
+      const end = this.delimited(from + 1, GT, LT)
+      if (end === -1) return null
+      urlStart = from + 1
+      urlEnd = end
+      afterUrl = end + 1
+    } else if (this.hasLineBreak(close + 2, from)) {
+      // A line break before an unbracketed URL could put it on a line that
+      // starts a block quote, heading or list item.
+      return null
+    } else {
+      urlEnd = this.bareUrlEnd(from)
+      if (urlEnd === -1) return null
+      urlStart = from
+      afterUrl = urlEnd
     }
-    return chars[end] === CLOSE_PAREN ? { urlStart, urlEnd, end: end + 1 } : null
+    let end = this.skipSpace(afterUrl)
+    let title: [number, number] | null = null
+    if (end > afterUrl) {
+      const open = chars[end]
+      const closeWith =
+        open === QUOTE
+          ? QUOTE
+          : open === APOSTROPHE
+            ? APOSTROPHE
+            : open === PAREN
+              ? CLOSE_PAREN
+              : -1
+      if (closeWith !== -1) {
+        const titleEnd = this.delimited(end + 1, closeWith, open === PAREN ? PAREN : -1)
+        if (titleEnd === -1) return null
+        title = [end + 1, titleEnd]
+        end = this.skipSpace(titleEnd + 1)
+      }
+    }
+    return chars[end] === CLOSE_PAREN ? { urlStart, urlEnd, title, end: end + 1 } : null
+  }
+
+  private hasLineBreak(from: number, to: number): boolean {
+    for (let k = from; k < to; k++) if (this.chars[k] === NEWLINE) return true
+    return false
+  }
+
+  /**
+   * The index past the spaces and tabs from `at`, and at most one line break
+   * among them. A `\r` counts only before a `\n`.
+   */
+  private skipSpace(from: number): number {
+    const chars = this.chars
+    let at = from
+    let lineBreak = false
+    for (;;) {
+      const c = chars[at]
+      if (c === 0x20 || c === 0x09 || (c === 0x0d && chars[at + 1] === NEWLINE)) {
+        at++
+      } else if (c === NEWLINE && !lineBreak) {
+        lineBreak = true
+        at++
+      } else {
+        return at
+      }
+    }
+  }
+
+  /**
+   * The index of the first unescaped `close` at or after `from` on the same
+   * line, when the unescaped code point `refused` does not come before it, or
+   * -1.
+   */
+  private delimited(from: number, close: number, refused: number): number {
+    const chars = this.chars
+    const n = chars.length
+    for (let at = from; at < n; at++) {
+      const c = chars[at]!
+      if (c === close) return at
+      if (c === NEWLINE || c === refused) return -1
+      if (c === BACKSLASH && at + 1 < n && chars[at + 1] !== NEWLINE) at++
+    }
+    return -1
   }
 
   /**
@@ -742,6 +868,145 @@ class UrlScan {
 }
 
 const CLOSE_PAREN = 0x29
+/** How many code points of a URL are read in place before the tables take over. */
+const IN_PLACE = 64
+
+/**
+ * What a run of non-whitespace code points from `start` to `end` holds of
+ * parentheses, when it holds at most one unescaped `)`. It answers where an
+ * unbracketed URL starting in the run ends, in constant time.
+ */
+class UrlRun {
+  private constructor(
+    readonly start: number,
+    /** The first whitespace after `start`, or the body's length. */
+    readonly end: number,
+    /** The unescaped `)`, or -1. */
+    private readonly close: number,
+    /**
+     * The last two unescaped `(` before `close`, or before `end` when there is
+     * no `)`, latest first; -1 for none.
+     */
+    private readonly lastOpen: number,
+    private readonly priorOpen: number,
+    /** The last unescaped `(` after `close`, or -1. */
+    private readonly openAfter: number,
+  ) {}
+
+  /** The run from `start` to the next whitespace, or null when it holds more than one unescaped `)`. */
+  static of(chars: Int32Array, start: number): UrlRun | null {
+    const n = chars.length
+    let close = -1
+    let end = n
+    let lastOpen = -1
+    let priorOpen = -1
+    let openAfter = -1
+    // The index of the code point a `\` just before it escapes.
+    let escaped = -1
+    for (let k = start; k < n; k++) {
+      const c = chars[k]!
+      if (c === BACKSLASH) {
+        if (escaped !== k) escaped = k + 1
+      } else if (c === PAREN) {
+        if (escaped !== k) {
+          if (close >= 0) openAfter = k
+          else {
+            priorOpen = lastOpen
+            lastOpen = k
+          }
+        }
+      } else if (c === CLOSE_PAREN) {
+        if (escaped !== k) {
+          if (close >= 0) return null
+          close = k
+        }
+      } else if (isSpace(c)) {
+        end = k
+        break
+      }
+    }
+    return new UrlRun(start, end, close, lastOpen, priorOpen, openAfter)
+  }
+
+  /** Where the URL at `from` ends, -1 when it is not one, or undefined when `from` is not in the run. */
+  urlEnd(from: number, bodyLength: number): number | undefined {
+    if (from < this.start || from >= this.end) return undefined
+    const toSpace = (balanced: boolean): number =>
+      balanced && this.end < bodyLength ? this.end : -1
+    if (this.close < 0) return toSpace(this.lastOpen < from)
+    if (from > this.close) return toSpace(this.openAfter < from)
+    if (this.lastOpen < from) return this.close
+    return this.priorOpen < from ? toSpace(this.openAfter < 0) : -1
+  }
+}
+
+/** Tables over a body's code points that give a URL's end in constant time. */
+class UrlTables {
+  /** For each index, the first whitespace at or after it. */
+  readonly space: Int32Array
+  /**
+   * For each index, how many unescaped `(` before it are not closed by an
+   * unescaped `)` before it, less any `)` with no `(`.
+   */
+  readonly depth: Int32Array
+  /**
+   * For each index, the first unescaped `)` at or after it that closes a `(`
+   * before it: where a destination starting there ends.
+   */
+  readonly unopenedClose: Int32Array
+
+  constructor(codes: Int32Array) {
+    const n = codes.length
+    const depth = new Int32Array(n + 1)
+    // The paren depth before each code point, where a `\` escapes the next.
+    let escaped = false
+    let lowest = 0
+    let highest = 0
+    let d = 0
+    for (let k = 0; k < n; k++) {
+      const c = codes[k]!
+      if (!escaped) {
+        if (c === PAREN) d++
+        else if (c === CLOSE_PAREN) d--
+      }
+      depth[k + 1] = d
+      if (d < lowest) lowest = d
+      else if (d > highest) highest = d
+      escaped = !escaped && c === BACKSLASH
+    }
+    // From the right: the first whitespace at or after each code point, and
+    // the first unescaped `)` at each depth. The first `)` at a code point's
+    // own depth is where the depth first falls below it, and an unescaped `)`
+    // is where the depth falls.
+    const space = new Int32Array(n + 1)
+    const unopenedClose = new Int32Array(n + 1)
+    const firstClose = new Int32Array(highest - lowest + 1).fill(n)
+    space[n] = n
+    unopenedClose[n] = n
+    for (let k = n - 1; k >= 0; k--) {
+      space[k] = isSpace(codes[k]!) ? k : space[k + 1]!
+      const here = depth[k]!
+      if (depth[k + 1]! < here) firstClose[here - lowest] = k
+      unopenedClose[k] = firstClose[here - lowest]!
+    }
+    this.space = space
+    this.depth = depth
+    this.unopenedClose = unopenedClose
+  }
+}
+const QUOTE = 0x22
+const APOSTROPHE = 0x27
+
+/**
+ * Whether `chars[from, end)` points outside the vault: it has a URI scheme,
+ * or starts with `//` and names a host.
+ */
+function isExternal(chars: Int32Array, from: number, end: number): boolean {
+  return (
+    (end - from >= 2 && chars[from] === SLASH && chars[from + 1] === SLASH) ||
+    hasScheme(chars, from, end)
+  )
+}
 
 /** `isSpaceUnit`, with a quick no for the ASCII that is not space. */
 function isSpace(c: number): boolean {

@@ -1,5 +1,12 @@
 # @osdlc/corpus-schema
 
+## 0.5.2
+
+### Patch Changes
+
+- Updated dependencies [c2c14f1]
+  - @osdlc/markdown-link@0.11.0
+
 ## 0.5.1
 
 ### Patch Changes
