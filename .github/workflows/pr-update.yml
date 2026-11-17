@@ -1,26 +1,70 @@
-# Keeps open pull requests up to date with main. Every merge to main puts each
-# open PR one commit further behind; this brings them forward with
-# @osdlc/pr-update by merging main into the PR branch (no force-push; the repo
-# is squash-merge only, so the merge commit never reaches main). A conflict the
-# built-in resolvers cannot clear goes to a headless claude repair; one it
-# cannot clear either is labelled needs-manual-update and commented on once.
+# Keeps open pull requests up to date with the default branch. Every merge
+# puts each open PR one commit further behind; this brings them forward with
+# the pr-update action (packages/gh-actions/pr-update) by merging the default
+# branch into the PR branch (no force-push with the merge strategy; squash-merge
+# and the merge commit never reaches main). A conflict the built-in resolvers
+# cannot clear goes to a headless agent repair; one it cannot clear either is
+# labelled needs-manual-update and commented on once.
 #
-# This file only says when it runs and for whom. The work is the reusable
-# workflow pr-update-reusable.yml, which other repositories call too; it
-# describes the gate, the concurrency groups and the App token.
+# One file for osdlc/osdlc and for every repository that uses it. It runs here
+# on its own triggers, and other repositories call it (`workflow_call`) from a
+# short workflow with the same triggers;
+# packages/gh-actions/pr-update/README.md shows that caller. A called workflow
+# sees the caller's event, variables and secrets, so the run is the same either
+# way.
 #
 # When it runs
 #   schedule            once a night, see the cron below. Not on every push to
 #                       main: each merge to main would push a merge commit to
 #                       every open PR, and each push starts that PR's full CI,
 #                       so one merge became a CI storm across every open PR.
-#   workflow_dispatch   all PRs now, or one PR (input `pr`); `dry-run` pushes nothing
+#   workflow_dispatch   all PRs now, or one PR (input `pr`); `dry-run` pushes
+#                       nothing. Only from the default branch.
 #   issue_comment       `/pr-update` or `/pr-update retry` as the first line of
-#                       a PR comment from a trigger user: that PR now
+#                       a PR comment from a trigger user: that PR now. Any
+#                       other comment ends at the gate, which reads no secret.
 #
-# Token: the pushes are made as the osdlc-release GitHub App, whose key is in
-# the release-plz environment. The job passes the key by name;
-# pr-update-reusable.yml says why.
+# Settings, from the running repository (input, else variable, else default):
+#   RELEASE_PLZ_APP_CLIENT_ID       the GitHub App's client ID (required)
+#   PR_UPDATE_TRIGGER_USERS         logins that may use /pr-update, comma separated
+#   PR_UPDATE_TRIGGER_ASSOCIATIONS  author associations that may (OWNER, MEMBER, ...)
+#   PR_UPDATE_ENVIRONMENT           environment holding the App key, if any
+#   PR_UPDATE_STRATEGY              merge (default) or rebase
+#   PR_UPDATE_REPAIR_AGENT          claude (default), codex, cursor, pi, or none
+# Secrets: RELEASE_PLZ_APP_PRIVATE_KEY (required) and ANTHROPIC_API_KEY (for
+# the claude repair). The client ID is not a secret; the private key is.
+#
+# Concurrency: two jobs.
+#   gate      decides what this event asks for. Cheap, no secrets.
+#   update    the work, with cancel-in-progress: false, so a run that is
+#             already updating PRs (or paying for an agent repair) is never
+#             cancelled. At most one run updates and one waits per group;
+#             GitHub replaces an older waiting run with the newer one, which
+#             coalesces bursts again. All-PR runs share pr-update-run. A
+#             comment run for one PR uses pr-update-pr-<n>, so it does not queue
+#             behind a long all-PR run. Two runs can then push the same branch
+#             at once; pushes are fast-forward (merge strategy), so the loser is
+#             rejected, its PR is reported failed, and the next run retries at
+#             the new head.
+#
+# Token: the pushes need a GitHub App token, not GITHUB_TOKEN, or CI would not
+# start on the PR. The App must be installed on the repository with repository
+# permissions Contents: write, Pull requests: write, Issues: write (labels,
+# comments, reactions) and Workflows: write. Without Workflows, pushing a merge
+# that brings the default branch's .github/workflows changes into a PR branch
+# is rejected by GitHub ("refusing to allow a GitHub App to create or update
+# workflow ... without `workflows` permission"); that PR ends `failed`. Without
+# Pull requests/Issues write, pushes work but labels and comments only warn.
+# `permission-*` below can only narrow what the App was granted. The commits
+# are authored as the App's bot user.
+#
+# The action is taken from osdlc/osdlc's main, and a comment, a schedule and a
+# dispatch all run the default branch's workflow, so a pull request cannot
+# change what runs with the App token and the API key.
+#
+# No loop: nothing here listens for push or pull_request events, and the bot's
+# comments and reactions never start the comment trigger (a comment from the
+# App is not from a trigger user).
 name: pr-update
 
 on:
@@ -38,22 +82,197 @@ on:
         default: false
   issue_comment:
     types: [created]
+  # Each input overrides the variable named in the header; leave them out to
+  # use the variables.
+  workflow_call:
+    inputs:
+      app-client-id:
+        description: Client ID of the GitHub App that pushes. Default the variable RELEASE_PLZ_APP_CLIENT_ID.
+        type: string
+        default: ""
+      environment:
+        description: Environment that holds the App key. Default the variable PR_UPDATE_ENVIRONMENT, else none.
+        type: string
+        default: ""
+      trigger-users:
+        description: Logins that may use the /pr-update comment, comma separated. Default the variable PR_UPDATE_TRIGGER_USERS.
+        type: string
+        default: ""
+      trigger-associations:
+        description: Author associations that may use it, comma separated. Default the variable PR_UPDATE_TRIGGER_ASSOCIATIONS.
+        type: string
+        default: ""
+      strategy:
+        description: merge or rebase. Default the variable PR_UPDATE_STRATEGY, else merge.
+        type: string
+        default: ""
+      repair-agent:
+        description: claude, codex, cursor, pi, or none. Default the variable PR_UPDATE_REPAIR_AGENT, else claude.
+        type: string
+        default: ""
+    secrets:
+      RELEASE_PLZ_APP_PRIVATE_KEY:
+        description: "The App's private key. `secrets: inherit` passes it."
+        required: false
+      ANTHROPIC_API_KEY:
+        description: API key for the claude repair. Without it a conflict is left for a person.
+        required: false
 
 permissions: {}
 
 jobs:
-  pr-update:
-    # Not in a fork, where the schedule would run without the App.
-    if: github.repository == 'osdlc/osdlc'
+  gate:
+    if: >-
+      (github.event_name != 'workflow_dispatch'
+          || github.ref == format('refs/heads/{0}', github.event.repository.default_branch))
+      && (github.event_name != 'issue_comment'
+          || (github.event.issue.pull_request && startsWith(github.event.comment.body, '/pr-update')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      go: ${{ steps.gate.outputs.go }}
+      pr: ${{ steps.gate.outputs.pr }}
+      args: ${{ steps.gate.outputs.args }}
+      dry-run: ${{ steps.gate.outputs.dry-run }}
+      comment-id: ${{ steps.gate.outputs.comment-id }}
+    steps:
+      - id: gate
+        env:
+          EVENT: ${{ github.event_name }}
+          DISPATCH_PR: ${{ github.event.inputs.pr }}
+          DISPATCH_DRY_RUN: ${{ github.event.inputs.dry-run }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          COMMENT_USER: ${{ github.event.comment.user.login }}
+          COMMENT_ASSOC: ${{ github.event.comment.author_association }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          TRIGGER_USERS: ${{ inputs.trigger-users || vars.PR_UPDATE_TRIGGER_USERS }}
+          TRIGGER_ASSOCIATIONS: ${{ inputs.trigger-associations || vars.PR_UPDATE_TRIGGER_ASSOCIATIONS }}
+        run: |
+          set -euo pipefail
+          go=true pr="" args="" dry=false comment_id=""
+          case "$EVENT" in
+            workflow_dispatch)
+              [ "$DISPATCH_DRY_RUN" != true ] || dry=true
+              if [ -n "$DISPATCH_PR" ]; then
+                [[ "$DISPATCH_PR" =~ ^[0-9]+$ ]] || { echo "::error::pr must be a number"; exit 1; }
+                pr="$DISPATCH_PR"
+              fi
+              ;;
+            issue_comment)
+              # Only the first line counts, and it must be the whole command, so
+              # quoted text, code blocks and a mention in prose do nothing.
+              first="${COMMENT_BODY%%$'\n'*}"
+              first="${first%$'\r'}"
+              go=false
+              if [[ "$first" =~ ^/pr-update([[:space:]]+retry)?[[:space:]]*$ ]]; then
+                ok=false
+                if [ -n "$COMMENT_USER" ]; then
+                  case ",$TRIGGER_USERS," in *",$COMMENT_USER,"*) ok=true ;; esac
+                fi
+                if [ -n "$TRIGGER_ASSOCIATIONS" ]; then
+                  case ",$TRIGGER_ASSOCIATIONS," in *",$COMMENT_ASSOC,"*) ok=true ;; esac
+                fi
+                if [ "$ok" = true ]; then
+                  go=true pr="$ISSUE_NUMBER" comment_id="$COMMENT_ID"
+                  [ -z "${BASH_REMATCH[1]}" ] || args="--retry-failed"
+                fi
+              fi
+              ;;
+            # A schedule, or any other event a caller chose: every eligible PR.
+            *) ;;
+          esac
+          {
+            echo "go=$go"
+            echo "pr=$pr"
+            echo "args=$args"
+            echo "dry-run=$dry"
+            echo "comment-id=$comment_id"
+          } >> "$GITHUB_OUTPUT"
+
+  update:
+    needs: gate
+    if: needs.gate.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    # Bounds one run, repairs included. A run cut off here is safe: nothing is
+    # half pushed, the failed-attempt record is saved anyway, and the next run
+    # finds the PRs it finished up to date (a cheap no-op).
+    timeout-minutes: 60
+    environment: ${{ inputs.environment || vars.PR_UPDATE_ENVIRONMENT }}
+    concurrency:
+      group: ${{ needs.gate.outputs.pr != '' && format('pr-update-pr-{0}', needs.gate.outputs.pr) || 'pr-update-run' }}
+      cancel-in-progress: false
     permissions:
       contents: read
-    uses: ./.github/workflows/pr-update-reusable.yml
-    with:
-      app-client-id: Iv23liYTGAl78fzN8YWm
-      environment: release-plz
-      pr: ${{ inputs.pr }}
-      dry-run: ${{ inputs.dry-run == true }}
-      trigger-users: sksizer
-    secrets:
-      RELEASE_PLZ_APP_PRIVATE_KEY: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - name: Check the App settings
+        env:
+          APP_CLIENT_ID: ${{ inputs.app-client-id || vars.RELEASE_PLZ_APP_CLIENT_ID }}
+          APP_KEY: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}
+        run: |
+          ok=true
+          if [ -z "$APP_CLIENT_ID" ]; then
+            echo "::error::No GitHub App client ID. Set the variable RELEASE_PLZ_APP_CLIENT_ID on the repository or the organization, or pass the input app-client-id."
+            ok=false
+          fi
+          if [ -z "$APP_KEY" ]; then
+            echo "::error::RELEASE_PLZ_APP_PRIVATE_KEY is empty. Set it as a repository, organization or environment secret; a caller passes it with \`secrets: inherit\` or by name."
+            ok=false
+          fi
+          [ "$ok" = true ]
+
+      - name: Get a GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ inputs.app-client-id || vars.RELEASE_PLZ_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+          permission-workflows: write
+
+      - name: React to the comment
+        if: needs.gate.outputs.comment-id != ''
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          COMMENT_ID: ${{ needs.gate.outputs.comment-id }}
+        run: gh api "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID/reactions" -f content=eyes --silent || true
+
+      # The default branch, never the PR. The action pushes merge commits from
+      # this checkout, so it is made with the App token.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Set the git identity
+        env:
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: |
+          git config user.name "$APP_SLUG[bot]"
+          git config user.email "$APP_SLUG[bot]@users.noreply.github.com"
+
+      - id: update
+        uses: osdlc/osdlc/packages/gh-actions/pr-update@main
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          pr: ${{ needs.gate.outputs.pr }}
+          dry-run: ${{ needs.gate.outputs.dry-run }}
+          extra-args: ${{ needs.gate.outputs.args }}
+          strategy: ${{ inputs.strategy || vars.PR_UPDATE_STRATEGY || 'merge' }}
+          # `none` turns repair off; an empty value means "not set" here.
+          repair-agent: ${{ (inputs.repair-agent || vars.PR_UPDATE_REPAIR_AGENT || 'claude') != 'none' && (inputs.repair-agent || vars.PR_UPDATE_REPAIR_AGENT || 'claude') || '' }}
+
+      - name: React with the result
+        if: always() && needs.gate.outputs.comment-id != ''
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          COMMENT_ID: ${{ needs.gate.outputs.comment-id }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          reaction='+1'
+          [ "$JOB_STATUS" = success ] || reaction='-1'
+          gh api "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID/reactions" -f content="$reaction" --silent || true

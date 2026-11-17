@@ -7,15 +7,17 @@ conflict resolvers, then a headless claude repair, and leaves what is still
 conflicted for a person: a label, one comment, and the job summary.
 
 The action does the work of one run. When to run it (a merge to main, a
-schedule, a comment) is the caller's job. The reusable workflow below does
-that part too; most repositories should call it.
+schedule, a comment) is the caller's job. osdlc/osdlc's
+[`pr-update.yml`](../../../.github/workflows/pr-update.yml) does that part
+too, and other repositories call it; most should.
 
-## Use the reusable workflow
+## Use the workflow
 
-`.github/workflows/pr-update-reusable.yml` wraps the action with the GitHub
-App token, the checkout, the git identity, the `/pr-update` comment and the
-concurrency rules. The calling repository keeps one short file,
-`.github/workflows/pr-update.yml`, that says when it runs:
+[`.github/workflows/pr-update.yml`](../../../.github/workflows/pr-update.yml)
+wraps the action with the GitHub App token, the checkout, the git identity, the
+`/pr-update` comment and the concurrency rules. osdlc/osdlc runs it on its own
+triggers. Another repository calls it from a short
+`.github/workflows/pr-update.yml` of its own that says when it runs:
 
 ```yaml
 name: pr-update
@@ -40,22 +42,16 @@ permissions: {}
 
 jobs:
   pr-update:
-    # Not in a fork, where the schedule would run without the App.
-    if: github.repository == '<owner>/<repo>'
     permissions:
       contents: read
-    uses: osdlc/osdlc/.github/workflows/pr-update-reusable.yml@main
-    with:
-      app-client-id: <the App's client ID>
-      pr: ${{ inputs.pr }}
-      dry-run: ${{ inputs.dry-run == true }}
-      trigger-users: <login>
-    secrets:
-      RELEASE_PLZ_APP_PRIVATE_KEY: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    uses: osdlc/osdlc/.github/workflows/pr-update.yml@main
+    secrets: inherit
 ```
 
-What one run does depends on the event that started the caller:
+Leave out a trigger and that way of running is off. Keep the dispatch inputs'
+names, `pr` and `dry-run`: the workflow reads them from the event.
+
+What one run does depends on the event:
 
 - `schedule`: every eligible open PR.
 - `workflow_dispatch`: every eligible PR, or the one in `pr`; `dry-run` pushes
@@ -64,38 +60,33 @@ What one run does depends on the event that started the caller:
   of a PR comment from a trigger user updates that PR. Any other comment ends
   at the gate job, which reads no secret.
 
-Leave out a trigger and that way of running is off. `dry-run: ${{
-inputs.dry-run == true }}` keeps the value a boolean on the events that have
-no inputs.
+### Settings
 
-| Input                  | Default  | Meaning                                                                                                   |
-| ---------------------- | -------- | --------------------------------------------------------------------------------------------------------- |
-| `app-client-id`        | required | Client ID of the GitHub App that pushes (see Token). It is not a secret.                                  |
-| `environment`          | empty    | The environment that holds `RELEASE_PLZ_APP_PRIVATE_KEY`. Empty for a repository or organization secret.  |
-| `pr`                   | empty    | The caller's `workflow_dispatch` input: one PR number.                                                    |
-| `dry-run`              | `false`  | The caller's `workflow_dispatch` input.                                                                   |
-| `trigger-users`        | empty    | Logins that may use the `/pr-update` comment, comma separated.                                            |
-| `trigger-associations` | empty    | Author associations that may use it (`OWNER`, `MEMBER`, `COLLABORATOR`), comma separated.                 |
-| `strategy`             | `merge`  | The action's `strategy`.                                                                                  |
-| `repair-agent`         | `claude` | The action's `repair-agent`. Empty for no repair.                                                         |
+A called workflow sees the calling repository's variables and secrets, so the
+settings live there, as repository or organization variables. An input of the
+same meaning under `with:` overrides a variable.
 
-Secrets: `RELEASE_PLZ_APP_PRIVATE_KEY` (required) is the App's private key.
-Pass it by name even when only the `environment` holds it: a reusable workflow
-reads an environment secret the caller does not pass as an empty string, and
-the job that sets `environment` gets the environment's value for one it does
-pass
-([GitHub docs](https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows)).
-`ANTHROPIC_API_KEY` is optional; without it a conflict is left for a person.
+| Variable                         | Input                  | Default  | Meaning                                                                          |
+| -------------------------------- | ---------------------- | -------- | -------------------------------------------------------------------------------- |
+| `RELEASE_PLZ_APP_CLIENT_ID`      | `app-client-id`        | required | Client ID of the GitHub App that pushes (see Token). It is not a secret.         |
+| `PR_UPDATE_TRIGGER_USERS`        | `trigger-users`        | empty    | Logins that may use the `/pr-update` comment, comma separated. Empty: nobody.    |
+| `PR_UPDATE_TRIGGER_ASSOCIATIONS` | `trigger-associations` | empty    | Author associations that may (`OWNER`, `MEMBER`, `COLLABORATOR`), comma separated. |
+| `PR_UPDATE_ENVIRONMENT`          | `environment`          | none     | The environment that holds the App key.                                          |
+| `PR_UPDATE_STRATEGY`             | `strategy`             | `merge`  | The action's `strategy`.                                                         |
+| `PR_UPDATE_REPAIR_AGENT`         | `repair-agent`         | `claude` | The action's `repair-agent`; `none` for no repair.                               |
+
+Secrets: `RELEASE_PLZ_APP_PRIVATE_KEY` (required) is the App's private key, and
+`ANTHROPIC_API_KEY` is the key for the claude repair; without it a conflict is
+left for a person. `secrets: inherit` passes both, from the repository, the
+organization, or the environment named by `PR_UPDATE_ENVIRONMENT`.
 
 The commits are authored as the App's bot user (`<app-slug>[bot]`). The
 workflow takes the action from osdlc/osdlc's `main`, whatever ref the caller
-names for the workflow itself. osdlc/osdlc's own
-[`pr-update.yml`](../../../.github/workflows/pr-update.yml) is a caller like
-the one above.
+names for the workflow itself.
 
 ## Use the action
 
-For a job of your own:
+For a job of your own, instead of the workflow:
 
 ```yaml
 name: pr-update
@@ -233,7 +224,7 @@ failed or timed-out run still saves it. GitHub evicts a cache entry not used for
 7 days, or under the repository's size limit; the only effect is one extra
 retry. Entries older than 30 days are dropped by pr-update. A cache is
 visible only to the branch that saved it and its base, so run the action from
-the default branch. Comment `/pr-update retry` (with the reusable workflow), or pass
+the default branch. Comment `/pr-update retry` (with the workflow), or pass
 `--retry-failed`, to try a recorded PR again.
 
 ### If a run is killed
