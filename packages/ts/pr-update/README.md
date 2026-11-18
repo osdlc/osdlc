@@ -146,7 +146,7 @@ guard checks for this before every preference, and no override turns it off.
 
 ## A whole stack in one run
 
-Without `--restack`, a stack of N levels takes N runs: each run updates the
+Without `--restack` or `pr_update.restack`, a stack of N levels takes N runs: each run updates the
 lowest PR that is behind and leaves the PRs above it `blocked`. With
 `--restack`, one run updates the whole stack, parent first:
 
