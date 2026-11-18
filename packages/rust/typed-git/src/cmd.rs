@@ -117,17 +117,28 @@ impl GitCommand {
 
     /// Run the command. Returns trimmed stdout on success, GitError on failure.
     pub fn run(&self) -> Result<String, GitError> {
+        let stdout = self.run_bytes()?;
+        Ok(String::from_utf8_lossy(&stdout).trim().to_string())
+    }
+
+    /// Run the command. Returns stdout as git wrote it, untrimmed, on
+    /// success, and the same error as [`run`](Self::run) on failure.
+    pub(crate) fn run_bytes(&self) -> Result<Vec<u8>, GitError> {
         let output = self.run_raw()?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            return Err(GitError::Command {
-                command: self.label(),
-                stderr,
-            });
+        if output.status.success() {
+            Ok(output.stdout)
+        } else {
+            Err(self.failure(&output))
         }
+    }
 
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    /// The [`GitError::Command`] for an `output` that exited non-zero: the
+    /// command line and git's stderr, trimmed.
+    pub(crate) fn failure(&self, output: &Output) -> GitError {
+        GitError::Command {
+            command: self.label(),
+            stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        }
     }
 
     /// Run the command and return the raw `Output`.
@@ -187,6 +198,18 @@ impl GitCommand {
     fn label(&self) -> String {
         format!("git {}", self.args.join(" "))
     }
+}
+
+/// Refuses a value that git would read as an option. `command` is the git
+/// subcommand the value was meant for, such as `diff`.
+pub(crate) fn refuse_option(command: &str, value: &str) -> Result<(), GitError> {
+    if value.starts_with('-') {
+        return Err(GitError::Command {
+            command: command.to_string(),
+            stderr: format!("refusing a value that begins with '-': {value}"),
+        });
+    }
+    Ok(())
 }
 
 #[cfg(test)]
