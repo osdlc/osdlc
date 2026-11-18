@@ -51,6 +51,7 @@
     "test": "vitest run",
     "coverage": "vitest run --coverage",
     "smoke": "node tests/smoke.mjs",
+    "conformance:write": "node tests/conformance-write.ts",
     "prepublishOnly": "npm run clean && npm run build",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
