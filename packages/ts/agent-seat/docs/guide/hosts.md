@@ -48,6 +48,11 @@ Both apps know which agent runs in which pane and confirm that the agent took a
 message, so `send` can return `ack: true`. Orca can also tell harnesses apart, so
 `send` with a `harness` targets the one matching terminal.
 
+Orca opens a terminal without `--focus` and then switches to it, so a slow worktree
+adoption cannot make a create that already opened the terminal look failed. Pass
+`focus: false` on the request to leave the new terminal in the background; `host.focus`
+brings it forward later. `find` lists past Orca's first 100 terminals.
+
 ## `cmux`, `otty`
 
 Workspace and tab apps on macOS. cmux cannot bind a pane to an id, so it works

@@ -726,6 +726,7 @@ export function wrapperSession(
     title: req.title,
     sessionId: req.sessionId,
     ...(req.wait !== undefined ? { wait: req.wait } : {}),
+    ...(req.focus !== undefined ? { focus: req.focus } : {}),
   })
   const resolver = Object.hasOwn(SESSION_ID_RESOLVERS, req.harness)
     ? SESSION_ID_RESOLVERS[req.harness]

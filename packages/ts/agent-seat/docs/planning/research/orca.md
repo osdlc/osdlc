@@ -178,7 +178,9 @@ reading Orca's GitHub repo.
   returns `result.terminal` with `handle` (`term_…`), `tabId`, `paneKey`,
   `ptyId` (`<worktreeId>@@<hash>`), `worktreeId` (`<repoId>::<path>`), `title`,
   `executionHostId: "local"`, `incarnationId`, `hostPlatform`, `surface: "visible"` — without
-  `--focus`, it does not steal focus.
+  `--focus`, it does not steal focus. Other versions have returned the handle as `result.handle`
+  or `result.terminalId`. `orca terminal list` takes `--limit <n>` and its result carries
+  `truncated` and `totalCount`; `orca terminal switch --terminal <handle>` brings one forward.
 - **Verified.** `--command` runs inside the user's login shell (fish, here), which then runs the
   given command; when the command exits, the pane stays open at the shell prompt rather than
   closing.

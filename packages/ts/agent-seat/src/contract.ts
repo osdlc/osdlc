@@ -92,6 +92,12 @@ export interface SessionRequest extends ClaudeLaunchFlags {
   injectedArgv?: readonly string[] | undefined
   /** A visible run's wait ({@link WaitRequest}); only a host that can wait ({@link hostCanWait}) honours it. */
   wait?: WaitRequest | undefined
+  /**
+   * Whether the new pane comes to the front. Defaults to true; `false` opens it in the
+   * background, and `host.focus` is then the call that brings it forward. Only the Orca
+   * host honours `false` so far; the others open as they always did.
+   */
+  focus?: boolean | undefined
 }
 
 /**
@@ -132,6 +138,8 @@ export interface CommandRequest {
   sessionId?: string | undefined
   /** See {@link SessionRequest.wait}. */
   wait?: WaitRequest | undefined
+  /** See {@link SessionRequest.focus}. */
+  focus?: boolean | undefined
 }
 
 /**

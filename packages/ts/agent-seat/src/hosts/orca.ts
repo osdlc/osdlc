@@ -46,7 +46,12 @@ export function orcaBinary(): string | null {
   return existsSync(ORCA_BUNDLED_CLI) ? ORCA_BUNDLED_CLI : null
 }
 
-/** Argv for `orca terminal create` — pure, so a test can pin it. */
+/**
+ * Argv for `orca terminal create` — pure, so a test can pin it. It never passes `--focus`:
+ * `create --focus` can time out while Orca adopts a worktree, with the terminal already
+ * open, and a create that never returns is unsafe to retry. The host focuses afterwards,
+ * with `terminal switch` on the handle the create returned.
+ */
 export function orcaCreateArgv(req: CommandRequest): string[] {
   return [
     'terminal',
@@ -57,15 +62,25 @@ export function orcaCreateArgv(req: CommandRequest): string[] {
     req.title,
     '--command',
     commandString(req.argv),
-    '--focus',
     '--json',
   ]
 }
 
-/** The new terminal's handle in `orca terminal create --json`: `result.terminal.handle`. */
+/**
+ * The new terminal's handle in `orca terminal create --json`. Orca has returned it as
+ * `result.terminal.handle`, as `result.handle` and as `result.terminalId`; the first
+ * of those that is a non-empty string wins.
+ */
 export function parseOrcaCreatedHandle(stdout: string): string | null {
-  const handle = field(field(field(parseJsonOrNull(stdout), 'result'), 'terminal'), 'handle')
-  return typeof handle === 'string' && handle !== '' ? handle : null
+  const result = field(parseJsonOrNull(stdout), 'result')
+  for (const handle of [
+    field(field(result, 'terminal'), 'handle'),
+    field(result, 'handle'),
+    field(result, 'terminalId'),
+  ]) {
+    if (typeof handle === 'string' && handle !== '') return handle
+  }
+  return null
 }
 
 /** Seconds `orca terminal send` waits for `turn_started`; Orca's own request timeout is this plus 10s. */
@@ -120,9 +135,19 @@ function field(value: unknown, key: string): unknown {
   return isRecord(value) ? value[key] : undefined
 }
 
-/** Argv for `orca terminal list --worktree path:<cwd> --json` — pure, so a test can pin it. */
-export function orcaFindArgv(query: FindQuery): string[] {
-  return ['terminal', 'list', '--worktree', `path:${query.cwd}`, '--json']
+/**
+ * Argv for `orca terminal list --worktree path:<cwd> --json` — pure, so a test can pin it.
+ * Orca returns the first 100 terminals unless `--limit` says more, so `limit` adds it.
+ */
+export function orcaFindArgv(query: FindQuery, limit?: number): string[] {
+  return [
+    'terminal',
+    'list',
+    '--worktree',
+    `path:${query.cwd}`,
+    ...(limit === undefined ? [] : ['--limit', String(limit)]),
+    '--json',
+  ]
 }
 
 /** The terminal entries of `orca terminal list --json`: `result.terminals`, `terminals`, or a bare array. */
@@ -178,9 +203,29 @@ function isoTimestamp(value: unknown): string | null {
   return null
 }
 
+/**
+ * The `totalCount` of an `orca terminal list --json` reply that stopped at its page size
+ * (`truncated: true`), or null when the page holds every terminal.
+ */
+function orcaTruncatedTotal(stdout: string): number | null {
+  const result = field(parseJsonOrNull(stdout), 'result')
+  const total = field(result, 'totalCount')
+  return field(result, 'truncated') === true && typeof total === 'number' && total > 0
+    ? total
+    : null
+}
+
+/** Every terminal of the worktree: a truncated first page is listed again with `--limit` of `totalCount`. */
 function listOrcaTerminals(runner: CommandRunner, cwd: string): OrcaTerminal[] {
-  const res = runner.run(orcaFindArgv({ cwd }), { cwd, timeoutMs: 30_000 })
-  return ran(res) ? parseOrcaTerminals(res.stdout, cwd) : []
+  const opts = { cwd, timeoutMs: 30_000 }
+  let res = runner.run(orcaFindArgv({ cwd }), opts)
+  if (!ran(res)) return []
+  const total = orcaTruncatedTotal(res.stdout)
+  if (total !== null) {
+    const full = runner.run(orcaFindArgv({ cwd }, total), opts)
+    if (ran(full)) res = full
+  }
+  return parseOrcaTerminals(res.stdout, cwd)
 }
 
 /**
@@ -267,6 +312,10 @@ export function makeOrcaHost(
       const handle = parseOrcaCreatedHandle(res.stdout)
       if (handle !== null && req.sessionId !== undefined) {
         rememberSessionPane(registryDir, req.sessionId, handle, req.cwd)
+      }
+      // Focus is its own call, made only once the create has returned a handle.
+      if (handle !== null && req.focus !== false) {
+        runner.run(orcaSwitchArgv(handle), { cwd: req.cwd, timeoutMs: 30_000 })
       }
       return 0
     },
