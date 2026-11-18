@@ -322,6 +322,12 @@ like `test_command`: it needs `--trust` or a recorded trust. A host that
 supplies `Ports.resolveVerifyVerbs` receives `which: 'detect'` and may call the
 exported `detectVerifyCommand(dir, testCommand?)` for the same ladder.
 
+Detection reads the repository's local checkout once per repository, the same
+directory `resolveVerifyVerbs` is given, not each PR's own worktree. A PR that
+adds or removes a `justfile`, `Makefile` or `package.json` test script is
+therefore judged by the checkout's files, and one command is used for every PR
+of that repository in the run. Use `test_command` when branches differ.
+
 ## Not retrying a failure that will repeat
 
 An update that ends `conflict` or `failed` will fail the same way next time, unless the head or the
