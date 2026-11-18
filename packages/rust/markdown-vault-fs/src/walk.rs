@@ -491,9 +491,8 @@ impl WalkOptions {
     /// ignore it, drop it or read it.
     ///
     /// The roots, the skip and prune lists, the visibility policy, the
-    /// excluded files (read from the vault for [`Hide::Vault`], asked of the caller for
-    /// [`Hide::Source`]), the exclude
-    /// list and notes versus attachments decide [`Admission::Outside`]. Then
+    /// excluded files (read from the vault for [`Hide::Vault`], asked of the
+    /// caller for [`Hide::Source`]), the exclude list and notes versus attachments decide [`Admission::Outside`]. Then
     /// the file system decides [`Admission::Unlisted`], as the walk reaches
     /// a file: by listing each folder from the walk's start down. A folder
     /// on the way that cannot be listed or is a symlink (never entered), or
