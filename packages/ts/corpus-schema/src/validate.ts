@@ -1197,7 +1197,12 @@ function strayHint(
       `\n  To keep them out of the corpus, move them under a folder starting with _.`
     )
   }
-  const inType = files.filter((f) => posix.dirname(f) === type.dir && !f.includes('.schema.'))
+  const inType = files.filter(
+    (f) =>
+      posix.dirname(f) === type.dir &&
+      !f.includes('.schema.') &&
+      RECORD_EXTENSIONS.includes(extname(f).toLowerCase()),
+  )
   const md = inType.filter((f) => extname(f).toLowerCase() === '.md').length
   if (yml)
     return `\n  To keep it with a record, rename it to .yaml and move it into that record's folder. To keep it out of the corpus, move it under a folder starting with _.`
