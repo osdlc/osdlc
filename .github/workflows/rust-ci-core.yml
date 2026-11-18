@@ -40,10 +40,13 @@
 #                          per line. The only multi-line setting; `settings`
 #                          passes it on as one JSON line.
 #   RUST_CI_TIMEOUT        minutes for each build job; default 60
-#   RUST_CI_TEST_RUNNER    cargo (default: cargo test) or nextest (cargo
-#                          nextest run, then cargo test --doc, since nextest
-#                          does not run doctests). Either way every test
-#                          binary runs and every failure is reported.
+#   RUST_CI_TEST_RUNNER    nextest (default: cargo nextest run, then cargo
+#                          test --doc, since nextest does not run doctests)
+#                          or cargo (cargo test). nextest runs each test in
+#                          its own process, all binaries at once; test-args
+#                          are then nextest's (e.g. --run-ignored only, not
+#                          -- --ignored). Either way every test binary runs
+#                          and every failure is reported.
 #   RUST_CI_DEBUG          debug info for the dev and test profiles:
 #                          line-tables-only (default: file and line in
 #                          backtraces, smaller and faster to link and cache),
@@ -117,7 +120,7 @@ on:
         type: string
         default: ""
       test-runner:
-        description: cargo or nextest. Default the variable RUST_CI_TEST_RUNNER, else cargo.
+        description: nextest or cargo. Default the variable RUST_CI_TEST_RUNNER, else nextest.
         type: string
         default: ""
       debug:
@@ -173,7 +176,7 @@ jobs:
           BUN_VERSION: ${{ inputs.bun-version || vars.RUST_CI_BUN_VERSION }}
           JOB_ENV: ${{ inputs.env || vars.RUST_CI_ENV }}
           TIMEOUT: ${{ inputs.timeout || vars.RUST_CI_TIMEOUT || '60' }}
-          TEST_RUNNER: ${{ inputs.test-runner || vars.RUST_CI_TEST_RUNNER || 'cargo' }}
+          TEST_RUNNER: ${{ inputs.test-runner || vars.RUST_CI_TEST_RUNNER || 'nextest' }}
           DEBUG: ${{ inputs.debug || vars.RUST_CI_DEBUG || 'line-tables-only' }}
         run: |
           set -euo pipefail
@@ -368,7 +371,28 @@ jobs:
           # shellcheck disable=SC2086 # one argument per word
           if [ "$RUNNER" = nextest ]; then
             cargo nextest run $PACKAGES $LOCKED --no-fail-fast --no-tests=pass $ARGS
-            cargo test --doc $PACKAGES $LOCKED --no-fail-fast
+            # Doctests live in libraries; with a -p list, keep the packages
+            # that have one, since cargo test --doc refuses a binary-only one.
+            doc=$PACKAGES
+            if [[ " $PACKAGES " == *" -p "* ]]; then
+              libs=$(cargo metadata $LOCKED --no-deps --format-version 1 \
+                | jq -r '.packages[] | select(any(.targets[].kind[]; . == "lib" or . == "proc-macro")) | .name')
+              doc=
+              read -ra words <<< "$PACKAGES"
+              for ((i = 0; i < ${#words[@]}; i++)); do
+                if [ "${words[i]}" = -p ]; then
+                  name=${words[i + 1]}; i=$((i + 1))
+                  grep -qx "$name" <<< "$libs" && doc+=" -p $name"
+                else
+                  doc+=" ${words[i]}"
+                fi
+              done
+            fi
+            if [[ " $PACKAGES " == *" -p "* && " $doc " != *" -p "* ]]; then
+              echo "No library among the packages, so no doctests."
+            else
+              cargo test --doc $doc $LOCKED --no-fail-fast
+            fi
           else
             cargo test $PACKAGES $LOCKED --no-fail-fast $ARGS
           fi
