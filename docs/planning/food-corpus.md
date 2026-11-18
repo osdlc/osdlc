@@ -1,7 +1,9 @@
 # A food corpus, and the standard for a corpus with its builder
 
-Plan, not code. Written 2026-11-17 for the owner to review before anything is built. Nothing here is
-decided until the owner answers the [open questions](#open-questions-for-the-owner).
+Plan, not code. Written 2026-11-17 for the owner to review before anything is built. The owner
+decided the scope, the catalogue, the standard and the rename on 2026-11-17 (see
+[Decided by the owner](#decided-by-the-owner)). One question is still open: three corpora or two.
+The work is filed as tasks 89 to 96 (see [Phases](#phases)).
 
 ## What is asked
 
@@ -13,15 +15,16 @@ decided until the owner answers the [open questions](#open-questions-for-the-own
 
 ## Summary of the recommendations
 
-1. **Three corpora, one licence each.** `food-nutrients` (our own nutrient catalog, MIT OR
-   Apache-2.0), `usda-fdc` (USDA records, CC0) and, later, `open-food-facts` (ODbL, never merged
-   into the others). `usda-fdc` and `open-food-facts` both reference `food-nutrients`. If the
-   owner wants only the two named corpora, the catalog starts inside `usda-fdc` and moves out
-   before OFF, which changes type identities (see Q1).
+1. **Three corpora by default, one licence each.** `food-nutrients` (our own nutrient catalogue,
+   MIT OR Apache-2.0, owned by osdlc and seeded from determined's notes), `usda-fdc` (USDA
+   records, CC0) and, later, `open-food-facts` (ODbL, never merged into the others). `usda-fdc`
+   and `open-food-facts` both reference `food-nutrients`. Whether to have three or two is the one
+   open owner question: with two, the catalogue starts inside `usda-fdc` and moves out before OFF,
+   which changes type identities (see Q1).
 2. **Records are JSON.** Foods are one `.json` file each (`formats: [json]`). A food holds its
    nutrient amounts and portions as arrays. Nutrients, categories and releases are their own
    types; portions and amounts are not.
-3. **Scope: SR Legacy and Foundation, in full, with a `whole-foods` tag.** The category, word and
+3. **Scope (decided): all SR Legacy and Foundation foods, with a `whole-foods` tag.** The category, word and
    form rules become tags, not deletions. FNDDS is a later phase. Branded is out: it is a lookup,
    not a corpus.
 4. **TypeScript, not Python.** The current builder is already TypeScript (bun). osdlc runs
@@ -30,17 +33,19 @@ decided until the owner answers the [open questions](#open-questions-for-the-own
 5. **Pins live in the corpus.** A `releases/` record holds each bundle's URL and sha256 and the
    build's counts. A release bump adds a record and re-runs the builder. Downloads go to a cache
    outside the repo, never committed.
-6. **The standard is a convention doc, not a spec change.** `S-corpus-package-shape`, enforced by
-   extending `@osdlc/package-checks`. The corpus-schema spec keeps describing the format only.
+6. **The standard is a convention doc, not a spec change (decided).** `S-corpus-package-shape`,
+   enforced by a corpora mode in `@osdlc/package-checks`. The corpus-schema spec keeps describing
+   the format only. `harness-reference` renames `src/compile` to `src/build`, so there is one name.
 7. **Distribution is an npm package** (`@osdlc/corpus-usda-fdc`), as D11 says, named in
    `references`. The pinned `_references` copy is for links only and is not used for a corpus this
    size. No subtree.
 8. **The package also ships a compiled export**, `export/foods.ndjson`, as `harness-reference`
    ships `harness-knowledge`. Apps that do not read corpora (determined's Rust build, the
-   dashboard's pack tool) read that.
+   dashboard's pack tool) read that. A `datapackage.json` ([Data Package v2](#how-others-ship-nutrient-datasets))
+   beside it carries the licences, sources and version, so non-corpus tools can load the export.
 9. **determined switches in two steps**: first prove the corpus reproduces its current ndjson
    (a regression oracle), then drop its own rules and keep a thin adapter.
-10. **Seven small phases**, each its own PR (see [Phases](#phases)).
+10. **Seven small phases**, each its own PR and its own task (see [Phases](#phases)).
 
 ## Prior art, and what it tells us
 
@@ -55,8 +60,8 @@ decided until the owner answers the [open questions](#open-questions-for-the-own
 | A published corpus | [`packages/corpora/sdlc-starter`](../../packages/corpora/sdlc-starter/) | `"corpus": "corpus"` in `package.json`, `files: [corpus/, README, licences]`, `publishConfig.access: public`, profile as `peerDependencies`, licence `MIT OR Apache-2.0`. No code |
 | Examples | [`packages/corpora/examples`](../../packages/corpora/examples/) | How `references` plus a committed `_references/` copy is written and tested |
 | Decisions | [D11](markdown/decisions/D11%20Upstream%20corpora%20travel%20as%20npm%20packages.md), [D12](markdown/decisions/D12%20Inherited%20records%20come%20in%20as%20a%20committed%20copy.md) (partly superseded by D15), [D15](markdown/decisions/D15%20Extending%20types%20and%20referencing%20corpora%20are%20separate.md), [D19](markdown/decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) | Upstream corpora are npm packages; records come in through `references`; corpora live in this repository |
-| A related task | [Task 85, Fitness corpus trial](markdown/tasks/85%20Fitness%20corpus%20trial.md) | The fitness vault in sksizer/dev holds foods and nutrients and imports FoodData Central. Task 85 converts the whole vault. **This plan must not collide with it**: foods and nutrients should come from the corpora planned here, and the vault's own food notes should reference them. Say so in task 85 when this plan is approved |
-| The gap in the standard | [`packages/README.md`](../../packages/README.md) | It says profiles and corpora "hold Markdown and JSON Schema and no code". `harness-reference` already breaks that. The standard below fixes the sentence |
+| A related task | [Task 85, Fitness corpus trial](markdown/tasks/85%20Fitness%20corpus%20trial.md) | The fitness vault in sksizer/dev holds foods and nutrients and imports FoodData Central. Task 85 converts the whole vault. **This plan must not collide with it**: foods and nutrients should come from the corpora planned here, and the vault's own food notes should reference them. Task 85 now carries a note saying so |
+| The gap in the standard | [`packages/README.md`](../../packages/README.md) | It says profiles and corpora "hold Markdown and JSON Schema and no code" (line 22). `harness-reference` already breaks that. The standard below fixes the sentence |
 
 Nothing in `packages/ts/` (checked: the list in `packages/ts`, including `config-layers`,
 `conformance-suites` and `harness-knowledge`) reads CSV, downloads and hash-checks an archive, or
@@ -106,7 +111,8 @@ nutrient-catalog effects, so the corpus's `whole-foods` slice will be larger (it
   `food/fdc.rs` is the live API client (`foods/search`, `food/{fdcId}`, key in the query string)
   and `food/off.rs` the live OFF client (10 searches and 100 product reads per minute, a
   `User-Agent`). D-0041 already decided that OFF is *lookup only*, because ODbL share-alike would
-  attach to the app's own food table if merged. This plan keeps that rule.
+  attach to the app's own food table if merged. This plan keeps that rule: no OFF contents are
+  copied into a food table; an id pointer is allowed (see the OFF section).
 - **Personal dashboard.** `solutions/personal/dashboard/server/schemas/documents/food.json`:
   per-100 g `nutrients` object with flat keys (`energy_kcal`, `protein`, ...) whose descriptions
   carry the USDA number; `common_portions [{name, grams}]`; `upstream {system, id, fetched_at,
@@ -173,13 +179,21 @@ the fact must be checked before the plan's phase that depends on it.
   [ODbL summary](https://opendatacommons.org/licenses/odbl/summary/) says it does not address
   separate data used alongside. The OFF wiki page on the licence refused automated reads
   (bot protection); *not confirmed from OFF's own wording*. This is not legal advice.
-- **What a separate referencing corpus means.** A corpus that holds OFF-derived records is a
-  Derivative Database: it must be ODbL, and so must anything that copies those records into a
-  table. A corpus that only *points at* OFF records (a barcode and nothing copied) is not. A
-  USDA record never needs to contain OFF data. So the rule is one-way: **OFF may reference USDA
-  and the nutrient catalog; they never reference OFF.** An app that ingests the OFF corpus into
-  the same table as USDA foods makes that table a derivative and, if public, ODbL: the owner's
-  D-0041 concern. The package must say so in its README, and ingestion must be opt-in.
+- **What a separate OFF corpus means.** A corpus that holds OFF-derived records is a Derivative
+  Database: it must be ODbL, and so must anything that copies those records into a table.
+  **Referencing OFF by id is different.** A corpus may refer to an OFF record by its id only: a
+  plain `gtin` or `off` string field, or an `x-ref` with `x-ref-form: id`. It never copies OFF
+  contents and never bundles the OFF corpus through a `_references` copy. The reasoning is that a
+  pointer (a barcode) is not an extraction of a substantial part of the contents, so it makes no
+  Derivative Database (4.4(b)). This is a reading of the licence text at
+  <https://opendatacommons.org/licenses/odbl/1-0/>, **not legal advice**; the owner decides before
+  the OFF phase. Two limits follow from the spec. First, an `id`-form `x-ref` must resolve to a
+  record in the corpus or in a corpus it `references` (SPEC, Typed references), so using it for
+  OFF ids needs the OFF package in `references`, installed but not copied; a plain `gtin` string
+  needs nothing. The default for `usda-fdc` is the plain string. Second, USDA records never
+  contain OFF data. An app that ingests the OFF corpus into the same table as USDA foods makes
+  that table a derivative and, if public, ODbL: the owner's D-0041 concern. The OFF package must
+  say so in its README, and ingestion must be opt-in.
 - Size: OFF is millions of products; no whole-database corpus is practical. The OFF corpus is a
   builder plus a small slice (a country, a category or a list of barcodes).
 
@@ -197,12 +211,16 @@ reading one of them is the same shape as the USDA builder, which is the reason f
 
 ### How others ship nutrient datasets
 
-- [Frictionless Data Package v1](https://specs.frictionlessdata.io/data-package/) (spec dated 2017):
-  `datapackage.json` with `name`, `version` (semver), `licenses`, `sources`, `resources`; data is
-  local files, URLs or inline; `schema` per resource through Table Schema. It describes tables,
-  not linked records, and has no `x-ref` equivalent. **Borrow its vocabulary** (`sources`,
-  `licenses`, `version`) for the `releases/` record and the README; do not adopt the format.
-  The corpus-schema spec already covers the schema job.
+- [Data Package v2.0](https://datapackage.org/), released 2024-06-26
+  ([release note](https://frictionlessdata.io/blog/2024/06/26/datapackage-v2-release/)), the
+  successor to v1 (2017). `datapackage.json` holds `name`, `version`, `licenses`, `sources` and
+  `resources`; data is local files, URLs or inline; each resource may carry a Table Schema. It
+  describes tables, not linked records, and has no `x-ref` equivalent, so it does not replace
+  corpus-schema. **Adopt it as the export's manifest**: each corpus's `export/` ships a
+  `datapackage.json` (licences, sources, version) beside the ndjson, so a tool that knows nothing
+  about corpora can load the export. Its vocabulary (`sources`, `licenses`, `version`) also
+  shapes the `releases/` record and the README. The v2 field details are to be checked against
+  datapackage.org when phase 3 writes the generator.
 - npm: a search on 2026-11-17 found no maintained package that ships the whole USDA dataset as
   offline JSON; the results were API wrappers, a deprecated `usda-ndb`, and `eusda`, which
   downloads SR data into a local file. [`ifct2017`](https://github.com/ifct2017/compositions)
@@ -218,15 +236,41 @@ No published package does what this plan asks: a cited, versioned, validated, li
 with its builder beside it. That is the reason to build it, and it also means no shape is borrowed
 whole.
 
+### Nutrient identifiers
+
+- **FDC nutrient numbers** are USDA's own; OFF uses its own keys. Neither joins to the national
+  tables. [FAO/INFOODS food component identifiers (tagnames)](https://www.fao.org/infoods/infoods/standards-guidelines/food-component-identifiers-tagnames/en/)
+  are the cross-database key: short codes such as `PROCNT`, `FAT`, `CHOAVL`, `FIBTG`. Each
+  `food-nutrients` record carries an `infoods_tagname` beside `fdc_nutrient_number` and `off_key`,
+  so adding CNF, CoFID or AUSNUT later is a mapping, not a new catalogue. EuroFIR names are
+  recorded as aliases only.
+- **A machine-readable source.** [`github.com/infoods/tagnames`](https://github.com/infoods/tagnames)
+  and the npm package [`@infoods/tagnames`](https://www.npmjs.com/package/@infoods/tagnames) (read
+  2026-11-17). The npm package is version 1.0.1, last modified 2022-04-05, maintained by
+  `wolfram77`, licence MIT on npm, description "Food Component Identifiers (Tagnames) by INFOODS".
+  It is not an FAO or INFOODS publication. The GitHub address now redirects to `nodef/infoods`,
+  whose README is copyright Subhajit Sahu, says AGPL-3.0-or-later, and points to a JSR package
+  `@nodef/infoods`. So the licence is inconsistent between npm (MIT) and the current repository
+  (AGPL-3.0-or-later), and the licence of the underlying FAO table is not stated. **Provenance
+  and licence: unconfirmed.** Do not depend on it or copy its data. Seed the tagnames from the
+  FAO page, and check FAO's terms for reuse first.
+- **Noted, not adopted:**
+  - schema.org `NutritionInformation`: a web-markup vocabulary for labels, with no per-nutrient
+    identifiers.
+  - W3C DCAT: a catalogue vocabulary for datasets, which Data Package v2 already covers for us.
+  - FoodOn: a food ontology (what a food is), not composition data.
+  - LanguaL: a food-description thesaurus for indexing foods; no amounts.
+
 ## Questions the plan answers
 
 ### Q1. Naming and split
 
-**Recommend three corpora, as three packages in `packages/corpora/`:**
+**Three corpora by default, as three packages in `packages/corpora/`** (the one open owner question
+is three versus two):
 
 | Corpus | npm name | Licence of the data | Holds |
 | --- | --- | --- | --- |
-| `food-nutrients` | `@osdlc/corpus-food-nutrients` | MIT OR Apache-2.0 (authored by us, seeded from determined's 68 catalog notes) | `nutrients`, `nutrient-categories` |
+| `food-nutrients` | `@osdlc/corpus-food-nutrients` | MIT OR Apache-2.0 (owned by osdlc, seeded from determined's 68 nutrient notes) | `nutrients`, `nutrient-categories` |
 | `usda-fdc` | `@osdlc/corpus-usda-fdc` | CC0-1.0, credit to FoodData Central | `foods`, `food-categories`, `releases`; references `food-nutrients` |
 | `open-food-facts` | `@osdlc/corpus-open-food-facts` | ODbL-1.0 (DbCL on contents) | `foods`, `releases`; references `food-nutrients`. Never referenced by the other two |
 
@@ -247,7 +291,7 @@ Each type has a JSON Schema at level 2 in its folder.
 
 | Type (folder) | Corpus | Record | Id |
 | --- | --- | --- | --- |
-| `nutrients` | food-nutrients | One nutrient: `slug`, `name`, `unit` (`g mg ug kcal IU`), `category` (x-ref), `fdc_nutrient_number`, `off_key`, `parent` (x-ref, e.g. saturated fat under fat), `sort_order` | the slug (`total-fat`), `x-id-pattern ^[a-z0-9-]+$`, the ids determined already uses |
+| `nutrients` | food-nutrients | One nutrient: `slug`, `name`, `unit` (`g mg ug kcal IU`), `category` (x-ref), `fdc_nutrient_number`, `off_key`, `infoods_tagname` (FAO/INFOODS, e.g. `PROCNT`), `parent` (x-ref, e.g. saturated fat under fat), `sort_order` | the slug (`total-fat`), `x-id-pattern ^[a-z0-9-]+$`, the ids determined already uses |
 | `nutrient-categories` | food-nutrients | energy, macronutrient, carbohydrate-component, fatty-acid, amino-acid, vitamin, mineral, sterol, other (determined's list) | slug |
 | `foods` | usda-fdc | One food | `usda-<fdcId>`, `x-id-pattern ^usda-[0-9]+$` |
 | `food-categories` | usda-fdc | One USDA category | slug of its description |
@@ -258,7 +302,7 @@ portions. As records they would be 135,411 and 5,621 files for the current slice
 per food, or roughly 380,000 files across SR Legacy and Foundation. They are arrays in the food record, with
 their shape written once in the food schema (`$defs`), because corpus-schema schemas stand alone
 and cross-type `$ref` is not allowed. This differs from the five types the brief listed; the
-recommendation is four plus the release (as `releases`), and it is Q-A below.
+recommendation is four plus the release (as `releases`), and it is Q-3.
 
 A food record (JSON, abbreviated):
 
@@ -293,6 +337,9 @@ and uses a fixed number format. Markdown would add a body nobody writes. The two
 (`nutrients`, `nutrient-categories`) are hand-edited and may be Markdown with a body, so
 `food-nutrients` uses `formats: [md]` and `usda-fdc` uses `formats: [json]`.
 
+`upstream`, `fdc_id` and an optional `gtin`-style string are plain fields; they point at other
+systems and copy nothing (see the OFF section for what an OFF pointer may be).
+
 **Folders.** `foods/<category>/usda-<id>.json`. A plain folder inside a type folder holds records
 (spec, Records), and the id still has to be unique across folders. A category folder keeps a
 directory listing readable. Open: whether to shard further by id range if GitHub's listing of one
@@ -326,6 +373,8 @@ find the record at any version.
   5 MB in a tarball; both numbers are estimates from the current 5.6 MB ndjson for 3,091 foods
   (about 1.8 kB per food) and must be measured in phase 2. `corpus-site` can build a site of that
   size (it measured 2,426 pages in about four seconds).
+- **Decided:** all SR Legacy and Foundation foods are in, tagged `whole-foods` where the old filters
+  would have kept them.
 - **Whole versus slice.** The `whole-foods` tag marks what determined and the dashboard preload.
   Consumers choose a tag; the corpus does not delete the rest. This makes the rules a reviewable
   classifier and turns an app's "which foods" question into a filter.
@@ -336,8 +385,8 @@ find the record at any version.
   each changing. It is a lookup (the live API in `fdc.rs` and the dashboard's T-F9KM), as D-0041
   and the dashboard's food `source` enum already treat it. An app that wants a pantry of branded
   items caches the ones it uses; it does not ingest the dump. A `builder` flag for a barcode slice
-  can come later (Q-E).
-- **Open Food Facts:** a builder and a small slice (phase 7), opt-in, ODbL.
+  can come later (Q-11).
+- **Open Food Facts:** a builder and a small slice (phase 7), opt-in, ODbL. Other corpora refer to it by id only.
 
 ### Q5. The builder
 
@@ -401,7 +450,8 @@ packages/corpora/<name>/
   src/build/              the builder, TypeScript, run by Node (no dist)
     *.test.ts             node --test, beside the code, as harness-reference does
   fixtures/               small real excerpts of each input, for tests and CI
-  export/                 optional compiled files that ship (e.g. foods.ndjson)
+  export/                 optional compiled files that ship (e.g. foods.ndjson), and a
+                          datapackage.json (Data Package v2: licences, sources, version)
 ```
 
 `package.json` scripts, all required unless noted:
@@ -412,7 +462,7 @@ packages/corpora/<name>/
 | `fetch` | download and hash-check the pinned inputs into the cache (corpora with an upstream) |
 | `pin` | add a release record from a URL (the release bump) |
 | `build` | cache to `corpus/`, offline, deterministic |
-| `export` | `corpus/` to `export/` (optional) |
+| `export` | `corpus/` to `export/`, with its `datapackage.json` (optional) |
 | `verify` | rebuild from the fixtures and the pinned cache and fail on a diff |
 | `test` | `node --test 'src/**/*.test.ts'` |
 | `typecheck` | `tsc` |
@@ -430,22 +480,32 @@ Rules:
    its README and in its `releases/` records, and its `package.json` licence covers code and data
    separately.
 6. A corpus with a licence that adds obligations (ODbL) declares it in `package.json` and
-   `README.md` and is never listed in another corpus's `references`.
+   `README.md`. No other corpus copies its contents or bundles it through a `_references` copy; a
+   pointer by id is allowed (see the OFF section).
 7. Published corpora set `"corpus"`, `files` and `publishConfig`, as `sdlc-starter` does, and
-   ship `corpus/` and `export/`. Builder source ships too (`src/build/`, `fixtures/`), so a
+   ship `corpus/` and `export/` (with its `datapackage.json`). Builder source ships too (`src/build/`, `fixtures/`), so a
    consumer can audit and rerun it; its dependencies are `devDependencies`.
 8. The version is semver: upstream release or rule change, minor; id change, major.
 
-**Spec or convention?** A convention doc. The corpus-schema spec is a format with a conformance
-suite in several languages; where the builder lives has nothing to do with whether a validator
-agrees. A spec change would also bind every implementation (the Rust ones included). The
-convention is enforced instead by extending `@osdlc/package-checks` (it already checks
-`packages/ts` against `S-package-shape-ts`; no corpus check exists, confirmed by reading
-`package-checks.json`) with a `corpora` mode, as phase 1. It also fixes the sentence in
-`packages/README.md` that says corpora hold no code. Existing corpora: `sdlc-starter` already
-conforms (no builder, so `fetch`, `build` and the rest are "n/a"); `harness-reference` conforms
-after renaming `src/compile` to `src/build` and adding `verify`. Do that rename only
-if the owner agrees; the standard can allow `src/<verb>/` as long as `build` is the script name.
+**Spec or convention? Decided: a convention doc.** The corpus-schema spec is a format with a
+conformance suite in several languages; where the builder lives has nothing to do with whether a
+validator agrees. A spec change would also bind every implementation (the Rust ones included). The
+convention is enforced instead by a `corpora` mode in `@osdlc/package-checks` (it checks
+`packages/ts` against `S-package-shape-ts` today; the checks are in
+`packages/ts/package-checks/src/`, and no corpus check exists), as phase 1. It also fixes the
+sentence in `packages/README.md` that says corpora hold no code. Existing corpora: `sdlc-starter`
+already conforms (no builder, so `fetch`, `build` and the rest are "n/a"); `harness-reference`
+conforms after renaming `src/compile` to `src/build` (decided) and adding `verify`. The standard
+fixes the folder name as `src/build/`.
+
+### Owner review: corpus-schema changes
+
+None proposed. Every rule above is a convention checked by package-checks, and the corpus-schema
+spec, its cases and its validator stay as they are. One limit is worth the owner's eye, though no
+change is asked for: an `id`-form `x-ref` must resolve to a record in a referenced corpus (SPEC,
+Typed references), so it cannot hold an OFF id unless the OFF package is installed and listed in
+`references`. Letting such a field hold an unresolved external id would be a spec change; this plan
+avoids it by using a plain `gtin` string.
 
 ### Q7. Distribution
 
@@ -492,18 +552,19 @@ the owner's call per bump, not part of this plan.
 ## Phases
 
 Each phase is one pull request, small enough to review in one sitting. A phase waits on the one
-before it unless it says otherwise. File each as a task record under
-`docs/planning/markdown/tasks/` (the next number is 89) after the owner approves the plan.
+before it unless it says otherwise. Each is a task record under
+`docs/planning/markdown/tasks/`: [89 Food corpus](markdown/tasks/89%20Food%20corpus.md) is the
+parent, and phases 1 to 7 are tasks 90 to 96, each waiting on the one before it unless noted.
 
 | # | Phase | Delivers | Done when |
 | --- | --- | --- | --- |
-| 1 | **The standard** | `S-corpus-package-shape.md`, the `packages/README.md` fix, a `corpora` mode in `@osdlc/package-checks`, a note in task 85 | `pnpm run check:packages` runs the corpora checks; `sdlc-starter` and `harness-reference` pass or are listed with the one change each needs |
-| 2 | **`food-nutrients`** | The catalog: 68 records from determined's vault notes plus nutrient categories; schemas; README; validates `--strict`. Needs the owner to say the notes may be public (task 85 has the same gate) | `validate` passes; ids equal determined's catalog ids |
-| 3 | **`usda-fdc` builder on fixtures** | `src/build/` ported from `build-usda-pack.ts` and `rules.ts`, schemas for foods, categories, releases; fixtures; tests; `check` green | A fixture build matches golden records; no network |
-| 4 | **`usda-fdc` first release** | `pin`, `fetch`, and the real SR Legacy 2018-04 and Foundation 2026-04-30 build committed; `export/foods.ndjson`; README with licence and credit; changelog | Reproducible: a second `build` gives zero diff; sizes measured and written in the README; the oracle test of Q8 step 1 passes |
-| 5 | **Publish** | npm publish workflow entry, `0.1.0`, provenance, `corpus-site` page for it (optional) | `npm view @osdlc/corpus-usda-fdc` shows it |
-| 6 | **Consumers** (in sksizer/dev, two PRs) | (a) determined switches to the package and an adapter; (b) the dashboard pack tool and the T-F9KM offline match | determined's ndjson regenerates equal; the dashboard installs the pack in a dry run |
-| 7 | **Other sources** (each its own PR, each optional) | `open-food-facts` slice builder and ODbL package; CNF; CoFID; Foundation 2026-10 as a release bump; FNDDS tag set | per source |
+| 1 (task 90) | **The standard** | `S-corpus-package-shape.md`, the `packages/README.md` fix, a `corpora` mode in `@osdlc/package-checks`, the `harness-reference` rename `src/compile` to `src/build` | `pnpm run check:packages` runs the corpora checks; `sdlc-starter` and `harness-reference` pass or are listed with the one change each needs |
+| 2 (task 91) | **`food-nutrients`** | The catalogue: 68 records seeded from determined's vault notes, each with `infoods_tagname`, plus nutrient categories; schemas; README; validates `--strict`. Needs the owner to say the notes may be public (task 85 has the same gate) | `validate` passes; ids equal determined's catalog ids |
+| 3 (task 92) | **`usda-fdc` builder on fixtures** | `src/build/` ported from `build-usda-pack.ts` and `rules.ts`, schemas for foods, categories, releases; fixtures; tests; `check` green | A fixture build matches golden records; no network |
+| 4 (task 93) | **`usda-fdc` first release** | `pin`, `fetch`, and the real SR Legacy 2018-04 and Foundation 2026-04-30 build committed; `export/foods.ndjson` and `export/datapackage.json`; README with licence and credit; changelog | Reproducible: a second `build` gives zero diff; sizes measured and written in the README; the oracle test of Q8 step 1 passes |
+| 5 (task 94) | **Publish** | npm publish workflow entry, `0.1.0`, provenance, `corpus-site` page for it (optional) | `npm view @osdlc/corpus-usda-fdc` shows it |
+| 6 (task 95) | **Consumers** (in sksizer/dev, two PRs) | (a) determined switches to the package and an adapter; (b) the dashboard pack tool and the T-F9KM offline match | determined's ndjson regenerates equal; the dashboard installs the pack in a dry run |
+| 7 (task 96) | **Other sources** (each its own PR, each optional) | `open-food-facts` slice builder and ODbL package; CNF; CoFID; Foundation 2026-10 as a release bump; FNDDS tag set | per source |
 
 Phases 1 and 2 are independent of 3 and can be reviewed in parallel; phase 3 needs phase 2's
 catalog and phase 1's layout.
@@ -518,44 +579,41 @@ catalog and phase 1's layout.
   the reason it stays one short file and its per-rule counts are in the release record.
 - **Licence.** CC0 means the data is free to ship. OFF's ODbL and the unconfirmed AFCD and Frida
   terms are the risks; each is a separate package, and none is merged into another.
-- **Task 85 overlap.** The fitness vault trial may convert foods in a different shape. Say so
-  in task 85 before phase 2 so the two agree on `food-nutrients`.
+- **Task 85 overlap.** The fitness vault trial may convert foods in a different shape. Task 85
+  now says so; the two must agree on `food-nutrients` before phase 2.
 - **Recommendations are not legal advice.** The ODbL reading above is from the licence text and
   needs an owner's call before the OFF phase.
+- **Unconfirmed sources.** The `@infoods/tagnames` provenance and licence, AFCD and Frida licences.
 
-## Open questions for the owner
+## Decided by the owner
 
-Each has a recommendation.
+On 2026-11-17 ([comment on the plan PR](https://github.com/osdlc/osdlc/pull/866#issuecomment-6968001746)):
 
-- **Q-1. Three corpora or two?** Recommend three: `food-nutrients`, `usda-fdc`, `open-food-facts`.
-  Fallback: nutrients live in `usda-fdc` until OFF.
-- **Q-2. Foods as JSON, nutrients as Markdown?** Recommend yes. Alternative: all Markdown, with
-  foods unbrowsable at 8,300 files and a body nobody writes.
-- **Q-3. Portions and amounts embedded in the food, not separate record types?** Recommend
-  embedded. The brief listed food, nutrient, portion, category and source or release as types.
-- **Q-4. Whole SR Legacy and Foundation with a `whole-foods` tag, rather than only determined's
-  3,091?** Recommend whole with a tag. Cost: a larger package (estimated 30 MB source, 5 MB
-  tarball).
-- **Q-5. Is `food-nutrients` allowed to take its slugs and FDC numbers from determined's catalog
-  notes, and who owns it afterwards?** Recommend the osdlc package becomes the owner and
-  determined imports it. Needs the owner's say that those notes may be public.
-- **Q-6. Does the builder ship inside the tarball?** Recommend yes (`src/build/` and
-  `fixtures/`), dependencies as devDependencies. The brief says "ships inside the corpora
-  package"; this keeps it auditable and rerunnable.
-- **Q-7. Standard as a convention doc plus a package-checks mode, not a spec change?** Recommend
-  yes. Also: rename `harness-reference`'s `src/compile` to `src/build`, or let the standard allow
-  either?
-- **Q-8. Package licence.** Recommend `(MIT OR Apache-2.0) AND CC0-1.0` for `usda-fdc`, with an
-  exception clause in the standard. Alternative: relicense nothing and ship data under
-  CC0-1.0 only, builder under MIT OR Apache-2.0 in a separate folder.
-- **Q-9. Release cadence.** Foundation 2026-10 is out. Recommend shipping `0.1.0` on the pins
-  determined already uses (so the oracle test works), then bump as a separate minor.
-- **Q-10. OFF scope.** Recommend building the OFF corpus only as a builder and a small slice,
-  and deferring it until an app asks. Defer AFCD and Frida until their licences are confirmed.
-- **Q-11. Branded.** Recommend never in a corpus. Confirm.
-- **Q-12. Is Python wanted anywhere?** Recommend no, unless OFF's Parquet needs it later.
+- **Scope:** all of SR Legacy and Foundation (about 8,300 foods). Determined's old filters become
+  a `whole-foods` tag, and the "curated" rule moves to a determined adapter.
+- **Nutrient notes:** determined's 68 nutrient notes seed the public `food-nutrients` catalogue,
+  and osdlc owns it afterwards.
+- **Standard:** `S-corpus-package-shape` is a convention doc, enforced by a corpora mode in
+  `@osdlc/package-checks`. The corpus-schema spec does not change. harness-reference renames
+  `src/compile` to `src/build`.
+
+The remaining questions take the plan's recommendation unless the owner says otherwise:
+
+- Q-2 foods as JSON and nutrients as Markdown; Q-3 portions and amounts embedded in the food.
+- Q-6 the builder ships in the tarball (`src/build/`, `fixtures/`), dependencies as devDependencies.
+- Q-8 licence `(MIT OR Apache-2.0) AND CC0-1.0` for `usda-fdc`, with an exception clause in the
+  standard.
+- Q-9 `0.1.0` on determined's pins, then Foundation 2026-10 as a minor.
+- Q-10 Open Food Facts, AFCD and Frida deferred (AFCD and Frida until their licences are
+  confirmed). Q-11 Branded never in a corpus. Q-12 no Python.
+
+## Open question for the owner
+
+- **Q-1. Three corpora or two?** The plan assumes three: `food-nutrients`, `usda-fdc`,
+  `open-food-facts`. Recommend three. Fallback: the catalogue lives in `usda-fdc` until OFF and
+  moves out as a breaking change.
 
 ## Where this plan stands
 
-Not started. Draft pull request for review. No datasets were downloaded for it; every fact in the
+Not started; the owner's decisions are applied and the tasks are filed. Pull request for review. No datasets were downloaded for it; every fact in the
 survey comes from the pages cited, read on 2026-11-17.
