@@ -47,7 +47,7 @@ export const prUpdateConfigSchema = z
       .boolean()
       .default(false)
       .describe(
-        'Update a whole stack in one run, as `update --restack` does: a PR blocked only because its parent is behind is updated right after that parent, onto the head the parent just got. `--restack` turns it on for one run when this is `false`; there is no flag to turn it off for one run.',
+        'Update a whole stack in one run, as `update --restack` does: a PR blocked only because its parent is behind is updated right after that parent, onto the head the parent just got. `--restack` turns it on and `--no-restack` off for one run, whichever this says.',
       ),
     overrides: z
       .array(

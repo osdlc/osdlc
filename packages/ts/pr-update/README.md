@@ -156,8 +156,7 @@ pr-update update --restack --branch --apply     # the stack under the branch you
 ```
 
 A project that always restacks sets `pr_update.restack: true` instead of passing the
-flag. `--restack` turns it on for one run when the config says `false`; there is no
-flag to turn it off for one run.
+flag. `--restack` turns it on and `--no-restack` off for one run, whichever the config says.
 
 - A blocked PR whose parent is updated in the run is updated right after it,
   onto the head the parent just got. A rebase replays only the PR's own
