@@ -38,7 +38,7 @@ later on the 24 line, or 26 and later (`^22.22.2 || ^24.15.0 || >=26.0.0`).
 The range is not a choice of this package. It is the range of `@osdlc/typed-git`,
 a dependency, which takes it from its own dependency `hosted-git-info`. A package
 never declares a range wider than a dependency's, so Node 23, 25 and 24.0 to 24.14
-are excluded. Nothing in agent-seat itself needs a newer Node.
+are excluded.
 
 ## Quick start
 
