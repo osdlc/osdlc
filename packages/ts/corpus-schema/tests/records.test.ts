@@ -229,6 +229,24 @@ describe('hints for supporting files outside a record folder', () => {
     assert.match(errors().find((m) => m.startsWith('study/old.yml:')) ?? '', /rename it to \.yaml/)
   })
 
+  test('the hint names the declared x-record-file, and a deeper folder by its own name', () => {
+    root('c')
+    put('c/study/study.schema.yaml', 'type: object\nrequired: [title]\nx-record-file: README.md\n')
+    put('c/study/a/b/data.md', '---\n---\n')
+    const [e] = errors().filter((m) => m.startsWith('study/a/b/data.md:'))
+    assert.match(e ?? '', /b\/ has no README\.md/)
+    assert.match(e ?? '', /add study\/a\/b\/README\.md\./)
+    assert.doesNotMatch(e ?? '', /or set x-record-file/)
+  })
+
+  test('the hint suggests a record file in a format the corpus allows', () => {
+    root('c', { extra: 'formats: [json]\n' })
+    put('c/study/study.schema.json', '{"type":"object"}\n')
+    put('c/study/perf-run/notes.md', '---\n---\n')
+    const [e] = errors().filter((m) => m.startsWith('study/perf-run/notes.md:'))
+    assert.match(e ?? '', /perf-run\/ has no perf-run\.json/)
+  })
+
   test('a failing .md record at the top of a type folder gets no hint', () => {
     study()
     put('c/study/c.md', '---\n---\n')

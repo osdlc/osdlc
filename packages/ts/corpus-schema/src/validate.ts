@@ -1178,13 +1178,15 @@ function strayHint(
   files: string[],
   declared: string | undefined,
   yml: boolean,
+  extensions: string[],
 ): string {
   if (folder !== undefined) return ''
   const dir = posix.dirname(file)
   const ext = extname(file).toLowerCase()
   if (dir !== type.dir) {
     const name = basename(dir)
-    const record = declared ?? `${name}.md`
+    const preferred = extensions.includes('.md') ? '.md' : (extensions[0] ?? '.md')
+    const record = declared ?? `${name}${preferred}`
     const add = `add ${dir}/${record}${declared === undefined ? ' (or set x-record-file)' : ''}`
     const keep = yml
       ? 'rename it to .yaml and move it into a record folder'
@@ -1232,7 +1234,7 @@ function readRecords(
       const lower = ext.toLowerCase()
       if (lower === '.yml') {
         c.errors.push(
-          `${file}: (file): use the .yaml extension${strayHint(type, file, folder, files, declared, true)}`,
+          `${file}: (file): use the .yaml extension${strayHint(type, file, folder, files, declared, true, extensions)}`,
         )
         continue
       }
@@ -1243,7 +1245,7 @@ function readRecords(
       }
       if (!extensions.includes(ext)) {
         c.errors.push(
-          `${file}: format: ${ext.slice(1)} is not in the corpus's formats${strayHint(type, file, folder, files, declared, false)}`,
+          `${file}: format: ${ext.slice(1)} is not in the corpus's formats${strayHint(type, file, folder, files, declared, false, extensions)}`,
         )
         continue
       }
@@ -1286,7 +1288,10 @@ function readRecords(
       // One hint per file, on its first failure.
       const [first, ...rest] = failures
       if (first !== undefined)
-        c.errors.push(first + strayHint(type, file, folder, files, declared, false), ...rest)
+        c.errors.push(
+          first + strayHint(type, file, folder, files, declared, false, extensions),
+          ...rest,
+        )
       if (failures.size === 0 && problem === undefined && other === undefined && !wrongId) {
         type.records.set(id, { file, data })
         record.valid = true
