@@ -89,8 +89,11 @@ impl Visibility {
 ///
 /// The function runs at the start of every walk and every admission query, so
 /// keep it quick: return rules compiled when the list last changed, not a
-/// list parsed on every call. A cache does not know the list changed: after
-/// it does, refresh the cache (`refresh_now`) to apply it.
+/// list parsed on every call. Do not call back into a cache from it, or take a
+/// lock a cache's caller may hold. A cache does not know the list changed:
+/// after it does, call `refresh_now` (`refresh` may skip a fresh sweep) to
+/// apply it; until then a change batch applies the new list only to the paths
+/// it names.
 #[derive(Clone)]
 pub struct HideSource(Arc<dyn Fn() -> Arc<HideRules> + Send + Sync>);
 
@@ -492,8 +495,8 @@ impl WalkOptions {
     ///
     /// The roots, the skip and prune lists, the visibility policy, the
     /// excluded files (read from the vault for [`Hide::Vault`], asked of the
-    /// caller for [`Hide::Source`]), the exclude list and notes versus attachments decide [`Admission::Outside`]. Then
-    /// the file system decides [`Admission::Unlisted`], as the walk reaches
+    /// caller for [`Hide::Source`]), the exclude list and notes versus
+    /// attachments decide [`Admission::Outside`]. Then the file system decides [`Admission::Unlisted`], as the walk reaches
     /// a file: by listing each folder from the walk's start down. A folder
     /// on the way that cannot be listed or is a symlink (never entered), or
     /// a file its folder does not list, is unlisted. So is a folder, a file
