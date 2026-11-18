@@ -2815,10 +2815,23 @@ export function worktreePrune(): GitVerb<void> {
  * `git submodule update --init --recursive`: check out every submodule, nested ones included,
  * at the commit the checked-out tree pins, cloning those not yet initialised. A repository
  * with no submodules is exit 0 and no work.
+ *
+ * The URLs come from the tree's own `.gitmodules`, which a pull request's author controls, so
+ * the `file` and `ext` transports are refused (a local path or a command as a "URL"). A
+ * `GIT_ALLOW_PROTOCOL` in the environment still takes precedence over these.
  */
 export function submoduleUpdate(): GitVerb<void> {
   return {
-    argv: ['submodule', 'update', '--init', '--recursive'],
+    argv: [
+      '-c',
+      'protocol.file.allow=never',
+      '-c',
+      'protocol.ext.allow=never',
+      'submodule',
+      'update',
+      '--init',
+      '--recursive',
+    ],
     absent: NONE,
     parse: nothing,
   }

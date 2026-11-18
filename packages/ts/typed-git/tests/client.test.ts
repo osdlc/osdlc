@@ -1850,10 +1850,8 @@ describe('Git — real repo round trips', () => {
   test('submoduleUpdate checks out a submodule a clone left empty', () => {
     const root = mkdtempSync(join(tmpdir(), 'typedgit-submodule-'))
     const env = { ...process.env }
-    // Git refuses a local-path submodule URL unless this is set.
-    process.env.GIT_CONFIG_COUNT = '1'
-    process.env.GIT_CONFIG_KEY_0 = 'protocol.file.allow'
-    process.env.GIT_CONFIG_VALUE_0 = 'always'
+    // The verb refuses local-path submodule URLs; this environment setting overrides that.
+    process.env.GIT_ALLOW_PROTOCOL = 'file'
     try {
       const sub = new Git(join(root, 'sub'))
       mkdirSync(join(root, 'sub'))
@@ -1877,7 +1875,43 @@ describe('Git — real repo round trips', () => {
       expect(existsSync(join(root, 'down', 'deps', 'sub', 'f.txt'))).toBe(true)
       down.submoduleUpdate()
     } finally {
-      for (const k of ['GIT_CONFIG_COUNT', 'GIT_CONFIG_KEY_0', 'GIT_CONFIG_VALUE_0']) {
+      for (const k of ['GIT_ALLOW_PROTOCOL']) {
+        if (env[k] === undefined) delete process.env[k]
+        else process.env[k] = env[k]
+      }
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test('submoduleUpdate refuses a local-path submodule URL unless the environment allows it', () => {
+    const root = mkdtempSync(join(tmpdir(), 'typedgit-submodule-'))
+    const env = { ...process.env }
+    // The verb refuses local-path submodule URLs; this environment setting overrides that.
+    process.env.GIT_ALLOW_PROTOCOL = 'file'
+    try {
+      const sub = new Git(join(root, 'sub'))
+      mkdirSync(join(root, 'sub'))
+      sub.rawChecked(['init', '-b', 'main'])
+      sub.rawChecked(['config', 'user.email', 't@t'])
+      sub.rawChecked(['config', 'user.name', 't'])
+      writeFileSync(join(root, 'sub', 'f.txt'), 'x\n')
+      sub.add(['.'])
+      sub.commit({ message: 's1' })
+      const up = new Git(join(root, 'up'))
+      mkdirSync(join(root, 'up'))
+      up.rawChecked(['init', '-b', 'main'])
+      up.rawChecked(['config', 'user.email', 't@t'])
+      up.rawChecked(['config', 'user.name', 't'])
+      up.rawChecked(['submodule', 'add', join(root, 'sub'), 'deps/sub'])
+      up.commit({ message: 'u1' })
+      new Git(root).rawChecked(['clone', join(root, 'up'), 'down'])
+      const down = new Git(join(root, 'down'))
+      expect(existsSync(join(root, 'down', 'deps', 'sub', 'f.txt'))).toBe(false)
+      delete process.env.GIT_ALLOW_PROTOCOL
+      expect(() => down.submoduleUpdate()).toThrow()
+      expect(existsSync(join(root, 'down', 'deps', 'sub', 'f.txt'))).toBe(false)
+    } finally {
+      for (const k of ['GIT_ALLOW_PROTOCOL']) {
         if (env[k] === undefined) delete process.env[k]
         else process.env[k] = env[k]
       }

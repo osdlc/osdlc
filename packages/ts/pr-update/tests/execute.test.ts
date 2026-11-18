@@ -1142,14 +1142,12 @@ describe('submodules in the update worktree', () => {
   let s1: string
   let s2: string
   let s3: string
-  const GIT_ENV = ['GIT_CONFIG_COUNT', 'GIT_CONFIG_KEY_0', 'GIT_CONFIG_VALUE_0'] as const
+  const GIT_ENV = ['GIT_ALLOW_PROTOCOL'] as const
   const savedEnv = Object.fromEntries(GIT_ENV.map((k) => [k, process.env[k]]))
 
   beforeEach(() => {
-    // Git refuses a local-path submodule URL unless this is set.
-    process.env.GIT_CONFIG_COUNT = '1'
-    process.env.GIT_CONFIG_KEY_0 = 'protocol.file.allow'
-    process.env.GIT_CONFIG_VALUE_0 = 'always'
+    // The verb refuses local-path submodule URLs; this environment setting overrides that.
+    process.env.GIT_ALLOW_PROTOCOL = 'file'
     subDir = mkdtempSync(join(tmpdir(), 'pr-update-sub-'))
     const sub = new Git(subDir)
     sub.rawChecked(['init', '-b', 'main'])

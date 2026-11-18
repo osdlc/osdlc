@@ -96,7 +96,7 @@ export const prUpdateConfigSchema = z
       .enum(['auto', 'off'])
       .default('auto')
       .describe(
-        "Whether the update worktree gets the repository's git submodules. `auto` (default) runs `git submodule update --init --recursive` in it when it has a `.gitmodules`, after each PR's checkout and again when the update moved a submodule pointer or changed `.gitmodules`, so `verify` verbs, resolvers and `lockfile_install` find them. A failure is reported as `submodule setup failed: <detail>` and is not recorded as a failed attempt. It clones the URLs the PR's `.gitmodules` names. `off` leaves submodules alone.",
+        "Whether the update worktree gets the repository's git submodules. `auto` (default) runs `git submodule update --init --recursive` in it when it has a `.gitmodules`, after each PR's checkout and again when the update moved a submodule pointer or changed `.gitmodules`, so `verify` verbs, resolvers and `lockfile_install` find them. A failure is reported as `submodule setup failed: <detail>` and is not recorded as a failed attempt. It clones the URLs the PR's `.gitmodules` names (never over `file` or `ext`). `off` leaves submodules alone.",
       ),
     on_rebase_conflict: z
       .enum(['merge', 'fail'])
