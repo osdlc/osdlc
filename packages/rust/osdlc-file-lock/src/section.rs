@@ -91,7 +91,7 @@ pub enum LockError {
         /// The lock that stayed held.
         path: PathBuf,
         /// The holder seen last, or `None` when the lock kept changing.
-        holder: Option<HeldLock>,
+        holder: Option<Box<HeldLock>>,
     },
     /// Writing the claim file or linking it failed, for a reason other than
     /// "already held": a missing directory, a read-only file system.
@@ -163,7 +163,7 @@ pub fn with_lock<T>(
                 if now >= deadline {
                     return Err(LockError::Timeout {
                         path: path.to_path_buf(),
-                        holder,
+                        holder: holder.map(Box::new),
                     });
                 }
                 std::thread::sleep(options.retry.min(deadline - now));
