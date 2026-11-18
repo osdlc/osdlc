@@ -394,7 +394,7 @@ describe('orca host', () => {
     expect(calls[1]).toContain('--limit')
   })
 
-  test('find: a failed full listing finds nothing rather than a partial page', () => {
+  test('find: a failed full listing falls back to the first page', () => {
     const { runner } = recorder([
       {
         exitCode: 0,
@@ -405,9 +405,8 @@ describe('orca host', () => {
       },
       { exitCode: 1, stdout: '', stderr: 'boom' },
     ])
-    expect(
-      makeOrcaHost({ runtimeDir: RUNTIME, binary: 'orca', runner }).find!({ cwd: '/w' }),
-    ).toEqual([])
+    const found = makeOrcaHost({ runtimeDir: RUNTIME, binary: 'orca', runner }).find!({ cwd: '/w' })
+    expect(found.map((f) => f.handle)).toEqual(['term_1'])
   })
 
   test('find: an untruncated page is listed once', () => {

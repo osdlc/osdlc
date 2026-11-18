@@ -220,8 +220,8 @@ function orcaTruncatedTotal(stdout: string): number | null {
 
 /**
  * Every terminal of the worktree; a truncated first page is listed again with `--limit` of
- * `totalCount`. Returns [] when either listing fails or the second is still truncated: a
- * partial page could miss the terminal the caller wants.
+ * `totalCount`. Returns [] when the first listing fails; when the full listing fails or is
+ * still truncated, the first page's terminals stand (an empty find would always open a duplicate).
  */
 function listOrcaTerminals(runner: CommandRunner, cwd: string): OrcaTerminal[] {
   const opts = { cwd, timeoutMs: 30_000 }
@@ -230,8 +230,7 @@ function listOrcaTerminals(runner: CommandRunner, cwd: string): OrcaTerminal[] {
   const total = orcaTruncatedTotal(res.stdout)
   if (total !== null) {
     const full = runner.run(orcaFindArgv({ cwd }, total), opts)
-    if (!ran(full) || orcaTruncatedTotal(full.stdout) !== null) return []
-    res = full
+    if (ran(full) && orcaTruncatedTotal(full.stdout) === null) res = full
   }
   return parseOrcaTerminals(res.stdout, cwd)
 }
