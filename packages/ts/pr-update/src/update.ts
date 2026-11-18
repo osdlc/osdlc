@@ -273,7 +273,7 @@ export const input = z.object({
     .boolean()
     .default(false)
     .describe(
-      "Update a whole stack in one run. A PR blocked only because its parent is behind is updated right after that parent, onto the head the parent just got, instead of waiting for the next run. A rebase replays only its own commits (`rebase --onto`), not its parent's old ones. With --pr or --branch, the named PRs' stack ancestors are updated too.",
+      "Update a whole stack in one run (also `pr_update.restack`). A PR blocked only because its parent is behind is updated right after that parent, onto the head the parent just got, instead of waiting for the next run. A rebase replays only its own commits (`rebase --onto`), not its parent's old ones. With --pr or --branch, the named PRs' stack ancestors are updated too.",
     ),
   strategy: z
     .enum(['rebase', 'merge'])
@@ -507,7 +507,7 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
     retryFailed: args.retryFailed,
   }
   const { targets, skipped, notFound } = selectTargets(report, only, policy, {
-    restack: args.restack,
+    restack: args.restack || effectiveCfg.restack,
   })
 
   const writes = wantsWrite(args, env.dryRun)
