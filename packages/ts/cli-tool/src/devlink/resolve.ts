@@ -41,7 +41,15 @@ import { closeSync, openSync, readFileSync, readSync, realpathSync, statSync } f
 import { dirname, isAbsolute, join, relative, resolve as resolvePath, sep } from 'node:path'
 
 import { readActive, readCandidates, type StateOptions } from './state.ts'
-import { cwdLayerActive, entryOf, homeVar, projectLayerActive, type ToolSpec } from './spec.ts'
+import {
+  cwdLayerActive,
+  entryOf,
+  homeVar,
+  projectLayerActive,
+  runtimeOf,
+  type Runtime,
+  type ToolSpec,
+} from './spec.ts'
 
 /**
  * Which layer picked the checkout: `env`, `cwd`, `link`, `project`, or `local`
@@ -59,15 +67,17 @@ export interface Selected {
   source: 'env' | 'cwd' | 'link' | 'project'
   /** The checkout root that won; for `project`, the installed package's directory. */
   checkout: string
-  /** `<checkout>/<entry>`: what to run under Bun; for `project`, the package's bin. */
+  /** `<checkout>/<entry>`: what to run under {@link runtime}; for `project`, the package's bin. */
   entry: string
   /** Why, for the launcher's stderr line. */
   reason: string
   /**
-   * For `project`: what runs the bin, from its `#!` line (`bun` when it names
-   * bun, else `node`). Absent for a checkout, whose source runs under Bun.
+   * What runs `entry`. For a checkout, the spec's `runtime` (`bun` unless it
+   * says `node`). For `project`, the bin's `#!` line: `bun` when it names
+   * bun, else `node`. `execSelection` reads an absent value as the spec's
+   * `runtime`.
    */
-  runtime?: 'bun' | 'node'
+  runtime?: Runtime
   /** For `project`: the installed package's version, or null when it has none. */
   version?: string | null
 }
@@ -241,7 +251,7 @@ export function projectBin(spec: ToolSpec, dir: string): string | null {
 }
 
 /** What runs `file`: `bun` when its `#!` line names bun, else `node`. */
-export function binRuntime(file: string): 'bun' | 'node' {
+export function binRuntime(file: string): Runtime {
   let fd: number | undefined
   try {
     fd = openSync(file, 'r')
@@ -314,7 +324,13 @@ export function resolve(spec: ToolSpec, opts: ResolveOptions = {}): Selection {
     if (self !== null && samePath(abs, self)) {
       return { source: 'local', checkout: null, entry: null, reason: `${reason}: this checkout` }
     }
-    return { source, checkout: abs, entry: join(abs, entryOf(spec)), reason }
+    return {
+      source,
+      checkout: abs,
+      entry: join(abs, entryOf(spec)),
+      reason,
+      runtime: runtimeOf(spec),
+    }
   }
 
   const fromEnv = env[homeVar(spec)]
