@@ -1251,7 +1251,11 @@ describe('runUpdate --restack — a three-level stack, against real git', () => 
   })
 
   test('pr_update.restack: true restacks without the flag', async () => {
-    const out = await run({ apply: true, strategy: 'merge' }, {}, { restack: true })
+    const out = await run(
+      { apply: true, strategy: 'merge', restack: undefined },
+      {},
+      { restack: true },
+    )
     expect(out.results.map((r) => [r.number, r.restackedOnto])).toEqual([
       [1, undefined],
       [2, 1],
