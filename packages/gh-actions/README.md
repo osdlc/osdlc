@@ -199,6 +199,7 @@ input of the workflow under `with:`. Each is one line, except `env`.
 | `RUST_CI_BUN_VERSION`  | `bun-version`  | none                         | Bun to install: a version, or `package.json` (its `packageManager`), `.bun-version` or `.tool-versions`.             |
 | `RUST_CI_ENV`          | `env`          | none                         | `NAME=value` lines added to each job's environment.                                                                  |
 | `RUST_CI_TIMEOUT`      | `timeout`      | `60`                         | Minutes for each build job.                                                                                          |
+| `RUST_CI_DEBUG`        | `debug`        | `line-tables-only`           | Debug info for test builds: `line-tables-only`, `none`, `limited`, `full`, or `profile` for Cargo.toml's.            |
 
 The toolchain is the workspace's `rust-toolchain.toml`, or stable when it has
 none. `CARGO_INCREMENTAL=0` is set for every job. The build cache

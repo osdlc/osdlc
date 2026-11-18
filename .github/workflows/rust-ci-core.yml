@@ -40,6 +40,11 @@
 #                          per line. The only multi-line setting; `settings`
 #                          passes it on as one JSON line.
 #   RUST_CI_TIMEOUT        minutes for each build job; default 60
+#   RUST_CI_DEBUG          debug info for the dev and test profiles:
+#                          line-tables-only (default: file and line in
+#                          backtraces, smaller and faster to link and cache),
+#                          none, limited, full, or `profile` to keep what
+#                          Cargo.toml says
 #
 # The toolchain is the workspace's rust-toolchain.toml, else stable (MSRV:
 # the `rust-version` in the workspace Cargo.toml). The Rust composite actions
@@ -107,6 +112,10 @@ on:
         description: Minutes for each build job. Default the variable RUST_CI_TIMEOUT, else 60.
         type: string
         default: ""
+      debug:
+        description: Debug info for the dev and test profiles, line-tables-only, none, limited, full or `profile`. Default the variable RUST_CI_DEBUG, else line-tables-only.
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -138,6 +147,7 @@ jobs:
       bun-version-file: ${{ steps.s.outputs.bun-version-file }}
       env: ${{ steps.s.outputs.env }}
       timeout: ${{ steps.s.outputs.timeout }}
+      debug: ${{ steps.s.outputs.debug }}
     steps:
       - id: s
         env:
@@ -154,6 +164,7 @@ jobs:
           BUN_VERSION: ${{ inputs.bun-version || vars.RUST_CI_BUN_VERSION }}
           JOB_ENV: ${{ inputs.env || vars.RUST_CI_ENV }}
           TIMEOUT: ${{ inputs.timeout || vars.RUST_CI_TIMEOUT || '60' }}
+          DEBUG: ${{ inputs.debug || vars.RUST_CI_DEBUG || 'line-tables-only' }}
         run: |
           set -euo pipefail
           fail() { echo "::error::$1"; exit 1; }
@@ -164,6 +175,7 @@ jobs:
           for v in LOCKED WINDOWS MSRV; do
             [[ "${!v}" =~ ^(true|false)$ ]] || fail "RUST_CI_$v: true or false, not '${!v}'"
           done
+          [[ "$DEBUG" =~ ^(line-tables-only|none|limited|full|profile)$ ]] || fail "RUST_CI_DEBUG: line-tables-only, none, limited, full or profile, not '$DEBUG'"
           [[ "$TIMEOUT" =~ ^[1-9][0-9]*$ ]] || fail "RUST_CI_TIMEOUT: a number of minutes, not '$TIMEOUT'"
           while IFS= read -r line; do
             line="${line%$'\r'}"
@@ -188,6 +200,7 @@ jobs:
           esac
           {
             echo "workspace=$WORKSPACE"
+            echo "debug=$DEBUG"
             echo "packages=$PACKAGES"
             echo "clippy-args=$CLIPPY_ARGS"
             echo "test-args=$TEST_ARGS"
@@ -277,8 +290,15 @@ jobs:
         working-directory: .
         env:
           JOB_ENV: ${{ needs.settings.outputs.env }}
+          DEBUG: ${{ needs.settings.outputs.debug }}
         run: |
           echo /.rust-ci-tools/ >> .git/info/exclude
+          # Before RUST_CI_ENV, so a CARGO_PROFILE_* line there wins. Set
+          # ahead of the cache step, whose key includes CARGO_* variables.
+          if [ "$DEBUG" != profile ]; then
+            echo "CARGO_PROFILE_DEV_DEBUG=$DEBUG" >> "$GITHUB_ENV"
+            echo "CARGO_PROFILE_TEST_DEBUG=$DEBUG" >> "$GITHUB_ENV"
+          fi
           jq -r '.[]' <<< "$JOB_ENV" >> "$GITHUB_ENV"
 
       - uses: ./.rust-ci-tools/.github/actions/rust-toolchain
@@ -362,8 +382,15 @@ jobs:
         working-directory: .
         env:
           JOB_ENV: ${{ needs.settings.outputs.env }}
+          DEBUG: ${{ needs.settings.outputs.debug }}
         run: |
           echo /.rust-ci-tools/ >> .git/info/exclude
+          # Before RUST_CI_ENV, so a CARGO_PROFILE_* line there wins. Set
+          # ahead of the cache step, whose key includes CARGO_* variables.
+          if [ "$DEBUG" != profile ]; then
+            echo "CARGO_PROFILE_DEV_DEBUG=$DEBUG" >> "$GITHUB_ENV"
+            echo "CARGO_PROFILE_TEST_DEBUG=$DEBUG" >> "$GITHUB_ENV"
+          fi
           jq -r '.[]' <<< "$JOB_ENV" >> "$GITHUB_ENV"
 
       - name: Read rust-version
