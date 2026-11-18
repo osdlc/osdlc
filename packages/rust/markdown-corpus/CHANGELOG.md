@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Reading a note for the link graph splits and parses its frontmatter once,
+  not twice, and `LinkGraph::apply_changes` and
+  `FrontmatterIndex::apply_changes` skip their folder listings when the
+  cache holds another corpus.
+
 ## [0.4.0] - 2026-11-14
 
 Built on `markdown-vault-fs` 0.7, whose `Admission` has a new variant.

@@ -39,7 +39,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use markdown_vault_fs::walk::{Admission, Errors, WalkError, WalkOptions};
+use markdown_vault_fs::walk::{Admission, Errors, WalkError, WalkOptions, is_note};
 use vfs_seam::{Clock, Vfs, VfsError};
 use yaml_splice::Mapping;
 
@@ -429,6 +429,10 @@ impl FrontmatterIndex {
         // apply lock: an apply that read a note before another apply must
         // not install after it.
         let _apply = self.apply_lock.lock().unwrap();
+        // Another corpus: nothing below applies, so skip the listings.
+        if self.state.lock().unwrap().for_vault.as_deref() != Some(vault_dir) {
+            return;
+        }
         let mut respelled = false;
         if !notes.is_empty() {
             for (rel, admission) in self.walk.admissions(vfs, vault_dir, &notes) {
@@ -558,10 +562,6 @@ fn unchanged(state: &IndexState) -> RefreshStats {
 
 /// [`IndexedNote::parse_error`] for a note that could not be read.
 const UNREAD: &str = "could not read the file";
-
-fn is_note(rel: &str) -> bool {
-    rel.to_lowercase().ends_with(".md")
-}
 
 /// Reads and parses one note. A note that cannot be read is kept with a
 /// parse error and no time, so it is never fresh, and the error to report

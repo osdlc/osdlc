@@ -70,10 +70,10 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use markdown_link::{BodyLink, BodyLinkKind, LinkIndex, RawLink, ResolveError};
-use markdown_vault_fs::walk::{Admission, Errors, Hide, WalkError, WalkOptions};
+use markdown_vault_fs::walk::{Admission, Errors, Hide, WalkError, WalkOptions, is_note};
 use vfs_seam::{Clock, Metadata, Vfs, VfsError};
 
-use crate::note::{SplitMode, read_note_with, split_with};
+use crate::note::{SplitMode, parse_frontmatter, split_with};
 use crate::tags::{NoTags, TagLexer};
 
 /// How long a completed sweep counts as current, in milliseconds.
@@ -640,6 +640,10 @@ impl LinkGraph {
         // apply lock: a batch that read a file before another batch must not
         // install after it.
         let _apply = self.apply_lock.lock().unwrap();
+        // Another corpus: nothing below applies, so skip the listings.
+        if self.state.lock().unwrap().for_vault.as_deref() != Some(vault_dir) {
+            return;
+        }
         let admitted: Vec<(&String, Admission)> = self
             .walk
             .admissions(vfs, vault_dir, rels)
@@ -691,7 +695,7 @@ impl LinkGraph {
                         stale |= apply_met(errors, &e);
                     }
                     Seen::Gone
-                } else if rel.to_lowercase().ends_with(".md") && self.reads(rel) {
+                } else if is_note(rel) && self.reads(rel) {
                     let (size, mtime) = stamp_listed(vfs, &abs).unwrap_or_else(|e| {
                         stale |= apply_met(errors, &e);
                         (0, None)
@@ -1321,15 +1325,15 @@ fn scan_note(
     // Body only: a `[[link]]` in a frontmatter value is a frontmatter edge.
     let (yaml, body) = split_with(&source, split);
     // Parsed only when the YAML could hold a link or a path at all.
-    let frontmatter_links =
-        if yaml.is_some_and(|y| y.contains("[[") || markdown_link::may_hold_frontmatter_paths(y)) {
-            let fm = read_note_with(&source, split).frontmatter;
+    let frontmatter_links = match yaml {
+        Some(y) if y.contains("[[") || markdown_link::may_hold_frontmatter_paths(y) => {
+            let fm = parse_frontmatter(y).0;
             let mut links = markdown_link::frontmatter_links(&fm);
             links.extend(markdown_link::frontmatter_paths(&fm));
             links
-        } else {
-            Vec::new()
-        };
+        }
+        _ => Vec::new(),
+    };
     let links = markdown_link::body_links_spanned(body);
     let lines = links.iter().map(|l| line_of(body, l.byte_start)).collect();
     let facts = NoteFacts {
