@@ -1185,6 +1185,282 @@ function strayHint(
   if (dir !== type.dir) {
     const name = basename(dir)
     const record = declared ?? `${name}.md`
+    const add = `add ${dir}/${record}${declared === undefined ? ' (or set x-record-file)' : ''}`
+    const keep = yml ? 'rename it to .yaml and move it into a record folder' : `keep these files with one record, ${add}`
+    return (
+      `\n  not a record folder: ${name}/ has no ${record}.` +
+      `\n  To ${keep}.` +
+      `\n  To keep them out of the corpus, move them under a folder starting with _.`
+    )
+  }
+  const inType = [...c.types.values()].find((t) => n.startsWith(`${t.dir}/`))
+    if (inType !== undefined)
+      c.errors.push(`${n}: (folder): a corpus must not sit inside type folder ${inType.dir}`)
+  }
+  return schemaFiles
+}
+
+/**
+ * Check a schema's `x-identity`, which must be the type's identity: the corpus's unversioned
+ * package URL and `#<type>`. A local corpus has no identity to match, so its `x-identity` is not
+ * checked.
+ */
+function checkIdentity(c: Corpus, schemaFile: string, name: string, value: unknown): void {
+  if (typeof value !== 'string') return
+  if (c.package === null) {
+    c.warnings.push(`${schemaFile}: x-identity: not checked, since the corpus is in no package`)
+    return
+  }
+  const want = npmPackageUrl(c.package.name, undefined, [name])
+  if (value !== want)
+    c.errors.push(`${schemaFile}: x-identity: must be ${want}, the type's identity`)
+}
+
+/** Make `dir` a type that uses a parent's type as it is, as `uses` names it. */
+function useType(c: Corpus, dir: string, use: Used, typeDirs: Map<string, string>): void {
+  const name = basename(dir)
+  const clash = typeDirs.get(fold(name))
+  if (clash !== undefined) {
+    c.errors.push(`${dir}: (folder): type name is also used by ${clash}`)
+    return
+  }
+  typeDirs.set(fold(name), dir)
+  c.types.set(name, {
+    name,
+    corpus: c,
+    dir,
+    schemaFile: dir,
+    schema: undefined,
+    validate: undefined,
+    idPattern: undefined,
+    extendsName: undefined,
+    base: use.type,
+    refs: [],
+    records: new Map(),
+    ids: new Map(),
+    stems: new Map(),
+    recordFile: undefined,
+  })
+}
+
+/** The edit distance between `a` and `b`, after folding. */
+function distance(a: string, b: string): number {
+  const [x, y] = [fold(a), fold(b)]
+  let row = Array.from({ length: y.length + 1 }, (_, j) => j)
+  for (let i = 1; i <= x.length; i++) {
+    const next = [i]
+    for (let j = 1; j <= y.length; j++)
+      next[j] = Math.min(
+        (row[j] as number) + 1,
+        (next[j - 1] as number) + 1,
+        (row[j - 1] as number) + (x[i - 1] === y[j - 1] ? 0 : 1),
+      )
+    row = next
+  }
+  return row[y.length] as number
+}
+
+/**
+ * Warn when a folder at the corpus root, holding record files and no schema file, is named like a
+ * parent's type that `uses` does not give it: the same name, or one or two letters off. Its files
+ * are narrative.
+ */
+function warnLikeParentType(c: Corpus, dir: string): void {
+  const name = basename(dir)
+  const near = (other: string): boolean => {
+    const d = distance(name, other)
+    return d === 0 || (d === 1 && name.length >= 4) || (d === 2 && name.length >= 8)
+  }
+  for (const [prefix, parent] of c.parents)
+    for (const type of parent.types.values())
+      if (near(type.name)) {
+        c.warnings.push(
+          `${dir}: (folder): named like ${prefix}/${type.name}, but has no schema file and is not in uses, so its files are not records`,
+        )
+        return
+      }
+}
+
+/** Resolve each type's `x-extends` and `x-ref` names, and break `x-extends` cycles. */
+function linkTypes(c: Corpus): void {
+  for (const type of c.types.values()) {
+    if (type.extendsName !== undefined) {
+      const base = lookupType(c, type.extendsName, true)
+      if (base !== undefined && 'problem' in base)
+        c.errors.push(`${type.schemaFile}: x-extends: ${base.problem}`)
+      else type.base = base
+    }
+    for (const ref of type.refs) {
+      const targets: Type[] = []
+      for (const name of ref.types) {
+        const target = lookupType(c, name)
+        if (target !== undefined && 'problem' in target)
+          c.errors.push(`${type.schemaFile}: ${ref.field}: x-ref ${target.problem}`)
+        else if (target !== undefined) targets.push(target)
+      }
+      // A name that names no type is an error above, so the field's values are not checked.
+      if (targets.length === ref.types.length) ref.targets = targets
+    }
+  }
+  // Only local types can form a cycle: a parent never extends its child.
+  const cyclic = [...c.types.values()].filter(
+    (t) => t.base !== undefined && chain(t.base).includes(t),
+  )
+  for (const type of cyclic) {
+    const names = [...chain(type), type].map((t) => t.name)
+    c.errors.push(`${type.schemaFile}: x-extends: cycle: ${names.join(' → ')}`)
+  }
+  for (const type of cyclic) type.base = undefined
+}
+
+export const asMap = (v: unknown): Data =>
+  v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Data) : {}
+
+/** The top-level field names and field patterns `type` and every type up its chain declare. */
+function mergedFields(type: Type): { names: Set<string>; patterns: Set<string> } {
+  const names = new Set<string>()
+  const patterns = new Set<string>()
+  for (const t of chain(type)) {
+    for (const k of Object.keys(asMap(t.schema?.['properties']))) names.add(k)
+    for (const k of Object.keys(asMap(t.schema?.['patternProperties']))) patterns.add(k)
+  }
+  return { names, patterns }
+}
+
+/**
+ * `type`'s schema, flattened: its top-level `properties` and `patternProperties` also hold each
+ * one a type up its chain declares, as `true`, unless it declares that one itself. So a closing
+ * `additionalProperties` or `unevaluatedProperties` at its root admits the inherited fields. Their
+ * rules come from the schemas of the types that declare them, which a record also passes.
+ */
+export function flattened(type: Type): Data {
+  const schema = type.schema ?? {}
+  if (type.base === undefined) return schema
+  const flat: Data = { ...schema }
+  for (const key of ['properties', 'patternProperties']) {
+    const own = schema[key]
+    // A value that is not a mapping is left for Ajv to reject.
+    if (own !== undefined && own !== asMap(own)) continue
+    const merged: Data = {}
+    for (const t of chain(type).slice(1).reverse())
+      for (const k of Object.keys(asMap(t.schema?.[key]))) merged[k] = true
+    if (Object.keys(merged).length > 0) flat[key] = { ...merged, ...asMap(own) }
+  }
+  return flat
+}
+
+/**
+ * Whether a schema closes its root to the fields its root `properties` and `patternProperties`
+ * declare. `unevaluatedProperties: false` also admits fields evaluated in `allOf` or a `$ref`,
+ * so it is not counted.
+ */
+const closes = (schema: Data | undefined): boolean => schema?.['additionalProperties'] === false
+
+/**
+ * How corpus `from` names `type`: its name, `<prefix>/<name>` for a type of a corpus it extends or
+ * references, or the chain of prefixes through references, such as `b/c/<name>`.
+ */
+export function typeLabel(type: Type, from: Corpus): string {
+  if (sameCorpus(type.corpus, from)) return type.name
+  const prefix = [...from.parents].find(([, p]) => sameCorpus(p, type.corpus))?.[0]
+  if (prefix !== undefined) return `${prefix}/${type.name}`
+  // Through references, by the shortest chain.
+  const seen = new Set<Corpus>([from])
+  const queue: [Corpus, string[]][] = [[from, []]]
+  for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
+    const [k, path] = next
+    for (const [p, ref] of k.references) {
+      if (sameCorpus(ref, type.corpus)) return [...path, p, type.name].join('/')
+      if (!seen.has(ref)) {
+        seen.add(ref)
+        queue.push([ref, [...path, p]])
+      }
+    }
+  }
+  return `${type.corpus.name}/${type.name}`
+}
+
+/**
+ * Report each field `type` declares that a type up its chain closes with
+ * `additionalProperties: false`: no record could hold it, since the record must also pass that
+ * type's schema.
+ */
+function closedAbove(type: Type): void {
+  // The furthest closed type admits the fewest fields.
+  const closed = chain(type)
+    .slice(1)
+    .reverse()
+    .find((t) => closes(t.schema))
+  if (closed === undefined) return
+  const { names, patterns } = mergedFields(closed)
+  const matches = (field: string): boolean =>
+    [...patterns].some((p) => {
+      try {
+        return new RegExp(p, 'u').test(field)
+      } catch {
+        return false
+      }
+    })
+  for (const field of Object.keys(asMap(type.schema?.['properties'])))
+    if (!names.has(field) && !matches(field))
+      type.corpus.errors.push(
+        `${type.schemaFile}: properties.${field}: ${typeLabel(closed, type.corpus)} closes its fields, so no record can hold this one`,
+      )
+}
+
+/**
+ * The record folders under a type folder: each folder below it that holds a record file named
+ * after the folder, such as `methods/Survey/Survey.md`. A record folder inside another one is an
+ * error, and its files belong to the outer record.
+ */
+function recordFolders(c: Corpus, type: Type, dirs: string[]): Map<string, string> {
+  const found = new Map<string, string>()
+  const declared = recordFileOf(type)
+  for (const dir of dirs) {
+    if (!dir.startsWith(`${type.dir}/`) || inNarrative(type.dir, `${dir}/x`)) continue
+    const name = basename(dir)
+    const files = RECORD_EXTENSIONS.map((ext) => `${dir}/${name}${ext}`)
+    if (declared !== undefined && !files.includes(`${dir}/${declared}`))
+      files.push(`${dir}/${declared}`)
+    const held = files.filter((f) => c.files.has(f))
+    const file = held[0]
+    if (file === undefined) continue
+    // `dirs` is sorted, so an outer folder comes before the folders inside it.
+    const outer = [...found.keys()].find((f) => dir.startsWith(`${f}/`))
+    if (outer !== undefined) {
+      // A folder holding only the x-record-file, such as a README, is the outer record's.
+      if (held.some((f) => f !== `${dir}/${declared}`))
+        c.errors.push(
+          `${dir}: (folder): a record folder must not sit inside record folder ${outer}`,
+        )
+      continue
+    }
+    found.set(dir, file)
+    for (const f of held.slice(1))
+      c.errors.push(`${f}: (file): a record folder holds one record file, and ${file} is one`)
+  }
+  return found
+}
+
+/**
+ * A hint for a file that fails as a record but may be supporting data outside a record folder:
+ * one in a subfolder with no record file, or a .yaml or .json file in a type whose records are
+ * .md. Empty for any other file. It changes the message only, never which files are records.
+ */
+function strayHint(
+  type: Type,
+  file: string,
+  folder: string | undefined,
+  files: string[],
+  declared: string | undefined,
+  yml: boolean,
+): string {
+  if (folder !== undefined) return ''
+  const dir = posix.dirname(file)
+  const ext = extname(file).toLowerCase()
+  if (dir !== type.dir) {
+    const name = basename(dir)
+    const record = declared ?? `${name}.md`
     const where = yml
       ? 'move it into a record folder'
       : `keep these files with one record, add ${dir}/${record}${declared === undefined ? ' (or set x-record-file)' : ''}`
