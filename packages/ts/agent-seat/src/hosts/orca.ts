@@ -210,8 +210,9 @@ function isoTimestamp(value: unknown): string | null {
 function orcaTruncatedTotal(stdout: string): number | null {
   const result = field(parseJsonOrNull(stdout), 'result')
   const total = field(result, 'totalCount')
-  return field(result, 'truncated') === true && typeof total === 'number' && total > 0
-    ? total
+  const shown = orcaFindResponseArray(parseJsonOrNull(stdout))?.length ?? 0
+  return field(result, 'truncated') === true && Number.isInteger(total) && (total as number) > shown
+    ? (total as number)
     : null
 }
 
