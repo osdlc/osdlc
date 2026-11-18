@@ -9,7 +9,6 @@ label="$(printf '%s' "${AGENT:0:1}" | tr '[:lower:]' '[:upper:]')${AGENT:1}"
 # a visible "<Agent> review done" line naming the commit it covered.
 head=$(git rev-parse HEAD 2>/dev/null || echo unknown)  # checkout may have failed
 pushed=""
-skill="skill"
 if [ "${MODE:-}" = skill ]; then
   # The checkout moves when --apply pushes, so the head the run covered was saved first.
   if [ -s "$RUNNER_TEMP/$AGENT-pr-head" ]; then head=$(cat "$RUNNER_TEMP/$AGENT-pr-head"); fi

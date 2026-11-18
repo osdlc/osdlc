@@ -72,9 +72,8 @@ if [ "$step" = patch ]; then
     echo "patch=false" >> "${GITHUB_OUTPUT:-/dev/null}"
     exit 0
   fi
-  git diff --cached --name-only -z --no-ext-diff "$head" | jq -Rs '[split("\u0000")[] | select(length > 0)]' > "$dir/paths.json"
-  jq -n --arg head "$head" --slurpfile paths "$dir/paths.json" '{head: $head, paths: $paths[0]}' > "$dir/meta.json"
-  rm "$dir/paths.json"
+  git diff --cached --name-only -z --no-ext-diff "$head" \
+    | jq -Rs --arg head "$head" '{head: $head, paths: [split("\u0000")[] | select(length > 0)]}' > "$dir/meta.json"
   cp "$RESULT" "$dir/result.json"
   echo "patch=true" >> "${GITHUB_OUTPUT:-/dev/null}"
   exit 0
