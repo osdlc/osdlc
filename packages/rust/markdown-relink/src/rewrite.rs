@@ -148,9 +148,9 @@ pub(crate) fn plan_link(post: &Corpus, to: &str, link: &BodyLink, current: &str)
 /// Percent-encode a vault-relative path for a markdown link URL.
 ///
 /// The set is deliberately minimal — the characters that would end the URL
-/// early or change how it is read, under this dialect's own grammar (a run
-/// with no whitespace and balanced parentheses, then an optional title) or
-/// under a markdown parser, plus `%` so a literal one survives the round trip
+/// early or change how it is read, under markdown_link's inline-link grammar
+/// (see `UrlScan::destination` in `markdown-link/src/spanned.rs`) or under a
+/// markdown parser, plus `%` so a literal one survives the round trip
 /// through [`markdown_link::percent_decode`]. Non-ASCII is left alone: a
 /// vault full of Cyrillic and CJK note names reads better unencoded, every
 /// consumer here decodes UTF-8 fine, and encoding it would churn every

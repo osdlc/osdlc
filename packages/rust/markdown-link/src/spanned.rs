@@ -719,7 +719,7 @@ struct Destination {
     url_start: usize,
     /// The char index just past the URL.
     url_end: usize,
-    /// The char range of the title between its delimiters, if there is one.
+    /// The char range of the title, without its delimiters.
     title: Option<(usize, usize)>,
     /// The char index just past the `)`.
     end: usize,
@@ -766,14 +766,16 @@ fn spanned_markdown_link(
     })
 }
 
-/// How many chars of a URL are read in place before the tables take over.
+/// How many chars of a URL are read in place before a run or the tables take
+/// over.
 const IN_PLACE: usize = 64;
 
 /// What earlier markdown link attempts learned about the destinations they
-/// read, in a body's chars as written. Each attempt starts later than the one
-/// before, so remembering the last answer of each kind, the parentheses of the last
-/// run of a URL too long to read in place, and tables when a run is not enough,
-/// keep a body of failed attempts linear.
+/// read, in a body's chars as written, so that a body of failed attempts stays
+/// linear. Each attempt starts later than the one before. The last answer of
+/// each kind is remembered. A URL too long to read in place leaves the
+/// parentheses of its run, which answer later starts in that run. When a run
+/// is not enough, tables answer every start.
 ///
 /// A destination and title are read as written, not with code blanked, as
 /// CommonMark reads them where the link's `](` is: `[a](notes/$x$.md)` is a
@@ -846,7 +848,8 @@ impl Run {
         })
     }
 
-    /// Where the URL at `from` ends, if `from` is in the run.
+    /// Where the URL at `from` ends: `None` when `from` is outside the run,
+    /// `Some(None)` when no URL starts there.
     fn url_end(&self, from: usize, body_len: usize) -> Option<Option<usize>> {
         if !(self.start..self.end).contains(&from) {
             return None;
@@ -871,20 +874,19 @@ impl Run {
 #[derive(Debug)]
 struct UrlTables {
     /// For each char index, where an unbracketed URL starting there ends, or
-    /// `NONE` when none does.
+    /// `NO_END` when none does.
     end: Vec<u32>,
 }
 
-/// An entry of [`UrlTables::end`] for a start that no URL ends.
-const NONE: u32 = u32::MAX;
+const NO_END: u32 = u32::MAX;
 
 impl UrlTables {
     fn new(chars: &[char]) -> Self {
         let n = chars.len();
-        let mut end = vec![NONE; n + 1];
+        let mut end = vec![NO_END; n + 1];
         // From the right, within the run of non-whitespace chars after
         // `space`: the unescaped `)` that no `(` after the char `k` closes,
-        // nearest first, and how many unescaped `(` after `k` close no `)`.
+        // nearest last, and how many unescaped `(` after `k` close no `)`.
         let mut space = n;
         let mut closes: Vec<u32> = Vec::new();
         let mut unclosed = 0usize;
@@ -916,8 +918,8 @@ impl UrlTables {
 /// How many chars [`Run::new`] tests at once.
 const CHUNK: usize = 32;
 
-/// Whether `c` may end a run or hold a `)` for [`Run::new`] to read: it is
-/// whitespace, `)`, `\`, or not ASCII.
+/// Whether [`Run::new`] must look at `c`. Non-ASCII is included because it
+/// may be Unicode whitespace.
 fn is_stop(c: char) -> bool {
     (c <= ' ') | (c == ')') | (c == '\\') | (c >= '\u{80}')
 }
@@ -1008,8 +1010,8 @@ impl UrlScan {
     /// Where the unbracketed URL at `from` ends, or `None` when it is not
     /// one: it runs to the first whitespace or the first unescaped `)` that no
     /// `(` in it opens, and its parentheses balance. A short URL is read in
-    /// place; a long one from tables, so that a body of long failed attempts
-    /// stays linear.
+    /// place; a long one from a run or the tables, so that a body of long
+    /// failed attempts stays linear.
     fn bare_url_end(&mut self, chars: &[char], from: usize) -> Option<usize> {
         if let Some(answer) = self
             .run
@@ -1056,7 +1058,7 @@ impl UrlScan {
         }
         let tables = self.tables.get_or_insert_with(|| UrlTables::new(chars));
         let end = tables.end[from];
-        (end != NONE).then_some(end as usize)
+        (end != NO_END).then_some(end as usize)
     }
 
     /// [`is_vault_link_url`] of `chars[from..end]`. That answer depends only
@@ -1132,7 +1134,7 @@ fn delimited(chars: &[char], from: usize, close: char, refused: &[char]) -> Opti
 }
 
 /// Whether a URL points outside the vault: it has a URI scheme, or starts
-/// with `//` and names a host.
+/// with `//`.
 fn is_external(url: &[char]) -> bool {
     url.starts_with(&['/', '/']) || has_scheme(url)
 }

@@ -25,8 +25,9 @@ export interface Link {
   end: number
 }
 
-// @osdlc/markdown-link does not find every relative Markdown link (osdlc/osdlc#635), so they are
-// found here.
+// Markdown links are read here, not by @osdlc/markdown-link: its links carry no link text and no
+// `!` of `![…](…)`, and keep a destination's escapes and `#fragment` as written, where a Link
+// needs all four read.
 // [text](dest "title"): dest is <...> or a run with balanced parentheses, as in CommonMark.
 const MARKDOWN =
   /(!?)\[((?:\\.|[^[\]\\\n])*)\]\(\s*(<[^<>\n]*>|(?:\\.|[^\s()\\]|\((?:\\.|[^\s()\\])*\))*)(?:\s+(?:"[^"\n]*"|'[^'\n]*'))?\s*\)/g
