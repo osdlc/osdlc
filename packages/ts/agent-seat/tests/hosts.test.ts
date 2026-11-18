@@ -398,12 +398,16 @@ describe('orca host', () => {
     const { runner } = recorder([
       {
         exitCode: 0,
-        stdout: JSON.stringify({ result: { terminals: [{ handle: 'term_1' }], truncated: true, totalCount: 2 } }),
+        stdout: JSON.stringify({
+          result: { terminals: [{ handle: 'term_1' }], truncated: true, totalCount: 2 },
+        }),
         stderr: '',
       },
       { exitCode: 1, stdout: '', stderr: 'boom' },
     ])
-    expect(makeOrcaHost({ runtimeDir: RUNTIME, binary: 'orca', runner }).find!({ cwd: '/w' })).toEqual([])
+    expect(
+      makeOrcaHost({ runtimeDir: RUNTIME, binary: 'orca', runner }).find!({ cwd: '/w' }),
+    ).toEqual([])
   })
 
   test('find: an untruncated page is listed once', () => {

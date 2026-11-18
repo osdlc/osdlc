@@ -22,7 +22,7 @@ import {
   resolveRunner,
   type CommandRunner,
 } from '@osdlc/command-seam'
-import { isRecord, parseJsonOrNull } from '../util.ts'
+import { isRecord, nonEmptyString, parseJsonOrNull } from '../util.ts'
 
 import {
   onPath,
@@ -78,7 +78,8 @@ export function parseOrcaCreatedHandle(stdout: string): string | null {
     field(result, 'handle'),
     field(result, 'terminalId'),
   ]) {
-    if (typeof handle === 'string' && handle !== '') return handle
+    const found = nonEmptyString(handle)
+    if (found !== null) return found
   }
   return null
 }
@@ -208,9 +209,10 @@ function isoTimestamp(value: unknown): string | null {
  * (`truncated: true`), or null when the page holds every terminal.
  */
 function orcaTruncatedTotal(stdout: string): number | null {
-  const result = field(parseJsonOrNull(stdout), 'result')
+  const parsed = parseJsonOrNull(stdout)
+  const result = field(parsed, 'result')
   const total = field(result, 'totalCount')
-  const shown = orcaFindResponseArray(parseJsonOrNull(stdout))?.length ?? 0
+  const shown = orcaFindResponseArray(parsed)?.length ?? 0
   return field(result, 'truncated') === true && Number.isInteger(total) && (total as number) > shown
     ? (total as number)
     : null
@@ -225,7 +227,7 @@ function listOrcaTerminals(runner: CommandRunner, cwd: string): OrcaTerminal[] {
   if (total !== null) {
     // A failed full listing is a failed find (as for the first): a partial page could miss a terminal.
     const full = runner.run(orcaFindArgv({ cwd }, total), opts)
-    if (!ran(full)) return []
+    if (!ran(full) || orcaTruncatedTotal(full.stdout) !== null) return []
     res = full
   }
   return parseOrcaTerminals(res.stdout, cwd)
