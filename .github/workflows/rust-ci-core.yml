@@ -40,6 +40,10 @@
 #                          per line. The only multi-line setting; `settings`
 #                          passes it on as one JSON line.
 #   RUST_CI_TIMEOUT        minutes for each build job; default 60
+#   RUST_CI_TEST_RUNNER    cargo (default: cargo test) or nextest (cargo
+#                          nextest run, then cargo test --doc, since nextest
+#                          does not run doctests). Either way every test
+#                          binary runs and every failure is reported.
 #   RUST_CI_DEBUG          debug info for the dev and test profiles:
 #                          line-tables-only (default: file and line in
 #                          backtraces, smaller and faster to link and cache),
@@ -112,6 +116,10 @@ on:
         description: Minutes for each build job. Default the variable RUST_CI_TIMEOUT, else 60.
         type: string
         default: ""
+      test-runner:
+        description: cargo or nextest. Default the variable RUST_CI_TEST_RUNNER, else cargo.
+        type: string
+        default: ""
       debug:
         description: Debug info for the dev and test profiles, line-tables-only, none, limited, full or `profile`. Default the variable RUST_CI_DEBUG, else line-tables-only.
         type: string
@@ -148,6 +156,7 @@ jobs:
       env: ${{ steps.s.outputs.env }}
       timeout: ${{ steps.s.outputs.timeout }}
       debug: ${{ steps.s.outputs.debug }}
+      test-runner: ${{ steps.s.outputs.test-runner }}
     steps:
       - id: s
         env:
@@ -164,6 +173,7 @@ jobs:
           BUN_VERSION: ${{ inputs.bun-version || vars.RUST_CI_BUN_VERSION }}
           JOB_ENV: ${{ inputs.env || vars.RUST_CI_ENV }}
           TIMEOUT: ${{ inputs.timeout || vars.RUST_CI_TIMEOUT || '60' }}
+          TEST_RUNNER: ${{ inputs.test-runner || vars.RUST_CI_TEST_RUNNER || 'cargo' }}
           DEBUG: ${{ inputs.debug || vars.RUST_CI_DEBUG || 'line-tables-only' }}
         run: |
           set -euo pipefail
@@ -175,6 +185,7 @@ jobs:
           for v in LOCKED WINDOWS MSRV; do
             [[ "${!v}" =~ ^(true|false)$ ]] || fail "RUST_CI_$v: true or false, not '${!v}'"
           done
+          [[ "$TEST_RUNNER" =~ ^(cargo|nextest)$ ]] || fail "RUST_CI_TEST_RUNNER: cargo or nextest, not '$TEST_RUNNER'"
           [[ "$DEBUG" =~ ^(line-tables-only|none|limited|full|profile)$ ]] || fail "RUST_CI_DEBUG: line-tables-only, none, limited, full or profile, not '$DEBUG'"
           [[ "$TIMEOUT" =~ ^[1-9][0-9]*$ ]] || fail "RUST_CI_TIMEOUT: a number of minutes, not '$TIMEOUT'"
           while IFS= read -r line; do
@@ -201,6 +212,7 @@ jobs:
           {
             echo "workspace=$WORKSPACE"
             echo "debug=$DEBUG"
+            echo "test-runner=$TEST_RUNNER"
             echo "packages=$PACKAGES"
             echo "clippy-args=$CLIPPY_ARGS"
             echo "test-args=$TEST_ARGS"
@@ -339,14 +351,27 @@ jobs:
           # shellcheck disable=SC2086 # one argument per word
           cargo clippy $PACKAGES --all-targets $LOCKED $ARGS -- -D warnings
 
+      - if: needs.settings.outputs.test-runner == 'nextest'
+        uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+        with:
+          tool: cargo-nextest@0.9
+
+      # --no-fail-fast: run every test binary, so one failure does not hide
+      # the next.
       - name: Test
         env:
           PACKAGES: ${{ needs.settings.outputs.packages }}
           LOCKED: ${{ needs.settings.outputs.locked }}
           ARGS: ${{ needs.settings.outputs.test-args }}
+          RUNNER: ${{ needs.settings.outputs.test-runner }}
         run: |
           # shellcheck disable=SC2086 # one argument per word
-          cargo test $PACKAGES $LOCKED $ARGS
+          if [ "$RUNNER" = nextest ]; then
+            cargo nextest run $PACKAGES $LOCKED --no-fail-fast --no-tests=pass $ARGS
+            cargo test --doc $PACKAGES $LOCKED --no-fail-fast
+          else
+            cargo test $PACKAGES $LOCKED --no-fail-fast $ARGS
+          fi
 
   # Builds and tests on the workspace `rust-version` with a lockfile resolved
   # fresh on that toolchain. resolver 3 then picks dependency versions that
@@ -443,4 +468,4 @@ jobs:
           ARGS: ${{ needs.settings.outputs.test-args }}
         run: |
           # shellcheck disable=SC2086 # one argument per word
-          cargo test $PACKAGES --locked $ARGS
+          cargo test $PACKAGES --locked --no-fail-fast $ARGS
