@@ -415,7 +415,7 @@ describe('AsyncGit — parity with Git', () => {
         stdout: 'abc\trefs/heads/main\n',
       },
       'diff --name-only -z': { stdout: 'a.ts\x00' },
-      'diff --name-status -z': { stdout: nameStatus },
+      'diff --no-color --no-relative --name-status -z': { stdout: nameStatus },
       'log --format=%H': { stdout: 'abc\ndef\n' },
     }
     const sync = new Git(CWD, { runner: recorder(replies).sync })
@@ -444,7 +444,10 @@ describe('AsyncGit — parity with Git', () => {
       'ls-files -z': fail,
       'for-each-ref --format=%(objectname)%09%(refname) refs/heads/': fail,
       'diff --name-only -z': { exitCode: 129, stderr: 'usage: git diff' },
-      'diff --name-status -z': { exitCode: 129, stderr: 'usage: git diff' },
+      'diff --no-color --no-relative --name-status -z': {
+        exitCode: 129,
+        stderr: 'usage: git diff',
+      },
       log: fail,
     })
     const git = new AsyncGit(CWD, { backend: cliBackend({ runner: r.async }) })

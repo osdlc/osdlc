@@ -1,5 +1,13 @@
 # @osdlc/code-host
 
+## 0.8.1
+
+### Patch Changes
+
+- Updated dependencies [6236a97]
+  - @osdlc/typed-git@0.17.0
+  - @osdlc/typed-gh@0.18.1
+
 ## 0.8.0
 
 ### Minor Changes
