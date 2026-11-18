@@ -1197,6 +1197,8 @@ function strayHint(
   }
   const inType = files.filter((f) => posix.dirname(f) === type.dir && !f.includes('.schema.'))
   const md = inType.filter((f) => extname(f).toLowerCase() === '.md').length
+  if (yml)
+    return `\n  To keep it with a record, rename it to .yaml and move it into that record's folder. To keep it out of the corpus, move it under a folder starting with _.`
   if (ext !== '.md' && md > inType.length - md)
     return `\n  This ${ext.slice(1)} file sits in the ${type.dir}/ folder, whose records are mostly .md, so it may be supporting data. To keep it with one record, move it into that record's folder. To keep it out of the corpus, move it under a folder starting with _.`
   return ''
@@ -1280,11 +1282,11 @@ function readRecords(
         if (t.validate !== undefined && !t.validate(data))
           // The if/then wrapper repeats the `then` failure at the root.
           for (const e of t.validate.errors ?? [])
-            if (e.keyword !== 'if')
-              failures.add(
-                `${file}: ${describe(e)}${strayHint(type, file, folder, files, declared, false)}`,
-              )
-      c.errors.push(...failures)
+            if (e.keyword !== 'if') failures.add(`${file}: ${describe(e)}`)
+      // One hint per file, on its first failure.
+      const [first, ...rest] = failures
+      if (first !== undefined)
+        c.errors.push(first + strayHint(type, file, folder, files, declared, false), ...rest)
       if (failures.size === 0 && problem === undefined && other === undefined && !wrongId) {
         type.records.set(id, { file, data })
         record.valid = true

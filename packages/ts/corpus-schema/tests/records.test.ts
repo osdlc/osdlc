@@ -225,6 +225,8 @@ describe('hints for supporting files outside a record folder', () => {
     const all = errors()
     assert.match(all.find((m) => m.startsWith('study/perf-run/config.yml:')) ?? '', /record folder/)
     assert.match(all.find((m) => m.startsWith('study/config.yaml:')) ?? '', /mostly \.md/)
+    put('c/study/old.yml', 'x: 1\n')
+    assert.match(errors().find((m) => m.startsWith('study/old.yml:')) ?? '', /rename it to \.yaml/)
   })
 
   test('a failing .md record at the top of a type folder gets no hint', () => {
