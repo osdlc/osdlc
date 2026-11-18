@@ -125,8 +125,10 @@ release, with a CHANGELOG entry that starts with `Breaking:`.
 This package exists for plain TypeScript callers that want a synchronous form,
 typed results and a declared absence value per verb.
 
-The Rust crate `typed-git` is this package's twin. The two keep the same major
-and minor version. Their APIs differ. The crate is not on crates.io yet.
+The Rust crate [`typed-git`](https://crates.io/crates/typed-git) is this
+package's twin. Its version number is behind this package's: a later release
+of the crate closes the gap and takes this package's number. Their APIs
+differ.
 
 ## Quick look
 
@@ -312,6 +314,35 @@ record is two. A split written by hand often gets this wrong.
 `{ mode, type, sha, sizeBytes, path }` rows. `sizeBytes` is set only for a blob
 under `{ long: true }`; a tree or submodule reports `null`, because `--long`
 prints `-` there and a fabricated `0` would be worse than nothing.
+
+## Diff output and the user's git configuration
+
+`diffText` and `diffAddedFile` return a plain unified diff with `a/` and `b/`
+prefixes and three lines of context. Both always pass `--no-color`,
+`--no-ext-diff`, `--no-textconv`, `--src-prefix=a/`, `--dst-prefix=b/`,
+`--no-relative`, `--submodule=short` and `--unified=3`. So `color.ui`,
+`color.diff`, `diff.external`, a `diff.<driver>.command` or textconv driver,
+`diff.noprefix`, `diff.mnemonicPrefix`, `diff.srcPrefix`, `diff.dstPrefix`,
+`diff.relative`, `diff.submodule` and `diff.context` do not change the text,
+and none of them stops `git apply` taking it. Other settings still apply:
+rename detection (`diff.renames`), `diff.ignoreSubmodules` and
+`diff.algorithm`. The `GIT_DIFF_OPTS` environment variable also still applies:
+`-u0` there overrides the three lines of context.
+
+`diffNameStatus` passes `--no-relative`, so its paths are relative to the
+repository root and cover the whole repository when the cwd is below the
+root. It passes `--no-color` as a guard: git does not colour that output.
+
+`diffNameOnly`, `diffStat` and `diffCheck` still follow `diff.relative`. From
+a folder below the root their paths are relative to that folder and changes
+outside it are left out, so their paths can differ from `diffNameStatus`'s.
+
+These verbs follow the user's colour setting. Under `color.ui=always` their
+output holds escape codes: `diffStat`, `diffCheck`, `log` and `logLines` with
+no `format`, and `grep` without `noColor`. Verbs that read a fixed machine
+format, such as `diffNameOnly`, `diffTree`, `statusPorcelain`,
+`statusEntries`, `branches` and `worktrees`, get no escape codes: git does not
+colour that output.
 
 ## Exit codes that are answers
 
@@ -728,11 +759,11 @@ exit throws the classified failure.
 | `forEachRef(pattern, { format, sort, count })` | `for-each-ref` | none — lines verbatim |
 | `refs(pattern)` | `forEachRef` + `parseRefRows` | none |
 | `diffNameOnly({ cached, diffFilter, rangeArgs, paths })` | `diff --name-only -z` | none |
-| `diffNameStatus({ cached, range, noRenames, paths })` | `diff --name-status -z` | none |
+| `diffNameStatus({ cached, range, noRenames, paths })` | `diff --no-color --no-relative --name-status -z [--cached] [--no-renames] [range] [--] [paths]` | none — `--` is passed once, when there is a range or a path, so git never reads the range as a path |
 | `diffStat({ rangeArgs, paths })` | `diff --stat` | none — raw stdout |
 | `diffCheck({ paths })` | `diff --check` | `1`, `2` → `{ ok: false, output }` |
-| `diffText(rev?, { staged, binary, paths })` | `diff [--cached] [--binary] [rev]` | none — empty string only when nothing differs; a bad rev or a non-repository throws; `binary` writes a binary file's change as a patch `git apply` replays |
-| `diffAddedFile(relPath)` | `diff --no-index -- /dev/null <path>` | none — exit 1 with output is success; exit 1 with no output, or exit 2, throws |
+| `diffText(rev?, { staged, binary, paths })` | `diff --no-color --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --no-relative --submodule=short --unified=3 [--cached] [--binary] [rev] [--] [paths]` | none — empty string only when nothing differs; a bad rev or a non-repository throws; `--` is passed once, when there is a rev or a path, so git never reads the rev as a path; the text is plain under the [settings the flags pin](#diff-output-and-the-users-git-configuration); `binary` writes a binary file's change as a patch `git apply` replays |
+| `diffAddedFile(relPath)` | `diff --no-color --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --no-relative --submodule=short --unified=3 --no-index -- /dev/null <path>` | none — exit 1 with output is success; exit 1 with no output, or exit 2, throws; the text is plain, as for `diffText` |
 | `log(opts)` | `log` | none — raw stdout, unsplit |
 | `logLines(opts)` | `log`, split and filtered | none |
 | `lsTree(rev, { recursive, long, paths })` | `ls-tree -z` | none |
