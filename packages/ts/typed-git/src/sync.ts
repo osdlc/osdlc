@@ -940,6 +940,11 @@ export class Git {
     this.exec(v.worktreePrune(), opts)
   }
 
+  /** `git submodule update --init --recursive`. */
+  submoduleUpdate(opts: GitSyncCallOptions = {}): void {
+    this.exec(v.submoduleUpdate(), opts)
+  }
+
   /** `git remote add <name> <url>`. */
   remoteAdd(name: string, url: string, opts: GitSyncCallOptions = {}): void {
     this.exec(v.remoteAdd(name, url), opts)

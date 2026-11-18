@@ -19,7 +19,7 @@ import { FailureError } from '@osdlc/result'
 import type { GitFailure } from '../src/failure.ts'
 
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -1844,6 +1844,44 @@ describe('Git — real repo round trips', () => {
       expect(git.submodules()).toEqual([{ path: 'deps/sub', commit: head }])
     } finally {
       git.rawChecked(['update-index', '--force-remove', 'deps/sub'])
+    }
+  })
+
+  test('submoduleUpdate checks out a submodule a clone left empty', () => {
+    const root = mkdtempSync(join(tmpdir(), 'typedgit-submodule-'))
+    const env = { ...process.env }
+    // Git refuses a local-path submodule URL unless this is set.
+    process.env.GIT_CONFIG_COUNT = '1'
+    process.env.GIT_CONFIG_KEY_0 = 'protocol.file.allow'
+    process.env.GIT_CONFIG_VALUE_0 = 'always'
+    try {
+      const sub = new Git(join(root, 'sub'))
+      mkdirSync(join(root, 'sub'))
+      sub.rawChecked(['init', '-b', 'main'])
+      sub.rawChecked(['config', 'user.email', 't@t'])
+      sub.rawChecked(['config', 'user.name', 't'])
+      writeFileSync(join(root, 'sub', 'f.txt'), 'x\n')
+      sub.add(['.'])
+      sub.commit({ message: 's1' })
+      const up = new Git(join(root, 'up'))
+      mkdirSync(join(root, 'up'))
+      up.rawChecked(['init', '-b', 'main'])
+      up.rawChecked(['config', 'user.email', 't@t'])
+      up.rawChecked(['config', 'user.name', 't'])
+      up.rawChecked(['submodule', 'add', join(root, 'sub'), 'deps/sub'])
+      up.commit({ message: 'u1' })
+      new Git(root).rawChecked(['clone', join(root, 'up'), 'down'])
+      const down = new Git(join(root, 'down'))
+      expect(existsSync(join(root, 'down', 'deps', 'sub', 'f.txt'))).toBe(false)
+      down.submoduleUpdate()
+      expect(existsSync(join(root, 'down', 'deps', 'sub', 'f.txt'))).toBe(true)
+      down.submoduleUpdate()
+    } finally {
+      for (const k of ['GIT_CONFIG_COUNT', 'GIT_CONFIG_KEY_0', 'GIT_CONFIG_VALUE_0']) {
+        if (env[k] === undefined) delete process.env[k]
+        else process.env[k] = env[k]
+      }
+      rmSync(root, { recursive: true, force: true })
     }
   })
 

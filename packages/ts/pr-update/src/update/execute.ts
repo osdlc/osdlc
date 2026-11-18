@@ -142,6 +142,12 @@ export interface UpdateSettings {
    * (the default) retries the PR as a merge, and `fail` reports it.
    */
   onRebaseConflict?: 'merge' | 'fail' | undefined
+  /**
+   * `auto` (the default when absent) runs `git submodule update --init --recursive` in the
+   * worktree when it has a `.gitmodules`, after each PR's checkout and again when the update
+   * changed a gitlink or `.gitmodules`; `off` leaves submodules alone.
+   */
+  submodules?: 'auto' | 'off' | undefined
 }
 
 /** A problem the repair fixed, for the report. */
@@ -177,7 +183,15 @@ export type UpdateOutcome =
       declined?: string
     } & StrategyFallback)
   | ({ status: 'conflict'; needsHuman: { path: string; why: string }[] } & StrategyFallback)
-  | ({ status: 'failed'; reason: string } & StrategyFallback)
+  | ({
+      status: 'failed'
+      reason: string
+      /**
+       * Set when the failure says nothing about the PR (a submodule that would not check
+       * out), so it is not recorded as a failed attempt and does not block a retry.
+       */
+      unrecorded?: true
+    } & StrategyFallback)
 
 /**
  * `strategy` is the one that ran: `merge` when the outcome carries a
@@ -257,6 +271,54 @@ function conflictedPaths(git: Git): string[] {
   return git.diffNameOnly({ diffFilter: 'U' })
 }
 
+/** The reason prefix of a failure to check out the worktree's submodules. */
+export const SUBMODULE_FAILURE = 'submodule setup failed'
+
+/**
+ * What the worktree's submodules are pinned to: `.gitmodules` and every gitlink, as one string,
+ * or null when the worktree has no `.gitmodules` or submodules are off.
+ */
+function submoduleState(git: Git, worktree: string, settings: UpdateSettings): string | null {
+  if ((settings.submodules ?? 'auto') === 'off') return null
+  const file = join(worktree, '.gitmodules')
+  if (!existsSync(file)) return null
+  const links = git.submodules().map((s) => `${s.path} ${s.commit}`)
+  return `${readFileSync(file, 'utf8')}\n${links.join('\n')}`
+}
+
+/** Check out the worktree's submodules; the failure reason, or null. */
+function populateSubmodules(git: Git): string | null {
+  try {
+    git.submoduleUpdate()
+    return null
+  } catch (e) {
+    return `${SUBMODULE_FAILURE}: ${errorLine(e)}`
+  }
+}
+
+/**
+ * Name the two commits a submodule pointer conflict is between. A gitlink on both sides
+ * has no built-in resolver, and "no resolver claims it" does not say which commit to pick.
+ * In a rebase stage 2 is the base and stage 3 the PR's commit; in a merge, the reverse.
+ */
+function withGitlinkCommits<T extends { path: string; why: string }>(
+  git: Git,
+  needsHuman: readonly T[],
+  rebasing: boolean,
+): T[] {
+  if (needsHuman.length === 0) return [...needsHuman]
+  const entries = git.try.lsFilesUnmerged()
+  if (!entries.ok) return [...needsHuman]
+  return needsHuman.map((c) => {
+    const at = (stage: 2 | 3) =>
+      entries.value.find((e) => e.path === c.path && e.stage === stage && e.mode === '160000')?.sha
+    const [base, branch] = rebasing ? [at(2), at(3)] : [at(3), at(2)]
+    return base === undefined || branch === undefined
+      ? c
+      : { ...c, why: `submodule pointer moved on both sides: base ${base}, branch ${branch}` }
+  })
+}
+
 /**
  * Update one PR in an already-prepared worktree.
  *
@@ -304,6 +366,12 @@ export async function updateOne(
   const counts = git.try.aheadBehind(base, 'HEAD')
   if (counts.ok && counts.value.behind === 0) return { status: 'up-to-date' }
 
+  const submodulesBefore = submoduleState(git, opts.worktree, settings)
+  if (submodulesBefore !== null) {
+    const reason = populateSubmodules(git)
+    if (reason !== null) return { status: 'failed', reason, unrecorded: true }
+  }
+
   let strategy = target.strategy
   let rebased: PathPlan[] | null = null
   let strategyFallback: string | undefined
@@ -332,6 +400,7 @@ export async function updateOne(
     runVerb,
     opts,
     rebased,
+    submodulesBefore,
   )
   return strategyFallback === undefined || outcome.status === 'up-to-date'
     ? outcome
@@ -392,7 +461,7 @@ function rebaseThroughRungs(
       paths.length === 0
         ? []
         : planPaths(paths, settings.resolvers, settings.lockfileInstall, settings.generators)
-    const needsHuman = unclaimed(plans)
+    const needsHuman = withGitlinkCommits(git, unclaimed(plans), true)
     if (needsHuman.length > 0) {
       reset()
       return { kind: 'stuck', needsHuman }
@@ -430,6 +499,7 @@ async function integrateAndPush(
   runVerb: RunVerb,
   opts: { apply: boolean; worktree: string },
   rebased: PathPlan[] | null,
+  submodulesBefore: string | null,
 ): Promise<UpdateOutcome> {
   const base = baseRef(target, settings.remote)
   const head = `${settings.remote}/${target.head}`
@@ -456,13 +526,13 @@ async function integrateAndPush(
       ? settings.repair
       : null
   const repaired: Repaired[] = []
-  const fail = (reason: string): UpdateOutcome => {
+  const fail = (reason: string, unrecorded = false): UpdateOutcome => {
     git.try.mergeAbort()
     // A rebuild or repair can leave edits, intent-to-add entries and untracked
     // files, which the next PR's `add .` would otherwise pick up.
     git.try.resetHard('HEAD')
     git.clean({ directories: true })
-    return { status: 'failed', reason }
+    return unrecorded ? { status: 'failed', reason, unrecorded } : { status: 'failed', reason }
   }
   const request = (kind: RepairKind, paths: readonly string[], reason: string): RepairRequest => ({
     kind,
@@ -482,7 +552,7 @@ async function integrateAndPush(
       paths.length === 0
         ? []
         : planPaths(paths, settings.resolvers, settings.lockfileInstall, settings.generators)
-    const needsHuman = unclaimed(plans)
+    const needsHuman = withGitlinkCommits(git, unclaimed(plans), false)
     const repair = repairFor('conflict')
     if (needsHuman.length > 0 && repair === null) {
       git.try.mergeAbort()
@@ -523,6 +593,13 @@ async function integrateAndPush(
       return fail(`committing the resolution: ${errorLine(e)}`)
     }
     resolved.push(...plans.filter((p) => p.kind !== 'unclaimed'))
+  }
+
+  // The integration can move a gitlink or change `.gitmodules`; the checkout must follow.
+  const submodulesAfter = submoduleState(git, opts.worktree, settings)
+  if (submodulesAfter !== null && submodulesAfter !== submodulesBefore) {
+    const reason = populateSubmodules(git)
+    if (reason !== null) return fail(reason, true)
   }
 
   const verifyFailure = runVerify(settings.verifyVerbs, runVerb, opts.worktree)

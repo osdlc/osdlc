@@ -2811,6 +2811,19 @@ export function worktreePrune(): GitVerb<void> {
   return { argv: ['worktree', 'prune'], absent: NONE, parse: nothing }
 }
 
+/**
+ * `git submodule update --init --recursive`: check out every submodule, nested ones included,
+ * at the commit the checked-out tree pins, cloning those not yet initialised. A repository
+ * with no submodules is exit 0 and no work.
+ */
+export function submoduleUpdate(): GitVerb<void> {
+  return {
+    argv: ['submodule', 'update', '--init', '--recursive'],
+    absent: NONE,
+    parse: nothing,
+  }
+}
+
 /** `git remote add <name> <url>`. */
 export function remoteAdd(name: string, url: string): GitVerb<void> {
   return {
