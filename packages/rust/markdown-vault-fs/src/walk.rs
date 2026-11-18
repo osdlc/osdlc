@@ -85,15 +85,15 @@ impl Visibility {
     }
 }
 
-/// A caller's own excluded-files list, asked for at each walk. Cheap to clone.
+/// A caller's own excluded-files list, as a function. Cheap to clone.
 ///
 /// The function runs at the start of every walk and every admission query, so
-/// keep it quick: return rules compiled when the list last changed, not a
-/// list parsed on every call. Do not call back into a cache from it, or take a
-/// lock a cache's caller may hold. A cache does not know the list changed:
-/// after it does, call `refresh_now` (`refresh` may skip a fresh sweep) to
-/// apply it; until then a change batch applies the new list only to the paths
-/// it names.
+/// keep it quick: return rules compiled when the list last changed. Do not call
+/// back into a cache from it, or take a lock a cache's caller may hold.
+///
+/// A cache does not notice the list changed. Call `refresh_now` after a change
+/// (`refresh` may reuse a walk younger than its TTL); until then, a change
+/// batch applies the new list only to the paths it names.
 #[derive(Clone)]
 pub struct HideSource(Arc<dyn Fn() -> Arc<HideRules> + Send + Sync>);
 
@@ -119,11 +119,8 @@ pub enum Hide {
     Vault,
     /// These rules, as the caller compiled them.
     Rules(Arc<HideRules>),
-    /// Rules the caller keeps somewhere else (a settings file of its own),
-    /// asked for afresh at the start of each walk and of each admission
-    /// query. A change to the list shows at the next refresh, and a cache
-    /// reuses every note whose file did not change, so nothing is rebuilt.
-    /// See [`HideSource`].
+    /// Rules the caller keeps somewhere else, asked for at each walk and each
+    /// admission query. See [`HideSource`].
     Source(HideSource),
     /// Hide nothing beyond the visibility policy.
     Off,
@@ -496,8 +493,8 @@ impl WalkOptions {
     /// The roots, the skip and prune lists, the visibility policy, the
     /// excluded files (read from the vault for [`Hide::Vault`], asked of the
     /// caller for [`Hide::Source`]), the exclude list and notes versus
-    /// attachments decide [`Admission::Outside`]. Then the file system decides [`Admission::Unlisted`], as the walk reaches
-    /// a file: by listing each folder from the walk's start down. A folder
+    /// attachments decide [`Admission::Outside`]. Then the file system decides
+    /// [`Admission::Unlisted`], as the walk reaches a file: by listing each folder from the walk's start down. A folder
     /// on the way that cannot be listed or is a symlink (never entered), or
     /// a file its folder does not list, is unlisted. So is a folder, a file
     /// under [`WalkOptions::min_bytes`] or a symlink under

@@ -47,7 +47,7 @@
 //! roots walked, dot files, pruned folders such as `node_modules`, refused
 //! symlinks, read errors ([`Errors`]), and excluded files of the caller's own
 //! as [`Hide::Rules`], or [`Hide::Source`] when the list changes while the
-//! caches live (change it, then refresh). [`Corpus::try_load`] returns a walk
+//! caches live (change it, then `refresh_now`). [`Corpus::try_load`] returns a walk
 //! error that [`Corpus::load`] would leave as an empty cache. Under
 //! [`Errors::Report`] a load keeps going past a folder it cannot list or a note it cannot read,
 //! and [`Corpus::unreadable`] names each one.
