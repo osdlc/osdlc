@@ -200,3 +200,38 @@ describe('schema and reference values', () => {
     assert.deepEqual(warnings(), [])
   })
 })
+
+describe('hints for supporting files outside a record folder', () => {
+  const study = (): void => {
+    root('c')
+    put('c/study/study.schema.yaml', 'type: object\nrequired: [title]\n')
+    put('c/study/a.md', '---\ntitle: A\n---\n')
+    put('c/study/b.md', '---\ntitle: B\n---\n')
+  }
+
+  test('a failing file in a subfolder with no record file says the folder is not a record folder', () => {
+    study()
+    put('c/study/perf-run/config.yaml', 'x: 1\n')
+    const [e] = errors().filter((m) => m.startsWith('study/perf-run/config.yaml:'))
+    assert.match(e ?? '', /not a record folder: perf-run\/ has no perf-run\.md/)
+    assert.match(e ?? '', /add study\/perf-run\/perf-run\.md \(or set x-record-file\)/)
+    assert.match(e ?? '', /under a folder starting with _/)
+  })
+
+  test('a .yml file in a subfolder and a yaml file among .md records get a hint', () => {
+    study()
+    put('c/study/perf-run/config.yml', 'x: 1\n')
+    put('c/study/config.yaml', 'x: 1\n')
+    const all = errors()
+    assert.match(all.find((m) => m.startsWith('study/perf-run/config.yml:')) ?? '', /record folder/)
+    assert.match(all.find((m) => m.startsWith('study/config.yaml:')) ?? '', /mostly \.md/)
+  })
+
+  test('a failing .md record at the top of a type folder gets no hint', () => {
+    study()
+    put('c/study/c.md', '---\n---\n')
+    const e = errors().filter((m) => m.startsWith('study/c.md:'))
+    assert.ok(e.length > 0)
+    assert.ok(e.every((m) => !m.includes('\n')))
+  })
+})
