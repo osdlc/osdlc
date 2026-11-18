@@ -223,8 +223,10 @@ function listOrcaTerminals(runner: CommandRunner, cwd: string): OrcaTerminal[] {
   if (!ran(res)) return []
   const total = orcaTruncatedTotal(res.stdout)
   if (total !== null) {
+    // A failed full listing is a failed find (as for the first): a partial page could miss a terminal.
     const full = runner.run(orcaFindArgv({ cwd }, total), opts)
-    if (ran(full)) res = full
+    if (!ran(full)) return []
+    res = full
   }
   return parseOrcaTerminals(res.stdout, cwd)
 }
