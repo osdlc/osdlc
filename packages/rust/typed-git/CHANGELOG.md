@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.1](https://github.com/osdlc/osdlc/compare/typed-git/v0.4.0...typed-git/v0.4.1) - 2026-11-17
+
+### Added
+
+- *(typed-git)* diff_name_status, diff_text and merge_base ([#855](https://github.com/osdlc/osdlc/pull/855))
+
 ### Added
 
 - `diff`: `diff_name_status` (changed paths with their status, and the old
