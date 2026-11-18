@@ -65,6 +65,8 @@ export function commandRepair(command: string, timeoutSeconds: number | null = n
  * With `projectRoot`, failed updates are recorded in
  * `<projectRoot>/.pr-update/attempts/`, or, with `attempts.store: git-ref`, as refs on `remote`
  * (default `origin`) along with a per-branch update lease.
+ *
+ * `notice` receives one line per repository naming the command `verify: detect` chose.
  */
 export function standalonePorts(
   cfg?: PrUpdateConfig & Partial<PrUpdateStandaloneConfig>,
@@ -79,8 +81,8 @@ export function standalonePorts(
   return {
     locate: () => null,
     runVerb: (verb, cwd) => sh.run(verb, { cwd }),
-    // A standalone run has no host registry to look up `check` in, and runs
-    // `test` only from `test_command`. Failing is better than running no verbs
+    // A standalone run has no host registry to look up `check` in; `test` runs only
+    // `test_command`, and `detect` only the detectVerifyCommand ladder. Failing is better than running no verbs
     // and reporting a push as verified when nothing was checked.
     async resolveVerifyVerbs({ which, repo, checkout }) {
       if (which === 'detect') {

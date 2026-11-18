@@ -22,12 +22,11 @@ const JUSTFILES = ['justfile', 'Justfile', '.justfile']
 const MAKEFILES = ['GNUmakefile', 'Makefile', 'makefile']
 // A recipe or target named `test`, not `test-all`, a `test := value` assignment or an indented line.
 const JUST_TEST = /^test(?:[ \t][^:=\n]*)?:(?!=)/m
-const MAKE_TEST = /^test[ \t]*:(?![:=])/m
-// The placeholder `npm init` writes, which is not a test.
-const NPM_PLACEHOLDER = /no test specified/
+const MAKE_TEST = /^test[ \t]*::?(?!=)/m
+const NPM_INIT_PLACEHOLDER = /no test specified/
 
-/** The package manager command a lockfile names; `npm` when there is none. */
-function packageManagerRun(dir: string): string {
+/** `scripts.test` run with the package manager the lockfile names; `npm test` by default. */
+function packageManagerTestCommand(dir: string): string {
   if (existsSync(join(dir, 'pnpm-lock.yaml'))) return 'pnpm test'
   if (existsSync(join(dir, 'yarn.lock'))) return 'yarn test'
   if (existsSync(join(dir, 'bun.lock')) || existsSync(join(dir, 'bun.lockb'))) return 'bun run test'
@@ -44,7 +43,7 @@ function packageJsonTest(dir: string): boolean {
   try {
     const script = (JSON.parse(readFileSync(file, 'utf8')) as { scripts?: { test?: unknown } })
       .scripts?.test
-    return typeof script === 'string' && script.trim() !== '' && !NPM_PLACEHOLDER.test(script)
+    return typeof script === 'string' && script.trim() !== '' && !NPM_INIT_PLACEHOLDER.test(script)
   } catch {
     return false
   }
@@ -73,7 +72,7 @@ export function detectVerifyCommand(
     return { command: 'make test', rung: `${make} test target` }
   }
   if (packageJsonTest(dir)) {
-    return { command: packageManagerRun(dir), rung: 'package.json scripts.test' }
+    return { command: packageManagerTestCommand(dir), rung: 'package.json scripts.test' }
   }
   for (const [file, command] of [
     ['Cargo.toml', 'cargo test'],
