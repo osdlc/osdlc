@@ -1168,8 +1168,8 @@ function recordFolders(c: Corpus, type: Type, dirs: string[]): Map<string, strin
 
 /**
  * A hint for a file that fails as a record but may be supporting data outside a record folder:
- * one in a subfolder with no record file, or a .yaml or .json file in a type whose records are
- * .md. Empty for any other file. It changes the message only, never which files are records.
+ * one in a subfolder with no record file, a .yml file, or a non-.md file in a type whose
+ * top-level records are mostly .md. Empty for any other file. At most one hint per file.
  */
 function strayHint(
   type: Type,
@@ -1177,12 +1177,12 @@ function strayHint(
   folder: string | undefined,
   files: string[],
   declared: string | undefined,
-  yml: boolean,
   extensions: string[],
 ): string {
   if (folder !== undefined) return ''
   const dir = posix.dirname(file)
   const ext = extname(file).toLowerCase()
+  const yml = ext === '.yml'
   if (dir !== type.dir) {
     const name = basename(dir)
     const preferred = extensions.includes('.md') ? '.md' : (extensions[0] ?? '.md')
@@ -1239,7 +1239,7 @@ function readRecords(
       const lower = ext.toLowerCase()
       if (lower === '.yml') {
         c.errors.push(
-          `${file}: (file): use the .yaml extension${strayHint(type, file, folder, files, declared, true, extensions)}`,
+          `${file}: (file): use the .yaml extension${strayHint(type, file, folder, files, declared, extensions)}`,
         )
         continue
       }
@@ -1250,7 +1250,7 @@ function readRecords(
       }
       if (!extensions.includes(ext)) {
         c.errors.push(
-          `${file}: format: ${ext.slice(1)} is not in the corpus's formats${strayHint(type, file, folder, files, declared, false, extensions)}`,
+          `${file}: format: ${ext.slice(1)} is not in the corpus's formats${strayHint(type, file, folder, files, declared, extensions)}`,
         )
         continue
       }
@@ -1290,13 +1290,9 @@ function readRecords(
           // The if/then wrapper repeats the `then` failure at the root.
           for (const e of t.validate.errors ?? [])
             if (e.keyword !== 'if') failures.add(`${file}: ${describe(e)}`)
-      // One hint per file, on its first failure.
       const [first, ...rest] = failures
       if (first !== undefined)
-        c.errors.push(
-          first + strayHint(type, file, folder, files, declared, false, extensions),
-          ...rest,
-        )
+        c.errors.push(first + strayHint(type, file, folder, files, declared, extensions), ...rest)
       if (failures.size === 0 && problem === undefined && other === undefined && !wrongId) {
         type.records.set(id, { file, data })
         record.valid = true
