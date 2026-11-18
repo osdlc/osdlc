@@ -185,6 +185,7 @@ function runEnv(
     command: null,
   },
   remote = 'origin',
+  notice: (line: string) => void = () => {},
 ): UpdateEnv {
   const git = gitRunner(seams)
   const gh = seams.gh ?? spawnRunner('gh', { absolutePathOnly: true })
@@ -206,7 +207,7 @@ function runEnv(
       override: layers.merged.code_host.override,
     }),
     cfg,
-    ports: standalonePorts(cfg, projectRoot, remote),
+    ports: standalonePorts(cfg, projectRoot, remote, notice),
   }
 }
 
@@ -478,6 +479,7 @@ export function updateCommand(seams: CliSeams) {
           command: flags.repairCommand ?? null,
         },
         flags.remote,
+        (line) => ctx.note(line),
       )
       let out: UpdateOutput
       try {

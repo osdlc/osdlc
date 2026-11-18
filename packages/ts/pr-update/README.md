@@ -296,7 +296,31 @@ pr_update:
 ```
 
 With `verify: test` and no `test_command`, a standalone `update` fails before
-it touches any PR.
+it touches any PR. `test` never guesses.
+
+### `verify: detect`
+
+`verify: detect` is the opt-in middle ground for a person updating PRs across
+many repositories, none of which has a `test_command`. It walks a fixed ladder
+in each repository's local checkout and runs the first rung that matches:
+
+1. `test_command`, when configured;
+2. a `test` recipe in a `justfile` (`just test`), then a `test` target in a
+   `Makefile` (`make test`);
+3. `scripts.test` in `package.json`, run with the package manager its lockfile
+   names (`pnpm test`, `yarn test`, `bun run test`; `npm test` for
+   `package-lock.json` or no lockfile). The `npm init` placeholder is not a test;
+4. `cargo test` for `Cargo.toml`, `go test ./...` for `go.mod`, `sbt test` for
+   `build.sbt`.
+
+The run prints the choice for each repository on stderr
+(`pr-update: verify: detect owner/name: make test  (Makefile test target)`).
+When no rung matches, the update fails before touching any PR and names what
+it looked for. Nothing beyond the ladder is guessed. Because the repository's
+own files choose the command, `verify: detect` in the project file is gated
+like `test_command`: it needs `--trust` or a recorded trust. A host that
+supplies `Ports.resolveVerifyVerbs` receives `which: 'detect'` and may call the
+exported `detectVerifyCommand(dir, testCommand?)` for the same ladder.
 
 ## Not retrying a failure that will repeat
 

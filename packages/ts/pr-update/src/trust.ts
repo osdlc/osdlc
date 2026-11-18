@@ -36,14 +36,21 @@ function isSet(value: unknown): boolean {
   return !(Array.isArray(value) && value.length === 0)
 }
 
+/** `verify: detect` names no command, but the repository's own files choose the one it runs. */
+const DETECT_KEY = ['pr_update', 'verify'] as const
+
 /** The command-running keys the project file sets and the overlay does not override. */
 export function projectSourcedCommands(
   project: Record<string, unknown> | null,
   local: Record<string, unknown> | null,
 ): string[] {
-  return COMMAND_KEYS.filter(
+  const keys = COMMAND_KEYS.filter(
     (path) => isSet(getIn(project, path).value) && !isSet(getIn(local, path).value),
   ).map((path) => path.join('.'))
+  if (getIn(project, DETECT_KEY).value === 'detect' && !isSet(getIn(local, DETECT_KEY).value)) {
+    keys.push(DETECT_KEY.join('.'))
+  }
+  return keys
 }
 
 /**

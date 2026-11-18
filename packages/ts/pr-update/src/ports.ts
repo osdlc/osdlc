@@ -32,7 +32,7 @@ export interface Generator {
 }
 
 /** Which verb list a `verify` setting other than `none` names. */
-export type VerifyWhich = 'check' | 'test'
+export type VerifyWhich = 'check' | 'test' | 'detect'
 
 /** What `resolveVerifyVerbs` is asked: which list, for which repository. */
 export interface VerifyVerbsRequest {

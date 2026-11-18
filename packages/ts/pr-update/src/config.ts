@@ -132,10 +132,10 @@ export const prUpdateConfigSchema = z
         "Project-specific conflict resolvers for generated artifacts, first match wins. A conflict in a file a generator owns is not a judgement call — it is `re-run the generator`, and the run's output is the resolution. Lockfiles are handled without configuration; this is for a project's own codegen (`docs/index.md` rebuilt by `make docs`, say). Every conflicted path in a PR must be claimed by some rung or the update is left for a human.",
       ),
     verify: z
-      .enum(['none', 'check', 'test'])
+      .enum(['none', 'check', 'test', 'detect'])
       .default('none')
       .describe(
-        "What must pass before an updated branch is pushed. `none` (default) because the deterministic tier only ever produces a merge git itself resolved or an artifact a generator rebuilt, and running the project's whole gate once per PR is not affordable across a 50-PR run — CI on the PR is the real gate. `check` runs the host's check commands anyway, for a project where a bad push is expensive. `test` runs the project's explicitly configured test commands (a standalone run reads `test_command`): it never falls back to detection, and when it resolves to no command the update fails before touching any PR. Both are trust-gated like every other project-sourced command: they need the repository trusted or a one-run trust flag.",
+        "What must pass before an updated branch is pushed. `none` (default) because the deterministic tier only ever produces a merge git itself resolved or an artifact a generator rebuilt, and running the project's whole gate once per PR is not affordable across a 50-PR run — CI on the PR is the real gate. `check` runs the host's check commands anyway, for a project where a bad push is expensive. `test` runs the project's explicitly configured test commands (a standalone run reads `test_command`): it never falls back to detection, and when it resolves to no command the update fails before touching any PR. `detect` is the opt-in detected tier, kept apart from `test` so nobody gets detection by accident: it runs `test_command` when set, else a `test` target of a justfile or Makefile, else `scripts.test` of `package.json` (with the package manager its lockfile names), else `cargo test`, `go test ./...` or `sbt test`; it prints which it chose on every run and fails before touching any PR when none matches. All three are trust-gated like every other project-sourced command: they need the repository trusted or a one-run trust flag.",
       ),
     repair: z
       .object({

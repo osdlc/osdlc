@@ -16,6 +16,7 @@ import {
   stderrOrError,
 } from '@osdlc/command-seam'
 
+import { DETECT_LOOKED_FOR, detectVerifyCommand } from './detect.ts'
 import type { PrUpdateConfig, PrUpdateStandaloneConfig } from './config.ts'
 import type { Ports, Repair } from './ports.ts'
 import { agentRepair } from './repair/agents.ts'
@@ -69,6 +70,7 @@ export function standalonePorts(
   cfg?: PrUpdateConfig & Partial<PrUpdateStandaloneConfig>,
   projectRoot?: string,
   remote = 'origin',
+  notice: (line: string) => void = () => {},
 ): Ports {
   const command = cfg?.repair.command ?? null
   const agent = cfg?.repair.agent ?? null
@@ -80,7 +82,17 @@ export function standalonePorts(
     // A standalone run has no host registry to look up `check` in, and runs
     // `test` only from `test_command`. Failing is better than running no verbs
     // and reporting a push as verified when nothing was checked.
-    async resolveVerifyVerbs({ which }) {
+    async resolveVerifyVerbs({ which, repo, checkout }) {
+      if (which === 'detect') {
+        const found = detectVerifyCommand(checkout, testCommand)
+        if (found === null) {
+          throw new Error(
+            `verify: detect found no test command in ${repo} (looked for ${DETECT_LOOKED_FOR}) — set pr_update.test_command, or set verify: 'none'`,
+          )
+        }
+        notice(`verify: detect ${repo}: ${found.command}  (${found.rung})`)
+        return [found.command]
+      }
       if (which === 'check') {
         throw new Error(
           'verify: check has no meaning in a standalone run — embed @osdlc/pr-update as a ' +
