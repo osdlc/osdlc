@@ -14,8 +14,8 @@
  *
  * Kinds: `launched`, `host_attached`, `pid_recorded`, `harness_session_resolved`,
  * `state_changed`, `usage_sample`, `output`, `outcome`, `pr_linked`, `named`,
- * `interrupted`, `closed`, `done`, `ended` and `resumed`. A reader skips a line whose kind it does not
- * know.
+ * `interrupted`, `closed`, `done`, `ended` and `resumed`. A reader skips a line
+ * whose kind it does not know.
  *
  * State machine: `starting` to `running`, `idle` or `ended`; `running` to
  * `waiting_for_input`, `idle`, `done` or `ended`; `waiting_for_input` to `running`,
