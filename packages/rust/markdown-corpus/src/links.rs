@@ -640,7 +640,8 @@ impl LinkGraph {
         // apply lock: a batch that read a file before another batch must not
         // install after it.
         let _apply = self.apply_lock.lock().unwrap();
-        // Another corpus: nothing below applies, so skip the listings.
+        // Another corpus: nothing below applies, so skip the listings. The
+        // freshness check stays after the admissions, which it needs.
         if self.state.lock().unwrap().for_vault.as_deref() != Some(vault_dir) {
             return;
         }

@@ -415,7 +415,7 @@ fn shows(
 }
 
 /// Whether `name` (a file name or a path) is a note: it ends in `.md`, in
-/// any case. The one rule the walk and both caches share.
+/// any case.
 pub fn is_note(name: &str) -> bool {
     name.to_lowercase().ends_with(".md")
 }
