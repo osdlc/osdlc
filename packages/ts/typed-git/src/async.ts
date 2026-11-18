@@ -779,7 +779,7 @@ export class AsyncGit {
     return this.backend.execute(this.cwd, { kind: 'worktreePrune' }, opts)
   }
 
-  /** `git submodule update --init --recursive`. */
+  /** `git submodule update --init --recursive --checkout`, refusing `file` and `ext` URLs. See `submoduleUpdate` in verbs.ts. */
   submoduleUpdate(opts: GitCallOptions = {}): Promise<void> {
     return this.backend.execute(this.cwd, { kind: 'submoduleUpdate' }, opts)
   }

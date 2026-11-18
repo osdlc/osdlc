@@ -1146,7 +1146,7 @@ describe('submodules in the update worktree', () => {
   const savedEnv = Object.fromEntries(GIT_ENV.map((k) => [k, process.env[k]]))
 
   beforeEach(() => {
-    // The verb refuses local-path submodule URLs; this environment setting overrides that.
+    // Lets the fixture's `submodule add` and the verb use a local-path URL; both refuse `file` by default.
     process.env.GIT_ALLOW_PROTOCOL = 'file'
     subDir = mkdtempSync(join(tmpdir(), 'pr-update-sub-'))
     const sub = new Git(subDir)
@@ -1179,23 +1179,23 @@ describe('submodules in the update worktree', () => {
   })
 
   /** A gitlink at `deps/sub` pinned to `sha`, committed on the checked-out branch. */
-  function pin(sha: string, first = false): void {
+  function pin(sha: string, addSubmodule = false): void {
     const { git } = fx.worker
-    if (first) {
+    if (addSubmodule) {
       git.rawChecked(['submodule', 'add', subDir, 'deps/sub'])
     }
     git.rawChecked(['update-index', '--add', '--cacheinfo', `160000,${sha},deps/sub`])
     git.commit({ message: `pin ${sha.slice(0, 7)}` })
   }
 
-  /** A commit on main that touches only `b.txt`, so the submodule checkout is not swept in. */
+  /** A commit on main that stages only `b.txt`, so `add` does not pick up the untracked `deps/sub` checkout. */
   function moveMain(): void {
     writeFileSync(join(fx.worker.dir, 'b.txt'), 'b\n')
     fx.worker.git.add(['b.txt'])
     fx.worker.git.commit({ message: 'main moves' })
   }
 
-  /** `branch` pins the submodule at s1; main then moves, by `onMain` or an unrelated file. */
+  /** `sub-pr` pins the submodule at s1; main then moves by `onMain`. */
   function makeBehindPr(onMain: () => void): void {
     const { git } = fx.worker
     git.checkout('main', { branch: 'sub-pr' })

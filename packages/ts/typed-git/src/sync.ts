@@ -940,7 +940,7 @@ export class Git {
     this.exec(v.worktreePrune(), opts)
   }
 
-  /** `git submodule update --init --recursive`. */
+  /** `git submodule update --init --recursive --checkout`, refusing `file` and `ext` URLs. See `submoduleUpdate` in verbs.ts. */
   submoduleUpdate(opts: GitSyncCallOptions = {}): void {
     this.exec(v.submoduleUpdate(), opts)
   }

@@ -1850,7 +1850,7 @@ describe('Git — real repo round trips', () => {
   test('submoduleUpdate checks out a submodule a clone left empty', () => {
     const root = mkdtempSync(join(tmpdir(), 'typedgit-submodule-'))
     const env = { ...process.env }
-    // The verb refuses local-path submodule URLs; this environment setting overrides that.
+    // Lets the fixture's `submodule add` and the verb use a local-path URL; both refuse `file` by default.
     process.env.GIT_ALLOW_PROTOCOL = 'file'
     try {
       const sub = new Git(join(root, 'sub'))
@@ -1891,7 +1891,7 @@ describe('Git — real repo round trips', () => {
   test('submoduleUpdate refuses a local-path submodule URL unless the environment allows it', () => {
     const root = mkdtempSync(join(tmpdir(), 'typedgit-submodule-'))
     const env = { ...process.env }
-    // The verb refuses local-path submodule URLs; this environment setting overrides that.
+    // Git's default refuses a local-path `submodule add`; allow it while building the fixture.
     process.env.GIT_ALLOW_PROTOCOL = 'file'
     try {
       const sub = new Git(join(root, 'sub'))
