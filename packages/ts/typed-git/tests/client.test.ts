@@ -34,6 +34,18 @@ import { makeGitFixture } from '../src/testing.ts'
 
 // ── fake-runner layer ───────────────────────────────────────────────────────
 
+/** The flags `diffText` and `diffAddedFile` always pass, after `diff`. */
+const PLAIN_PATCH = [
+  '--no-color',
+  '--no-ext-diff',
+  '--no-textconv',
+  '--src-prefix=a/',
+  '--dst-prefix=b/',
+  '--no-relative',
+  '--submodule=short',
+  '--unified=3',
+]
+
 /**
  * Records every run() call and replays a canned result. `git --version`, the
  * probe a version-gated verb makes, answers 2.50.1 and is not recorded; a
@@ -346,6 +358,8 @@ describe('Git — argv construction (fake runner)', () => {
     })
     expect(calls[0]!.argv).toEqual([
       'diff',
+      '--no-color',
+      '--no-relative',
       '--name-status',
       '-z',
       '--cached',
@@ -353,6 +367,21 @@ describe('Git — argv construction (fake runner)', () => {
       'origin/main..HEAD',
       '--',
       'docs',
+    ])
+  })
+
+  test('diffNameStatus and diffText pass -- after a range or rev with no paths', () => {
+    const { runner, calls } = recorder(OK(''))
+    const git = new Git('/repo', { runner })
+    git.diffNameStatus({ range: 'docs' })
+    git.diffNameStatus()
+    git.diffText('docs')
+    git.diffText()
+    expect(calls.map((c) => c.argv)).toEqual([
+      ['diff', '--no-color', '--no-relative', '--name-status', '-z', 'docs', '--'],
+      ['diff', '--no-color', '--no-relative', '--name-status', '-z'],
+      ['diff', ...PLAIN_PATCH, 'docs', '--'],
+      ['diff', ...PLAIN_PATCH],
     ])
   })
 
@@ -1466,7 +1495,14 @@ describe('Git — argv construction (fake runner)', () => {
     })
     const out = new Git('/repo', { runner }).diffAddedFile('src/new.ts')
 
-    expect(calls[0]!.argv).toEqual(['diff', '--no-index', '--', '/dev/null', 'src/new.ts'])
+    expect(calls[0]!.argv).toEqual([
+      'diff',
+      ...PLAIN_PATCH,
+      '--no-index',
+      '--',
+      '/dev/null',
+      'src/new.ts',
+    ])
     expect(out).toContain('+++ b/src/new.ts')
   })
 
