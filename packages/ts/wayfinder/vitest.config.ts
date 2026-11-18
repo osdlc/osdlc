@@ -17,7 +17,7 @@ export default defineConfig({
     ],
   },
   test: {
-    // Real git spawns and a served port; Windows passes the 5 s default (S-0021 tier 2).
+    // Real git spawns and a served port can outrun the 5 s default on slow runners (S-0021 tier 2).
     testTimeout: 20000,
     hookTimeout: 20000,
     include: ['tests/**/*.test.ts', 'examples/**/*.test.ts'],
