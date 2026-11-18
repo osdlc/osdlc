@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- A walk's `Hide::Source` (re-exported) lets a caller change the excluded
+  files of a `FrontmatterIndex` or `LinkGraph` without building a new one:
+  change the list, then `refresh_now`. Notes that stay listed keep their
+  parse.
+
 ## [0.4.0] - 2026-11-14
 
 Built on `markdown-vault-fs` 0.7, whose `Admission` has a new variant.

@@ -85,6 +85,28 @@ impl Visibility {
     }
 }
 
+/// A caller's own excluded-files list, asked for at each walk. Cheap to clone.
+///
+/// The function runs at the start of every walk and every admission query, so
+/// keep it quick: return rules compiled when the list last changed, not a
+/// list parsed on every call. A cache does not know the list changed: after
+/// it does, refresh the cache (`refresh_now`) to apply it.
+#[derive(Clone)]
+pub struct HideSource(Arc<dyn Fn() -> Arc<HideRules> + Send + Sync>);
+
+impl HideSource {
+    /// A source that asks `rules` for the current list.
+    pub fn new(rules: impl Fn() -> Arc<HideRules> + Send + Sync + 'static) -> Self {
+        HideSource(Arc::new(rules))
+    }
+}
+
+impl std::fmt::Debug for HideSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("HideSource(..)")
+    }
+}
+
 /// Which excluded-files list a walk applies.
 #[derive(Debug, Clone, Default)]
 pub enum Hide {
@@ -94,6 +116,12 @@ pub enum Hide {
     Vault,
     /// These rules, as the caller compiled them.
     Rules(Arc<HideRules>),
+    /// Rules the caller keeps somewhere else (a settings file of its own),
+    /// asked for afresh at the start of each walk and of each admission
+    /// query. A change to the list shows at the next refresh, and a cache
+    /// reuses every note whose file did not change, so nothing is rebuilt.
+    /// See [`HideSource`].
+    Source(HideSource),
     /// Hide nothing beyond the visibility policy.
     Off,
 }
@@ -451,6 +479,7 @@ impl WalkOptions {
         match &self.hide {
             Hide::Vault => Some(hide::load(vfs, vault_dir).rules),
             Hide::Rules(rules) => Some(Arc::clone(rules)),
+            Hide::Source(source) => Some((source.0)()),
             Hide::Off => None,
         }
         .filter(|h| !h.is_empty())
@@ -462,7 +491,8 @@ impl WalkOptions {
     /// ignore it, drop it or read it.
     ///
     /// The roots, the skip and prune lists, the visibility policy, the
-    /// excluded files (read from the vault for [`Hide::Vault`]), the exclude
+    /// excluded files (read from the vault for [`Hide::Vault`], asked of the caller for
+    /// [`Hide::Source`]), the exclude
     /// list and notes versus attachments decide [`Admission::Outside`]. Then
     /// the file system decides [`Admission::Unlisted`], as the walk reaches
     /// a file: by listing each folder from the walk's start down. A folder
@@ -1057,6 +1087,29 @@ mod tests {
         ));
         assert!(!got.contains(&"Notes/beta.md".to_string()));
         assert!(got.contains(&"Notes/alpha.md".to_string()));
+    }
+
+    #[test]
+    fn a_hide_source_is_asked_again_at_each_walk_and_admission() {
+        use std::sync::Mutex;
+        let d = fixture();
+        let list = Arc::new(Mutex::new(Arc::new(HideRules::default())));
+        let source = {
+            let list = Arc::clone(&list);
+            HideSource::new(move || Arc::clone(&list.lock().unwrap()))
+        };
+        let opts = WalkOptions {
+            hide: Hide::Source(source),
+            ..WalkOptions::content_notes()
+        };
+        let v = Path::new("/v");
+        assert!(rels(w(&d, &opts)).contains(&"Notes/alpha.md".to_string()));
+        assert!(opts.admits(&d, v, "Notes/alpha.md"));
+
+        *list.lock().unwrap() = Arc::new(HideRules::parse(&["Notes/"]).0);
+        assert_eq!(rels(w(&d, &opts)), vec!["Zed/deep/note.md"]);
+        assert!(!opts.admits(&d, v, "Notes/alpha.md"));
+        assert!(!format!("{opts:?}").is_empty());
     }
 
     #[test]

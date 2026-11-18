@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `Hide::Source(HideSource)`: a walk asks the caller for its excluded-files
+  rules at the start of each walk and each admission query, so a tool that
+  keeps the list in a file of its own can change it without a new
+  `WalkOptions`. `Hide` gains a variant, so a `match` on it that names every
+  variant needs a new arm.
+
 ## [0.7.0] - 2026-11-14
 
 A path the disk spells otherwise than a watcher reported it is told apart
