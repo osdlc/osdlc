@@ -5,7 +5,7 @@ import type { TaskStatus } from '../../model/plan'
 /** A status as an icon and words: colour is never the only signal. */
 const props = defineProps<{ status: TaskStatus; label: string }>()
 
-const ICON: Record<TaskStatus, string> = { done: '✓', doing: '◐', owner: 'you', todo: '○' }
+const ICON: Record<TaskStatus, string> = { done: '✓', doing: '◐', owner: 'you', todo: '○', deferred: '⏸', dropped: '✕' }
 const icon = computed(() => ICON[props.status])
 </script>
 
@@ -43,6 +43,10 @@ const icon = computed(() => ICON[props.status])
   background: var(--done);
   color: var(--surface);
   font-size: 9.5px;
+}
+
+.status--dropped {
+  text-decoration: line-through;
 }
 
 .status--doing {

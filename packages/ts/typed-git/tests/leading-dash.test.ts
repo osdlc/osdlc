@@ -67,6 +67,7 @@ const CASES: Array<[string, unknown[]]> = [
   ['resetHard', ['-x']],
   ['deleteBranch', ['-x']],
   ['deleteRef', ['refs/heads/a', { expected: '-x' }]],
+  ['updateRef', ['-x', 'a'.repeat(40), { oldSha: null }]],
   ['worktreeAdd', ['-x']],
   ['worktreeRemove', ['-x']],
   ['worktreeUnlock', ['-x']],
@@ -110,6 +111,8 @@ const MORE_CASES: Array<[string, unknown[]]> = [
   ['push', ['origin', '-x']],
   ['push', ['origin', ['HEAD', '-x']]],
   ['deleteRef', ['-x', { expected: 'abc' }]],
+  ['updateRef', ['refs/heads/a', '-x', { oldSha: null }]],
+  ['updateRef', ['refs/heads/a', 'a'.repeat(40), { oldSha: '-x' }]],
   ['worktreeAdd', ['/wt', { startPoint: '-x' }]],
   ['worktreeMove', ['-x', '/wt']],
   ['remoteAdd', ['-x', '/store.git']],
@@ -145,7 +148,7 @@ describe('leading-dash positionals', () => {
   test('the cases cover every guarded verb in verbs.ts', () => {
     const cased = new Set(CASES.map(([name]) => name))
     expect([...cased].sort()).toEqual([...guardedVerbs()].sort())
-    expect(cased.size).toBe(48)
+    expect(cased.size).toBe(49)
   })
 
   test.each([...CASES, ...MORE_CASES])('Git.%s refuses before spawning', (name, args) => {

@@ -73,7 +73,9 @@ const label = computed(() => {
   border-color: var(--owner);
 }
 
-.task--done {
+.task--done,
+.task--deferred,
+.task--dropped {
   background: var(--surface-2);
   box-shadow: none;
   opacity: 0.62;

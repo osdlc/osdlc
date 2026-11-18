@@ -53,6 +53,7 @@
 
 use std::path::Path;
 
+use crate::cmd::refuse_option;
 use crate::{GitError, git};
 
 /// A checkout, as [`checkout`] left it.
@@ -161,17 +162,6 @@ pub fn checkout(url: &str, dest: &Path, reference: Option<&str>) -> Result<Check
         sha: crate::query::head_sha(dest)?,
         cloned: !existing,
     })
-}
-
-/// Refuses a URL or reference that git would read as an option.
-fn refuse_option(command: &str, value: &str) -> Result<(), GitError> {
-    if value.starts_with('-') {
-        return Err(GitError::Command {
-            command: command.to_string(),
-            stderr: format!("refusing a value that begins with '-': {value}"),
-        });
-    }
-    Ok(())
 }
 
 #[cfg(test)]

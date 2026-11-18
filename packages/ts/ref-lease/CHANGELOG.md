@@ -1,5 +1,32 @@
 # @osdlc/ref-lease
 
+## 0.3.2
+
+### Patch Changes
+
+- Updated dependencies [6236a97]
+  - @osdlc/typed-git@0.17.0
+
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [cde222c]
+  - @osdlc/typed-git@0.16.0
+
+## 0.3.0
+
+### Minor Changes
+
+- d015046: New helpers `claim`, `updateWithRetry` and `release`, the guide's recipes as tested functions. `claim` creates a lease, or takes over one that is not live (or is the caller's own); `updateWithRetry` does a read-modify-write that re-reads after a lost swap, up to a bound, and can create or delete; `release` deletes only if the ref still holds the caller's sha and reports whether it did. Also `refKey(prefix, key)`, a safe readable ref name for any string key, and `refStore`, a keyed JSON store with one ref per key (`load`, `get`, `entries`, `update`, `prune`). Every payload rule is a callback, so the payload stays the caller's.
+
+## 0.2.6
+
+### Patch Changes
+
+- Updated dependencies [912296d]
+  - @osdlc/typed-git@0.15.0
+
 ## 0.2.5
 
 ### Patch Changes

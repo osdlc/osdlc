@@ -96,6 +96,11 @@ const label = computed(() =>
   border-left-color: var(--done);
 }
 
+.milestone--deferred,
+.milestone--dropped {
+  opacity: 0.62;
+}
+
 .milestone.is-next {
   box-shadow: 0 0 0 3px var(--next);
 }

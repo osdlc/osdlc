@@ -9,7 +9,7 @@ file, then run `pnpm build-data` (see [scripts/README.md](../scripts/README.md))
 {
   "asOf": "2026-11-09",                  // the date the facts were checked
   "statuses": [                          // the label for each status
-    { "id": "done", "label": "done" }    // done | doing | owner | todo
+    { "id": "done", "label": "done" }    // done | doing | owner | todo | deferred | dropped
   ],
   "types": [
     { "id": "functional", "label": "Functional" }   // functional | supporting
@@ -34,7 +34,7 @@ file, then run `pnpm build-data` (see [scripts/README.md](../scripts/README.md))
       "id": 27,                          // a whole number, unique
       "title": "Org corpora",            // a few words
       "detail": "a parent: types only",  // one short line under the title
-      "status": "todo",                  // done | doing (in progress) | owner (waiting on owner) | todo
+      "status": "todo",                  // done | doing (in progress) | owner (waiting on owner) | todo | deferred (on hold) | dropped (will not be done)
       "milestone": "m-npm",              // a milestones[].id
       "type": "functional",              // functional | supporting
       "after": [9],                      // ids of the tasks it waits on

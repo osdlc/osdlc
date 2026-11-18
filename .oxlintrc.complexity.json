@@ -1,0 +1,10 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": { "correctness": "off" },
+  "ignorePatterns": ["**/dist/**", "**/tests/**", "**/test/**", "**/examples/**"],
+  "rules": {
+    "complexity": ["warn", { "max": 20 }],
+    "max-depth": ["warn", { "max": 4 }],
+    "max-lines-per-function": ["warn", { "max": 100, "skipBlankLines": true, "skipComments": true }]
+  }
+}

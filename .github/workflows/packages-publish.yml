@@ -42,7 +42,7 @@ jobs:
       id-token: write
     uses: ./.github/workflows/ts-packages-release.yml
     with:
-      app-client-id: Iv23liYTGAl78fzN8YWm
+      app-client-id: ${{ vars.RELEASE_PLZ_APP_CLIENT_ID }}
       # `version-packages` runs `changeset version`, refreshes pnpm-lock.yaml, stamps each CLI's
       # src/version.generated.ts, rebuilds wayfinder, then rewrites its
       # schema/config.json and its guide's `$schema` line for the new version,
@@ -50,5 +50,8 @@ jobs:
       # suite records its reference's version. It reads wayfinder's dist/ and
       # runs the conformance-suites command, so both are built first.
       version-prepare: pnpm --filter '@osdlc/wayfinder...' --filter '@osdlc/conformance-suites...' run build
+      # Every folder that holds published packages, so the "not on npm yet" check sees the
+      # profiles and corpora as well as the libraries.
+      package-globs: packages/ts/* packages/profiles/* packages/corpora/*
     secrets:
       RELEASE_PLZ_APP_PRIVATE_KEY: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}

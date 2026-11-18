@@ -2,7 +2,7 @@
 number: 79
 title: Markdown after the move
 detail: clean up osdlc/markdown
-status: todo
+status: doing
 type: supporting
 milestone: "[m-upstream](../milestones/m-upstream.md)"
 after:
@@ -18,3 +18,5 @@ request in each. Remove from osdlc/markdown what was brought to osdlc/osdlc, so 
 Its README stays, as the holding pen's. In osdlc/osdlc, change the fernlog example (from
 [#16](https://github.com/osdlc/markdown/pull/16), now at `packages/corpora/examples/fernlog/`) to
 install `@osdlc/corpus-profile-claims` from npm instead of by path. After 78 and 60.
+
+In progress: osdlc/markdown #15, #16 and #19 and osdlc/models#1 are closed with links here (docs/planning/repatriation.md). Left: remove the moved copies from osdlc/markdown, and switch fernlog to the claims profile from npm.

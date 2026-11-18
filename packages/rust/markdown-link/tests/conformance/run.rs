@@ -8,7 +8,7 @@
 //! Offsets in the suite count characters, so neither twin's own unit (bytes
 //! here, UTF-16 code units in TypeScript) leaks into it.
 
-use markdown_link::code::{CodeRules, strip_code_with};
+use markdown_link::code::{CodeRules, code_ranges, strip_code_with};
 use markdown_link::{
     AbandonReason, BodyLinkKind, LinkKind, ScanOptions, Size, body_links, body_links_spanned,
     body_links_spanned_with, display_text, is_vault_link_url, md_link_target, parse_inner,
@@ -39,7 +39,16 @@ pub fn run(section: &str, input: &Value) -> Result<Value, String> {
                     return Err(format!("{rules} changed the character count"));
                 }
             }
-            Ok(json!({ "commonmark": commonmark, "skill_export": skill_export }))
+            let ranges: Vec<Value> = code_ranges(source, CodeRules::CommonMark)
+                .into_iter()
+                .map(|range| {
+                    json!([
+                        chars_before(source, range.start),
+                        chars_before(source, range.end)
+                    ])
+                })
+                .collect();
+            Ok(json!({ "commonmark": commonmark, "skill_export": skill_export, "ranges": ranges }))
         }
         "inner" => {
             let i = fields(input, &["inner"], &["embed"])?;
@@ -110,6 +119,9 @@ fn body(body: &str, options: Option<ScanOptions>) -> Result<Value, String> {
             if link.heading.is_some() {
                 out["heading"] = json!(link.heading);
             }
+            if link.title.is_some() {
+                out["title"] = json!(link.title);
+            }
             if link.block.is_some() {
                 out["block"] = json!(link.block);
             }
@@ -173,7 +185,12 @@ fn scan_options(input: &Map<String, Value>) -> Result<Option<ScanOptions>, Strin
     let options = fields(
         options,
         &[],
-        &["code_rules", "skip_html_comments", "self_links"],
+        &[
+            "code_rules",
+            "skip_html_comments",
+            "self_links",
+            "all_markdown_links",
+        ],
     )?;
     Ok(Some(ScanOptions {
         code_rules: match options.get("code_rules").map(Value::as_str) {
@@ -184,6 +201,7 @@ fn scan_options(input: &Map<String, Value>) -> Result<Option<ScanOptions>, Strin
         },
         skip_html_comments: flag(options, "skip_html_comments")?,
         self_links: flag(options, "self_links")?,
+        all_markdown_links: flag(options, "all_markdown_links")?,
     }))
 }
 

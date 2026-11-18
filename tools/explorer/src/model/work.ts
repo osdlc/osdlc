@@ -1,6 +1,6 @@
 // Imports name the .ts file, so that scripts/build-data.mjs can load this module under plain Node.
 import type { MilestonePhase, Plan, PlanMilestone, PlanTask, TaskStatus } from './plan.ts'
-import { DEFAULT_PHASE_LABEL, DEFAULT_STATUS_LABEL } from './plan.ts'
+import { DEFAULT_PHASE_LABEL, DEFAULT_STATUS_LABEL, isClosed, isSetAside } from './plan.ts'
 
 /** Lookups over a parsed plan. Build it once; the plan does not change while the app runs. */
 export interface PlanIndex {
@@ -51,9 +51,9 @@ export function unblocksOf(index: PlanIndex, id: number): PlanTask[] {
   return index.unblocks.get(id) ?? []
 }
 
-/** Next up: not done, and every task it waits on is done. */
+/** Next up: not closed, and every task it waits on is done. */
 export function isNextUp(index: PlanIndex, task: PlanTask): boolean {
-  return task.status !== 'done' && waitsOn(index, task.id).every((t) => t.status === 'done')
+  return !isClosed(task.status) && waitsOn(index, task.id).every((t) => t.status === 'done')
 }
 
 export function nextUpIds(index: PlanIndex): Set<number> {
@@ -65,8 +65,10 @@ export interface Progress {
   total: number
 }
 
+/** Deferred and dropped tasks are left out of both numbers. */
 export function progressOf(tasks: readonly PlanTask[]): Progress {
-  return { done: tasks.filter((t) => t.status === 'done').length, total: tasks.length }
+  const kept = tasks.filter((t) => !isSetAside(t.status))
+  return { done: kept.filter((t) => t.status === 'done').length, total: kept.length }
 }
 
 export function progressText({ done, total }: Progress): string {
@@ -74,7 +76,7 @@ export function progressText({ done, total }: Progress): string {
 }
 
 /** Waiting work first, finished work last. */
-export const STATUS_ORDER: readonly TaskStatus[] = ['doing', 'owner', 'todo', 'done']
+export const STATUS_ORDER: readonly TaskStatus[] = ['doing', 'owner', 'todo', 'done', 'deferred', 'dropped']
 
 export interface StatusGroup {
   status: TaskStatus

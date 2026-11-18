@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/corpus-sdlc-starter",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "A starter knowledge base for an sdlc planning corpus: shared principles as corpus-schema records, typed by @osdlc/corpus-profile-sdlc. A repo names it under references in its corpus's root file and cites its records by id.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",

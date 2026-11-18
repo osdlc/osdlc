@@ -1,5 +1,36 @@
 # @osdlc/code-host
 
+## 0.8.1
+
+### Patch Changes
+
+- Updated dependencies [6236a97]
+  - @osdlc/typed-git@0.17.0
+  - @osdlc/typed-gh@0.18.1
+
+## 0.8.0
+
+### Minor Changes
+
+- 621069f: `GithubCodeHost.getPr` reads a pull request's comments, reviews and inline review comments through `@osdlc/typed-gh`'s `prActivity`, in one GraphQL call, instead of `gh pr view`'s comments and reviews plus a REST call for the inline comments. Entry ids and thread ids are unchanged. Comments and reviews now carry `editedAt`, and activity is in timeline order. An activity read that fails, or cannot be read whole, now fails `getPr` instead of leaving the inline comments out.
+  
+  Breaking: `codeHostPrFrom(pr, activity)` takes the rows of `prActivity` as its second argument, in place of the inline comments already mapped to `Activity`.
+
+### Patch Changes
+
+- Updated dependencies [621069f]
+- Updated dependencies [cde222c]
+  - @osdlc/typed-gh@0.18.0
+  - @osdlc/typed-git@0.16.0
+
+## 0.7.12
+
+### Patch Changes
+
+- Updated dependencies [912296d]
+  - @osdlc/typed-git@0.15.0
+  - @osdlc/typed-gh@0.17.2
+
 ## 0.7.11
 
 ### Patch Changes

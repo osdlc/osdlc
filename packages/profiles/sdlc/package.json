@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/corpus-profile-sdlc",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The sdlc profile for corpus-schema: the planning record types of sdlc (principles, standards, decisions, drivers, products, capabilities, terms, references, tasks, milestones, backlog, roadmaps, frictions, notes). A corpus of types and no records, named under extends in a corpus's root file, whose folders take its types through uses.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",

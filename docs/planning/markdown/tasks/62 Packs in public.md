@@ -2,7 +2,7 @@
 number: 62
 title: Packs in public
 detail: regenerate in public
-status: todo
+status: deferred
 type: functional
 milestone: "[m-sdlc-profile](../milestones/m-sdlc-profile.md)"
 after:
@@ -20,3 +20,5 @@ generator in dev and copy its output into osdlc/osdlc.
 
 Once they move, CI regenerates the sdlc profile from the packs and checks that the committed copy
 matches. Not on the beeline's critical path. After 47, 49, 75 and 78.
+
+Deferred: out of scope under [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md). It is opened again if model-schema and the packs move to a public repository.

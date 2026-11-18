@@ -1,5 +1,5 @@
 /**
- * Checks on the public API as a whole: every export and every `CorpusReport` field has TSDoc,
+ * Checks on the public API as a whole: every export and every interface field has TSDoc,
  * the README names every export, its experimental list matches the `@experimental` tags, and
  * examples/ uses every export through the package name.
  */
@@ -40,29 +40,51 @@ const experimental = (s: ts.Symbol): boolean =>
 test('the entry point exports these names', () => {
   expect([...EXPORTS.keys()].sort()).toEqual(
     [
+      'Backlink',
+      'CorpusField',
+      'CorpusModel',
+      'CorpusRecord',
       'CorpusReport',
+      'CorpusType',
       'Data',
       'encodePath',
+      'FieldRef',
       'findCorpora',
       'fold',
+      'getCorpus',
+      'getRecord',
+      'getType',
       'idProblem',
+      'loadCorpus',
+      'LoadedCorpus',
+      'LoadOptions',
       'markdownLink',
       'npmPackageUrl',
       'packageUrl',
       'PackageUrl',
+      'RecordLink',
+      'RecordReference',
+      'recordsOf',
+      'RecordTarget',
+      'RefForm',
+      'resolveTarget',
       'SyncReport',
       'syncCorpus',
+      'TypeRef',
       'validateCorpus',
     ].sort(),
   )
 })
 
-test('every export, and every CorpusReport field, has TSDoc', () => {
+test('every export, and every field of every exported interface, has TSDoc', () => {
   expect([...EXPORTS].filter(([, s]) => !documented(s)).map(([name]) => name)).toEqual([])
-  const report = EXPORTS.get('CorpusReport')!
-  const fields = checker.getDeclaredTypeOfSymbol(report).getProperties()
-  expect(fields.length).toBeGreaterThan(0)
-  expect(fields.filter((f) => !documented(f)).map((f) => f.name)).toEqual([])
+  const interfaces = [...EXPORTS].filter(([, s]) => s.flags & ts.SymbolFlags.Interface)
+  expect(interfaces.map(([name]) => name)).toContain('CorpusReport')
+  for (const [name, s] of interfaces) {
+    const fields = checker.getDeclaredTypeOfSymbol(s).getProperties()
+    expect(fields.length, name).toBeGreaterThan(0)
+    expect(fields.filter((f) => !documented(f)).map((f) => `${name}.${f.name}`)).toEqual([])
+  }
 })
 
 test('the README names every export', () => {

@@ -1,0 +1,420 @@
+# Reports unit test coverage and complexity for TypeScript packages and Rust
+# crates. It reports only: no number fails a job, and no job here is required
+# by the "Protect main" ruleset. The checks that gate a pull request are in
+# packages-ci.yml and rust-ci.yml.
+#
+# One file for osdlc/osdlc and for every repository that uses it: it runs here
+# on its own triggers, and other repositories call it (`workflow_call`);
+# packages/gh-actions/README.md shows the caller. A called workflow sees the
+# caller's event and variables, so the settings below are the running
+# repository's.
+#
+# Settings (input, else variable, else default). A language whose folder
+# setting is empty is skipped.
+#   REPORTS_RUST_DIR       the Cargo workspace, from the root; osdlc: packages/rust
+#   REPORTS_RUST_ARGS      packages for cargo llvm-cov and clippy; default --workspace
+#   REPORTS_TS_PACKAGES    TypeScript package folders, space separated globs;
+#                          osdlc: packages/ts/*
+#   REPORTS_TS_SETUP       shell run at the root before the report; default
+#                          `pnpm install --frozen-lockfile` then REPORTS_TS_BUILD;
+#                          `none` runs nothing
+#   REPORTS_TS_BUILD       the default setup's build; default `pnpm run build`
+#   REPORTS_TS_COVERAGE    a command run in each package instead of vitest; it
+#                          writes coverage/lcov.info, and its exit status is the
+#                          package's test result. Default empty: each package's
+#                          `coverage` script, which is vitest
+#   REPORTS_OXLINT_CONFIG  oxlint complexity config; default osdlc's
+#   REPORTS_OXLINT_IGNORE  more globs, space separated, for oxlint to leave out
+#   REPORTS_NODE_VERSION   Node for the Rust job, if its tests need one
+#   REPORTS_ENV            NAME=value lines added to both jobs' environment
+#
+# `settings` resolves those once. `ts` and `rust` run
+# scripts/quality-report.sh, whose header says what it measures, and write its
+# tables to their job summary: first a row per package or crate with its test
+# result, line coverage and complexity findings, then the coverage and the
+# functions over a complexity threshold in full. A failing test is named in
+# the summary and leaves the job green. The script and the Rust composite
+# actions come from a checkout of this file's own repository and commit
+# (job.workflow_repository, job.workflow_sha), so a caller that pins the
+# workflow to a SHA pins them too.
+#
+# `coverage` totals the languages with octocov and writes the total to its job
+# summary, beside the change from the default branch. A run there stores its
+# report as a workflow artifact, which later runs compare with.
+#
+# `comment` leaves one line on the pull request with the line coverage and a
+# link to the run's summary page, and rewrites that line on later runs. It is
+# the only job with a write permission.
+#
+# Every action is pinned to a commit SHA; the comment names its release.
+name: reports
+
+on:
+  pull_request:
+    paths:
+      - packages/**
+      - scripts/quality-report.sh
+      - .oxlintrc.complexity.json
+      - .github/workflows/reports.yml
+      - .github/actions/rust-*/**
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+  push:
+    branches: [main]
+  workflow_dispatch:
+  # Each input overrides the variable named in the header.
+  workflow_call:
+    inputs:
+      rust-dir:
+        description: The Cargo workspace. Default the variable REPORTS_RUST_DIR; empty skips Rust.
+        type: string
+        default: ""
+      rust-args:
+        description: Packages for cargo llvm-cov and clippy. Default the variable REPORTS_RUST_ARGS, else --workspace.
+        type: string
+        default: ""
+      ts-packages:
+        description: Glob of the pnpm packages. Default the variable REPORTS_TS_PACKAGES; empty skips TypeScript.
+        type: string
+        default: ""
+      ts-setup:
+        description: Shell run at the root before the report; none runs nothing. Default the variable REPORTS_TS_SETUP, else pnpm install and ts-build.
+        type: string
+        default: ""
+      ts-build:
+        description: Run after pnpm install. Default the variable REPORTS_TS_BUILD, else pnpm run build.
+        type: string
+        default: ""
+      ts-coverage:
+        description: A command run in each package instead of vitest, writing coverage/lcov.info. Default the variable REPORTS_TS_COVERAGE.
+        type: string
+        default: ""
+      oxlint-config:
+        description: oxlint complexity config. Default the variable REPORTS_OXLINT_CONFIG, else osdlc's.
+        type: string
+        default: ""
+      oxlint-ignore:
+        description: More globs for oxlint to leave out. Default the variable REPORTS_OXLINT_IGNORE.
+        type: string
+        default: ""
+      node-version:
+        description: Node for the Rust job. Default the variable REPORTS_NODE_VERSION, else none.
+        type: string
+        default: ""
+      env:
+        description: NAME=value lines for both jobs' environment. Default the variable REPORTS_ENV.
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+# Not `reports-…`: a caller that names its own group that way would wait on itself.
+concurrency:
+  group: quality-reports-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  settings:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      rust-dir: ${{ steps.s.outputs.rust-dir }}
+      rust-args: ${{ steps.s.outputs.rust-args }}
+      ts-packages: ${{ steps.s.outputs.ts-packages }}
+      ts-setup: ${{ steps.s.outputs.ts-setup }}
+      ts-coverage: ${{ steps.s.outputs.ts-coverage }}
+      oxlint-config: ${{ steps.s.outputs.oxlint-config }}
+      oxlint-ignore: ${{ steps.s.outputs.oxlint-ignore }}
+      node-version: ${{ steps.s.outputs.node-version }}
+      env: ${{ steps.s.outputs.env }}
+    steps:
+      - id: s
+        env:
+          RUST_DIR: ${{ inputs.rust-dir || vars.REPORTS_RUST_DIR }}
+          RUST_ARGS: ${{ inputs.rust-args || vars.REPORTS_RUST_ARGS || '--workspace' }}
+          TS_PACKAGES: ${{ inputs.ts-packages || vars.REPORTS_TS_PACKAGES }}
+          TS_SETUP: ${{ inputs.ts-setup || vars.REPORTS_TS_SETUP }}
+          TS_BUILD: ${{ inputs.ts-build || vars.REPORTS_TS_BUILD || 'pnpm run build' }}
+          TS_COVERAGE: ${{ inputs.ts-coverage || vars.REPORTS_TS_COVERAGE }}
+          OXLINT_CONFIG: ${{ inputs.oxlint-config || vars.REPORTS_OXLINT_CONFIG }}
+          OXLINT_IGNORE: ${{ inputs.oxlint-ignore || vars.REPORTS_OXLINT_IGNORE }}
+          NODE_VERSION: ${{ inputs.node-version || vars.REPORTS_NODE_VERSION }}
+          JOB_ENV: ${{ inputs.env || vars.REPORTS_ENV }}
+        run: |
+          set -euo pipefail
+          # Checked here, so a bad line fails before any build.
+          while IFS= read -r line; do
+            line="${line%$'\r'}"
+            [ -z "$line" ] || [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] ||
+              { echo "::error::REPORTS_ENV: not NAME=value: $line"; exit 1; }
+          done <<< "$JOB_ENV"
+          # Commands are single lines here: outputs are one line each.
+          for v in TS_SETUP TS_BUILD TS_COVERAGE; do
+            [[ "${!v}" != *$'\n'* ]] || { echo "::error::REPORTS_$v: one line, please (join commands with &&)"; exit 1; }
+          done
+          [ -n "$TS_SETUP" ] || TS_SETUP="pnpm install --frozen-lockfile && $TS_BUILD"
+          [ "$TS_SETUP" != none ] || TS_SETUP=
+          if [ -z "$RUST_DIR" ] && [ -z "$TS_PACKAGES" ]; then
+            echo "::warning::REPORTS_RUST_DIR and REPORTS_TS_PACKAGES are both empty; nothing to report"
+          fi
+          {
+            echo "rust-dir=$RUST_DIR"
+            echo "rust-args=$RUST_ARGS"
+            echo "ts-packages=$TS_PACKAGES"
+            echo "ts-setup=$TS_SETUP"
+            echo "ts-coverage=$TS_COVERAGE"
+            echo "oxlint-config=$OXLINT_CONFIG"
+            echo "oxlint-ignore=$OXLINT_IGNORE"
+            echo "node-version=$NODE_VERSION"
+            echo "env<<REPORTS_ENV_END"
+            printf '%s\n' "$JOB_ENV"
+            echo "REPORTS_ENV_END"
+          } >> "$GITHUB_OUTPUT"
+
+  ts:
+    name: typescript
+    needs: settings
+    if: needs.settings.outputs.ts-packages != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The script at this workflow file's own repository and commit
+      # (job.workflow_*; GitHub Enterprise Server lacks them, hence the
+      # fallbacks), which differ from the run's when another repository calls it.
+      - name: Check out the report tools
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository || 'osdlc/osdlc' }}
+          ref: ${{ job.workflow_sha || github.sha }}
+          path: .reports-tools
+          sparse-checkout: |
+            /scripts/quality-report.sh
+            /.oxlintrc.complexity.json
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Set up the environment
+        id: env
+        env:
+          JOB_ENV: ${{ needs.settings.outputs.env }}
+        run: |
+          printf '%s\n' /.reports-tools/ /.reports-coverage/ /.oxlintrc.quality-report.json >> .git/info/exclude
+          printf '%s\n' "$JOB_ENV" | sed '/^$/d; s/\r$//' >> "$GITHUB_ENV"
+          # pnpm/action-setup takes its version from packageManager, if the
+          # root package.json names one.
+          if jq -e '.packageManager // empty' package.json > /dev/null 2>&1; then
+            echo "pnpm-version=" >> "$GITHUB_OUTPUT"
+          else
+            echo "pnpm-version=10" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ steps.env.outputs.pnpm-version }}
+
+      # The pnpm cache needs a lockfile at the root.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: ${{ hashFiles('pnpm-lock.yaml') != '' && 'pnpm' || '' }}
+
+      # By default install, then build: osdlc's tests resolve the workspace
+      # packages through dist/.
+      - name: Set up the packages
+        if: needs.settings.outputs.ts-setup != ''
+        env:
+          TS_SETUP: ${{ needs.settings.outputs.ts-setup }}
+        run: bash -c "$TS_SETUP"
+
+      - name: Report
+        env:
+          QR_ROOT: ${{ github.workspace }}
+          QR_TS_PACKAGES: ${{ needs.settings.outputs.ts-packages }}
+          QR_TS_COVERAGE: ${{ needs.settings.outputs.ts-coverage }}
+          QR_OXLINT_CONFIG: ${{ needs.settings.outputs.oxlint-config }}
+          QR_OXLINT_IGNORE: ${{ needs.settings.outputs.oxlint-ignore }}
+          QR_OUT: .reports-coverage
+        run: .reports-tools/scripts/quality-report.sh ts >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-ts
+          path: .reports-coverage/ts.lcov
+          if-no-files-found: error
+
+  rust:
+    needs: settings
+    if: needs.settings.outputs.rust-dir != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The script and the composite actions at this workflow's commit, as in `ts`.
+      - name: Check out the report tools
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository || 'osdlc/osdlc' }}
+          ref: ${{ job.workflow_sha || github.sha }}
+          path: .reports-tools
+          sparse-checkout: |
+            /scripts/quality-report.sh
+            /.github/actions/rust-toolchain/
+            /.github/actions/rust-build-cache/
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Set up the environment
+        env:
+          JOB_ENV: ${{ needs.settings.outputs.env }}
+        run: |
+          printf '%s\n' /.reports-tools/ /.reports-coverage/ >> .git/info/exclude
+          printf '%s\n' "$JOB_ENV" | sed '/^$/d; s/\r$//' >> "$GITHUB_ENV"
+
+      - if: needs.settings.outputs.node-version != ''
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ needs.settings.outputs.node-version }}
+
+      - uses: ./.reports-tools/.github/actions/rust-toolchain
+        with:
+          components: clippy llvm-tools-preview
+          workspace: ${{ needs.settings.outputs.rust-dir }}
+
+      # A key of its own: an instrumented build shares nothing with rust-ci.yml's.
+      - uses: ./.reports-tools/.github/actions/rust-build-cache
+        with:
+          key: coverage
+          workspace: ${{ needs.settings.outputs.rust-dir }}
+
+      - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+        with:
+          tool: cargo-llvm-cov@0.9.1
+
+      - name: Report
+        env:
+          QR_ROOT: ${{ github.workspace }}
+          QR_RUST_DIR: ${{ needs.settings.outputs.rust-dir }}
+          QR_RUST_ARGS: ${{ needs.settings.outputs.rust-args }}
+          QR_OUT: .reports-coverage
+        run: .reports-tools/scripts/quality-report.sh rust >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-rust
+          path: .reports-coverage/rust.lcov
+          if-no-files-found: error
+
+  coverage:
+    needs: [ts, rust]
+    if: ${{ !cancelled() && (needs.ts.result == 'success' || needs.rust.result == 'success') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # octocov reads the default branch's report from a workflow artifact.
+      actions: read
+    steps:
+      # octocov resolves the paths in the lcov files against the checkout.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: coverage-*
+          path: .reports-coverage
+          merge-multiple: true
+
+      # The config names the lcov files of the languages that ran, so a
+      # repository needs no .octocov.yml. There is no `acceptable` condition:
+      # no number fails a run. The rust job's lcov names files by their
+      # absolute path on its runner, which is this runner's checkout path too.
+      - name: Write the octocov config
+        run: |
+          set -euo pipefail
+          {
+            echo 'coverage:'
+            echo '  paths:'
+            for f in .reports-coverage/*.lcov; do echo "    - $f"; done
+            cat <<'YAML'
+          summary:
+            if: env.GITHUB_ACTIONS == "true"
+          report:
+            if: env.GITHUB_ACTIONS == "true" && is_default_branch
+            datastores:
+              - artifact://${GITHUB_REPOSITORY}
+          diff:
+            if: env.GITHUB_ACTIONS == "true"
+            datastores:
+              - artifact://${GITHUB_REPOSITORY}
+          YAML
+          } > .reports-octocov.yml
+          cat .reports-octocov.yml
+
+      - uses: k1LoW/octocov-action@a167dc0dee441b7ffc45e1b862ab55ec0d87f278 # v1.5.2
+        with:
+          version: v0.83.5
+          config: .reports-octocov.yml
+
+  # One line on the pull request, kept up to date, that links to the run's
+  # summary page. It has no checkout and runs nothing from the pull request.
+  # A pull request from a fork gets a read-only token, so it is left out.
+  comment:
+    needs: [ts, rust]
+    if: >-
+      !cancelled()
+      && (needs.ts.result == 'success' || needs.rust.result == 'success')
+      && github.event_name == 'pull_request'
+      && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: coverage-*
+          path: coverage
+          merge-multiple: true
+
+      - name: Comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPORT: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          # pct <lcov file>...: the share of lines covered, from the LF and LH records.
+          pct() {
+            awk -F: '/^LF:/ { found += $2 } /^LH:/ { hit += $2 } END { if (found == 0) print "–"; else printf "%.2f%%", hit * 100 / found }' "$@"
+          }
+          files=() parts=()
+          for lang in ts:TypeScript rust:Rust; do
+            f="coverage/${lang%%:*}.lcov"
+            [ -e "$f" ] || continue
+            files+=("$f")
+            parts+=("${lang#*:} $(pct "$f")")
+          done
+          detail="$(printf '%s, ' "${parts[@]}")"
+          marker='<!-- reports: coverage -->'
+          body="$marker
+          **Coverage** $(pct "${files[@]}") of lines (${detail%, }). [Full report]($REPORT)"
+          id="$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \
+            --jq "[.[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\")))][0].id // empty" | head -n 1)"
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$body" > /dev/null
+          else
+            gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -f body="$body" > /dev/null
+          fi

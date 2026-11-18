@@ -115,11 +115,12 @@ describe('pr-update update with verify: test', () => {
     expect(await main(['update'], captureContext({ cwd: dir, env }), fakeTools)).toBe(EXIT.ok)
   })
 
-  test('without test_command fails before touching any PR', async () => {
+  test('without test_command fails before touching any PR: exit 1 and the reason', async () => {
     const { dir, env } = project('pr_update:\n  verify: test\n  test_command: null\n')
-    await expect(main(['update'], captureContext({ cwd: dir, env }), fakeTools)).rejects.toThrow(
-      'verify: test needs test_command',
-    )
+    const ctx = captureContext({ cwd: dir, env })
+    expect(await main(['update'], ctx, fakeTools)).toBe(EXIT.error)
+    expect(ctx.io.err).toContain('pr-update: verify: test needs test_command')
+    expect(ctx.io.out).toBe('')
   })
 })
 
@@ -142,9 +143,9 @@ describe('pr-update update --report', () => {
     const { dir, env } = project('pr_update:\n  verify: test\n  test_command: null\n')
     const file = join(dir, 'out.json')
     writeFileSync(file, '{"stale":true}')
-    await expect(
-      main(['update', '--report', file], captureContext({ cwd: dir, env }), fakeTools),
-    ).rejects.toThrow('verify: test needs test_command')
+    const ctx = captureContext({ cwd: dir, env })
+    expect(await main(['update', '--report', file], ctx, fakeTools)).toBe(EXIT.error)
+    expect(ctx.io.err).toContain('verify: test needs test_command')
     expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({
       error: expect.stringContaining('verify: test needs test_command'),
     })

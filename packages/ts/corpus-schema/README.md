@@ -17,9 +17,9 @@ The spec has levels. Level 0 is any folder of linked notes, and this package doe
 Level 1 adds the root file, type folders and records, with schemas optional. Level 2 gives every
 type a schema. The root file can say `level: 2`, and then a type with no schema is an error.
 
-Do not use it to query notes or build an index of them, to check the structure of one Markdown
-document, or as a database for an app with many concurrent writers. The comparison below names
-tools for those jobs.
+It does not query notes or build an index of them: `loadCorpus` gives a tool that does the corpus
+as data. Do not use it to check the structure of one Markdown document, or as a database for an
+app with many concurrent writers. The comparison below names tools for those jobs.
 
 ## Install
 
@@ -267,6 +267,88 @@ or record in it: `npmPackageUrl('@acme/org', '1.0.0', ['principles', 'Be Kind'])
 
 The TSDoc in `dist/index.d.ts` describes each export. `examples/usage.test.ts` uses each one.
 
+## Load a corpus as data
+
+`loadCorpus(root)` reads one corpus the way `validateCorpus` does and returns everything it read
+and resolved: the types, the records, and each reference between records, with its target. A site
+build, a query tool or a server works from that and parses nothing again.
+
+```ts
+import { getRecord, loadCorpus, resolveTarget } from '@osdlc/corpus-schema'
+
+/** What the record `type`/`id` refers to, and what refers to it, one line each. */
+export function neighbours(root: string, type: string, id: string): string[] {
+  const corpus = loadCorpus(root)
+  const record = getRecord(corpus, type, id)
+  if (record === undefined) return []
+  const out = record.references.map((r) =>
+    r.target === null
+      ? `${r.pointer}: unresolved, ${r.unresolved}`
+      : `${r.pointer}: ${resolveTarget(corpus, r.target)?.title}`,
+  )
+  const back = record.incoming.map((b) => `from ${b.from.type}/${b.from.id}`)
+  return [...out, ...back]
+}
+```
+
+The model is plain data: strings, numbers, booleans, null, arrays and objects. `JSON.stringify`
+writes all of it and `JSON.parse` gives it back. Records point at each other by a `RecordTarget`
+(corpus key, type, id and path), never by object. Every list has a fixed order, so two loads of the
+same files give the same JSON on any platform. `root` is the one value that depends on where the
+corpus sits on disk.
+
+```text
+LoadedCorpus            a CorpusModel, plus:
+  corpora               every corpus it extends or references, at any depth, once, by key
+CorpusModel
+  key                   '' for the loaded corpus, else its prefix chain: 'org', 'org/base'
+  name, root, rootFile, id, level, identity, version
+  extends, references   prefix -> corpus key
+  errors, warnings      the lines validateCorpus reports
+  types[]               CorpusType, by name
+    name, dir, origin   origin: 'local', 'extends' (x-extends) or 'uses'
+    schemaFile, schema  the type's own schema, as written
+    flattened           the spec's flattened schema
+    title, description, identity, recordFile
+    chain[]             TypeRef: the type, then each type it builds on
+    fields[]            CorpusField: name, schema, declaredBy, required, ref
+      ref               FieldRef: types, targets, form, items (null with no x-ref)
+  records[]             CorpusRecord, by type, id and path
+    id, type, path, name, title, format, valid, identity
+    data                the frontmatter, or the whole .yaml or .json file
+    body                the Markdown after the frontmatter (.md only)
+    folder, files       the record folder and its other files
+    references[]        RecordReference: field, pointer, value, form, target, unresolved
+    links[]             RecordLink: a body link to a record, with its place in body
+    incoming[]          Backlink: from, via ('reference' or 'link'), pointer
+```
+
+A `TypeRef` is `corpus`, `type` and `name`, the name being the type as the corpus writes it, such
+as `org/principles`. A `RefForm` is `link`, `id` or `wikilink`. `fields` holds the top-level
+properties of the whole chain, the parents' first. `references` holds every value of every `x-ref`
+field, with a JSON Pointer such as `/owner` or `/sources/2`. `x-ref` works on a top-level property
+and on its `items`, so those are the two places a reference sits. `links` holds only the body
+links that point at a record's file. A reference or a link into a referenced corpus has that
+corpus's key in its target, and the record is in `corpora`.
+
+A corpus with errors still loads. `errors` holds the lines, and the rest is what could be read: a
+folder with no root file has no types and no records, a record that fails its schema is in
+`records` with `valid: false`, and a reference that names no record has `target: null` and the
+reason in `unresolved`. With no errors, every record is valid and every reference has a target.
+`loadCorpus` writes nothing and reads referenced corpora where they are installed, so it does not
+need the `_references/` copies. A copy that is missing or stale is only an error line.
+`loadCorpus(root, { bodies: false })`, a `LoadOptions`, leaves each `body` null.
+
+These read a model, or a copy of one read back from JSON:
+
+| Export                              | Returns                                                    |
+| ----------------------------------- | ---------------------------------------------------------- |
+| `getCorpus(model, key?)`            | The `CorpusModel` with that key. `''` is the loaded one.   |
+| `getType(model, name, corpus?)`     | The `CorpusType` of that name.                             |
+| `recordsOf(model, type, corpus?)`   | The records of a type, by id.                              |
+| `getRecord(model, type, id, corpus?)` | The record with that id, compared as `fold` compares.    |
+| `resolveTarget(model, target)`      | The record a `RecordTarget` names, in any corpus.          |
+
 ## Trust
 
 A corpus's schemas run on its data. JSON Schema `pattern` and the spec's `x-id-pattern` are regular
@@ -330,6 +412,10 @@ release.
 The experimental exports, which may change in any release:
 
 - `npmPackageUrl`, `packageUrl` and `PackageUrl`, while the spec's Identity section is new
+- `loadCorpus`, `getCorpus`, `getType`, `recordsOf`, `getRecord`, `resolveTarget`, and the model's
+  types `LoadedCorpus`, `LoadOptions`, `CorpusModel`, `CorpusType`, `CorpusField`, `FieldRef`,
+  `TypeRef`, `CorpusRecord`, `RecordReference`, `RecordLink`, `RecordTarget`, `Backlink` and
+  `RefForm`, while the first tools are built on the model
 
 ## Runtimes and platforms
 

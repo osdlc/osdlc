@@ -17,12 +17,17 @@ properties:
     type: string
     minLength: 1
   status:
-    description: Where the task is. The `title` of each value is the label people see.
+    description: >-
+      Where the task is. The `title` of each value is the label people see. `deferred` is for a task
+      that is on hold: its body says what would open it again. `dropped` is for a task that will
+      never be done: its body says why.
     oneOf:
       - { const: done, title: done }
       - { const: doing, title: in progress }
       - { const: owner, title: waiting on owner }
       - { const: todo, title: not started }
+      - { const: deferred, title: deferred }
+      - { const: dropped, title: dropped }
   milestone:
     description: The milestone the task belongs to.
     type: string

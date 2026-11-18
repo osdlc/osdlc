@@ -117,6 +117,7 @@ the profile and corpus packages, and three path-filtered workflows. In short:
 1. Re-apply the `corpus-schema` 0.3.0 work
    ([osdlc/markdown#12](https://github.com/osdlc/markdown/pull/12)) onto this
    repository's copy and release it from here. The plan's records need it.
+   (0.3.0 was not published; the work was released as 0.4.0.)
 2. Bring osdlc/markdown's plan and docs here, keeping their history.
 3. Update the plan's records that name another repository as a library's
    home.

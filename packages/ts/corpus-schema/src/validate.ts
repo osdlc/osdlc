@@ -61,11 +61,15 @@ const RESERVED_KEYS = new Set(['dialect', 'profiles'])
  */
 export type Data = Record<string, unknown>
 
-/** How an `x-ref` value names its record: a relative link, a bare id, or `[[id]]`. */
-type RefForm = 'link' | 'id' | 'wikilink'
+/**
+ * How an `x-ref` value names its record: a relative link, a bare id, or `[[id]]`.
+ *
+ * @experimental
+ */
+export type RefForm = 'link' | 'id' | 'wikilink'
 const REF_FORMS: readonly string[] = ['link', 'id', 'wikilink']
 
-interface Ref {
+export interface Ref {
   field: string
   /** The corpus whose schema holds the `x-ref`. */
   corpus: Corpus
@@ -78,7 +82,7 @@ interface Ref {
   form: RefForm
 }
 
-interface Type {
+export interface Type {
   name: string
   /** The corpus that holds the type. */
   corpus: Corpus
@@ -103,6 +107,42 @@ interface Type {
   stems: Map<string, string>
   /** The schema's `x-record-file`, as written, when it is a valid file name. */
   recordFile: string | undefined
+}
+
+/** A record file, valid or not. */
+export interface RecordFile {
+  type: Type
+  id: string
+  /** The file's stem, or its record folder's name: what the id is cut from. */
+  name: string
+  /** The record folder the file is the record of, or undefined. */
+  folder: string | undefined
+  /** Whether the record is in its type's `records`: its id and its data have no errors. */
+  valid: boolean
+}
+
+/** A record file in a corpus loaded by the same loader. */
+export interface Found {
+  corpus: Corpus
+  file: string
+}
+
+/** One value of an `x-ref` field, and the record it names or why it names none. */
+export interface FoundRef {
+  file: string
+  ref: Ref
+  /** The value's place in the field's list, or undefined when the field holds the value itself. */
+  index: number | undefined
+  value: unknown
+  to: Found | undefined
+  why: string | undefined
+}
+
+/** A link in a record's Markdown body that points at a record file. */
+export interface FoundLink {
+  file: string
+  link: Link
+  to: Found
 }
 
 export interface Corpus {
@@ -131,8 +171,12 @@ export interface Corpus {
   wikilinks: WikilinkIndex
   nestedWikilinks: WikilinkIndex
   types: Map<string, Type>
-  /** The type of each record file. */
-  recordType: Map<string, Type>
+  /** Every record file, with its type and id. */
+  recordFiles: Map<string, RecordFile>
+  /** Each `x-ref` value of a record, as `check` resolved it, valid record or not. */
+  refs: FoundRef[]
+  /** Each body link of a record to a record file, as `check` resolved it. */
+  links: FoundLink[]
   /** Every schema file, a rejected type's included. Only their prose keywords hold links. */
   schemaFiles: Set<string>
   /** Files whose links are checked: the root file, schema files and records, with their data. */
@@ -349,7 +393,7 @@ const stem = (file: string): string => basename(file, extname(file))
 const RECORD_FILE = /^[^/\\]+\.[a-z]+$/
 
 /** The `x-record-file` of `type`, or of the nearest type up its chain that has one. */
-const recordFileOf = (type: Type): string | undefined =>
+export const recordFileOf = (type: Type): string | undefined =>
   chain(type).find((t) => t.recordFile !== undefined)?.recordFile
 
 /** Whether `path`, in the type folder `dir`, sits in a narrative folder: one whose name starts `_`. */
@@ -389,14 +433,14 @@ const realOrSame = (path: string): string => {
  * Whether `a` and `b` are one corpus: the same folder, or two folders of one package, which hold
  * the same files, since a graph holds one version of each corpus.
  */
-const sameCorpus = (a: Corpus, b: Corpus): boolean =>
+export const sameCorpus = (a: Corpus, b: Corpus): boolean =>
   a === b || (a.identity !== undefined && a.identity === b.identity)
 
 /** Whether `a` and `b` are one type: one name in one corpus, by identity. */
 const sameType = (a: Type, b: Type): boolean => a.name === b.name && sameCorpus(a.corpus, b.corpus)
 
 /** `type`, then each type it extends, nearest first. */
-function chain(type: Type): Type[] {
+export function chain(type: Type): Type[] {
   const out: Type[] = []
   for (let t: Type | undefined = type; t !== undefined && !out.includes(t); t = t.base) out.push(t)
   return out
@@ -425,7 +469,9 @@ export function load(root: string, loader: Loader = { done: new Map(), stack: []
     wikilinks: wikilinkIndex(files),
     nestedWikilinks: wikilinkIndex(nestedFiles),
     types: new Map(),
-    recordType: new Map(),
+    recordFiles: new Map(),
+    refs: [],
+    links: [],
     checked: new Map(),
     schemaFiles: new Set(),
     declared: new Set(),
@@ -991,7 +1037,7 @@ function linkTypes(c: Corpus): void {
   for (const type of cyclic) type.base = undefined
 }
 
-const asMap = (v: unknown): Data =>
+export const asMap = (v: unknown): Data =>
   v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Data) : {}
 
 /** The top-level field names and field patterns `type` and every type up its chain declare. */
@@ -1011,7 +1057,7 @@ function mergedFields(type: Type): { names: Set<string>; patterns: Set<string> }
  * `additionalProperties` or `unevaluatedProperties` at its root admits the inherited fields. Their
  * rules come from the schemas of the types that declare them, which a record also passes.
  */
-function flattened(type: Type): Data {
+export function flattened(type: Type): Data {
   const schema = type.schema ?? {}
   if (type.base === undefined) return schema
   const flat: Data = { ...schema }
@@ -1038,7 +1084,7 @@ const closes = (schema: Data | undefined): boolean => schema?.['additionalProper
  * How corpus `from` names `type`: its name, `<prefix>/<name>` for a type of a corpus it extends or
  * references, or the chain of prefixes through references, such as `b/c/<name>`.
  */
-function typeLabel(type: Type, from: Corpus): string {
+export function typeLabel(type: Type, from: Corpus): string {
   if (sameCorpus(type.corpus, from)) return type.name
   const prefix = [...from.parents].find(([, p]) => sameCorpus(p, type.corpus))?.[0]
   if (prefix !== undefined) return `${prefix}/${type.name}`
@@ -1159,10 +1205,11 @@ function readRecords(
         c.errors.push(`${file}: format: ${ext.slice(1)} is not in the corpus's formats`)
         continue
       }
-      c.recordType.set(file, type)
       const name = folder === undefined ? stem(file) : basename(folder)
       const derived = idOf(types, name)
       const id = derived ?? name
+      const record: RecordFile = { type, id, name, folder, valid: false }
+      c.recordFiles.set(file, record)
       let problem = idProblem(id)
       if (problem !== undefined) c.errors.push(`${file}: id: "${id}" ${problem}`)
       else if (derived === undefined) {
@@ -1195,8 +1242,10 @@ function readRecords(
           for (const e of t.validate.errors ?? [])
             if (e.keyword !== 'if') failures.add(`${file}: ${describe(e)}`)
       c.errors.push(...failures)
-      if (failures.size === 0 && problem === undefined && other === undefined && !wrongId)
+      if (failures.size === 0 && problem === undefined && other === undefined && !wrongId) {
         type.records.set(id, { file, data })
+        record.valid = true
+      }
     }
   }
 }
@@ -1393,7 +1442,7 @@ function eachProse(node: unknown, field: string, visit: (field: string, s: strin
 
 /** The top-level fields of `file`'s type chain that hold references by id, not links. */
 function idFields(c: Corpus, file: string): Set<string> {
-  const type = c.recordType.get(file)
+  const type = c.recordFiles.get(file)?.type
   if (type === undefined) return new Set()
   const refs = chain(type).flatMap((t) => t.refs)
   return new Set(refs.filter((r) => r.form !== 'link').map((r) => r.field))
@@ -1410,9 +1459,15 @@ function checkLinks(c: Corpus): void {
       )
   }
   for (const [file, { text, data }] of c.checked) {
-    if (extname(file) === '.md')
-      for (const link of extractLinks(split(text).body))
-        report(file, 'body', resolve(c, file, link), link)
+    if (extname(file) === '.md') {
+      const isRecord = c.recordFiles.has(file)
+      for (const link of extractLinks(split(text).body)) {
+        const r = resolve(c, file, link)
+        report(file, 'body', r, link)
+        const to = isRecord ? recordAt(c, r) : undefined
+        if (to !== undefined) c.links.push({ file, link, to })
+      }
+    }
     const visit = (field: string, s: string): void => {
       for (const link of extractLinks(s)) report(file, field, resolve(c, file, link), link)
     }
@@ -1427,20 +1482,67 @@ function checkLinks(c: Corpus): void {
       if (!byId.has(key)) eachString(value, key, visit)
   }
 
-  for (const type of c.types.values())
-    for (const { file, data } of type.records.values())
-      for (const ref of chain(type).flatMap((t) => t.refs)) {
-        const value = data[ref.field]
-        // null refers to nothing; the schema says whether it is allowed.
-        if (value === undefined || value === null || ref.targets === undefined) continue
-        const values = ref.items && Array.isArray(value) ? value : [value]
-        for (const v of values) {
-          if (v === null) continue
-          const problem = checkRef(c, file, ref, ref.targets, v)
-          if (problem !== undefined) c.errors.push(`${file}: ${ref.field}: ${problem}`)
+  const refsOf = new Map<Type, Ref[]>()
+  for (const [file, record] of c.recordFiles) {
+    const data = c.checked.get(file)?.data
+    if (data === undefined) continue
+    let refs = refsOf.get(record.type)
+    if (refs === undefined) {
+      refs = chain(record.type).flatMap((t) => t.refs)
+      refsOf.set(record.type, refs)
+    }
+    for (const ref of refs) {
+      const value = data[ref.field]
+      // null refers to nothing; the schema says whether it is allowed.
+      if (value === undefined || value === null) continue
+      const list = ref.items && Array.isArray(value)
+      for (const [i, v] of (list ? value : [value]).entries()) {
+        if (v === null) continue
+        const found: FoundRef = {
+          file,
+          ref,
+          index: list ? i : undefined,
+          value: v,
+          to: undefined,
+          why: undefined,
         }
+        c.refs.push(found)
+        // A name that names no type is an error at the schema, so the value is not checked.
+        if (ref.targets === undefined) {
+          found.why = 'its x-ref names a type that does not resolve'
+          continue
+        }
+        const r = resolveRef(c, file, ref, ref.targets, v)
+        if ('to' in r) found.to = r.to
+        else found.why = r.problem
+        // An invalid record's references are still resolved, for loadCorpus, but not reported.
+        if (!record.valid) continue
+        if ('problem' in r && !r.reported) c.errors.push(`${file}: ${ref.field}: ${r.problem}`)
+        if ('to' in r && r.via !== undefined) c.linked.add(r.via)
       }
+    }
+  }
 }
+
+/** The record file a resolved link points at, or undefined when it points at none. */
+function recordAt(c: Corpus, r: Resolution): Found | undefined {
+  if (r === undefined || !('file' in r)) return undefined
+  const to = { corpus: r.owner ?? c, file: r.at ?? r.file }
+  return to.corpus.recordFiles.has(to.file) ? to : undefined
+}
+
+/** The record one value of an `x-ref` field names, or why it names none. */
+type RefResult =
+  | {
+      to: Found
+      /** The prefix whose copy the value needs. */
+      via?: string
+    }
+  | {
+      problem: string
+      /** The problem is no error of the field: the link's own check reports it, or its corpus did not load. */
+      reported?: true
+    }
 
 /** `names` as a phrase: `a`, `a or b`, `a, b or c`. */
 const anyOf = (names: string[]): string =>
@@ -1449,46 +1551,49 @@ const anyOf = (names: string[]): string =>
 /** `[[<id>]]` or `[[<id>|<text>]]`, with no path, heading or block. */
 const WIKI_ID = /^\[\[([^[\]|#^/\\]+)(?:\|[^[\]]*)?\]\]$/
 
-/** Why one value of an `x-ref` field is wrong, or undefined when it names a record it may. */
-function checkRef(
-  c: Corpus,
-  file: string,
-  ref: Ref,
-  targets: Type[],
-  v: unknown,
-): string | undefined {
+/** The record one value of an `x-ref` field names, or why it names none it may. */
+function resolveRef(c: Corpus, file: string, ref: Ref, targets: Type[], v: unknown): RefResult {
   // Named as this corpus names them: a parent type's own x-ref names a type in its own corpus.
   const of = `of type ${anyOf(ref.corpus === c ? ref.types : targets.map((t) => typeLabel(t, c)))}`
   if (ref.form !== 'link') {
     const id =
       typeof v !== 'string' ? undefined : ref.form === 'id' ? v : WIKI_ID.exec(v.trim())?.[1]
     if (id === undefined)
-      return ref.form === 'id'
-        ? 'must be the id of a record, such as "T-0012"'
-        : 'must be a wikilink to a record id, such as "[[T-0012]]", quoted in YAML'
+      return {
+        problem:
+          ref.form === 'id'
+            ? 'must be the id of a record, such as "T-0012"'
+            : 'must be a wikilink to a record id, such as "[[T-0012]]", quoted in YAML',
+      }
     const found = recordsById(c, targets, id, ref.form === 'wikilink')
     const far = found.length === 0 && ref.form === 'wikilink' ? tooFar(c, targets, id) : undefined
-    if (far !== undefined) return `"${id}" ${far}`
-    if (found.length === 0) return `"${id}" is not the id of a record ${of}`
+    if (far !== undefined) return { problem: `"${id}" ${far}` }
+    const one = found[0]
+    if (one === undefined) return { problem: `"${id}" is not the id of a record ${of}` }
     if (found.length > 1)
-      return `"${id}" matches more than one record: ${found.map((f) => f.label).join(', ')}`
+      return {
+        problem: `"${id}" matches more than one record: ${found.map((f) => f.label).join(', ')}`,
+      }
+    const to = { corpus: one.corpus, file: one.file }
     // Obsidian resolves a wikilink to a referenced record in the copy, so it needs the copy.
-    const via = found[0]?.via
-    if (ref.form === 'wikilink' && via !== undefined) c.linked.add(via)
-    return undefined
+    return ref.form === 'wikilink' && one.via !== undefined ? { to, via: one.via } : { to }
   }
   const links = typeof v === 'string' ? extractLinks(v.trim()) : []
   const link = links[0]
   if (links.length !== 1 || link === undefined || link.end - link.start !== String(v).trim().length)
-    return 'must be one link, such as "[Name](Name.md)"'
+    return { problem: 'must be one link, such as "[Name](Name.md)"' }
   const r = resolve(c, file, link)
-  if (r !== undefined && 'unloaded' in r) return undefined
+  if (r !== undefined && 'unloaded' in r)
+    return { problem: `${r.unloaded} did not load`, reported: true }
   // A URL or a link to a heading in this file.
-  if (r === undefined) return `must link to the file of a record ${of}`
+  if (r === undefined) return { problem: `must link to the file of a record ${of}` }
   if ('problem' in r)
-    return r.warn ? `must link to a record ${of} in this corpus or one it references` : undefined
-  const at = (r.owner ?? c).recordType.get(r.at ?? r.file)
-  return targets.some((t) => isA(at, t)) ? undefined : `${r.file} is not a record ${of}`
+    return r.warn
+      ? { problem: `must link to a record ${of} in this corpus or one it references` }
+      : { problem: r.problem, reported: true }
+  const to = { corpus: r.owner ?? c, file: r.at ?? r.file }
+  const at = to.corpus.recordFiles.get(to.file)?.type
+  return targets.some((t) => isA(at, t)) ? { to } : { problem: `${r.file} is not a record ${of}` }
 }
 
 /**
@@ -1514,7 +1619,7 @@ function recordsById(c: Corpus, targets: Type[] | undefined, id: string, direct 
       // One file of one corpus is one record, so its path stands for its type and id.
       const identity = `${k.identity ?? k.real}\0${file}`
       if ((targets === undefined || targets.some((t) => isA(type, t))) && !found.has(identity))
-        found.set(identity, { label: [...path, file].join('/'), via: path[0], file })
+        found.set(identity, { label: [...path, file].join('/'), via: path[0], corpus: k, file })
     }
     if (direct && path.length > 0) continue
     for (const [prefix, ref] of k.references)
@@ -1526,10 +1631,12 @@ function recordsById(c: Corpus, targets: Type[] | undefined, id: string, direct 
   return [...found.values()]
 }
 
-/** A record found by id: its label, the first prefix of the chain to it, and its file. */
+/** A record found by id. */
 interface ById {
   label: string
+  /** The first prefix of the chain to the record, or undefined for this corpus. */
   via: string | undefined
+  corpus: Corpus
   file: string
 }
 
@@ -1636,7 +1743,7 @@ function checkVersions(c: Corpus, rootFile: string): void {
 }
 
 /** The checks that need every corpus loaded: links, `x-ref` fields and the `_references/` copy. */
-function check(c: Corpus): void {
+export function check(c: Corpus): void {
   checkLinks(c)
   checkCopy(c)
 }

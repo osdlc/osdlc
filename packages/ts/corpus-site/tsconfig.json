@@ -1,0 +1,10 @@
+{
+  "extends": "@osdlc/tsconfig/vue",
+  "compilerOptions": {
+    // The integration runs under Node, the components and the client in a browser.
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts", "examples/**/*.ts", "vitest.config.ts"]
+}

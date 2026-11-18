@@ -18,7 +18,10 @@ request when the comment starts with `@cursor review`. It works like
 - **Key:** the secret is `CURSOR_API_KEY`. A bad key makes `agent` exit 1 with
   plain text ("The provided API key is invalid"), not JSON; that text, "not
   logged in" or "Authentication required" is an authentication failure and
-  nothing else rotates to the next key.
+  rotates to the next key. So does output on a failed run that matches `usage limit`,
+  `out of credits` or `quota`: this text is **unverified** (Cursor's real
+  usage-limit message is not documented) and matched conservatively. Nothing
+  else rotates; a run that got real turns is never classified from its text.
 - **Read-only, partly:** `agent -p --mode ask` (Cursor's Q&A mode) plus a
   temporary `.cursor/cli.json` that allows `Read(**)`, `Shell(git)` and
   `Shell(node)` and denies `Write(**)`, `Shell(gh)`, `Shell(curl)` and
@@ -65,14 +68,14 @@ before a runner starts or the key is in reach.
 
 ## Inputs
 
-| Input            | Default              |                                                                                                                                                                                          |
-| ---------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `cursor-api-key` | required             | One key, or several separated by spaces, commas or newlines. Tried in order; only an authentication failure moves on.                                                                    |
-| `github-token`   | `github.token`       | Reads the pull request and posts the comment.                                                                                                                                            |
-| `cursor-version` | `2026.11.05-86047df` | A full build id; agent-setup has its checksums built in.                                                                                                                                 |
-| `model`          | empty                | Passed as `--model`. Empty is Cursor's default.                                                                                                                                          |
-| `marketplaces`   | empty                | One per line, `name=https-git-url` (agent-setup's format). Cursor can register a marketplace, which may need `CURSOR_API_KEY` at install time; the action gives the install step no key. |
-| `plugins`        | empty                | **Not supported on cursor**: agent-setup refuses a plugin there. Review mode inlines the craft code-review skill instead.                                                                |
+| Input            | Default              |                                                                                                                                                                                                                                                              |
+| ---------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `cursor-api-key` | required             | One key, or several separated by spaces, commas or newlines. Tried in order, so the list order is the priority. A key is passed over when it fails authentication or its account is out of credit (unverified text, see Key); any other error stops the run. |
+| `github-token`   | `github.token`       | Reads the pull request and posts the comment.                                                                                                                                                                                                                |
+| `cursor-version` | `2026.11.05-86047df` | A full build id; agent-setup has its checksums built in.                                                                                                                                                                                                     |
+| `model`          | empty                | Passed as `--model`. Empty is Cursor's default.                                                                                                                                                                                                              |
+| `marketplaces`   | empty                | One per line, `name=https-git-url` (agent-setup's format). Cursor can register a marketplace, which may need `CURSOR_API_KEY` at install time; the action gives the install step no key.                                                                     |
+| `plugins`        | empty                | **Not supported on cursor**: agent-setup refuses a plugin there. Review mode inlines the craft code-review skill instead.                                                                                                                                    |
 
 ## Pinning
 

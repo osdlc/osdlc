@@ -14,6 +14,7 @@ tasks:
   - "[22 Capture](../tasks/22%20Capture.md)"
   - "[23 Claims profile](../tasks/23%20Claims%20profile.md)"
   - "[26 Adopt claims](../tasks/26%20Adopt%20claims.md)"
+  - "[88 Typed corpus access](../tasks/88%20Typed%20corpus%20access.md)"
 links:
   - "[osdlc/skillwright#95](https://github.com/osdlc/skillwright/pull/95)"
   - "[osdlc/skillwright#97](https://github.com/osdlc/skillwright/pull/97)"
