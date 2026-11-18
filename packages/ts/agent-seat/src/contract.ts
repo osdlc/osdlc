@@ -94,8 +94,8 @@ export interface SessionRequest extends ClaudeLaunchFlags {
   wait?: WaitRequest | undefined
   /**
    * Whether the new pane comes to the front. Defaults to true; `false` opens it in the
-   * background, and `host.focus` is then the call that brings it forward. Only the Orca
-   * host honours `false` so far; the others open as they always did.
+   * background, and `host.focus` brings it forward later. A host that cannot open a pane in
+   * the background ignores `false`.
    */
   focus?: boolean | undefined
 }

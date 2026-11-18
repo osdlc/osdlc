@@ -137,8 +137,8 @@ function field(value: unknown, key: string): unknown {
 }
 
 /**
- * Argv for `orca terminal list --worktree path:<cwd> --json` — pure, so a test can pin it.
- * Orca returns the first 100 terminals unless `--limit` says more, so `limit` adds it.
+ * Argv for `orca terminal list --worktree path:<cwd> [--limit <n>] --json` — pure, so a test
+ * can pin it. Without `limit`, Orca returns only its first page.
  */
 export function orcaFindArgv(query: FindQuery, limit?: number): string[] {
   return [
@@ -205,8 +205,8 @@ function isoTimestamp(value: unknown): string | null {
 }
 
 /**
- * The `totalCount` of an `orca terminal list --json` reply that stopped at its page size
- * (`truncated: true`), or null when the page holds every terminal.
+ * The `totalCount` of an `orca terminal list --json` reply marked `truncated: true`, or null
+ * when the reply is untruncated or gives no `totalCount` above the page's length.
  */
 function orcaTruncatedTotal(stdout: string): number | null {
   const parsed = parseJsonOrNull(stdout)
@@ -218,14 +218,17 @@ function orcaTruncatedTotal(stdout: string): number | null {
     : null
 }
 
-/** Every terminal of the worktree: a truncated first page is listed again with `--limit` of `totalCount`. */
+/**
+ * Every terminal of the worktree; a truncated first page is listed again with `--limit` of
+ * `totalCount`. Returns [] when either listing fails or the second is still truncated: a
+ * partial page could miss the terminal the caller wants.
+ */
 function listOrcaTerminals(runner: CommandRunner, cwd: string): OrcaTerminal[] {
   const opts = { cwd, timeoutMs: 30_000 }
   let res = runner.run(orcaFindArgv({ cwd }), opts)
   if (!ran(res)) return []
   const total = orcaTruncatedTotal(res.stdout)
   if (total !== null) {
-    // A failed full listing is a failed find (as for the first): a partial page could miss a terminal.
     const full = runner.run(orcaFindArgv({ cwd }, total), opts)
     if (!ran(full) || orcaTruncatedTotal(full.stdout) !== null) return []
     res = full
@@ -318,7 +321,7 @@ export function makeOrcaHost(
       if (handle !== null && req.sessionId !== undefined) {
         rememberSessionPane(registryDir, req.sessionId, handle, req.cwd)
       }
-      // Focus is its own call, made only once the create has returned a handle.
+      // Not `create --focus`: see orcaCreateArgv.
       if (handle !== null && req.focus !== false) {
         runner.run(orcaSwitchArgv(handle), { cwd: req.cwd, timeoutMs: 30_000 })
       }
