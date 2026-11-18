@@ -17,6 +17,9 @@ export default defineConfig({
     ],
   },
   test: {
+    // Real git spawns and a served port; Windows passes the 5 s default (S-0021 tier 2).
+    testTimeout: 20000,
+    hookTimeout: 20000,
     include: ['tests/**/*.test.ts', 'examples/**/*.test.ts'],
     // Fails fast when a workspace library's dist/ is missing or older than its src/.
     globalSetup: ['tests/global-setup.ts'],
