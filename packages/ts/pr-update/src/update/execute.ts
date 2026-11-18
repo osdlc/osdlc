@@ -289,6 +289,8 @@ function submoduleState(git: Git, worktree: string, settings: UpdateSettings): s
 /** Check out the worktree's submodules; the failure reason, or null. */
 function populateSubmodules(git: Git): string | null {
   try {
+    // `update --init` keeps the URL an initialised submodule was first cloned from.
+    git.rawChecked(['submodule', 'sync', '--recursive'])
     git.submoduleUpdate()
     return null
   } catch (e) {

@@ -1875,7 +1875,12 @@ describe('Git — real repo round trips', () => {
       expect(existsSync(join(root, 'down', 'deps', 'sub', 'f.txt'))).toBe(true)
       down.submoduleUpdate()
     } finally {
-      for (const k of ['GIT_ALLOW_PROTOCOL']) {
+      for (const k of [
+        'GIT_ALLOW_PROTOCOL',
+        'GIT_CONFIG_COUNT',
+        'GIT_CONFIG_KEY_0',
+        'GIT_CONFIG_VALUE_0',
+      ]) {
         if (env[k] === undefined) delete process.env[k]
         else process.env[k] = env[k]
       }
@@ -1907,11 +1912,20 @@ describe('Git — real repo round trips', () => {
       new Git(root).rawChecked(['clone', join(root, 'up'), 'down'])
       const down = new Git(join(root, 'down'))
       expect(existsSync(join(root, 'down', 'deps', 'sub', 'f.txt'))).toBe(false)
+      // Git's own default already refuses `file`; allow it by config so only the verb's flag refuses.
       delete process.env.GIT_ALLOW_PROTOCOL
+      process.env.GIT_CONFIG_COUNT = '1'
+      process.env.GIT_CONFIG_KEY_0 = 'protocol.file.allow'
+      process.env.GIT_CONFIG_VALUE_0 = 'always'
       expect(() => down.submoduleUpdate()).toThrow()
       expect(existsSync(join(root, 'down', 'deps', 'sub', 'f.txt'))).toBe(false)
     } finally {
-      for (const k of ['GIT_ALLOW_PROTOCOL']) {
+      for (const k of [
+        'GIT_ALLOW_PROTOCOL',
+        'GIT_CONFIG_COUNT',
+        'GIT_CONFIG_KEY_0',
+        'GIT_CONFIG_VALUE_0',
+      ]) {
         if (env[k] === undefined) delete process.env[k]
         else process.env[k] = env[k]
       }

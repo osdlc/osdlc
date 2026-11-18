@@ -2818,7 +2818,8 @@ export function worktreePrune(): GitVerb<void> {
  *
  * The URLs come from the tree's own `.gitmodules`, which a pull request's author controls, so
  * the `file` and `ext` transports are refused (a local path or a command as a "URL"). A
- * `GIT_ALLOW_PROTOCOL` in the environment still takes precedence over these.
+ * `GIT_ALLOW_PROTOCOL` in the environment still takes precedence over these. `--checkout` ignores a
+ * `submodule.<name>.update` the tree's `.gitmodules` sets (`none`, `rebase`, `merge`, `!command`).
  */
 export function submoduleUpdate(): GitVerb<void> {
   return {
@@ -2831,6 +2832,7 @@ export function submoduleUpdate(): GitVerb<void> {
       'update',
       '--init',
       '--recursive',
+      '--checkout',
     ],
     absent: NONE,
     parse: nothing,
