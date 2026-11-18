@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/osdlc/osdlc/releases/tag/osdlc-file-lock/v0.3.0) - 2026-11-18
+
+### Other
+
+- Rust twin of @osdlc/file-lock, held to one protocol ([#691](https://github.com/osdlc/osdlc/pull/691))
+
 ### Added
 
 - First release: the Rust implementation of `@osdlc/file-lock`'s protocol, so
