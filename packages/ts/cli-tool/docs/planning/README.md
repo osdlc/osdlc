@@ -28,6 +28,8 @@ They are never reused. Each decision has a `state`: `accepted` or
   A dead devlink link can fall back through a plain-text candidates file
 - [D-04](decisions/D-04-prompts-fail-instead-of-guessing.md): Prompts fail
   instead of guessing, and reach the terminal only when asked
+- [D-05](decisions/D-05-node-checkouts-run-their-ts-source.md): A node
+  checkout runs its TypeScript source through Node's type stripping
 
 ## Backlog
 
