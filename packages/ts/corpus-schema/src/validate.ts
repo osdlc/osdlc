@@ -1185,12 +1185,13 @@ function strayHint(
   if (dir !== type.dir) {
     const name = basename(dir)
     const record = declared ?? `${name}.md`
-    const where = yml
-      ? 'move it into a record folder'
-      : `keep these files with one record, add ${dir}/${record}${declared === undefined ? ' (or set x-record-file)' : ''}`
+    const add = `add ${dir}/${record}${declared === undefined ? ' (or set x-record-file)' : ''}`
+    const keep = yml
+      ? 'rename it to .yaml and move it into a record folder'
+      : `keep these files with one record, ${add}`
     return (
       `\n  not a record folder: ${name}/ has no ${record}.` +
-      `\n  To ${where}${yml ? ', or rename it to .yaml' : ''}.` +
+      `\n  To ${keep}.` +
       `\n  To keep them out of the corpus, move them under a folder starting with _.`
     )
   }
