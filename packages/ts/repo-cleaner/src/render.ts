@@ -341,9 +341,7 @@ export interface RunSummary {
   pruned: number
   /** Dropped rows by reason. */
   dropped: Record<string, number>
-  /** Steps that ran and succeeded. */
-  ran: number
-  /** Steps that failed. */
+  succeeded: number
   failed: number
   /** Steps not run because a step they depend on failed. */
   skipped: number
@@ -361,7 +359,7 @@ export function summarizeRun(r: {
     gone: 0,
     pruned: 0,
     dropped: {},
-    ran: 0,
+    succeeded: 0,
     failed: 0,
     skipped: 0,
     notRun: 0,
@@ -370,7 +368,7 @@ export function summarizeRun(r: {
   for (const s of r.steps) {
     if (s.result === 'failed') out.failed += 1
     if (s.result === 'skipped') out.skipped += 1
-    if (s.result === 'ok') out.ran += 1
+    if (s.result === 'ok') out.succeeded += 1
     if (s.result === 'pending') {
       // Rows not reached are rows a run would have deleted; an unlock or a
       // tip check deletes nothing.
@@ -441,7 +439,7 @@ export function renderRunSummary(
     lines.push(
       s.notRun > 0
         ? `stopped at a failed step; ${plural(s.notRun, 'row', 'rows')} not run`
-        : `${plural(s.ran, 'step', 'steps')} ran, ${s.failed} failed, ${s.skipped} skipped`,
+        : `${plural(s.succeeded, 'step', 'steps')} ran, ${s.failed} failed, ${s.skipped} skipped`,
     )
   }
   return lines

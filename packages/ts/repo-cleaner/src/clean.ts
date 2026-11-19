@@ -856,16 +856,15 @@ function assertSafeToForce(path: string, git: Git, a: Accepted): void {
 }
 
 /**
- * Whether `step` cannot run once `prior`, an earlier step in the same
- * repository, failed or was skipped:
+ * Whether `step` cannot run once `prior`, an earlier step, failed or was
+ * skipped. Only steps in the same repository can depend on each other, and
+ * `a` and `priorA` are the rows the two steps act on:
  *
  *   - a worktree's remove or prune waits on its unlock;
  *   - a branch delete waits on the removal of the worktree that holds the branch;
  *   - the repository-wide prune waits on every worktree step in the repository,
  *     since it counted on each removal;
  *   - a remote delete waits on the delete of the same branch's local copy.
- *
- * Nothing in another repository, and no unrelated row, depends on `prior`.
  */
 function dependsOn(step: Step, a: Accepted | null, prior: Step, priorA: Accepted | null): boolean {
   if (a === null || priorA === null || step.repo !== prior.repo) return false
@@ -1114,7 +1113,7 @@ export function run(preview: Preview, opts: RunOptions = {}): Receipt {
       // Told before the save, so a receipt that cannot be written still
       // leaves the step's outcome on screen.
       opts.onStepDone?.(i, plannedSteps.length, step)
-      // A spared tip that moved voids the plan's premise: nothing else runs.
+      // A failed spared-tip check voids the plan's premise: nothing else runs.
       if (step.action === 'verify-remote') return finish('failed')
       blocked.push({ step, a, root: step })
       save()

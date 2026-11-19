@@ -395,6 +395,31 @@ describe('run', () => {
     expect(existsSync(fx.worktree)).toBe(true)
   })
 
+  test('a failed unlock skips the remove and the delete of the branch the worktree held', () => {
+    const fx = buildFixture()
+    lock(fx, LOCK)
+    const plan = makePlan(fx, fakeProbe({ alive: false }))
+    const probe = fakeProbe({ alive: (call) => call > 2 })
+    const receipt = run(
+      check(plan, { pick: [pick(fx), 'branch:wt-branch'] }, { cwd: fx.root, gh: fx.gh, probe }),
+      {
+        cwd: fx.root,
+        receiptPath: join(fx.root, '.receipts', 'test.json'),
+        source: 'plan.json',
+        gh: fx.gh,
+        probe,
+      },
+    )
+    expect(receipt.steps.map((s) => [s.action, s.result])).toEqual([
+      ['unlock-worktree', 'failed'],
+      ['remove-worktree', 'skipped'],
+      ['delete-branch', 'skipped'],
+    ])
+    expect(receipt.steps[1]!.error).toContain(`unlock-worktree of ${pick(fx)}`)
+    expect(receipt.steps[2]!.error).toContain(`unlock-worktree of ${pick(fx)}`)
+    expect(existsSync(fx.worktree)).toBe(true)
+  })
+
   test('a process that appears after the sweep stops the remove', () => {
     const fx = buildFixture()
     const plan = makePlan(fx, fakeProbe())

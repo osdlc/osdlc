@@ -51,7 +51,7 @@ describe('run summary', () => {
       gone: 0,
       pruned: 1,
       dropped: {},
-      ran: 6,
+      succeeded: 6,
       failed: 0,
       skipped: 0,
       notRun: 0,

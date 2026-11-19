@@ -917,6 +917,26 @@ describe('check and run', () => {
     expect(summarizeRun(receipt)).toMatchObject({ failed: 1, skipped: 1, notRun: 0 })
   })
 
+  test('a failed worktree step skips the repository-wide prune in that repository', () => {
+    const fx = buildFixture()
+    const other = join(fx.root, '..', 'wt-gone')
+    sh(fx.root, ['worktree', 'add', '-q', '-b', 'gone-branch', other, 'main'])
+    const gone = realpathSync(other)
+    rmSync(join(fx.worktree, '.git'))
+    rmSync(gone, { recursive: true, force: true })
+    const p = makePlan(fx.root)
+    // The record of `gone` is locked after the re-check, so its removal fails.
+    const lockIt = (): void => {
+      sh(fx.root, ['worktree', 'lock', gone])
+    }
+    const { receipt } = apply(fx, p, { pick: [wt(fx.worktree), wt(gone)] }, { onStart: lockIt })
+    expect(receipt.steps.map((s) => [s.action, s.result])).toEqual([
+      ['prune-worktrees', 'failed'],
+      ['prune-worktrees', 'skipped'],
+    ])
+    expect(receipt.steps[1]!.error).toContain('prune-worktrees of')
+  })
+
   test("a failed local branch delete skips that branch's remote delete only", () => {
     const fx = buildFixture()
     const p = makePlan(fx.root)
