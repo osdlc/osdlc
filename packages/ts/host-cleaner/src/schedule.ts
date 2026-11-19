@@ -5,7 +5,7 @@
  */
 
 import { mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import type { CommandRunner } from '@osdlc/command-seam'
 
@@ -23,6 +23,7 @@ export interface PlistSpec {
   logFile: string
   /** launchd starts agents with a minimal PATH; the run needs git and gh. */
   path?: string | undefined
+  vars?: Readonly<Record<string, string>> | undefined
 }
 
 const escapeXml = (s: string): string =>
@@ -31,13 +32,16 @@ const escapeXml = (s: string): string =>
 /** The agent's plist. Pure: the same spec renders the same text. */
 export function renderPlist(spec: PlistSpec): string {
   const args = spec.program.map((a) => `    <string>${escapeXml(a)}</string>`).join('\n')
+  const entries = Object.entries({
+    ...(spec.path === undefined ? {} : { PATH: spec.path }),
+    ...spec.vars,
+  })
   const env =
-    spec.path === undefined
+    entries.length === 0
       ? ''
       : `  <key>EnvironmentVariables</key>
   <dict>
-    <key>PATH</key>
-    <string>${escapeXml(spec.path)}</string>
+${entries.map(([k, v]) => `    <key>${escapeXml(k)}</key>\n    <string>${escapeXml(v)}</string>`).join('\n')}
   </dict>
 `
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -83,6 +87,8 @@ export interface ScheduleEnv {
   program: readonly string[]
   logFile: string
   path?: string | undefined
+  /** Directory overrides (`HOST_CLEANER_*`) the agent must run with, so it reads the same config and state. */
+  vars?: Readonly<Record<string, string>> | undefined
 }
 
 function requireMac(env: ScheduleEnv): void {
@@ -102,6 +108,7 @@ export function installSchedule(env: ScheduleEnv, everyHours: number): string {
   requireMac(env)
   const file = plistPath(env.home)
   mkdirSync(join(env.home, 'Library', 'LaunchAgents'), { recursive: true })
+  mkdirSync(dirname(env.logFile), { recursive: true })
   writeFileSync(
     file,
     renderPlist({
@@ -110,6 +117,7 @@ export function installSchedule(env: ScheduleEnv, everyHours: number): string {
       everyHours,
       logFile: env.logFile,
       path: env.path,
+      vars: env.vars,
     }),
   )
   if (loaded(env)) env.launchctl.run(['bootout', target(env)], { cwd: env.home })
@@ -128,7 +136,15 @@ export function uninstallSchedule(env: ScheduleEnv): boolean {
   requireMac(env)
   const file = plistPath(env.home)
   const was = loaded(env)
-  if (was) env.launchctl.run(['bootout', target(env)], { cwd: env.home })
+  if (was) {
+    const out = env.launchctl.run(['bootout', target(env)], { cwd: env.home })
+    if (out.exitCode !== 0) {
+      throw new HostCleanerError(
+        'bad-input',
+        `launchctl bootout failed, so the agent is still loaded and its plist is kept: ${out.stderr.trim() || out.error || `exit ${out.exitCode}`}`,
+      )
+    }
+  }
   const had = existsSync(file)
   if (had) rmSync(file)
   return was || had

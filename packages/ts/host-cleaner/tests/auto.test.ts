@@ -278,6 +278,21 @@ describe('schedule', () => {
     expect(r.calls.at(-1)).toBe(`bootstrap gui/501 ${plistPath(r.home)}`)
   })
 
+  test('uninstall keeps the plist and fails when launchd will not unload it', () => {
+    const home = tempDir()
+    const { runner } = fakeRunner((argv) => ({ exitCode: argv[0] === 'bootout' ? 5 : 0 }))
+    mkdirSync(join(home, 'Library', 'LaunchAgents'), { recursive: true })
+    writeFileSync(plistPath(home), 'x')
+    const ctx = captureContext({ cwd: home, env: { HOME: home, HOST_CLEANER_ROOT: home } })
+    const code = main(['schedule', 'uninstall'], ctx, {
+      platform: 'darwin',
+      uid: 501,
+      launchctl: runner,
+    })
+    expect(code).toBe(1)
+    expect(existsSync(plistPath(home))).toBe(true)
+  })
+
   test('refuses off macOS and a bad --every', () => {
     expect(drive(['install'], {}, 'linux').code).toBe(2)
     expect(drive(['install', '--every', '0'], {}).code).toBe(2)

@@ -703,11 +703,13 @@ function autoWork(
     left: leftForReview(s, new Set(done)),
     bytesFreed: cleaned.reduce((sum, c) => sum + c.bytes, 0),
   }
+  let reportFailed = false
   const reportPath = join(dirs.state, 'reports', `report-${stamp(startedAt)}.json`)
   try {
     mkdirSync(dirname(reportPath), { recursive: true })
     writeJsonAtomic(reportPath, report)
   } catch (err) {
+    reportFailed = true
     ctx.io.stderr(renderError(`cannot write the report: ${(err as Error).message}`, name))
   }
   logRun(dirs.logs, {
@@ -721,7 +723,8 @@ function autoWork(
       ? `${JSON.stringify({ reportPath, report }, null, 2)}\n`
       : renderAutoReport(report) + `report: ${stripControls(reportPath)}\n`,
   )
-  return report.status === 'failed' ? EXIT_STEP_FAILED : unreadable ? EXIT.error : EXIT.ok
+  if (report.status === 'failed') return EXIT_STEP_FAILED
+  return unreadable || reportFailed ? EXIT.error : EXIT.ok
 }
 
 function runSchedule(argv: readonly string[], ctx: CliContext, deps: MainDeps): number {
@@ -741,6 +744,11 @@ function runSchedule(argv: readonly string[], ctx: CliContext, deps: MainDeps): 
     program: deps.program ?? [process.execPath, realpathSync(process.argv[1] ?? ''), '--auto'],
     logFile: join(hostDirs(ctx.env).logs, `${NAME}-schedule.log`),
     path: ctx.env.PATH,
+    vars: Object.fromEntries(
+      Object.entries(ctx.env).filter(
+        (e): e is [string, string] => e[0].startsWith('HOST_CLEANER_') && e[1] !== undefined,
+      ),
+    ),
   }
   try {
     if (action === 'install') {
