@@ -293,6 +293,17 @@ describe('the interrupted and closed events', () => {
       'closed',
     ])
   })
+
+  test('host may be null on interrupted (headless) but never on closed', () => {
+    const lines = [
+      { ...interrupted, host: null },
+      { ...closed, host: null },
+    ]
+    const text = stamp(launched, ...(lines as NewEvent[]))
+      .map((e) => `${JSON.stringify(e)}\n`)
+      .join('')
+    expect(model.parseSessionEvents(text).map((e) => e.kind)).toEqual(['launched', 'interrupted'])
+  })
 })
 
 describe('the task a session serves', () => {

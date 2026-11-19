@@ -527,7 +527,7 @@ export function defineSessionModel<H extends string, Ho extends string, F>(
         kind: z.literal('closed'),
         /** Who or what closed the host pane, e.g. `close-out`. */
         cause: z.string(),
-        /** The host whose pane was closed. A headless session has no pane, so this is never null. */
+        /** The host whose pane was closed; a headless session has no pane. */
         host: v.host,
       }),
       z.object({ ts, via, kind: z.literal('ended') }),
