@@ -452,7 +452,7 @@ async function updateOneUnscoped(
   if (strategy === 'rebase') {
     const repairing = settings.onRebaseConflict === 'repair'
     const attempt = await rebaseThroughRungs(git, base, settings, runVerb, opts.worktree, {
-      repair: repairing ? conflictRepair(settings, opts.apply) : null,
+      repair: repairing ? repairOf(settings, 'conflict', opts.apply) : null,
       maxRepairs: settings.maxRebaseStops ?? 3,
       target,
       // Each stop replays one commit. More stops than commits means git is
@@ -599,9 +599,9 @@ async function rebaseThroughRungs(
   return { kind: 'done', resolved, repaired }
 }
 
-/** The repair for a rebase stop, or null: a rehearsal, no repair, or `conflict` not in `repairOn`. */
-function conflictRepair(settings: UpdateSettings, apply: boolean): Repair | null {
-  return apply && settings.repair !== undefined && (settings.repairOn ?? []).includes('conflict')
+/** The repair for `kind`, or null: a rehearsal, no repair, or `kind` not in `repairOn`. */
+function repairOf(settings: UpdateSettings, kind: RepairKind, apply: boolean): Repair | null {
+  return apply && settings.repair !== undefined && (settings.repairOn ?? []).includes(kind)
     ? settings.repair
     : null
 }
@@ -645,10 +645,7 @@ async function integrateAndPush(
   }
 
   // A repair edits files with no undo, so a rehearsal never calls one.
-  const repairFor = (kind: RepairKind): Repair | null =>
-    opts.apply && settings.repair !== undefined && (settings.repairOn ?? []).includes(kind)
-      ? settings.repair
-      : null
+  const repairFor = (kind: RepairKind): Repair | null => repairOf(settings, kind, opts.apply)
   const repaired: Repaired[] = [...rebaseRepaired]
   const fail = (reason: string, unrecorded = false): UpdateOutcome => {
     git.try.mergeAbort()
