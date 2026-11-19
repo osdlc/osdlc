@@ -19,7 +19,10 @@ holds the lock `x.lock`:
   or `{ "hex": ... }` for bytes that are not UTF-8) and how long ago it was
   last modified (`ageMs`). `null` means no lock.
 - `markers` lists texts whose takeover marker is there before the case runs,
-  as if another reaper were taking over a lock with that text.
+  as if another reaper were taking over a lock with that text. A marker is
+  created just now, unless the entry is `{ "raw": text, "ageMs": n }`, which
+  sets its mtime `n` ms in the past: a dead reaper's marker is older than
+  10 s, whatever the lock's age.
 - A held lock is judged stale once untouched for more than `staleMs`.
 
 Each result records the lock afterwards: `null` when it is gone, otherwise
@@ -27,9 +30,6 @@ its parsed content (`null` when it is not lock content), with the case's own
 claim token shown as `<ours>`, whether its text is unchanged, and whether its
 mtime is under 5 s old. `beside` lists every other name left in the
 directory, so a temp file or marker left behind fails the case.
-
-The suite cannot age a marker: its age is the inode's ctime, which no call
-sets. Each implementation's own tests cover a marker left by a dead reaper.
 
 Write a new case's `input` by hand, then run
 
