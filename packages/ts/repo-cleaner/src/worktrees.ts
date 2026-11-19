@@ -421,7 +421,8 @@ function classifyWorktree(opts: {
   // clean worktree on a used branch: a dirty one has files no remote holds,
   // and a fresh one may hold ignored files of work about to start.
   let remoteNote: string | null = null
-  if (onDisk && !dirty && !submoduleWork && branch && head !== null && branchExists) {
+  const settled = landed || patchLanded || evidence.merged === true
+  if (onDisk && !settled && !dirty && !submoduleWork && branch && head !== null && branchExists) {
     const holders = remoteBranchesHolding(repo, git, head)
     if (holders.length > 0) {
       const used = branchUse(git.at(repo.root), branch, repo.mainBranch)

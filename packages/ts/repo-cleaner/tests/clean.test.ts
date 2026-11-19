@@ -547,6 +547,24 @@ describe('a worktree whose HEAD only a remote branch holds (#659)', () => {
   })
 })
 
+describe('a worktree held by two remote branches (#659)', () => {
+  test('deleting only one of them leaves the worktree to run', () => {
+    const fx = buildFixture()
+    const topic = join(dirname(fx.worktree), 'wt-two')
+    sh(fx.root, ['worktree', 'add', '-q', '-b', 'two', topic])
+    sh(topic, ['commit', '--allow-empty', '-m', 'two work'])
+    sh(topic, ['push', '-q', '-u', 'origin', 'two'])
+    sh(topic, ['push', '-q', 'origin', 'HEAD:refs/heads/two-copy'])
+    const p = plan(sweep([fx.root], { remote: true, provider: 'none', cwd: fx.root }))
+    const row = realpathSync(topic)
+    const shown = preview(fx, p, {
+      pick: [wt(row), 'remote:origin/two'],
+      allow: [{ risk: 'abandon-unmerged', row: 'remote:origin/two' }],
+    })
+    expect(shown.dropped.some((d) => d.row === wt(row))).toBe(false)
+  })
+})
+
 describe('unusedAllows', () => {
   test('lists the allows no row that runs carries', () => {
     const fx = buildFixture()
