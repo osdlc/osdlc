@@ -9,7 +9,7 @@
  * the same `conflict` or `failed` as a headless repair that gave up.
  */
 
-import { harnessArgv, makeTmuxHost, type Host } from '@osdlc/agent-seat'
+import { harnessArgv, makeTmuxHost, tmuxRunSessionName, type Host } from '@osdlc/agent-seat'
 import { forwardedSignal, streamRunner } from '@osdlc/command-seam'
 
 import type { Repair } from '../ports.ts'
@@ -63,7 +63,9 @@ export function seatRepair(
           return { ok: false, note: `${agent}: repair.mode terminal needs tmux on PATH` }
         }
         const runId = `pr-update-${req.pr}-${process.pid}`
-        deps.notice?.(`repair #${req.pr}: attach with \`tmux attach -t ${runId}\``)
+        deps.notice?.(
+          `repair #${req.pr}: attach with \`tmux attach -t ${tmuxRunSessionName(runId)}\``,
+        )
         exitCode = host.session({
           cwd: req.worktree,
           harness: agent,

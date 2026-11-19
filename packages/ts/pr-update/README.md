@@ -284,7 +284,7 @@ consent and need no trust. They override whatever the config names.
 default. `interactive` runs the agent's own CLI in this terminal with stdio inherited, so you can
 answer its questions or stop it; it needs a terminal (a usage error without one) and repairs one
 PR at a time. `terminal` opens the session through `@osdlc/agent-seat` in a detached tmux session,
-named `pr-update-<pr>-<pid>` in the run's notes (`tmux attach -t <name>`), and waits for it to
+named `sd-pr-update-<pr>-<pid>` in the run's notes (`tmux attach -t <name>`), and waits for it to
 end. tmux is the only agent-seat host that holds a launch until the session ends, so it is the only
 one `terminal` uses, and the run waits on that session before the next PR. The prompt is the same
 `repairPrompt(req)`, given as the session's first message, and the agent CLI runs without the

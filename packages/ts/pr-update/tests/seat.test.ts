@@ -94,7 +94,7 @@ describe('terminal mode', () => {
       wait: { runId: `pr-update-7-${process.pid}` },
     })
     expect(sessions[0]!.env?.GH_TOKEN).toBe('')
-    expect(notice).toHaveBeenCalledWith(expect.stringContaining('tmux attach -t pr-update-7-'))
+    expect(notice).toHaveBeenCalledWith(expect.stringContaining('tmux attach -t sd-pr-update-7-'))
   })
 
   test('the exit code of the session decides ok', async () => {

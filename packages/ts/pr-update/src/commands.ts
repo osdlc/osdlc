@@ -499,9 +499,16 @@ export function updateCommand(seams: CliSeams) {
       }
       checkStart(ctx, layers, seams, flags)
       const mode = flags.repairMode ?? layers.merged.pr_update.repair.mode
+      const repairCfg = layers.merged.pr_update.repair
       const agent =
-        flags.repairAgent ??
-        (flags.repairCommand === undefined ? layers.merged.pr_update.repair.agent : null)
+        flags.repairAgent ?? (flags.repairCommand === undefined ? repairCfg.agent : null)
+      const command =
+        flags.repairCommand ?? (flags.repairAgent === undefined ? repairCfg.command : null)
+      if (command !== null && mode !== 'headless') {
+        throw new UsageError(
+          `repair mode ${mode} runs an agent; it cannot be used with a repair command`,
+        )
+      }
       if (flags.apply && agent !== null && mode === 'interactive' && !canPrompt()) {
         throw new UsageError('repair mode interactive needs a terminal on stdin and stderr')
       }
