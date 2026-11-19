@@ -1,5 +1,13 @@
 # @osdlc/rule-review
 
+## 0.4.7
+
+### Patch Changes
+
+- Updated dependencies [b0ff1b3]
+- Updated dependencies [cb56f16]
+  - @osdlc/typed-git@0.18.0
+
 ## 0.4.6
 
 ### Patch Changes
