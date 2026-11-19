@@ -46,4 +46,14 @@ describe('onSpawn', () => {
     )
     expect(called).toBe(false)
   })
+
+  test('an abort raised inside the callback stops the run', async () => {
+    const controller = new AbortController()
+    const result = await callAgent(
+      sh('sleep 30'),
+      { prompt: 'x' },
+      { signal: controller.signal, onSpawn: () => controller.abort() },
+    )
+    expect(result.error?.reason).toBe('timeout')
+  })
 })

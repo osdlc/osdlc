@@ -194,18 +194,6 @@ export function spawnCollect(argv: string[], options: SpawnOptions): Promise<Raw
       return
     }
 
-    if (options.onSpawn !== undefined && child.pid !== undefined) {
-      try {
-        const returned: unknown = options.onSpawn({
-          pid: child.pid,
-          argv: Object.freeze([...argv]),
-        })
-        if (isThenable(returned)) returned.then(undefined, () => undefined)
-      } catch {
-        // A caller's callback must not end the run.
-      }
-    }
-
     // A caller's callback must not end the run. The first throw, or the first
     // rejection of a promise it returns, is swallowed and stops later calls.
     // The output is still collected.
@@ -337,6 +325,20 @@ export function spawnCollect(argv: string[], options: SpawnOptions): Promise<Raw
     child.stdin.on('error', (err: Error) => {
       stdinError ??= err.message
     })
+
+    // After the abort listener and handlers are installed, so a callback that
+    // aborts the run is honoured.
+    if (options.onSpawn !== undefined && child.pid !== undefined) {
+      try {
+        const returned: unknown = options.onSpawn({
+          pid: child.pid,
+          argv: Object.freeze([...argv]),
+        })
+        if (isThenable(returned)) returned.then(undefined, () => undefined)
+      } catch {
+        // A caller's callback must not end the run.
+      }
+    }
 
     if (options.stdin !== undefined) {
       child.stdin.write(options.stdin)
