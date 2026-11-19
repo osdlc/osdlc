@@ -152,6 +152,13 @@ impl ServerHandle {
             .collect()
     }
 
+    /// Close every connection open now or accepted later, without waiting
+    /// out the grace period. The tokens are left alone, so a guard that opens
+    /// loopback while tokenless is not opened on the way down.
+    pub(crate) fn cut_all(&self) {
+        self.conns.cut_all();
+    }
+
     /// Stop accepting new connections and let in-flight requests finish, up
     /// to a grace period. Then every connection still open, such as a stream
     /// or an upgraded WebSocket, fails all further reads and writes. The

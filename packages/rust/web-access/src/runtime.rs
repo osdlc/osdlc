@@ -391,8 +391,8 @@ impl SharingRuntime {
     /// A running server that can serve `cfg` as it is
     /// ([`WebAccessConfig::same_bind`]) takes the tokens `cfg` calls for, which
     /// closes the connections of every withdrawn token at once. Any other is
-    /// handed no token, which closes every connection opened with one, then
-    /// stopped. Returns the share links while a server runs.
+    /// stopped, with every connection cut at once. Returns the share links
+    /// while a server runs.
     async fn reconcile(
         &self,
         live: &mut Live,
@@ -405,10 +405,11 @@ impl SharingRuntime {
                     running.handle.replace_tokens(t.set.clone());
                     live.server = Some(running);
                 }
-                // Withdrawing every token first closes their connections at
-                // once, rather than after the stop's grace period.
+                // Cutting first closes every connection at once, rather than
+                // after the stop's grace period. The tokens stay, so a
+                // loopback server is not opened while it winds down.
                 _ => {
-                    running.handle.replace_tokens(Tokens::none());
+                    running.handle.cut_all();
                     running.handle.stop().await;
                 }
             }
