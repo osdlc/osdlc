@@ -234,13 +234,12 @@ describe('--clean builds aside, reports removals, then swaps', () => {
 
   test('refuses without --yes, names the orphan and leaves the destination alone', () => {
     const { config, dst } = withOrphan()
-    assert.throws(() => transform(config, { clean: true }), /--clean would remove 1 file/)
-    try {
-      transform(config, { clean: true })
-    } catch (err) {
-      assert.match(String(err), /--yes/)
-      assert.ok(String(err).includes(join(dst, 'orphan.md')))
-    }
+    assert.throws(
+      () => transform(config, { clean: true }),
+      (e: Error) =>
+        /--clean would remove 1 file[\s\S]*--yes/.test(e.message) &&
+        e.message.includes(join(dst, 'orphan.md')),
+    )
     assert.equal(readFileSync(join(dst, 'orphan.md'), 'utf8'), 'only here\n')
     assert.equal(readFileSync(join(dst, 'a.md'), 'utf8'), 'old a\n')
     assert.ok(!existsSync(`${dst}.markdown-vault-astro-tmp`), 'the temp build was left behind')
