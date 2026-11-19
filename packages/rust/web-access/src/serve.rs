@@ -131,9 +131,6 @@ impl ServerHandle {
     /// or one given an explicit [`ServeOptions::policy`], keeps its policy: if
     /// it is handed [`Tokens::none`], it refuses every request that needs a
     /// token.
-    ///
-    /// Assumes HTTP/1 (one request at a time): with axum's http2 feature on,
-    /// concurrent requests on one connection would overwrite each other's tag.
     pub fn replace_tokens(&self, tokens: Tokens) {
         self.state.replace_tokens(tokens);
     }

@@ -405,8 +405,7 @@ impl SharingRuntime {
                     live.server = Some(running);
                 }
                 // Cutting first closes every connection at once, rather than
-                // after the stop's grace period. The tokens stay, so a
-                // loopback server is not opened while it winds down.
+                // after the stop's grace period.
                 _ => {
                     running.handle.cut_all();
                     running.handle.stop().await;
