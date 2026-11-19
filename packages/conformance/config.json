@@ -6,8 +6,7 @@
     "markdown-contract": "the Rust crate is at 0.4.3 and the TypeScript package at 0.7.8; the suite's cases pass on both, and the next Rust minor release levels them"
   },
   "unmigrated": [
-    "packages/ts/yaml-splice",
-    "packages/rust/agent-router"
+    "packages/ts/yaml-splice"
   ],
   "skipScan": {
     "packages/ts/conformance-suites": "the checker's own tests hold suite paths and fixture paths as test data",
