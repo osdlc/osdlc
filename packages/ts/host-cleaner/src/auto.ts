@@ -104,10 +104,13 @@ export function failedIds(receipt: HostReceipt): { id: string; reason: string }[
   const failed = [...receipt.repo.steps, ...receipt.host.steps]
     .filter((s) => s.result === 'failed')
     .map((s) => ({ id: s.row, reason: s.error ?? 'failed' }))
-  const dropped = [...receipt.repo.dropped, ...receipt.host.dropped].map((d) => ({
-    id: d.row,
-    reason: `${d.reason}: ${d.detail}`,
-  }))
+  // A row gone because an earlier step removed its parent (an artifact inside a removed worktree) was cleaned.
+  const dropped = [...receipt.repo.dropped, ...receipt.host.dropped]
+    .filter((d) => d.reason !== 'gone')
+    .map((d) => ({
+      id: d.row,
+      reason: `${d.reason}: ${d.detail}`,
+    }))
   return [...failed, ...dropped]
 }
 

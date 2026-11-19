@@ -620,7 +620,11 @@ function runAuto(
 ): number {
   const name = `${NAME} --auto`
   const dirs = hostDirs(ctx.env)
-  mkdirSync(dirs.state, { recursive: true })
+  try {
+    mkdirSync(dirs.state, { recursive: true })
+  } catch (err) {
+    return refusal(ctx, name, err)
+  }
   const lockPath = join(dirs.state, LOCK_FILE)
   const claim = claimLock(
     lockPath,
@@ -741,7 +745,7 @@ function runSchedule(argv: readonly string[], ctx: CliContext, deps: MainDeps): 
     home: ctx.env.HOME ?? homedir(),
     uid: deps.uid ?? process.getuid?.() ?? 0,
     launchctl: deps.launchctl ?? spawnRunner('launchctl'),
-    program: deps.program ?? [process.execPath, realpathSync(process.argv[1] ?? ''), '--auto'],
+    program: deps.program ?? [],
     logFile: join(hostDirs(ctx.env).logs, `${NAME}-schedule.log`),
     path: ctx.env.PATH,
     vars: Object.fromEntries(
@@ -753,6 +757,8 @@ function runSchedule(argv: readonly string[], ctx: CliContext, deps: MainDeps): 
   try {
     if (action === 'install') {
       const hours = parseEvery(parsed.values.every)
+      if (deps.program === undefined)
+        env.program = [process.execPath, realpathSync(process.argv[1] ?? ''), '--auto']
       const file = installSchedule(env, hours)
       ctx.io.stdout(
         `installed ${stripControls(file)}: runs \`${NAME} --auto\` every ${hours} hour${hours === 1 ? '' : 's'}\n`,
