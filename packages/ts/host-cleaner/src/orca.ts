@@ -17,7 +17,7 @@
  *   a plain git removal would leave Orca's record and terminals behind.
  */
 
-import { existsSync, realpathSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 
 import {
   runJson,
@@ -30,6 +30,7 @@ import type { Annotate, HostBlocker, RemoveWorktree, Row, WorktreeRow } from '@o
 import { z } from 'zod'
 
 import type { HostAdapter } from './adapter.ts'
+import { canon } from './artifacts.ts'
 
 export const ORCA_ADAPTER = 'orca'
 
@@ -87,15 +88,6 @@ export interface OrcaOptions {
   command?: ((binary: string) => CommandRunner) | undefined
   /** Whether a file exists. Default: the file system. */
   exists?: ((path: string) => boolean) | undefined
-}
-
-/** A path with symlinks resolved, so Orca's spelling and git's compare equal. */
-const canon = (path: string): string => {
-  try {
-    return realpathSync(path)
-  } catch {
-    return path
-  }
 }
 
 const parseWith =

@@ -22,7 +22,7 @@
  * SIGKILL: a session that ignores SIGTERM is reported as failed.
  */
 
-import { existsSync, readdirSync, realpathSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, statSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 
@@ -30,7 +30,7 @@ import { resolveConfigDir } from '@osdlc/detect-harness'
 import { nodeGuard } from '@osdlc/path-guard/node'
 
 import type { HostAdapter, HostContext, HostRow, HostStep } from './adapter.ts'
-import { checkoutsOf } from './artifacts.ts'
+import { canon, checkoutsOf } from './artifacts.ts'
 
 export const CLAUDE_ADAPTER = 'claude-code'
 
@@ -44,6 +44,11 @@ const POLL_MS = 200
 /** `<pid> <lstart: Wed Nov 18 23:37:21 2026> <command>` */
 const PS_LINE =
   /^\s*(\d+)\s+([A-Z][a-z]{2}\s+[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\d{4})\s+(.+?)\s*$/
+/** `claude` or `claude.exe` as a path or bare name, ending at a space or the end. */
+const CLAUDE_EXE = /^(?:\/.*?\/)?claude(?:\.exe)?(?=\s|$)/
+const NODE_CLAUDE = /^(?:\S*\/)?node\s+(?:\S*\/)?claude(?=\s|$)/
+/** A shell running a `claude` wrapper script is not the session; its child is. */
+const SHELLS: ReadonlySet<string> = new Set(['sh', 'bash', 'zsh', 'fish', 'dash'])
 const SESSION_ID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i
 
 export interface ClaudeOptions {
@@ -78,14 +83,6 @@ export interface SessionEvidence {
   unattended: false
 }
 
-const canon = (path: string): string => {
-  try {
-    return realpathSync(path)
-  } catch {
-    return path
-  }
-}
-
 const SLEEPER = new Int32Array(new SharedArrayBuffer(4))
 const pause = (ms: number): void => {
   Atomics.wait(SLEEPER, 0, 0, ms)
@@ -112,16 +109,17 @@ export function parseSession(line: string): Proc | null {
   const m = PS_LINE.exec(line)
   if (m === null) return null
   const command = m[3]!
-  const argv = command.split(/\s+/)
-  const exe = basename(argv[0]!)
-  const direct = exe === 'claude' || exe === 'claude.exe'
-  const viaNode = exe === 'node' && basename(argv[1] ?? '') === 'claude'
-  if (!direct && !viaNode) return null
+  // The path may hold spaces, so find the executable by name, not by the first word.
+  const launched = SHELLS.has(basename(command.split(/\s+/)[0]!))
+    ? null
+    : (CLAUDE_EXE.exec(command) ?? NODE_CLAUDE.exec(command))
+  if (launched === null) return null
+  const argv = command.slice(launched[0].length).trim().split(/\s+/)
   return {
     pid: Number(m[1]),
     startedAt: m[2]!.replace(/\s+/g, ' '),
     command,
-    resumeId: resumeIdOf(argv.slice(1)),
+    resumeId: resumeIdOf(argv),
   }
 }
 
@@ -299,10 +297,11 @@ export function createClaudeAdapter(options: ClaudeOptions = {}): HostAdapter {
     if (kill.exitCode !== 0) {
       throw new Error(`kill -TERM ${pid} failed: ${kill.stderr.trim() || kill.stdout.trim()}`)
     }
-    for (let waited = 0; waited <= waitMs; waited += POLL_MS) {
+    const deadline = Date.now() + waitMs
+    do {
       if (!ctx.probe.alive(pid, startedAt)) return `sent SIGTERM to pid ${pid}; it exited`
       sleep(POLL_MS)
-    }
+    } while (Date.now() < deadline)
     throw new Error(`pid ${pid} is still running ${waitMs} ms after SIGTERM; it was not killed`)
   }
 

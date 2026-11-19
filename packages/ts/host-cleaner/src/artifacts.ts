@@ -250,3 +250,12 @@ export function removeArtifact(
   if (present(target)) throw new Error(`${target} is still there after removal`)
   return `removed ${target}; freed ${bytes} bytes`
 }
+
+/** A path with symlinks resolved, so differently spelled paths to one place compare equal; the path itself when it does not resolve. */
+export function canon(path: string): string {
+  try {
+    return realpathSync(path)
+  } catch {
+    return path
+  }
+}
