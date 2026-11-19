@@ -239,4 +239,19 @@ describe('plan and clean', () => {
     expect(r.out).toContain('Usage: host-cleaner')
     expect(r.out).toContain('--skip-adapter')
   })
+
+  test('a repository that cannot be read is named and makes plan and clean exit 1', () => {
+    const { fx, env } = setup()
+    const git = {
+      run: (args: readonly string[]) =>
+        args.includes('--git-common-dir')
+          ? { exitCode: 0, stdout: `${fx.root}/.git\n`, stderr: '' }
+          : { exitCode: 1, stdout: '', stderr: 'simulated unreadable repository' },
+    } as never
+    for (const argv of [['plan'], ['clean', '--dry-run']]) {
+      const r = run(argv, fx.root, env, { host: { git } })
+      expect(r.code).toBe(1)
+      expect(r.err).toContain('simulated unreadable repository')
+    }
+  })
 })

@@ -23,6 +23,7 @@ import {
   askYesNo,
   canPrompt,
   defineCli,
+  renderError,
   type Cli,
   type CliContext,
   type FlagSpec,
@@ -207,7 +208,7 @@ function readAllStdin(): string {
 }
 
 const usageError = (ctx: CliContext, name: string, message: string): number => {
-  ctx.io.stderr(`${name}: ${stripControls(message)}\n`)
+  ctx.io.stderr(renderError(message, name))
   return EXIT.usage
 }
 
@@ -217,7 +218,7 @@ function refusal(ctx: CliContext, name: string, err: unknown): number {
     (err instanceof RepoCleanerError && (err.code === 'conflict' || err.code === 'bad-input')) ||
     (err instanceof HostCleanerError && err.code === 'bad-input')
   if (typed) return usageError(ctx, name, (err as Error).message)
-  ctx.io.stderr(`${name}: ${stripControls(err instanceof Error ? err.message : String(err))}\n`)
+  ctx.io.stderr(renderError(err instanceof Error ? err.message : String(err), name))
   return EXIT.error
 }
 
@@ -285,8 +286,7 @@ const loadConfig = (v: { config?: string | undefined }, ctx: CliContext): Config
     : readConfig(resolve(ctx.cwd, v.config), { required: true })
 
 function writeNotes(ctx: CliContext, name: string, notes: readonly RepoNote[]): void {
-  for (const { repo, note } of notes)
-    ctx.io.stderr(`${name}: ${stripControls(`${repo}: ${note}`)}\n`)
+  for (const { repo, note } of notes) ctx.io.stderr(renderError(`${repo}: ${note}`, name))
 }
 
 /** Host rows as text: a line per row, then what it does and why. */
@@ -310,6 +310,13 @@ function renderAdapters(s: HostSweep): string {
       `adapter ${a.name}: ${a.status === 'active' ? 'active' : `skipped (${a.reason})`}${a.error ? `: ${a.error}` : ''}`,
   )
   return lines.length === 0 ? '' : stripControls(lines.join('\n'), { newline: true }) + '\n'
+}
+
+/** Name each repository the sweep could not read on stderr; true when there was one, so a command that acts on the sweep does not pass it off as empty. */
+function reportUnreadable(ctx: CliContext, name: string, s: HostSweep): boolean {
+  const failed = s.repo.repos.filter((r) => r.error !== null)
+  for (const r of failed) ctx.io.stderr(renderError(`${r.repo?.root ?? r.path}: ${r.error}`, name))
+  return failed.length > 0
 }
 
 /** True when the sweep found no repository and no host row. */
@@ -342,9 +349,11 @@ function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps): numb
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
   let plan: HostPlan
+  let unreadable: boolean
   try {
     const s = sweepWith(v, parsed.positionals, loadConfig(v, ctx), ctx, deps)
     if (nothingSwept(s)) return EXIT_NOTHING_TO_SWEEP
+    unreadable = reportUnreadable(ctx, name, s)
     plan = hostPlan(s)
   } catch (err) {
     return refusal(ctx, name, err)
@@ -356,7 +365,7 @@ function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps): numb
     writeHostPlan(path, plan)
     ctx.io.stderr(`plan: ${path}\n`)
   }
-  return EXIT.ok
+  return unreadable ? EXIT.error : EXIT.ok
 }
 
 /** `risk` or `risk=row` as an allow. */
@@ -450,6 +459,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   const dirs = hostDirs(ctx.env)
   let plan: HostPlan
   let source: string
+  let unreadable = false
   let config: Config
   let preview: HostPreview
   try {
@@ -458,6 +468,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
     if (v.plan === undefined) {
       const s = sweepWith(v, parsed.positionals, config, ctx, deps)
       if (nothingSwept(s)) return EXIT_NOTHING_TO_SWEEP
+      unreadable = reportUnreadable(ctx, name, s)
       plan = hostPlan(s, now)
       source = '(swept)'
     } else if (v.plan === '-') {
@@ -472,6 +483,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
     return refusal(ctx, name, err)
   }
   writeNotes(ctx, name, preview.repo.notes)
+  const ok = (): number => (unreadable ? EXIT.error : EXIT.ok)
 
   const count = rowsActedOn(preview)
   const json = v.format === 'json'
@@ -481,7 +493,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
         ? `${JSON.stringify({ dryRun: v.dryRun, repo: preview.repo.steps, host: preview.steps, dropped: { repo: preview.repo.dropped, host: preview.dropped } }, null, 2)}\n`
         : renderPreview(preview),
     )
-    return EXIT.ok
+    return ok()
   }
   if (!v.yes) {
     ;(json ? ctx.io.stderr : ctx.io.stdout)(renderPreview(preview))
@@ -492,7 +504,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
       return usageError(ctx, name, 'refusing to delete without a terminal to ask; pass --yes')
     if (!answer) {
       ctx.io.stderr('nothing deleted\n')
-      return EXIT.ok
+      return ok()
     }
   }
 
@@ -528,7 +540,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
         `receipt: ${stripControls(receiptPath)} (${receipt.status})\n`,
     )
   }
-  return receipt.status === 'failed' ? EXIT_STEP_FAILED : EXIT.ok
+  return receipt.status === 'failed' ? EXIT_STEP_FAILED : ok()
 }
 
 /** `main(argv, ctx)`: returns an exit code, never exits. */
