@@ -73,6 +73,9 @@ function report(stats: RunStats, dryRun: boolean): void {
     console.log(`  ✗ ${dryRun ? 'would remove' : 'removed'} (${stats.removed.length}, no source):`)
     for (const f of stats.removed) console.log(`      ${f}`)
   }
+  if (stats.orphans.length) {
+    console.log(`  ⚠ no source, kept (${stats.orphans.length}): ${stats.orphans.join(', ')}`)
+  }
   if (stats.assetsMissing.length) {
     console.log(
       `  ⚠ missing assets (${stats.assetsMissing.length}): ${stats.assetsMissing.slice(0, 8).join(', ')}${stats.assetsMissing.length > 8 ? ' …' : ''}`,

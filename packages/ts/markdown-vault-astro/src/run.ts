@@ -78,6 +78,12 @@ function listAllFiles(dir: string, prefix = ''): string[] {
   return out
 }
 
+/** A run killed between the two renames of {@link swapIn} leaves the previous output only in `<dst>.markdown-vault-astro-old`; put it back. */
+function recoverInterruptedSwap(dst: string): void {
+  const old = `${dst}${OLD_SUFFIX}`
+  if (existsSync(old) && !existsSync(dst)) renameSync(old, dst)
+}
+
 /** Put the built `tmp` dir in place of `dst`; `dst` is restored if the move fails, deleted only after it succeeds. */
 function swapIn(dst: string, tmp: string): void {
   const old = `${dst}${OLD_SUFFIX}`
@@ -226,6 +232,7 @@ function run(config: MarkdownVaultAstroConfig, direction: Direction, opts: RunOp
       // A --clean build goes to a sibling dir, so a run that fails partway leaves dstDir as it was.
       const outDir = swapClean ? `${dstDir}${TMP_SUFFIX}` : dstDir
       if (swapClean) {
+        recoverInterruptedSwap(dstDir)
         rmSync(outDir, { recursive: true, force: true })
         staged.push({ dst: dstDir, tmp: outDir })
       }
@@ -282,7 +289,11 @@ function run(config: MarkdownVaultAstroConfig, direction: Direction, opts: RunOp
     for (const { tmp } of staged) rmSync(tmp, { recursive: true, force: true })
     throw err
   }
-  for (const { dst, tmp } of staged) swapIn(dst, tmp)
+  try {
+    for (const { dst, tmp } of staged) swapIn(dst, tmp)
+  } finally {
+    for (const { tmp } of staged) rmSync(tmp, { recursive: true, force: true })
+  }
 
   // Copy only the assets actually referenced, preserving sub-paths.
   const failed = new Set<string>()

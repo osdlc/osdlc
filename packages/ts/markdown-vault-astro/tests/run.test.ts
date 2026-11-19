@@ -6,6 +6,7 @@ import {
   mkdirSync,
   readFileSync,
   realpathSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
@@ -289,6 +290,13 @@ describe('--clean builds aside, reports removals, then swaps', () => {
     assert.match(String(warn.mock.calls[0]?.[0]), /1 file\(s\).*no source/)
     assert.ok(existsSync(join(dst, 'orphan.md')))
     assert.equal(readFileSync(join(dst, 'a.md'), 'utf8'), 'new a\n')
+  })
+
+  test('an interrupted swap is recovered, not deleted, by the next run', () => {
+    const { config, dst } = withOrphan()
+    renameSync(dst, `${dst}.markdown-vault-astro-old`)
+    assert.throws(() => transform(config, { clean: true }), /orphan\.md/)
+    assert.ok(existsSync(join(dst, 'orphan.md')))
   })
 
   test('a destination with no orphans cleans without --yes', () => {
