@@ -31,6 +31,8 @@ export interface KeptRecord {
   /** Absolute path of the worktree. */
   path: string
   branch: string
+  /** HEAD of the tree when it was kept; a later HEAD means someone committed to it. */
+  builtOid?: string | null
 }
 
 function keptRoot(checkout: string): string {
@@ -50,7 +52,7 @@ function sidecar(checkout: string, repo: string, number: number): string {
   return `${keptPath(checkout, repo, number)}.json`
 }
 
-/** The kept worktree of one PR under `checkout`, or null. */
+/** The kept worktree of one PR under `checkout`, or null when it has no record or its worktree is gone. */
 export function findKept(checkout: string, repo: string, number: number): KeptRecord | null {
   try {
     const record = JSON.parse(readFileSync(sidecar(checkout, repo, number), 'utf8')) as KeptRecord
@@ -74,7 +76,7 @@ export function listKept(checkout: string): KeptRecord[] {
       const record = JSON.parse(readFileSync(join(keptRoot(checkout), name), 'utf8')) as KeptRecord
       if (existsSync(record.path)) out.push(record)
     } catch {
-      // A half-written record names nothing to discard.
+      // An unreadable record names nothing to discard.
     }
   }
   return out
@@ -89,6 +91,17 @@ export function discardKept(git: Git, checkout: string, record: KeptRecord): voi
   rmSync(sidecar(checkout, record.repo, record.number), { force: true })
 }
 
+/** Whether anyone has changed or committed to a kept worktree since it was kept. */
+export function keptIsTouched(git: Git, record: KeptRecord): boolean {
+  try {
+    const tree = git.at(record.path)
+    if (tree.statusPorcelain().length > 0) return true
+    return record.builtOid != null && tree.revParse('HEAD') !== record.builtOid
+  } catch {
+    return false
+  }
+}
+
 /** Whether a kept worktree was built from the head and base a target still has. */
 export function keptIsCurrent(
   record: KeptRecord,
@@ -101,7 +114,9 @@ export function keptIsCurrent(
  * Move `worktree` to its kept path and put a branch named for the PR on it. A kept worktree this
  * PR already has is discarded first. `git` is any worktree of the repository.
  *
- * @throws when git cannot move the worktree (one holding submodules, say). It is then unmoved.
+ * @throws when git cannot move the worktree (one holding submodules, say), when the kept tree this
+ * PR already has holds a person's changes, or when the branch, log or record cannot be written. The
+ * worktree is then back at `worktree`.
  */
 export function keepWorktree(
   git: Git,
@@ -111,7 +126,13 @@ export function keepWorktree(
   verifyLog: string | undefined,
 ): KeptRecord {
   const old = findKept(checkout, target.repo, target.number)
-  if (old !== null) discardKept(git, checkout, old)
+  if (old !== null) {
+    if (keptIsTouched(git, old))
+      throw new Error(
+        `kept worktree ${old.path} has local changes; push them or pass --discard-kept`,
+      )
+    discardKept(git, checkout, old)
+  }
   const path = keptPath(checkout, target.repo, target.number)
   const branch = `pr-update/failed-${keptName(target.repo, target.number)}`
   mkdirSync(keptRoot(checkout), { recursive: true })
@@ -120,7 +141,18 @@ export function keepWorktree(
     return finishKeep(git, checkout, path, branch, target, verifyLog)
   } catch (e) {
     // Put it back, so a half-kept tree with no record is not left behind.
-    git.try.worktreeMove(path, worktree)
+    try {
+      git.worktreeMove(path, worktree)
+      const tip = git.at(worktree).revParse('HEAD')
+      if (tip !== null) git.at(worktree).checkout(tip)
+      git.try.deleteBranch(branch, { force: true })
+    } catch {
+      // It stays at the kept path; the record lets a later run find and discard it.
+      atomicWrite(
+        sidecar(checkout, target.repo, target.number),
+        `${JSON.stringify(recordOf(git, path, branch, target))}\n`,
+      )
+    }
     throw e
   }
 }
@@ -146,8 +178,27 @@ function finishKeep(
       if (!has) appendFileSync(exclude, `\n/${VERIFY_LOG}\n`)
     }
   }
-  const { repo, number, head, base, headOid, baseOid } = target
-  const record: KeptRecord = { repo, number, head, base, headOid, baseOid, path, branch }
+  const record = recordOf(git, path, branch, target)
   atomicWrite(sidecar(checkout, target.repo, target.number), `${JSON.stringify(record)}\n`)
   return record
+}
+
+function recordOf(
+  git: Git,
+  path: string,
+  branch: string,
+  target: Pick<KeptRecord, 'repo' | 'number' | 'head' | 'base' | 'headOid' | 'baseOid'>,
+): KeptRecord {
+  const { repo, number, head, base, headOid, baseOid } = target
+  return {
+    repo,
+    number,
+    head,
+    base,
+    headOid,
+    baseOid,
+    path,
+    branch,
+    builtOid: git.at(path).revParse('HEAD'),
+  }
 }

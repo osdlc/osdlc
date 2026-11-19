@@ -65,7 +65,14 @@ import {
 } from './survey.ts'
 import type { AttemptKey, AttemptStore, ConfirmPush, Ports } from './ports.ts'
 import { terminalConfirmPush } from './update/confirm.ts'
-import { discardKept, findKept, keptIsCurrent, listKept, type KeptRecord } from './update/kept.ts'
+import {
+  discardKept,
+  findKept,
+  keptIsCurrent,
+  keptIsTouched,
+  listKept,
+  type KeptRecord,
+} from './update/kept.ts'
 import type { PrUpdateConfig } from './config.ts'
 
 /** A row the run left alone, and the reason, so no row is dropped without a word. */
@@ -584,7 +591,7 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
       )
     }
   }
-  const discarded = discardStaleKept(args, writes, env, pathOf, groups, skipped)
+  const discarded = settleKept(args, writes, env, pathOf, groups, skipped)
   const settings = {
     remote: args.remote,
     resolvers: effectiveCfg.resolvers,
@@ -686,7 +693,7 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
  *
  * @returns the paths removed.
  */
-function discardStaleKept(
+function settleKept(
   args: UpdateArgs,
   writes: boolean,
   env: UpdateEnv,
@@ -711,7 +718,17 @@ function discardStaleKept(
       if (t.stackParent !== undefined) return true
       const record = findKept(group.path, t.repo, t.number)
       if (record === null || removed.includes(record.path)) return true
-      if (args.retryFailed || !keptIsCurrent(record, t)) {
+      const stale = args.retryFailed === true || !keptIsCurrent(record, t)
+      if (stale && args.retryFailed !== true && keptIsTouched(git, record)) {
+        skipped.push({
+          repo: t.repo,
+          number: t.number,
+          head: t.head,
+          reason: `kept worktree ${record.path} has local changes; push them or pass --discard-kept`,
+        })
+        return false
+      }
+      if (stale) {
         removed.push(record.path)
         if (writes) discardKept(git, group.path, record)
         return true

@@ -4,7 +4,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
-import { existsSync, readFileSync, realpathSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { spawnRunner, type CommandResult, type CommandRunner } from '@osdlc/command-seam'
@@ -164,6 +164,18 @@ describe('update --keep-failed', () => {
     expect(out.results.map((r) => r.status)).toEqual(['failed'])
     expect(out.discarded).toEqual([kept()])
     expect(out.results[0]!.keptWorktree).toBe(kept())
+  })
+
+  test('a moved base does not discard a kept worktree a person has edited', async () => {
+    await update({ keepFailed: true })
+    writeFileSync(join(kept(), 'wip.txt'), 'unfinished\n')
+    fx.worker.commit('main moves again', { 'more.txt': 'x\n' })
+    fx.worker.git.push('origin', 'main')
+    fx.worker.git.fetch('origin')
+    const out = await update({ keepFailed: true })
+    expect(out.results).toEqual([])
+    expect(out.skipped[0]!.reason).toContain('has local changes')
+    expect(existsSync(join(kept(), 'wip.txt'))).toBe(true)
   })
 
   test('--discard-kept removes every kept worktree, and the run goes on', async () => {

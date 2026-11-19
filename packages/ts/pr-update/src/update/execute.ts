@@ -1089,7 +1089,6 @@ export async function updateAll(
             outcome.status === 'failed' ? outcome.verifyLog : undefined,
           ).path
         } catch (e) {
-          // A move git refused leaves the worktree where it was.
           result.keepError = errorLine(e)
         }
         if (!existsSync(opts.worktreeRoot)) {
