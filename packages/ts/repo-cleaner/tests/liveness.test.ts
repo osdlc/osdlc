@@ -334,7 +334,7 @@ describe('run', () => {
     lock(fx, LOCK)
     const probe = fakeProbe({ alive: false })
     const receipt = apply(fx, makePlan(fx, probe), probe)
-    expect(receipt.version).toBe(2)
+    expect(receipt.version).toBe(3)
     expect(receipt.plan).toBe('plan.json')
     expect(receipt.dropped).toEqual([])
     expect(receipt.steps.map((s) => [s.action, s.result])).toEqual([

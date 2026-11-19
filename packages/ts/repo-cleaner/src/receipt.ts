@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { RowIdSchema } from './plan.ts'
 
 /** The receipt format's version, written into every receipt. */
-export const RECEIPT_VERSION = 2
+export const RECEIPT_VERSION = 3
 
 /**
  * Why a row did not run:
@@ -59,7 +59,11 @@ export const StepSchema = z.object({
   action: z.enum(STEP_ACTIONS),
   command: z.string(),
   expectedSha: z.string().nullable(),
-  result: z.enum(['pending', 'would-run', 'ok', 'failed']),
+  /**
+   * `skipped`: an earlier step this one depends on failed, so it did not run;
+   * `error` names that step.
+   */
+  result: z.enum(['pending', 'would-run', 'ok', 'failed', 'skipped']),
   error: z.string().nullable(),
   verification: z.string().nullable(),
   /**

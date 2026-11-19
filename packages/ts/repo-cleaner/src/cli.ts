@@ -17,7 +17,7 @@
  *   1   failed against the state it found
  *   2   cannot run as typed
  *   10  no target named a repository
- *   11  clean stopped at a failed step; the receipt says which
+ *   11  clean had a failed step; the receipt says which, and which steps it skipped
  */
 
 import { readSync, rmSync } from 'node:fs'
