@@ -87,10 +87,14 @@ test('a manifest with an empty name is labelled by its directory', async () => {
   mkdirSync(join(root, 'a'))
   writeFileSync(join(root, 'a', 'package.json'), JSON.stringify({ name: '' }))
 
-  const graph = await buildSystemGraph(root)
-  const node = graph.nodes.find((n) => n.dir === 'a')
+  try {
+    const graph = await buildSystemGraph(root)
+    const node = graph.nodes.find((n) => n.dir === 'a')
 
-  expect(node).toBeDefined()
-  expect(node!.id).toBe('a')
-  expect(node!.label).toBe('a')
+    expect(node).toBeDefined()
+    expect(node!.id).toBe('a')
+    expect(node!.label).toBe('a')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })
