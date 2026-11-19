@@ -7,7 +7,7 @@
  * a path inside the package. The module exports `check(corpus: LoadedCorpus): Problem[]`.
  */
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
-import { dirname, join, relative, resolve, sep } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { CorpusModel, LoadedCorpus } from './load.ts'
 
@@ -89,7 +89,9 @@ function packageDir(dir: string): string | undefined {
  */
 export async function runRules(model: LoadedCorpus): Promise<RulesReport> {
   const report: RulesReport = { errors: [], warnings: [] }
-  const fail = (message: string): number => report.errors.push(`.: (rules): ${message}`)
+  const fail = (message: string): void => {
+    report.errors.push(`.: (rules): ${message}`)
+  }
   const seen = new Set<string>()
   for (const parent of extended(model)) {
     const pkgDir = packageDir(parent.root)
@@ -117,7 +119,7 @@ export async function runRules(model: LoadedCorpus): Promise<RulesReport> {
       continue
     }
     const inside = relative(realpathSync(pkgDir), file)
-    if (inside.startsWith('..') || inside.startsWith(sep) || inside === '') {
+    if (inside === '' || inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside)) {
       fail(`${who}: rules module ${rules} is outside its package`)
       continue
     }
