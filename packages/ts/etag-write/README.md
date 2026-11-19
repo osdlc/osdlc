@@ -145,8 +145,10 @@ when you only need atomic replace or need to set the owner. Pick this package
 when more than one writer edits the same file and a lost update matters.
 
 The `etag-write` Rust crate is this package's twin: the same write sequence,
-etag format and compare-and-swap rules. `atomicWriteAsync` and the `mode`
-option exist only here.
+etag format and compare-and-swap rules. Both run one conformance suite,
+`packages/conformance/etag-write/suite.json` in the repository, of which this
+package is the reference. `atomicWriteAsync` and the `mode` option exist only
+here.
 
 ## Stability
 
