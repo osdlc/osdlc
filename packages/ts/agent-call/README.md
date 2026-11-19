@@ -364,8 +364,17 @@ The experimental exports:
 
 `modelArgs`, `modelArgsRefusal`, `ModelChoice`, `templateAdapter`,
 `templateRefusal`, `TemplateAdapterOptions`, `claudePluginArgv`,
-`claudeResumeFlag`, `classifyFailure`, `parseOutput`, `FailureCause` and
-`FailureOutput`.
+`claudeResumeFlag`, `classifyFailure`, `parseOutput`, `FailureCause`,
+`FailureOutput`, `interactiveArgv`, `hasInteractiveArgv`, `InteractiveSpec`,
+`claudeSessionArgv`, `claudeResumeArgv`, `claudeHookSettings`,
+`CLAUDE_HOOK_EVENTS`, `ClaudeSessionFlags` and `ClaudeLaunchFlags`.
+
+`interactiveArgv(tool, spec)` is the interactive counterpart of the headless
+adapters: the command line of a session a person sits in, with the first
+message guarded behind `--`. It covers claude, codex, cursor, pi and opencode
+(`hasInteractiveArgv` says which). The `claude*` helpers build claude's session
+flags: a preset session id, session plugins, hook settings and a system-prompt
+pin, kept on resume.
 
 `classifyFailure` and `parseOutput` read the output of a CLI you spawned
 yourself, and `FailureCause` is also `CallError.cause`; see Failures. The
