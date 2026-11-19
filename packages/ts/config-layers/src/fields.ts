@@ -41,11 +41,11 @@ export interface ConfigField {
   control: string
   /** Set on the field or on an object above it. */
   hidden: boolean
-  /** The `.meta({ secret: true })` flag; see `./secret.ts`. */
+  /** The `.meta({ secret: true })` flag on the field or an object above it. A secret inside a record or array is not seen here; see `./secret.ts` for that walk. */
   secret: boolean
-  /** Whether the value may be absent: optional, nullable or defaulted. */
+  /** Whether the value may be absent: it or an object above it is optional, nullable or defaulted. */
   optional: boolean
-  /** What the field takes when unset; `undefined` when it has no default. */
+  /** What the field takes when unset (its own default, else the one its parent object's default gives it); `undefined` when none. */
   default: unknown
   /** The allowed values of an enum field, `null` for any other. */
   choices: string[] | null
@@ -65,7 +65,6 @@ export function defaultControl(kind: string): string {
     case 'boolean':
       return 'toggle'
     case 'number':
-    case 'int':
       return 'number'
     case 'enum':
       return 'select'
@@ -97,15 +96,39 @@ function metaOf(schema: z.ZodType, path: string[]): FieldMeta & { secret?: boole
  */
 export function configFields(shape: Record<string, z.ZodType>): ConfigField[] {
   const out: ConfigField[] = []
-  const visit = (schema: z.ZodType, path: string[], hidden: boolean, secret: boolean): void => {
+  const visit = (
+    schema: z.ZodType,
+    path: string[],
+    inherited: { hidden: boolean; secret: boolean; optional: boolean; default: unknown },
+    ancestors: Set<unknown>,
+  ): void => {
     const meta = metaOf(schema, path)
-    const isHidden = hidden || meta.hidden === true
-    const isSecret = secret || meta.secret === true
+    const isHidden = inherited.hidden || meta.hidden === true
+    const isSecret = inherited.secret || meta.secret === true
+    const info = fieldInfo(schema as z.ZodTypeAny)
+    const ownDefault = defaultOf(schema)
     const inner = unwrapSchema(schema as z.ZodTypeAny)
     const kind = kindOf(schema as z.ZodTypeAny) ?? 'unknown'
     const children = kind === 'object' ? Object.entries(shapeOf(inner)) : []
     if (children.length > 0) {
-      for (const [name, child] of children) visit(child, [...path, name], isHidden, isSecret)
+      if (ancestors.has(inner)) {
+        throw new Error(`configFields found a recursive schema at ${path.join('.')}`)
+      }
+      const here = ownDefault ?? inherited.default
+      const next = {
+        hidden: isHidden,
+        secret: isSecret,
+        optional: inherited.optional || info.optional,
+      }
+      ancestors.add(inner)
+      for (const [name, child] of children) {
+        const childDefault =
+          typeof here === 'object' && here !== null
+            ? (here as Record<string, unknown>)[name]
+            : undefined
+        visit(child, [...path, name], { ...next, default: childDefault }, ancestors)
+      }
+      ancestors.delete(inner)
       return
     }
     const description = descriptionOf(schema)
@@ -120,11 +143,17 @@ export function configFields(shape: Record<string, z.ZodType>): ConfigField[] {
       control: meta.control ?? defaultControl(kind),
       hidden: isHidden,
       secret: isSecret,
-      optional: fieldInfo(schema as z.ZodTypeAny).optional,
-      default: defaultOf(schema),
+      optional: inherited.optional || info.optional,
+      default: ownDefault ?? inherited.default,
       choices: enumValues(schema as z.ZodTypeAny),
     })
   }
-  for (const [key, schema] of Object.entries(shape)) visit(schema, [key], false, false)
+  for (const [key, schema] of Object.entries(shape))
+    visit(
+      schema,
+      [key],
+      { hidden: false, secret: false, optional: false, default: undefined },
+      new Set(),
+    )
   return out
 }

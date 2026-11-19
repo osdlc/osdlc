@@ -102,8 +102,28 @@ describe('configFields', () => {
     expect(checkConfigMeta({ k: z.string().meta({ ...meta, hidden: 'no' }) })).toHaveLength(1)
   })
 
+  test('an optional or defaulted object makes its fields optional, with its default value', () => {
+    const fields = configFields({
+      a: z.object({ port: z.number() }).default({ port: 80 }),
+      b: z.object({ x: z.string() }).optional(),
+    })
+    expect(fields.map((f) => [f.key, f.optional, f.default])).toEqual([
+      ['a.port', true, 80],
+      ['b.x', true, undefined],
+    ])
+  })
+
+  test('a recursive schema throws, naming the path', () => {
+    const node: z.ZodType = z.object({
+      v: z.string(),
+      get child() {
+        return node
+      },
+    })
+    expect(() => configFields({ node })).toThrow(/recursive schema at node/)
+  })
+
   test('defaultControl falls back to text', () => {
     expect(defaultControl('string')).toBe('text')
-    expect(defaultControl('int')).toBe('number')
   })
 })
