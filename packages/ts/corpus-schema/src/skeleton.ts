@@ -130,11 +130,12 @@ export interface NewRecordOptions {
   values?: Data
 }
 
+const plain = (x: unknown): x is Data => x !== null && typeof x === 'object' && !Array.isArray(x)
+
+/** `from` merged into `into`: objects merge, anything else replaces. */
 const merge = (into: Data, from: Data): Data => {
   for (const [k, v] of Object.entries(from)) {
     const here = into[k]
-    const plain = (x: unknown): x is Data =>
-      x !== null && typeof x === 'object' && !Array.isArray(x)
     into[k] = plain(here) && plain(v) ? merge(here, v) : v
   }
   return into
