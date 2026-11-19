@@ -67,8 +67,9 @@ created: 2026-10-19
 `@osdlc/detect-harness` keeps a table of where each harness keeps its files.
 That table already names the claude transcripts folder (`{config}/projects`)
 and the codex sessions folder (`{config}/sessions`), as paths only;
-detect-harness never reads them. agent-call has no dependencies and keeps it
-that way, so it does not import the table. It holds its own copy of the few
+detect-harness never reads them. agent-call keeps its dependency list short
+(`@osdlc/command-seam` and `yaml` today) and adds none for this, so it does not
+import the table. It holds its own copy of the few
 paths it reads instead, and its tests pin the same values. The table has no
 entry for codex's `archived_sessions` or claude's per-session `subagents`
 folder; those would be added there as paths, so the two packages agree.
@@ -130,7 +131,7 @@ folder; those would be added there as paths, so the two packages agree.
 ## Consequences
 
 - This widens D-01's scope. A call still holds no session open, but the package
-  now also reads an agent's logs after the fact, with no dependencies. These are
+  now also reads an agent's logs after the fact, with no new dependencies. These are
   synchronous file reads under the user's home directory.
 - The README's Security section says what is read, and that it may include
   anything a person typed into the agent.

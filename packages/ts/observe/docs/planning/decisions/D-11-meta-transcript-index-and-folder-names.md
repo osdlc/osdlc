@@ -58,14 +58,16 @@ created: 2026-10-19
 - `meta` is for the caller's own fields only. The fields observe already
   defines, such as `run`, `subject`, `task` and `parent`, stay where they are,
   and `meta` never shadows them.
-- Locks are checked against the raw meta folded from the log (the `launched`
-  meta, then each accepted `meta_updated`), before any schema check. So a
-  `launched` whose meta fails a newer schema still locks its keys, and every
-  reader agrees on which updates are ignored.
+- Locks are checked against the meta folded from the log (the `launched` meta,
+  then each accepted `meta_updated`), before the launch meta's own schema check.
+  So a `launched` whose meta fails a newer schema still locks its keys.
+  Readers that share a schema agree on which updates are ignored; one with a
+  different schema may also reject an update for `invalid_meta`, so locks are
+  only guaranteed to agree across readers of the same model.
 - A `meta_updated` is checked as a merge. On a session launched without meta,
   an update that leaves a required key missing is ignored as `invalid_meta`, so
-  a reporter that did not launch the session should only write keys the schema
-  makes optional.
+  the launcher must supply the required keys at launch, or the schema must make
+  them optional, before a reporter writes the rest.
 - Schema evolution. The event schema parses `meta` as a plain object, and the
   reducer validates it against the reading model's schema. A `launched` event
   whose meta fails a newer schema still yields a record without `meta`, and its
