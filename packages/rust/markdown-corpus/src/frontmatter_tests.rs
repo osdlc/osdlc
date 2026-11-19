@@ -735,3 +735,10 @@ fn a_hide_source_applies_a_changed_list_at_the_next_refresh_without_re_parsing()
     assert_eq!((stats.added, stats.unchanged), (1, 1));
     assert!(index.get("Notes/b.md").is_some());
 }
+
+#[test]
+fn the_caches_stay_send_sync_and_unwind_safe() {
+    fn ok<T: Send + Sync + std::panic::UnwindSafe + std::panic::RefUnwindSafe>() {}
+    ok::<FrontmatterIndex>();
+    ok::<crate::LinkGraph>();
+}

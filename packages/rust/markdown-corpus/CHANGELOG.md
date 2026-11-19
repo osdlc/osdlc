@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Breaking: depends on `markdown-vault-fs` 0.8, where `Hide` is
+  `#[non_exhaustive]` and gains `Source`; a `match` on the re-exported `Hide`
+  needs a wildcard arm.
+
 ### Added
 
 - A walk's `Hide::Source` (re-exported) lets a caller change the excluded

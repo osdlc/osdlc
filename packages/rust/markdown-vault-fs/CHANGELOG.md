@@ -7,13 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Breaking: `Hide` is `#[non_exhaustive]`, so a later variant is not a break.
+  It gained `Source` (below), so a `match` on it needs a wildcard arm.
+
 ### Added
 
 - `Hide::Source(HideSource)`: a walk asks the caller for its excluded-files
   rules at the start of each walk and each admission query, so a tool that
   keeps the list in a file of its own can change it without a new
-  `WalkOptions`. `Hide` gains a variant, so a `match` on it that names every
-  variant needs a new arm.
+  `WalkOptions`.
 
 ## [0.7.0] - 2026-11-14
 

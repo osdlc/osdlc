@@ -27,6 +27,7 @@
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::panic::AssertUnwindSafe;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -94,13 +95,18 @@ impl Visibility {
 /// A cache does not notice the list changed. Call `refresh_now` after a change
 /// (`refresh` may reuse a walk younger than its TTL); until then, a change
 /// batch applies the new list only to the paths it names.
-#[derive(Clone)]
-pub struct HideSource(Arc<dyn Fn() -> Arc<HideRules> + Send + Sync>);
+pub struct HideSource(AssertUnwindSafe<Arc<dyn Fn() -> Arc<HideRules> + Send + Sync>>);
 
 impl HideSource {
     /// A source that asks `rules` for the current list.
     pub fn new(rules: impl Fn() -> Arc<HideRules> + Send + Sync + 'static) -> Self {
-        HideSource(Arc::new(rules))
+        HideSource(AssertUnwindSafe(Arc::new(rules)))
+    }
+}
+
+impl Clone for HideSource {
+    fn clone(&self) -> Self {
+        HideSource(AssertUnwindSafe(Arc::clone(&self.0.0)))
     }
 }
 
@@ -112,6 +118,7 @@ impl std::fmt::Debug for HideSource {
 
 /// Which excluded-files list a walk applies.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub enum Hide {
     /// The vault's own list, read from `.obsidian/app.json` at the start of
     /// the walk. A missing or unreadable file hides nothing.
@@ -479,7 +486,7 @@ impl WalkOptions {
         match &self.hide {
             Hide::Vault => Some(hide::load(vfs, vault_dir).rules),
             Hide::Rules(rules) => Some(Arc::clone(rules)),
-            Hide::Source(source) => Some((source.0)()),
+            Hide::Source(source) => Some((*source.0)()),
             Hide::Off => None,
         }
         .filter(|h| !h.is_empty())
@@ -1086,6 +1093,14 @@ mod tests {
         ));
         assert!(!got.contains(&"Notes/beta.md".to_string()));
         assert!(got.contains(&"Notes/alpha.md".to_string()));
+    }
+
+    #[test]
+    fn walk_options_stay_send_sync_and_unwind_safe() {
+        fn ok<T: Send + Sync + std::panic::UnwindSafe + std::panic::RefUnwindSafe>() {}
+        ok::<Hide>();
+        ok::<HideSource>();
+        ok::<WalkOptions>();
     }
 
     #[test]
