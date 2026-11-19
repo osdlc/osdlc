@@ -287,14 +287,11 @@ fn run(section: &str, c: &Value) -> Result<Value, String> {
                 "issues": g.issues.iter().map(|i| json!({"line": i.line, "row": i.row, "message": i.message})).collect::<Vec<_>>(),
             }),
         },
-        "pad_table" => match max_column_width(&c["max_column_width"]) {
-            Err(kind) => return Err(kind),
-            Ok(max_column_width) => {
-                let mut options = PadTableOptions::new();
-                options.max_column_width = max_column_width;
-                json!(pad_table(s(&c["table"]), &options))
-            }
-        },
+        "pad_table" => {
+            let mut options = PadTableOptions::new();
+            options.max_column_width = max_column_width(&c["max_column_width"])?;
+            json!(pad_table(s(&c["table"]), &options))
+        }
         "display_width" => json!(display_width(s(&c["text"]))),
 
         "row_line_text" => {
