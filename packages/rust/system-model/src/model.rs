@@ -133,11 +133,11 @@ pub struct DepDecl {
     /// `package = "…"` (own or inherited from `[workspace.dependencies]`), or
     /// the package an npm `npm:<name>@<range>` alias points at.
     pub name: String,
-    /// What `build_dependency_graph` accepts.
+    /// The `kind` field.
     pub kind: DepKind,
     /// The raw specifier text (`workspace:*`, `^1.2.3`, a path, …).
     pub specifier: String,
-    /// What `build_dependency_graph` accepts.
+    /// The `specifier_kind` field.
     pub specifier_kind: SpecifierKind,
 }
 
@@ -200,7 +200,7 @@ pub struct Evidence {
 /// being handed a total nobody can justify.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Aspect {
-    /// What `build_dependency_graph` accepts.
+    /// The `id` field.
     pub id: String,
     /// The most direct tier that supported this aspect.
     pub tier: i64,
@@ -215,9 +215,9 @@ pub struct Aspect {
 /// has no equivalent field.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entry {
-    /// What `build_dependency_graph` accepts.
+    /// The `main` field.
     pub main: Option<String>,
-    /// What `build_dependency_graph` accepts.
+    /// The `types` field.
     pub types: Option<String>,
 }
 
@@ -229,7 +229,7 @@ pub struct ManifestInfo {
     /// Directory holding the manifest, relative to the walk root
     /// (`""` = the root itself). Always `/`-separated.
     pub dir: String,
-    /// What `build_dependency_graph` accepts.
+    /// The `ecosystem` field.
     pub ecosystem: Ecosystem,
     /// `package.json` `name`, or cargo `[package].name`. `None` when absent
     /// (e.g. a virtual cargo workspace root).
@@ -238,7 +238,7 @@ pub struct ManifestInfo {
     pub version: Option<String>,
     /// Node `"private": true`, or cargo `publish = false`.
     pub private: bool,
-    /// What `build_dependency_graph` accepts.
+    /// The `description` field.
     pub description: Option<String>,
     /// Workspace declarations: node `workspaces` globs, or cargo
     /// `[workspace].members`.
@@ -250,7 +250,7 @@ pub struct ManifestInfo {
     pub is_nuxt_layer: bool,
     /// Derived hint: node `bin` entries, or cargo `[[bin]]` sections.
     pub has_bin: bool,
-    /// What `build_dependency_graph` accepts.
+    /// The `deps` field.
     pub deps: Vec<DepDecl>,
     /// Set when the manifest could not be parsed. The entry still appears in
     /// the walk result (with empty/default fields) so a malformed file never
@@ -288,7 +288,7 @@ pub struct GraphNode {
     /// dir (`"."` for the walk root). De-collided with a suffix if two
     /// manifests would otherwise share an id — see the graph `warnings`.
     pub id: String,
-    /// What `build_dependency_graph` accepts.
+    /// The `name` field.
     pub name: Option<String>,
     /// Root-relative dir for in-set manifests and synthetic groups; `None` for
     /// external nodes.
@@ -300,7 +300,7 @@ pub struct GraphNode {
     /// True for a dependency named by some manifest but not present in the
     /// walked set.
     pub external: bool,
-    /// What `build_dependency_graph` accepts.
+    /// The `kind` field.
     pub kind: NodeKind,
     /// The containing node's id. `None` for containment roots: the repo node,
     /// and any external node not placed under an external group.
@@ -320,9 +320,9 @@ pub struct GraphEdge {
     pub from: String,
     /// `GraphNode.id` of the dependency target.
     pub to: String,
-    /// What `build_dependency_graph` accepts.
+    /// The `kind` field.
     pub kind: DepKind,
-    /// What `build_dependency_graph` accepts.
+    /// The `specifier_kind` field.
     pub specifier_kind: SpecifierKind,
     /// The raw specifier text, carried through from the `DepDecl`.
     pub specifier: String,
@@ -331,9 +331,9 @@ pub struct GraphEdge {
 /// The result of `build_dependency_graph`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DependencyGraph {
-    /// What `build_dependency_graph` accepts.
+    /// The `nodes` field.
     pub nodes: Vec<GraphNode>,
-    /// What `build_dependency_graph` accepts.
+    /// The `edges` field.
     pub edges: Vec<GraphEdge>,
     /// Non-fatal oddities: duplicate names, id collisions.
     pub warnings: Vec<String>,
