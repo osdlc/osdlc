@@ -159,6 +159,8 @@ export interface Corpus {
   name: string
   id: string | undefined
   level: 1 | 2 | undefined
+  /** The record extensions the root file's `formats` allow. */
+  extensions: string[]
   files: Set<string>
   /** Files and folders by their NFC form, for relative links. */
   filesByNfc: Map<string, string>
@@ -369,7 +371,7 @@ export function idProblem(id: string): string | undefined {
 }
 
 /** Render one ajv error as `field: message`. */
-function describe(e: ErrorObject): string {
+export function describe(e: ErrorObject): string {
   const path = e.instancePath.split('/').slice(1).join('.')
   const dotted = path === '' ? '' : `${path}.`
   if (e.keyword === 'additionalProperties')
@@ -462,6 +464,7 @@ export function load(root: string, loader: Loader = { done: new Map(), stack: []
     name: basename(resolvePath(root)),
     id: undefined,
     level: undefined,
+    extensions: ['.md'],
     files: new Set(files),
     filesByNfc: new Map(files.map((f) => [f.normalize('NFC'), f])),
     dirsByNfc: new Set(dirs.map((d) => d.normalize('NFC'))),
@@ -489,6 +492,7 @@ export function load(root: string, loader: Loader = { done: new Map(), stack: []
     c.fatal.push(...c.errors.slice(walked))
     return c
   }
+  c.extensions = top.extensions
   loader.stack.push(c)
   readSources(c, top.file, top.data, 'extends', loader)
   readSources(c, top.file, top.data, 'references', loader)

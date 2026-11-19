@@ -197,6 +197,7 @@ may state its type's identity in `x-identity`, and then it must match.
 ```sh
 corpus-schema validate [--fix] [--strict] <folder>...
 corpus-schema sync [<folder>...]
+corpus-schema new [--folder] [--json <data>] <corpus> <type> <id>
 ```
 
 `validate` checks every corpus at or below each folder. It prints one line per problem, as
@@ -217,11 +218,21 @@ so in a corpus with no `references` it empties the folder. It does not write thr
 link there; it reports one instead. With any error in the root file, or a corpus it names that does
 not resolve or has errors of its own, a cycle included, it writes nothing in that corpus.
 
+`new` writes a record skeleton at `<type>/<id>.md` (or `.yaml`/`.json`, by the corpus's `formats`),
+or with `--folder` as a record folder, `<type>/<id>/<id>.md` or the type's `x-record-file`. The
+frontmatter holds every required field of the type and of the types it extends or uses, with each
+`const` and `default` filled in, a `<a | b>` placeholder for each `enum`, and required nested
+objects built out the same way. It refuses an id that breaks the id rules or `x-id-pattern`, or is
+taken, and writes nothing. A skeleton is a template: its placeholders do not validate. With
+`--json '<object>'` (or `--json -` for stdin) the fields it names are merged over the skeleton, and
+the record is checked against the type's schemas before it is written, so one call writes one valid
+record or nothing.
+
 | Exit code | Meaning                                                                                                          |
 | --------- | ---------------------------------------------------------------------------------------------------------------- |
 | `0`       | Every corpus is valid, or synced. Without `--strict`, warnings may have been printed.                            |
 | `1`       | A corpus has an error, or a warning under `--strict`. Or a folder holds no corpus, or cannot be read or written. |
-| `2`       | Bad usage: an unknown verb or option, or `validate` with no folder.                                              |
+| `2`       | Bad usage: an unknown verb or option, `validate` with no folder, or `new` without its three arguments.                                           |
 
 ## Library
 
@@ -246,6 +257,11 @@ holds `root`, `name` (the `<name>` of the root file), `identity` and `version` (
 `level` (the level the root file states), `records` (valid records by type, then id, each record's
 `Data`), `files` (the corpus-relative path of each of those records), `errors`, `warnings` and
 `fixed`.
+
+`recordSkeleton(root, type)` returns the frontmatter `new` starts from, as `Data`, and
+`newRecord(root, type, id, { folder, values })` writes the record and returns its path relative to
+the corpus. It throws, one problem a line, and writes nothing, when the id or `values` are refused.
+Use them to build an `add` command of your own.
 
 `syncCorpus(root)` writes one corpus's `_references/` copies and returns a `SyncReport`: `root`,
 `name`, `written` and `removed` (corpus-relative paths) and `errors`. It writes nothing when the
@@ -411,6 +427,7 @@ release.
 
 The experimental exports, which may change in any release:
 
+- `recordSkeleton`, `newRecord` and `NewRecordOptions`, while the verb that writes them is new
 - `npmPackageUrl`, `packageUrl` and `PackageUrl`, while the spec's Identity section is new
 - `loadCorpus`, `getCorpus`, `getType`, `recordsOf`, `getRecord`, `resolveTarget`, and the model's
   types `LoadedCorpus`, `LoadOptions`, `CorpusModel`, `CorpusType`, `CorpusField`, `FieldRef`,
