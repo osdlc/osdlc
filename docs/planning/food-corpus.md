@@ -95,7 +95,7 @@ What the script does, and how each part ports:
 | Manifest: release, download date, sha256 of every CSV read, per-rule counts, output sha256 | Becomes a `releases/` record plus the build's report. Counts stay, as the check that a rule change is visible |
 | `confidenceOf` (0.9 Foundation, 0.75 SR Legacy) | Does not port. Confidence is determined's trust model. The corpus keeps the facts (`data_type`, `basis`); the adapter derives confidence |
 
-The counts the manifest records for the current build are the oracle for phase 2: SR Legacy 7,793
+The counts the manifest records for the current build are the oracle for phase 4: SR Legacy 7,793
 read, 2,998 kept; Foundation 469 read, 93 kept; total 3,091 foods, 135,411 nutrient rows, 5,621
 portions; output 5,658,029 bytes, sha256 `618184ab...`. They include the "curated" and
 nutrient-catalog effects, so the corpus's `whole-foods` slice will be larger (it should hold the
@@ -220,7 +220,7 @@ reading one of them is the same shape as the USDA builder, which is the reason f
   `datapackage.json` (licences, sources, version) beside the ndjson, so a tool that knows nothing
   about corpora can load the export. Its vocabulary (`sources`, `licenses`, `version`) also
   shapes the `releases/` record and the README. The v2 field details are to be checked against
-  datapackage.org when phase 3 writes the generator.
+  datapackage.org when phase 4 writes the generator.
 - npm: a search on 2026-11-17 found no maintained package that ships the whole USDA dataset as
   offline JSON; the results were API wrappers, a deprecated `usda-ndb`, and `eusda`, which
   downloads SR data into a local file. [`ifct2017`](https://github.com/ifct2017/compositions)
@@ -326,8 +326,9 @@ A food record (JSON, abbreviated):
 }
 ```
 
-`nutrient` is an `x-ref` in the `id` form (`x-ref: food-nutrients/nutrients`, `x-ref-form: id`),
-which the spec resolves at any depth and which needs no `_references/` copy. The `category` and
+`nutrient` is a plain string holding a `food-nutrients` id. It sits inside an object in an array, and
+the spec allows `x-ref` only on a top-level property or on the `items` of a top-level array (SPEC
+v0), so it is not a typed reference: the builder's test checks every id against `food-nutrients`. The `category` and
 `release` fields use the `link` form inside the same corpus.
 
 **Format: JSON, not Markdown or YAML.** A food is generated, never hand-edited; nobody opens
@@ -371,7 +372,7 @@ find the record at any version.
 - **SR Legacy and Foundation: in, whole.** That is about 7,793 plus 469 foods before the panel
   filter, about 8,300 records. Corpus size is of the order 30 MB of pretty-printed JSON, and about
   5 MB in a tarball; both numbers are estimates from the current 5.6 MB ndjson for 3,091 foods
-  (about 1.8 kB per food) and must be measured in phase 2. `corpus-site` can build a site of that
+  (about 1.8 kB per food) and must be measured in phase 4. `corpus-site` can build a site of that
   size (it measured 2,426 pages in about four seconds).
 - **Decided:** all SR Legacy and Foundation foods are in, tagged `whole-foods` where the old filters
   would have kept them.
@@ -407,12 +408,12 @@ find the record at any version.
   folder must not enter the workspace, and the repo's `node_modules` and scan rules do not need
   to know about it. `build` never touches the network; it fails with "run fetch" if the cache is
   missing or a hash differs. Downloaded archives are untrusted data: the builder never executes
-  anything from them, and unzips with path checks (a zip library choice is part of phase 2; check
+  anything from them, and unzips with path checks (a zip library choice is part of phase 4; check
   `fflate` and `yauzl` at that point rather than assume).
 - **Hash pinning.** The `releases/<id>.json` record holds, per bundle: `url`, `bundle_name`,
   `downloaded` date and the sha256 of each CSV read (the same data as determined's
   `bundles` map). The builder reads its inputs from these pins. The corpus is validated
-  against them by `pnpm run verify` (re-hash the cache, compare), and by `build` itself.
+  against them by `build` itself, which fails on a hash mismatch. `verify` does not touch the cache (see the script table).
 - **Reproducibility.** Output is a pure function of the pins, the rules file and the builder
   version: records sorted by fdc id, object keys in a fixed order, numbers written as the source
   CSV wrote them (parse once, print with `String`, as the existing script does), no timestamps in
@@ -463,7 +464,7 @@ packages/corpora/<name>/
 | `pin` | add a release record from a URL (the release bump) |
 | `build` | cache to `corpus/`, offline, deterministic |
 | `export` | `corpus/` to `export/`, with its `datapackage.json` (optional) |
-| `verify` | rebuild from the fixtures and the pinned cache and fail on a diff |
+| `verify` | rebuild from the committed fixtures and fail on a diff against `corpus/`. A corpus with no upstream has nothing to rebuild, so `verify` is a no-op there |
 | `test` | `node --test 'src/**/*.test.ts'` |
 | `typecheck` | `tsc` |
 | `check` | `validate`, `test`, `typecheck`, `verify` against fixtures. What CI runs |
@@ -534,7 +535,7 @@ and writes `foods-usda.ndjson` in determined's shape. The package version replac
 
 Yes, in two steps, so nothing changes by accident.
 
-1. **Oracle first (no change to determined).** In phase 2 the corpus builder runs on the same two
+1. **Oracle first (no change to determined).** In phase 4 the corpus builder runs on the same two
    bundles determined pins. A test in determined (or a one-off script run once) checks that
    `whole-foods` minus the curated rule, trimmed to the catalog and shaped by the adapter, gives
    the same 3,091 fdc ids, 135,411 nutrient rows and 5,621 portions as the committed
@@ -559,7 +560,7 @@ parent, and phases 1 to 7 are tasks 90 to 96, each waiting on the one before it 
 | # | Phase | Delivers | Done when |
 | --- | --- | --- | --- |
 | 1 (task 90) | **The standard** | `S-corpus-package-shape.md`, the `packages/README.md` fix, a `corpora` mode in `@osdlc/package-checks`, the `harness-reference` rename `src/compile` to `src/build` | `pnpm run check:packages` runs the corpora checks; `sdlc-starter` and `harness-reference` pass or are listed with the one change each needs |
-| 2 (task 91) | **`food-nutrients`** | The catalogue: 68 records seeded from determined's vault notes, each with `infoods_tagname`, plus nutrient categories; schemas; README; validates `--strict`. Needs the owner to say the notes may be public (task 85 has the same gate) | `validate` passes; ids equal determined's catalog ids |
+| 2 (task 91) | **`food-nutrients`** | The catalogue: 68 records seeded from determined's vault notes, each with `infoods_tagname`, plus nutrient categories; schemas; README; validates `--strict`. The owner decided on 2026-11-17 that the notes seed the public catalogue (see Decided by the owner); task 85 must agree with this task on the catalogue's shape | `validate` passes; ids equal determined's catalog ids |
 | 3 (task 92) | **`usda-fdc` builder on fixtures** | `src/build/` ported from `build-usda-pack.ts` and `rules.ts`, schemas for foods, categories, releases; fixtures; tests; `check` green | A fixture build matches golden records; no network |
 | 4 (task 93) | **`usda-fdc` first release** | `pin`, `fetch`, and the real SR Legacy 2018-04 and Foundation 2026-04-30 build committed; `export/foods.ndjson` and `export/datapackage.json`; README with licence and credit; changelog | Reproducible: a second `build` gives zero diff; sizes measured and written in the README; the oracle test of Q8 step 1 passes |
 | 5 (task 94) | **Publish** | npm publish workflow entry, `0.1.0`, provenance, `corpus-site` page for it (optional) | `npm view @osdlc/corpus-usda-fdc` shows it |
