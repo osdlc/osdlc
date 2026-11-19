@@ -15,45 +15,8 @@
 # extras, and passes when each passed or was skipped. A called workflow
 # reports each job as `<caller job> / <job>`, for example `core / format`.
 #
-# Settings (input, else variable, else default). Each is one line.
-#   RUST_CI_WORKSPACE      the Cargo workspace, from the root; default `.`
-#   RUST_CI_PACKAGES       packages for clippy, the tests and MSRV; default
-#                          --workspace; `default` passes none, so cargo takes
-#                          the workspace's default-members
-#   RUST_CI_CLIPPY_ARGS    more arguments for cargo clippy, before `--`
-#   RUST_CI_TEST_ARGS      more arguments for cargo test
-#   RUST_CI_LOCKED         true (default) passes --locked to clippy and test
-#   RUST_CI_OS             runner labels, space separated; default
-#                          `ubuntu-latest macos-latest`. A failure on any of
-#                          them fails the workflow. The format and MSRV jobs
-#                          run on the first.
-#   RUST_CI_WINDOWS        true adds clippy and the tests on windows-latest
-#                          that do not gate (continue-on-error); default false
-#   RUST_CI_MSRV           true adds the MSRV job; default false
-#   RUST_CI_SETUP          shell, one line, run at the root before the build in
-#                          each build job (on every OS: guard OS-only commands
-#                          with $RUNNER_OS)
-#   RUST_CI_NODE_VERSION   Node to install, if the build or tests need it
-#   RUST_CI_BUN_VERSION    Bun to install: a version, or a file to read it from
-#                          (package.json, .bun-version, .tool-versions)
-#   RUST_CI_ENV            NAME=value pairs for each build job's environment,
-#                          one per line. The only multi-line setting; `settings`
-#                          passes it on as one JSON line.
-#   RUST_CI_TIMEOUT        minutes for each build job; default 60
-#   RUST_CI_TEST_RUNNER    nextest (default: cargo nextest run, then cargo
-#                          test --doc, since nextest does not run doctests)
-#                          or cargo (cargo test). nextest runs each test in
-#                          its own process, all binaries at once; test-args
-#                          are then nextest's (e.g. --run-ignored only, not
-#                          -- --ignored); they do not reach the doctests.
-#                          Either way every test binary runs and every
-#                          failure is reported.
-#   RUST_CI_DEBUG          debug info for the dev and test profiles (not in
-#                          the msrv job: older cargo rejects the named levels):
-#                          line-tables-only (default: file and line in
-#                          backtraces, smaller and faster to link and cache),
-#                          none, limited, full, or `profile` to keep what
-#                          Cargo.toml says
+# Settings: each input, else the repository variable RUST_CI_<INPUT>, else a
+# default. packages/gh-actions/README.md "Rust CI" lists them.
 #
 # The toolchain is the workspace's rust-toolchain.toml, else stable (MSRV:
 # the `rust-version` in the workspace Cargo.toml). The Rust composite actions
@@ -203,7 +166,6 @@ jobs:
           fi
           [ "$PACKAGES" != default ] || PACKAGES=
           [ "$LOCKED" = true ] && LOCKED=--locked || LOCKED=
-          # `optional` marks the non-gating Windows entry.
           matrix="$(jq -cn --arg os "$OS" --argjson win "$([ "$WINDOWS" = true ] && echo true || echo false)" '
             {include: ([$os | splits(" +") | select(. != "") | {os: ., optional: false}]
               + (if $win then [{os: "windows-latest", optional: true}] else [] end))}')"
@@ -372,12 +334,11 @@ jobs:
           # shellcheck disable=SC2086 # one argument per word
           if [ "$RUNNER" = nextest ]; then
             cargo nextest run $PACKAGES $LOCKED --no-fail-fast --no-tests=pass $ARGS
-            # cargo test --doc errors on a binary-only package, so with a -p
-            # list keep only the packages with a lib or proc-macro target.
-            doc=$PACKAGES
+            # cargo test --doc errors when no selected package has a library,
+            # so keep only the packages with a lib or proc-macro target.
+            libs=$(cargo metadata $LOCKED --no-deps --format-version 1 \
+              | jq -r '.packages[] | select(any(.targets[].kind[]; . == "lib" or . == "proc-macro")) | .name')
             if [[ " $PACKAGES " == *" -p "* ]]; then
-              libs=$(cargo metadata $LOCKED --no-deps --format-version 1 \
-                | jq -r '.packages[] | select(any(.targets[].kind[]; . == "lib" or . == "proc-macro")) | .name')
               doc=
               read -ra words <<< "$PACKAGES"
               for ((i = 0; i < ${#words[@]}; i++)); do
@@ -388,11 +349,15 @@ jobs:
                   doc+=" ${words[i]}"
                 fi
               done
-            fi
-            if [[ " $PACKAGES " == *" -p "* && " $doc " != *" -p "* ]]; then
-              echo "No library among the packages, so no doctests."
+              has_lib=false; [[ " $doc " == *" -p "* ]] && has_lib=true
             else
+              doc=$PACKAGES
+              has_lib=false; [ -n "$libs" ] && has_lib=true
+            fi
+            if [ "$has_lib" = true ]; then
               cargo test --doc $doc $LOCKED --no-fail-fast
+            else
+              echo "No library among the packages, so no doctests."
             fi
           else
             cargo test $PACKAGES $LOCKED --no-fail-fast $ARGS
