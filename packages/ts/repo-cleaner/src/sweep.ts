@@ -26,16 +26,19 @@ import { defaultProcessProbe, type ProcessProbe } from './processes.ts'
 import { lookupPrs, prsUnchecked } from './prs.ts'
 import { PROVIDER_CHOICES, providers, type ProviderChoice } from './providers/index.ts'
 import { defaultCacheDir, ensureMirror, isRemoteUrl, redactUrl } from './remote-mirror.ts'
+import { sizeOf } from './size.ts'
 import { expandTilde, resolveEntries, type Resolution } from './resolve.ts'
 import {
   KINDS,
   RepoCleanerError,
   countRows,
   emptyScan,
+  reclaimableOf,
   findDuplicateCheckouts,
   type Kind,
   type PRInfo,
   type RepoInfo,
+  type Reclaimable,
   type RepoSweep,
   type Row,
   type Sweep,
@@ -43,7 +46,7 @@ import {
   type SweptWith,
   type WorktreeRow,
 } from './types.ts'
-import { errorText } from './util.ts'
+import { errorText, isDir } from './util.ts'
 import { gatherWorktrees } from './worktrees.ts'
 
 /** Runners and the process probe: what a test or a host injects. */
@@ -58,6 +61,8 @@ export interface Runners {
    * `lsof`.
    */
   probe?: ProcessProbe | undefined
+  /** Runs `du` for `sizes`. Default spawns the real one. */
+  du?: CommandRunner | undefined
 }
 
 export interface SweepOptions extends Runners {
@@ -85,6 +90,14 @@ export interface SweepOptions extends Runners {
   cwd?: string | undefined
   /** Where remote URL targets' clones are kept. Defaults to {@link defaultCacheDir}. */
   cacheDir?: string | undefined
+  /**
+   * Read each on-disk worktree's size into `evidence.sizeBytes`, rank rows
+   * largest first, and total what the `delete` and `review` rows free. Off by
+   * default: it reads every file under every worktree. Not part of a plan.
+   */
+  sizes?: boolean | undefined
+  /** How long one worktree's size may take, in ms. Default 60 s. */
+  sizeTimeoutMs?: number | undefined
   /** A host's re-ranking of each repository's rows. */
   annotate?: Annotate | undefined
   /** Told before each step, and before each row of a step that walks many. For a status line. */
@@ -104,7 +117,13 @@ export function sweptWith(
   targets: readonly string[],
   opts: Omit<
     SweepOptions,
-    Exclude<keyof Runners, 'git'> | 'annotate' | 'onProgress' | 'onWarn' | 'cacheDir'
+    | Exclude<keyof Runners, 'git'>
+    | 'annotate'
+    | 'onProgress'
+    | 'onWarn'
+    | 'cacheDir'
+    | 'sizes'
+    | 'sizeTimeoutMs'
   >,
 ): SweptWith & { urls: boolean } {
   const cwd = opts.cwd ?? process.cwd()
@@ -281,6 +300,7 @@ export function sweep(targets: readonly string[], opts: SweepOptions = {}): Swee
     scan: resolution.scan,
     duplicates: findDuplicateCheckouts(repos.map((s) => s.repo)),
     counts: countRows(repos.flatMap((s) => s.rows)),
+    reclaimableBytes: opts.sizes === true ? sumReclaimable(repos) : null,
     options,
   }
 }
@@ -320,12 +340,43 @@ function providerNote(
   return `Could not check for open ${status.noun}s: ${unchecked.why}, so deleting a remote branch needs confirm-open-pr. ${fix}, or pass \`--allow confirm-open-pr\` once you have checked.${hint}`
 }
 
+/**
+ * Each worktree whose directory is there, even one left without its `.git` or
+ * kept for another reason, gets its size in its evidence; null when `du` could
+ * not say. A gone worktree has none.
+ */
+function readSizes(
+  rows: readonly WorktreeRow[],
+  opts: Pick<RepoSweepOptions, 'du' | 'sizeTimeoutMs'>,
+  tick: (done: number, total: number) => void,
+): void {
+  const onDisk = rows.filter((row) => isDir(row.evidence.path))
+  for (const [i, row] of onDisk.entries()) {
+    tick(i, onDisk.length)
+    row.evidence.sizeBytes = sizeOf(row.evidence.path, {
+      du: opts.du,
+      timeoutMs: opts.sizeTimeoutMs,
+    })
+  }
+}
+
+/** The repositories' `reclaimableBytes` added up; an unreadable one counts for nothing. */
+function sumReclaimable(repos: readonly RepoSweep[]): Reclaimable {
+  const total: Reclaimable = { delete: 0, review: 0 }
+  for (const repo of repos) {
+    total.delete += repo.reclaimableBytes?.delete ?? 0
+    total.review += repo.reclaimableBytes?.review ?? 0
+  }
+  return total
+}
+
 function errorSweep(path: string, err: unknown): RepoSweep {
   return {
     path,
     repo: null,
     rows: [],
     counts: countRows([]),
+    reclaimableBytes: null,
     notes: [],
     error: err instanceof Error ? err.message : String(err),
   }
@@ -337,6 +388,8 @@ interface RepoSweepOptions extends Runners {
   against?: string | undefined
   provider: ProviderChoice
   fetch: boolean
+  sizes?: boolean | undefined
+  sizeTimeoutMs?: number | undefined
   /**
    * Read remote tips with `ls-remote` even without a fetch: `clean`'s
    * re-check, which must not delete on the strength of a stale tracking ref.
@@ -463,6 +516,7 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
         ticker('worktree'),
       )
     }
+    if (opts.sizes === true) readSizes(worktreeRows, opts, ticker('size'))
     if (kinds.has('worktree')) rows.push(...worktreeRows)
 
     let localBranchNames = new Set<string>()
@@ -502,7 +556,15 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
       opts.annotate === undefined
         ? rows
         : holdFreedBranches(opts.annotate(repo, rows).map(blockedHasNoAction), only !== undefined)
-    return { path, repo, rows: annotated, counts: countRows(annotated), notes, error: null }
+    return {
+      path,
+      repo,
+      rows: annotated,
+      counts: countRows(annotated),
+      reclaimableBytes: opts.sizes === true ? reclaimableOf(annotated) : null,
+      notes,
+      error: null,
+    }
   } catch (err) {
     if (err instanceof RepoCleanerError) throw err
     return { ...errorSweep(path, err), repo, notes }

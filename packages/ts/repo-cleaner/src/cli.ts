@@ -72,6 +72,7 @@ import {
   statusLine,
   type StatusLine,
 } from './status-line.ts'
+import { formatBytes } from './size.ts'
 import { stepBoard, type StepBoard } from './step-board.ts'
 import { sweep as sweepTargets, sweptWith, type SweepOptions } from './sweep.ts'
 import {
@@ -122,6 +123,10 @@ const SWEEP_FLAGS = {
     choices: PROVIDER_CHOICES,
     valueName: 'name',
     help: 'with --remote: where pull requests come from',
+  },
+  sizes: {
+    kind: 'boolean',
+    help: "read each worktree's size on disk: rank rows largest first and total what can be freed; slower",
   },
   progress: { kind: 'boolean', negatable: true, help: 'no progress line on stderr' },
 } as const
@@ -374,6 +379,7 @@ function sweepOptions(v: SweepValues, ctx: CliContext): SweepOptions {
     cwd: ctx.cwd,
     remote: v.remote,
     offline: v.offline,
+    sizes: v.sizes,
     ...(only === undefined ? {} : { only: only as Kind[] }),
     ...(v.branch === undefined ? {} : { branch: v.branch }),
     ...(v.against === undefined ? {} : { against: v.against }),
@@ -526,6 +532,7 @@ function cleanConflict(v: CleanValues, targets: readonly string[]): string | nul
       v.branch !== undefined ? '--branch' : null,
       v.remote ? '--remote' : null,
       v.offline ? '--offline' : null,
+      v.sizes ? '--sizes' : null,
       v.against !== undefined ? '--against' : null,
       v.provider !== undefined ? '--provider' : null,
     ].filter((f) => f !== null)
@@ -791,25 +798,14 @@ function confirm(
   return null
 }
 
-/** `bytes` as a short size: `512 B`, `3.4 MB`. */
-function sizeText(bytes: number): string {
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let value = bytes
-  let unit = 0
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024
-    unit++
-  }
-  return unit === 0 ? `${value} B` : `${value.toFixed(1)} ${units[unit]}`
-}
-
 function cacheLine(m: CachedMirror): string {
   const why = m.partial ? 'left by a stopped clone' : m.problem
   const note = why === null ? '' : `  (${why})`
   // A URL, directory name or git message is outside text: no terminal controls.
   return (
-    stripControls(`${sizeText(m.bytes).padStart(9)}  ${m.url ?? '(no origin)'}  ${m.dir}${note}`) +
-    '\n'
+    stripControls(
+      `${formatBytes(m.bytes).padStart(9)}  ${m.url ?? '(no origin)'}  ${m.dir}${note}`,
+    ) + '\n'
   )
 }
 
@@ -826,7 +822,7 @@ function cacheList(ctx: CliContext, dir: string, json: boolean): number {
   for (const m of mirrors) ctx.io.stdout(cacheLine(m))
   const total = mirrors.reduce((sum, m) => sum + m.bytes, 0)
   const count = `${mirrors.length} clone${mirrors.length === 1 ? '' : 's'}`
-  ctx.io.stdout(`${count}, ${sizeText(total)}, in ${dir}\n`)
+  ctx.io.stdout(`${count}, ${formatBytes(total)}, in ${dir}\n`)
   return EXIT.ok
 }
 

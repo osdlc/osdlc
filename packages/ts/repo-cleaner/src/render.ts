@@ -24,6 +24,7 @@ import {
   type Row,
   type Sweep,
 } from './types.ts'
+import { formatBytes } from './size.ts'
 import { plural } from './util.ts'
 
 /** Branches first, then worktrees, then remotes, whatever order they were gathered in. */
@@ -101,13 +102,29 @@ function risksNote(row: Pick<Row, 'risks' | 'evidence'>): string {
   return `needs --allow ${names.join(', ')}`
 }
 
+/** The bytes a row's size was read as; -1 when none was, so those rows follow the sized ones. */
+function sizeRank(row: Row): number {
+  const size = row.kind === 'worktree' ? row.evidence.sizeBytes : undefined
+  return typeof size === 'number' ? size : -1
+}
+
+/** By kind, then verdict, then largest first (rows with a size read), then name. */
 function sortRows(rows: readonly Row[]): Row[] {
   const kindRank = (r: Row): number => KIND_ORDER.indexOf(r.kind)
   const verdictRank = (r: Row): number => VERDICT_ORDER.indexOf(r.verdict)
   return [...rows].sort(
     (a, b) =>
-      kindRank(a) - kindRank(b) || verdictRank(a) - verdictRank(b) || a.name.localeCompare(b.name),
+      kindRank(a) - kindRank(b) ||
+      verdictRank(a) - verdictRank(b) ||
+      sizeRank(b) - sizeRank(a) ||
+      a.name.localeCompare(b.name),
   )
+}
+
+/** A row's size column: its size, `?` when `du` could not say, blank for a row with none. */
+function sizeCell(row: Row): string {
+  const size = row.kind === 'worktree' ? row.evidence.sizeBytes : undefined
+  return size === undefined ? '' : size === null ? '?' : formatBytes(size)
 }
 
 function repoHeader(sweep: RepoSweep): string {
@@ -157,11 +174,13 @@ export function renderRepo(sweep: RepoSweep, opts: { all?: boolean; style?: Styl
 
   const nameWidth = Math.min(38, Math.max(...shown.map((r) => ellipsize(r.name, 38).length)))
   const kindWidth = Math.max(...shown.map((r) => r.kind.length))
+  const sizeWidth = Math.max(...shown.map((r) => sizeCell(r).length))
   for (const row of shown) {
     const word = verdictWord(row)
     const note = risksNote(row)
+    const size = sizeWidth === 0 ? '' : `${sizeCell(row).padStart(sizeWidth)}  `
     lines.push(
-      `  ${pad(row.kind, kindWidth)}  ${pad(ellipsize(row.name, 38), nameWidth)}  ${wordStyle(style, word)(pad(word, 7))}  ${row.why}${note ? `; ${note}` : ''}`,
+      `  ${pad(row.kind, kindWidth)}  ${pad(ellipsize(row.name, 38), nameWidth)}  ${size}${wordStyle(style, word)(pad(word, 7))}  ${row.why}${note ? `; ${note}` : ''}`,
     )
     // A blocked row has no commands; what to do about each blocker goes there instead.
     const detail = row.verdict === 'blocked' ? row.notes : row.commands
@@ -211,7 +230,10 @@ export function renderTotals(sweep: Sweep, style: Style = PLAIN): string {
   const suffix = tail.length > 0 ? ` (${tail.join(', ')})` : ''
   const prune = t.prune > 0 ? `${style.prune(`${t.prune} to prune`)}, ` : ''
   const blocked = t.blocked > 0 ? `, ${style.review(`${t.blocked} blocked`)}` : ''
-  return `${style.delete(`${t.delete} to delete`)}, ${prune}${style.review(`${t.review} to review`)}${blocked}, across ${repos}${suffix}.`
+  const line = `${style.delete(`${t.delete} to delete`)}, ${prune}${style.review(`${t.review} to review`)}${blocked}, across ${repos}${suffix}.`
+  const freed = sweep.reclaimableBytes
+  if (freed === null) return line
+  return `${line} Reclaimable: ${style.delete(formatBytes(freed.delete))} to delete, ${style.review(formatBytes(freed.review))} to review.`
 }
 
 const KIND_LABEL: Record<Kind, string> = {
@@ -307,6 +329,7 @@ export function renderJson(sweep: Sweep, extra: Record<string, unknown> = {}): s
         scan: sweep.scan,
         duplicates: sweep.duplicates,
         counts: sweep.counts,
+        reclaimableBytes: sweep.reclaimableBytes,
         totals: totalOf(sweep.counts),
       },
       null,

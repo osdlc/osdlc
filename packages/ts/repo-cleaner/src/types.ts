@@ -157,6 +157,12 @@ export interface WorktreeEvidence extends LandingEvidence {
   bare: boolean
   detached: boolean
   primary: boolean
+  /**
+   * Bytes the directory takes on disk, read only with the `sizes` option; null
+   * when `du` could not say. Absent for a directory that is gone. Not part of
+   * a plan's fingerprint: growth after planning does not drop the row.
+   */
+  sizeBytes?: number | null
   /** The directory is there and is still a checkout. */
   onDisk?: boolean
   /** The directory is there but is no longer a checkout (its `.git` is gone). */
@@ -347,6 +353,23 @@ export function totalOf(counts: Counts): Bucket {
   return out
 }
 
+/** Bytes that rows of each verdict take on disk, summed over the rows whose size was read. */
+export interface Reclaimable {
+  delete: number
+  review: number
+}
+
+/** The bytes `rows` would free, per verdict. Rows with no size read count for nothing. */
+export function reclaimableOf(rows: readonly Row[]): Reclaimable {
+  const out: Reclaimable = { delete: 0, review: 0 }
+  for (const row of rows) {
+    if (row.kind !== 'worktree' || typeof row.evidence.sizeBytes !== 'number') continue
+    if (row.verdict === 'delete' || row.verdict === 'review')
+      out[row.verdict] += row.evidence.sizeBytes
+  }
+  return out
+}
+
 /** One repository's rows, or the reason there are none. */
 export interface RepoSweep {
   /** The path the sweep was pointed at, whether or not it could be read. */
@@ -355,6 +378,8 @@ export interface RepoSweep {
   repo: RepoInfo | null
   rows: Row[]
   counts: Counts
+  /** Bytes freed by the `delete` rows and by the `review` rows; null when `sizes` was off. */
+  reclaimableBytes: Reclaimable | null
   /**
    * What the sweep could not look up for this repository and judged without,
    * one sentence each: a remote branch listing or a pull request listing that
@@ -419,6 +444,8 @@ export interface Sweep {
   duplicates: DuplicateCheckout[]
   /** Every repository's counts, summed per kind. */
   counts: Counts
+  /** Every repository's `reclaimableBytes`, summed; null when `sizes` was off. */
+  reclaimableBytes: Reclaimable | null
   /** What was swept, for a plan. */
   options: SweptWith
 }
@@ -456,7 +483,7 @@ export interface SweepProgress {
   repo: string
   index: number
   of: number
-  step: 'discover' | 'fetch' | 'prs' | Kind
+  step: 'discover' | 'fetch' | 'prs' | 'size' | Kind
   done?: number
   total?: number
   /** The CLI asked during the `prs` step: `gh`, `glab`. */

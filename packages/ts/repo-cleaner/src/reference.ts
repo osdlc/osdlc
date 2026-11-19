@@ -23,6 +23,10 @@ const SWEEP = `Sweep options (the report, plan and clean)
                           be stale; clean asks the remote before deleting on it.
                           Pull requests are still looked up; add --provider none
                           to judge with no network at all.
+  --sizes                 Read each worktree's size on disk (du), list rows largest
+                          first within each verdict, and total the bytes the delete
+                          and review rows would free. Slower: it reads every file
+                          under every worktree. Not part of a plan.
   --only <kinds>          Only these kinds of row: worktree, branch, remote,
                           comma-separated. Default: worktree,branch, plus remote with
                           --remote. Naming remote implies --remote.
