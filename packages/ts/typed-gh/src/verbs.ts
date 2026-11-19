@@ -177,14 +177,14 @@ function hostArgs(target: GhTarget | undefined): string[] {
 /**
  * Variables `runVerb` sets on every verb whose output the library parses.
  * gh colours a pipe when `CLICOLOR_FORCE` or `GH_FORCE_TTY` is set, and the
- * escape codes break JSON and diff parsing. `NO_COLOR` wins over both.
- * `CLICOLOR_FORCE` and `GH_FORCE_TTY` are set to `0` rather than unset,
- * because a runner's `env` can only add or remove, and `0` is read as off.
+ * escape codes break JSON and diff parsing. `NO_COLOR` turns colour off, and
+ * `undefined` removes a variable from the child's environment, so the two
+ * force variables are removed rather than set to a value gh might read as on.
  */
-export const NO_COLOUR_ENV: Readonly<Record<string, string>> = {
+export const NO_COLOUR_ENV: Readonly<Record<string, string | undefined>> = {
   NO_COLOR: '1',
-  CLICOLOR_FORCE: '0',
-  GH_FORCE_TTY: '0',
+  CLICOLOR_FORCE: undefined,
+  GH_FORCE_TTY: undefined,
 }
 
 /** `GH_HOST` for the verbs gh gives no host flag. */

@@ -59,11 +59,10 @@ describe('runVerb', () => {
   test('forces colour off for a parsed verb, and leaves a raw call to the caller', () => {
     const parsed = spy(ok('[]'))
     runVerb(prList(), parsed.runner, { cwd: '/repo' })
-    expect(parsed.calls[0]!.opts?.env).toEqual({
-      NO_COLOR: '1',
-      CLICOLOR_FORCE: '0',
-      GH_FORCE_TTY: '0',
-    })
+    const env = parsed.calls[0]!.opts?.env
+    expect(env?.['NO_COLOR']).toBe('1')
+    expect(env).toHaveProperty('CLICOLOR_FORCE', undefined)
+    expect(env).toHaveProperty('GH_FORCE_TTY', undefined)
     const rawCall = spy(ok(''))
     runVerb(raw(['pr', 'list']), rawCall.runner, { cwd: '/repo' })
     runVerb(rawChecked(['pr', 'list']), rawCall.runner, { cwd: '/repo' })

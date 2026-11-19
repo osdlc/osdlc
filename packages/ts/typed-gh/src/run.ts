@@ -20,7 +20,7 @@ import { runCheckedGh, runCheckedGhAsync, settle } from './doors.ts'
 import { NO_COLOUR_ENV, type GhVerb } from './verbs.ts'
 
 /** The verb's `env` over {@link NO_COLOUR_ENV}, or the verb's own for a raw call. */
-function verbEnv(verb: GhVerb<unknown>): Record<string, string> | undefined {
+function verbEnv(verb: GhVerb<unknown>): Record<string, string | undefined> | undefined {
   if (verb.leaveColour === true) return verb.env
   return { ...NO_COLOUR_ENV, ...verb.env }
 }

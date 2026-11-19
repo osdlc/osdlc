@@ -732,7 +732,7 @@ Methods on both clients:
 
 A verb is plain data: argv, a `checked` flag, a `readOnly` flag, optional stdin and environment,
 and a `parse` function. `runVerb` and both clients run every verb but `raw` and `rawChecked` with
-`NO_COLOR=1`, `CLICOLOR_FORCE=0` and `GH_FORCE_TTY=0` set, so a colour setting in the caller's
+`NO_COLOR=1` set and `CLICOLOR_FORCE` and `GH_FORCE_TTY` removed, so a colour setting in the caller's
 environment cannot put escape codes into the JSON or diff they parse. A `raw` call keeps the
 caller's environment. `readOnly` is true for every query and `prDiff`, and false for every
 mutation and for `raw` and `rawChecked`, so a caller that keeps an allowlist of safe calls can check
