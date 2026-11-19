@@ -11,8 +11,10 @@ flow through it, and what each adapter does.
 > design review, [host-cleaner-design](../parley/host-cleaner-design.html). The decision
 > record is [D-L7N5](../decisions/D-L7N5-host-cleaner.md); where it differs from the code, the
 > code wins and the differences are listed in "Where the code and the decision record differ".
-
-A flat plugin model that would replace this design is proposed in [host-cleaner-plugins](../parley/host-cleaner-plugins.html).
+>
+> The plugin model is approved ([D-H3QW](../decisions/D-H3QW-host-cleaner-plugin-model.md),
+> review [host-cleaner-plugins](../parley/host-cleaner-plugins.html)). This page describes the
+> stack as built and will be rewritten with the code.
 
 repo-cleaner's own model (plan, fingerprint, check, run, receipt, risks) is in its
 [README](../../packages/ts/repo-cleaner/README.md) and its

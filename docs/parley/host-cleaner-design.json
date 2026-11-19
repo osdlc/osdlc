@@ -3,7 +3,7 @@
   "title": "host-cleaner: design review",
   "summary": "The design of @osdlc/host-cleaner as built in PRs 943 to 948, where it differs from D-L7N5, and the decisions to settle before the stack merges.",
   "created": "2026-11-19",
-  "revision": 1,
+  "revision": 2,
   "repo": {
     "remote": "https://github.com/osdlc/osdlc",
     "commit": "ffba8781"
@@ -88,7 +88,9 @@
               "detail": "Meets the guideline and gives a smaller review. Cost: the stack of six becomes seven and every later PR is rebased; the first half has no behaviour to test."
             }
           ],
-          "recommended": "accept"
+          "recommended": "accept",
+          "status": "closed",
+          "resolution": "Closed: superseded. 943 is rewritten to the plugin model, not split (q-rewrite-timing in host-cleaner-plugins.html). The earlier answer stays on record."
         }
       ]
     },
@@ -127,7 +129,9 @@
               "detail": "Smallest contract. But then Orca's repository list is invisible, and worktrees Orca manages in repositories no one named are never swept."
             }
           ],
-          "recommended": "keep-paths"
+          "recommended": "keep-paths",
+          "status": "closed",
+          "resolution": "Closed: superseded. The approved plugin model replaces the sixth hook with a scope phase (q-scope in host-cleaner-plugins.html)."
         }
       ]
     },
@@ -166,7 +170,9 @@
               "detail": "A rule in the extension guide plus a test that shuffles adapters. Most robust, but it forbids an adapter that wants to build on Orca's verdict."
             }
           ],
-          "recommended": "record-order"
+          "recommended": "record-order",
+          "status": "closed",
+          "resolution": "Closed: superseded. The approved plugin model (D-H3QW, host-cleaner-plugins.html) has no plugin run order for rows; plugin order is fixed, git first."
         }
       ]
     },
@@ -408,7 +414,9 @@
               "detail": "Orca's managed worktrees are always seen by their Orca verdicts. Cost: `host-cleaner ~/dev/alpha` can also touch repositories you did not name."
             }
           ],
-          "recommended": "no"
+          "recommended": "no",
+          "status": "closed",
+          "resolution": "Closed: superseded. Orca adds roots in the scope phase (q-scope in host-cleaner-plugins.html), so when discovery runs is no longer a separate question."
         },
         {
           "id": "q-orca-refuse",
