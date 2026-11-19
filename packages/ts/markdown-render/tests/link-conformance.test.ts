@@ -4,11 +4,9 @@
  * body the plugins must tokenize the same links the case file lists: each
  * wikilink's target, heading, block and alias, and each embed's target.
  *
- * The cases are the suite's `body` section. The renderer reads
- * `[[#Heading]]` as a link to its own note, so it runs the cases under
- * `selfLinks`; the cases that only differ in an option the renderer does not
- * take (comments skipped, the skill-export code rules) are left out, and so are
- * the few where the renderer is stricter on purpose. `SKIPPED` says why.
+ * The cases are the suite's `body` section. The renderer always links
+ * `[[#Heading]]` to its own note. A case that sets an option the renderer does
+ * not take is left out; a case in `SKIPPED` runs and must still differ.
  */
 import { readFileSync } from 'node:fs'
 import { expect, test } from 'vitest'
@@ -49,12 +47,11 @@ const cases = (
 })
 
 /**
- * Cases the renderer answers differently on purpose, and why. Each is
- * recorded in the README under "Known dialect deviations"; a case that sets an
- * option the renderer does not take is filtered out above, not listed here.
+ * Cases the renderer answers differently on purpose, and why. The README's
+ * "Where the rendered page and the link scanner differ" records each.
  */
 const SKIPPED: Record<string, string> = {
-  // The scanner dialect reads `[[#Heading]]` and `[[|alias]]` as links to the note itself.
+  // The renderer links `[[#Heading]]` and `[[|alias]]` to the note itself; the scanner drops them.
   self_links_are_dropped_by_default: 'the renderer reads a self link as a link',
   self_links_option_reads_a_bare_fragment: 'the renderer links `[[|alias]]` to its own note',
   empty_targets_are_dropped:
