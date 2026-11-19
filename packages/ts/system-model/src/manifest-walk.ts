@@ -5,9 +5,9 @@
  * `detect`. This file turns the profile's
  * packages into this package's `ManifestInfo` shape, which the Rust-parity
  * fixture suite (`tests/manifest-graph.test.ts`) holds to
- * byte-for-byte agreement with the `system-model` crate on those fixtures only.
+ * byte-for-byte agreement with the Rust peer's output on those fixtures only.
  */
-// TODO: this walker lacks fixes the Rust crate has. They disagree on target-table deps, GitHub
+// TODO: this walker lacks fixes the Rust peer will have. They disagree on target-table deps, GitHub
 // shorthand, npm aliases, `publish = []`, workspace renames and empty names, and no parity test
 // covers them. Port the fixes and add fixtures for each case.
 
@@ -33,10 +33,10 @@ export const DEFAULT_EXCLUDES = [
 ] as const
 
 /**
- * The manifest file names the walk reads, at any depth. The walk does not
- * read this list; `tests/smoke.test.ts` checks that the two agree.
+ * The manifest file names the walk reads, at any depth. Not read at
+ * runtime; `MALFORMED_ECOSYSTEMS` is type-checked against it.
  */
-export const MANIFEST_FILES = ['package.json', 'Cargo.toml'] as const
+const MANIFEST_FILES = ['package.json', 'Cargo.toml'] as const
 
 /** What `walkManifests` accepts. */
 export interface WalkOptions {
@@ -118,8 +118,8 @@ function emptyManifest(
   }
 }
 
-// TODO: a non-string package.json specifier shows as '[object Object]', because upstream
-// @osdlc/system-model parsePackageJson calls String(spec). The fix is upstream, not here.
+// TODO: a non-string package.json specifier shows as '[object Object]', because
+// parsePackageJson in src/plugins/node/package-json.ts calls String(spec).
 /** `DepFact[]` is field-for-field `DepDecl[]` (see `DepFact`'s own doc) — no mapping needed. */
 function asDeps(deps: DepFact[] | undefined): DepDecl[] {
   return deps ?? []

@@ -4,10 +4,8 @@
  * workspace root, a Nuxt layer, a binary, and one deliberately malformed
  * manifest.
  *
- * The fixture tree is the `system-model` crate's — this suite and
- * `cargo test -p system-model` walk the SAME directories and assert the same
- * contract, which is the whole drift gate between the two implementations. A
- * change to one that the other does not match fails here.
+ * The fixture tree is shared with the Rust peer, which arrives in a later
+ * change and will walk the SAME directories and assert the same contract.
  */
 
 import { beforeAll, describe, expect, test } from 'vitest'
@@ -190,5 +188,52 @@ describe('buildDependencyGraph', () => {
 
     // In-set edges are unchanged by the option.
     expect(graph.edges.length).toBe(4 + externalIds.length)
+  })
+})
+
+describe('buildDependencyGraph id collisions', () => {
+  const mk = (
+    ecosystem: 'node' | 'cargo',
+    dir: string,
+    name: string,
+    deps: string[] = [],
+  ): ManifestInfo =>
+    ({
+      path: `/r/${dir}/x`,
+      dir,
+      ecosystem,
+      name,
+      version: null,
+      private: false,
+      description: null,
+      workspaces: [],
+      entry: { main: null, types: null },
+      isNuxtLayer: false,
+      hasBin: false,
+      deps: deps.map((d) => ({ name: d, specifier: '*', kind: 'normal' })),
+      error: null,
+    }) as unknown as ManifestInfo
+
+  test('a node package and a crate sharing a name fall back to the directory', () => {
+    const g = buildDependencyGraph([mk('node', 'a', 'x'), mk('cargo', 'b', 'x')])
+    expect(g.nodes.map((n) => n.id)).toEqual(['x', 'b'])
+    expect(g.warnings).toHaveLength(1)
+  })
+
+  test('two packages sharing a name warn, and edges go to the first', () => {
+    const g = buildDependencyGraph([
+      mk('node', 'a', 'x'),
+      mk('node', 'b', 'x'),
+      mk('node', 'c', 'y', ['x']),
+    ])
+    expect(g.warnings.some((w) => w.includes('duplicate node manifest name "x"'))).toBe(true)
+    expect(g.edges.map((e) => [e.from, e.to])).toEqual([['y', 'x']])
+  })
+
+  test('an external dependency named like an in-set id takes the #external suffix', () => {
+    const g = buildDependencyGraph([mk('node', 'a', 'x', ['dep']), mk('cargo', 'b', 'dep')], {
+      includeExternal: true,
+    })
+    expect(g.nodes.find((n) => n.external)?.id).toBe('dep#external')
   })
 })
