@@ -282,5 +282,33 @@ describe('corpus-schema new', () => {
     assert.match(bad.stderr, /^notes\/D\.md: kind: must be equal to one of the allowed values$/m)
     assert.equal(existsSync(join(dir, 'c/notes/D.md')), false)
     assert.equal(cli('new', '--json', '[1]', 'c', 'notes', 'D').status, 1)
+    const syntax = cli('new', '--json', '{kind:a}', 'c', 'notes', 'D')
+    assert.equal(syntax.status, 1)
+    assert.match(syntax.stderr, /^--json: /)
+  })
+
+  test('refuses a --json id that is not the record id, whatever the schema declares', () => {
+    corpus('c', 'c')
+    put('c/notes/notes.schema.json', '{"type":"object"}')
+    const wrong = cli('new', '--json', '{"id":"Z"}', 'c', 'notes', 'B')
+    assert.equal(wrong.status, 1)
+    assert.match(wrong.stderr, /id: "Z" is not the record's id "B"/)
+    assert.equal(existsSync(join(dir, 'c/notes/B.md')), false)
+    assert.equal(cli('new', '--json', '{"id":"b"}', 'c', 'notes', 'B').status, 0)
+  })
+
+  test('reads --json - from stdin', () => {
+    corpus('c', 'c')
+    put(
+      'c/notes/notes.schema.json',
+      '{"required":["kind"],"properties":{"kind":{"type":"string"}}}',
+    )
+    const r = spawnSync(process.execPath, [CLI, 'new', '--json', '-', 'c', 'notes', 'S'], {
+      cwd: dir,
+      encoding: 'utf8',
+      input: '{"kind":"s"}',
+    })
+    assert.equal(r.status, 0, r.stderr)
+    assert.equal(read('c/notes/S.md'), '---\nkind: s\n---\n')
   })
 })

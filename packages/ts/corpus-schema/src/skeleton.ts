@@ -16,6 +16,7 @@ import {
   idOf,
   idProblem,
   load,
+  preferredExtension,
   recordFileOf,
   type Type,
 } from './validate.ts'
@@ -95,7 +96,7 @@ function find(root: string, name: string): { c: Corpus; type: Type } {
   return { c, type }
 }
 
-/** The frontmatter of a new record of `type`: each required field, built out from the chain, furthest type first. */
+/** See `recordSkeleton`. */
 function skeleton(type: Type): Data {
   const out: Data = {}
   for (const t of chain(type).reverse())
@@ -122,7 +123,7 @@ export function recordSkeleton(root: string, type: string): Data {
  * @experimental
  */
 export interface NewRecordOptions {
-  /** Write a record folder, `<type>/<id>/<id>.md` or the type's `x-record-file`, not `<type>/<id>.md`. */
+  /** Write a record folder, `<type>/<id>/<id>.<ext>` or the type's `x-record-file`, not `<type>/<id>.<ext>`. */
   folder?: boolean
   /**
    * Fields to fill in, over the skeleton: objects merge, anything else replaces. The record must
@@ -150,11 +151,13 @@ const merge = (into: Data, from: Data): Data => {
 
 /**
  * Write a new record `id` of the type `type` in the corpus at `root`, from `recordSkeleton`, and
- * return its path relative to the corpus. The file is `<type>/<id>.<ext>`, in the first of the
- * corpus's formats that is `md`, or else its first. With `options.folder` it is a record folder.
+ * return its path relative to the corpus. The file is `<type>/<id>.<ext>`, `.md` when the corpus's
+ * formats allow it, else its first format. With `options.folder` it is a record folder.
  * Throws, one problem a line and writing nothing, when the id breaks the id rules or a type's
- * `x-id-pattern`, when the type has a record of that id or a file is in the way, or, given
- * `options.values`, when the filled record fails its schemas.
+ * `x-id-pattern`, when the type has a record of that id or a file is in the way, when the
+ * type's `x-record-file` has an extension outside the corpus's formats, when `find` fails (an
+ * unknown type, a fatal root file), or, given `options.values`, when `values.id` is not the
+ * record's id or the filled record fails its schemas.
  *
  * @experimental
  */
@@ -168,7 +171,7 @@ export function newRecord(
   const types = chain(t)
   const problems: string[] = []
   const bad = idProblem(id)
-  // As the validator reads a file name: an `x-id-pattern` id may be the front of it, `P-0002-be-kind`.
+  // The id the validator derives from this file name; see idOf in validate.ts.
   const derived = idOf(types, id)
   if (bad !== undefined) problems.push(`id: "${id}" ${bad}`)
   else if (derived === undefined)
@@ -180,7 +183,7 @@ export function newRecord(
   if (taken !== undefined) problems.push(`id: "${recordId}" is also ${taken}`)
   if (problems.length > 0) throw new Error(problems.join('\n'))
 
-  const ext = c.extensions.includes('.md') ? '.md' : (c.extensions[0] ?? '.md')
+  const ext = preferredExtension(c.extensions)
   const file =
     options.folder === true
       ? `${t.dir}/${id}/${recordFileOf(t) ?? `${id}${ext}`}`
@@ -189,13 +192,14 @@ export function newRecord(
     throw new Error(`${file}: format: ${extname(file).slice(1)} is not in the corpus's formats`)
   if (existsSync(join(root, file))) throw new Error(`${file}: (file): already exists`)
 
-  // A type that declares `id` gets the record's own, first.
+  // `id` leads in key order, and the record's id overrides any id the skeleton built.
   const declaresId = types.some((u) => 'id' in asMap(u.schema?.['properties']))
   const data: Data = declaresId ? { id: recordId, ...skeleton(t) } : skeleton(t)
   if (declaresId) data['id'] = recordId
   if (options.values !== undefined) {
-    if (declaresId && options.values['id'] !== undefined && options.values['id'] !== recordId)
-      throw new Error(`id: "${String(options.values['id'])}" is not the record's id "${recordId}"`)
+    const stated = options.values['id']
+    if (stated !== undefined && (typeof stated !== 'string' || fold(stated) !== fold(recordId)))
+      throw new Error(`id: "${String(stated)}" is not the record's id "${recordId}"`)
     merge(data, options.values)
     for (const u of types)
       if (u.validate !== undefined && !u.validate(data))

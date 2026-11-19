@@ -8,7 +8,7 @@
  *
  * `validate` checks every corpus at or below each folder. `sync` writes each one's `_references/`
  * copies, the folder defaulting to `.`. `new` writes a record skeleton, or with `--json` the
- * record those fields fill, which must validate. Exits 1 on any error, or with `--strict` on any
+ * record those fields fill, which must validate (`--json -` reads them from stdin). Exits 1 on any error, or with `--strict` on any
  * warning, and 2 on bad usage.
  */
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
@@ -40,6 +40,13 @@ const parse = () => {
     return usage()
   }
 }
+const parseJson = (text: string): unknown => {
+  try {
+    return JSON.parse(text)
+  } catch (e) {
+    throw new Error(`--json: ${(e as Error).message}`)
+  }
+}
 const parsed = parse()
 const fix = parsed.values.fix === true
 const strict = parsed.values.strict === true
@@ -49,9 +56,8 @@ if (verb === 'new') {
   if (fix || strict || args.length !== 3) usage()
   const [corpus, type, id] = args as [string, string, string]
   try {
-    // `--json -` reads the fields from stdin.
     const text = json === '-' ? readFileSync(0, 'utf8') : json
-    const values = text === undefined ? undefined : (JSON.parse(text) as unknown)
+    const values = text === undefined ? undefined : (parseJson(text) as unknown)
     if (
       values !== undefined &&
       (values === null || typeof values !== 'object' || Array.isArray(values))

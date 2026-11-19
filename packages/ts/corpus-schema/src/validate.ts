@@ -412,6 +412,11 @@ const inNarrative = (dir: string, path: string): boolean =>
  * before a `-` that every pattern matches, so `P-0002-be-kind` with `^P-[0-9]{4}$` has the id
  * `P-0002`. Undefined when none matches.
  */
+/** The extension a new record gets: `.md` when `extensions` allows it, else the first. */
+export function preferredExtension(extensions: string[]): string {
+  return extensions.includes('.md') ? '.md' : (extensions[0] ?? '.md')
+}
+
 export function idOf(types: Type[], name: string): string | undefined {
   const patterns = types.flatMap((t) => (t.idPattern === undefined ? [] : [t.idPattern]))
   if (patterns.length === 0) return name
@@ -1196,7 +1201,7 @@ function strayHint(
   const out = 'To keep it out of the corpus, move it under a folder starting with _.'
   if (dir !== type.dir) {
     const name = basename(dir)
-    const preferred = extensions.includes('.md') ? '.md' : (extensions[0] ?? '.md')
+    const preferred = preferredExtension(extensions)
     const record = declared ?? `${name}${preferred}`
     const add = `add ${dir}/${record}${declared === undefined ? ' (or set x-record-file)' : ''}`
     const keep = yml ? `rename it to .yaml and ${add}` : add
