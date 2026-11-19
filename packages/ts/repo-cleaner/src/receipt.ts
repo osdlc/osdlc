@@ -45,6 +45,7 @@ export type Dropped = z.infer<typeof DroppedSchema>
 
 export const STEP_ACTIONS = [
   'verify-remote',
+  'archive',
   'unlock-worktree',
   'remove-worktree',
   'delete-branch',
@@ -52,9 +53,30 @@ export const STEP_ACTIONS = [
   'prune-worktrees',
 ] as const
 
+/** What an `archive` step pushed: the branch, the commit, and what each parent holds. */
+export const ArchiveSchema = z.object({
+  remote: z.string(),
+  ref: z.string(),
+  sha: z.string(),
+  /** The archive commit's parents, numbered as git does (`<sha>^2`); parent 1 is the default branch's tip. */
+  parents: z.array(
+    z.object({
+      parent: z.number().int(),
+      sha: z.string(),
+      source: z.string(),
+      rows: z.array(RowIdSchema),
+      leftOut: z.array(
+        z.object({ path: z.string(), reason: z.enum(['secret', 'excluded', 'too-large']) }),
+      ),
+    }),
+  ),
+})
+
+export type ArchiveRecord = z.infer<typeof ArchiveSchema>
+
 export const StepSchema = z.object({
   repo: z.string(),
-  /** The row the step acts on. */
+  /** The row the step acts on; an `archive` step names the first row it holds. */
   row: RowIdSchema,
   action: z.enum(STEP_ACTIONS),
   command: z.string(),
@@ -68,6 +90,8 @@ export const StepSchema = z.object({
    * nothing, and the run summary counts it apart. Absent otherwise.
    */
   gone: z.literal(true).optional(),
+  /** What an `archive` step pushed; set once it succeeded. */
+  archive: ArchiveSchema.optional(),
 })
 
 export type Step = z.infer<typeof StepSchema>
