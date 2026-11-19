@@ -127,13 +127,11 @@ export interface UpdateSettings {
   remote: string
   resolvers: readonly RegenerateRule[]
   lockfileInstall: string | null
-  /** Shell verbs that must pass before a push. Empty means push unverified. */
-  verifyVerbs: readonly string[]
   /**
-   * Resolves the verbs from the PR's own update worktree, after checkout and before verify.
-   * Replaces `verifyVerbs` when set; a throw fails that PR's verify, not the run.
+   * Shell verbs that must pass before a push; empty means push unverified. A function resolves
+   * them from the PR's own update worktree, after checkout, and a throw fails that PR, not the run.
    */
-  verifyVerbsIn?: ((worktree: string, pr: number) => Promise<readonly string[]>) | undefined
+  verifyVerbs: readonly string[] | ((worktree: string, pr: number) => Promise<readonly string[]>)
   generators?: readonly Generator[] | undefined
   repair?: Repair | undefined
   /** The kinds `repair` is called for. */
@@ -530,13 +528,15 @@ async function integrateAndPush(
     resolved.push(...plans.filter((p) => p.kind !== 'unclaimed'))
   }
 
-  let verbs = settings.verifyVerbs
-  if (settings.verifyVerbsIn !== undefined) {
-    try {
-      verbs = await settings.verifyVerbsIn(opts.worktree, target.number)
-    } catch (e) {
-      return fail(errorLine(e))
-    }
+  let verbs: readonly string[]
+  try {
+    const { verifyVerbs } = settings
+    verbs =
+      typeof verifyVerbs === 'function'
+        ? await verifyVerbs(opts.worktree, target.number)
+        : verifyVerbs
+  } catch (e) {
+    return fail(errorLine(e))
   }
   const verifyFailure = runVerify(verbs, runVerb, opts.worktree)
   if (verifyFailure !== null) {

@@ -322,7 +322,7 @@ describe('the executor against real git', () => {
     expect(git.resolveRef('origin/verify')).toBe(before!)
   })
 
-  test('verifyVerbsIn resolves in the PR worktree, and its verbs gate the push', async () => {
+  test('verifyVerbs resolves in the PR worktree, and its verbs gate the push', async () => {
     makeBehindPr('late', { 'a.txt': 'a\n' }, { 'b.txt': 'b\n' })
     const { git } = fx.worker
     const before = git.resolveRef('origin/late')
@@ -333,7 +333,7 @@ describe('the executor against real git', () => {
         wt,
         target({ head: 'late', number: 7 }),
         settings({
-          verifyVerbsIn: async (worktree, pr) => {
+          verifyVerbs: async (worktree, pr) => {
             seen.push(`${worktree}#${pr}`)
             return ['check']
           },
@@ -349,7 +349,7 @@ describe('the executor against real git', () => {
     expect(git.resolveRef('origin/late')).toBe(before!)
   })
 
-  test('a verifyVerbsIn that throws fails that PR with its message and pushes nothing', async () => {
+  test('a verifyVerbs that throws fails that PR with its message and pushes nothing', async () => {
     makeBehindPr('nodetect', { 'a.txt': 'a\n' }, { 'b.txt': 'b\n' })
     const { git } = fx.worker
     const before = git.resolveRef('origin/nodetect')
@@ -359,7 +359,7 @@ describe('the executor against real git', () => {
         wt,
         target({ head: 'nodetect' }),
         settings({
-          verifyVerbsIn: async () => {
+          verifyVerbs: async () => {
             throw new Error('verify: detect found no test command')
           },
         }),

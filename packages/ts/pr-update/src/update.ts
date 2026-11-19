@@ -564,8 +564,7 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
   for (const [repo, { path, targets: group }] of groups) {
     const git = new Git(path, { runner: env.git })
     const worktreeRoot = join(path, '.pr-update', runId)
-    const verifyVerbs = verifyVerbsOf.get(repo) ?? []
-    const verifyVerbsIn =
+    const verifyVerbs =
       verify === 'detect'
         ? (worktree: string, pr: number) =>
             env.ports.resolveVerifyVerbs({
@@ -575,40 +574,34 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
               repo,
               checkout: worktree,
             })
-        : undefined
+        : (verifyVerbsOf.get(repo) ?? [])
     results.push(
-      ...(await updateAll(
-        git,
-        group,
-        { ...settings, verifyVerbs, verifyVerbsIn },
-        env.ports.runVerb,
-        {
-          apply: writes,
-          worktreeRoot,
-          onSkip: (s) => skipped.push(s),
-          // A rehearsal cannot repair, so `writes` keeps it from recording anything. Recorded as
-          // each PR finishes, so a run killed part-way (a job timeout) keeps what it
-          // learned about the PRs it had already done. Once the host is signalled nothing more is
-          // recorded: the last PR may have failed only because it was stopped, and a recorded
-          // failure would skip that PR on the next run.
-          onResult: (r) => {
-            if (writes && attempts !== undefined && forwardedSignal() === undefined) {
-              recordAttempt(attempts, r)
-            }
-          },
-          prepare: (target, done) => {
-            const ready = restackTarget(target, done, writes, policy)
-            if (typeof ready !== 'string') return ready
-            skipped.push({
-              repo: target.repo,
-              number: target.number,
-              head: target.head,
-              reason: ready,
-            })
-            return null
-          },
+      ...(await updateAll(git, group, { ...settings, verifyVerbs }, env.ports.runVerb, {
+        apply: writes,
+        worktreeRoot,
+        onSkip: (s) => skipped.push(s),
+        // A rehearsal cannot repair, so `writes` keeps it from recording anything. Recorded as
+        // each PR finishes, so a run killed part-way (a job timeout) keeps what it
+        // learned about the PRs it had already done. Once the host is signalled nothing more is
+        // recorded: the last PR may have failed only because it was stopped, and a recorded
+        // failure would skip that PR on the next run.
+        onResult: (r) => {
+          if (writes && attempts !== undefined && forwardedSignal() === undefined) {
+            recordAttempt(attempts, r)
+          }
         },
-      )),
+        prepare: (target, done) => {
+          const ready = restackTarget(target, done, writes, policy)
+          if (typeof ready !== 'string') return ready
+          skipped.push({
+            repo: target.repo,
+            number: target.number,
+            head: target.head,
+            reason: ready,
+          })
+          return null
+        },
+      })),
     )
   }
 
