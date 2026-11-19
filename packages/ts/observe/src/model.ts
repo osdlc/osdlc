@@ -12,10 +12,8 @@
  * them. {@link looseSessionModel} accepts any string, for a reader
  * that must stay able to read a log after a harness or host is added or removed.
  *
- * Kinds: `launched`, `host_attached`, `pid_recorded`, `harness_session_resolved`,
- * `state_changed`, `usage_sample`, `output`, `outcome`, `pr_linked`, `named`,
- * `done`, `ended` and `resumed`. A reader skips a line whose kind it does not
- * know.
+ * Kinds: the `kind` literals of `SessionEventSchema` in {@link defineSessionModel}.
+ * A reader skips a line whose kind it does not know.
  *
  * State machine: `starting` to `running`, `idle` or `ended`; `running` to
  * `waiting_for_input`, `idle`, `done` or `ended`; `waiting_for_input` to `running`,
@@ -27,8 +25,9 @@
  * the reducer (reported in `ignored`, still present in the log). A repeated
  * `ended`, a `resumed` on a session that has not ended, or a `host_attached` on
  * an ended session, is ignored the same way. `output`, `outcome`, `pr_linked`,
- * `named` and `harness_session_resolved` still apply after the end, since each
- * describes the session, not its state.
+ * `named`, `interrupted`, `closed` and `harness_session_resolved` still apply
+ * after the end, since each describes the session, not its state. `interrupted`
+ * and `closed` set no record field.
  *
  * Keys renamed in 0.3.3: the `launched` event and the record write `harness`,
  * `launchFlags` and `pin`. Logs and records written before carry `engine`,
@@ -513,6 +512,24 @@ export function defineSessionModel<H extends string, Ho extends string, F>(
         /** `person` for a rename, `harness` for a title the harness generated. */
         source: z.enum(['person', 'harness']),
       }),
+      z.object({
+        ts,
+        via,
+        kind: z.literal('interrupted'),
+        /** Who or what sent the interrupt, e.g. `close-out`. */
+        cause: z.string(),
+        /** The host the interrupt went through; null for a headless session, signalled directly. */
+        host: v.host.nullable(),
+      }),
+      z.object({
+        ts,
+        via,
+        kind: z.literal('closed'),
+        /** Who or what closed the host pane, e.g. `close-out`. */
+        cause: z.string(),
+        /** The host whose pane was closed; a headless session has no pane. */
+        host: v.host,
+      }),
       z.object({ ts, via, kind: z.literal('ended') }),
       z.object({
         ts,
@@ -705,6 +722,10 @@ export function defineSessionModel<H extends string, Ho extends string, F>(
         case 'named':
           if (event.source === 'person') personName = event.name
           else harnessName = event.name
+          return
+        case 'interrupted':
+        case 'closed':
+          // Log-only: no record field, no run state.
           return
         case 'ended':
           if (endedSeen) return skip('after_ended')
