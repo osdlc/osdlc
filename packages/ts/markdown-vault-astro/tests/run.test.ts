@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   existsSync,
   mkdtempSync,
+  readdirSync,
   mkdirSync,
   readFileSync,
   realpathSync,
@@ -220,6 +221,8 @@ test('--clean still replaces the output when the source has notes', () => {
   assert.ok(!existsSync(join(config.astroRoot, 'src/content/notes/b.md')), 'a stale note survived')
 })
 
+const listAll = (dir: string) => readdirSync(dir)
+
 describe('--clean builds aside, reports removals, then swaps', () => {
   function withOrphan() {
     const root = mkdtempSync(join(tmpdir(), 'oa-run-'))
@@ -297,6 +300,12 @@ describe('--clean builds aside, reports removals, then swaps', () => {
     renameSync(dst, `${dst}.markdown-vault-astro-old`)
     assert.throws(() => transform(config, { clean: true }), /orphan\.md/)
     assert.ok(existsSync(join(dst, 'orphan.md')))
+  })
+
+  test('a filter that rejects every note still swaps in an empty collection', () => {
+    const { config, dst } = withOrphan()
+    transform(config, { clean: true, yes: true, include: () => false })
+    assert.deepEqual(listAll(dst), [])
   })
 
   test('a destination with no orphans cleans without --yes', () => {

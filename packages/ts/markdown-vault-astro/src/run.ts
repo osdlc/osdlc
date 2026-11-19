@@ -234,6 +234,7 @@ function run(config: MarkdownVaultAstroConfig, direction: Direction, opts: RunOp
       if (swapClean) {
         recoverInterruptedSwap(dstDir)
         rmSync(outDir, { recursive: true, force: true })
+        ensureDir(outDir)
         staged.push({ dst: dstDir, tmp: outDir })
       }
       const existing = new Set(listAllFiles(dstDir))
