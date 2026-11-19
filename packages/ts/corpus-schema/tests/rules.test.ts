@@ -95,3 +95,18 @@ describe('profile rules', () => {
     assert.match(r.errors[0] as string, /outside its package/)
   })
 })
+
+describe('profile rules: trust edges', () => {
+  test('a parent in the validated corpus`s own package does not run', async () => {
+    put('package.json', '{"name":"w","corpus-schema":{"rules":"./r.mjs"}}')
+    put('r.mjs', `export const check = () => [{ file: 'x', field: 'f', message: 'ran' }]`)
+    root('org', {})
+    root('c', { extends: { p: '../org' } })
+    assert.deepEqual(await runRules(loadCorpus(at('c'))), { errors: [], warnings: [] })
+  })
+
+  test('a sparse result is an error', async () => {
+    profile('p', `export const check = () => new Array(1)`)
+    assert.match((await run()).errors[0] as string, /array of problems/)
+  })
+})

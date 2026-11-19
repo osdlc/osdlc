@@ -259,7 +259,7 @@ Obsidian writes links as its settings say, under Settings → Files and links:
   Markdown links.
 - `New link format` sets the path a new link holds. The default, `Shortest path when possible`,
   writes the shortest path that is unique in the vault, which depends on the vault. `Relative path
-to file` writes a path relative to the note, as this spec asks.
+  to file` writes a path relative to the note, as this spec asks.
 - `Automatically update internal links`, when on, makes Obsidian update the links to a file when
   the file is renamed.
 

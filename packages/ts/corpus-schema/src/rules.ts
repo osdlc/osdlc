@@ -93,16 +93,21 @@ export async function runRules(model: LoadedCorpus): Promise<RulesReport> {
     report.errors.push(`.: (rules): ${message}`)
   }
   const seen = new Set<string>()
+  // A corpus in the same package as the validated one is not an installed parent.
+  const ownPackage = packageDir(realpathSync(model.root))
   for (const parent of extended(model)) {
     const pkgDir = packageDir(parent.root)
-    if (pkgDir === undefined || parent.identity === null) continue
+    if (pkgDir === undefined || parent.identity === null || pkgDir === ownPackage) continue
     let rules: unknown
     try {
       const json = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8')) as {
         'corpus-schema'?: { rules?: unknown }
       }
       rules = json['corpus-schema']?.rules
-    } catch {
+    } catch (e) {
+      fail(
+        `${parent.name}: cannot read its package.json (${e instanceof Error ? e.message : String(e)})`,
+      )
       continue
     }
     if (rules === undefined) continue
@@ -137,11 +142,11 @@ export async function runRules(model: LoadedCorpus): Promise<RulesReport> {
       fail(`${who}: rules module ${rules} failed (${e instanceof Error ? e.message : String(e)})`)
       continue
     }
-    if (!Array.isArray(problems) || !problems.every(isProblem)) {
+    if (!Array.isArray(problems) || !Array.from(problems).every(isProblem)) {
       fail(`${who}: rules module ${rules} must return an array of problems`)
       continue
     }
-    for (const p of problems)
+    for (const p of problems as Problem[])
       (p.severity === 'warning' ? report.warnings : report.errors).push(line(p))
   }
   return report
