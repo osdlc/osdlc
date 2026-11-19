@@ -643,6 +643,41 @@ describe('Git — argv construction (fake runner)', () => {
     }
   })
 
+  test('readTree and writeTree build their argv, and writeTree throws on a reply that is no sha', () => {
+    const sha = 'e'.repeat(40)
+    const read = recorder(OK(''))
+    new Git('/repo', { runner: read.runner }).readTree('HEAD')
+    expect(read.calls[0]!.argv).toEqual(['read-tree', 'HEAD'])
+    expect(() => new Git('/repo', { runner: read.runner }).readTree('--bad')).toThrow()
+    const write = recorder(OK(`${sha}\n`))
+    expect(new Git('/repo', { runner: write.runner }).writeTree()).toBe(sha)
+    expect(write.calls[0]!.argv).toEqual(['write-tree'])
+    for (const out of ['', 'not a sha\n']) {
+      expect(() => new Git('/repo', { runner: recorder(OK(out)).runner }).writeTree()).toThrow(
+        FailureError,
+      )
+    }
+  })
+
+  test('a snapshot of a working tree is built in a temporary index and the real one is untouched', () => {
+    const fx = makeGitFixture()
+    try {
+      fx.commit('one', { 'a.txt': 'one\n' })
+      const git = fx.git
+      writeFileSync(join(fx.dir, 'a.txt'), 'changed\n')
+      writeFileSync(join(fx.dir, 'new.txt'), 'new\n')
+      const before = git.statusPorcelain()
+      const env = { GIT_INDEX_FILE: join(fx.dir, '.git', 'snapshot-index') }
+      git.readTree('HEAD', { env })
+      git.add(['.'], { all: true, env })
+      const tree = git.writeTree({ env })
+      expect(git.lsTree(tree, { recursive: true }).map((e) => e.path)).toEqual(['a.txt', 'new.txt'])
+      expect(git.statusPorcelain()).toEqual(before)
+    } finally {
+      fx.cleanup()
+    }
+  })
+
   test('hashObject feeds the content on stdin and reads a sha', () => {
     const sha = 'd'.repeat(40)
     const { runner, calls } = recorder(OK(`${sha}\n`))
