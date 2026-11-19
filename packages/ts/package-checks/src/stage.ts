@@ -1,7 +1,8 @@
 /**
  * Stages a new package on npm so CI can publish it. For each package it
- * installs when `node_modules` is missing, builds the package and its
- * workspace dependencies, packs the package at version `0.0.1-stage`, publishes that
+ * installs when `node_modules` is missing at the root or in the package,
+ * builds the package and its workspace dependencies, packs the package at
+ * version `0.0.1-stage`, publishes that
  * tarball under the `stage` tag, then adds the GitHub Actions trusted
  * publisher with `npm trust github`. package.json is restored after packing.
  * npm can only add a trusted publisher to a package that already exists.
@@ -19,8 +20,7 @@
  * `npm trust` needs two-factor authentication on the account, and npm asks for
  * a one-time password or a browser login. npm runs through npx at a pinned
  * version, because `npm trust` needs 11.15 or later. A dry run publishes
- * nothing and changes nothing on npm, but it does install when `node_modules`
- * is missing and build the package and its workspace dependencies.
+ * nothing and changes nothing on npm, but it does run the install and build steps.
  */
 
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -137,14 +137,15 @@ export interface PrepareStep {
   command: string
   argv: string[]
   cwd: string
-  /** The step is skipped when this is false. */
   needed: boolean
 }
 
 /**
  * The steps that make a package buildable from a fresh clone: install when
- * `node_modules` is missing at the root or in the package, then build the package and every workspace
- * package it depends on (`<name>...`), which import each other from `dist/`.
+ * `node_modules` is missing at the root or in the package, then build the
+ * package and the workspace packages it depends on (`<name>...`), which
+ * import each other from `dist/`.
+ * @param dir The package folder; the default checks only the root.
  */
 export function prepareSteps(name: string, root: string, dir: string = root): PrepareStep[] {
   return [
