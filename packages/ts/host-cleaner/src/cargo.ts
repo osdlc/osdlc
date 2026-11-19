@@ -60,12 +60,29 @@ export function incrementalOff(ctx: HostContext, checkout: string): boolean {
   }
 }
 
-const profileDirs = (target: string): string[] =>
-  readdirSync(target, { withFileTypes: true })
+const subdirs = (dir: string): string[] =>
+  readdirSync(dir, { withFileTypes: true })
     .filter((e) => e.isDirectory())
-    .map((e) => join(target, e.name))
+    .map((e) => join(dir, e.name))
+
+/** The profile directories: `target/<profile>` and, for `--target`, `target/<triple>/<profile>`. */
+const profileDirs = (target: string): string[] =>
+  subdirs(target).flatMap((d) =>
+    existsSync(join(d, '.fingerprint'))
+      ? [d]
+      : subdirs(d).filter((p) => existsSync(join(p, '.fingerprint'))),
+  )
 
 function rowsFor(ctx: HostContext, checkout: Checkout, threshold: number): HostRow[] {
+  try {
+    return rowsOrThrow(ctx, checkout, threshold)
+  } catch {
+    // A directory that cannot be read may hide a build in progress: no row.
+    return []
+  }
+}
+
+function rowsOrThrow(ctx: HostContext, checkout: Checkout, threshold: number): HostRow[] {
   const target = join(checkout.path, 'target')
   if (!present(target)) return []
   const safeTarget = inside(checkout.path, 'target')
@@ -137,13 +154,13 @@ function rowsFor(ctx: HostContext, checkout: Checkout, threshold: number): HostR
   return rows
 }
 
+const rowsIn = (ctx: HostContext, c: Checkout): HostRow[] =>
+  rowsFor(ctx, c, idleHoursSetting(ctx, CARGO_ADAPTER))
+
 export const cargoAdapter: HostAdapter = {
   name: CARGO_ADAPTER,
   detect: (ctx) =>
     cargoOnPath(ctx) || checkoutsOf(ctx).some((c) => existsSync(join(c.path, 'Cargo.toml'))),
-  gather: (ctx) => {
-    const threshold = idleHoursSetting(ctx, CARGO_ADAPTER)
-    return checkoutsOf(ctx).flatMap((c) => rowsFor(ctx, c, threshold))
-  },
-  execute: (step, ctx) => removeArtifact(cargoAdapter, step, ctx),
+  gather: (ctx) => checkoutsOf(ctx).flatMap((c) => rowsIn(ctx, c)),
+  execute: (step, ctx) => removeArtifact(rowsIn, step, ctx),
 }

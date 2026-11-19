@@ -8,15 +8,14 @@
  * `newestMtimeMs` and `unattended`.
  */
 
-import { existsSync, lstatSync, readdirSync, rmSync } from 'node:fs'
+import { existsSync, lstatSync, readdirSync, realpathSync, rmSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
-import { PathError } from '@osdlc/path-guard'
 import { nodeGuard } from '@osdlc/path-guard/node'
 import type { ProcessHolder } from '@osdlc/repo-cleaner'
 import { Git } from '@osdlc/typed-git'
 
-import type { HostAdapter, HostContext, HostRow, HostStep } from './adapter.ts'
+import type { HostContext, HostRow, HostStep } from './adapter.ts'
 
 export const DEFAULT_IDLE_HOURS = 24
 const HOUR_MS = 3_600_000
@@ -66,13 +65,20 @@ export function sizeOf(path: string): number {
   if (stat === undefined) return 0
   if (!stat.isDirectory()) return stat.size
   let total = 0
-  for (const name of readdirSync(path)) total += sizeOf(join(path, name))
+  let names: string[]
+  try {
+    names = readdirSync(path)
+  } catch {
+    return total
+  }
+  for (const name of names) total += sizeOf(join(path, name))
   return total
 }
 
 /**
  * The newest modification time (ms) of any file under `dir`, links not followed;
- * null when it holds none. `skip` names entries to pass over, files and directories alike.
+ * null when it holds none. Throws when a directory cannot be read, since what
+ * it hides may be recent. `skip` names entries to pass over, files and directories alike.
  */
 export function newestMtime(
   dir: string,
@@ -83,8 +89,10 @@ export function newestMtime(
     let entries
     try {
       entries = readdirSync(path, { withFileTypes: true })
-    } catch {
-      return
+    } catch (err) {
+      // A directory that vanished under a running build is fine; one that cannot be read hides activity.
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return
+      throw err
     }
     for (const entry of entries) {
       if (skip(entry.name)) continue
@@ -109,14 +117,8 @@ export const idleHoursSince = (mtimeMs: number, now: Date): number =>
  * `rel` under `checkout`, resolved through path-guard; null when it escapes
  * (a symlink or `..` leads out of the checkout). Nothing is read beyond the links.
  */
-export function inside(checkout: string, rel: string): string | null {
-  try {
-    return nodeGuard.resolve(checkout, rel)
-  } catch (err) {
-    if (err instanceof PathError) return null
-    throw err
-  }
-}
+export const inside = (checkout: string, rel: string): string | null =>
+  nodeGuard.tryResolve(checkout, rel)
 
 /** True when `path` exists as itself, a link counted as present. */
 export const present = (path: string): boolean =>
@@ -220,22 +222,28 @@ export function holdersIn(
 }
 
 /**
- * Remove the directory a step names, if the adapter still judges it `delete`:
- * the adapter's own `gather` is read again, so idle time and holders are
- * checked now, and the path is resolved through path-guard against its
- * checkout. The directory must be gone afterwards. Returns what the receipt records.
+ * Remove the directory a step names, if its checkout's rows still hold it as
+ * `delete`: `rowsOf` is read again for that checkout alone, over a probe that
+ * reads the process table fresh, so idle time and holders are checked now. The
+ * path is resolved through path-guard against its checkout, and the directory
+ * must be gone afterwards. Returns what the receipt records.
  */
 export function removeArtifact(
-  adapter: Pick<HostAdapter, 'name' | 'gather'>,
+  rowsOf: (ctx: HostContext, checkout: Checkout) => HostRow[],
   step: HostStep,
   ctx: HostContext,
 ): string {
   const { path, checkout } = step.row.evidence as { path: string; checkout: string }
-  const now = (adapter.gather?.(ctx) ?? []).find((r) => r.id === step.row.id)
+  const fresh: HostContext = {
+    ...ctx,
+    probe: { ...ctx.probe, holders: (p, o) => ctx.probe.holders(p, { ...o, fresh: true }) },
+  }
+  const where = checkoutsOf(fresh).find((c) => c.path === checkout)
+  const now = (where === undefined ? [] : rowsOf(fresh, where)).find((r) => r.id === step.row.id)
   if (now === undefined) throw new Error(`${path} is no longer a candidate`)
   if (now.verdict !== 'delete')
     throw new Error(`${path} is ${now.verdict}: ${now.blockers.join(', ') || now.why}`)
-  const target = inside(checkout, relative(checkout, path))
+  const target = inside(checkout, relative(realpathSync(checkout), path))
   if (target === null || target !== path) throw new Error(`${path} resolves outside ${checkout}`)
   const bytes = sizeOf(target)
   rmSync(target, { recursive: true })

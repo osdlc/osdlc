@@ -121,6 +121,13 @@ describe('cargo adapter', () => {
     expect(sweep(fx).rows).toEqual([])
   })
 
+  test('a recent --target build keeps the whole target/ from being idle', () => {
+    const fx = fixture()
+    target(fx.root, 100)
+    put(join(fx.root, 'target', 'x86_64-unknown-linux-gnu', 'debug', '.fingerprint', 'a', 'f'), 1)
+    expect(sweep(fx).rows).toEqual([])
+  })
+
   test('a target/ without CACHEDIR.TAG is never a row', () => {
     const fx = fixture()
     target(fx.root, 100, false)

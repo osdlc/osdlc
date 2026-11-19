@@ -36,6 +36,15 @@ const PNPM_NOTE =
 const SKIPPED = new Set(['node_modules', '.git', 'target'])
 
 function rowFor(ctx: HostContext, checkout: Checkout, threshold: number): HostRow[] {
+  try {
+    return rowOrThrow(ctx, checkout, threshold)
+  } catch {
+    // A directory that cannot be read may hide recent changes: no row.
+    return []
+  }
+}
+
+function rowOrThrow(ctx: HostContext, checkout: Checkout, threshold: number): HostRow[] {
   if (checkout.primary || !existsSync(join(checkout.path, 'package.json'))) return []
   const modules = join(checkout.path, 'node_modules')
   if (!present(modules)) return []
@@ -65,12 +74,12 @@ function rowFor(ctx: HostContext, checkout: Checkout, threshold: number): HostRo
   ]
 }
 
+const rowsIn = (ctx: HostContext, c: Checkout): HostRow[] =>
+  rowFor(ctx, c, idleHoursSetting(ctx, NODE_ADAPTER))
+
 export const nodeAdapter: HostAdapter = {
   name: NODE_ADAPTER,
   detect: (ctx) => checkoutsOf(ctx).some((c) => existsSync(join(c.path, 'package.json'))),
-  gather: (ctx) => {
-    const threshold = idleHoursSetting(ctx, NODE_ADAPTER)
-    return checkoutsOf(ctx).flatMap((c) => rowFor(ctx, c, threshold))
-  },
-  execute: (step, ctx) => removeArtifact(nodeAdapter, step, ctx),
+  gather: (ctx) => checkoutsOf(ctx).flatMap((c) => rowsIn(ctx, c)),
+  execute: (step, ctx) => removeArtifact(rowsIn, step, ctx),
 }
