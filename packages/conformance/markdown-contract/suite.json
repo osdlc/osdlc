@@ -1,0 +1,1878 @@
+{
+  "family": "markdown-contract",
+  "reference": "ts",
+  "referenceVersion": "0.7.8",
+  "sections": {
+    "validate": {
+      "description": "Compile a YAML contract (mcVersion 2) and validate one document against it, with the path fixture.md. A case gives the contract text and the document bytes as they are. expect.findings lists every finding in engine order as { id, level, line?, hint? }: line is the 1-based line of the finding position and is left out when the finding has none, and hint is left out when the finding has none.",
+      "cases": [
+        {
+          "name": "01-single-required-section.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v01 — Single required section  (TS fixture: 01-single-required-section.ts)\n\nbody:\n  order: none\n  additionalSections: true\n  sections:\n    - section: Overview\n",
+            "source": "## Overview\n\nThis document records the rollout plan for the cache layer. It covers scope,\nsequencing, and the rollback path in plain prose.\n"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "01-single-required-section.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v01 — Single required section  (TS fixture: 01-single-required-section.ts)\n\nbody:\n  order: none\n  additionalSections: true\n  sections:\n    - section: Overview\n",
+            "source": "## Summary\n\nThis document records the rollout plan for the cache layer. It covers scope,\nsequencing, and the rollback path in plain prose.\n"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/section-missing",
+                "level": "error",
+                "line": 1
+              }
+            ]
+          }
+        },
+        {
+          "name": "01a-single-section-missing.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v01a — Required section absent  (TS fixture: 01a-single-section-missing.ts)\n\nbody:\n  order: none\n  additionalSections: true\n  sections:\n    - section: Overview\n",
+            "source": "# Widget notes\n\n## Overview\n\nWidgets are small. This document collects loose notes about them."
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "01a-single-section-missing.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v01a — Required section absent  (TS fixture: 01a-single-section-missing.ts)\n\nbody:\n  order: none\n  additionalSections: true\n  sections:\n    - section: Overview\n",
+            "source": "# Widget notes\n\n## Background\n\nWidgets are small. This document collects loose notes about them."
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/section-missing",
+                "level": "error",
+                "line": 3
+              }
+            ]
+          }
+        },
+        {
+          "name": "02-multiple-required-sequence.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v02 — Multiple required sections  (TS fixture: 02-multiple-required-sequence.ts)\n\nbody:\n  order: none\n  additionalSections: true\n  sections:\n    - section: Title\n    - section: Overview\n    - section: Status\n",
+            "source": "## Title\n\nAdopt the markdown-contract engine.\n\n## Overview\n\nA generic combinator grammar over a positioned section tree.\n\n## Status\n\nProposed."
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "02-multiple-required-sequence.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v02 — Multiple required sections  (TS fixture: 02-multiple-required-sequence.ts)\n\nbody:\n  order: none\n  additionalSections: true\n  sections:\n    - section: Title\n    - section: Overview\n    - section: Status\n",
+            "source": "## Title\n\nAdopt the markdown-contract engine.\n\n## Status\n\nProposed."
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/section-missing",
+                "level": "error",
+                "line": 1
+              }
+            ]
+          }
+        },
+        {
+          "name": "02a-one-of-several-missing.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v02a — One of several required missing  (TS fixture: 02a-one-of-several-missing.ts)\n\nbody:\n  order: none\n  additionalSections: true\n  sections:\n    - section: Title\n    - section: Overview\n    - section: Status\n",
+            "source": "## Title\n\nA short working title.\n\n## Overview\n\nWhat this note is about.\n\n## Status\n\nopen/draft"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "02a-one-of-several-missing.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v02a — One of several required missing  (TS fixture: 02a-one-of-several-missing.ts)\n\nbody:\n  order: none\n  additionalSections: true\n  sections:\n    - section: Title\n    - section: Overview\n    - section: Status\n",
+            "source": "## Title\n\nA short working title for the note.\n\n## Status\n\nopen/draft"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/section-missing",
+                "level": "error",
+                "line": 1
+              }
+            ]
+          }
+        },
+        {
+          "name": "03-optional-sections.pass-1.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v03 — Optional sections  (TS fixture: 03-optional-sections.ts)\n\nbody:\n  order: none\n  additionalSections: true\n  sections:\n    - section: Title\n    - section: Overview\n    - section: Notes\n      minContains: 0\n      maxContains: 1\n",
+            "source": "## Title\n\nA short note on caching.\n\n## Overview\n\nWe cache responses for 60s to cut load.\n\n## Notes\n\nRevisit the TTL after the next traffic spike."
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "03-optional-sections.pass-2.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v03 — Optional sections  (TS fixture: 03-optional-sections.ts)\n\nbody:\n  order: none\n  additionalSections: true\n  sections:\n    - section: Title\n    - section: Overview\n    - section: Notes\n      minContains: 0\n      maxContains: 1\n",
+            "source": "## Title\n\nA short note on caching.\n\n## Overview\n\nWe cache responses for 60s to cut load."
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "03-optional-sections.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v03 — Optional sections  (TS fixture: 03-optional-sections.ts)\n\nbody:\n  order: none\n  additionalSections: true\n  sections:\n    - section: Title\n    - section: Overview\n    - section: Notes\n      minContains: 0\n      maxContains: 1\n",
+            "source": "## Title\n\nA short note on caching."
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/section-missing",
+                "level": "error",
+                "line": 1
+              }
+            ]
+          }
+        },
+        {
+          "name": "03a-duplicate-section.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v03a — Duplicate section heading  (TS fixture: 03a-duplicate-section.ts)\n\nbody:\n  order: none\n  additionalSections: true\n  sections:\n    - section: Title\n    - section: Overview\n      minContains: 0\n      maxContains: 1\n",
+            "source": "## Title\n## Overview"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "03a-duplicate-section.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v03a — Duplicate section heading  (TS fixture: 03a-duplicate-section.ts)\n\nbody:\n  order: none\n  additionalSections: true\n  sections:\n    - section: Title\n    - section: Overview\n      minContains: 0\n      maxContains: 1\n",
+            "source": "## Title\n## Overview\n## Overview"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/duplicate-section",
+                "level": "error",
+                "line": 3
+              }
+            ]
+          }
+        },
+        {
+          "name": "04-recognized-relative-order.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v04 — Ordering: recognized-relative  (TS fixture: 04-recognized-relative-order.ts)\n\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - section: Title\n    - section: Overview\n    - section: Status\n",
+            "source": "## Title\n\nA short heading section.\n\n## Extra\n\nAn author-added aside the contract never names.\n\n## Overview\n\nWhat this document covers.\n\n## Status\n\nopen"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "04-recognized-relative-order.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v04 — Ordering: recognized-relative  (TS fixture: 04-recognized-relative-order.ts)\n\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - section: Title\n    - section: Overview\n    - section: Status\n",
+            "source": "## Overview\n\nWhat this document covers.\n\n## Extra\n\nAn author-added aside the contract never names.\n\n## Title\n\nA short heading section.\n\n## Status\n\nopen"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/section-order",
+                "level": "error",
+                "line": 9
+              }
+            ]
+          }
+        },
+        {
+          "name": "04a-recognized-relative-out-of-order.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v04a — Recognized sections out of declared order  (TS fixture: 04a-recognized-relative-out-of-order.ts)\n\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - section: Title\n    - section: Overview\n    - section: Status\n",
+            "source": "## Title\n\nD-XXXX — some decision.\n\n## Notes\n\nAn unrecognized section between recognized ones — fine under recognized-relative.\n\n## Overview\n\nA note.\n\n## Status\n\nopen/proposed"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "04a-recognized-relative-out-of-order.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v04a — Recognized sections out of declared order  (TS fixture: 04a-recognized-relative-out-of-order.ts)\n\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - section: Title\n    - section: Overview\n    - section: Status\n",
+            "source": "## Overview\n\nA note that arrived before its title.\n\n## Title\n\nD-XXXX — some decision.\n\n## Status\n\nopen/proposed"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/section-order",
+                "level": "error",
+                "line": 5
+              }
+            ]
+          }
+        },
+        {
+          "name": "05-strict-prefix-gap-tail.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v05 — Strict order + gap window  (TS fixture: 05-strict-prefix-gap-tail.ts)\n\nbody:\n  order: strict\n  additionalSections: false\n  sections:\n    - section: Title\n    - section: Overview\n    - section: Status\n    - gap: {}\n    - section: Appendix\n      minContains: 0\n      maxContains: 1\n",
+            "source": "## Title\n\nQ2 platform review.\n\n## Overview\n\nWhere the platform stands this quarter.\n\n## Status\n\nOn track.\n\n## Risks\n\nCapacity headroom is thin.\n\n## Appendix\n\nSource dashboards."
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "05-strict-prefix-gap-tail.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v05 — Strict order + gap window  (TS fixture: 05-strict-prefix-gap-tail.ts)\n\nbody:\n  order: strict\n  additionalSections: false\n  sections:\n    - section: Title\n    - section: Overview\n    - section: Status\n    - gap: {}\n    - section: Appendix\n      minContains: 0\n      maxContains: 1\n",
+            "source": "## Title\n\nQ2 platform review.\n\n## Risks\n\nCapacity headroom is thin.\n\n## Overview\n\nWhere the platform stands this quarter.\n\n## Status\n\nOn track.\n\n## Appendix\n\nSource dashboards."
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/section-order",
+                "level": "error",
+                "line": 5
+              }
+            ]
+          }
+        },
+        {
+          "name": "05a-strict-prefix-violated.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v05a — Unknown inside the strict prefix  (TS fixture: 05a-strict-prefix-violated.ts)\n\nbody:\n  order: strict\n  additionalSections: false\n  sections:\n    - section: Title\n    - section: Overview\n    - section: Status\n    - gap: {}\n    - section: Appendix\n      minContains: 0\n      maxContains: 1\n",
+            "source": "## Title\n\nThe widget pipeline.\n\n## Overview\n\nWhat the pipeline does and why.\n\n## Status\n\nShipped."
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "05a-strict-prefix-violated.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v05a — Unknown inside the strict prefix  (TS fixture: 05a-strict-prefix-violated.ts)\n\nbody:\n  order: strict\n  additionalSections: false\n  sections:\n    - section: Title\n    - section: Overview\n    - section: Status\n    - gap: {}\n    - section: Appendix\n      minContains: 0\n      maxContains: 1\n",
+            "source": "## Title\n\nThe widget pipeline.\n\n## Risks\n\nThings that could go wrong.\n\n## Overview\n\nWhat the pipeline does and why.\n\n## Status\n\nShipped."
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/section-order",
+                "level": "error",
+                "line": 5
+              }
+            ]
+          }
+        },
+        {
+          "name": "05b-gap-bounds.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v05b — gap({min,max}) bounds the window  (TS fixture: 05b-gap-bounds.ts)\n\nbody:\n  order: strict\n  additionalSections: false\n  sections:\n    - section: Summary\n    - section: Highlights\n    - gap:\n        min: 1\n        max: 2\n    - section: Sign-off\n",
+            "source": "## Summary\n\nRelease 4.2 ships the new ingest path.\n\n## Highlights\n\nThroughput up 30%.\n\n## Migration notes\n\nRe-run the index build once after upgrading.\n\n## Sign-off\n\nApproved by platform."
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "05b-gap-bounds.fail-1.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v05b — gap({min,max}) bounds the window  (TS fixture: 05b-gap-bounds.ts)\n\nbody:\n  order: strict\n  additionalSections: false\n  sections:\n    - section: Summary\n    - section: Highlights\n    - gap:\n        min: 1\n        max: 2\n    - section: Sign-off\n",
+            "source": "## Summary\n\nRelease 4.2 ships the new ingest path.\n\n## Highlights\n\nThroughput up 30%.\n\n## Sign-off\n\nApproved by platform."
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/gap-count",
+                "level": "error",
+                "line": 9
+              }
+            ]
+          }
+        },
+        {
+          "name": "05b-gap-bounds.fail-2.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v05b — gap({min,max}) bounds the window  (TS fixture: 05b-gap-bounds.ts)\n\nbody:\n  order: strict\n  additionalSections: false\n  sections:\n    - section: Summary\n    - section: Highlights\n    - gap:\n        min: 1\n        max: 2\n    - section: Sign-off\n",
+            "source": "## Summary\n\nRelease 4.2 ships the new ingest path.\n\n## Highlights\n\nThroughput up 30%.\n\n## Migration notes\n\nRe-run the index build once after upgrading.\n\n## Known issues\n\nA handful of edge cases remain.\n\n## Rollback\n\nRevert the ingest toggle.\n\n## Sign-off\n\nApproved by platform."
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/gap-count",
+                "level": "error",
+                "line": 21
+              }
+            ]
+          }
+        },
+        {
+          "name": "06-alias-sets-oneof.pass-1.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v06 — Alias sets via oneOf  (TS fixture: 06-alias-sets-oneof.ts)\n\nbody:\n  order: none\n  additionalSections: true\n  sections:\n    - oneOf: [ \"Goal\", \"Goal / Problem statement\" ]\n    - section: Notes\n      minContains: 0\n      maxContains: 1\n",
+            "source": "## Goal\n\nShip the alias-set matcher so old and new headings both validate.\n\n## Notes\n\nMigrate stragglers to the long spelling once the validator lands."
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "06-alias-sets-oneof.pass-2.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v06 — Alias sets via oneOf  (TS fixture: 06-alias-sets-oneof.ts)\n\nbody:\n  order: none\n  additionalSections: true\n  sections:\n    - oneOf: [ \"Goal\", \"Goal / Problem statement\" ]\n    - section: Notes\n      minContains: 0\n      maxContains: 1\n",
+            "source": "## Goal / Problem statement\n\nShip the alias-set matcher so old and new headings both validate."
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "06-alias-sets-oneof.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v06 — Alias sets via oneOf  (TS fixture: 06-alias-sets-oneof.ts)\n\nbody:\n  order: none\n  additionalSections: true\n  sections:\n    - oneOf: [ \"Goal\", \"Goal / Problem statement\" ]\n    - section: Notes\n      minContains: 0\n      maxContains: 1\n",
+            "source": "## Aim\n\nShip the alias-set matcher so old and new headings both validate."
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/section-missing",
+                "level": "error",
+                "line": 1
+              }
+            ]
+          }
+        },
+        {
+          "name": "06a-oneof-none-present.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v06a — No alias spelling present  (TS fixture: 06a-oneof-none-present.ts)\n\nbody:\n  order: none\n  additionalSections: true\n  sections:\n    - oneOf:\n        - Goal\n        - Goal / Problem statement\n        - Objective statement\n",
+            "source": "# Task: tidy the widget cache\n\n## Goal / Problem statement\n\nReclaim stale cache entries so the widget index stays under the memory budget."
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "06a-oneof-none-present.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v06a — No alias spelling present  (TS fixture: 06a-oneof-none-present.ts)\n\nbody:\n  order: none\n  additionalSections: true\n  sections:\n    - oneOf:\n        - Goal\n        - Goal / Problem statement\n        - Objective statement\n",
+            "source": "# Task: tidy the widget cache\n\n## Objective\n\nReclaim stale cache entries so the widget index stays under the memory budget."
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/section-missing",
+                "level": "error",
+                "line": 3
+              }
+            ]
+          }
+        },
+        {
+          "name": "06b-oneof-two-members-present.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v06b — Two alias members both present  (TS fixture: 06b-oneof-two-members-present.ts)\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - oneOf:\n        - Goal\n        - Goal / Problem statement\n",
+            "source": "## Goal\nShip the validator."
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "06b-oneof-two-members-present.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v06b — Two alias members both present  (TS fixture: 06b-oneof-two-members-present.ts)\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - oneOf:\n        - Goal\n        - Goal / Problem statement\n",
+            "source": "## Goal\nShip the validator.\n\n## Goal / Problem statement\nAuthors hand-format docs and drift from the house structure."
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/duplicate-section",
+                "level": "error",
+                "line": 4
+              }
+            ]
+          }
+        },
+        {
+          "name": "07-frontmatter-only-zod.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v07 — Frontmatter only (Zod)  (TS fixture: 07-frontmatter-only-zod.ts)\n\nfrontmatter:\n  type: object\n  required: [ id, status, title ]\n  additionalProperties: false\n  properties:\n    id:\n      type: string\n      pattern: '^D-[0-9A-Z]{4}$'\n    status:\n      enum:\n        - open/proposed\n        - open/accepted\n        - closed/superseded\n    title:\n      type: string\n      minLength: 1\n",
+            "source": "---\nid: D-0014\nstatus: open/proposed\ntitle: Markdown structure validation\n---\n\n# Markdown structure validation\n\nFree-form body. No section grammar applies, so any headings and prose are fine."
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "07-frontmatter-only-zod.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v07 — Frontmatter only (Zod)  (TS fixture: 07-frontmatter-only-zod.ts)\n\nfrontmatter:\n  type: object\n  required: [ id, status, title ]\n  additionalProperties: false\n  properties:\n    id:\n      type: string\n      pattern: '^D-[0-9A-Z]{4}$'\n    status:\n      enum:\n        - open/proposed\n        - open/accepted\n        - closed/superseded\n    title:\n      type: string\n      minLength: 1\n",
+            "source": "---\nid: D-0014\nstatus: open/draft\ntitle: Markdown structure validation\n---\n\n# Markdown structure validation\n\nFree-form body."
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "frontmatter/enum",
+                "level": "error",
+                "line": 3
+              }
+            ]
+          }
+        },
+        {
+          "name": "07a-frontmatter-enum-and-unknown-key.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v07a — Frontmatter enum violation + extra key  (TS fixture: 07a-frontmatter-enum-and-unknown-key.ts)\n\nfrontmatter:\n  type: object\n  required: [ id, status, title ]\n  additionalProperties: false\n  properties:\n    id:\n      type: string\n      pattern: '^D-[0-9A-Z]{4}$'\n    status:\n      enum:\n        - open/proposed\n        - open/accepted\n        - closed/superseded\n    title:\n      type: string\n      minLength: 1\n",
+            "source": "---\nid: D-0099\nstatus: open/proposed\ntitle: Adopt the widget pipeline\n---\n\n## Context\n\nWhy the pipeline."
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "07a-frontmatter-enum-and-unknown-key.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v07a — Frontmatter enum violation + extra key  (TS fixture: 07a-frontmatter-enum-and-unknown-key.ts)\n\nfrontmatter:\n  type: object\n  required: [ id, status, title ]\n  additionalProperties: false\n  properties:\n    id:\n      type: string\n      pattern: '^D-[0-9A-Z]{4}$'\n    status:\n      enum:\n        - open/proposed\n        - open/accepted\n        - closed/superseded\n    title:\n      type: string\n      minLength: 1\n",
+            "source": "---\nid: D-0099\nstatus: open/draft\ntitle: Adopt the widget pipeline\nfoo: bar\n---\n\n## Context\n\nWhy the pipeline."
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "frontmatter/enum",
+                "level": "error",
+                "line": 3
+              },
+              {
+                "id": "frontmatter/unknown-key",
+                "level": "error",
+                "line": 5
+              }
+            ]
+          }
+        },
+        {
+          "name": "08-frontmatter-plus-body-one-pass.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v08 — Unified frontmatter + body in one pass  (TS fixture: 08-frontmatter-plus-body-one-pass.ts)\n\nfrontmatter:\n  type: object\n  required: [ id, status, title ]\n  additionalProperties: false\n  properties:\n    id:\n      type: string\n      pattern: '^D-[0-9A-Z]{4}$'\n    status:\n      enum:\n        - open/proposed\n        - open/accepted\n        - closed/superseded\n    title:\n      type: string\n      minLength: 1\n\nbody:\n  order: none\n  additionalSections: true\n  sections:\n    - section: Summary\n    - section: Context\n",
+            "source": "---\nid: D-0099\nstatus: open/proposed\ntitle: Adopt the markdown-contract engine\n---\n\n## Summary\n\nReplace the bespoke body-schema scanners with a combinator grammar over a\npositioned section tree.\n\n## Context\n\nThe current validator hand-rolls heading extraction and frontmatter slicing in\nseveral places, each with its own drift."
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "08-frontmatter-plus-body-one-pass.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v08 — Unified frontmatter + body in one pass  (TS fixture: 08-frontmatter-plus-body-one-pass.ts)\n\nfrontmatter:\n  type: object\n  required: [ id, status, title ]\n  additionalProperties: false\n  properties:\n    id:\n      type: string\n      pattern: '^D-[0-9A-Z]{4}$'\n    status:\n      enum:\n        - open/proposed\n        - open/accepted\n        - closed/superseded\n    title:\n      type: string\n      minLength: 1\n\nbody:\n  order: none\n  additionalSections: true\n  sections:\n    - section: Summary\n    - section: Context\n",
+            "source": "---\nid: D-0099\nstatus: open/draft\ntitle: Adopt the markdown-contract engine\n---\n\n## Summary\n\nReplace the bespoke body-schema scanners with a combinator grammar over a\npositioned section tree."
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "frontmatter/enum",
+                "level": "error",
+                "line": 3
+              },
+              {
+                "id": "structure/section-missing",
+                "level": "error",
+                "line": 7
+              }
+            ]
+          }
+        },
+        {
+          "name": "08a-both-planes-fail-merged.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v08a — Both planes fail in one findings list  (TS fixture: 08a-both-planes-fail-merged.ts)\n\nfrontmatter:\n  type: object\n  required: [ id, status, title ]\n  additionalProperties: false\n  properties:\n    id:\n      type: string\n      pattern: '^D-[0-9A-Z]{4}$'\n    status:\n      enum:\n        - open/proposed\n        - open/accepted\n        - closed/superseded\n    title:\n      type: string\n      minLength: 1\n\nbody:\n  order: none\n  additionalSections: true\n  sections:\n    - section: Summary\n    - section: Context\n",
+            "source": "---\nid: D-0099\nstatus: open/proposed\ntitle: Adopt the widget protocol\n---\n\n# Adopt the widget protocol\n\n## Summary\n\nWe will adopt the widget protocol across all services.\n\n## Context\n\nThe protocol unifies inter-service messaging."
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "08a-both-planes-fail-merged.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v08a — Both planes fail in one findings list  (TS fixture: 08a-both-planes-fail-merged.ts)\n\nfrontmatter:\n  type: object\n  required: [ id, status, title ]\n  additionalProperties: false\n  properties:\n    id:\n      type: string\n      pattern: '^D-[0-9A-Z]{4}$'\n    status:\n      enum:\n        - open/proposed\n        - open/accepted\n        - closed/superseded\n    title:\n      type: string\n      minLength: 1\n\nbody:\n  order: none\n  additionalSections: true\n  sections:\n    - section: Summary\n    - section: Context\n",
+            "source": "---\nid: D-0099\nstatus: open/draft\ntitle: Adopt the widget protocol\n---\n\n# Adopt the widget protocol\n\n## Summary\n\nWe will adopt the widget protocol across all services."
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "frontmatter/enum",
+                "level": "error",
+                "line": 3
+              },
+              {
+                "id": "structure/section-missing",
+                "level": "error",
+                "line": 9
+              }
+            ]
+          }
+        },
+        {
+          "name": "09-section-content-leaf-maxwords-anchor.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v09 — Section content leaf: maxWords + required anchor  (TS fixture: 09-section-content-leaf-maxwords-anchor.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Summary\n      anchor: summary\n      content:\n        maxWords: 120\n",
+            "source": "## Summary\n\nThis decision adopts a generic TypeScript contract library for validating the\nstructure of our markdown documents. Frontmatter stays in Zod; section sequence\nand nesting move to a combinator grammar; content leaves reuse Zod. The engine is\nSDLC-agnostic and consumed as data per entity type.\n^summary"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "09-section-content-leaf-maxwords-anchor.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v09 — Section content leaf: maxWords + required anchor  (TS fixture: 09-section-content-leaf-maxwords-anchor.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Summary\n      anchor: summary\n      content:\n        maxWords: 120\n",
+            "source": "## Summary\n\nThis decision adopts a generic TypeScript contract library for validating the\nstructure of our markdown documents. Frontmatter stays in Zod; section sequence\nand nesting move to a combinator grammar; content leaves reuse Zod. The engine is\nSDLC-agnostic and consumed as data per entity type."
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/anchor-missing",
+                "level": "error",
+                "line": 1
+              }
+            ]
+          }
+        },
+        {
+          "name": "09a-maxwords-exceeded.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v09a — maxWords exceeded  (TS fixture: 09a-maxwords-exceeded.ts)\n\nbody:\n  order: none\n  additionalSections: true\n  sections:\n    - section: Summary\n      anchor: summary\n      content:\n        maxWords: 120\n",
+            "source": "# Release brief\n\n## Summary\n\nThis release retires the legacy line scanners, the duplicated frontmatter slicers, and the\nalias tables, replacing them with one combinator grammar over a positioned projection.\n^summary"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "09a-maxwords-exceeded.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v09a — maxWords exceeded  (TS fixture: 09a-maxwords-exceeded.ts)\n\nbody:\n  order: none\n  additionalSections: true\n  sections:\n    - section: Summary\n      anchor: summary\n      content:\n        maxWords: 120\n",
+            "source": "# Release brief\n\n## Summary\n\nThis release consolidates the long-running migration work that has spanned the previous three\niterations, retiring the legacy line scanners, the duplicated frontmatter slicers, and the\nhand-maintained alias tables that had accumulated across the entity package over many releases.\nIt introduces the combinator grammar as the single substrate for all structure validation, moves\nevery content assertion onto typed Zod leaves projected over positioned nodes, and unifies the\nfrontmatter and body planes behind one validation pass so that consumers receive a single ordered\nfindings list instead of three disjoint ones. Downstream tooling no longer reconstructs section\ncontainment by hand, because the projection now hands back a fully positioned section tree, and the\ntyped object model exposes that same tree as navigable, column-typed views with source positions\npreserved end to end.\n^summary"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "content/max-words",
+                "level": "error",
+                "line": 5
+              }
+            ]
+          }
+        },
+        {
+          "name": "09b-anchor-missing.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v09b — Required ^anchor absent  (TS fixture: 09b-anchor-missing.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Summary\n      anchor: summary\n      content:\n        maxWords: 120\n",
+            "source": "## Summary\n\nThis decision adopts a generic TypeScript contract library for validating the\nstructure of our markdown documents. Frontmatter stays in Zod; section sequence\nand nesting move to a combinator grammar; content leaves reuse Zod.\n^summary"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "09b-anchor-missing.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v09b — Required ^anchor absent  (TS fixture: 09b-anchor-missing.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Summary\n      anchor: summary\n      content:\n        maxWords: 120\n",
+            "source": "## Summary\n\nThis decision adopts a generic TypeScript contract library for validating the\nstructure of our markdown documents. Frontmatter stays in Zod; section sequence\nand nesting move to a combinator grammar; content leaves reuse Zod."
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/anchor-missing",
+                "level": "error",
+                "line": 1
+              }
+            ]
+          }
+        },
+        {
+          "name": "10-table-leaf-columns-minrows.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v10 — Table leaf: columns + minRows  (TS fixture: 10-table-leaf-columns-minrows.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Files\n      content:\n        table:\n          columns:\n            - Location\n            - Kind\n            - Change\n          minRows: 1\n",
+            "source": "## Files\n\n| Location          | Kind   | Change            |\n| ----------------- | ------ | ----------------- |\n| src/projection.ts | modify | flatten cells     |\n| src/leaves.ts     | add    | table() leaf impl |"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "10-table-leaf-columns-minrows.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v10 — Table leaf: columns + minRows  (TS fixture: 10-table-leaf-columns-minrows.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Files\n      content:\n        table:\n          columns:\n            - Location\n            - Kind\n            - Change\n          minRows: 1\n",
+            "source": "## Files\n\n| Location | Kind | Change |\n| -------- | ---- | ------ |"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "content/table/min-rows",
+                "level": "error",
+                "line": 3
+              }
+            ]
+          }
+        },
+        {
+          "name": "10a-table-empty-and-minrows.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v10a — Empty table / below minRows  (TS fixture: 10a-table-empty-and-minrows.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Files\n      content:\n        table:\n          columns:\n            - Location\n            - Kind\n            - Change\n          minRows: 1\n",
+            "source": "## Files\n\n| Location | Kind   | Change           |\n| -------- | ------ | ---------------- |\n| a.ts     | modify | tighten the type |"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "10a-table-empty-and-minrows.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v10a — Empty table / below minRows  (TS fixture: 10a-table-empty-and-minrows.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Files\n      content:\n        table:\n          columns:\n            - Location\n            - Kind\n            - Change\n          minRows: 1\n",
+            "source": "## Files\n\n| Location | Kind   | Change           |\n| -------- | ------ | ---------------- |"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "content/table/min-rows",
+                "level": "error",
+                "line": 3
+              }
+            ]
+          }
+        },
+        {
+          "name": "10b-table-missing-column.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v10b — Table missing a declared column  (TS fixture: 10b-table-missing-column.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Files\n      content:\n        table:\n          columns:\n            - Location\n            - Kind\n            - Change\n          minRows: 1\n",
+            "source": "## Files\n\n| Location | Kind   | Change          |\n| -------- | ------ | --------------- |\n| `a.ts`   | modify | add the leaf    |\n| `b.ts`   | add    | new projection  |"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "10b-table-missing-column.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v10b — Table missing a declared column  (TS fixture: 10b-table-missing-column.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Files\n      content:\n        table:\n          columns:\n            - Location\n            - Kind\n            - Change\n          minRows: 1\n",
+            "source": "## Files\n\n| Location | Kind   |\n| -------- | ------ |\n| `a.ts`   | modify |\n| `b.ts`   | add    |"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "content/table/column-missing",
+                "level": "error",
+                "line": 3
+              }
+            ]
+          }
+        },
+        {
+          "name": "10c-table-extra-column.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v10c — Table with an extra column  (TS fixture: 10c-table-extra-column.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Files\n      content:\n        table:\n          columns:\n            - Location\n            - Kind\n            - Change\n          minRows: 1\n          extraColumns: error\n",
+            "source": "## Files\n\n| Location  | Kind   | Change |\n| --------- | ------ | ------ |\n| `a.ts`    | add    | new    |\n| `b.ts`    | modify | edit   |"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "10c-table-extra-column.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v10c — Table with an extra column  (TS fixture: 10c-table-extra-column.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Files\n      content:\n        table:\n          columns:\n            - Location\n            - Kind\n            - Change\n          minRows: 1\n          extraColumns: error\n",
+            "source": "## Files\n\n| Location  | Kind   | Change | Owner |\n| --------- | ------ | ------ | ----- |\n| `a.ts`    | add    | new    | alice |\n| `b.ts`    | modify | edit   | bob   |"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "content/table/column-extra",
+                "level": "error",
+                "line": 3
+              }
+            ]
+          }
+        },
+        {
+          "name": "11-typed-cells-enum-pattern.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v11 — Typed cells: enum / pattern  (TS fixture: 11-typed-cells-enum-pattern.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Files\n      content:\n        table:\n          columns:\n            - File\n            - Kind\n            - Location\n          cells:\n            Kind:\n              enum:\n                - add\n                - modify\n                - delete\n            Location:\n              type: string\n              pattern: '^[A-Za-z0-9._\\/-]+\\/$'\n",
+            "source": "## Files\n\n| File       | Kind   | Location                  |\n| ---------- | ------ | ------------------------- |\n| grammar.ts | add    | packages/ts/mc/src/       |\n| leaves.ts  | modify | packages/ts/mc/src/       |\n| legacy.ts  | delete | plugin/lib/model/legacy/  |"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "11-typed-cells-enum-pattern.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v11 — Typed cells: enum / pattern  (TS fixture: 11-typed-cells-enum-pattern.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Files\n      content:\n        table:\n          columns:\n            - File\n            - Kind\n            - Location\n          cells:\n            Kind:\n              enum:\n                - add\n                - modify\n                - delete\n            Location:\n              type: string\n              pattern: '^[A-Za-z0-9._\\/-]+\\/$'\n",
+            "source": "## Files\n\n| File       | Kind   | Location                  |\n| ---------- | ------ | ------------------------- |\n| grammar.ts | add    | packages/ts/mc/src/       |\n| leaves.ts  | rename | packages/ts/mc/src/       |\n| legacy.ts  | delete | plugin/lib/model/legacy/  |"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "content/table/cell",
+                "level": "error",
+                "line": 6
+              }
+            ]
+          }
+        },
+        {
+          "name": "11a-cell-enum-violation.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v11a — Cell enum violation  (TS fixture: 11a-cell-enum-violation.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Files to touch\n      content:\n        table:\n          columns:\n            - Location\n            - Kind\n            - Change\n          cells:\n            Kind:\n              enum:\n                - add\n                - modify\n                - delete\n",
+            "source": "## Files to touch\n\n| Location              | Kind   | Change                        |\n| --------------------- | ------ | ----------------------------- |\n| `src/projection.ts`   | add    | new mdast → DocTree projection |\n| `src/grammar.ts`      | modify | move combinators out of leaves |\n| `src/index.ts`        | modify | export the new surface         |"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "11a-cell-enum-violation.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v11a — Cell enum violation  (TS fixture: 11a-cell-enum-violation.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Files to touch\n      content:\n        table:\n          columns:\n            - Location\n            - Kind\n            - Change\n          cells:\n            Kind:\n              enum:\n                - add\n                - modify\n                - delete\n",
+            "source": "## Files to touch\n\n| Location              | Kind   | Change                        |\n| --------------------- | ------ | ----------------------------- |\n| `src/projection.ts`   | add    | new mdast → DocTree projection |\n| `src/grammar.ts`      | rename | move combinators out of leaves |\n| `src/index.ts`        | modify | export the new surface         |"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "content/table/cell",
+                "level": "error",
+                "line": 6
+              }
+            ]
+          }
+        },
+        {
+          "name": "12-list-leaf-checkbox-minitems.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v12 — List leaf: checkbox items + minItems  (TS fixture: 12-list-leaf-checkbox-minitems.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Acceptance criteria\n      content:\n        list:\n          ordered: false\n          minItems: 1\n          items: checkbox\n",
+            "source": "## Acceptance criteria\n\n- [ ] `validate()` returns an empty findings array for a conforming document\n- [ ] a non-checkbox acceptance item produces a `list/every-item` finding\n- [ ] the finding's `pos.line` points at the offending list item"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "12-list-leaf-checkbox-minitems.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v12 — List leaf: checkbox items + minItems  (TS fixture: 12-list-leaf-checkbox-minitems.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Acceptance criteria\n      content:\n        list:\n          ordered: false\n          minItems: 1\n          items: checkbox\n",
+            "source": "## Acceptance criteria\n\n- [ ] `validate()` returns an empty findings array for a conforming document\n- [ ] a non-checkbox acceptance item produces a `list/every-item` finding\n- the finding's `pos.line` points at the offending list item"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "content/list/item-kind",
+                "level": "error",
+                "line": 5
+              }
+            ]
+          }
+        },
+        {
+          "name": "12a-non-checkbox-list-item.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v12a — Non-checkbox AC item  (TS fixture: 12a-non-checkbox-list-item.ts)\n\nbody:\n  order: none\n  additionalSections: true\n  sections:\n    - section: Acceptance criteria\n      content:\n        list:\n          items: checkbox\n          minItems: 1\n",
+            "source": "## Acceptance criteria\n\n- [ ] Parser pins `remark-gfm` so pipe tables project as `table` nodes\n- [x] Frontmatter and body validate in a single pass\n- [ ] Findings carry a `SourcePos` so each localizes to `<file>:<line>`"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "12a-non-checkbox-list-item.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v12a — Non-checkbox AC item  (TS fixture: 12a-non-checkbox-list-item.ts)\n\nbody:\n  order: none\n  additionalSections: true\n  sections:\n    - section: Acceptance criteria\n      content:\n        list:\n          items: checkbox\n          minItems: 1\n",
+            "source": "## Acceptance criteria\n\n- [ ] Parser pins `remark-gfm` so pipe tables project as `table` nodes\n- [x] Frontmatter and body validate in a single pass\n- bare bullet describing context that is not actually a checkable criterion\n- [ ] Findings carry a `SourcePos` so each localizes to `<file>:<line>`"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "content/list/item-kind",
+                "level": "error",
+                "line": 5
+              }
+            ]
+          }
+        },
+        {
+          "name": "12b-list-below-minitems.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v12b — List below minItems  (TS fixture: 12b-list-below-minitems.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Acceptance criteria\n      content:\n        list:\n          ordered: false\n          items: checkbox\n          minItems: 2\n",
+            "source": "## Acceptance criteria\n\n- [ ] `validate()` returns an empty findings array for a conforming document\n- [ ] the list leaf emits a `list/min-items` finding when the count falls below the floor"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "12b-list-below-minitems.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v12b — List below minItems  (TS fixture: 12b-list-below-minitems.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Acceptance criteria\n      content:\n        list:\n          ordered: false\n          items: checkbox\n          minItems: 2\n",
+            "source": "## Acceptance criteria\n\n- [ ] `validate()` returns an empty findings array for a conforming document"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "content/list/min-items",
+                "level": "error",
+                "line": 3
+              }
+            ]
+          }
+        },
+        {
+          "name": "13-code-leaf-lang.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v13 — Code leaf: language  (TS fixture: 13-code-leaf-lang.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Example\n      content:\n        code:\n          lang: ts\n",
+            "source": "## Example\n\n```ts\nconst greet = (name: string): string => `hello, ${name}`;\n```"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "13-code-leaf-lang.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v13 — Code leaf: language  (TS fixture: 13-code-leaf-lang.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Example\n      content:\n        code:\n          lang: ts\n",
+            "source": "## Example\n\n```js\nconst greet = (name) => `hello, ${name}`;\n```"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "content/code/lang",
+                "level": "error",
+                "line": 3
+              }
+            ]
+          }
+        },
+        {
+          "name": "13a-code-wrong-lang.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v13a — Code block wrong/absent language  (TS fixture: 13a-code-wrong-lang.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Example\n      content:\n        code:\n          lang: ts\n",
+            "source": "## Example\n\n```ts\nconst contract = defineContract();\n```"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "13a-code-wrong-lang.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v13a — Code block wrong/absent language  (TS fixture: 13a-code-wrong-lang.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Example\n      content:\n        code:\n          lang: ts\n",
+            "source": "## Example\n\n```python\nconst contract = defineContract();\n```"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "content/code/lang",
+                "level": "error",
+                "line": 3
+              }
+            ]
+          }
+        },
+        {
+          "name": "14-nested-children-subsections.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v14 — Nested children (subsections)  (TS fixture: 14-nested-children-subsections.ts)\n\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - section: Decision\n      order: strict\n      additionalSections: true\n      sections:\n        - section: Components\n        - section: Resolution\n",
+            "source": "## Decision\n\nWe split the engine from the SDLC integration.\n\n### Components\n\nThe generic `markdown-contract` package and the per-entity `contract.ts`.\n\n### Resolution\n\nShip the engine standalone; SDLC consumes it as data."
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "14-nested-children-subsections.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v14 — Nested children (subsections)  (TS fixture: 14-nested-children-subsections.ts)\n\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - section: Decision\n      order: strict\n      additionalSections: true\n      sections:\n        - section: Components\n        - section: Resolution\n",
+            "source": "## Decision\n\nWe split the engine from the SDLC integration.\n\n### Resolution\n\nShip the engine standalone; SDLC consumes it as data.\n\n### Components\n\nThe generic `markdown-contract` package and the per-entity `contract.ts`."
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/section-order",
+                "level": "error",
+                "line": 5
+              }
+            ]
+          }
+        },
+        {
+          "name": "14a-skipped-heading-level.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v14a — Skipped heading level (H2 to H4)  (TS fixture: 14a-skipped-heading-level.ts)\n\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - section: Decision\n      order: strict\n      additionalSections: true\n      sections:\n        - section: Components\n          content:\n            table:\n              columns:\n                - \"#\"\n                - Component\n                - Resolution\n              minRows: 1\n",
+            "source": "## Decision\n\nWe adopt the generic contract library.\n\n### Components\n\n| # | Component | Resolution |\n| - | --------- | ---------- |\n| 1 | engine    | markdown-contract |"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "14a-skipped-heading-level.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v14a — Skipped heading level (H2 to H4)  (TS fixture: 14a-skipped-heading-level.ts)\n\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - section: Decision\n      order: strict\n      additionalSections: true\n      sections:\n        - section: Components\n          content:\n            table:\n              columns:\n                - \"#\"\n                - Component\n                - Resolution\n              minRows: 1\n",
+            "source": "## Decision\n\nWe adopt the generic contract library.\n\n#### Components\n\n| # | Component | Resolution |\n| - | --------- | ---------- |\n| 1 | engine    | markdown-contract |"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/heading-depth-jump",
+                "level": "warn",
+                "line": 5
+              }
+            ]
+          }
+        },
+        {
+          "name": "14b-content-before-first-subheading.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v14b — Content before the first sub-heading  (TS fixture: 14b-content-before-first-subheading.ts)\n\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - section: Decision\n      order: strict\n      additionalSections: true\n      sections:\n        - section: Components\n          content:\n            table:\n              columns:\n                - \"#\"\n                - Component\n                - Resolution\n              minRows: 1\n",
+            "source": "## Decision\n\nWe adopt a generic TypeScript contract library; the lead table summarises the split.\n\n| Plane       | Owner   |\n| ----------- | ------- |\n| frontmatter | Zod     |\n| structure   | grammar |\n\n### Components\n\n| # | Component | Resolution |\n| - | --------- | ---------- |\n| 1 | engine    | ship       |"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "14b-content-before-first-subheading.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v14b — Content before the first sub-heading  (TS fixture: 14b-content-before-first-subheading.ts)\n\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - section: Decision\n      order: strict\n      additionalSections: true\n      sections:\n        - section: Components\n          content:\n            table:\n              columns:\n                - \"#\"\n                - Component\n                - Resolution\n              minRows: 1\n",
+            "source": "## Decision\n\nWe adopt a generic TypeScript contract library; the lead table summarises the split.\n\n| Plane       | Owner   |\n| ----------- | ------- |\n| frontmatter | Zod     |\n| structure   | grammar |\n\n| # | Component | Resolution |\n| - | --------- | ---------- |\n| 1 | engine    | ship       |"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/section-missing",
+                "level": "error"
+              }
+            ]
+          }
+        },
+        {
+          "name": "15-multiple-anchored-tables-one-section.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v15 — Multiple anchored tables in one section  (TS fixture: 15-multiple-anchored-tables-one-section.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Decision\n      content:\n        components:\n          table:\n            columns: [ \"#\", Component, Resolution ]\n            anchor: components\n        risks:\n          table:\n            columns: [ Risk, Mitigation ]\n            anchor: risks\n",
+            "source": "## Decision\n\n| # | Component  | Resolution                  |\n| - | ---------- | --------------------------- |\n| 1 | projection | mdast → DocTree             |\n| 2 | grammar    | sections/section combinators |\n^components\n\n| Risk                  | Mitigation                |\n| --------------------- | ------------------------- |\n| remark-gfm not pinned | pin in spike S6           |\n^risks"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "15-multiple-anchored-tables-one-section.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v15 — Multiple anchored tables in one section  (TS fixture: 15-multiple-anchored-tables-one-section.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Decision\n      content:\n        components:\n          table:\n            columns: [ \"#\", Component, Resolution ]\n            anchor: components\n        risks:\n          table:\n            columns: [ Risk, Mitigation ]\n            anchor: risks\n",
+            "source": "## Decision\n\n| # | Component  | Resolution      |\n| - | ---------- | --------------- |\n| 1 | projection | mdast → DocTree |\n^components\n\n| Risk                  |\n| --------------------- |\n| remark-gfm not pinned |\n^risks"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "content/table/column-missing",
+                "level": "error",
+                "line": 8
+              }
+            ]
+          }
+        },
+        {
+          "name": "15a-declared-anchor-absent.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v15a — Declared anchor absent in document  (TS fixture: 15a-declared-anchor-absent.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Decision\n      content:\n        components:\n          table:\n            columns:\n              - \"#\"\n              - Component\n              - Resolution\n            anchor: components\n        risks:\n          table:\n            columns:\n              - Risk\n              - Mitigation\n            anchor: risks\n",
+            "source": "## Decision\n\n| # | Component | Resolution |\n| - | --------- | ---------- |\n| 1 | Projection | mdast → DocTree |\n^components\n\n| Risk | Mitigation |\n| ---- | ---------- |\n| Scope creep | Spike S6 |\n^risks"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "15a-declared-anchor-absent.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v15a — Declared anchor absent in document  (TS fixture: 15a-declared-anchor-absent.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Decision\n      content:\n        components:\n          table:\n            columns:\n              - \"#\"\n              - Component\n              - Resolution\n            anchor: components\n        risks:\n          table:\n            columns:\n              - Risk\n              - Mitigation\n            anchor: risks\n",
+            "source": "## Decision\n\n| # | Component | Resolution |\n| - | --------- | ---------- |\n| 1 | Projection | mdast → DocTree |\n^components\n\n| Risk | Mitigation |\n| ---- | ---------- |\n| Scope creep | Spike S6 |"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/block-missing",
+                "level": "error",
+                "line": 1
+              }
+            ]
+          }
+        },
+        {
+          "name": "15b-undeclared-anchor-dynamic-access.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v15b — Undeclared anchor reachable only dynamically  (TS fixture: 15b-undeclared-anchor-dynamic-access.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Decision\n      content:\n        components:\n          table:\n            columns: [ \"#\", Component, Resolution ]\n            anchor: components\n        risks:\n          table:\n            columns: [ Risk, Mitigation ]\n            anchor: risks\n",
+            "source": "## Decision\n\n| # | Component | Resolution |\n| - | --------- | ---------- |\n| 1 | parser    | remark-gfm |\n^components\n\n| Risk          | Mitigation        |\n| ------------- | ----------------- |\n| fence parsing | spike S6          |\n^risks\n\n| Option | Note            |\n| ------ | --------------- |\n| A      | rejected, slow  |\n| B      | chosen          |\n^extra"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "18-oom-consumption-typed-views.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v18 — Object-model consumption: typed rows, byAnchor, dual-key  (TS fixture: 18-oom-consumption-typed-views.ts)\n\nfrontmatter:\n  type: object\n  required: [ id, status ]\n  additionalProperties: false\n  properties:\n    id:\n      type: string\n      pattern: '^T-[0-9A-Z]{4}$'\n    status:\n      enum:\n        - open/ready\n        - in-progress/active\n        - closed/done\n\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - section: Files to touch\n      content:\n        table:\n          columns:\n            - Location\n            - Kind\n            - Change\n          cells:\n            Kind:\n              enum:\n                - new\n                - modify\n                - delete\n",
+            "source": "---\nid: T-0042\nstatus: open/ready\n---\n\n## Files to touch\n\n| Location              | Kind   | Change                         |\n| --------------------- | ------ | ------------------------------ |\n| src/grammar.ts        | new    | new sections/section grammar   |\n| src/leaves.ts         | modify | add table() cell typing        |\n| plugin/lib/legacy.ts  | delete | retire validateBody            |"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "18-oom-consumption-typed-views.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v18 — Object-model consumption: typed rows, byAnchor, dual-key  (TS fixture: 18-oom-consumption-typed-views.ts)\n\nfrontmatter:\n  type: object\n  required: [ id, status ]\n  additionalProperties: false\n  properties:\n    id:\n      type: string\n      pattern: '^T-[0-9A-Z]{4}$'\n    status:\n      enum:\n        - open/ready\n        - in-progress/active\n        - closed/done\n\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - section: Files to touch\n      content:\n        table:\n          columns:\n            - Location\n            - Kind\n            - Change\n          cells:\n            Kind:\n              enum:\n                - new\n                - modify\n                - delete\n",
+            "source": "---\nid: T-0042\nstatus: open/ready\n---\n\n## Files to touch\n\n| Location              | Kind   | Change                       |\n| --------------------- | ------ | ---------------------------- |\n| src/grammar.ts        | rename | new sections/section grammar |"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "content/table/cell",
+                "level": "error",
+                "line": 10
+              }
+            ]
+          }
+        },
+        {
+          "name": "18a-camelcase-key-collision.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v18a — camelCase key collision (contract-build error)  (TS fixture: 18a-camelcase-key-collision.ts)\n\nbody:\n  order: none\n  additionalSections: true\n  sections:\n    - section: Files to touch\n    - section: Files changed\n",
+            "source": "## Files to touch\n\n## Files changed"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "18b-read-throws-on-error.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v18b — read() throws on error-level findings  (TS fixture: 18b-read-throws-on-error.ts)\n\nfrontmatter:\n  type: object\n  required: [ id, status, title, related ]\n  additionalProperties: false\n  properties:\n    id:\n      type: string\n      pattern: '^D-[0-9A-Z]{4}$'\n    status:\n      enum: [ \"open/proposed\", \"open/accepted\", \"closed/superseded\" ]\n    title:\n      type: string\n      minLength: 1\n    related:\n      type: array\n      items:\n        type: string\n      default: []\n\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - section: Summary\n      anchor: summary\n      content:\n        maxWords: 120\n    - section: Context\n    - section: Decision\n    - section: Notes\n      minContains: 0\n      maxContains: 1\n",
+            "source": "---\nid: D-9999\nstatus: open/proposed\ntitle: Sample decision for read-vs-validate\nrelated: []\n---\n\n## Summary\n\nShort summary. ^summary\n\n## Context\n\nSome context.\n\n## Decision\n\nWe adopt the projection."
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "18b-read-throws-on-error.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v18b — read() throws on error-level findings  (TS fixture: 18b-read-throws-on-error.ts)\n\nfrontmatter:\n  type: object\n  required: [ id, status, title, related ]\n  additionalProperties: false\n  properties:\n    id:\n      type: string\n      pattern: '^D-[0-9A-Z]{4}$'\n    status:\n      enum: [ \"open/proposed\", \"open/accepted\", \"closed/superseded\" ]\n    title:\n      type: string\n      minLength: 1\n    related:\n      type: array\n      items:\n        type: string\n      default: []\n\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - section: Summary\n      anchor: summary\n      content:\n        maxWords: 120\n    - section: Context\n    - section: Decision\n    - section: Notes\n      minContains: 0\n      maxContains: 1\n",
+            "source": "---\nid: D-9999\nstatus: open/proposed\ntitle: Sample decision for read-vs-validate\nrelated: []\n---\n\n## Summary\n\nShort summary. ^summary\n\n## Context\n\nSome context."
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/section-missing",
+                "level": "error",
+                "line": 8
+              }
+            ]
+          }
+        },
+        {
+          "name": "19-real-decision-contract-end-to-end.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v19 — Real Decision contract end-to-end  (TS fixture: 19-real-decision-contract-end-to-end.ts)\n\nfrontmatter:\n  type: object\n  required: [ id, status, title, related ]\n  additionalProperties: false\n  properties:\n    id:\n      type: string\n      pattern: '^D-[0-9A-Z]{4}$'\n    status:\n      enum:\n        - open/proposed\n        - open/accepted\n        - closed/superseded\n        - closed/deprecated\n    title:\n      type: string\n      minLength: 1\n    related:\n      type: array\n      items:\n        type: string\n      default: []\n\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - section: Summary\n      anchor: summary\n      content:\n        maxWords: 120\n    - section: Context\n    - section: Decision\n      order: strict\n      additionalSections: true\n      sections:\n        - section: Components\n          content:\n            table:\n              columns:\n                - '#'\n                - Component\n                - Resolution\n              minRows: 1\n    - section: Why\n      minContains: 0\n      maxContains: 1\n    - section: Options considered\n      minContains: 0\n      maxContains: 1\n      order: none\n      additionalSections: true\n      sections:\n        - gap: {}\n    - section: Consequences\n      minContains: 0\n      maxContains: 1\n    - section: Out of scope\n      minContains: 0\n      maxContains: 1\n    - section: Notes\n      minContains: 0\n      maxContains: 1\n",
+            "source": "---\nid: D-0042\nstatus: open/accepted\ntitle: Adopt the projection layer as the validator substrate\nrelated: []\n---\n# Adopt the projection layer as the validator substrate\n\n## Summary\n\nThe position-carrying section tree (projection) is the one substrate both the\ngrammar and the Zod leaves read, so findings localize to a source line.\n\n^summary\n\n## Context\n\nRaw mdast is flat siblings with inline-subtree cells — hostile for direct rule\nauthoring. We need a stable intermediate form.\n\n## Decision\n\nWe adopt a single projection pass between mdast and the typed model.\n\n### Components\n\n| # | Component | Resolution |\n| - | --------- | ---------- |\n| 1 | projection | one parse → positioned section tree |\n\n## Consequences\n\nRules read the projection, not mdast; positions survive into findings."
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "19-real-decision-contract-end-to-end.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v19 — Real Decision contract end-to-end  (TS fixture: 19-real-decision-contract-end-to-end.ts)\n\nfrontmatter:\n  type: object\n  required: [ id, status, title, related ]\n  additionalProperties: false\n  properties:\n    id:\n      type: string\n      pattern: '^D-[0-9A-Z]{4}$'\n    status:\n      enum:\n        - open/proposed\n        - open/accepted\n        - closed/superseded\n        - closed/deprecated\n    title:\n      type: string\n      minLength: 1\n    related:\n      type: array\n      items:\n        type: string\n      default: []\n\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - section: Summary\n      anchor: summary\n      content:\n        maxWords: 120\n    - section: Context\n    - section: Decision\n      order: strict\n      additionalSections: true\n      sections:\n        - section: Components\n          content:\n            table:\n              columns:\n                - '#'\n                - Component\n                - Resolution\n              minRows: 1\n    - section: Why\n      minContains: 0\n      maxContains: 1\n    - section: Options considered\n      minContains: 0\n      maxContains: 1\n      order: none\n      additionalSections: true\n      sections:\n        - gap: {}\n    - section: Consequences\n      minContains: 0\n      maxContains: 1\n    - section: Out of scope\n      minContains: 0\n      maxContains: 1\n    - section: Notes\n      minContains: 0\n      maxContains: 1\n",
+            "source": "---\nid: D-0042\nstatus: open/draft\ntitle: Adopt the projection layer as the validator substrate\nrelated: []\n---\n# Adopt the projection layer as the validator substrate\n\n## Summary\n\nThe position-carrying section tree (projection) is the one substrate both the\ngrammar and the Zod leaves read, so findings localize to a source line.\n\n## Context\n\nRaw mdast is flat siblings with inline-subtree cells — hostile for direct rule\nauthoring. We need a stable intermediate form.\n\n## Consequences\n\nRules read the projection, not mdast; positions survive into findings.\n\n## Decision\n\nWe adopt a single projection pass between mdast and the typed model.\n\n### Components\n\n| # | Component | Resolution |\n| - | --------- | ---------- |\n| 1 | projection | one parse → positioned section tree |"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "frontmatter/enum",
+                "level": "error",
+                "line": 3
+              },
+              {
+                "id": "structure/anchor-missing",
+                "level": "error",
+                "line": 9
+              },
+              {
+                "id": "structure/section-order",
+                "level": "error",
+                "line": 23
+              }
+            ]
+          }
+        },
+        {
+          "name": "19a-real-decision-three-findings.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v19a — Real Decision with the three-finding failure  (TS fixture: 19a-real-decision-three-findings.ts)\n\nfrontmatter:\n  type: object\n  required: [ id, status, title, related ]\n  additionalProperties: false\n  properties:\n    id:\n      type: string\n      pattern: '^D-[0-9A-Z]{4}$'\n    status:\n      enum: [ open/proposed, open/accepted, closed/superseded ]\n    title:\n      type: string\n      minLength: 1\n    related:\n      type: array\n      items:\n        type: string\n      default: []\n\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - section: Summary\n      anchor: summary\n      content:\n        maxWords: 120\n    - section: Context\n    - section: Decision\n      order: strict\n      additionalSections: true\n      sections:\n        - section: Components\n          content:\n            table:\n              columns: [ '#', Component, Resolution ]\n              minRows: 1\n    - section: Why\n      minContains: 0\n      maxContains: 1\n    - section: Options considered\n      minContains: 0\n      maxContains: 1\n      order: none\n      additionalSections: true\n      sections:\n        - gap: {}\n    - section: Consequences\n      minContains: 0\n      maxContains: 1\n    - section: Out of scope\n      minContains: 0\n      maxContains: 1\n    - section: Notes\n      minContains: 0\n      maxContains: 1\n",
+            "source": "---\nid: D-0099\nstatus: open/proposed\ntitle: Adopt the widget protocol\nrelated: []\n---\n\n# Adopt the widget protocol\n\n## Summary\n\nWe will standardise inter-service messaging on the widget protocol.\n\n^summary\n\n## Context\n\nServices hand-roll three incompatible message envelopes today.\n\n## Decision\n\n### Components\n\n| # | Component | Resolution |\n| - | --------- | ---------- |\n| 1 | Envelope  | widget v2  |\n\n^components\n\n## Why\n\nA single envelope removes the per-pair translation shims.\n\n## Notes\n\nRollout tracked in the messaging milestone."
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "19a-real-decision-three-findings.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v19a — Real Decision with the three-finding failure  (TS fixture: 19a-real-decision-three-findings.ts)\n\nfrontmatter:\n  type: object\n  required: [ id, status, title, related ]\n  additionalProperties: false\n  properties:\n    id:\n      type: string\n      pattern: '^D-[0-9A-Z]{4}$'\n    status:\n      enum: [ open/proposed, open/accepted, closed/superseded ]\n    title:\n      type: string\n      minLength: 1\n    related:\n      type: array\n      items:\n        type: string\n      default: []\n\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - section: Summary\n      anchor: summary\n      content:\n        maxWords: 120\n    - section: Context\n    - section: Decision\n      order: strict\n      additionalSections: true\n      sections:\n        - section: Components\n          content:\n            table:\n              columns: [ '#', Component, Resolution ]\n              minRows: 1\n    - section: Why\n      minContains: 0\n      maxContains: 1\n    - section: Options considered\n      minContains: 0\n      maxContains: 1\n      order: none\n      additionalSections: true\n      sections:\n        - gap: {}\n    - section: Consequences\n      minContains: 0\n      maxContains: 1\n    - section: Out of scope\n      minContains: 0\n      maxContains: 1\n    - section: Notes\n      minContains: 0\n      maxContains: 1\n",
+            "source": "---\nid: D-0099\nstatus: open/draft\ntitle: Adopt the widget protocol\nrelated: []\n---\n\n# Adopt the widget protocol\n\n## Summary\n\nWe will standardise inter-service messaging on the widget protocol.\n\n## Context\n\nServices hand-roll three incompatible message envelopes today.\n\n## Why\n\nA single envelope removes the per-pair translation shims.\n\n## Decision\n\n### Components\n\n| # | Component | Resolution |\n| - | --------- | ---------- |\n| 1 | Envelope  | widget v2  |\n\n^components\n\n## Notes\n\nRollout tracked in the messaging milestone."
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "frontmatter/enum",
+                "level": "error",
+                "line": 3
+              },
+              {
+                "id": "structure/anchor-missing",
+                "level": "error",
+                "line": 10
+              },
+              {
+                "id": "structure/section-order",
+                "level": "error",
+                "line": 22
+              }
+            ]
+          }
+        },
+        {
+          "name": "19b-real-decision-alias-recommendation.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v19b — Decision body alias (Recommendation for Decision)  (TS fixture: 19b-real-decision-alias-recommendation.ts)\n\nfrontmatter:\n  type: object\n  required: [ id, status, title, related ]\n  additionalProperties: false\n  properties:\n    id:\n      type: string\n      pattern: '^D-[0-9A-Z]{4}$'\n    status:\n      enum:\n        - open/proposed\n        - open/accepted\n        - closed/superseded\n    title:\n      type: string\n      minLength: 1\n    related:\n      type: array\n      items:\n        type: string\n      default: []\n\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - section: Summary\n      anchor: summary\n      content:\n        maxWords: 120\n    - section: Context\n      minContains: 0\n      maxContains: 1\n    - section: Options considered\n      minContains: 0\n      maxContains: 1\n      order: none\n      additionalSections: true\n      sections:\n        - gap: {}\n    - oneOf:\n        - Decision\n        - Recommendation\n        - Conclusion\n        - Resolution\n    - section: Consequences\n      minContains: 0\n      maxContains: 1\n    - section: Notes\n      minContains: 0\n      maxContains: 1\n",
+            "source": "---\nid: D-0099\nstatus: open/proposed\ntitle: Adopt rumdl for markdown formatting\nrelated: []\n---\n\n## Summary\n\nAdopt rumdl as the markdown formatter over the prettier plugin.\n\n^summary\n\n## Context\n\nTwo formatters were trialled across the docs corpus over one milestone.\n\n## Options considered\n\n### prettier-plugin-markdown\n\nFamiliar, but reflows wikilinks and breaks Obsidian transclusion.\n\n### rumdl\n\nObsidian-safe; reflow-only diffs; configurable per repo.\n\n## Recommendation\n\nAdopt rumdl. It produces Obsidian-safe, reflow-only diffs and is configurable per repo."
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "19b-real-decision-alias-recommendation.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v19b — Decision body alias (Recommendation for Decision)  (TS fixture: 19b-real-decision-alias-recommendation.ts)\n\nfrontmatter:\n  type: object\n  required: [ id, status, title, related ]\n  additionalProperties: false\n  properties:\n    id:\n      type: string\n      pattern: '^D-[0-9A-Z]{4}$'\n    status:\n      enum:\n        - open/proposed\n        - open/accepted\n        - closed/superseded\n    title:\n      type: string\n      minLength: 1\n    related:\n      type: array\n      items:\n        type: string\n      default: []\n\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - section: Summary\n      anchor: summary\n      content:\n        maxWords: 120\n    - section: Context\n      minContains: 0\n      maxContains: 1\n    - section: Options considered\n      minContains: 0\n      maxContains: 1\n      order: none\n      additionalSections: true\n      sections:\n        - gap: {}\n    - oneOf:\n        - Decision\n        - Recommendation\n        - Conclusion\n        - Resolution\n    - section: Consequences\n      minContains: 0\n      maxContains: 1\n    - section: Notes\n      minContains: 0\n      maxContains: 1\n",
+            "source": "---\nid: D-0099\nstatus: open/proposed\ntitle: Adopt rumdl for markdown formatting\nrelated: []\n---\n\n## Summary\n\nAdopt rumdl as the markdown formatter over the prettier plugin.\n\n^summary\n\n## Context\n\nTwo formatters were trialled across the docs corpus over one milestone.\n\n## Options considered\n\n### prettier-plugin-markdown\n\nFamiliar, but reflows wikilinks and breaks Obsidian transclusion.\n\n### rumdl\n\nObsidian-safe; reflow-only diffs; configurable per repo.\n\n## Verdict\n\nAdopt rumdl. It produces Obsidian-safe, reflow-only diffs and is configurable per repo."
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/section-missing",
+                "level": "error",
+                "line": 8
+              }
+            ]
+          }
+        },
+        {
+          "name": "21-real-milestone-or-skill-doctype.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v21 — Real Milestone / SKILL.md doc-type  (TS fixture: 21-real-milestone-or-skill-doctype.ts)\n\nfrontmatter:\n  type: object\n  required: [ id, status, title, related ]\n  additionalProperties: false\n  properties:\n    id:\n      type: string\n      pattern: '^M-[0-9A-Z]{4}$'\n    status:\n      enum:\n        - open/draft\n        - open/active\n        - closed/done\n        - closed/abandoned\n    title:\n      type: string\n      minLength: 1\n    related:\n      type: array\n      items:\n        type: string\n      default: []\n\nbody:\n  order: none\n  additionalSections: true\n  sections:\n    - section: Goal\n    - section: Success criteria\n    - oneOf:\n        - Deliverables\n        - Tasks\n      order: none\n      additionalSections: true\n      sections:\n        - gap: {}\n    - section: Out of scope\n      minContains: 0\n      maxContains: 1\n    - section: Risks / open questions\n      minContains: 0\n      maxContains: 1\n",
+            "source": "---\nid: M-0042\nstatus: open/draft\ntitle: Stand up the markdown-contract package\nrelated: []\n---\n# Stand up the markdown-contract package\n\n## Goal\n\nShip the generic markdown-contract engine and wire one SDLC entity contract through it.\n\n## Success criteria\n\n- [ ] The engine validates fixture markdown with zero SDLC dependencies.\n- [ ] One entity contract (Decision) runs end-to-end through the op substrate.\n\n## Deliverables\n\n### Wave 1 — engine\n\n- [ ] [[T-AAAA-projection-pass]] — mdast → positioned section tree\n- [ ] [[T-BBBB-grammar-combinators]] — sections/section/optional/oneOf/gap\n\n### Wave 2 — integration\n\n- [ ] [[T-CCCC-decision-contract]] — first entity contract end-to-end\n\n## Risks / open questions\n\n- remark-gfm is the prerequisite for table/list leaves; pin it in the spike."
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "21-real-milestone-or-skill-doctype.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v21 — Real Milestone / SKILL.md doc-type  (TS fixture: 21-real-milestone-or-skill-doctype.ts)\n\nfrontmatter:\n  type: object\n  required: [ id, status, title, related ]\n  additionalProperties: false\n  properties:\n    id:\n      type: string\n      pattern: '^M-[0-9A-Z]{4}$'\n    status:\n      enum:\n        - open/draft\n        - open/active\n        - closed/done\n        - closed/abandoned\n    title:\n      type: string\n      minLength: 1\n    related:\n      type: array\n      items:\n        type: string\n      default: []\n\nbody:\n  order: none\n  additionalSections: true\n  sections:\n    - section: Goal\n    - section: Success criteria\n    - oneOf:\n        - Deliverables\n        - Tasks\n      order: none\n      additionalSections: true\n      sections:\n        - gap: {}\n    - section: Out of scope\n      minContains: 0\n      maxContains: 1\n    - section: Risks / open questions\n      minContains: 0\n      maxContains: 1\n",
+            "source": "---\nid: M-0042\nstatus: open/wip\ntitle: Stand up the markdown-contract package\nrelated: []\n---\n# Stand up the markdown-contract package\n\n## Goal\n\nShip the generic markdown-contract engine and wire one SDLC entity contract through it.\n\n## Success criteria\n\n- [ ] The engine validates fixture markdown with zero SDLC dependencies.\n- [ ] One entity contract (Decision) runs end-to-end through the op substrate.\n\n### Wave 1 — engine\n\n- [ ] [[T-AAAA-projection-pass]] — mdast → positioned section tree\n\n## Risks / open questions\n\n- remark-gfm is the prerequisite for table/list leaves; pin it in the spike."
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "frontmatter/enum",
+                "level": "error",
+                "line": 3
+              },
+              {
+                "id": "structure/section-missing",
+                "level": "error",
+                "line": 9
+              }
+            ]
+          }
+        },
+        {
+          "name": "21a-table-inside-blockquote-or-list.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v21a — Table inside a blockquote / list item  (TS fixture: 21a-table-inside-blockquote-or-list.ts)\n\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - section: Deliverables\n      content:\n        table:\n          columns:\n            - Item\n            - Status\n          minRows: 1\n",
+            "source": "## Deliverables\n\n| Item        | Status |\n| ----------- | ------ |\n| Engine      | done   |\n| Dialect ext | done   |"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "21a-table-inside-blockquote-or-list.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v21a — Table inside a blockquote / list item  (TS fixture: 21a-table-inside-blockquote-or-list.ts)\n\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - section: Deliverables\n      content:\n        table:\n          columns:\n            - Item\n            - Status\n          minRows: 1\n",
+            "source": "## Deliverables\n\n> | Item        | Status |\n> | ----------- | ------ |\n> | Engine      | done   |\n> | Dialect ext | done   |"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/block-missing",
+                "level": "error",
+                "line": 1
+              }
+            ]
+          }
+        },
+        {
+          "name": "21b-fence-contains-heading-line.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v21b — Code fence containing a ## line  (TS fixture: 21b-fence-contains-heading-line.ts)\n\nbody:\n  order: strict\n  additionalSections: false\n  sections:\n    - section: Capability\n    - section: Sample document\n",
+            "source": "## Capability\n\nWhat this introduces.\n\n## Sample document\n\n```md\n## Decision\n\nWe will adopt the projection.\n```"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "22-text-requires-section.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v22 — Section-scoped requires  (TS fixture: 22-text-requires-section.ts)\n\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - section: Summary\n      requires:\n        - pattern: outcome\n          note: the decision outcome must be named\n",
+            "source": "## Summary\n\nThis decision records the chosen outcome and the reasoning that led to it.\n"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "22-text-requires-section.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v22 — Section-scoped requires  (TS fixture: 22-text-requires-section.ts)\n\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - section: Summary\n      requires:\n        - pattern: outcome\n          note: the decision outcome must be named\n",
+            "source": "## Summary\n\nThis decision records the chosen direction and the reasoning that led to it.\n"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "text/requires/summary/1tc7itx",
+                "level": "error",
+                "line": 1
+              }
+            ]
+          }
+        },
+        {
+          "name": "23-text-forbids-body-root.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v23 — Body-root forbids  (TS fixture: 23-text-forbids-body-root.ts)\n\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - section: Summary\n  forbids:\n    - pattern: \"}scripts/\"\n      normalize: false\n      note: route through the op substrate (sdlc <noun> <verb>)\n",
+            "source": "## Summary\n\nRun every step through the documented op substrate, never a bespoke path.\n"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "23-text-forbids-body-root.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v23 — Body-root forbids  (TS fixture: 23-text-forbids-body-root.ts)\n\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - section: Summary\n  forbids:\n    - pattern: \"}scripts/\"\n      normalize: false\n      note: route through the op substrate (sdlc <noun> <verb>)\n",
+            "source": "## Summary\n\nLegacy callers still reach into }scripts/legacy.sh directly instead of the op substrate.\n"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "text/forbids/doc/o9pijh",
+                "level": "error",
+                "line": 3
+              }
+            ]
+          }
+        },
+        {
+          "name": "24-text-requires-count.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v24 — Section-scoped requires with a min count  (TS fixture: 24-text-requires-count.ts)\n\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - section: Checklist\n      requires:\n        - pattern: DONE\n          min: 2\n          note: every step must be marked DONE\n",
+            "source": "## Checklist\n\n- Step one DONE\n- Step two DONE\n"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "24-text-requires-count.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v24 — Section-scoped requires with a min count  (TS fixture: 24-text-requires-count.ts)\n\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - section: Checklist\n      requires:\n        - pattern: DONE\n          min: 2\n          note: every step must be marked DONE\n",
+            "source": "## Checklist\n\n- Step one DONE\n- Step two pending\n"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "text/count/checklist/9ms6i7",
+                "level": "error",
+                "line": 1
+              }
+            ]
+          }
+        },
+        {
+          "name": "25-text-regex.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v25 — Section-scoped requires via a regex alternation  (TS fixture: 25-text-regex.ts)\n\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - section: Failure modes\n      requires:\n        - regex: \"LEASE-(CONFLICT|MISSING) ref=\"\n          note: lease failure markers\n",
+            "source": "## Failure modes\n\nOn contention the orchestrator emits LEASE-CONFLICT ref=abc123 and retries the acquire.\n"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "25-text-regex.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v25 — Section-scoped requires via a regex alternation  (TS fixture: 25-text-regex.ts)\n\nbody:\n  order: recognized-relative\n  additionalSections: true\n  sections:\n    - section: Failure modes\n      requires:\n        - regex: \"LEASE-(CONFLICT|MISSING) ref=\"\n          note: lease failure markers\n",
+            "source": "## Failure modes\n\nOn contention the orchestrator logs a generic warning and retries the acquire.\n"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "text/requires/failureModes/17j7bdw",
+                "level": "error",
+                "line": 1
+              }
+            ]
+          }
+        },
+        {
+          "name": "27-v2-description-hint.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v27 — v2 description → finding hint  (TS fixture: 27-v2-description-hint.ts)\n\ndescription: A decision record needs its core sections.\nbody:\n  order: none\n  additionalSections: true\n  sections:\n    - section: Summary\n      description: One paragraph naming the outcome.\n    - section: Context\n",
+            "source": "## Summary\n\nShip the feature.\n\n## Context\n\nWhy now.\n"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "27-v2-description-hint.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v27 — v2 description → finding hint  (TS fixture: 27-v2-description-hint.ts)\n\ndescription: A decision record needs its core sections.\nbody:\n  order: none\n  additionalSections: true\n  sections:\n    - section: Summary\n      description: One paragraph naming the outcome.\n    - section: Context\n",
+            "source": "## Notes\n\nNeither required section is present.\n"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/section-missing",
+                "level": "error",
+                "line": 1,
+                "hint": "One paragraph naming the outcome."
+              },
+              {
+                "id": "structure/section-missing",
+                "level": "error",
+                "line": 1,
+                "hint": "A decision record needs its core sections."
+              }
+            ]
+          }
+        },
+        {
+          "name": "28-v2-min-max-contains.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v28 — v2 counted slots: minContains / maxContains  (TS fixture: 28-v2-min-max-contains.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Entry\n      minContains: 2\n      maxContains: 3\n",
+            "source": "## Entry\n\nOne.\n\n## Entry\n\nTwo.\n\n## Entry\n\nThree.\n"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "28-v2-min-max-contains.fail-few.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v28 — v2 counted slots: minContains / maxContains  (TS fixture: 28-v2-min-max-contains.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Entry\n      minContains: 2\n      maxContains: 3\n",
+            "source": "## Entry\n\nOnly one.\n"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/repeat-count",
+                "level": "error",
+                "line": 1
+              }
+            ]
+          }
+        },
+        {
+          "name": "28-v2-min-max-contains.fail-many.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v28 — v2 counted slots: minContains / maxContains  (TS fixture: 28-v2-min-max-contains.ts)\n\nbody:\n  order: none\n  additionalSections: false\n  sections:\n    - section: Entry\n      minContains: 2\n      maxContains: 3\n",
+            "source": "## Entry\n\n1\n\n## Entry\n\n2\n\n## Entry\n\n3\n\n## Entry\n\n4\n"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/repeat-count",
+                "level": "error",
+                "line": 13
+              }
+            ]
+          }
+        },
+        {
+          "name": "29-second-h1.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\nbody:\n  sections:\n    - section: Context\n    - section: Decision\n",
+            "source": "# Adopt the widget protocol\n\n## Context\n\nWhy.\n\n## Decision\n\nWhat.\n"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "29-second-h1.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\nbody:\n  sections:\n    - section: Context\n    - section: Decision\n",
+            "source": "# Adopt the widget protocol\n\n## Context\n\nWhy.\n\n# Appendix\n\n## Decision\n\nWhat.\n"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/section-missing",
+                "level": "error",
+                "line": 3
+              }
+            ]
+          }
+        },
+        {
+          "name": "30-repeated-section-content.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\nbody:\n  sections:\n    - section: Entry\n      minContains: 1\n      content:\n        list:\n          minItems: 2\n      requires:\n        - pattern: shipped\n",
+            "source": "## Entry\n\n- shipped the parser\n- fixed a bug\n\n## Entry\n\n- shipped the runner\n- added tests\n"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "30-repeated-section-content.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\nbody:\n  sections:\n    - section: Entry\n      minContains: 1\n      content:\n        list:\n          minItems: 2\n      requires:\n        - pattern: shipped\n",
+            "source": "## Entry\n\n- shipped the parser\n- fixed a bug\n\n## Entry\n\n- started the runner\n"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "text/requires/entry/15q765s",
+                "level": "error",
+                "line": 6
+              },
+              {
+                "id": "content/list/min-items",
+                "level": "error",
+                "line": 8
+              }
+            ]
+          }
+        },
+        {
+          "name": "31-frontmatter-yaml-error.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\ndescription: A note with a title.\nfrontmatter:\n  type: object\n  properties:\n    title: { type: string }\n  required: [title]\nbody:\n  sections:\n    - section: Notes\n",
+            "source": "---\ntitle: Release notes\n---\n\n## Notes\n\nText.\n"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "31-frontmatter-yaml-error.fail-quote.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\ndescription: A note with a title.\nfrontmatter:\n  type: object\n  properties:\n    title: { type: string }\n  required: [title]\nbody:\n  sections:\n    - section: Notes\n",
+            "source": "---\ntitle: 'Release notes\n---\n\n## Notes\n\nText.\n"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "frontmatter/yaml",
+                "level": "error",
+                "line": 2
+              }
+            ]
+          }
+        },
+        {
+          "name": "31-frontmatter-yaml-error.fail-tab.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\ndescription: A note with a title.\nfrontmatter:\n  type: object\n  properties:\n    title: { type: string }\n  required: [title]\nbody:\n  sections:\n    - section: Notes\n",
+            "source": "---\ntitle: Release notes\nowner:\n\tname: Ana\n---\n\n## Notes\n\nText.\n"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "frontmatter/yaml",
+                "level": "error",
+                "line": 4
+              }
+            ]
+          }
+        },
+        {
+          "name": "31-frontmatter-yaml-error.fail-duplicate.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\ndescription: A note with a title.\nfrontmatter:\n  type: object\n  properties:\n    title: { type: string }\n  required: [title]\nbody:\n  sections:\n    - section: Notes\n",
+            "source": "---\ntitle: Release notes\nowner: Ana\ntitle: Notes\n---\n\n## Notes\n\nText.\n"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "frontmatter/yaml",
+                "level": "error",
+                "line": 4
+              }
+            ]
+          }
+        },
+        {
+          "name": "32-frontmatter-line-after-wrapped-value.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\nfrontmatter:\n  type: object\n  properties:\n    summary: { type: string }\n    count: { type: integer }\n    owner:\n      type: object\n      properties:\n        id: { type: integer }\nbody:\n  sections:\n    - section: Notes\n",
+            "source": "---\nsummary: a summary that\n  wraps onto a second line\ncount: 3\nowner: &o\n  id: 7\n---\n\n## Notes\n\nText.\n"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "32-frontmatter-line-after-wrapped-value.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\nfrontmatter:\n  type: object\n  properties:\n    summary: { type: string }\n    count: { type: integer }\n    owner:\n      type: object\n      properties:\n        id: { type: integer }\nbody:\n  sections:\n    - section: Notes\n",
+            "source": "---\nsummary: a summary that\n  wraps onto a second line\ncount: three\nowner: &o\n  id: seven\n---\n\n## Notes\n\nText.\n"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "frontmatter/type",
+                "level": "error",
+                "line": 4
+              },
+              {
+                "id": "frontmatter/type",
+                "level": "error",
+                "line": 6
+              }
+            ]
+          }
+        },
+        {
+          "name": "33-structure-hints.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\nbody:\n  description: The standard note sections.\n  order: recognized-relative\n  sections:\n    - section: Context\n      description: Why the note exists.\n    - section: Goal\n      aliases: [Aim]\n      description: What the work is for.\n    - section: Files to touch\n      description: One line per file.\n",
+            "source": "## Context\n\nWhy.\n\n## Goal\n\nWhat.\n\n## Files to touch\n\n- a.ts\n"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "33-structure-hints.fail-duplicate.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\nbody:\n  description: The standard note sections.\n  order: recognized-relative\n  sections:\n    - section: Context\n      description: Why the note exists.\n    - section: Goal\n      aliases: [Aim]\n      description: What the work is for.\n    - section: Files to touch\n      description: One line per file.\n",
+            "source": "## Context\n\nWhy.\n\n## Context\n\nAgain.\n\n## Goal\n\nWhat.\n\n## Files to touch\n\n- a.ts\n"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/duplicate-section",
+                "level": "error",
+                "line": 5,
+                "hint": "The standard note sections."
+              }
+            ]
+          }
+        },
+        {
+          "name": "33-structure-hints.fail-alias.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\nbody:\n  description: The standard note sections.\n  order: recognized-relative\n  sections:\n    - section: Context\n      description: Why the note exists.\n    - section: Goal\n      aliases: [Aim]\n      description: What the work is for.\n    - section: Files to touch\n      description: One line per file.\n",
+            "source": "## Context\n\nWhy.\n\n## Goal\n\nWhat.\n\n## Aim\n\nAgain.\n\n## Files to touch\n\n- a.ts\n"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/duplicate-section",
+                "level": "error",
+                "line": 9,
+                "hint": "The standard note sections."
+              }
+            ]
+          }
+        },
+        {
+          "name": "33-structure-hints.fail-key-collision.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\nbody:\n  description: The standard note sections.\n  order: recognized-relative\n  sections:\n    - section: Context\n      description: Why the note exists.\n    - section: Goal\n      aliases: [Aim]\n      description: What the work is for.\n    - section: Files to touch\n      description: One line per file.\n",
+            "source": "## Context\n\nWhy.\n\n## Goal\n\nWhat.\n\n## Files to touch\n\n- a.ts\n\n## Files To Touch\n\n- b.ts\n"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/key-collision",
+                "level": "error",
+                "line": 13,
+                "hint": "The standard note sections."
+              }
+            ]
+          }
+        },
+        {
+          "name": "33-structure-hints.fail-order.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\nbody:\n  description: The standard note sections.\n  order: recognized-relative\n  sections:\n    - section: Context\n      description: Why the note exists.\n    - section: Goal\n      aliases: [Aim]\n      description: What the work is for.\n    - section: Files to touch\n      description: One line per file.\n",
+            "source": "## Goal\n\nWhat.\n\n## Context\n\nWhy.\n\n## Files to touch\n\n- a.ts\n"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/section-order",
+                "level": "error",
+                "line": 5,
+                "hint": "The standard note sections."
+              }
+            ]
+          }
+        },
+        {
+          "name": "34-strict-order-and-gap-hints.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\nbody:\n  description: The release sections, in order.\n  order: strict\n  additionalSections: false\n  sections:\n    - section: Summary\n      description: One paragraph.\n    - gap: { max: 1 }\n    - section: Sign-off\n",
+            "source": "## Summary\n\nText.\n\n## Extra\n\nText.\n\n## Sign-off\n\nAna.\n"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "34-strict-order-and-gap-hints.fail-order.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\nbody:\n  description: The release sections, in order.\n  order: strict\n  additionalSections: false\n  sections:\n    - section: Summary\n      description: One paragraph.\n    - gap: { max: 1 }\n    - section: Sign-off\n",
+            "source": "## Sign-off\n\nAna.\n\n## Summary\n\nText.\n"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/section-order",
+                "level": "error",
+                "line": 1,
+                "hint": "The release sections, in order."
+              }
+            ]
+          }
+        },
+        {
+          "name": "34-strict-order-and-gap-hints.fail-gap.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\nbody:\n  description: The release sections, in order.\n  order: strict\n  additionalSections: false\n  sections:\n    - section: Summary\n      description: One paragraph.\n    - gap: { max: 1 }\n    - section: Sign-off\n",
+            "source": "## Summary\n\nText.\n\n## Extra\n\nText.\n\n## More\n\nText.\n\n## Sign-off\n\nAna.\n"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/gap-count",
+                "level": "error",
+                "line": 13,
+                "hint": "The release sections, in order."
+              }
+            ]
+          }
+        },
+        {
+          "name": "35-leaf-hints.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\nbody:\n  sections:\n    - section: Files\n      description: The files this change touches.\n      content:\n        table:\n          columns: [File, Kind]\n          description: One row per file.\n          cells:\n            Kind:\n              enum: [add, modify, delete]\n              description: The kind of change.\n    - section: Owners\n      description: Who reviews the change.\n      content:\n        table:\n          columns: [Name]\n          cells:\n            Name: { type: string, minLength: 3 }\n    - section: Steps\n      content:\n        list:\n          description: One step per item.\n          items: { type: string, minLength: 5 }\n",
+            "source": "## Files\n\n| File | Kind |\n| - | - |\n| a.ts | add |\n\n## Owners\n\n| Name |\n| - |\n| Ana |\n\n## Steps\n\n- write it\n"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "35-leaf-hints.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\nbody:\n  sections:\n    - section: Files\n      description: The files this change touches.\n      content:\n        table:\n          columns: [File, Kind]\n          description: One row per file.\n          cells:\n            Kind:\n              enum: [add, modify, delete]\n              description: The kind of change.\n    - section: Owners\n      description: Who reviews the change.\n      content:\n        table:\n          columns: [Name]\n          cells:\n            Name: { type: string, minLength: 3 }\n    - section: Steps\n      content:\n        list:\n          description: One step per item.\n          items: { type: string, minLength: 5 }\n",
+            "source": "## Files\n\n| File | Kind |\n| - | - |\n| a.ts | rename |\n\n## Owners\n\n| Name |\n| - |\n| Al |\n\n## Steps\n\n- run\n"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "content/table/cell",
+                "level": "error",
+                "line": 5,
+                "hint": "One row per file."
+              },
+              {
+                "id": "content/table/cell",
+                "level": "error",
+                "line": 11,
+                "hint": "Who reviews the change."
+              },
+              {
+                "id": "content/list/item-kind",
+                "level": "error",
+                "line": 15,
+                "hint": "One step per item."
+              }
+            ]
+          }
+        },
+        {
+          "name": "36-null-first-type-union.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\nfrontmatter:\n  type: object\n  properties:\n    supersededBy: { type: ['null', string] }\n  required: [supersededBy]\nbody:\n  sections:\n    - section: Notes\n",
+            "source": "---\nsupersededBy: null\n---\n\n## Notes\n\nText.\n"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "36-null-first-type-union.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\nfrontmatter:\n  type: object\n  properties:\n    supersededBy: { type: ['null', string] }\n  required: [supersededBy]\nbody:\n  sections:\n    - section: Notes\n",
+            "source": "---\nsupersededBy: 42\n---\n\n## Notes\n\nText.\n"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "frontmatter/type",
+                "level": "error",
+                "line": 2
+              }
+            ]
+          }
+        },
+        {
+          "name": "37-code-block-value.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\nbody:\n  sections:\n    - section: Example\n      forbids:\n        - regex: 'TODO$'\n",
+            "source": "## Example\n\n```sh\necho TODO later\n```\n"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "37-code-block-value.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\nbody:\n  sections:\n    - section: Example\n      forbids:\n        - regex: 'TODO$'\n",
+            "source": "## Example\n\n```sh\necho done\n# TODO\n```\n"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "text/forbids/example/1kort38",
+                "level": "error",
+                "line": 5
+              }
+            ]
+          }
+        },
+        {
+          "name": "38-body-text-rule-hint.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\ndescription: A skill page.\nbody:\n  description: The skill sections.\n  sections:\n    - section: Summary\n  forbids:\n    - pattern: TBD\n",
+            "source": "## Summary\n\nDone.\n"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "38-body-text-rule-hint.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\ndescription: A skill page.\nbody:\n  description: The skill sections.\n  sections:\n    - section: Summary\n  forbids:\n    - pattern: TBD\n",
+            "source": "## Summary\n\nTBD.\n"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "text/forbids/doc/1en0qr7",
+                "level": "error",
+                "line": 3,
+                "hint": "A skill page."
+              }
+            ]
+          }
+        },
+        {
+          "name": "39-strict-order-unknown-sections.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v39 — Unknown sections under strict order  (TS fixture: 39-strict-order-unknown-sections.ts)\n\nbody:\n  order: strict\n  additionalSections: true\n  sections:\n    - section: Summary\n    - section: Scope\n    - section: Status\n      minContains: 0\n      maxContains: 1\n    - section: References\n      minContains: 0\n      maxContains: 1\n",
+            "source": "## Summary\n\nA cache for build outputs.\n\n## Scope\n\nLocal builds only.\n\n## Design\n\nContent-addressed blobs.\n\n## Status\n\nIn review.\n\n## References\n\nThe build guide.\n"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "39-strict-order-unknown-sections.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v39 — Unknown sections under strict order  (TS fixture: 39-strict-order-unknown-sections.ts)\n\nbody:\n  order: strict\n  additionalSections: true\n  sections:\n    - section: Summary\n    - section: Scope\n    - section: Status\n      minContains: 0\n      maxContains: 1\n    - section: References\n      minContains: 0\n      maxContains: 1\n",
+            "source": "## Summary\n\nA cache for build outputs.\n\n## Scope\n\nLocal builds only.\n\n## Design\n\nContent-addressed blobs.\n\n## References\n\nThe build guide.\n\n## Notes\n\nOpen questions.\n\n## Status\n\nIn review.\n"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/section-order",
+                "level": "error",
+                "line": 21
+              }
+            ]
+          }
+        },
+        {
+          "name": "39a-strict-order-unknown-before-gap.pass.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v39a — Unknown sections under strict order, with a gap  (TS fixture: 39a-strict-order-unknown-before-gap.ts)\n\nbody:\n  order: strict\n  additionalSections: true\n  sections:\n    - section: Summary\n    - section: Status\n      minContains: 0\n      maxContains: 1\n    - gap: {}\n    - section: References\n",
+            "source": "## Summary\n\nA cache for build outputs.\n\n## Design\n\nContent-addressed blobs.\n\n## Status\n\nIn review.\n\n## References\n\nThe build guide.\n"
+          },
+          "expect": {
+            "findings": []
+          }
+        },
+        {
+          "name": "39a-strict-order-unknown-before-gap.fail.md",
+          "input": {
+            "contract": "mcVersion: 2\nkind: contract\n# fixture: v39a — Unknown sections under strict order, with a gap  (TS fixture: 39a-strict-order-unknown-before-gap.ts)\n\nbody:\n  order: strict\n  additionalSections: true\n  sections:\n    - section: Summary\n    - section: Status\n      minContains: 0\n      maxContains: 1\n    - gap: {}\n    - section: References\n",
+            "source": "## Summary\n\nA cache for build outputs.\n\n## Design\n\nContent-addressed blobs.\n\n## References\n\nThe build guide.\n\n## Status\n\nIn review.\n"
+          },
+          "expect": {
+            "findings": [
+              {
+                "id": "structure/section-order",
+                "level": "error",
+                "line": 13
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

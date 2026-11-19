@@ -99,9 +99,8 @@ the standard.
   `pnpm run check:conformance` checks the suites with `@osdlc/conformance-suites`;
   `packages/conformance/config.json` holds its exemptions. `tiered-dirs`,
   `config-layers`, `corpus-schema`, `etag-write`, `file-lock`,
-  `frontmatter-lossless`, `gfm-table`, `intersect`, `markdown-link`,
-  `markdown-tags` and `path-guard` are there. Until it moves,
-  `markdown-contract` runs the TypeScript package's `corpus/` directly.
+  `frontmatter-lossless`, `gfm-table`, `intersect`, `markdown-contract`,
+  `markdown-link`, `markdown-tags` and `path-guard` are there.
   The `agent-router` crate reads the TypeScript package's `fixtures/` and its
   catalogue snapshot.
 - **Each language's idiom.** An implementation does not copy the other's names or
