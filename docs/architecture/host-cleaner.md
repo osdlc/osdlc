@@ -74,6 +74,93 @@ With no adapter active, host-cleaner's result is repo-cleaner's, row for row (`s
 | `--auto` threshold | idle "longer than" the threshold | `>=` the threshold: `idleHoursSince(...) >= threshold` (`src/cargo.ts`, `src/node.ts`) |
 | `discard-archived` risk and archive-before-delete | in repo-cleaner | not on this branch. repo-cleaner's `RISKS` is `abandon-unmerged`, `discard-changes`, `confirm-open-pr`. The branch predates repo-cleaner PR 941 on `main`. The README still says `--auto` "never grants `discard-archived`", which is true by construction |
 
+## The hook model
+
+host-cleaner is a hook model at two levels, and the two are easy to mix up:
+
+- **repo-cleaner takes a host.** It offers exactly two hooks, `annotate` and `removeWorktree`.
+  Run on its own, it gets neither and behaves as it always has.
+- **host-cleaner takes adapters.** Each adapter is an object with a `name`, a `detect` and up to
+  five more hooks. host-cleaner is repo-cleaner's host: it merges its adapters' `annotate` and
+  `removeWorktree` into one of each and passes them down.
+
+```mermaid
+flowchart TB
+  subgraph HC["host-cleaner: the host"]
+    direction LR
+    CARGO["cargo"]
+    NODE["node"]
+    ORCA["orca"]
+    CLAUDE["claude-code"]
+  end
+  subgraph SOCK["repo-cleaner's two host hooks"]
+    direction LR
+    AN["annotate<br/>every adapter's, chained in run order"]
+    RW["removeWorktree<br/>the first adapter that claims the worktree"]
+  end
+  subgraph RC["repo-cleaner: the engine"]
+    direction LR
+    S["sweep"] --> P["plan"] --> C["check"] --> R["run"]
+  end
+  ORCA --> AN
+  ORCA --> RW
+  AN --> S
+  AN --> C
+  RW --> R
+  CARGO -. "own rows: gather, execute" .-> P
+  NODE -.-> P
+  CLAUDE -.-> P
+  classDef host fill:#efeaf8,stroke:#6b4fa3,color:#1c2227
+  classDef sock fill:#ffffff,stroke:#8a939b,stroke-dasharray:4 3,color:#1c2227
+  classDef eng fill:#e3f0f5,stroke:#1f6f8b,color:#1c2227
+  class CARGO,NODE,ORCA,CLAUDE host
+  class AN,RW sock
+  class S,P,C,R eng
+```
+
+Solid arrows are hooks repo-cleaner calls. Dotted arrows are host rows: they join the same plan,
+re-check and receipt, but host-cleaner gathers and executes them itself.
+
+### What repo-cleaner offers a host
+
+| Surface | Status | What a host does with it | Used by |
+| --- | --- | --- | --- |
+| `annotate(repo, rows)` (`src/hooks.ts`) | On main since #600 | Re-rank rows after classification: change a verdict, add a note, drop a row. It runs inside the sweep and again inside every `check` and `run`, so a host's verdict can't be lost between plan and run | orca: notes each Orca worktree's id and open terminals |
+| `removeWorktree(row, { repo, force })` (`src/hooks.ts`) | New in PR 946 | Remove a worktree the host manages instead of `git worktree remove`, or return `null` to leave it to git. repo-cleaner still refuses a live process or an unsafe force first, and checks afterwards that the directory is gone and git no longer lists it | orca: closes the worktree's terminals, then removes it through Orca |
+| `HostBlocker`, `host:<name>` (`src/types.ts`) | New in PR 946 | A blocker a host attaches from `annotate`. repo-cleaner never produces one | orca: `host:orca-unreachable` |
+
+PR 946 is the only PR in the stack that changes repo-cleaner, and everything it adds there is for
+Orca.
+
+### The six adapter hooks
+
+| Hook | Run by | When | Does |
+| --- | --- | --- | --- |
+| `detect` | host-cleaner | Start of every run | A cheap check. False or a throw skips the adapter, and the report says why |
+| `discover` | host-cleaner | Before the sweep, only when no targets were named | Returns more repositories to sweep |
+| `gather` | host-cleaner | After the sweep, and at every re-check | Returns the adapter's own rows, each with evidence. Different evidence at the re-check drops the row as `changed` |
+| `execute` | host-cleaner | In `run`, once per approved host row | Deletes it, verifies it, and returns the sentence the receipt records |
+| `annotate` | repo-cleaner, via `chainAnnotate` | Inside the sweep and every re-check | As in the table above |
+| `removeWorktree` | repo-cleaner, via `chainRemoveWorktree` | Inside `check` (to show the command) and `run` | As in the table above |
+
+### Which adapter uses which hook
+
+| Adapter | `detect` | `discover` | `gather` | `execute` | `annotate` | `removeWorktree` |
+| --- | :-: | :-: | :-: | :-: | :-: | :-: |
+| `cargo` | ● | | ● | ● | | |
+| `node` | ● | | ● | ● | | |
+| `claude-code` | ● | | ● | ● | | |
+| `orca` | ● | ● | | | ● | ● |
+
+That gives two shapes of adapter:
+- **Row owners** (cargo, node, claude-code) add rows of their own and delete them themselves. They
+  never touch repo-cleaner's rows.
+- **Row shapers** (orca) add no rows. They change how repo-cleaner judges and removes the worktrees
+  it already found.
+
+The full contract, with types and rules, is in [The adapter contract](#the-adapter-contract), and
+when each hook fires in a run is in [The lifecycle, end to end](#the-lifecycle-end-to-end).
+
 ## Package map
 ```mermaid
 flowchart TD
