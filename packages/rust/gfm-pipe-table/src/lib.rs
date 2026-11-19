@@ -4,7 +4,7 @@
 //! themselves and pass the row text.
 //!
 //! This crate is the Rust twin of the npm package `@osdlc/gfm-table`. Both
-//! give the same result for the same input, checked by a shared fixture.
+//! give the same result for the same input, checked by one conformance suite.
 //! Offsets here are byte offsets into the UTF-8 `&str`; the TypeScript twin's
 //! are UTF-16 string indices. They agree on ASCII text.
 //!
