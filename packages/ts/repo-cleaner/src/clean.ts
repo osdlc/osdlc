@@ -6,7 +6,8 @@
  * again and drops each selected row that is gone, cannot be deleted, moved
  * since the plan, or carries a risk not allowed. It returns the steps a run
  * would take. `run` sweeps once more and takes those steps in a fixed order,
- * stopping at the first failure:
+ * skipping only the steps that depend on a failed one (a failed tip check of a
+ * spared remote branch stops the run):
  *
  * 1. spared remote branches, each tip checked with `ls-remote`;
  * 2. worktrees, each unlocked first when its lock's owner is dead, and each
@@ -854,11 +855,6 @@ function assertSafeToForce(path: string, git: Git, a: Accepted): void {
   if (reasons.length > 0) throw new Error(`refused: ${reasons.join('; ')}`)
 }
 
-/** A worktree's checked-out branch, as a branch name. */
-function branchName(ref: string | null | undefined): string | null {
-  return ref === null || ref === undefined ? null : ref.replace(/^refs\/heads\//, '')
-}
-
 /**
  * Whether `step` cannot run once `prior`, an earlier step in the same
  * repository, failed or was skipped:
@@ -888,7 +884,7 @@ function dependsOn(step: Step, a: Accepted | null, prior: Step, priorA: Accepted
       worktreeStep(prior) &&
       was.kind === 'worktree' &&
       row.kind === 'branch' &&
-      branchName(was.evidence.branch) === row.name
+      was.evidence.branch === row.name
     )
   }
   if (step.action === 'delete-remote') {
@@ -1022,7 +1018,8 @@ function execute(
 /**
  * Take the steps `preview` showed: sweeps again, drops a row that moved since
  * the preview, and runs the rest in order, compare-and-swap, verifying each
- * step and stopping at the first failure. Only what the preview showed runs; a
+ * step. A failed step skips only the steps that depend on it, except a failed
+ * spared-tip check, which stops the run. Only what the preview showed runs; a
  * row it dropped stays dropped.
  *
  * @throws RepoCleanerError (`spared-changed`) when a spared remote branch moved
