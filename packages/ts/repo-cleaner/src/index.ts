@@ -48,7 +48,12 @@ export {
 } from './receipt.ts'
 export { writeJsonAtomic } from './write-json.ts'
 export { render, type RunSummary, type Style } from './render.ts'
-export { defaultProcessProbe, type ProcessHolder, type ProcessProbe } from './processes.ts'
+export {
+  busyHolders,
+  defaultProcessProbe,
+  type ProcessHolder,
+  type ProcessProbe,
+} from './processes.ts'
 export { providers, type PrProvider, type ProviderChoice } from './providers/index.ts'
 export type { Annotate, RemoveWorktree, WorktreeRemoval } from './hooks.ts'
 export {

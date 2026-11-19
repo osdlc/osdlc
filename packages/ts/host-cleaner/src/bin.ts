@@ -2,7 +2,12 @@
 
 import { runMain } from '@osdlc/cli-tool'
 
+import { cargoAdapter } from './cargo.ts'
 import { main } from './cli.ts'
+import { nodeAdapter } from './node.ts'
 import { VERSION } from './version.generated.ts'
 
-await runMain(main, { name: 'host-cleaner', version: VERSION })
+await runMain((argv, ctx) => main(argv, ctx, { adapters: [cargoAdapter, nodeAdapter] }), {
+  name: 'host-cleaner',
+  version: VERSION,
+})

@@ -56,3 +56,6 @@ export {
   type HostRunOptions,
   type HostStepRecord,
 } from './clean.ts'
+export { CARGO_ADAPTER, cargoAdapter, incrementalOff } from './cargo.ts'
+export { NODE_ADAPTER, nodeAdapter } from './node.ts'
+export { DEFAULT_IDLE_HOURS } from './artifacts.ts'

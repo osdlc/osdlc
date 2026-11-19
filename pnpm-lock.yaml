@@ -835,6 +835,9 @@ importers:
       '@osdlc/detect-harness':
         specifier: workspace:^
         version: link:../detect-harness
+      '@osdlc/path-guard':
+        specifier: workspace:^
+        version: link:../path-guard
       '@osdlc/repo-cleaner':
         specifier: workspace:^
         version: link:../repo-cleaner
