@@ -1,0 +1,48 @@
+/* The example's own accent, light and dark. Override the --cs-* properties to recolour the site. */
+:root {
+  --cs-accent: #0f6b5c;
+  --cs-accent-soft: #dcf1ec;
+  --cs-focus: #0f6b5c;
+}
+
+:root[data-theme='dark'] {
+  --cs-accent: #8fd9c9;
+  --cs-accent-soft: #143a33;
+  --cs-focus: #8fd9c9;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --cs-accent: #8fd9c9;
+    --cs-accent-soft: #143a33;
+    --cs-focus: #8fd9c9;
+  }
+}
+
+.shelf-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 1rem;
+  margin: 0 0 2rem;
+  padding: 0;
+  list-style: none;
+}
+
+.shelf-stats li {
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--cs-border);
+  border-radius: 0.5rem;
+}
+
+.shelf-stats strong {
+  display: block;
+  color: var(--cs-text-strong);
+  font-size: 1.75rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.shelf-stats span {
+  color: var(--cs-muted);
+  font-size: var(--cs-small);
+}

@@ -1,5 +1,30 @@
 # @osdlc/typed-gh
 
+## 0.18.1
+
+### Patch Changes
+
+- Updated dependencies [6236a97]
+  - @osdlc/typed-git@0.17.0
+
+## 0.18.0
+
+### Minor Changes
+
+- 621069f: `prActivity` (experimental): a pull request's comments, reviews and their inline comments, commits, force pushes and changes of state as one list in timeline order, through GraphQL `timelineItems`, with every page read, and replies GitHub leaves out of the timeline read from the review threads. Pass `since` (an ISO 8601 date and time) to read only what GitHub dates from then on. It is a verb, a method on `Gh` and `AsyncGh`, and has a `soft` form. It returns `null` for a pull request that does not exist, and `truncated: true` when a review or thread has more than 100 inline comments or the pull request has more than 100 review threads. New types: `PrActivityItem`, `PrActivityKind` and `PrActivityOptions`.
+
+### Patch Changes
+
+- Updated dependencies [cde222c]
+  - @osdlc/typed-git@0.16.0
+
+## 0.17.2
+
+### Patch Changes
+
+- Updated dependencies [912296d]
+  - @osdlc/typed-git@0.15.0
+
 ## 0.17.1
 
 ### Patch Changes

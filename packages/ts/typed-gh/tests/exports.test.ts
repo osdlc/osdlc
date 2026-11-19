@@ -44,6 +44,7 @@ const FUNCTIONS = [
   'parsePrUrl',
   'parsePullRequest',
   'pickPrForBranch',
+  'prActivity',
   'prBody',
   'prComment',
   'prDiff',

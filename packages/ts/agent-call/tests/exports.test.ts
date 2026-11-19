@@ -71,8 +71,8 @@ function sourceFiles(dir: string): string[] {
   })
 }
 
-test('the entry point exports 67 names', () => {
-  expect(EXPORTS.size).toBe(67)
+test('the entry point exports 72 names', () => {
+  expect(EXPORTS.size).toBe(72)
 })
 
 test('the runtime exports are the functions and constants, no more', () => {
@@ -81,8 +81,10 @@ test('the runtime exports are the functions and constants, no more', () => {
       'adapterFor',
       'antigravityAdapter',
       'assistantText',
+      'BASELINE_ENV',
       'BUILTIN_AGENTS',
       'callAgent',
+      'classifyFailure',
       'claudeAdapter',
       'claudePluginArgv',
       'claudeResumeFlag',
@@ -94,6 +96,7 @@ test('the runtime exports are the functions and constants, no more', () => {
       'modelArgs',
       'modelArgsRefusal',
       'opencodeAdapter',
+      'parseOutput',
       'copilotAdapter',
       'piAdapter',
       'qwenAdapter',
@@ -151,12 +154,16 @@ test('the README experimental list matches the @experimental tags', () => {
   expect([...listed].sort()).toEqual([...tagged].sort())
   expect([...tagged].sort()).toEqual(
     [
+      'FailureCause',
+      'FailureOutput',
       'ModelChoice',
       'TemplateAdapterOptions',
+      'classifyFailure',
       'claudePluginArgv',
       'claudeResumeFlag',
       'modelArgs',
       'modelArgsRefusal',
+      'parseOutput',
       'templateAdapter',
       'templateRefusal',
     ].sort(),

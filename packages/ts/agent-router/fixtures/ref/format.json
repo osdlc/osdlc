@@ -1,0 +1,127 @@
+[
+  {
+    "name": "tool-only",
+    "input": {
+      "tool": "claude"
+    },
+    "expected": "claude"
+  },
+  {
+    "name": "tier",
+    "input": {
+      "tool": "claude",
+      "model": "max"
+    },
+    "expected": "claude/max"
+  },
+  {
+    "name": "model-effort",
+    "input": {
+      "tool": "claude",
+      "model": "opus-5.5",
+      "effort": "high"
+    },
+    "expected": "claude/opus-5.5@high"
+  },
+  {
+    "name": "ctx-tokens-whole-m",
+    "input": {
+      "tool": "claude",
+      "model": "opus",
+      "qualifiers": {
+        "ctx": 1000000,
+        "traits": []
+      }
+    },
+    "expected": "claude/opus[ctx=1m]"
+  },
+  {
+    "name": "ctx-tokens-k",
+    "input": {
+      "tool": "claude",
+      "model": "opus",
+      "qualifiers": {
+        "ctx": 200000,
+        "traits": []
+      }
+    },
+    "expected": "claude/opus[ctx=200k]"
+  },
+  {
+    "name": "ctx-rounds-down-to-k",
+    "input": {
+      "tool": "antigravity",
+      "model": "pro",
+      "qualifiers": {
+        "ctx": 1048576,
+        "traits": []
+      }
+    },
+    "expected": "antigravity/pro[ctx=1048k]"
+  },
+  {
+    "name": "ctx-under-1k",
+    "input": {
+      "tool": "claude",
+      "model": "opus",
+      "qualifiers": {
+        "ctx": 900,
+        "traits": []
+      }
+    },
+    "expected": "claude/opus[ctx=900]"
+  },
+  {
+    "name": "ctx-max",
+    "input": {
+      "tool": "claude",
+      "model": "max",
+      "qualifiers": {
+        "ctx": "max",
+        "traits": []
+      }
+    },
+    "expected": "claude/max[ctx=max]"
+  },
+  {
+    "name": "traits-sorted",
+    "input": {
+      "tool": "*",
+      "model": "fast",
+      "qualifiers": {
+        "traits": [
+          "reasoning",
+          "local",
+          "agent"
+        ]
+      }
+    },
+    "expected": "*/fast[agent,local,reasoning]"
+  },
+  {
+    "name": "ctx-first-then-traits",
+    "input": {
+      "tool": "claude",
+      "model": "max",
+      "qualifiers": {
+        "ctx": 2000000,
+        "traits": [
+          "local"
+        ]
+      },
+      "effort": "low"
+    },
+    "expected": "claude/max[ctx=2m,local]@low"
+  },
+  {
+    "name": "empty-qualifiers-prints-nothing",
+    "input": {
+      "tool": "claude",
+      "model": "max",
+      "qualifiers": {
+        "traits": []
+      }
+    },
+    "expected": "claude/max"
+  }
+]

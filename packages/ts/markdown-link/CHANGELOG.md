@@ -1,5 +1,17 @@
 # @osdlc/markdown-link
 
+## 0.11.0
+
+### Minor Changes
+
+- c2c14f1: **Breaking:** markdown link destinations are read much as CommonMark reads an inline link, so more links are found. A title in `"…"`, `'…'` or `(…)` may follow the URL (`[a](a.md "Hint")`), parentheses that balance may sit in the URL (`[Notes](notes/Foo%20(beta).md)`), a `<…>` URL may hold spaces (`[c](<sp ace.md>)`), and whitespace may come around the URL and title. Unlike CommonMark, a title stays on one line, and no line break comes before an unbracketed URL. A Markdown link that is not kept is stepped over whole, so a `[[x]]` in its title is not a wikilink. Two links are no longer read: one with unbalanced parentheses in the URL, and one starting with `//`, which names a host. New: `BodyLink.title` holds a markdown link's title as written (`null` for none and for wikilinks), and `ScanOptions.allMarkdownLinks` reads every relative inline Markdown link whatever its target, such as a `.yaml` file or a folder. Matches the Rust crate's 0.11.0.
+
+## 0.10.0
+
+### Minor Changes
+
+- 8694223: **Breaking:** more of a body counts as code, so fewer links are found in it. `stripCode` and every scanner also treat these as code: indented code (a line indented four or more columns past its block's text, unless it continues a paragraph), math (`$$…$$` in its block, and `$…$` on one line; a `$` right after a letter or digit opens none), `<pre>`, `<script>`, `<style>` and `<textarea>` blocks, and autolinks such as `<https://example.com>`. A fence may now sit in a list item, and ends with the item. A span or `$$` stops at a line that opens a fence or raw HTML block. An HTML comment is found in the same left-to-right pass as code, so a backtick, `$` or fence inside a comment no longer opens code, and a comment later in a line stays in its block, as a span does. A Markdown link's text may hold brackets that balance (`[[WIP] Fix](fix.md)` is a link), but not `[[`, another link or a blank line, and its destination is read as written (`[a](notes/$x$.md)` is a link). `scanBodyWith` no longer reports a `[[` whose first or second `[` opens a Markdown link (an inline link of any URL, or a reference link whose label the body defines). New: `codeRanges(text, rules)` returns the ranges that are code, and `splitAlias` is exported. Matches the Rust crate's 0.10.0.
+
 ## 0.9.0
 
 ### Minor Changes

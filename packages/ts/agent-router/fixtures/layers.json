@@ -1,0 +1,283 @@
+{
+  "image": {
+    "source": "config",
+    "observed_at": "2026-10-09",
+    "models": {
+      "google/test-image": {
+        "family": "gemini-flash",
+        "release_date": "2026-10-08",
+        "traits": [
+          "vision",
+          "image-out"
+        ],
+        "status": "current"
+      },
+      "google/test-image-agent": {
+        "family": "gemini-flash",
+        "release_date": "2026-10-07",
+        "traits": [
+          "agent",
+          "image-out"
+        ],
+        "status": "current"
+      },
+      "google/test-image-embed": {
+        "family": "gemini-flash",
+        "release_date": "2026-10-06",
+        "traits": [
+          "embedding",
+          "image-out"
+        ],
+        "status": "current"
+      }
+    }
+  },
+  "mini": {
+    "source": "snapshot",
+    "observed_at": "2026-10-01",
+    "providers": {
+      "anthropic": {
+        "kind": "anthropic"
+      },
+      "openai": {
+        "kind": "openai"
+      },
+      "ollama": {
+        "kind": "ollama"
+      }
+    },
+    "tools": {
+      "alpha": {
+        "serves": [
+          "anthropic"
+        ],
+        "openness": "closed",
+        "modes": [
+          "headless"
+        ],
+        "efforts": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "aliases": {
+          "big": "anthropic/big-2"
+        },
+        "prefer_alias": true
+      },
+      "beta": {
+        "serves": [
+          "openai"
+        ],
+        "openness": "closed",
+        "modes": [
+          "headless"
+        ],
+        "efforts": [
+          "medium",
+          "high"
+        ]
+      },
+      "gamma": {
+        "serves": [
+          "anthropic",
+          "ollama"
+        ],
+        "openness": "open",
+        "modes": [
+          "headless",
+          "interactive"
+        ],
+        "effort": {
+          "via": "flag",
+          "name": "--effort"
+        },
+        "efforts": []
+      },
+      "delta": {
+        "serves": [
+          "anthropic"
+        ],
+        "openness": "curated",
+        "modes": [
+          "headless"
+        ],
+        "offers": [
+          {
+            "model": "anthropic/small-1",
+            "native_name": "tiny",
+            "efforts": [
+              "low"
+            ]
+          },
+          {
+            "model": "anthropic/big-2",
+            "native_name": "large",
+            "context": {
+              "default": 100000
+            }
+          }
+        ]
+      }
+    },
+    "models": {
+      "anthropic/big-2": {
+        "family": "claude-opus",
+        "release_date": "2026-05-01",
+        "context": {
+          "default": 200000,
+          "max": 1000000
+        },
+        "efforts": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "traits": [
+          "agent",
+          "reasoning",
+          "long-context"
+        ]
+      },
+      "anthropic/big-1": {
+        "family": "claude-opus",
+        "release_date": "2026-01-01",
+        "traits": [
+          "agent"
+        ],
+        "status": "deprecated",
+        "deprecated_on": "2026-09-01"
+      },
+      "anthropic/small-1": {
+        "family": "claude-haiku",
+        "release_date": "2026-03-01",
+        "traits": [
+          "agent"
+        ]
+      },
+      "anthropic/mid-1": {
+        "family": "claude-sonnet",
+        "release_date": "2026-04-01",
+        "traits": [
+          "agent"
+        ]
+      },
+      "anthropic/gone-1": {
+        "family": "claude-sonnet",
+        "traits": [
+          "agent"
+        ],
+        "status": "withdrawn"
+      },
+      "anthropic/embed-1": {
+        "family": "claude-haiku",
+        "release_date": "2026-06-01",
+        "traits": [
+          "embedding"
+        ]
+      },
+      "anthropic/plain-1": {
+        "family": "claude-haiku",
+        "release_date": "2026-02-01"
+      },
+      "openai/gpt-x": {
+        "family": "gpt-sol",
+        "traits": [
+          "agent"
+        ]
+      },
+      "ollama/qwen3:4b": {
+        "traits": [
+          "agent",
+          "local"
+        ]
+      },
+      "ollama/llama3:70b": {
+        "traits": [
+          "agent",
+          "local"
+        ]
+      },
+      "ollama/nomic:1b": {
+        "traits": [
+          "embedding",
+          "local"
+        ]
+      }
+    },
+    "offerings": [
+      {
+        "tool": "alpha",
+        "model": "anthropic/big-2",
+        "context": {
+          "default": 200000,
+          "max": 200000
+        }
+      }
+    ]
+  },
+  "mini-config": {
+    "source": "config",
+    "observed_at": "2026-10-20",
+    "providers": {
+      "corp": {
+        "kind": "openai-compatible",
+        "endpoint": "https://llm.corp.example/v1",
+        "key_env": "CORP_KEY"
+      }
+    },
+    "tools": {
+      "gamma": {
+        "serves": [
+          "corp",
+          {
+            "provider": "ollama",
+            "via": "--oss"
+          }
+        ],
+        "prefer_alias": false
+      },
+      "epsilon": {
+        "serves": [
+          "corp"
+        ],
+        "openness": "open",
+        "modes": [
+          "headless"
+        ],
+        "headless": {
+          "args": [
+            "-p",
+            "{prompt}"
+          ],
+          "prompt_via": "argv"
+        }
+      }
+    },
+    "models": {
+      "corp/house-1": {
+        "family": "house",
+        "traits": [
+          "agent"
+        ],
+        "observed_at": "2026-10-19"
+      }
+    },
+    "offerings": [
+      {
+        "tool": "beta",
+        "model": "anthropic/small-1",
+        "native_name": "borrowed"
+      },
+      {
+        "tool": "alpha",
+        "model": "anthropic/plain-1",
+        "remove": true
+      },
+      {
+        "tool": "zeta",
+        "model": "anthropic/mid-1"
+      }
+    ]
+  }
+}

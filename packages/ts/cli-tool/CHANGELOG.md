@@ -1,5 +1,17 @@
 # @osdlc/cli-tool
 
+## 0.20.0
+
+### Minor Changes
+
+- acf57e6: devlink: a `ToolSpec` can set `runtime: 'node'` so a checkout chosen by `<NAME>_HOME`, the cwd or `dev link` runs `node <entry>` instead of `bun run`, in `execSelection` and in the bash launcher from `renderLauncher` (which also runs its own source under node then, except that with a `builtEntry` a checkout under a `node_modules` folder, such as an `npm i -g` install, runs the built entry). A `.ts` entry runs from source through Node's type stripping, which needs Node 22.18 or later. `dev link` and `dev use` now check the entry before writing the link: it must be a file (under bun too), and for a node spec with a TypeScript entry it must not sit under `node_modules` and the `node` that will run it must be 22.18 or later. `validateSpec` refuses another runtime, and a `.tsx` or `.jsx` entry under node. A missing dependency in a node checkout says to run its package manager's install. A spec without `runtime` behaves as before and renders the same bash launcher, byte for byte.
+
+## 0.19.0
+
+### Minor Changes
+
+- 55b4303: Prompts for text and for one of a list, a way to require a person, and a way to ask on the terminal when stdin is a pipe (all experimental). `askText(question, { default })` reads a line. `askChoice(question, choices, { default })` prints a numbered list, takes a number or the text, and asks again on a bad answer at a terminal (from a pipe, a bad answer throws). `required: true` on any prompt (including `askYesNo`) throws `NotInteractiveError` instead of letting piped input or end of input answer, and `flag` names the flag that answers instead. `runMain` and a command tree's `run` print that error and exit 2 when there was no terminal (1 when input ended); under `--json` its code is `not-interactive`. `openTty()` returns stdin and stderr when both are terminals, else opens `/dev/tty`, else `null`; `requireInteractive()` throws instead of returning `null`.
+
 ## 0.18.2
 
 ### Patch Changes

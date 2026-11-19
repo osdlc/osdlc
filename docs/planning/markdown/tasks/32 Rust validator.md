@@ -2,7 +2,7 @@
 number: 32
 title: Rust validator
 detail: after 12 and 14
-status: todo
+status: deferred
 type: functional
 milestone: "[m-model](../milestones/m-model.md)"
 after:
@@ -12,3 +12,5 @@ after:
 
 A Rust validator. It runs the same conformance cases as the TypeScript validator, built on the
 markdown-corpus crate. The architecture already mentions it. After 12 and 14.
+
+Deferred: it follows tasks 12 and 14, which are deferred. It is opened again with task 12.

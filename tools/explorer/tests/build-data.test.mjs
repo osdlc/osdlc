@@ -86,7 +86,8 @@ describe('build-data', () => {
     const { plan } = buildData(planning, repo)
     const release = plan.milestones.find((m) => m.id === 'm-release')
     expect(release.beeline).toBe(true)
-    expect(release.status).toBe('doing')
+    // Its only task is dropped.
+    expect(release.status).toBe('dropped')
     expect(plan.milestones.find((m) => m.id === 'm-query').beeline).toBe(false)
   })
 

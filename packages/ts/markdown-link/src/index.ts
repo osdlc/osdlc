@@ -8,7 +8,7 @@
  * The Rust crate reports byte offsets.
  */
 
-export { type CodeRules, stripCode, stripCodeWith } from './code.ts'
+export { type CodeRules, codeRanges, stripCode, stripCodeWith } from './code.ts'
 export {
   ATTACHMENT_EXTENSIONS,
   type Size,
@@ -21,6 +21,7 @@ export {
   parseInnerSelf,
   parseSize,
   percentDecode,
+  splitAlias,
   targetRange,
 } from './parse.ts'
 export { type TypedRef, displayText, parseTypedRef } from './display.ts'

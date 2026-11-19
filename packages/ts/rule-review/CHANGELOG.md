@@ -1,5 +1,49 @@
 # @osdlc/rule-review
 
+## 0.4.6
+
+### Patch Changes
+
+- Updated dependencies [acf57e6]
+  - @osdlc/cli-tool@0.20.0
+
+## 0.4.5
+
+### Patch Changes
+
+- Updated dependencies [6236a97]
+  - @osdlc/typed-git@0.17.0
+
+## 0.4.4
+
+### Patch Changes
+
+- Updated dependencies [55b4303]
+- Updated dependencies [cde222c]
+  - @osdlc/cli-tool@0.19.0
+  - @osdlc/typed-git@0.16.0
+
+## 0.4.3
+
+### Patch Changes
+
+- Updated dependencies [6c329b7]
+  - @osdlc/agent-call@0.14.0
+
+## 0.4.2
+
+### Patch Changes
+
+- Updated dependencies [9a1d13c]
+  - @osdlc/agent-call@0.13.0
+
+## 0.4.1
+
+### Patch Changes
+
+- Updated dependencies [912296d]
+  - @osdlc/typed-git@0.15.0
+
 ## 0.4.0
 
 ### Minor Changes

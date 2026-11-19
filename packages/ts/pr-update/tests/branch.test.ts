@@ -234,8 +234,10 @@ describe('update --report', () => {
       const file = join(worker.dir, 'out', 'report.json')
       const r = await go('update', '--branch', '--apply', '--no-fetch', '--json', '--report', file)
       expect(r.code).toBe(EXIT.ok)
-      const report = updateOutput.parse(JSON.parse(readFileSync(file, 'utf8')))
-      expect(report).toEqual(JSON.parse(r.out))
+      const written = JSON.parse(readFileSync(file, 'utf8'))
+      expect(written).toEqual(JSON.parse(r.out))
+      expect(written).toMatchObject({ schemaVersion: 1, kind: 'update' })
+      const report = updateOutput.parse(written)
       expect(report.results[0]).toMatchObject({ number: 1, status: 'updated' })
       // Atomic: no temp file left beside it.
       expect(readdirSync(join(worker.dir, 'out'))).toEqual(['report.json'])

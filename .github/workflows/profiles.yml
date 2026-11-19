@@ -1,0 +1,159 @@
+# Checks the corpus-schema profiles in packages/profiles/, the corpora in
+# packages/corpora/, and the example pair in packages/corpora/examples/.
+#
+# Both jobs build the validator from packages/ts/corpus-schema with
+# tools/build-corpus-schema.sh, not take it from npm: the profiles and corpora
+# use `extends` and `references`, which corpus-schema has from 0.4.0. 0.4.0 is
+# on npm; building here uses this repo's source, with changes not yet released.
+#
+# packages: the leak check fails on private data in a package folder, and its
+# own test plants each kind of leak to check that it is caught. Every profile
+# and corpus, and the claims example, must validate with no errors and no
+# warnings. That includes the harness reference in
+# packages/corpora/harness-reference/, a private corpus with its own tools,
+# which harness-reference.yml checks further. Each package's tests check the package as npm ships it, and that
+# broken records fail with their one expected error.
+#
+# example-pair: fernlog installs the claims profile with its own lockfile; it
+# is not in the workspace. Both corpora must validate with no errors and no
+# warnings, fernlog's committed _references/ copy must match the org
+# principles, and the validator must catch a stale copy and a wrong link.
+#
+# The sdlc profile is generated from packs outside this repository, so nothing
+# here checks it against them. Regenerating it is a manual step (see
+# packages/profiles/sdlc/README.md).
+#
+# Every action is pinned to a commit SHA; the comment names its release.
+name: profiles
+
+on:
+  pull_request:
+    paths:
+      - 'packages/profiles/**'
+      - 'packages/corpora/**'
+      - 'packages/ts/corpus-schema/**'
+      - 'packages/ts/frontmatter-lossless/**'
+      - 'packages/ts/markdown-link/**'
+      - 'packages/ts/prettier-config/**'
+      - 'packages/ts/tsconfig/**'
+      - 'tools/build-corpus-schema.sh'
+      - 'tools/validate-strict.sh'
+      - 'tools/validator.sh'
+      - 'tools/leak-check.sh'
+      - 'tools/tests/leak-check.sh'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/profiles.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'packages/profiles/**'
+      - 'packages/corpora/**'
+      - 'packages/ts/corpus-schema/**'
+      - 'packages/ts/frontmatter-lossless/**'
+      - 'packages/ts/markdown-link/**'
+      - 'packages/ts/prettier-config/**'
+      - 'packages/ts/tsconfig/**'
+      - 'tools/build-corpus-schema.sh'
+      - 'tools/validate-strict.sh'
+      - 'tools/validator.sh'
+      - 'tools/leak-check.sh'
+      - 'tools/tests/leak-check.sh'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/profiles.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: profiles-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  packages:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Reads the pnpm version from `packageManager` in the root package.json.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      # The starter names the sdlc profile as a workspace dependency: the
+      # validator finds the profile, and pnpm pack resolves the range, only
+      # once the workspace is installed.
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build corpus-schema
+        run: sh tools/build-corpus-schema.sh
+
+      - name: Check that the leak check catches each leak
+        run: sh tools/tests/leak-check.sh
+
+      - name: Check for private data
+        run: sh tools/leak-check.sh
+
+      # Fails on a warning as well as on an error.
+      - name: Validate the profiles, the corpora and the claims example
+        run: >-
+          sh tools/validate-strict.sh
+          packages/profiles/*/corpus
+          packages/corpora/*/corpus
+          packages/profiles/claims/example
+
+      # The harness reference's tests are of its own tools; harness-reference.yml
+      # runs them.
+      - name: Run each package's tests
+        run: >-
+          pnpm --filter './packages/profiles/*' --filter './packages/corpora/*'
+          --filter '!harness-reference' --if-present run test
+
+  example-pair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Build corpus-schema
+        run: sh tools/build-corpus-schema.sh
+
+      - name: Install the claims profile for fernlog
+        working-directory: packages/corpora/examples/fernlog
+        run: pnpm install --ignore-workspace --frozen-lockfile
+
+      - name: Validate both corpora
+        run: sh tools/validate-strict.sh packages/corpora/examples
+
+      # validate does not ask for a copy that nothing links into, but sync
+      # still writes it. intent-to-add makes a new file show in the diff.
+      - name: The committed _references/ copy is current
+        run: |
+          node packages/ts/corpus-schema/bin/corpus-schema.js sync packages/corpora/examples
+          git add --intent-to-add -- packages/corpora/examples
+          if ! git diff --exit-code -- packages/corpora/examples; then
+            echo "::error::packages/corpora/examples/fernlog/_references/ is stale; run corpus-schema sync packages/corpora/examples and commit"
+            exit 1
+          fi
+
+      - name: Check that the validator catches a stale copy and a wrong link
+        run: sh packages/corpora/examples/test.sh

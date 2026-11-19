@@ -1,0 +1,18 @@
+---
+// A page of the consumer's own, in the site's layout, with a Vue component that reads the
+// same data files as the type index.
+import { getSite } from '@osdlc/corpus-site'
+import { Layout } from 'virtual:corpus-site/components'
+import ShelfStats from '../components/ShelfStats.vue'
+
+const site = getSite()
+---
+
+<Layout title="The shelf in numbers">
+  <header class="cs-page-head">
+    <h1>The shelf in numbers</h1>
+    <p class="cs-lead">Counted in the browser from <code>data/types/books.json</code>.</p>
+  </header>
+  <ShelfStats client:load dataUrl={site.dataUrl('types/books.json')} />
+  <p><a href={`${site.type('books').url}?status=finished&sort=-year`}>The finished books, newest first</a></p>
+</Layout>

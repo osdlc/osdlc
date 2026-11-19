@@ -1,5 +1,21 @@
 # @osdlc/markdown-render
 
+## 0.8.2
+
+### Patch Changes
+
+- Updated dependencies [c2c14f1]
+  - @osdlc/markdown-link@0.11.0
+  - @osdlc/markdown-tags@0.4.3
+
+## 0.8.1
+
+### Patch Changes
+
+- Updated dependencies [8694223]
+  - @osdlc/markdown-link@0.10.0
+  - @osdlc/markdown-tags@0.4.2
+
 ## 0.8.0
 
 ### Minor Changes

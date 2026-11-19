@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/pr-update",
-  "version": "0.10.1",
+  "version": "0.12.4",
   "description": "Survey and update out-of-date, stacked pull requests against their base: drift measured locally, conflicts predicted with merge-tree, PRs read through the @osdlc/code-host port.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
@@ -66,6 +66,7 @@
     "@osdlc/command-seam": "workspace:^",
     "@osdlc/config-layers": "workspace:^",
     "@osdlc/etag-write": "workspace:^",
+    "@osdlc/ref-lease": "workspace:^",
     "@osdlc/result": "workspace:^",
     "@osdlc/trust-repo": "workspace:^",
     "@osdlc/typed-git": "workspace:^",

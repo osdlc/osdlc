@@ -1,0 +1,2793 @@
+[
+  {
+    "name": "skip-not-installed",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": [
+        "alpha/standard",
+        "beta/standard"
+      ],
+      "availability": {
+        "alpha/standard": {
+          "reason": "not-installed"
+        }
+      }
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "beta",
+          "model": "gpt-x",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "beta/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [
+          {
+            "ref": "alpha/standard",
+            "reason": "not-installed"
+          }
+        ],
+        "trace": [
+          "alpha/standard: skipped: unavailable (not-installed)",
+          "beta/standard: taken"
+        ],
+        "summary": "chosen: beta/standard"
+      },
+      "asked": [
+        "alpha/standard",
+        "beta/standard"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "skip-not-signed-in-with-detail",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": [
+        "alpha/standard",
+        "beta/standard"
+      ],
+      "availability": {
+        "alpha/standard": {
+          "reason": "not-signed-in",
+          "detail": "ANTHROPIC_API_KEY is not set"
+        }
+      }
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "beta",
+          "model": "gpt-x",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "beta/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [
+          {
+            "ref": "alpha/standard",
+            "reason": "not-signed-in",
+            "detail": "ANTHROPIC_API_KEY is not set"
+          }
+        ],
+        "trace": [
+          "alpha/standard: skipped: unavailable (not-signed-in: ANTHROPIC_API_KEY is not set)",
+          "beta/standard: taken"
+        ],
+        "summary": "chosen: beta/standard"
+      },
+      "asked": [
+        "alpha/standard",
+        "beta/standard"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "skip-over-budget",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": [
+        "alpha/standard",
+        "beta/standard"
+      ],
+      "availability": {
+        "alpha/standard": {
+          "reason": "over-budget"
+        }
+      }
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "beta",
+          "model": "gpt-x",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "beta/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [
+          {
+            "ref": "alpha/standard",
+            "reason": "over-budget"
+          }
+        ],
+        "trace": [
+          "alpha/standard: skipped: unavailable (over-budget)",
+          "beta/standard: taken"
+        ],
+        "summary": "chosen: beta/standard"
+      },
+      "asked": [
+        "alpha/standard",
+        "beta/standard"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "skip-cooling-down-with-detail",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": [
+        "alpha/standard",
+        "beta/standard"
+      ],
+      "availability": {
+        "alpha/standard": {
+          "reason": "cooling-down",
+          "detail": "rate limited until 14:00"
+        }
+      }
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "beta",
+          "model": "gpt-x",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "beta/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [
+          {
+            "ref": "alpha/standard",
+            "reason": "cooling-down",
+            "detail": "rate limited until 14:00"
+          }
+        ],
+        "trace": [
+          "alpha/standard: skipped: unavailable (cooling-down: rate limited until 14:00)",
+          "beta/standard: taken"
+        ],
+        "summary": "chosen: beta/standard"
+      },
+      "asked": [
+        "alpha/standard",
+        "beta/standard"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "skip-provider-unreachable-with-detail",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": [
+        "alpha/standard",
+        "beta/standard"
+      ],
+      "availability": {
+        "alpha/standard": {
+          "reason": "provider-unreachable",
+          "detail": "ollama is not answering on :11434"
+        }
+      }
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "beta",
+          "model": "gpt-x",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "beta/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [
+          {
+            "ref": "alpha/standard",
+            "reason": "provider-unreachable",
+            "detail": "ollama is not answering on :11434"
+          }
+        ],
+        "trace": [
+          "alpha/standard: skipped: unavailable (provider-unreachable: ollama is not answering on :11434)",
+          "beta/standard: taken"
+        ],
+        "summary": "chosen: beta/standard"
+      },
+      "asked": [
+        "alpha/standard",
+        "beta/standard"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "skip-model-not-present-with-detail",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": [
+        "alpha/standard",
+        "beta/standard"
+      ],
+      "availability": {
+        "alpha/standard": {
+          "reason": "model-not-present",
+          "detail": "ollama does not list qwen3:4b"
+        }
+      }
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "beta",
+          "model": "gpt-x",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "beta/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [
+          {
+            "ref": "alpha/standard",
+            "reason": "model-not-present",
+            "detail": "ollama does not list qwen3:4b"
+          }
+        ],
+        "trace": [
+          "alpha/standard: skipped: unavailable (model-not-present: ollama does not list qwen3:4b)",
+          "beta/standard: taken"
+        ],
+        "summary": "chosen: beta/standard"
+      },
+      "asked": [
+        "alpha/standard",
+        "beta/standard"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "skip-not-launchable-with-detail",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": [
+        "alpha/standard",
+        "beta/standard"
+      ],
+      "availability": {
+        "alpha/standard": {
+          "reason": "not-launchable",
+          "detail": "no headless launch for gamma"
+        }
+      }
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "beta",
+          "model": "gpt-x",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "beta/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [
+          {
+            "ref": "alpha/standard",
+            "reason": "not-launchable",
+            "detail": "no headless launch for gamma"
+          }
+        ],
+        "trace": [
+          "alpha/standard: skipped: unavailable (not-launchable: no headless launch for gamma)",
+          "beta/standard: taken"
+        ],
+        "summary": "chosen: beta/standard"
+      },
+      "asked": [
+        "alpha/standard",
+        "beta/standard"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "skip-other-tool",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": [
+        "alpha/standard",
+        "beta/standard"
+      ],
+      "availability": {
+        "alpha/standard": {
+          "reason": "other-tool"
+        }
+      }
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "beta",
+          "model": "gpt-x",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "beta/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [
+          {
+            "ref": "alpha/standard",
+            "reason": "other-tool"
+          }
+        ],
+        "trace": [
+          "alpha/standard: skipped: unavailable (other-tool)",
+          "beta/standard: taken"
+        ],
+        "summary": "chosen: beta/standard"
+      },
+      "asked": [
+        "alpha/standard",
+        "beta/standard"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "skip-untrusted-fork-with-detail",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": [
+        "alpha/standard",
+        "beta/standard"
+      ],
+      "availability": {
+        "alpha/standard": {
+          "reason": "untrusted-fork",
+          "detail": "cursor may not run on a fork"
+        }
+      }
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "beta",
+          "model": "gpt-x",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "beta/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [
+          {
+            "ref": "alpha/standard",
+            "reason": "untrusted-fork",
+            "detail": "cursor may not run on a fork"
+          }
+        ],
+        "trace": [
+          "alpha/standard: skipped: unavailable (untrusted-fork: cursor may not run on a fork)",
+          "beta/standard: taken"
+        ],
+        "summary": "chosen: beta/standard"
+      },
+      "asked": [
+        "alpha/standard",
+        "beta/standard"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "skip-not-agent-from-a-wildcard",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "knownTools": [
+        "alpha"
+      ],
+      "profile": [
+        "*/fast"
+      ]
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "alpha",
+          "model": "small-1",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "alpha/fast",
+          "from": {
+            "kind": "tier",
+            "tier": "fast"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [
+          {
+            "ref": "alpha/embed-1",
+            "reason": "not-agent",
+            "detail": "anthropic/embed-1 is an embedding model"
+          },
+          {
+            "ref": "alpha/plain-1",
+            "reason": "not-agent",
+            "detail": "anthropic/plain-1 is not an agent model"
+          }
+        ],
+        "trace": [
+          "alpha/embed-1: skipped: anthropic/embed-1 is an embedding model (from */fast)",
+          "alpha/plain-1: skipped: anthropic/plain-1 is not an agent model (from */fast)",
+          "*/fast: expands to alpha/fast",
+          "alpha/fast: taken"
+        ],
+        "summary": "chosen: alpha/fast"
+      },
+      "asked": [
+        "alpha/fast"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "image-out-wildcard-takes-an-image-model",
+    "input": {
+      "layers": [
+        "snapshot",
+        "image"
+      ],
+      "knownTools": [
+        "antigravity"
+      ],
+      "profile": [
+        "*/standard[image-out]"
+      ]
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "antigravity",
+          "model": "test-image",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "antigravity/test-image",
+          "from": {
+            "kind": "name",
+            "name": "test-image"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [
+          {
+            "ref": "antigravity/test-image-embed",
+            "reason": "not-agent",
+            "detail": "google/test-image-embed is an embedding model"
+          },
+          {
+            "ref": "antigravity/standard",
+            "reason": "missing-trait",
+            "detail": "model google/gemini-3.8-flash lacks image-out"
+          },
+          {
+            "ref": "antigravity/gemini-3.7-flash",
+            "reason": "missing-trait",
+            "detail": "model google/gemini-3.7-flash lacks image-out"
+          },
+          {
+            "ref": "antigravity/gemini-flash-latest",
+            "reason": "missing-trait",
+            "detail": "model google/gemini-flash-latest lacks image-out"
+          },
+          {
+            "ref": "antigravity/gemini-3.6-flash",
+            "reason": "missing-trait",
+            "detail": "model google/gemini-3.6-flash lacks image-out"
+          },
+          {
+            "ref": "antigravity/gemini-3.5-flash",
+            "reason": "missing-trait",
+            "detail": "model google/gemini-3.5-flash lacks image-out"
+          },
+          {
+            "ref": "antigravity/gemini-3-flash-preview",
+            "reason": "missing-trait",
+            "detail": "model google/gemini-3-flash-preview lacks image-out"
+          },
+          {
+            "ref": "antigravity/gemini-2.5-flash",
+            "reason": "missing-trait",
+            "detail": "model google/gemini-2.5-flash lacks image-out"
+          }
+        ],
+        "trace": [
+          "antigravity/test-image-embed: skipped: google/test-image-embed is an embedding model (from */standard[image-out])",
+          "antigravity/standard: skipped: model google/gemini-3.8-flash lacks image-out (from */standard[image-out])",
+          "antigravity/gemini-3.7-flash: skipped: model google/gemini-3.7-flash lacks image-out (from */standard[image-out])",
+          "antigravity/gemini-flash-latest: skipped: model google/gemini-flash-latest lacks image-out (from */standard[image-out])",
+          "antigravity/gemini-3.6-flash: skipped: model google/gemini-3.6-flash lacks image-out (from */standard[image-out])",
+          "antigravity/gemini-3.5-flash: skipped: model google/gemini-3.5-flash lacks image-out (from */standard[image-out])",
+          "antigravity/gemini-3-flash-preview: skipped: model google/gemini-3-flash-preview lacks image-out (from */standard[image-out])",
+          "antigravity/gemini-2.5-flash: skipped: model google/gemini-2.5-flash lacks image-out (from */standard[image-out])",
+          "*/standard[image-out]: expands to antigravity/test-image, antigravity/test-image-agent, antigravity/gemini-3.1-flash-image, antigravity/gemini-3.1-flash-image-preview, antigravity/gemini-2.5-flash-image",
+          "antigravity/test-image: taken"
+        ],
+        "summary": "chosen: antigravity/test-image"
+      },
+      "asked": [
+        "antigravity/test-image"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "plain-wildcard-never-picks-an-image-model",
+    "input": {
+      "layers": [
+        "snapshot",
+        "image"
+      ],
+      "knownTools": [
+        "antigravity"
+      ],
+      "profile": [
+        "*/standard"
+      ]
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "antigravity",
+          "model": "gemini-3.8-flash",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "antigravity/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [],
+        "trace": [
+          "*/standard: expands to antigravity/standard, antigravity/gemini-3.7-flash, antigravity/gemini-flash-latest, antigravity/gemini-3.6-flash, antigravity/gemini-3.5-flash, antigravity/gemini-3-flash-preview, antigravity/gemini-2.5-flash",
+          "antigravity/standard: taken"
+        ],
+        "summary": "chosen: antigravity/standard"
+      },
+      "asked": [
+        "antigravity/standard"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "skip-pinned-image-model-not-agent",
+    "input": {
+      "layers": [
+        "snapshot",
+        "image"
+      ],
+      "policy": {
+        "pins": {
+          "antigravity/standard": "test-image"
+        }
+      },
+      "knownTools": [
+        "antigravity"
+      ],
+      "profile": [
+        "*/standard"
+      ]
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "antigravity",
+          "model": "gemini-3.8-flash",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "antigravity/gemini-3.8-flash",
+          "from": {
+            "kind": "name",
+            "name": "gemini-3.8-flash"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [
+          {
+            "ref": "antigravity/standard",
+            "reason": "not-agent",
+            "detail": "google/test-image is an image-output model"
+          }
+        ],
+        "trace": [
+          "antigravity/standard: skipped: google/test-image is an image-output model (from */standard)",
+          "*/standard: expands to antigravity/gemini-3.8-flash, antigravity/gemini-3.7-flash, antigravity/gemini-flash-latest, antigravity/gemini-3.6-flash, antigravity/gemini-3.5-flash, antigravity/gemini-3-flash-preview, antigravity/gemini-2.5-flash",
+          "antigravity/gemini-3.8-flash: taken"
+        ],
+        "summary": "chosen: antigravity/gemini-3.8-flash"
+      },
+      "asked": [
+        "antigravity/gemini-3.8-flash"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "skip-missing-trait-on-a-tier-entry",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": [
+        "alpha/standard[reasoning]",
+        "beta/standard"
+      ]
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "beta",
+          "model": "gpt-x",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "beta/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [
+          {
+            "ref": "alpha/standard[reasoning]",
+            "reason": "missing-trait",
+            "detail": "model anthropic/mid-1 lacks reasoning"
+          }
+        ],
+        "trace": [
+          "alpha/standard[reasoning]: skipped: model anthropic/mid-1 lacks reasoning",
+          "beta/standard: taken"
+        ],
+        "summary": "chosen: beta/standard"
+      },
+      "asked": [
+        "beta/standard"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "skip-missing-trait-from-a-wildcard",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": [
+        "*/max[local]"
+      ],
+      "knownTools": [
+        "alpha",
+        "gamma"
+      ]
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "gamma",
+          "model": "ollama/llama3:70b",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "gamma/ollama/llama3:70b",
+          "from": {
+            "kind": "name",
+            "name": "ollama/llama3:70b"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [
+          {
+            "ref": "alpha/max",
+            "reason": "missing-trait",
+            "detail": "model anthropic/big-2 lacks local"
+          },
+          {
+            "ref": "gamma/max",
+            "reason": "missing-trait",
+            "detail": "model anthropic/big-2 lacks local"
+          }
+        ],
+        "trace": [
+          "alpha/max: skipped: model anthropic/big-2 lacks local (from */max[local])",
+          "gamma/max: skipped: model anthropic/big-2 lacks local (from */max[local])",
+          "*/max[local]: expands to gamma/ollama/llama3:70b",
+          "gamma/ollama/llama3:70b: taken"
+        ],
+        "summary": "chosen: gamma/ollama/llama3:70b"
+      },
+      "asked": [
+        "gamma/ollama/llama3:70b"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "skip-unresolved-wildcard-candidate",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "knownTools": [
+        "alpha",
+        "gamma"
+      ],
+      "profile": [
+        "*/max@high"
+      ]
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "alpha",
+          "model": "big",
+          "effort": "high",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "alpha/max@high",
+          "from": {
+            "kind": "tier",
+            "tier": "max"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [
+          {
+            "ref": "gamma/max@high",
+            "reason": "unresolved",
+            "detail": "effort 'high' is not supported for model 'anthropic/big-2' on 'gamma'; it takes no effort"
+          },
+          {
+            "ref": "gamma/ollama/llama3:70b@high",
+            "reason": "unresolved",
+            "detail": "effort 'high' is not supported for model 'ollama/llama3:70b' on 'gamma'; it takes no effort"
+          }
+        ],
+        "trace": [
+          "gamma/max@high: skipped: effort 'high' is not supported for model 'anthropic/big-2' on 'gamma'; it takes no effort (from */max@high)",
+          "gamma/ollama/llama3:70b@high: skipped: effort 'high' is not supported for model 'ollama/llama3:70b' on 'gamma'; it takes no effort (from */max@high)",
+          "*/max@high: expands to alpha/max@high",
+          "alpha/max@high: taken"
+        ],
+        "summary": "chosen: alpha/max@high"
+      },
+      "asked": [
+        "alpha/max@high"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "skip-withdrawn-model",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": [
+        "alpha/gone-1",
+        "beta/standard"
+      ]
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "beta",
+          "model": "gpt-x",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "beta/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [
+          {
+            "ref": "alpha/gone-1",
+            "reason": "withdrawn-model",
+            "detail": "model 'gone-1' (anthropic/gone-1) is withdrawn"
+          }
+        ],
+        "trace": [
+          "alpha/gone-1: skipped: model 'gone-1' (anthropic/gone-1) is withdrawn",
+          "beta/standard: taken"
+        ],
+        "summary": "chosen: beta/standard"
+      },
+      "asked": [
+        "beta/standard"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "skip-below-context-entry",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": [
+        "alpha/big[ctx=500k]",
+        "delta/large"
+      ]
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "delta",
+          "model": "large",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "delta/large",
+          "from": {
+            "kind": "name",
+            "name": "large"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [
+          {
+            "ref": "alpha/big[ctx=500k]",
+            "reason": "below-context",
+            "detail": "anthropic/big-2 offers 200k on alpha, below ctx=500k"
+          }
+        ],
+        "trace": [
+          "alpha/big[ctx=500k]: skipped: below context: anthropic/big-2 offers 200k on alpha, below ctx=500k",
+          "delta/large: taken"
+        ],
+        "summary": "chosen: delta/large"
+      },
+      "asked": [
+        "delta/large"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "skip-below-context-from-the-profile",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": {
+        "order": [
+          "alpha/big",
+          "gamma/anthropic/big-2"
+        ],
+        "context": "500k"
+      }
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "gamma",
+          "model": "anthropic/big-2",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "gamma/anthropic/big-2",
+          "from": {
+            "kind": "name",
+            "name": "anthropic/big-2"
+          },
+          "check": {
+            "kind": "ok"
+          },
+          "context": 500000
+        },
+        "warnings": [],
+        "skipped": [
+          {
+            "ref": "alpha/big",
+            "reason": "below-context",
+            "detail": "anthropic/big-2 offers 200k on alpha, below the profile's context: 500k"
+          }
+        ],
+        "trace": [
+          "alpha/big: skipped: below context: anthropic/big-2 offers 200k on alpha, below the profile's context: 500k",
+          "gamma/anthropic/big-2: taken"
+        ],
+        "summary": "chosen: gamma/anthropic/big-2"
+      },
+      "asked": [
+        "gamma/anthropic/big-2"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "skip-below-context-wildcard-candidate",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "knownTools": [
+        "alpha",
+        "beta",
+        "delta"
+      ],
+      "profile": [
+        "*/max[ctx=500k]",
+        "beta/standard"
+      ]
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "beta",
+          "model": "gpt-x",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "beta/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [
+          {
+            "ref": "alpha/max[ctx=500k]",
+            "reason": "below-context",
+            "detail": "anthropic/big-2 offers 200k on alpha, below ctx=500k"
+          },
+          {
+            "ref": "delta/max[ctx=500k]",
+            "reason": "below-context",
+            "detail": "anthropic/big-2 offers 100k on delta, below ctx=500k"
+          }
+        ],
+        "trace": [
+          "*/max[ctx=500k]: expands to alpha/max[ctx=500k], delta/max[ctx=500k]",
+          "alpha/max[ctx=500k]: skipped: below context: anthropic/big-2 offers 200k on alpha, below ctx=500k",
+          "delta/max[ctx=500k]: skipped: below context: anthropic/big-2 offers 100k on delta, below ctx=500k",
+          "beta/standard: taken"
+        ],
+        "summary": "chosen: beta/standard"
+      },
+      "asked": [
+        "beta/standard"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "skip-no-candidate-wildcard",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "knownTools": [
+        "delta"
+      ],
+      "profile": [
+        "*/standard",
+        "delta/tiny"
+      ]
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "delta",
+          "model": "tiny",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "delta/tiny",
+          "from": {
+            "kind": "name",
+            "name": "tiny"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [
+          {
+            "ref": "*/standard",
+            "reason": "no-candidate"
+          }
+        ],
+        "trace": [
+          "*/standard: skipped: wildcard expands to no candidate",
+          "delta/tiny: taken"
+        ],
+        "summary": "chosen: delta/tiny"
+      },
+      "asked": [
+        "delta/tiny"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "first-entry-is-taken",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": [
+        "alpha/standard",
+        "beta/standard"
+      ]
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "alpha",
+          "model": "mid-1",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "alpha/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [],
+        "trace": [
+          "alpha/standard: taken"
+        ],
+        "summary": "chosen: alpha/standard"
+      },
+      "asked": [
+        "alpha/standard"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "none-when-every-entry-is-unavailable",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": [
+        "alpha/standard",
+        "beta/standard"
+      ],
+      "availability": {
+        "alpha/standard": {
+          "reason": "not-installed"
+        },
+        "beta/standard": {
+          "reason": "over-budget",
+          "detail": "weekly cap"
+        }
+      }
+    },
+    "expected": {
+      "choice": {
+        "kind": "none",
+        "skipped": [
+          {
+            "ref": "alpha/standard",
+            "reason": "not-installed"
+          },
+          {
+            "ref": "beta/standard",
+            "reason": "over-budget",
+            "detail": "weekly cap"
+          }
+        ],
+        "trace": [
+          "alpha/standard: skipped: unavailable (not-installed)",
+          "beta/standard: skipped: unavailable (over-budget: weekly cap)"
+        ],
+        "summary": "none: no entry is usable"
+      },
+      "asked": [
+        "alpha/standard",
+        "beta/standard"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "none-when-every-entry-is-skipped-by-the-catalogue",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": [
+        "alpha/gone-1",
+        "alpha/standard[reasoning]"
+      ]
+    },
+    "expected": {
+      "choice": {
+        "kind": "none",
+        "skipped": [
+          {
+            "ref": "alpha/gone-1",
+            "reason": "withdrawn-model",
+            "detail": "model 'gone-1' (anthropic/gone-1) is withdrawn"
+          },
+          {
+            "ref": "alpha/standard[reasoning]",
+            "reason": "missing-trait",
+            "detail": "model anthropic/mid-1 lacks reasoning"
+          }
+        ],
+        "trace": [
+          "alpha/gone-1: skipped: model 'gone-1' (anthropic/gone-1) is withdrawn",
+          "alpha/standard[reasoning]: skipped: model anthropic/mid-1 lacks reasoning"
+        ],
+        "summary": "none: no entry is usable"
+      },
+      "asked": [],
+      "errors": []
+    }
+  },
+  {
+    "name": "a-duplicate-cooling-entry-keeps-the-other-skip",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": [
+        "alpha/standard",
+        "alpha/standard"
+      ],
+      "availability": {
+        "alpha/standard": {
+          "reason": "cooling-down"
+        }
+      }
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "alpha",
+          "model": "mid-1",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "alpha/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "allCooling": true,
+        "warnings": [],
+        "skipped": [
+          {
+            "ref": "alpha/standard",
+            "reason": "cooling-down"
+          }
+        ],
+        "trace": [
+          "alpha/standard: skipped: unavailable (cooling-down)",
+          "alpha/standard: skipped: unavailable (cooling-down)",
+          "alpha/standard: taken: no entry is available and 2 cooling down"
+        ],
+        "summary": "chosen: alpha/standard (all usable entries are cooling down; first one tried anyway)"
+      },
+      "asked": [
+        "alpha/standard",
+        "alpha/standard"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "cooling-entry-yields-to-an-available-one",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": [
+        "alpha/standard",
+        "beta/standard"
+      ],
+      "availability": {
+        "alpha/standard": {
+          "reason": "cooling-down"
+        }
+      }
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "beta",
+          "model": "gpt-x",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "beta/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [
+          {
+            "ref": "alpha/standard",
+            "reason": "cooling-down"
+          }
+        ],
+        "trace": [
+          "alpha/standard: skipped: unavailable (cooling-down)",
+          "beta/standard: taken"
+        ],
+        "summary": "chosen: beta/standard"
+      },
+      "asked": [
+        "alpha/standard",
+        "beta/standard"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "all-cooling-takes-the-first-cooling-entry",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": [
+        "alpha/standard",
+        "beta/standard",
+        "gamma/standard"
+      ],
+      "availability": {
+        "alpha/standard": {
+          "reason": "cooling-down",
+          "detail": "reset at 14:00"
+        },
+        "beta/standard": {
+          "reason": "cooling-down"
+        },
+        "gamma/standard": {
+          "reason": "not-installed"
+        }
+      }
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "alpha",
+          "model": "mid-1",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "alpha/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "allCooling": true,
+        "warnings": [],
+        "skipped": [
+          {
+            "ref": "beta/standard",
+            "reason": "cooling-down"
+          },
+          {
+            "ref": "gamma/standard",
+            "reason": "not-installed"
+          }
+        ],
+        "trace": [
+          "alpha/standard: skipped: unavailable (cooling-down: reset at 14:00)",
+          "beta/standard: skipped: unavailable (cooling-down)",
+          "gamma/standard: skipped: unavailable (not-installed)",
+          "alpha/standard: taken: no entry is available and 2 cooling down"
+        ],
+        "summary": "chosen: alpha/standard (all usable entries are cooling down; first one tried anyway)"
+      },
+      "asked": [
+        "alpha/standard",
+        "beta/standard",
+        "gamma/standard"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "one-cooling-entry-among-unavailable-is-taken",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": [
+        "alpha/standard",
+        "beta/standard"
+      ],
+      "availability": {
+        "alpha/standard": {
+          "reason": "not-installed"
+        },
+        "beta/standard": {
+          "reason": "cooling-down"
+        }
+      }
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "beta",
+          "model": "gpt-x",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "beta/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "allCooling": true,
+        "warnings": [],
+        "skipped": [
+          {
+            "ref": "alpha/standard",
+            "reason": "not-installed"
+          }
+        ],
+        "trace": [
+          "alpha/standard: skipped: unavailable (not-installed)",
+          "beta/standard: skipped: unavailable (cooling-down)",
+          "beta/standard: taken: no entry is available and 1 cooling down"
+        ],
+        "summary": "chosen: beta/standard (all usable entries are cooling down; first one tried anyway)"
+      },
+      "asked": [
+        "alpha/standard",
+        "beta/standard"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "invalid-unknown-tool",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": [
+        "nope/fast",
+        "alpha/standard"
+      ]
+    },
+    "expected": {
+      "choice": {
+        "kind": "invalid",
+        "errors": [
+          {
+            "entry": "nope/fast",
+            "message": "unknown tool 'nope'; known: alpha, beta, gamma, delta",
+            "error": {
+              "kind": "unknown-tool",
+              "tool": "nope",
+              "model": "fast",
+              "message": "unknown tool 'nope'; known: alpha, beta, gamma, delta"
+            }
+          }
+        ],
+        "skipped": [],
+        "trace": [
+          "nope/fast: invalid (unknown tool 'nope'; known: alpha, beta, gamma, delta)"
+        ],
+        "summary": "invalid: nope/fast: unknown tool 'nope'; known: alpha, beta, gamma, delta"
+      },
+      "asked": [],
+      "errors": [
+        {
+          "entry": "nope/fast",
+          "message": "unknown tool 'nope'; known: alpha, beta, gamma, delta",
+          "error": {
+            "kind": "unknown-tool",
+            "tool": "nope",
+            "model": "fast",
+            "message": "unknown tool 'nope'; known: alpha, beta, gamma, delta"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "invalid-collects-every-error",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": [
+        "nope/fast",
+        "beta/fast",
+        "alpha/big@none",
+        "alpha/standard"
+      ]
+    },
+    "expected": {
+      "choice": {
+        "kind": "invalid",
+        "errors": [
+          {
+            "entry": "nope/fast",
+            "message": "unknown tool 'nope'; known: alpha, beta, gamma, delta",
+            "error": {
+              "kind": "unknown-tool",
+              "tool": "nope",
+              "model": "fast",
+              "message": "unknown tool 'nope'; known: alpha, beta, gamma, delta"
+            }
+          },
+          {
+            "entry": "beta/fast",
+            "message": "tool 'beta' has no model for tier 'fast'",
+            "error": {
+              "kind": "no-tier-entry",
+              "tool": "beta",
+              "model": "fast",
+              "message": "tool 'beta' has no model for tier 'fast'"
+            }
+          },
+          {
+            "entry": "alpha/big@none",
+            "message": "effort 'none' is not supported for model 'big' on 'alpha'; supported: low, medium, high",
+            "error": {
+              "kind": "unsupported-effort",
+              "tool": "alpha",
+              "model": "big",
+              "message": "effort 'none' is not supported for model 'big' on 'alpha'; supported: low, medium, high",
+              "effort": "none",
+              "supported": [
+                "low",
+                "medium",
+                "high"
+              ]
+            }
+          }
+        ],
+        "skipped": [],
+        "trace": [
+          "nope/fast: invalid (unknown tool 'nope'; known: alpha, beta, gamma, delta)",
+          "beta/fast: invalid (tool 'beta' has no model for tier 'fast')",
+          "alpha/big@none: invalid (effort 'none' is not supported for model 'big' on 'alpha'; supported: low, medium, high)"
+        ],
+        "summary": "invalid: nope/fast: unknown tool 'nope'; known: alpha, beta, gamma, delta; beta/fast: tool 'beta' has no model for tier 'fast'; alpha/big@none: effort 'none' is not supported for model 'big' on 'alpha'; supported: low, medium, high"
+      },
+      "asked": [],
+      "errors": [
+        {
+          "entry": "nope/fast",
+          "message": "unknown tool 'nope'; known: alpha, beta, gamma, delta",
+          "error": {
+            "kind": "unknown-tool",
+            "tool": "nope",
+            "model": "fast",
+            "message": "unknown tool 'nope'; known: alpha, beta, gamma, delta"
+          }
+        },
+        {
+          "entry": "beta/fast",
+          "message": "tool 'beta' has no model for tier 'fast'",
+          "error": {
+            "kind": "no-tier-entry",
+            "tool": "beta",
+            "model": "fast",
+            "message": "tool 'beta' has no model for tier 'fast'"
+          }
+        },
+        {
+          "entry": "alpha/big@none",
+          "message": "effort 'none' is not supported for model 'big' on 'alpha'; supported: low, medium, high",
+          "error": {
+            "kind": "unsupported-effort",
+            "tool": "alpha",
+            "model": "big",
+            "message": "effort 'none' is not supported for model 'big' on 'alpha'; supported: low, medium, high",
+            "effort": "none",
+            "supported": [
+              "low",
+              "medium",
+              "high"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "invalid-ctx-beyond-the-model-anywhere",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": [
+        "alpha/big[ctx=2m]",
+        "alpha/standard"
+      ]
+    },
+    "expected": {
+      "choice": {
+        "kind": "invalid",
+        "errors": [
+          {
+            "entry": "alpha/big[ctx=2m]",
+            "message": "ctx=2m is more than anthropic/big-2 offers anywhere (1m)"
+          }
+        ],
+        "skipped": [],
+        "trace": [
+          "alpha/big[ctx=2m]: invalid (ctx=2m is more than anthropic/big-2 offers anywhere (1m))"
+        ],
+        "summary": "invalid: alpha/big[ctx=2m]: ctx=2m is more than anthropic/big-2 offers anywhere (1m)"
+      },
+      "asked": [],
+      "errors": [
+        {
+          "entry": "alpha/big[ctx=2m]",
+          "message": "ctx=2m is more than anthropic/big-2 offers anywhere (1m)"
+        }
+      ]
+    }
+  },
+  {
+    "name": "invalid-strict-unknown-model",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "strict": true,
+      "profile": [
+        "alpha/not-a-model",
+        "alpha/standard"
+      ]
+    },
+    "expected": {
+      "choice": {
+        "kind": "invalid",
+        "errors": [
+          {
+            "entry": "alpha/not-a-model",
+            "message": "model 'not-a-model' is not in the model catalogue for 'alpha', and router.strict refuses unknown models",
+            "error": {
+              "kind": "unknown-model",
+              "tool": "alpha",
+              "model": "not-a-model",
+              "message": "model 'not-a-model' is not in the model catalogue for 'alpha', and router.strict refuses unknown models"
+            }
+          }
+        ],
+        "skipped": [],
+        "trace": [
+          "alpha/not-a-model: invalid (model 'not-a-model' is not in the model catalogue for 'alpha', and router.strict refuses unknown models)"
+        ],
+        "summary": "invalid: alpha/not-a-model: model 'not-a-model' is not in the model catalogue for 'alpha', and router.strict refuses unknown models"
+      },
+      "asked": [],
+      "errors": [
+        {
+          "entry": "alpha/not-a-model",
+          "message": "model 'not-a-model' is not in the model catalogue for 'alpha', and router.strict refuses unknown models",
+          "error": {
+            "kind": "unknown-model",
+            "tool": "alpha",
+            "model": "not-a-model",
+            "message": "model 'not-a-model' is not in the model catalogue for 'alpha', and router.strict refuses unknown models"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "invalid-tool-outside-known-tools",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "knownTools": [
+        "alpha"
+      ],
+      "profile": [
+        "beta/standard"
+      ]
+    },
+    "expected": {
+      "choice": {
+        "kind": "invalid",
+        "errors": [
+          {
+            "entry": "beta/standard",
+            "message": "unknown tool 'beta'; known: alpha",
+            "error": {
+              "kind": "unknown-tool",
+              "tool": "beta",
+              "model": "standard",
+              "message": "unknown tool 'beta'; known: alpha"
+            }
+          }
+        ],
+        "skipped": [],
+        "trace": [
+          "beta/standard: invalid (unknown tool 'beta'; known: alpha)"
+        ],
+        "summary": "invalid: beta/standard: unknown tool 'beta'; known: alpha"
+      },
+      "asked": [],
+      "errors": [
+        {
+          "entry": "beta/standard",
+          "message": "unknown tool 'beta'; known: alpha",
+          "error": {
+            "kind": "unknown-tool",
+            "tool": "beta",
+            "model": "standard",
+            "message": "unknown tool 'beta'; known: alpha"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "warning-deprecated-model",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": [
+        "alpha/big-1"
+      ]
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "alpha",
+          "model": "big-1",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "alpha/big-1",
+          "from": {
+            "kind": "name",
+            "name": "big-1"
+          },
+          "check": {
+            "kind": "warning",
+            "code": "deprecated-model",
+            "message": "model 'big-1' (anthropic/big-1) is deprecated since 2026-09-01"
+          }
+        },
+        "warnings": [
+          "model 'big-1' (anthropic/big-1) is deprecated since 2026-09-01"
+        ],
+        "skipped": [],
+        "trace": [
+          "alpha/big-1: warning: model 'big-1' (anthropic/big-1) is deprecated since 2026-09-01",
+          "alpha/big-1: taken"
+        ],
+        "summary": "chosen: alpha/big-1"
+      },
+      "asked": [
+        "alpha/big-1"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "warning-unknown-model",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": [
+        "alpha/mystery-9"
+      ]
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "alpha",
+          "model": "mystery-9",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "alpha/mystery-9",
+          "from": {
+            "kind": "name",
+            "name": "mystery-9"
+          },
+          "check": {
+            "kind": "warning",
+            "code": "unknown-model",
+            "message": "model 'mystery-9' is not in the model catalogue for 'alpha'; it is passed as written"
+          }
+        },
+        "warnings": [
+          "model 'mystery-9' is not in the model catalogue for 'alpha'; it is passed as written"
+        ],
+        "skipped": [],
+        "trace": [
+          "alpha/mystery-9: warning: model 'mystery-9' is not in the model catalogue for 'alpha'; it is passed as written",
+          "alpha/mystery-9: taken"
+        ],
+        "summary": "chosen: alpha/mystery-9"
+      },
+      "asked": [
+        "alpha/mystery-9"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "warning-effort-moved-up",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": [
+        "alpha/standard@minimal"
+      ]
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "alpha",
+          "model": "mid-1",
+          "effort": "low",
+          "effortAdjusted": {
+            "requested": "minimal",
+            "direction": "up",
+            "used": "low"
+          },
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "alpha/standard@minimal",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [
+          "effort 'minimal' is not supported; using 'low', one step up"
+        ],
+        "skipped": [],
+        "trace": [
+          "alpha/standard@minimal: effort 'minimal' is not supported; using 'low', one step up",
+          "alpha/standard@minimal: taken"
+        ],
+        "summary": "chosen: alpha/standard@minimal"
+      },
+      "asked": [
+        "alpha/standard@minimal"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "warning-effort-moved-down",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": [
+        "beta/standard@xhigh"
+      ]
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "beta",
+          "model": "gpt-x",
+          "effort": "high",
+          "effortAdjusted": {
+            "requested": "xhigh",
+            "direction": "down",
+            "used": "high"
+          },
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "beta/standard@xhigh",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [
+          "effort 'xhigh' is not supported; using 'high', one step down"
+        ],
+        "skipped": [],
+        "trace": [
+          "beta/standard@xhigh: effort 'xhigh' is not supported; using 'high', one step down",
+          "beta/standard@xhigh: taken"
+        ],
+        "summary": "chosen: beta/standard@xhigh"
+      },
+      "asked": [
+        "beta/standard@xhigh"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "warning-context-not-checked",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": [
+        "alpha/standard[ctx=100k]"
+      ]
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "alpha",
+          "model": "mid-1",
+          "effortUnchecked": false,
+          "contextUnchecked": true,
+          "text": "alpha/standard[ctx=100k]",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          },
+          "context": 100000
+        },
+        "warnings": [
+          "context 100k is not checked: the catalogue knows no context size for the model"
+        ],
+        "skipped": [],
+        "trace": [
+          "alpha/standard[ctx=100k]: warning: context 100k is not checked: the catalogue knows no context size for the model",
+          "alpha/standard[ctx=100k]: taken"
+        ],
+        "summary": "chosen: alpha/standard[ctx=100k]"
+      },
+      "asked": [
+        "alpha/standard[ctx=100k]"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "warning-context-not-checked-from-the-profile",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": {
+        "order": [
+          "alpha/standard"
+        ],
+        "context": "200k"
+      }
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "alpha",
+          "model": "mid-1",
+          "effortUnchecked": false,
+          "contextUnchecked": true,
+          "text": "alpha/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          },
+          "context": 200000
+        },
+        "warnings": [
+          "context 200k is not checked: the catalogue knows no context size for the model"
+        ],
+        "skipped": [],
+        "trace": [
+          "alpha/standard: warning: context 200k is not checked: the catalogue knows no context size for the model",
+          "alpha/standard: taken"
+        ],
+        "summary": "chosen: alpha/standard"
+      },
+      "asked": [
+        "alpha/standard"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "context-max-becomes-the-offered-size",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": [
+        "alpha/big[ctx=max]"
+      ]
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "alpha",
+          "model": "big",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "alpha/big[ctx=max]",
+          "from": {
+            "kind": "name",
+            "name": "big"
+          },
+          "check": {
+            "kind": "ok"
+          },
+          "context": 200000
+        },
+        "warnings": [],
+        "skipped": [],
+        "trace": [
+          "alpha/big[ctx=max]: taken"
+        ],
+        "summary": "chosen: alpha/big[ctx=max]"
+      },
+      "asked": [
+        "alpha/big[ctx=max]"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "context-met-by-the-profile",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": {
+        "order": [
+          "alpha/big"
+        ],
+        "context": "100k"
+      }
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "alpha",
+          "model": "big",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "alpha/big",
+          "from": {
+            "kind": "name",
+            "name": "big"
+          },
+          "check": {
+            "kind": "ok"
+          },
+          "context": 100000
+        },
+        "warnings": [],
+        "skipped": [],
+        "trace": [
+          "alpha/big: taken"
+        ],
+        "summary": "chosen: alpha/big"
+      },
+      "asked": [
+        "alpha/big"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "pinned-tier-is-traced",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "policy": {
+        "pins": {
+          "alpha/standard": "mid-1"
+        }
+      },
+      "profile": [
+        "alpha/standard"
+      ]
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "alpha",
+          "model": "mid-1",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "alpha/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard",
+            "pinned": true
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [],
+        "trace": [
+          "alpha/standard: pinned: alpha/standard is mid-1",
+          "alpha/standard: taken"
+        ],
+        "summary": "chosen: alpha/standard"
+      },
+      "asked": [
+        "alpha/standard"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "tool-default-model",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": [
+        "alpha",
+        "beta"
+      ]
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "alpha",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "alpha",
+          "from": {
+            "kind": "default"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [],
+        "trace": [
+          "alpha: taken"
+        ],
+        "summary": "chosen: alpha"
+      },
+      "asked": [
+        "alpha"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "tool-default-model-with-effort-unchecked",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profile": [
+        "delta@high"
+      ]
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "delta",
+          "effort": "high",
+          "effortUnchecked": true,
+          "contextUnchecked": false,
+          "text": "delta@high",
+          "from": {
+            "kind": "default"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [
+          "effort 'high' is not checked: the catalogue declares no effort levels for 'delta'"
+        ],
+        "skipped": [],
+        "trace": [
+          "delta@high: warning: effort 'high' is not checked: the catalogue declares no effort levels for 'delta'",
+          "delta@high: taken"
+        ],
+        "summary": "chosen: delta@high"
+      },
+      "asked": [
+        "delta@high"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "wildcard-candidate-with-effort-unchecked-warns",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "knownTools": [
+        "opencode"
+      ],
+      "profile": [
+        "*/fast@high"
+      ],
+      "availability": {
+        "opencode/fast@high": {
+          "reason": "not-installed"
+        },
+        "opencode/openai/gpt-6-luna@high": {
+          "reason": "not-installed"
+        },
+        "opencode/google/gemini-3.5-flash-lite@high": {
+          "reason": "not-installed"
+        },
+        "opencode/google/gemini-flash-lite-latest@high": {
+          "reason": "not-installed"
+        },
+        "opencode/openai/gpt-5.6-luna@high": {
+          "reason": "not-installed"
+        },
+        "opencode/google/gemini-3.1-flash-lite@high": {
+          "reason": "not-installed"
+        }
+      }
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "opencode",
+          "model": "anthropic/claude-haiku-4-5",
+          "effort": "high",
+          "effortUnchecked": true,
+          "contextUnchecked": false,
+          "text": "opencode/anthropic/claude-haiku-4-5@high",
+          "from": {
+            "kind": "name",
+            "name": "anthropic/claude-haiku-4-5"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [
+          "effort 'high' is not checked: the catalogue declares no effort levels for 'anthropic/claude-haiku-4-5' on 'opencode'"
+        ],
+        "skipped": [
+          {
+            "ref": "opencode/fast@high",
+            "reason": "not-installed"
+          },
+          {
+            "ref": "opencode/openai/gpt-6-luna@high",
+            "reason": "not-installed"
+          },
+          {
+            "ref": "opencode/google/gemini-3.5-flash-lite@high",
+            "reason": "not-installed"
+          },
+          {
+            "ref": "opencode/google/gemini-flash-lite-latest@high",
+            "reason": "not-installed"
+          },
+          {
+            "ref": "opencode/openai/gpt-5.6-luna@high",
+            "reason": "not-installed"
+          },
+          {
+            "ref": "opencode/google/gemini-3.1-flash-lite@high",
+            "reason": "not-installed"
+          }
+        ],
+        "trace": [
+          "*/fast@high: expands to opencode/fast@high, opencode/openai/gpt-6-luna@high, opencode/google/gemini-3.5-flash-lite@high, opencode/google/gemini-flash-lite-latest@high, opencode/openai/gpt-5.6-luna@high, opencode/google/gemini-3.1-flash-lite@high, opencode/anthropic/claude-haiku-4-5@high, opencode/google/gemini-2.5-flash-lite@high",
+          "opencode/anthropic/claude-haiku-4-5@high: warning: effort 'high' is not checked: the catalogue declares no effort levels for 'anthropic/claude-haiku-4-5' on 'opencode'",
+          "opencode/google/gemini-2.5-flash-lite@high: warning: effort 'high' is not checked: the catalogue declares no effort levels for 'google/gemini-2.5-flash-lite' on 'opencode'",
+          "opencode/fast@high: skipped: unavailable (not-installed)",
+          "opencode/openai/gpt-6-luna@high: skipped: unavailable (not-installed)",
+          "opencode/google/gemini-3.5-flash-lite@high: skipped: unavailable (not-installed)",
+          "opencode/google/gemini-flash-lite-latest@high: skipped: unavailable (not-installed)",
+          "opencode/openai/gpt-5.6-luna@high: skipped: unavailable (not-installed)",
+          "opencode/google/gemini-3.1-flash-lite@high: skipped: unavailable (not-installed)",
+          "opencode/anthropic/claude-haiku-4-5@high: taken"
+        ],
+        "summary": "chosen: opencode/anthropic/claude-haiku-4-5@high"
+      },
+      "asked": [
+        "opencode/fast@high",
+        "opencode/openai/gpt-6-luna@high",
+        "opencode/google/gemini-3.5-flash-lite@high",
+        "opencode/google/gemini-flash-lite-latest@high",
+        "opencode/openai/gpt-5.6-luna@high",
+        "opencode/google/gemini-3.1-flash-lite@high",
+        "opencode/anthropic/claude-haiku-4-5@high"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "wildcard-expands-then-first-available-is-taken",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "knownTools": [
+        "alpha",
+        "gamma"
+      ],
+      "profile": [
+        "*/fast"
+      ],
+      "availability": {
+        "alpha/fast": {
+          "reason": "not-installed"
+        }
+      }
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "gamma",
+          "model": "anthropic/small-1",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "gamma/fast",
+          "from": {
+            "kind": "tier",
+            "tier": "fast"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [
+          {
+            "ref": "alpha/embed-1",
+            "reason": "not-agent",
+            "detail": "anthropic/embed-1 is an embedding model"
+          },
+          {
+            "ref": "alpha/plain-1",
+            "reason": "not-agent",
+            "detail": "anthropic/plain-1 is not an agent model"
+          },
+          {
+            "ref": "gamma/anthropic/embed-1",
+            "reason": "not-agent",
+            "detail": "anthropic/embed-1 is an embedding model"
+          },
+          {
+            "ref": "gamma/anthropic/plain-1",
+            "reason": "not-agent",
+            "detail": "anthropic/plain-1 is not an agent model"
+          },
+          {
+            "ref": "alpha/fast",
+            "reason": "not-installed"
+          }
+        ],
+        "trace": [
+          "alpha/embed-1: skipped: anthropic/embed-1 is an embedding model (from */fast)",
+          "alpha/plain-1: skipped: anthropic/plain-1 is not an agent model (from */fast)",
+          "gamma/anthropic/embed-1: skipped: anthropic/embed-1 is an embedding model (from */fast)",
+          "gamma/anthropic/plain-1: skipped: anthropic/plain-1 is not an agent model (from */fast)",
+          "*/fast: expands to alpha/fast, gamma/fast, gamma/ollama/qwen3:4b",
+          "alpha/fast: skipped: unavailable (not-installed)",
+          "gamma/fast: taken"
+        ],
+        "summary": "chosen: gamma/fast"
+      },
+      "asked": [
+        "alpha/fast",
+        "gamma/fast"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "wildcard-all-unavailable-is-none",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "knownTools": [
+        "delta"
+      ],
+      "profile": [
+        "*/fast"
+      ],
+      "availability": {
+        "delta/fast": {
+          "reason": "provider-unreachable"
+        }
+      }
+    },
+    "expected": {
+      "choice": {
+        "kind": "none",
+        "skipped": [
+          {
+            "ref": "delta/fast",
+            "reason": "provider-unreachable"
+          }
+        ],
+        "trace": [
+          "*/fast: expands to delta/fast",
+          "delta/fast: skipped: unavailable (provider-unreachable)"
+        ],
+        "summary": "none: no entry is usable"
+      },
+      "asked": [
+        "delta/fast"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "a-chosen-entry-is-not-in-skipped",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "knownTools": [
+        "alpha",
+        "beta"
+      ],
+      "profile": [
+        "*/max",
+        "beta/standard"
+      ],
+      "availability": {
+        "alpha/max": {
+          "reason": "not-installed"
+        },
+        "alpha/claude-nope": {
+          "reason": "over-budget"
+        }
+      }
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "beta",
+          "model": "gpt-x",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "beta/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [
+          {
+            "ref": "alpha/max",
+            "reason": "not-installed"
+          }
+        ],
+        "trace": [
+          "*/max: expands to alpha/max",
+          "alpha/max: skipped: unavailable (not-installed)",
+          "beta/standard: taken"
+        ],
+        "summary": "chosen: beta/standard"
+      },
+      "asked": [
+        "alpha/max",
+        "beta/standard"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "builtin-default-skips-an-uninstalled-tool",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "knownTools": [
+        "claude",
+        "codex"
+      ],
+      "profile": [
+        "*/standard"
+      ],
+      "availability": {
+        "claude/standard": {
+          "reason": "not-installed"
+        }
+      }
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "claude",
+          "model": "claude-sonnet-5",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "claude/claude-sonnet-5",
+          "from": {
+            "kind": "name",
+            "name": "claude-sonnet-5"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [
+          {
+            "ref": "claude/standard",
+            "reason": "not-installed"
+          }
+        ],
+        "trace": [
+          "*/standard: expands to claude/standard, claude/claude-sonnet-5, claude/claude-sonnet-4-6, claude/claude-sonnet-4-5, codex/standard, codex/gpt-6-sol, codex/gpt-daybreak-blue-latest, codex/gpt-5.6, codex/gpt-5.6-sol",
+          "claude/standard: skipped: unavailable (not-installed)",
+          "claude/claude-sonnet-5: taken"
+        ],
+        "summary": "chosen: claude/claude-sonnet-5"
+      },
+      "asked": [
+        "claude/standard",
+        "claude/claude-sonnet-5"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "builtin-small-first-entry",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "knownTools": [
+        "claude",
+        "codex"
+      ],
+      "profile": [
+        "*/fast"
+      ]
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "claude",
+          "model": "haiku",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "claude/fast",
+          "from": {
+            "kind": "tier",
+            "tier": "fast"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [],
+        "trace": [
+          "*/fast: expands to claude/fast, claude/claude-haiku-4-5, codex/fast, codex/gpt-5.6-luna",
+          "claude/fast: taken"
+        ],
+        "summary": "chosen: claude/fast"
+      },
+      "asked": [
+        "claude/fast"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "snapshot-reviewer-profile",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "profile": [
+        "codex/max",
+        "claude/opus-5.5@high"
+      ],
+      "availability": {
+        "codex/max": {
+          "reason": "not-signed-in",
+          "detail": "codex login"
+        }
+      }
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "claude",
+          "model": "opus-5.5",
+          "effort": "high",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "claude/opus-5.5@high",
+          "from": {
+            "kind": "name",
+            "name": "opus-5.5"
+          },
+          "check": {
+            "kind": "warning",
+            "code": "unknown-model",
+            "message": "model 'opus-5.5' is not in the model catalogue for 'claude'; it is passed as written"
+          }
+        },
+        "warnings": [
+          "model 'opus-5.5' is not in the model catalogue for 'claude'; it is passed as written"
+        ],
+        "skipped": [
+          {
+            "ref": "codex/max",
+            "reason": "not-signed-in",
+            "detail": "codex login"
+          }
+        ],
+        "trace": [
+          "claude/opus-5.5@high: warning: model 'opus-5.5' is not in the model catalogue for 'claude'; it is passed as written",
+          "codex/max: skipped: unavailable (not-signed-in: codex login)",
+          "claude/opus-5.5@high: taken"
+        ],
+        "summary": "chosen: claude/opus-5.5@high"
+      },
+      "asked": [
+        "codex/max",
+        "claude/opus-5.5@high"
+      ],
+      "errors": []
+    }
+  },
+  {
+    "name": "snapshot-ctx-and-effort",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "profile": [
+        "claude/opus[ctx=1m]@high",
+        "codex/max"
+      ]
+    },
+    "expected": {
+      "choice": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "claude",
+          "model": "opus",
+          "effort": "high",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "claude/opus[ctx=1m]@high",
+          "from": {
+            "kind": "name",
+            "name": "opus"
+          },
+          "check": {
+            "kind": "ok"
+          },
+          "context": 1000000
+        },
+        "warnings": [],
+        "skipped": [],
+        "trace": [
+          "claude/opus[ctx=1m]@high: taken"
+        ],
+        "summary": "chosen: claude/opus[ctx=1m]@high"
+      },
+      "asked": [
+        "claude/opus[ctx=1m]@high"
+      ],
+      "errors": []
+    }
+  }
+]

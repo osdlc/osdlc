@@ -10,6 +10,7 @@ tasks:
   - "[58 Second store](../tasks/58%20Second%20store.md)"
   - "[76 Claims as a pack](../tasks/76%20Claims%20as%20a%20pack.md)"
   - "[77 Profile catalog](../tasks/77%20Profile%20catalog.md)"
+  - "[85 Fitness corpus trial](../tasks/85%20Fitness%20corpus%20trial.md)"
 ---
 
 The model gains named relations and augments, and corpus-schema's x-body points at a

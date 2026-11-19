@@ -8,7 +8,7 @@ In that spec and in `@osdlc/corpus-schema`, "corpus" alone means a corpus that h
 
 ## In code
 
-`packages/ts/corpus-schema`: `findCorpora` finds corpora by their root file, and `validateCorpus` checks one against the spec. First defined in osdlc/skillwright, then moved here. A copy went to osdlc/markdown for a while, but this repository's copy stayed the source and kept publishing. The 0.3.0 work, done in osdlc/markdown, came back here in a change of its own.
+`packages/ts/corpus-schema`: `findCorpora` finds corpora by their root file, and `validateCorpus` checks one against the spec. First defined in osdlc/skillwright, then moved here. A copy went to osdlc/markdown for a while, but this repository's copy stayed the source and kept publishing. The work released as 0.4.0, done in osdlc/markdown, came back here in a change of its own.
 
 ## How it relates to corpus
 

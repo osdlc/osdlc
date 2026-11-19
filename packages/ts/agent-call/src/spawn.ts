@@ -331,6 +331,14 @@ export function spawnCollect(argv: string[], options: SpawnOptions): Promise<Raw
   })
 }
 
+/** True when `binary` is a bare name to look up on `PATH`, not a path (no separator). */
+export function isBarePathLookup(
+  binary: string,
+  win: boolean = process.platform === 'win32',
+): boolean {
+  return !(binary.includes('/') || (win && binary.includes('\\')))
+}
+
 /**
  * The file to spawn for `binary`. A path (it holds a separator) is run as
  * given. A bare name is looked up on the absolute entries of the child's
@@ -338,7 +346,7 @@ export function spawnCollect(argv: string[], options: SpawnOptions): Promise<Raw
  */
 function resolveBinary(binary: string, env: NodeJS.ProcessEnv): string | undefined {
   const windows = process.platform === 'win32'
-  if (binary.includes('/') || (windows && binary.includes('\\'))) return binary
+  if (!isBarePathLookup(binary)) return binary
   // On POSIX, only the child's own PATH: unset there means the default
   // search, as for the spawn, not the parent's PATH. Windows names match in
   // any case (`Path`), which the lookup handles on the whole environment.

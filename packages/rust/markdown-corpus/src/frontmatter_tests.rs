@@ -497,6 +497,62 @@ fn apply_change_drops_the_old_spelling_of_a_case_only_rename() {
 }
 
 #[test]
+fn a_note_spelled_otherwise_than_on_disk_makes_the_next_refresh_walk() {
+    let d = vault();
+    let (index, c) = (FrontmatterIndex::new(), FixedClock::new(0));
+    index.refresh(&*d, &c, root());
+    put(&d, "Notes/a.md", "---\nstatus: done\n---\n");
+    let vfs = crate::links::hooks::StatHook::aliased(
+        &*d,
+        join_rel(root(), "Notes/A.md"),
+        join_rel(root(), "Notes/a.md"),
+    );
+    index.apply_change(&vfs, root(), "Notes/A.md");
+    assert!(
+        index.get("Notes/A.md").is_none(),
+        "not keyed by that spelling"
+    );
+    // Inside the TTL, yet the refresh walks and reads the edit.
+    assert_eq!(index.refresh(&vfs, &c, root()).updated, 1);
+    assert_eq!(status(&index, "Notes/a.md").as_deref(), Some("done"));
+}
+
+#[test]
+fn a_change_to_the_obsidian_folder_makes_the_next_refresh_walk() {
+    let d = vault();
+    let (index, c) = (FrontmatterIndex::new(), FixedClock::new(0));
+    index.refresh(&*d, &c, root());
+    let sweeps = index.sweeps();
+    index.refresh(&*d, &c, root());
+    assert_eq!(index.sweeps(), sweeps, "fresh");
+    index.apply_change(&*d, root(), ".obsidian");
+    index.refresh(&*d, &c, root());
+    assert_eq!(index.sweeps(), sweeps + 1);
+}
+
+#[test]
+fn a_failed_walk_is_reported_as_the_index_stands() {
+    let d = vault();
+    let strict = WalkOptions {
+        errors: Errors::Propagate,
+        ..FrontmatterIndex::default_walk()
+    };
+    let (index, c) = (
+        FrontmatterIndex::new().with_walk(strict),
+        FixedClock::new(0),
+    );
+    index.refresh(&*d, &c, root());
+    d.remove(root()).unwrap();
+    let stats = index.refresh_now(&*d, &c, root());
+    assert_eq!((stats.unchanged, stats.is_empty()), (2, true));
+    // A failed walk is not fresh: `refresh`, inside the TTL, walks again.
+    let sweeps = index.sweeps();
+    assert_eq!(index.refresh(&*d, &c, root()), stats);
+    assert_eq!(index.sweeps(), sweeps + 1, "it walked");
+    assert_eq!(index.len(), 2);
+}
+
+#[test]
 fn a_malformed_note_is_indexed_with_a_diagnostic_rather_than_skipped() {
     let d = vault();
     put(&d, "Notes/broken.md", "---\na: [1, 2\nb: }{\n---\nBODY\n");

@@ -105,6 +105,33 @@ export function gate<T>(verb: GitVerb<T>, result: CommandResult, argv?: string[]
 }
 
 /**
+ * Gate for a bytes runner's result: returns it, or throws a `FailureError`
+ * with the classified `GitFailure` on a non-zero exit, `neverExited` or
+ * `outputIncomplete`. The `CommandFailed` cause holds stdout decoded as UTF-8.
+ */
+export function gateBytes(result: CommandResult<Buffer>, argv: string[]): CommandResult<Buffer> {
+  try {
+    if (runFailed(result)) throw new CommandFailed(argv, result)
+    return result
+  } catch (error) {
+    throw gitFailureError(error)
+  }
+}
+
+/**
+ * The bytes runner a client runs `rawBytes` on: the `bytesRunner` passed,
+ * else the default spawn, but only when no `runner` was passed either.
+ * `undefined` means the client throws `UnsupportedRequest` from its bytes
+ * calls. See the `Git` constructor.
+ */
+export function bytesRunnerFor<B>(
+  opts: { runner?: unknown; bytesRunner?: B | undefined },
+  spawnDefault: () => B,
+): B | undefined {
+  return opts.bytesRunner ?? (opts.runner === undefined ? spawnDefault() : undefined)
+}
+
+/**
  * A client-level environment bag under a per-call one, or `undefined` when
  * neither is set (so the runner inherits the parent environment untouched
  * rather than being handed an empty object).
@@ -328,6 +355,37 @@ function optionalPositional(
   return value === undefined ? undefined : positional(verb, param, value)
 }
 
+/**
+ * Appends `[rev] [--] [paths]` to a `git diff` argv. `--` follows a rev even
+ * with no paths, so git never reads the rev as a path.
+ */
+function pushRevAndPaths(
+  argv: string[],
+  rev: string | undefined,
+  paths: readonly string[] | undefined,
+): void {
+  if (rev !== undefined) argv.push(rev)
+  if (rev !== undefined || (paths !== undefined && paths.length > 0)) argv.push('--')
+  argv.push(...(paths ?? []))
+}
+
+/**
+ * The `git diff` flags that pin patch text against the user's git settings:
+ * no colour codes, no external diff tool, no textconv conversion, the `a/`
+ * and `b/` prefixes, paths that are not cut to the cwd, a submodule change as
+ * a `Subproject commit` patch, and three lines of context.
+ */
+const PLAIN_PATCH: readonly string[] = [
+  '--no-color',
+  '--no-ext-diff',
+  '--no-textconv',
+  '--src-prefix=a/',
+  '--dst-prefix=b/',
+  '--no-relative',
+  '--submodule=short',
+  '--unified=3',
+]
+
 /** The child env that makes git print English, whatever the caller's locale. */
 const C_LOCALE: Readonly<Record<string, string>> = Object.freeze({ LC_ALL: 'C' })
 
@@ -533,16 +591,31 @@ export interface StatusEntry {
   path: string
 }
 
+/** Options for {@link statusEntries}. */
+export interface StatusEntriesOptions {
+  /**
+   * `--ignored`: report ignored files too, as entries whose `x` and `y` are
+   * both `'!'`. This verb always passes `--untracked-files=all`, so each
+   * ignored file is its own entry, inside an ignored directory too.
+   */
+  ignored?: boolean | undefined
+}
+
 /**
  * Every changed or untracked file as a {@link StatusEntry}
- * (`git status --porcelain -z --untracked-files=all`). Untracked directories
- * are expanded to their files. Paths are verbatim, never quoted, and a rename
- * or copy yields one entry (its source path is dropped). Empty on a clean
- * tree; throws outside a repository.
+ * (`git status --porcelain -z --untracked-files=all`, plus `--ignored` with
+ * `ignored`). Untracked directories are expanded to their files. Paths are
+ * verbatim, never quoted, and a rename or copy yields one entry (its source
+ * path is dropped). Empty on a clean tree; throws outside a repository.
+ *
+ * Paths are decoded as UTF-8, so a name that is not valid UTF-8 comes back
+ * with U+FFFD in it. Read such names through `rawBytesChecked`.
  */
-export function statusEntries(): GitVerb<StatusEntry[]> {
+export function statusEntries(opts: StatusEntriesOptions = {}): GitVerb<StatusEntry[]> {
+  const argv = ['status', '--porcelain', '-z', '--untracked-files=all']
+  if (opts.ignored === true) argv.push('--ignored')
   return {
-    argv: ['status', '--porcelain', '-z', '--untracked-files=all'],
+    argv,
     absent: NONE,
     parse(r) {
       const fields = nulFields(r)
@@ -1133,7 +1206,15 @@ export interface DiffNameStatusOptions {
 }
 
 /**
- * Changed paths with their status (`git diff --name-status -z`).
+ * Changed paths with their status
+ * (`git diff --no-color --no-relative --name-status -z`).
+ *
+ * `--no-relative` is always passed, so with a cwd below the repository root
+ * the paths are still relative to the root and changes outside the cwd are
+ * still listed, whatever `diff.relative` says. `--no-color` is passed as a
+ * guard: git does not colour this output. The range is followed by `--`, so
+ * git never reads it as a path: a range that names a file but no revision
+ * throws, and a branch that shares its name with a file works.
  *
  * `absent: []` — no changes is exit 0 with empty stdout, including before the
  * first commit, where `--cached` diffs against the empty tree. Outside a
@@ -1142,11 +1223,11 @@ export interface DiffNameStatusOptions {
  * See {@link DiffEntry} for what a rename record costs a naive parser.
  */
 export function diffNameStatus(opts: DiffNameStatusOptions = {}): GitVerb<DiffEntry[]> {
-  const argv = ['diff', '--name-status', '-z']
+  const argv = ['diff', '--no-color', '--no-relative', '--name-status', '-z']
   if (opts.cached) argv.push('--cached')
   if (opts.noRenames) argv.push('--no-renames')
-  if (opts.range !== undefined) argv.push(positional('diffNameStatus', 'range', opts.range))
-  if (opts.paths !== undefined && opts.paths.length > 0) argv.push('--', ...opts.paths)
+  const range = optionalPositional('diffNameStatus', 'range', opts.range)
+  pushRevAndPaths(argv, range, opts.paths)
   return { argv, absent: NONE, parse: nameStatusEntries }
 }
 
@@ -1319,33 +1400,64 @@ export interface DiffTreeOptions {
 export interface DiffTextOptions {
   /** `--cached` — diff the index against `rev` (or HEAD) rather than the worktree. */
   staged?: boolean | undefined
+  /**
+   * `--binary`: write a binary file's change as a `GIT binary patch` that
+   * `git apply` can replay, instead of the one line `Binary files … differ`.
+   * The patch is ASCII (base85), so the decode to a string keeps it intact.
+   */
+  binary?: boolean | undefined
   /** Pathspecs, passed after `--`. */
   paths?: string[] | undefined
 }
 
 /**
- * The unified diff text (`git diff [--cached] [rev] [-- paths]`), for the same
- * rev and staged shape {@link diffNameOnly} selects paths for. Empty when
- * nothing differs.
+ * The unified diff text (`git diff --no-color --no-ext-diff --no-textconv
+ * --src-prefix=a/ --dst-prefix=b/ --no-relative --submodule=short
+ * --unified=3 [--cached] [--binary] [rev] [--] [paths]`), for the same rev
+ * and staged shape {@link diffNameStatus} lists paths for. `--` is passed
+ * once, when there is a rev or a path. Empty when nothing differs.
+ * {@link diffNameOnly} selects the same paths except under `diff.relative`,
+ * which it still follows.
+ *
+ * The text is a plain unified diff with `a/` and `b/` prefixes and three
+ * lines of context. The flags that are always passed turn off colour codes
+ * (`color.ui`, `color.diff`), an external diff tool (`diff.external`, a
+ * `diff.<driver>.command`), textconv conversion, other prefixes
+ * (`diff.noprefix`, `diff.mnemonicPrefix`, `diff.srcPrefix`,
+ * `diff.dstPrefix`) and `diff.relative`, which with a cwd below the
+ * repository root would drop changes outside it. They also keep a submodule
+ * change as a `Subproject commit` patch, whatever `diff.submodule` says, and
+ * the context at three lines, whatever `diff.context` says. Other settings
+ * still apply: rename detection (`diff.renames`), `diff.ignoreSubmodules` and
+ * `diff.algorithm`; so does the `GIT_DIFF_OPTS` environment variable, where
+ * `-u0` overrides the three lines of context. The rev is followed by `--`, so git never reads it as a
+ * path: a rev that names a file but no revision throws, and a branch that
+ * shares its name with a file works.
+ *
+ * The text is decoded as UTF-8. A text file whose lines are not valid UTF-8
+ * comes back with U+FFFD in them, and the patch no longer applies. For a
+ * patch that must replay byte for byte, run the same argv through
+ * `rawBytesChecked`.
  *
  * `absent: []`. A rev that does not resolve exits 128, and outside a
  * repository `git diff` exits 129. Both throw, so "git failed" never reads as
  * "no diff". `git.try.diffText` reports them as `{ ok: false }`.
  */
 export function diffText(rev?: string | undefined, opts: DiffTextOptions = {}): GitVerb<string> {
-  const argv = ['diff']
+  const argv = ['diff', ...PLAIN_PATCH]
   if (opts.staged === true) argv.push('--cached')
-  const from = optionalPositional('diffText', 'rev', rev)
-  if (from !== undefined) argv.push(from)
-  if (opts.paths !== undefined && opts.paths.length > 0) argv.push('--', ...opts.paths)
+  if (opts.binary === true) argv.push('--binary')
+  pushRevAndPaths(argv, optionalPositional('diffText', 'rev', rev), opts.paths)
   return { argv, absent: NONE, parse: (r) => r.stdout }
 }
 
 /**
- * One untracked file rendered as an all-added diff
- * (`diff --no-index -- /dev/null <path>`), so a new file reaches a consumer in
- * the same shape as a modified one. An empty existing file still gives a diff
- * header.
+ * One untracked file rendered as an all-added diff (`diff --no-color
+ * --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --no-relative
+ * --submodule=short --unified=3 --no-index -- /dev/null <path>`), so a new
+ * file reaches a consumer in the same shape as a modified one: the flags are
+ * the ones {@link diffText} passes, and the text is as plain. An empty
+ * existing file still gives a diff header.
  *
  * `--no-index` exits 1 whenever the inputs differ, which for a real file is
  * always, so exit 1 is the success case. git also exits 1, with empty stdout,
@@ -1354,7 +1466,7 @@ export function diffText(rev?: string | undefined, opts: DiffTextOptions = {}): 
  */
 export function diffAddedFile(relPath: string): GitVerb<string> {
   return {
-    argv: ['diff', '--no-index', '--', '/dev/null', relPath],
+    argv: ['diff', ...PLAIN_PATCH, '--no-index', '--', '/dev/null', relPath],
     absent: [1],
     parse(r, ranArgv) {
       if (r.exitCode !== 0 && r.stdout === '') throw new CommandFailed(ranArgv, r)
@@ -1561,15 +1673,194 @@ export function commitTree(tree: string, opts: CommitTreeOptions): GitVerb<strin
     argv.push('-p', positional('commitTree', 'parent', parent))
   }
   argv.push('-m', opts.message)
-  return {
-    argv,
-    absent: NONE,
-    parse(r, ranArgv) {
-      const sha = r.stdout.trim()
-      if (!/^([0-9a-f]{40}|[0-9a-f]{64})$/.test(sha)) throw new CommandFailed(ranArgv, r)
-      return sha
-    },
+  return { argv, absent: NONE, parse: shaReply }
+}
+
+/** A full object id in either hash format: 40 hex digits (SHA-1) or 64 (SHA-256). */
+const FULL_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
+
+/** The one sha a plumbing verb prints. Anything else throws rather than reading as an id. */
+function shaReply(r: CommandResult, ranArgv: string[]): string {
+  const sha = r.stdout.trim()
+  if (!FULL_SHA.test(sha)) throw new CommandFailed(ranArgv, r)
+  return sha
+}
+
+/** Options for {@link hashObject}. */
+export interface HashObjectOptions {
+  /**
+   * `-w`: also write the blob into the object store; without it only the sha is computed.
+   */
+  write?: boolean | undefined
+}
+
+/**
+ * The blob sha of `content`, and with `{ write: true }` the blob itself
+ * written to the object store (`git hash-object [-w] --stdin`).
+ *
+ * `content` goes to git on stdin as UTF-8, so the blob holds exactly those
+ * bytes: input from stdin skips the clean filters and line-ending
+ * conversion that `.gitattributes` would apply to a file. A string cannot
+ * carry arbitrary bytes, so binary content is not supported.
+ *
+ * `absent: []`, and a reply that is not a sha throws.
+ */
+export function hashObject(content: string, opts: HashObjectOptions = {}): GitVerb<string> {
+  const argv = ['hash-object']
+  if (opts.write) argv.push('-w')
+  argv.push('--stdin')
+  return { argv, input: content, absent: NONE, parse: shaReply }
+}
+
+/**
+ * One entry of a tree written by {@link mktree}: a name in that tree, not a
+ * path through it. A row of {@link lsTree} without `recursive` has this shape,
+ * so `mktree(lsTree(rev))` writes the same tree back.
+ */
+export interface MktreeEntry {
+  /**
+   * `100644` (file), `100755` (executable), `120000` (symlink), `040000`
+   * (tree) or `160000` (submodule commit). Any other mode throws.
+   */
+  mode: string
+  /**
+   * The object type. Each mode has one, so it may be left out; when given,
+   * it must be the mode's type.
+   */
+  type?: 'blob' | 'tree' | 'commit' | undefined
+  /** The full sha of an object already in the store. */
+  sha: string
+  /**
+   * The entry's name: no `/`, no NUL, not empty, `.`, `..`, or a name git
+   * reads as `.git` (see {@link mktree}).
+   */
+  path: string
+}
+
+/** The object type each tree mode git writes stands for. */
+const TREE_MODE_TYPES: Readonly<Record<string, NonNullable<MktreeEntry['type']>>> = {
+  '100644': 'blob',
+  '100755': 'blob',
+  '120000': 'blob',
+  '040000': 'tree',
+  '160000': 'commit',
+}
+
+/** Code points HFS+ ignores in a name (git's `next_hfs_char`). */
+const HFS_IGNORED = /[\u200C-\u200F\u202A-\u202E\u206A-\u206F\uFEFF]/gu
+
+/** Lower-case the ASCII letters only, as git does against its ASCII needles. */
+const asciiLower = (s: string): string => s.replace(/[A-Z]/g, (c) => c.toLowerCase())
+
+/**
+ * HFS+ reads `name` as `.<needle>` (git's `is_hfs_dot_generic`): equal to it
+ * in ASCII letter case once the ignorable code points are dropped.
+ */
+function hfsReadsAs(name: string, needle: string): boolean {
+  return asciiLower(name.replace(HFS_IGNORED, '')) === `.${needle}`
+}
+
+/**
+ * NTFS drops trailing dots and spaces, and a `:` starts an alternate data
+ * stream. True when `rest` holds only dots and spaces before its end or a `:`.
+ */
+function ntfsTailIsEmpty(rest: string): boolean {
+  return /^[. ]*(?:$|:)/.test(rest)
+}
+
+/**
+ * A name git's fsck reports as `hasDotgit` (git's `is_hfs_dotgit` and
+ * `is_ntfs_dotgit`, which checks each part between backslashes), and checkout refuses on every platform.
+ */
+function readsAsDotGit(name: string): boolean {
+  if (hfsReadsAs(name, 'git')) return true
+  for (const part of name.split('\\')) {
+    const lower = asciiLower(part)
+    if (lower.startsWith('.git') && ntfsTailIsEmpty(part.slice(4))) return true
+    if (lower.startsWith('git~1') && ntfsTailIsEmpty(part.slice(5))) return true
+    if (part.includes(':')) return false
   }
+  return false
+}
+
+/**
+ * A name git's fsck treats as `.gitmodules` (git's `is_hfs_dotgitmodules`
+ * and `is_ntfs_dotgitmodules`): the HFS+ and NTFS spellings, the short names
+ * `gitmod~1` to `~4`, and the 8.3 fallback short name, whose prefix
+ * `gi7eba` git took from a hash of the long name.
+ */
+function readsAsDotGitmodules(name: string): boolean {
+  if (hfsReadsAs(name, 'gitmodules')) return true
+  const lower = asciiLower(name)
+  if (lower.startsWith('.gitmodules')) return ntfsTailIsEmpty(name.slice(11))
+  if (/^gitmod~[1-4]/.test(lower)) return ntfsTailIsEmpty(name.slice(8))
+  // The fallback: a leading part of `gi7eba` (at most six characters), `~`,
+  // a digit 1-9, then digits up to eight characters. This follows git's loop
+  // step for step, so a `~` at index 7 reads one character past eight.
+  const prefix = 'gi7eba'
+  let sawTilde = false
+  let i = 0
+  for (; i < 8; i++) {
+    const c = lower[i]
+    if (c === undefined) return false
+    if (sawTilde) {
+      if (c < '0' || c > '9') return false
+    } else if (c === '~') {
+      i++
+      const d = lower[i]
+      if (d === undefined || d < '1' || d > '9') return false
+      sawTilde = true
+    } else if (i >= 6 || c !== prefix[i]) {
+      return false
+    }
+  }
+  return ntfsTailIsEmpty(name.slice(i))
+}
+
+/**
+ * Write a tree object holding `entries` and return its sha (`git mktree -z`).
+ * No entries writes the empty tree.
+ *
+ * The entries go to git on stdin, NUL-terminated, so a name may hold spaces,
+ * tabs or newlines; git sorts them into tree order itself.
+ *
+ * Throws a `TypeError` before git runs for a duplicate, empty, `.`, `..`,
+ * `/`- or NUL-bearing name, a name git reads as `.git`, a `.gitmodules` that
+ * is not a file, an unknown mode, a sha that is not a full sha, and a type
+ * that does not match the mode. `git mktree` writes most of these, but
+ * `git fsck --strict` reports them. D-03 lists the NTFS and HFS+ spellings.
+ *
+ * Every sha must name an object already in the store, of the entry's type,
+ * except a submodule (`160000`) commit, which git does not check; otherwise
+ * git exits 128 and this throws. `absent: []`, and a reply that is not a
+ * sha throws.
+ */
+export function mktree(entries: readonly MktreeEntry[]): GitVerb<string> {
+  const names = new Set<string>()
+  const records: string[] = []
+  for (const { mode, type: given, sha, path } of entries) {
+    const bad = (why: string) =>
+      new TypeError(`typed-git: mktree: entry ${JSON.stringify(path)} ${why}`)
+    const type = TREE_MODE_TYPES[mode]
+    if (type === undefined) throw bad(`has mode ${JSON.stringify(mode)}, which git does not write`)
+    if (given !== undefined && given !== type) {
+      throw bad(`has type ${JSON.stringify(given)}, but mode ${mode} is a ${type}`)
+    }
+    if (!FULL_SHA.test(sha)) throw bad(`needs a full sha (got ${JSON.stringify(sha)})`)
+    if (path === '' || path === '.' || path === '..' || readsAsDotGit(path)) {
+      throw bad('is not a name git allows in a tree')
+    }
+    if (path.includes('/') || path.includes('\x00')) {
+      throw bad('must be one name, without "/" or NUL')
+    }
+    if (mode !== '100644' && mode !== '100755' && readsAsDotGitmodules(path)) {
+      throw bad(`is read by git as .gitmodules, which must be a file (got mode ${mode})`)
+    }
+    if (names.has(path)) throw bad('appears twice')
+    names.add(path)
+    records.push(`${mode} ${type} ${sha}\t${path}\x00`)
+  }
+  return { argv: ['mktree', '-z'], input: records.join(''), absent: NONE, parse: shaReply }
 }
 
 /**
@@ -2340,14 +2631,18 @@ export function resetHard(rev: string): GitVerb<void> {
 export interface CleanOptions {
   /** `-d` — also delete untracked directories. */
   directories?: boolean | undefined
+  /** A second `-f`, so a nested repository (a populated submodule) is deleted too. */
+  nested?: boolean | undefined
 }
 
 /**
  * `git clean -f`: delete untracked files, and untracked directories with
- * `{directories: true}`. Ignored files are kept.
+ * `{directories: true}`; `{nested: true}` also deletes untracked nested repositories.
+ * Ignored files are kept.
  */
 export function clean(opts: CleanOptions = {}): GitVerb<void> {
-  return { argv: ['clean', opts.directories ? '-fd' : '-f'], absent: NONE, parse: nothing }
+  const flags = `${opts.nested ? '-ff' : '-f'}${opts.directories ? 'd' : ''}`
+  return { argv: ['clean', flags], absent: NONE, parse: nothing }
 }
 
 /** Delete a local branch (`-d`, or `-D` with `{force: true}`). */
@@ -2380,6 +2675,66 @@ export function deleteRef(ref: string, opts: { expected: string }): GitVerb<void
     absent: NONE,
     parse: nothing,
   }
+}
+
+/** Options for {@link updateRef}. */
+export interface UpdateRefOptions {
+  /**
+   * The sha `ref` must hold now, or `null` when `ref` must not exist yet.
+   * Required: git checks it and moves the ref in one step, so a commit
+   * another writer put on the ref after the caller looked is never lost.
+   * It must be a full sha: a ref name here would resolve at the moment of
+   * the check and always match.
+   */
+  oldSha: string | null
+  /** `-m <reason>` — the message the reflog records for this update. */
+  reason?: string | undefined
+}
+
+/**
+ * `git update-ref [-m <reason>] <ref> <sha> <oldSha>`: point `ref` at `sha`,
+ * only while `ref` still holds `oldSha` (`null`: only while it does not
+ * exist). It writes no object and leaves the index and working tree alone.
+ *
+ * `ref` must be `HEAD` or a full name under `refs/`. git does not expand a
+ * short name here: `update-ref main` would write a new top-level ref named
+ * `main` beside `refs/heads/main`, so a name that is neither throws a
+ * `TypeError` before git runs. `HEAD` on a branch moves that branch.
+ *
+ * When `ref` is not where `oldSha` says, git exits 128 and this throws,
+ * like any other failure: `reference already exists`, `is at <sha> but
+ * expected <oldSha>`, or `unable to resolve reference`. Re-read the ref with
+ * `resolveRef` to decide whether to retry. git also refuses a `sha` that
+ * names no object, a non-commit on a branch, and a malformed ref name.
+ */
+export function updateRef(ref: string, sha: string, opts: UpdateRefOptions): GitVerb<void> {
+  const name = positional('updateRef', 'ref', ref)
+  if (name !== 'HEAD' && !name.startsWith('refs/')) {
+    throw new TypeError(
+      `typed-git: updateRef: ref must be HEAD or start with "refs/" (got ${JSON.stringify(ref)})`,
+    )
+  }
+  const argv = ['update-ref']
+  if (opts.reason !== undefined) argv.push('-m', opts.reason)
+  argv.push(name, positional('updateRef', 'sha', sha))
+  if (opts.oldSha === null) {
+    // An empty old value is git's "must not exist", in either hash format.
+    argv.push('')
+  } else if (opts.oldSha === undefined) {
+    // Only reachable without types: report the missing option, not an invalid sha.
+    throw new TypeError(
+      'typed-git: updateRef: oldSha is required: the sha the ref holds now, or null for "must not exist"',
+    )
+  } else {
+    const old = positional('updateRef', 'oldSha', opts.oldSha)
+    if (!FULL_SHA.test(old)) {
+      throw new TypeError(
+        `typed-git: updateRef: oldSha must be a full sha, or null for "must not exist" (got ${JSON.stringify(old)})`,
+      )
+    }
+    argv.push(old)
+  }
+  return { argv, absent: NONE, parse: nothing }
 }
 
 /** Options for {@link worktreeAdd}. */
@@ -2458,6 +2813,34 @@ export function worktreeUnlock(path: string): GitVerb<void> {
 /** `git worktree prune`. */
 export function worktreePrune(): GitVerb<void> {
   return { argv: ['worktree', 'prune'], absent: NONE, parse: nothing }
+}
+
+/**
+ * `git submodule update --init --recursive --checkout`, with the `file` and `ext` transports
+ * refused: check out every submodule, nested ones included, at the commit the checked-out tree pins, cloning those not yet initialised. A repository
+ * with no submodules is exit 0 and no work.
+ *
+ * The URLs come from the tree's own `.gitmodules`, which a pull request's author controls, so
+ * the `file` and `ext` transports are refused (a local path or a command as a "URL"). A
+ * `GIT_ALLOW_PROTOCOL` in the environment still takes precedence over these. `--checkout` ignores a
+ * `submodule.<name>.update` the tree's `.gitmodules` sets (`none`, `rebase`, `merge`, `!command`).
+ */
+export function submoduleUpdate(): GitVerb<void> {
+  return {
+    argv: [
+      '-c',
+      'protocol.file.allow=never',
+      '-c',
+      'protocol.ext.allow=never',
+      'submodule',
+      'update',
+      '--init',
+      '--recursive',
+      '--checkout',
+    ],
+    absent: NONE,
+    parse: nothing,
+  }
 }
 
 /** `git remote add <name> <url>`. */

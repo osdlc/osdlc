@@ -1,0 +1,3 @@
+# Guide
+
+Marker: PATHS-ROOT-GUIDE-SKILL-OK

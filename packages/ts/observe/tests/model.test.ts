@@ -266,6 +266,46 @@ describe('the pid_recorded event', () => {
   })
 })
 
+describe('the interrupted and closed events', () => {
+  const interrupted: NewEvent = { kind: 'interrupted', cause: 'close-out', host: 'tmux' }
+  const closed: NewEvent = { kind: 'closed', cause: 'close-out', host: 'tmux' }
+
+  test('leave the record and the run state as they were, and are not ignored', () => {
+    const base = model.reduceSessionEvents(stamp(launched, to('running')))
+    const r = model.reduceSessionEvents(stamp(launched, to('running'), interrupted, closed))
+    expect(r.state).toBe('running')
+    expect(r.record).toEqual(base.record)
+    expect(r.ignored).toEqual([])
+  })
+
+  test('apply after the session ended', () => {
+    const r = model.reduceSessionEvents(stamp(launched, { kind: 'ended' }, interrupted, closed))
+    expect(r.state).toBe('ended')
+    expect(r.ignored).toEqual([])
+  })
+
+  test('round-trip through parseSessionEvents', () => {
+    const events = stamp(launched, interrupted, closed)
+    const text = events.map((e) => `${JSON.stringify(e)}\n`).join('')
+    expect(model.parseSessionEvents(text).map((e) => e.kind)).toEqual([
+      'launched',
+      'interrupted',
+      'closed',
+    ])
+  })
+
+  test('host may be null on interrupted (headless) but never on closed', () => {
+    const lines = [
+      { ...interrupted, host: null },
+      { ...closed, host: null },
+    ]
+    const text = stamp(launched, ...(lines as NewEvent[]))
+      .map((e) => `${JSON.stringify(e)}\n`)
+      .join('')
+    expect(model.parseSessionEvents(text).map((e) => e.kind)).toEqual(['launched', 'interrupted'])
+  })
+})
+
 describe('the task a session serves', () => {
   test('the launched event carries it onto the record and record.json', () => {
     const record = model.recordSessionEventIn(

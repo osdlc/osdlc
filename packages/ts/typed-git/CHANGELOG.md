@@ -1,5 +1,42 @@
 # @osdlc/typed-git
 
+## 0.17.0
+
+### Minor Changes
+
+- 6236a97: `diffText`, `diffAddedFile` and `diffNameStatus` pass fixed flags that pin their output against the git settings named below, and `diffText` and `diffNameStatus` never read a rev as a path.
+  
+  - `diffText` and `diffAddedFile` always pass `--no-color --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --no-relative --submodule=short --unified=3`. Their text is a plain unified diff with `a/` and `b/` prefixes and three lines of context under `color.ui`, `color.diff`, `diff.external`, a `diff.<driver>.command` or textconv driver, `diff.noprefix`, `diff.mnemonicPrefix`, `diff.srcPrefix`, `diff.dstPrefix`, `diff.relative`, `diff.submodule` and `diff.context`, so none of those settings stops `git apply` taking it. Other settings still apply: rename detection (`diff.renames`), `diff.ignoreSubmodules` and `diff.algorithm`, and the `GIT_DIFF_OPTS` environment variable, where `-u0` overrides the three lines of context. These are the two verbs whose output changes under a colour setting.
+  - `diffNameStatus` always passes `--no-color --no-relative`. `--no-color` is a guard: git never coloured that output.
+  - **Breaking:** under `diff.relative=true` with a cwd below the repository root, `diffNameStatus` and `diffText` now give paths relative to the root and list changes outside the cwd, where they gave paths relative to the cwd and left those changes out.
+  - **Breaking:** `diffText` and `diffNameStatus` pass `--` after the rev or range, with or without paths. A rev that names a file but no revision now throws, where it returned that file's diff. A branch that shares its name with a file or folder now works, where git refused it as ambiguous.
+  - `diffStat`, `diffCheck`, `log` and `logLines` with no `format`, and `grep` without `noColor` still follow the user's colour setting. `diffNameOnly`, `diffStat` and `diffCheck` still follow `diff.relative`. The README's new "Diff output and the user's git configuration" section lists them.
+  - **Breaking for fake runners:** the argv of three verbs changed, so a `CommandRunner` keyed on the old argv no longer matches and gives its default reply. To migrate, key the fake on the new argv. `--` is passed once, when there is a rev, a range or a path.
+    - `diffText`: `diff --no-color --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --no-relative --submodule=short --unified=3 [--cached] [--binary] [rev] [--] [paths]`. It was `diff [--cached] [--binary] [rev] [-- paths]`. The eight flags follow `diff`, and `--` follows a rev even with no paths.
+    - `diffAddedFile`: `diff --no-color --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --no-relative --submodule=short --unified=3 --no-index -- /dev/null <path>`. It was `diff --no-index -- /dev/null <path>`.
+    - `diffNameStatus`: `diff --no-color --no-relative --name-status -z [--cached] [--no-renames] [range] [--] [paths]`. It was `diff --name-status -z [--cached] [--no-renames] [range] [-- paths]`. The two flags follow `diff`, and `--` follows a range even with no paths.
+
+## 0.16.0
+
+### Minor Changes
+
+- cde222c: Byte-exact output. `rawBytes(argv, opts)` and `rawBytesChecked(argv, opts)` on `Git` and `AsyncGit` return stdout as a `Buffer`, the bytes git wrote, for output that is hashed or replayed: a blob, `status -z` with names that are not UTF-8, `diff --binary` of a file in another encoding. `rawBytesChecked` fails as `rawChecked` does. They run on a new `bytesRunner` option on `Git` and `cliBackend`, which defaults to command-seam's bytes runner when no `runner` is given. A client given a `runner` and no `bytesRunner` throws `UnsupportedRequest` from both, so an injected runner is never bypassed. All three are experimental, as command-seam's bytes runners are. `input` is still a string.
+  
+  `statusEntries({ ignored: true })` adds `--ignored` and reports each ignored file as a `{ x: '!', y: '!' }` entry. `diffText(rev, { binary: true })` adds `--binary`, so a binary file's change is a patch `git apply` replays. `StatusEntriesOptions` is exported, and so are `spawnRunnerBytes`, `spawnRunnerBytesAsync`, `BytesCommandRunner` and `AsyncBytesCommandRunner` from command-seam.
+  
+  The experimental backend seam gets a `rawBytes` request kind, and the `statusEntries` and `diffText` requests take the optional `ignored` and `binary` fields. A backend that ignores them answers without ignored files and without binary patches.
+
+## 0.15.0
+
+### Minor Changes
+
+- 912296d: Add `hashObject`, `mktree` and `updateRef` to `Git`, `AsyncGit` and the backend seam, so a commit can be written and a ref pointed at it without the index or a checkout.
+  
+  - `hashObject(content, { write })` runs `git hash-object [-w] --stdin` and returns the blob sha. `content` goes on stdin as UTF-8, with no `.gitattributes` filters. Binary content is not supported.
+  - `mktree(entries)` runs `git mktree -z` and returns the tree sha. Each entry is `{ mode, type?, sha, path }`, and a non-recursive `lsTree` row fits. A mode git does not write, a type that does not match the mode, a sha that is not full, a name that is empty, `.`, `..`, has `/` or NUL, or appears twice, a name git reads as `.git` (any letter case, also after a backslash, and the NTFS and HFS+ spellings such as `git~1`, `.git.` and `.git` with a zero-width character inside), and a `.gitmodules` (or `gitmod~1`) that is not a file throw a `TypeError` before git runs. git does not check a submodule (`160000`) entry's sha.
+  - `updateRef(ref, sha, { oldSha, reason })` runs `git update-ref [-m <reason>] <ref> <sha> <oldSha>`: it moves `ref` only while it holds `oldSha`, or with `oldSha: null` only while it does not exist. `oldSha` is required and must be a full sha. `ref` must be `HEAD` or start with `refs/`. A lost race throws.
+  - A new example, `examples/orphan-commit.ts`, keeps data on an orphan branch with all four plumbing verbs.
+
 ## 0.14.0
 
 ### Minor Changes

@@ -1,5 +1,38 @@
 # @osdlc/wayfinder
 
+## 0.12.12
+
+### Patch Changes
+
+- Updated dependencies [acf57e6]
+  - @osdlc/cli-tool@0.20.0
+
+## 0.12.11
+
+### Patch Changes
+
+- Updated dependencies [6236a97]
+  - @osdlc/typed-git@0.17.0
+  - @osdlc/trust-repo@0.5.9
+
+## 0.12.10
+
+### Patch Changes
+
+- Updated dependencies [55b4303]
+- Updated dependencies [cde222c]
+  - @osdlc/cli-tool@0.19.0
+  - @osdlc/typed-git@0.16.0
+  - @osdlc/trust-repo@0.5.8
+
+## 0.12.9
+
+### Patch Changes
+
+- Updated dependencies [912296d]
+  - @osdlc/typed-git@0.15.0
+  - @osdlc/trust-repo@0.5.7
+
 ## 0.12.8
 
 ### Patch Changes

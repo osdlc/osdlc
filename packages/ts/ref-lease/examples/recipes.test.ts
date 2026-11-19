@@ -10,9 +10,12 @@ import {
   casDelete,
   casReplace,
   CasFailed,
+  claim,
   fetchNamespace,
   fetchRef,
   RefNotFound,
+  release,
+  updateWithRetry,
 } from '@osdlc/ref-lease'
 
 // #region lease-type
@@ -36,55 +39,24 @@ const inMinutes = (now: Date, minutes: number) =>
 // #endregion lease-type
 
 // #region claim
-type ClaimResult = { won: true; sha: string } | { won: false; holder: string }
-
 /**
  * Take `ref` for `holder`, or take it over when the current lease has expired.
- * Returns who holds it afterwards.
+ * The library does the create, the read and the guarded replace, and looks again
+ * when another caller moves first. The meaning of "expired" is the callback's.
  */
-function claim(
+function takeLease(
   authority: string,
   ref: string,
   holder: string,
   opts: { cwd: string; now: Date; ttlMinutes: number },
-): ClaimResult {
-  const { cwd, now } = opts
-  const payload: Lease = { holder, expiresAt: inMinutes(now, opts.ttlMinutes) }
-
-  // The lease can change between any two calls: created, taken over, released.
-  // Each pass looks again, so a few passes settle every such race.
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    // 1. Nobody holds it: create the ref. Exactly one concurrent caller wins.
-    try {
-      const sha = buildLeaseCommit(payload, { cwd })
-      casCreate(authority, ref, sha, { cwd })
-      return { won: true, sha }
-    } catch (e) {
-      if (!(e instanceof CasFailed)) throw e
-    }
-
-    // 2. Somebody holds it. Read the lease and the sha it sits at.
-    let current
-    try {
-      current = fetchRef(authority, ref, { cwd, decode })
-    } catch (e) {
-      if (e instanceof RefNotFound) continue // released meanwhile: try the create again
-      throw e
-    }
-    if (new Date(current.payload.expiresAt) > now) {
-      return { won: false, holder: current.payload.holder }
-    }
-
-    // 3. It has expired: replace it, but only if it is still the lease we read.
-    try {
-      const sha = buildLeaseCommit(payload, { cwd, parentSha: current.sha })
-      casReplace(authority, ref, current.sha, sha, { cwd })
-      return { won: true, sha }
-    } catch (e) {
-      if (!(e instanceof CasFailed)) throw e // someone else moved first: look again
-    }
-  }
-  throw new Error(`the lease at ${ref} keeps changing; try again later`)
+) {
+  return claim<Lease>(authority, ref, {
+    cwd: opts.cwd,
+    decode,
+    build: () => ({ holder, expiresAt: inMinutes(opts.now, opts.ttlMinutes) }),
+    isLive: (lease) => new Date(lease.expiresAt) > opts.now,
+    isMine: (lease) => lease.holder === holder, // a leftover of our own run
+  })
 }
 // #endregion claim
 
@@ -116,7 +88,7 @@ function renew(
  * pushes leaves the history kept; if the delete then finds the lease is no
  * longer ours, the archive is taken back.
  */
-function release(authority: string, ref: string, sha: string, cwd: string): void {
+function releaseKeepingHistory(authority: string, ref: string, sha: string, cwd: string): void {
   const archive = `refs/lease-archive/${ref.replace(/^refs\//, '')}/${sha.slice(0, 12)}`
   casCreate(authority, archive, sha, { cwd })
   try {
@@ -145,34 +117,34 @@ function listLeases(authority: string, prefix: string, cwd: string): Map<string,
 
 // #region update-with-retry
 /**
- * Change a lease's payload with read-modify-write, retrying when another writer
- * gets in between. Each attempt re-reads, so `change` always sees the latest lease.
+ * Change a lease's payload with read-modify-write. The library re-reads and tries
+ * again when another writer gets in between, so `change` always sees the latest lease.
  */
-function updateWithRetry(
+function updateLease(
   authority: string,
   ref: string,
   change: (lease: Lease) => Lease,
   opts: { cwd: string; attempts?: number },
 ): Lease {
-  const { cwd, attempts = 5 } = opts
-  for (let attempt = 1; ; attempt++) {
-    const current = fetchRef(authority, ref, { cwd, decode })
-    const next = change(current.payload)
-    try {
-      casReplace(
-        authority,
-        ref,
-        current.sha,
-        buildLeaseCommit(next, { cwd, parentSha: current.sha }),
-        { cwd },
-      )
-      return next
-    } catch (e) {
-      if (!(e instanceof CasFailed) || attempt >= attempts) throw e
-    }
-  }
+  const out = updateWithRetry<Lease>(
+    authority,
+    ref,
+    (current) => {
+      if (current === null) throw new Error(`no lease at ${ref}`)
+      return change(current.payload)
+    },
+    { cwd: opts.cwd, decode, attempts: opts.attempts ?? 5 },
+  )
+  if (out.kind !== 'written') throw new Error('unreachable: change never returns null')
+  return out.payload
 }
 // #endregion update-with-retry
+
+// #region release-pinned
+/** Give the lease up if `sha` is still the one we hold. False means it is no longer ours. */
+const giveUp = (authority: string, ref: string, sha: string, cwd: string): boolean =>
+  release(authority, ref, sha, { cwd })
+// #endregion release-pinned
 
 // #region test-fixture
 const { bare, worker, cleanup } = makeBareAndWorker()
@@ -192,21 +164,21 @@ describe('recipes', () => {
   })
 
   test('claim: first caller wins, a second sees the holder', () => {
-    expect(claim(authority, ref, 'a', { cwd, now: t0, ttlMinutes: 10 }).won).toBe(true)
-    expect(claim(authority, ref, 'b', { cwd, now: at(5), ttlMinutes: 10 })).toEqual({
+    expect(takeLease(authority, ref, 'a', { cwd, now: t0, ttlMinutes: 10 }).won).toBe(true)
+    expect(takeLease(authority, ref, 'b', { cwd, now: at(5), ttlMinutes: 10 })).toMatchObject({
       won: false,
-      holder: 'a',
+      payload: { holder: 'a' },
     })
   })
 
   test('claim: an expired lease is taken over', () => {
-    claim(authority, ref, 'a', { cwd, now: t0, ttlMinutes: 10 })
-    expect(claim(authority, ref, 'b', { cwd, now: at(11), ttlMinutes: 10 }).won).toBe(true)
+    takeLease(authority, ref, 'a', { cwd, now: t0, ttlMinutes: 10 })
+    expect(takeLease(authority, ref, 'b', { cwd, now: at(11), ttlMinutes: 10 }).won).toBe(true)
     expect(fetchRef(authority, ref, { cwd, decode }).payload.holder).toBe('b')
   })
 
   test('renew: the holder pushes the expiry out; a stale holder is told it lost', () => {
-    const won = claim(authority, ref, 'a', { cwd, now: t0, ttlMinutes: 10 })
+    const won = takeLease(authority, ref, 'a', { cwd, now: t0, ttlMinutes: 10 })
     if (!won.won) throw new Error('expected to win')
     const lease = fetchRef(authority, ref, { cwd, decode }).payload
     const renewed = renew(authority, ref, won.sha, lease, { cwd, now: at(8), ttlMinutes: 10 })
@@ -219,19 +191,19 @@ describe('recipes', () => {
   })
 
   test('release: the lease goes, its history stays under the archive ref', () => {
-    const won = claim(authority, ref, 'a', { cwd, now: t0, ttlMinutes: 10 })
+    const won = takeLease(authority, ref, 'a', { cwd, now: t0, ttlMinutes: 10 })
     if (!won.won) throw new Error('expected to win')
-    release(authority, ref, won.sha, cwd)
+    releaseKeepingHistory(authority, ref, won.sha, cwd)
     expect(() => fetchRef(authority, ref, { cwd })).toThrow(RefNotFound)
     const archived = fetchNamespace(authority, 'refs/lease-archive', { cwd })
     expect(Object.values(archived)).toContain(won.sha)
   })
 
   test('release: a lease someone else took over is not deleted or archived', () => {
-    const won = claim(authority, ref, 'a', { cwd, now: t0, ttlMinutes: 10 })
+    const won = takeLease(authority, ref, 'a', { cwd, now: t0, ttlMinutes: 10 })
     if (!won.won) throw new Error('expected to win')
-    claim(authority, ref, 'b', { cwd, now: at(11), ttlMinutes: 10 })
-    expect(() => release(authority, ref, won.sha, cwd)).toThrow(CasFailed)
+    takeLease(authority, ref, 'b', { cwd, now: at(11), ttlMinutes: 10 })
+    expect(() => releaseKeepingHistory(authority, ref, won.sha, cwd)).toThrow(CasFailed)
     expect(fetchRef(authority, ref, { cwd, decode }).payload.holder).toBe('b')
     const archive = `refs/lease-archive/${ref.replace(/^refs\//, '')}/${won.sha.slice(0, 12)}`
     expect(Object.keys(fetchNamespace(authority, 'refs/lease-archive', { cwd }))).not.toContain(
@@ -240,29 +212,29 @@ describe('recipes', () => {
   })
 
   test('claim: a released lease can be claimed again', () => {
-    const won = claim(authority, ref, 'a', { cwd, now: t0, ttlMinutes: 10 })
+    const won = takeLease(authority, ref, 'a', { cwd, now: t0, ttlMinutes: 10 })
     if (!won.won) throw new Error('expected to win')
-    release(authority, ref, won.sha, cwd)
-    expect(claim(authority, ref, 'b', { cwd, now: at(1), ttlMinutes: 10 }).won).toBe(true)
+    releaseKeepingHistory(authority, ref, won.sha, cwd)
+    expect(takeLease(authority, ref, 'b', { cwd, now: at(1), ttlMinutes: 10 }).won).toBe(true)
   })
 
   test('list: every live lease with its holder', () => {
-    claim(authority, ref, 'a', { cwd, now: t0, ttlMinutes: 10 })
+    takeLease(authority, ref, 'a', { cwd, now: t0, ttlMinutes: 10 })
     const leases = listLeases(authority, 'refs/locks', cwd)
     expect(leases.get(ref)?.holder).toBe('a')
   })
 
   test('update with retry: a writer that loses a race re-reads and tries again', () => {
-    claim(authority, ref, 'a', { cwd, now: t0, ttlMinutes: 10 })
+    takeLease(authority, ref, 'a', { cwd, now: t0, ttlMinutes: 10 })
     let raced = false
-    const result = updateWithRetry(
+    const result = updateLease(
       authority,
       ref,
       (lease) => {
         if (!raced) {
           // Another writer moves the lease while we are deciding.
           raced = true
-          updateWithRetry(authority, ref, (l) => ({ ...l, holder: 'b' }), { cwd })
+          updateLease(authority, ref, (l) => ({ ...l, holder: 'b' }), { cwd })
         }
         return { ...lease, expiresAt: at(30).toISOString() }
       },
@@ -270,5 +242,13 @@ describe('recipes', () => {
     )
     expect(result.holder).toBe('b') // the second attempt saw the other writer's change
     expect(fetchRef(authority, ref, { cwd, decode }).payload).toEqual(result)
+  })
+
+  test('release: pinned to our sha; false once the lease is ours no longer', () => {
+    const won = takeLease(authority, ref, 'a', { cwd, now: t0, ttlMinutes: 10 })
+    if (!won.won) throw new Error('expected to win')
+    takeLease(authority, ref, 'b', { cwd, now: at(11), ttlMinutes: 10 })
+    expect(giveUp(authority, ref, won.sha, cwd)).toBe(false)
+    expect(fetchRef(authority, ref, { cwd, decode }).payload.holder).toBe('b')
   })
 })

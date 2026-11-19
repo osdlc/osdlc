@@ -7,7 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.4.0] - Unreleased
+## [0.4.1](https://github.com/osdlc/osdlc/compare/typed-git/v0.4.0...typed-git/v0.4.1) - 2026-11-17
+
+### Added
+
+- *(typed-git)* diff_name_status, diff_text and merge_base ([#855](https://github.com/osdlc/osdlc/pull/855))
+
+### Added
+
+- `diff`: `diff_name_status` (changed paths with their status, and the old
+  path of a rename or copy, for a range, the index or the working tree),
+  `diff_text` (the unified diff, optionally staged, with `--binary`, limited
+  to paths) and `merge_base` (`None` for unrelated histories), with the
+  `Change`, `ChangeKind`, `DiffNameStatusOptions` and `DiffTextOptions`
+  types. `diff_text` always passes `--no-color`, `--no-ext-diff`,
+  `--no-textconv`, `--src-prefix=a/`, `--dst-prefix=b/`, `--no-relative`,
+  `--submodule=short` and `--unified=3`, so the text is a plain unified diff
+  with three lines of context under the user's colour, external diff,
+  textconv, prefix, `diff.relative`, `diff.submodule` and `diff.context`
+  settings. `diff.renames`, `diff.ignoreSubmodules`, `diff.algorithm` and the
+  `GIT_DIFF_OPTS` environment variable still apply. `diff_name_status` passes
+  `--no-relative`, and `--no-color` as a guard. Both pass `--` after the
+  revision, so git never reads it as a path, and both read their paths as git
+  pathspecs, so `*.md` is a glob. `merge_base` runs git with `LC_ALL=C`,
+  because it reads git's `error:` and `fatal:` words.
+
+## [0.4.0] - 2026-10-27
 
 The first public release. `typed-git` is a typed Rust layer over the `git`
 command line. It reads repository facts, makes commits and reverts limited to

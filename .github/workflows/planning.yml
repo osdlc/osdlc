@@ -4,8 +4,8 @@
 #
 # Both jobs build the validator from packages/ts/corpus-schema with
 # tools/build-corpus-schema.sh, not take it from npm: the plan uses `extends`
-# and `x-extends`, which corpus-schema has from 0.3.0. npm has 0.2.1, and 0.3.0
-# publishes from this repo.
+# and `x-extends`, which corpus-schema has from 0.4.0. 0.4.0 is on npm;
+# building here uses this repo's source, with changes not yet released.
 #
 # validate: the plan and the profile must pass corpus-schema with no errors and
 # no warnings. The profile is validated on its own too: the plan's report

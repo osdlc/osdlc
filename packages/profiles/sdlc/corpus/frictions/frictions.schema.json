@@ -1,0 +1,431 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "sdlc.friction",
+  "x-id-pattern": "^FR-[0-9A-Z]{4}$",
+  "type": "object",
+  "properties": {
+    "type": {
+      "const": "friction"
+    },
+    "schema_version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^FR-[0-9A-Z]{4}$"
+    },
+    "state": {
+      "$ref": "#/$defs/sdlc.FrictionState"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "created": {
+      "$ref": "#/$defs/intent.IsoDate"
+    },
+    "last_reviewed": {
+      "$ref": "#/$defs/intent.IsoDate"
+    },
+    "related": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/intent.DocWikilink"
+      }
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "need_human_review": {
+      "type": "boolean"
+    },
+    "created_at": {
+      "$ref": "#/$defs/intent.DateTime"
+    },
+    "provenance": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "$ref": "#/$defs/intent.OkfStatus"
+    },
+    "description": {
+      "type": "string"
+    },
+    "resource": {
+      "type": "string"
+    },
+    "stale_after": {
+      "$ref": "#/$defs/intent.DateTime"
+    },
+    "generated": {
+      "$ref": "#/$defs/intent.Generated"
+    },
+    "verified": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/intent.VerifiedEvent"
+      }
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/intent.Source"
+      }
+    },
+    "usage_window": {
+      "$ref": "#/$defs/intent.UsageWindow"
+    },
+    "source": {
+      "$ref": "#/$defs/sdlc.FrictionSource"
+    },
+    "signal": {
+      "$ref": "#/$defs/sdlc.FrictionSignal"
+    },
+    "fingerprint": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*(\\|[A-Za-z0-9._:@/+=-]{1,64})*$"
+    },
+    "scope": {
+      "$ref": "#/$defs/sdlc.FrictionScope"
+    },
+    "occurrences": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]*$"
+    },
+    "runs": {
+      "$ref": "#/$defs/sdlc.Count"
+    },
+    "first_seen": {
+      "$ref": "#/$defs/intent.DateTime"
+    },
+    "last_seen": {
+      "$ref": "#/$defs/intent.DateTime"
+    },
+    "subjects": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^\\[\\[(?:T-[0-9A-Z]{4}|S-[0-9A-Z]{4}|P-[0-9A-Z]{4}|C-[0-9A-Z]{4})(?:-[a-z0-9]+(?:-[a-z0-9]+)*)?\\]\\]$",
+        "x-ref": [
+          "tasks",
+          "standards",
+          "principles",
+          "capabilities"
+        ],
+        "x-ref-form": "wikilink"
+      }
+    },
+    "result": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "type",
+    "id",
+    "title",
+    "created",
+    "source"
+  ],
+  "patternProperties": {
+    "^(?!(?:intent|sdlc)\\.)[a-z][a-z0-9-]*\\.": true
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "source": {
+            "const": "detected"
+          }
+        },
+        "required": [
+          "source"
+        ]
+      },
+      "then": {
+        "required": [
+          "signal"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source": {
+            "const": "detected"
+          }
+        },
+        "required": [
+          "source"
+        ]
+      },
+      "then": {
+        "required": [
+          "fingerprint"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source": {
+            "const": "detected"
+          }
+        },
+        "required": [
+          "source"
+        ]
+      },
+      "then": {
+        "required": [
+          "first_seen"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source": {
+            "const": "detected"
+          }
+        },
+        "required": [
+          "source"
+        ]
+      },
+      "then": {
+        "required": [
+          "last_seen"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "signal"
+        ]
+      },
+      "then": {
+        "properties": {
+          "source": {
+            "const": "detected"
+          }
+        },
+        "required": [
+          "source"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "enum": [
+              "closed/promoted",
+              "closed/resolved"
+            ]
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "then": {
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "closed/promoted"
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "type": "string",
+            "pattern": "^\\[\\[(?:T-[0-9A-Z]{4}|B-[0-9A-Z]{4})(?:-[a-z0-9]+(?:-[a-z0-9]+)*)?\\]\\]$"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "result"
+        ]
+      },
+      "then": {
+        "properties": {
+          "state": {
+            "enum": [
+              "closed/promoted",
+              "closed/resolved"
+            ]
+          }
+        },
+        "required": [
+          "state"
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "sdlc.FrictionState": {
+      "type": "string",
+      "enum": [
+        "open/detected",
+        "open/accepted",
+        "closed/promoted",
+        "closed/dismissed",
+        "closed/resolved"
+      ]
+    },
+    "intent.IsoDate": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "intent.DocWikilink": {
+      "type": "string",
+      "pattern": "^\\[\\[[A-Za-z0-9][A-Za-z0-9._/-]*\\]\\]$"
+    },
+    "intent.DateTime": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:[0-5]\\d(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})$",
+      "format": "date-time"
+    },
+    "intent.OkfStatus": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "stable",
+        "deprecated"
+      ]
+    },
+    "intent.Generated": {
+      "type": "object",
+      "properties": {
+        "by": {
+          "$ref": "#/$defs/intent.Actor"
+        },
+        "at": {
+          "$ref": "#/$defs/intent.DateTime"
+        }
+      },
+      "required": [
+        "by"
+      ]
+    },
+    "intent.Actor": {
+      "type": "string",
+      "pattern": "^(?:[^\\s/:]+\\/\\S+|human:\\S+|process:\\S+)$"
+    },
+    "intent.VerifiedEvent": {
+      "type": "object",
+      "properties": {
+        "by": {
+          "$ref": "#/$defs/intent.Actor"
+        },
+        "at": {
+          "$ref": "#/$defs/intent.DateTime"
+        }
+      },
+      "required": [
+        "by",
+        "at"
+      ]
+    },
+    "intent.Source": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resource": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "author": {
+          "$ref": "#/$defs/intent.Actor"
+        },
+        "usage_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "last_modified": {
+          "$ref": "#/$defs/intent.DateTime"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "intent.UsageWindow": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/intent.DateTime"
+        },
+        "to": {
+          "$ref": "#/$defs/intent.DateTime"
+        }
+      },
+      "required": [
+        "from",
+        "to"
+      ]
+    },
+    "sdlc.FrictionSource": {
+      "type": "string",
+      "enum": [
+        "detected",
+        "reported"
+      ]
+    },
+    "sdlc.FrictionSignal": {
+      "type": "string",
+      "enum": [
+        "tool-failure-repeat",
+        "permission-wait",
+        "compaction",
+        "stall",
+        "op-error",
+        "op-retry",
+        "dispatch-fallback",
+        "model-switch",
+        "session-lost",
+        "step-failure"
+      ]
+    },
+    "sdlc.FrictionScope": {
+      "type": "string",
+      "enum": [
+        "local",
+        "upstream",
+        "external"
+      ]
+    },
+    "sdlc.Count": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$"
+    }
+  }
+}

@@ -275,8 +275,24 @@ pub fn target_range(inner: &str) -> Option<Range<usize>> {
     Some(lead..lead + target.len())
 }
 
-/// `inner` split at the first `|`, minus the `\` that escapes it.
-fn split_alias(inner: &str) -> (&str, Option<&str>) {
+/// A wikilink body split at its first `|`: the text before it, minus the
+/// `\` that escapes the pipe in a table cell, and the text after it, or
+/// `None` when there is no `|`. Neither part is trimmed.
+///
+/// The first part is the destination as written, `#heading` included, which
+/// a caller that quotes the link back needs. [`parse_inner`] reads both parts
+/// from this split.
+///
+/// # Examples
+///
+/// ```
+/// use markdown_link::split_alias;
+///
+/// assert_eq!(split_alias("Note#h\\|Alias"), ("Note#h", Some("Alias")));
+/// assert_eq!(split_alias(" Note "), (" Note ", None));
+/// assert_eq!(split_alias("a|b|c"), ("a", Some("b|c")));
+/// ```
+pub fn split_alias(inner: &str) -> (&str, Option<&str>) {
     match inner.split_once('|') {
         Some((t, a)) => (t.strip_suffix('\\').unwrap_or(t), Some(a)),
         None => (inner, None),
@@ -1325,10 +1341,10 @@ mod tests {
     }
 
     #[test]
-    fn relative_markdown_links_count_absolute_urls_do_not() {
+    fn absolute_urls_are_not_links_and_angled_urls_may_hold_spaces() {
         let links = body_links("[a](Notes/x.md) [b](https://example.com/y.md) [c](<sp ace.md>)");
         let targets: Vec<_> = links.into_iter().map(|l| l.target).collect();
-        assert_eq!(targets, vec!["Notes/x"]);
+        assert_eq!(targets, vec!["Notes/x", "sp ace"]);
     }
 
     #[test]

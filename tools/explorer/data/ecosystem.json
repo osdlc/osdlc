@@ -244,7 +244,8 @@
         8,
         22,
         23,
-        26
+        26,
+        88
       ],
       "links": [
         {
@@ -719,12 +720,12 @@
         "target"
       ],
       "repo": {
-        "present": "osdlc/markdown",
+        "present": "osdlc/osdlc",
         "target": "osdlc/osdlc"
       },
       "path": {
-        "present": "profiles/claims/example",
-        "target": null
+        "present": "packages/profiles/claims/example",
+        "target": "packages/profiles/claims/example"
       },
       "status": "published",
       "version": null,
@@ -732,11 +733,10 @@
       "twin": null,
       "purpose": "A valid level-2 corpus with the claims types: documents, methods, study-results and statements. Its records check a made-up claim about a tool called fernlog.",
       "notes": [
-        "The types follow GA4GH's VA-Spec 1.1.0 (decision D8). profiles/claims/README.md maps each type and field to VA-Spec.",
-        "It comes to osdlc/osdlc with the claims profile (decision D19). Its place there is not decided.",
-        "Merged in osdlc/markdown#6. The plan still calls task 4 in progress.",
-        "Until osdlc/markdown#15 merges, people copy it with npx degit osdlc/markdown/profiles/claims/example. After it, the example holds no type copies, so the profile package is the thing to extend. It is not on a registry.",
-        "profiles/claims/tests/ holds broken records that must fail with one expected error each.",
+        "The types follow GA4GH's VA-Spec 1.1.0 (decision D8). packages/profiles/claims/README.md maps each type and field to VA-Spec.",
+        "Merged in osdlc/markdown#6. It came to osdlc/osdlc with the claims profile (decision D19, task 78), with its history, at packages/profiles/claims/example.",
+        "People copy it with npx degit osdlc/osdlc/packages/profiles/claims/example. It holds no type copies, so the profile package is the thing to extend. It is not on a registry.",
+        "packages/profiles/claims/tests/ holds broken records that must fail with one expected error each.",
         "Its CI builds this repo's corpus-schema, because the published 0.2.x does not read extends.",
         "Until task 31, evidence items are relative links with a pattern check, not x-ref."
       ],
@@ -768,27 +768,28 @@
       "language": "markdown",
       "layer": "profiles",
       "states": [
+        "present",
         "target"
       ],
       "repo": {
-        "present": null,
+        "present": "osdlc/osdlc",
         "target": "osdlc/osdlc"
       },
       "path": {
-        "present": null,
-        "target": null
+        "present": "packages/profiles/claims",
+        "target": "packages/profiles/claims"
       },
-      "status": "in-progress",
-      "version": null,
-      "registry": null,
+      "status": "published",
+      "version": "0.1.0",
+      "registry": "https://www.npmjs.com/package/@osdlc/corpus-profile-claims",
       "twin": null,
       "purpose": "The claims types published as a versioned profile, so a corpus names it under extends: and marks its types with x-extends instead of copying them.",
       "notes": [
         "Decision D10 fixed the name, the folder and the prefix claims. The architecture still marks the profiles layer a proposal, and its open questions ask whether to adopt profiles.",
-        "Built in osdlc/markdown#15 as package 0.1.0 at profiles/claims. The four type schemas are in its corpus/ folder, which package.json names with \"corpus\". The claims example extends it.",
+        "Built in osdlc/markdown#15. The four type schemas are in its corpus/ folder, which package.json names with \"corpus\". The claims example extends it.",
         "Task 76 rewrites it as pack-claims.",
-        "It comes to osdlc/osdlc (decision D19). Its place there is not decided; the proposal is packages/profiles/*.",
-        "Not published. The npm name does not change."
+        "It came to osdlc/osdlc (decision D19, task 78), at packages/profiles/claims, with a changeset for its first release, 0.1.0.",
+        "Published to npm at 0.1.0 on 2026-11-13, by the Version Packages pull request (#804). The release needed osdlc/osdlc#785. The npm name does not change."
       ],
       "tasks": [
         79,
@@ -854,25 +855,27 @@
       "language": "markdown",
       "layer": "profiles",
       "states": [
+        "present",
         "target"
       ],
       "repo": {
-        "present": null,
+        "present": "osdlc/osdlc",
         "target": "osdlc/osdlc"
       },
       "path": {
-        "present": null,
-        "target": null
+        "present": "packages/profiles/sdlc",
+        "target": "packages/profiles/sdlc"
       },
-      "status": "planned",
-      "version": null,
-      "registry": null,
+      "status": "published",
+      "version": "0.1.0",
+      "registry": "https://www.npmjs.com/package/@osdlc/corpus-profile-sdlc",
       "twin": null,
       "purpose": "The intent and sdlc packs' kinds as one corpus profile, generated from the packs. sdlc corpora in dev, at work and in this plan validate against it, and the starter corpus extends it.",
       "notes": [
         "Planned in decision D13. One profile for now; an intent profile splits out later if a consumer needs the intent kinds alone.",
-        "It comes to osdlc/osdlc (decision D19). Its place there is not decided; the proposal is packages/profiles/*. The generator stays in sksizer/dev, so the profile is regenerated by hand there and copied in.",
-        "This plan (task 53) and a work repo (task 52) install it from npm with corpus-schema 0.3.0."
+        "Built in osdlc/markdown#19. It came to osdlc/osdlc (decision D19, task 78), at packages/profiles/sdlc, with a changeset for its first release, 0.1.0. The generator stays in sksizer/dev, so the profile is regenerated by hand there and copied in.",
+        "Published to npm at 0.1.0 on 2026-11-13, by the Version Packages pull request (#804). The release needed osdlc/osdlc#785.",
+        "This plan (task 53) and a work repo (task 52) install it from npm with corpus-schema 0.4.0."
       ],
       "tasks": [
         78,
@@ -894,26 +897,28 @@
       "language": "markdown",
       "layer": "profiles",
       "states": [
+        "present",
         "target"
       ],
       "repo": {
-        "present": null,
+        "present": "osdlc/osdlc",
         "target": "osdlc/osdlc"
       },
       "path": {
-        "present": null,
-        "target": null
+        "present": "packages/corpora/sdlc-starter",
+        "target": "packages/corpora/sdlc-starter"
       },
-      "status": "planned",
-      "version": null,
-      "registry": null,
+      "status": "published",
+      "version": "0.1.0",
+      "registry": "https://www.npmjs.com/package/@osdlc/corpus-sdlc-starter",
       "twin": null,
       "purpose": "A starter corpus of principles and standards that any project can reference and cite. This plan (task 53) and then a work repo name it under references: with the prefix osdlc, sync it into _references/osdlc/ and cite its records by id.",
       "notes": [
         "Decision D14. It starts with two principles, P-0001 and P-0002, and the owner adds more (task 64).",
-        "It comes to osdlc/osdlc (decision D19). Its place there is not decided; the proposal is packages/corpora/*.",
+        "Built in osdlc/markdown#19. It came to osdlc/osdlc (decision D19, task 78), at packages/corpora/sdlc-starter, with a changeset for its first release, 0.1.0.",
+        "Published to npm at 0.1.0 on 2026-11-13, by the Version Packages pull request (#804). The release needed osdlc/osdlc#785.",
         "dev's own intent records are not the upstream for now.",
-        "A CI check keeps private data out of it (task 65)."
+        "A CI check keeps private data out of it (task 65): tools/leak-check.sh, run by .github/workflows/profiles.yml."
       ],
       "tasks": [
         78,
@@ -936,15 +941,16 @@
       "language": "markdown",
       "layer": "profiles",
       "states": [
+        "present",
         "target"
       ],
       "repo": {
-        "present": null,
+        "present": "osdlc/osdlc",
         "target": "osdlc/osdlc"
       },
       "path": {
-        "present": null,
-        "target": null
+        "present": "packages/corpora/examples/fernlog",
+        "target": "packages/corpora/examples/fernlog"
       },
       "status": "in-progress",
       "version": null,
@@ -952,8 +958,8 @@
       "twin": null,
       "purpose": "A project corpus for a made-up tool. It extends the claims profile and references the example org principles. Its decisions and statements cite the org's principles. CI installs the claims profile, runs corpus-schema sync and validates both corpora.",
       "notes": [
-        "Built in osdlc/markdown#16 at examples/fernlog, not merged. It comes to osdlc/osdlc (decision D19); its place there is not decided. It holds a committed _references/org/ copy of the org principles. The claims profile gets no copy, since it gives types only.",
-        "examples/test.sh breaks one thing at a time and checks each case fails with its one expected error.",
+        "Built in osdlc/markdown#16 at examples/fernlog, not merged there. It came to osdlc/osdlc with its history (decision D19, task 78), at packages/corpora/examples/fernlog. It is not a workspace member: it installs the claims profile with its own lockfile. It holds a committed _references/org/ copy of the org principles. The claims profile gets no copy, since it gives types only.",
+        "packages/corpora/examples/test.sh breaks one thing at a time and checks each case fails with its one expected error. .github/workflows/profiles.yml runs it.",
         "It is the start of task 30."
       ],
       "tasks": [
@@ -991,7 +997,8 @@
       "twin": null,
       "purpose": "A proposed shared corpus of an organization's principles. Project corpora reference it and cite its principles, and later refine some and waive others with a reason (task 28).",
       "notes": [
-        "The first real case for sharing across corpora. The plan does not say which repo holds it. The starter corpus (task 63) may become it."
+        "The first real case for sharing across corpora. The plan does not say which repo holds it. The starter corpus (task 63) may become it.",
+        "Not the example org principles corpus at packages/corpora/examples/org-principles in osdlc/osdlc; that is org-principles-example."
       ],
       "tasks": [
         27,
@@ -1008,15 +1015,16 @@
       "language": "markdown",
       "layer": "profiles",
       "states": [
+        "present",
         "target"
       ],
       "repo": {
-        "present": null,
+        "present": "osdlc/osdlc",
         "target": "osdlc/osdlc"
       },
       "path": {
-        "present": null,
-        "target": null
+        "present": "packages/corpora/examples/org-principles",
+        "target": "packages/corpora/examples/org-principles"
       },
       "status": "in-progress",
       "version": null,
@@ -1024,7 +1032,7 @@
       "twin": null,
       "purpose": "An example organisation's principles: a corpus with one type and three records. The fernlog example extends it by path.",
       "notes": [
-        "Built in osdlc/markdown#16 at examples/org-principles, not merged. It comes to osdlc/osdlc (decision D19); its place there is not decided.",
+        "Built in osdlc/markdown#16 at examples/org-principles, not merged there. It came to osdlc/osdlc with its history (decision D19, task 78), at packages/corpora/examples/org-principles.",
         "An example, not the shared org corpus. That one is the org principles corpus (task 30)."
       ],
       "tasks": [
@@ -1344,15 +1352,15 @@
         "target": "packages/ts/corpus-schema"
       },
       "status": "published",
-      "version": "0.2.1",
+      "version": "0.4.0",
       "registry": "https://www.npmjs.com/package/@osdlc/corpus-schema",
       "twin": "corpus-schema-rs",
       "purpose": "The validator for the corpus-schema spec, as a library and the corpus-schema command. It checks records against their schemas, ids, links and typed references.",
       "notes": [
-        "0.2.0 is its first version on npm, and 0.2.1 the latest. 0.1.0 was cut but never published (task 3).",
+        "0.2.0 is its first version on npm, and 0.4.0 the latest. 0.1.0 was cut but never published (task 3), and 0.3.0 was never published.",
         "Today it walks the folder and checks links itself (problem F8). Task 14 makes it read the corpus model instead.",
         "It stays in osdlc/osdlc and releases from here, with the same npm publisher (decision D19). The copy that osdlc/markdown#9 and #10 set up in osdlc/markdown is retired.",
-        "The 0.3.0 work (extends, x-extends and sync) comes here from osdlc/markdown#12 and releases from here. It is not released yet.",
+        "The work planned as 0.3.0 (extends, x-extends and sync) came here from osdlc/markdown#12 and was released from here as 0.4.0 on 2026-11-13 (task 36).",
         "validate --fix exists today. Task 29 adds the corpus-schema sync command: it writes a read-only copy of each referenced corpus into _references/<prefix>/, such as _references/org/, so Obsidian and GitHub links resolve. The validator then checks that the copy matches the installed corpus. Task 34 adds a move verb."
       ],
       "tasks": [
@@ -1381,6 +1389,7 @@
         71,
         73,
         81,
+        88,
         82,
         83
       ],
@@ -3216,7 +3225,7 @@
       "states": [
         "target"
       ],
-      "note": "By the package name, installed with a file dependency on profiles/claims. Task 79 switches it to npm."
+      "note": "By the package name, installed with a file dependency on packages/profiles/claims. Task 79 switches it to npm."
     },
     {
       "from": "fernlog-example",

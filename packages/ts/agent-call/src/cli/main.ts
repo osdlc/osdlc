@@ -1,6 +1,7 @@
 import { resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
+import { envPolicyLines } from '../env.js'
 import { adapterFor, BUILTIN_AGENTS } from '../registry.js'
 import { callAgent, planCall } from '../run.js'
 import type { CapabilityNote, PlannedCall } from '../plan.js'
@@ -54,6 +55,7 @@ export function explainText(
 ): string {
   const lines = [`agent: ${planned.agent}`, `argv: ${JSON.stringify(planned.argv)}`]
   lines.push(`env: ${Object.keys(planned.env).sort().join(', ') || '(none)'}`)
+  lines.push(...envPolicyLines(planned.spec))
   lines.push(`prompt: ${planned.stdin !== undefined ? 'stdin' : 'argv'}`)
   const notes = noteLines(planned.notes, extra)
   lines.push(notes.length === 0 ? 'notes: (none)' : 'notes:', ...notes.map((n) => `  ${n}`))

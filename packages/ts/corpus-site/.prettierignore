@@ -1,0 +1,8 @@
+node_modules/
+dist/
+coverage/
+# Astro components: Prettier has no parser for them without a plugin.
+*.astro
+# Example site build output.
+examples/site/dist/
+examples/site/.astro/

@@ -1,5 +1,46 @@
 # @osdlc/agent-seat
 
+## 0.8.0
+
+### Minor Changes
+
+- 9862f4b: Orca host: `SessionRequest` and `CommandRequest` take `focus` (default true); `focus: false` opens the terminal in the background. The create no longer passes `--focus`, which can time out while Orca adopts a worktree with the terminal already open; the host switches to the new terminal afterwards, once the create returned its handle. `parseOrcaCreatedHandle` also reads `result.handle` and `result.terminalId`, and `find`, `send`, `focus` and `close` list again with `--limit` of `totalCount` when Orca truncated the first page of 100. `orcaFindArgv` takes an optional `limit`.
+
+## 0.7.9
+
+### Patch Changes
+
+- Updated dependencies [6236a97]
+  - @osdlc/typed-git@0.17.0
+
+## 0.7.8
+
+### Patch Changes
+
+- Updated dependencies [cde222c]
+  - @osdlc/typed-git@0.16.0
+
+## 0.7.7
+
+### Patch Changes
+
+- Updated dependencies [6c329b7]
+  - @osdlc/agent-call@0.14.0
+
+## 0.7.6
+
+### Patch Changes
+
+- Updated dependencies [9a1d13c]
+  - @osdlc/agent-call@0.13.0
+
+## 0.7.5
+
+### Patch Changes
+
+- Updated dependencies [912296d]
+  - @osdlc/typed-git@0.15.0
+
 ## 0.7.4
 
 ### Patch Changes

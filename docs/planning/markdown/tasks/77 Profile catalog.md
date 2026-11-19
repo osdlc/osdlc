@@ -2,7 +2,7 @@
 number: 77
 title: Profile catalog
 detail: index of profiles
-status: todo
+status: deferred
 type: supporting
 milestone: "[m-model-layer](../milestones/m-model-layer.md)"
 after:
@@ -12,3 +12,5 @@ after:
 A generated index of the shared profiles and of the corpora built on them. Each entry has the
 package's purl, its version and its types. Build it once a few research corpora exist. Low
 priority. After 62.
+
+Deferred: it follows task 62, which is deferred. It is opened again with task 62.

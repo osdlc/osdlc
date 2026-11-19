@@ -18,6 +18,16 @@ of them.
 - Each library lives in `packages/<language>/<name>/`, for example
   `packages/ts/command-seam/`. TypeScript libraries are under `packages/ts/`
   and Rust crates under `packages/rust/`.
+- corpus-schema profiles and corpora are npm packages that hold Markdown and
+  JSON Schema and no code. Profiles are under `packages/profiles/` and
+  corpora under `packages/corpora/`, as members of the pnpm workspace, and
+  `.github/workflows/profiles.yml` checks them. `packages/corpora/examples/`
+  is an example pair, not a package.
+- `packages/corpora/harness-reference/` is the harness reference: a private
+  corpus of cited statements about coding-agent harnesses, with the tools
+  that capture, lint and compile it. It is not published. Its compiled file
+  ships in `packages/ts/harness-knowledge` (`@osdlc/harness-knowledge` on
+  npm), and `.github/workflows/harness-reference.yml` checks both.
 - TypeScript libraries are published to npm from CI with
   [Changesets](https://changesets.dev). `.github/workflows/packages-publish.yml`
   publishes through npm trusted publishing, with provenance, so no npm token
@@ -88,12 +98,14 @@ the standard.
   with expected values written by the reference implementation's generator.
   `pnpm run check:conformance` checks the suites with `@osdlc/conformance-suites`;
   `packages/conformance/config.json` holds its exemptions. `tiered-dirs`,
-  `config-layers`, `corpus-schema`, `frontmatter-lossless`, `intersect`,
-  `markdown-link`, `markdown-tags` and `path-guard` are there. Until they move,
-  `gfm-pipe-table` (the Rust implementation of `@osdlc/gfm-table`) keeps
+  `config-layers`, `corpus-schema`, `etag-write`, `file-lock`,
+  `frontmatter-lossless`, `intersect`, `markdown-link`, `markdown-tags` and
+  `path-guard` are there. Until they move, `gfm-pipe-table` (the Rust
+  implementation of `@osdlc/gfm-table`) keeps
   `packages/rust/gfm-pipe-table/tests/fixtures/parity.json`, and
   `markdown-contract` runs the TypeScript package's `corpus/` directly.
-  `etag-write` has no shared cases yet.
+  The `agent-router` crate reads the TypeScript package's `fixtures/` and its
+  catalogue snapshot.
 - **Each language's idiom.** An implementation does not copy the other's names or
   signatures when that breaks its own language's habits. Rust uses
   snake_case, `Result`, traits and the standard library's words. TypeScript
@@ -137,6 +149,8 @@ Developed here, in this repository:
 - `packages/ts/command-seam` (`@osdlc/command-seam`)
 - `packages/ts/gfm-table` (`@osdlc/gfm-table`)
 - `packages/rust/agent-adapt` (`agent-adapt` on crates.io)
+- `packages/rust/agent-router` (`agent-router`, the Rust implementation of
+  `@osdlc/agent-router`'s pure core; not on crates.io)
 - `packages/rust/config-layers` (`config-layers` on crates.io)
 - `packages/rust/etag-write` (`etag-write` on crates.io)
 - `packages/rust/frontmatter-lossless` (`frontmatter-lossless` on crates.io)
@@ -155,6 +169,9 @@ Developed here, in this repository:
 - `packages/rust/markdown-relink` (`markdown-relink` on crates.io)
 - `packages/rust/markdown-vault-fs` (`markdown-vault-fs` on crates.io, the
   vault layer over `vfs-walk`)
+- `packages/rust/osdlc-file-lock` (`osdlc-file-lock` on crates.io, the Rust
+  implementation of `@osdlc/file-lock`, so a Rust process and a Node.js process
+  can hold one lock file in turn)
 - `packages/rust/path-guard` (`path-guard` on crates.io)
 - `packages/rust/slug-collate` (`slug-collate` on crates.io)
 - `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)
@@ -180,13 +197,17 @@ Developed here, in this repository:
 - `packages/ts/etag-write` (`@osdlc/etag-write` on npm, the crate's TypeScript implementation)
 - `packages/ts/file-lock` (`@osdlc/file-lock` on npm, cross-process exclusive
   file locks: a held lock with an owner token and a staleness rule, and a short
-  critical section; TypeScript only, since Rust has `File::lock`)
+  critical section; the `osdlc-file-lock` crate is its Rust implementation)
 - `packages/ts/frontmatter-lossless` (`@osdlc/frontmatter-lossless` on npm,
   the TypeScript implementation of the `frontmatter-lossless` crate)
 - `packages/ts/color` (`@osdlc/color` on npm, sRGB colour arithmetic for
   contrast checks)
 - `packages/ts/agent-call` (`@osdlc/agent-call` on npm, one call spec for
   headless coding-agent CLIs)
+- `packages/ts/agent-router` (`@osdlc/agent-router` on npm, picks the
+  coding-agent CLI, model and effort to launch: a model catalogue, a resolver
+  for references such as `claude/opus@high`, and an ordered profile walk with
+  fallbacks and an author rule for reviews)
 - `packages/ts/agent-seat` (`@osdlc/agent-seat` on npm, opens an interactive
   coding-agent session in the terminal app, multiplexer or editor a person
   already uses, behind one host contract in optional parts)
@@ -203,6 +224,15 @@ Developed here, in this repository:
   corpus declares about itself, typed records kept as Markdown, YAML and JSON
   files in a folder, checked against the schemas, ids and links the folder
   holds; a library and a `corpus-schema` command)
+- `packages/ts/corpus-query` (`@osdlc/corpus-query` on npm, queries over one
+  corpus-schema corpus: describe its types, find records by filter and
+  full-text search, read a record with its references and backlinks, walk
+  references and count field values; one core behind a TypeScript API, a
+  `corpus-query` command, a REST server and an MCP server)
+- `packages/ts/corpus-site` (`@osdlc/corpus-site` on npm, an Astro
+  integration that publishes a corpus-schema corpus as a static site: a page
+  for each type with filters and search, a page for each record, the corpus
+  as JSON files, and Vue composables and components for pages of your own)
 - `packages/ts/markdown-link` (`@osdlc/markdown-link` on npm, wikilink and
   relative markdown link parsing with spans, and the code lexer that keeps
   links in code out; the TypeScript implementation of the parsing half of the

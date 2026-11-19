@@ -1,0 +1,12 @@
+---
+// The foot of every page: the corpus's name, version and identity.
+import { getSite } from '../context.js'
+
+const { model } = getSite()
+---
+
+<footer class="cs-footer">
+  <p>
+    {model.name}{model.version && ` ${model.version}`}{model.identity && ` · ${model.identity}`}
+  </p>
+</footer>

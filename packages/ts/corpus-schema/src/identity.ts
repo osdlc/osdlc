@@ -14,7 +14,9 @@ export interface PackageUrl {
   type: string
   /** The namespace's segments: an npm scope with its `@`, or a GitHub owner. */
   namespace?: string[]
+  /** The package's name, without its namespace. */
   name: string
+  /** The package's version, for a versioned URL. */
   version?: string
   /** The subpath's segments: a type folder, then a record id. */
   subpath?: string[]

@@ -1,0 +1,15 @@
+---
+// A record of a corpus the loaded one references or extends: `ref/<corpus key>/<type>/<slug>/`.
+import { Layout, RecordPage } from 'virtual:corpus-site/components'
+import { getSite } from '../../context.js'
+import { recordByRef, refPaths } from '../../routes.js'
+
+export const getStaticPaths = () => refPaths(getSite())
+
+const record = recordByRef(getSite(), Astro.params.ref)
+if (record === undefined) return new Response(null, { status: 404 })
+---
+
+<Layout title={record.title} description={record.summary} wide>
+  <RecordPage record={record} />
+</Layout>

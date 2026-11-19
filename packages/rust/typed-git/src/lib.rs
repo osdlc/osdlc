@@ -6,6 +6,9 @@
 //!
 //! - [`query`]: read-only facts, such as the HEAD sha, the branch, a parsed
 //!   status with ahead and behind counts, and a file's bytes at a revision.
+//! - [`diff`]: the changed paths with their status, for a range, the index
+//!   or the working tree, the unified diff, and the merge base of two
+//!   revisions.
 //! - [`commit`]: commits and reverts limited to named paths, and a push to
 //!   the branch's upstream.
 //! - [`clone`]: a cache checkout of another repository at a branch, tag or
@@ -36,6 +39,7 @@
 pub mod clone;
 pub mod cmd;
 pub mod commit;
+pub mod diff;
 pub mod error;
 pub mod info;
 pub mod query;

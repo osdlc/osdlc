@@ -9,7 +9,8 @@ after:
   - "[3 Publish 0.2.0](3%20Publish%200.2.0.md)"
 ---
 
-Example claims corpus, in osdlc/markdown at `profiles/claims/example/`. A valid level-2 corpus with the
+Example claims corpus, made in osdlc/markdown at `profiles/claims/example/` and now in osdlc/osdlc at
+`packages/profiles/claims/example/`. A valid level-2 corpus with the
 VA-Spec types `documents`, `study-results`, `methods` and `statements`, their schemas, and a few
 records that show the whole chain. After 3.
 - A statement holds its proposition (subject, predicate, object) and its evidence lines. Each line
@@ -26,5 +27,6 @@ records that show the whole chain. After 3.
 
 Done: [osdlc/markdown#6](https://github.com/osdlc/markdown/pull/6).
 
-The example comes to osdlc/osdlc with the profiles ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md), task 78). The `degit` path above
-stops working once osdlc/markdown is emptied (task 79).
+The example came to osdlc/osdlc with the profiles ([D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md), task 78). Its `degit` path is now
+`npx degit osdlc/osdlc/packages/profiles/claims/example <dir>`. The osdlc/markdown path above stops
+working once osdlc/markdown is emptied (task 79).

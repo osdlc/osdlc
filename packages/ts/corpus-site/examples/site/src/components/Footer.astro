@@ -1,0 +1,10 @@
+---
+// Replaces the site's footer: see `components` in astro.config.mjs.
+import { getSite } from '@osdlc/corpus-site'
+
+const site = getSite()
+---
+
+<footer class="cs-footer">
+  <p>{site.title}, an example corpus. <a href={`${site.base}shelf/`}>The shelf in numbers</a></p>
+</footer>

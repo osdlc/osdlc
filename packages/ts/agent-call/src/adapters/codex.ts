@@ -1,3 +1,4 @@
+import { classifyCodex, failureClassifier } from './failure.js'
 import {
   CONVERSATION_SCHEMA,
   type Conversation,
@@ -47,6 +48,7 @@ export function codexAdapter(options: CodexAdapterOptions = {}): AgentAdapter {
     parseResult(planned, raw) {
       return parseCodex(planned, raw)
     },
+    classifyFailure: failureClassifier(classifyCodex),
     toConversation(planned, raw) {
       return codexConversation(planned, raw)
     },

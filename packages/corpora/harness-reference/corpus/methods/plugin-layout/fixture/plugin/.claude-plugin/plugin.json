@@ -1,0 +1,5 @@
+{
+  "name": "layout-probe",
+  "version": "0.1.0",
+  "description": "Probe for how a skill's relative paths resolve"
+}

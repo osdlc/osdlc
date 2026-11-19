@@ -119,6 +119,29 @@ const planned = planCall(codex, { prompt: 'Review the change.' })
 // planned.argv is ['codex', '--profile', 'work', 'exec', ...]
 ```
 
+Keeping variables from the agent: `unsetEnv` names variables the child must
+not inherit, and `inheritEnv` (default `'all'`) can be a list, so the child
+inherits only those. `BASELINE_ENV` is a frozen list of the names a CLI
+usually needs to start (`PATH`, `HOME`, `USER`, `SHELL`, locale, `TERM`, `TZ`,
+the temp directory variables and the Windows system variables). It is never
+added for you, so spread it into the list:
+
+```ts
+const result = await callAgent(adapterFor('codex'), {
+  prompt: 'Review the change.',
+  inheritEnv: [...BASELINE_ENV, 'OPENAI_API_KEY'],
+  unsetEnv: ['GH_TOKEN', 'GITHUB_TOKEN'],
+})
+```
+
+The child's environment is built in one place, for every adapter; the
+`inheritEnv` doc in `spec.ts` gives the order. An explicit value in `env` wins
+over a removal. If a bare binary name would be looked up on a `PATH` the child
+does not have, the call fails with `spawn-failed`. `planCall` carries both
+fields on `planned.spec`. The fields are library-only for now: the CLI spec
+file does not accept them, so the names show in `--explain` and `--dry-run`
+only for callers who build the plan themselves.
+
 `detectAgents` runs the whole command with `--version` appended, and each
 result's `command` says what answered. The Cursor CLI installs as both
 `agent`, the default cursor adapter's binary, and `cursor-agent`. `agent` is a
@@ -223,6 +246,36 @@ A parser that throws on the output does not reject: the result is `ok: false`
 with reason `agent-error`. `planCall` throws the same way as planning. The
 `callAgent` TSDoc is the full list.
 
+`reason` says how the run ended. When the adapter can also tell why the
+provider refused, `error.cause` says so (experimental): `{ kind: 'auth' }`, a
+`{ kind: 'rate-limit', resetAt, limit }` with the reset time as ISO 8601 or
+`null`, and `{ kind: 'quota' }` for exhausted credit. `claude`, `codex` and
+`cursor` classify; for every other adapter `cause` stays `undefined`, and so it
+does when the output names none of these. Only the failure text is read, never
+the agent's own answer. The phrases come from published messages, not live
+captures, and the `cursor` out-of-credit words are an unverified guess.
+
+A caller that spawned the CLI itself gets the same two helpers without
+`callAgent`: `classifyFailure(agent, { stdout, stderr, exitCode }, { now })`,
+which returns the cause or `undefined` and never throws, and
+`parseOutput(agent, stdout, format, { stderr, exitCode, schema })`, which
+returns the `ParsedOutput` fields `parseResult` gives, plus `model` from
+claude's `modelUsage`. `parseOutput` never throws: output it cannot read gives
+`{ text: '' }`, or an `isError` result from the adapter. `classifyFailure`,
+`parseOutput`, `FailureCause` and `FailureOutput` are all experimental. `model`
+is the one field `parseOutput` fills that `parseResult` does not, and codex's
+`usage.inputTokens` includes cached tokens, as in `parseResult`.
+
+```ts
+const output: FailureOutput = {
+  stdout: '',
+  stderr: 'Claude AI usage limit reached|1791374400',
+  exitCode: 1,
+}
+const cause = classifyFailure('claude', output)
+// { kind: 'rate-limit', resetAt: '2026-...', limit: '...' }
+```
+
 ## Command line: `agent-call run`
 
 The package installs an `agent-call` command that runs one call from a spec
@@ -292,7 +345,7 @@ The stable exports:
   `PermissionMode`, `ContextSpec`, `OutputSpec`, `OutputFormat`, `SessionSpec`,
   `McpSpec`, `PluginSpec`, and `EFFORT_LEVELS` with `EffortLevel`.
 - Planning and running: `planCall`, `callAgent`, `PlannedCall`,
-  `CapabilityNote`, `Support`, `TempFile`, `TMP_TOKEN`, `AgentResult`,
+  `CapabilityNote`, `Support`, `TempFile`, `TMP_TOKEN`, `BASELINE_ENV`, `AgentResult`,
   `CallError` and `CallOptions`.
 - Built-in adapters: `adapterFor`, `BUILTIN_AGENTS`, `detectAgents`,
   `AgentAvailability`, `claudeAdapter`, `codexAdapter`, `antigravityAdapter`,
@@ -310,10 +363,15 @@ The stable exports:
 The experimental exports:
 
 `modelArgs`, `modelArgsRefusal`, `ModelChoice`, `templateAdapter`,
-`templateRefusal`, `TemplateAdapterOptions`, `claudePluginArgv` and
-`claudeResumeFlag`.
+`templateRefusal`, `TemplateAdapterOptions`, `claudePluginArgv`,
+`claudeResumeFlag`, `classifyFailure`, `parseOutput`, `FailureCause` and
+`FailureOutput`.
 
-These build launch arguments for callers that assemble a command line
+`classifyFailure` and `parseOutput` read the output of a CLI you spawned
+yourself, and `FailureCause` is also `CallError.cause`; see Failures. The
+phrases they match are not from live captures.
+
+The rest build launch arguments for callers that assemble a command line
 themselves: model and effort flags for claude, codex and pi, an argument
 template for any CLI, claude's plugin flags and its `--resume=<id>` flag. They
 work and are tested, but their shape is not settled.
@@ -464,9 +522,12 @@ format (a JSON envelope or an event stream), so metadata is captured.
   binary planted in the working directory, such as a pull request's
   checkout, is never the one run. Not found is `spawn-failed`. A binary given
   as a path (`/opt/claude/bin/claude`, `./claude`) is run as given.
-- The child process inherits the parent's whole environment, plus the spec's
-  `env`. Credentials in your environment reach the agent CLI. Pass a trimmed
-  environment to the parent if that matters.
+- By default the child process inherits the parent's whole environment, plus
+  the spec's `env`, so credentials in your environment reach the agent CLI.
+  Set `unsetEnv` to name variables it must not get (`GH_TOKEN`,
+  `GITHUB_TOKEN`), or `inheritEnv` to a list so it inherits only those. See
+  "Keeping variables from the agent" under API. A bare binary name still needs
+  `PATH` in the child's environment.
 - Any local user can read argv in the process list. The prompt travels in
   argv for antigravity (`-p <prompt>`) and opencode (positional), so do not
   put secrets in a prompt for those two agents. claude and codex read the

@@ -1,0 +1,1 @@
+statements/statement-neutral-with-strength.md: strength: not allowed here (see the if/then rule in the schema)

@@ -1,0 +1,24 @@
+# octocov (https://github.com/k1LoW/octocov) totals the coverage that
+# scripts/quality-report.sh measures. It reports only: there is no
+# `acceptable` condition, so no number fails a run.
+#
+# This file is for local runs: run `octocov` at the repository root after the
+# script to see the totals, and `octocov ls-files` for every file. reports.yml
+# writes its own config with the same settings, so a repository that calls it
+# needs none.
+coverage:
+  paths:
+    - packages/coverage/ts.lcov
+    - packages/coverage/rust.lcov
+summary:
+  if: env.GITHUB_ACTIONS == "true"
+# The report of main is kept as a workflow artifact, and every other run is
+# compared with it.
+report:
+  if: env.GITHUB_ACTIONS == "true" && is_default_branch
+  datastores:
+    - artifact://${GITHUB_REPOSITORY}
+diff:
+  if: env.GITHUB_ACTIONS == "true"
+  datastores:
+    - artifact://${GITHUB_REPOSITORY}

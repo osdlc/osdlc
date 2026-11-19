@@ -12,6 +12,8 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
 
 import {
+  askChoice,
+  askText,
   askYesNo,
   canPrompt,
   captureContext,
@@ -37,15 +39,21 @@ import {
   FAILURE_EXIT,
   isDomainExit,
   isYes,
+  NotInteractiveError,
+  type NotInteractiveReason,
+  openTty,
   processContext,
   processIo,
   quietOnBrokenPipe,
   readLine,
   renderError,
   renderFailure,
+  requireInteractive,
   runMain,
   systemDirs,
   TieredDirs,
+  type AskChoiceOptions,
+  type AskTextOptions,
   type AskYesNoOptions,
   type BooleanFlag,
   type Cli,
@@ -62,6 +70,10 @@ import {
   type FlagValues,
   type ListFlag,
   type MainFn,
+  type OpenTtyOptions,
+  type PromptOptions,
+  type PromptTerminal,
+  type RequireInteractiveOptions,
   type ParseResult,
   type PositionalDecl,
   type RunMainOptions,
@@ -268,6 +280,72 @@ test('keys typed before a question are thrown away, through stty on a terminal',
     closeSync(fd)
   }
   expect(modes.at(-1)).toEqual(['saved'])
+})
+
+test('asking for text or one of a list, with an answer required', () => {
+  const file = join(dir, 'answers')
+  writeFileSync(file, 'feature\n7\nupstream\n')
+  const fd = openSync(file, 'r')
+  const written: string[] = []
+  // `isTerminal` stands in for a real terminal; `required` then lets it answer.
+  const common: PromptOptions = {
+    fd,
+    isTerminal: true,
+    required: true,
+    write: (t) => written.push(t),
+  }
+  try {
+    const text: AskTextOptions = { ...common, default: 'main' }
+    expect(askText('Branch?', text)).toBe('feature')
+    const choice: AskChoiceOptions<'origin' | 'upstream'> = { ...common, default: 'origin' }
+    // `7` is not on the list, so it asks again and reads the next line.
+    expect(askChoice('Push to?', ['origin', 'upstream'], choice)).toBe('upstream')
+  } finally {
+    closeSync(fd)
+  }
+  expect(written.join('')).toContain('  2) upstream\n')
+
+  // Piped input does not answer a required question: it throws, and runMain
+  // turns that into exit 2 with the flag to pass instead.
+  writeFileSync(file, 'y\n')
+  const piped = openSync(file, 'r')
+  try {
+    expect(() => askYesNo('Delete it?', { fd: piped, required: true, flag: '--yes' })).toThrow(
+      NotInteractiveError,
+    )
+  } finally {
+    closeSync(piped)
+  }
+})
+
+test('finding a terminal to ask on when stdin is a pipe', () => {
+  // A regular file and a fake isTerminal stand in for /dev/tty.
+  const device = join(dir, 'tty')
+  writeFileSync(device, 'y\n')
+  const options: OpenTtyOptions = { path: device, isTerminal: (fd) => fd > 2 }
+  const tty: PromptTerminal | null = openTty(options)
+  expect(tty?.source).toBe('device')
+  try {
+    expect(askYesNo('Go?', { fd: tty!.fd, write: () => {}, discardTypeAhead: false })).toBe(true)
+  } finally {
+    tty?.close()
+  }
+
+  const nowhere: RequireInteractiveOptions = {
+    path: join(dir, 'none'),
+    isTerminal: () => false,
+    flag: '--yes',
+  }
+  let error: unknown
+  try {
+    requireInteractive(nowhere)
+  } catch (e) {
+    error = e
+  }
+  expect(error).toBeInstanceOf(NotInteractiveError)
+  const reason: NotInteractiveReason = (error as NotInteractiveError).reason
+  expect(reason).toBe('no-terminal')
+  expect((error as NotInteractiveError).exit).toBe(EXIT.usage)
 })
 
 test('re-exported helpers: close matches and per-OS directories', () => {

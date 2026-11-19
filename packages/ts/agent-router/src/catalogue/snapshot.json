@@ -1,0 +1,973 @@
+{
+  "source": "snapshot",
+  "observed_at": "2026-10-28",
+  "tools": {
+    "antigravity": {
+      "binary": "agy",
+      "serves": ["google"],
+      "openness": "closed",
+      "modes": ["headless"],
+      "model": { "via": "flag", "name": "--model" },
+      "effort": { "via": "flag", "name": "--effort" },
+      "context": { "via": "none" },
+      "efforts": ["low", "medium", "high"],
+      "verify": ["serves", "model", "effort"],
+      "observed_at": "2026-10-09"
+    },
+    "claude": {
+      "binary": "claude",
+      "serves": ["anthropic"],
+      "openness": "closed",
+      "modes": ["headless", "interactive"],
+      "model": { "via": "flag", "name": "--model" },
+      "effort": { "via": "flag", "name": "--effort" },
+      "context": { "via": "suffix", "name": "[1m]" },
+      "efforts": ["low", "medium", "high", "xhigh", "max"],
+      "aliases": {
+        "fable": "anthropic/claude-fable-5-1",
+        "opus": "anthropic/claude-opus-5-5",
+        "sonnet": "anthropic/claude-sonnet-5-5",
+        "haiku": "anthropic/claude-haiku-5-5"
+      },
+      "prefer_alias": true,
+      "checked_against": "2.1.295",
+      "verify": ["aliases", "context"],
+      "observed_at": "2026-10-09"
+    },
+    "codex": {
+      "binary": "codex",
+      "serves": [
+        "openai",
+        { "provider": "ollama", "via": "--oss --local-provider ollama" },
+        { "provider": "lmstudio", "via": "--oss --local-provider lmstudio" }
+      ],
+      "openness": "closed",
+      "modes": ["headless", "interactive"],
+      "model": { "via": "flag", "name": "--model" },
+      "effort": { "via": "config", "name": "model_reasoning_effort" },
+      "context": { "via": "config", "name": "model_context_window" },
+      "efforts": ["low", "medium", "high", "xhigh", "max"],
+      "checked_against": "0.162.0",
+      "verify": ["context"],
+      "observed_at": "2026-10-09"
+    },
+    "cursor": {
+      "binary": "cursor-agent",
+      "serves": ["anthropic", "openai", "google"],
+      "openness": "curated",
+      "modes": ["headless", "interactive"],
+      "model": { "via": "flag", "name": "--model" },
+      "effort": { "via": "bracket", "name": "effort" },
+      "context": { "via": "bracket", "name": "context" },
+      "offers": [
+        { "model": "anthropic/claude-opus-5-5", "native_name": "claude-opus-5-5-medium" },
+        { "model": "anthropic/claude-sonnet-5", "native_name": "claude-sonnet-5-thinking-high" },
+        { "model": "anthropic/claude-fable-5", "native_name": "claude-fable-5-thinking-high" },
+        { "model": "openai/gpt-5.6-sol", "native_name": "gpt-5.6-sol-high" },
+        { "model": "openai/gpt-5.3-codex", "native_name": "gpt-5.3-codex" },
+        { "model": "google/gemini-3.7-flash", "native_name": "gemini-3.7-flash-high" }
+      ],
+      "checked_against": "2026.10.01-e373342",
+      "verify": ["effort", "context"],
+      "observed_at": "2026-10-09"
+    },
+    "opencode": {
+      "binary": "opencode",
+      "serves": ["anthropic", "openai", "google", "ollama", "lmstudio"],
+      "openness": "open",
+      "modes": ["headless", "interactive"],
+      "model": { "via": "flag", "name": "--model" },
+      "effort": { "via": "flag", "name": "--variant" },
+      "context": { "via": "none" },
+      "provider_keys": true,
+      "checked_against": "1.1.36",
+      "verify": ["serves", "provider_keys"],
+      "observed_at": "2026-10-09"
+    },
+    "pi": {
+      "binary": "pi",
+      "serves": ["anthropic", "openai", "google", "ollama"],
+      "openness": "open",
+      "modes": ["headless", "interactive"],
+      "model": { "via": "flag", "name": "--model" },
+      "effort": { "via": "flag", "name": "--thinking" },
+      "context": { "via": "none" },
+      "efforts": ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
+      "provider_keys": true,
+      "checked_against": "1.1.0",
+      "observed_at": "2026-10-09"
+    }
+  },
+  "providers": {
+    "anthropic": {
+      "kind": "anthropic",
+      "endpoint": "https://api.anthropic.com",
+      "key_env": "ANTHROPIC_API_KEY"
+    },
+    "openai": {
+      "kind": "openai",
+      "endpoint": "https://api.openai.com/v1",
+      "key_env": "OPENAI_API_KEY"
+    },
+    "google": {
+      "kind": "google",
+      "endpoint": "https://generativelanguage.googleapis.com",
+      "key_env": "GEMINI_API_KEY"
+    },
+    "ollama": { "kind": "ollama", "endpoint": "http://localhost:11434" },
+    "lmstudio": { "kind": "lmstudio", "endpoint": "http://localhost:1234/v1" }
+  },
+  "models": {
+    "anthropic/claude-fable-5": {
+      "family": "claude-fable",
+      "release_date": "2026-06-07",
+      "context": { "max": 1000000 },
+      "efforts": ["low", "medium", "high", "xhigh", "max"],
+      "cost": { "input": 10, "output": 50 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "anthropic/claude-fable-5-1": {
+      "family": "claude-fable",
+      "release_date": "2026-09-01",
+      "context": { "max": 1000000 },
+      "efforts": ["low", "medium", "high", "xhigh", "max"],
+      "cost": { "input": 10, "output": 50 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "anthropic/claude-haiku-4-5": {
+      "family": "claude-haiku",
+      "release_date": "2025-10-15",
+      "context": { "max": 200000 },
+      "cost": { "input": 1, "output": 5 },
+      "traits": ["agent", "reasoning", "vision"],
+      "status": "current",
+      "aliases": ["claude-haiku-4-5-20251001"]
+    },
+    "anthropic/claude-haiku-5-5": {
+      "family": "claude-haiku",
+      "release_date": "2026-10-07",
+      "context": { "max": 1000000 },
+      "efforts": ["low", "medium", "high", "xhigh", "max"],
+      "cost": { "input": 0.1, "output": 0.5 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "anthropic/claude-opus-4-5": {
+      "family": "claude-opus",
+      "release_date": "2025-11-24",
+      "context": { "max": 200000 },
+      "efforts": ["low", "medium", "high"],
+      "cost": { "input": 5, "output": 25 },
+      "traits": ["agent", "reasoning", "vision"],
+      "status": "current",
+      "aliases": ["claude-opus-4-5-20251101"]
+    },
+    "anthropic/claude-opus-4-6": {
+      "family": "claude-opus",
+      "release_date": "2026-02-04",
+      "context": { "max": 1000000 },
+      "efforts": ["low", "medium", "high", "max"],
+      "cost": { "input": 5, "output": 25 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "anthropic/claude-opus-4-7": {
+      "family": "claude-opus",
+      "release_date": "2026-04-14",
+      "context": { "max": 1000000 },
+      "efforts": ["low", "medium", "high", "xhigh", "max"],
+      "cost": { "input": 5, "output": 25 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "anthropic/claude-opus-4-8": {
+      "family": "claude-opus",
+      "release_date": "2026-05-28",
+      "context": { "max": 1000000 },
+      "efforts": ["low", "medium", "high", "xhigh", "max"],
+      "cost": { "input": 5, "output": 25 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "anthropic/claude-opus-5": {
+      "family": "claude-opus",
+      "release_date": "2026-07-24",
+      "context": { "max": 1000000 },
+      "efforts": ["low", "medium", "high", "xhigh", "max"],
+      "cost": { "input": 5, "output": 25 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "anthropic/claude-opus-5-5": {
+      "family": "claude-opus",
+      "release_date": "2026-09-22",
+      "context": { "max": 1000000 },
+      "efforts": ["low", "medium", "high", "xhigh", "max"],
+      "cost": { "input": 4, "output": 20 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "anthropic/claude-sonnet-4-5": {
+      "family": "claude-sonnet",
+      "release_date": "2025-09-29",
+      "context": { "max": 200000 },
+      "cost": { "input": 3, "output": 15 },
+      "traits": ["agent", "reasoning", "vision"],
+      "status": "current",
+      "aliases": ["claude-sonnet-4-5-20250929"]
+    },
+    "anthropic/claude-sonnet-4-6": {
+      "family": "claude-sonnet",
+      "release_date": "2026-02-17",
+      "context": { "max": 1000000 },
+      "efforts": ["low", "medium", "high", "max"],
+      "cost": { "input": 3, "output": 15 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "anthropic/claude-sonnet-5": {
+      "family": "claude-sonnet",
+      "release_date": "2026-06-29",
+      "context": { "max": 1000000 },
+      "efforts": ["low", "medium", "high", "xhigh", "max"],
+      "cost": { "input": 2, "output": 10 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "anthropic/claude-sonnet-5-5": {
+      "family": "claude-sonnet",
+      "release_date": "2026-09-28",
+      "context": { "max": 1000000 },
+      "efforts": ["low", "medium", "high", "xhigh", "max"],
+      "cost": { "input": 2, "output": 10 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "google/deep-research-max-preview-04-2026": {
+      "family": "gemini-pro",
+      "release_date": "2026-04-21",
+      "context": { "max": 131072 },
+      "cost": { "input": 2, "output": 12 },
+      "traits": ["agent", "reasoning", "vision", "image-out"],
+      "status": "current"
+    },
+    "google/deep-research-preview-04-2026": {
+      "family": "gemini-pro",
+      "release_date": "2026-04-21",
+      "context": { "max": 131072 },
+      "cost": { "input": 2, "output": 12 },
+      "traits": ["agent", "reasoning", "vision", "image-out"],
+      "status": "current"
+    },
+    "google/gemini-2.5-computer-use-preview-10-2025": {
+      "family": "gemini-pro",
+      "release_date": "2025-10-07",
+      "context": { "max": 128000 },
+      "cost": { "input": 1.25, "output": 10 },
+      "traits": ["agent", "reasoning", "vision"],
+      "status": "current"
+    },
+    "google/gemini-2.5-flash": {
+      "family": "gemini-flash",
+      "release_date": "2025-06-17",
+      "context": { "max": 1048576 },
+      "cost": { "input": 0.3, "output": 2.5 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "google/gemini-2.5-flash-image": {
+      "family": "gemini-flash",
+      "release_date": "2025-08-26",
+      "context": { "max": 32768 },
+      "cost": { "input": 0.3, "output": 30 },
+      "traits": ["vision", "image-out"],
+      "status": "current"
+    },
+    "google/gemini-2.5-flash-lite": {
+      "family": "gemini-flash-lite",
+      "release_date": "2025-06-17",
+      "context": { "max": 1048576 },
+      "cost": { "input": 0.1, "output": 0.4 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "google/gemini-2.5-pro": {
+      "family": "gemini-pro",
+      "release_date": "2025-06-17",
+      "context": { "max": 1048576 },
+      "cost": { "input": 1.25, "output": 10 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "google/gemini-3-flash-preview": {
+      "family": "gemini-flash",
+      "release_date": "2025-12-17",
+      "context": { "max": 1048576 },
+      "efforts": ["minimal", "low", "medium", "high"],
+      "cost": { "input": 0.5, "output": 3 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "google/gemini-3-pro-image": {
+      "family": "gemini-pro",
+      "release_date": "2026-05-28",
+      "context": { "max": 65536 },
+      "efforts": ["low", "high"],
+      "cost": { "input": 2, "output": 120 },
+      "traits": ["reasoning", "vision", "image-out"],
+      "status": "current"
+    },
+    "google/gemini-3-pro-image-preview": {
+      "family": "gemini-pro",
+      "release_date": "2025-11-20",
+      "context": { "max": 131072 },
+      "cost": { "input": 2, "output": 120 },
+      "traits": ["reasoning", "vision", "image-out"],
+      "status": "current"
+    },
+    "google/gemini-3.1-flash-image": {
+      "family": "gemini-flash",
+      "release_date": "2026-05-28",
+      "context": { "max": 131072 },
+      "efforts": ["minimal", "high"],
+      "cost": { "input": 0.5, "output": 60 },
+      "traits": ["reasoning", "vision", "image-out"],
+      "status": "current"
+    },
+    "google/gemini-3.1-flash-image-preview": {
+      "family": "gemini-flash",
+      "release_date": "2026-02-26",
+      "context": { "max": 65536 },
+      "efforts": ["minimal", "high"],
+      "cost": { "input": 0.5, "output": 60 },
+      "traits": ["reasoning", "vision", "image-out"],
+      "status": "current"
+    },
+    "google/gemini-3.1-flash-lite": {
+      "family": "gemini-flash-lite",
+      "release_date": "2026-05-07",
+      "context": { "max": 1048576 },
+      "efforts": ["minimal", "low", "medium", "high"],
+      "cost": { "input": 0.25, "output": 1.5 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "google/gemini-3.1-flash-lite-image": {
+      "family": "gemini-flash-lite",
+      "release_date": "2026-06-30",
+      "context": { "max": 65536 },
+      "efforts": ["minimal", "high"],
+      "cost": { "input": 0.25, "output": 30 },
+      "traits": ["agent", "reasoning", "vision", "image-out"],
+      "status": "current"
+    },
+    "google/gemini-3.1-flash-lite-preview": {
+      "family": "gemini-flash-lite",
+      "release_date": "2026-03-03",
+      "context": { "max": 1048576 },
+      "efforts": ["minimal", "low", "medium", "high"],
+      "cost": { "input": 0.25, "output": 1.5 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "deprecated"
+    },
+    "google/gemini-3.1-pro-preview": {
+      "family": "gemini-pro",
+      "release_date": "2026-02-19",
+      "context": { "max": 1048576 },
+      "efforts": ["low", "medium", "high"],
+      "cost": { "input": 2, "output": 12 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "google/gemini-3.1-pro-preview-customtools": {
+      "family": "gemini-pro",
+      "release_date": "2026-02-19",
+      "context": { "max": 1048576 },
+      "efforts": ["low", "medium", "high"],
+      "cost": { "input": 2, "output": 12 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "google/gemini-3.5-flash": {
+      "family": "gemini-flash",
+      "release_date": "2026-05-19",
+      "context": { "max": 1048576 },
+      "efforts": ["minimal", "low", "medium", "high"],
+      "cost": { "input": 1.5, "output": 9 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "google/gemini-3.5-flash-lite": {
+      "family": "gemini-flash-lite",
+      "release_date": "2026-07-21",
+      "context": { "max": 1048576 },
+      "efforts": ["minimal", "low", "medium", "high"],
+      "cost": { "input": 0.3, "output": 2.5 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "google/gemini-3.6-flash": {
+      "family": "gemini-flash",
+      "release_date": "2026-07-21",
+      "context": { "max": 1048576 },
+      "efforts": ["minimal", "low", "medium", "high"],
+      "cost": { "input": 0.75, "output": 3.75 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "google/gemini-3.7-flash": {
+      "family": "gemini-flash",
+      "release_date": "2026-08-13",
+      "context": { "max": 1048576 },
+      "efforts": ["low", "medium", "high"],
+      "cost": { "input": 0.75, "output": 3.75 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "google/gemini-3.8-flash": {
+      "family": "gemini-flash",
+      "release_date": "2026-09-02",
+      "context": { "max": 1048576 },
+      "efforts": ["low", "medium", "high"],
+      "cost": { "input": 0.75, "output": 3.75 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "google/gemini-4-argon": {
+      "family": "gemini",
+      "release_date": "2026-10-13",
+      "context": { "max": 1048576 },
+      "efforts": ["low", "medium", "high"],
+      "cost": { "input": 2, "output": 10 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "google/gemini-embedding-001": {
+      "family": "gemini",
+      "release_date": "2025-05-20",
+      "context": { "max": 2048 },
+      "cost": { "input": 0.15, "output": 0 },
+      "traits": ["embedding"],
+      "status": "current"
+    },
+    "google/gemini-embedding-2": {
+      "family": "gemini",
+      "release_date": "2026-04-22",
+      "context": { "max": 8192 },
+      "cost": { "input": 0.2, "output": 0 },
+      "traits": ["embedding", "vision"],
+      "status": "current"
+    },
+    "google/gemini-flash-latest": {
+      "family": "gemini-flash",
+      "release_date": "2026-08-13",
+      "context": { "max": 1048576 },
+      "efforts": ["low", "medium", "high"],
+      "cost": { "input": 0.75, "output": 3.75 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "google/gemini-flash-lite-latest": {
+      "family": "gemini-flash-lite",
+      "release_date": "2026-07-21",
+      "context": { "max": 1048576 },
+      "efforts": ["minimal", "low", "medium", "high"],
+      "cost": { "input": 0.3, "output": 2.5 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "google/gemini-pro-latest": {
+      "family": "gemini-pro",
+      "release_date": "2026-02-19",
+      "context": { "max": 1048576 },
+      "efforts": ["low", "medium", "high"],
+      "cost": { "input": 2, "output": 12 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "google/gemma-4-26b-a4b-it": {
+      "family": "gemma",
+      "release_date": "2026-04-02",
+      "context": { "max": 262144 },
+      "traits": ["agent", "reasoning", "vision"],
+      "status": "current"
+    },
+    "google/gemma-4-31b-it": {
+      "family": "gemma",
+      "release_date": "2026-04-02",
+      "context": { "max": 262144 },
+      "traits": ["agent", "reasoning", "vision"],
+      "status": "current"
+    },
+    "openai/chatgpt-image-latest": {
+      "family": "gpt-image",
+      "release_date": "2025-12-16",
+      "traits": ["vision", "image-out"],
+      "status": "current"
+    },
+    "openai/gpt-3.5-turbo": {
+      "family": "gpt",
+      "release_date": "2023-03-01",
+      "context": { "max": 16385 },
+      "cost": { "input": 0.5, "output": 1.5 },
+      "status": "deprecated"
+    },
+    "openai/gpt-4": {
+      "family": "gpt",
+      "release_date": "2023-11-06",
+      "context": { "max": 8192 },
+      "cost": { "input": 30, "output": 60 },
+      "traits": ["agent"],
+      "status": "deprecated"
+    },
+    "openai/gpt-4-turbo": {
+      "family": "gpt",
+      "release_date": "2023-11-06",
+      "context": { "max": 128000 },
+      "cost": { "input": 10, "output": 30 },
+      "traits": ["agent", "vision"],
+      "status": "deprecated"
+    },
+    "openai/gpt-4.1": {
+      "family": "gpt",
+      "release_date": "2025-04-14",
+      "context": { "max": 1047576 },
+      "cost": { "input": 2, "output": 8 },
+      "traits": ["agent", "vision", "long-context"],
+      "status": "current"
+    },
+    "openai/gpt-4.1-mini": {
+      "family": "gpt-mini",
+      "release_date": "2025-04-14",
+      "context": { "max": 1047576 },
+      "cost": { "input": 0.4, "output": 1.6 },
+      "traits": ["agent", "vision", "long-context"],
+      "status": "current"
+    },
+    "openai/gpt-4.1-nano": {
+      "family": "gpt-nano",
+      "release_date": "2025-04-14",
+      "context": { "max": 1047576 },
+      "cost": { "input": 0.1, "output": 0.4 },
+      "traits": ["agent", "vision", "long-context"],
+      "status": "deprecated"
+    },
+    "openai/gpt-4o": {
+      "family": "gpt",
+      "release_date": "2024-05-13",
+      "context": { "max": 128000 },
+      "cost": { "input": 2.5, "output": 10 },
+      "traits": ["agent", "vision"],
+      "status": "current"
+    },
+    "openai/gpt-4o-2024-05-13": {
+      "family": "gpt",
+      "release_date": "2024-05-13",
+      "context": { "max": 128000 },
+      "cost": { "input": 5, "output": 15 },
+      "traits": ["agent", "vision"],
+      "status": "deprecated"
+    },
+    "openai/gpt-4o-2024-08-06": {
+      "family": "gpt",
+      "release_date": "2024-08-06",
+      "context": { "max": 128000 },
+      "cost": { "input": 2.5, "output": 10 },
+      "traits": ["agent", "vision"],
+      "status": "current"
+    },
+    "openai/gpt-4o-2024-11-20": {
+      "family": "gpt",
+      "release_date": "2024-11-20",
+      "context": { "max": 128000 },
+      "cost": { "input": 2.5, "output": 10 },
+      "traits": ["agent", "vision"],
+      "status": "current"
+    },
+    "openai/gpt-4o-mini": {
+      "family": "gpt-mini",
+      "release_date": "2024-07-18",
+      "context": { "max": 128000 },
+      "cost": { "input": 0.15, "output": 0.6 },
+      "traits": ["agent", "vision"],
+      "status": "current"
+    },
+    "openai/gpt-5": {
+      "family": "gpt",
+      "release_date": "2025-08-07",
+      "context": { "max": 400000 },
+      "efforts": ["minimal", "low", "medium", "high"],
+      "cost": { "input": 1.25, "output": 10 },
+      "traits": ["agent", "reasoning", "vision"],
+      "status": "current"
+    },
+    "openai/gpt-5-mini": {
+      "family": "gpt-mini",
+      "release_date": "2025-08-07",
+      "context": { "max": 400000 },
+      "efforts": ["minimal", "low", "medium", "high"],
+      "cost": { "input": 0.25, "output": 2 },
+      "traits": ["agent", "reasoning", "vision"],
+      "status": "current"
+    },
+    "openai/gpt-5-nano": {
+      "family": "gpt-nano",
+      "release_date": "2025-08-07",
+      "context": { "max": 400000 },
+      "efforts": ["minimal", "low", "medium", "high"],
+      "cost": { "input": 0.05, "output": 0.4 },
+      "traits": ["agent", "reasoning", "vision"],
+      "status": "current"
+    },
+    "openai/gpt-5-pro": {
+      "family": "gpt-pro",
+      "release_date": "2025-10-06",
+      "context": { "max": 400000 },
+      "efforts": ["high"],
+      "cost": { "input": 15, "output": 120 },
+      "traits": ["agent", "reasoning", "vision"],
+      "status": "current"
+    },
+    "openai/gpt-5.1": {
+      "family": "gpt",
+      "release_date": "2025-11-13",
+      "context": { "max": 400000 },
+      "efforts": ["none", "low", "medium", "high"],
+      "cost": { "input": 1.25, "output": 10 },
+      "traits": ["agent", "reasoning", "vision"],
+      "status": "current"
+    },
+    "openai/gpt-5.2": {
+      "family": "gpt",
+      "release_date": "2025-12-11",
+      "context": { "max": 400000 },
+      "efforts": ["none", "low", "medium", "high", "xhigh"],
+      "cost": { "input": 1.75, "output": 14 },
+      "traits": ["agent", "reasoning", "vision"],
+      "status": "current"
+    },
+    "openai/gpt-5.2-pro": {
+      "family": "gpt-pro",
+      "release_date": "2025-12-11",
+      "context": { "max": 400000 },
+      "efforts": ["medium", "high", "xhigh"],
+      "cost": { "input": 21, "output": 168 },
+      "traits": ["agent", "reasoning", "vision"],
+      "status": "current"
+    },
+    "openai/gpt-5.3-codex": {
+      "family": "gpt-codex",
+      "release_date": "2026-02-05",
+      "context": { "max": 400000 },
+      "efforts": ["none", "low", "medium", "high", "xhigh"],
+      "cost": { "input": 1.75, "output": 14 },
+      "traits": ["agent", "reasoning", "vision"],
+      "status": "current"
+    },
+    "openai/gpt-5.3-codex-spark": {
+      "family": "gpt-codex-spark",
+      "release_date": "2026-02-05",
+      "context": { "max": 128000 },
+      "efforts": ["none", "low", "medium", "high", "xhigh"],
+      "cost": { "input": 1.75, "output": 14 },
+      "traits": ["agent", "reasoning", "vision"],
+      "status": "current"
+    },
+    "openai/gpt-5.4": {
+      "family": "gpt",
+      "release_date": "2026-03-05",
+      "context": { "max": 1050000 },
+      "efforts": ["none", "low", "medium", "high", "xhigh"],
+      "cost": { "input": 2.5, "output": 15 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "openai/gpt-5.4-mini": {
+      "family": "gpt-mini",
+      "release_date": "2026-03-17",
+      "context": { "max": 400000 },
+      "efforts": ["none", "low", "medium", "high", "xhigh"],
+      "cost": { "input": 0.75, "output": 4.5 },
+      "traits": ["agent", "reasoning", "vision"],
+      "status": "current"
+    },
+    "openai/gpt-5.4-nano": {
+      "family": "gpt-nano",
+      "release_date": "2026-03-17",
+      "context": { "max": 400000 },
+      "efforts": ["none", "low", "medium", "high", "xhigh"],
+      "cost": { "input": 0.2, "output": 1.25 },
+      "traits": ["agent", "reasoning", "vision"],
+      "status": "current"
+    },
+    "openai/gpt-5.4-pro": {
+      "family": "gpt-pro",
+      "release_date": "2026-03-05",
+      "context": { "max": 1050000 },
+      "efforts": ["medium", "high", "xhigh"],
+      "cost": { "input": 30, "output": 180 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "openai/gpt-5.5": {
+      "family": "gpt",
+      "release_date": "2026-04-23",
+      "context": { "max": 1050000 },
+      "efforts": ["none", "low", "medium", "high", "xhigh"],
+      "cost": { "input": 5, "output": 30 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "openai/gpt-5.5-pro": {
+      "family": "gpt-pro",
+      "release_date": "2026-04-23",
+      "context": { "max": 1050000 },
+      "efforts": ["medium", "high", "xhigh"],
+      "cost": { "input": 30, "output": 180 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "openai/gpt-5.6": {
+      "family": "gpt-sol",
+      "release_date": "2026-07-09",
+      "context": { "max": 1050000 },
+      "efforts": ["none", "low", "medium", "high", "xhigh", "max"],
+      "cost": { "input": 4, "output": 20 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "openai/gpt-5.6-luna": {
+      "family": "gpt-luna",
+      "release_date": "2026-07-09",
+      "context": { "max": 1050000 },
+      "efforts": ["none", "low", "medium", "high", "xhigh", "max"],
+      "cost": { "input": 0.2, "output": 1.2 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "openai/gpt-5.6-sol": {
+      "family": "gpt-sol",
+      "release_date": "2026-07-09",
+      "context": { "max": 1050000 },
+      "efforts": ["none", "low", "medium", "high", "xhigh", "max"],
+      "cost": { "input": 4, "output": 20 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "openai/gpt-5.6-terra": {
+      "family": "gpt-terra",
+      "release_date": "2026-07-09",
+      "context": { "max": 1050000 },
+      "efforts": ["none", "low", "medium", "high", "xhigh", "max"],
+      "cost": { "input": 2, "output": 12 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "openai/gpt-6-astra": {
+      "family": "gpt-astra",
+      "release_date": "2026-09-04",
+      "context": { "max": 1050000 },
+      "efforts": ["low", "medium", "high", "xhigh", "max"],
+      "cost": { "input": 10, "output": 50 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "openai/gpt-6-luna": {
+      "family": "gpt-luna",
+      "release_date": "2026-09-22",
+      "context": { "max": 1050000 },
+      "efforts": ["none", "low", "medium", "high", "xhigh", "max"],
+      "cost": { "input": 0.1, "output": 0.5 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "openai/gpt-6-sol": {
+      "family": "gpt-sol",
+      "release_date": "2026-09-22",
+      "context": { "max": 1050000 },
+      "efforts": ["none", "low", "medium", "high", "xhigh", "max"],
+      "cost": { "input": 2, "output": 10 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "openai/gpt-6.1-sol": {
+      "family": "gpt-sol",
+      "release_date": "2026-09-29",
+      "context": { "max": 1050000 },
+      "efforts": ["low", "medium", "high", "xhigh", "max"],
+      "cost": { "input": 2, "output": 10 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "openai/gpt-6.1-terra": {
+      "family": "gpt-terra",
+      "release_date": "2026-10-26",
+      "context": { "max": 1050000 },
+      "efforts": ["none", "low", "medium", "high", "xhigh", "max"],
+      "cost": { "input": 1, "output": 5 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "openai/gpt-daybreak-blue-latest": {
+      "family": "gpt-sol",
+      "release_date": "2026-08-07",
+      "context": { "max": 1050000 },
+      "efforts": ["none", "low", "medium", "high", "xhigh", "max"],
+      "cost": { "input": 4, "output": 20 },
+      "traits": ["agent", "reasoning", "vision", "long-context"],
+      "status": "current"
+    },
+    "openai/gpt-daybreak-red-latest": {
+      "family": "gpt",
+      "release_date": "2026-08-07",
+      "context": { "max": 400000 },
+      "efforts": ["none", "low", "medium", "high", "xhigh", "max"],
+      "cost": { "input": 12.5, "output": 75 },
+      "traits": ["agent", "reasoning", "vision"],
+      "status": "current"
+    },
+    "openai/gpt-image-1": {
+      "family": "gpt-image",
+      "release_date": "2025-04-24",
+      "traits": ["vision", "image-out"],
+      "status": "deprecated"
+    },
+    "openai/gpt-image-1-mini": {
+      "family": "gpt-image",
+      "release_date": "2025-09-26",
+      "traits": ["vision", "image-out"],
+      "status": "current"
+    },
+    "openai/gpt-image-1.5": {
+      "family": "gpt-image",
+      "release_date": "2025-11-25",
+      "traits": ["vision", "image-out"],
+      "status": "current"
+    },
+    "openai/gpt-image-2": {
+      "family": "gpt-image",
+      "release_date": "2026-04-21",
+      "cost": { "input": 5, "output": 30 },
+      "traits": ["vision", "image-out"],
+      "status": "current"
+    },
+    "openai/o1": {
+      "family": "o",
+      "release_date": "2024-12-05",
+      "context": { "max": 200000 },
+      "efforts": ["low", "medium", "high"],
+      "cost": { "input": 15, "output": 60 },
+      "traits": ["agent", "reasoning", "vision"],
+      "status": "deprecated"
+    },
+    "openai/o1-pro": {
+      "family": "o-pro",
+      "release_date": "2025-03-19",
+      "context": { "max": 200000 },
+      "efforts": ["low", "medium", "high"],
+      "cost": { "input": 150, "output": 600 },
+      "traits": ["agent", "reasoning", "vision"],
+      "status": "deprecated"
+    },
+    "openai/o3": {
+      "family": "o",
+      "release_date": "2025-04-16",
+      "context": { "max": 200000 },
+      "efforts": ["low", "medium", "high"],
+      "cost": { "input": 2, "output": 8 },
+      "traits": ["agent", "reasoning", "vision"],
+      "status": "current"
+    },
+    "openai/o3-mini": {
+      "family": "o-mini",
+      "release_date": "2024-12-20",
+      "context": { "max": 200000 },
+      "efforts": ["low", "medium", "high"],
+      "cost": { "input": 1.1, "output": 4.4 },
+      "traits": ["agent", "reasoning"],
+      "status": "deprecated"
+    },
+    "openai/o3-pro": {
+      "family": "o-pro",
+      "release_date": "2025-06-10",
+      "context": { "max": 200000 },
+      "efforts": ["low", "medium", "high"],
+      "cost": { "input": 20, "output": 80 },
+      "traits": ["agent", "reasoning", "vision"],
+      "status": "current"
+    },
+    "openai/o4-mini": {
+      "family": "o-mini",
+      "release_date": "2025-04-16",
+      "context": { "max": 200000 },
+      "efforts": ["low", "medium", "high"],
+      "cost": { "input": 1.1, "output": 4.4 },
+      "traits": ["agent", "reasoning", "vision"],
+      "status": "deprecated"
+    },
+    "openai/text-embedding-3-large": {
+      "family": "text-embedding",
+      "release_date": "2024-01-25",
+      "context": { "max": 8191 },
+      "cost": { "input": 0.13, "output": 0 },
+      "traits": ["embedding"],
+      "status": "current"
+    },
+    "openai/text-embedding-3-small": {
+      "family": "text-embedding",
+      "release_date": "2024-01-25",
+      "context": { "max": 8191 },
+      "cost": { "input": 0.02, "output": 0 },
+      "traits": ["embedding"],
+      "status": "current"
+    },
+    "openai/text-embedding-ada-002": {
+      "family": "text-embedding",
+      "release_date": "2022-12-15",
+      "context": { "max": 8192 },
+      "cost": { "input": 0.1, "output": 0 },
+      "traits": ["embedding"],
+      "status": "current"
+    }
+  },
+  "offerings": [
+    {
+      "tool": "codex",
+      "model": "openai/gpt-6.1-sol",
+      "context": { "default": 272000, "max": 872000 }
+    },
+    {
+      "tool": "codex",
+      "model": "openai/gpt-6-astra",
+      "context": { "default": 272000, "max": 872000 }
+    },
+    {
+      "tool": "codex",
+      "model": "openai/gpt-6-sol",
+      "context": { "default": 272000, "max": 872000 }
+    },
+    {
+      "tool": "codex",
+      "model": "openai/gpt-6-luna",
+      "context": { "default": 272000, "max": 872000 }
+    },
+    {
+      "tool": "codex",
+      "model": "openai/gpt-5.6-sol",
+      "context": { "default": 272000, "max": 872000 }
+    },
+    {
+      "tool": "codex",
+      "model": "openai/gpt-5.6-terra",
+      "context": { "default": 272000, "max": 872000 }
+    },
+    {
+      "tool": "codex",
+      "model": "openai/gpt-5.6-luna",
+      "context": { "default": 272000, "max": 872000 }
+    },
+    { "tool": "codex", "model": "openai/gpt-5.5", "context": { "default": 272000, "max": 272000 } }
+  ]
+}

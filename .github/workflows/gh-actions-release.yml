@@ -5,7 +5,7 @@
 #
 # The "Release tags" ruleset lets only admins and the osdlc-release App
 # create or move `*/v*` tags, so the job pushes with that App's token, from the
-# release-plz environment (main only) that holds its secrets, as release-plz.yml
+# release-plz environment (main only) that holds its key, as release-plz.yml
 # does.
 #
 # Run it by hand from the Actions tab with the version. It refuses a version
@@ -43,7 +43,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ secrets.RELEASE_PLZ_APP_ID }}
+          client-id: ${{ vars.RELEASE_PLZ_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}
           permission-contents: write
       - name: Tag the release

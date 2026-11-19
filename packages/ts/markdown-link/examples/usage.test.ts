@@ -36,6 +36,7 @@ describe('the README quick start', () => {
         raw: 'Note#h|alias',
         target: 'Note',
         heading: 'h',
+        title: null,
         block: null,
         alias: 'alias',
         size: null,

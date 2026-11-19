@@ -7,6 +7,12 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.2](https://github.com/osdlc/osdlc/compare/markdown-relink/v0.4.1...markdown-relink/v0.4.2) - 2026-11-17
+
+### Other
+
+- read link titles, parentheses in the path and `<…>` spaces; an option for every relative link ([#651](https://github.com/osdlc/osdlc/pull/651))
+
 ## [0.4.1](https://github.com/osdlc/osdlc/compare/markdown-relink/v0.4.0...markdown-relink/v0.4.1) - 2026-11-10
 
 ### Other

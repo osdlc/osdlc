@@ -116,7 +116,13 @@ export function targetRange(inner: string): TextRange | null {
   return { start: lead, end: lead + target.length }
 }
 
-/** `inner` split at the first `|`, minus the `\` that escapes it. */
+/**
+ * A wikilink body split at its first `|`: the text before it, minus the `\`
+ * that escapes the pipe in a table cell, and the text after it, or `null`
+ * when there is no `|`. Neither part is trimmed. The first part is the
+ * destination as written, `#heading` included, which a caller that quotes the
+ * link back needs: `splitAlias('Note#h\\|Alias')` is `['Note#h', 'Alias']`.
+ */
 export function splitAlias(inner: string): [string, string | null] {
   const pipe = inner.indexOf('|')
   if (pipe === -1) return [inner, null]
@@ -129,7 +135,7 @@ export function splitAlias(inner: string): [string, string | null] {
  * reads it. Every White_Space character is in the BMP. JavaScript's `trim` and
  * `\s` differ: they treat U+FEFF as space and U+0085 as not.
  */
-function isSpaceUnit(unit: number): boolean {
+export function isSpaceUnit(unit: number): boolean {
   return (
     (unit >= 0x09 && unit <= 0x0d) ||
     unit === 0x20 ||

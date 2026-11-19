@@ -271,9 +271,9 @@ export const input = z.object({
     ),
   restack: z
     .boolean()
-    .default(false)
+    .optional()
     .describe(
-      "Update a whole stack in one run. A PR blocked only because its parent is behind is updated right after that parent, onto the head the parent just got, instead of waiting for the next run. A rebase replays only its own commits (`rebase --onto`), not its parent's old ones. With --pr or --branch, the named PRs' stack ancestors are updated too.",
+      "Update a whole stack in one run; absent defers to `pr_update.restack`, `false` turns a configured `true` off for this run. A PR blocked only because its parent is behind is updated right after that parent, onto the head the parent just got, instead of waiting for the next run. A rebase replays only its own commits (`rebase --onto`), not its parent's old ones. With --pr or --branch, the named PRs' stack ancestors are updated too.",
     ),
   strategy: z
     .enum(['rebase', 'merge'])
@@ -507,7 +507,7 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
     retryFailed: args.retryFailed,
   }
   const { targets, skipped, notFound } = selectTargets(report, only, policy, {
-    restack: args.restack,
+    restack: args.restack ?? effectiveCfg.restack,
   })
 
   const writes = wantsWrite(args, env.dryRun)
@@ -554,8 +554,12 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
     repair: env.ports.repair,
     repairOn: effectiveCfg.repair.on,
     onRebaseConflict: effectiveCfg.on_rebase_conflict,
+    submodules: effectiveCfg.submodules,
     confirmPush,
+    lease: writes ? env.ports.lease : undefined,
   }
+  // Records too old to matter go before this run writes new ones. A rehearsal writes nothing.
+  if (writes) attempts?.prune?.()
   const results: UpdateResult[] = []
   for (const [repo, { path, targets: group }] of groups) {
     const git = new Git(path, { runner: env.git })
@@ -565,6 +569,17 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
       ...(await updateAll(git, group, { ...settings, verifyVerbs }, env.ports.runVerb, {
         apply: writes,
         worktreeRoot,
+        onSkip: (s) => skipped.push(s),
+        // A rehearsal cannot repair, so `writes` keeps it from recording anything. Recorded as
+        // each PR finishes, so a run killed part-way (a job timeout) keeps what it
+        // learned about the PRs it had already done. Once the host is signalled nothing more is
+        // recorded: the last PR may have failed only because it was stopped, and a recorded
+        // failure would skip that PR on the next run.
+        onResult: (r) => {
+          if (writes && attempts !== undefined && forwardedSignal() === undefined) {
+            recordAttempt(attempts, r)
+          }
+        },
         prepare: (target, done) => {
           const ready = restackTarget(target, done, writes, policy)
           if (typeof ready !== 'string') return ready
@@ -578,12 +593,6 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
         },
       })),
     )
-  }
-  // A rehearsal cannot repair, so its failures say nothing about a real run. An
-  // interrupted run records nothing: its last PR may have failed only because it
-  // was stopped, and a recorded failure would skip that PR on the next run.
-  if (writes && attempts !== undefined && forwardedSignal() === undefined) {
-    recordAttempts(attempts, results)
   }
 
   const local = new Map<string, LocalCheckout>()
@@ -663,15 +672,15 @@ export function restackTarget(
   return next
 }
 
-/** Record each failure under its key; forget a PR target once it updates, pushed or not. */
-function recordAttempts(store: AttemptStore, results: readonly UpdateResult[]): void {
-  for (const r of results) {
-    const { status } = r.outcome
-    if (status === 'updated' || status === 'up-to-date') store.clear(r.repo, r.head, r.base)
-    else {
-      const key = attemptKey(r)
-      if (key !== null) store.recordFailure(key, describeOutcome(r.outcome))
-    }
+/** Record this PR's failure under its key; forget a PR target once it updates, pushed or not. */
+function recordAttempt(store: AttemptStore, r: UpdateResult): void {
+  const { status } = r.outcome
+  // A failure that says nothing about the PR (see `unrecorded`) neither blocks nor clears.
+  if (r.outcome.status === 'failed' && r.outcome.unrecorded === true) return
+  if (status === 'updated' || status === 'up-to-date') store.clear(r.repo, r.head, r.base)
+  else {
+    const key = attemptKey(r)
+    if (key !== null) store.recordFailure(key, describeOutcome(r.outcome))
   }
 }
 

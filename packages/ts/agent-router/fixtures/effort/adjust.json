@@ -1,0 +1,245 @@
+[
+  {
+    "name": "supported-kept",
+    "input": {
+      "effort": "high",
+      "supported": [
+        "low",
+        "high"
+      ]
+    },
+    "expected": {
+      "result": {
+        "effort": "high"
+      },
+      "message": null
+    }
+  },
+  {
+    "name": "up-preferred",
+    "input": {
+      "effort": "medium",
+      "supported": [
+        "low",
+        "high"
+      ]
+    },
+    "expected": {
+      "result": {
+        "effort": "high",
+        "adjusted": {
+          "requested": "medium",
+          "direction": "up",
+          "used": "high"
+        }
+      },
+      "message": "effort 'medium' is not supported; using 'high', one step up"
+    }
+  },
+  {
+    "name": "down-when-up-missing",
+    "input": {
+      "effort": "max",
+      "supported": [
+        "high",
+        "xhigh"
+      ]
+    },
+    "expected": {
+      "result": {
+        "effort": "xhigh",
+        "adjusted": {
+          "requested": "max",
+          "direction": "down",
+          "used": "xhigh"
+        }
+      },
+      "message": "effort 'max' is not supported; using 'xhigh', one step down"
+    }
+  },
+  {
+    "name": "up-one-step",
+    "input": {
+      "effort": "low",
+      "supported": [
+        "medium"
+      ]
+    },
+    "expected": {
+      "result": {
+        "effort": "medium",
+        "adjusted": {
+          "requested": "low",
+          "direction": "up",
+          "used": "medium"
+        }
+      },
+      "message": "effort 'low' is not supported; using 'medium', one step up"
+    }
+  },
+  {
+    "name": "down-one-step",
+    "input": {
+      "effort": "high",
+      "supported": [
+        "medium"
+      ]
+    },
+    "expected": {
+      "result": {
+        "effort": "medium",
+        "adjusted": {
+          "requested": "high",
+          "direction": "down",
+          "used": "medium"
+        }
+      },
+      "message": "effort 'high' is not supported; using 'medium', one step down"
+    }
+  },
+  {
+    "name": "xhigh-down-to-high",
+    "input": {
+      "effort": "xhigh",
+      "supported": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "expected": {
+      "result": {
+        "effort": "high",
+        "adjusted": {
+          "requested": "xhigh",
+          "direction": "down",
+          "used": "high"
+        }
+      },
+      "message": "effort 'xhigh' is not supported; using 'high', one step down"
+    }
+  },
+  {
+    "name": "two-steps-up-is-no-match",
+    "input": {
+      "effort": "low",
+      "supported": [
+        "high"
+      ]
+    },
+    "expected": {
+      "result": null,
+      "message": null
+    }
+  },
+  {
+    "name": "two-steps-from-none",
+    "input": {
+      "effort": "none",
+      "supported": [
+        "low",
+        "medium"
+      ]
+    },
+    "expected": {
+      "result": null,
+      "message": null
+    }
+  },
+  {
+    "name": "none-up-to-minimal",
+    "input": {
+      "effort": "none",
+      "supported": [
+        "minimal",
+        "low"
+      ]
+    },
+    "expected": {
+      "result": {
+        "effort": "minimal",
+        "adjusted": {
+          "requested": "none",
+          "direction": "up",
+          "used": "minimal"
+        }
+      },
+      "message": "effort 'none' is not supported; using 'minimal', one step up"
+    }
+  },
+  {
+    "name": "max-two-steps-above-high",
+    "input": {
+      "effort": "max",
+      "supported": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "expected": {
+      "result": null,
+      "message": null
+    }
+  },
+  {
+    "name": "empty-supported",
+    "input": {
+      "effort": "medium",
+      "supported": []
+    },
+    "expected": {
+      "result": null,
+      "message": null
+    }
+  },
+  {
+    "name": "off-scale-unsupported",
+    "input": {
+      "effort": "ultra",
+      "supported": [
+        "max"
+      ]
+    },
+    "expected": {
+      "result": null,
+      "message": null
+    }
+  },
+  {
+    "name": "off-scale-supported-is-kept",
+    "input": {
+      "effort": "off",
+      "supported": [
+        "off"
+      ]
+    },
+    "expected": {
+      "result": {
+        "effort": "off"
+      },
+      "message": null
+    }
+  },
+  {
+    "name": "minimal-up-to-low",
+    "input": {
+      "effort": "minimal",
+      "supported": [
+        "low",
+        "max"
+      ]
+    },
+    "expected": {
+      "result": {
+        "effort": "low",
+        "adjusted": {
+          "requested": "minimal",
+          "direction": "up",
+          "used": "low"
+        }
+      },
+      "message": "effort 'minimal' is not supported; using 'low', one step up"
+    }
+  }
+]

@@ -1,5 +1,11 @@
 import { expect, test } from 'vitest'
-import { bodyLinksSpanned, parseInner, percentDecode, targetRange } from '../src/index.ts'
+import {
+  bodyLinksSpanned,
+  parseInner,
+  percentDecode,
+  splitAlias,
+  targetRange,
+} from '../src/index.ts'
 
 test('targetRange matches the parsed target', () => {
   for (const inner of [
@@ -53,4 +59,10 @@ test('percentDecode decodes UTF-8 and keeps what does not decode', () => {
   // Not UTF-8: the whole string is kept as written.
   expect(percentDecode('%FF')).toBe('%FF')
   expect(percentDecode('a%20b%FF')).toBe('a%20b%FF')
+})
+
+test('splitAlias splits at the first pipe and drops the escape before it', () => {
+  expect(splitAlias('Note#h\\|Alias')).toEqual(['Note#h', 'Alias'])
+  expect(splitAlias(' Note ')).toEqual([' Note ', null])
+  expect(splitAlias('a|b|c')).toEqual(['a', 'b|c'])
 })

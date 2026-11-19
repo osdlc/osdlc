@@ -1,0 +1,785 @@
+[
+  {
+    "name": "a-named-profile",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profiles": {
+        "review": [
+          "alpha/standard",
+          "beta/standard"
+        ]
+      },
+      "binding": {
+        "profile": "review"
+      }
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "alpha",
+          "model": "mid-1",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "alpha/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [],
+        "trace": [
+          "alpha/standard: taken"
+        ],
+        "summary": "chosen: alpha/standard"
+      }
+    }
+  },
+  {
+    "name": "a-named-profile-walks-with-availability",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profiles": {
+        "review": [
+          "alpha/standard",
+          "beta/standard"
+        ]
+      },
+      "binding": {
+        "profile": "review"
+      },
+      "availability": {
+        "alpha/standard": {
+          "reason": "not-installed"
+        }
+      }
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "beta",
+          "model": "gpt-x",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "beta/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [
+          {
+            "ref": "alpha/standard",
+            "reason": "not-installed"
+          }
+        ],
+        "trace": [
+          "alpha/standard: skipped: unavailable (not-installed)",
+          "beta/standard: taken"
+        ],
+        "summary": "chosen: beta/standard"
+      }
+    }
+  },
+  {
+    "name": "a-builtin-profile",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "knownTools": [
+        "alpha",
+        "beta"
+      ],
+      "profiles": {},
+      "binding": {
+        "profile": "default"
+      }
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "alpha",
+          "model": "mid-1",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "alpha/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [],
+        "trace": [
+          "*/standard: expands to alpha/standard, beta/standard",
+          "alpha/standard: taken"
+        ],
+        "summary": "chosen: alpha/standard"
+      }
+    }
+  },
+  {
+    "name": "an-invalid-profile-is-an-ok-invalid-choice",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profiles": {
+        "broken": [
+          "nope/fast"
+        ]
+      },
+      "binding": {
+        "profile": "broken"
+      }
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "kind": "invalid",
+        "errors": [
+          {
+            "entry": "nope/fast",
+            "message": "unknown tool 'nope'; known: alpha, beta, gamma, delta",
+            "error": {
+              "kind": "unknown-tool",
+              "tool": "nope",
+              "model": "fast",
+              "message": "unknown tool 'nope'; known: alpha, beta, gamma, delta"
+            }
+          }
+        ],
+        "skipped": [],
+        "trace": [
+          "nope/fast: invalid (unknown tool 'nope'; known: alpha, beta, gamma, delta)"
+        ],
+        "summary": "invalid: nope/fast: unknown tool 'nope'; known: alpha, beta, gamma, delta"
+      }
+    }
+  },
+  {
+    "name": "an-inline-profile-walks-with-availability",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profiles": {},
+      "binding": {
+        "profile": [
+          "alpha/standard",
+          "beta/standard"
+        ]
+      },
+      "availability": {
+        "alpha/standard": {
+          "reason": "not-installed"
+        }
+      }
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "beta",
+          "model": "gpt-x",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "beta/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [
+          {
+            "ref": "alpha/standard",
+            "reason": "not-installed"
+          }
+        ],
+        "trace": [
+          "alpha/standard: skipped: unavailable (not-installed)",
+          "beta/standard: taken"
+        ],
+        "summary": "chosen: beta/standard"
+      }
+    }
+  },
+  {
+    "name": "an-unknown-key-is-ignored",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profiles": {
+        "review": [
+          "alpha/standard",
+          "beta/standard"
+        ]
+      },
+      "binding": {
+        "profile": "review",
+        "note": "x"
+      }
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "alpha",
+          "model": "mid-1",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "alpha/standard",
+          "from": {
+            "kind": "tier",
+            "tier": "standard"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [],
+        "trace": [
+          "alpha/standard: taken"
+        ],
+        "summary": "chosen: alpha/standard"
+      }
+    }
+  },
+  {
+    "name": "error-inline-profile-bad-ref",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profiles": {},
+      "binding": {
+        "profile": [
+          "alpha",
+          "alpha/opus[1m]"
+        ]
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-profile",
+        "error": {
+          "kind": "invalid-ref",
+          "index": 1,
+          "error": {
+            "kind": "native-bracket",
+            "text": "alpha/opus[1m]",
+            "message": "a context size is written [ctx=1m], not a tool's own [1m]: \"alpha/opus[1m]\""
+          },
+          "message": "order[1]: a context size is written [ctx=1m], not a tool's own [1m]: \"alpha/opus[1m]\""
+        },
+        "message": "binding profile: order[1]: a context size is written [ctx=1m], not a tool's own [1m]: \"alpha/opus[1m]\""
+      }
+    }
+  },
+  {
+    "name": "error-inline-profile-empty",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profiles": {},
+      "binding": {
+        "profile": []
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-profile",
+        "error": {
+          "kind": "invalid-shape"
+        }
+      }
+    }
+  },
+  {
+    "name": "error-inline-profile-non-string-entry",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profiles": {},
+      "binding": {
+        "profile": [
+          "alpha",
+          3
+        ]
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-profile",
+        "error": {
+          "kind": "invalid-shape"
+        }
+      }
+    }
+  },
+  {
+    "name": "error-inline-profile-object",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profiles": {},
+      "binding": {
+        "profile": {
+          "order": [
+            "alpha/standard"
+          ]
+        }
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-profile",
+        "error": {
+          "kind": "invalid-shape"
+        }
+      }
+    }
+  },
+  {
+    "name": "error-inline-profile-null",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profiles": {},
+      "binding": {
+        "profile": null
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-profile",
+        "error": {
+          "kind": "invalid-shape"
+        }
+      }
+    }
+  },
+  {
+    "name": "a-tool-reference",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profiles": {},
+      "binding": {
+        "tool": "alpha/mid-1"
+      }
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "alpha",
+          "model": "mid-1",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "alpha/mid-1",
+          "from": {
+            "kind": "name",
+            "name": "mid-1"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [],
+        "trace": [
+          "alpha/mid-1: taken"
+        ],
+        "summary": "chosen: alpha/mid-1"
+      }
+    }
+  },
+  {
+    "name": "a-tool-reference-unavailable",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profiles": {},
+      "binding": {
+        "tool": "alpha/mid-1"
+      },
+      "availability": {
+        "alpha/mid-1": {
+          "reason": "model-not-present"
+        }
+      }
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "kind": "none",
+        "skipped": [
+          {
+            "ref": "alpha/mid-1",
+            "reason": "model-not-present"
+          }
+        ],
+        "trace": [
+          "alpha/mid-1: skipped: unavailable (model-not-present)"
+        ],
+        "summary": "none: no entry is usable"
+      }
+    }
+  },
+  {
+    "name": "a-wildcard-tool-reference-walks-the-chain",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "knownTools": [
+        "alpha",
+        "gamma"
+      ],
+      "profiles": {},
+      "binding": {
+        "tool": "*/fast"
+      },
+      "availability": {
+        "alpha/fast": {
+          "reason": "cooling-down"
+        }
+      }
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "kind": "chosen",
+        "resolved": {
+          "tool": "gamma",
+          "model": "anthropic/small-1",
+          "effortUnchecked": false,
+          "contextUnchecked": false,
+          "text": "gamma/fast",
+          "from": {
+            "kind": "tier",
+            "tier": "fast"
+          },
+          "check": {
+            "kind": "ok"
+          }
+        },
+        "warnings": [],
+        "skipped": [
+          {
+            "ref": "alpha/embed-1",
+            "reason": "not-agent",
+            "detail": "anthropic/embed-1 is an embedding model"
+          },
+          {
+            "ref": "alpha/plain-1",
+            "reason": "not-agent",
+            "detail": "anthropic/plain-1 is not an agent model"
+          },
+          {
+            "ref": "gamma/anthropic/embed-1",
+            "reason": "not-agent",
+            "detail": "anthropic/embed-1 is an embedding model"
+          },
+          {
+            "ref": "gamma/anthropic/plain-1",
+            "reason": "not-agent",
+            "detail": "anthropic/plain-1 is not an agent model"
+          },
+          {
+            "ref": "alpha/fast",
+            "reason": "cooling-down"
+          }
+        ],
+        "trace": [
+          "alpha/embed-1: skipped: anthropic/embed-1 is an embedding model (from */fast)",
+          "alpha/plain-1: skipped: anthropic/plain-1 is not an agent model (from */fast)",
+          "gamma/anthropic/embed-1: skipped: anthropic/embed-1 is an embedding model (from */fast)",
+          "gamma/anthropic/plain-1: skipped: anthropic/plain-1 is not an agent model (from */fast)",
+          "*/fast: expands to alpha/fast, gamma/fast, gamma/ollama/qwen3:4b",
+          "alpha/fast: skipped: unavailable (cooling-down)",
+          "gamma/fast: taken"
+        ],
+        "summary": "chosen: gamma/fast"
+      }
+    }
+  },
+  {
+    "name": "a-tool-reference-that-does-not-resolve",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profiles": {},
+      "binding": {
+        "tool": "nope/fast"
+      }
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "kind": "invalid",
+        "errors": [
+          {
+            "entry": "nope/fast",
+            "message": "unknown tool 'nope'; known: alpha, beta, gamma, delta",
+            "error": {
+              "kind": "unknown-tool",
+              "tool": "nope",
+              "model": "fast",
+              "message": "unknown tool 'nope'; known: alpha, beta, gamma, delta"
+            }
+          }
+        ],
+        "skipped": [],
+        "trace": [
+          "nope/fast: invalid (unknown tool 'nope'; known: alpha, beta, gamma, delta)"
+        ],
+        "summary": "invalid: nope/fast: unknown tool 'nope'; known: alpha, beta, gamma, delta"
+      }
+    }
+  },
+  {
+    "name": "error-both-set",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profiles": {},
+      "binding": {
+        "profile": "default",
+        "tool": "alpha"
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "binding-invalid",
+        "message": "binding sets both 'profile' and 'tool'; set exactly one"
+      }
+    }
+  },
+  {
+    "name": "error-neither-set",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profiles": {},
+      "binding": {}
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "binding-invalid",
+        "message": "binding sets neither 'profile' nor 'tool'; set exactly one"
+      }
+    }
+  },
+  {
+    "name": "error-unknown-profile-lists-the-known-sorted",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profiles": {
+        "zeta": [
+          "alpha"
+        ],
+        "alpha": [
+          "alpha"
+        ]
+      },
+      "binding": {
+        "profile": "nope"
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "unknown-profile",
+        "name": "nope",
+        "known": [
+          "alpha",
+          "default",
+          "small",
+          "zeta"
+        ],
+        "message": "unknown profile 'nope'; known: alpha, default, small, zeta"
+      }
+    }
+  },
+  {
+    "name": "error-unknown-profile-inherited-name",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profiles": {},
+      "binding": {
+        "profile": "constructor"
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "unknown-profile",
+        "name": "constructor",
+        "known": [
+          "default",
+          "small"
+        ],
+        "message": "unknown profile 'constructor'; known: default, small"
+      }
+    }
+  },
+  {
+    "name": "error-invalid-ref",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profiles": {},
+      "binding": {
+        "tool": "alpha/opus[1m]"
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-ref",
+        "error": {
+          "kind": "native-bracket",
+          "text": "alpha/opus[1m]",
+          "message": "a context size is written [ctx=1m], not a tool's own [1m]: \"alpha/opus[1m]\""
+        },
+        "message": "binding tool: a context size is written [ctx=1m], not a tool's own [1m]: \"alpha/opus[1m]\""
+      }
+    }
+  },
+  {
+    "name": "error-empty-ref",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profiles": {},
+      "binding": {
+        "tool": ""
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "invalid-ref",
+        "error": {
+          "kind": "empty-ref",
+          "text": "",
+          "message": "empty model reference: \"\""
+        },
+        "message": "binding tool: empty model reference: \"\""
+      }
+    }
+  },
+  {
+    "name": "error-tool-a-number",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profiles": {},
+      "binding": {
+        "tool": 5
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "binding-invalid",
+        "message": "binding tool: expected a reference string"
+      }
+    }
+  },
+  {
+    "name": "error-tool-a-list",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profiles": {},
+      "binding": {
+        "tool": [
+          "alpha"
+        ]
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "binding-invalid",
+        "message": "binding tool: expected a reference string"
+      }
+    }
+  },
+  {
+    "name": "error-tool-null",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "profiles": {},
+      "binding": {
+        "tool": null
+      }
+    },
+    "expected": {
+      "ok": false,
+      "error": {
+        "kind": "binding-invalid",
+        "message": "binding tool: expected a reference string"
+      }
+    }
+  }
+]

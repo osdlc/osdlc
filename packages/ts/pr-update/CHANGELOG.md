@@ -1,5 +1,74 @@
 # @osdlc/pr-update
 
+## 0.12.4
+
+### Patch Changes
+
+- Updated dependencies [acf57e6]
+  - @osdlc/cli-tool@0.20.0
+
+## 0.12.3
+
+### Patch Changes
+
+- Updated dependencies [6236a97]
+  - @osdlc/typed-git@0.17.0
+  - @osdlc/code-host@0.8.1
+  - @osdlc/ref-lease@0.3.2
+  - @osdlc/trust-repo@0.5.9
+
+## 0.12.2
+
+### Patch Changes
+
+- Updated dependencies [55b4303]
+- Updated dependencies [621069f]
+- Updated dependencies [cde222c]
+  - @osdlc/cli-tool@0.19.0
+  - @osdlc/code-host@0.8.0
+  - @osdlc/typed-git@0.16.0
+  - @osdlc/ref-lease@0.3.1
+  - @osdlc/trust-repo@0.5.8
+
+## 0.12.1
+
+### Patch Changes
+
+- Updated dependencies [6c329b7]
+  - @osdlc/agent-call@0.14.0
+
+## 0.12.0
+
+### Minor Changes
+
+- d015046: Keep the failed-attempt record and a per-branch update lease on refs at the remote. `attempts.store: git-ref` (default `file`, so nothing changes) stores one ref per repo, head and base branch under `attempts.ref_prefix` (default `refs/pr-update/`), written by compare-and-swap with `@osdlc/ref-lease` so concurrent runs keep each other's failures, and takes a lease `refs/pr-update/lock/<branch>` around each PR's update (`lease.ttl_seconds`); a PR another run is updating is skipped. New exports `refAttemptStore`, `refBranchLease` and `Ports.lease`. Records are now written as each PR finishes instead of after the whole batch, so a run killed by a timeout keeps them. The repair agents now run without `GH_TOKEN`/`GITHUB_TOKEN` in their environment, and `claude` loads no project settings, hooks or MCP servers from the PR's worktree.
+
+### Patch Changes
+
+- Updated dependencies [9a1d13c]
+- Updated dependencies [d015046]
+  - @osdlc/agent-call@0.13.0
+  - @osdlc/ref-lease@0.3.0
+
+## 0.11.0
+
+### Minor Changes
+
+- 5d81237: `survey` and `update` now run on `@osdlc/cli-tool`'s command model, in one tree with `config` and `trust`; the hand dispatch on the first argument is gone. Every flag, exit code and text report is unchanged, and a bare `--branch` still means the checked-out branch. What a reader sees differently:
+  
+  - `--json` (and `--output json`) prints the same fields with `schemaVersion: 1` and `kind` (`survey` or `update`) in front, and `update --report` writes that same document. The `{ error }` report of a run that threw is unchanged.
+  - Help is generated: `pr-update <command> --help`, `--help --all` for the long form (the `--repair-agent` agents, one per line, are there now), `pr-update help` and `pr-update schema`. `pr-update` alone still lists the commands and exits 0.
+  - Errors read `pr-update: <message>` with the usage line, and under `--json` also print the error document on stdout. An unexpected error is reported by the app (exit 1) rather than thrown out of `main`.
+  - `--output jsonl` and `--json --output text` are refused (exit 2).
+  - For an adapter: `survey` is read-only, `update` is destructive, and an `update` call that passes `trust`, `repairAgent`, `repairCommand` or `report` is command-line only.
+
+### Patch Changes
+
+- Updated dependencies [912296d]
+  - @osdlc/typed-git@0.15.0
+  - @osdlc/code-host@0.7.12
+  - @osdlc/trust-repo@0.5.7
+
 ## 0.10.1
 
 ### Patch Changes

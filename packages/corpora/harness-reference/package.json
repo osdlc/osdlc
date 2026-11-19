@@ -1,0 +1,37 @@
+{
+  "name": "harness-reference",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "A versioned, cited record of how coding-agent harnesses differ, kept as one Markdown corpus, with its tools.",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/corpora/harness-reference"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/corpora/harness-reference#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "validate": "corpus-schema validate corpus",
+    "capture": "node src/corpus/capture.ts",
+    "lint": "node src/corpus/lint.ts",
+    "compile": "node src/compile/compile.ts",
+    "test": "node --test src/*/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "check": "pnpm run validate && pnpm run lint && pnpm run test && pnpm run typecheck"
+  },
+  "dependencies": {
+    "@osdlc/corpus-schema": "workspace:^",
+    "ajv": "8.20.0",
+    "yaml": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  }
+}

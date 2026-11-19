@@ -16,10 +16,12 @@ import {
   stderrOrError,
 } from '@osdlc/command-seam'
 
-import type { PrUpdateStandaloneConfig } from './config.ts'
+import type { PrUpdateConfig, PrUpdateStandaloneConfig } from './config.ts'
 import type { Ports, Repair } from './ports.ts'
 import { agentRepair } from './repair/agents.ts'
 import { attemptsDir, fileAttemptStore } from './update/attempts.ts'
+import { defaultLeaseTtlSeconds, refBranchLease } from './update/lease.ts'
+import { attemptsPrefix, refAttemptStore } from './update/ref-attempts.ts'
 
 // Both run in a PR worktree, so `sh` comes only from an absolute PATH entry:
 // a relative entry would resolve inside the PR's own files.
@@ -60,9 +62,14 @@ export function commandRepair(command: string, timeoutSeconds: number | null = n
  * There is nothing to find its path from.
  *
  * With `projectRoot`, failed updates are recorded in
- * `<projectRoot>/.pr-update/attempts/`.
+ * `<projectRoot>/.pr-update/attempts/`, or, with `attempts.store: git-ref`, as refs on `remote`
+ * (default `origin`) along with a per-branch update lease.
  */
-export function standalonePorts(cfg?: PrUpdateStandaloneConfig, projectRoot?: string): Ports {
+export function standalonePorts(
+  cfg?: PrUpdateConfig & Partial<PrUpdateStandaloneConfig>,
+  projectRoot?: string,
+  remote = 'origin',
+): Ports {
   const command = cfg?.repair.command ?? null
   const agent = cfg?.repair.agent ?? null
   const timeout = cfg?.repair.timeout_seconds ?? null
@@ -97,6 +104,22 @@ export function standalonePorts(cfg?: PrUpdateStandaloneConfig, projectRoot?: st
       : command !== null
         ? { repair: commandRepair(command, timeout) }
         : {}),
-    ...(projectRoot === undefined ? {} : { attempts: fileAttemptStore(attemptsDir(projectRoot)) }),
+    ...(projectRoot === undefined
+      ? {}
+      : cfg?.attempts?.store === 'git-ref'
+        ? {
+            attempts: refAttemptStore({
+              remote,
+              cwd: projectRoot,
+              prefix: attemptsPrefix(cfg.attempts.ref_prefix),
+            }),
+            lease: refBranchLease({
+              remote,
+              cwd: projectRoot,
+              refPrefix: cfg.attempts.ref_prefix,
+              ttlMs: (cfg.lease?.ttl_seconds ?? defaultLeaseTtlSeconds(timeout)) * 1000,
+            }),
+          }
+        : { attempts: fileAttemptStore(attemptsDir(projectRoot)) }),
   }
 }

@@ -13,6 +13,11 @@ path, runs git there and returns a typed value or a `GitError`.
   clean, a parsed `StatusReport` (branch, upstream, ahead and behind counts,
   and the state of each changed path), merge and rebase state, the paths a
   commit changed, a config value, and a file's bytes at a revision.
+- `diff`: what changed. The changed paths with their status, and the old
+  path of a rename or copy, for a range, the index or the working tree
+  (`diff_name_status`), the unified diff, optionally staged, with `--binary`,
+  limited to paths (`diff_text`), and the merge base of two revisions
+  (`merge_base`, `None` for unrelated histories).
 - `commit`: commits of named paths only (`commit_only`), which leave other
   staged work alone, a commit of everything, a revert that stays inside the
   reverted commit's paths, and a push to the branch's upstream that never
@@ -103,6 +108,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   meant for a cache, not a checkout with local work.
 - `worktree::create` reads a relative base directory from the repository
   root. When the worktree path already exists, it is returned as it is.
+- `diff_name_status` and `diff_text` read their pathspecs as git does, so
+  `*.md` is a glob, and a name that begins with `:` is read as pathspec magic.
+  Prefix a path with `:(literal)` to match it as a file name.
+- `diff_name_status` and `diff_text` refuse a revision or range that begins
+  with `-`. Both pass `--` after the revision, so git never reads it as a
+  path: a branch that shares its name with a file works, and a name that is a
+  file but no revision is an error.
+- `diff_text` returns the diff untrimmed. It passes `--no-color`,
+  `--no-ext-diff`, `--no-textconv`, `--src-prefix=a/`, `--dst-prefix=b/`,
+  `--no-relative`, `--submodule=short` and `--unified=3`, so the text is a
+  plain unified diff with `a/` and `b/` prefixes and three lines of context
+  under the user's colour, external diff, textconv, prefix, `diff.relative`,
+  `diff.submodule` and `diff.context` settings. Other settings still apply:
+  rename detection (`diff.renames`), `diff.ignoreSubmodules` and
+  `diff.algorithm`. The `GIT_DIFF_OPTS` environment variable also still
+  applies: `-u0` there overrides the three lines of context.
+- `diff_name_status` passes `--no-relative`, so its paths are relative to the
+  repository root and cover the whole repository. It passes `--no-color` as a
+  guard: git does not colour that output. An unmerged path can be two rows in
+  a working tree diff: a content conflict gives a second row, a modify/delete
+  conflict does not.
 - `query::current_branch` returns the text `HEAD` when HEAD is detached.
   `StatusReport::branch` is `None` then.
 - `StatusReport::ahead` and `behind` are `None` when the branch has no
@@ -112,9 +138,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Platforms
 
-Linux, macOS and Windows. The crate has no platform-specific code. It runs
-`git` through `std::process::Command` and finds it on `PATH` with `which`. CI
-runs the tests on all three.
+Linux, macOS and Windows. The crate runs `git` through
+`std::process::Command` and finds it on `PATH` with `which`. One behaviour
+differs by platform: the paths from `diff_name_status` keep their exact bytes
+on Unix, and elsewhere bytes that are not UTF-8 are replaced. CI runs the
+tests on all three.
 
 Minimum supported Rust version: 1.89, the MSRV of the workspace this crate is
 built in.
@@ -147,12 +175,14 @@ and want its behaviour with typed results.
 The crate is on 0.x. A breaking change ships only in a new 0.x minor release,
 with an entry in the [changelog](CHANGELOG.md).
 
-- `GitError`, `FileState`, `RepoState`, `StatusEntry`, `StatusReport`,
+- `GitError`, `ChangeKind`, `Change`, `DiffNameStatusOptions`,
+  `DiffTextOptions`, `FileState`, `RepoState`, `StatusEntry`, `StatusReport`,
   `Checkout`, `GitInfo` and `Version` are `#[non_exhaustive]`. A later
   release can add a variant or a field without a breaking change. A `match`
-  on an enum needs a `_` arm, and the structs cannot be built outside the
-  crate.
-- The functions in `query`, `commit`, `clone`, `worktree` and `info`, and
+  on an enum needs a `_` arm. The two option structs,
+  `DiffNameStatusOptions` and `DiffTextOptions`, are built with `new()` and
+  their setters. The other structs cannot be built outside the crate.
+- The functions in `query`, `diff`, `commit`, `clone`, `worktree` and `info`, and
   `git()` and `GitCommand`, are the public API.
 
 ## Version numbers and the TypeScript package

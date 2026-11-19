@@ -1,0 +1,4803 @@
+[
+  {
+    "name": "single-layer",
+    "input": {
+      "layers": [
+        "mini"
+      ]
+    },
+    "expected": {
+      "tools": {
+        "alpha": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "none"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "alpha",
+          "serves": [
+            "anthropic"
+          ],
+          "openness": "closed",
+          "modes": [
+            "headless"
+          ],
+          "efforts": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "aliases": {
+            "big": "anthropic/big-2"
+          },
+          "prefer_alias": true,
+          "id": "alpha",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "serves": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "openness": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "modes": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "efforts": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "aliases": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "prefer_alias": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "beta": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "none"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "beta",
+          "serves": [
+            "openai"
+          ],
+          "openness": "closed",
+          "modes": [
+            "headless"
+          ],
+          "efforts": [
+            "medium",
+            "high"
+          ],
+          "id": "beta",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "serves": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "openness": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "modes": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "efforts": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "gamma": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "flag",
+            "name": "--effort"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "gamma",
+          "serves": [
+            "anthropic",
+            "ollama"
+          ],
+          "openness": "open",
+          "modes": [
+            "headless",
+            "interactive"
+          ],
+          "efforts": [],
+          "id": "gamma",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "serves": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "openness": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "modes": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "effort": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "efforts": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "delta": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "none"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "delta",
+          "serves": [
+            "anthropic"
+          ],
+          "openness": "curated",
+          "modes": [
+            "headless"
+          ],
+          "offers": [
+            {
+              "model": "anthropic/small-1",
+              "native_name": "tiny",
+              "efforts": [
+                "low"
+              ]
+            },
+            {
+              "model": "anthropic/big-2",
+              "native_name": "large",
+              "context": {
+                "default": 100000
+              }
+            }
+          ],
+          "id": "delta",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "serves": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "openness": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "modes": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "offers": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        }
+      },
+      "providers": {
+        "anthropic": {
+          "kind": "anthropic",
+          "id": "anthropic",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "kind": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "openai": {
+          "kind": "openai",
+          "id": "openai",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "kind": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "ollama": {
+          "kind": "ollama",
+          "id": "ollama",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "kind": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        }
+      },
+      "models": {
+        "anthropic/big-2": {
+          "status": "current",
+          "family": "claude-opus",
+          "release_date": "2026-05-01",
+          "context": {
+            "default": 200000,
+            "max": 1000000
+          },
+          "efforts": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "traits": [
+            "agent",
+            "reasoning",
+            "long-context"
+          ],
+          "key": "anthropic/big-2",
+          "provider": "anthropic",
+          "id": "big-2",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "context": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "efforts": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/big-1": {
+          "status": "deprecated",
+          "family": "claude-opus",
+          "release_date": "2026-01-01",
+          "traits": [
+            "agent"
+          ],
+          "deprecated_on": "2026-09-01",
+          "key": "anthropic/big-1",
+          "provider": "anthropic",
+          "id": "big-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "status": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "deprecated_on": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/small-1": {
+          "status": "current",
+          "family": "claude-haiku",
+          "release_date": "2026-03-01",
+          "traits": [
+            "agent"
+          ],
+          "key": "anthropic/small-1",
+          "provider": "anthropic",
+          "id": "small-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/mid-1": {
+          "status": "current",
+          "family": "claude-sonnet",
+          "release_date": "2026-04-01",
+          "traits": [
+            "agent"
+          ],
+          "key": "anthropic/mid-1",
+          "provider": "anthropic",
+          "id": "mid-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/gone-1": {
+          "status": "withdrawn",
+          "family": "claude-sonnet",
+          "traits": [
+            "agent"
+          ],
+          "key": "anthropic/gone-1",
+          "provider": "anthropic",
+          "id": "gone-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "status": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/embed-1": {
+          "status": "current",
+          "family": "claude-haiku",
+          "release_date": "2026-06-01",
+          "traits": [
+            "embedding"
+          ],
+          "key": "anthropic/embed-1",
+          "provider": "anthropic",
+          "id": "embed-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/plain-1": {
+          "status": "current",
+          "family": "claude-haiku",
+          "release_date": "2026-02-01",
+          "key": "anthropic/plain-1",
+          "provider": "anthropic",
+          "id": "plain-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "openai/gpt-x": {
+          "status": "current",
+          "family": "gpt-sol",
+          "traits": [
+            "agent"
+          ],
+          "key": "openai/gpt-x",
+          "provider": "openai",
+          "id": "gpt-x",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "ollama/qwen3:4b": {
+          "status": "current",
+          "traits": [
+            "agent",
+            "local"
+          ],
+          "key": "ollama/qwen3:4b",
+          "provider": "ollama",
+          "id": "qwen3:4b",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "ollama/llama3:70b": {
+          "status": "current",
+          "traits": [
+            "agent",
+            "local"
+          ],
+          "key": "ollama/llama3:70b",
+          "provider": "ollama",
+          "id": "llama3:70b",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "ollama/nomic:1b": {
+          "status": "current",
+          "traits": [
+            "embedding",
+            "local"
+          ],
+          "key": "ollama/nomic:1b",
+          "provider": "ollama",
+          "id": "nomic:1b",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        }
+      },
+      "offeringRows": [
+        {
+          "tool": "alpha",
+          "model": "anthropic/big-2",
+          "context": {
+            "default": 200000,
+            "max": 200000
+          },
+          "source": "snapshot",
+          "observed_at": "2026-10-01"
+        }
+      ],
+      "problems": [],
+      "warnings": []
+    }
+  },
+  {
+    "name": "config-over-mini",
+    "input": {
+      "layers": [
+        "mini",
+        "mini-config"
+      ]
+    },
+    "expected": {
+      "tools": {
+        "alpha": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "none"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "alpha",
+          "serves": [
+            "anthropic"
+          ],
+          "openness": "closed",
+          "modes": [
+            "headless"
+          ],
+          "efforts": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "aliases": {
+            "big": "anthropic/big-2"
+          },
+          "prefer_alias": true,
+          "id": "alpha",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "serves": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "openness": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "modes": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "efforts": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "aliases": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "prefer_alias": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "beta": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "none"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "beta",
+          "serves": [
+            "openai"
+          ],
+          "openness": "closed",
+          "modes": [
+            "headless"
+          ],
+          "efforts": [
+            "medium",
+            "high"
+          ],
+          "id": "beta",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "serves": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "openness": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "modes": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "efforts": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "gamma": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "flag",
+            "name": "--effort"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "gamma",
+          "serves": [
+            "anthropic",
+            {
+              "provider": "ollama",
+              "via": "--oss"
+            },
+            "corp"
+          ],
+          "openness": "open",
+          "modes": [
+            "headless",
+            "interactive"
+          ],
+          "efforts": [],
+          "prefer_alias": false,
+          "id": "gamma",
+          "source": "config",
+          "observed_at": "2026-10-20",
+          "fields": {
+            "serves": {
+              "source": "config",
+              "observed_at": "2026-10-20"
+            },
+            "openness": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "modes": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "effort": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "efforts": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "prefer_alias": {
+              "source": "config",
+              "observed_at": "2026-10-20"
+            }
+          }
+        },
+        "delta": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "none"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "delta",
+          "serves": [
+            "anthropic"
+          ],
+          "openness": "curated",
+          "modes": [
+            "headless"
+          ],
+          "offers": [
+            {
+              "model": "anthropic/small-1",
+              "native_name": "tiny",
+              "efforts": [
+                "low"
+              ]
+            },
+            {
+              "model": "anthropic/big-2",
+              "native_name": "large",
+              "context": {
+                "default": 100000
+              }
+            }
+          ],
+          "id": "delta",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "serves": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "openness": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "modes": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "offers": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "epsilon": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "none"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "epsilon",
+          "serves": [
+            "corp"
+          ],
+          "openness": "open",
+          "modes": [
+            "headless"
+          ],
+          "headless": {
+            "args": [
+              "-p",
+              "{prompt}"
+            ],
+            "prompt_via": "argv"
+          },
+          "id": "epsilon",
+          "source": "config",
+          "observed_at": "2026-10-20",
+          "fields": {
+            "serves": {
+              "source": "config",
+              "observed_at": "2026-10-20"
+            },
+            "openness": {
+              "source": "config",
+              "observed_at": "2026-10-20"
+            },
+            "modes": {
+              "source": "config",
+              "observed_at": "2026-10-20"
+            },
+            "headless": {
+              "source": "config",
+              "observed_at": "2026-10-20"
+            }
+          }
+        }
+      },
+      "providers": {
+        "anthropic": {
+          "kind": "anthropic",
+          "id": "anthropic",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "kind": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "openai": {
+          "kind": "openai",
+          "id": "openai",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "kind": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "ollama": {
+          "kind": "ollama",
+          "id": "ollama",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "kind": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "corp": {
+          "kind": "openai-compatible",
+          "endpoint": "https://llm.corp.example/v1",
+          "key_env": "CORP_KEY",
+          "id": "corp",
+          "source": "config",
+          "observed_at": "2026-10-20",
+          "fields": {
+            "kind": {
+              "source": "config",
+              "observed_at": "2026-10-20"
+            },
+            "endpoint": {
+              "source": "config",
+              "observed_at": "2026-10-20"
+            },
+            "key_env": {
+              "source": "config",
+              "observed_at": "2026-10-20"
+            }
+          }
+        }
+      },
+      "models": {
+        "anthropic/big-2": {
+          "status": "current",
+          "family": "claude-opus",
+          "release_date": "2026-05-01",
+          "context": {
+            "default": 200000,
+            "max": 1000000
+          },
+          "efforts": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "traits": [
+            "agent",
+            "reasoning",
+            "long-context"
+          ],
+          "key": "anthropic/big-2",
+          "provider": "anthropic",
+          "id": "big-2",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "context": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "efforts": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/big-1": {
+          "status": "deprecated",
+          "family": "claude-opus",
+          "release_date": "2026-01-01",
+          "traits": [
+            "agent"
+          ],
+          "deprecated_on": "2026-09-01",
+          "key": "anthropic/big-1",
+          "provider": "anthropic",
+          "id": "big-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "status": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "deprecated_on": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/small-1": {
+          "status": "current",
+          "family": "claude-haiku",
+          "release_date": "2026-03-01",
+          "traits": [
+            "agent"
+          ],
+          "key": "anthropic/small-1",
+          "provider": "anthropic",
+          "id": "small-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/mid-1": {
+          "status": "current",
+          "family": "claude-sonnet",
+          "release_date": "2026-04-01",
+          "traits": [
+            "agent"
+          ],
+          "key": "anthropic/mid-1",
+          "provider": "anthropic",
+          "id": "mid-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/gone-1": {
+          "status": "withdrawn",
+          "family": "claude-sonnet",
+          "traits": [
+            "agent"
+          ],
+          "key": "anthropic/gone-1",
+          "provider": "anthropic",
+          "id": "gone-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "status": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/embed-1": {
+          "status": "current",
+          "family": "claude-haiku",
+          "release_date": "2026-06-01",
+          "traits": [
+            "embedding"
+          ],
+          "key": "anthropic/embed-1",
+          "provider": "anthropic",
+          "id": "embed-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/plain-1": {
+          "status": "current",
+          "family": "claude-haiku",
+          "release_date": "2026-02-01",
+          "key": "anthropic/plain-1",
+          "provider": "anthropic",
+          "id": "plain-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "openai/gpt-x": {
+          "status": "current",
+          "family": "gpt-sol",
+          "traits": [
+            "agent"
+          ],
+          "key": "openai/gpt-x",
+          "provider": "openai",
+          "id": "gpt-x",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "ollama/qwen3:4b": {
+          "status": "current",
+          "traits": [
+            "agent",
+            "local"
+          ],
+          "key": "ollama/qwen3:4b",
+          "provider": "ollama",
+          "id": "qwen3:4b",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "ollama/llama3:70b": {
+          "status": "current",
+          "traits": [
+            "agent",
+            "local"
+          ],
+          "key": "ollama/llama3:70b",
+          "provider": "ollama",
+          "id": "llama3:70b",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "ollama/nomic:1b": {
+          "status": "current",
+          "traits": [
+            "embedding",
+            "local"
+          ],
+          "key": "ollama/nomic:1b",
+          "provider": "ollama",
+          "id": "nomic:1b",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "corp/house-1": {
+          "status": "current",
+          "family": "house",
+          "traits": [
+            "agent"
+          ],
+          "key": "corp/house-1",
+          "provider": "corp",
+          "id": "house-1",
+          "source": "config",
+          "observed_at": "2026-10-19",
+          "fields": {
+            "family": {
+              "source": "config",
+              "observed_at": "2026-10-19"
+            },
+            "traits": {
+              "source": "config",
+              "observed_at": "2026-10-19"
+            }
+          }
+        }
+      },
+      "offeringRows": [
+        {
+          "tool": "alpha",
+          "model": "anthropic/big-2",
+          "context": {
+            "default": 200000,
+            "max": 200000
+          },
+          "source": "snapshot",
+          "observed_at": "2026-10-01"
+        },
+        {
+          "tool": "beta",
+          "model": "anthropic/small-1",
+          "native_name": "borrowed",
+          "source": "config",
+          "observed_at": "2026-10-20"
+        },
+        {
+          "tool": "alpha",
+          "model": "anthropic/plain-1",
+          "remove": true,
+          "source": "config",
+          "observed_at": "2026-10-20"
+        },
+        {
+          "tool": "zeta",
+          "model": "anthropic/mid-1",
+          "source": "config",
+          "observed_at": "2026-10-20"
+        }
+      ],
+      "problems": [
+        {
+          "table": "offerings",
+          "key": "zeta",
+          "message": "offering names unknown tool 'zeta'"
+        }
+      ],
+      "warnings": []
+    }
+  },
+  {
+    "name": "empty-layer",
+    "input": {
+      "layers": [
+        {
+          "source": "snapshot",
+          "observed_at": "2026-10-01"
+        }
+      ]
+    },
+    "expected": {
+      "tools": {},
+      "providers": {},
+      "models": {},
+      "offeringRows": [],
+      "problems": [],
+      "warnings": []
+    }
+  },
+  {
+    "name": "higher-layer-replaces-a-field-and-keeps-provenance",
+    "input": {
+      "layers": [
+        "mini",
+        {
+          "source": "models.dev",
+          "observed_at": "2026-10-10",
+          "models": {
+            "anthropic/small-1": {
+              "context": {
+                "default": 8000
+              },
+              "observed_at": "2026-10-09"
+            }
+          }
+        }
+      ]
+    },
+    "expected": {
+      "tools": {
+        "alpha": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "none"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "alpha",
+          "serves": [
+            "anthropic"
+          ],
+          "openness": "closed",
+          "modes": [
+            "headless"
+          ],
+          "efforts": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "aliases": {
+            "big": "anthropic/big-2"
+          },
+          "prefer_alias": true,
+          "id": "alpha",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "serves": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "openness": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "modes": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "efforts": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "aliases": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "prefer_alias": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "beta": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "none"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "beta",
+          "serves": [
+            "openai"
+          ],
+          "openness": "closed",
+          "modes": [
+            "headless"
+          ],
+          "efforts": [
+            "medium",
+            "high"
+          ],
+          "id": "beta",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "serves": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "openness": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "modes": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "efforts": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "gamma": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "flag",
+            "name": "--effort"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "gamma",
+          "serves": [
+            "anthropic",
+            "ollama"
+          ],
+          "openness": "open",
+          "modes": [
+            "headless",
+            "interactive"
+          ],
+          "efforts": [],
+          "id": "gamma",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "serves": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "openness": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "modes": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "effort": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "efforts": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "delta": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "none"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "delta",
+          "serves": [
+            "anthropic"
+          ],
+          "openness": "curated",
+          "modes": [
+            "headless"
+          ],
+          "offers": [
+            {
+              "model": "anthropic/small-1",
+              "native_name": "tiny",
+              "efforts": [
+                "low"
+              ]
+            },
+            {
+              "model": "anthropic/big-2",
+              "native_name": "large",
+              "context": {
+                "default": 100000
+              }
+            }
+          ],
+          "id": "delta",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "serves": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "openness": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "modes": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "offers": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        }
+      },
+      "providers": {
+        "anthropic": {
+          "kind": "anthropic",
+          "id": "anthropic",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "kind": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "openai": {
+          "kind": "openai",
+          "id": "openai",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "kind": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "ollama": {
+          "kind": "ollama",
+          "id": "ollama",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "kind": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        }
+      },
+      "models": {
+        "anthropic/big-2": {
+          "status": "current",
+          "family": "claude-opus",
+          "release_date": "2026-05-01",
+          "context": {
+            "default": 200000,
+            "max": 1000000
+          },
+          "efforts": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "traits": [
+            "agent",
+            "reasoning",
+            "long-context"
+          ],
+          "key": "anthropic/big-2",
+          "provider": "anthropic",
+          "id": "big-2",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "context": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "efforts": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/big-1": {
+          "status": "deprecated",
+          "family": "claude-opus",
+          "release_date": "2026-01-01",
+          "traits": [
+            "agent"
+          ],
+          "deprecated_on": "2026-09-01",
+          "key": "anthropic/big-1",
+          "provider": "anthropic",
+          "id": "big-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "status": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "deprecated_on": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/small-1": {
+          "status": "current",
+          "family": "claude-haiku",
+          "release_date": "2026-03-01",
+          "traits": [
+            "agent"
+          ],
+          "context": {
+            "default": 8000
+          },
+          "key": "anthropic/small-1",
+          "provider": "anthropic",
+          "id": "small-1",
+          "source": "models.dev",
+          "observed_at": "2026-10-09",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "context": {
+              "source": "models.dev",
+              "observed_at": "2026-10-09"
+            }
+          }
+        },
+        "anthropic/mid-1": {
+          "status": "current",
+          "family": "claude-sonnet",
+          "release_date": "2026-04-01",
+          "traits": [
+            "agent"
+          ],
+          "key": "anthropic/mid-1",
+          "provider": "anthropic",
+          "id": "mid-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/gone-1": {
+          "status": "withdrawn",
+          "family": "claude-sonnet",
+          "traits": [
+            "agent"
+          ],
+          "key": "anthropic/gone-1",
+          "provider": "anthropic",
+          "id": "gone-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "status": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/embed-1": {
+          "status": "current",
+          "family": "claude-haiku",
+          "release_date": "2026-06-01",
+          "traits": [
+            "embedding"
+          ],
+          "key": "anthropic/embed-1",
+          "provider": "anthropic",
+          "id": "embed-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/plain-1": {
+          "status": "current",
+          "family": "claude-haiku",
+          "release_date": "2026-02-01",
+          "key": "anthropic/plain-1",
+          "provider": "anthropic",
+          "id": "plain-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "openai/gpt-x": {
+          "status": "current",
+          "family": "gpt-sol",
+          "traits": [
+            "agent"
+          ],
+          "key": "openai/gpt-x",
+          "provider": "openai",
+          "id": "gpt-x",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "ollama/qwen3:4b": {
+          "status": "current",
+          "traits": [
+            "agent",
+            "local"
+          ],
+          "key": "ollama/qwen3:4b",
+          "provider": "ollama",
+          "id": "qwen3:4b",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "ollama/llama3:70b": {
+          "status": "current",
+          "traits": [
+            "agent",
+            "local"
+          ],
+          "key": "ollama/llama3:70b",
+          "provider": "ollama",
+          "id": "llama3:70b",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "ollama/nomic:1b": {
+          "status": "current",
+          "traits": [
+            "embedding",
+            "local"
+          ],
+          "key": "ollama/nomic:1b",
+          "provider": "ollama",
+          "id": "nomic:1b",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        }
+      },
+      "offeringRows": [
+        {
+          "tool": "alpha",
+          "model": "anthropic/big-2",
+          "context": {
+            "default": 200000,
+            "max": 200000
+          },
+          "source": "snapshot",
+          "observed_at": "2026-10-01"
+        }
+      ],
+      "problems": [],
+      "warnings": []
+    }
+  },
+  {
+    "name": "serves-adds-and-replaces-by-provider",
+    "input": {
+      "layers": [
+        "mini",
+        {
+          "source": "config",
+          "observed_at": "2026-10-20",
+          "tools": {
+            "gamma": {
+              "serves": [
+                {
+                  "provider": "anthropic",
+                  "via": "--via"
+                },
+                "openai"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "expected": {
+      "tools": {
+        "alpha": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "none"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "alpha",
+          "serves": [
+            "anthropic"
+          ],
+          "openness": "closed",
+          "modes": [
+            "headless"
+          ],
+          "efforts": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "aliases": {
+            "big": "anthropic/big-2"
+          },
+          "prefer_alias": true,
+          "id": "alpha",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "serves": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "openness": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "modes": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "efforts": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "aliases": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "prefer_alias": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "beta": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "none"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "beta",
+          "serves": [
+            "openai"
+          ],
+          "openness": "closed",
+          "modes": [
+            "headless"
+          ],
+          "efforts": [
+            "medium",
+            "high"
+          ],
+          "id": "beta",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "serves": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "openness": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "modes": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "efforts": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "gamma": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "flag",
+            "name": "--effort"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "gamma",
+          "serves": [
+            {
+              "provider": "anthropic",
+              "via": "--via"
+            },
+            "ollama",
+            "openai"
+          ],
+          "openness": "open",
+          "modes": [
+            "headless",
+            "interactive"
+          ],
+          "efforts": [],
+          "id": "gamma",
+          "source": "config",
+          "observed_at": "2026-10-20",
+          "fields": {
+            "serves": {
+              "source": "config",
+              "observed_at": "2026-10-20"
+            },
+            "openness": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "modes": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "effort": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "efforts": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "delta": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "none"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "delta",
+          "serves": [
+            "anthropic"
+          ],
+          "openness": "curated",
+          "modes": [
+            "headless"
+          ],
+          "offers": [
+            {
+              "model": "anthropic/small-1",
+              "native_name": "tiny",
+              "efforts": [
+                "low"
+              ]
+            },
+            {
+              "model": "anthropic/big-2",
+              "native_name": "large",
+              "context": {
+                "default": 100000
+              }
+            }
+          ],
+          "id": "delta",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "serves": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "openness": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "modes": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "offers": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        }
+      },
+      "providers": {
+        "anthropic": {
+          "kind": "anthropic",
+          "id": "anthropic",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "kind": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "openai": {
+          "kind": "openai",
+          "id": "openai",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "kind": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "ollama": {
+          "kind": "ollama",
+          "id": "ollama",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "kind": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        }
+      },
+      "models": {
+        "anthropic/big-2": {
+          "status": "current",
+          "family": "claude-opus",
+          "release_date": "2026-05-01",
+          "context": {
+            "default": 200000,
+            "max": 1000000
+          },
+          "efforts": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "traits": [
+            "agent",
+            "reasoning",
+            "long-context"
+          ],
+          "key": "anthropic/big-2",
+          "provider": "anthropic",
+          "id": "big-2",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "context": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "efforts": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/big-1": {
+          "status": "deprecated",
+          "family": "claude-opus",
+          "release_date": "2026-01-01",
+          "traits": [
+            "agent"
+          ],
+          "deprecated_on": "2026-09-01",
+          "key": "anthropic/big-1",
+          "provider": "anthropic",
+          "id": "big-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "status": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "deprecated_on": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/small-1": {
+          "status": "current",
+          "family": "claude-haiku",
+          "release_date": "2026-03-01",
+          "traits": [
+            "agent"
+          ],
+          "key": "anthropic/small-1",
+          "provider": "anthropic",
+          "id": "small-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/mid-1": {
+          "status": "current",
+          "family": "claude-sonnet",
+          "release_date": "2026-04-01",
+          "traits": [
+            "agent"
+          ],
+          "key": "anthropic/mid-1",
+          "provider": "anthropic",
+          "id": "mid-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/gone-1": {
+          "status": "withdrawn",
+          "family": "claude-sonnet",
+          "traits": [
+            "agent"
+          ],
+          "key": "anthropic/gone-1",
+          "provider": "anthropic",
+          "id": "gone-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "status": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/embed-1": {
+          "status": "current",
+          "family": "claude-haiku",
+          "release_date": "2026-06-01",
+          "traits": [
+            "embedding"
+          ],
+          "key": "anthropic/embed-1",
+          "provider": "anthropic",
+          "id": "embed-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/plain-1": {
+          "status": "current",
+          "family": "claude-haiku",
+          "release_date": "2026-02-01",
+          "key": "anthropic/plain-1",
+          "provider": "anthropic",
+          "id": "plain-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "openai/gpt-x": {
+          "status": "current",
+          "family": "gpt-sol",
+          "traits": [
+            "agent"
+          ],
+          "key": "openai/gpt-x",
+          "provider": "openai",
+          "id": "gpt-x",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "ollama/qwen3:4b": {
+          "status": "current",
+          "traits": [
+            "agent",
+            "local"
+          ],
+          "key": "ollama/qwen3:4b",
+          "provider": "ollama",
+          "id": "qwen3:4b",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "ollama/llama3:70b": {
+          "status": "current",
+          "traits": [
+            "agent",
+            "local"
+          ],
+          "key": "ollama/llama3:70b",
+          "provider": "ollama",
+          "id": "llama3:70b",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "ollama/nomic:1b": {
+          "status": "current",
+          "traits": [
+            "embedding",
+            "local"
+          ],
+          "key": "ollama/nomic:1b",
+          "provider": "ollama",
+          "id": "nomic:1b",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        }
+      },
+      "offeringRows": [
+        {
+          "tool": "alpha",
+          "model": "anthropic/big-2",
+          "context": {
+            "default": 200000,
+            "max": 200000
+          },
+          "source": "snapshot",
+          "observed_at": "2026-10-01"
+        }
+      ],
+      "problems": [],
+      "warnings": []
+    }
+  },
+  {
+    "name": "problems-missing-required-fields",
+    "input": {
+      "layers": [
+        {
+          "source": "config",
+          "observed_at": "2026-10-20",
+          "tools": {
+            "bare": {
+              "efforts": [
+                "low"
+              ]
+            },
+            "nomodes": {
+              "serves": [
+                "x"
+              ],
+              "openness": "closed"
+            },
+            "noserves": {
+              "modes": [
+                "headless"
+              ]
+            }
+          },
+          "providers": {
+            "nokind": {
+              "endpoint": "https://example.com"
+            }
+          }
+        }
+      ]
+    },
+    "expected": {
+      "tools": {},
+      "providers": {},
+      "models": {},
+      "offeringRows": [],
+      "problems": [
+        {
+          "table": "tools",
+          "key": "bare",
+          "message": "tool 'bare' has no serves, openness, modes"
+        },
+        {
+          "table": "tools",
+          "key": "nomodes",
+          "message": "tool 'nomodes' has no modes"
+        },
+        {
+          "table": "tools",
+          "key": "noserves",
+          "message": "tool 'noserves' has no serves, openness"
+        },
+        {
+          "table": "providers",
+          "key": "nokind",
+          "message": "provider 'nokind' has no kind"
+        }
+      ],
+      "warnings": []
+    }
+  },
+  {
+    "name": "problems-bad-model-keys",
+    "input": {
+      "layers": [
+        {
+          "source": "config",
+          "observed_at": "2026-10-20",
+          "providers": {
+            "p": {
+              "kind": "ollama"
+            }
+          },
+          "models": {
+            "noslash": {},
+            "/lead": {},
+            "trail/": {},
+            "p/ok": {},
+            "p/named": {
+              "provider": "q"
+            }
+          }
+        }
+      ]
+    },
+    "expected": {
+      "tools": {},
+      "providers": {
+        "p": {
+          "kind": "ollama",
+          "id": "p",
+          "source": "config",
+          "observed_at": "2026-10-20",
+          "fields": {
+            "kind": {
+              "source": "config",
+              "observed_at": "2026-10-20"
+            }
+          }
+        }
+      },
+      "models": {
+        "p/ok": {
+          "status": "current",
+          "key": "p/ok",
+          "provider": "p",
+          "id": "ok",
+          "source": "config",
+          "observed_at": "2026-10-20",
+          "fields": {}
+        }
+      },
+      "offeringRows": [],
+      "problems": [
+        {
+          "table": "models",
+          "key": "noslash",
+          "message": "model key 'noslash' is not provider/id"
+        },
+        {
+          "table": "models",
+          "key": "/lead",
+          "message": "model key '/lead' is not provider/id"
+        },
+        {
+          "table": "models",
+          "key": "trail/",
+          "message": "model key 'trail/' is not provider/id"
+        },
+        {
+          "table": "models",
+          "key": "p/named",
+          "message": "model 'p/named' names provider 'q'"
+        }
+      ],
+      "warnings": []
+    }
+  },
+  {
+    "name": "problems-dangling-references",
+    "input": {
+      "layers": [
+        {
+          "source": "config",
+          "observed_at": "2026-10-20",
+          "providers": {
+            "p": {
+              "kind": "ollama"
+            }
+          },
+          "tools": {
+            "t": {
+              "serves": [
+                "p",
+                "ghost"
+              ],
+              "openness": "curated",
+              "modes": [
+                "headless"
+              ],
+              "aliases": {
+                "a": "p/missing"
+              },
+              "offers": [
+                {
+                  "model": "p/also-missing",
+                  "native_name": "x"
+                }
+              ]
+            }
+          },
+          "models": {
+            "orphan/m": {}
+          },
+          "offerings": [
+            {
+              "tool": "nobody",
+              "model": "p/m"
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "tools": {
+        "t": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "none"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "t",
+          "serves": [
+            "p",
+            "ghost"
+          ],
+          "openness": "curated",
+          "modes": [
+            "headless"
+          ],
+          "aliases": {
+            "a": "p/missing"
+          },
+          "offers": [
+            {
+              "model": "p/also-missing",
+              "native_name": "x"
+            }
+          ],
+          "id": "t",
+          "source": "config",
+          "observed_at": "2026-10-20",
+          "fields": {
+            "serves": {
+              "source": "config",
+              "observed_at": "2026-10-20"
+            },
+            "openness": {
+              "source": "config",
+              "observed_at": "2026-10-20"
+            },
+            "modes": {
+              "source": "config",
+              "observed_at": "2026-10-20"
+            },
+            "aliases": {
+              "source": "config",
+              "observed_at": "2026-10-20"
+            },
+            "offers": {
+              "source": "config",
+              "observed_at": "2026-10-20"
+            }
+          }
+        }
+      },
+      "providers": {
+        "p": {
+          "kind": "ollama",
+          "id": "p",
+          "source": "config",
+          "observed_at": "2026-10-20",
+          "fields": {
+            "kind": {
+              "source": "config",
+              "observed_at": "2026-10-20"
+            }
+          }
+        }
+      },
+      "models": {
+        "orphan/m": {
+          "status": "current",
+          "key": "orphan/m",
+          "provider": "orphan",
+          "id": "m",
+          "source": "config",
+          "observed_at": "2026-10-20",
+          "fields": {}
+        }
+      },
+      "offeringRows": [
+        {
+          "tool": "nobody",
+          "model": "p/m",
+          "source": "config",
+          "observed_at": "2026-10-20"
+        }
+      ],
+      "problems": [
+        {
+          "table": "tools",
+          "key": "t",
+          "message": "tool 't' serves unknown provider 'ghost'"
+        },
+        {
+          "table": "tools",
+          "key": "t",
+          "message": "tool 't' alias 'a' names unknown model 'p/missing'"
+        },
+        {
+          "table": "tools",
+          "key": "t",
+          "message": "tool 't' offers unknown model 'p/also-missing'"
+        },
+        {
+          "table": "models",
+          "key": "orphan/m",
+          "message": "model 'orphan/m' names unknown provider 'orphan'"
+        },
+        {
+          "table": "offerings",
+          "key": "nobody",
+          "message": "offering names unknown tool 'nobody'"
+        },
+        {
+          "table": "offerings",
+          "key": "nobody",
+          "message": "offering names unknown model 'p/m'"
+        }
+      ],
+      "warnings": []
+    }
+  },
+  {
+    "name": "problems-unknown-model-row-but-not-a-removal",
+    "input": {
+      "layers": [
+        "mini",
+        {
+          "source": "config",
+          "observed_at": "2026-10-20",
+          "offerings": [
+            {
+              "tool": "alpha",
+              "model": "anthropic/missing-1"
+            },
+            {
+              "tool": "alpha",
+              "model": "anthropic/missing-2",
+              "remove": true
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "tools": {
+        "alpha": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "none"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "alpha",
+          "serves": [
+            "anthropic"
+          ],
+          "openness": "closed",
+          "modes": [
+            "headless"
+          ],
+          "efforts": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "aliases": {
+            "big": "anthropic/big-2"
+          },
+          "prefer_alias": true,
+          "id": "alpha",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "serves": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "openness": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "modes": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "efforts": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "aliases": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "prefer_alias": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "beta": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "none"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "beta",
+          "serves": [
+            "openai"
+          ],
+          "openness": "closed",
+          "modes": [
+            "headless"
+          ],
+          "efforts": [
+            "medium",
+            "high"
+          ],
+          "id": "beta",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "serves": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "openness": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "modes": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "efforts": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "gamma": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "flag",
+            "name": "--effort"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "gamma",
+          "serves": [
+            "anthropic",
+            "ollama"
+          ],
+          "openness": "open",
+          "modes": [
+            "headless",
+            "interactive"
+          ],
+          "efforts": [],
+          "id": "gamma",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "serves": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "openness": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "modes": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "effort": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "efforts": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "delta": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "none"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "delta",
+          "serves": [
+            "anthropic"
+          ],
+          "openness": "curated",
+          "modes": [
+            "headless"
+          ],
+          "offers": [
+            {
+              "model": "anthropic/small-1",
+              "native_name": "tiny",
+              "efforts": [
+                "low"
+              ]
+            },
+            {
+              "model": "anthropic/big-2",
+              "native_name": "large",
+              "context": {
+                "default": 100000
+              }
+            }
+          ],
+          "id": "delta",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "serves": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "openness": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "modes": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "offers": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        }
+      },
+      "providers": {
+        "anthropic": {
+          "kind": "anthropic",
+          "id": "anthropic",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "kind": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "openai": {
+          "kind": "openai",
+          "id": "openai",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "kind": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "ollama": {
+          "kind": "ollama",
+          "id": "ollama",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "kind": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        }
+      },
+      "models": {
+        "anthropic/big-2": {
+          "status": "current",
+          "family": "claude-opus",
+          "release_date": "2026-05-01",
+          "context": {
+            "default": 200000,
+            "max": 1000000
+          },
+          "efforts": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "traits": [
+            "agent",
+            "reasoning",
+            "long-context"
+          ],
+          "key": "anthropic/big-2",
+          "provider": "anthropic",
+          "id": "big-2",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "context": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "efforts": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/big-1": {
+          "status": "deprecated",
+          "family": "claude-opus",
+          "release_date": "2026-01-01",
+          "traits": [
+            "agent"
+          ],
+          "deprecated_on": "2026-09-01",
+          "key": "anthropic/big-1",
+          "provider": "anthropic",
+          "id": "big-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "status": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "deprecated_on": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/small-1": {
+          "status": "current",
+          "family": "claude-haiku",
+          "release_date": "2026-03-01",
+          "traits": [
+            "agent"
+          ],
+          "key": "anthropic/small-1",
+          "provider": "anthropic",
+          "id": "small-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/mid-1": {
+          "status": "current",
+          "family": "claude-sonnet",
+          "release_date": "2026-04-01",
+          "traits": [
+            "agent"
+          ],
+          "key": "anthropic/mid-1",
+          "provider": "anthropic",
+          "id": "mid-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/gone-1": {
+          "status": "withdrawn",
+          "family": "claude-sonnet",
+          "traits": [
+            "agent"
+          ],
+          "key": "anthropic/gone-1",
+          "provider": "anthropic",
+          "id": "gone-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "status": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/embed-1": {
+          "status": "current",
+          "family": "claude-haiku",
+          "release_date": "2026-06-01",
+          "traits": [
+            "embedding"
+          ],
+          "key": "anthropic/embed-1",
+          "provider": "anthropic",
+          "id": "embed-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/plain-1": {
+          "status": "current",
+          "family": "claude-haiku",
+          "release_date": "2026-02-01",
+          "key": "anthropic/plain-1",
+          "provider": "anthropic",
+          "id": "plain-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "openai/gpt-x": {
+          "status": "current",
+          "family": "gpt-sol",
+          "traits": [
+            "agent"
+          ],
+          "key": "openai/gpt-x",
+          "provider": "openai",
+          "id": "gpt-x",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "ollama/qwen3:4b": {
+          "status": "current",
+          "traits": [
+            "agent",
+            "local"
+          ],
+          "key": "ollama/qwen3:4b",
+          "provider": "ollama",
+          "id": "qwen3:4b",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "ollama/llama3:70b": {
+          "status": "current",
+          "traits": [
+            "agent",
+            "local"
+          ],
+          "key": "ollama/llama3:70b",
+          "provider": "ollama",
+          "id": "llama3:70b",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "ollama/nomic:1b": {
+          "status": "current",
+          "traits": [
+            "embedding",
+            "local"
+          ],
+          "key": "ollama/nomic:1b",
+          "provider": "ollama",
+          "id": "nomic:1b",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        }
+      },
+      "offeringRows": [
+        {
+          "tool": "alpha",
+          "model": "anthropic/big-2",
+          "context": {
+            "default": 200000,
+            "max": 200000
+          },
+          "source": "snapshot",
+          "observed_at": "2026-10-01"
+        },
+        {
+          "tool": "alpha",
+          "model": "anthropic/missing-1",
+          "source": "config",
+          "observed_at": "2026-10-20"
+        },
+        {
+          "tool": "alpha",
+          "model": "anthropic/missing-2",
+          "remove": true,
+          "source": "config",
+          "observed_at": "2026-10-20"
+        }
+      ],
+      "problems": [
+        {
+          "table": "offerings",
+          "key": "alpha",
+          "message": "offering names unknown model 'anthropic/missing-1'"
+        }
+      ],
+      "warnings": [
+        {
+          "table": "offerings",
+          "key": "alpha",
+          "message": "offering removes unknown model 'anthropic/missing-2'"
+        }
+      ]
+    }
+  },
+  {
+    "name": "problems-unknown-model-removal-row-under-strict",
+    "input": {
+      "strict": true,
+      "layers": [
+        "mini",
+        {
+          "source": "config",
+          "observed_at": "2026-10-20",
+          "offerings": [
+            {
+              "tool": "alpha",
+              "model": "anthropic/missing-2",
+              "remove": true
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "tools": {
+        "alpha": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "none"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "alpha",
+          "serves": [
+            "anthropic"
+          ],
+          "openness": "closed",
+          "modes": [
+            "headless"
+          ],
+          "efforts": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "aliases": {
+            "big": "anthropic/big-2"
+          },
+          "prefer_alias": true,
+          "id": "alpha",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "serves": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "openness": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "modes": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "efforts": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "aliases": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "prefer_alias": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "beta": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "none"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "beta",
+          "serves": [
+            "openai"
+          ],
+          "openness": "closed",
+          "modes": [
+            "headless"
+          ],
+          "efforts": [
+            "medium",
+            "high"
+          ],
+          "id": "beta",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "serves": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "openness": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "modes": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "efforts": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "gamma": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "flag",
+            "name": "--effort"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "gamma",
+          "serves": [
+            "anthropic",
+            "ollama"
+          ],
+          "openness": "open",
+          "modes": [
+            "headless",
+            "interactive"
+          ],
+          "efforts": [],
+          "id": "gamma",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "serves": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "openness": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "modes": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "effort": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "efforts": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "delta": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "none"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "delta",
+          "serves": [
+            "anthropic"
+          ],
+          "openness": "curated",
+          "modes": [
+            "headless"
+          ],
+          "offers": [
+            {
+              "model": "anthropic/small-1",
+              "native_name": "tiny",
+              "efforts": [
+                "low"
+              ]
+            },
+            {
+              "model": "anthropic/big-2",
+              "native_name": "large",
+              "context": {
+                "default": 100000
+              }
+            }
+          ],
+          "id": "delta",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "serves": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "openness": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "modes": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "offers": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        }
+      },
+      "providers": {
+        "anthropic": {
+          "kind": "anthropic",
+          "id": "anthropic",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "kind": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "openai": {
+          "kind": "openai",
+          "id": "openai",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "kind": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "ollama": {
+          "kind": "ollama",
+          "id": "ollama",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "kind": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        }
+      },
+      "models": {
+        "anthropic/big-2": {
+          "status": "current",
+          "family": "claude-opus",
+          "release_date": "2026-05-01",
+          "context": {
+            "default": 200000,
+            "max": 1000000
+          },
+          "efforts": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "traits": [
+            "agent",
+            "reasoning",
+            "long-context"
+          ],
+          "key": "anthropic/big-2",
+          "provider": "anthropic",
+          "id": "big-2",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "context": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "efforts": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/big-1": {
+          "status": "deprecated",
+          "family": "claude-opus",
+          "release_date": "2026-01-01",
+          "traits": [
+            "agent"
+          ],
+          "deprecated_on": "2026-09-01",
+          "key": "anthropic/big-1",
+          "provider": "anthropic",
+          "id": "big-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "status": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "deprecated_on": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/small-1": {
+          "status": "current",
+          "family": "claude-haiku",
+          "release_date": "2026-03-01",
+          "traits": [
+            "agent"
+          ],
+          "key": "anthropic/small-1",
+          "provider": "anthropic",
+          "id": "small-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/mid-1": {
+          "status": "current",
+          "family": "claude-sonnet",
+          "release_date": "2026-04-01",
+          "traits": [
+            "agent"
+          ],
+          "key": "anthropic/mid-1",
+          "provider": "anthropic",
+          "id": "mid-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/gone-1": {
+          "status": "withdrawn",
+          "family": "claude-sonnet",
+          "traits": [
+            "agent"
+          ],
+          "key": "anthropic/gone-1",
+          "provider": "anthropic",
+          "id": "gone-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "status": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/embed-1": {
+          "status": "current",
+          "family": "claude-haiku",
+          "release_date": "2026-06-01",
+          "traits": [
+            "embedding"
+          ],
+          "key": "anthropic/embed-1",
+          "provider": "anthropic",
+          "id": "embed-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/plain-1": {
+          "status": "current",
+          "family": "claude-haiku",
+          "release_date": "2026-02-01",
+          "key": "anthropic/plain-1",
+          "provider": "anthropic",
+          "id": "plain-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "openai/gpt-x": {
+          "status": "current",
+          "family": "gpt-sol",
+          "traits": [
+            "agent"
+          ],
+          "key": "openai/gpt-x",
+          "provider": "openai",
+          "id": "gpt-x",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "ollama/qwen3:4b": {
+          "status": "current",
+          "traits": [
+            "agent",
+            "local"
+          ],
+          "key": "ollama/qwen3:4b",
+          "provider": "ollama",
+          "id": "qwen3:4b",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "ollama/llama3:70b": {
+          "status": "current",
+          "traits": [
+            "agent",
+            "local"
+          ],
+          "key": "ollama/llama3:70b",
+          "provider": "ollama",
+          "id": "llama3:70b",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "ollama/nomic:1b": {
+          "status": "current",
+          "traits": [
+            "embedding",
+            "local"
+          ],
+          "key": "ollama/nomic:1b",
+          "provider": "ollama",
+          "id": "nomic:1b",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        }
+      },
+      "offeringRows": [
+        {
+          "tool": "alpha",
+          "model": "anthropic/big-2",
+          "context": {
+            "default": 200000,
+            "max": 200000
+          },
+          "source": "snapshot",
+          "observed_at": "2026-10-01"
+        },
+        {
+          "tool": "alpha",
+          "model": "anthropic/missing-2",
+          "remove": true,
+          "source": "config",
+          "observed_at": "2026-10-20"
+        }
+      ],
+      "problems": [
+        {
+          "table": "offerings",
+          "key": "alpha",
+          "message": "offering removes unknown model 'anthropic/missing-2'"
+        }
+      ],
+      "warnings": []
+    }
+  },
+  {
+    "name": "problems-unknown-model-add-and-removal-rows-under-strict",
+    "input": {
+      "strict": true,
+      "layers": [
+        "mini",
+        {
+          "source": "config",
+          "observed_at": "2026-10-20",
+          "offerings": [
+            {
+              "tool": "alpha",
+              "model": "anthropic/missing-1",
+              "remove": true
+            },
+            {
+              "tool": "alpha",
+              "model": "anthropic/missing-2"
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "tools": {
+        "alpha": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "none"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "alpha",
+          "serves": [
+            "anthropic"
+          ],
+          "openness": "closed",
+          "modes": [
+            "headless"
+          ],
+          "efforts": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "aliases": {
+            "big": "anthropic/big-2"
+          },
+          "prefer_alias": true,
+          "id": "alpha",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "serves": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "openness": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "modes": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "efforts": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "aliases": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "prefer_alias": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "beta": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "none"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "beta",
+          "serves": [
+            "openai"
+          ],
+          "openness": "closed",
+          "modes": [
+            "headless"
+          ],
+          "efforts": [
+            "medium",
+            "high"
+          ],
+          "id": "beta",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "serves": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "openness": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "modes": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "efforts": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "gamma": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "flag",
+            "name": "--effort"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "gamma",
+          "serves": [
+            "anthropic",
+            "ollama"
+          ],
+          "openness": "open",
+          "modes": [
+            "headless",
+            "interactive"
+          ],
+          "efforts": [],
+          "id": "gamma",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "serves": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "openness": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "modes": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "effort": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "efforts": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "delta": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "none"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "delta",
+          "serves": [
+            "anthropic"
+          ],
+          "openness": "curated",
+          "modes": [
+            "headless"
+          ],
+          "offers": [
+            {
+              "model": "anthropic/small-1",
+              "native_name": "tiny",
+              "efforts": [
+                "low"
+              ]
+            },
+            {
+              "model": "anthropic/big-2",
+              "native_name": "large",
+              "context": {
+                "default": 100000
+              }
+            }
+          ],
+          "id": "delta",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "serves": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "openness": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "modes": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "offers": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        }
+      },
+      "providers": {
+        "anthropic": {
+          "kind": "anthropic",
+          "id": "anthropic",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "kind": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "openai": {
+          "kind": "openai",
+          "id": "openai",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "kind": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "ollama": {
+          "kind": "ollama",
+          "id": "ollama",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "kind": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        }
+      },
+      "models": {
+        "anthropic/big-2": {
+          "status": "current",
+          "family": "claude-opus",
+          "release_date": "2026-05-01",
+          "context": {
+            "default": 200000,
+            "max": 1000000
+          },
+          "efforts": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "traits": [
+            "agent",
+            "reasoning",
+            "long-context"
+          ],
+          "key": "anthropic/big-2",
+          "provider": "anthropic",
+          "id": "big-2",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "context": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "efforts": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/big-1": {
+          "status": "deprecated",
+          "family": "claude-opus",
+          "release_date": "2026-01-01",
+          "traits": [
+            "agent"
+          ],
+          "deprecated_on": "2026-09-01",
+          "key": "anthropic/big-1",
+          "provider": "anthropic",
+          "id": "big-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "status": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "deprecated_on": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/small-1": {
+          "status": "current",
+          "family": "claude-haiku",
+          "release_date": "2026-03-01",
+          "traits": [
+            "agent"
+          ],
+          "key": "anthropic/small-1",
+          "provider": "anthropic",
+          "id": "small-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/mid-1": {
+          "status": "current",
+          "family": "claude-sonnet",
+          "release_date": "2026-04-01",
+          "traits": [
+            "agent"
+          ],
+          "key": "anthropic/mid-1",
+          "provider": "anthropic",
+          "id": "mid-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/gone-1": {
+          "status": "withdrawn",
+          "family": "claude-sonnet",
+          "traits": [
+            "agent"
+          ],
+          "key": "anthropic/gone-1",
+          "provider": "anthropic",
+          "id": "gone-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "status": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/embed-1": {
+          "status": "current",
+          "family": "claude-haiku",
+          "release_date": "2026-06-01",
+          "traits": [
+            "embedding"
+          ],
+          "key": "anthropic/embed-1",
+          "provider": "anthropic",
+          "id": "embed-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "anthropic/plain-1": {
+          "status": "current",
+          "family": "claude-haiku",
+          "release_date": "2026-02-01",
+          "key": "anthropic/plain-1",
+          "provider": "anthropic",
+          "id": "plain-1",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "release_date": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "openai/gpt-x": {
+          "status": "current",
+          "family": "gpt-sol",
+          "traits": [
+            "agent"
+          ],
+          "key": "openai/gpt-x",
+          "provider": "openai",
+          "id": "gpt-x",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "family": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "ollama/qwen3:4b": {
+          "status": "current",
+          "traits": [
+            "agent",
+            "local"
+          ],
+          "key": "ollama/qwen3:4b",
+          "provider": "ollama",
+          "id": "qwen3:4b",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "ollama/llama3:70b": {
+          "status": "current",
+          "traits": [
+            "agent",
+            "local"
+          ],
+          "key": "ollama/llama3:70b",
+          "provider": "ollama",
+          "id": "llama3:70b",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "ollama/nomic:1b": {
+          "status": "current",
+          "traits": [
+            "embedding",
+            "local"
+          ],
+          "key": "ollama/nomic:1b",
+          "provider": "ollama",
+          "id": "nomic:1b",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "traits": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        }
+      },
+      "offeringRows": [
+        {
+          "tool": "alpha",
+          "model": "anthropic/big-2",
+          "context": {
+            "default": 200000,
+            "max": 200000
+          },
+          "source": "snapshot",
+          "observed_at": "2026-10-01"
+        },
+        {
+          "tool": "alpha",
+          "model": "anthropic/missing-1",
+          "remove": true,
+          "source": "config",
+          "observed_at": "2026-10-20"
+        },
+        {
+          "tool": "alpha",
+          "model": "anthropic/missing-2",
+          "source": "config",
+          "observed_at": "2026-10-20"
+        }
+      ],
+      "problems": [
+        {
+          "table": "offerings",
+          "key": "alpha",
+          "message": "offering names unknown model 'anthropic/missing-2'"
+        },
+        {
+          "table": "offerings",
+          "key": "alpha",
+          "message": "offering removes unknown model 'anthropic/missing-1'"
+        }
+      ],
+      "warnings": []
+    }
+  },
+  {
+    "name": "binary-defaults-to-the-tool-id",
+    "input": {
+      "layers": [
+        {
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "providers": {
+            "p": {
+              "kind": "ollama"
+            }
+          },
+          "tools": {
+            "cursor": {
+              "binary": "cursor-agent",
+              "serves": [
+                "p"
+              ],
+              "openness": "closed",
+              "modes": [
+                "headless"
+              ]
+            }
+          }
+        },
+        {
+          "source": "config",
+          "observed_at": "2026-10-02",
+          "tools": {
+            "mine": {
+              "serves": [
+                "p"
+              ],
+              "openness": "closed",
+              "modes": [
+                "interactive"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "expected": {
+      "tools": {
+        "cursor": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "none"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "cursor-agent",
+          "serves": [
+            "p"
+          ],
+          "openness": "closed",
+          "modes": [
+            "headless"
+          ],
+          "id": "cursor",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "binary": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "serves": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "openness": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            },
+            "modes": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        },
+        "mine": {
+          "model": {
+            "via": "none"
+          },
+          "effort": {
+            "via": "none"
+          },
+          "context": {
+            "via": "none"
+          },
+          "binary": "mine",
+          "serves": [
+            "p"
+          ],
+          "openness": "closed",
+          "modes": [
+            "interactive"
+          ],
+          "id": "mine",
+          "source": "config",
+          "observed_at": "2026-10-02",
+          "fields": {
+            "serves": {
+              "source": "config",
+              "observed_at": "2026-10-02"
+            },
+            "openness": {
+              "source": "config",
+              "observed_at": "2026-10-02"
+            },
+            "modes": {
+              "source": "config",
+              "observed_at": "2026-10-02"
+            }
+          }
+        }
+      },
+      "providers": {
+        "p": {
+          "kind": "ollama",
+          "id": "p",
+          "source": "snapshot",
+          "observed_at": "2026-10-01",
+          "fields": {
+            "kind": {
+              "source": "snapshot",
+              "observed_at": "2026-10-01"
+            }
+          }
+        }
+      },
+      "models": {},
+      "offeringRows": [],
+      "problems": [],
+      "warnings": []
+    }
+  },
+  {
+    "name": "snapshot-summary",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "summary": true
+    },
+    "expected": {
+      "tools": [
+        "antigravity",
+        "claude",
+        "codex",
+        "cursor",
+        "opencode",
+        "pi"
+      ],
+      "providers": [
+        "anthropic",
+        "openai",
+        "google",
+        "ollama",
+        "lmstudio"
+      ],
+      "models": 95,
+      "offeringRows": 8,
+      "problems": [],
+      "warnings": [],
+      "fieldSources": {
+        "antigravity": [
+          "snapshot",
+          "2026-10-09",
+          9
+        ],
+        "claude": [
+          "snapshot",
+          "2026-10-09",
+          12
+        ],
+        "codex": [
+          "snapshot",
+          "2026-10-09",
+          10
+        ],
+        "cursor": [
+          "snapshot",
+          "2026-10-09",
+          10
+        ],
+        "opencode": [
+          "snapshot",
+          "2026-10-09",
+          10
+        ],
+        "pi": [
+          "snapshot",
+          "2026-10-09",
+          10
+        ]
+      }
+    }
+  },
+  {
+    "name": "snapshot-and-config-summary",
+    "input": {
+      "layers": [
+        "snapshot",
+        "mini-config"
+      ],
+      "summary": true
+    },
+    "expected": {
+      "tools": [
+        "antigravity",
+        "claude",
+        "codex",
+        "cursor",
+        "opencode",
+        "pi",
+        "epsilon"
+      ],
+      "providers": [
+        "anthropic",
+        "openai",
+        "google",
+        "ollama",
+        "lmstudio",
+        "corp"
+      ],
+      "models": 96,
+      "offeringRows": 11,
+      "problems": [
+        {
+          "table": "tools",
+          "key": "gamma",
+          "message": "tool 'gamma' has no openness, modes"
+        },
+        {
+          "table": "offerings",
+          "key": "beta",
+          "message": "offering names unknown tool 'beta'"
+        },
+        {
+          "table": "offerings",
+          "key": "beta",
+          "message": "offering names unknown model 'anthropic/small-1'"
+        },
+        {
+          "table": "offerings",
+          "key": "alpha",
+          "message": "offering names unknown tool 'alpha'"
+        },
+        {
+          "table": "offerings",
+          "key": "zeta",
+          "message": "offering names unknown tool 'zeta'"
+        },
+        {
+          "table": "offerings",
+          "key": "zeta",
+          "message": "offering names unknown model 'anthropic/mid-1'"
+        }
+      ],
+      "warnings": [
+        {
+          "table": "offerings",
+          "key": "alpha",
+          "message": "offering removes unknown model 'anthropic/plain-1'"
+        }
+      ],
+      "fieldSources": {
+        "antigravity": [
+          "snapshot",
+          "2026-10-09",
+          9
+        ],
+        "claude": [
+          "snapshot",
+          "2026-10-09",
+          12
+        ],
+        "codex": [
+          "snapshot",
+          "2026-10-09",
+          10
+        ],
+        "cursor": [
+          "snapshot",
+          "2026-10-09",
+          10
+        ],
+        "opencode": [
+          "snapshot",
+          "2026-10-09",
+          10
+        ],
+        "pi": [
+          "snapshot",
+          "2026-10-09",
+          10
+        ],
+        "epsilon": [
+          "config",
+          "2026-10-20",
+          4
+        ]
+      }
+    }
+  }
+]

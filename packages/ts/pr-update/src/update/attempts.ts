@@ -23,7 +23,7 @@ import { atomicWrite } from '@osdlc/etag-write'
 
 import type { AttemptKey, AttemptRecord, AttemptStore } from '../ports.ts'
 
-const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
+export const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
 
 export interface Entry extends AttemptKey, AttemptRecord {}
 
@@ -58,7 +58,7 @@ function sameKey(a: AttemptKey, b: AttemptKey): boolean {
   return sameBranch(a, b) && a.base === b.base && a.headOid === b.headOid && a.baseOid === b.baseOid
 }
 
-function isEntry(e: unknown): e is Entry {
+export function isEntry(e: unknown): e is Entry {
   if (typeof e !== 'object' || e === null) return false
   const o = e as Record<string, unknown>
   return (

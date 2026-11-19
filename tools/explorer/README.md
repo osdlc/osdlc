@@ -21,7 +21,7 @@ Open the address Vite prints. The explorer is a private package in the repo's pn
 
 The second line builds this repo's corpus-schema in `packages/ts/corpus-schema/`. The explorer's
 `@osdlc/corpus-schema` is `workspace:*`, that folder, because the plan uses `extends`, which
-corpus-schema has from 0.3.0. npm has 0.2.1, and 0.3.0 publishes from this repo. Run the line again
+corpus-schema has from 0.4.0. 0.4.0 is on npm; the workspace copy also has changes not yet released. Run the line again
 after corpus-schema changes.
 
 ### Components
@@ -64,10 +64,12 @@ after corpus-schema changes.
   The fit button in the corner shows the whole map.
 - A task card shows its number, title, detail line and status. Not started is grey with an empty
   circle, in progress has a thick blue outline and a half circle, done is faded with a filled
-  check, and waiting on the owner has an orange "you" marker. Supporting work has a dashed outline
+  check, and waiting on the owner has an orange "you" marker. Deferred (on hold) is
+  faded with a pause mark and dropped (will not be done) is faded with a cross: no work is planned
+  on either, and a task that waits on one stays waiting. Supporting work has a dashed outline
   and a "support" label. Colour is never the only signal.
 - A solid dark arrow still holds work up. A faded dashed arrow comes from a task that is done.
-- **Next up** highlights the tasks that are not done and wait only on done tasks. The filters
+- **Next up** highlights the tasks that are not done, deferred or dropped and wait only on done tasks. The filters
   narrow by status, type, phase and milestone; Functional and Supporting are both on at first. A
   task's phase is its milestone's.
 - Click a task to see its plan paragraph, what it waits on, what it unblocks, and the components it

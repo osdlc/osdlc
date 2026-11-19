@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- osdlc/osdlc's `.github/workflows/pr-update.yml` is callable from other
+  repositories (`workflow_call`), so a repository keeps a short caller with
+  `secrets: inherit` instead of a copy. Its settings come from the running
+  repository's variables (`PR_UPDATE_APP_CLIENT_ID`, `PR_UPDATE_TRIGGER_USERS`
+  and others; see the README), each overridable by an input, and the App key
+  is the secret `PR_UPDATE_APP_PRIVATE_KEY`. It takes the App's client ID in
+  place of the deprecated `app-id` of `actions/create-github-app-token`. It
+  runs the action from its own commit, so pinning the workflow pins the action.
+
 - The summary reads the report shape of `@osdlc/pr-update` 0.10 as well as
   earlier ones: a repository that could not be listed is read from its `repos`
   entry as well as from `repoFailures`, and a `--pr` that matched no open PR

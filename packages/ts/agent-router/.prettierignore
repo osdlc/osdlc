@@ -1,0 +1,5 @@
+node_modules/
+dist/
+coverage/
+# Emitted by scripts/emit-fixtures.ts; byte-for-byte what JSON.stringify writes.
+fixtures/

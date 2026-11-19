@@ -19,6 +19,9 @@
  * was, not what the person should do. A tool that wants traces can catch
  * inside its own `main`.
  *
+ * A thrown `NotInteractiveError` (a prompt with nobody to answer it) prints its
+ * message and exits with `err.exit`.
+ *
  * A first argument of `--version` or `--where` is answered here, after the
  * devlink hook and without calling `main`.
  */
@@ -26,6 +29,7 @@
 import { EXIT } from './exit.ts'
 import { exitCodeFor, failureOf, renderError, renderFailure } from './failure.ts'
 import { processContext, type CliContext } from './io.ts'
+import { NotInteractiveError } from './prompt.ts'
 import { renderVersion } from './version-text.ts'
 import { renderWhere, where } from './where.ts'
 
@@ -183,6 +187,11 @@ export async function runMain(main: MainFn, options: RunMainOptions): Promise<vo
   try {
     process.exitCode = await main(argv, ctx)
   } catch (err) {
+    if (err instanceof NotInteractiveError) {
+      ctx.io.stderr(renderError(err.message, options.name))
+      process.exitCode = err.exit
+      return
+    }
     const failure = failureOf(err)
     if (failure !== null) {
       ctx.io.stderr(renderFailure(failure, options.name))

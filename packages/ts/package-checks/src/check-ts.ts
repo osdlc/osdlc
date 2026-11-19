@@ -132,7 +132,8 @@ export function failureLine(name: string, caught: unknown): string {
  * A package with optional peers is probed twice. First without them: an
  * entry may then fail only with ERR_MODULE_NOT_FOUND naming one of them, and
  * every other entry must load. Then with each optional peer installed at its
- * declared range: every entry must load. The package's smoke check, if it
+ * declared range from npm, or from its local tarball when it is a workspace
+ * sibling: every entry must load. The package's smoke check, if it
  * has one, is copied in and run last, with the optional peers installed. */
 function cleanConsumer(
   pkg: Pkg,
@@ -146,10 +147,15 @@ function cleanConsumer(
     for (const [dir, p] of packed) {
       if (dir !== pkgDir && p.tarball) overrides[p.pkg.name] = `file:${p.tarball}`
     }
-    writeFileSync(
-      join(consumer, 'package.json'),
-      JSON.stringify({ name: 'consumer', private: true, type: 'module', overrides }),
-    )
+    // Sets the consumer's overrides, keeping what npm has since recorded in the manifest.
+    const manifest = join(consumer, 'package.json')
+    const writeOverrides = (o: Record<string, string>): void => {
+      const base = existsSync(manifest)
+        ? (JSON.parse(readFileSync(manifest, 'utf8')) as object)
+        : { name: 'consumer', private: true, type: 'module' }
+      writeFileSync(manifest, JSON.stringify({ ...base, overrides: o }))
+    }
+    writeOverrides(overrides)
     run('npm', ['install', '--no-audit', '--no-fund', '--ignore-scripts', tarball], consumer)
     const specs = entryPoints(pkg)
     const peers = optionalPeers(pkg)
@@ -198,7 +204,17 @@ function cleanConsumer(
     }
     runProbe(peers.map(peerName))
     if (peers.length > 0) {
-      run('npm', ['install', '--no-audit', '--no-fund', '--ignore-scripts', ...peers], consumer)
+      // A peer that is a workspace sibling installs from its local tarball. npm refuses an
+      // override for a direct dependency unless the two specs match as written, so the
+      // sibling's override is dropped and the tarball installed directly instead.
+      const siblings = new Set(peers.map(peerName).filter((name) => overrides[name] !== undefined))
+      if (siblings.size > 0) {
+        writeOverrides(
+          Object.fromEntries(Object.entries(overrides).filter(([n]) => !siblings.has(n))),
+        )
+      }
+      const installs = peers.map((p) => overrides[peerName(p)] ?? p)
+      run('npm', ['install', '--no-audit', '--no-fund', '--ignore-scripts', ...installs], consumer)
       console.log(`consumer: installed the optional peers ${peers.join(', ')}`)
       runProbe([])
     }

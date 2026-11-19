@@ -1,0 +1,683 @@
+[
+  {
+    "name": "snap-ok-tool",
+    "input": {
+      "ref": "claude",
+      "layers": [
+        "snapshot"
+      ]
+    },
+    "expected": {
+      "kind": "ok"
+    }
+  },
+  {
+    "name": "snap-ok-tier",
+    "input": {
+      "ref": "claude/max",
+      "layers": [
+        "snapshot"
+      ]
+    },
+    "expected": {
+      "kind": "ok"
+    }
+  },
+  {
+    "name": "snap-ok-family-alias",
+    "input": {
+      "ref": "claude/opus",
+      "layers": [
+        "snapshot"
+      ]
+    },
+    "expected": {
+      "kind": "ok"
+    }
+  },
+  {
+    "name": "snap-ok-effort",
+    "input": {
+      "ref": "claude/opus@high",
+      "layers": [
+        "snapshot"
+      ]
+    },
+    "expected": {
+      "kind": "ok"
+    }
+  },
+  {
+    "name": "snap-ok-effort-one-step-from-supported",
+    "input": {
+      "ref": "antigravity@xhigh",
+      "layers": [
+        "snapshot"
+      ]
+    },
+    "expected": {
+      "kind": "ok"
+    }
+  },
+  {
+    "name": "snap-ok-tool-effort",
+    "input": {
+      "ref": "claude@high",
+      "layers": [
+        "snapshot"
+      ]
+    },
+    "expected": {
+      "kind": "ok"
+    }
+  },
+  {
+    "name": "snap-ok-provider-model",
+    "input": {
+      "ref": "pi/ollama/qwen3:4b",
+      "layers": [
+        "snapshot"
+      ]
+    },
+    "expected": {
+      "kind": "warning",
+      "code": "unknown-model",
+      "message": "model 'ollama/qwen3:4b' is not in the model catalogue for 'pi'; it is passed as written"
+    }
+  },
+  {
+    "name": "snap-error-unknown-tool",
+    "input": {
+      "ref": "nosuch/max",
+      "layers": [
+        "snapshot"
+      ]
+    },
+    "expected": {
+      "kind": "error",
+      "code": "unknown-tool",
+      "message": "unknown tool 'nosuch'; known: antigravity, claude, codex, cursor, opencode, pi"
+    }
+  },
+  {
+    "name": "snap-error-unknown-tool-wildcard",
+    "input": {
+      "ref": "*/fast",
+      "layers": [
+        "snapshot"
+      ]
+    },
+    "expected": {
+      "kind": "error",
+      "code": "unknown-tool",
+      "message": "unknown tool '*'; known: antigravity, claude, codex, cursor, opencode, pi"
+    }
+  },
+  {
+    "name": "snap-error-no-tier-entry",
+    "input": {
+      "ref": "cursor/fast",
+      "layers": [
+        "snapshot"
+      ]
+    },
+    "expected": {
+      "kind": "error",
+      "code": "no-tier-entry",
+      "message": "tool 'cursor' has no model for tier 'fast'"
+    }
+  },
+  {
+    "name": "snap-error-provider-not-served",
+    "input": {
+      "ref": "codex/sonnet",
+      "layers": [
+        "snapshot"
+      ]
+    },
+    "expected": {
+      "kind": "error",
+      "code": "provider-not-served",
+      "message": "'codex' does not serve anthropic, the provider of 'sonnet'; nearest valid: claude/sonnet",
+      "hint": "claude/sonnet"
+    }
+  },
+  {
+    "name": "snap-error-model-not-offered",
+    "input": {
+      "ref": "cursor/claude-haiku-5-5",
+      "layers": [
+        "snapshot"
+      ]
+    },
+    "expected": {
+      "kind": "error",
+      "code": "model-not-offered",
+      "message": "'cursor' does not offer anthropic/claude-haiku-5-5; nearest valid: claude/claude-haiku-5-5",
+      "hint": "claude/claude-haiku-5-5"
+    }
+  },
+  {
+    "name": "snap-error-effort-too-far",
+    "input": {
+      "ref": "claude/opus@none",
+      "layers": [
+        "snapshot"
+      ]
+    },
+    "expected": {
+      "kind": "error",
+      "code": "unsupported-effort",
+      "message": "effort 'none' is not supported for model 'opus' on 'claude'; supported: low, medium, high, xhigh, max",
+      "efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
+    }
+  },
+  {
+    "name": "snap-error-effort-two-steps",
+    "input": {
+      "ref": "antigravity@max",
+      "layers": [
+        "snapshot"
+      ]
+    },
+    "expected": {
+      "kind": "error",
+      "code": "unsupported-effort",
+      "message": "effort 'max' is not supported on 'antigravity'; supported: low, medium, high",
+      "efforts": [
+        "low",
+        "medium",
+        "high"
+      ]
+    }
+  },
+  {
+    "name": "snap-error-effort-tool-level",
+    "input": {
+      "ref": "antigravity/pro@max",
+      "layers": [
+        "snapshot"
+      ]
+    },
+    "expected": {
+      "kind": "error",
+      "code": "unsupported-effort",
+      "message": "effort 'max' is not supported for model 'pro' on 'antigravity'; supported: low, medium, high",
+      "efforts": [
+        "low",
+        "medium",
+        "high"
+      ]
+    }
+  },
+  {
+    "name": "snap-error-provider-prefix-not-served",
+    "input": {
+      "ref": "codex/anthropic/whatever",
+      "layers": [
+        "snapshot"
+      ]
+    },
+    "expected": {
+      "kind": "error",
+      "code": "provider-not-served",
+      "message": "'codex' does not serve anthropic"
+    }
+  },
+  {
+    "name": "snap-warning-unknown-model",
+    "input": {
+      "ref": "claude/brand-new-model",
+      "layers": [
+        "snapshot"
+      ]
+    },
+    "expected": {
+      "kind": "warning",
+      "code": "unknown-model",
+      "message": "model 'brand-new-model' is not in the model catalogue for 'claude'; it is passed as written"
+    }
+  },
+  {
+    "name": "snap-strict-error-unknown-model",
+    "input": {
+      "ref": "claude/brand-new-model",
+      "layers": [
+        "snapshot"
+      ],
+      "ctx": {
+        "strict": true
+      }
+    },
+    "expected": {
+      "kind": "error",
+      "code": "unknown-model",
+      "message": "model 'brand-new-model' is not in the model catalogue for 'claude', and router.strict refuses unknown models"
+    }
+  },
+  {
+    "name": "snap-strict-ok-known-model",
+    "input": {
+      "ref": "claude/opus",
+      "layers": [
+        "snapshot"
+      ],
+      "ctx": {
+        "strict": true
+      }
+    },
+    "expected": {
+      "kind": "ok"
+    }
+  },
+  {
+    "name": "snap-unknown-model-effort-checked-against-tool",
+    "input": {
+      "ref": "antigravity/brand-new@max",
+      "layers": [
+        "snapshot"
+      ]
+    },
+    "expected": {
+      "kind": "error",
+      "code": "unsupported-effort",
+      "message": "effort 'max' is not supported for model 'brand-new' on 'antigravity'; supported: low, medium, high",
+      "efforts": [
+        "low",
+        "medium",
+        "high"
+      ]
+    }
+  },
+  {
+    "name": "snap-known-tools-narrows-hint",
+    "input": {
+      "ref": "codex/sonnet",
+      "layers": [
+        "snapshot"
+      ],
+      "ctx": {
+        "knownTools": [
+          "codex",
+          "pi"
+        ]
+      }
+    },
+    "expected": {
+      "kind": "error",
+      "code": "provider-not-served",
+      "message": "'codex' does not serve anthropic, the provider of 'sonnet'"
+    }
+  },
+  {
+    "name": "snap-known-tools-excludes-tool",
+    "input": {
+      "ref": "claude/max",
+      "layers": [
+        "snapshot"
+      ],
+      "ctx": {
+        "knownTools": [
+          "codex"
+        ]
+      }
+    },
+    "expected": {
+      "kind": "error",
+      "code": "unknown-tool",
+      "message": "unknown tool 'claude'; known: codex"
+    }
+  },
+  {
+    "name": "mini-skip-withdrawn",
+    "input": {
+      "ref": "alpha/gone-1",
+      "layers": [
+        "mini"
+      ]
+    },
+    "expected": {
+      "kind": "skip",
+      "code": "withdrawn-model",
+      "message": "model 'gone-1' (anthropic/gone-1) is withdrawn"
+    }
+  },
+  {
+    "name": "mini-skip-withdrawn-by-key",
+    "input": {
+      "ref": "gamma/anthropic/gone-1",
+      "layers": [
+        "mini"
+      ]
+    },
+    "expected": {
+      "kind": "skip",
+      "code": "withdrawn-model",
+      "message": "model 'anthropic/gone-1' (anthropic/gone-1) is withdrawn"
+    }
+  },
+  {
+    "name": "mini-warning-deprecated",
+    "input": {
+      "ref": "alpha/big-1",
+      "layers": [
+        "mini"
+      ]
+    },
+    "expected": {
+      "kind": "warning",
+      "code": "deprecated-model",
+      "message": "model 'big-1' (anthropic/big-1) is deprecated since 2026-09-01"
+    }
+  },
+  {
+    "name": "mini-strict-warning-deprecated-stays",
+    "input": {
+      "ref": "alpha/big-1",
+      "layers": [
+        "mini"
+      ],
+      "ctx": {
+        "strict": true
+      }
+    },
+    "expected": {
+      "kind": "warning",
+      "code": "deprecated-model",
+      "message": "model 'big-1' (anthropic/big-1) is deprecated since 2026-09-01"
+    }
+  },
+  {
+    "name": "mini-ok-alias-native-name",
+    "input": {
+      "ref": "alpha/big",
+      "layers": [
+        "mini"
+      ]
+    },
+    "expected": {
+      "kind": "ok"
+    }
+  },
+  {
+    "name": "mini-ok-effort-adjusts",
+    "input": {
+      "ref": "beta/gpt-x@low",
+      "layers": [
+        "mini"
+      ]
+    },
+    "expected": {
+      "kind": "ok"
+    }
+  },
+  {
+    "name": "mini-error-effort-lists-levels",
+    "input": {
+      "ref": "beta/gpt-x@max",
+      "layers": [
+        "mini"
+      ]
+    },
+    "expected": {
+      "kind": "error",
+      "code": "unsupported-effort",
+      "message": "effort 'max' is not supported for model 'gpt-x' on 'beta'; supported: medium, high",
+      "efforts": [
+        "medium",
+        "high"
+      ]
+    }
+  },
+  {
+    "name": "mini-error-no-effort-tool",
+    "input": {
+      "ref": "gamma/big-2@low",
+      "layers": [
+        "mini"
+      ]
+    },
+    "expected": {
+      "kind": "error",
+      "code": "unsupported-effort",
+      "message": "effort 'low' is not supported for model 'big-2' on 'gamma'; it takes no effort",
+      "efforts": []
+    }
+  },
+  {
+    "name": "mini-error-no-effort-tool-default-model",
+    "input": {
+      "ref": "gamma@low",
+      "layers": [
+        "mini"
+      ]
+    },
+    "expected": {
+      "kind": "error",
+      "code": "unsupported-effort",
+      "message": "effort 'low' is not supported on 'gamma'; it takes no effort",
+      "efforts": []
+    }
+  },
+  {
+    "name": "mini-error-provider-not-served-hint-first-tool",
+    "input": {
+      "ref": "beta/big-2",
+      "layers": [
+        "mini"
+      ]
+    },
+    "expected": {
+      "kind": "error",
+      "code": "provider-not-served",
+      "message": "'beta' does not serve anthropic, the provider of 'big-2'; nearest valid: alpha/big-2",
+      "hint": "alpha/big-2"
+    }
+  },
+  {
+    "name": "mini-error-provider-not-served-hint-keeps-effort",
+    "input": {
+      "ref": "beta/big-2@high",
+      "layers": [
+        "mini"
+      ]
+    },
+    "expected": {
+      "kind": "error",
+      "code": "provider-not-served",
+      "message": "'beta' does not serve anthropic, the provider of 'big-2'; nearest valid: alpha/big-2@high",
+      "hint": "alpha/big-2@high"
+    }
+  },
+  {
+    "name": "mini-error-provider-not-served-hint-by-key",
+    "input": {
+      "ref": "beta/anthropic/big-2",
+      "layers": [
+        "mini"
+      ]
+    },
+    "expected": {
+      "kind": "error",
+      "code": "provider-not-served",
+      "message": "'beta' does not serve anthropic, the provider of 'anthropic/big-2'; nearest valid: alpha/anthropic/big-2",
+      "hint": "alpha/anthropic/big-2"
+    }
+  },
+  {
+    "name": "mini-error-model-not-offered-curated",
+    "input": {
+      "ref": "delta/mid-1",
+      "layers": [
+        "mini"
+      ]
+    },
+    "expected": {
+      "kind": "error",
+      "code": "model-not-offered",
+      "message": "'delta' does not offer anthropic/mid-1; nearest valid: alpha/mid-1",
+      "hint": "alpha/mid-1"
+    }
+  },
+  {
+    "name": "mini-error-model-not-offered-curated-keeps-effort",
+    "input": {
+      "ref": "delta/mid-1@medium",
+      "layers": [
+        "mini"
+      ]
+    },
+    "expected": {
+      "kind": "error",
+      "code": "model-not-offered",
+      "message": "'delta' does not offer anthropic/mid-1; nearest valid: alpha/mid-1@medium",
+      "hint": "alpha/mid-1@medium"
+    }
+  },
+  {
+    "name": "mini-error-provider-not-served-by-id",
+    "input": {
+      "ref": "beta/mid-1",
+      "layers": [
+        "mini"
+      ]
+    },
+    "expected": {
+      "kind": "error",
+      "code": "provider-not-served",
+      "message": "'beta' does not serve anthropic, the provider of 'mid-1'; nearest valid: alpha/mid-1",
+      "hint": "alpha/mid-1"
+    }
+  },
+  {
+    "name": "mini-error-no-tier-entry",
+    "input": {
+      "ref": "beta/max",
+      "layers": [
+        "mini"
+      ]
+    },
+    "expected": {
+      "kind": "error",
+      "code": "no-tier-entry",
+      "message": "tool 'beta' has no model for tier 'max'"
+    }
+  },
+  {
+    "name": "mini-ok-tier-resolves-to-alias",
+    "input": {
+      "ref": "alpha/max",
+      "layers": [
+        "mini"
+      ]
+    },
+    "expected": {
+      "kind": "ok"
+    }
+  },
+  {
+    "name": "mini-error-model-effort-intersection",
+    "input": {
+      "ref": "alpha/big-2@max",
+      "layers": [
+        "mini"
+      ]
+    },
+    "expected": {
+      "kind": "error",
+      "code": "unsupported-effort",
+      "message": "effort 'max' is not supported for model 'big-2' on 'alpha'; supported: low, medium, high",
+      "efforts": [
+        "low",
+        "medium",
+        "high"
+      ]
+    }
+  },
+  {
+    "name": "mini-ok-curated-native-name",
+    "input": {
+      "ref": "delta/tiny",
+      "layers": [
+        "mini"
+      ]
+    },
+    "expected": {
+      "kind": "ok"
+    }
+  },
+  {
+    "name": "mini-error-curated-offering-efforts",
+    "input": {
+      "ref": "delta/tiny@high",
+      "layers": [
+        "mini"
+      ]
+    },
+    "expected": {
+      "kind": "error",
+      "code": "unsupported-effort",
+      "message": "effort 'high' is not supported for model 'tiny' on 'delta'; supported: low",
+      "efforts": [
+        "low"
+      ]
+    }
+  },
+  {
+    "name": "mini-hint-order-follows-known-tools",
+    "input": {
+      "ref": "beta/big-2",
+      "layers": [
+        "mini"
+      ],
+      "ctx": {
+        "knownTools": [
+          "beta",
+          "gamma",
+          "alpha"
+        ]
+      }
+    },
+    "expected": {
+      "kind": "error",
+      "code": "provider-not-served",
+      "message": "'beta' does not serve anthropic, the provider of 'big-2'; nearest valid: gamma/big-2",
+      "hint": "gamma/big-2"
+    }
+  },
+  {
+    "name": "mini-config-layer-ok-new-tool",
+    "input": {
+      "ref": "epsilon/house-1",
+      "layers": [
+        "mini",
+        "mini-config"
+      ]
+    },
+    "expected": {
+      "kind": "ok"
+    }
+  },
+  {
+    "name": "mini-config-layer-removed-offering",
+    "input": {
+      "ref": "alpha/plain-1",
+      "layers": [
+        "mini",
+        "mini-config"
+      ]
+    },
+    "expected": {
+      "kind": "error",
+      "code": "model-not-offered",
+      "message": "'alpha' does not offer anthropic/plain-1; nearest valid: gamma/plain-1",
+      "hint": "gamma/plain-1"
+    }
+  }
+]

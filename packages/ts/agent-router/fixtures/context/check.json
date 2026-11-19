@@ -1,0 +1,394 @@
+[
+  {
+    "name": "none-asked-is-ok",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "tool": "alpha",
+      "model": "big"
+    },
+    "expected": {
+      "kind": "ok",
+      "unchecked": false
+    }
+  },
+  {
+    "name": "error-ctx-above-offered-anywhere",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "tool": "alpha",
+      "model": "big",
+      "want": 2000000
+    },
+    "expected": {
+      "kind": "error",
+      "message": "ctx=2m is more than anthropic/big-2 offers anywhere (1m)"
+    }
+  },
+  {
+    "name": "skip-offers-less-on-this-tool",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "tool": "alpha",
+      "model": "big",
+      "want": 1000000
+    },
+    "expected": {
+      "kind": "skip",
+      "message": "anthropic/big-2 offers 200k on alpha, below ctx=1m"
+    }
+  },
+  {
+    "name": "skip-profile-context-wins",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "tool": "alpha",
+      "model": "big",
+      "required": 1000000
+    },
+    "expected": {
+      "kind": "skip",
+      "message": "anthropic/big-2 offers 200k on alpha, below the profile's context: 1m"
+    }
+  },
+  {
+    "name": "skip-profile-context-equal-to-want",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "tool": "alpha",
+      "model": "big",
+      "want": 500000,
+      "required": 500000
+    },
+    "expected": {
+      "kind": "skip",
+      "message": "anthropic/big-2 offers 200k on alpha, below the profile's context: 500k"
+    }
+  },
+  {
+    "name": "skip-want-larger-than-profile",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "tool": "alpha",
+      "model": "big",
+      "want": 600000,
+      "required": 300000
+    },
+    "expected": {
+      "kind": "skip",
+      "message": "anthropic/big-2 offers 200k on alpha, below ctx=600k"
+    }
+  },
+  {
+    "name": "ok-within-size",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "tool": "alpha",
+      "model": "big",
+      "want": 150000
+    },
+    "expected": {
+      "kind": "ok",
+      "context": 150000,
+      "unchecked": false
+    }
+  },
+  {
+    "name": "ok-equal-to-size",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "tool": "alpha",
+      "model": "big",
+      "want": 200000
+    },
+    "expected": {
+      "kind": "ok",
+      "context": 200000,
+      "unchecked": false
+    }
+  },
+  {
+    "name": "ok-profile-context-only",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "tool": "alpha",
+      "model": "big",
+      "required": 100000
+    },
+    "expected": {
+      "kind": "ok",
+      "context": 100000,
+      "unchecked": false
+    }
+  },
+  {
+    "name": "ok-larger-of-want-and-profile",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "tool": "alpha",
+      "model": "big",
+      "want": 100000,
+      "required": 150000
+    },
+    "expected": {
+      "kind": "ok",
+      "context": 150000,
+      "unchecked": false
+    }
+  },
+  {
+    "name": "ctx-max-is-the-size-on-the-tool",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "tool": "alpha",
+      "model": "big",
+      "want": "max"
+    },
+    "expected": {
+      "kind": "ok",
+      "context": 200000,
+      "unchecked": false
+    }
+  },
+  {
+    "name": "ctx-max-with-profile-context",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "tool": "alpha",
+      "model": "big",
+      "want": "max",
+      "required": 100000
+    },
+    "expected": {
+      "kind": "ok",
+      "context": 200000,
+      "unchecked": false
+    }
+  },
+  {
+    "name": "ctx-max-skips-when-profile-context-too-big",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "tool": "alpha",
+      "model": "big",
+      "want": "max",
+      "required": 400000
+    },
+    "expected": {
+      "kind": "skip",
+      "message": "anthropic/big-2 offers 200k on alpha, below the profile's context: 400k"
+    }
+  },
+  {
+    "name": "ok-other-tool-reaches-more",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "tool": "gamma",
+      "model": "anthropic/big-2",
+      "want": 1000000
+    },
+    "expected": {
+      "kind": "ok",
+      "context": 1000000,
+      "unchecked": false
+    }
+  },
+  {
+    "name": "unchecked-model-without-size",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "tool": "alpha",
+      "model": "anthropic/mid-1",
+      "want": 500000
+    },
+    "expected": {
+      "kind": "ok",
+      "context": 500000,
+      "unchecked": true
+    }
+  },
+  {
+    "name": "unchecked-keeps-profile-context-floor",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "tool": "alpha",
+      "model": "anthropic/mid-1",
+      "want": 100000,
+      "required": 300000
+    },
+    "expected": {
+      "kind": "ok",
+      "context": 300000,
+      "unchecked": true
+    }
+  },
+  {
+    "name": "unchecked-ctx-max-has-no-context",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "tool": "alpha",
+      "model": "anthropic/mid-1",
+      "want": "max"
+    },
+    "expected": {
+      "kind": "ok",
+      "unchecked": true
+    }
+  },
+  {
+    "name": "unchecked-unknown-model",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "tool": "alpha",
+      "model": "nosuch",
+      "want": 100000
+    },
+    "expected": {
+      "kind": "ok",
+      "context": 100000,
+      "unchecked": true
+    }
+  },
+  {
+    "name": "unchecked-no-model",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "tool": "alpha",
+      "want": 100000
+    },
+    "expected": {
+      "kind": "ok",
+      "context": 100000,
+      "unchecked": true
+    }
+  },
+  {
+    "name": "curated-offering-smaller-than-model",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "tool": "delta",
+      "model": "large",
+      "want": 200000
+    },
+    "expected": {
+      "kind": "skip",
+      "message": "anthropic/big-2 offers 100k on delta, below ctx=200k"
+    }
+  },
+  {
+    "name": "curated-offering-error-above-anywhere",
+    "input": {
+      "layers": [
+        "mini"
+      ],
+      "tool": "delta",
+      "model": "large",
+      "want": 1200000
+    },
+    "expected": {
+      "kind": "error",
+      "message": "ctx=1200k is more than anthropic/big-2 offers anywhere (1m)"
+    }
+  },
+  {
+    "name": "snap-codex-skip-below-window",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "tool": "codex",
+      "model": "gpt-6.1-sol",
+      "want": 900000
+    },
+    "expected": {
+      "kind": "skip",
+      "message": "openai/gpt-6.1-sol offers 872k on codex, below ctx=900k"
+    }
+  },
+  {
+    "name": "snap-codex-ok-in-window",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "tool": "codex",
+      "model": "gpt-6.1-sol",
+      "want": 500000
+    },
+    "expected": {
+      "kind": "ok",
+      "context": 500000,
+      "unchecked": false
+    }
+  },
+  {
+    "name": "snap-claude-1m",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "tool": "claude",
+      "model": "opus",
+      "want": 1000000
+    },
+    "expected": {
+      "kind": "ok",
+      "context": 1000000,
+      "unchecked": false
+    }
+  },
+  {
+    "name": "snap-claude-error-far-above",
+    "input": {
+      "layers": [
+        "snapshot"
+      ],
+      "tool": "claude",
+      "model": "opus",
+      "want": 50000000
+    },
+    "expected": {
+      "kind": "error",
+      "message": "ctx=50m is more than anthropic/claude-opus-5-5 offers anywhere (1m)"
+    }
+  }
+]

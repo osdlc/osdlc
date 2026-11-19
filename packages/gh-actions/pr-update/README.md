@@ -7,16 +7,109 @@ conflict resolvers, then a headless claude repair, and leaves what is still
 conflicted for a person: a label, one comment, and the job summary.
 
 The action does the work of one run. When to run it (a merge to main, a
-schedule, a comment) is the caller's job; see
-[`.github/workflows/pr-update.yml`](../../../.github/workflows/pr-update.yml).
+schedule, a comment) is the caller's job. osdlc/osdlc's
+[`pr-update.yml`](../../../.github/workflows/pr-update.yml) does that part
+too, and other repositories call it; most should.
 
-## Use
+## Use the workflow
+
+[`.github/workflows/pr-update.yml`](../../../.github/workflows/pr-update.yml)
+wraps the action with the GitHub App token, the checkout, the git identity, the
+`/pr-update` comment and the concurrency rules. osdlc/osdlc runs it on its own
+triggers. Another repository calls it from a short
+`.github/workflows/pr-update.yml` of its own that says when it runs:
+
+```yaml
+name: pr-update
+
+on:
+  # Once a night. Running on every push to main merges main into every open
+  # PR, and each of those pushes starts that PR's CI: one merge, a CI storm.
+  schedule: [{ cron: "0 9 * * *" }]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: One PR number to update. Empty updates every eligible PR.
+        default: ""
+      dry-run:
+        description: Measure and report, push nothing.
+        type: boolean
+        default: false
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+jobs:
+  pr-update:
+    permissions:
+      contents: read
+    uses: osdlc/osdlc/.github/workflows/pr-update.yml@main
+    secrets: inherit
+```
+
+Leave out a trigger and that way of running is off. Keep the dispatch inputs'
+names, `pr` and `dry-run`: the workflow reads them from the event.
+
+What one run does depends on the event:
+
+- `schedule`: every eligible open PR.
+- `workflow_dispatch`: every eligible PR, or the one in `pr`; `dry-run` pushes
+  nothing. A dispatch from a branch other than the default does nothing.
+- `issue_comment`: `/pr-update` or `/pr-update retry` as the whole first line
+  of a PR comment from a trigger user updates that PR. Any other comment ends
+  at the gate job, which reads no secret.
+
+### Settings
+
+A called workflow sees the calling repository's variables and secrets, so the
+settings live there, as repository or organization variables. An input of the
+same meaning under `with:` overrides a variable.
+
+| Variable                         | Input                  | Default  | Meaning                                                                            |
+| -------------------------------- | ---------------------- | -------- | ---------------------------------------------------------------------------------- |
+| `PR_UPDATE_APP_CLIENT_ID`        | `app-client-id`        | required | Client ID of the GitHub App that pushes (see Token). It is not a secret.           |
+| `PR_UPDATE_TRIGGER_USERS`        | `trigger-users`        | empty    | Logins that may use the `/pr-update` comment, comma separated. Empty: nobody.      |
+| `PR_UPDATE_TRIGGER_ASSOCIATIONS` | `trigger-associations` | empty    | Author associations that may (`OWNER`, `MEMBER`, `COLLABORATOR`), comma separated. |
+| `PR_UPDATE_ENVIRONMENT`          | `environment`          | none     | The environment that holds the App key.                                            |
+| `PR_UPDATE_STRATEGY`             | `strategy`             | `merge`  | The action's `strategy`.                                                           |
+| `PR_UPDATE_REPAIR_AGENT`         | `repair-agent`         | `claude` | The action's `repair-agent`; `none` for no repair.                                 |
+
+Secrets: `PR_UPDATE_APP_PRIVATE_KEY` (required) is the App's private key, and
+`ANTHROPIC_API_KEY` is the key for the claude repair; without it a conflict is
+left for a person. `secrets: inherit` passes both, from the repository, the
+organization, or the environment named by `PR_UPDATE_ENVIRONMENT`. It works
+only inside one organization or enterprise; a repository elsewhere passes them
+by name:
+
+```yaml
+    secrets:
+      PR_UPDATE_APP_PRIVATE_KEY: ${{ secrets.MY_APP_PRIVATE_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+Any GitHub App with the permissions under Token will do; it must be installed
+on the calling repository. The commits are authored as its bot user
+(`<app-slug>[bot]`).
+
+### Pinning
+
+The workflow runs the pr-update action from its own commit of osdlc/osdlc, so
+the ref after `@` pins both. `@main` takes every change as soon as it merges.
+The workflow sees your App key and API key, so outside osdlc pin a commit SHA
+instead, and name the release in a comment:
+
+```yaml
+    uses: osdlc/osdlc/.github/workflows/pr-update.yml@<commit-sha> # gh-actions/v1
+```
+
+## Use the action
+
+For a job of your own, instead of the workflow:
 
 ```yaml
 name: pr-update
 on:
-  # Once a night. Running on every push to main merges main into every open
-  # PR, and each of those pushes starts that PR's CI: one merge, a CI storm.
   schedule: [{ cron: "0 9 * * *" }]
   workflow_dispatch:
 
@@ -36,7 +129,7 @@ jobs:
       - id: app-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ secrets.APP_ID }}
+          client-id: <the App's client ID>
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           permission-contents: write
           permission-pull-requests: write
@@ -150,7 +243,7 @@ failed or timed-out run still saves it. GitHub evicts a cache entry not used for
 7 days, or under the repository's size limit; the only effect is one extra
 retry. Entries older than 30 days are dropped by pr-update. A cache is
 visible only to the branch that saved it and its base, so run the action from
-the default branch. Comment `/pr-update retry` (in the osdlc workflow), or pass
+the default branch. Comment `/pr-update retry` (with the workflow), or pass
 `--retry-failed`, to try a recorded PR again.
 
 ### If a run is killed

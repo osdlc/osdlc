@@ -1,24 +1,21 @@
 /**
  * `GithubCodeHost`: the `CodeHost` port over `@osdlc/typed-gh`'s `Gh` client.
  *
- * `getPr` reads through `Gh.prViewSettled`, which asks `gh pr view` again
- * while mergeability is `UNKNOWN`.
- *
- * `gh pr view --json` has no field for per-line review comments, so `getPr`
- * fetches them over REST (`repos/{owner}/{repo}/pulls/<n>/comments`) through
- * `Gh.api` and adds them to `activity` as `kind: 'review-comment'`.
+ * `getPr` reads the PR through `Gh.prViewSettled`, which asks `gh pr view`
+ * again while mergeability is `UNKNOWN`, and its activity through
+ * `Gh.prActivity`.
  */
 
 import {
   classifyGhFailure,
   Gh,
-  normalizeAuthorLogin,
   parsePrUrl as ghParsePrUrl,
   PR_LIST_FIELDS,
   PR_REF_FIELDS,
   PR_VIEW_FIELDS,
   type CheckRun,
   type GhFailure,
+  type PrActivityItem,
   type PullRequest,
 } from '@osdlc/typed-gh'
 
@@ -34,7 +31,7 @@ import { fromGhFailure, type CodeHostFailure } from './failure.ts'
 import { prHost } from './pr-ref.ts'
 import { CommentNotFoundError } from './types.ts'
 import type {
-  Actor,
+  Activity,
   CheckSummary,
   CodeHost,
   CodeHostPr,
@@ -46,31 +43,8 @@ import type {
   ReviewThreadState,
 } from './types.ts'
 
-/** One entry from the REST `pulls/<n>/comments` per-line-comment endpoint. */
-interface RestReviewComment {
-  id: unknown
-  user?: { login?: unknown } | null
-  path?: unknown
-  line?: unknown
-  original_line?: unknown
-  body?: unknown
-  in_reply_to_id?: unknown
-  html_url?: unknown
-  created_at?: unknown
-  updated_at?: unknown
-}
-
-/**
- * The REST per-line comments endpoint returns logins with a `[bot]` suffix
- * (`github-actions[bot]`). `typed-gh` already normalizes the logins on
- * `pr.comments` and `pr.reviews`. This normalizes REST logins the same way, so
- * every `Activity` author has the same form.
- */
-function toActor(login: string | null | undefined): Actor | null {
-  if (login === null || login === undefined || login === '') return null
-  const normalized = normalizeAuthorLogin(login)
-  return { login: normalized, isBot: normalized !== login }
-}
+/** The `gh pr view` fields `getPr` reads. Comments and reviews come from `prActivity` instead. */
+const PR_FIELDS = PR_VIEW_FIELDS.filter((f) => f !== 'comments' && f !== 'reviews')
 
 function checksSummaryFrom(checks: readonly CheckRun[]): CheckSummary {
   // `blocked` stays empty here because this function makes no network calls.
@@ -152,69 +126,65 @@ export function detectBlockedChecks(
 }
 
 /**
- * Per-line review comments from the REST endpoint, through `Gh.api`, every
- * page of them (the endpoint returns 30 per page by default). Returns `[]` on
- * any failure (non-zero exit, parse error) instead of throwing. A failed fetch
- * of these comments should not fail the whole `getPr` call.
+ * The comments, reviews and inline review comments of a PR's activity, in
+ * timeline order. Commits and changes of state are left out. Comments and
+ * reviews keep their GraphQL node ids. An inline comment takes its REST id,
+ * and its thread is the REST id of the thread's first comment, as on
+ * GitHub's REST `pulls/<n>/comments`.
  */
-function fetchReviewComments(gh: Gh, prNumber: number): RestReviewComment[] {
-  const result = gh.api(`repos/{owner}/{repo}/pulls/${prNumber}/comments?per_page=100`, {
-    paginate: true,
-  })
-  if (!result.ok) return []
-  return Array.isArray(result.body) ? (result.body as RestReviewComment[]) : []
-}
-
-function reviewCommentActivity(entries: readonly RestReviewComment[]): CodeHostPr['activity'] {
-  const out: CodeHostPr['activity'] = []
-  for (const raw of entries) {
-    if (typeof raw.id !== 'number' && typeof raw.id !== 'string') continue
-    const login = typeof raw.user?.login === 'string' ? raw.user.login : null
-    const path = typeof raw.path === 'string' ? raw.path : undefined
-    // `line` is null when the comment is on an outdated diff position, so fall back to `original_line`.
-    const line =
-      typeof raw.line === 'number'
-        ? raw.line
-        : typeof raw.original_line === 'number'
-          ? raw.original_line
-          : undefined
-    const inReplyToId = raw.in_reply_to_id
-    // This REST endpoint gives no thread id, so `in_reply_to_id ?? id` groups
-    // comments by thread.
-    const threadId = String(
-      typeof inReplyToId === 'number' || typeof inReplyToId === 'string' ? inReplyToId : raw.id,
-    )
-    const url = typeof raw.html_url === 'string' ? raw.html_url : undefined
-    const at = typeof raw.created_at === 'string' ? raw.created_at : null
-    const updatedAt = typeof raw.updated_at === 'string' ? raw.updated_at : null
-    out.push({
-      id: String(raw.id),
-      kind: 'review-comment',
-      author: toActor(login),
-      at,
-      editedAt: updatedAt !== at ? updatedAt : null,
-      body: typeof raw.body === 'string' ? raw.body : '',
-      reviewState: null,
-      location: {
-        ...(path !== undefined ? { file: path } : {}),
-        ...(line !== undefined ? { line } : {}),
-        threadId,
-        ...(url !== undefined ? { url } : {}),
-      },
-    })
+function activityFrom(rows: readonly PrActivityItem[]): Activity[] {
+  const out: Activity[] = []
+  for (const r of rows) {
+    const common = { author: r.actor, at: r.at }
+    if (r.kind === 'comment') {
+      out.push({
+        ...common,
+        id: r.id,
+        kind: 'comment',
+        editedAt: r.editedAt,
+        body: r.body,
+        reviewState: null,
+        location: null,
+      })
+    } else if (r.kind === 'review') {
+      out.push({
+        ...common,
+        id: r.id,
+        kind: 'review',
+        editedAt: r.editedAt,
+        body: r.body,
+        reviewState: r.state,
+        location: null,
+      })
+    } else if (r.kind === 'review-comment') {
+      const id = r.restId ?? r.id
+      const line = r.line ?? r.originalLine
+      out.push({
+        ...common,
+        id,
+        kind: 'review-comment',
+        editedAt: r.editedAt,
+        body: r.body,
+        reviewState: null,
+        location: {
+          file: r.path,
+          ...(line !== null ? { line } : {}),
+          threadId: r.replyToRestId ?? id,
+          ...(r.url !== '' ? { url: r.url } : {}),
+        },
+      })
+    }
   }
   return out
 }
 
 /**
- * Maps a typed-gh `PullRequest` to a `CodeHostPr`. Exported for an async
- * caller that fetches with `@osdlc/typed-gh`'s `prView` verb itself (the port
- * is synchronous, see `./types.ts`). Both paths then produce the same shape.
+ * Maps a typed-gh `PullRequest` and the rows of its `prActivity` to a
+ * `CodeHostPr`. Exported for an async caller that runs `@osdlc/typed-gh`'s
+ * `prView` and `prActivity` verbs itself (the port is synchronous, see
+ * `./types.ts`). Both paths then produce the same shape.
  */
-export function codeHostPrFrom(
-  pr: PullRequest,
-  reviewComments: CodeHostPr['activity'],
-): CodeHostPr {
+export function codeHostPrFrom(pr: PullRequest, activity: readonly PrActivityItem[]): CodeHostPr {
   const mergeable: CodeHostPr['mergeable'] =
     // Either field alone means a conflict. Check both before `mergeable`
     // alone: GitHub can report `MERGEABLE` with a stale `DIRTY` merge state,
@@ -233,30 +203,6 @@ export function codeHostPrFrom(
           ? 'review_required'
           : null
 
-  const activity: CodeHostPr['activity'] = [
-    ...pr.comments.map((c) => ({
-      id: c.id ?? '',
-      kind: 'comment' as const,
-      author: c.author,
-      at: c.createdAt,
-      editedAt: null,
-      body: c.body,
-      reviewState: null,
-      location: null,
-    })),
-    ...pr.reviews.map((r) => ({
-      id: r.id ?? '',
-      kind: 'review' as const,
-      author: r.author,
-      at: r.submittedAt,
-      editedAt: null,
-      body: r.body,
-      reviewState: r.state,
-      location: null,
-    })),
-    ...reviewComments,
-  ]
-
   return {
     number: pr.number,
     url: pr.url,
@@ -272,7 +218,7 @@ export function codeHostPrFrom(
     mergeable,
     checks: checksSummaryFrom(pr.checks),
     reviewDecision,
-    activity,
+    activity: activityFrom(activity),
   }
 }
 
@@ -361,12 +307,15 @@ export class GithubCodeHost implements CodeHost {
     _opts: { since: string | null },
   ): Result<CodeHostPr | null, CodeHostFailure> {
     // `since` is ignored: this always fetches the full state.
-    const viewed = tried(this.gh.try.prViewSettled(number, { fields: PR_VIEW_FIELDS }))
+    const viewed = tried(this.gh.try.prViewSettled(number, { fields: PR_FIELDS }))
     if (!viewed.ok) return viewed
     const pr = viewed.value
     if (pr === null) return ok(null)
-    const reviewComments = reviewCommentActivity(fetchReviewComments(this.gh, number))
-    const codeHostPr = codeHostPrFrom(pr, reviewComments)
+    const activity = tried(this.gh.try.prActivity(number))
+    if (!activity.ok) return activity
+    // Deleted between the two calls.
+    if (activity.value === null) return ok(null)
+    const codeHostPr = codeHostPrFrom(pr, activity.value.rows)
     // Look for billing blocks only when a check is failing.
     if (codeHostPr.checks.failing.length === 0) return ok(codeHostPr)
     const blocked = detectBlockedChecks(this.gh, codeHostPr.checks.failingUrls)

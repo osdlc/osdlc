@@ -14,6 +14,8 @@ defineProps<{ level: WorkLevel; phases: readonly PlanOption<MilestonePhase>[] }>
     <span class="legend__item"><span class="swatch swatch--doing" /><StatusChip status="doing" label="in progress" /></span>
     <span class="legend__item"><span class="swatch swatch--done" /><StatusChip status="done" label="done (faded)" /></span>
     <StatusChip status="owner" label="waiting on owner" />
+    <StatusChip status="deferred" label="deferred (faded)" />
+    <StatusChip status="dropped" label="dropped (faded)" />
     <span class="legend__item"><span class="swatch swatch--support" />support: supporting work</span>
     <span class="legend__item"><span class="swatch swatch--next" />▶ next up</span>
     <span v-for="phase in phases" :key="phase.id" class="legend__item">
