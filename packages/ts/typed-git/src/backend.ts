@@ -215,6 +215,7 @@ export type GitRequest =
   | ({ kind: 'worktreeMove'; from: string; to: string } & WorktreeMoveOptions)
   | { kind: 'worktreeUnlock'; path: string }
   | { kind: 'worktreePrune' }
+  | { kind: 'submoduleUpdate' }
   | ({ kind: 'merge'; ref: string } & MergeOptions)
   | { kind: 'mergeAbort' }
   | ({ kind: 'rebase'; onto: string } & RebaseOptions)
@@ -306,6 +307,7 @@ export interface GitResults {
   worktreeMove: void
   worktreeUnlock: void
   worktreePrune: void
+  submoduleUpdate: void
   merge: MergeOutcome
   mergeAbort: void
   rebase: RebaseOutcome
@@ -487,6 +489,8 @@ function toVerb(request: Exclude<GitRequest, { kind: 'rawBytes' }>): GitVerb<unk
       return v.worktreeUnlock(request.path)
     case 'worktreePrune':
       return v.worktreePrune()
+    case 'submoduleUpdate':
+      return v.submoduleUpdate()
     case 'merge':
       return v.merge(request.ref, request)
     case 'mergeAbort':

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-11-18
+
+### Fixed
+
+- A wikilink's text is taken from the body as one copy, not pushed into a
+  string a char at a time, unless code was blanked inside it. The search for
+  its `]]` and for the `|` before its alias tests sixteen chars at a time.
+  A long wikilink scans about twice as fast, and the scan depends much less on
+  how the compiler lays out `scan_body_with`, which made it up to 29% slower
+  than 0.10.0 on some x86 CPUs.
+
 ## [0.11.0] - 2026-11-15
 
 More Markdown links are found: with a title, with parentheses in the path,
