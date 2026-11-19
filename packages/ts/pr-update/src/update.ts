@@ -271,9 +271,9 @@ export const input = z.object({
     ),
   restack: z
     .boolean()
-    .default(false)
+    .optional()
     .describe(
-      "Update a whole stack in one run. A PR blocked only because its parent is behind is updated right after that parent, onto the head the parent just got, instead of waiting for the next run. A rebase replays only its own commits (`rebase --onto`), not its parent's old ones. With --pr or --branch, the named PRs' stack ancestors are updated too.",
+      "Update a whole stack in one run; absent defers to `pr_update.restack`, `false` turns a configured `true` off for this run. A PR blocked only because its parent is behind is updated right after that parent, onto the head the parent just got, instead of waiting for the next run. A rebase replays only its own commits (`rebase --onto`), not its parent's old ones. With --pr or --branch, the named PRs' stack ancestors are updated too.",
     ),
   strategy: z
     .enum(['rebase', 'merge'])
@@ -507,7 +507,7 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
     retryFailed: args.retryFailed,
   }
   const { targets, skipped, notFound } = selectTargets(report, only, policy, {
-    restack: args.restack,
+    restack: args.restack ?? effectiveCfg.restack,
   })
 
   const writes = wantsWrite(args, env.dryRun)
@@ -554,6 +554,7 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
     repair: env.ports.repair,
     repairOn: effectiveCfg.repair.on,
     onRebaseConflict: effectiveCfg.on_rebase_conflict,
+    submodules: effectiveCfg.submodules,
     confirmPush,
     lease: writes ? env.ports.lease : undefined,
   }
@@ -674,6 +675,8 @@ export function restackTarget(
 /** Record this PR's failure under its key; forget a PR target once it updates, pushed or not. */
 function recordAttempt(store: AttemptStore, r: UpdateResult): void {
   const { status } = r.outcome
+  // A failure that says nothing about the PR (see `unrecorded`) neither blocks nor clears.
+  if (r.outcome.status === 'failed' && r.outcome.unrecorded === true) return
   if (status === 'updated' || status === 'up-to-date') store.clear(r.repo, r.head, r.base)
   else {
     const key = attemptKey(r)
