@@ -565,7 +565,7 @@ describe('default probe: ps', () => {
 
   test('a full ISO timestamp that matches is alive; the 2 s tolerance edges', () => {
     const probe = defaultProcessProbe({ ps: fakePs({ 321: PS_MACOS }) })
-    const base = Date.parse('Sat Oct 25 18:22:19 2026')
+    const base = Date.parse('Sat Oct 25 18:22:19 2026 UTC')
     const iso = (offsetS: number): string => new Date(base + offsetS * 1000).toISOString()
     expect(probe.alive(321, iso(0))).toBe(true)
     expect(probe.alive(321, iso(1))).toBe(true)
@@ -610,9 +610,51 @@ describe('default probe: ps', () => {
 
   test('a start time given as epoch seconds is compared as one', () => {
     const probe = defaultProcessProbe({ ps: fakePs({ 321: PS_MACOS }) })
-    const epoch = String(Date.parse('Sat Oct 25 18:22:19 2026') / 1000)
+    const epoch = String(Date.parse('Sat Oct 25 18:22:19 2026 UTC') / 1000)
     expect(probe.alive(321, epoch)).toBe(true)
     expect(probe.alive(321, String(Number(epoch) + 3600))).toBe(false)
+  })
+
+  test('the ps call is pinned to UTC and the C locale', () => {
+    const calls: Array<Record<string, unknown>> = []
+    const ps = canned(() => ({ stdout: PS_MACOS }))
+    const spy: CommandRunner = {
+      ...ps,
+      run: (argv, o) => {
+        calls.push({ ...o })
+        return ps.run(argv, o)
+      },
+    }
+    defaultProcessProbe({ ps: spy }).alive(321, '2026-10-25T18:22:19Z')
+    expect(calls[0]?.['env']).toEqual({ TZ: 'UTC', LC_ALL: 'C' })
+  })
+
+  test('lstart is read as UTC whatever the zone of the process', () => {
+    // 2026-11-01 01:30 happens twice in America/New_York; read as UTC it is one instant.
+    const probe = defaultProcessProbe({ ps: fakePs({ 321: 'Sun Nov  1 01:30:00 2026\n' }) })
+    expect(startMs('Sun Nov  1 01:30:00 2026')).toBe(Date.UTC(2026, 10, 1, 1, 30, 0))
+    expect(probe.alive(321, '2026-11-01T01:30:00Z')).toBe(true)
+    // Neither local reading of the repeated hour (05:30Z or 06:30Z) matches.
+    expect(probe.alive(321, '2026-11-01T05:30:00Z')).toBe(false)
+    expect(probe.alive(321, '2026-11-01T06:30:00Z')).toBe(false)
+  })
+
+  test('a dead pid is answered without spawning ps', () => {
+    const ps = fakePs({ 321: PS_MACOS })
+    const probe = defaultProcessProbe({ ps, pidExists: () => false })
+    expect(probe.alive(321)).toBe(false)
+    expect(ps.calls).toEqual([])
+  })
+
+  test('a pid the kill probe cannot place falls through to ps', () => {
+    const ps = fakePs({ 321: PS_MACOS })
+    expect(defaultProcessProbe({ ps, pidExists: () => undefined }).alive(321)).toBe(true)
+    expect(ps.calls).toHaveLength(1)
+  })
+
+  test('the default probe answers a dead pid from process.kill, with no ps', () => {
+    // A pid far above any real one: ESRCH, so the real ps is never needed.
+    expect(defaultProcessProbe().alive(2 ** 22 + 12345)).toBe(false)
   })
 
   test('a start time that cannot be read as a time cannot rule the owner out', () => {

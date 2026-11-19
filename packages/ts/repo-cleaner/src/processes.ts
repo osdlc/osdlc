@@ -108,7 +108,7 @@ const PS_LSTART = /^[A-Z][a-z]{2}\s+[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\
  * Epoch milliseconds of a start time, or NaN when the text is not precise to
  * the second. Accepted: a full ISO-8601 timestamp with a time of day, epoch
  * seconds (9-10 digits), epoch milliseconds (12-13 digits), or the `lstart`
- * form. A date alone, a short digit string or a partial date such as `Oct 25`
+ * form, read as UTC. A date alone, a short digit string or a partial date such as `Oct 25`
  * is NaN, so the owner is treated as alive: the comparison would otherwise
  * call a live owner dead.
  */
@@ -116,7 +116,9 @@ export function startMs(text: string): number {
   const trimmed = text.trim()
   if (/^\d{9,10}$/.test(trimmed)) return Number(trimmed) * 1000
   if (/^\d{12,13}$/.test(trimmed)) return Number(trimmed)
-  if (ISO_WITH_TIME.test(trimmed) || PS_LSTART.test(trimmed)) return Date.parse(trimmed)
+  if (ISO_WITH_TIME.test(trimmed)) return Date.parse(trimmed)
+  // `lstart` carries no zone. The probe runs `ps` under `TZ=UTC`, so read it as UTC.
+  if (PS_LSTART.test(trimmed)) return Date.parse(`${trimmed} UTC`)
   return Number.NaN
 }
 
@@ -149,7 +151,29 @@ export interface DefaultProbeOptions {
   lsof?: CommandRunner | undefined
   /** Cap on each command, in ms. Defaults to 60 s. */
   timeoutMs?: number | undefined
+  /**
+   * Whether a pid exists, asked before `ps` so a dead pid costs no spawn:
+   * `false` is gone, `true` exists, `undefined` cannot tell. Defaults to a
+   * `process.kill(pid, 0)` check when `ps` is not injected, and to "cannot
+   * tell" when it is, since a fake `ps` has its own idea of the pids.
+   */
+  pidExists?: ((pid: number) => boolean | undefined) | undefined
 }
+
+/** `process.kill(pid, 0)`: ESRCH is gone, EPERM is alive, anything else is unknown. */
+function killProbe(pid: number): boolean | undefined {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code
+    if (code === 'ESRCH') return false
+    return code === 'EPERM' ? true : undefined
+  }
+}
+
+/** `ps` reads its own zone and locale; pin both so `lstart` is English UTC. */
+const PS_ENV = { TZ: 'UTC', LC_ALL: 'C' } as const
 
 /** True when the command ran and reported an exit status. */
 const answered = (r: CommandResult): boolean => r.neverExited !== true
@@ -168,12 +192,16 @@ export function defaultProcessProbe(opts: DefaultProbeOptions = {}): ProcessProb
   const ps = opts.ps ?? spawnRunner('ps')
   const lsof = opts.lsof ?? spawnRunner('lsof')
   const timeoutMs = opts.timeoutMs ?? 60_000
+  const pidExists = opts.pidExists ?? (opts.ps === undefined ? killProbe : () => undefined)
   let table: Array<ProcessHolder & { cwd: string }> | null = null
 
   return {
     alive(pid, startedAt) {
-      // `lstart` is the same five-field date on macOS and Linux procps.
-      const r = ps.run(['-o', 'lstart=', '-p', String(pid)], { cwd: '/', timeoutMs })
+      // `lstart` is the same five-field date on macOS and Linux procps. It has no
+      // zone, so `TZ=UTC` makes it one instant (the repeated hour of a DST
+      // fall-back cannot read as two) and `LC_ALL=C` keeps the names English.
+      if (pidExists(pid) === false) return false
+      const r = ps.run(['-o', 'lstart=', '-p', String(pid)], { cwd: '/', env: PS_ENV, timeoutMs })
       if (!answered(r)) return true
       const started = r.stdout.trim()
       // Only exit 1 with nothing printed is ps saying "no such pid". Any other
@@ -182,7 +210,7 @@ export function defaultProcessProbe(opts: DefaultProbeOptions = {}): ProcessProb
       if (r.exitCode !== 0 || started === '') return true
       if (startedAt === undefined) return true
       const claimed = startMs(startedAt)
-      const actual = Date.parse(started)
+      const actual = startMs(started)
       if (Number.isNaN(claimed) || Number.isNaN(actual)) return true
       return Math.abs(claimed - actual) <= START_TOLERANCE_MS
     },
