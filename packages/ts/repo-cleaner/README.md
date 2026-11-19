@@ -992,7 +992,7 @@ A host that runs its own phases (discover, object, re-check, delete) uses
 `candidatesOf` and `removeCandidate` instead of `plan`, `check` and `run`. The
 host re-checks a candidate by sweeping again and comparing `fingerprint` with
 `sameFingerprint`, and turns `blockers` and `risks` into its own objections. It
-deletes a branch's `requires` last. `removeCandidate` keeps the safety model of
+deletes what a branch `requires` (its worktree) first. `removeCandidate` keeps the safety model of
 `run`: a risk not in `allow` is refused, and with `archive` the push is made
 and verified before the delete, one archive per candidate.
 

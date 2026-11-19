@@ -1249,7 +1249,7 @@ export function run(preview: Preview, opts: RunOptions = {}): Receipt {
 // ── one candidate ──────────────────────────────────────────────────────────
 
 export interface RemoveCandidateOptions extends Runners {
-  /** Where the caller stands: a worktree never removed. Defaults to the process's cwd. */
+  /** Where git runs from. A candidate for the worktree the caller stands in is not made: the sweep keeps it. Defaults to the process's cwd. */
   cwd?: string | undefined
   /** The risks granted for this candidate. */
   allow?: readonly Risk[] | undefined
@@ -1308,12 +1308,17 @@ export function removeCandidate(
   const row = rowOfCandidate(candidate)
   if (!runnable(row)) return refused(`refused: ${candidate.id} ${candidate.why}`)
   const allow = new Set(opts.allow ?? [])
-  const judged = judgeRisks(
-    row,
-    (risk) => allow.has(risk),
-    opts.archive,
-    (path) => new Git(path, { runner: opts.git }),
-  )
+  let judged: ReturnType<typeof judgeRisks>
+  try {
+    judged = judgeRisks(
+      row,
+      (risk) => allow.has(risk),
+      opts.archive,
+      (path) => new Git(path, { runner: opts.git }),
+    )
+  } catch (err) {
+    return refused(`refused: ${candidate.id}: ${errorText(err)}`)
+  }
   if (judged.missing.length > 0) {
     return refused(`refused: ${candidate.id} needs ${judged.missing.join(', ')}`)
   }
