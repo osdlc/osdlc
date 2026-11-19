@@ -477,9 +477,9 @@ export function updateCommand(seams: CliSeams) {
       if (flags.repairAgent !== undefined && flags.repairCommand !== undefined) {
         throw new UsageError('--repair-agent and --repair-command are mutually exclusive')
       }
-      // A repair chosen on the command line is the person's own consent. It
-      // replaces whatever the project file names, which then never runs.
-      // Either flag replaces both of the project's repair choices. The mode flag stands alone.
+      // A repair chosen on the command line is the person's own consent. Either of
+      // --repair-agent and --repair-command replaces both of the project file's choices,
+      // which then never run; --repair-mode consents to the mode alone.
       const consented: ('command' | 'agent' | 'mode')[] = [
         ...(flags.repairAgent !== undefined || flags.repairCommand !== undefined
           ? (['command', 'agent'] as const)
