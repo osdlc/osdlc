@@ -275,6 +275,27 @@ An agent reads the repository and can run tools, so a `repair.agent` (like a
 `--repair-agent` and `--repair-command` on the command line are your own
 consent and need no trust. They override whatever the config names.
 
+## Git submodules
+
+The update worktree is made with `git worktree add`, which leaves submodules
+empty. With `pr_update.submodules: auto` (the default) and a `.gitmodules` in
+the worktree, `pr-update` runs `git submodule update --init --recursive` after
+each PR's checkout, and again after a rebase or merge that moved a gitlink or
+changed `.gitmodules`, before `verify`, the resolvers and `lockfile_install`
+run. `submodules: off` leaves them alone. The URLs come from the PR's own
+`.gitmodules`, so they are fetched with whatever credentials the run has. Because a PR's
+author controls that file, the update runs with `protocol.file.allow=never` and
+`protocol.ext.allow=never`: a submodule URL that is a local path or an `ext::` command fails
+instead of running. Network URLs (`https`, `ssh`) are still cloned; set `submodules: off` for a
+repository whose PRs you do not trust. The trust gate covers only commands the project file
+names, not PR content, so it does not apply here.
+
+A submodule that will not check out ends that PR as `failed` with
+`submodule setup failed: <detail>`. It says nothing about the PR, so it is not
+recorded as a failed attempt and the next run tries again. A pointer both sides
+moved has no built-in resolver; the conflict names the two commits, so a person
+or `repair` can pick one.
+
 ## Checking before a push
 
 `verify` decides what must pass before an updated branch is pushed. `none`

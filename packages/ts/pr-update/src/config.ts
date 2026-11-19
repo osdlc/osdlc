@@ -92,6 +92,12 @@ export const prUpdateConfigSchema = z
       .describe(
         'Automatic falls-back to `merge` (or `skip`) for the cases where rewriting history costs more than the tidier tree is worth. `unpushed_local` is checked first and cannot be overridden; the other two are preferences an `overrides` rule may beat. Guards only ever step down from `rebase` — none of them turns a `merge` into a rebase.',
       ),
+    submodules: z
+      .enum(['auto', 'off'])
+      .default('auto')
+      .describe(
+        "Whether the update worktree gets the repository's git submodules. `auto` (default) runs `git submodule update --init --recursive` in it when it has a `.gitmodules`, after each PR's checkout and again when the update moved a submodule pointer or changed `.gitmodules`, so `verify` verbs, resolvers and `lockfile_install` find them. A failure is reported as `submodule setup failed: <detail>` and is not recorded as a failed attempt. It clones the URLs the PR's `.gitmodules` names (never over `file` or `ext`). `off` leaves submodules alone.",
+      ),
     on_rebase_conflict: z
       .enum(['merge', 'fail'])
       .default('merge')

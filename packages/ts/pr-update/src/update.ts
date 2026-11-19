@@ -554,6 +554,7 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
     repair: env.ports.repair,
     repairOn: effectiveCfg.repair.on,
     onRebaseConflict: effectiveCfg.on_rebase_conflict,
+    submodules: effectiveCfg.submodules,
     confirmPush,
     lease: writes ? env.ports.lease : undefined,
   }
@@ -674,6 +675,8 @@ export function restackTarget(
 /** Record this PR's failure under its key; forget a PR target once it updates, pushed or not. */
 function recordAttempt(store: AttemptStore, r: UpdateResult): void {
   const { status } = r.outcome
+  // A failure that says nothing about the PR (see `unrecorded`) neither blocks nor clears.
+  if (r.outcome.status === 'failed' && r.outcome.unrecorded === true) return
   if (status === 'updated' || status === 'up-to-date') store.clear(r.repo, r.head, r.base)
   else {
     const key = attemptKey(r)
