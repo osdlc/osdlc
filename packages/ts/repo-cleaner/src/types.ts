@@ -71,12 +71,22 @@ export type Action = (typeof ACTIONS)[number]
  *                       (or its submodules') commits and stashes no remote has
  *   `discard-changes`   drops modified, staged or untracked files in a worktree
  *                       or any of its submodules
+ *   `discard-archived`  with `archive`, takes the place of both on a row whose
+ *                       work the archive holds: the work leaves the machine
+ *                       for an archive branch on the remote, and is deleted
+ *                       here. A file the archive leaves out, and a submodule's
+ *                       work, keep their own risk
  *   `confirm-open-pr`   the branch has an open pull request, or open pull
  *                       requests could not be checked (the CLI is missing or
  *                       signed out, or the listing failed) so one cannot be
  *                       ruled out; deleting the remote branch closes it
  */
-export const RISKS = ['abandon-unmerged', 'discard-changes', 'confirm-open-pr'] as const
+export const RISKS = [
+  'abandon-unmerged',
+  'discard-changes',
+  'discard-archived',
+  'confirm-open-pr',
+] as const
 
 export type Risk = (typeof RISKS)[number]
 
