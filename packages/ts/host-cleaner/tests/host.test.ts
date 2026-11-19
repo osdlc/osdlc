@@ -322,6 +322,46 @@ describe('plan, check and run', () => {
     expect(sh(fx.root, ['branch', '--list', 'topic'])).toBe('')
   })
 
+  test('a run executes only the rows the preview showed', () => {
+    const fx = fixture()
+    let verdictB = 'review' as 'review' | 'delete'
+    const rows = () => [hostRow(), hostRow({ id: 'artifact:b', name: 'b', verdict: verdictB })]
+    const adapter = fakeAdapter(rows)
+    const p = planOf(fx, [adapter])
+    const opts = { cwd: fx.root, adapters: [adapter] }
+    const preview = hostCheck(p, {}, opts)
+    expect(preview.steps.map((s) => s.row)).toEqual(['artifact:cache'])
+    verdictB = 'delete'
+    hostRun(preview, opts)
+    expect(adapter.executed).toEqual(['artifact:cache'])
+  })
+
+  test('evidence an adapter mutates after planning still changes the fingerprint', () => {
+    const fx = fixture()
+    const shared = hostRow()
+    const adapter = fakeAdapter(() => [shared])
+    const p = planOf(fx, [adapter])
+    shared.evidence.bytes = 999
+    expect(hostCheck(p, {}, { cwd: fx.root, adapters: [adapter] }).dropped[0]).toMatchObject({
+      reason: 'changed',
+    })
+  })
+
+  test('a row another adapter now supplies is not the planned row', () => {
+    const fx = fixture()
+    let aOwns = true
+    const a = fakeAdapter(() => (aOwns ? [hostRow()] : []))
+    const b = { ...fakeAdapter(() => (aOwns ? [] : [hostRow({ adapter: 'b' })])), name: 'b' }
+    const p = planOf(fx, [a, b])
+    expect(p.rows.map((r) => r.adapter)).toEqual(['fake'])
+    aOwns = false
+    const preview = hostCheck(p, {}, { cwd: fx.root, adapters: [a, b] })
+    expect(preview.steps).toEqual([])
+    expect(preview.dropped).toEqual([
+      { row: 'artifact:cache', reason: 'changed', detail: 'owned by fake when planned, by b now' },
+    ])
+  })
+
   test('a repo row picked alone leaves host rows alone', () => {
     const fx = fixture()
     const adapter = fakeAdapter(() => [hostRow()])

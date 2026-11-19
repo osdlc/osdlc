@@ -39,7 +39,8 @@ export type HostPlan = z.infer<typeof HostPlanSchema>
 
 /** What a host row's verdict rests on. */
 export function hostFingerprint(row: HostRow): Record<string, unknown> {
-  return row.evidence
+  // A copy: an adapter that mutates cached evidence must not move the plan with it.
+  return structuredClone(row.evidence)
 }
 
 /** True when `row` could run without being picked by name. */

@@ -33,9 +33,6 @@ cd packages/ts/host-cleaner
 pnpm test
 ```
 
-To run the CLI from a checkout, build the package and run
-`node bin/host-cleaner.js --help`.
-
 Other checks:
 
 ```sh

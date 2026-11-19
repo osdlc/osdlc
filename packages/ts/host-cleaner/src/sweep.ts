@@ -19,7 +19,10 @@ export interface HostSweep {
 }
 
 /** Run `first`, then `second`, over the rows. */
-function both(first: Annotate | undefined, second: Annotate | undefined): Annotate | undefined {
+export function both(
+  first: Annotate | undefined,
+  second: Annotate | undefined,
+): Annotate | undefined {
   if (first === undefined || second === undefined) return first ?? second
   return (repo, rows) => second(repo, first(repo, rows))
 }

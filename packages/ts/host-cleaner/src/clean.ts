@@ -36,7 +36,7 @@ import {
   type AdapterReport,
 } from './registry.ts'
 import type { HostOptions } from './options.ts'
-import { gatherHostRows } from './sweep.ts'
+import { both, gatherHostRows } from './sweep.ts'
 
 export interface HostAllow {
   risk: string
@@ -161,7 +161,9 @@ export function selectHostRows(
   for (const p of planned.filter((r) => !spared.has(r.id))) {
     const now = rows.find((r) => r.id === p.id)
     if (now === undefined) drop(p.id, 'gone', 'no adapter owns it now')
-    else if (now.verdict === 'blocked') drop(p.id, 'blocked', now.blockers.join(', ') || now.why)
+    else if (now.adapter !== p.adapter) {
+      drop(p.id, 'changed', `owned by ${p.adapter} when planned, by ${now.adapter} now`)
+    } else if (now.verdict === 'blocked') drop(p.id, 'blocked', now.blockers.join(', ') || now.why)
     else if (now.action === null) drop(p.id, 'keep', now.why)
     else if (!sel.explicit && now.verdict !== 'delete') {
       drop(p.id, 'needs-pick', `judged ${now.verdict}; it runs only when picked`)
@@ -232,7 +234,7 @@ export function hostCheck(
     ? emptyRepoPreview(plan)
     : check(plan.repo, parts.repo, {
         ...opts,
-        annotate: chainAnnotate(active) ?? opts.annotate,
+        annotate: both(opts.annotate, chainAnnotate(active)),
         removeWorktree: chainRemoveWorktree(active) ?? opts.removeWorktree,
       })
   const { accepted, dropped } = selectHostRows(
@@ -241,7 +243,9 @@ export function hostCheck(
     gatherHostRows(active, reports, ctx),
   )
   const unusedAllows = parts.host.allow.filter(
-    (a) => !accepted.some((r) => r.risks.includes(a.risk) && (a.row === null || a.row === r.id)),
+    (a) =>
+      !(RISKS as readonly string[]).includes(a.risk) &&
+      !accepted.some((r) => r.risks.includes(a.risk) && (a.row === null || a.row === r.id)),
   )
   const steps = accepted.map(record)
   for (const s of steps) s.result = 'would-run'
@@ -285,26 +289,35 @@ export function hostRun(preview: HostPreview, opts: HostRunOptions = {}): HostRe
   const { plan } = preview
   const { active, reports, ctx } = adaptersFor(plan, opts, roots(plan))
   const { receiptPath: _own, onStart, onStepDone, ...rest } = opts
-  receipt.repo = run(preview.repo, {
-    ...rest,
-    annotate: chainAnnotate(active) ?? opts.annotate,
-    removeWorktree: chainRemoveWorktree(active) ?? opts.removeWorktree,
-    onStart: (steps) => {
-      receipt.repo.steps = [...steps]
-      save()
-      onStart?.(steps)
-    },
-    onStepDone: (i, n, step) => {
-      onStepDone?.(i, n, step)
-      save()
-    },
-  })
+  try {
+    receipt.repo = run(preview.repo, {
+      ...rest,
+      annotate: both(opts.annotate, chainAnnotate(active)),
+      removeWorktree: chainRemoveWorktree(active) ?? opts.removeWorktree,
+      onStart: (steps) => {
+        receipt.repo.steps = [...steps]
+        save()
+        onStart?.(steps)
+      },
+      onStepDone: (i, n, step) => {
+        onStepDone?.(i, n, step)
+        save()
+      },
+    })
+  } catch (err) {
+    // A refusal from repo-cleaner's re-check must not leave a receipt reading `running`.
+    finish('failed')
+    throw err
+  }
   if (receipt.repo.status === 'failed') return finish('failed')
 
   // Only what the preview showed, judged again against what the adapters own now.
   const shown = new Set(preview.steps.map((s) => s.row))
   const sel: HostResolved = { ...preview.approval, pick: [...shown] }
-  const { accepted, dropped } = selectHostRows(plan, sel, gatherHostRows(active, reports, ctx))
+  const judged = selectHostRows(plan, sel, gatherHostRows(active, reports, ctx))
+  // Only what the preview showed runs; a row it left out stays out.
+  const accepted = judged.accepted.filter((r) => shown.has(r.id))
+  const dropped = judged.dropped
   const known = new Set(receipt.host.dropped.map((d) => d.row))
   receipt.host.dropped.push(...dropped.filter((d) => !known.has(d.row) && shown.has(d.row)))
   const steps = shown.size === 0 ? [] : accepted.map(record)
