@@ -26,7 +26,7 @@ for (const [name, section] of Object.entries(suite.sections)) {
       throw new Error(`${name}: ${c.name}: error.message is not compared; remove it`)
     }
     const outcome = run(name, c.input)
-    if (outcome.expect === undefined && outcome.error === undefined) {
+    if ('expect' in outcome && outcome.expect === undefined) {
       throw new Error(`${name}: ${c.name}: the runner returned no outcome`)
     }
     return {
