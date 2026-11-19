@@ -58,11 +58,11 @@ export interface CliResult {
   stderr: string
 }
 
-/** The parsed flags of `validate`, `init` and `migrate`, as `commands.ts` declares them. */
-export type CliValues = ValidateFlags & InitFlags & { write?: boolean | undefined }
+/** The parsed flags of `validate`, `init` and `migrate`, as the commands below declare them. */
+type CliValues = ValidateFlags & InitFlags & { write?: boolean | undefined }
 
 /** The flags `validate` reads. */
-export interface ValidateFlags {
+interface ValidateFlags {
   format?: string | undefined
   config?: string | undefined
   contract?: string[] | undefined
@@ -77,7 +77,7 @@ export interface ValidateFlags {
  * formats the findings. `--contract` and `--config` both become one `CorpusConfig` for
  * `runCorpus`. Exit codes: `0` or `1` from `runCorpus`, `2` for a usage or config error.
  */
-export async function runValidate(
+async function runValidate(
   cwd: string,
   rest: string[],
   values: CliValues,
@@ -244,7 +244,7 @@ function formatOutput(
  * be read, or is not a version 1 document, is also reported and skipped. The exit code is then 2.
  * A file that is already version 2 is noted on stderr and does not change the exit code.
  */
-export function runMigrate(cwd: string, files: string[], write: boolean): CliResult {
+function runMigrate(cwd: string, files: string[], write: boolean): CliResult {
   if (files.length === 0) {
     return {
       code: 2,
@@ -286,7 +286,7 @@ export function runMigrate(cwd: string, files: string[], write: boolean): CliRes
 }
 
 /** The flags `runInit` reads. */
-export interface InitFlags {
+interface InitFlags {
   meta?: boolean | undefined
   depth?: string | undefined
   relax?: boolean | undefined
@@ -333,7 +333,7 @@ const INIT_CONFIG_NAME = 'markdown-contract.yaml'
  * wins at each path, so later roots' configs are dropped. A summary (groups, files, warnings, self-check) goes to stdout.
  * Usage and config errors exit 2.
  */
-export function runInit(cwd: string, roots: string[], flags: InitFlags): CliResult {
+function runInit(cwd: string, roots: string[], flags: InitFlags): CliResult {
   if (roots.length === 0) {
     return {
       code: 2,
@@ -869,7 +869,7 @@ const scopeFlags = {
   },
 } as const satisfies FlagSpec
 
-export const validateCommand = defineCommand({
+const validateCommand = defineCommand({
   interactive: true,
   summary: 'Check a folder of markdown against a config or a contract.',
   description:
@@ -915,7 +915,7 @@ export const validateCommand = defineCommand({
   },
 })
 
-export const initCommand = defineCommand({
+const initCommand = defineCommand({
   interactive: true,
   summary: 'Infer contracts from existing markdown and write them.',
   description:
@@ -969,7 +969,7 @@ export const initCommand = defineCommand({
   },
 })
 
-export const migrateCommand = defineCommand({
+const migrateCommand = defineCommand({
   interactive: true,
   summary: 'Rewrite version 1 YAML contracts as version 2.',
   description:
