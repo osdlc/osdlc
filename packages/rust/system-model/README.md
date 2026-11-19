@@ -7,6 +7,12 @@ This is the Rust twin of [`@osdlc/system-model`](../../ts/system-model). It move
 here from the `manifest-graph` crate. The model types and the dependency graph
 are in; the walk, the containment tree and the wire schema follow.
 
+## Install
+
+```sh
+cargo add system-model
+```
+
 ```rust
 use system_model::{GraphOptions, ManifestInfo, build_dependency_graph};
 
@@ -20,6 +26,7 @@ sorted by id and edges are sorted, so two runs diff cleanly.
 
 `tests/mini-repo` is the fixture tree both implementations will walk once the walk lands here.
 
-## Licence
+## License
 
-Dual-licensed under [MIT](./LICENSE-MIT) or [Apache-2.0](./LICENSE-APACHE), at your option.
+Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or
+[MIT License](LICENSE-MIT), at your option.
