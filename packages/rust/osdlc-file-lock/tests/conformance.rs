@@ -78,18 +78,23 @@ fn millis(input: &Value, key: &str) -> Duration {
     )
 }
 
+/// Set `path`'s mtime `by` into the past.
+fn age(path: &Path, by: Duration) {
+    let at = SystemTime::now() - by;
+    File::options()
+        .write(true)
+        .open(path)
+        .unwrap()
+        .set_times(FileTimes::new().set_accessed(at).set_modified(at))
+        .unwrap();
+}
+
 /// Write the case's lock and markers into `dir`.
 fn set_up(dir: &Path, input: &Value) {
     let lock = dir.join(LOCK);
     if let Some(before) = input.get("lock").filter(|l| !l.is_null()) {
         fs::write(&lock, bytes(&before["raw"])).unwrap();
-        let at = SystemTime::now() - millis(before, "ageMs");
-        File::options()
-            .write(true)
-            .open(&lock)
-            .unwrap()
-            .set_times(FileTimes::new().set_accessed(at).set_modified(at))
-            .unwrap();
+        age(&lock, millis(before, "ageMs"));
     }
     for marker in input
         .get("markers")
@@ -97,7 +102,14 @@ fn set_up(dir: &Path, input: &Value) {
         .into_iter()
         .flatten()
     {
-        fs::write(marker_for(&lock, &text(marker)), "").unwrap();
+        // A text, or `{ "raw": text, "ageMs": n }` for a marker made `n` ms ago.
+        let (raw, age_ms) = match marker.get("raw") {
+            Some(raw) => (raw, millis(marker, "ageMs")),
+            None => (marker, Duration::ZERO),
+        };
+        let file = marker_for(&lock, &text(raw));
+        fs::write(&file, "").unwrap();
+        age(&file, age_ms);
     }
 }
 
