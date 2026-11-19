@@ -356,6 +356,51 @@ describe('cmux binary and session id', () => {
     expect(host.close!({ cwd: '/w', sessionId: 's-two' })).toBe(false)
   })
 
+  test("find returns the session's own listed workspace over an unmarked store row", () => {
+    const { runner } = scripted((argv) =>
+      argv[0] === 'sessions'
+        ? ok(
+            JSON.stringify({
+              sessions: [{ agent: 'claude', cwd: '/w', workspace_id: 'W3', surface_id: 'S3' }],
+            }),
+          )
+        : ok(JSON.stringify([{ ref: 'W1', cwd: '/w', description: cmuxSessionMarker('s-two') }])),
+    )
+    const host = makeCmuxHost({ runner })
+    expect(host.find!({ cwd: '/w', sessionId: 's-two' }).map((f) => f.handle)).toEqual(['W1'])
+    expect(host.send!({ cwd: '/w', sessionId: 's-two', text: 'x' }).accepted).toBe(false)
+  })
+
+  test('a session id with the workspace list denied still needs exactly one agent row', () => {
+    const { runner } = scripted((argv) =>
+      argv[0] === 'sessions'
+        ? ok(
+            JSON.stringify({
+              sessions: [
+                { agent: 'claude', cwd: '/w', workspace_id: 'W1', surface_id: 'S1' },
+                { agent: 'claude', cwd: '/w', workspace_id: 'W2', surface_id: 'S2' },
+              ],
+            }),
+          )
+        : denied,
+    )
+    const host = makeCmuxHost({ runner })
+    expect(host.send!({ cwd: '/w', sessionId: 's-x', text: 'x' }).accepted).toBe(false)
+    expect(host.close!({ cwd: '/w', sessionId: 's-x' })).toBe(false)
+  })
+
+  test('binary null runs nothing', () => {
+    const { runner, calls } = scripted(() => ok())
+    const host = makeCmuxHost({ binary: null, runner })
+    expect(host.find!({ cwd: '/w' })).toEqual([])
+    expect(host.send!({ cwd: '/w', text: 'x' }).accepted).toBe(false)
+    expect(host.close!({ cwd: '/w' })).toBe(false)
+    expect(() =>
+      host.session!({ cwd: '/w', harness: 'claude', binary: 'claude', prompt: 'p', title: 't' }),
+    ).toThrow()
+    expect(calls).toEqual([])
+  })
+
   test('find joins a workspace listed by ref to a stored id', () => {
     const { runner } = scripted((argv) =>
       argv[0] === 'sessions'
