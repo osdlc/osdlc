@@ -21,7 +21,6 @@ suite.referenceVersion = pkg.version
 
 for (const [name, section] of Object.entries(suite.sections)) {
   section.cases = section.cases.map((c): SuiteCase => {
-    // A case compares error kinds only.
     if (c.error !== undefined && 'message' in c.error) {
       throw new Error(`${name}: ${c.name}: error.message is not compared; remove it`)
     }
