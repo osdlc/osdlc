@@ -277,9 +277,10 @@ fn changed_at(meta: &fs::Metadata) -> Option<SystemTime> {
     SystemTime::UNIX_EPOCH.checked_add(Duration::new(secs, nanos))
 }
 
+/// No ctime without `unsafe`, and the mtime is the lock's, not the marker's.
 #[cfg(not(unix))]
-fn changed_at(meta: &fs::Metadata) -> Option<SystemTime> {
-    meta.modified().ok()
+fn changed_at(_meta: &fs::Metadata) -> Option<SystemTime> {
+    None
 }
 
 fn clear_dead_marker(marker: &Path) {
@@ -409,6 +410,25 @@ mod tests {
         assert!(parse("5f0c3c8e-6a3e-4d34-9c39-2a1b7f1d0c11").is_none());
     }
 
+    #[test]
+    fn a_marker_linked_to_an_old_lock_is_a_live_reapers() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock = dir.path().join("x.lock");
+        fs::write(&lock, "{}").unwrap();
+        let old = SystemTime::now() - Duration::from_secs(60);
+        File::options()
+            .write(true)
+            .open(&lock)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old))
+            .unwrap();
+        let marker = dir.path().join("x.lock.stale-0");
+        fs::hard_link(&lock, &marker).unwrap();
+        clear_dead_marker_at(&marker, SystemTime::now());
+        assert!(marker.exists(), "the lock's age is not the marker's");
+    }
+
+    #[cfg(unix)]
     #[test]
     fn a_marker_from_a_dead_reaper_is_cleared_and_a_live_one_kept() {
         let dir = tempfile::tempdir().unwrap();

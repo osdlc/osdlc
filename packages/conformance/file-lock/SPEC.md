@@ -76,4 +76,8 @@ error.
 ## Limits
 
 One machine, on a local file system with hard links. Windows is not tested:
-the marker's age is read from its ctime on Unix only.
+the marker's age is read from its ctime on Unix only. An implementation that
+cannot read the ctime never removes a marker as dead: the marker's mtime is
+the lock's, and a lock's age would clear a live reaper's marker, so that two
+reapers could each remove a lock. A reaper that dies mid-takeover there
+leaves its lock stale until the marker is deleted by hand.
