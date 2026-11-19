@@ -16,6 +16,7 @@ import { join, resolve } from 'node:path'
 const PACKAGE = resolve(import.meta.dirname, '..')
 const CHANGESETS = resolve(PACKAGE, '../../../.changeset')
 const DATA_FILE = 'harness-knowledge.json'
+const SCHEMA_FILE = 'harness-knowledge.schema.json'
 
 interface Compiled {
   corpus: { repo: string; commit: string; path: string }
@@ -43,7 +44,7 @@ export function namesPackage(changeset: string, name: string): boolean {
 }
 
 const run = (cmd: string, args: string[], cwd?: string): string =>
-  execFileSync(cmd, args, { cwd, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'inherit'] }).trim()
+  execFileSync(cmd, args, { cwd, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
 
 function main(): void {
   const pkg = JSON.parse(readFileSync(join(PACKAGE, 'package.json'), 'utf-8')) as {
@@ -53,7 +54,9 @@ function main(): void {
   let published: string
   try {
     published = run('npm', ['view', pkg.name, 'version'])
-  } catch {
+  } catch (e) {
+    // Only a 404 means unpublished; a registry or network failure must not pass the check.
+    if (!/E404/.test(String((e as { stderr?: unknown }).stderr ?? e))) throw e
     process.stdout.write(`ok: ${pkg.name} is not on npm yet\n`)
     return
   }
@@ -65,9 +68,13 @@ function main(): void {
   try {
     const tarball = run('npm', ['pack', `${pkg.name}@${published}`, '--silent'], work)
     run('tar', ['-xf', tarball], work)
-    const before = readFileSync(join(work, 'package/data', DATA_FILE), 'utf-8')
-    const now = readFileSync(join(PACKAGE, 'data', DATA_FILE), 'utf-8')
-    if (withoutSource(before) === withoutSource(now)) {
+    const read = (dir: string, file: string): string => readFileSync(join(dir, file), 'utf-8')
+    const shipped = join(work, 'package/data')
+    const here = join(PACKAGE, 'data')
+    if (
+      withoutSource(read(shipped, DATA_FILE)) === withoutSource(read(here, DATA_FILE)) &&
+      read(shipped, SCHEMA_FILE) === read(here, SCHEMA_FILE)
+    ) {
       process.stdout.write(`ok: the data is what ${pkg.name}@${published} ships\n`)
       return
     }

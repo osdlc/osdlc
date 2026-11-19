@@ -49,7 +49,7 @@
   ],
   "scripts": {
     "build:data": "node scripts/build-data.ts",
-    "build": "npm run build:data && tsc -p tsconfig.build.json",
+    "build": "pnpm run build:data && tsc -p tsconfig.build.json",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "test": "vitest run",
     "coverage": "vitest run --coverage",
