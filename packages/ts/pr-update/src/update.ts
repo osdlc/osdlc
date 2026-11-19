@@ -26,7 +26,8 @@
  *     `--retry-failed` attempts it anyway.
  *
  * `verify: check` or `verify: test` runs the `verifyVerbs` that
- * `ports.resolveVerifyVerbs` returns before a push. It is asked once per
+ * `ports.resolveVerifyVerbs` returns before a push. `verify: detect` asks it once per PR,
+ * naming the PR's update worktree as `checkout`. Otherwise it is asked once per
  * repository, naming the repository and its checkout, so a run over several
  * repositories can verify each with its own commands. Whether a verb list from
  * the project may run is the host's decision, made in that port.

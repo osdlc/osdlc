@@ -41,6 +41,16 @@ describe('detectVerifyCommand', () => {
     })
   })
 
+  test('test ::= and test :::= are assignments, not a target', () => {
+    put('Makefile', 'test ::= 1\ntest :::= 2\n')
+    expect(detectVerifyCommand(dir)).toBeNull()
+  })
+
+  test('a blank test_command is not a rung', () => {
+    put('Cargo.toml')
+    expect(detectVerifyCommand(dir, '  ')?.rung).toBe('Cargo.toml')
+  })
+
   test('a justfile test recipe comes before a Makefile and package.json', () => {
     put('justfile', 'build:\n  x\n\ntest *args:\n  y\n')
     put('Makefile', 'test:\n\tz\n')
@@ -58,10 +68,10 @@ describe('detectVerifyCommand', () => {
 
   test('a Makefile test target runs make test', () => {
     put('Makefile', 'all:\n\tx\n\ntest: all\n\ty\n')
-    expect(detectVerifyCommand(dir)).toEqual({
-      command: 'make test',
-      rung: 'Makefile test target',
-    })
+    const found = detectVerifyCommand(dir)
+    expect(found?.command).toBe('make test')
+    // A case-insensitive filesystem finds `makefile` first.
+    expect(found?.rung).toMatch(/^[Mm]akefile test target$/)
   })
 
   test.each([

@@ -315,7 +315,7 @@ the first rung that matches:
    `build.sbt`.
 
 The run prints the choice for each PR on stderr
-(`pr-update: verify: detect owner/name: make test  (Makefile test target)`).
+(`pr-update: verify: detect owner/name#12: make test  (Makefile test target)`).
 When no rung matches, that PR's update fails, naming what was looked for; the
 other PRs go on. Nothing beyond the ladder is guessed. Because the repository's
 own files choose the command, `verify: detect` in the project file is gated

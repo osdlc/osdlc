@@ -19,10 +19,10 @@ export const DETECT_LOOKED_FOR =
   'Cargo.toml, go.mod or build.sbt'
 
 const JUSTFILES = ['justfile', 'Justfile', '.justfile']
-const MAKEFILES = ['GNUmakefile', 'Makefile', 'makefile']
+const MAKEFILES = ['GNUmakefile', 'makefile', 'Makefile']
 // A recipe or target named `test`, not `test-all`, a `test := value` assignment or an indented line.
 const JUST_TEST = /^test(?:[ \t][^:=\n]*)?:(?!=)/m
-const MAKE_TEST = /^test[ \t]*::?(?!=)/m
+const MAKE_TEST = /^test[ \t]*::?(?![:=])/m
 const NPM_INIT_PLACEHOLDER = /no test specified/
 
 /** `scripts.test` run with the package manager the lockfile names; `npm test` by default. */
@@ -61,7 +61,8 @@ export function detectVerifyCommand(
   dir: string,
   testCommand: string | null = null,
 ): DetectedVerify | null {
-  if (testCommand !== null) return { command: testCommand, rung: 'test_command' }
+  if (testCommand !== null && testCommand.trim() !== '')
+    return { command: testCommand, rung: 'test_command' }
 
   const just = firstFile(dir, JUSTFILES)
   if (just !== null && JUST_TEST.test(readFileSync(join(dir, just), 'utf8'))) {

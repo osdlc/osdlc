@@ -66,7 +66,7 @@ export function commandRepair(command: string, timeoutSeconds: number | null = n
  * `<projectRoot>/.pr-update/attempts/`, or, with `attempts.store: git-ref`, as refs on `remote`
  * (default `origin`) along with a per-branch update lease.
  *
- * `notice` receives one line per repository naming the command `verify: detect` chose.
+ * `notice` receives one line per PR naming the command `verify: detect` chose.
  */
 export function standalonePorts(
   cfg?: PrUpdateConfig & Partial<PrUpdateStandaloneConfig>,
