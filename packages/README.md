@@ -302,6 +302,9 @@ Developed here, in this repository:
   that finds the branches, worktrees and remote branches that have been merged
   and can go away, with the evidence and the command for each, and applies an
   approved plan compare-and-swap)
+- `packages/ts/host-cleaner` (`@osdlc/host-cleaner` on npm once published, a tool and
+  library that runs machine cleanup as plugins, each proposing candidates and
+  objecting to others', through one plan, one re-check and one receipt)
 - `packages/ts/rule-review` (`@osdlc/rule-review` on npm, a tool and library
   that reviews a change against the `CLAUDE.md` and `AGENTS.md` files that
   govern it, one headless agent judgement per rule file, and runs a folder of

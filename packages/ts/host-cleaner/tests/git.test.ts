@@ -1,0 +1,109 @@
+import { afterEach, describe, expect, test } from 'vitest'
+import { existsSync, mkdtempSync, readFileSync, realpathSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+import { Git } from '@osdlc/typed-git'
+import { IDENTITY, makeBareAndWorker } from '@osdlc/typed-git/testing'
+
+import { FatalRun, ReceiptSchema, clean, gitPlugin, plan, survey, type Ctx } from '../src/index.ts'
+
+const cleanups: Array<() => void> = []
+afterEach(() => {
+  while (cleanups.length > 0) cleanups.pop()!()
+})
+
+const sh = (cwd: string, args: string[]): string =>
+  new Git(cwd, { env: { ...IDENTITY } }).rawChecked(args).stdout.trim()
+
+const idle = { alive: () => false, holders: () => [] }
+
+/** A repository whose `wt-branch` is merged and checked out in a clean worktree, plus one unmerged branch. */
+function fixture() {
+  const pair = makeBareAndWorker()
+  cleanups.push(pair.cleanup)
+  const root = pair.worker.dir
+  sh(root, ['commit', '--allow-empty', '-m', 'initial'])
+  sh(root, ['push', '-q', '-u', 'origin', 'main'])
+  sh(root, ['checkout', '-q', '-b', 'unmerged'])
+  sh(root, ['commit', '--allow-empty', '-m', 'wip'])
+  sh(root, ['checkout', '-q', 'main'])
+  const worktree = join(pair.parent, 'wt-a')
+  sh(root, ['worktree', 'add', '-q', '-b', 'wt-branch', worktree, 'main'])
+  sh(worktree, ['commit', '--allow-empty', '-m', 'feat'])
+  sh(root, ['merge', '-q', '--no-ff', '-m', 'Merge wt-branch', 'wt-branch'])
+  sh(root, ['push', '-q', 'origin', 'main'])
+  const ctx: Ctx = { cwd: root, targets: [root], allow: [] }
+  const plugin = gitPlugin({
+    probe: idle,
+    sweep: { remote: true, offline: true, provider: 'none' },
+  })
+  return { root, worktree: realpathSync(worktree), ctx, plugin }
+}
+
+const branches = (root: string): string => sh(root, ['branch', '--format=%(refname:short)'])
+
+describe('the git plugin', () => {
+  test('proposes worktrees and branches, objects with their risks, and a freed branch requires its worktree', () => {
+    const fx = fixture()
+    const s = survey([fx.plugin], fx.ctx)
+    const byId = new Map(s.candidates.map((c) => [c.id, c]))
+    const branchId = `branch:${realpathSync(fx.root)}:wt-branch`
+    expect(byId.get(branchId)?.requires).toEqual([`worktree:${fx.worktree}`])
+    expect(byId.get(`worktree:${fx.worktree}`)).toMatchObject({ owner: 'git', unattended: true })
+    const unmerged = [...byId.values()].find((c) => c.path.endsWith(':unmerged'))!
+    expect(s.objections).toContainEqual(
+      expect.objectContaining({
+        by: 'git',
+        candidate: unmerged.id,
+        level: 'protest',
+        code: 'abandon-unmerged',
+      }),
+    )
+  })
+
+  test('cleans a worktree, then the branch it freed, through one receipt', () => {
+    const fx = fixture()
+    const dir = mkdtempSync(join(tmpdir(), 'hc-receipt-'))
+    const receiptPath = join(dir, 'receipt.json')
+    const s = survey([fx.plugin], fx.ctx)
+    const pick = [`worktree:${fx.worktree}`, `branch:${realpathSync(fx.root)}:wt-branch`]
+    const receipt = clean(plan(s, { pick }), [fx.plugin], fx.ctx, { receiptPath })
+    expect(receipt.steps.map((x) => [x.id, x.result])).toEqual(pick.map((id) => [id, 'ok']))
+    expect(receipt.steps[0]!.delete).toBe('directory gone and unregistered')
+    expect(existsSync(fx.worktree)).toBe(false)
+    expect(branches(fx.root)).not.toContain('wt-branch')
+    expect(branches(fx.root)).toContain('unmerged')
+    expect(ReceiptSchema.parse(JSON.parse(readFileSync(receiptPath, 'utf8'))).status).toBe(
+      'complete',
+    )
+  })
+
+  test('an unmerged branch needs abandon-unmerged granted by name', () => {
+    const fx = fixture()
+    const unmerged = survey([fx.plugin], fx.ctx).candidates.find((c) =>
+      c.path.endsWith(':unmerged'),
+    )!
+    const p = plan(survey([fx.plugin], fx.ctx), { pick: [unmerged.id] })
+    expect(clean(p, [fx.plugin], fx.ctx).dropped[0]).toMatchObject({ reason: 'not-allowed' })
+    const granted = { ...fx.ctx, allow: ['abandon-unmerged'] }
+    const receipt = clean({ ...p, allow: ['abandon-unmerged'] }, [fx.plugin], granted)
+    expect(receipt.steps[0]!.result).toBe('ok')
+    expect(branches(fx.root)).not.toContain('unmerged')
+  })
+
+  test('a failed archive push throws FatalRun, which stops the run', () => {
+    const fx = fixture()
+    sh(fx.root, ['remote', 'set-url', 'origin', '/nonexistent/remote.git'])
+    sh(fx.root, ['config', 'remote.origin.pushurl', '/nonexistent/remote.git'])
+    const plugin = gitPlugin({
+      probe: idle,
+      archive: {},
+      sweep: { remote: true, offline: true, provider: 'none' },
+    })
+    const s = survey([plugin], fx.ctx)
+    const target = s.candidates.find((c) => c.path.endsWith(':unmerged'))!
+    const allow = { ...fx.ctx, allow: ['abandon-unmerged', 'discard-archived'] }
+    expect(() => plugin.delete!(target, allow)).toThrow(FatalRun)
+  })
+})
