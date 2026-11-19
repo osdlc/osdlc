@@ -6,8 +6,8 @@
 import { fact } from './query.js'
 
 /**
- * Short id to knowledge slug, for every detect-harness built-in id and agent-call agent name the
- * file has a harness for.
+ * Short id to knowledge slug. Covers every id in detect-harness `BUILTIN_HARNESSES`
+ * (`src/harnesses.ts`) and every agent-call `AgentName` (`src/spec.ts`).
  */
 export const HARNESS_SLUGS = Object.freeze({
   antigravity: 'antigravity',
@@ -45,9 +45,11 @@ export function idFor(harness: string): HarnessId | undefined {
 }
 
 /**
- * The names of the environment variables that carry the harness's credentials, filtered as
- * {@link fact} filters. Empty when the harness is unknown or the file states none. Throws
- * `AmbiguousValue` as `fact` does.
+ * The names of the environment variables that carry the harness's credentials. Weak and
+ * disputed values are skipped, as in {@link fact}. Empty when the harness is unknown or the
+ * file states none.
+ *
+ * @throws `AmbiguousValue` when two values fit equally well, as `fact` does.
  */
 export function credentialEnv(harness: string): string[] {
   const vars = fact(slugFor(harness) ?? harness, 'config/credentials-env')?.['vars']
@@ -58,11 +60,15 @@ export function credentialEnv(harness: string): string[] {
 }
 
 /**
- * The variable that moves the harness's config folder, filtered as {@link fact} filters, or
- * undefined when the harness is unknown or the file states none. Throws `AmbiguousValue`
- * as `fact` does.
+ * The variable that moves the harness's config folder. Weak and disputed values are skipped, as
+ * in {@link fact}. Undefined when the harness is unknown, the file states none, or the file says
+ * the variable moves the folder only partly (`supported` is `partial` or `false`).
+ *
+ * @throws `AmbiguousValue` when two values fit equally well, as `fact` does.
  */
 export function configDirEnv(harness: string): string | undefined {
-  const name = fact(slugFor(harness) ?? harness, 'config/config-dir-env')?.['var']
+  const value = fact(slugFor(harness) ?? harness, 'config/config-dir-env')
+  if (value?.['supported'] === false || value?.['supported'] === 'partial') return undefined
+  const name = value?.['var']
   return typeof name === 'string' ? name : undefined
 }

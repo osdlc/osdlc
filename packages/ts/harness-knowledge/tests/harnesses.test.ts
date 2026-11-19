@@ -58,3 +58,7 @@ test('a slug outside the map still resolves through the data', () => {
 test('credentialEnv is empty when the fact lists no variables', () => {
   expect(credentialEnv('opencode')).toEqual([])
 })
+
+test('configDirEnv ignores a variable the file says only partly moves the folder', () => {
+  expect(configDirEnv('amp')).toBeUndefined()
+})
