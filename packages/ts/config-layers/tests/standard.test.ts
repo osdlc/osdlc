@@ -110,3 +110,14 @@ describe('machineConfigFile with a non-zod schema', () => {
     expect(m.load()).toEqual({ name: 'x', count: 0 })
   })
 })
+
+test('a thenable that is not a native promise is refused as asynchronous', () => {
+  const thenable: StandardSchemaV1 = {
+    '~standard': {
+      version: 1,
+      vendor: 'thenable',
+      validate: () => ({ then: () => undefined }) as never,
+    },
+  }
+  expect(() => validateStandard(thenable, {})).toThrow(/synchronously/)
+})

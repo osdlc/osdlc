@@ -50,7 +50,10 @@ const issues: StandardIssue[] = checked.ok ? [] : checked.issues
 // #endregion standard-schema
 
 const dir = mkdtempSync(join(tmpdir(), 'cl-standard-'))
-afterAll(() => rmSync(dir, { recursive: true, force: true }))
+afterAll(() => {
+  delete process.env[machine.env]
+  rmSync(dir, { recursive: true, force: true })
+})
 
 test('a hand-written validator reads the machine file', () => {
   const file = join(dir, 'config.yaml')

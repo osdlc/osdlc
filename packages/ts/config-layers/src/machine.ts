@@ -7,7 +7,7 @@
  * lives in the tool's standalone config home (`<config>/<tool>/config.yaml`).
  * It is never committed and holds only machine-specific keys.
  *
- * The Zod schema defines the file, and every key has a default. The loader
+ * A Standard Schema validator (zod 4, valibot, arktype) defines the file, and every key has a default. The loader
  * never throws. `loadWithIssues()` reports what it dropped. The result is
  * memoised per path. The path is computed on each call, so a test or a one-off
  * run can move the file with an environment variable and not write into the
@@ -45,7 +45,9 @@ export interface MachineConfigFileOptions<S extends StandardSchemaV1> {
   tool: string
   /**
    * Every key with a default; the loader parses `{}` to get the defaults.
-   * Unknown keys are reported only when every object in it is `.strict()`.
+   * Any Standard Schema validator. Unknown keys are reported only for a zod
+   * schema whose objects are all `.strict()`; another validator drops the
+   * whole top-level section an unknown key sits in, as `invalid`.
    */
   schema: S
   /** Env var that relocates the file. Default `<STEM>_MACHINE_CONFIG`. */

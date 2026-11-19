@@ -78,14 +78,15 @@ export function validateStandard<S extends StandardSchemaV1>(
   schema: S,
   value: unknown,
 ): StandardValidation<StandardSchemaV1.InferOutput<S>> {
-  const result = schema['~standard'].validate(value)
-  if (result instanceof Promise) {
+  const outcome = schema['~standard'].validate(value)
+  if (typeof (outcome as { then?: unknown }).then === 'function') {
     // Settle the promise so a rejection is not left unhandled.
-    result.catch(() => undefined)
+    Promise.resolve(outcome).catch(() => undefined)
     throw new TypeError(
       `a config schema must validate synchronously; ${schema['~standard'].vendor} returned a promise`,
     )
   }
+  const result = outcome as StandardSchemaV1.Result<unknown>
   if (result.issues === undefined) {
     return { ok: true, value: result.value as StandardSchemaV1.InferOutput<S> }
   }
@@ -98,12 +99,13 @@ export function validateStandard<S extends StandardSchemaV1>(
   }
 }
 
-/** Whether `schema` is a zod 4 schema, the only kind whose shape the library can read. */
+/** Whether `schema` is a zod 4 schema (it has `_zod`), the only kind whose shape the library can read. */
 export function isZodSchema(schema: unknown): boolean {
   return (
     typeof schema === 'object' &&
     schema !== null &&
+    '_zod' in schema &&
     typeof (schema as { safeParse?: unknown }).safeParse === 'function' &&
-    (schema as StandardSchemaV1)['~standard']?.vendor === 'zod'
+    (schema as unknown as StandardSchemaV1)['~standard']?.vendor === 'zod'
   )
 }
