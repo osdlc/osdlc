@@ -259,7 +259,7 @@ describe('wrapperSession', () => {
   })
   test('commandArgv refuses an empty argv even with env', () => {
     expect(() => commandArgv({ argv: [], env: { A: '1' } }, 'linux')).toThrow(
-      /argv must not be empty/,
+      /empty argv/,
     )
   })
   test('envPrefixLine writes a plain K=V prefix, quoting values and words', () => {
