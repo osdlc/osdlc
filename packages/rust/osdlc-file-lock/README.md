@@ -130,9 +130,9 @@ claimed, taken over and released by the other. The differences:
   before returning. A release renames the lock to `<path>.release-<uuid>` for
   microseconds. A takeover creates `<path>.stale-<24 hex digits>` for
   microseconds. A process killed in between can leave any of them behind. A
-  marker whose lock is still there blocks the takeover of that lock until it is
-  `MARKER_STALE` (10 s) old, judged by the inode's ctime; then the next claimant
-  removes it.
+  marker is an empty file of its own. One whose lock is still there blocks the
+  takeover of that lock until its mtime is `MARKER_STALE` (10 s) old; then the
+  next claimant removes it.
 - **`update_lock` checks the token, then renames.** A takeover that lands
   between the two is overwritten.
 - **The age rule guesses.** A live holder whose work outlasts the stale age
