@@ -22,7 +22,9 @@
  * generators) run at every stop. A stop they cannot clear aborts the rebase,
  * and the PR is retried as a merge, which meets the same conflict once. Only
  * then is `repair` called, so an agent is never asked to fix twenty versions
- * of one conflict. The outcome records the change of strategy, so a reader
+ * of one conflict. With `on_rebase_conflict: repair` a repository that
+ * refuses merges repairs the stop instead, up to a cap, and never merges. The
+ * outcome records the change of strategy, so a reader
  * does not mistake the push for a rebase.
  *
  * The caller decides the order. A stack must be updated parent first, because
@@ -142,9 +144,12 @@ export interface UpdateSettings {
   lease?: BranchLease | undefined
   /**
    * What a rebase does when the fixed resolvers cannot clear a stop: `merge`
-   * (the default) retries the PR as a merge, and `fail` reports it.
+   * (the default) retries the PR as a merge, `fail` reports it, and `repair`
+   * calls `repair` at up to `maxRebaseStops` stops, then reports it.
    */
-  onRebaseConflict?: 'merge' | 'fail' | undefined
+  onRebaseConflict?: 'merge' | 'fail' | 'repair' | undefined
+  /** With `onRebaseConflict: 'repair'`, how many stops one rebase may repair. Absent means 3. */
+  maxRebaseStops?: number | undefined
   /** `pr_update.submodules`; see `submodules` in config.ts. Absent means `auto`. */
   submodules?: 'auto' | 'off' | undefined
 }
@@ -443,8 +448,13 @@ async function updateOneUnscoped(
   let strategy = target.strategy
   let rebased: PathPlan[] | null = null
   let strategyFallback: string | undefined
+  let rebaseRepaired: Repaired[] = []
   if (strategy === 'rebase') {
-    const attempt = rebaseThroughRungs(git, base, settings, runVerb, opts.worktree, {
+    const repairing = settings.onRebaseConflict === 'repair'
+    const attempt = await rebaseThroughRungs(git, base, settings, runVerb, opts.worktree, {
+      repair: repairing ? conflictRepair(settings, opts.apply) : null,
+      maxRepairs: settings.maxRebaseStops ?? 3,
+      target,
       // Each stop replays one commit. More stops than commits means git is
       // not making progress, and the loop would never end.
       maxStops: counts.ok ? counts.value.ahead + 1 : 1000,
@@ -455,8 +465,10 @@ async function updateOneUnscoped(
         ? { status: 'failed', reason: attempt.reason, unrecorded: true }
         : { status: 'failed', reason: attempt.reason }
     }
-    if (attempt.kind === 'done') rebased = attempt.resolved
-    else if ((settings.onRebaseConflict ?? 'merge') === 'fail') {
+    if (attempt.kind === 'done') {
+      rebased = attempt.resolved
+      rebaseRepaired = attempt.repaired
+    } else if ((settings.onRebaseConflict ?? 'merge') !== 'merge') {
       return { status: 'conflict', needsHuman: attempt.needsHuman }
     } else {
       strategy = 'merge'
@@ -473,6 +485,7 @@ async function updateOneUnscoped(
     opts,
     rebased,
     submodulesBefore,
+    rebaseRepaired,
   )
   return strategyFallback === undefined || outcome.status === 'up-to-date'
     ? outcome
@@ -480,7 +493,7 @@ async function updateOneUnscoped(
 }
 
 type RebaseAttempt =
-  | { kind: 'done'; resolved: PathPlan[] }
+  | { kind: 'done'; resolved: PathPlan[]; repaired: Repaired[] }
   | { kind: 'stuck'; needsHuman: { path: string; why: string }[] }
   | { kind: 'failed'; reason: string; unrecorded?: true }
 
@@ -491,16 +504,23 @@ type RebaseAttempt =
  * only the first stop would leave exactly those files failing at the second.
  * A stop the resolvers cannot clear aborts the rebase, leaves the worktree
  * clean, and returns `stuck`, for the caller to merge or report. `repair` is
- * not called here on purpose (see the module comment).
+ * not called here unless `limits.repair` is set (`on_rebase_conflict: repair`),
+ * and then for at most `limits.maxRepairs` stops (see the module comment).
  */
-function rebaseThroughRungs(
+async function rebaseThroughRungs(
   git: Git,
   base: string,
   settings: UpdateSettings,
   runVerb: RunVerb,
   worktree: string,
-  limits: { maxStops: number; upstream?: string | undefined },
-): RebaseAttempt {
+  limits: {
+    maxStops: number
+    upstream?: string | undefined
+    repair: Repair | null
+    maxRepairs: number
+    target: UpdateTarget
+  },
+): Promise<RebaseAttempt> {
   // However this ends, leave a clean tree on the branch, because the fallback
   // merge runs in this same worktree.
   const reset = (): void => {
@@ -514,6 +534,7 @@ function rebaseThroughRungs(
   }
 
   const resolved: PathPlan[] = []
+  const repaired: Repaired[] = []
   let outcome
   try {
     outcome = git.rebase(base, {
@@ -534,12 +555,33 @@ function rebaseThroughRungs(
         ? []
         : planPaths(paths, settings.resolvers, settings.lockfileInstall, settings.generators)
     const needsHuman = withGitlinkCommits(git, unclaimed(plans), true)
-    if (needsHuman.length > 0) {
+    const stuck = (humans: { path: string; why: string }[]): RebaseAttempt => {
       reset()
-      return { kind: 'stuck', needsHuman }
+      return { kind: 'stuck', needsHuman: humans }
+    }
+    if (needsHuman.length > 0 && (limits.repair === null || repaired.length >= limits.maxRepairs)) {
+      return stuck(needsHuman)
     }
     const failure = rebuild(git, plans, settings, runVerb, worktree)
     if (failure !== null) return failed(failure)
+    if (needsHuman.length > 0 && limits.repair !== null) {
+      const sha = git.resolveRef('REBASE_HEAD')
+      const why = needsHuman.map((c) => `${c.path} (${c.why})`).join(', ')
+      const res = await tryRepair(git, limits.repair, {
+        kind: 'conflict',
+        pr: limits.target.number,
+        base: limits.target.base,
+        head: limits.target.head,
+        worktree,
+        paths: needsHuman.map((c) => c.path),
+        reason: `unclaimed conflicts: ${why}`,
+        ...(sha === null
+          ? {}
+          : { replaying: { sha, subject: git.logSubject(sha) ?? '', onto: base } }),
+      })
+      if (!res.ok) return stuck(needsHuman.map((c) => ({ path: c.path, why: res.reason })))
+      repaired.push({ kind: 'conflict', note: res.note })
+    }
     const stale = syncSubmodulesToIndex(git, worktree, settings)
     if (stale !== null) return failed(stale, true)
     try {
@@ -554,7 +596,14 @@ function rebaseThroughRungs(
     }
     resolved.push(...plans)
   }
-  return { kind: 'done', resolved }
+  return { kind: 'done', resolved, repaired }
+}
+
+/** The repair for a rebase stop, or null: a rehearsal, no repair, or `conflict` not in `repairOn`. */
+function conflictRepair(settings: UpdateSettings, apply: boolean): Repair | null {
+  return apply && settings.repair !== undefined && (settings.repairOn ?? []).includes('conflict')
+    ? settings.repair
+    : null
 }
 
 /** Title of the merge commit, clean or repaired: names the PR's branches. */
@@ -574,6 +623,7 @@ async function integrateAndPush(
   opts: { apply: boolean; worktree: string },
   rebased: PathPlan[] | null,
   submodulesBefore: string | null,
+  rebaseRepaired: Repaired[] = [],
 ): Promise<UpdateOutcome> {
   const base = baseRef(target, settings.remote)
   const head = `${settings.remote}/${target.head}`
@@ -599,7 +649,7 @@ async function integrateAndPush(
     opts.apply && settings.repair !== undefined && (settings.repairOn ?? []).includes(kind)
       ? settings.repair
       : null
-  const repaired: Repaired[] = []
+  const repaired: Repaired[] = [...rebaseRepaired]
   const fail = (reason: string, unrecorded = false): UpdateOutcome => {
     git.try.mergeAbort()
     // A rebuild or repair can leave edits, intent-to-add entries and untracked

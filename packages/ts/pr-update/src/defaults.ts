@@ -50,6 +50,13 @@ export function commandRepair(command: string, timeoutSeconds: number | null = n
         PR_UPDATE_WORKTREE: req.worktree,
         PR_UPDATE_PATHS: req.paths.join('\n'),
         PR_UPDATE_REASON: req.reason,
+        ...(req.replaying === undefined
+          ? {}
+          : {
+              PR_UPDATE_COMMIT: req.replaying.sha,
+              PR_UPDATE_COMMIT_SUBJECT: req.replaying.subject,
+              PR_UPDATE_ONTO: req.replaying.onto,
+            }),
       },
     })
     const out = (res.stdout.trim() || stderrOrError(res)).split('\n')
