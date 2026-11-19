@@ -80,13 +80,11 @@ export function measureRows(sweep: HostSweep, ids: readonly string[]): Map<strin
   return sizes
 }
 
-const KEPT = new Set(['keep'])
-
 /** Every row the sweep found that is worth a person's attention and was not cleaned. */
 export function leftForReview(sweep: HostSweep, cleaned: ReadonlySet<string>): LeftRow[] {
   const rows: (Row | HostRow)[] = [...sweep.repo.repos.flatMap((r) => r.rows), ...sweep.rows]
   return rows
-    .filter((r) => !KEPT.has(r.verdict) && !cleaned.has(r.id))
+    .filter((r) => r.verdict !== 'keep' && !cleaned.has(r.id))
     .map((r) => ({ id: r.id, verdict: r.verdict, why: r.why, risks: [...r.risks] }))
 }
 
@@ -103,16 +101,14 @@ export function cleanedIds(receipt: HostReceipt): string[] {
 }
 
 export function failedIds(receipt: HostReceipt): { id: string; reason: string }[] {
-  return [
-    ...receipt.repo.steps
-      .filter((s) => s.result === 'failed')
-      .map((s) => ({ id: s.row, reason: s.error ?? 'failed' })),
-    ...receipt.host.steps
-      .filter((s) => s.result === 'failed')
-      .map((s) => ({ id: s.row, reason: s.error ?? 'failed' })),
-    ...receipt.repo.dropped.map((d) => ({ id: d.row, reason: `${d.reason}: ${d.detail}` })),
-    ...receipt.host.dropped.map((d) => ({ id: d.row, reason: `${d.reason}: ${d.detail}` })),
-  ]
+  const failed = [...receipt.repo.steps, ...receipt.host.steps]
+    .filter((s) => s.result === 'failed')
+    .map((s) => ({ id: s.row, reason: s.error ?? 'failed' }))
+  const dropped = [...receipt.repo.dropped, ...receipt.host.dropped].map((d) => ({
+    id: d.row,
+    reason: `${d.reason}: ${d.detail}`,
+  }))
+  return [...failed, ...dropped]
 }
 
 const sizeText = (bytes: number): string => {
