@@ -423,7 +423,16 @@ describe('claude-code adapter: a real process', () => {
     const opts = { cwd: dir, adapters: [adapter] }
     const swept = hostSweep([fx.root], opts)
     const row = sessionRows(swept).find((r) => r.evidence.pid === pid)
-    expect(row).toBeDefined()
+    expect(
+      row,
+      JSON.stringify({
+        pid,
+        adapters: swept.adapters,
+        ps: spawnSync('ps', ['-axo', 'pid=,lstart=,command='], { encoding: 'utf8' })
+          .stdout.split('\n')
+          .filter((l) => l.includes(dir)),
+      }),
+    ).toBeDefined()
     const plan = hostPlan(swept)
     const preview = hostCheck(plan, { pick: [row!.id], allow: [CLOSE_SESSION] }, opts)
     expect(preview.steps.map((s) => s.row)).toEqual([row!.id])
