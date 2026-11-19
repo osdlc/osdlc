@@ -25,7 +25,7 @@
     "access": "public"
   },
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": ["./dist/runner/serve-static.js"],
   "engines": {
     "node": ">=22"
   },
