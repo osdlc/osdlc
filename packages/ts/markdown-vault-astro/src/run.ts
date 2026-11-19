@@ -34,9 +34,9 @@ export interface RunStats {
   added: number
   /** Output files whose text differs from the destination's copy. */
   changed: number
-  /** `--clean`: destination files with no counterpart in the new build; deleted by a real run (only with `yes`). */
+  /** With `clean`: destination files with no counterpart in the build, as paths under the destination dir. A dry run only reports them; a real run deletes them (needs `yes`). */
   removed: string[]
-  /** Without `--clean`: destination files with no counterpart in the new build; left in place. */
+  /** Without `clean`: destination files with no counterpart in the build, as paths under the destination dir; left in place. */
   orphans: string[]
 }
 
@@ -64,6 +64,7 @@ export interface RunOptions {
 
 /** Suffix of the sibling directory a `--clean` build is written to before it replaces the destination. */
 const TMP_SUFFIX = '.markdown-vault-astro-tmp'
+/** Suffix of the sibling dir {@link swapIn} parks the previous destination in until the new build is in place. */
 const OLD_SUFFIX = '.markdown-vault-astro-old'
 
 /** Every file under `dir` (dot files included, links not followed), as `/`-separated relative paths. */
@@ -78,22 +79,33 @@ function listAllFiles(dir: string, prefix = ''): string[] {
   return out
 }
 
-/** A run killed between the two renames of {@link swapIn} leaves the previous output only in `<dst>.markdown-vault-astro-old`; put it back. */
+/** Restore `dst` from its {@link OLD_SUFFIX} sibling when a run was killed between the two renames of {@link swapIn}. */
 function recoverInterruptedSwap(dst: string): void {
   const old = `${dst}${OLD_SUFFIX}`
   if (existsSync(old) && !existsSync(dst)) renameSync(old, dst)
 }
 
-/** Put the built `tmp` dir in place of `dst`; `dst` is restored if the move fails, deleted only after it succeeds. */
+/** Put the built `tmp` dir in place of `dst`. The previous `dst` is restored if the move fails and deleted only after it succeeds. */
 function swapIn(dst: string, tmp: string): void {
   const old = `${dst}${OLD_SUFFIX}`
-  rmSync(old, { recursive: true, force: true })
+  if (existsSync(old)) {
+    throw new Error(`--clean: ${old} exists from an earlier run; restore or delete it`)
+  }
   const hadDst = existsSync(dst)
   if (hadDst) renameSync(dst, old)
   try {
     renameSync(tmp, dst)
   } catch (err) {
-    if (hadDst) renameSync(old, dst)
+    if (hadDst) {
+      try {
+        renameSync(old, dst)
+      } catch (rollbackErr) {
+        throw new AggregateError(
+          [err, rollbackErr],
+          `--clean: the swap failed and ${old} could not be put back; the next run restores it`,
+        )
+      }
+    }
     throw err
   }
   rmSync(old, { recursive: true, force: true })
@@ -219,6 +231,7 @@ function run(config: MarkdownVaultAstroConfig, direction: Direction, opts: RunOp
     for (const col of config.collections) {
       const [srcDir, dstDir] = collectionDirs(config, direction, col)
 
+      if (!opts.dryRun) recoverInterruptedSwap(dstDir)
       const files = listMarkdown(srcDir)
       if (!files.length) {
         log(`  · ${col.name}: no files in ${srcDir}`)
@@ -229,10 +242,8 @@ function run(config: MarkdownVaultAstroConfig, direction: Direction, opts: RunOp
         continue
       }
 
-      // A --clean build goes to a sibling dir, so a run that fails partway leaves dstDir as it was.
       const outDir = swapClean ? `${dstDir}${TMP_SUFFIX}` : dstDir
       if (swapClean) {
-        recoverInterruptedSwap(dstDir)
         rmSync(outDir, { recursive: true, force: true })
         ensureDir(outDir)
         staged.push({ dst: dstDir, tmp: outDir })
