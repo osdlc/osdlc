@@ -1,6 +1,11 @@
 [package]
 name = "osdlc-file-lock"
 version = "0.4.0"
+# Held back from crates.io for now: a first release needs CARGO_REGISTRY_TOKEN,
+# so it cannot share a release-plz run with crates that publish through
+# trusted publishing (packages/README.md, crates.io rules 3, 4 and 7). Remove
+# this line, and its entry in release-plz.toml, in a pull request of its own.
+publish = false
 edition.workspace = true
 rust-version.workspace = true
 description = "Cross-process exclusive file locks that interoperate with the npm package @osdlc/file-lock: a JSON lock hard-linked into place, race-safe takeover of a stale lock through a hash-named marker, and token-fenced release."

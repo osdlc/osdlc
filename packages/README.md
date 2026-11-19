@@ -169,9 +169,9 @@ Developed here, in this repository:
 - `packages/rust/markdown-relink` (`markdown-relink` on crates.io)
 - `packages/rust/markdown-vault-fs` (`markdown-vault-fs` on crates.io, the
   vault layer over `vfs-walk`)
-- `packages/rust/osdlc-file-lock` (`osdlc-file-lock` on crates.io, the Rust
-  implementation of `@osdlc/file-lock`, so a Rust process and a Node.js process
-  can hold one lock file in turn)
+- `packages/rust/osdlc-file-lock` (`osdlc-file-lock`, the Rust implementation
+  of `@osdlc/file-lock`, so a Rust process and a Node.js process can hold one
+  lock file in turn; not on crates.io yet)
 - `packages/rust/path-guard` (`path-guard` on crates.io)
 - `packages/rust/slug-collate` (`slug-collate` on crates.io)
 - `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)
@@ -443,6 +443,7 @@ Rust crates are released by `.github/workflows/release-plz.yml` with
    Held now (each crate's `Cargo.toml` names what it waits for):
    - `gfm-pipe-table`, until its first release can have a release-plz run of
      its own: it needs `CARGO_REGISTRY_TOKEN` (rules 3, 4 and 7).
+   - `osdlc-file-lock`, for the same reason.
 
 #### Versions and breaking changes
 
