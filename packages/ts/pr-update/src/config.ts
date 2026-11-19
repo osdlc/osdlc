@@ -43,6 +43,12 @@ export const prUpdateConfigSchema = z
       .describe(
         "How an out-of-date branch is brought up to date. `rebase` (default) keeps each PR's history linear and its diff exactly its own commits, which matters most in a stack — a merge leaves every descendant carrying a merge commit per ancestor update. `merge` never rewrites history and so never needs a force-push. See `guards` for the cases that fall back to merge automatically.",
       ),
+    restack: z
+      .boolean()
+      .default(false)
+      .describe(
+        'Update a whole stack in one run, as `update --restack` does: a PR blocked only because its parent is behind is updated right after that parent, onto the head the parent just got. `--restack` and `--no-restack` override it for one run.',
+      ),
     overrides: z
       .array(
         z
@@ -264,7 +270,7 @@ export const prUpdateStandaloneSchema = prUpdateConfigSchema.extend({
 })
 
 const PR_UPDATE_DESCRIPTION =
-  'Configures the `survey` and `update` verbs: which PRs are in scope (`author`, `include_drafts`), how an out-of-date branch is brought up to date (`strategy`, `overrides`), the cases that automatically avoid a history rewrite (`guards`), and how conflicts are resolved without a human (`lockfile_install`, `resolvers`, `verify`, `repair`), and when a failed update is retried (`max_failed_attempts`; a standalone run also reads `attempts` and `lease`). Every key has a default and the whole block is optional, so both verbs work with no config file at all.'
+  'Configures the `survey` and `update` verbs: which PRs are in scope (`author`, `include_drafts`), how an out-of-date branch is brought up to date (`strategy`, `overrides`, `restack`), the cases that automatically avoid a history rewrite (`guards`), and how conflicts are resolved without a human (`lockfile_install`, `resolvers`, `verify`, `repair`), and when a failed update is retried (`max_failed_attempts`; a standalone run also reads `attempts` and `lease`). Every key has a default and the whole block is optional, so both verbs work with no config file at all.'
 
 const PR_UPDATE_META: ConfigKeyMeta = {
   category: 'automation',

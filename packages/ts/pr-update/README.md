@@ -146,7 +146,7 @@ guard checks for this before every preference, and no override turns it off.
 
 ## A whole stack in one run
 
-Without `--restack`, a stack of N levels takes N runs: each run updates the
+Without `--restack` or `pr_update.restack`, a stack of N levels takes N runs: each run updates the
 lowest PR that is behind and leaves the PRs above it `blocked`. With
 `--restack`, one run updates the whole stack, parent first:
 
@@ -154,6 +154,9 @@ lowest PR that is behind and leaves the PRs above it `blocked`. With
 pr-update update --restack --apply              # every stack in the repository
 pr-update update --restack --branch --apply     # the stack under the branch you are on
 ```
+
+A project that always restacks sets `pr_update.restack: true` instead of passing the
+flag. `--restack` and `--no-restack` override it for one run.
 
 - A blocked PR whose parent is updated in the run is updated right after it,
   onto the head the parent just got. A rebase replays only the PR's own
