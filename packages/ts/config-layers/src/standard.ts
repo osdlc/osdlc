@@ -12,7 +12,7 @@
 import type { z } from 'zod'
 
 /**
- * The Standard Schema V1 interface (spec version 1).
+ * The Standard Schema interface, spec version 1.
  *
  * @experimental
  */
@@ -81,8 +81,8 @@ export function validateStandard<S extends StandardSchemaV1>(
   value: unknown,
 ): StandardValidation<StandardSchemaV1.InferOutput<S>> {
   if (isZodSchema(schema)) {
-    // Zod's own sync parse keeps an error thrown inside the schema as it is; its
-    // `~standard.validate` would retry it asynchronously.
+    // zod's `~standard.validate` retries asynchronously on any error thrown inside
+    // the schema, which would reach the promise check below; its sync parse rethrows it.
     const r = schema.safeParse(value)
     if (r.success) return { ok: true, value: r.data as StandardSchemaV1.InferOutput<S> }
     return {
@@ -111,7 +111,7 @@ export function validateStandard<S extends StandardSchemaV1>(
   }
 }
 
-/** Whether `schema` is a zod 4 schema (it has `_zod`, `safeParse` and the zod vendor tag), the only kind whose shape the library can read. */
+/** Whether `schema` is a zod 4 schema, the only kind whose shape the library can read. */
 export function isZodSchema(schema: unknown): schema is z.ZodTypeAny {
   return (
     typeof schema === 'object' &&

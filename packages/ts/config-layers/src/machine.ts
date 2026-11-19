@@ -7,8 +7,8 @@
  * lives in the tool's standalone config home (`<config>/<tool>/config.yaml`).
  * It is never committed and holds only machine-specific keys.
  *
- * A Standard Schema validator (zod 4, valibot, arktype) defines the file, and every key has a default. The loader
- * never throws. `loadWithIssues()` reports what it dropped. The result is
+ * A Standard Schema validator defines the file, and every key has a default.
+ * The loader never throws. `loadWithIssues()` reports what it dropped. The result is
  * memoised per path. The path is computed on each call, so a test or a one-off
  * run can move the file with an environment variable and not write into the
  * developer's real config home. The YAML is read by the same rules as a
@@ -44,9 +44,9 @@ export interface MachineConfigFileOptions<S extends StandardSchemaV1> {
   tool: string
   /**
    * Every key with a default; the loader parses `{}` to get the defaults.
-   * Any Standard Schema validator. Unknown keys are reported only for a zod
-   * schema whose objects are all `.strict()`; another validator drops the
-   * whole top-level section an unknown key sits in, as `invalid`.
+   * Unknown keys are reported only for a zod schema whose objects are all
+   * `.strict()`; another validator drops the whole top-level section an
+   * unknown key sits in, as `invalid`.
    */
   schema: S
   /** Env var that relocates the file. Default `<STEM>_MACHINE_CONFIG`. */
@@ -394,7 +394,7 @@ function readOrNull(file: string): Buffer | null {
   }
 }
 
-/** The schema's defaults: what it makes of `{}`. Throws when `{}` is not valid, as it must be. */
+/** The schema's defaults: what it makes of `{}`. Throws when the schema rejects `{}`, which a machine schema must accept. */
 function parseDefaults<S extends StandardSchemaV1>(schema: S): StandardSchemaV1.InferOutput<S> {
   const result = validateStandard(schema, {})
   if (result.ok) return result.value
@@ -420,8 +420,8 @@ function salvage<S extends StandardSchemaV1>(
     ? stripUnknownKeys(schema, raw)
     : { value: raw, unknown: [] as string[][] }
   const { unknown } = stripped
-  // The deletes below must not reach the caller's object, which is what
-  // stripUnknownKeys hands back when it found no unknown key.
+  // The deletes below must not reach the caller's object, which `stripped.value`
+  // still is when nothing was stripped.
   const draft = stripped.value === raw ? { ...raw } : stripped.value
   const issues: MachineConfigIssue[] = unknown.map((path) => ({
     path,
