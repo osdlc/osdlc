@@ -84,7 +84,7 @@ export interface ScheduleEnv {
   home: string
   uid: number
   launchctl: CommandRunner
-  program: string[]
+  program: readonly string[]
   logFile: string
   path?: string | undefined
   /** Directory overrides (`HOST_CLEANER_*`) the agent must run with, so it reads the same config and state. */

@@ -757,9 +757,12 @@ function runSchedule(argv: readonly string[], ctx: CliContext, deps: MainDeps): 
   try {
     if (action === 'install') {
       const hours = parseEvery(parsed.values.every)
-      if (deps.program === undefined)
-        env.program = [process.execPath, realpathSync(process.argv[1] ?? ''), '--auto']
-      const file = installSchedule(env, hours)
+      const program = deps.program ?? [
+        process.execPath,
+        realpathSync(process.argv[1] ?? ''),
+        '--auto',
+      ]
+      const file = installSchedule({ ...env, program }, hours)
       ctx.io.stdout(
         `installed ${stripControls(file)}: runs \`${NAME} --auto\` every ${hours} hour${hours === 1 ? '' : 's'}\n`,
       )
