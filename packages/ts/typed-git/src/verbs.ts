@@ -2631,14 +2631,18 @@ export function resetHard(rev: string): GitVerb<void> {
 export interface CleanOptions {
   /** `-d` — also delete untracked directories. */
   directories?: boolean | undefined
+  /** A second `-f`, so a nested repository (a populated submodule) is deleted too. */
+  nested?: boolean | undefined
 }
 
 /**
  * `git clean -f`: delete untracked files, and untracked directories with
- * `{directories: true}`. Ignored files are kept.
+ * `{directories: true}`; `{nested: true}` also deletes untracked nested repositories.
+ * Ignored files are kept.
  */
 export function clean(opts: CleanOptions = {}): GitVerb<void> {
-  return { argv: ['clean', opts.directories ? '-fd' : '-f'], absent: NONE, parse: nothing }
+  const flags = `${opts.nested ? '-ff' : '-f'}${opts.directories ? 'd' : ''}`
+  return { argv: ['clean', flags], absent: NONE, parse: nothing }
 }
 
 /** Delete a local branch (`-d`, or `-D` with `{force: true}`). */
@@ -2812,8 +2816,8 @@ export function worktreePrune(): GitVerb<void> {
 }
 
 /**
- * `git submodule update --init --recursive`: check out every submodule, nested ones included,
- * at the commit the checked-out tree pins, cloning those not yet initialised. A repository
+ * `git submodule update --init --recursive --checkout`, with the `file` and `ext` transports
+ * refused: check out every submodule, nested ones included, at the commit the checked-out tree pins, cloning those not yet initialised. A repository
  * with no submodules is exit 0 and no work.
  *
  * The URLs come from the tree's own `.gitmodules`, which a pull request's author controls, so

@@ -1314,6 +1314,56 @@ describe('submodules in the update worktree', () => {
     }
   })
 
+  test("a PR's submodule URL is not left in the repository config", async () => {
+    makeBehindPr(moveMain)
+    const urls = (): string => {
+      try {
+        return fx.worker.git.rawChecked(['config', '--get-regexp', '^submodule\\..*\\.url$']).stdout
+      } catch {
+        return ''
+      }
+    }
+    // A PR whose `.gitmodules` names another URL than the one the repository has.
+    fx.worker.git.rawChecked(['config', 'submodule.deps/sub.url', '/nowhere/else'])
+    const out = await update({}, recorder())
+    expect(out.status).toBe('updated')
+    expect(urls()).toBe('submodule.deps/sub.url /nowhere/else\n')
+  })
+
+  test("the previous PR's submodule is gone before the next PR's resolution is staged", async () => {
+    const { git } = fx.worker
+    git.checkout('main', { branch: 'sub-pr' })
+    pin(s1, true)
+    git.push('origin', 'sub-pr')
+    git.checkout('main', { branch: 'plain' })
+    editOut('plain')
+    git.push('origin', 'plain')
+    git.checkout('main')
+    editOut('main')
+    git.push('origin', 'main')
+    git.fetch('origin')
+
+    git.worktreeAdd(wtRoot, { detach: true, startPoint: 'origin/main' })
+    try {
+      const wt = git.at(wtRoot)
+      const cfg = settings({ resolvers: [{ paths: ['build/**'], run: 'regen' }] })
+      const run: RunVerb = (verb, cwd) => {
+        if (verb === 'regen') writeFileSync(join(cwd, 'build', 'out.txt'), 'regenerated\n')
+        return ok
+      }
+      const o = { apply: false, worktree: wtRoot }
+      const first = await updateOne(wt, target({ head: 'sub-pr' }), cfg, run, o)
+      expect(first.status).toBe('updated')
+      const second = await updateOne(wt, target({ head: 'plain', number: 2 }), cfg, run, o)
+      expect(second.status).toBe('updated')
+      expect(wt.rawChecked(['ls-tree', 'HEAD', 'deps']).stdout).toBe('')
+    } finally {
+      git.try.worktreeRemove(wtRoot, { force: true })
+      git.try.worktreePrune()
+      git.try.deleteBranch(scratchBranch(wtRoot), { force: true })
+    }
+  })
+
   test('both sides moving the pointer names the two commits', async () => {
     makeBehindPr(() => pin(s3))
     // The branch moves it too, to s2.

@@ -142,11 +142,7 @@ export interface UpdateSettings {
    * (the default) retries the PR as a merge, and `fail` reports it.
    */
   onRebaseConflict?: 'merge' | 'fail' | undefined
-  /**
-   * `auto` (the default when absent) runs `git submodule update --init --recursive` in the
-   * worktree when it has a `.gitmodules`, after each PR's checkout and again when the update
-   * changed a gitlink or `.gitmodules`; `off` leaves submodules alone.
-   */
+  /** `pr_update.submodules`; see `submodules` in config.ts. Absent means `auto`. */
   submodules?: 'auto' | 'off' | undefined
 }
 
@@ -272,7 +268,7 @@ function conflictedPaths(git: Git): string[] {
 }
 
 /** The reason prefix of a failure to check out the worktree's submodules. */
-export const SUBMODULE_FAILURE = 'submodule setup failed'
+const SUBMODULE_FAILURE = 'submodule setup failed'
 
 /**
  * What the worktree's submodules are pinned to: `.gitmodules` and every gitlink, as one string,
@@ -286,7 +282,7 @@ function submoduleState(git: Git, worktree: string, settings: UpdateSettings): s
   return `${readFileSync(file, 'utf8')}\n${links.join('\n')}`
 }
 
-/** Check out the worktree's submodules; the failure reason, or null. */
+/** Sync submodule URLs and check out the worktree's submodules. @returns the failure reason, or null. */
 function populateSubmodules(git: Git): string | null {
   try {
     // Without `sync`, `update --init` keeps the URL a submodule was first cloned from and ignores a changed `.gitmodules`.
@@ -299,10 +295,9 @@ function populateSubmodules(git: Git): string | null {
 }
 
 /**
- * Move the submodule checkouts to what the index pins, before an `add .` that would otherwise
- * record each checkout's HEAD: a pointer the base moved cleanly while some other file
- * conflicted would be restaged to the commit the PR had checked out. A pointer still
- * conflicted is left alone, since git skips unmerged submodules. The failure reason, or null.
+ * Check out each submodule at the commit the index pins, so the `add .` that follows does not
+ * restage a pointer to the PR's checkout. Git skips unmerged submodules, so a pointer that is
+ * still conflicted is left alone. @returns the failure reason, or null.
  */
 function syncSubmodulesToIndex(
   git: Git,
@@ -335,6 +330,60 @@ function withGitlinkCommits<T extends { path: string; why: string }>(
   })
 }
 
+/** The `submodule.*` keys `submodule sync` and `update --init` write to the repository's config. */
+const SUBMODULE_CONFIG = '^submodule\\..*\\.(url|active)$'
+
+function submoduleConfig(git: Git): Map<string, string> {
+  const keys = new Map<string, string>()
+  let stdout: string
+  try {
+    stdout = git.rawChecked(['config', '--get-regexp', SUBMODULE_CONFIG]).stdout
+  } catch {
+    return keys // exit 1: no such key
+  }
+  for (const line of stdout.split('\n')) {
+    const at = line.indexOf(' ')
+    if (at > 0) keys.set(line.slice(0, at), line.slice(at + 1))
+  }
+  return keys
+}
+
+function restore(git: Git, argv: string[]): void {
+  try {
+    git.rawChecked(argv)
+  } catch {
+    // Best effort: the temporary worktree is going away either way.
+  }
+}
+
+/**
+ * `updateOneUnscoped`, then put the repository's `submodule.*` config back. A linked worktree
+ * shares the repository's config, so the URLs of a PR's `.gitmodules` that the submodule setup
+ * wrote there would outlive the temporary worktree and be used by the user's own checkout.
+ */
+export async function updateOne(
+  git: Git,
+  target: UpdateTarget,
+  settings: UpdateSettings,
+  runVerb: RunVerb,
+  opts: { apply: boolean; worktree: string },
+): Promise<UpdateOutcome> {
+  if ((settings.submodules ?? 'auto') === 'off')
+    return updateOneUnscoped(git, target, settings, runVerb, opts)
+  const before = submoduleConfig(git)
+  try {
+    return await updateOneUnscoped(git, target, settings, runVerb, opts)
+  } finally {
+    const after = submoduleConfig(git)
+    for (const key of after.keys()) {
+      if (!before.has(key)) restore(git, ['config', '--unset-all', key])
+    }
+    for (const [key, value] of before) {
+      if (after.get(key) !== value) restore(git, ['config', key, value])
+    }
+  }
+}
+
 /**
  * Update one PR in an already-prepared worktree.
  *
@@ -343,7 +392,7 @@ function withGitlinkCommits<T extends { path: string; why: string }>(
  * caught failure always aborts the merge or rebase in progress, because a
  * worktree left in the middle of one would break every PR after it.
  */
-export async function updateOne(
+async function updateOneUnscoped(
   git: Git,
   target: UpdateTarget,
   settings: UpdateSettings,
@@ -364,7 +413,7 @@ export async function updateOne(
   }
   // A forced checkout keeps untracked files. Whatever the previous PR left (a
   // verify verb's report, say) would otherwise be committed by this PR's `add .`.
-  git.try.clean({ directories: true })
+  git.try.clean({ directories: true, nested: true })
 
   // The push lease pins `target.headOid`, the code host's view of the head. A
   // tracking ref behind it (after a skipped or failed fetch) would build on an
@@ -399,8 +448,7 @@ export async function updateOne(
       upstream: target.onto?.upstream ?? undefined,
     })
     if (attempt.kind === 'failed') {
-      // A submodule failure from a rebase stop says nothing about the PR either.
-      return attempt.reason.startsWith(SUBMODULE_FAILURE)
+      return attempt.unrecorded === true
         ? { status: 'failed', reason: attempt.reason, unrecorded: true }
         : { status: 'failed', reason: attempt.reason }
     }
@@ -431,7 +479,7 @@ export async function updateOne(
 type RebaseAttempt =
   | { kind: 'done'; resolved: PathPlan[] }
   | { kind: 'stuck'; needsHuman: { path: string; why: string }[] }
-  | { kind: 'failed'; reason: string }
+  | { kind: 'failed'; reason: string; unrecorded?: true }
 
 /**
  * Replay the branch onto `base`, running the fixed resolvers at every stop.
@@ -455,11 +503,11 @@ function rebaseThroughRungs(
   const reset = (): void => {
     git.try.rebaseAbort()
     git.try.resetHard('HEAD')
-    git.clean({ directories: true })
+    git.clean({ directories: true, nested: true })
   }
-  const failed = (reason: string): RebaseAttempt => {
+  const failed = (reason: string, unrecorded = false): RebaseAttempt => {
     reset()
-    return { kind: 'failed', reason }
+    return unrecorded ? { kind: 'failed', reason, unrecorded } : { kind: 'failed', reason }
   }
 
   const resolved: PathPlan[] = []
@@ -490,7 +538,7 @@ function rebaseThroughRungs(
     const failure = rebuild(git, plans, settings, runVerb, worktree)
     if (failure !== null) return failed(failure)
     const stale = syncSubmodulesToIndex(git, worktree, settings)
-    if (stale !== null) return failed(stale)
+    if (stale !== null) return failed(stale, true)
     try {
       // `.`, not only the conflicted paths. A generator can rewrite files
       // beyond the ones that conflicted, and leaving those unstaged would
@@ -554,7 +602,7 @@ async function integrateAndPush(
     // A rebuild or repair can leave edits, intent-to-add entries and untracked
     // files, which the next PR's `add .` would otherwise pick up.
     git.try.resetHard('HEAD')
-    git.clean({ directories: true })
+    git.clean({ directories: true, nested: true })
     return unrecorded ? { status: 'failed', reason, unrecorded } : { status: 'failed', reason }
   }
   const request = (kind: RepairKind, paths: readonly string[], reason: string): RepairRequest => ({
@@ -620,7 +668,6 @@ async function integrateAndPush(
     resolved.push(...plans.filter((p) => p.kind !== 'unclaimed'))
   }
 
-  // The integration can move a gitlink or change `.gitmodules`; the checkout must follow.
   const submodulesAfter = submoduleState(git, opts.worktree, settings)
   if (submodulesAfter !== null && submodulesAfter !== submodulesBefore) {
     const reason = populateSubmodules(git)
