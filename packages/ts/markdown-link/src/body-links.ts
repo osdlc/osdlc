@@ -944,7 +944,7 @@ class UrlRun {
 class UrlTables {
   /** For each index, the first whitespace at or after it. */
   readonly space: Int32Array
-  /** For each index, the unescaped `(` before it minus the unescaped `)` before it. */
+  /** For each index, the number of unescaped `(` before it minus the number of unescaped `)`. */
   readonly depth: Int32Array
   /**
    * For each index, the first unescaped `)` at or after it that closes a `(`

@@ -25,9 +25,8 @@ export interface Link {
   end: number
 }
 
-// Markdown links are read here, not by @osdlc/markdown-link: its links carry no link text and no
-// `!` of `![…](…)`, and keep a destination's escapes and `#fragment` as written, where a Link
-// needs all four read.
+// Read here, not with @osdlc/markdown-link: a Link needs the link text, the `!` of an embed, and
+// the destination unescaped and split at `#`, and that scanner's links give none of these.
 // [text](dest "title"): dest is <...> or a run with balanced parentheses, as in CommonMark.
 const MARKDOWN =
   /(!?)\[((?:\\.|[^[\]\\\n])*)\]\(\s*(<[^<>\n]*>|(?:\\.|[^\s()\\]|\((?:\\.|[^\s()\\])*\))*)(?:\s+(?:"[^"\n]*"|'[^'\n]*'))?\s*\)/g
