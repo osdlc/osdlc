@@ -538,19 +538,13 @@ function recheck(
     const archived = (risk: Risk): boolean =>
       coverage?.covers.includes(risk) === true && allowed(approval.allow, s, 'discard-archived')
     const grants = (risk: Risk): boolean => allowed(approval.allow, s, risk) || archived(risk)
-    const needs = [
-      ...new Set(
-        row.risks.map((risk): Risk =>
-          coverage?.covers.includes(risk) ? 'discard-archived' : risk,
-        ),
-      ),
-    ]
+    // A risk the archive covers is asked for as `discard-archived`.
+    const asked = (risk: Risk): Risk =>
+      coverage?.covers.includes(risk) ? 'discard-archived' : risk
+    const needs = [...new Set(row.risks.map(asked))]
     const missing = row.risks.filter((risk) => !grants(risk))
     if (missing.length > 0) {
-      const names = new Set(
-        missing.map((risk): Risk => (coverage?.covers.includes(risk) ? 'discard-archived' : risk)),
-      )
-      drop('not-allowed', `needs ${[...names].join(', ')}`)
+      drop('not-allowed', `needs ${[...new Set(missing.map(asked))].join(', ')}`)
       continue
     }
     accepted.push({
