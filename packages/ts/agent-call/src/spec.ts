@@ -55,9 +55,8 @@ export interface PermissionSpec {
   /**
    * The exact set of built-in tools the agent has at all, so a tool outside
    * it is not offered to the model (unlike `allowTools`, which only
-   * pre-approves). `[]` means no tools. Native on claude (`--tools`, with
-   * `--tools ""` for `[]`); the other built-in adapters record it as dropped.
-   * It combines with `allowTools`, `denyTools` and `mode`: a tool they name
+   * pre-approves). `[]` means no tools. Which agents support it: the
+   * capability tables in README.md. It combines with `allowTools`, `denyTools` and `mode`: a tool they name
    * that is not in this set is still not offered. Each agent has its own tool names.
    */
   tools?: string[] | undefined

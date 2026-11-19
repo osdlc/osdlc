@@ -213,7 +213,8 @@ A throw from `onOutput` is swallowed and stops later calls. The run carries
 on. Nothing is delivered past `maxOutputBytes`.
 
 To track the process while it runs, pass `onSpawn`: it is called once, right
-after the process starts, with its `pid` and the full `argv`. It is not called
+after the process starts, with its `pid` and the planned `argv` (the binary as named, before the PATH
+lookup). It is not called
 when nothing starts (an already-aborted signal, a missing binary), and a throw
 is swallowed. There is no exit callback: the call settling is the exit.
 

@@ -24,7 +24,7 @@ export interface SpawnOptions {
   maxOutputBytes?: number | undefined
   /** Called with each decoded chunk as it arrives. A throw stops later calls. */
   onOutput?: ((chunk: string, stream: 'stdout' | 'stderr') => void) | undefined
-  /** Called once with the pid and argv after the process starts. A throw is swallowed. */
+  /** Called once with the pid and argv after the process starts. A throw or a rejected promise is swallowed. */
   onSpawn?: ((info: { pid: number; argv: readonly string[] }) => void) | undefined
 }
 

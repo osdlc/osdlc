@@ -77,8 +77,8 @@ export interface CallOptions {
    */
   onOutput?: ((chunk: string, stream: 'stdout' | 'stderr') => void) | undefined
   /**
-   * Called once, right after the process starts, with its pid and the full
-   * argv it was started with (the binary first), for a host that tracks
+   * Called once, right after the process starts, with its pid and the
+   * planned argv (the binary as named, before the PATH lookup), for a host that tracks
    * running calls. It is not called when nothing starts (an already-aborted
    * signal, a missing binary). A throw, or a returned promise that rejects, is
    * swallowed and the run carries on. A returned promise is not awaited. There
