@@ -543,7 +543,7 @@ reason, so a free-form reason such as `keep, build running` always blocks.
 - A lock writes `pid <N>` and, to guard against pid reuse, `start <time>`. The
   time must be precise to the second: a full ISO-8601 timestamp with a time of
   day and a zone (`2026-10-25T18:22:19Z`; one with no zone is not accepted), epoch seconds (9-10 digits), epoch milliseconds
-  (12-13 digits), or the `ps -o lstart` form (`Sat Oct 25 18:22:19 2026`, read as UTC). With
+  (12-13 digits), or the `ps -o lstart` form (`Sat Oct 25 18:22:19 2026`; matches when it is the real start in some time zone, since the writer's zone is unknown). With
   one of those, a live pid whose own start time differs by more than two
   seconds is a reused pid and counts as dead. Anything else, a date alone, a
   short number or a partial date, cannot rule the owner out and the lock stays

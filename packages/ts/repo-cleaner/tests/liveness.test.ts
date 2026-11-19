@@ -559,7 +559,7 @@ describe('default probe: ps', () => {
 
   test('AC-4: a live pid whose start time differs from the lock counts as dead', () => {
     const probe = defaultProcessProbe({ ps: fakePs({ 321: PS_MACOS }) })
-    expect(probe.alive(321, 'Sat Oct 25 08:00:00 2026')).toBe(false)
+    expect(probe.alive(321, 'Sat Oct 25 08:10:00 2026')).toBe(false)
     expect(probe.alive(321, '2026-01-01T00:00:00Z')).toBe(false)
   })
 
@@ -637,6 +637,15 @@ describe('default probe: ps', () => {
     // Neither local reading of the repeated hour (05:30Z or 06:30Z) matches.
     expect(probe.alive(321, '2026-11-01T05:30:00Z')).toBe(false)
     expect(probe.alive(321, '2026-11-01T06:30:00Z')).toBe(false)
+  })
+
+  test('lstart text a lock recorded in another zone still matches the same process', () => {
+    // The process started 18:22:19 UTC; a writer in Chicago (UTC-5) wrote 13:22:19.
+    const probe = defaultProcessProbe({ ps: fakePs({ 321: PS_MACOS }) })
+    expect(probe.alive(321, 'Sat Oct 25 13:22:19 2026')).toBe(true)
+    expect(probe.alive(321, 'Sat Oct 25 23:52:19 2026')).toBe(true)
+    // Not a zone offset from the real start: a reused pid.
+    expect(probe.alive(321, 'Sat Oct 25 13:40:00 2026')).toBe(false)
   })
 
   test('a dead pid is answered without spawning ps', () => {

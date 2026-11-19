@@ -102,7 +102,9 @@ const START_TOLERANCE_MS = 2000
 // look like a reused pid.
 const ISO_WITH_TIME = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})$/
 /** `ps -o lstart`: `Sat Oct 25 18:22:19 2026`, the day space-padded on Linux. */
-const PS_LSTART = /^[A-Z][a-z]{2}\s+[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\d{4}$/
+const PS_LSTART =
+  /^[A-Z][a-z]{2}\s+([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{2}):(\d{2}):(\d{2})\s+(\d{4})$/
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 /**
  * Epoch milliseconds of a start time, or NaN when the text is not precise to
@@ -118,7 +120,12 @@ export function startMs(text: string): number {
   if (/^\d{12,13}$/.test(trimmed)) return Number(trimmed)
   if (ISO_WITH_TIME.test(trimmed)) return Date.parse(trimmed)
   // `lstart` carries no zone. The probe runs `ps` under `TZ=UTC`, so read it as UTC.
-  if (PS_LSTART.test(trimmed)) return Date.parse(`${trimmed} UTC`)
+  const l = PS_LSTART.exec(trimmed)
+  if (l !== null) {
+    const month = MONTHS.indexOf(l[1] ?? '')
+    if (month < 0) return Number.NaN
+    return Date.UTC(Number(l[6]), month, Number(l[2]), Number(l[3]), Number(l[4]), Number(l[5]))
+  }
   return Number.NaN
 }
 
@@ -160,8 +167,24 @@ export interface DefaultProbeOptions {
   pidExists?: ((pid: number) => boolean | undefined) | undefined
 }
 
+const QUARTER_HOUR_MS = 900_000
+const MAX_ZONE_OFFSET_MS = 14 * 3_600_000
+
+/**
+ * Whether zoneless text read as UTC (`utcMs`) is the instant `actual` in some
+ * time zone: they differ by a whole number of quarter hours, at most 14 h, give
+ * or take the tolerance.
+ */
+function inSomeTimeZone(utcMs: number, actual: number): boolean {
+  const diff = utcMs - actual
+  const offset = Math.round(diff / QUARTER_HOUR_MS) * QUARTER_HOUR_MS
+  return Math.abs(offset) <= MAX_ZONE_OFFSET_MS && Math.abs(diff - offset) <= START_TOLERANCE_MS
+}
+
 /** `process.kill(pid, 0)`: ESRCH is gone, EPERM is alive, anything else is unknown. */
 function killProbe(pid: number): boolean | undefined {
+  // Pid 0 and negative pids name process groups, not a process.
+  if (!Number.isInteger(pid) || pid <= 0) return undefined
   try {
     process.kill(pid, 0)
     return true
@@ -212,6 +235,9 @@ export function defaultProcessProbe(opts: DefaultProbeOptions = {}): ProcessProb
       const claimed = startMs(startedAt)
       const actual = startMs(started)
       if (Number.isNaN(claimed) || Number.isNaN(actual)) return true
+      // A writer may have recorded `lstart` text in its own zone, which is not
+      // known: it matches when it is the real start in some zone.
+      if (PS_LSTART.test(startedAt.trim())) return inSomeTimeZone(claimed, actual)
       return Math.abs(claimed - actual) <= START_TOLERANCE_MS
     },
 
