@@ -107,7 +107,7 @@ export function keepWorktree(
   git: Git,
   checkout: string,
   worktree: string,
-  target: Omit<KeptRecord, 'path' | 'branch'>,
+  target: Pick<KeptRecord, 'repo' | 'number' | 'head' | 'base' | 'headOid' | 'baseOid'>,
   verifyLog: string | undefined,
 ): KeptRecord {
   const old = findKept(checkout, target.repo, target.number)
@@ -129,7 +129,8 @@ export function keepWorktree(
       if (!has) appendFileSync(exclude, `\n/${VERIFY_LOG}\n`)
     }
   }
-  const record: KeptRecord = { ...target, path, branch }
+  const { repo, number, head, base, headOid, baseOid } = target
+  const record: KeptRecord = { repo, number, head, base, headOid, baseOid, path, branch }
   atomicWrite(sidecar(checkout, target.repo, target.number), `${JSON.stringify(record)}\n`)
   return record
 }

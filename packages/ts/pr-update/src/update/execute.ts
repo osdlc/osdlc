@@ -1085,14 +1085,7 @@ export async function updateAll(
             git,
             opts.keepFailed.checkout,
             opts.worktreeRoot,
-            {
-              repo: target.repo,
-              number: target.number,
-              head: target.head,
-              base: target.base,
-              headOid: target.headOid,
-              baseOid: target.baseOid,
-            },
+            target,
             outcome.status === 'failed' ? outcome.verifyLog : undefined,
           ).path
         } catch (e) {
