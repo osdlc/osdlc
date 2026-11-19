@@ -30,13 +30,28 @@ refused, dropped or fails, the candidate is too; requirements are deleted
 before their dependents (a branch after the worktree that holds it).
 
 ```ts
-import { clean, gitPlugin, plan, survey, type Ctx } from '@osdlc/host-cleaner'
+import { clean, plan, survey, type Ctx, type Plugin } from '@osdlc/host-cleaner'
+
+// A plugin that owns one candidate: a cache directory idle for a week.
+const cache: Plugin = {
+  name: 'cache',
+  detect: () => true,
+  discover: () => [
+    {
+      id: 'artifact:build-cache',
+      kind: 'artifact',
+      path: 'build-cache',
+      owner: 'cache',
+      why: 'idle for a week',
+      evidence: { bytes: 4096 },
+    },
+  ],
+  delete: (c) => `removed ${c.path}`,
+}
 
 const ctx: Ctx = { cwd: process.cwd(), targets: [], allow: [] }
-const plugins = [gitPlugin({ sweep: { remote: true } })]
-
-const found = survey(plugins, ctx) // scope, discover, object
-const receipt = clean(plan(found), plugins, ctx, { receiptPath: 'receipt.json' })
+const found = survey([cache], ctx) // scope, discover, object
+const receipt = clean(plan(found), [cache], ctx) // re-check, prepare, delete, deleted
 ```
 
 Without a `pick`, a plan runs every candidate nothing objects to. With one, it
@@ -51,6 +66,14 @@ freed by a worktree requires it. With `archive`, unlanded work is pushed to the
 remote first; a failed push throws `FatalRun`. Grant the named risks; the
 `discard-archived` cover is not yet offered here.
 
+## Install
+
+```sh
+npm install @osdlc/host-cleaner
+```
+
+Node 22.22.2 or later, ESM only.
+
 ## Licence
 
-MIT OR Apache-2.0.
+`MIT OR Apache-2.0`, at your option. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).

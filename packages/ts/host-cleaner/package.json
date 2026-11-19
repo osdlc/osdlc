@@ -44,6 +44,7 @@
     "build": "cli-tool-stamp-version && tsc -p tsconfig.build.json",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "test": "vitest run",
+    "smoke": "node tests/smoke.mjs",
     "coverage": "vitest run --coverage",
     "prepublishOnly": "npm run clean && npm run build",
     "format": "prettier --write .",
