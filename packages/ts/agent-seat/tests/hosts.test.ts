@@ -333,9 +333,92 @@ describe('orca host', () => {
       'PR #1',
       '--command',
       `claude -- 'Review it'\\''s #1'`,
-      '--focus',
       '--json',
     ])
+  })
+
+  const createReply = (result: Record<string, unknown>): CommandResult => ({
+    exitCode: 0,
+    stdout: JSON.stringify({ ok: true, result }),
+    stderr: '',
+  })
+
+  test('terminal: creates without --focus, then switches to the new handle', () => {
+    const { runner, calls } = recorder([
+      createReply({ terminal: { handle: 'term_new' } }),
+      { exitCode: 0, stdout: '{}', stderr: '' },
+    ])
+    makeOrcaHost({ runtimeDir: RUNTIME, binary: 'orca', runner }).terminal!(req)
+    expect(calls).toEqual([orcaCreateArgv(req), orcaSwitchArgv('term_new')])
+    expect(calls[0]).not.toContain('--focus')
+  })
+
+  test('terminal: focus false creates and never switches', () => {
+    const { runner, calls } = recorder([createReply({ terminal: { handle: 'term_new' } })])
+    makeOrcaHost({ runtimeDir: RUNTIME, binary: 'orca', runner }).terminal!({
+      ...req,
+      focus: false,
+    })
+    expect(calls).toEqual([orcaCreateArgv(req)])
+  })
+
+  test('terminal: a create with no handle in its reply switches nothing', () => {
+    const { runner, calls } = recorder([createReply({})])
+    makeOrcaHost({ runtimeDir: RUNTIME, binary: 'orca', runner }).terminal!(req)
+    expect(calls).toEqual([orcaCreateArgv(req)])
+  })
+
+  test('parseOrcaCreatedHandle reads result.terminal.handle, result.handle and result.terminalId', () => {
+    const reply = (result: unknown) => JSON.stringify({ ok: true, result })
+    expect(parseOrcaCreatedHandle(reply({ terminal: { handle: 'a' } }))).toBe('a')
+    expect(parseOrcaCreatedHandle(reply({ handle: 'b' }))).toBe('b')
+    expect(parseOrcaCreatedHandle(reply({ terminalId: 'c' }))).toBe('c')
+    expect(parseOrcaCreatedHandle(reply({ terminal: { handle: '' }, handle: 'd' }))).toBe('d')
+    expect(parseOrcaCreatedHandle(reply({ handle: 7 }))).toBeNull()
+    expect(parseOrcaCreatedHandle('not json')).toBeNull()
+  })
+
+  test('find: a truncated first page is listed again with --limit of totalCount', () => {
+    const page = (terminals: unknown[], extra: Record<string, unknown>): CommandResult => ({
+      exitCode: 0,
+      stdout: JSON.stringify({ ok: true, result: { terminals, ...extra } }),
+      stderr: '',
+    })
+    const { runner, calls } = recorder([
+      page([{ handle: 'term_1' }], { truncated: true, totalCount: 2 }),
+      page([{ handle: 'term_1' }, { handle: 'term_2' }], { truncated: false, totalCount: 2 }),
+    ])
+    const found = makeOrcaHost({ runtimeDir: RUNTIME, binary: 'orca', runner }).find!({ cwd: '/w' })
+    expect(found.map((f) => f.handle)).toEqual(['term_1', 'term_2'])
+    expect(calls[1]).toEqual(orcaFindArgv({ cwd: '/w' }, 2))
+    expect(calls[1]).toContain('--limit')
+  })
+
+  test('find: a failed full listing falls back to the first page', () => {
+    const { runner } = recorder([
+      {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          result: { terminals: [{ handle: 'term_1' }], truncated: true, totalCount: 2 },
+        }),
+        stderr: '',
+      },
+      { exitCode: 1, stdout: '', stderr: 'boom' },
+    ])
+    const found = makeOrcaHost({ runtimeDir: RUNTIME, binary: 'orca', runner }).find!({ cwd: '/w' })
+    expect(found.map((f) => f.handle)).toEqual(['term_1'])
+  })
+
+  test('find: an untruncated page is listed once', () => {
+    const { runner, calls } = recorder([
+      {
+        exitCode: 0,
+        stdout: JSON.stringify({ result: { terminals: [{ handle: 'term_1' }], truncated: false } }),
+        stderr: '',
+      },
+    ])
+    makeOrcaHost({ runtimeDir: RUNTIME, binary: 'orca', runner }).find!({ cwd: '/w' })
+    expect(calls).toHaveLength(1)
   })
 
   test('a miss registers the repo and retries once', () => {

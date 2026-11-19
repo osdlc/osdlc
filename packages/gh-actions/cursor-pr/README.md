@@ -147,7 +147,7 @@ jobs:
       && contains(github.event.comment.body || github.event.review.body, '@cursor')
       && (github.event_name != 'issue_comment' || github.event.issue.pull_request)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     permissions: { contents: read, pull-requests: write, issues: write }
     steps:
       - uses: osdlc/osdlc/packages/gh-actions/cursor-pr@<commit-sha> # gh-actions/v1

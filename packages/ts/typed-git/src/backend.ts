@@ -174,6 +174,8 @@ export type GitRequest =
   | ({ kind: 'commitTree'; tree: string } & CommitTreeOptions)
   | ({ kind: 'hashObject'; content: string } & HashObjectOptions)
   | { kind: 'mktree'; entries: readonly MktreeEntry[] }
+  | { kind: 'readTree'; rev: string }
+  | { kind: 'writeTree' }
   // These requests reuse their verb's options type rather than restating its
   // fields. The option types live in `verbs.ts` beside the argv they build,
   // and a copy written out by hand would drift from it.
@@ -215,6 +217,7 @@ export type GitRequest =
   | ({ kind: 'worktreeMove'; from: string; to: string } & WorktreeMoveOptions)
   | { kind: 'worktreeUnlock'; path: string }
   | { kind: 'worktreePrune' }
+  | { kind: 'submoduleUpdate' }
   | ({ kind: 'merge'; ref: string } & MergeOptions)
   | { kind: 'mergeAbort' }
   | ({ kind: 'rebase'; onto: string } & RebaseOptions)
@@ -272,6 +275,8 @@ export interface GitResults {
   commitTree: string
   hashObject: string
   mktree: string
+  readTree: void
+  writeTree: string
   lsFiles: string[]
   lsFilesTagged: TaggedFile[]
   submodules: IndexSubmodule[]
@@ -306,6 +311,7 @@ export interface GitResults {
   worktreeMove: void
   worktreeUnlock: void
   worktreePrune: void
+  submoduleUpdate: void
   merge: MergeOutcome
   mergeAbort: void
   rebase: RebaseOutcome
@@ -415,6 +421,10 @@ function toVerb(request: Exclude<GitRequest, { kind: 'rawBytes' }>): GitVerb<unk
       return v.hashObject(request.content, request)
     case 'mktree':
       return v.mktree(request.entries)
+    case 'readTree':
+      return v.readTree(request.rev)
+    case 'writeTree':
+      return v.writeTree()
     case 'checkIgnore':
       return v.checkIgnore(request.relPaths)
     case 'checkIgnoreVerbose':
@@ -487,6 +497,8 @@ function toVerb(request: Exclude<GitRequest, { kind: 'rawBytes' }>): GitVerb<unk
       return v.worktreeUnlock(request.path)
     case 'worktreePrune':
       return v.worktreePrune()
+    case 'submoduleUpdate':
+      return v.submoduleUpdate()
     case 'merge':
       return v.merge(request.ref, request)
     case 'mergeAbort':
