@@ -414,10 +414,9 @@ fn shows(
     visibility.admits_path(c.rel)
 }
 
-/// Whether `name` (a file name or a path) is a note: it ends in `.md`, in
-/// any case.
-pub fn is_note(name: &str) -> bool {
-    name.to_lowercase().ends_with(".md")
+/// Whether `path` (or a bare file name) ends in `.md`, in any case.
+pub fn is_note(path: &str) -> bool {
+    path.to_lowercase().ends_with(".md")
 }
 
 /// What a walk makes of one path. See [`WalkOptions::admission`].
@@ -1571,7 +1570,7 @@ mod tests {
         /// A file name and the listing (counted from 1) it first appears in.
         appears: Vec<(&'static str, usize)>,
         listings: std::cell::Cell<usize>,
-        /// Every folder listed through this file system, in order.
+        /// Every folder listed through this file system.
         listed: std::cell::RefCell<Vec<PathBuf>>,
     }
 

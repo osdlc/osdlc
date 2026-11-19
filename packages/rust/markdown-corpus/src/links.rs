@@ -641,7 +641,8 @@ impl LinkGraph {
         // install after it.
         let _apply = self.apply_lock.lock().unwrap();
         // Another corpus: nothing below applies, so skip the listings. The
-        // freshness check stays after the admissions, which it needs.
+        // freshness check stays below: it marks the graph only when the walk
+        // admits a path.
         if self.state.lock().unwrap().for_vault.as_deref() != Some(vault_dir) {
             return;
         }
@@ -656,6 +657,7 @@ impl LinkGraph {
         }
         {
             let mut state = self.state.lock().unwrap();
+            // Again: a sweep may have claimed another corpus during the admissions.
             if state.for_vault.as_deref() != Some(vault_dir) {
                 return;
             }
