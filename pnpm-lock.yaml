@@ -811,6 +811,9 @@ importers:
       ajv:
         specifier: ^8.20.0
         version: 8.20.0
+      harness-reference:
+        specifier: workspace:^
+        version: link:../../corpora/harness-reference
       oxlint:
         specifier: 'catalog:'
         version: 1.88.0
