@@ -42,7 +42,38 @@ properties:
     description: The lines of evidence the statement weighs.
     type: array
     minItems: 1
-    items: { $ref: "#/$defs/evidenceLine" }
+    items:
+      description: >-
+        One argument for or against the proposition, built on one or more study results. VA-Spec
+        class Evidence Line. A corpus may add its own fields, such as a qualifier.
+      type: object
+      required: [hasEvidenceItems, directionOfEvidenceProvided]
+      properties:
+        hasEvidenceItems:
+          description: >-
+            Links to the study results this line rests on. Each one must be a relative Markdown link
+            to the record file of a study result, or of a type that extends study-results.
+          type: array
+          minItems: 1
+          items: { type: string, x-ref: study-results }
+        directionOfEvidenceProvided:
+          description: Whether the line supports or disputes the proposition, or neither.
+          enum: [supports, neutral, disputes]
+        strengthOfEvidenceProvided:
+          description: >-
+            How strongly the line supports or disputes the proposition. Required unless the direction
+            is neutral, and not allowed when it is.
+          $ref: "#/$defs/strength"
+        description:
+          description: Why the study results count as evidence in this direction, in a sentence or two.
+          type: string
+          minLength: 1
+      if:
+        properties: { directionOfEvidenceProvided: { const: neutral } }
+      then:
+        properties: { strengthOfEvidenceProvided: false }
+      else:
+        required: [strengthOfEvidenceProvided]
   specifiedBy:
     description: A link to the method followed to weigh the evidence, when there is one.
     type: string
@@ -69,44 +100,6 @@ $defs:
   strength:
     description: A three-step scale. VA-Spec leaves the scale to each profile.
     enum: [strong, moderate, weak]
-  evidenceLine:
-    description: >-
-      One argument for or against the proposition, built on one or more study results. VA-Spec
-      class Evidence Line. A corpus may add its own fields, such as a qualifier.
-    type: object
-    required: [hasEvidenceItems, directionOfEvidenceProvided]
-    properties:
-      hasEvidenceItems:
-        description: >-
-          Links to the study results this line rests on. Each one must be a relative Markdown link
-          into the study-results folder. After the folder name, no part of the path may start with
-          a dot, and the path may not hold an encoded dot or slash (%2E, %2F), so a link cannot
-          step back out of the folder. The link may not point at the type's schema file. The
-          pattern has two gaps that wait for nested x-ref: a link to a file in a record folder that
-          is not the record still passes, and a link that leaves the corpus only warns.
-        type: array
-        minItems: 1
-        items:
-          type: string
-          pattern: "\\]\\((\\.\\./)+study-results/(?!\\.|study-results\\.schema\\.md\\)|[^)]*(/\\.|%2[EeFf]))[^)]+\\.md\\)$"
-      directionOfEvidenceProvided:
-        description: Whether the line supports or disputes the proposition, or neither.
-        enum: [supports, neutral, disputes]
-      strengthOfEvidenceProvided:
-        description: >-
-          How strongly the line supports or disputes the proposition. Required unless the direction
-          is neutral, and not allowed when it is.
-        $ref: "#/$defs/strength"
-      description:
-        description: Why the study results count as evidence in this direction, in a sentence or two.
-        type: string
-        minLength: 1
-    if:
-      properties: { directionOfEvidenceProvided: { const: neutral } }
-    then:
-      properties: { strengthOfEvidenceProvided: false }
-    else:
-      required: [strengthOfEvidenceProvided]
   contribution:
     description: One action an agent took on the record. VA-Spec class Contribution.
     type: object
@@ -153,15 +146,10 @@ The rules a description does not say clearly:
 
 - `strength` uses the scale strong, moderate, weak, on both the statement and its lines. A neutral
   direction has no strength.
-- Each link in `hasEvidenceItems` must resolve, as every link in a record must. The field cannot use
-  `x-ref` yet, because corpus-schema v0 allows `x-ref` only on top-level fields. Until it can, a
-  pattern checks that each link points into the `study-results` folder, does not step back out of
-  it with `..`, and does not point at `study-results.schema.md`. The pattern cannot catch two
-  things. A link to another `.md` file inside a record folder, such as
-  `study-results/linux/Linux probe/notes.md`, passes, though that file is not a record. A link
-  that climbs above the corpus, such as `../../study-results/x.md`, gets only a warning from the
-  validator. Both close once corpus-schema supports `x-ref` in nested objects, which it does
-  not yet.
+- Each link in `hasEvidenceItems` is checked by `x-ref: study-results`: it must resolve to the
+  record file of a study result, or of a type that extends `study-results` under another name, and
+  not to another file in a record folder or to a file outside the corpus. This needs a
+  corpus-schema that allows `x-ref` inside nested objects (0.6.0).
 - `subject` may link to a record of a type the corpus adds itself, such as a `tools` type. The
   claims types do not define one. The validator checks that the link resolves, but not what type
   it points at, because `x-ref` does not work inside the proposition yet.

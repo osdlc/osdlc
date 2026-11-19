@@ -326,8 +326,9 @@ CorpusModel
 A `TypeRef` is `corpus`, `type` and `name`, the name being the type as the corpus writes it, such
 as `org/principles`. A `RefForm` is `link`, `id` or `wikilink`. `fields` holds the top-level
 properties of the whole chain, the parents' first. `references` holds every value of every `x-ref`
-field, with a JSON Pointer such as `/owner` or `/sources/2`. `x-ref` works on a top-level property
-and on its `items`, so those are the two places a reference sits. `links` holds only the body
+field, with a JSON Pointer such as `/owner`, `/sources/2` or `/lines/0/items/1`. `x-ref` works on
+a property at any depth, inside objects and lists of objects, and on a list's `items`. A reference
+in a nested field has the dotted field `lines.items`, and the top-level field's `ref` is null. `links` holds only the body
 links that point at a record's file. A reference or a link into a referenced corpus has that
 corpus's key in its target, and the record is in `corpora`.
 
