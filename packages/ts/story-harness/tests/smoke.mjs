@@ -53,6 +53,7 @@ try {
 const dist = dirname(dirname(fileURLToPath(import.meta.resolve('@osdlc/story-harness/runner'))))
 const bin = join(dist, '..', 'bin', 'story-shots.js')
 assert.ok(existsSync(join(dist, 'runner', 'story-shots.sh')), 'dist/runner/story-shots.sh ships')
+assert.ok(existsSync(join(dist, 'runner', 'platform.sh')), 'dist/runner/platform.sh ships')
 const usage = spawnSync(process.execPath, [bin], { encoding: 'utf8' })
 assert.equal(usage.status, 2, `story-shots exited ${usage.status}: ${usage.stderr}`)
 assert.match(usage.stderr, /usage: story-shots <package dir>/)

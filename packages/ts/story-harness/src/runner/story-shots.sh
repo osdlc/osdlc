@@ -25,6 +25,8 @@
 set -euo pipefail
 
 RUNNER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=platform.sh
+source "$RUNNER/platform.sh"
 # The image and the @playwright/test installed in it must be the same version.
 PLAYWRIGHT_VERSION="1.62.1"
 IMAGE="mcr.microsoft.com/playwright:v${PLAYWRIGHT_VERSION}-noble"
@@ -118,10 +120,10 @@ pull_image() {
 }
 # Pull when the image is missing, or cached for another platform (a native
 # arm64 copy on Apple silicon, say), which docker run would otherwise pull with
-# the user's config. Inspect keeps the variant (v8) apart, so the cached
-# os/arch/variant matches a platform given with or without one.
+# the user's config. Inspect keeps the variant (v8) apart; platform_matches
+# compares with or without one.
 cached="$(docker image inspect --format '{{.Os}}/{{.Architecture}}{{with .Variant}}/{{.}}{{end}}' "$IMAGE" 2>/dev/null || true)"
-[[ "$cached" == "$PLATFORM" || "${cached%/v*}" == "$PLATFORM" ]] || pull_image
+platform_matches "$cached" "$PLATFORM" || pull_image
 
 mkdir -p "$BASELINES"
 rm -rf "$RESULTS"
