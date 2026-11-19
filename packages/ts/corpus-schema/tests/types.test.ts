@@ -1,0 +1,118 @@
+import assert from 'node:assert/strict'
+import { afterEach, beforeEach, describe, test } from 'vitest'
+
+import { spawnSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { generateTypes, loadCorpus } from '../src/index.ts'
+
+const CLI = join(import.meta.dirname, '../bin/corpus-schema.js')
+
+let dir = ''
+const put = (rel: string, text: string): void => {
+  mkdirSync(dirname(join(dir, rel)), { recursive: true })
+  writeFileSync(join(dir, rel), text)
+}
+const cli = (...args: string[]) => {
+  const r = spawnSync(process.execPath, [CLI, ...args], { cwd: dir, encoding: 'utf8' })
+  return { status: r.status, stdout: r.stdout, stderr: r.stderr }
+}
+
+beforeEach(() => {
+  dir = mkdtempSync(join(tmpdir(), 'corpus-schema-types-'))
+  put('c/c.corpus-schema.yaml', 'corpus-schema: 0\nid: c\nformats: [md]\n')
+  put(
+    'c/base-notes/base-notes.schema.json',
+    JSON.stringify({
+      description: 'A note.',
+      required: ['title'],
+      properties: { title: { type: 'string' }, tags: { type: 'array', items: { type: 'string' } } },
+    }),
+  )
+  put(
+    'c/claims/claims.schema.json',
+    JSON.stringify({
+      'x-extends': 'base-notes',
+      required: ['verdict'],
+      properties: {
+        verdict: { enum: ['true', 'false'] },
+        source: { 'x-ref': 'base-notes', type: 'string' },
+        see: { type: 'array', items: { 'x-ref': ['base-notes', 'claims'], type: 'string' } },
+        'odd-key': { type: ['integer', 'null'] },
+      },
+    }),
+  )
+  put('c/base-notes/A.md', '---\ntitle: A\n---\n')
+})
+afterEach(() => {
+  rmSync(dir, { recursive: true, force: true })
+})
+
+describe('field types', () => {
+  const typeOf = (schema: unknown): string => {
+    put('f/f.corpus-schema.yaml', 'corpus-schema: 0\nid: f\nformats: [md]\n')
+    put('f/t/t.schema.json', JSON.stringify({ required: ['x'], properties: { x: schema } }))
+    const out = generateTypes(loadCorpus(join(dir, 'f')))
+    return /\n {2}x: (.*)\n/.exec(out)?.[1] ?? out
+  }
+  test('maps the common keywords', () => {
+    assert.equal(typeOf({ type: 'string' }), 'string')
+    assert.equal(typeOf({ const: 'x' }), '"x"')
+    assert.equal(typeOf({ type: ['integer', 'null'] }), 'number | null')
+    assert.equal(typeOf({ type: 'array', items: { enum: [1, 'a'] } }), '(1 | "a")[]')
+    assert.equal(
+      typeOf({ type: 'object', properties: { a: { type: 'boolean' } }, required: ['a'] }),
+      '{ a: boolean; [key: string]: unknown }',
+    )
+    assert.equal(
+      typeOf({ type: 'object', additionalProperties: false, properties: { a: {} } }),
+      '{ a?: unknown }',
+    )
+    assert.equal(typeOf({ anyOf: [{ type: 'string' }, { type: 'null' }] }), 'string | null')
+    assert.equal(typeOf({ allOf: [{ type: 'string' }, { minLength: 1 }] }), 'string & unknown')
+    assert.equal(typeOf({ $ref: '#/$defs/x' }), 'unknown')
+    assert.equal(typeOf(true), 'unknown')
+    assert.equal(
+      typeOf({ type: 'array', prefixItems: [{ type: 'string' }], items: { type: 'number' } }),
+      '[string, ...number[]]',
+    )
+  })
+})
+
+describe('generateTypes', () => {
+  test('one interface per type, with inherited fields and refs', () => {
+    const out = generateTypes(loadCorpus(join(dir, 'c')))
+    assert.match(
+      out,
+      /export interface BaseNotes \{\n {2}title: string\n {2}tags\?: string\[\]\n\}/,
+    )
+    const claims = out.slice(out.indexOf('export interface Claims'))
+    assert.match(claims, /title: string/)
+    assert.match(claims, /verdict: "true" \| "false"/)
+    assert.match(claims, /source\?: Ref<"base-notes">/)
+    assert.match(claims, /see\?: Ref<"base-notes" \| "claims">\[\]/)
+    assert.match(claims, /"odd-key"\?: number \| null/)
+    assert.match(out, /export interface CorpusTypes \{\n {2}"base-notes": BaseNotes\n/)
+    assert.match(out, /\/\*\*\n \* A note\.\n \*\/\nexport interface BaseNotes/)
+  })
+})
+
+describe('corpus-schema types', () => {
+  test('prints to stdout, or writes --out', () => {
+    const r = cli('types', 'c')
+    assert.equal(r.status, 0)
+    assert.match(r.stdout, /export interface Claims/)
+    const w = cli('types', '--out', 'out.d.ts', 'c')
+    assert.equal(w.status, 0)
+    assert.equal(w.stdout, '')
+    assert.equal(readFileSync(join(dir, 'out.d.ts'), 'utf8'), r.stdout)
+  })
+
+  test('fails with no corpus, with a usage error on bad arguments', () => {
+    mkdirSync(join(dir, 'empty'))
+    assert.equal(cli('types', 'empty').status, 1)
+    assert.equal(cli('types').status, 2)
+    assert.equal(cli('validate', '--out', 'x', 'c').status, 2)
+  })
+})

@@ -50,6 +50,7 @@ test('the entry point exports these names', () => {
       'encodePath',
       'FieldRef',
       'findCorpora',
+      'generateTypes',
       'fold',
       'getCorpus',
       'getRecord',
