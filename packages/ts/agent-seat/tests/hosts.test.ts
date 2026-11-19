@@ -254,7 +254,7 @@ describe('wrapperSession', () => {
     expect(() => withEnv(['claude'], { 'A B': undefined }, 'win32')).toThrow(/invalid environment/)
   })
   test('commandArgv puts req.env on a plain command, and leaves argv alone without one', () => {
-    expect(commandArgv({ argv: ['zsh'], env: { A: '1' } })).toEqual(['env', 'A=1', 'zsh'])
+    expect(commandArgv({ argv: ['zsh'], env: { A: '1' } }, 'linux')).toEqual(['env', 'A=1', 'zsh'])
     expect(commandArgv({ argv: ['zsh'] })).toEqual(['zsh'])
   })
   test('envPrefixLine writes a plain K=V prefix, quoting values and words', () => {
@@ -264,6 +264,10 @@ describe('wrapperSession', () => {
   test('envPrefixLine refuses to unset or to take a bad name', () => {
     expect(() => envPrefixLine(['a'], { K: undefined }, 'linux')).toThrow(/cannot unset/)
     expect(() => envPrefixLine(['a'], { 'A B': '1' }, 'linux')).toThrow(/invalid environment/)
+  })
+  test('withEnv refuses a bad variable name on POSIX too, and envPrefixLine an empty argv', () => {
+    expect(() => withEnv(['a'], { 'A B': '1' }, 'linux')).toThrow(/invalid environment/)
+    expect(() => envPrefixLine([], { K: 'v' }, 'linux')).toThrow(/empty/)
   })
   test('envPrefixLine on win32 is the powershell form of withEnv', () => {
     expect(envPrefixLine(['a'], { K: 'v' }, 'win32')).toContain('$env:K')

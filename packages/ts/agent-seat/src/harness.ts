@@ -692,6 +692,7 @@ export function withEnv(
   const unset: string[] = []
   const pairs: string[] = []
   for (const [k, v] of entries) {
+    assertEnvName(k)
     if (v === undefined) unset.push('-u', k)
     else pairs.push(`${k}=${v}`)
   }
@@ -721,6 +722,7 @@ export function envPrefixLine(
   env: EnvOverrides | undefined,
   platform: NodeJS.Platform = process.platform,
 ): string {
+  if (argv.length === 0) throw new RangeError('argv must not be empty')
   if (platform === 'win32') {
     return commandString(withEnv(argv, env, platform), { platform })
   }
@@ -735,8 +737,11 @@ export function envPrefixLine(
 }
 
 /** `req.argv` under `req.env`: what a host runs for a {@link CommandRequest}. */
-export function commandArgv(req: Pick<CommandRequest, 'argv' | 'env'>): string[] {
-  return withEnv(req.argv, req.env)
+export function commandArgv(
+  req: Pick<CommandRequest, 'argv' | 'env'>,
+  platform: NodeJS.Platform = process.platform,
+): string[] {
+  return withEnv(req.argv, req.env, platform)
 }
 
 /** `word` as a single-quoted PowerShell literal, each single quote (typographic ones too) doubled. */

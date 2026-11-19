@@ -552,7 +552,11 @@ describe('harness argv and Claude flags', () => {
   })
 
   test('commandArgv runs a CommandRequest under its env, as a workspace shell needs', () => {
-    expect(commandArgv({ argv: ['zsh'], env: { TAG: 'pr-7' } })).toEqual(['env', 'TAG=pr-7', 'zsh'])
+    expect(commandArgv({ argv: ['zsh'], env: { TAG: 'pr-7' } }, 'linux')).toEqual([
+      'env',
+      'TAG=pr-7',
+      'zsh',
+    ])
   })
 
   test('envPrefixLine is the plain K=V prefix, so a shell function or alias still runs', () => {
