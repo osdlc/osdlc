@@ -257,6 +257,9 @@ describe('wrapperSession', () => {
     expect(commandArgv({ argv: ['zsh'], env: { A: '1' } }, 'linux')).toEqual(['env', 'A=1', 'zsh'])
     expect(commandArgv({ argv: ['zsh'] })).toEqual(['zsh'])
   })
+  test('commandArgv refuses an empty argv even with env', () => {
+    expect(() => commandArgv({ argv: [], env: { A: '1' } }, 'linux')).toThrow(/empty argv/)
+  })
   test('envPrefixLine writes a plain K=V prefix, quoting values and words', () => {
     expect(envPrefixLine(['a', 'x y'], { K: 'v w', N: '1' }, 'linux')).toBe("K='v w' N=1 a 'x y'")
     expect(envPrefixLine(['a'], undefined, 'linux')).toBe('a')

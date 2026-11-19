@@ -741,6 +741,7 @@ export function commandArgv(
   req: Pick<CommandRequest, 'argv' | 'env'>,
   platform: NodeJS.Platform = process.platform,
 ): string[] {
+  if (req.argv.length === 0) throw new Error('empty argv')
   return withEnv(req.argv, req.env, platform)
 }
 
