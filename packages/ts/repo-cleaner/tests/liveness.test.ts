@@ -7,7 +7,7 @@
  * Worktrees are real, on disk.
  */
 
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import { existsSync, readdirSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -640,12 +640,15 @@ describe('default probe: ps', () => {
   })
 
   test('lstart text a lock recorded in another zone still matches the same process', () => {
-    // The process started 18:22:19 UTC; a writer in Chicago (UTC-5) wrote 13:22:19.
+    // The process started 18:22:19 UTC; writers in Chicago (UTC-5) and Kolkata
+    // (UTC+5:30) would record 13:22:19 and 23:52:19.
     const probe = defaultProcessProbe({ ps: fakePs({ 321: PS_MACOS }) })
     expect(probe.alive(321, 'Sat Oct 25 13:22:19 2026')).toBe(true)
     expect(probe.alive(321, 'Sat Oct 25 23:52:19 2026')).toBe(true)
     // Not a zone offset from the real start: a reused pid.
     expect(probe.alive(321, 'Sat Oct 25 13:40:00 2026')).toBe(false)
+    // No zone is UTC-13 or UTC-14, so text that far behind is a reused pid.
+    expect(probe.alive(321, 'Sat Oct 25 05:22:19 2026')).toBe(false)
   })
 
   test('a dead pid is answered without spawning ps', () => {
@@ -662,8 +665,56 @@ describe('default probe: ps', () => {
   })
 
   test('the default probe answers a dead pid from process.kill, with no ps', () => {
-    // A pid far above any real one: ESRCH, so the real ps is never needed.
+    // Above Linux's PID_MAX_LIMIT (2^22) and macOS's 99998, so kill gives ESRCH.
     expect(defaultProcessProbe().alive(2 ** 22 + 12345)).toBe(false)
+  })
+
+  describe('the default pid check', () => {
+    const killError = (code: string): never => {
+      throw Object.assign(new Error(code), { code })
+    }
+
+    test('EPERM means the pid exists, so a live owner of another user is kept', () => {
+      const kill = vi.spyOn(process, 'kill').mockImplementation(() => killError('EPERM'))
+      try {
+        // EPERM is not "gone": ps is still asked, and it finds this process.
+        expect(defaultProcessProbe().alive(process.pid)).toBe(true)
+        expect(kill).toHaveBeenCalledWith(process.pid, 0)
+      } finally {
+        kill.mockRestore()
+      }
+    })
+
+    test('ESRCH from a pid that ps would find still answers gone', () => {
+      const kill = vi.spyOn(process, 'kill').mockImplementation(() => killError('ESRCH'))
+      try {
+        expect(defaultProcessProbe().alive(process.pid)).toBe(false)
+      } finally {
+        kill.mockRestore()
+      }
+    })
+
+    test('any other error leaves the answer to ps', () => {
+      const kill = vi.spyOn(process, 'kill').mockImplementation(() => killError('EINVAL'))
+      try {
+        // Unknown from kill, so the real ps is asked and finds this process.
+        expect(defaultProcessProbe().alive(process.pid)).toBe(true)
+        expect(kill).toHaveBeenCalledWith(process.pid, 0)
+      } finally {
+        kill.mockRestore()
+      }
+    })
+
+    test('pid 0, a negative pid and a non-integer never reach process.kill', () => {
+      const kill = vi.spyOn(process, 'kill').mockImplementation(() => true)
+      try {
+        const probe = defaultProcessProbe()
+        for (const pid of [0, -1, 1.5]) probe.alive(pid)
+        expect(kill).not.toHaveBeenCalled()
+      } finally {
+        kill.mockRestore()
+      }
+    })
   })
 
   test('a start time that cannot be read as a time cannot rule the owner out', () => {
