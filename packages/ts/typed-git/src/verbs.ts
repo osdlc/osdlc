@@ -1676,6 +1676,27 @@ export function commitTree(tree: string, opts: CommitTreeOptions): GitVerb<strin
   return { argv, absent: NONE, parse: shaReply }
 }
 
+/**
+ * Load `rev`'s tree into the index (`git read-tree <rev>`), replacing it.
+ *
+ * It leaves the working tree alone. Run it with `env: { GIT_INDEX_FILE }` on
+ * the call to seed a temporary index, so the repository's own index is not
+ * touched. `absent: []`.
+ */
+export function readTree(rev: string): GitVerb<void> {
+  return { argv: ['read-tree', positional('readTree', 'rev', rev)], absent: NONE, parse: nothing }
+}
+
+/**
+ * Write the index as a tree object and print its sha (`git write-tree`).
+ *
+ * It writes objects and no ref. A conflicted index makes git exit 128 and
+ * this throws; a reply that is not a sha throws. `absent: []`.
+ */
+export function writeTree(): GitVerb<string> {
+  return { argv: ['write-tree'], absent: NONE, parse: shaReply }
+}
+
 /** A full object id in either hash format: 40 hex digits (SHA-1) or 64 (SHA-256). */
 const FULL_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
 
