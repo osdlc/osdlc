@@ -156,6 +156,41 @@ describe('archive before delete', () => {
     )
   })
 
+  test('a change made after the archive stops the remove', () => {
+    const fx = buildFixture()
+    dirty(fx)
+    const { receipt } = apply(
+      fx,
+      makePlan(fx.root),
+      { pick: [wt(fx.worktree)], allow: ['discard-archived'] },
+      {
+        onStepDone: (_i, _n, step) => {
+          if (step.action === 'archive') writeFileSync(join(fx.worktree, 'late.txt'), 'late\n')
+        },
+      },
+    )
+    expect(receipt.status).toBe('failed')
+    expect(receipt.steps.map((s) => [s.action, s.result])).toEqual([
+      ['archive', 'ok'],
+      ['remove-worktree', 'failed'],
+    ])
+    expect(receipt.steps[1]!.error).toContain('changed since it was archived')
+    expect(existsSync(join(fx.worktree, 'late.txt'))).toBe(true)
+  })
+
+  test('a staged change its working file no longer shows is not held, so it needs discard-changes', () => {
+    const fx = buildFixture()
+    writeFileSync(join(fx.worktree, 'tracked.txt'), 'staged\n')
+    sh(fx.worktree, ['add', 'tracked.txt'])
+    writeFileSync(join(fx.worktree, 'tracked.txt'), 'one\n')
+    const p = makePlan(fx.root)
+    const row = wt(fx.worktree)
+    const { receipt } = apply(fx, p, { pick: [row], allow: ['discard-archived'] })
+    expect(receipt.status).toBe('failed')
+    expect(receipt.steps[0]).toMatchObject({ action: 'archive', result: 'failed' })
+    expect(existsSync(fx.worktree)).toBe(true)
+  })
+
   test('an unlanded branch is archived, then deleted', () => {
     const fx = buildFixture()
     const p = makePlan(fx.root)
@@ -285,6 +320,8 @@ describe('what the archive covers', () => {
     expect(leftOutReason('a/b.log', '/nowhere', { exclude: ['*.log'] })).toBe('excluded')
     expect(leftOutReason('a/b.log', '/nowhere', { exclude: ['b/*.log'] })).toBeNull()
     expect(leftOutReason('a/b.log', '/nowhere', { exclude: ['a/**'] })).toBe('excluded')
+    expect(leftOutReason('a/x/b', '/nowhere', { exclude: ['a/**/b'] })).toBe('excluded')
+    expect(leftOutReason('a/xb', '/nowhere', { exclude: ['a/**/b'] })).toBeNull()
     expect(leftOutReason('secrets/p.txt', '/nowhere', { exclude: ['secrets'] })).toBe('excluded')
     expect(leftOutReason('.NPMRC', '/nowhere', {})).toBe('secret')
   })

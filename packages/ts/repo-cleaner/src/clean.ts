@@ -36,10 +36,10 @@ import { Git, PUSH_REJECTIONS } from '@osdlc/typed-git'
 import {
   coverageOf,
   mayContribute,
+  worktreeStamp,
   pushArchive,
   type ArchiveOptions,
   type ArchiveRowJob,
-  type Coverage,
 } from './archive.ts'
 import { localDeleteCommand, remoteDeleteCommand } from './branches.ts'
 import type { Annotate } from './hooks.ts'
@@ -359,8 +359,6 @@ interface Accepted {
   discardNamed: boolean
   /** The risks the row needs allowed: `discard-archived` where the archive covers one. */
   needs: Risk[]
-  /** What the archive holds of the row; null without `archive`. */
-  coverage: Coverage | null
 }
 
 function allowed(allow: ResolvedApproval['allow'], at: Resolved, risk: Risk): boolean {
@@ -501,7 +499,6 @@ function recheck(
       abandon: false,
       discardNamed: false,
       needs: [],
-      coverage: null,
     })
   }
 
@@ -554,7 +551,6 @@ function recheck(
       abandon: grants('abandon-unmerged'),
       discardNamed: allowed(approval.allow, s, 'discard-changes'),
       needs,
-      coverage,
     })
   }
   // A branch freed by its worktree's removal goes only with that worktree.
@@ -971,7 +967,13 @@ function execute(
   git: Git,
   probe: ProcessProbe,
   removedHere: ReadonlySet<string>,
-  archive: { job: ArchiveJob | undefined; options: ArchiveOptions | undefined; now: Date },
+  archive: {
+    job: ArchiveJob | undefined
+    options: ArchiveOptions | undefined
+    now: Date
+    /** Each archived worktree's stamp, by `<repo>\0<row>`. */
+    stamps: Map<string, string>
+  },
 ): string | Gone {
   const at = git.at(step.repo)
   const remoteTip = (remote: string, ref: string) =>
@@ -986,8 +988,10 @@ function execute(
         throw new Error('archive without its rows')
       }
       const { remote, defaultRef, jobs } = archive.job
-      const record = pushArchive(at, remote, defaultRef, jobs, archive.options, archive.now)
-      if (record === null) return 'nothing to archive'
+      const pushed = pushArchive(at, remote, defaultRef, jobs, archive.options, archive.now)
+      if (pushed === null) return 'nothing to archive'
+      const { record } = pushed
+      for (const [id, stamp] of pushed.stamps) archive.stamps.set(`${step.repo}\0${id}`, stamp)
       step.archive = record
       step.command = shellJoin(['git', 'push', remote, `${record.sha}:${record.ref}`])
       return `${record.ref} lists ${record.sha}`
@@ -1029,6 +1033,14 @@ function execute(
       if (row?.kind !== 'worktree') throw new Error('remove without a worktree')
       const path = row.name
       assertNoLiveProcess(path, probe)
+      const stamp = archive.stamps.get(`${step.repo}\0${row.id}`)
+      if (
+        stamp !== undefined &&
+        stamp !==
+          worktreeStamp(at.at(path), archive.options!, row.risks.includes('discard-changes'))
+      ) {
+        throw new Error(`refused: ${path} changed since it was archived`)
+      }
       const force = removeIsForced(row.evidence)
       if (force) assertSafeToForce(path, git, a!)
       at.worktreeRemove(path, { force })
@@ -1157,6 +1169,7 @@ export function run(preview: Preview, opts: RunOptions = {}): Receipt {
   // Worktrees whose lock this run cleared. typed-git has no `worktree lock`
   // verb, so a failed remove cannot put the lock back; the receipt says so.
   const unlocked = new Set<string>()
+  const stamps = new Map<string, string>()
   for (const [i, [step, a]] of plannedSteps.entries()) {
     opts.onStep?.(i, plannedSteps.length, step)
     try {
@@ -1164,6 +1177,7 @@ export function run(preview: Preview, opts: RunOptions = {}): Receipt {
         job: planned.archives.get(step),
         options: archive,
         now: now(),
+        stamps,
       })
       if (done instanceof Gone) {
         step.verification = done.verification
