@@ -174,6 +174,24 @@ describe.skipIf(noBun)('the bun-test capture path, under Bun (skipped without bu
     })
   }, 20_000)
 
+  test('a missing binary under Bun is classified not-installed', () => {
+    withTempDir((dir) => {
+      const tmp = join(dir, 'tmp')
+      mkdirSync(tmp)
+      const { result } = runProbe(
+        dir,
+        ON_BUN,
+        [
+          'const name = "definitely-not-a-real-binary-b2";',
+          'const run = seam.spawnRunner(name).run([], { cwd: process.cwd() });',
+          'report(seam.classifyFailure(run, { binary: name }));',
+        ],
+        bunEnv(dir, tmp),
+      )
+      expect(result).toMatchObject({ kind: 'not-installed' })
+    })
+  }, 20_000)
+
   test('captures input, argv, a missing binary, -a, a timeout and bytes, then removes its temp dir', () => {
     withTempDir((dir) => {
       const tmp = join(dir, 'tmp')

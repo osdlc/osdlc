@@ -33,7 +33,6 @@ beforeAll(() => {
 })
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
 
-const testUnderBun = 'Bun' in globalThis ? test : test.skip
 const sh = (script: string) => ['-c', script]
 
 describe('classifyFailure on real runs', () => {
@@ -70,9 +69,6 @@ describe('classifyFailure on real runs', () => {
       kind: 'not-installed',
       message: `\`${MISSING}\` is not installed or not on PATH.`,
     })
-  })testUnderBun('a missing binary is not-installed under Bun', () => {
-    const f = classifyFailure(spawnRunner(MISSING).run(['x'], { cwd: CWD }), { binary: MISSING })
-    expect(f?.kind).toBe('not-installed')
   })
 
   test('a missing cwd is bad-cwd, not not-installed, on every runner', async () => {
