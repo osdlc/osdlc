@@ -50,7 +50,7 @@ describe('conformance suite', () => {
         const outcomes = ['expect', 'error'].filter((k) => k in c)
         expect(outcomes, `${c.name}: exactly one of expect and error`).toHaveLength(1)
         // An error holds its kind only.
-        expect(Object.keys(c.error ?? { kind: '' }), c.name).toEqual(['kind'])
+        if (c.error) expect(Object.keys(c.error), c.name).toEqual(['kind'])
         checkInput(name, c.input)
       }
     }
