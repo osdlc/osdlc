@@ -57,7 +57,8 @@ export interface PermissionSpec {
    * it is not offered to the model (unlike `allowTools`, which only
    * pre-approves). `[]` means no tools. Native on claude (`--tools`, with
    * `--tools ""` for `[]`); the other built-in adapters record it as dropped.
-   * Each agent has its own tool names.
+   * It combines with `allowTools`, `denyTools` and `mode`: a tool they name
+   * that is not in this set is still not offered. Each agent has its own tool names.
    */
   tools?: string[] | undefined
 }
