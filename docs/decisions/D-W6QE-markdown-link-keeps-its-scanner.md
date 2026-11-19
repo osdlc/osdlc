@@ -57,7 +57,9 @@ Verified against the code on `main` at 12c4a290 unless marked inferred.
   the scanner does not.
 - Not verifiable here: the reasons the scanner was built are not recorded in
   the repo. The four in #836 are read from the code, and the first three
-  are checked against it.
+  are checked against it: one answer in Rust and TypeScript under one
+  conformance suite; byte offsets in the raw note; matching Obsidian and the
+  skill renderers; no parser dependency and a fast vault scan.
 
 ## Prior art
 
@@ -140,15 +142,15 @@ definition of correct (`packages/conformance/markdown-link/`).
   - `markdown-contract`'s wikilink regex (Rust and TS) calls the scanner
     with `CodeRules::None` over the flattened text it already holds. That
     text keeps inline-code contents (`parse.rs`, `projection.ts`), so a
-    `[[Note]]` in a span stays a link there, as it does today. This is an
-    explicit exception to B's rule; the follow-up must either keep it or
-    exclude code before flattening. Its
-    tree comes from comrak and remark; its links come from the scanner.
+    `[[Note]]` in a span stays a link there, as it does today. Its tree
+    comes from comrak and remark; its links come from the scanner. This is
+    an explicit exception to B's rule; the follow-up must either keep it or
+    exclude code before flattening.
   - The `link-scan.ts` pattern, scan the source and place by offset, is
     written into the `markdown-link` README as the way to combine it with a
     parser.
-- Amends nothing. It fills in the reasons the scanner exists, which the repo
-  did not record.
+- Amends nothing. It fills in the four reasons the scanner exists (Facts), which the
+  repo did not record.
 
 ## Reopen if
 
