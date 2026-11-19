@@ -96,8 +96,10 @@ created: 2026-10-19
 
 There is no change to the closed lists. The README gets a section on mapping:
 
-- A session that was interrupted or vanished ends with outcome `lost`. One that
-  was stopped on purpose ends with `cancelled`.
+- The `interrupted` and `closed` events (#873) log who interrupted a session or
+  closed its pane. They are log-only and set no outcome. A session that was
+  interrupted or vanished ends with outcome `lost`. One that was stopped on
+  purpose ends with `cancelled`.
 - A retry or replacement is a new session. Its `parent.session` is the session
   it replaces, and its `origin` is whatever started it. Attempt numbers and roles
   go in `meta`, with identity keys in `immutableMeta`.
