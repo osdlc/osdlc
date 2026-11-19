@@ -398,7 +398,12 @@ export async function updateOne(
       maxStops: counts.ok ? counts.value.ahead + 1 : 1000,
       upstream: target.onto?.upstream ?? undefined,
     })
-    if (attempt.kind === 'failed') return { status: 'failed', reason: attempt.reason }
+    if (attempt.kind === 'failed') {
+      // A submodule failure from a rebase stop says nothing about the PR either.
+      return attempt.reason.startsWith(SUBMODULE_FAILURE)
+        ? { status: 'failed', reason: attempt.reason, unrecorded: true }
+        : { status: 'failed', reason: attempt.reason }
+    }
     if (attempt.kind === 'done') rebased = attempt.resolved
     else if ((settings.onRebaseConflict ?? 'merge') === 'fail') {
       return { status: 'conflict', needsHuman: attempt.needsHuman }
