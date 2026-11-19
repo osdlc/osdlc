@@ -4,7 +4,9 @@
 //! `package.json` and `Cargo.toml` under a directory and parses each into a
 //! [`ManifestInfo`]; [`build_dependency_graph`] turns them into the dependency
 //! graph they declare, and [`scan_aspects`] reads the technologies a manifest
-//! uses. The containment tree and the wire schema follow in a later change.
+//! uses. [`apply_containment`] adds the directory tree, and
+//! [`build_system_graph`] does all of it and returns the [`schema::SystemGraph`]
+//! wire payload the system-graph viewer reads.
 //!
 //! ```
 //! use system_model::{GraphOptions, ManifestInfo, build_dependency_graph};
@@ -20,14 +22,19 @@
 //! This is the Rust twin of `@osdlc/system-model`.
 
 mod aspects;
+mod containment;
 mod graph;
 mod model;
+pub mod schema;
+mod system_graph;
 mod walk;
 
 pub use aspects::scan_aspects;
+pub use containment::{ContainmentOptions, ROOT_ID, apply_containment};
 pub use graph::{GraphOptions, build_dependency_graph};
 pub use model::{
     Aspect, DepDecl, DepKind, DependencyGraph, Ecosystem, Entry, Evidence, EvidenceKind, GraphEdge,
     GraphNode, ManifestInfo, NodeKind, SpecifierKind,
 };
+pub use system_graph::{NotADirectory, build_system_graph};
 pub use walk::{DEFAULT_EXCLUDES, WalkOptions, walk_manifests};
