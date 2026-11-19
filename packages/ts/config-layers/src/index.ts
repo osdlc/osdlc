@@ -98,6 +98,7 @@ export {
 export type {
   AppliesVia,
   ConfigKeyMeta,
+  FieldMeta,
   ConfigMetaIssue,
   Deprecation,
   MetaTerms,
@@ -182,6 +183,8 @@ export type {
   MigrationStep,
   MigrationWarning,
 } from './migrate.ts'
+export { configFields, defaultControl } from './fields.ts'
+export type { ConfigField } from './fields.ts'
 export { currentMachineVersion, migrateMachineRaw } from './machine-migrate.ts'
 export type { MachineMigration } from './machine-migrate.ts'
 

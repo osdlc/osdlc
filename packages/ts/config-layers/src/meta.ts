@@ -21,7 +21,9 @@
  * `.describe()`. Category, layers, applier and run context belong to a section
  * as a whole, and a nested field inherits its section's. The one exception is
  * the optional `secret` flag, which a nested field may set itself
- * (`./secret.ts`).
+ * (`./secret.ts`), and the optional display meta {@link FieldMeta} (`label`,
+ * `help`, `control`, `hidden`), which any field may set for `configFields`
+ * (`./fields.ts`).
  *
  * `.meta()` must be the last call on a key's schema chain.
  * `defineConfigSection` (`./section.ts`) makes it the last call, so a section
@@ -164,12 +166,41 @@ export const StabilitySchema = z.enum(STABILITY_LEVELS)
 export type Stability = z.infer<typeof StabilitySchema>
 
 /**
+ * How a field shows in a generated screen or file. Any field, top-level or
+ * nested, may carry it in `.meta()`; `configFields` (`./fields.ts`) reads it.
+ * A field with none gets a label from its name and a control from its type.
+ *
+ * @experimental
+ */
+export type FieldMeta = {
+  /** A short name for the field; default its last path segment. */
+  label?: string | undefined
+  /** Longer help text than `.describe()`'s first sentence, for a settings screen. */
+  help?: string | undefined
+  /**
+   * The widget a settings screen uses (`text`, `path`, `toggle`...). Free text,
+   * since the controls belong to the tool; default from the field's type.
+   */
+  control?: string | undefined
+  /** True keeps the field off generated screens and lists. A field under a hidden object is hidden too. */
+  hidden?: boolean | undefined
+}
+
+/** The shape of {@link FieldMeta}, shared by the top-level meta schema and `configFields`. */
+export const fieldMetaShape = {
+  label: z.string().trim().min(1).optional(),
+  help: z.string().trim().min(1).optional(),
+  control: z.string().trim().min(1).optional(),
+  hidden: z.boolean().optional(),
+}
+
+/**
  * The meta a top-level key's author passes as `meta:` when defining a section.
  *
  * @experimental
  */
 // A type alias, not an interface, so it is assignable to Zod's index-signature `.meta()` parameter.
-export type ConfigKeyMeta<T extends MetaTerms = MetaTerms> = {
+export type ConfigKeyMeta<T extends MetaTerms = MetaTerms> = FieldMeta & {
   category: T['category']
   consumers: string[]
   layers: T['layer'][]
@@ -232,6 +263,7 @@ export function keyMetaSchema(terms: MetaTermSchemas) {
       enforcement: terms.enforcement,
       runs_in: unique(terms.runContext),
       secret: z.boolean().optional(),
+      ...fieldMetaShape,
       stability: StabilitySchema.optional(),
       deprecation: DeprecationSchema.optional(),
     })
