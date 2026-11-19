@@ -109,6 +109,17 @@ describe('runVerbAsync', () => {
     })
   })
 
+  test('leaves a raw call to the caller and forces colour off for a parsed verb', async () => {
+    const parsed = spy(ok('[]'))
+    await runVerbAsync(prList(), parsed.runner, { cwd: '/repo' })
+    expect(parsed.calls[0]!.opts?.env?.['NO_COLOR']).toBe('1')
+    const rawCall = spy(ok(''))
+    await runVerbAsync(raw(['pr', 'list']), rawCall.runner, { cwd: '/repo' })
+    await runVerbAsync(rawChecked(['pr', 'list']), rawCall.runner, { cwd: '/repo' })
+    expect(rawCall.calls[0]!.opts?.env).toBeUndefined()
+    expect(rawCall.calls[1]!.opts?.env).toBeUndefined()
+  })
+
   test('rejects with the classified failure', async () => {
     const { runner } = spy({ exitCode: 1, stdout: '', stderr: 'boom' })
     await expect(runVerbAsync(repoList('acme', {}), runner, { cwd: '/repo' })).rejects.toThrow(

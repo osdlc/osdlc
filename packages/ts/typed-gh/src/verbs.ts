@@ -177,9 +177,10 @@ function hostArgs(target: GhTarget | undefined): string[] {
 /**
  * Variables `runVerb` sets on every verb whose output the library parses.
  * gh colours a pipe when `CLICOLOR_FORCE` or `GH_FORCE_TTY` is set, and the
- * escape codes break JSON and diff parsing. `NO_COLOR` turns colour off, and
- * `undefined` removes a variable from the child's environment, so the two
- * force variables are removed rather than set to a value gh might read as on.
+ * escape codes break JSON and diff parsing. `NO_COLOR` turns colour off. The
+ * two force variables map to `undefined`, which removes them (see
+ * `CommandRunOptions.env` in @osdlc/command-seam), because gh may read any
+ * value as on.
  */
 export const NO_COLOUR_ENV: Readonly<Record<string, string | undefined>> = {
   NO_COLOR: '1',

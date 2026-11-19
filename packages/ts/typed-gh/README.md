@@ -757,7 +757,8 @@ a verb before running it. Each verb takes an optional `GhTarget` last, except `r
 - `nodesAt`: one connection's nodes, joined across `graphql` pages. With `{ partial: true }`, across
   partial pages, with their errors.
 - Field lists: `PR_REF_FIELDS` (enough to identify a PR), `PR_LIST_FIELDS` (for triage),
-  `PR_VIEW_FIELDS` (the full set; both lists include `baseRefOid` and `headRefOid`), `REPO_FIELDS` and `SEARCH_PR_FIELDS`.
+  `PR_VIEW_FIELDS` (the full set), `REPO_FIELDS` and `SEARCH_PR_FIELDS`. `PR_LIST_FIELDS` and
+  `PR_VIEW_FIELDS` both include `baseRefOid` and `headRefOid`.
 - Option and result types: `ListResult`, `PrListOptions`, `IssueListOptions`, `RepoListOptions`,
   `SearchPrsOptions`, `CreatePrOptions`, `CreateReviewOptions`, `ReviewComment`,
   `CreateLabelOptions`, `ApiOptions`, `ApiResponse`, `GraphqlOptions`, `GraphqlPartialOptions`,
