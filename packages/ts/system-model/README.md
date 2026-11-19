@@ -77,7 +77,7 @@ under a directory, reading them through detection, and `buildDependencyGraph`
 turns them into nodes and dependency edges (`DependencyGraph`). It is Node only,
 because it reads the filesystem, so it is a separate entry from the
 browser-safe `./graph`. It is the TypeScript half of the `system-model` Rust
-crate, and both walk one fixture tree (`tests/fixtures/mini-repo`, a symlink to
+crate (arriving in a later change), which will walk one fixture tree (`tests/fixtures/mini-repo`, a symlink to
 `packages/rust/system-model/tests/mini-repo`) and assert the same contract.
 
 **`./aspect`**: `Aspect`, `Evidence`, `EvidenceKind` and `EVIDENCE_TIERS`.
