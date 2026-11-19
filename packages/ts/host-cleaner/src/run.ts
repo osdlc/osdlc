@@ -152,15 +152,17 @@ export function decide(
   allow: readonly string[],
 ): Decision {
   const byId = new Map(candidates.map((c) => [c.id, c]))
+  const granted = new Set(allow)
+  const byCandidate = new Map<string, Objection[]>()
+  for (const o of objections) {
+    if (o.level !== 'note')
+      byCandidate.set(o.candidate, [...(byCandidate.get(o.candidate) ?? []), o])
+  }
   const gating = (id: string, level: Objection['level']): Objection[] =>
-    objections.filter((o) => o.candidate === id && o.level === level)
+    (byCandidate.get(id) ?? []).filter((o) => o.level === level)
   const unmet = (id: string): Objection[] =>
-    gating(id, 'protest').filter((o) => !allow.includes(o.code))
-  const ids =
-    pick ??
-    candidates
-      .filter((c) => gating(c.id, 'refuse').length === 0 && gating(c.id, 'protest').length === 0)
-      .map((c) => c.id)
+    gating(id, 'protest').filter((o) => !granted.has(o.code))
+  const ids = pick ?? candidates.filter((c) => !byCandidate.has(c.id)).map((c) => c.id)
 
   const dropped: Dropped[] = []
   const running = new Map<string, Candidate>()
@@ -237,8 +239,9 @@ export function recheck(
   )
   const dropped = [...planned.dropped, ...now.dropped]
   const kept = new Map<string, Candidate>()
+  const plannedById = new Map(planned.run.map((q) => [q.id, q]))
   for (const c of now.run) {
-    const before = planned.run.find((q) => q.id === c.id)
+    const before = plannedById.get(c.id)
     if (before !== undefined && !sameFingerprint(before.evidence, c.evidence)) {
       dropped.push({ id: c.id, reason: 'changed', detail: 'its evidence moved since the plan' })
     } else kept.set(c.id, c)
@@ -345,9 +348,7 @@ function runOne(c: Candidate, step: Step, s: Survey, owner: Plugin | undefined):
     }
   }
   if (owner?.delete === undefined) {
-    step.result = 'failed'
-    step.error = `${c.owner} cannot delete`
-    return null
+    return fail(`${c.owner} cannot delete`)
   }
   try {
     step.delete = owner.delete(c, s.ctx)

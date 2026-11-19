@@ -38,24 +38,17 @@ function candidateId(c: CleanCandidate): string {
 export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
   /** The last discovery's rows, kept for `object` and `delete`; `discover` makes them afresh. */
   let rows = new Map<string, CleanCandidate>()
+  const runners = { git: opts.git, gh: opts.gh, glab: opts.glab, probe: opts.probe }
   const isRisk = (code: string): code is Risk => (RISKS as readonly string[]).includes(code)
 
   return {
     name: 'git',
     detect: () => true,
     discover(ctx) {
-      const swept = sweep(ctx.targets, {
-        ...opts.sweep,
-        git: opts.git,
-        gh: opts.gh,
-        glab: opts.glab,
-        probe: opts.probe,
-        cwd: ctx.cwd,
-      })
-      rows = new Map()
-      return candidatesOf(swept).map((row): Candidate => {
+      const found = candidatesOf(sweep(ctx.targets, { ...opts.sweep, ...runners, cwd: ctx.cwd }))
+      rows = new Map(found.map((row) => [candidateId(row), row]))
+      return found.map((row): Candidate => {
         const id = candidateId(row)
-        rows.set(id, row)
         return {
           id,
           kind: row.kind,
@@ -89,10 +82,7 @@ export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
       const row = rows.get(c.id)
       if (row === undefined) throw new Error(`git: ${c.id} was not discovered in this run`)
       const result = removeCandidate(row, {
-        git: opts.git,
-        gh: opts.gh,
-        glab: opts.glab,
-        probe: opts.probe,
+        ...runners,
         cwd: ctx.cwd,
         archive: opts.archive,
         allow: ctx.allow.filter(isRisk),
