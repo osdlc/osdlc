@@ -37,6 +37,7 @@ describe('repair.mode', () => {
     expect(gated('interactive')).toEqual(['pr_update.repair.mode'])
     expect(gated('headless')).toEqual([])
     expect(gated('terminal', { pr_update: { repair: { mode: 'interactive' } } })).toEqual([])
+    expect(gated('terminal', { pr_update: { repair: { mode: 'headless' } } })).toEqual([])
   })
 
   test('a flag consents to the keys it names only', () => {

@@ -62,7 +62,7 @@ export function seatRepair(
         if (!host.available() || host.session === undefined) {
           return { ok: false, note: `${agent}: repair.mode terminal needs tmux on PATH` }
         }
-        const runId = `pr-update-${req.pr}`
+        const runId = `pr-update-${req.pr}-${process.pid}`
         deps.notice?.(`repair #${req.pr}: attach with \`tmux attach -t ${runId}\``)
         exitCode = host.session({
           cwd: req.worktree,
@@ -70,7 +70,7 @@ export function seatRepair(
           binary,
           prompt,
           title: `pr-update #${req.pr}`,
-          env: Object.fromEntries(Object.keys(SCRUBBED_ENV).map((k) => [k, undefined])),
+          env: SCRUBBED_ENV,
           ...(opts.model ? { model: opts.model } : {}),
           focus: false,
           wait: { runId, ...(timeoutMs === undefined ? {} : { timeoutMs }) },

@@ -91,11 +91,10 @@ describe('terminal mode', () => {
       harness: 'claude',
       model: 'opus',
       focus: false,
-      wait: { runId: 'pr-update-7' },
+      wait: { runId: `pr-update-7-${process.pid}` },
     })
-    expect(Object.keys(sessions[0]!.env ?? {})).toContain('GH_TOKEN')
-    expect(sessions[0]!.env?.GH_TOKEN).toBeUndefined()
-    expect(notice).toHaveBeenCalledWith(expect.stringContaining('tmux attach -t pr-update-7'))
+    expect(sessions[0]!.env?.GH_TOKEN).toBe('')
+    expect(notice).toHaveBeenCalledWith(expect.stringContaining('tmux attach -t pr-update-7-'))
   })
 
   test('the exit code of the session decides ok', async () => {

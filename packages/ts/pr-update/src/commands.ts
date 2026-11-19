@@ -499,7 +499,10 @@ export function updateCommand(seams: CliSeams) {
       }
       checkStart(ctx, layers, seams, flags)
       const mode = flags.repairMode ?? layers.merged.pr_update.repair.mode
-      if (flags.apply && mode === 'interactive' && !canPrompt()) {
+      const agent =
+        flags.repairAgent ??
+        (flags.repairCommand === undefined ? layers.merged.pr_update.repair.agent : null)
+      if (flags.apply && agent !== null && mode === 'interactive' && !canPrompt()) {
         throw new UsageError('repair mode interactive needs a terminal on stdin and stderr')
       }
       const env: UpdateEnv = runEnv(

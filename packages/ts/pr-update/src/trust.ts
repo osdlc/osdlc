@@ -56,7 +56,7 @@ export function projectSourcedCommands(
   // Not in COMMAND_KEYS: the value is a mode, not a command.
   if (
     isNonHeadless(getIn(project, REPAIR_MODE_KEY).value) &&
-    !isNonHeadless(getIn(local, REPAIR_MODE_KEY).value)
+    !isSet(getIn(local, REPAIR_MODE_KEY).value)
   ) {
     keys.push(REPAIR_MODE_KEY.join('.'))
   }
