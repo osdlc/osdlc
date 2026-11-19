@@ -139,12 +139,12 @@ they join the same plan, re-check and receipt, but host-cleaner gathers and exec
 | Surface | Status | What a host does with it | First user |
 | --- | --- | --- | --- |
 | `annotate(repo, rows)` (`src/hooks.ts`) | On main since #600 | Re-rank rows after classification: change a verdict, add a note, drop a row. It runs inside the sweep and again inside every `check` and `run`, so a host's verdict can't be lost between plan and run | orca: notes each Orca worktree's id and open terminals |
-| `removeWorktree(row, { repo, force })` (`src/hooks.ts`) | New in PR 946 | Remove a worktree the host manages instead of `git worktree remove`, or return `null` to leave it to git. repo-cleaner still refuses a live process or an unsafe force first, and checks afterwards that the directory is gone and git no longer lists it | orca: closes the worktree's terminals, then removes it through Orca |
+| `removeWorktree(row, { repo, force })` (`src/hooks.ts`) | New in PR 943 | Remove a worktree the host manages instead of `git worktree remove`, or return `null` to leave it to git. repo-cleaner still refuses a live process or an unsafe force first, and checks afterwards that the directory is gone and git no longer lists it | orca: closes the worktree's terminals, then removes it through Orca |
 | `HostBlocker`, `host:<name>` (`src/types.ts`) | New in PR 946 | A blocker a host attaches from `annotate`. repo-cleaner never produces one | orca: `host:orca-unreachable` |
 
-PR 946 is the only PR in the stack that changes repo-cleaner. Orca is the reason it was added, but
-nothing in it is Orca-specific: every worktree host uses the same two hooks and names its own
-blocker, `host:<name>`.
+Two PRs in the stack change repo-cleaner: 943 adds `removeWorktree`, and 946 adds `host:` blockers.
+Orca is the reason for both, but neither is Orca-specific: every worktree host uses the same two
+hooks and names its own blocker, `host:<name>`.
 
 ### The six adapter hooks
 
