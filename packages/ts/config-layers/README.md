@@ -257,8 +257,8 @@ example file, `config list`, a settings screen or an interactive `init` from one
 Any field, top-level or nested, may carry `label`, `help`, `control` and `hidden` in its `.meta()`
 (`FieldMeta`). Without them, `label` is the last path segment, `help` is the `.describe()` text and
 `control` comes from the type (`defaultControl`: `toggle`, `number`, `select`, `list`, `map`,
-`text`). A `control` is free text, since the widgets belong to the tool. `hidden` on an object hides
-everything under it, and so does `secret` and an optional or defaulted parent (`optional`, `default`); a parent's default value wins over the field's own. Only `hidden` is read from an object's own meta; its `label` and `help` are not used. A malformed value throws, naming the path. Objects are walked into. A record,
+`text`). A `control` is free text, since the widgets belong to the tool. `hidden` and `secret` on an object
+apply to everything under it; an optional or defaulted object makes its fields `optional`, and its default value wins over a field's own. Only `hidden` is read from an object's own meta; its `label` and `help` are not used. A malformed value throws, naming the path. Objects are walked into. A record,
 an array, a union and a scalar are leaves.
 
 <!-- snippet: fields -->

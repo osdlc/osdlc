@@ -19,11 +19,9 @@
  *
  * Meta is required on top-level keys only. A nested field carries just a
  * `.describe()`. Category, layers, applier and run context belong to a section
- * as a whole, and a nested field inherits its section's. The one exception is
- * the optional `secret` flag, which a nested field may set itself
- * (`./secret.ts`), and the optional display meta {@link FieldMeta} (`label`,
- * `help`, `control`, `hidden`), which any field may set for `configFields`
- * (`./fields.ts`).
+ * as a whole, and a nested field inherits its section's. Two exceptions: the optional
+ * `secret` flag (`./secret.ts`) and the display meta {@link FieldMeta}
+ * (`./fields.ts`), which any field may set itself.
  *
  * `.meta()` must be the last call on a key's schema chain.
  * `defineConfigSection` (`./section.ts`) makes it the last call, so a section

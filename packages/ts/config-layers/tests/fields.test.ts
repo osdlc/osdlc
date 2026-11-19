@@ -122,6 +122,24 @@ describe('configFields', () => {
     expect(fields[1]).toMatchObject({ secret: true, hidden: true })
   })
 
+  test('a description set before a wrap is read through it', () => {
+    const [f] = configFields({
+      port: z.number().describe('Where to listen.').meta({ label: 'Port' }).optional(),
+    })
+    expect(f).toMatchObject({
+      label: 'Port',
+      description: 'Where to listen.',
+      help: 'Where to listen.',
+    })
+  })
+
+  test('a null in a parent default wins over the field default', () => {
+    const [f] = configFields({
+      b: z.object({ x: z.string().nullable().default('a') }).default({ x: null }),
+    })
+    expect(f!.default).toBeNull()
+  })
+
   test('a recursive schema throws, naming the path', () => {
     const node: z.ZodType = z.object({
       v: z.string(),

@@ -13,7 +13,7 @@
 
 import { z } from 'zod'
 
-import { defaultOf, descriptionOf } from './explain.ts'
+import { defaultOf } from './explain.ts'
 import { fieldMetaShape, type FieldMeta } from './meta.ts'
 import { enumValues, fieldInfo, kindOf, peelOnce, shapeOf, unwrapSchema } from './schema.ts'
 
@@ -33,7 +33,7 @@ export interface ConfigField {
   kind: string
   /** The meta `label`, or the last path segment. */
   label: string
-  /** The `.describe()` text; empty when none. */
+  /** The `.describe()` text, read through wrappers; empty when none. */
   description: string
   /** The meta `help`, or `description` when none. */
   help: string
@@ -82,7 +82,10 @@ export function defaultControl(kind: string): string {
  * `.default()`...), the outer layer winning, so a `.meta()` set before a
  * later wrap still counts.
  */
-function metaOf(schema: z.ZodType, path: string[]): FieldMeta & { secret?: boolean } {
+function metaOf(
+  schema: z.ZodType,
+  path: string[],
+): FieldMeta & { secret?: boolean; description: string } {
   let raw: Record<string, unknown> = {}
   for (let cur: z.ZodTypeAny | undefined = schema; cur !== undefined; cur = peelOnce(cur)) {
     raw = { ...((z.globalRegistry.get(cur) ?? {}) as Record<string, unknown>), ...raw }
@@ -92,13 +95,15 @@ function metaOf(schema: z.ZodType, path: string[]): FieldMeta & { secret?: boole
     const detail = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')
     throw new Error(`field meta at ${path.join('.')} is malformed: ${detail}`)
   }
-  return { ...parsed.data, secret: raw['secret'] === true }
+  const description = typeof raw['description'] === 'string' ? raw['description'].trim() : ''
+  return { ...parsed.data, secret: raw['secret'] === true, description }
 }
 
 /**
  * Every leaf of the config `shape` (a top-level key to schema map, as
- * `topLevelKeys` takes), in declaration order. Throws, naming the path, when
- * a field's `label`, `help`, `control` or `hidden` is malformed.
+ * `topLevelKeys` takes), in declaration order.
+ *
+ * @throws When a field's {@link FieldMeta} is malformed or the schema is recursive; the message names the path.
  *
  * @experimental
  */
@@ -107,7 +112,13 @@ export function configFields(shape: Record<string, z.ZodType>): ConfigField[] {
   const visit = (
     schema: z.ZodType,
     path: string[],
-    inherited: { hidden: boolean; secret: boolean; optional: boolean; default: unknown },
+    inherited: {
+      hidden: boolean
+      secret: boolean
+      optional: boolean
+      hasDefault: boolean
+      default: unknown
+    },
     ancestors: Set<unknown>,
   ): void => {
     const meta = metaOf(schema, path)
@@ -122,7 +133,7 @@ export function configFields(shape: Record<string, z.ZodType>): ConfigField[] {
       if (ancestors.has(inner)) {
         throw new Error(`configFields found a recursive schema at ${path.join('.')}`)
       }
-      const here = inherited.default ?? ownDefault
+      const here = inherited.hasDefault ? inherited.default : ownDefault
       const next = {
         hidden: isHidden,
         secret: isSecret,
@@ -130,16 +141,14 @@ export function configFields(shape: Record<string, z.ZodType>): ConfigField[] {
       }
       ancestors.add(inner)
       for (const [name, child] of children) {
-        const childDefault =
-          typeof here === 'object' && here !== null
-            ? (here as Record<string, unknown>)[name]
-            : undefined
-        visit(child, [...path, name], { ...next, default: childDefault }, ancestors)
+        const hasDefault = typeof here === 'object' && here !== null && Object.hasOwn(here, name)
+        const childDefault = hasDefault ? (here as Record<string, unknown>)[name] : undefined
+        visit(child, [...path, name], { ...next, hasDefault, default: childDefault }, ancestors)
       }
       ancestors.delete(inner)
       return
     }
-    const description = descriptionOf(schema)
+    const description = meta.description
     out.push({
       path,
       key: path.join('.'),
@@ -152,7 +161,7 @@ export function configFields(shape: Record<string, z.ZodType>): ConfigField[] {
       hidden: isHidden,
       secret: isSecret,
       optional: inherited.optional || info.optional,
-      default: inherited.default ?? ownDefault,
+      default: inherited.hasDefault ? inherited.default : ownDefault,
       choices: enumValues(schema as z.ZodTypeAny),
     })
   }
@@ -160,7 +169,7 @@ export function configFields(shape: Record<string, z.ZodType>): ConfigField[] {
     visit(
       schema,
       [key],
-      { hidden: false, secret: false, optional: false, default: undefined },
+      { hidden: false, secret: false, optional: false, hasDefault: false, default: undefined },
       new Set(),
     )
   return out

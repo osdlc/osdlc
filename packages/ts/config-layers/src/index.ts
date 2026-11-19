@@ -98,9 +98,9 @@ export {
 export type {
   AppliesVia,
   ConfigKeyMeta,
-  FieldMeta,
   ConfigMetaIssue,
   Deprecation,
+  FieldMeta,
   MetaTerms,
   MetaValidator,
   RegisteredKeyMeta,
