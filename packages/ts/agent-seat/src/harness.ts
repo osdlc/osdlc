@@ -54,8 +54,7 @@ import {
 
 /**
  * The coding-agent CLI a session runs, by its tool id: a built-in one
- * (`BUILTIN_HARNESSES` from `@osdlc/detect-harness`, e.g. `claude`) or one a caller declares. This file
- * builds the interactive argv ({@link harnessArgv}).
+ * (`BUILTIN_HARNESSES` from `@osdlc/detect-harness`, e.g. `claude`) or one a caller declares.
  */
 export type Harness = string
 
@@ -121,6 +120,10 @@ export const ClaudeSessionFlagsSchema = z.object({
    */
   hookCommand: z.string().optional(),
 }) satisfies z.ZodType<ClaudeSessionFlags>
+
+// Fails to compile when agent-call's ClaudeSessionFlags gains a key the stored schema does not parse.
+const _schemaCoversFlags: Record<keyof ClaudeSessionFlags, unknown> = ClaudeSessionFlagsSchema.shape
+void _schemaCoversFlags
 export type { ClaudeLaunchFlags, ClaudeSessionFlags }
 export { CLAUDE_HOOK_EVENTS, claudeHookSettings, claudeResumeArgv, claudeSessionArgv }
 

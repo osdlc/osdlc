@@ -7,7 +7,7 @@
 
 import { claudePluginArgv, claudeResumeFlag } from './adapters/claude.js'
 import { modelArgs, type ModelChoice } from './model-args.js'
-import type { PluginSpec } from './spec.js'
+import type { AgentCallSpec, PluginSpec } from './spec.js'
 
 /**
  * Session flags only `claude` takes; a caller can store them to resume with the same flags.
@@ -33,7 +33,7 @@ export interface ClaudeSessionFlags {
  * @experimental Part of the launch-argv helpers, which may change in a minor release.
  */
 export interface ClaudeLaunchFlags extends ClaudeSessionFlags {
-  /** The session id to preset (`claude --session-id`). Never with a resume. */
+  /** The session id to preset (`claude --session-id`), so the id and transcript are known at launch. Never with a resume. */
   harnessSessionId?: string | undefined
 }
 
@@ -49,7 +49,7 @@ interface ClaudeHookSpec {
  * The Claude Code hook events a launch subscribes to. Everything is async except
  * `SessionEnd`, which has to finish its write before Claude exits (its budget
  * is the hook's own `timeout`). `PreToolUse` is matched to `AskUserQuestion`
- * alone: the question is what puts the agent in `waiting_for_input` there, and
+ * alone: that question is what leaves a session waiting on a person, and
  * a hook on every tool call would cost a process each. `PermissionRequest` and
  * `StopFailure` mark a tool-permission prompt and a turn that ended on an API error.
  *
@@ -211,7 +211,7 @@ export function hasInteractiveArgv(tool: string): boolean {
 
 /**
  * The argv that opens `tool` interactively with `spec.prompt` as its first
- * message ({@link INTERACTIVE_ARGV}).
+ * message. The prompt sits behind `--` (opencode: `--prompt=`).
  *
  * @throws {Error} For a tool with no interactive launch, or a `choice` the tool has no model or effort flags for (it is never dropped).
  * @experimental Part of the launch-argv helpers, which may change in a minor release.
