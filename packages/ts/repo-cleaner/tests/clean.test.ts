@@ -35,6 +35,7 @@ import {
   type Preview,
   type RunOptions,
 } from '../src/clean.ts'
+import type { RemoveWorktree } from '../src/hooks.ts'
 import { PLAN_VERSION, parsePlan, plan, readPlan, writePlan, type Plan } from '../src/plan.ts'
 import type { Receipt } from '../src/receipt.ts'
 import { summarizeRun } from '../src/render.ts'
@@ -770,6 +771,52 @@ describe('check and run', () => {
     ])
     expect(existsSync(fx.worktree)).toBe(false)
     expect(refs(fx.root)).not.toContain('refs/heads/wt-branch ')
+  })
+
+  test('removeWorktree takes the removal in place of git, and the preview shows its command', () => {
+    const fx = buildFixture()
+    mergeWorktreeBranch(fx)
+    const p = makePlan(fx.root)
+    const calls: string[] = []
+    const removeWorktree: RemoveWorktree = (row, ctx) => {
+      calls.push(`${row.name} force=${ctx.force}`)
+      return {
+        command: `host-remove ${row.name}`,
+        run: () => rmSync(row.name, { recursive: true, force: true }),
+      }
+    }
+    const shown = preview(fx, p, { pick: [wt(fx.worktree)] }, { removeWorktree })
+    expect(shown.steps.map((s) => s.command)).toEqual([`host-remove ${fx.worktree}`])
+
+    const receipt = run(shown, { cwd: fx.root, removeWorktree })
+    expect(calls).toContain(`${fx.worktree} force=false`)
+    // The directory went, but git still lists it: the step fails its check.
+    expect(receipt.status).toBe('failed')
+    expect(receipt.steps[0]!.error).toBe(`still registered: ${fx.worktree}`)
+  })
+
+  test('removeWorktree returning null leaves the removal to git', () => {
+    const fx = buildFixture()
+    const p = makePlan(fx.root)
+    const { receipt } = apply(fx, p, { pick: [wt(fx.worktree)] }, { removeWorktree: () => null })
+    expect(receipt.steps.map((s) => [s.action, s.result])).toEqual([['remove-worktree', 'ok']])
+    expect(receipt.steps[0]!.command).toContain('worktree remove')
+    expect(existsSync(fx.worktree)).toBe(false)
+  })
+
+  test('a removeWorktree that removes the worktree and its registration verifies', () => {
+    const fx = buildFixture()
+    const p = makePlan(fx.root)
+    const removeWorktree: RemoveWorktree = (row) => ({
+      command: `host-remove ${row.name}`,
+      run: () => {
+        new Git(fx.root).worktreeRemove(row.name)
+      },
+    })
+    const { receipt } = apply(fx, p, { pick: [wt(fx.worktree)] }, { removeWorktree })
+    expect(receipt.steps.map((s) => [s.command, s.result, s.verification])).toEqual([
+      [`host-remove ${fx.worktree}`, 'ok', 'directory gone and unregistered'],
+    ])
   })
 
   test('a branch freed by its worktree is not deleted without that worktree', () => {

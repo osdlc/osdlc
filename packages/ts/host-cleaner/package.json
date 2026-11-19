@@ -1,0 +1,73 @@
+{
+  "name": "@osdlc/host-cleaner",
+  "version": "0.0.0",
+  "description": "Machine cleanup over repo-cleaner: detected host adapters add their own rows and re-rank the sweep's, and one plan, one check and one receipt cover both.",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/ts/host-cleaner"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/ts/host-cleaner#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "keywords": [
+    "cleanup",
+    "worktree",
+    "adapter",
+    "disk",
+    "cli"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "SECURITY.md",
+    "CONTRIBUTING.md"
+  ],
+  "engines": {
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "test": "vitest run",
+    "smoke": "node tests/smoke.mjs",
+    "coverage": "vitest run --coverage",
+    "prepublishOnly": "npm run clean && npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
+  },
+  "dependencies": {
+    "@osdlc/command-seam": "workspace:^",
+    "@osdlc/detect-harness": "workspace:^",
+    "@osdlc/repo-cleaner": "workspace:^",
+    "@osdlc/typed-git": "workspace:^",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/tsconfig": "workspace:^",
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

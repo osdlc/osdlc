@@ -32,7 +32,7 @@ import { nodeGuard } from '@osdlc/path-guard/node'
 import { Git, PUSH_REJECTIONS } from '@osdlc/typed-git'
 
 import { localDeleteCommand, remoteDeleteCommand } from './branches.ts'
-import type { Annotate } from './hooks.ts'
+import type { Annotate, RemoveWorktree } from './hooks.ts'
 import { fingerprint, runnable, sameFingerprint, type Plan, type PlanRepo } from './plan.ts'
 import { busyHolders, defaultProcessProbe, parseLockOwner, type ProcessProbe } from './processes.ts'
 import { RECEIPT_VERSION, type Dropped, type Receipt, type Step } from './receipt.ts'
@@ -100,6 +100,8 @@ interface Shared extends Runners {
   cwd?: string | undefined
   /** A host's re-ranking, applied to every re-sweep as the sweep applied it. */
   annotate?: Annotate | undefined
+  /** Removes the worktrees a host manages in place of `git worktree remove`; the preview shows its command. */
+  removeWorktree?: RemoveWorktree | undefined
   /** Told what the re-sweep is doing, for a status line. */
   onProgress?: ((progress: SweepProgress) => void) | undefined
 }
@@ -664,7 +666,7 @@ function verifyStep({ repo, row }: Accepted): Step {
   )
 }
 
-function stepsFor({ repo, row }: Accepted): Step[] {
+function stepsFor({ repo, row }: Accepted, removeWorktree: RemoveWorktree | undefined): Step[] {
   switch (row.kind) {
     case 'worktree': {
       // The row's own commands: a stale lock's unlock, then the remove or prune.
@@ -673,7 +675,11 @@ function stepsFor({ repo, row }: Accepted): Step[] {
         row.evidence,
         row.action === 'prune' ? 'prune' : 'remove',
       )
-      const last = commands.at(-1)!
+      const removal =
+        row.action === 'prune'
+          ? null
+          : removeWorktree?.(row, { repo, force: removeIsForced(row.evidence) })
+      const last = removal?.command ?? commands.at(-1)!
       return [
         ...(commands.length > 1 ? [pending(repo, row.id, 'unlock-worktree', commands[0]!)] : []),
         pending(repo, row.id, row.action === 'prune' ? 'prune-worktrees' : 'remove-worktree', last),
@@ -748,7 +754,9 @@ function planSteps(
   const steps: Array<[Step, Accepted | null]> = [
     // Spared tips first: one that moved stops the run before anything is deleted.
     ...rechecked.verified.map((a): [Step, Accepted | null] => [verifyStep(a), a]),
-    ...ordered.flatMap((a) => stepsFor(a).map((step): [Step, Accepted | null] => [step, a])),
+    ...ordered.flatMap((a) =>
+      stepsFor(a, opts.removeWorktree).map((step): [Step, Accepted | null] => [step, a]),
+    ),
   ]
   return { steps, dropped, accepted: ordered, removedHere, notes: rechecked.notes }
 }
@@ -868,6 +876,7 @@ function execute(
   git: Git,
   probe: ProcessProbe,
   removedHere: ReadonlySet<string>,
+  removeWorktree: RemoveWorktree | undefined,
 ): string | Gone {
   const at = git.at(step.repo)
   const remoteTip = (remote: string, ref: string) =>
@@ -916,7 +925,9 @@ function execute(
       assertNoLiveProcess(path, probe)
       const force = removeIsForced(row.evidence)
       if (force) assertSafeToForce(path, git, a!)
-      at.worktreeRemove(path, { force })
+      const removal = removeWorktree?.(row, { repo: step.repo, force })
+      if (removal === null || removal === undefined) at.worktreeRemove(path, { force })
+      else removal.run()
       if (existsSync(path)) throw new Error(`directory still exists: ${path}`)
       if (registered(path)) throw new Error(`still registered: ${path}`)
       return 'directory gone and unregistered'
@@ -1039,7 +1050,7 @@ export function run(preview: Preview, opts: RunOptions = {}): Receipt {
   for (const [i, [step, a]] of plannedSteps.entries()) {
     opts.onStep?.(i, plannedSteps.length, step)
     try {
-      const done = execute(step, a, git, probe, removedHere)
+      const done = execute(step, a, git, probe, removedHere, opts.removeWorktree)
       if (done instanceof Gone) {
         step.verification = done.verification
         step.gone = true

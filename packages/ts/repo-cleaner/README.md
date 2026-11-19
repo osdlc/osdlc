@@ -875,6 +875,7 @@ const receipt = run(preview)
 | `run(preview, opts?)` | Sweep once more and take the preview's steps, writing a `Receipt` (to `receiptPath` after every step, when given). `onNotes` hears what its own re-check judged without |
 | `inspectWorktree(path, opts?)` | One worktree judged as a sweep judges it, submodules included |
 | `readPlan`, `writePlan` | Plans on disk |
+| `fingerprint`, `sameFingerprint` | The evidence a plan row rests on and the rule that compares two of them, for a host that plans rows of its own |
 | `render` | The command line's formats: `text`, `json`, `summary`, `commands`, `preview`, `receipt` |
 | `defaultProcessProbe`, `providers` | The defaults a host can wrap or replace |
 | `RepoCleanerError` | Every refusal, with a `code`: `conflict`, `bad-input`, `not-found`, `ambiguous`, `spared-changed`, `bad-plan` |
@@ -926,6 +927,13 @@ reaches on its own evidence outranks anything a host could contribute, so a
 host rarely has to veto one. It mostly sharpens the rows left at `keep` or
 `review`. A worktree the host holds back keeps its branch: the sweep applies
 that rule after the hook.
+
+A host that manages some worktrees itself passes `removeWorktree` to `check`
+and `run`. It gets the worktree's row and returns `{ command, run }`, or null
+to leave that worktree to git. The preview shows the command, and `run` calls
+`run()` in place of `git worktree remove`. The checks for a live process and
+for a forced remove still run first, and the step fails unless the directory
+is gone and git no longer lists the worktree afterwards.
 
 ## Providers (prototype)
 
