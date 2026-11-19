@@ -412,7 +412,7 @@ const inNarrative = (dir: string, path: string): boolean =>
  * before a `-` that every pattern matches, so `P-0002-be-kind` with `^P-[0-9]{4}$` has the id
  * `P-0002`. Undefined when none matches.
  */
-function idOf(types: Type[], name: string): string | undefined {
+export function idOf(types: Type[], name: string): string | undefined {
   const patterns = types.flatMap((t) => (t.idPattern === undefined ? [] : [t.idPattern]))
   if (patterns.length === 0) return name
   const ends = [name.length, ...[...name.matchAll(/-/g)].map((m) => m.index).reverse()]

@@ -13,6 +13,7 @@ import {
   type Corpus,
   type Data,
   describe,
+  idOf,
   idProblem,
   load,
   recordFileOf,
@@ -161,13 +162,16 @@ export function newRecord(
   const types = chain(t)
   const problems: string[] = []
   const bad = idProblem(id)
+  // As the validator reads a file name: an `x-id-pattern` id may be the front of it, `P-0002-be-kind`.
+  const derived = idOf(types, id)
   if (bad !== undefined) problems.push(`id: "${id}" ${bad}`)
-  else
+  else if (derived === undefined)
     for (const u of types)
       if (u.idPattern !== undefined && !u.idPattern.test(id))
         problems.push(`id: "${id}" does not match x-id-pattern ${u.idPattern.source}`)
-  const taken = t.ids.get(fold(id))
-  if (taken !== undefined) problems.push(`id: "${id}" is also ${taken}`)
+  const recordId = derived ?? id
+  const taken = t.ids.get(fold(recordId))
+  if (taken !== undefined) problems.push(`id: "${recordId}" is also ${taken}`)
   if (problems.length > 0) throw new Error(problems.join('\n'))
 
   const ext = c.extensions.includes('.md') ? '.md' : (c.extensions[0] ?? '.md')
@@ -179,9 +183,11 @@ export function newRecord(
 
   // A type that declares `id` gets the record's own, first.
   const declaresId = types.some((u) => 'id' in asMap(u.schema?.['properties']))
-  const data: Data = declaresId ? { id, ...skeleton(t) } : skeleton(t)
-  if (declaresId) data['id'] = id
+  const data: Data = declaresId ? { id: recordId, ...skeleton(t) } : skeleton(t)
+  if (declaresId) data['id'] = recordId
   if (options.values !== undefined) {
+    if (declaresId && options.values['id'] !== undefined && options.values['id'] !== recordId)
+      throw new Error(`id: "${String(options.values['id'])}" is not the record's id "${recordId}"`)
     merge(data, options.values)
     for (const u of types)
       if (u.validate !== undefined && !u.validate(data))
