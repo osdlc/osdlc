@@ -11,6 +11,7 @@ keywords = ["git", "lease", "lock", "compare-and-swap", "refs"]
 categories = ["development-tools"]
 include = [
   "src/**/*.rs",
+  "examples/**/*.rs",
   "README.md",
   "CHANGELOG.md",
   "LICENSE-MIT",
