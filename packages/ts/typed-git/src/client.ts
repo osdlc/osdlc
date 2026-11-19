@@ -72,6 +72,7 @@ export {
   type DiffNameOnlyOptions,
   type DiffNameStatusOptions,
   type DiffStatOptions,
+  type DiffAddedFileOptions,
   type DiffTextOptions,
   type DiffTreeOptions,
   type FetchOptions,

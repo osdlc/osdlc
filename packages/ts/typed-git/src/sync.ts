@@ -70,6 +70,7 @@ import {
   type DiffNameOnlyOptions,
   type DiffStatOptions,
   type DiffNameStatusOptions,
+  type DiffAddedFileOptions,
   type DiffTextOptions,
   type DiffTreeOptions,
   type FetchOptions,
@@ -623,8 +624,8 @@ export class Git {
    * One untracked file rendered as an all-added diff. A path git cannot read
    * throws. See `diffAddedFile` in `verbs.ts`.
    */
-  diffAddedFile(relPath: string, opts: GitSyncCallOptions = {}): string {
-    return this.exec(v.diffAddedFile(relPath), opts)
+  diffAddedFile(relPath: string, opts: GitSyncCallOptions & DiffAddedFileOptions = {}): string {
+    return this.exec(v.diffAddedFile(relPath, opts), opts)
   }
 
   /** `for-each-ref` rows, one line each, in the caller's format. */

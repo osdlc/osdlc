@@ -1146,6 +1146,46 @@ fn diff_text_limited_to_a_path() {
 
 #[test]
 #[serial]
+fn diff_text_context_overrides_diff_context() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path();
+    init_repo(repo);
+    let before: String = (1..=12).map(|i| format!("{i}\n")).collect();
+    commit_files(repo, &[("a.txt", &before)], "base");
+    run(repo, &["config", "diff.context", "8"]);
+    fs::write(repo.join("a.txt"), before.replace("6\n", "")).unwrap();
+
+    let default = diff::diff_text(repo, None, &DiffTextOptions::new()).unwrap();
+    assert!(default.contains("\n@@ -3,7 +3,6 @@\n"), "{default}");
+    let none = diff::diff_text(repo, None, &DiffTextOptions::new().context(0)).unwrap();
+    assert!(none.contains("\n@@ -6 +5,0 @@\n"), "{none}");
+    let one = diff::diff_text(repo, None, &DiffTextOptions::new().context(1)).unwrap();
+    assert!(one.contains("\n@@ -5,3 +5,2 @@\n"), "{one}");
+}
+
+#[test]
+#[serial]
+fn diff_text_find_renames_pins_rename_detection() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path();
+    init_repo(repo);
+    let body: String = (0..10).map(|i| format!("line {i}\n")).collect();
+    commit_files(repo, &[("old.txt", &body)], "base");
+    run(repo, &["config", "diff.renames", "false"]);
+    run(repo, &["mv", "old.txt", "moved.txt"]);
+
+    let plain = diff::diff_text(repo, None, &DiffTextOptions::new().staged()).unwrap();
+    assert!(plain.contains("deleted file mode") && !plain.contains("rename from"));
+    let renamed =
+        diff::diff_text(repo, None, &DiffTextOptions::new().staged().find_renames()).unwrap();
+    assert!(
+        renamed.contains("rename from old.txt\nrename to moved.txt"),
+        "{renamed}"
+    );
+}
+
+#[test]
+#[serial]
 fn diff_text_staged_binary_and_empty() {
     let tmp = tempfile::tempdir().unwrap();
     let repo = tmp.path();

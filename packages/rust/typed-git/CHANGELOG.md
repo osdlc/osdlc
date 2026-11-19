@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `diff`: `DiffTextOptions::context` (`--unified=<n>`, default 3) and
+  `DiffTextOptions::find_renames` (`-M`, off by default, so `diff.renames`
+  still applies).
+
 ## [0.4.1](https://github.com/osdlc/osdlc/compare/typed-git/v0.4.0...typed-git/v0.4.1) - 2026-11-17
 
 ### Added

@@ -59,6 +59,7 @@ import {
   type DiffNameOnlyOptions,
   type DiffStatOptions,
   type DiffNameStatusOptions,
+  type DiffAddedFileOptions,
   type DiffTextOptions,
   type DiffTreeOptions,
   type FetchOptions,
@@ -192,7 +193,7 @@ export type GitRequest =
   | ({ kind: 'diffTreeNumstat'; rev: string } & DiffTreeOptions)
   | ({ kind: 'grep'; pattern: string } & GrepOptions)
   | ({ kind: 'diffText'; rev?: string | undefined } & DiffTextOptions)
-  | { kind: 'diffAddedFile'; relPath: string }
+  | ({ kind: 'diffAddedFile'; relPath: string } & DiffAddedFileOptions)
   | ({
       kind: 'fetch'
       remote: string
@@ -452,7 +453,7 @@ function toVerb(request: Exclude<GitRequest, { kind: 'rawBytes' }>): GitVerb<unk
     case 'diffText':
       return v.diffText(request.rev, request)
     case 'diffAddedFile':
-      return v.diffAddedFile(request.relPath)
+      return v.diffAddedFile(request.relPath, request)
     case 'fetch':
       return v.fetch(request.remote, request.refspec, request)
     case 'add':

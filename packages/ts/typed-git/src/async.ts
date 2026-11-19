@@ -53,6 +53,7 @@ import {
   type DiffNameOnlyOptions,
   type DiffStatOptions,
   type DiffNameStatusOptions,
+  type DiffAddedFileOptions,
   type DiffTextOptions,
   type DiffTreeOptions,
   type FetchOptions,
@@ -446,7 +447,15 @@ export class AsyncGit {
     const [call, req] = splitCallOptions(opts)
     return this.backend.execute(
       this.cwd,
-      { kind: 'diffText', rev, staged: req.staged, binary: req.binary, paths: req.paths },
+      {
+        kind: 'diffText',
+        rev,
+        staged: req.staged,
+        binary: req.binary,
+        context: req.context,
+        findRenames: req.findRenames,
+        paths: req.paths,
+      },
       call,
     )
   }
@@ -455,8 +464,16 @@ export class AsyncGit {
    * One untracked file rendered as an all-added diff. A path git cannot read
    * rejects. See {@link Git.diffAddedFile}.
    */
-  diffAddedFile(relPath: string, opts: GitCallOptions = {}): Promise<string> {
-    return this.backend.execute(this.cwd, { kind: 'diffAddedFile', relPath }, opts)
+  diffAddedFile(
+    relPath: string,
+    opts: GitCallOptions & DiffAddedFileOptions = {},
+  ): Promise<string> {
+    const [call, req] = splitCallOptions(opts)
+    return this.backend.execute(
+      this.cwd,
+      { kind: 'diffAddedFile', relPath, context: req.context },
+      call,
+    )
   }
 
   /** `for-each-ref` rows, one line each, in the caller's format. */

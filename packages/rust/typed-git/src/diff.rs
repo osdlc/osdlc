@@ -154,6 +154,8 @@ impl DiffNameStatusOptions {
 pub struct DiffTextOptions {
     staged: bool,
     binary: bool,
+    context: Option<u32>,
+    find_renames: bool,
     paths: Vec<String>,
 }
 
@@ -175,6 +177,22 @@ impl DiffTextOptions {
     /// can replay, instead of one `Binary files differ` line (`--binary`).
     pub fn binary(mut self) -> Self {
         self.binary = true;
+        self
+    }
+
+    /// Print `lines` lines of context around each change
+    /// (`--unified=<lines>`). The default is 3, whatever `diff.context` says;
+    /// 0 gives the changed lines alone.
+    pub fn context(mut self, lines: u32) -> Self {
+        self.context = Some(lines);
+        self
+    }
+
+    /// Detect renames (`-M`), whatever `diff.renames` says, so a moved file
+    /// reads as one `rename from`/`rename to` patch and not as a delete plus
+    /// an add. Without it `diff.renames` applies.
+    pub fn find_renames(mut self) -> Self {
+        self.find_renames = true;
         self
     }
 
@@ -281,7 +299,7 @@ fn has_error_line(stderr: &[u8]) -> bool {
 
 /// The unified diff (`git diff --no-color --no-ext-diff --no-textconv
 /// --src-prefix=a/ --dst-prefix=b/ --no-relative --submodule=short
-/// --unified=3 [--cached] [--binary] [rev] [--] [paths]`). `--` is passed
+/// --unified=<context> [--cached] [--binary] [-M] [rev] [--] [paths]`). `--` is passed
 /// once, when there is a `rev` or a path.
 ///
 /// With no `rev` the diff is the working tree against the index, or the index
@@ -300,10 +318,12 @@ fn has_error_line(stderr: &[u8]) -> bool {
 /// `diff.dstPrefix`) and `diff.relative`, which with a subdirectory as `repo`
 /// would drop changes outside it. They also keep a submodule change as a
 /// `Subproject commit` patch, whatever `diff.submodule` says, and the context
-/// at three lines, whatever `diff.context` says. Other settings still apply:
-/// rename detection (`diff.renames`), `diff.ignoreSubmodules` and
-/// `diff.algorithm`. The `GIT_DIFF_OPTS` environment variable also still
-/// applies: `-u0` there overrides the three lines of context.
+/// at [`context`](DiffTextOptions::context) lines (default three), whatever
+/// `diff.context` says. Other settings still apply: rename detection
+/// (`diff.renames`, unless [`find_renames`](DiffTextOptions::find_renames)
+/// pins it on), `diff.ignoreSubmodules` and `diff.algorithm`. The
+/// `GIT_DIFF_OPTS` environment variable also still applies: `-u0` there
+/// overrides the lines of context.
 ///
 /// [`paths`](DiffTextOptions::paths) are read as git pathspecs, not as
 /// literal file names: `*.md` and `pages/[slug].astro` are globs, and a name
@@ -318,6 +338,7 @@ pub fn diff_text(
     rev: Option<&str>,
     opts: &DiffTextOptions,
 ) -> Result<String, GitError> {
+    let unified = format!("--unified={}", opts.context.unwrap_or(3));
     let mut args = vec![
         "diff",
         "--no-color",
@@ -327,13 +348,16 @@ pub fn diff_text(
         "--dst-prefix=b/",
         "--no-relative",
         "--submodule=short",
-        "--unified=3",
+        unified.as_str(),
     ];
     if opts.staged {
         args.push("--cached");
     }
     if opts.binary {
         args.push("--binary");
+    }
+    if opts.find_renames {
+        args.push("-M");
     }
     if let Some(rev) = rev {
         refuse_option("diff", rev)?;

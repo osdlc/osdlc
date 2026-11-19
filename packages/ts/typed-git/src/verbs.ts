@@ -383,8 +383,21 @@ const PLAIN_PATCH: readonly string[] = [
   '--dst-prefix=b/',
   '--no-relative',
   '--submodule=short',
-  '--unified=3',
 ]
+
+/** The lines of context {@link diffText} and {@link diffAddedFile} print by default. */
+const DEFAULT_CONTEXT = 3
+
+/** `--unified=<n>`, for a context of `n` lines; `n` must be a non-negative safe integer. */
+function unifiedArg(verb: string, context: number | undefined): string {
+  const n = context ?? DEFAULT_CONTEXT
+  if (!Number.isSafeInteger(n) || n < 0) {
+    throw new TypeError(
+      `typed-git: ${verb}: context must be a non-negative integer (got ${JSON.stringify(n)})`,
+    )
+  }
+  return `--unified=${n}`
+}
 
 /** The child env that makes git print English, whatever the caller's locale. */
 const C_LOCALE: Readonly<Record<string, string>> = Object.freeze({ LC_ALL: 'C' })
@@ -1406,14 +1419,33 @@ export interface DiffTextOptions {
    * The patch is ASCII (base85), so the decode to a string keeps it intact.
    */
   binary?: boolean | undefined
+  /**
+   * `--unified=<n>`: lines of context around each change. Default 3, whatever
+   * `diff.context` says; 0 gives a patch of the changed lines alone. A
+   * non-negative integer, else the verb throws a `TypeError`.
+   */
+  context?: number | undefined
+  /**
+   * `-M`: detect renames, whatever `diff.renames` says, so a moved file reads
+   * as one `rename from`/`rename to` patch and not as a delete plus an add.
+   * Off by default: without it `diff.renames` applies (git's own default is
+   * on).
+   */
+  findRenames?: boolean | undefined
   /** Pathspecs, passed after `--`. */
   paths?: string[] | undefined
+}
+
+/** Options for {@link diffAddedFile}. */
+export interface DiffAddedFileOptions {
+  /** `--unified=<n>`: lines of context. As {@link DiffTextOptions.context}. */
+  context?: number | undefined
 }
 
 /**
  * The unified diff text (`git diff --no-color --no-ext-diff --no-textconv
  * --src-prefix=a/ --dst-prefix=b/ --no-relative --submodule=short
- * --unified=3 [--cached] [--binary] [rev] [--] [paths]`), for the same rev
+ * --unified=<context> [--cached] [--binary] [-M] [rev] [--] [paths]`), for the same rev
  * and staged shape {@link diffNameStatus} lists paths for. `--` is passed
  * once, when there is a rev or a path. Empty when nothing differs.
  * {@link diffNameOnly} selects the same paths except under `diff.relative`,
@@ -1427,10 +1459,11 @@ export interface DiffTextOptions {
  * `diff.dstPrefix`) and `diff.relative`, which with a cwd below the
  * repository root would drop changes outside it. They also keep a submodule
  * change as a `Subproject commit` patch, whatever `diff.submodule` says, and
- * the context at three lines, whatever `diff.context` says. Other settings
- * still apply: rename detection (`diff.renames`), `diff.ignoreSubmodules` and
- * `diff.algorithm`; so does the `GIT_DIFF_OPTS` environment variable, where
- * `-u0` overrides the three lines of context. The rev is followed by `--`, so git never reads it as a
+ * the context at `context` lines (default three), whatever `diff.context`
+ * says. Other settings still apply: rename detection (`diff.renames`, unless
+ * `findRenames` pins it on), `diff.ignoreSubmodules` and `diff.algorithm`; so
+ * does the `GIT_DIFF_OPTS` environment variable, where `-u0` overrides the
+ * lines of context. The rev is followed by `--`, so git never reads it as a
  * path: a rev that names a file but no revision throws, and a branch that
  * shares its name with a file works.
  *
@@ -1444,9 +1477,10 @@ export interface DiffTextOptions {
  * "no diff". `git.try.diffText` reports them as `{ ok: false }`.
  */
 export function diffText(rev?: string | undefined, opts: DiffTextOptions = {}): GitVerb<string> {
-  const argv = ['diff', ...PLAIN_PATCH]
+  const argv = ['diff', ...PLAIN_PATCH, unifiedArg('diffText', opts.context)]
   if (opts.staged === true) argv.push('--cached')
   if (opts.binary === true) argv.push('--binary')
+  if (opts.findRenames === true) argv.push('-M')
   pushRevAndPaths(argv, optionalPositional('diffText', 'rev', rev), opts.paths)
   return { argv, absent: NONE, parse: (r) => r.stdout }
 }
@@ -1454,7 +1488,7 @@ export function diffText(rev?: string | undefined, opts: DiffTextOptions = {}): 
 /**
  * One untracked file rendered as an all-added diff (`diff --no-color
  * --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --no-relative
- * --submodule=short --unified=3 --no-index -- /dev/null <path>`), so a new
+ * --submodule=short --unified=<context> --no-index -- /dev/null <path>`), so a new
  * file reaches a consumer in the same shape as a modified one: the flags are
  * the ones {@link diffText} passes, and the text is as plain. An empty
  * existing file still gives a diff header.
@@ -1464,9 +1498,17 @@ export function diffText(rev?: string | undefined, opts: DiffTextOptions = {}): 
  * for a path it cannot read; that throws the classified failure. Exit 2 (a usage or
  * read error) throws too.
  */
-export function diffAddedFile(relPath: string): GitVerb<string> {
+export function diffAddedFile(relPath: string, opts: DiffAddedFileOptions = {}): GitVerb<string> {
   return {
-    argv: ['diff', ...PLAIN_PATCH, '--no-index', '--', '/dev/null', relPath],
+    argv: [
+      'diff',
+      ...PLAIN_PATCH,
+      unifiedArg('diffAddedFile', opts.context),
+      '--no-index',
+      '--',
+      '/dev/null',
+      relPath,
+    ],
     absent: [1],
     parse(r, ranArgv) {
       if (r.exitCode !== 0 && r.stdout === '') throw new CommandFailed(ranArgv, r)
