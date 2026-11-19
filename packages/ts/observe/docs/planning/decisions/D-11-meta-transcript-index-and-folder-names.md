@@ -58,6 +58,14 @@ created: 2026-10-19
 - `meta` is for the caller's own fields only. The fields observe already
   defines, such as `run`, `subject`, `task` and `parent`, stay where they are,
   and `meta` never shadows them.
+- Locks are checked against the raw meta folded from the log (the `launched`
+  meta, then each accepted `meta_updated`), before any schema check. So a
+  `launched` whose meta fails a newer schema still locks its keys, and every
+  reader agrees on which updates are ignored.
+- A `meta_updated` is checked as a merge. On a session launched without meta,
+  an update that leaves a required key missing is ignored as `invalid_meta`, so
+  a reporter that did not launch the session should only write keys the schema
+  makes optional.
 - Schema evolution. The event schema parses `meta` as a plain object, and the
   reducer validates it against the reading model's schema. A `launched` event
   whose meta fails a newer schema still yields a record without `meta`, and its
@@ -110,7 +118,10 @@ There is no change to the closed lists. The README gets a section on mapping:
   returns 24 hex characters of SHA-256 over `JSON.stringify(parts)`.
 - With a label, the label comes first: lowercased, each run of characters other
   than `a-z` and `0-9` turned into one `-`, and cut to 40 characters.
-- It throws a `RangeError` when `parts` is empty.
+- The label and the hash are joined by one `-`. A label that is empty after
+  that treatment is dropped, and so is a trailing `-` left by the cut.
+- It throws a `RangeError` when `parts` is empty, or when `parts` holds a value
+  that `JSON.stringify` cannot keep apart (`undefined`, `NaN`, a function).
 - The same parts give the same name, and an opaque id never becomes a path.
 
 ## Why

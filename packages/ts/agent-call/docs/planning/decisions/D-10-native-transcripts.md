@@ -94,7 +94,7 @@ folder; those would be added there as paths, so the two packages agree.
     current history.
 - A `.jsonl.zst` copy is decompressed with `zlib.zstdDecompressSync` when the
   runtime has it. When both a plain and a compressed copy exist, the plain one
-  wins. When the runtime cannot decompress, coverage drops and a note says so.
+  wins. When the runtime cannot decompress, the file is left out of `files`, a note names it, and coverage is `unavailable` if nothing else was read, else `partial`.
 - When `session_meta.history_base` says the earlier history is in another
   thread's rollout (a fork), coverage is `partial`, and a note names that
   thread.
