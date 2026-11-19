@@ -55,6 +55,7 @@ const CASES: Array<[string, unknown[]]> = [
   ['mergeBase', ['main', '-x']],
   ['logSubject', ['-x']],
   ['objectExists', ['-x']],
+  ['readTree', ['-x']],
   ['lsRemote', ['--upload-pack=touch FILE', 'HEAD']],
   ['isAncestor', ['-x', 'main']],
   ['aheadBehind', ['main', '-x']],
@@ -148,7 +149,7 @@ describe('leading-dash positionals', () => {
   test('the cases cover every guarded verb in verbs.ts', () => {
     const cased = new Set(CASES.map(([name]) => name))
     expect([...cased].sort()).toEqual([...guardedVerbs()].sort())
-    expect(cased.size).toBe(49)
+    expect(cased.size).toBe(50)
   })
 
   test.each([...CASES, ...MORE_CASES])('Git.%s refuses before spawning', (name, args) => {
