@@ -134,6 +134,13 @@ export interface CommandRequest {
   cwd: string
   argv: string[]
   title: string
+  /**
+   * Env vars set on the command, as `SessionRequest.env` is on a harness; an `undefined`
+   * value unsets that var. Every host applies it with `withEnv`, so a workspace shell
+   * has them and the agents the person starts from it inherit them. `wrapperSession`
+   * folds a session's env into `argv` itself and leaves this unset.
+   */
+  env?: EnvOverrides | undefined
   /** The caller's session id to bind the pane to; see {@link SessionRequest.sessionId}. */
   sessionId?: string | undefined
   /** See {@link SessionRequest.wait}. */

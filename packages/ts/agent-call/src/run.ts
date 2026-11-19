@@ -76,6 +76,15 @@ export interface CallOptions {
    * is not awaited.
    */
   onOutput?: ((chunk: string, stream: 'stdout' | 'stderr') => void) | undefined
+  /**
+   * Called once, right after the process starts, with its pid and the full
+   * argv it was started with (the binary first), for a host that tracks
+   * running calls. It is not called when nothing starts (an already-aborted
+   * signal, a missing binary). A throw, or a returned promise that rejects, is
+   * swallowed and the run carries on. A returned promise is not awaited. There
+   * is no exit callback: the call settling is the exit.
+   */
+  onSpawn?: ((info: { pid: number; argv: readonly string[] }) => void) | undefined
 }
 
 /**
@@ -306,6 +315,7 @@ async function execute(
       signal: options.signal,
       maxOutputBytes,
       onOutput: options.onOutput,
+      onSpawn: options.onSpawn,
     })
     raw.durationMs = Date.now() - startedAt
 

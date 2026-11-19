@@ -212,6 +212,28 @@ const result = await callAgent(adapter, spec, {
 A throw from `onOutput` is swallowed and stops later calls. The run carries
 on. Nothing is delivered past `maxOutputBytes`.
 
+To track the process while it runs, pass `onSpawn`: it is called once, right
+after the process starts, with its `pid` and the full `argv`. It is not called
+when nothing starts (an already-aborted signal, a missing binary), and a throw
+is swallowed. There is no exit callback: the call settling is the exit.
+
+```ts
+const running = new Map<number, readonly string[]>()
+await callAgent(adapter, spec, { onSpawn: ({ pid, argv }) => running.set(pid, argv) })
+```
+
+### Limiting the built-in tools
+
+`permissions.tools` is the exact set of built-in tools the agent has. A tool
+outside it is not offered to the model, which is stronger than `allowTools`
+(pre-approves) or `denyTools` (removes some). `[]` means no tools. Only claude
+has the flag (`--tools`); the other adapters note it as `dropped`, so a strict
+call refuses rather than runs with the full tool set.
+
+```ts
+callAgent(claudeAdapter(), { prompt, permissions: { tools: ['Read', 'Glob', 'Grep'] } })
+```
+
 ### Capping output
 
 `maxOutputBytes` on the spec keeps a runaway agent from filling the host's
@@ -435,6 +457,7 @@ that did not map one to one:
 | `permissions.mode: bypass` | `--dangerously-skip-permissions` | `--dangerously-bypass-approvals-and-sandbox` | `--dangerously-skip-permissions` | `OPENCODE_PERMISSION` allow map |
 | `permissions.allowTools` | `--allowedTools` | dropped | dropped | dropped |
 | `permissions.denyTools` | `--disallowedTools` | dropped | dropped | dropped |
+| `permissions.tools` | `--tools` (`--tools ""` for `[]`) | dropped | dropped | dropped |
 | `context.files` | prompt preamble | prompt preamble | `@path` in prompt | `--file` |
 | `context.dirs` | `--add-dir` | `--add-dir` | `--add-dir` | dropped |
 | `context.text` | prompt preamble | prompt preamble | prompt preamble | prompt preamble |
@@ -466,6 +489,7 @@ The same rows for the other six agents:
 | `permissions.mode: bypass` | `--allow-all` | `--tools` all built-ins | `--approval-mode yolo` | `--skip-permissions-unsafe` | `--force --sandbox disabled` | `DSH_PERMISSION_MODE` `danger-full-access` |
 | `permissions.allowTools` | `--allow-tool` | `--tools` (approximated) | `--allowed-tools` | `--add-tools` (approximated) | `.cursor/cli.json` rules (approximated) | dropped |
 | `permissions.denyTools` | `--deny-tool` | `--exclude-tools` | `--exclude-tools` | `--remove-tools` (approximated) | `.cursor/cli.json` rules (approximated) | dropped |
+| `permissions.tools` | dropped | dropped | dropped | dropped | dropped | dropped |
 | `context.files` | prompt preamble | `@path` arguments | `@path` in prompt | prompt preamble | prompt preamble | prompt preamble |
 | `context.dirs` | `--add-dir` | dropped | `--include-directories` | dropped | `--add-dir` | `--add-dir` |
 | `context.text` | prompt preamble | prompt preamble | prompt preamble | prompt preamble | prompt preamble | prompt preamble |

@@ -18,6 +18,7 @@ import {
   commandPrefix,
   type CommandOptions,
   withStructured,
+  noteDroppedToolSet,
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
@@ -125,6 +126,7 @@ function planPi(command: readonly string[], spec: AgentCallSpec): PlannedCall {
   // selection. pi rejects a list that mixes the two, so each side is
   // normalized.
   const permissions = spec.permissions
+  noteDroppedToolSet(notes, permissions?.tools, 'pi sets --tools from permissions.mode and allowTools; there is no separate exact-set field yet')
   const allow = permissions?.allowTools ?? []
   const plus = (tools: string[]): string[] => tools.map((t) => (t.startsWith('+') ? t : `+${t}`))
   const plain = (tools: string[]): string[] => tools.map((t) => t.replace(/^\+/, ''))
