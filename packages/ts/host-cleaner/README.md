@@ -9,10 +9,11 @@ repo-cleaner's safety model.
 
 With no adapter detected, the result is repo-cleaner's, row for row.
 
-The `host-cleaner` command ships three adapters: `cargo` and `node`, for build
-caches (see [Build artifacts](#build-artifacts)), and `orca`, for worktrees that
-Orca manages (see [Orca](#orca)). Each further integration is its own package
-change.
+The `host-cleaner` command ships four adapters: `cargo` and `node`, for build
+caches (see [Build artifacts](#build-artifacts)), `orca`, for worktrees that
+Orca manages (see [Orca](#orca)), and `claude-code`, for running Claude Code
+sessions (see [Claude Code sessions](#claude-code-sessions)). Each further
+integration is its own package change.
 
 ```ts
 import { hostSweep, hostPlan, hostCheck, hostRun, type HostAdapter } from '@osdlc/host-cleaner'
@@ -125,6 +126,38 @@ location, is then `blocked` with the blocker `host:orca-unreachable`, and no git
 removal runs on it. Start Orca and sweep again. A worktree elsewhere is judged
 as without the adapter.
 
+## Claude Code sessions
+
+The `claude-code` adapter lists Claude Code processes and closes one on
+approval. It is detected when detect-harness reports Claude Code, or, with no
+report, when its config folder exists. Transcripts are read from
+`<config>/projects`, with the config folder from detect-harness, so
+`CLAUDE_CONFIG_DIR` moves it.
+
+A session is a process whose executable is `claude` or `claude.exe` (or `node`
+running `claude`), listed by `ps -axo pid=,lstart=,command=`, with its working
+directory from `lsof -a -d cwd`. A shell wrapper such as `.bin/claude` is not
+one; its child is. Each is a `session:<pid>` row, judged `review`, with the
+risk `close-session` and the evidence:
+
+| Field | Meaning |
+| --- | --- |
+| `pid`, `startedAt`, `command`, `cwd` | The process, its start time, command line and working directory |
+| `resumeId` | The session id after `--resume`, `--resume=` or `-r`, when the command line has a UUID there. Claude Code does not put the id on its command line otherwise, so this is often null |
+| `lastWrite` | The mtime of the session's transcript: the `<resumeId>.jsonl` under `projects/`, else the newest `.jsonl` in the folder for the cwd (the cwd with every character but a letter or digit turned into `-`). Null when none matches |
+| `duplicateOf` | The other pids resuming the same id |
+| `orphan` | The cwd no longer exists, or is under the OS temp directory |
+| `worktree` | The swept worktree the cwd falls in, if any |
+| `unattended` | Always false: no session is closed without being picked |
+
+The row is the fingerprint, so a session that wrote to its transcript, or a pid
+that a new process took over, is dropped as `changed` or `gone` at the re-check.
+`clean` closes a session only when it is named with `--pick session:<pid>` and
+`--allow close-session` is given. `execute` then checks the pid has the planned
+start time and command, sends `kill -TERM <pid>` through `@osdlc/command-seam`,
+and waits up to 10 seconds for it to exit. A session that does not exit fails the
+step; nothing sends SIGKILL.
+
 ## The approval
 
 `hostCheck(plan, approval)` takes repo-cleaner's `{ pick, spare, allow }`. A
@@ -157,7 +190,7 @@ and URL-target options, plus `--adapter <names>` to run only those adapters and
 `--skip-adapter <names>` to never run them. Every command takes `--help`. The
 exit codes are repo-cleaner's: 10 for nothing to sweep, 11 for a failed step.
 
-The bin runs `cargoAdapter` and `nodeAdapter`; a program that calls `main` from
+The bin runs `cargoAdapter`, `nodeAdapter`, `orcaAdapter` and `claudeAdapter`; a program that calls `main` from
 `src/cli.ts` passes its own list.
 
 Files live in the `host-cleaner` tier of `@osdlc/tiered-dirs`, moved by the

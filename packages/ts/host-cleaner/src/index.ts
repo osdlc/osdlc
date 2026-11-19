@@ -57,6 +57,17 @@ export {
   type HostStepRecord,
 } from './clean.ts'
 export { CARGO_ADAPTER, cargoAdapter, incrementalOff } from './cargo.ts'
+export {
+  CLAUDE_ADAPTER,
+  CLOSE_SESSION,
+  claudeAdapter,
+  createClaudeAdapter,
+  parseSession,
+  projectSlug,
+  resumeIdOf,
+  type ClaudeOptions,
+  type SessionEvidence,
+} from './claude.ts'
 export { NODE_ADAPTER, nodeAdapter } from './node.ts'
 export { DEFAULT_IDLE_HOURS } from './artifacts.ts'
 export {
