@@ -731,7 +731,10 @@ Methods on both clients:
 ### Verbs
 
 A verb is plain data: argv, a `checked` flag, a `readOnly` flag, optional stdin and environment,
-and a `parse` function. `readOnly` is true for every query and `prDiff`, and false for every
+and a `parse` function. `runVerb` and both clients run every verb but `raw` and `rawChecked` with
+`NO_COLOR=1`, `CLICOLOR_FORCE=0` and `GH_FORCE_TTY=0` set, so a colour setting in the caller's
+environment cannot put escape codes into the JSON or diff they parse. A `raw` call keeps the
+caller's environment. `readOnly` is true for every query and `prDiff`, and false for every
 mutation and for `raw` and `rawChecked`, so a caller that keeps an allowlist of safe calls can check
 a verb before running it. Each verb takes an optional `GhTarget` last, except `raw` and
 `rawChecked`, which take only argv. Each client method has a verb of the same name, except `at`,
@@ -754,7 +757,7 @@ a verb before running it. Each verb takes an optional `GhTarget` last, except `r
 - `nodesAt`: one connection's nodes, joined across `graphql` pages. With `{ partial: true }`, across
   partial pages, with their errors.
 - Field lists: `PR_REF_FIELDS` (enough to identify a PR), `PR_LIST_FIELDS` (for triage),
-  `PR_VIEW_FIELDS` (the full set), `REPO_FIELDS` and `SEARCH_PR_FIELDS`.
+  `PR_VIEW_FIELDS` (the full set; both lists include `baseRefOid` and `headRefOid`), `REPO_FIELDS` and `SEARCH_PR_FIELDS`.
 - Option and result types: `ListResult`, `PrListOptions`, `IssueListOptions`, `RepoListOptions`,
   `SearchPrsOptions`, `CreatePrOptions`, `CreateReviewOptions`, `ReviewComment`,
   `CreateLabelOptions`, `ApiOptions`, `ApiResponse`, `GraphqlOptions`, `GraphqlPartialOptions`,

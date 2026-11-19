@@ -10,6 +10,7 @@ import {
   AsyncGh,
   Gh,
   createReview,
+  prList,
   prDiff,
   prView,
   raw,
@@ -24,6 +25,7 @@ import {
   type CommandRunner,
   type GhFailure,
 } from '../src/index.ts'
+import { NO_COLOUR_ENV } from '../src/verbs.ts'
 
 const ok = (stdout: string): CommandResult => ({ exitCode: 0, stdout, stderr: '' })
 
@@ -47,11 +49,26 @@ describe('runVerb', () => {
     expect(calls[0]!.opts).toMatchObject({
       cwd: '/repo',
       timeoutMs: 1_000,
-      env: { GH_HOST: 'ghe.example.com' },
+      env: { ...NO_COLOUR_ENV, GH_HOST: 'ghe.example.com' },
     })
     const search = spy(ok('[]'))
     runVerb(searchPrs('x', {}, HOST), search.runner, { cwd: '/repo' })
-    expect(search.calls[0]!.opts?.env).toEqual({ GH_HOST: 'ghe.example.com' })
+    expect(search.calls[0]!.opts?.env).toEqual({ ...NO_COLOUR_ENV, GH_HOST: 'ghe.example.com' })
+  })
+
+  test('forces colour off for a parsed verb, and leaves a raw call to the caller', () => {
+    const parsed = spy(ok('[]'))
+    runVerb(prList(), parsed.runner, { cwd: '/repo' })
+    expect(parsed.calls[0]!.opts?.env).toEqual({
+      NO_COLOR: '1',
+      CLICOLOR_FORCE: '0',
+      GH_FORCE_TTY: '0',
+    })
+    const rawCall = spy(ok(''))
+    runVerb(raw(['pr', 'list']), rawCall.runner, { cwd: '/repo' })
+    runVerb(rawChecked(['pr', 'list']), rawCall.runner, { cwd: '/repo' })
+    expect(rawCall.calls[0]!.opts?.env).toBeUndefined()
+    expect(rawCall.calls[1]!.opts?.env).toBeUndefined()
   })
 
   test('passes input (stdin) to the runner', () => {
@@ -65,7 +82,7 @@ describe('runVerb', () => {
   test('omits options the verb and caller do not set', () => {
     const { calls, runner } = spy(ok('{"number":1}'))
     runVerb(prView('1', ['number']), runner, { cwd: '/repo' })
-    expect(calls[0]!.opts).toEqual({ cwd: '/repo' })
+    expect(calls[0]!.opts).toEqual({ cwd: '/repo', env: NO_COLOUR_ENV })
   })
 
   test('throws the classified failure for a failed unchecked read', () => {

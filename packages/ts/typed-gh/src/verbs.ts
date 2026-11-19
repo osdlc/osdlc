@@ -59,6 +59,12 @@ export interface GhVerb<T> {
    */
   env?: Record<string, string> | undefined
   /**
+   * True for `raw` and `rawChecked`, whose caller owns the argv and reads the
+   * output itself. `runVerb` then leaves colour to the caller's environment.
+   * Every other verb is run with {@link NO_COLOUR_ENV} under its own `env`.
+   */
+  leaveColour?: boolean | undefined
+  /**
    * True for a call whose failure is part of its answer. `installed`,
    * `authStatus`, `api` and `raw` return what `parse` makes of any result,
    * from the plain method and from `try`; they have no soft form. Other reads
@@ -168,6 +174,19 @@ function hostArgs(target: GhTarget | undefined): string[] {
   return hostname === undefined ? [] : ['--hostname', hostname]
 }
 
+/**
+ * Variables `runVerb` sets on every verb whose output the library parses.
+ * gh colours a pipe when `CLICOLOR_FORCE` or `GH_FORCE_TTY` is set, and the
+ * escape codes break JSON and diff parsing. `NO_COLOR` wins over both.
+ * `CLICOLOR_FORCE` and `GH_FORCE_TTY` are set to `0` rather than unset,
+ * because a runner's `env` can only add or remove, and `0` is read as off.
+ */
+export const NO_COLOUR_ENV: Readonly<Record<string, string>> = {
+  NO_COLOR: '1',
+  CLICOLOR_FORCE: '0',
+  GH_FORCE_TTY: '0',
+}
+
 /** `GH_HOST` for the verbs gh gives no host flag. */
 function hostEnv(target: GhTarget | undefined): Record<string, string> | undefined {
   checkTarget(target)
@@ -213,6 +232,7 @@ export const PR_LIST_FIELDS = [
   'baseRefName',
   'headRefName',
   'headRefOid',
+  'baseRefOid',
   'isCrossRepository',
   'mergeable',
   'mergeStateStatus',
@@ -1890,7 +1910,14 @@ export function createReview(
  * cannot tell what `argv` does.
  */
 export function raw(argv: readonly string[]): GhVerb<CommandResult> {
-  return { argv: [...argv], checked: false, readOnly: false, probe: true, parse: (r) => r }
+  return {
+    argv: [...argv],
+    checked: false,
+    readOnly: false,
+    probe: true,
+    leaveColour: true,
+    parse: (r) => r,
+  }
 }
 
 /**
@@ -1900,7 +1927,7 @@ export function raw(argv: readonly string[]): GhVerb<CommandResult> {
  * one call the verb table lacks needs no `Gh` for it.
  */
 export function rawChecked(argv: readonly string[]): GhVerb<CommandResult> {
-  return { argv: [...argv], checked: true, readOnly: false, parse: (r) => r }
+  return { argv: [...argv], checked: true, readOnly: false, leaveColour: true, parse: (r) => r }
 }
 
 // ── helpers over the parsed rows ────────────────────────────────────────────

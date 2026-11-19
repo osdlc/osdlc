@@ -64,6 +64,7 @@ const REPO = 'octo-org/hello-world'
 const CREATED_AT = '2024-01-15T09:30:00Z'
 const UPDATED_AT = '2024-01-16T14:05:00Z'
 const HEAD_OID = '6dcb09b5b57875f334f61aebed695e2e4193db5e'
+const BASE_OID = '0f4ff658a1c3e5d7b9a2c4e6f8091a2b3c4d5e6f'
 
 // ── the result ──────────────────────────────────────────────────────────────
 
@@ -244,6 +245,7 @@ export interface GhPrJson {
   /** Required by `prList({ head })`, which keeps only rows whose head is exactly `head`. */
   headRefName: string
   headRefOid: string
+  baseRefOid: string
   isCrossRepository: boolean
   mergeable: MergeableState
   mergeStateStatus: MergeStateStatus
@@ -277,6 +279,7 @@ export function prRow(overrides: RowOverrides<GhPrJson> = {}): GhPrJson {
       baseRefName: 'main',
       headRefName: 'feature/add-retries',
       headRefOid: HEAD_OID,
+      baseRefOid: BASE_OID,
       isCrossRepository: false,
       mergeable: 'MERGEABLE',
       mergeStateStatus: 'CLEAN',

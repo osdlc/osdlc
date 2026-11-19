@@ -244,6 +244,7 @@ export function parsePullRequest(raw: unknown): PullRequest | null {
     baseRefName: str(raw['baseRefName']),
     headRefName: str(raw['headRefName']),
     headRefOid: strOrNull(raw['headRefOid']),
+    baseRefOid: strOrNull(raw['baseRefOid']),
     isCrossRepository: bool(raw['isCrossRepository']),
     mergeable: parseMergeable(raw['mergeable']),
     mergeStateStatus: str(raw['mergeStateStatus'], 'UNKNOWN').toUpperCase(),

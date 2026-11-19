@@ -17,7 +17,13 @@ import type {
 } from '@osdlc/command-seam'
 
 import { runCheckedGh, runCheckedGhAsync, settle } from './doors.ts'
-import type { GhVerb } from './verbs.ts'
+import { NO_COLOUR_ENV, type GhVerb } from './verbs.ts'
+
+/** The verb's `env` over {@link NO_COLOUR_ENV}, or the verb's own for a raw call. */
+function verbEnv(verb: GhVerb<unknown>): Record<string, string> | undefined {
+  if (verb.leaveColour === true) return verb.env
+  return { ...NO_COLOUR_ENV, ...verb.env }
+}
 
 /** What a verb run is given besides the verb: the directory and the cap on the call. */
 export interface RunVerbOptions {
@@ -45,7 +51,8 @@ export interface RunVerbAsyncOptions extends RunVerbOptions {
 export function runVerb<T>(verb: GhVerb<T>, runner: CommandRunner, opts: RunVerbOptions): T {
   const run: CommandRunOptions = { cwd: opts.cwd }
   if (verb.input !== undefined) run.input = verb.input
-  if (verb.env !== undefined) run.env = verb.env
+  const env = verbEnv(verb)
+  if (env !== undefined) run.env = env
   if (opts.timeoutMs !== undefined) run.timeoutMs = opts.timeoutMs
   const result = verb.checked ? runCheckedGh(runner, verb.argv, run) : runner.run(verb.argv, run)
   return settle(verb, result, runner.binary)
@@ -59,7 +66,8 @@ export async function runVerbAsync<T>(
 ): Promise<T> {
   const run: AsyncCommandRunOptions = { cwd: opts.cwd }
   if (verb.input !== undefined) run.input = verb.input
-  if (verb.env !== undefined) run.env = verb.env
+  const env = verbEnv(verb)
+  if (env !== undefined) run.env = env
   if (opts.timeoutMs !== undefined) run.timeoutMs = opts.timeoutMs
   if (opts.signal !== undefined) run.signal = opts.signal
   const result = verb.checked
