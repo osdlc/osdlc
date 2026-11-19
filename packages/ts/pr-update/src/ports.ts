@@ -47,7 +47,7 @@ export interface VerifyVerbsRequest {
    * `detect` it is instead the PR's own update worktree, asked once per PR.
    */
   checkout: string
-  /** The PR being verified, set for `detect`, which resolves once per PR. */
+  /** The PR being verified; set only for `detect`. */
   pr?: number | undefined
 }
 

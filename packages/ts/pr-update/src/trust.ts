@@ -1,9 +1,10 @@
 /**
  * The repository-trust gate of a standalone run, over `@osdlc/trust-repo`.
  *
- * Five `pr_update` keys make the tool run a command, or an agent that can run
+ * These `pr_update` keys make the tool run a command, or an agent that can run
  * tools, chosen by the repository it is acting on: `lockfile_install`,
- * `resolvers[].run`, `repair.command`, `repair.agent` and `test_command`. A
+ * `resolvers[].run`, `repair.command`, `repair.agent`, `test_command`, and
+ * `verify: detect`, whose command the repository's own files choose. A
  * setting the repository itself can write cannot authorize running it. So a
  * value from the project config file needs consent: `--trust` for one run, or
  * a trust recorded with `pr-update trust`. A value from the `.local` overlay is

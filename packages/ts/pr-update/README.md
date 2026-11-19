@@ -325,7 +325,7 @@ exported `detectVerifyCommand(dir, testCommand?)` for the same ladder.
 
 Detection runs once per PR, so a PR that adds or removes a `justfile`, `Makefile`
 or `package.json` test script is judged by its own files. Every other `verify`
-value resolves once per repository, as before.
+value resolves once per repository.
 
 ## Not retrying a failure that will repeat
 

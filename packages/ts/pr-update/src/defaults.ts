@@ -81,9 +81,9 @@ export function standalonePorts(
   return {
     locate: () => null,
     runVerb: (verb, cwd) => sh.run(verb, { cwd }),
-    // A standalone run has no host registry to look up `check` in; `test` runs only
-    // `test_command`, and `detect` only the detectVerifyCommand ladder. Failing is better than running no verbs
-    // and reporting a push as verified when nothing was checked.
+    // A standalone run has no host registry to look up `check` in, and `test` runs only
+    // `test_command`. Failing is better than running no verbs and reporting a push as
+    // verified when nothing was checked.
     async resolveVerifyVerbs({ which, repo, checkout, pr }) {
       if (which === 'detect') {
         const found = detectVerifyCommand(checkout, testCommand)

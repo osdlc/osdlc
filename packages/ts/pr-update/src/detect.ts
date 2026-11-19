@@ -21,7 +21,7 @@ export const DETECT_LOOKED_FOR =
 const JUSTFILES = ['justfile', 'Justfile', '.justfile']
 const MAKEFILES = ['GNUmakefile', 'makefile', 'Makefile']
 // A recipe or target named `test`, not `test-all`, a `test := value` assignment or an indented line.
-const JUST_TEST = /^test(?:[ \t][^:=\n]*)?:(?!=)/m
+const JUST_TEST = /^@?test(?:[ \t][^:\n]*)?:(?!=)/m
 const MAKE_TEST = /^test[ \t]*::?(?![:=])/m
 const NPM_INIT_PLACEHOLDER = /no test specified/
 
@@ -52,7 +52,7 @@ function packageJsonTest(dir: string): boolean {
 /**
  * The first rung of the ladder that matches in `dir`, or null:
  *
- * 1. `testCommand`, when configured;
+ * 1. `testCommand`, when set and not blank;
  * 2. a `test` target of a justfile, then a Makefile;
  * 3. `scripts.test` of `package.json`, run with the package manager its lockfile names;
  * 4. `cargo test` for `Cargo.toml`, `go test ./...` for `go.mod`, `sbt test` for `build.sbt`.

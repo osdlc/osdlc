@@ -25,7 +25,7 @@
  *     times at this head and base sha, and would fail the same way again.
  *     `--retry-failed` attempts it anyway.
  *
- * `verify: check` or `verify: test` runs the `verifyVerbs` that
+ * `verify: check`, `test` or `detect` runs the `verifyVerbs` that
  * `ports.resolveVerifyVerbs` returns before a push. `verify: detect` asks it once per PR,
  * naming the PR's update worktree as `checkout`. Otherwise it is asked once per
  * repository, naming the repository and its checkout, so a run over several
@@ -524,14 +524,14 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
     else groups.set(t.repo, { path: pathOf.get(t.repo) ?? env.projectRoot, targets: [t] })
   }
   const runId = `${process.pid}.${Date.now()}`
-  // Once per repository, not inside `updateAll`'s per-PR loop. All of them
+  // Except for `detect`, which reads each PR's own update worktree after checkout:
+  // once per repository, not inside `updateAll`'s per-PR loop. All of them
   // before any update, so a list the host refuses for one repository stops
   // the run before anything in any repository is pushed. And every surveyed
   // checkout, not only those with a PR to update, so a missing or refused
   // list is reported on every run, not first on the run that needs it.
   const verify = effectiveCfg.verify
   const verifyVerbsOf = new Map<string, readonly string[]>()
-  // `detect` reads each PR's own update worktree, so it resolves per PR, after checkout.
   if (verify !== 'none' && verify !== 'detect') {
     const toAsk = new Map<string, string>()
     for (const { repo, measurable, failure } of report.repos) {

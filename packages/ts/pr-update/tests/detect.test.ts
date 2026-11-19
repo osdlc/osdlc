@@ -66,6 +66,14 @@ describe('detectVerifyCommand', () => {
     },
   )
 
+  test.each(["test filter='':", "test target='all':", '@test:'])(
+    'a justfile recipe %j with a default value or quiet marker is a test recipe',
+    (header) => {
+      put('justfile', `${header}\n  x\n`)
+      expect(detectVerifyCommand(dir)?.command).toBe('just test')
+    },
+  )
+
   test('a Makefile test target runs make test', () => {
     put('Makefile', 'all:\n\tx\n\ntest: all\n\ty\n')
     const found = detectVerifyCommand(dir)
