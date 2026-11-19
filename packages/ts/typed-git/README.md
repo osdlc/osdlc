@@ -777,6 +777,8 @@ exit throws the classified failure.
 | `commitTree(tree, { parents, message })` | `commit-tree <tree> [-p <parent>]... -m <message>` | none — writes an object and no ref; needs a git identity |
 | `hashObject(content, { write })` | `hash-object [-w] --stdin` | none — the blob sha; `write` stores the blob; `content` goes on stdin as UTF-8, unfiltered |
 | `mktree(entries)` | `mktree -z` | none — writes a tree object and no ref; each entry is `{ mode, type?, sha, path }`, one name per entry; a duplicate name, a mode git does not write, a name git reads as `.git` (including `git~1`, `.git.` and the HFS+ spellings), or a `.gitmodules` that is not a file, each of which `git fsck --strict` reports, throws a `TypeError` |
+| `readTree(rev)` | `read-tree <rev>` | none — loads the tree into the index and leaves the working tree alone; pass `env: { GIT_INDEX_FILE }` on the call to use a temporary index |
+| `writeTree()` | `write-tree` | none — the tree sha of the index; writes objects and no ref; a conflicted index throws |
 | `remotes()` | `remote` | none — names, not remotes |
 | `remote()` | `remote` | none — deprecated alias of `remotes()` |
 | `remoteGetUrl(name, { push })` | `remote get-url [--push] <name>` | `2` → `null` (unknown remote) — the first URL |
