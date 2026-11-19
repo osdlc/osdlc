@@ -1047,7 +1047,7 @@
         {
           "id": "q-relations",
           "about": "code-says-1",
-          "prompt": "How do candidates relate: a branch freed by a worktree, an artifact inside a worktree?",
+          "prompt": "Some candidates depend on others: a branch checked out in a worktree, a target/ folder inside a worktree. When one is held back or deleted, what happens to the other?",
           "kind": "single",
           "options": [
             {
