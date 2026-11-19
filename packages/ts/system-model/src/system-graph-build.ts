@@ -25,6 +25,7 @@ import { walkManifests, type WalkOptions } from './manifest-walk.ts'
 // also depend on the contract package by name.
 export type { SystemEdge, SystemGraph, SystemNode } from './graph.ts'
 
+/** What `buildSystemGraph` accepts. */
 export interface SystemGraphOptions {
   /** Also materialise the registry packages the project depends on. */
   includeExternal?: boolean

@@ -25,6 +25,7 @@ import {
   type GraphNode,
 } from './manifest-model.ts'
 
+/** What `applyContainment` accepts. */
 export interface ContainmentOptions {
   /** Name for the repo root node. Default `'repository'`. */
   rootLabel?: string
