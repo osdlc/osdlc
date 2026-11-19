@@ -906,6 +906,11 @@
           "kind": "single",
           "options": [
             {
+              "id": "first-come",
+              "title": "First plugin in a fixed order owns it; the duplicate is dropped with a warning",
+              "detail": "Reviewer's suggestion. Plugin order is fixed and documented (git first, then the built-ins in a stated order), so 'first' is the same on every run. A second plugin rarely needs to propose the same candidate: the object phase already lets it note, protest or refuse the first one's. A dropped duplicate is reported naming both plugins, so a buggy plugin is visible."
+            },
+            {
               "id": "owner-by-kind",
               "title": "The kind has one registered owner; any other plugin proposing it is an error",
               "detail": "Recommended. `git` owns worktree, branch and remote; cargo owns its artifact kinds. A plugin that proposes a kind it does not own is a bug caught at once, as `checkRow` already refuses a kind that is repo-cleaner's (`src/sweep.ts`). A duplicate id from the right owner is refused too."
@@ -921,7 +926,7 @@
               "detail": "Lets two plugins discover the same thing. Cost: \"first\" is order again, and merging evidence means the fingerprint is the union of two views."
             }
           ],
-          "recommended": "owner-by-kind"
+          "recommended": "first-come"
         }
       ]
     },
