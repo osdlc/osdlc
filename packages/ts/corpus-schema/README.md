@@ -218,7 +218,7 @@ per type, with the fields of its whole `x-extends` chain (required ones not opti
 string for each `x-ref` field, and `CorpusTypes`, which maps each type name to its interface. It
 exits 1, after printing the corpus's errors, when the corpus does not validate. The same source
 comes from `generateTypes(loadCorpus(folder))`, which returns the module's source. JSON Schema keywords it does not model (`$ref`,
-`if`, `not`, patterns) give `unknown`, and the types of corpora the corpus extends are not emitted.
+`if`, `not`, patterns) give `unknown`, and the types of corpora the corpus extends or references are not emitted.
 
 `sync` owns `_references/` outright. It removes every file there that no referenced corpus holds,
 so in a corpus with no `references` it empties the folder. It does not write through a symbolic

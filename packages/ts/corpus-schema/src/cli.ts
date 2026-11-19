@@ -7,7 +7,8 @@
  *   corpus-schema types [--out <file>] <folder>
  *
  * `validate` checks every corpus at or below each folder. `sync` writes each one's `_references/`
- * copies, the folder defaulting to `.`. Exits 1 on any error, or with `--strict` on any warning,
+ * copies, the folder defaulting to `.`. `types` writes the TypeScript types of the one corpus at or
+ * below the folder to stdout or `--out`. Exits 1 on any error, or with `--strict` on any warning,
  * and 2 on bad usage.
  */
 import { existsSync, realpathSync, statSync, writeFileSync } from 'node:fs'

@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import ts from 'typescript'
 import { generateTypes, loadCorpus } from '../src/index.ts'
 
 const CLI = join(import.meta.dirname, '../bin/corpus-schema.js')
@@ -110,6 +111,49 @@ describe('generateTypes', () => {
   })
 })
 
+describe('generated module', () => {
+  test('compiles, for schemas that stress the index signature, nulls and refs', () => {
+    put('g/g.corpus-schema.yaml', 'corpus-schema: 0\nid: g\nformats: [md]\n')
+    put('g/a/a.schema.json', JSON.stringify({ properties: { n: { type: 'string' } } }))
+    put(
+      'g/b/b.schema.json',
+      JSON.stringify({
+        properties: {
+          m: {
+            type: 'object',
+            properties: { name: { type: 'string' } },
+            additionalProperties: { type: 'number' },
+          },
+          v: {
+            type: ['object', 'null'],
+            anyOf: [
+              { properties: { kind: { const: 'a' } } },
+              { properties: { kind: { const: 'b' } } },
+            ],
+          },
+          next: { type: ['string', 'null'], 'x-ref': 'a' },
+          nexts: { type: ['array', 'null'], items: { type: 'string', 'x-ref': 'a' } },
+        },
+      }),
+    )
+    const source = generateTypes(loadCorpus(join(dir, 'g')))
+    assert.match(
+      source,
+      /m\?: \{ name\?: string; \[key: string\]: number \| string \| undefined \}/,
+    )
+    assert.match(source, /next\?: Ref<"a"> \| null/)
+    assert.match(source, /nexts\?: Ref<"a">\[\] \| null/)
+    assert.match(source, /v\?: Record<string, unknown> \| null\n/)
+    const file = join(dir, 'g.d.ts')
+    writeFileSync(file, source)
+    const program = ts.createProgram([file], { noEmit: true, strict: true, types: [] })
+    const errors = ts
+      .getPreEmitDiagnostics(program)
+      .map((d) => ts.flattenDiagnosticMessageText(d.messageText, '\n'))
+    assert.deepEqual(errors, [])
+  })
+})
+
 describe('type names', () => {
   test('a type named like a global stays compilable', () => {
     put('r/r.corpus-schema.yaml', 'corpus-schema: 0\nid: r\nformats: [md]\n')
@@ -134,6 +178,7 @@ describe('corpus-schema types', () => {
     mkdirSync(join(dir, 'empty'))
     assert.equal(cli('types', 'empty').status, 1)
     assert.equal(cli('types').status, 2)
+    assert.equal(cli('types', '--out', 'c', 'c').status, 1)
     assert.equal(cli('validate', '--out', 'x', 'c').status, 2)
   })
 })
