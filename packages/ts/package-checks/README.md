@@ -72,7 +72,8 @@ package-checks stage --dry-run packages/ts/new-lib
 - `affected` reads `EVENT`. On `pull_request` it picks from the diff;
   otherwise it picks every package. It prints `packages`, `filter`, `build`
   and `dirs`, and appends them to `$GITHUB_OUTPUT` when that is set.
-- `stage` publishes `0.0.1-stage` under the `stage` tag and runs
+- `stage` runs `pnpm install` when `node_modules` is missing, builds the
+  package and its workspace dependencies, then publishes `0.0.1-stage` under the `stage` tag and runs
   `npm trust github` with the repository from the package's `repository.url`
   and `--workflow` (default `packages-publish.yml`). A step already done is
   skipped.

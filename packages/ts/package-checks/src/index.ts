@@ -55,9 +55,12 @@ export {
   githubRepository,
   NPM,
   PLACEHOLDER,
+  prepareSteps,
   readTarget,
+  runSteps,
   stage,
   trustArgs,
+  type PrepareStep,
   type StageOptions,
   type StageTarget,
 } from './stage.ts'
