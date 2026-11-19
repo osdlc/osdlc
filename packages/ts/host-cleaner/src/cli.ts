@@ -185,6 +185,8 @@ export interface MainDeps {
   host?: Pick<HostOptions, 'git' | 'command' | 'probe' | 'now'>
 }
 
+const PAUSE = new Int32Array(new SharedArrayBuffer(4))
+
 function readAllStdin(): string {
   const chunks: Buffer[] = []
   const buf = Buffer.alloc(65536)
@@ -193,7 +195,10 @@ function readAllStdin(): string {
     try {
       n = readSync(0, buf, 0, buf.length, null)
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== 'EAGAIN') throw e
+      const code = (e as NodeJS.ErrnoException).code
+      if (code === 'EOF') return Buffer.concat(chunks).toString('utf8')
+      if (code !== 'EAGAIN') throw e
+      Atomics.wait(PAUSE, 0, 0, 50)
       continue
     }
     if (n === 0) return Buffer.concat(chunks).toString('utf8')
@@ -259,7 +264,8 @@ function sweepWith(
   ctx: CliContext,
   deps: MainDeps,
 ): HostSweep {
-  const only = v.only?.filter((s) => s !== '') as Kind[] | undefined
+  const named = v.only?.filter((s) => s !== '')
+  const only = named === undefined || named.length === 0 ? undefined : (named as Kind[])
   if (only?.includes('remote')) {
     throw new HostCleanerError(
       'bad-input',
@@ -385,16 +391,14 @@ function cleanConflict(v: CleanValues, targets: readonly string[]): string | nul
   return null
 }
 
-const REPO_ACTIONS = new Set([
-  'remove-worktree',
-  'delete-branch',
-  'delete-remote',
-  'prune-worktrees',
-])
+const REPO_ACTIONS = new Set(['remove-worktree', 'delete-branch', 'delete-remote'])
 
 /** Rows a run deletes: the person is asked to approve this many. */
 function rowsActedOn(p: HostPreview): number {
-  return p.repo.steps.filter((s) => REPO_ACTIONS.has(s.action)).length + p.steps.length
+  const repoRows = new Set(
+    p.repo.steps.filter((s) => REPO_ACTIONS.has(s.action)).map((s) => `${s.repo}\0${s.row}`),
+  )
+  return repoRows.size + p.steps.length
 }
 
 /** The host half of a preview as text. */
