@@ -1,5 +1,21 @@
 # @osdlc/pr-update
 
+## 0.13.0
+
+### Minor Changes
+
+- bc341e9: `pr_update.restack: true | false` (default `false`) sets `update --restack` from the project config, so a project that always restacks need not pass the flag. `--restack` and `--no-restack` override it for one run.
+- cb56f16: The update worktree now gets the repository's git submodules: with a `.gitmodules` present, `pr_update.submodules: auto` (the default; `off` disables it) runs `git submodule update --init --recursive` after each PR's checkout and again when the update moved a gitlink or changed `.gitmodules`, before `verify`, resolvers and `lockfile_install` run. A submodule that will not check out fails the PR as `submodule setup failed: <detail>` without recording a failed attempt. A conflict on a submodule pointer names the base's and the branch's commits.
+
+### Patch Changes
+
+- Updated dependencies [b0ff1b3]
+- Updated dependencies [cb56f16]
+  - @osdlc/typed-git@0.18.0
+  - @osdlc/code-host@0.8.2
+  - @osdlc/ref-lease@0.3.3
+  - @osdlc/trust-repo@0.5.10
+
 ## 0.12.4
 
 ### Patch Changes
