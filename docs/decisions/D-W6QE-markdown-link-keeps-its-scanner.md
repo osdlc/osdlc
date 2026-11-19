@@ -25,7 +25,7 @@ one already runs?
 
 Verified against the code on `main` at 12c4a290 unless marked inferred.
 
-- `markdown-link` has no parser dependency. It reads source once and reports
+- `markdown-link` has no parser dependency. It scans each document once, plus an internal pass for code regions, and reports
   byte offsets (Rust) and UTF-16 offsets (TS) into the raw note
   (`packages/rust/markdown-link/src/spanned.rs`, `code.rs`;
   `packages/ts/markdown-link/src/body-links.ts`, `code.ts`).
@@ -67,7 +67,7 @@ Verified against the code on `main` at 12c4a290 unless marked inferred.
 | remark / micromark (TS), `position.offset` | Full mdast with UTF-16 offsets; wikilinks need a plugin. Source: `markdown-render` use; https://github.com/remarkjs/remark, read 2026-11-19 | Borrow as `link-scan.ts` already does: scan source, place by offset. Reject as the scanner |
 | `markdown-render` `link-scan.ts` | Scanner decides links, parser supplies the nodes | Adopt as the pattern |
 | `markdown-contract` `dialect/wikilinks` | Regex over flattened text, in both languages | Reject: a second answer to "is this a link" |
-| pulldown-cmark / markdown-it offset maps | Same tradeoff as comrak: a tree first, offsets second | Not studied further; same verdict as comrak |
+| pulldown-cmark (`Parser::into_offset_iter`) | Event stream with byte ranges into the source, no tree; https://docs.rs/pulldown-cmark/latest/pulldown_cmark/struct.Parser.html#method.into_offset_iter, read 2026-11-19 | Borrow as a future Rust-side check on the criteria. Not adopted: no wikilinks, no `SkillExport`, no TS twin with the same answers, and not in the workspace today |
 
 ## Criteria
 
@@ -91,7 +91,7 @@ ended), 6 degrades over time.
 **B. Keep the scanner for reading links, freeze its code detection at what
 it does now, and prefer scanning the source when a parser runs.** Link
 reading (wikilinks, aliases, destinations) stays here. Code detection is not
-extended toward CommonMark: the two documented gaps stay documented, and a
+extended toward CommonMark: the documented gaps stay documented, and a
 change needs a failing case from a real note. A caller that already has a tree
 scans the source and places links by the tree's offsets, as `link-scan.ts`
 does, and uses `CodeRules::None` only for text it already knows holds no
@@ -107,7 +107,7 @@ Rust the parser is comrak and offsets are line and column, so a rewrite
 needs a line index; in TS a link that crosses nodes (`[[Note|the *key*
 idea]]`) is split by remark and `link-scan.ts` exists to avoid that.
 Forecloses: criterion 1 on the parser side. Scores: 1 no, 2 partial, 3 no
-(`SkillExport`, Obsidian), 4 yes for the fallback, 5 low, 6 adds a tree.
+(`SkillExport`, Obsidian), 4 yes for the fallback, 5 low, 6 adds a parse pass over every note, unmeasured.
 
 **D. Replace the scanner's code detection with comrak and remark entirely.**
 Costs: a parser dependency in every consumer, including `markdown-tags` and
@@ -125,18 +125,24 @@ loses on 1 to 4.
 
 What B does not claim: the scanner is not exact CommonMark and will not be.
 Its code detection is "good enough for links in notes", and the suite is the
-definition of correct ([behaviour table](../../packages/rust/markdown-link/decisions/behaviour-table-is-the-reference.md)).
+definition of correct (`packages/conformance/markdown-link/`).
 
 ## Consequences
 
 - #649's direction stops. `code.rs` and `code.ts` take a change only for a
-  case seen in a real note, with a suite row. The two known gaps stay in the
-  crate's docs as accepted.
+  case seen in a real note, with a suite row. The known gaps stay in the
+  crate's docs as accepted: lazy continuation lines, indented code in a block
+  quote, a span that ends early at a container marker, and a pipe-prefixed
+  paragraph read as a table row (`code.rs` header).
 - Follow-ups, each its own PR, none done here:
   - `markdown-relink`'s `target_span` moves into `markdown-link`, so the
     destination is read once. This is the follow-up #836 names.
   - `markdown-contract`'s wikilink regex (Rust and TS) calls the scanner
-    with `CodeRules::None` over the flattened text it already holds. Its
+    with `CodeRules::None` over the flattened text it already holds. That
+    text keeps inline-code contents (`parse.rs`, `projection.ts`), so a
+    `[[Note]]` in a span stays a link there, as it does today. This is an
+    explicit exception to B's rule; the follow-up must either keep it or
+    exclude code before flattening. Its
     tree comes from comrak and remark; its links come from the scanner.
   - The `link-scan.ts` pattern, scan the source and place by offset, is
     written into the `markdown-link` README as the way to combine it with a
@@ -147,7 +153,7 @@ definition of correct ([behaviour table](../../packages/rust/markdown-link/decis
 ## Reopen if
 
 - The suite's code-block cases stop being enough: a real note loses or
-  gains a link because of one of the two known gaps, and the fix would cost
+  gains a link because of one of the known gaps, and the fix would cost
   more than a few lines.
 - A parser exposes byte offsets and wikilink and `SkillExport` hooks in both
   languages, with the same answers on the suite.
