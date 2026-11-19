@@ -72,6 +72,14 @@
       { "language": "rust", "dir": "packages/rust/path-guard", "name": "path-guard" }
     ]
   },
+  "ref-lease": {
+    "reference": "ts",
+    "generator": "pnpm --filter @osdlc/ref-lease conformance:write",
+    "implementations": [
+      { "language": "ts", "dir": "packages/ts/ref-lease", "name": "@osdlc/ref-lease" },
+      { "language": "rust", "dir": "packages/rust/ref-lease", "name": "ref-lease" }
+    ]
+  },
   "tiered-dirs": {
     "reference": "ts",
     "generator": "pnpm --filter @osdlc/tiered-dirs conformance:write",

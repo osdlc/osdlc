@@ -1,0 +1,31 @@
+[package]
+name = "ref-lease"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "The protocol half of compare-and-swap leases on git refs: how a push result and a fetch error are read, and the canonical JSON a lease payload is written as. The Rust twin of @osdlc/ref-lease."
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["git", "lease", "lock", "compare-and-swap", "refs"]
+categories = ["development-tools"]
+include = [
+  "src/**/*.rs",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
+
+[dependencies]
+# float_roundtrip: the suite parses numbers such as 123456789012345680000, which the
+# default float parser reads one unit in the last place off.
+serde_json = { workspace = true, features = ["float_roundtrip"] }
+
+# tests/conformance.rs only: it reads packages/conformance/ref-lease/suite.json,
+# the suite the TypeScript package (packages/ts/ref-lease) runs too.
+[dev-dependencies]
+serde = { workspace = true }
+
+[lints]
+workspace = true

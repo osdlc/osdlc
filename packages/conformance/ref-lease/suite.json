@@ -1,0 +1,452 @@
+{
+  "family": "ref-lease",
+  "reference": "ts",
+  "referenceVersion": "0.3.2",
+  "sections": {
+    "push_outcome": {
+      "description": "What a compare-and-swap push's per-ref result means. `input.flag` is git push --porcelain's status character for the ref; `input.rejection` is the reason kind read from git's reason text (null unless flag is `!`), as @osdlc/typed-git reads it: that reading is typed-git's and is tested there; `input.keepsSha` is true when the write expected the sha it pushes. `expect.outcome` is `ok`, `cas-failed` or `git-failed`.",
+      "cases": [
+        {
+          "name": "create succeeds",
+          "input": {
+            "flag": "*",
+            "rejection": null,
+            "keepsSha": false
+          },
+          "expect": {
+            "outcome": "ok"
+          }
+        },
+        {
+          "name": "replace succeeds (forced update)",
+          "input": {
+            "flag": "+",
+            "rejection": null,
+            "keepsSha": false
+          },
+          "expect": {
+            "outcome": "ok"
+          }
+        },
+        {
+          "name": "replace succeeds (fast-forward)",
+          "input": {
+            "flag": " ",
+            "rejection": null,
+            "keepsSha": false
+          },
+          "expect": {
+            "outcome": "ok"
+          }
+        },
+        {
+          "name": "delete succeeds",
+          "input": {
+            "flag": "-",
+            "rejection": null,
+            "keepsSha": false
+          },
+          "expect": {
+            "outcome": "ok"
+          }
+        },
+        {
+          "name": "create of a ref already at the same sha",
+          "input": {
+            "flag": "=",
+            "rejection": null,
+            "keepsSha": false
+          },
+          "expect": {
+            "outcome": "cas-failed"
+          }
+        },
+        {
+          "name": "replace that keeps the sha it expected",
+          "input": {
+            "flag": "=",
+            "rejection": null,
+            "keepsSha": true
+          },
+          "expect": {
+            "outcome": "ok"
+          }
+        },
+        {
+          "name": "replace from a wrong sha to the sha the ref already holds",
+          "input": {
+            "flag": "=",
+            "rejection": null,
+            "keepsSha": false
+          },
+          "expect": {
+            "outcome": "cas-failed"
+          }
+        },
+        {
+          "name": "lease check lost before anything was sent",
+          "input": {
+            "flag": "!",
+            "rejection": "stale",
+            "keepsSha": false
+          },
+          "expect": {
+            "outcome": "cas-failed"
+          }
+        },
+        {
+          "name": "create of a ref that exists",
+          "input": {
+            "flag": "!",
+            "rejection": "stale",
+            "keepsSha": false
+          },
+          "expect": {
+            "outcome": "cas-failed"
+          }
+        },
+        {
+          "name": "race lost at the authority: ref created first",
+          "input": {
+            "flag": "!",
+            "rejection": "already-exists",
+            "keepsSha": false
+          },
+          "expect": {
+            "outcome": "cas-failed"
+          }
+        },
+        {
+          "name": "race lost at the authority: ref moved or deleted",
+          "input": {
+            "flag": "!",
+            "rejection": "lock-failed",
+            "keepsSha": false
+          },
+          "expect": {
+            "outcome": "cas-failed"
+          }
+        },
+        {
+          "name": "delete raced by another writer",
+          "input": {
+            "flag": "!",
+            "rejection": "lock-failed",
+            "keepsSha": false
+          },
+          "expect": {
+            "outcome": "cas-failed"
+          }
+        },
+        {
+          "name": "non-fast-forward",
+          "input": {
+            "flag": "!",
+            "rejection": "non-fast-forward",
+            "keepsSha": false
+          },
+          "expect": {
+            "outcome": "cas-failed"
+          }
+        },
+        {
+          "name": "remote hook declined",
+          "input": {
+            "flag": "!",
+            "rejection": "hook-declined",
+            "keepsSha": false
+          },
+          "expect": {
+            "outcome": "git-failed"
+          }
+        },
+        {
+          "name": "ref path clash at the authority",
+          "input": {
+            "flag": "!",
+            "rejection": "ref-conflict",
+            "keepsSha": false
+          },
+          "expect": {
+            "outcome": "git-failed"
+          }
+        },
+        {
+          "name": "tag already exists",
+          "input": {
+            "flag": "!",
+            "rejection": "tag-exists",
+            "keepsSha": false
+          },
+          "expect": {
+            "outcome": "git-failed"
+          }
+        },
+        {
+          "name": "another ref of an atomic push failed",
+          "input": {
+            "flag": "!",
+            "rejection": "atomic-failed",
+            "keepsSha": false
+          },
+          "expect": {
+            "outcome": "git-failed"
+          }
+        },
+        {
+          "name": "anything unrecognised",
+          "input": {
+            "flag": "!",
+            "rejection": "other",
+            "keepsSha": false
+          },
+          "expect": {
+            "outcome": "git-failed"
+          }
+        }
+      ]
+    },
+    "fetch_failure": {
+      "description": "What a failed fetch's stderr means (git runs in the C locale). `input.stderr` is the text; `expect.failure` is `ref-not-found`, `lock-contention` (retried) or `git-failed`.",
+      "cases": [
+        {
+          "name": "ref missing at the authority",
+          "input": {
+            "stderr": "fatal: couldn't find remote ref refs/locks/x"
+          },
+          "expect": {
+            "failure": "ref-not-found"
+          }
+        },
+        {
+          "name": "refspec matched nothing",
+          "input": {
+            "stderr": "error: src refspec refs/locks/x did not match any refs"
+          },
+          "expect": {
+            "failure": "ref-not-found"
+          }
+        },
+        {
+          "name": "local ref lock held by another process",
+          "input": {
+            "stderr": "error: cannot lock ref 'refs/locks/x': Unable to create '/tmp/reader/.git/refs/locks/x.lock': File exists."
+          },
+          "expect": {
+            "failure": "lock-contention"
+          }
+        },
+        {
+          "name": "local directory/file ref clash (permanent, not retried)",
+          "input": {
+            "stderr": "error: cannot lock ref 'refs/locks/x': 'refs/locks' exists; cannot create 'refs/locks/x'"
+          },
+          "expect": {
+            "failure": "git-failed"
+          }
+        },
+        {
+          "name": "local ref moved by a concurrent fetch",
+          "input": {
+            "stderr": "error: cannot lock ref 'refs/locks/x': is at 9f8e7d6 but expected 1a2b3c4"
+          },
+          "expect": {
+            "failure": "lock-contention"
+          }
+        },
+        {
+          "name": "authority unreachable",
+          "input": {
+            "stderr": "fatal: '/tmp/nowhere' does not appear to be a git repository\nfatal: Could not read from remote repository."
+          },
+          "expect": {
+            "failure": "git-failed"
+          }
+        },
+        {
+          "name": "empty stderr",
+          "input": {
+            "stderr": ""
+          },
+          "expect": {
+            "failure": "git-failed"
+          }
+        }
+      ]
+    },
+    "canonical_json": {
+      "description": "The deterministic encoding of a lease payload. `input.value` is any JSON value; `expect.json` is its canonical encoding. A number is encoded as the JavaScript number it parses to.",
+      "cases": [
+        {
+          "name": "null",
+          "input": {
+            "value": null
+          },
+          "expect": {
+            "json": "null"
+          }
+        },
+        {
+          "name": "booleans",
+          "input": {
+            "value": [
+              true,
+              false
+            ]
+          },
+          "expect": {
+            "json": "[true,false]"
+          }
+        },
+        {
+          "name": "integers and decimals",
+          "input": {
+            "value": [
+              0,
+              -1,
+              1.5,
+              1e+21
+            ]
+          },
+          "expect": {
+            "json": "[0,-1,1.5,1e+21]"
+          }
+        },
+        {
+          "name": "empty containers",
+          "input": {
+            "value": {
+              "a": [],
+              "b": {}
+            }
+          },
+          "expect": {
+            "json": "{\"a\":[],\"b\":{}}"
+          }
+        },
+        {
+          "name": "keys sorted at every depth",
+          "input": {
+            "value": {
+              "b": {
+                "z": 1,
+                "a": 2
+              },
+              "a": [
+                {
+                  "y": 1,
+                  "x": 2
+                }
+              ]
+            }
+          },
+          "expect": {
+            "json": "{\"a\":[{\"x\":2,\"y\":1}],\"b\":{\"a\":2,\"z\":1}}"
+          }
+        },
+        {
+          "name": "integer-like keys sorted as strings",
+          "input": {
+            "value": {
+              "1": 3,
+              "2": 2,
+              "10": 1
+            }
+          },
+          "expect": {
+            "json": "{\"1\":3,\"10\":1,\"2\":2}"
+          }
+        },
+        {
+          "name": "uppercase sorts before lowercase",
+          "input": {
+            "value": {
+              "b": 1,
+              "B": 2,
+              "a": 3
+            }
+          },
+          "expect": {
+            "json": "{\"B\":2,\"a\":3,\"b\":1}"
+          }
+        },
+        {
+          "name": "non-ASCII kept as UTF-8",
+          "input": {
+            "value": {
+              "name": "café ✓"
+            }
+          },
+          "expect": {
+            "json": "{\"name\":\"café ✓\"}"
+          }
+        },
+        {
+          "name": "control characters and quotes escaped",
+          "input": {
+            "value": "a\"b\\c\nd\u0001"
+          },
+          "expect": {
+            "json": "\"a\\\"b\\\\c\\nd\\u0001\""
+          }
+        },
+        {
+          "name": "array order kept",
+          "input": {
+            "value": [
+              3,
+              1,
+              2
+            ]
+          },
+          "expect": {
+            "json": "[3,1,2]"
+          }
+        },
+        {
+          "name": "number forms at the exponent thresholds",
+          "input": {
+            "value": [
+              0.000001,
+              1e-7,
+              123456789012345680000,
+              100000000000000000000,
+              10000000000000000,
+              -1.5e-10,
+              0.1,
+              100
+            ]
+          },
+          "expect": {
+            "json": "[0.000001,1e-7,123456789012345680000,100000000000000000000,10000000000000000,-1.5e-10,0.1,100]"
+          }
+        },
+        {
+          "name": "negative zero is written as 0",
+          "input": {
+            "value": [
+              0,
+              0
+            ]
+          },
+          "expect": {
+            "json": "[0,0]"
+          }
+        },
+        {
+          "name": "keys sorted by UTF-16 code unit, not UTF-8 byte",
+          "input": {
+            "value": {
+              "￿": 1,
+              "😀": 2,
+              "a": 3
+            }
+          },
+          "expect": {
+            "json": "{\"a\":3,\"😀\":2,\"￿\":1}"
+          }
+        }
+      ]
+    }
+  }
+}

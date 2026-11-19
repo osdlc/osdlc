@@ -1,5 +1,6 @@
 {
   "catchingUp": {
+    "ref-lease": "the Rust crate holds the protocol half only (0.1.0); it gains the git push and fetch and levels with the TypeScript minor (osdlc#688)",
     "tiered-dirs": "the Rust crate reaches 0.5.0 with the realign-small-twins work",
     "etag-write": "the Rust crate is at 0.2.4 and the TypeScript package at 0.3.0 with no behaviour gap; the next Rust minor release levels them",
     "config-layers": "the Rust crate gains the project-file migrations and compare-and-swap writes of osdlc#637"

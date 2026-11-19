@@ -240,6 +240,7 @@ and points here.
 | observe              | TS, Rust `osdlc-observe`    | `rust/osdlc-observe/tests/fixtures/parity.json`                                     | TS        |
 | path-guard           | TS, Rust                    | moved: `conformance/path-guard/suite.json`                                          | TS        |
 | pr-update            | TS, Rust                    | `rust/pr-update/tests/fixtures/parity.json`                                         | TS        |
+| ref-lease            | TS, Rust                    | moved: `conformance/ref-lease/suite.json`                                           | TS        |
 | repo-cleaner         | TS, Rust                    | `rust/repo-cleaner/tests/fixtures/parity.json`                                      | TS        |
 | system-model         | TS, Rust                    | `rust/system-model/tests/fixtures/parity.json`                                      | TS        |
 | tiered-dirs          | TS, Rust                    | moved: `conformance/tiered-dirs/suite.json`                                         | TS        |

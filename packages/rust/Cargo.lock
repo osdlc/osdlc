@@ -1199,6 +1199,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ref-lease"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "regex"
 version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
