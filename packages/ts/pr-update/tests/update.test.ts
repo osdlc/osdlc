@@ -1265,7 +1265,11 @@ describe('runUpdate --restack — a three-level stack, against real git', () => 
 
   test('restack: false overrides pr_update.restack: true', async () => {
     const out = await run({ apply: true, strategy: 'merge', restack: false }, {}, { restack: true })
-    expect(out.results.every((r) => r.restackedOnto === undefined)).toBe(true)
+    expect(out.results.map((r) => r.number)).toEqual([1])
+    expect(out.skipped.map((s) => [s.number, s.reason])).toEqual([
+      [2, 'blocked on #1'],
+      [3, 'blocked on #1'],
+    ])
   })
 
   test('a declined parent push holds every level below it back', async () => {
