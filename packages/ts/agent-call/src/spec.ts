@@ -52,6 +52,14 @@ export interface PermissionSpec {
   allowTools?: string[] | undefined
   /** Tool patterns to deny. Passed through the same way as `allowTools`. */
   denyTools?: string[] | undefined
+  /**
+   * The exact set of built-in tools the agent has at all, so a tool outside
+   * it is not offered to the model (unlike `allowTools`, which only
+   * pre-approves). `[]` means no tools. Native on claude (`--tools`, with
+   * `--tools ""` for `[]`); the other built-in adapters record it as dropped.
+   * Each agent has its own tool names.
+   */
+  tools?: string[] | undefined
 }
 
 /** What the agent should know about beyond the prompt: files, directories, free text. */

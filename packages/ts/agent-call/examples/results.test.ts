@@ -47,6 +47,19 @@ describe('onOutput', () => {
   })
 })
 
+describe('onSpawn', () => {
+  test('hands over the pid and argv once the process starts', async () => {
+    const adapter = node('console.log("hi")')
+    const spec: AgentCallSpec = { prompt: 'x' }
+
+    const running = new Map<number, readonly string[]>()
+    await callAgent(adapter, spec, { onSpawn: ({ pid, argv }) => running.set(pid, argv) })
+
+    expect(running.size).toBe(1)
+    expect([...running.values()][0]?.[0]).toBe('node')
+  })
+})
+
 describe('AgentResult', () => {
   test('a good run has the text, the exit code and the plan that ran', async () => {
     const result: AgentResult = await callAgent(node('console.log("fine")'), { prompt: 'x' })
