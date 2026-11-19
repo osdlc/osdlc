@@ -25,10 +25,14 @@ for (const [name, section] of Object.entries(suite.sections)) {
     if (c.error !== undefined && 'message' in c.error) {
       throw new Error(`${name}: ${c.name}: error.message is not compared; remove it`)
     }
+    const outcome = run(name, c.input)
+    if (outcome.expect === undefined && outcome.error === undefined) {
+      throw new Error(`${name}: ${c.name}: the runner returned no outcome`)
+    }
     return {
       name: c.name,
       input: c.input,
-      ...run(name, c.input),
+      ...outcome,
       ...(c.platforms === undefined ? {} : { platforms: c.platforms }),
       ...(c.skip === undefined ? {} : { skip: c.skip }),
     }
