@@ -18,7 +18,7 @@ assert!(graph.nodes.is_empty());
 The graph is deterministic: nodes keep the walk's order, external nodes are
 sorted by id and edges are sorted, so two runs diff cleanly.
 
-`tests/mini-repo` is the fixture tree both implementations walk.
+`tests/mini-repo` is the fixture tree both implementations will walk once the walk lands here.
 
 ## Licence
 

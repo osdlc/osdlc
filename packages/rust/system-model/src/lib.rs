@@ -1,8 +1,9 @@
 //! # system-model
 //!
-//! A repository's structure, as typed data. Point it at a directory tree; it
-//! finds every `package.json` and `Cargo.toml`, parses each into a typed
-//! [`ManifestInfo`] and builds the dependency graph they declare.
+//! A repository's structure, as typed data: [`ManifestInfo`] for one parsed
+//! manifest, and [`build_dependency_graph`] to turn a set of them into the
+//! dependency graph they declare. The directory walk, the containment tree
+//! and the wire schema follow in later changes.
 //!
 //! ```
 //! use system_model::{GraphOptions, ManifestInfo, build_dependency_graph};
@@ -12,8 +13,7 @@
 //! assert!(graph.nodes.is_empty());
 //! ```
 //!
-//! This is the Rust twin of `@osdlc/system-model`. The two walk one fixture
-//! tree, `tests/mini-repo`, and assert the same contract.
+//! This is the Rust twin of `@osdlc/system-model`.
 
 mod graph;
 mod model;
