@@ -756,6 +756,7 @@ exit throws the classified failure.
 | `lsFiles({ cached, others, excludeStandard, directory, paths })` | `ls-files -z` | none |
 | `lsFilesTagged()` | `ls-files -v -z` | none — `{ tag, path }` rows; `S` is skip-worktree, lowercase is assume-unchanged |
 | `submodules()` | `ls-files --stage -z` | none — `{ path, commit }` per gitlink in the index; whether one is checked out is on disk (its `.git`) |
+| `submoduleUpdate()` | `-c protocol.file.allow=never -c protocol.ext.allow=never submodule update --init --recursive --checkout` | none; refuses `file`/`ext` URLs — checks out each submodule, nested ones too, at the commit the tree pins; clones those not yet initialised, so a `.gitmodules` URL is fetched |
 | `forEachRef(pattern, { format, sort, count })` | `for-each-ref` | none — lines verbatim |
 | `refs(pattern)` | `forEachRef` + `parseRefRows` | none |
 | `diffNameOnly({ cached, diffFilter, rangeArgs, paths })` | `diff --name-only -z` | none |
@@ -805,7 +806,7 @@ Integration, declares exit 1 absent and returns the rejected refs.
 | `init(path, { bare, initialBranch, quiet })` | `init` |
 | `clone(url, dest, { depth, branch, bare, mirror, singleBranch, noTags, quiet })` | `clone` — a relative `dest` resolves in the client's working directory; `branch` takes a branch or a tag, not a sha; with `mirror`, `noTags` has no effect and `singleBranch` holds for the clone only |
 | `resetHard(rev)` | `reset --hard` |
-| `clean({ directories })` | `clean -f`, or `-fd` — ignored files are kept |
+| `clean({ directories, nested })` | `clean -f`, `-fd`, `-ffd` with `nested` (also nested repositories) — ignored files are kept |
 | `deleteBranch(name, { force })` | `branch -d` / `-D` |
 | `deleteRef(ref, { expected })` | `update-ref -d <ref> <expected>` — refuses when `ref` has moved |
 | `updateRef(ref, sha, { oldSha, reason })` | `update-ref [-m <reason>] <ref> <sha> <oldSha>` — refuses when `ref` is not at `oldSha`; `oldSha: null` refuses when `ref` exists. `ref` is `HEAD` or a full `refs/…` name, and `oldSha` a full sha; anything else throws a `TypeError` |
