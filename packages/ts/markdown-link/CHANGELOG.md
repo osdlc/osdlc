@@ -1,5 +1,11 @@
 # @osdlc/markdown-link
 
+## 0.11.1
+
+### Patch Changes
+
+- 7f231dd: Docs: the `allMarkdownLinks` option gives the `[x](#h)` example the Rust crate gives: a link to a heading in the same note targets `#h`.
+
 ## 0.11.0
 
 ### Minor Changes
