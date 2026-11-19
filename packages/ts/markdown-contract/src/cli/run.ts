@@ -77,11 +77,7 @@ interface ValidateFlags {
  * formats the findings. `--contract` and `--config` both become one `CorpusConfig` for
  * `runCorpus`. Exit codes: `0` or `1` from `runCorpus`, `2` for a usage or config error.
  */
-async function runValidate(
-  cwd: string,
-  rest: string[],
-  values: CliValues,
-): Promise<CliResult> {
+async function runValidate(cwd: string, rest: string[], values: CliValues): Promise<CliResult> {
   if (rest.length > 1) {
     return {
       code: 2,
