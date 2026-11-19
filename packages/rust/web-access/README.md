@@ -259,7 +259,7 @@ described above.
 This is a 0.x crate. Breaking changes are possible between minor versions and
 are listed in the [changelog](CHANGELOG.md).
 
-Every public item is stable within the 0.5 line, except these, which are
+Every public item is stable within the 0.6 line, except these, which are
 experimental and may change in a patch release:
 
 - `Tokens::with_label`
