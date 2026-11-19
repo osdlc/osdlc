@@ -220,10 +220,10 @@ describe('redos hardening', () => {
     }
   })
 
-  // The 30_000 timeout below covers ~1ms of work when the matchers are
+  // The 30_000 timeout below covers ~4ms of work when the matchers are
   // healthy. The generous budget is for the unhealthy case: a restored blowup
-  // spends ~2.6s on the rung that catches it, and it should fail on the
-  // assertion — which names the ratio — rather than on the clock, which names
+  // spends ~10s on the first window of the rung that catches it, and it should
+  // fail on the assertion — which names the ratio — rather than on the clock, which names
   // nothing. The note sits above the call rather than beside the argument
   // because prettier does not format a comment in that position stably: each
   // run reorders its lines, so the file never converges under `--check`.
@@ -233,19 +233,23 @@ describe('redos hardening', () => {
     // characters, so restoring it reads ~143× (wikilinks) / ~169× (embeds) on
     // the very first rung, against a hardened 0.5–0.9×. The ladder fails
     // there rather than climbing to N=240, where the old matcher would run
-    // for hours.
+    // for hours. volume: 4 and reps: 9, since one-pass windows (~0.2 ms) read
+    // over the ceiling on a shared runner (macOS node 22 on #833 and #868).
     const rungs = ladder(15, 3)
+    const wide = { volume: 4, reps: 9 }
     assertLinearGrowth(
       remarkWikilinks(),
       (n) => ambiguousWhitespace('[[', n),
       rungs,
       SANITY_CEILING_MS,
+      wide,
     )
     assertLinearGrowth(
       remarkEmbeds(),
       (n) => ambiguousWhitespace('![[', n),
       rungs,
       SANITY_CEILING_MS,
+      wide,
     )
   }, 30_000)
 

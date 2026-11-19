@@ -1,5 +1,12 @@
 # @osdlc/rule-review
 
+## 0.4.6
+
+### Patch Changes
+
+- Updated dependencies [acf57e6]
+  - @osdlc/cli-tool@0.20.0
+
 ## 0.4.5
 
 ### Patch Changes
