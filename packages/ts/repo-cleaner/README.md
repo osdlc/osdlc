@@ -417,6 +417,7 @@ carries no command and no action:
 | `locked-worktree` | Someone ran `git worktree lock` and the lock's owner is alive or unknown; the reason is in `evidence.lockReason`. A lock whose owner is dead is not a blocker (see below). |
 | `live-process` | A process other than an idle shell has its working directory in the worktree (`evidence.liveProcesses`), lock or not. |
 | `process-probe-failed` | The process table could not be read (no `lsof`, a timeout, an `lsof` that failed outright), so nobody can say the directory is idle. `evidence.processProbeError` has the message. |
+| `host:<name>` | A host's `annotate` set the verdict `blocked` and named its own blocker, such as `host:orca-unreachable`; the row's notes say why. Only a host produces one. |
 | `hidden-index-flags` | Files marked skip-worktree or assume-unchanged hide edits from `status`. |
 | `nested-repository` | An untracked or ignored directory holds a repository with its own history. |
 | `branch-in-other-worktree` | Another worktree has the same branch checked out (`evidence.otherWorktrees`). |

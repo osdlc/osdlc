@@ -78,6 +78,8 @@ export interface HostAdapter {
   gather?(ctx: HostContext): HostRow[]
   /** Run one approved step, then verify it. Returns the sentence the receipt records; throws when it failed or could not be verified. */
   execute?(step: HostStep, ctx: HostContext): string
+  /** Repositories this host knows that the sweep should read too, as absolute paths. Added to the targets unless the caller named its own. */
+  discover?(ctx: HostContext): string[]
   /** Run in place of `git worktree remove` for the worktrees this host manages. */
   removeWorktree?: RemoveWorktree
 }

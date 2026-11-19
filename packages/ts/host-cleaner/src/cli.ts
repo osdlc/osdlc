@@ -277,6 +277,7 @@ function sweepWith(
     ...hostOptions(v, config, deps),
     cwd: ctx.cwd,
     only: only ?? ['worktree', 'branch'],
+    discover: targets.length === 0,
   })
 }
 

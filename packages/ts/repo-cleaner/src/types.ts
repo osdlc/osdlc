@@ -85,8 +85,15 @@ export function risksFor(flags: Partial<Record<Risk, boolean>>): Risk[] {
   return RISKS.filter((name) => flags[name] === true)
 }
 
+/**
+ * A blocker a host names from `annotate`, `host:<name>`, such as
+ * `host:orca-unreachable`. The engine never produces one.
+ */
+export type HostBlocker = `host:${string}`
+
 /** A condition that rules out removing a worktree, whatever is granted. */
 export type Blocker =
+  | HostBlocker
   | 'locked-worktree'
   | 'live-process'
   | 'process-probe-failed'

@@ -9,9 +9,10 @@ repo-cleaner's safety model.
 
 With no adapter detected, the result is repo-cleaner's, row for row.
 
-The `host-cleaner` command ships two adapters, `cargo` and `node`, for build
-caches (see [Build artifacts](#build-artifacts)). Each further integration is its
-own package change.
+The `host-cleaner` command ships three adapters: `cargo` and `node`, for build
+caches (see [Build artifacts](#build-artifacts)), and `orca`, for worktrees that
+Orca manages (see [Orca](#orca)). Each further integration is its own package
+change.
 
 ```ts
 import { hostSweep, hostPlan, hostCheck, hostRun, type HostAdapter } from '@osdlc/host-cleaner'
@@ -56,6 +57,7 @@ throws.
 | `annotate(repo, rows)` | Re-rank repo-cleaner's rows with what the host knows. Chained, in run order, into the sweep and into every re-check, so its verdicts survive them |
 | `gather(ctx)` | The rows this host owns. Read again at every re-check |
 | `execute(step, ctx)` | Run one approved step for a row the adapter owns and verify it. Returns the sentence the receipt records; throws on failure |
+| `discover(ctx)` | Repositories this host knows, as absolute paths. `hostSweep` adds them to its targets unless passed `discover: false`, which the command does when targets are named on its command line |
 | `removeWorktree(row, { repo, force })` | Remove a worktree the host manages in place of `git worktree remove`; return null for one it does not. repo-cleaner's process and force checks run before it and its directory and registration checks after |
 
 `HostContext` carries the git runner, a `command(binary)` runner for every
@@ -100,6 +102,28 @@ outside is a `blocked` row with no size, and is never removed. `clean` reads
 the adapter's rows again, removes the directory with `fs.rm`, checks it is gone
 and records `removed <path>; freed <bytes> bytes` in the receipt. A row inside a
 worktree the same run removed is dropped as `gone`.
+
+## Orca
+
+The `orca` adapter keeps Orca's record and terminals
+from being orphaned when a worktree it manages is removed. It is detected when
+the Orca CLI runs: the app bundle's copy at
+`/Applications/Orca.app/Contents/Resources/bin/orca` first, then `orca` on
+`PATH`. It reads `orca worktree list --json`, `orca terminal list --json` and
+`orca repo list --json`, and runs its commands through `@osdlc/command-seam`.
+
+| Hook | What it does |
+| --- | --- |
+| `annotate` | A worktree Orca lists gets a note with its Orca id and its open terminal count. The primary checkout is left alone |
+| `removeWorktree` | For a worktree Orca lists: `orca terminal close --worktree path:<p> --all`, then `orca worktree rm --worktree path:<p>`, with `--force` only when repo-cleaner decided the removal is forced. A failed close stops before the removal. repo-cleaner's process and force checks run first, and it checks afterwards that the directory is gone and git no longer lists it. A worktree Orca does not list is removed with git |
+| `discover` | Every `git` repository in `orca repo list` whose directory exists is swept, with or without being in the config. Not when targets are named on the command line |
+
+When the runtime cannot be reached (the app is closed, or the list is
+truncated), Orca cannot say which worktrees it manages. A worktree that would be
+removed and sits under an `orca/workspaces/` directory, Orca's default
+location, is then `blocked` with the blocker `host:orca-unreachable`, and no git
+removal runs on it. Start Orca and sweep again. A worktree elsewhere is judged
+as without the adapter.
 
 ## The approval
 

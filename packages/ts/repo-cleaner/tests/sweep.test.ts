@@ -1200,6 +1200,36 @@ describe('merged-PR evidence', () => {
     )
   })
 
+  test('annotate names its own blocker: the worktree is blocked, loses its action, and keeps its branch', () => {
+    const swept = sweepOne(
+      checkout,
+      withPrs({
+        annotate: (_repo, rows) =>
+          rows.map((row) =>
+            row.id === `worktree:${landedWorktree}`
+              ? {
+                  ...row,
+                  verdict: 'blocked' as const,
+                  blockers: ['host:orca-unreachable' as const],
+                  notes: [...row.notes, 'Orca is not running'],
+                }
+              : row,
+          ),
+      }),
+    )
+    const worktree = rowsOf(swept.rows, 'worktree').get(landedWorktree)
+    expect(worktree).toMatchObject({
+      verdict: 'blocked',
+      blockers: ['host:orca-unreachable'],
+      action: null,
+      commands: [],
+    })
+    expect(rowsOf(swept.rows, 'branch').get('wt-landed')).toMatchObject({
+      verdict: 'keep',
+      action: null,
+    })
+  })
+
   test('a branch-scoped sweep reports that branch alone, from inside its worktree', () => {
     const swept = sweepOne(checkout, withPrs({ cwd: landedWorktree, branch: 'wt-landed' }))
     expect(swept.error).toBeNull()

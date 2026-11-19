@@ -59,3 +59,12 @@ export {
 export { CARGO_ADAPTER, cargoAdapter, incrementalOff } from './cargo.ts'
 export { NODE_ADAPTER, nodeAdapter } from './node.ts'
 export { DEFAULT_IDLE_HOURS } from './artifacts.ts'
+export {
+  ORCA_ADAPTER,
+  ORCA_BUNDLE_CLI,
+  ORCA_UNREACHABLE,
+  createOrcaAdapter,
+  orcaAdapter,
+  type OrcaOptions,
+  type OrcaWorktree,
+} from './orca.ts'

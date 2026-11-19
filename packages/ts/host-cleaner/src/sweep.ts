@@ -9,7 +9,11 @@ import { HostCleanerError, type HostAdapter, type HostContext, type HostRow } fr
 import type { HostOptions } from './options.ts'
 import { chainAnnotate, makeContext, resolveAdapters, type AdapterReport } from './registry.ts'
 
-export type HostSweepOptions = SweepOptions & HostOptions
+export type HostSweepOptions = SweepOptions &
+  HostOptions & {
+    /** Add the repositories the adapters know to the targets. Default true. */
+    discover?: boolean | undefined
+  }
 
 export interface HostSweep {
   /** repo-cleaner's sweep, annotated. With no adapter active it is what `repo-cleaner` reports. */
@@ -77,6 +81,17 @@ export function gatherHostRows(
   return rows
 }
 
+/** The repositories the active adapters know, which an adapter that fails names none of. */
+function discovered(active: readonly HostAdapter[], ctx: HostContext): string[] {
+  return active.flatMap((adapter) => {
+    try {
+      return adapter.discover?.(ctx) ?? []
+    } catch {
+      return []
+    }
+  })
+}
+
 /** The roots of the repositories a sweep read. */
 export function rootsOf(sweepResult: Sweep): string[] {
   return sweepResult.repos.flatMap((r) => (r.repo === null ? [] : [r.repo.root]))
@@ -91,7 +106,8 @@ export function rootsOf(sweepResult: Sweep): string[] {
  */
 export function hostSweep(targets: readonly string[], opts: HostSweepOptions = {}): HostSweep {
   const { active, reports } = resolveAdapters(opts.adapters ?? [], makeContext(opts, targets), opts)
-  const repo = sweep([...targets], {
+  const known = opts.discover === false ? [] : discovered(active, makeContext(opts, targets))
+  const repo = sweep([...new Set([...targets, ...known])], {
     ...opts,
     annotate: both(opts.annotate, chainAnnotate(active)),
   })

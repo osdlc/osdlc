@@ -62,6 +62,7 @@ export {
   RepoCleanerError,
   type Action,
   type Blocker,
+  type HostBlocker,
   type BranchEvidence,
   type BranchRow,
   type Bucket,
