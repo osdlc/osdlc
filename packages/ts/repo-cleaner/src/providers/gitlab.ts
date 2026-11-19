@@ -16,7 +16,7 @@ import {
 } from '@osdlc/command-seam'
 
 import type { PRInfo } from '../types.ts'
-import { PR_LIMIT } from './github.ts'
+import { OPEN_PR_LIMIT, PR_LIMIT } from './github.ts'
 import type { PrProvider } from './types.ts'
 
 const PER_PAGE = 100
@@ -108,12 +108,11 @@ export function gitlabProvider(glab: CommandRunner): PrProvider {
     listPrs(root, target, branch) {
       if (target.project === null) throw new Error('the remote URL names no GitLab project')
       const project = encodeURIComponent(target.project)
-      const prs: PRInfo[] = []
-      for (let page = 1; (page - 1) * PER_PAGE < PR_LIMIT; page++) {
+      const page = (state: string, number: number): unknown[] => {
         const query = new URLSearchParams({
-          state: 'all',
+          state,
           per_page: String(PER_PAGE),
-          page: String(page),
+          page: String(number),
           order_by: 'updated_at',
           sort: 'desc',
         })
@@ -129,23 +128,44 @@ export function gitlabProvider(glab: CommandRunner): PrProvider {
           // Not stdout: a page cut short is half a JSON listing, not a reason.
           throw new Error(
             result.outputIncomplete === true
-              ? `page ${page} was cut short`
+              ? `page ${number} was cut short`
               : stderrOrError(result) || `glab exited ${String(result.exitCode)}`,
           )
         }
         const listed = parseJsonResult(result)
         if (!listed.ok || !Array.isArray(listed.value)) {
-          throw new Error(`page ${page} is not a merge request list`)
+          throw new Error(`page ${number} is not a merge request list`)
         }
-        const rows: unknown[] = listed.value
-        for (const row of rows) {
-          if (!isMergeRequest(row)) continue
-          const pr = mergeRequestToPr(row)
-          if (pr !== null) prs.push(pr)
-        }
-        if (rows.length < PER_PAGE) break
+        return listed.value
       }
-      return prs
+      const prs: PRInfo[] = []
+      /** Reads pages of `state` until one is short or `limit` is reached; true when it stopped at the limit. */
+      const read = (state: string, limit: number): boolean => {
+        for (let number = 1; (number - 1) * PER_PAGE < limit; number++) {
+          const rows = page(state, number)
+          for (const row of rows) {
+            if (!isMergeRequest(row)) continue
+            const pr = mergeRequestToPr(row)
+            if (pr !== null) prs.push(pr)
+          }
+          if (rows.length < PER_PAGE) return false
+        }
+        return true
+      }
+      // Open MRs first and to their own cap: they gate a delete, and the newest
+      // 300 of every state can leave an old one out. `locked` is an open MR
+      // mid-update; the listing of every state below covers it.
+      const cut = branch === undefined && read('opened', OPEN_PR_LIMIT)
+      const more = read('all', PR_LIMIT)
+      if (branch !== undefined && more) {
+        return {
+          prs,
+          incomplete: `more than ${PR_LIMIT} merge requests have the source branch ${branch}`,
+        }
+      }
+      return cut
+        ? { prs, incomplete: `the project has ${OPEN_PR_LIMIT} or more open merge requests` }
+        : prs
     },
   }
 }

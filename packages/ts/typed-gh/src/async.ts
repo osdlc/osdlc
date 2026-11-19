@@ -120,6 +120,18 @@ export class AsyncGh {
   }
 
   /**
+   * The same client aimed at another host (same runner, directory and repo).
+   * `''` clears it, as in the options.
+   */
+  withHostname(hostname: string): AsyncGh {
+    const opts = { runner: this.runner, hostname }
+    // A client with no directory was built with a repo.
+    return this.boundCwd === undefined
+      ? new AsyncGh({ ...opts, repo: this.repo! })
+      : new AsyncGh(this.boundCwd, { ...opts, repo: this.repo })
+  }
+
+  /**
    * The whole surface again, resolving to a `Result<T, GhFailure>` instead of
    * rejecting. A query for one thing that finds nothing is `ok: true` with
    * `null`. See `Gh.try`.

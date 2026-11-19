@@ -54,12 +54,21 @@ export interface CannedPr {
 /**
  * A `gh` that answers `pr list` with `prs` and fails everything else.
  * `installed: false` fails `--version`, `authenticated: false` fails `auth`,
- * and `listError` fails `pr list` with that stderr.
+ * and `listError` fails `pr list` with that stderr. `pr list` honours
+ * `--state` and `--limit` (the newest, that is the first, rows win). `fork` is
+ * the parent `repos/<owner>/<name>` reports; absent, the repository is not a
+ * fork. `calls` records every argv.
  */
 export function cannedGh(
   prs: CannedPr[],
-  opts: { installed?: boolean; authenticated?: boolean; listError?: string } = {},
-): CommandRunner {
+  opts: {
+    installed?: boolean
+    authenticated?: boolean
+    listError?: string
+    fork?: string
+  } = {},
+): CommandRunner & { calls: string[][] } {
+  const calls: string[][] = []
   const rows = prs.map((pr) => ({
     baseRefName: 'main',
     isCrossRepository: false,
@@ -69,13 +78,23 @@ export function cannedGh(
     ...pr,
   }))
   return {
+    calls,
     run(argv) {
+      calls.push([...argv])
       const ok = (stdout = '') => ({ exitCode: 0, stdout, stderr: '' })
       const fail = (stderr: string) => ({ exitCode: 1, stdout: '', stderr })
       if (argv[0] === '--version') return opts.installed === false ? fail('not installed') : ok()
       if (argv[0] === 'auth') return opts.authenticated === false ? fail('not signed in') : ok()
       if (argv[0] === 'pr' && argv[1] === 'list') {
-        return opts.listError === undefined ? ok(JSON.stringify(rows)) : fail(opts.listError)
+        if (opts.listError !== undefined) return fail(opts.listError)
+        const flag = (name: string) => argv[argv.indexOf(name) + 1]
+        const state = flag('--state')
+        const limit = Number(flag('--limit') ?? rows.length)
+        const wanted = rows.filter((r) => state !== 'open' || r.state === 'OPEN')
+        return ok(JSON.stringify(wanted.slice(0, limit)))
+      }
+      if (argv[0] === 'api' && opts.fork !== undefined) {
+        return ok(JSON.stringify({ fork: true, parent: { full_name: opts.fork } }))
       }
       return { exitCode: 1, stdout: '', stderr: 'not canned' }
     },
@@ -127,7 +146,12 @@ export function cannedGlab(
         const url = new URL(`https://x/${argv.at(-1)!}`)
         const page = Number(url.searchParams.get('page') ?? '1')
         const branch = url.searchParams.get('source_branch')
-        const matching = rows.filter((r) => branch === null || r.source_branch === branch)
+        const state = url.searchParams.get('state')
+        const matching = rows.filter(
+          (r) =>
+            (branch === null || r.source_branch === branch) &&
+            (state !== 'opened' || r.state === 'opened'),
+        )
         return ok(JSON.stringify(matching.slice((page - 1) * 100, page * 100)))
       }
       return { exitCode: 1, stdout: '', stderr: 'not canned' }

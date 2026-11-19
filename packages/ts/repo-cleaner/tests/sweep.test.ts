@@ -1570,6 +1570,27 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
     expect(noteOf('auto', 'https://github.com/acme/gone.git')).not.toContain(hint)
   })
 
+  test('a fork is noted as incomplete, and deleting a remote branch needs confirm-open-pr', () => {
+    const gh = cannedGh([], { fork: 'upstream/app' })
+    const swept = sweepHere({
+      provider: 'github',
+      gh,
+      git: hostedAt('https://github.com/me/app.git'),
+    })
+    expect(swept.error).toBeNull()
+    expect(swept.repo?.provider?.listError).toBeUndefined()
+    expect(swept.notes).toHaveLength(1)
+    expect(swept.notes[0]).toMatch(
+      /^The PR listing from `gh pr list` is incomplete \(the repository is a fork of upstream\/app.*\), so a remote branch with no PR found needs confirm-open-pr to delete\./,
+    )
+    const lists = gh.calls.filter((argv) => argv[1] === 'list')
+    expect(lists.every((argv) => argv.includes('github.com/me/app'))).toBe(true)
+    const merged = rowsOf(swept.rows, 'remote').get('origin/merged')
+    expect(merged?.verdict).toBe('delete')
+    expect(merged?.risks).toEqual(['confirm-open-pr'])
+    expect(rowsOf(swept.rows, 'branch').get('merged')?.risks).toEqual([])
+  })
+
   test('a working gh with no PRs says none was found, on both rows', () => {
     const swept = sweepHere({ provider: 'github', gh: cannedGh([]) })
     expect(rowsOf(swept.rows, 'branch').get('live')?.notes).toContain(

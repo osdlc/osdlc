@@ -8,13 +8,13 @@
  */
 
 import type { PrProvider } from './providers/index.ts'
-import type { ProviderStatus } from './providers/types.ts'
+import type { PrListing, ProviderStatus } from './providers/types.ts'
 import type { PRInfo, RepoInfo } from './types.ts'
 import { errorText } from './util.ts'
 
 /** Why the provider did not answer, and the words for it. */
 export interface PrsUnchecked {
-  kind: 'not-installed' | 'not-signed-in' | 'list-failed'
+  kind: 'not-installed' | 'not-signed-in' | 'list-failed' | 'incomplete'
   /** For a sentence: "`gh` is not installed", "`gh pr list` failed". */
   why: string
 }
@@ -35,6 +35,9 @@ export function prsUnchecked(status: ProviderStatus): PrsUnchecked | null {
   if (status.listError !== undefined) {
     return { kind: 'list-failed', why: `\`${status.listing}\` failed` }
   }
+  if (status.incomplete !== undefined) {
+    return { kind: 'incomplete', why: `\`${status.listing}\` did not read every ${status.noun}` }
+  }
   return null
 }
 
@@ -52,6 +55,8 @@ export interface PrLookup {
    * null when it answered, or when it was not asked at all.
    */
   error: string | null
+  /** Why the listing answered without every request that could be open; null when it is whole. */
+  incomplete: string | null
 }
 
 /**
@@ -80,21 +85,22 @@ export function lookupPrs(repo: RepoInfo, provider: PrProvider, branch?: string)
   const byHead = new Map<string, PRInfo>()
   const status = repo.provider
   if (status === null || status.name !== provider.name || !status.authenticated) {
-    return { prs: byHead, error: null }
+    return { prs: byHead, error: null, incomplete: null }
   }
 
-  let rows: PRInfo[] | null
+  let rows: PRInfo[] | PrListing | null
   try {
     rows = provider.listPrs(repo.root, status, branch)
   } catch (err) {
     // A bug in the provider is not a listing that failed: let it fail loudly,
     // as an error on the repository, rather than gate every remote branch.
     if (err instanceof TypeError || err instanceof ReferenceError) throw err
-    return { prs: byHead, error: errorText(err) }
+    return { prs: byHead, error: errorText(err), incomplete: null }
   }
-  if (rows === null) return { prs: byHead, error: 'the provider gave no reason' }
+  if (rows === null) return { prs: byHead, error: 'the provider gave no reason', incomplete: null }
 
-  for (const info of rows) {
+  const incomplete = Array.isArray(rows) ? null : (rows.incomplete ?? null)
+  for (const info of Array.isArray(rows) ? rows : rows.prs) {
     const head = info.headRef
     if (!head) continue
     if (branch !== undefined && head !== branch) continue
@@ -109,5 +115,5 @@ export function lookupPrs(repo: RepoInfo, provider: PrProvider, branch?: string)
       byHead.set(head, info)
     }
   }
-  return { prs: byHead, error: null }
+  return { prs: byHead, error: null, incomplete }
 }
