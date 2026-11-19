@@ -1277,6 +1277,7 @@ function readRecords(
       const before = c.errors.length
       const data = readChecked(c, file)
       if (data === undefined) {
+        // readChecked pushes at most one error, for this file.
         if (c.errors.length > before)
           c.errors[c.errors.length - 1] += strayHint(
             type,

@@ -372,7 +372,8 @@ that is missing, outside its package, throws or returns something else is an err
 corpus, with the field `(rules)`. `runRules(loadCorpus(root))` does the same from the library.
 
 Rules come only from `extends` packages: not from the corpus itself, not from a corpus it
-references, and not from a corpus in no package. Another implementation of the spec may leave
+references, not from a corpus in no package, and not from a parent in the validated corpus's own
+package. Another implementation of the spec may leave
 rules out, as it leaves out `format` checks: they are not part of schema conformance.
 
 ## Trust

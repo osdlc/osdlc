@@ -74,7 +74,7 @@ describe('profile rules', () => {
       ['bad shape', `export const check = () => [{ file: 1 }]`, './rules.mjs', 'array of problems'],
       ['missing', ``, './gone.mjs', 'does not exist'],
       ['not a path', ``, 'rules.mjs', 'must be a path starting ./'],
-      ['outside', ``, './../../../../x.mjs', 'does not exist'],
+      ['outside, missing', ``, './../../../../x.mjs', 'does not exist'],
     ]
     for (const [i, [name, body, rules, want]] of cases.entries()) {
       // Node caches an imported module by its URL, so each case gets its own file.

@@ -4,7 +4,8 @@
  * packages/conformance/corpus-schema/SPEC.md).
  *
  * A package names its rules module in package.json, as `"corpus-schema": { "rules": "./rules.js" }`,
- * a path inside the package. The module exports `check(corpus: LoadedCorpus): Problem[]`.
+ * a path inside the package. The module exports `check(corpus: LoadedCorpus)`, returning
+ * `Problem[]` or a promise of one.
  */
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
@@ -12,15 +13,14 @@ import { pathToFileURL } from 'node:url'
 import type { CorpusModel, LoadedCorpus } from './load.ts'
 
 /**
- * One problem a rule reports. `file` is relative to the root of the corpus being validated, and
- * `field` is a field name, or a word in parentheses such as `(record)` for a problem in no field.
+ * One problem a rule reports.
  *
  * @experimental
  */
 export interface Problem {
-  /** The file, relative to the corpus root. */
+  /** The file, relative to the root of the corpus being validated. */
   file: string
-  /** The field, or a word in parentheses. */
+  /** The field, or a word in parentheses such as `(record)` for a problem in no field. */
   field: string
   /** What is wrong. */
   message: string
@@ -78,8 +78,8 @@ function packageDir(dir: string): string | undefined {
 
 /**
  * Run the rules of every corpus `model` extends, transitively. Rules come only from `extends`
- * packages: not from the corpus itself, not from a referenced corpus, and not from a corpus that
- * is in no package. A problem with a rules module is an error, not a thrown exception.
+ * packages: not from the corpus itself, not from a referenced corpus, not from a corpus that is
+ * in no package, and not from a parent in the validated corpus's own package. A problem with a rules module is an error, not a thrown exception.
  *
  * Call it once the corpus passes `validateCorpus` with no errors, as the `validate` command does.
  * It imports and runs code from the packages the corpus extends, so it has the trust of installing
@@ -93,7 +93,6 @@ export async function runRules(model: LoadedCorpus): Promise<RulesReport> {
     report.errors.push(`.: (rules): ${message}`)
   }
   const seen = new Set<string>()
-  // A corpus in the same package as the validated one is not an installed parent.
   const ownPackage = packageDir(realpathSync(model.root))
   for (const parent of extended(model)) {
     const pkgDir = packageDir(parent.root)
