@@ -196,7 +196,7 @@ export function makeCmuxHost(opts: {
   runner?: CommandRunner | undefined
   available?: (() => boolean) | undefined
 }): Host {
-  const binary = () => (opts.binary === undefined ? 'cmux' : opts.binary)
+  const bin = opts.binary ?? 'cmux'
   return {
     name: 'cmux',
     platforms: ['darwin'],
@@ -206,7 +206,7 @@ export function makeCmuxHost(opts: {
       return supportsPlatform(this) && onPath('cmux')
     },
     terminal(req) {
-      const runner = resolveRunner(binary() ?? 'cmux', opts.runner)
+      const runner = resolveRunner(bin, opts.runner)
       const res = runner.run(cmuxCreateArgv(req), { cwd: req.cwd, timeoutMs: 60_000 })
       if (!ran(res)) {
         throw new Error(`cmux workspace create failed: ${failureText(res)}`)
@@ -215,13 +215,16 @@ export function makeCmuxHost(opts: {
     },
     session: sessionViaTerminal,
     find(query: FindQuery): FoundSession[] {
-      const runner = resolveRunner(binary() ?? 'cmux', opts.runner)
+      const runner = resolveRunner(bin, opts.runner)
       const run = (argv: string[]) => quietRun(runner, argv, { cwd: query.cwd, timeoutMs: 10_000 })
       const stored = run(cmuxSessionsArgv(query.cwd))
       const fromStore = stored === null ? [] : parseCmuxSessions(stored, query.cwd)
+      // The workspace list needs the socket; when it is denied the command exits nonzero and `run` returns null.
+      let listed: string | null | undefined
+      const list = () => (listed ??= run(cmuxWorkspaceListArgv()))
       if (query.sessionId !== undefined) {
-        const named = run(cmuxWorkspaceListArgv())
-        const bound = named === null ? [] : parseCmuxWorkspaces(named, query.cwd, query.sessionId)
+        const bound =
+          list() === null ? [] : parseCmuxWorkspaces(list()!, query.cwd, query.sessionId)
         if (bound.length > 0) {
           const ids = new Set(bound.map((b) => b.handle))
           const sessions = fromStore.filter((f) => ids.has(f.handle?.split('/')[0] ?? ''))
@@ -229,9 +232,8 @@ export function makeCmuxHost(opts: {
         }
       }
       if (fromStore.length > 0) return fromStore
-      // The workspace list needs the socket; when it is denied the command exits nonzero and `run` returns null.
-      const listed = run(cmuxWorkspaceListArgv())
-      return listed === null ? [] : parseCmuxWorkspaces(listed, query.cwd)
+      const all = list()
+      return all === null ? [] : parseCmuxWorkspaces(all, query.cwd)
     },
     send(req: SendRequest): SendReceipt {
       // No delivery confirmation exists, so ack is always false.
@@ -246,7 +248,7 @@ export function makeCmuxHost(opts: {
         )
         const handle = agents.length === 1 ? agents[0]?.handle : undefined
         if (handle === undefined || handle === null) return { accepted: false, ack: false }
-        const runner = resolveRunner(binary() ?? 'cmux', opts.runner)
+        const runner = resolveRunner(bin, opts.runner)
         const typed = runner.run(cmuxSendArgv(handle, req.text), {
           cwd: req.cwd,
           timeoutMs: 15_000,
@@ -265,7 +267,7 @@ export function makeCmuxHost(opts: {
       try {
         const handle = this.find!(query)[0]?.handle
         if (handle === undefined || handle === null) return false
-        const runner = resolveRunner(binary() ?? 'cmux', opts.runner)
+        const runner = resolveRunner(bin, opts.runner)
         return ran(runner.run(cmuxFocusArgv(handle), { cwd: query.cwd, timeoutMs: 10_000 }))
       } catch {
         return false
@@ -275,7 +277,7 @@ export function makeCmuxHost(opts: {
       try {
         const handle = this.find!(query)[0]?.handle
         if (handle === undefined || handle === null) return null
-        const runner = resolveRunner(binary() ?? 'cmux', opts.runner)
+        const runner = resolveRunner(bin, opts.runner)
         return quietRun(runner, cmuxReadScreenArgv(handle), { cwd: query.cwd, timeoutMs: 10_000 })
       } catch {
         return null
@@ -295,7 +297,7 @@ export function makeCmuxHost(opts: {
         const [workspace] = [...workspaces]
         if (workspaces.size !== 1 || workspace === undefined) return false
         return (
-          quietRun(resolveRunner(binary() ?? 'cmux', opts.runner), cmuxCloseArgv(workspace), {
+          quietRun(resolveRunner(bin, opts.runner), cmuxCloseArgv(workspace), {
             cwd: query.cwd,
             timeoutMs: 10_000,
           }) !== null
