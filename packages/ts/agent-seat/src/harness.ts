@@ -666,6 +666,8 @@ export const SESSION_ID_WAIT_MS = 3_000
  * word of the command is single-quoted, even one that needs no quoting: Windows
  * PowerShell 5.1 drops a bare `--` (the guard `harnessArgv` puts before the
  * prompt) and splits a bare `-name.value`, which a quoted word avoids.
+ *
+ * @throws Error if a variable name is not a plain identifier.
  */
 export function withEnv(
   argv: string[],
@@ -675,7 +677,6 @@ export function withEnv(
   const entries = Object.entries(env ?? {})
   if (entries.length === 0) return argv
   if (platform === 'win32') {
-    // The name goes into a PowerShell command unquoted (set branch), so it must be a plain identifier.
     for (const [k] of entries) assertEnvName(k)
     const sets = entries.map(([k, v]) =>
       v === undefined
@@ -699,6 +700,11 @@ export function withEnv(
   return ['env', ...unset, ...pairs, ...argv]
 }
 
+/**
+ * Throws unless `name` is a plain identifier. PowerShell takes the name unquoted, `env`
+ * misreads a name holding `=` or starting with `-`, and a shell treats `K=V` as an
+ * assignment only when `K` is an identifier.
+ */
 function assertEnvName(name: string): void {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name))
     throw new Error(`invalid environment variable name: ${name}`)
@@ -711,8 +717,10 @@ function assertEnvName(name: string): void {
  * still runs. It is a string, not an argv: `commandString` quotes a first word that
  * holds `=`, so an argv cannot carry the prefix.
  *
- * A prefix cannot unset a variable, so an `undefined` value throws. On win32 there is no
- * such prefix, so the line is `commandString(withEnv(argv, env, 'win32'))`.
+ * On win32 there is no such prefix, so the line is `commandString(withEnv(argv, env, 'win32'))`.
+ *
+ * @throws RangeError if argv is empty; Error if a value is `undefined` (a prefix cannot
+ * unset) or a name is not a plain identifier.
  *
  * @example
  * envPrefixLine(['a', 'x y'], { K: 'v w' }, 'linux') // K='v w' a 'x y'
@@ -736,7 +744,11 @@ export function envPrefixLine(
   return [...assigns, shellJoin(argv)].join(' ')
 }
 
-/** `req.argv` under `req.env`: what a host runs for a {@link CommandRequest}. */
+/**
+ * `req.argv` under `req.env`: what a host runs for a {@link CommandRequest}.
+ *
+ * @throws Error if `req.argv` is empty, even when `req.env` is set.
+ */
 export function commandArgv(
   req: Pick<CommandRequest, 'argv' | 'env'>,
   platform: NodeJS.Platform = process.platform,

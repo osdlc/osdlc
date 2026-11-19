@@ -139,9 +139,8 @@ rollout file.
 whose later agents inherit them. Every host applies `env` with `withEnv`
 (`commandArgv(req)` is `req.argv` under `req.env`); an `undefined` value unsets
 the variable. `withEnv` builds `env K=V cmd`, which cannot run a shell function
-or alias. For a line typed into an interactive shell, `envPrefixLine(argv, env)`
-builds the plain POSIX prefix `K=V cmd` as a string (a prefix cannot unset, so
-an `undefined` value throws).
+or alias. For a line typed into an interactive shell, use `envPrefixLine(argv, env)`,
+which builds the plain POSIX prefix `K=V cmd`.
 
 ## Compared with other tools
 

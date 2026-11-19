@@ -1,4 +1,4 @@
-/** `CommandRequest.env` reaches the command every argv-building host runs. */
+/** `CommandRequest.env` reaches the command that the argv-building hosts run. */
 import { describe, expect, test } from 'vitest'
 
 import { cmuxCreateArgv } from '../src/hosts/cmux.ts'
