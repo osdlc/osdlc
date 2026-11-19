@@ -1,5 +1,12 @@
 # @osdlc/typed-git
 
+## 0.18.0
+
+### Minor Changes
+
+- b0ff1b3: `readTree(rev)` and `writeTree()` on `Git` and `AsyncGit` (and the verbs) run `git read-tree <rev>` and `git write-tree`. With `env: { GIT_INDEX_FILE }` on the call, they seed and read a temporary index, so a commit can be built from a working tree without touching the repository's own index.
+- cb56f16: `submoduleUpdate()` on `Git` and `AsyncGit` (and the `submoduleUpdate` verb) runs `git submodule update --init --recursive --checkout` with the `file` and `ext` transports refused (a pull request's `.gitmodules` is not trusted): it checks out every submodule, nested ones included, at the commit the checked-out tree pins, and clones those not yet initialised.
+
 ## 0.17.0
 
 ### Minor Changes
