@@ -97,6 +97,18 @@ describe('plugin order and duplicates', () => {
     expect(s.warnings[0]).toMatch(/dropped worktree:\/a, which names node/)
   })
 
+  test('a plugin whose detect throws is left out with a warning', () => {
+    const bad = {
+      ...fake('node', [], []),
+      detect: () => {
+        throw new Error('no stat')
+      },
+    }
+    const s = survey([bad, fake('git', [cand('a:1', 'git')], [])], ctx)
+    expect(s.candidates).toHaveLength(1)
+    expect(s.warnings).toEqual(['node: detect failed: no stat'])
+  })
+
   test('scope adds roots before discover, once', () => {
     const seen: string[][] = []
     const scoping = fake('orca', [], [], {
@@ -123,6 +135,10 @@ describe('objection levels', () => {
     const d = decide(cs, os, null, [])
     expect(d.run.map((c) => c.id)).toEqual(['a:1', 'a:4'])
     expect(d.dropped).toEqual([])
+  })
+
+  test('without a pick, a protest that is granted does not keep a candidate out', () => {
+    expect(decide(cs, os, null, ['lossy']).run.map((c) => c.id)).toEqual(['a:1', 'a:3', 'a:4'])
   })
 
   test('a pick of a refused candidate is blocked whatever is allowed', () => {

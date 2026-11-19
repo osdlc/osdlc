@@ -51,8 +51,16 @@ export interface Survey {
  * plugin's, with a warning naming both.
  */
 export function survey(all: readonly Plugin[], ctx: Ctx): Survey {
-  const plugins = orderPlugins(all).filter((p) => p.detect(ctx))
   const warnings: string[] = []
+  const plugins = orderPlugins(all).filter((p) => {
+    try {
+      return p.detect(ctx)
+    } catch (err) {
+      if (err instanceof FatalRun) throw err
+      warnings.push(`${p.name}: detect failed: ${errorText(err)}`)
+      return false
+    }
+  })
   const guarded = <T>(p: Plugin, phase: string, fallback: T, f: () => T): T => {
     try {
       return f()
@@ -162,7 +170,11 @@ export function decide(
     (byCandidate.get(id) ?? []).filter((o) => o.level === level)
   const unmet = (id: string): Objection[] =>
     gating(id, 'protest').filter((o) => !granted.has(o.code))
-  const ids = pick ?? candidates.filter((c) => !byCandidate.has(c.id)).map((c) => c.id)
+  const ids =
+    pick ??
+    candidates
+      .filter((c) => gating(c.id, 'refuse').length === 0 && unmet(c.id).length === 0)
+      .map((c) => c.id)
 
   const dropped: Dropped[] = []
   const running = new Map<string, Candidate>()
@@ -292,33 +304,45 @@ export function clean(
   const stopped = new Set<string>()
   let fatal: string | null = null
 
-  for (const c of decision.run) {
-    const step: Step = {
-      id: c.id,
-      owner: c.owner,
-      preparedBy: [],
-      result: 'ok',
-      delete: null,
-      error: null,
-      notified: [],
+  try {
+    for (const c of decision.run) {
+      const step: Step = {
+        id: c.id,
+        owner: c.owner,
+        preparedBy: [],
+        result: 'ok',
+        delete: null,
+        error: null,
+        notified: [],
+      }
+      receipt.steps.push(step)
+      const skip =
+        fatal !== null
+          ? `the run stopped: ${fatal}`
+          : c.requires?.some((r) => stopped.has(r))
+            ? 'a candidate it requires did not complete'
+            : null
+      if (skip !== null) {
+        step.result = 'skipped'
+        step.error = skip
+      } else if (opts.dryRun === true) {
+        step.result = 'would-run'
+      } else {
+        fatal = runOne(c, step, s, byName.get(c.owner))
+      }
+      if (step.result === 'failed' || step.result === 'skipped') stopped.add(c.id)
+      save()
     }
-    receipt.steps.push(step)
-    const skip =
-      fatal !== null
-        ? `the run stopped: ${fatal}`
-        : c.requires?.some((r) => stopped.has(r))
-          ? 'a candidate it requires did not complete'
-          : null
-    if (skip !== null) {
-      step.result = 'skipped'
-      step.error = skip
-    } else if (opts.dryRun === true) {
-      step.result = 'would-run'
-    } else {
-      fatal = runOne(c, step, s, byName.get(c.owner))
+  } catch (err) {
+    // A write or a plugin escaped: leave a receipt that says the run did not finish.
+    receipt.status = 'failed'
+    receipt.finishedAt = now().toISOString()
+    try {
+      save()
+    } catch {
+      // the original error is the one to report
     }
-    if (step.result === 'failed' || step.result === 'skipped') stopped.add(c.id)
-    save()
+    throw err
   }
 
   receipt.finishedAt = now().toISOString()

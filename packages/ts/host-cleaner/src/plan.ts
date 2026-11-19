@@ -29,17 +29,19 @@ export const ObjectionSchema = z.object({
   reason: z.string(),
 })
 
-export const PlanSchema = z.object({
-  version: z.literal(PLAN_VERSION),
-  createdAt: z.string(),
-  /** The candidates the person picked by id; null means every one nothing objects to. */
-  pick: z.array(z.string()).nullable(),
-  /** The protest codes granted by name. */
-  allow: z.array(z.string()),
-  warnings: z.array(z.string()),
-  candidates: z.array(CandidateSchema),
-  objections: z.array(ObjectionSchema),
-})
+export const PlanSchema = z
+  .object({
+    version: z.literal(PLAN_VERSION),
+    createdAt: z.string(),
+    /** The candidates the person picked by id; null means every one nothing objects to. */
+    pick: z.array(z.string()).nullable(),
+    /** The protest codes granted by name. */
+    allow: z.array(z.string()),
+    warnings: z.array(z.string()),
+    candidates: z.array(CandidateSchema),
+    objections: z.array(ObjectionSchema),
+  })
+  .strict()
 
 export type Plan = z.infer<typeof PlanSchema>
 
