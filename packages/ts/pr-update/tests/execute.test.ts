@@ -322,6 +322,57 @@ describe('the executor against real git', () => {
     expect(git.resolveRef('origin/verify')).toBe(before!)
   })
 
+  test('verifyVerbsIn resolves in the PR worktree, and its verbs gate the push', async () => {
+    makeBehindPr('late', { 'a.txt': 'a\n' }, { 'b.txt': 'b\n' })
+    const { git } = fx.worker
+    const before = git.resolveRef('origin/late')
+    const seen: string[] = []
+
+    const out = await inWorktree((wt) =>
+      updateOne(
+        wt,
+        target({ head: 'late', number: 7 }),
+        settings({
+          verifyVerbsIn: async (worktree, pr) => {
+            seen.push(`${worktree}#${pr}`)
+            return ['check']
+          },
+        }),
+        recorder(nope),
+        { apply: true, worktree: wtRoot },
+      ),
+    )
+    expect(out.status).toBe('failed')
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toMatch(/#7$/)
+    git.fetch('origin')
+    expect(git.resolveRef('origin/late')).toBe(before!)
+  })
+
+  test('a verifyVerbsIn that throws fails that PR with its message and pushes nothing', async () => {
+    makeBehindPr('nodetect', { 'a.txt': 'a\n' }, { 'b.txt': 'b\n' })
+    const { git } = fx.worker
+    const before = git.resolveRef('origin/nodetect')
+
+    const out = await inWorktree((wt) =>
+      updateOne(
+        wt,
+        target({ head: 'nodetect' }),
+        settings({
+          verifyVerbsIn: async () => {
+            throw new Error('verify: detect found no test command')
+          },
+        }),
+        recorder(nope),
+        { apply: true, worktree: wtRoot },
+      ),
+    )
+    if (out.status !== 'failed') throw new Error('unreachable')
+    expect(out.reason).toContain('found no test command')
+    git.fetch('origin')
+    expect(git.resolveRef('origin/nodetect')).toBe(before!)
+  })
+
   test('a rebase with no known head sha is refused rather than force-pushed blind', async () => {
     // Without a sha the lease has nothing to check. The executor does not
     // force-push on someone's behalf without one.

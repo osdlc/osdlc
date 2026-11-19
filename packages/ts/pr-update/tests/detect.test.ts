@@ -119,7 +119,7 @@ describe('verify: detect through the standalone ports', () => {
   test('with no rung matching it fails, naming what it looked for', async () => {
     const cfg = prUpdateStandaloneSchema.parse({ verify: 'detect' })
     await expect(standalonePorts(cfg).resolveVerifyVerbs(request())).rejects.toThrow(
-      /verify: detect found no test command in o\/r \(looked for test_command, a `test` target/,
+      /verify: detect found no test command in o\/r's update worktree \(looked for test_command, a `test` target/,
     )
   })
 

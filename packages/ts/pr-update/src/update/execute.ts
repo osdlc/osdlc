@@ -129,6 +129,11 @@ export interface UpdateSettings {
   lockfileInstall: string | null
   /** Shell verbs that must pass before a push. Empty means push unverified. */
   verifyVerbs: readonly string[]
+  /**
+   * Resolves the verbs from the PR's own update worktree, after checkout and before verify.
+   * Replaces `verifyVerbs` when set; a throw fails that PR's verify, not the run.
+   */
+  verifyVerbsIn?: ((worktree: string, pr: number) => Promise<readonly string[]>) | undefined
   generators?: readonly Generator[] | undefined
   repair?: Repair | undefined
   /** The kinds `repair` is called for. */
@@ -525,7 +530,15 @@ async function integrateAndPush(
     resolved.push(...plans.filter((p) => p.kind !== 'unclaimed'))
   }
 
-  const verifyFailure = runVerify(settings.verifyVerbs, runVerb, opts.worktree)
+  let verbs = settings.verifyVerbs
+  if (settings.verifyVerbsIn !== undefined) {
+    try {
+      verbs = await settings.verifyVerbsIn(opts.worktree, target.number)
+    } catch (e) {
+      return fail(errorLine(e))
+    }
+  }
+  const verifyFailure = runVerify(verbs, runVerb, opts.worktree)
   if (verifyFailure !== null) {
     const repair = repairFor('verify-failed')
     if (repair === null) return fail(verifyFailure.summary)
@@ -542,7 +555,7 @@ async function integrateAndPush(
     } catch (e) {
       return fail(`committing the repair: ${errorLine(e)}`)
     }
-    const again = runVerify(settings.verifyVerbs, runVerb, opts.worktree)
+    const again = runVerify(verbs, runVerb, opts.worktree)
     if (again !== null) return fail(`${again.summary} (after repair)`)
   }
 

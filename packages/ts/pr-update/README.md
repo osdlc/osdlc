@@ -302,7 +302,8 @@ it touches any PR. `test` never guesses.
 
 `verify: detect` is the opt-in middle ground for a person updating PRs across
 many repositories, none of which has a `test_command`. It walks a fixed ladder
-in each repository's local checkout and runs the first rung that matches:
+in each PR's own update worktree, after checkout and before verify, and runs
+the first rung that matches:
 
 1. `test_command`, when configured;
 2. a `test` recipe in a `justfile` (`just test`), then a `test` target in a
@@ -313,20 +314,18 @@ in each repository's local checkout and runs the first rung that matches:
 4. `cargo test` for `Cargo.toml`, `go test ./...` for `go.mod`, `sbt test` for
    `build.sbt`.
 
-The run prints the choice for each repository on stderr
+The run prints the choice for each PR on stderr
 (`pr-update: verify: detect owner/name: make test  (Makefile test target)`).
-When no rung matches, the update fails before touching any PR and names what
-it looked for. Nothing beyond the ladder is guessed. Because the repository's
+When no rung matches, that PR's update fails, naming what was looked for; the
+other PRs go on. Nothing beyond the ladder is guessed. Because the repository's
 own files choose the command, `verify: detect` in the project file is gated
 like `test_command`: it needs `--trust` or a recorded trust. A host that
 supplies `Ports.resolveVerifyVerbs` receives `which: 'detect'` and may call the
 exported `detectVerifyCommand(dir, testCommand?)` for the same ladder.
 
-Detection reads the repository's local checkout once per repository, the same
-directory `resolveVerifyVerbs` is given, not each PR's own worktree. A PR that
-adds or removes a `justfile`, `Makefile` or `package.json` test script is
-therefore judged by the checkout's files, and one command is used for every PR
-of that repository in the run. Use `test_command` when branches differ.
+Detection runs once per PR, so a PR that adds or removes a `justfile`, `Makefile`
+or `package.json` test script is judged by its own files. Every other `verify`
+value resolves once per repository, as before.
 
 ## Not retrying a failure that will repeat
 

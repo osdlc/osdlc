@@ -43,9 +43,12 @@ export interface VerifyVerbsRequest {
   repo: string
   /**
    * That repository's local checkout, the one the survey measured it in. The
-   * verbs run in a temporary worktree of it, not in this directory.
+   * verbs run in a temporary worktree of it, not in this directory. For
+   * `detect` it is instead the PR's own update worktree, asked once per PR.
    */
   checkout: string
+  /** The PR being verified, set for `detect`, which resolves once per PR. */
+  pr?: number | undefined
 }
 
 export type RepairKind = 'conflict' | 'verify-failed'

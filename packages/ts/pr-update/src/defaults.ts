@@ -84,15 +84,17 @@ export function standalonePorts(
     // A standalone run has no host registry to look up `check` in; `test` runs only
     // `test_command`, and `detect` only the detectVerifyCommand ladder. Failing is better than running no verbs
     // and reporting a push as verified when nothing was checked.
-    async resolveVerifyVerbs({ which, repo, checkout }) {
+    async resolveVerifyVerbs({ which, repo, checkout, pr }) {
       if (which === 'detect') {
         const found = detectVerifyCommand(checkout, testCommand)
         if (found === null) {
           throw new Error(
-            `verify: detect found no test command in ${repo} (looked for ${DETECT_LOOKED_FOR}) — set pr_update.test_command, or set verify: 'none'`,
+            `verify: detect found no test command in ${repo}'s update worktree (looked for ${DETECT_LOOKED_FOR}) — set pr_update.test_command, or set verify: 'none'`,
           )
         }
-        notice(`verify: detect ${repo}: ${found.command}  (${found.rung})`)
+        notice(
+          `verify: detect ${repo}${pr === undefined ? '' : `#${pr}`}: ${found.command}  (${found.rung})`,
+        )
         return [found.command]
       }
       if (which === 'check') {
