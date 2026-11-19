@@ -12,6 +12,7 @@
  */
 
 import { existsSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 
 import {
   failureText,
@@ -106,6 +107,7 @@ export function makeWindowHost(
       const [bin] = argv
       if (bin === undefined) throw new Error('window opener returned an empty argv')
       const res = resolveRunner(bin, opts.runner).run(argv.slice(1), {
+        cwd: tmpdir(),
         timeoutMs: 120_000,
       })
       if (!ran(res)) throw new Error(`opening a window failed: ${failureText(res)}`)
