@@ -35,13 +35,17 @@ export const OPEN_PR_LIMIT = 1000
  * It reads every open PR (up to {@link OPEN_PR_LIMIT}) and the newest
  * {@link PR_LIMIT} of any state, so an old open PR is not lost to newer merged
  * ones. The listing is incomplete, and says so, when the open PRs hit their
- * cap, and when the repository is a fork: PRs opened from it to its parent
- * live in the parent and are not read. A listing `gh` fails, such as one for
+ * cap, when one branch has more than {@link PR_LIMIT} PRs, and when the
+ * repository is a fork (PRs opened from it to its parent live in the parent
+ * and are not read) or its fork status cannot be read. A listing `gh` fails, such as one for
  * a repository the signed-in account cannot see, throws with `gh`'s reason.
  */
 export function githubProvider(gh: Gh): PrProvider {
   // Fork status per repository: it does not change between one listing and the next.
   const parents = new Map<string, string | null>()
+  // Whether gh is signed in to a host, per host. A remote's host can be an SSH
+  // alias (`git@github-work:acme/app.git`) that gh maps to the real host itself.
+  const known = new Map<string, boolean>()
   return {
     name: 'github',
     words: { tool: 'gh', noun: 'PR', listing: 'gh pr list' },
@@ -53,7 +57,16 @@ export function githubProvider(gh: Gh): PrProvider {
       let client = gh.at(root)
       if (target.project !== null) {
         client = client.withRepo(target.project)
-        if (target.host !== null) client = client.withHostname(target.host)
+        // Name the host only when gh holds credentials for it; otherwise gh's own host rules apply.
+        if (target.host !== null) {
+          const named = client.withHostname(target.host)
+          let signedIn = known.get(target.host)
+          if (signedIn === undefined) {
+            signedIn = named.authenticated()
+            known.set(target.host, signedIn)
+          }
+          if (signedIn) client = named
+        }
       }
       const incomplete: string[] = []
       const rows: PullRequest[] = []

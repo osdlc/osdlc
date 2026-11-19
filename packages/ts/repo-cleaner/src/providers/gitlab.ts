@@ -153,7 +153,7 @@ export function gitlabProvider(glab: CommandRunner): PrProvider {
         return true
       }
       // Open MRs first and to their own cap: they gate a delete, and the newest
-      // 300 of every state can leave an old one out. `locked` is an open MR
+      // `PR_LIMIT` of every state can leave an old one out. `locked` is an open MR
       // mid-update; the listing of every state below covers it.
       const cut = branch === undefined && read('opened', OPEN_PR_LIMIT)
       const more = read('all', PR_LIMIT)

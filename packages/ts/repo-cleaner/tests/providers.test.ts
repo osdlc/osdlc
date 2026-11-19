@@ -306,6 +306,56 @@ describe('the GitLab provider', () => {
     expect(api).toContain('--hostname')
   })
 
+  test('a host gh holds no credentials for, such as an SSH alias, is left to gh', () => {
+    const canned = cannedGh([], { signedInHosts: ['github.com'] })
+    const gh = new Gh('/srv/proj', { runner: canned })
+    lookupPrs(repoWith({ ...GITHUB, host: 'github-work' }), githubProvider(gh))
+    const list = canned.calls.find((argv) => argv[1] === 'list')!
+    expect(list[list.indexOf('--repo') + 1]).toBe('fork-owner/proj')
+  })
+
+  test('a fork probe that fails marks the listing incomplete, and is asked once per repository', () => {
+    const canned = cannedGh([], { apiFails: true })
+    const provider = githubProvider(new Gh('/srv/proj', { runner: canned }))
+    const first = lookupPrs(repoWith(GITHUB), provider)
+    lookupPrs(repoWith(GITHUB), provider, 'feat')
+    expect(first.incomplete).toContain('whether the repository is a fork could not be read')
+    expect(canned.calls.filter((argv) => argv[0] === 'api')).toHaveLength(1)
+  })
+
+  test('a fork with no parent name is still a fork', () => {
+    const canned = cannedGh([], { forkWithoutParent: true })
+    const looked = lookupPrs(
+      repoWith(GITHUB),
+      githubProvider(new Gh('/srv/proj', { runner: canned })),
+    )
+    expect(looked.incomplete).toContain('fork of its parent')
+  })
+
+  test('a branch with more than 300 PRs is incomplete, on both providers', () => {
+    const many = (n: number): CannedPr[] =>
+      Array.from({ length: n }, (_, i) => ({
+        number: i + 1,
+        state: 'CLOSED' as const,
+        headRefName: 'busy',
+        headRefOid: 's',
+      }))
+    const gh = lookupPrs(
+      repoWith(GITHUB),
+      githubProvider(new Gh('/srv/proj', { runner: cannedGh(many(301)) })),
+      'busy',
+    )
+    expect(gh.incomplete).toContain('more than 300 PRs have the head busy')
+    const mrs = Array.from({ length: 300 }, (_, i) => ({
+      iid: i + 1,
+      state: 'closed' as const,
+      source_branch: 'busy',
+      sha: 's',
+    }))
+    const gl = lookupPrs(repoWith(GITLAB), gitlabProvider(cannedGlab(mrs)), 'busy')
+    expect(gl.incomplete).toContain('more than 300 merge requests have the source branch busy')
+  })
+
   test('a failed listing says why, whether the provider answers null or throws', () => {
     const failing = {
       run: () => ({ exitCode: 1, stdout: '', stderr: '401 Unauthorized' }),

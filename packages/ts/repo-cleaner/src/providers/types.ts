@@ -48,9 +48,9 @@ export interface ProviderStatus extends ForgeTarget, ProviderWords {
    */
   listError?: string | undefined
   /**
-   * Set by the sweep when the provider answered but says its listing leaves
-   * out requests that could be open: why. A branch with no known request
-   * then needs the same confirmation as after a failed listing.
+   * Why the provider's listing may leave out an open request; set by the
+   * sweep. A branch with no known request then needs the same confirmation
+   * as after a failed listing.
    */
   incomplete?: string | undefined
 }

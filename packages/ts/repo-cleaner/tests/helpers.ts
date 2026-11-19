@@ -52,10 +52,10 @@ export interface CannedPr {
 }
 
 /**
- * A `gh` that answers `pr list` with `prs` and fails everything else.
+ * A `gh` that answers `pr list` with `prs` and the fork probe, and fails everything else.
  * `installed: false` fails `--version`, `authenticated: false` fails `auth`,
  * and `listError` fails `pr list` with that stderr. `pr list` honours
- * `--state` and `--limit` (the newest, that is the first, rows win). `fork` is
+ * `--state` and `--limit` (`--limit` keeps the first rows, so list `prs` newest first). `fork` is
  * the parent `repos/<owner>/<name>` reports; absent, the repository is not a
  * fork. `calls` records every argv.
  */
@@ -66,6 +66,12 @@ export function cannedGh(
     authenticated?: boolean
     listError?: string
     fork?: string
+    /** `auth status --hostname <h>` succeeds only for these hosts. */
+    signedInHosts?: string[]
+    /** `api repos/...` fails, as under a rate limit. */
+    apiFails?: boolean
+    /** The fork probe reports a fork with no parent name. */
+    forkWithoutParent?: boolean
   } = {},
 ): CommandRunner & { calls: string[][] } {
   const calls: string[][] = []
@@ -84,7 +90,13 @@ export function cannedGh(
       const ok = (stdout = '') => ({ exitCode: 0, stdout, stderr: '' })
       const fail = (stderr: string) => ({ exitCode: 1, stdout: '', stderr })
       if (argv[0] === '--version') return opts.installed === false ? fail('not installed') : ok()
-      if (argv[0] === 'auth') return opts.authenticated === false ? fail('not signed in') : ok()
+      if (argv[0] === 'auth') {
+        const host = argv[argv.indexOf('--hostname') + 1]
+        if (opts.signedInHosts !== undefined && argv.includes('--hostname')) {
+          return opts.signedInHosts.includes(host!) ? ok() : fail('not signed in')
+        }
+        return opts.authenticated === false ? fail('not signed in') : ok()
+      }
       if (argv[0] === 'pr' && argv[1] === 'list') {
         if (opts.listError !== undefined) return fail(opts.listError)
         const flag = (name: string) => argv[argv.indexOf(name) + 1]
@@ -94,6 +106,8 @@ export function cannedGh(
         return ok(JSON.stringify(wanted.slice(0, limit)))
       }
       if (argv[0] === 'api') {
+        if (opts.apiFails === true) return fail('HTTP 403: rate limit')
+        if (opts.forkWithoutParent === true) return ok('{"fork":true}')
         return ok(
           JSON.stringify(
             opts.fork === undefined
@@ -119,7 +133,7 @@ export interface CannedMr {
 
 /**
  * A `glab` that answers `api …/merge_requests` with `mrs` (100 to a page,
- * filtered by `source_branch`) and fails everything else. `calls` records
+ * filtered by `source_branch` and `state=opened`) and fails everything else. `calls` records
  * every argv it was given.
  */
 export function cannedGlab(
