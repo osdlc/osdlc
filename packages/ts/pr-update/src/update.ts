@@ -65,6 +65,7 @@ import {
 } from './survey.ts'
 import type { AttemptKey, AttemptStore, ConfirmPush, Ports } from './ports.ts'
 import { terminalConfirmPush } from './update/confirm.ts'
+import { discardKept, findKept, keptIsCurrent, listKept, type KeptRecord } from './update/kept.ts'
 import type { PrUpdateConfig } from './config.ts'
 
 /** A row the run left alone, and the reason, so no row is dropped without a word. */
@@ -276,6 +277,18 @@ export const input = z.object({
     .describe(
       "Update a whole stack in one run; absent defers to `pr_update.restack`, `false` turns a configured `true` off for this run. A PR blocked only because its parent is behind is updated right after that parent, onto the head the parent just got, instead of waiting for the next run. A rebase replays only its own commits (`rebase --onto`), not its parent's old ones. With --pr or --branch, the named PRs' stack ancestors are updated too.",
     ),
+  keepFailed: z
+    .boolean()
+    .optional()
+    .describe(
+      'Move the worktree of a PR that ended `conflict` or `failed` to `.pr-update/failed/<owner>-<name>-<number>/`, on a branch named for the PR, for a person to finish and push; absent defers to `pr_update.keep_failed`. Needs --apply. A later run skips that PR until its head or base moves, unless --retry-failed or --discard-kept.',
+    ),
+  discardKept: z
+    .boolean()
+    .optional()
+    .describe(
+      'Remove every kept worktree of the surveyed repositories before the run. Needs --apply; the run then goes on as usual.',
+    ),
   strategy: z
     .enum(['rebase', 'merge'])
     .optional()
@@ -321,6 +334,16 @@ export const result = z.object({
     .describe(
       "Present in branch mode after a push: whether the working directory's checkout was moved to the pushed head, and why not when it was left alone.",
     ),
+  keptWorktree: z
+    .string()
+    .optional()
+    .describe(
+      "Present when `keepFailed` kept this PR's worktree: its path. A failed verify's log is in it, as `.pr-update-verify.log`.",
+    ),
+  keepError: z
+    .string()
+    .optional()
+    .describe('Present when `keepFailed` could not keep the worktree (one holding submodules).'),
   restackedOnto: z
     .number()
     .optional()
@@ -346,6 +369,12 @@ export const output = z.object({
     .array(z.string())
     .describe(
       '`--pr` selectors no surveyed PR matched, as `#N` (a number no repository has) or `owner/name#N`: a typo, or a PR that closed.',
+    ),
+  discarded: z
+    .array(z.string())
+    .optional()
+    .describe(
+      'Kept worktrees this run removed (`--discard-kept`, `--retry-failed`, or a PR that moved).',
     ),
   repos: z
     .array(repoEntry)
@@ -381,6 +410,8 @@ export function toResult(r: UpdateResult, localCheckout?: LocalCheckout): z.infe
       ? { repaired: r.outcome.repaired }
       : {}),
     ...(localCheckout === undefined ? {} : { localCheckout }),
+    ...(r.keptWorktree === undefined ? {} : { keptWorktree: r.keptWorktree }),
+    ...(r.keepError === undefined ? {} : { keepError: r.keepError }),
     ...(r.onto === undefined ? {} : { restackedOnto: r.onto.parent }),
   }
 }
@@ -512,6 +543,9 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
   })
 
   const writes = wantsWrite(args, env.dryRun)
+  const keepFailed = (args.keepFailed ?? effectiveCfg.keep_failed) && writes
+  if (args.discardKept === true && !args.apply)
+    throw new UpdateUsageError('--discard-kept needs --apply')
 
   // Each repository's PRs are updated in that repository's own checkout, the
   // one the survey measured them in.
@@ -524,6 +558,7 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
     else groups.set(t.repo, { path: pathOf.get(t.repo) ?? env.projectRoot, targets: [t] })
   }
   const runId = `${process.pid}.${Date.now()}`
+  const discarded = discardStaleKept(args, writes, env, pathOf, groups, skipped)
   // Once per repository, not inside `updateAll`'s per-PR loop (`detect` resolves per PR
   // instead; see `verifyVerbs` in update/execute.ts). All of them
   // before any update, so a list the host refuses for one repository stops
@@ -581,6 +616,7 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
       ...(await updateAll(git, group, { ...settings, verifyVerbs }, env.ports.runVerb, {
         apply: writes,
         worktreeRoot,
+        ...(keepFailed ? { keepFailed: { checkout: path } } : {}),
         onSkip: (s) => skipped.push(s),
         // A rehearsal cannot repair, so `writes` keeps it from recording anything. Recorded as
         // each PR finishes, so a run killed part-way (a job timeout) keeps what it
@@ -627,6 +663,7 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
     results: results.map((r) => toResult(r, local.get(prKey(r.repo, r.number)))),
     skipped,
     notFound,
+    ...(discarded.length > 0 ? { discarded } : {}),
     repos: report.repos,
     counts: {
       updated: t['updated'] ?? 0,
@@ -637,6 +674,54 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
       notFound: notFound.length,
     },
   }
+}
+
+/**
+ * Settle each repository's kept worktrees before the run: `--discard-kept` removes them all, a PR
+ * whose head or base moved (or that `--retry-failed` names) loses its own, and a PR whose kept
+ * worktree is still current is taken out of `groups` and reported as skipped. A rehearsal removes
+ * nothing, and skips only what it would not have retried.
+ *
+ * @returns the paths removed.
+ */
+function discardStaleKept(
+  args: UpdateArgs,
+  writes: boolean,
+  env: UpdateEnv,
+  pathOf: ReadonlyMap<string, string>,
+  groups: Map<string, { path: string; targets: UpdateTarget[] }>,
+  skipped: SkippedPr[],
+): string[] {
+  const removed: string[] = []
+  const checkouts = new Set([...pathOf.values(), ...[...groups.values()].map((g) => g.path)])
+  for (const checkout of checkouts) {
+    const git = new Git(checkout, { runner: env.git })
+    const discard = (record: KeptRecord): void => {
+      removed.push(record.path)
+      if (writes) discardKept(git, checkout, record)
+    }
+    if (args.discardKept === true) for (const record of listKept(checkout)) discard(record)
+  }
+  for (const group of groups.values()) {
+    const git = new Git(group.path, { runner: env.git })
+    group.targets = group.targets.filter((t) => {
+      const record = findKept(group.path, t.repo, t.number)
+      if (record === null || removed.includes(record.path)) return true
+      if (args.retryFailed || !keptIsCurrent(record, t)) {
+        removed.push(record.path)
+        if (writes) discardKept(git, group.path, record)
+        return true
+      }
+      skipped.push({
+        repo: t.repo,
+        number: t.number,
+        head: t.head,
+        reason: `failed worktree kept at ${record.path}`,
+      })
+      return false
+    })
+  }
+  return removed
 }
 
 /**
@@ -710,12 +795,15 @@ export function renderUpdateText(out: UpdateOutput): string {
     const onto =
       r.restackedOnto === undefined ? '' : `  (restacked onto ${prKey(r.repo, r.restackedOnto)})`
     lines.push(`${mark} ${prKey(r.repo, r.number)}  ${r.strategy}  ${r.head}  ${r.detail}${onto}`)
+    if (r.keptWorktree !== undefined) lines.push(`    kept: ${r.keptWorktree}`)
+    if (r.keepError !== undefined) lines.push(`    could not keep the worktree: ${r.keepError}`)
     if (r.localCheckout !== undefined) {
       lines.push(
         `    checkout: ${r.localCheckout.updated ? 'moved' : 'left'} — ${r.localCheckout.detail}`,
       )
     }
   }
+  for (const path of out.discarded ?? []) lines.push(`- discarded kept worktree ${path}`)
   for (const s of out.skipped) {
     lines.push(`- ${prKey(s.repo, s.number)}  ${s.head}  ${s.reason}`)
   }
