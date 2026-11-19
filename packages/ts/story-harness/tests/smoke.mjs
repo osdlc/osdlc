@@ -4,10 +4,9 @@
 // the consumer's machine.
 //
 // It imports the package by name, so Node resolves it through `exports` as a
-// consumer would. `pnpm run smoke` runs it here, where the name resolves to
-// this package's own dist/. check-packages.ts copies it into a clean project
-// that installed the tarball, so it must not import other repo files. It is
-// not a test-runner suite and is not in `files`.
+// consumer would. `pnpm run smoke` runs it here; the smoke check in
+// packages/ts/package-checks/src/check-ts.ts runs it in a clean project that
+// installed the tarball, so it must import nothing else from the repo.
 //
 // Also runs the installed command: with no arguments, or with a bad
 // `--settle-ms` or `SHOT_WORKERS`, `story-shots` exits 2 before it looks for

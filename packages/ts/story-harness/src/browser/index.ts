@@ -53,7 +53,7 @@ export interface StoryMetricsOptions {
 let pendingFrame: number | undefined
 
 /**
- * Call once in a perf story's setup. Marks `story:mount` now and
+ * Call once in a perf story's setup. Marks {@link MOUNT_MARK} now and
  * {@link FIRST_ROWS_MARK} on the first painted frame with rows (double
  * `requestAnimationFrame`), and exposes {@link StoryHarness} on `window`.
  * A second call stops the first call's loop; its `ready` never settles.

@@ -204,9 +204,7 @@ test('budget, record, recordBrowser and noLongTasks write one report', async ({ 
           setTimeout(() => {
             performance.mark('story:walk-start')
             const end = performance.now() + 80
-            while (performance.now() < end) {
-              // busy: one long task
-            }
+            while (performance.now() < end) {}
             performance.mark('story:walk-end')
             resolve()
           }),

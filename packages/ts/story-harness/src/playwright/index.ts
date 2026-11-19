@@ -215,7 +215,8 @@ let recorder: PerfRecorder | undefined
 const perf = () => (recorder ??= createPerfRecorder())
 
 /**
- * Record a verdict for `value` against `limit` in `test-results/story-perf.json`.
+ * Record a verdict for `value` against `limit` in the run's perf report
+ * (`STORY_PERF_FILE`, set by {@link defineStoryConfig}).
  * Under `PW_PERF_ASSERT=1` it is also an `expect` against `limit × PW_PERF_SLACK`.
  */
 export function budget(name: string, value: number, limit: number): void {

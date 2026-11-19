@@ -53,7 +53,6 @@ function readReport(outFile: string): PerfReport | undefined {
   }
 }
 
-/** Give up on the lock after this long, rather than wait forever. */
 const LOCK_DEADLINE_MS = 30_000
 
 const load = (): number[] => loadavg().map((v) => Number(v.toFixed(2)))
@@ -69,7 +68,6 @@ export function createPerfRecorder(options: PerfRecorderOptions = {}) {
 
   const runId = env.STORY_PERF_RUN ?? String(process.ppid)
   const lockDeadlineMs = options.lockDeadlineMs ?? LOCK_DEADLINE_MS
-  // The header this worker writes when it is the run's first writer.
   const header = {
     runId,
     mode: assert ? 'assert' : 'record',
@@ -85,7 +83,7 @@ export function createPerfRecorder(options: PerfRecorderOptions = {}) {
   }
   mkdirSync(dirname(outFile), { recursive: true })
 
-  // Read, merge and write under `<outFile>.lock`, so one worker at a time does it.
+  // Call only under the lock `write` takes.
   const merge = () => {
     const disk = readReport(outFile)
     const sameRun = disk?.runId === runId ? disk : undefined

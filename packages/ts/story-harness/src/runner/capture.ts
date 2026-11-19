@@ -1,21 +1,8 @@
 /**
  * Capture stories of a built Storybook to PNG files, with no comparison. This
  * is the host-side tool for documentation shots; the baseline check is the
- * `story-shots` command.
- *
- * By default shots are taken in the light theme at {@link VIEWPORT}. A story id
- * containing `-dark` is shot dark; an id ending in `-narrow` is shot at
- * {@link NARROW_VIEWPORT}; a story with `parameters.screenshot.narrow` gets a second
- * `--narrow` shot. Each file is named after the story id with the prefix
- * removed. {@link CaptureOptions.themes}, {@link CaptureOptions.viewport} and
- * {@link CaptureOptions.outLayout} replace those defaults.
- *
- * Console errors are printed. A page error or a story that ends in an error
- * fails the run once every story is shot; the failed story's shot is still
- * written. A story with `parameters.screenshot.skip` is left out.
- *
- * A package calls {@link captureCli} from a small script that supplies its
- * defaults.
+ * `story-shots` command. A package calls {@link captureCli} from a small script
+ * that supplies its defaults.
  */
 import { chromium } from '@playwright/test'
 import { mkdir, readFile } from 'node:fs/promises'
@@ -43,10 +30,7 @@ export interface CaptureOptions {
   port: number
   /** Only ids containing this. */
   contains?: string | undefined
-  /**
-   * Shoot each story in each of these themes. Default: one shot, dark for an
-   * id containing `-dark`, light otherwise.
-   */
+  /** Shoot each story in each of these themes, instead of the default one. */
   themes?: readonly Theme[] | undefined
   /** Viewport for every shot, also for `-narrow` ids and the `--narrow` extra shot (which is then left out). Default {@link VIEWPORT}. */
   viewport?: { width: number; height: number } | undefined
@@ -61,6 +45,17 @@ export interface CaptureOptions {
 /**
  * Shoot every matching story. Resolves to false if any story failed, or if no
  * story matches, which is almost always a mistyped prefix.
+ *
+ * By default each story gets one shot at {@link VIEWPORT}: dark for an id
+ * containing `-dark`, light otherwise. An id ending in `-narrow` is shot at
+ * {@link NARROW_VIEWPORT}, and a story with `parameters.screenshot.narrow` gets
+ * a second `--narrow` shot. Each file is named after the story id with the
+ * prefix removed. {@link CaptureOptions.themes}, {@link CaptureOptions.viewport}
+ * and {@link CaptureOptions.outLayout} replace those defaults.
+ *
+ * Console errors are printed. A page error or a story that ends in an error
+ * fails the run once every story is shot; the failed story's shot is still
+ * written. A story with `parameters.screenshot.skip` is left out.
  */
 export async function captureStories(opts: CaptureOptions): Promise<boolean> {
   const index = JSON.parse(await readFile(join(opts.storybookDir, 'index.json'), 'utf8'))
@@ -140,7 +135,7 @@ export async function captureStories(opts: CaptureOptions): Promise<boolean> {
 
 /** A package's defaults for {@link captureCli}; each flag of the same name overrides one. */
 export interface CaptureCliDefaults {
-  /** The package directory: it holds `storybook-static/`, and `out` is relative to it. */
+  /** The package directory, which holds `storybook-static/`. */
   packageDir: string
   /** Story id prefix to capture (`--prefix`). */
   prefix: string
@@ -152,8 +147,7 @@ export interface CaptureCliDefaults {
 
 /**
  * Parse `[contains] --prefix <p> --out <dir> --port <n>` against a package's
- * defaults, capture, and exit non-zero on failure. `--out` is relative to
- * `packageDir`.
+ * defaults, capture, and exit non-zero on failure.
  */
 export async function captureCli(defaults: CaptureCliDefaults): Promise<void> {
   const { values, positionals } = parseArgs({

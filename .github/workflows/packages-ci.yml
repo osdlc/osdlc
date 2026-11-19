@@ -166,9 +166,7 @@ jobs:
           pnpm --filter @osdlc/typed-git --filter @osdlc/pr-update --filter @osdlc/trust-repo
           --no-bail run test
 
-  # Not required by the ruleset, but packages-publish.yml calls this workflow
-  # before every release, so a failure here blocks every library's release,
-  # as old-git does. `verify` does not install Chromium or use Docker.
+  # Not required by the ruleset; see the header.
   story-harness:
     name: story-harness (browser and Docker, ubuntu-latest, node 24)
     needs: packages

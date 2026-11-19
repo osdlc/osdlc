@@ -14,16 +14,13 @@ export const NARROW_VIEWPORT = { width: 1024, height: 720 }
 /** Default wait after the story's `play` finishes, for fixture reads with simulated latency. */
 export const DEFAULT_SETTLE_MS = 1500
 
-/**
- * `parameters.screenshot` on a story or its meta.
- *
- * - `narrow`: also shoot at {@link NARROW_VIEWPORT}.
- * - `skip`: leave the story out of the baseline check; the string says why.
- * - `settleMs`: override the wait after `play`.
- */
+/** `parameters.screenshot` on a story or its meta. */
 export interface ShotParameters {
+  /** Also shoot at {@link NARROW_VIEWPORT}. */
   narrow?: boolean
+  /** Leave the story out of the baseline check; the string says why. */
   skip?: string
+  /** Override the wait after `play` ({@link DEFAULT_SETTLE_MS}). */
   settleMs?: number
 }
 

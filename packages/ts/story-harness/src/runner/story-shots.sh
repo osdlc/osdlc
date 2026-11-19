@@ -101,14 +101,14 @@ fi
 # wants the login keychain, which a non-interactive shell cannot reach, and the
 # image is public. A config with no credential settings avoids the helper, but
 # also drops the active context (Colima's or OrbStack's, say), so the pull pins
-# a local socket endpoint. A remote (tcp/ssh) context keeps its TLS material in
-# the user's config, so it pulls with that config. Only the pull is touched:
-# `docker run` below finds the image locally and uses the user's own config.
+# a local socket endpoint. Only the pull is touched: `docker run` below finds
+# the image locally and uses the user's own config.
 pull_image() {
   local host="${DOCKER_HOST:-}" config
   [[ -n "$host" ]] || host="$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/dev/null || true)"
   case "$host" in
     unix://* | npipe://*) ;;
+    # A remote (tcp/ssh) context keeps its TLS material in the user's config.
     *) docker pull --quiet --platform "$PLATFORM" "$IMAGE" >/dev/null; return ;;
   esac
   config="$(mktemp -d)"

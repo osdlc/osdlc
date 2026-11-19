@@ -29,9 +29,10 @@ const serveStatic = fileURLToPath(new URL(`../runner/serve-static.${ext}`, impor
 /**
  * A Playwright config for host specs against a static Storybook build, served
  * by the runner's `serveStatic`. No retries in either mode. Sets
- * `STORY_PERF_FILE` (unless already set) to `<configDir>/test-results/story-perf.json`,
- * the perf report path every worker's `budget` writes to, and `STORY_PERF_RUN`
- * to a new id, so a run never merges into an earlier run's report.
+ * `STORY_PERF_FILE` (unless already set) to the perf report path under
+ * {@link StoryConfigOptions.configDir}, which every worker's `budget` writes
+ * to, and `STORY_PERF_RUN` to a new id, so a new run never merges into an
+ * earlier run's report.
  */
 export function defineStoryConfig(options: StoryConfigOptions): PlaywrightTestConfig {
   const {
