@@ -142,17 +142,17 @@ export interface PrepareStep {
 
 /**
  * The steps that make a package buildable from a fresh clone: install when
- * `node_modules` is missing, then build the package and every workspace
+ * `node_modules` is missing at the root or in the package, then build the package and every workspace
  * package it depends on (`<name>...`), which import each other from `dist/`.
  */
-export function prepareSteps(name: string, root: string): PrepareStep[] {
+export function prepareSteps(name: string, root: string, dir: string = root): PrepareStep[] {
   return [
     {
       label: 'pnpm install',
       command: 'pnpm',
       argv: ['install'],
       cwd: root,
-      needed: !existsSync(join(root, 'node_modules')),
+      needed: !existsSync(join(root, 'node_modules')) || !existsSync(join(dir, 'node_modules')),
     },
     {
       label: `build ${name} and its workspace dependencies`,
@@ -180,7 +180,7 @@ export function runSteps(
 /** Builds and packs `dir` at the placeholder version, and publishes it under the `stage` tag. */
 function publishPlaceholder(target: StageTarget, dry: string[], cwd: string): boolean {
   const { dir, name } = target
-  const failedStep = runSteps(prepareSteps(name, cwd))
+  const failedStep = runSteps(prepareSteps(name, cwd, dir))
   if (failedStep !== null) {
     console.error(`  the step "${failedStep}" failed.`)
     return false

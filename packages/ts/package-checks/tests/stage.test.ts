@@ -95,6 +95,7 @@ test('preparing a package installs only when node_modules is missing, then build
       'pnpm --filter @osdlc/x... run --if-present build',
     ])
     mkdirSync(join(root, 'node_modules'))
+    assert.equal(needed(prepareSteps('@osdlc/x', root, join(root, 'new-lib'))).length, 2)
     assert.deepEqual(needed(prepareSteps('@osdlc/x', root)), [
       'pnpm --filter @osdlc/x... run --if-present build',
     ])
