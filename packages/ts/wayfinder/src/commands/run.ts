@@ -114,7 +114,12 @@ export function runCommand(home: string) {
       const session = await openSession(globals, ctx, home)
       const snapshot = await session.catalog({ cached: flags.cached })
       const id = positionals[0]!
-      const skill = snapshot.skills.find((s) => s.id === id || s.invoke === id)
+      const named = snapshot.skills.filter((s) => s.id === id || s.invoke === id)
+      // With --harness, prefer the row that agent reads: two harnesses can each have a /review.
+      const skill =
+        (flags.harness !== undefined
+          ? named.find((s) => s.harnesses.includes(flags.harness!))
+          : undefined) ?? named[0]
       if (flags.agent || flags.harness !== undefined) {
         if (skill === undefined) {
           throw new UsageError(`--agent starts an agent skill, and ${terminalSafe(id)} is not one`)
@@ -143,7 +148,9 @@ export function runCommand(home: string) {
         ctx.io.stderr(`$ ${terminalSafe(commandString(started.argv))}\n`)
         const ended = handOff(started)
         if (ended.error !== undefined) {
-          throw new CommandError(`${started.argv[0]}: ${ended.error}`, { code: 'spawn' })
+          throw new CommandError(terminalSafe(`${started.argv[0]}: ${ended.error}`), {
+            code: 'spawn',
+          })
         }
         return outcome(skillDocument(started, true, ended.exit), ended.exit)
       }

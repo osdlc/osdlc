@@ -263,6 +263,21 @@ describe.skipIf(!POSIX)('way run /<skill> --agent', () => {
     expect(res.err).toContain('it is for claude')
   })
 
+  test('--harness picks the row that agent reads when two harnesses each have the name', async () => {
+    const dir = await root({
+      ...REPO,
+      '.codex/skills/review/SKILL.md': SKILL_FILE,
+    })
+    const path = await bin({ claude: NOOP, codex: NOOP })
+    const res = await way(
+      ['run', '/review', '--harness', 'codex', '--dry-run', '--json', '-C', dir, '--', '1'],
+      dir,
+      { PATH: path },
+    )
+    expect(res.code).toBe(0)
+    expect(JSON.parse(res.out)).toMatchObject({ argv: [join(path, 'codex'), '$review 1'] })
+  })
+
   test('a harness it does not start is a usage error', async () => {
     const dir = await root(REPO)
     const res = await way(['run', '/review', '--harness', 'opencode', '-C', dir], dir)
