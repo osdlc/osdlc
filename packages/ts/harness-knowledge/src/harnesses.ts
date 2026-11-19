@@ -3,7 +3,6 @@
  * the knowledge file (`claude-code`, `codex`, `copilot-cli`), and the environment variables the
  * file states for credentials and for the config folder.
  */
-import type { AmbiguousValue } from './lookup.js'
 import { fact } from './query.js'
 
 /**
@@ -48,7 +47,7 @@ export function idFor(harness: string): HarnessId | undefined {
 /**
  * The names of the environment variables that carry the harness's credentials, filtered as
  * {@link fact} filters. Empty when the harness is unknown or the file states none. Throws
- * {@link AmbiguousValue} as `fact` does.
+ * `AmbiguousValue` as `fact` does.
  */
 export function credentialEnv(harness: string): string[] {
   const vars = fact(slugFor(harness) ?? harness, 'config/credentials-env')?.['vars']
@@ -60,7 +59,7 @@ export function credentialEnv(harness: string): string[] {
 
 /**
  * The variable that moves the harness's config folder, filtered as {@link fact} filters, or
- * undefined when the harness is unknown or the file states none. Throws {@link AmbiguousValue}
+ * undefined when the harness is unknown or the file states none. Throws `AmbiguousValue`
  * as `fact` does.
  */
 export function configDirEnv(harness: string): string | undefined {
