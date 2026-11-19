@@ -24,7 +24,7 @@ from its documentation, is in [`../planning/research/`](../planning/research/).
 ## `terminal`
 
 Runs the agent in the caller's own terminal and returns when it exits. It is the
-only host that always blocks, and the only one with nothing to find or send to
+only host that always blocks. Like `window`, it has nothing to find or send to
 afterwards. Use it for a person running your tool by hand. Do not use it from a
 server process that has no terminal of its own.
 
@@ -47,8 +47,7 @@ const host = makeWindowHost({
 ```
 
 The host keeps no state: it cannot find, focus, send to or close the window afterwards, and it
-cannot wait for the window's process to exit, so `wait` is ignored and the call returns 0 once the window is open. `focus: false` is not honoured either: Terminal may come to the front and, when it was not running, start with an empty window of its own. A supplied opener runs on any platform unless you pass `platforms`. The window's shell stays open
-after the command ends.
+cannot wait for the window's process to exit, so `wait` is ignored and the call returns 0 once the window is open. `focus: false` leaves out `activate`, but Terminal may still come to the front and, when it was not running, start with an empty window of its own. A supplied opener runs on any platform unless you pass `platforms`. With the built-in Terminal.app opener the window's shell stays open after the command ends; a supplied opener decides this itself.
 
 ## `tmux`
 

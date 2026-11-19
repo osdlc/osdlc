@@ -119,6 +119,19 @@ describe('window host', () => {
     expect(makeWindowHost({ opener: present, platforms: [] }).available()).toBe(false)
   })
 
+  test('platforms default to macOS for the built-in opener and all for a supplied one', () => {
+    expect(makeWindowHost().platforms).toEqual(['darwin'])
+    const opener = { available: () => true, argv: (c: string) => ['x', c] }
+    expect(makeWindowHost({ opener }).platforms).toBe('all')
+  })
+
+  test('an opener returning an empty argv throws and runs nothing', () => {
+    const { runner, calls } = scripted()
+    const host = makeWindowHost({ runner, opener: { available: () => true, argv: () => [] } })
+    expect(() => host.terminal?.({ cwd: '/w', argv: ['claude'], title: 't' })).toThrow(/empty argv/)
+    expect(calls).toHaveLength(0)
+  })
+
   test('is a registered host name and cannot wait', () => {
     expect(HOST_NAMES).toContain('window')
     expect(hostCanWait('window')).toBe(false)
