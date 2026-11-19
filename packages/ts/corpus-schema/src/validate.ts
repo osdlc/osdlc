@@ -421,7 +421,7 @@ function refValues(data: Data, ref: Ref): { at: (string | number)[]; value: unkn
   const walk = (node: unknown, depth: number, at: (string | number)[]): void => {
     if (node === null || typeof node !== 'object' || Array.isArray(node)) return
     const key = ref.path[depth] as string
-    const value = (node as Data)[key]
+    const value = Object.hasOwn(node, key) ? (node as Data)[key] : undefined
     const here = [...at, key]
     const last = depth === ref.path.length - 1
     // A list property that holds no list is one value: the schema says whether it may.
