@@ -1,0 +1,707 @@
+{
+  "id": "host-cleaner-design",
+  "title": "host-cleaner: design review",
+  "summary": "The design of @osdlc/host-cleaner as built in PRs 943 to 948, where it differs from D-L7N5, and the decisions to settle before the stack merges.",
+  "created": "2026-11-19",
+  "revision": 1,
+  "repo": {
+    "remote": "https://github.com/osdlc/osdlc",
+    "commit": "ffba8781"
+  },
+  "blocks": [
+    {
+      "id": "problem",
+      "type": "prose",
+      "title": "What this review gates",
+      "text": "`@osdlc/host-cleaner` is a package that runs repo-cleaner and lets optional adapters add what git cannot see: Rust `target/` and `node_modules` caches, Orca-managed worktrees and Claude Code sessions. It is built as a stack of six draft PRs, 943 to 948 (branch `sksizer/issue-666-scheduled-run` holds all six). None is merged.\n\nThe constraint: the decision record `docs/decisions/D-L7N5-host-cleaner.md` was written before the code, and the code now differs from it in four places and leaves several choices open. Once the stack merges, the adapter contract, the flag names and the unattended subset become interfaces a scheduled job and other adapters depend on. Each question below states what the code does (with the file), the options, and a recommendation. The architecture is in `docs/architecture/host-cleaner.md`. After your answers, D-L7N5 is updated to match."
+    },
+    {
+      "id": "map",
+      "type": "prose",
+      "title": "The shape in one paragraph",
+      "text": "The package composes repo-cleaner: `hostSweep` detects adapters, lets them `discover` repositories, runs repo-cleaner's sweep with the adapters' `annotate` hooks chained in, then asks each adapter to `gather` its own rows. One plan, one re-check and one receipt cover repo rows and host rows. `--auto` selects a fixed safe subset and a launchd agent runs it on a timer. Four adapters ship built in: `cargo`, `node`, `orca`, `claude-code` (`packages/ts/host-cleaner/src/bin.ts`).",
+      "source": {
+        "uri": "packages/ts/host-cleaner/src/bin.ts"
+      }
+    },
+    {
+      "id": "contract-code",
+      "type": "code",
+      "title": "The adapter contract on the branch",
+      "language": "ts",
+      "source": {
+        "uri": "packages/ts/host-cleaner/src/adapter.ts"
+      },
+      "code": "interface HostAdapter {\n  name: string\n  detect(ctx: HostContext): boolean\n  annotate?: Annotate\n  gather?(ctx: HostContext): HostRow[]\n  execute?(step: HostStep, ctx: HostContext): string\n  discover?(ctx: HostContext): string[]   // added in PR 946\n  removeWorktree?: RemoveWorktree\n}"
+    },
+    {
+      "id": "pkg-facts",
+      "type": "prose",
+      "title": "Packaging, as built (PRs 943, 945)",
+      "text": "- One package, `@osdlc/host-cleaner`, depends on `@osdlc/repo-cleaner` as `workspace:^` and ships a library and the `host-cleaner` bin.\n- The four adapters live in it as `src/cargo.ts`, `node.ts`, `orca.ts`, `claude.ts`, over a shared `src/artifacts.ts`. The bin passes them in a fixed list; the library takes any list (`HostOptions.adapters`).\n- repo-cleaner gained small hooks for this: `removeWorktree`, exported `fingerprint`, `sameFingerprint`, `PlanSchema`, `writeJsonAtomic`, `busyHolders`, and a `host:<name>` blocker.\n- 943's source is about 820 lines with comments, over the 600-line PR guideline; its body says the contract and the one-receipt run do not split cleanly.",
+      "source": {
+        "uri": "packages/ts/host-cleaner/src/index.ts"
+      }
+    },
+    {
+      "id": "decide-pkg",
+      "type": "question",
+      "questions": [
+        {
+          "id": "q-packaging",
+          "about": "pkg-facts",
+          "prompt": "How should host-cleaner and its adapters be packaged?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "one-package",
+              "title": "One package with built-in adapters (as built)",
+              "detail": "Recommended. One version, one safety model, one test suite; a machine without Orca or Rust still works because each adapter detects itself. The contract can change without a coordinated release. Cost: a new adapter needs a change here, and an adapter's dependencies (detect-harness, path-guard) land in everyone's install."
+            },
+            {
+              "id": "split-adapters",
+              "title": "Adapters as separate packages (`@osdlc/host-cleaner-orca` and so on)",
+              "detail": "Third parties and the repo can add adapters without touching core, and installs stay small. Cost: the contract becomes a published API at once, so every hook change is a breaking release across five packages. Today only osdlc itself writes adapters, so this pays for flexibility nobody uses yet. Revisit when a second author appears."
+            },
+            {
+              "id": "fold",
+              "title": "Fold host-cleaner into repo-cleaner",
+              "detail": "One package fewer. Cost: repo-cleaner stops being git-and-forge only, which is D-RSWP's boundary; it would pull ps, lsof, cargo and Claude knowledge into a tool meant to stay standalone. D-L7N5 rejects this."
+            }
+          ],
+          "recommended": "one-package"
+        },
+        {
+          "id": "q-split-943",
+          "about": "pkg-facts",
+          "prompt": "943 is about 820 lines, over the 600-line guideline. Accept it, or split before merge?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "accept",
+              "title": "Accept as one PR",
+              "detail": "Recommended, since the stack is already built on it and the review is on the design. The contract (`adapter.ts`, `registry.ts`) and the one-receipt run (`clean.ts`, `plan.ts`) only make sense together; a split would leave a PR with types and nothing that uses them."
+            },
+            {
+              "id": "split",
+              "title": "Split into contract + registry, then plan + check + run",
+              "detail": "Meets the guideline and gives a smaller review. Cost: the stack of six becomes seven and every later PR is rebased; the first half has no behaviour to test."
+            }
+          ],
+          "recommended": "accept"
+        }
+      ]
+    },
+    {
+      "id": "discover-facts",
+      "type": "prose",
+      "title": "The `discover` hook",
+      "text": "D-L7N5 says: \"The contract has no hook that runs before the sweep yet\" and expects the first repository-finding adapter (Orca, #664) to add one that returns extra targets. PR 946 adds exactly that, named `discover(ctx): string[]`. It runs after `detect` and before the repo sweep; its paths are added to the targets, de-duplicated by real path. The CLI passes `discover: targets.length === 0`, so it is skipped when targets are named (`cli.ts` line 337, `sweep.ts`). Only the `orca` adapter implements it.\n\nThis is consistent with the record's intent, but the record's contract text says there is no such hook, and its adapter code block lists five hooks where the code has six.",
+      "source": {
+        "uri": "packages/ts/host-cleaner/src/sweep.ts"
+      }
+    },
+    {
+      "id": "decide-discover",
+      "type": "question",
+      "questions": [
+        {
+          "id": "q-discover",
+          "about": "discover-facts",
+          "prompt": "Keep `discover` as a sixth hook, and which paths may it return?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "keep-paths",
+              "title": "Keep it: returns absolute repository paths",
+              "detail": "Recommended. Matches the record's intent and what Orca needs. It is the only hook that runs before the sweep, which is why it takes the narrower `HostContext` (targets as named). Update D-L7N5's contract block and drop the 'no hook' sentence."
+            },
+            {
+              "id": "detect-only",
+              "title": "Fold it into `detect`, which returns targets",
+              "detail": "Fewer hooks, but `detect` is a cheap boolean check run in order; returning paths from it mixes detection with work and makes the report's skip reasons unclear."
+            },
+            {
+              "id": "config-only",
+              "title": "Drop it; users list repositories in `targets`",
+              "detail": "Smallest contract. But then Orca's repository list is invisible, and worktrees Orca manages in repositories no one named are never swept."
+            }
+          ],
+          "recommended": "keep-paths"
+        }
+      ]
+    },
+    {
+      "id": "order-facts",
+      "type": "prose",
+      "title": "Adapter run order",
+      "text": "D-L7N5: the first adapters, in run order, are `orca`, `claude-code`, `cargo`, `node`. The bin passes `[cargoAdapter, nodeAdapter, orcaAdapter, claudeAdapter]` (`packages/ts/host-cleaner/src/bin.ts`). The order decides the `annotate` chain (each adapter sees the previous one's rows), `gather` order and the report order. In practice it matters little today: only `orca` annotates, and no two adapters gather the same ids (a duplicate id is refused). But `discover` and `detect` order matter: `node` and `cargo` detect from the targets as named, before Orca's `discover` adds anything, so on a bare `host-cleaner` run with no config they only see the current directory.",
+      "source": {
+        "uri": "packages/ts/host-cleaner/src/bin.ts"
+      }
+    },
+    {
+      "id": "decide-order",
+      "type": "question",
+      "questions": [
+        {
+          "id": "q-order",
+          "about": "order-facts",
+          "prompt": "Which run order?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "code-order",
+              "title": "Keep the code's order and fix D-L7N5",
+              "detail": "Edits the record instead of one line in `bin.ts`. Cost: the record's order was a deliberate statement that host-aware adapters annotate first."
+            },
+            {
+              "id": "record-order",
+              "title": "Change the bin to the record's order: orca, claude-code, cargo, node",
+              "detail": "Recommended. It costs one line, honours the accepted decision, and puts the adapter that annotates repo rows first so later adapters see its verdicts. No test depends on the order today (to verify when changing: `tests/cli.test.ts`)."
+            },
+            {
+              "id": "explicit",
+              "title": "Make the order irrelevant by contract: adapters must not depend on each other's annotate output",
+              "detail": "A rule in the extension guide plus a test that shuffles adapters. Most robust, but it forbids an adapter that wants to build on Orca's verdict."
+            }
+          ],
+          "recommended": "record-order"
+        }
+      ]
+    },
+    {
+      "id": "flag-facts",
+      "type": "prose",
+      "title": "Flag naming",
+      "text": "D-L7N5 names `--adapter` and `--no-adapter`. PR 944 implements `--adapter` and `--skip-adapter`, because `@osdlc/cli-tool` rejects a list flag named `no-*` as a negation. The library option is still `noAdapter`, and the doc comment on `HostAdapter.name` still says `--no-adapter` (`packages/ts/host-cleaner/src/adapter.ts`, `cli.ts`).",
+      "source": {
+        "uri": "packages/ts/host-cleaner/src/cli.ts"
+      }
+    },
+    {
+      "id": "decide-flag",
+      "type": "question",
+      "questions": [
+        {
+          "id": "q-flag",
+          "about": "flag-facts",
+          "prompt": "What should the exclusion flag be called?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "skip",
+              "title": "`--skip-adapter` (as built)",
+              "detail": "Recommended. Works with cli-tool today and reads clearly. Rename the library option to `skipAdapter`, fix the comment, and update the record."
+            },
+            {
+              "id": "except",
+              "title": "`--except-adapter` or `--exclude-adapter`",
+              "detail": "Also valid for cli-tool, and avoids 'skip', which the report already uses for 'adapter orca: skipped (not detected)'. Costs a rename and splits vocabulary from the sibling flag `--spare` (which spares rows)."
+            },
+            {
+              "id": "teach-cli",
+              "title": "Teach cli-tool to allow `no-*` list flags",
+              "detail": "Matches the record, but changes shared tooling for one flag and loosens a guard that exists to catch negation mistakes."
+            }
+          ],
+          "recommended": "skip"
+        }
+      ]
+    },
+    {
+      "id": "auto-facts",
+      "type": "prose",
+      "title": "The unattended safe subset",
+      "text": "`selectUnattended` (`packages/ts/host-cleaner/src/auto.ts`) is pure. It selects a row only when `verdict === 'delete'`, `action !== null` and it has no risk, and then: a host `artifact` row also needs `evidence.unattended === true`; a repo `worktree` row needs nothing more. Branch rows, `review` rows, sessions and any other host kind are never selected. `--auto` passes no `--allow`.\n\n`evidence.unattended` is `!blocked && idle`, where idle is `idleHoursSince(newest) >= threshold` (`cargo.ts`, `node.ts`; default 24 hours, `artifacts.ts`). D-L7N5 says \"idle for longer than its threshold\". At exactly 24 hours the code deletes; the record would not. `idleHours` is rounded down, so the difference is under an hour. Unrelated to this, the node adapter's `rowOrThrow` returns no row below the threshold, so the same comparison decides whether a node row exists at all.",
+      "source": {
+        "uri": "packages/ts/host-cleaner/src/auto.ts"
+      }
+    },
+    {
+      "id": "decide-auto",
+      "type": "question",
+      "questions": [
+        {
+          "id": "q-threshold",
+          "about": "auto-facts",
+          "prompt": "Should idle be `>=` the threshold or strictly longer?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "gte",
+              "title": "`>=` (as built); the record is reworded to 'at least'",
+              "detail": "Recommended. 'Idle for 24 hours' reads naturally as 24 or more, and `idleHours` is already floored, so strictness gains nothing. Change one sentence in D-L7N5."
+            },
+            {
+              "id": "gt",
+              "title": "Strictly longer, as the record says",
+              "detail": "Never acts at exactly the threshold. Cost: a code change in two adapters and in tests, for a difference of at most an hour."
+            }
+          ],
+          "recommended": "gte"
+        },
+        {
+          "id": "q-subset",
+          "about": "auto-facts",
+          "prompt": "Is the fixed safe subset right: idle artifacts plus risk-free `delete` worktrees?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "as-built",
+              "title": "Yes: artifacts and risk-free `delete` worktrees only",
+              "detail": "Recommended. Matches the record. Everything with a risk or `review` verdict stays in the report. A worktree that qualifies is removed through Orca if Orca manages it (`removeWorktree` applies to `--auto`)."
+            },
+            {
+              "id": "artifacts-only",
+              "title": "Artifacts only; worktrees need a person",
+              "detail": "Safer first release: caches are rebuildable, worktrees are not. Cost: the main repo-cleaner value (merged worktrees) is not scheduled, and the record explicitly includes worktrees."
+            },
+            {
+              "id": "plus-branches",
+              "title": "Also `delete` branches",
+              "detail": "Cleans more. But a deleted local branch is the one thing here a person cannot trivially recreate without a reflog, and the record excludes it."
+            }
+          ],
+          "recommended": "as-built"
+        }
+      ]
+    },
+    {
+      "id": "sched-facts",
+      "type": "prose",
+      "title": "Scheduling and the scheduled run",
+      "text": "`schedule install` writes `~/Library/LaunchAgents/dev.osdlc.host-cleaner.plist` running `node <script> --auto` every `--every` hours; the default is 6 (`DEFAULT_EVERY_HOURS` in `packages/ts/host-cleaner/src/schedule.ts`), which the issue (#666) did not specify. It is macOS only. D-L7N5 chooses launchd 'until a general trigger service exists'; the command it runs does not change when that happens.\n\nA scheduled run starts in launchd's working directory, not a repository. The CLI's targets are the config's `targets`, else the current directory (`cli.ts` around line 333). The `node` adapter detects only when a swept checkout has a `package.json` (`node.ts`), and `cargo` when `cargo --version` exits 0 or a checkout has `Cargo.toml`. So a scheduled run with no `targets` in config sweeps nothing useful and the `node` adapter is skipped. `schedule install` does not check for that.",
+      "source": {
+        "uri": "packages/ts/host-cleaner/src/schedule.ts"
+      }
+    },
+    {
+      "id": "decide-sched",
+      "type": "question",
+      "questions": [
+        {
+          "id": "q-launchd",
+          "about": "sched-facts",
+          "prompt": "Schedule through launchd for now?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "launchd",
+              "title": "Yes: a launchd user agent, macOS only (as built)",
+              "detail": "Recommended, per the record. No daemon of our own, survives reboots, the logs go to the standard place. The command is the same `--auto` a future trigger service would run, so replacing the scheduler later touches only `schedule.ts`."
+            },
+            {
+              "id": "none",
+              "title": "No scheduler; document a cron or launchd snippet",
+              "detail": "Smaller code and no platform special case. But a copy-pasted plist skips the guards the code has: the real path of node and the script, PATH from the installing shell, and `HOST_CLEANER_*` variables."
+            }
+          ],
+          "recommended": "launchd"
+        },
+        {
+          "id": "q-every",
+          "about": "sched-facts",
+          "prompt": "Default `--every`?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "six",
+              "title": "6 hours (as built)",
+              "detail": "Recommended. A run that finds nothing idle is cheap, caches idle for 24 hours are caught within a day, and sessions that open and close within hours are not chased. Document it as arbitrary and configurable."
+            },
+            {
+              "id": "daily",
+              "title": "24 hours",
+              "detail": "Fewer wakeups and less log noise; a freed cache can wait a day. Matches the 24-hour idle default, so a cache is removed at most a day plus a run late."
+            },
+            {
+              "id": "required",
+              "title": "No default: `--every` required",
+              "detail": "Forces a choice and avoids a guess. Costs one more argument on the happy path."
+            }
+          ],
+          "recommended": "six"
+        },
+        {
+          "id": "q-targets",
+          "about": "sched-facts",
+          "prompt": "A scheduled run needs `targets` in config, or `node` is skipped. What should install do?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "require",
+              "title": "`schedule install` refuses when the config has no `targets`",
+              "detail": "Recommended. A scheduled run with nothing to sweep is a silent no-op. The refusal names the config file to edit. Small code in `runSchedule`."
+            },
+            {
+              "id": "warn",
+              "title": "Install, but print a warning",
+              "detail": "Does not block anyone who plans to rely on Orca's `discover` alone. But a warning in a one-time command is easy to miss."
+            },
+            {
+              "id": "cwd",
+              "title": "Leave as is and document it",
+              "detail": "Zero code. The failure is silent: the log shows `adapter node: skipped`."
+            }
+          ],
+          "recommended": "require"
+        }
+      ]
+    },
+    {
+      "id": "orca-facts",
+      "type": "prose",
+      "title": "Orca specifics (PR 946)",
+      "text": "The `orca` adapter adds no rows. It annotates repo rows Orca lists, discovers Orca's repositories, and replaces `git worktree remove` with `orca terminal close ... --all && orca worktree rm` for worktrees Orca lists (`packages/ts/host-cleaner/src/orca.ts`).\n\nWhen Orca cannot be asked (a non-zero exit, a truncated list, a parse failure), `annotate` marks a removable worktree `blocked` with `host:orca-unreachable` only if its path matches `/orca/workspaces/`; any other worktree is judged as before. At removal time, with Orca gone since the sweep, a path under `orca/workspaces/` gets a `removeWorktree` whose `run()` throws; other paths return `null` and git removes them.",
+      "source": {
+        "uri": "packages/ts/host-cleaner/src/orca.ts"
+      }
+    },
+    {
+      "id": "decide-orca",
+      "type": "question",
+      "questions": [
+        {
+          "id": "q-orca-heuristic",
+          "about": "orca-facts",
+          "prompt": "How should a worktree be recognised as possibly Orca's when Orca is down?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "path",
+              "title": "The `orca/workspaces/` path heuristic (as built)",
+              "detail": "Recommended as the default. Catches the layout Orca creates and leaves unrelated worktrees alone, so a machine where Orca is installed but closed can still clean other repos. Weakness: Orca's workspace directory is a setting, and a custom one is invisible to it."
+            },
+            {
+              "id": "all",
+              "title": "Block every removable worktree while Orca is installed but unreachable",
+              "detail": "Cannot miss a managed worktree. Cost: any closed Orca blocks all worktree cleaning, including `--auto` runs on a schedule, which then clean nothing."
+            },
+            {
+              "id": "setting",
+              "title": "Read Orca's workspace directory from its config, fall back to the heuristic",
+              "detail": "Accurate for custom layouts. Cost: depends on Orca's config format, which the adapter does not read today. Reasonable as a follow-up."
+            }
+          ],
+          "recommended": "path"
+        },
+        {
+          "id": "q-orca-discover",
+          "about": "discover-facts",
+          "prompt": "Should discovery also run when the caller names targets?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "no",
+              "title": "No: named targets mean only those (as built)",
+              "detail": "Recommended. A person who types a path expects that path swept, and a surprise repository in a `clean` run is the wrong kind of surprise. Scheduled runs with no argument still discover."
+            },
+            {
+              "id": "flag",
+              "title": "No by default, with `--discover` to add Orca's repos",
+              "detail": "Gives a way to ask for both. Adds a flag and a third state for the plan, which records no discovery source."
+            },
+            {
+              "id": "yes",
+              "title": "Yes: always add them",
+              "detail": "Orca's managed worktrees are always seen by their Orca verdicts. Cost: `host-cleaner ~/dev/alpha` can also touch repositories you did not name."
+            }
+          ],
+          "recommended": "no"
+        },
+        {
+          "id": "q-orca-refuse",
+          "about": "orca-facts",
+          "prompt": "Refuse Orca-managed rows when Orca cannot be reached?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "refuse",
+              "title": "Refuse (as built): `host:orca-unreachable`, no fall back to git",
+              "detail": "Recommended. Removing an Orca worktree with git leaves Orca's record and open terminals behind, which is what the adapter exists to avoid. The row stays in the report with 'start Orca and sweep again'."
+            },
+            {
+              "id": "git-fallback",
+              "title": "Fall back to `git worktree remove` and warn",
+              "detail": "Cleans something rather than nothing. Leaves a dangling Orca record and terminals in a deleted directory."
+            }
+          ],
+          "recommended": "refuse"
+        }
+      ]
+    },
+    {
+      "id": "claude-facts",
+      "type": "prose",
+      "title": "claude-code sessions (PR 947)",
+      "text": "The adapter lists running Claude Code processes (`ps`, `lsof` for the working directory) as rows `session:<pid>` with verdict always `review`, action `close` (`kill -TERM <pid>`), risk `close-session`, and `evidence.unattended: false`. A session is only closed when a person names it (`--pick session:<pid> --allow close-session`). `execute` checks the pid's start time and command match the plan, sends SIGTERM, waits up to 10 seconds and throws if it is still alive; nothing sends SIGKILL. `selectUnattended` never selects a session, and also never reads `evidence.unattended` for a non-`artifact` row.",
+      "source": {
+        "uri": "packages/ts/host-cleaner/src/claude.ts"
+      }
+    },
+    {
+      "id": "decide-claude",
+      "type": "question",
+      "questions": [
+        {
+          "id": "q-session-policy",
+          "about": "claude-facts",
+          "prompt": "Sessions: listed only, closed only by name with `close-session`?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "as-built",
+              "title": "Yes (as built)",
+              "detail": "Recommended. A session can hold unsaved conversation and a terminal a person is using; no automatic rule can tell. The row carries `orphan`, `duplicateOf` and `lastWrite` so a person can decide fast. SIGTERM only, so a hung process is reported, not killed."
+            },
+            {
+              "id": "orphans-auto",
+              "title": "Let `--auto` close sessions in a deleted or temp directory",
+              "detail": "Those are the clearest strays. Cost: introduces the first unattended process kill, and `orphan` is inferred from a cwd that `lsof` may fail to read (the row stays `review` with no `orphan` flag then)."
+            },
+            {
+              "id": "report-only",
+              "title": "No `execute`: sessions only reported",
+              "detail": "Smaller and safest. But then the report names a stray and the person closes it by hand."
+            }
+          ],
+          "recommended": "as-built"
+        },
+        {
+          "id": "q-marker",
+          "about": "auto-facts",
+          "prompt": "Is `evidence.unattended: true` the right marker for 'eligible for the unattended run'?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "evidence-flag",
+              "title": "Keep the flag inside `evidence` (as built)",
+              "detail": "Recommended. `evidence` is the fingerprint, so a row that stops being eligible between plan and clean is dropped as `changed` for free. Any adapter can opt in. 945's body says #666 'can choose another marker'; this is the answer."
+            },
+            {
+              "id": "row-field",
+              "title": "A top-level `HostRow.unattended` field",
+              "detail": "Explicit in the contract and visible to tools reading rows. Cost: not in the fingerprint unless copied, so a change would not be caught at re-check."
+            },
+            {
+              "id": "verdict",
+              "title": "A new verdict, `auto`",
+              "detail": "A visible state in reports. Cost: widens repo-cleaner's `Verdict` for a host concern."
+            }
+          ],
+          "recommended": "evidence-flag"
+        }
+      ]
+    },
+    {
+      "id": "archive-facts",
+      "type": "prose",
+      "title": "Alignment with repo-cleaner after #941",
+      "text": "repo-cleaner PR 941 (on `main`) adds an optional `archive` option: before deleting, `run` pushes unlanded work to `refs/heads/archive/<repo>-local-<date>`, verifies the push with `ls-remote`, and a row the archive holds then needs `discard-archived` in place of `abandon-unmerged` and `discard-changes` (`packages/ts/repo-cleaner/src/archive.ts`, `clean.ts`). If the push fails, nothing has been deleted: the run stops.\n\nThe host-cleaner stack branched before 941. Its `RISKS` list on that branch has no `discard-archived`, and `hostCheck` and `hostRun` do not take an `archive` option. `--auto` grants nothing, so it can never use an archive. And `hostRun` stops before any host step when the repo part failed (`clean.ts`: `if (receipt.repo.status === 'failed') return finish('failed')`). That is, an archive push that fails also stops the cache deletions in the same run.\n\nNote: host rows (artifacts, sessions) are not git work, so an archive does not apply to them. The question is about repo rows inside a host-cleaner run.",
+      "source": {
+        "uri": "packages/ts/host-cleaner/src/clean.ts"
+      }
+    },
+    {
+      "id": "decide-archive",
+      "type": "question",
+      "questions": [
+        {
+          "id": "q-archive-pass",
+          "about": "archive-facts",
+          "prompt": "Should `host-cleaner clean` take repo-cleaner's `archive` option?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "pass-through",
+              "title": "Yes: add `--archive` and `--archive-exclude`, pass them to repo-cleaner's check and run",
+              "detail": "Recommended, as a follow-up after the stack lands (rebase over 941 first, then add the flags in a small PR). It keeps one safety model: the record's table already lists `discard-archived` for repo-cleaner, and `--allow discard-archived` on a repo row means the same thing in both tools."
+            },
+            {
+              "id": "before-merge",
+              "title": "Yes, but in the stack before it merges",
+              "detail": "Merges once, in the final shape. Cost: 944 and 948 grow and the stack needs a rebase over a repo-cleaner change that touches the same `clean.ts`."
+            },
+            {
+              "id": "none",
+              "title": "No: archive stays a repo-cleaner-only feature",
+              "detail": "Smaller. But a person using host-cleaner to clean worktrees loses the safety net that repo-cleaner offers, with no signal why."
+            }
+          ],
+          "recommended": "pass-through"
+        },
+        {
+          "id": "q-archive-failure",
+          "about": "archive-facts",
+          "prompt": "When the archive push fails, should host rows still run?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "stop-all",
+              "title": "No: the whole run stops (as the repo-part-failed rule does today)",
+              "detail": "Recommended. Simple, and nothing is deleted: the receipt is `failed` and says why. Host rows are caches and can wait for the next run."
+            },
+            {
+              "id": "host-continue",
+              "title": "Yes: skip the repo steps, continue with host rows",
+              "detail": "Frees disk even when the remote is down. Cost: a new partial state in the receipt; today a failed repo part never runs host steps, and only rows with `execute` would be affected."
+            },
+            {
+              "id": "skip-rows",
+              "title": "Skip only the rows the archive cannot hold; run the rest",
+              "detail": "Matches how repo-cleaner refuses one row that has a file the archive cannot hold. Cost: `hostRun` must tell a row-level refusal from a push failure, which `receipt.repo.status` does not distinguish now."
+            }
+          ],
+          "recommended": "stop-all"
+        },
+        {
+          "id": "q-auto-archive",
+          "about": "archive-facts",
+          "prompt": "May `--auto` ever grant `discard-archived`?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "never",
+              "title": "Never; unchanged from D-L7N5",
+              "detail": "Recommended. D-L7N5's own open question says 'This decision says no'. An unattended run still has no reviewer for a deleted unmerged branch."
+            },
+            {
+              "id": "later",
+              "title": "Revisit once archive pushes have a track record",
+              "detail": "Leaves the door open without committing. Nothing to build now."
+            }
+          ],
+          "recommended": "never"
+        }
+      ]
+    },
+    {
+      "id": "size-facts",
+      "type": "prose",
+      "title": "`sizeOf` duplication (PR 945, PR 948)",
+      "text": "PR 945's `src/artifacts.ts` has its own 8-line `sizeOf` (apparent size, links not followed), and PR 948 measures worktree bytes by walking the directory before removal, because the sweep carries no size yet. Both wait for #660 (PR 936), which adds sizes to repo-cleaner's rows. Sizes are for the report and `bytesFreed` only; they take no part in a verdict, but an artifact's `sizeBytes` is in its fingerprint.",
+      "source": {
+        "uri": "packages/ts/host-cleaner/src/artifacts.ts"
+      }
+    },
+    {
+      "id": "decide-size",
+      "type": "question",
+      "questions": [
+        {
+          "id": "q-sizeof",
+          "about": "size-facts",
+          "prompt": "How should the duplicate `sizeOf` be handled?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "follow-up",
+              "title": "Keep the copy; a follow-up PR switches to repo-cleaner's once #936 merges",
+              "detail": "Recommended. The copy is eight lines, behind one function, and the stack does not need to wait. Open the follow-up as an issue now so the duplicate does not outlive #936."
+            },
+            {
+              "id": "wait",
+              "title": "Hold the stack until #936 merges",
+              "detail": "No duplicate ever lands. Blocks six PRs on an unrelated one."
+            },
+            {
+              "id": "own",
+              "title": "Keep host-cleaner's own forever",
+              "detail": "Independent of repo-cleaner. But two size definitions drift, and the report would show different numbers for repo and host rows."
+            }
+          ],
+          "recommended": "follow-up"
+        }
+      ]
+    },
+    {
+      "id": "other-facts",
+      "type": "prose",
+      "title": "Other open points in the PR bodies",
+      "text": "- **943**: a plan naming an adapter the caller no longer registers is refused (`bad-input`), not dropped as `gone`. Host risks are free strings: any risk name repo-cleaner's `RISKS` lacks is granted to host rows. `HostContext.targets` means the named targets at detect, and repository roots at gather and execute.\n- **945**: the fingerprint is the whole `evidence`, so `idleHours` ticking over an hour between `plan` and `clean` drops a row as `changed`. `cargo config get` needs nightly, so on stable only `CARGO_BUILD_INCREMENTAL` turns the incremental rows on.\n- **947**: a pid reused by a non-claude process is dropped as `gone`, not `changed`; neither is ever signalled."
+    },
+    {
+      "id": "decide-other",
+      "type": "question",
+      "questions": [
+        {
+          "id": "q-unknown-adapter",
+          "about": "other-facts",
+          "prompt": "A plan names an adapter that is not registered when it is read. Refuse or drop?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "refuse",
+              "title": "Refuse: `bad-input`, 'sweep again' (as built)",
+              "detail": "Recommended. A plan is a promise of what was judged; running it without the adapter that judged some rows is a different plan. Cheap to redo."
+            },
+            {
+              "id": "drop",
+              "title": "Drop those rows as `gone` and run the rest",
+              "detail": "Lets a plan survive an adapter being removed. Cost: a plan quietly shrinks."
+            }
+          ],
+          "recommended": "refuse"
+        },
+        {
+          "id": "q-risk-names",
+          "about": "other-facts",
+          "prompt": "Host risks are free strings. Should they be registered?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "free",
+              "title": "Free strings (as built)",
+              "detail": "Recommended for now. Only `close-session` exists. A typo in `--allow` is already caught as `unused: --allow <risk>`. A registry would be a second contract to maintain."
+            },
+            {
+              "id": "registry",
+              "title": "Adapters declare their risk names; the CLI rejects unknown ones",
+              "detail": "Catches typos before the run and lets `--help` list risks. Adds an `HostAdapter.risks` field."
+            }
+          ],
+          "recommended": "free"
+        },
+        {
+          "id": "q-fingerprint",
+          "about": "other-facts",
+          "prompt": "Artifact fingerprint includes `idleHours` and `sizeBytes`. Loosen it?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "strict",
+              "title": "Keep the whole `evidence` (as built)",
+              "detail": "Recommended. Strict, simple, and `--auto` plans and runs within seconds so it is unaffected. A person who plans and cleans an hour apart re-plans, which is the same rule repo-cleaner applies."
+            },
+            {
+              "id": "subset",
+              "title": "Fingerprint only the facts the verdict rests on (path, checkout, unattended)",
+              "detail": "A plan survives longer. Cost: a second field that says what is fingerprinted; a cache that grew a lot would still be deleted."
+            }
+          ],
+          "recommended": "strict"
+        },
+        {
+          "id": "q-cargo-stable",
+          "about": "other-facts",
+          "prompt": "On stable cargo, `cargo config get` fails, so incremental rows appear only with `CARGO_BUILD_INCREMENTAL`. Read `.cargo/config.toml` too?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "later",
+              "title": "Leave out for now (as built)",
+              "detail": "Recommended. Whole-`target/` rows already catch the large caches (366 GB on one machine). Incremental rows are the smaller finding."
+            },
+            {
+              "id": "toml",
+              "title": "Read `.cargo/config.toml` and `~/.cargo/config.toml`",
+              "detail": "Closes the gap on stable. Cost: a TOML reader and cargo's config-merging rules in an adapter."
+            }
+          ],
+          "recommended": "later"
+        }
+      ]
+    }
+  ]
+}
