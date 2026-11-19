@@ -54,7 +54,10 @@ if (verb === 'types') {
   const text = generateTypes(model)
   if (model.errors.length > 0) process.exit(1)
   try {
-    if (out === undefined) await new Promise((done) => process.stdout.write(text, done))
+    if (out === undefined)
+      await new Promise<void>((done, fail) =>
+        process.stdout.write(text, (e) => (e ? fail(e) : done())),
+      )
     else writeFileSync(out, text)
   } catch (e) {
     process.stderr.write(`${out ?? 'stdout'}: cannot write (${(e as Error).message})\n`)

@@ -76,6 +76,10 @@ describe('field types', () => {
       '{ a?: unknown; [key: string]: unknown } & Record<string, unknown>',
     )
     assert.equal(
+      typeOf({ properties: { a: {} }, anyOf: [{ type: 'object' }, { type: 'null' }] }),
+      'Record<string, unknown> | null',
+    )
+    assert.equal(
       typeOf({ type: 'array', prefixItems: [{ type: 'string' }], items: false }),
       '[string]',
     )

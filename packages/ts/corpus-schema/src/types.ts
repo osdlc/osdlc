@@ -25,7 +25,9 @@ function schemaType(schema: unknown): string {
   // branches, and it narrows the type or properties beside it.
   const parts: string[] = []
   if (types.length > 0) parts.push(union(types.map((t) => named(String(t), schema))))
-  else if (isSchema(schema.properties)) parts.push(object(schema))
+  const combined = ['anyOf', 'oneOf', 'allOf'].some((k) => k in schema)
+  // With no `type`, `properties` constrain only objects, so beside a combinator they are left out.
+  if (types.length === 0 && !combined && isSchema(schema.properties)) parts.push(object(schema))
   for (const k of ['anyOf', 'oneOf']) {
     const alternatives = schema[k]
     if (Array.isArray(alternatives) && alternatives.length > 0)
