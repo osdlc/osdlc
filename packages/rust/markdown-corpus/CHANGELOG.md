@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   not twice, and `LinkGraph::apply_changes` and
   `FrontmatterIndex::apply_change` skip their folder listings when the
   cache holds another corpus.
+- The test hook `StatHook::after` fires on a listing only when the listing
+  names its path, so a test with several paths in one folder is not tripped
+  by a listing of another.
 
 ## [0.4.0] - 2026-11-14
 

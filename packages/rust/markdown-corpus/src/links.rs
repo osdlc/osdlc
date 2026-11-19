@@ -1492,7 +1492,7 @@ pub(crate) mod hooks {
 
     impl<'a> StatHook<'a> {
         /// Runs `then` once, just after the first read of `path` (a stat of
-        /// it or a listing of its folder) and before that call returns. So
+        /// it or a listing of its folder that lists it) and before that call returns. So
         /// a test can change the corpus, or land another call, exactly
         /// between a read and what the caller does with it.
         pub fn after(inner: &'a dyn Vfs, path: PathBuf, then: impl FnOnce() + 'a) -> Self {
@@ -1598,6 +1598,8 @@ pub(crate) mod hooks {
             let entries = self.inner.read_dir(path);
             if let OnStat::After(then) = &self.on_stat
                 && self.path.parent() == Some(path)
+                && let (Ok(listed), Some(name)) = (&entries, self.path.file_name())
+                && listed.iter().any(|e| name == e.name.as_str())
             {
                 run_once(then);
             }
