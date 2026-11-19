@@ -6,9 +6,7 @@ export type { DepKind, Ecosystem, NodeKind, SpecifierKind }
  * The manifest data model. Plain interfaces on purpose: any provider
  * producing the same shapes can stand in for the walker.
  *
- * Field-for-field with the `system-model` crate's `model.rs`, in camelCase — the
- * boundary where the two spellings meet is `system-graph.ts`, which emits the
- * snake_case wire payload the viewer reads.
+ * Field-for-field with the Rust peer's model, in camelCase.
  */
 
 /** One declared dependency, as written in the manifest. */
@@ -45,7 +43,7 @@ export interface ManifestInfo {
    *
    * Read rather than discarded because an entry point's EXTENSION is the
    * package's own statement about what it ships — `src/index.ts` says
-   * TypeScript more directly than any dependency does. See `./aspects`.
+   * TypeScript more directly than any dependency does.
    * Both null for cargo, which has no equivalent field.
    */
   entry: { main: string | null; types: string | null }
