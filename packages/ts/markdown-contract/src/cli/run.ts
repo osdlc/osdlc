@@ -851,16 +851,19 @@ function emit(ctx: CommandContext, { code, stdout, stderr }: CliResult): number 
 const scopeFlags = {
   glob: {
     kind: 'list',
+    commaSeparated: false,
     valueName: 'glob',
     help: 'Same as --include, relative to the run folder. Repeatable.',
   },
   include: {
     kind: 'list',
+    commaSeparated: false,
     valueName: 'glob',
     help: 'Only files matching this glob, relative to the run folder. Repeatable.',
   },
   exclude: {
     kind: 'list',
+    commaSeparated: false,
     valueName: 'glob',
     help: 'Skip files matching this glob, relative to the run folder. Repeatable.',
   },
@@ -888,11 +891,13 @@ export const validateCommand = defineCommand({
     },
     contract: {
       kind: 'list',
+      commaSeparated: false,
       valueName: 'file',
       help: 'A YAML contract, instead of a config. Repeat it, with a --path each, for pairs.',
     },
     path: {
       kind: 'list',
+      commaSeparated: false,
       valueName: 'dir',
       help: 'The folder checked by the --contract before it.',
     },
@@ -905,8 +910,8 @@ export const validateCommand = defineCommand({
     'validate --contract task.yaml --path tasks --contract note.yaml --path notes',
   ],
   readOnly: true,
-  async run({ flags, positionals }, ctx) {
-    return emit(ctx, await runValidate(ctx.cwd, positionals, flags))
+  async run({ flags, positionals, rest }, ctx) {
+    return emit(ctx, await runValidate(ctx.cwd, [...positionals, ...rest], flags))
   },
 })
 
@@ -959,8 +964,8 @@ export const initCommand = defineCommand({
   },
   exits: { 1: 'the scaffold rejects its own corpus, or --check found drift' },
   examples: ['init docs', 'init docs --meta --dry-run', 'init docs --check'],
-  async run({ flags, positionals }, ctx) {
-    return emit(ctx, runInit(ctx.cwd, positionals, flags))
+  async run({ flags, positionals, rest }, ctx) {
+    return emit(ctx, runInit(ctx.cwd, [...positionals, ...rest], flags))
   },
 })
 
@@ -976,8 +981,8 @@ export const migrateCommand = defineCommand({
     write: { kind: 'boolean', help: 'Rewrite each file in place instead of printing it.' },
   },
   examples: ['migrate task.contract.yaml', 'migrate contracts/*.yaml --write'],
-  async run({ flags, positionals }, ctx) {
-    return emit(ctx, runMigrate(ctx.cwd, positionals, flags.write))
+  async run({ flags, positionals, rest }, ctx) {
+    return emit(ctx, runMigrate(ctx.cwd, [...positionals, ...rest], flags.write))
   },
 })
 

@@ -76,6 +76,20 @@ describe('runCli — the command tree', () => {
     for (const name of ['validate', 'init', 'migrate']) expect(r.stdout).toContain(name)
   })
 
+  test('a glob with a comma stays one glob', async () => {
+    const r = await runCli(
+      ['validate', CORPUS, '--config', CONFIG, '--include', '**/{decisions,tasks}/*.md'],
+      { cwd: CORPUS },
+    )
+    expect(r.code).toBe(1)
+    expect(r.stdout).toContain('frontmatter/enum')
+  })
+
+  test('a path after -- is the validate path', async () => {
+    const r = await runCli(['validate', '--config', CONFIG, '--', CLEAN_SUBTREE], { cwd: CORPUS })
+    expect(r.code).toBe(0)
+  })
+
   test('--json is refused: the commands print their own text', async () => {
     const r = await runCli(['validate', CORPUS, '--config', CONFIG, '--json'], { cwd: CORPUS })
     expect(r.code).toBe(2)
