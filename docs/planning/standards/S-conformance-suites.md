@@ -227,7 +227,7 @@ and points here.
 | config-layers        | TS, Rust                    | moved: `conformance/config-layers/suite.json`                                       | TS        |
 | corpus-schema        | TS                          | moved: `conformance/corpus-schema/suite.json`                                       | TS        |
 | detect-harness       | TS, Rust                    | `rust/detect-harness/tests/fixtures/parity.json`                                    | TS        |
-| etag-write           | TS, Rust                    | `rust/etag-write/tests/fixtures/parity.json`                                        | TS        |
+| etag-write           | TS, Rust                    | moved: `conformance/etag-write/suite.json`                                          | TS        |
 | fenced-lock          | TS, Rust                    | `rust/fenced-lock/tests/fixtures/parity.json`                                       | TS        |
 | file-lock            | TS, Rust `osdlc-file-lock`  | moved: `conformance/file-lock/suite.json`                                           | TS        |
 | frontmatter-lossless | Rust, TS                    | moved: `conformance/frontmatter-lossless/suite.json`                                | Rust      |

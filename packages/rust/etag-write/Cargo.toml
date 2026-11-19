@@ -22,7 +22,15 @@ include = [
 sha2 = { workspace = true }
 thiserror = { workspace = true }
 
+# tests/conformance.rs only: it reads packages/conformance/etag-write/suite.json,
+# the suite the TypeScript package (packages/ts/etag-write) runs too. The crate
+# parses no JSON at runtime.
 [dev-dependencies]
+# 1.0.220 is the first serde that pins its own serde_derive, so the
+# minimal-versions job does not resolve a newer serde_derive that fails to
+# build against an older serde.
+serde = { version = "1.0.220", features = ["derive"] }
+serde_json = { workspace = true }
 tempfile = { workspace = true }
 
 [lints]
