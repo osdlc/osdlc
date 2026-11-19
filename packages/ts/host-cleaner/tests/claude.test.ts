@@ -65,9 +65,7 @@ function machine(m: Machine) {
       if (argv[0] === '-axo') return { stdout: m.ps.join('\n') + '\n' }
       const pid = Number(argv.at(-1))
       const line = m.ps.find((l) => Number(l.trim().split(/\s+/)[0]) === pid)
-      return line === undefined
-        ? { exitCode: 1 }
-        : { stdout: line.trim().replace(/^\d+\s+/, '') + '\n' }
+      return line === undefined ? { exitCode: 1 } : { stdout: line + '\n' }
     }),
     lsof: fakeRunner((argv) => {
       const wanted = argv.at(-1)!.split(',').map(Number)
@@ -378,12 +376,11 @@ describe('claude-code adapter: closing a session', () => {
   })
 
   test('execute itself refuses a process that changed after the re-check', () => {
-    const { m, mach, opts, plan } = setup()
+    const { fx, m, mach, opts } = setup()
     const adapter = opts.adapters[0]!
-    const row = hostSweep([setup().fx.root], opts).rows[0]!
+    const row = hostSweep([fx.root], opts).rows[0]!
     m.ps[0] = psLine(100, '/opt/homebrew/bin/claude --dangerously-skip-permissions')
     const ctx = { command: mach.command, probe: mach.probe } as never
-    expect(plan.rows).toHaveLength(1)
     expect(() => adapter.execute!({ row, command: row.commands[0]! }, ctx)).toThrow(
       /not the session that was planned/,
     )

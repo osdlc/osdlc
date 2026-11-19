@@ -191,9 +191,6 @@ function lastWriteMs(projects: string, cwd: string | null, resumeId: string | nu
   }
 }
 
-const sameInstant = (a: string, b: string): boolean =>
-  a.replace(/\s+/g, ' ') === b.replace(/\s+/g, ' ')
-
 export function createClaudeAdapter(options: ClaudeOptions = {}): HostAdapter {
   const tmp = canon(options.tmp ?? tmpdir())
   const waitMs = options.waitMs ?? DEFAULT_WAIT_MS
@@ -281,15 +278,16 @@ export function createClaudeAdapter(options: ClaudeOptions = {}): HostAdapter {
     const ev = step.row.evidence as unknown as SessionEvidence
     const { pid, startedAt } = ev
     if (!ctx.probe.alive(pid, startedAt)) throw new Error(`pid ${pid} is no longer running`)
-    const now = ctx.command('ps').run(['-o', 'lstart=,command=', '-p', String(pid)], { cwd: '/' })
-    const line = now.stdout.trim()
-    const m = /^([A-Z][a-z]{2}\s+[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\d{4})\s+(.+)$/.exec(
-      line,
-    )
-    if (m === null)
-      throw new Error(`pid ${pid} cannot be read: ${now.stderr.trim() || 'no output'}`)
-    if (!sameInstant(m[1]!, startedAt) || m[2] !== ev.command) {
-      throw new Error(`pid ${pid} is not the session that was planned: it is now ${m[2]}`)
+    const now = ctx
+      .command('ps')
+      .run(['-o', 'pid=,lstart=,command=', '-p', String(pid)], { cwd: '/' })
+    const current = parseSession(now.stdout)
+    if (current === null)
+      throw new Error(`pid ${pid} cannot be read as a session: ${now.stderr.trim() || 'no output'}`)
+    if (current.startedAt !== startedAt || current.command !== ev.command) {
+      throw new Error(
+        `pid ${pid} is not the session that was planned: it is now ${current.command}`,
+      )
     }
     const kill = ctx.command('kill').run(['-TERM', String(pid)], { cwd: '/' })
     if (kill.exitCode !== 0) {
