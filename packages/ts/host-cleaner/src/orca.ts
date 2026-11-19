@@ -17,7 +17,7 @@
  *   a plain git removal would leave Orca's record and terminals behind.
  */
 
-import { existsSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 
 import {
   runJson,
@@ -89,6 +89,15 @@ export interface OrcaOptions {
   exists?: ((path: string) => boolean) | undefined
 }
 
+/** A path with symlinks resolved, so Orca's spelling and git's compare equal. */
+const canon = (path: string): string => {
+  try {
+    return realpathSync(path)
+  } catch {
+    return path
+  }
+}
+
 const parseWith =
   <T>(schema: z.ZodType<T>) =>
   (value: unknown): T =>
@@ -145,16 +154,17 @@ export function createOrcaAdapter(options: OrcaOptions = {}): HostAdapter {
     if (worktrees.value.result.truncated || terminals.value.result.truncated) return null
     const open = new Map<string, number>()
     for (const t of terminals.value.result.terminals) {
-      open.set(t.worktreePath, (open.get(t.worktreePath) ?? 0) + 1)
+      const key = canon(t.worktreePath)
+      open.set(key, (open.get(key) ?? 0) + 1)
     }
     const out = new Map<string, OrcaWorktree>()
     for (const w of worktrees.value.result.worktrees) {
       if (w.isMainWorktree) continue
-      out.set(w.path, {
+      out.set(canon(w.path), {
         id: w.id,
         path: w.path,
         displayName: w.displayName,
-        terminals: open.get(w.path) ?? 0,
+        terminals: open.get(canon(w.path)) ?? 0,
       })
     }
     return out
@@ -183,15 +193,33 @@ export function createOrcaAdapter(options: OrcaOptions = {}): HostAdapter {
           ],
         }
       }
-      const managed = listed.get(row.evidence.path)
+      const managed = listed.get(canon(row.evidence.path))
       return managed === undefined ? row : { ...row, notes: [...row.notes, noteFor(managed)] }
     })
   }
 
   const removeWorktree: RemoveWorktree = (row: WorktreeRow, ctx) => {
     const orca = cli()
-    const managed = orca === null ? undefined : listing()?.get(row.evidence.path)
-    if (orca === null || managed === undefined) return null
+    if (orca === null) return null
+    const listed = listing()
+    if (listed === null) {
+      // Orca went away after the sweep: fail closed rather than fall back to git.
+      if (!ORCA_WORKSPACES.test(row.evidence.path)) return null
+      return {
+        command: shellJoin([
+          orca.binary,
+          'worktree',
+          'rm',
+          '--worktree',
+          `path:${row.evidence.path}`,
+        ]),
+        run() {
+          throw new Error('Orca cannot be reached, so the worktree is not removed with git')
+        },
+      }
+    }
+    const managed = listed.get(canon(row.evidence.path))
+    if (managed === undefined) return null
     const selector = `path:${managed.path}`
     const close = ['terminal', 'close', '--worktree', selector, '--all']
     const remove = ['worktree', 'rm', '--worktree', selector, ...(ctx.force ? ['--force'] : [])]

@@ -261,6 +261,23 @@ describe('orca adapter: removal', () => {
     expect(calls(o).some((c) => c.startsWith('worktree rm'))).toBe(false)
   })
 
+  test('if Orca goes away after the sweep, a worktree under orca/workspaces is not removed with git', () => {
+    const fx = fixture()
+    const wt = managedWorktree(fx)
+    const o = orca({ down: true })
+    const removal = adapterOver(o).removeWorktree!({ evidence: { path: wt } } as never, {
+      repo: fx.root,
+      force: false,
+    })!
+    expect(() => removal.run()).toThrow(/cannot be reached/)
+    expect(
+      adapterOver(o).removeWorktree!({ evidence: { path: '/x/y' } } as never, {
+        repo: fx.root,
+        force: false,
+      }),
+    ).toBeNull()
+  })
+
   test('a worktree Orca does not list is removed with plain git, as before', () => {
     const fx = fixture()
     const wt = managedWorktree(fx)
@@ -306,6 +323,14 @@ describe('orca adapter: repositories', () => {
       ]),
     })
     const swept = hostSweep([fx.root], { cwd: fx.root, adapters: [adapterOver(o)] })
+    expect(swept.repo.repos.map((r) => r.path).sort()).toEqual([fx.root, other.root].sort())
+  })
+
+  test('with no targets, the current directory is still swept beside the discovered repositories', () => {
+    const fx = fixture()
+    const other = fixture()
+    const o = orca({ repos: reposJson([{ path: other.root, kind: 'git' }]) })
+    const swept = hostSweep([], { cwd: fx.root, adapters: [adapterOver(o)] })
     expect(swept.repo.repos.map((r) => r.path).sort()).toEqual([fx.root, other.root].sort())
   })
 

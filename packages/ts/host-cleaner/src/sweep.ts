@@ -3,6 +3,8 @@
  * into it, then each adapter's own rows.
  */
 
+import { realpathSync } from 'node:fs'
+
 import { KINDS, sweep, type Annotate, type Sweep, type SweepOptions } from '@osdlc/repo-cleaner'
 
 import { HostCleanerError, type HostAdapter, type HostContext, type HostRow } from './adapter.ts'
@@ -92,6 +94,20 @@ function discovered(active: readonly HostAdapter[], ctx: HostContext): string[] 
   })
 }
 
+/** `paths` once each, by real path, in order. */
+function dedupe(paths: readonly string[]): string[] {
+  const seen = new Set<string>()
+  return paths.filter((p) => {
+    let key = p
+    try {
+      key = realpathSync(p)
+    } catch {
+      // A path that does not resolve is its own key; the sweep reports it.
+    }
+    return !seen.has(key) && seen.add(key) !== undefined
+  })
+}
+
 /** The roots of the repositories a sweep read. */
 export function rootsOf(sweepResult: Sweep): string[] {
   return sweepResult.repos.flatMap((r) => (r.repo === null ? [] : [r.repo.root]))
@@ -107,10 +123,14 @@ export function rootsOf(sweepResult: Sweep): string[] {
 export function hostSweep(targets: readonly string[], opts: HostSweepOptions = {}): HostSweep {
   const { active, reports } = resolveAdapters(opts.adapters ?? [], makeContext(opts, targets), opts)
   const known = opts.discover === false ? [] : discovered(active, makeContext(opts, targets))
-  const repo = sweep([...new Set([...targets, ...known])], {
-    ...opts,
-    annotate: both(opts.annotate, chainAnnotate(active)),
-  })
+  const all = [...targets, ...known]
+  const repo = sweep(
+    dedupe(targets.length === 0 && known.length > 0 ? [opts.cwd ?? process.cwd(), ...known] : all),
+    {
+      ...opts,
+      annotate: both(opts.annotate, chainAnnotate(active)),
+    },
+  )
   const rows = gatherHostRows(active, reports, makeContext(opts, rootsOf(repo)))
   return { repo, adapters: reports, rows }
 }
