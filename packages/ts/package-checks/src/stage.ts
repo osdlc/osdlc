@@ -19,7 +19,8 @@
  * `npm trust` needs two-factor authentication on the account, and npm asks for
  * a one-time password or a browser login. npm runs through npx at a pinned
  * version, because `npm trust` needs 11.15 or later. A dry run publishes
- * nothing and changes nothing on npm, but it does build the package.
+ * nothing and changes nothing on npm, but it does install when `node_modules`
+ * is missing and build the package and its workspace dependencies.
  */
 
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -157,7 +158,7 @@ export function prepareSteps(name: string, root: string, dir: string = root): Pr
     {
       label: `build ${name} and its workspace dependencies`,
       command: 'pnpm',
-      argv: ['--filter', `${name}...`, 'run', '--if-present', 'build'],
+      argv: ['--filter', `${name}...`, '--fail-if-no-match', 'run', '--if-present', 'build'],
       cwd: root,
       needed: true,
     },
@@ -177,7 +178,7 @@ export function runSteps(
   return null
 }
 
-/** Builds and packs `dir` at the placeholder version, and publishes it under the `stage` tag. */
+/** Prepares (install and build), packs and publishes `target` at the placeholder version under the `stage` tag. */
 function publishPlaceholder(target: StageTarget, dry: string[], cwd: string): boolean {
   const { dir, name } = target
   const failedStep = runSteps(prepareSteps(name, cwd, dir))

@@ -5,14 +5,9 @@ import { join } from 'node:path'
 
 import { test } from 'vitest'
 
-import {
-  githubRepository,
-  prepareSteps,
-  readTarget,
-  runSteps,
-  stage,
-  trustArgs,
-} from '@osdlc/package-checks'
+import { githubRepository, readTarget, stage, trustArgs } from '@osdlc/package-checks'
+
+import { prepareSteps, runSteps } from '../src/stage.ts'
 
 test('the GitHub repository comes from any form of repository.url', () => {
   for (const url of [
@@ -92,12 +87,12 @@ test('preparing a package installs only when node_modules is missing, then build
       steps.filter((s) => s.needed).map((s) => [s.command, ...s.argv].join(' '))
     assert.deepEqual(needed(prepareSteps('@osdlc/x', root)), [
       'pnpm install',
-      'pnpm --filter @osdlc/x... run --if-present build',
+      'pnpm --filter @osdlc/x... --fail-if-no-match run --if-present build',
     ])
     mkdirSync(join(root, 'node_modules'))
     assert.equal(needed(prepareSteps('@osdlc/x', root, join(root, 'new-lib'))).length, 2)
     assert.deepEqual(needed(prepareSteps('@osdlc/x', root)), [
-      'pnpm --filter @osdlc/x... run --if-present build',
+      'pnpm --filter @osdlc/x... --fail-if-no-match run --if-present build',
     ])
   } finally {
     rmSync(root, { recursive: true, force: true })
