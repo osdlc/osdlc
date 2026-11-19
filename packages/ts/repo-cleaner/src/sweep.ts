@@ -516,8 +516,10 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
         ticker('worktree'),
       )
     }
-    if (opts.sizes === true) readSizes(worktreeRows, opts, ticker('size'))
-    if (kinds.has('worktree')) rows.push(...worktreeRows)
+    if (kinds.has('worktree')) {
+      if (opts.sizes === true) readSizes(worktreeRows, opts, ticker('size'))
+      rows.push(...worktreeRows)
+    }
 
     let localBranchNames = new Set<string>()
     if (kinds.has('branch') || kinds.has('remote')) {

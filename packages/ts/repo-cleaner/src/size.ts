@@ -15,9 +15,9 @@ const DEFAULT_TIMEOUT_MS = 60_000
 /**
  * Bytes `path` takes on disk (`du -sk`: allocated blocks, not apparent size;
  * a symlink counts as itself). Null when the size could not be read: `du`
- * missing, failed, timed out or printed something else. A `du` that read
- * most of the tree and then hit an unreadable file still printed a total, but
- * exits non-zero; that total is not trusted, so it is null too.
+ * missing, failed, timed out or printed something else. A `du` that hit an
+ * unreadable file still prints a total and exits non-zero; that total is
+ * used, a floor of what is on disk.
  */
 export function sizeOf(path: string, opts: SizeOfOptions = {}): number | null {
   const du = opts.du ?? spawnRunner('du')
@@ -25,7 +25,7 @@ export function sizeOf(path: string, opts: SizeOfOptions = {}): number | null {
     cwd: '/',
     timeoutMs: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
   })
-  if (r.neverExited === true || r.exitCode !== 0) return null
+  if (r.neverExited === true) return null
   const kib = /^(\d+)\s/.exec(r.stdout)
   return kib === null ? null : Number(kib[1]) * 1024
 }

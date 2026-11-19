@@ -85,6 +85,13 @@ describe('sizeOf', () => {
     expect(sizeOf('/x', { du: odd })).toBeNull()
   })
 
+  test('keeps the total of a du that exited non-zero over an unreadable file', () => {
+    const partial: CommandRunner = {
+      run: () => ({ exitCode: 1, stdout: '9\t/x\n', stderr: 'du: denied' }),
+    }
+    expect(sizeOf('/x', { du: partial })).toBe(9 * KIB)
+  })
+
   test('passes its timeout to the runner', () => {
     let seen: number | undefined
     const spy: CommandRunner = {
