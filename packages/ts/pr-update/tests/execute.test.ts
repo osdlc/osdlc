@@ -706,6 +706,8 @@ describe('the executor against real git', () => {
         const repair = stopRepair()
         const out = await run('cap', oid, { repair, maxRebaseStops: 1 })
         expect(out.status).toBe('conflict')
+        if (out.status !== 'conflict') throw new Error('unreachable')
+        expect(out.needsHuman[0]!.why).toContain('after 1 repaired stop')
         expect(out).not.toHaveProperty('strategyFallback')
         expect(repair.calls).toHaveLength(1)
         const { git } = fx.worker

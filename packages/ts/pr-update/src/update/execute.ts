@@ -557,7 +557,10 @@ async function rebaseThroughRungs(
     const needsHuman = withGitlinkCommits(git, unclaimed(plans), true)
     const stuck = (humans: { path: string; why: string }[]): RebaseAttempt => {
       reset()
-      return { kind: 'stuck', needsHuman: humans }
+      // The repaired stops are discarded with the rebase; say they happened.
+      const done =
+        repaired.length === 0 ? '' : ` (after ${repaired.length} repaired stop(s), discarded)`
+      return { kind: 'stuck', needsHuman: humans.map((h) => ({ ...h, why: h.why + done })) }
     }
     if (needsHuman.length > 0 && (limits.repair === null || repaired.length >= limits.maxRepairs)) {
       return stuck(needsHuman)
