@@ -93,6 +93,16 @@ describe('claimLock', () => {
     expect(readdirSync(dir)).toEqual(['x.lock'])
   })
 
+  test("a marker linked to an old lock is a live reaper's: the lock's age is not the marker's", () => {
+    writeFileSync(lock, JSON.stringify({ token: 'dead' }))
+    age(lock)
+    const marker = markerFor(lock, readFileSync(lock, 'utf-8'))
+    linkSync(lock, marker)
+    // the marker has the old lock's mtime, but was linked just now
+    expect(claimLock(lock, {}, always)).toEqual({ ok: false, holder: null })
+    expect(existsSync(marker)).toBe(true)
+  })
+
   test('an unparseable lock reaches the rule with null content', () => {
     for (const raw of ['not json', '[1]', '7', JSON.stringify({ token: 7 })]) {
       writeFileSync(lock, raw)
