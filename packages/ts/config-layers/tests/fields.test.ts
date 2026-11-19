@@ -113,6 +113,15 @@ describe('configFields', () => {
     ])
   })
 
+  test('a parent default wins, and meta set before a wrap still counts', () => {
+    const fields = configFields({
+      a: z.object({ port: z.number().default(1) }).default({ port: 8080 }),
+      s: z.string().meta({ secret: true, hidden: true }).optional(),
+    })
+    expect(fields[0]!.default).toBe(8080)
+    expect(fields[1]).toMatchObject({ secret: true, hidden: true })
+  })
+
   test('a recursive schema throws, naming the path', () => {
     const node: z.ZodType = z.object({
       v: z.string(),

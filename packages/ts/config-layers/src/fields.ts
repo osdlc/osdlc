@@ -15,7 +15,7 @@ import { z } from 'zod'
 
 import { defaultOf, descriptionOf } from './explain.ts'
 import { fieldMetaShape, type FieldMeta } from './meta.ts'
-import { enumValues, fieldInfo, kindOf, shapeOf, unwrapSchema } from './schema.ts'
+import { enumValues, fieldInfo, kindOf, peelOnce, shapeOf, unwrapSchema } from './schema.ts'
 
 /**
  * One leaf of a config schema.
@@ -77,8 +77,16 @@ export function defaultControl(kind: string): string {
   }
 }
 
+/**
+ * The meta of `schema` and of each wrapper layer under it (`.optional()`,
+ * `.default()`...), the outer layer winning, so a `.meta()` set before a
+ * later wrap still counts.
+ */
 function metaOf(schema: z.ZodType, path: string[]): FieldMeta & { secret?: boolean } {
-  const raw = (z.globalRegistry.get(schema) ?? {}) as Record<string, unknown>
+  let raw: Record<string, unknown> = {}
+  for (let cur: z.ZodTypeAny | undefined = schema; cur !== undefined; cur = peelOnce(cur)) {
+    raw = { ...((z.globalRegistry.get(cur) ?? {}) as Record<string, unknown>), ...raw }
+  }
   const parsed = FieldMetaSchema.safeParse(raw)
   if (!parsed.success) {
     const detail = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')
@@ -114,7 +122,7 @@ export function configFields(shape: Record<string, z.ZodType>): ConfigField[] {
       if (ancestors.has(inner)) {
         throw new Error(`configFields found a recursive schema at ${path.join('.')}`)
       }
-      const here = ownDefault ?? inherited.default
+      const here = inherited.default ?? ownDefault
       const next = {
         hidden: isHidden,
         secret: isSecret,
@@ -144,7 +152,7 @@ export function configFields(shape: Record<string, z.ZodType>): ConfigField[] {
       hidden: isHidden,
       secret: isSecret,
       optional: inherited.optional || info.optional,
-      default: ownDefault ?? inherited.default,
+      default: inherited.default ?? ownDefault,
       choices: enumValues(schema as z.ZodTypeAny),
     })
   }
