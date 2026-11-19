@@ -2254,6 +2254,17 @@ describe('Git — Tier 1 verbs against real git', () => {
     rmSync(join(repo, 'untracked.tmp'))
   })
 
+  test('forEachRef passes --contains before the patterns', () => {
+    const { runner, calls } = recorder(OK(''))
+    new Git('/repo', { runner }).forEachRef('refs/remotes/origin/', { contains: 'abc123' })
+    expect(calls[0]!.argv).toEqual([
+      'for-each-ref',
+      '--format=%(objectname)%09%(refname)',
+      '--contains=abc123',
+      'refs/remotes/origin/',
+    ])
+  })
+
   test('forEachRef / refs answer [] for no match and throw outside a repo', () => {
     const git = new Git(repo)
     expect(git.refs('refs/heads/').map((r) => r.ref)).toEqual(['refs/heads/main'])

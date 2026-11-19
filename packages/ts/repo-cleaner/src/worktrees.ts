@@ -400,7 +400,7 @@ function classifyWorktree(opts: {
     landed || !onDisk || head === null ? null : judgeLanding(repo, head, pr, gap, git)
   if (patch !== null) recordLanding(evidence, patch)
   const patchLanded = patch !== null && patch.check !== null
-  const unlanded = unpushed.length > 0 && !landed && !landingConfirmed(patch)
+  let unlanded = unpushed.length > 0 && !landed && !landingConfirmed(patch)
   if (onDisk && head !== null) {
     // `soft`: a missing default ref reads as not merged.
     evidence.merged = mergedFact({
@@ -416,6 +416,26 @@ function classifyWorktree(opts: {
   // own unpushed commits covers them.
   const submoduleWork = submodules.unpushed.length > 0
   const submoduleWorkText = submoduleWork ? unpushedPhrase(submodules.unpushed) : ''
+
+  // Work that a remote branch holds is not lost with the worktree. Only a
+  // clean worktree on a used branch: a dirty one has files no remote holds,
+  // and a fresh one may hold ignored files of work about to start.
+  let remoteNote: string | null = null
+  if (onDisk && !dirty && !submoduleWork && branch && head !== null && branchExists) {
+    const holders = remoteBranchesHolding(repo, git, head)
+    if (holders.length > 0) {
+      const used = branchUse(git.at(repo.root), branch, repo.mainBranch)
+      evidence.branchUsed = used
+      if (used !== null) {
+        if (repo.fetched) {
+          evidence.recoverableFrom = holders
+          unlanded = false
+        } else {
+          remoteNote = `HEAD is on ${holders.join(', ')}, but this sweep did not fetch, so those remote-tracking refs may be stale; \`--remote\` would check them.`
+        }
+      }
+    }
+  }
   const risks = risksFor({
     'abandon-unmerged': unlanded || submoduleWork,
     'discard-changes': dirty,
@@ -491,6 +511,7 @@ function classifyWorktree(opts: {
               `Its commits are patch-equivalent to commits on ${landedRef(repo)} (${patch.check}), but ${confirmationNote(patch)}.`,
             ]
           : []),
+        ...(remoteNote !== null ? [remoteNote] : []),
         'Decide whether to preserve, push, or discard.',
       ],
     })
@@ -528,12 +549,19 @@ function classifyWorktree(opts: {
     }
   }
 
+  if (evidence.recoverableFrom !== undefined) {
+    return deletes(
+      `clean; HEAD is on ${evidence.recoverableFrom.join(', ')}, and the branch was worked on (${USE_REASON[evidence.branchUsed!]})${forced}`,
+    )
+  }
+
   const notes = [`Worktree \`${path}\` is clean.`]
   if (branch) notes.push(`Branch: \`${branch}\`.`)
   notes.push(pr ? `PR #${pr.number} is ${pr.state}.` : 'No associated PR.')
   if (pr && gap) notes.push(gapSentence(pr, gap, repo))
   const unmatched = patch === null ? null : unmatchedSentence(patch, repo)
   if (unmatched !== null) notes.push(unmatched)
+  if (remoteNote !== null) notes.push(remoteNote)
   return row({
     verdict: 'review',
     action: 'remove',
@@ -542,6 +570,25 @@ function classifyWorktree(opts: {
     notes,
     risks,
   })
+}
+
+/**
+ * The remote-tracking branches of `repo`'s remote whose history holds `head`,
+ * as `<remote>/<name>`. The default branch is left out: ancestry of it has its
+ * own rule. Empty when the repository has no remote.
+ */
+function remoteBranchesHolding(repo: RepoInfo, git: Git, head: string): string[] {
+  if (repo.remote === null) return []
+  const prefix = `refs/remotes/${repo.remote}/`
+  const rows = git.at(repo.root).try.forEachRef(prefix, { format: '%(refname)', contains: head })
+  if (!rows.ok) return []
+  return rows.value
+    .filter((ref) => ref.startsWith(prefix))
+    .map((ref) => ref.slice('refs/remotes/'.length))
+    .filter(
+      (name) => name !== `${repo.remote}/HEAD` && name !== `${repo.remote}/${repo.mainBranch}`,
+    )
+    .sort()
 }
 
 const USE_REASON: Record<BranchUse, string> = {

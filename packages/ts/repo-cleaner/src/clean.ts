@@ -503,10 +503,42 @@ function recheck(
       abandon: allowed(approval.allow, s, 'abandon-unmerged'),
     })
   }
-  // A branch freed by its worktree's removal goes only with that worktree.
-  const leaving = new Set(accepted.filter((a) => a.row.kind === 'worktree').map((a) => a.row.name))
-  const kept: Accepted[] = []
+  // A worktree judged safe because remote branches hold its HEAD loses that
+  // cover when the same run deletes every one of them.
+  const deletedRemotes = new Set(
+    accepted.flatMap((a) =>
+      a.row.kind === 'remote'
+        ? [`${a.repo}\0${a.row.evidence.remote}/${a.row.evidence.branch}`]
+        : [],
+    ),
+  )
+  const coverGone = (a: Accepted): string[] | null => {
+    if (a.row.kind !== 'worktree' || a.abandon) return null
+    const from = a.row.evidence.recoverableFrom ?? []
+    return from.length > 0 && from.every((name) => deletedRemotes.has(`${a.repo}\0${name}`))
+      ? from
+      : null
+  }
+  const stillCovered: Accepted[] = []
   for (const a of accepted) {
+    const from = coverGone(a)
+    if (from === null) {
+      stillCovered.push(a)
+      continue
+    }
+    dropped.push({
+      repo: a.repo,
+      row: a.row.id,
+      reason: 'not-allowed',
+      detail: `needs abandon-unmerged: this run also deletes ${from.join(', ')}, the only remote copies of its HEAD`,
+    })
+  }
+  // A branch freed by its worktree's removal goes only with that worktree.
+  const leaving = new Set(
+    stillCovered.filter((a) => a.row.kind === 'worktree').map((a) => a.row.name),
+  )
+  const kept: Accepted[] = []
+  for (const a of stillCovered) {
     const worktree = a.row.kind === 'branch' ? a.row.evidence.worktree : undefined
     if (worktree === undefined || leaving.has(worktree)) {
       kept.push(a)

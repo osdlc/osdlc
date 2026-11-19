@@ -408,6 +408,17 @@ tracks a branch on a remote, other than the default branch (a branch made
 with `--track` from `main` or `origin/main` does not count). With either, the worktree
 is `delete`; with neither (`null`) it stays `review`.
 
+A clean worktree whose HEAD is on a branch of the fetched remote is also
+`delete`, whatever its PR state, because the remote holds every commit. The
+sweep must have fetched (`--remote` without `--offline`): a local sweep's
+remote-tracking refs may name branches the remote has deleted, so there the row
+keeps its verdict and a note says `--remote` would check. The default branch
+does not count, the branch needs the same sign of use as above, and a dirty
+worktree or one with submodule work is judged as before. `evidence.recoverableFrom`
+lists the remote branches (`origin/topic`) and is part of the plan's
+fingerprint. If a run also deletes every branch in that list, the worktree
+needs `--allow abandon-unmerged`, since the run would remove the last copy.
+
 Some worktrees are held back whatever their branch says and whatever is
 allowed. Each lands in `row.blockers`, the row's verdict is `blocked`, and it
 carries no command and no action:

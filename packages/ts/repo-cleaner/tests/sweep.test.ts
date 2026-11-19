@@ -1431,6 +1431,111 @@ describe('a clean worktree merged by ancestry alone (#582)', () => {
   })
 })
 
+describe('a clean worktree whose HEAD is on a remote branch (#659)', () => {
+  let parent: string
+
+  beforeAll(() => {
+    parent = realpathSync(mkdtempSync(join(tmpdir(), 'repo-cleaner-recoverable-')))
+  }, HOOK_TIMEOUT_MS)
+
+  afterAll(() => rmSync(parent, { recursive: true, force: true }), HOOK_TIMEOUT_MS)
+
+  /** A checkout, and a worktree on `topic` with one commit, pushed (with `-u` unless `upstream` is false). */
+  function setup(opts: { upstream?: boolean; push?: boolean } = {}) {
+    const { origin, checkout } = makeOriginAndCheckout({ parent })
+    git(['checkout', '-q', '--detach'], origin.dir)
+    const root = checkout.dir
+    const wt = join(parent, `topic-${Math.random().toString(36).slice(2, 8)}`)
+    git(['worktree', 'add', '-q', '-b', 'topic', wt], root)
+    commit(wt, 'topic')
+    if (opts.push !== false) {
+      git(['push', '-q', ...(opts.upstream === false ? [] : ['-u']), 'origin', 'topic'], wt)
+    }
+    return { root, wt }
+  }
+  const remoteSweep = (root: string, extra: SweepOptions = {}): RepoSweep =>
+    sweepOne(root, { cwd: root, remote: true, provider: 'none', ...extra })
+  const rowAt = (swept: RepoSweep, wt: string): RowOf<'worktree'> | undefined =>
+    rowsOf(swept.rows, 'worktree').get(realpathSync(wt))
+  const pr = (state: 'OPEN' | 'CLOSED', root: string) =>
+    cannedGh([
+      { number: 7, state, headRefName: 'topic', headRefOid: git(['rev-parse', 'topic'], root) },
+    ])
+
+  test('with a closed PR it is a delete that names the remote branch', () => {
+    const { root, wt } = setup()
+    const row = rowAt(remoteSweep(root, { provider: 'github', gh: pr('CLOSED', root) }), wt)
+    expect(row?.verdict).toBe('delete')
+    expect(row?.action).toBe('remove')
+    expect(row?.evidence.recoverableFrom).toEqual(['origin/topic'])
+    expect(row?.why).toContain('HEAD is on origin/topic')
+    expect(row?.risks).toEqual([])
+  })
+
+  test('with no PR at all it is a delete', () => {
+    const { root, wt } = setup()
+    const row = rowAt(remoteSweep(root), wt)
+    expect(row?.verdict).toBe('delete')
+    expect(row?.evidence.recoverableFrom).toEqual(['origin/topic'])
+  })
+
+  test('pushed with no upstream set, it is a delete with no abandon-unmerged', () => {
+    const { root, wt } = setup({ upstream: false })
+    const row = rowAt(remoteSweep(root), wt)
+    expect(row?.verdict).toBe('delete')
+    expect(row?.risks).not.toContain('abandon-unmerged')
+    expect(row?.evidence.recoverableFrom).toEqual(['origin/topic'])
+  })
+
+  test('an open PR still keeps it', () => {
+    const { root, wt } = setup()
+    const row = rowAt(remoteSweep(root, { provider: 'github', gh: pr('OPEN', root) }), wt)
+    expect(row?.verdict).toBe('keep')
+  })
+
+  test('a branch with no sign of use keeps its verdict', () => {
+    const { root, wt } = setup()
+    const fresh = join(parent, `fresh-${Math.random().toString(36).slice(2, 8)}`)
+    git(['worktree', 'add', '-q', '--no-track', '-b', 'fresh', fresh, 'origin/topic'], root)
+    const row = rowAt(remoteSweep(root), fresh)
+    expect(row?.verdict).toBe('review')
+    expect(row?.evidence.recoverableFrom).toBeUndefined()
+    expect(rowAt(remoteSweep(root), wt)?.verdict).toBe('delete')
+  })
+
+  test('a local sweep keeps the verdict and says --remote would check it', () => {
+    const { root, wt } = setup()
+    const row = rowAt(sweepOne(root, { cwd: root }), wt)
+    expect(row?.verdict).toBe('review')
+    expect(row?.evidence.recoverableFrom).toBeUndefined()
+    expect(row?.notes?.join('\n')).toContain('`--remote` would check')
+  })
+
+  test('a local sweep notes it on an unlanded row too', () => {
+    const { root, wt } = setup({ upstream: false })
+    const row = rowAt(sweepOne(root, { cwd: root }), wt)
+    expect(row?.risks).toContain('abandon-unmerged')
+    expect(row?.notes?.join('\n')).toContain('`--remote` would check')
+  })
+
+  test('a dirty worktree keeps its verdict', () => {
+    const { root, wt } = setup()
+    writeFileSync(join(wt, 'scratch.txt'), 'wip\n', 'utf-8')
+    const row = rowAt(remoteSweep(root), wt)
+    expect(row?.verdict).toBe('review')
+    expect(row?.evidence.recoverableFrom).toBeUndefined()
+  })
+
+  test('a HEAD no remote branch holds keeps its verdict', () => {
+    const { root, wt } = setup()
+    commit(wt, 'unpushed')
+    const row = rowAt(remoteSweep(root), wt)
+    expect(row?.verdict).toBe('review')
+    expect(row?.evidence.recoverableFrom).toBeUndefined()
+    expect(row?.risks).toContain('abandon-unmerged')
+  })
+})
+
 describe('a lookup that fails costs its evidence, not the repository (#653, #655)', () => {
   let parent: string
   let checkout: string
