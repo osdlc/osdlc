@@ -16,7 +16,7 @@ import {
   stderrOrError,
 } from '@osdlc/command-seam'
 
-import { DETECT_LOOKED_FOR, detectVerifyCommand } from './detect.ts'
+import { DETECT_LOOKED_FOR, NothingDetectedError, detectVerifyCommand } from './detect.ts'
 import type { PrUpdateConfig, PrUpdateStandaloneConfig } from './config.ts'
 import type { Ports, Repair } from './ports.ts'
 import { agentRepair } from './repair/agents.ts'
@@ -88,7 +88,7 @@ export function standalonePorts(
       if (which === 'detect') {
         const found = detectVerifyCommand(checkout, testCommand)
         if (found === null) {
-          throw new Error(
+          throw new NothingDetectedError(
             `verify: detect found no test command in ${repo}'s update worktree (looked for ${DETECT_LOOKED_FOR}) — set pr_update.test_command, or set verify: 'none'`,
           )
         }

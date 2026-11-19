@@ -29,8 +29,14 @@ const COMMAND_KEYS: readonly (readonly string[])[] = [
   ['pr_update', 'test_command'],
 ]
 
-/** {@link COMMAND_KEYS} as dotted keys: the keys `config set` writes from the command line only. */
+/** {@link COMMAND_KEYS} as dotted keys. */
 export const COMMAND_KEY_NAMES: readonly string[] = COMMAND_KEYS.map((path) => path.join('.'))
+
+/**
+ * The keys `config set` writes from the command line only: every command key, and `verify`, whose
+ * `detect` value makes the repository's own files choose a command to run.
+ */
+export const CLI_ONLY_KEYS: readonly string[] = [...COMMAND_KEY_NAMES, 'pr_update.verify']
 
 function isSet(value: unknown): boolean {
   if (value === undefined || value === null) return false

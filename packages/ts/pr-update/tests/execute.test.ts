@@ -29,6 +29,7 @@ vi.mock('@osdlc/command-seam', async (original) =>
 )
 import type { Generator, PushPreview, Repair, RepairRequest, RepairResult } from '../src/ports.ts'
 import { toResult } from '../src/update.ts'
+import { NothingDetectedError } from '../src/detect.ts'
 import { noHooksEnv } from '../src/update/execute.ts'
 import {
   WORK_BRANCH,
@@ -372,6 +373,29 @@ describe('the executor against real git', () => {
     expect(out.reason).toContain('found no test command')
     git.fetch('origin')
     expect(git.resolveRef('origin/nodetect')).toBe(before!)
+  })
+
+  test('a verifyVerbs that finds nothing to detect fails that PR without recording an attempt', async () => {
+    makeBehindPr('nothing', { 'a.txt': 'a\n' }, { 'b.txt': 'b\n' })
+    const { git } = fx.worker
+    const before = git.resolveRef('origin/nothing')
+
+    const out = await inWorktree((wt) =>
+      updateOne(
+        wt,
+        target({ head: 'nothing' }),
+        settings({
+          verifyVerbs: async () => {
+            throw new NothingDetectedError('verify: detect found no test command')
+          },
+        }),
+        recorder(nope),
+        { apply: true, worktree: wtRoot },
+      ),
+    )
+    expect(out).toMatchObject({ status: 'failed', unrecorded: true })
+    git.fetch('origin')
+    expect(git.resolveRef('origin/nothing')).toBe(before!)
   })
 
   test('a rebase with no known head sha is refused rather than force-pushed blind', async () => {
