@@ -26,7 +26,7 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto'
-import { futimesSync, linkSync, renameSync, rmSync, utimesSync } from 'node:fs'
+import { closeSync, futimesSync, linkSync, openSync, renameSync, rmSync, utimesSync } from 'node:fs'
 
 import {
   createLockFile,
@@ -81,9 +81,9 @@ export type LockClaim<F extends object = Record<string, unknown>> =
 
 /**
  * A takeover marker older than this, in milliseconds, belongs to a reaper that
- * died mid-takeover: a live one holds its marker for microseconds. It is judged
- * by the inode's ctime. The marker is a hard link of the lock, so its mtime is
- * the lock's, but linking and unlinking both set the ctime.
+ * died mid-takeover: a live one holds its marker for microseconds. Its age is its
+ * mtime, the way a lock's is. The marker is a file of its own, created empty, so
+ * its mtime is when its reaper began and never the lock's.
  */
 export const MARKER_STALE_MS = 10_000
 
@@ -201,7 +201,8 @@ function takeOver(path: string, seen: HeldLock<object>): void {
   }
   const marker = markerFor(path, seen.raw)
   try {
-    linkSync(path, marker)
+    // Created exclusively and empty: its mtime is the start of this takeover.
+    closeSync(openSync(marker, 'wx'))
   } catch (err) {
     // Another reaper holds the marker, or one died holding it. A marker that
     // old is cleared, and the caller's next attempt takes over.
@@ -211,7 +212,7 @@ function takeOver(path: string, seen: HeldLock<object>): void {
   try {
     // Still the very lock that was judged: the same bytes, and not touched since.
     const now = readLock(path)
-    if (readLock(marker).raw === seen.raw && now.raw === seen.raw && now.mtimeMs === seen.mtimeMs) {
+    if (now.raw === seen.raw && now.mtimeMs === seen.mtimeMs) {
       rmSync(path, { force: true })
     }
   } catch {
@@ -228,8 +229,8 @@ function takeOver(path: string, seen: HeldLock<object>): void {
  */
 function clearDeadMarker(marker: string): void {
   try {
-    // lstat: the marker's own ctime, never a symlink target's.
-    if (Date.now() - lstatRegular(marker).ctimeMs >= MARKER_STALE_MS) {
+    // lstat: the marker's own mtime, never a symlink target's.
+    if (Date.now() - lstatRegular(marker).mtimeMs >= MARKER_STALE_MS) {
       rmSync(marker, { force: true })
     }
   } catch (err) {
