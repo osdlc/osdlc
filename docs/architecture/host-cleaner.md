@@ -12,6 +12,8 @@ flow through it, and what each adapter does.
 > record is [D-L7N5](../decisions/D-L7N5-host-cleaner.md); where it differs from the code, the
 > code wins and the differences are listed in "Where the code and the decision record differ".
 
+A flat plugin model that would replace this design is proposed in [host-cleaner-plugins](../parley/host-cleaner-plugins.html).
+
 repo-cleaner's own model (plan, fingerprint, check, run, receipt, risks) is in its
 [README](../../packages/ts/repo-cleaner/README.md) and its
 [D-RSWP](../../packages/ts/repo-cleaner/docs/planning/decisions/D-RSWP-standalone.md). This page

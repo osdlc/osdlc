@@ -1,0 +1,1129 @@
+{
+  "id": "host-cleaner-plugins",
+  "title": "host-cleaner: a flat plugin model",
+  "summary": "A proposal to replace host-cleaner's two-layer hook design with one kind of plugin and seven phases (discover, object, decide, re-check, prepare, delete, deleted), checked against the code, ending in twelve decisions.",
+  "created": "2026-11-19",
+  "revision": 1,
+  "repo": {
+    "remote": "https://github.com/osdlc/osdlc",
+    "commit": "c8bb95ea"
+  },
+  "blocks": [
+    {
+      "id": "problem",
+      "type": "prose",
+      "title": "The problem and the constraint",
+      "text": "`@osdlc/host-cleaner` finds what git cannot see (build caches, Orca worktrees, stray Claude Code sessions) and cleans it with repo-cleaner's safety model. The current design, in PRs 943 to 948, gets there with two layers of hooks, and the owner's main goal, that several systems can watch the same data and that there will be many worktree hosts rather than only Orca, is where that design is hardest to extend. This page proposes a flat model in its place and checks it against the code.\n\nThe constraint: nothing in the stack is merged, so the adapter contract in `src/adapter.ts` is not yet an interface that a scheduled job or a second adapter author depends on. Once it merges, changing it is a breaking change. The cheapest moment to change the shape is now, and the decision has to be made before the design review ([host-cleaner-design](host-cleaner-design.html)) is applied to the record.\n\nEverything below is a **proposal** unless it cites a file; cited files are on branch `sksizer/issue-666-scheduled-run` (commit c8bb95ea), not on main. Where the code contradicts or complicates the model, the page says so in a block marked \"the code says\". How the model relates to the existing review's questions is in the last block before the questions."
+    },
+    {
+      "id": "current-pains",
+      "type": "prose",
+      "title": "Why the current design is hard",
+      "text": "**Two layers.** repo-cleaner takes a host with two hooks, `annotate` and `removeWorktree` (`packages/ts/repo-cleaner/src/hooks.ts`). host-cleaner takes adapters with six (`detect`, `discover`, `gather`, `execute`, `annotate`, `removeWorktree`) and merges the adapters' two repo-cleaner hooks into one of each before passing them down (`src/registry.ts`). An adapter has to know which layer each of its hooks lives in. The architecture page needs a table of \"which adapter uses which hook\" to explain it (`docs/architecture/host-cleaner.md`, \"The hook model\").\n\n**Two kinds of row.** repo-cleaner's rows (worktree, branch, remote) and the adapters' `HostRow`s run through the same plan, check and receipt, but as two halves of each: `HostPlan` is `{ repo, rows }` (`src/plan.ts`), `HostReceipt` is `{ repo, host }`, and `split()` in `src/clean.ts` cuts every approval in two. Code that handles rows handles them twice.\n\n**Order-dependent rules.** `chainAnnotate` feeds each adapter's output to the next, so a later host \"can override an earlier host's verdict\" (the architecture page's own words). `chainRemoveWorktree` gives the worktree to the first adapter that returns non-null; if two hosts claim one worktree, the earlier one removes it and the other is never asked. The existing review asks whether that should be refused instead, and whether run order should be stated per host. Both questions exist only because the design has order.\n\n**A takeover, not a notification.** Orca's `removeWorktree` does not add to git's removal; it replaces it (`src/orca.ts`). The second host that also keeps a record has no way to be told. Anything a host must do after the removal, such as forgetting its record, has no hook.\n\n**Repeated work.** `annotate` runs inside the sweep and again inside every `check` and `run`. In `src/orca.ts` it calls `listing()`, which runs `orca worktree list` and `orca terminal list`, on every call, and `removeWorktree` calls `listing()` again per worktree.\n\n**A change to the standalone tool for one host.** The stack changes repo-cleaner in seven files (`git diff --stat origin/main..origin/sksizer/issue-666-scheduled-run -- packages/ts/repo-cleaner`: 142 insertions, 9 deletions), including the `removeWorktree` hook and the `host:<name>` blocker type.",
+      "source": [
+        {
+          "uri": "docs/architecture/host-cleaner.md"
+        },
+        {
+          "uri": "packages/ts/host-cleaner/src/registry.ts"
+        }
+      ]
+    },
+    {
+      "id": "current-flow",
+      "type": "workflow",
+      "title": "The current model (as built)",
+      "trigger": "host-cleaner clean, or --auto",
+      "lanes": [
+        {
+          "id": "l-person",
+          "title": "Person or --auto"
+        },
+        {
+          "id": "l-host",
+          "title": "host-cleaner",
+          "source": {
+            "uri": "packages/ts/host-cleaner/src/sweep.ts"
+          }
+        },
+        {
+          "id": "l-adapters",
+          "title": "Adapters",
+          "detail": "cargo, node, claude-code, orca"
+        },
+        {
+          "id": "l-engine",
+          "title": "repo-cleaner",
+          "source": {
+            "uri": "packages/ts/repo-cleaner/src/clean.ts"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "id": "c-detect",
+          "title": "detect",
+          "lane": "l-host",
+          "kind": "start",
+          "summary": "Each adapter detects itself; the rest are skipped.",
+          "source": {
+            "uri": "packages/ts/host-cleaner/src/registry.ts"
+          }
+        },
+        {
+          "id": "c-discover",
+          "title": "discover",
+          "lane": "l-adapters",
+          "summary": "orca adds repositories to sweep (only when no target was named).",
+          "source": {
+            "uri": "packages/ts/host-cleaner/src/orca.ts"
+          }
+        },
+        {
+          "id": "c-sweep",
+          "title": "sweep, with annotate chained",
+          "lane": "l-engine",
+          "summary": "repo-cleaner sweeps; every adapter annotate runs in order on the rows.",
+          "detail": "`chainAnnotate`: each annotate gets the previous one's output.",
+          "source": {
+            "uri": "packages/ts/host-cleaner/src/sweep.ts"
+          }
+        },
+        {
+          "id": "c-gather",
+          "title": "gather",
+          "lane": "l-adapters",
+          "summary": "Adapters return their own rows (artifacts, sessions) from the swept roots."
+        },
+        {
+          "id": "c-plan",
+          "title": "plan",
+          "lane": "l-host",
+          "summary": "One plan file: repo-cleaner's plan plus the host rows.",
+          "source": {
+            "uri": "packages/ts/host-cleaner/src/plan.ts"
+          }
+        },
+        {
+          "id": "c-pick",
+          "title": "pick and allow",
+          "lane": "l-person",
+          "kind": "decision",
+          "summary": "Person picks rows and grants risks by name, or --auto applies the safe subset.",
+          "next": [
+            {
+              "to": "c-check",
+              "when": "something picked"
+            },
+            {
+              "to": "c-end",
+              "when": "nothing picked"
+            }
+          ]
+        },
+        {
+          "id": "c-check",
+          "title": "check (re-check)",
+          "lane": "l-engine",
+          "summary": "Sweep again with annotate, gather again, compare fingerprints, drop what moved.",
+          "source": {
+            "uri": "packages/ts/host-cleaner/src/clean.ts"
+          }
+        },
+        {
+          "id": "c-run-repo",
+          "title": "run repo rows",
+          "lane": "l-engine",
+          "summary": "removeWorktree: the first adapter returning non-null removes the worktree instead of git.",
+          "detail": "`chainRemoveWorktree`. repo-cleaner still refuses a live process first and verifies afterwards."
+        },
+        {
+          "id": "c-run-host",
+          "title": "execute host rows",
+          "lane": "l-adapters",
+          "summary": "The owning adapter deletes each host row and verifies it."
+        },
+        {
+          "id": "c-end",
+          "title": "receipt",
+          "lane": "l-host",
+          "kind": "end",
+          "summary": "One receipt with a repo half and a host half."
+        }
+      ]
+    },
+    {
+      "id": "phases",
+      "type": "workflow",
+      "title": "The proposed model: a flat, phased plugin pipeline (proposal)",
+      "trigger": "host-cleaner clean, or --auto",
+      "lanes": [
+        {
+          "id": "p-person",
+          "title": "Person or --auto"
+        },
+        {
+          "id": "p-core",
+          "title": "host-cleaner core",
+          "detail": "Runs the phases, merges lists, keeps the plan and receipt."
+        },
+        {
+          "id": "p-all",
+          "title": "Every plugin",
+          "detail": "git, cargo, node, orca, claude-code, and any future host."
+        },
+        {
+          "id": "p-owner",
+          "title": "The candidate's owner"
+        }
+      ],
+      "steps": [
+        {
+          "id": "n-detect",
+          "title": "0 detect",
+          "lane": "p-core",
+          "kind": "start",
+          "summary": "Each plugin detects itself; the rest are skipped, as today."
+        },
+        {
+          "id": "n-scope",
+          "title": "scope (optional, a question)",
+          "lane": "p-all",
+          "summary": "Plugins add roots to look in, such as the repositories Orca knows. Whether this is its own phase is q-scope."
+        },
+        {
+          "id": "n-discover",
+          "title": "1 discover",
+          "lane": "p-all",
+          "summary": "Every detected plugin proposes candidates; the core makes one shared list.",
+          "detail": "A candidate is a small data packet: a path plus metadata, an owner and the evidence it rests on. A plugin proposes only candidates it can delete itself."
+        },
+        {
+          "id": "n-object",
+          "title": "2 object",
+          "lane": "p-all",
+          "summary": "Every plugin sees the whole list and attaches objections to any candidate.",
+          "detail": "`refuse`: never deleted (today's blockers). `protest`: deleted only if the person grants it by name (today's risks). Objections only add up, so plugin order does not matter and no plugin overrides another."
+        },
+        {
+          "id": "n-decide",
+          "title": "3 decide",
+          "lane": "p-person",
+          "kind": "decision",
+          "summary": "The person picks, or --auto applies the safe rules.",
+          "next": [
+            {
+              "to": "n-recheck",
+              "when": "something picked"
+            },
+            {
+              "to": "n-end",
+              "when": "nothing picked"
+            }
+          ]
+        },
+        {
+          "id": "n-recheck",
+          "title": "4 re-check",
+          "lane": "p-core",
+          "summary": "Run discover and object again; drop any candidate whose evidence changed, or that is now refused or protested without a grant.",
+          "detail": "This is repo-cleaner's existing safety model, kept as it is."
+        },
+        {
+          "id": "n-prepare",
+          "title": "5 prepare",
+          "lane": "p-all",
+          "summary": "Each plugin that cares gets a hook just before a candidate is deleted. Orca closes the terminals in a worktree."
+        },
+        {
+          "id": "n-delete",
+          "title": "6 delete",
+          "lane": "p-owner",
+          "summary": "The owner deletes the candidate and verifies the deletion."
+        },
+        {
+          "id": "n-deleted",
+          "title": "7 notify (deleted)",
+          "lane": "p-all",
+          "summary": "Every plugin is told, best effort. A failure is recorded in the receipt and never undoes anything. Orca forgets its record."
+        },
+        {
+          "id": "n-end",
+          "title": "receipt",
+          "lane": "p-core",
+          "kind": "end",
+          "summary": "One receipt, one step per candidate."
+        }
+      ]
+    },
+    {
+      "id": "interface",
+      "type": "code",
+      "title": "The plugin interface (proposal)",
+      "language": "ts",
+      "code": "type Json = null | boolean | number | string | Json[] | { [k: string]: Json }\n\n/** A small data packet one plugin proposes for deletion. The same shape for every kind. */\ninterface Candidate {\n  id: string          // `<kind>:<path>`, unique in the list\n  kind: string        // 'worktree' | 'branch' | 'remote' | 'artifact' | 'session' | ...\n  path: string        // the thing itself; for a session, its working directory\n  owner: string       // the plugin that deletes it, and the only one that may\n  why: string\n  bytes?: number\n  evidence: Json      // the fingerprint: what the objections rest on. Re-check compares it\n  requires?: string[] // candidate ids this one cannot go without (q-relations)\n  unattended?: boolean // the owner says --auto may take it, if nothing objects\n}\n\n/** One plugin's objection to one candidate. Objections only add up. */\ninterface Objection {\n  by: string\n  candidate: string\n  level: 'refuse' | 'protest'   // 'note' if q-levels says so\n  code: string        // refuse: a blocker, e.g. 'live-process'. protest: the name --allow takes, e.g. 'discard-changes'\n  reason: string\n}\n\ninterface Plugin {\n  name: string\n  detect(ctx: Ctx): boolean\n  scope?(ctx: Ctx): string[]                         // q-scope\n  discover?(ctx: Ctx): Candidate[]\n  object?(all: readonly Candidate[], ctx: Ctx): Objection[]\n  prepare?(c: Candidate, ctx: Ctx): void             // before deleting c; every interested plugin\n  delete?(c: Candidate, ctx: Ctx): string            // only for c.owner === name; returns the receipt sentence\n  deleted?(c: Candidate, ctx: Ctx): void             // after; best effort\n}",
+      "caption": "Refinements of the owner's sketch: `Objection.code` (a protest needs a name `--allow` can grant), `Candidate.requires` and `unattended` (see the mapping and q-relations). `object` is given the list as read-only; a plugin cannot change a candidate or see another plugin's objections in the same pass. Existing types it replaces: `HostAdapter`, `HostRow` and `HostStep` in `packages/ts/host-cleaner/src/adapter.ts`.",
+      "source": {
+        "uri": "packages/ts/host-cleaner/src/adapter.ts"
+      }
+    },
+    {
+      "id": "rules",
+      "type": "prose",
+      "title": "What the types mean",
+      "text": "**Verdicts are derived, not stored.** Today a row carries `verdict`, `action`, `commands`, `risks` and `blockers` (`HostRow`). In the proposal a candidate has none of them. A candidate with a `refuse` is blocked; one with only `protest`s needs those names granted (today's `review`, or a `delete` with a risk); one with no objections is a `delete`. A repo-cleaner row judged `keep` is not proposed at all: it is not a candidate, and the `git` plugin can say why in its report. That loses the keep rows from host-cleaner's report (the standalone repo-cleaner CLI still lists them).\n\n**Objections add up.** The core merges every plugin's list. Any `refuse` blocks the candidate. Each `protest` becomes a risk the person must grant by name, with `--allow <code>` as today (`split` in `src/clean.ts` already treats an unknown name as a host risk). No plugin can lift another's objection, so the result is the same in any plugin order.\n\n**One owner per candidate.** Only the owner deletes a candidate. Any other plugin can object before and be told after. This is the whole \"two hosts claim one worktree\" problem: neither host claims it; the git plugin owns it, and both hosts are told.\n\n**Re-check is the same rule.** Run `discover` and `object` again and compare each picked candidate's `evidence` with repo-cleaner's `sameFingerprint` rule; a candidate now refused is dropped as `blocked`, one with a protest not granted as `not-allowed`, one gone as `gone`. These are the `DropReason`s `selectHostRows` already produces (`src/clean.ts`).\n\n**The receipt** has one step per candidate: who owned it, which plugins prepared, the delete result and verification sentence, and one line per notified plugin with its error if any.",
+      "source": [
+        {
+          "uri": "packages/ts/host-cleaner/src/clean.ts"
+        },
+        {
+          "uri": "packages/ts/host-cleaner/src/plan.ts"
+        }
+      ]
+    },
+    {
+      "id": "mapping",
+      "type": "matrix",
+      "title": "Mapping: each current piece and where it lands (proposal)",
+      "rowsTitle": "Current piece",
+      "columnsTitle": "Proposed phase",
+      "rows": [
+        {
+          "id": "m-detect",
+          "title": "HostAdapter.detect",
+          "detail": "Unchanged. `Plugin.detect`.",
+          "source": {
+            "uri": "packages/ts/host-cleaner/src/adapter.ts"
+          }
+        },
+        {
+          "id": "m-discover",
+          "title": "HostAdapter.discover (orca, PR 946)",
+          "detail": "Becomes `scope` if q-scope adopts a scope phase; otherwise it is folded into `discover`, which then returns candidates for repositories the plugin knows.",
+          "source": {
+            "uri": "packages/ts/host-cleaner/src/orca.ts"
+          }
+        },
+        {
+          "id": "m-gather",
+          "title": "HostAdapter.gather",
+          "detail": "`discover`. A `HostRow` becomes a `Candidate`; its `verdict`, `action` and `commands` are no longer stored, and its `risks` and `blockers` become objections.",
+          "source": {
+            "uri": "packages/ts/host-cleaner/src/adapter.ts"
+          }
+        },
+        {
+          "id": "m-execute",
+          "title": "HostAdapter.execute",
+          "detail": "`delete`, called only on the owner. The delete-then-verify code in `removeArtifact` and the claude `execute` stays as it is.",
+          "source": {
+            "uri": "packages/ts/host-cleaner/src/artifacts.ts"
+          }
+        },
+        {
+          "id": "m-annotate",
+          "title": "HostAdapter.annotate and repo-cleaner Annotate",
+          "detail": "`object`. A verdict change becomes `refuse` or `protest`. A note, which `annotate` can add today, is lost unless q-levels adds a `note` level. \"Drop a row\" has no equivalent: a plugin cannot hide another plugin's candidate, only refuse it.",
+          "source": {
+            "uri": "packages/ts/repo-cleaner/src/hooks.ts"
+          }
+        },
+        {
+          "id": "m-remove",
+          "title": "HostAdapter.removeWorktree and repo-cleaner RemoveWorktree",
+          "detail": "Split in three. The terminal close is orca's `prepare`. The removal is the git plugin's `delete`. Forgetting Orca's record is orca's `deleted`, and whether Orca's CLI can do that after git removed the directory is unverified (q-orca-forget).",
+          "source": {
+            "uri": "packages/ts/repo-cleaner/src/hooks.ts"
+          }
+        },
+        {
+          "id": "m-host-blocker",
+          "title": "HostBlocker `host:<name>`",
+          "detail": "A `refuse` objection whose `code` is the old blocker, e.g. `orca-unreachable`.",
+          "source": {
+            "uri": "packages/ts/repo-cleaner/src/types.ts"
+          }
+        },
+        {
+          "id": "m-blockers",
+          "title": "repo-cleaner blockers (`locked-worktree`, `live-process`, ...)",
+          "detail": "`refuse` objections from the `git` plugin on its own candidates.",
+          "source": {
+            "uri": "packages/ts/repo-cleaner/src/types.ts"
+          }
+        },
+        {
+          "id": "m-risks",
+          "title": "Risks (`abandon-unmerged`, `discard-changes`, `discard-archived`, `confirm-open-pr`, `close-session`)",
+          "detail": "`protest` objections. `code` is the name `--allow` takes. `discard-archived` stays the git plugin's own cover for two other protests.",
+          "source": {
+            "uri": "packages/ts/repo-cleaner/src/types.ts"
+          }
+        },
+        {
+          "id": "m-fingerprint",
+          "title": "Fingerprints (`hostFingerprint`, repo-cleaner `fingerprint`)",
+          "detail": "`Candidate.evidence`, compared by the core with repo-cleaner's exported `sameFingerprint`. The rule is unchanged.",
+          "source": {
+            "uri": "packages/ts/host-cleaner/src/plan.ts"
+          }
+        },
+        {
+          "id": "m-plan",
+          "title": "HostPlan `{ repo, rows }`",
+          "detail": "One list of candidates with their objections. The `repo` half goes away.",
+          "source": {
+            "uri": "packages/ts/host-cleaner/src/plan.ts"
+          }
+        },
+        {
+          "id": "m-receipt",
+          "title": "HostReceipt `{ repo, host }`",
+          "detail": "One flat receipt, one step per candidate, plus the prepare and notify records.",
+          "source": {
+            "uri": "packages/ts/host-cleaner/src/clean.ts"
+          }
+        },
+        {
+          "id": "m-unattended",
+          "title": "selectUnattended (`--auto`)",
+          "detail": "Core rule: a candidate with no objection of any level whose owner marked it `unattended`. The worktree rule (`delete`, no risks) becomes the git plugin setting `unattended`; the artifact rule is the existing `evidence.unattended` flag, moved up a level.",
+          "source": {
+            "uri": "packages/ts/host-cleaner/src/auto.ts"
+          }
+        },
+        {
+          "id": "m-chain",
+          "title": "chainAnnotate, chainRemoveWorktree and their order rules",
+          "detail": "Removed. The merge is a union, which has no order.",
+          "source": {
+            "uri": "packages/ts/host-cleaner/src/registry.ts"
+          }
+        }
+      ],
+      "columns": [
+        {
+          "id": "k-detect",
+          "title": "detect"
+        },
+        {
+          "id": "k-discover",
+          "title": "discover"
+        },
+        {
+          "id": "k-object",
+          "title": "object"
+        },
+        {
+          "id": "k-core",
+          "title": "decide / re-check"
+        },
+        {
+          "id": "k-prepare",
+          "title": "prepare"
+        },
+        {
+          "id": "k-delete",
+          "title": "delete"
+        },
+        {
+          "id": "k-deleted",
+          "title": "deleted"
+        },
+        {
+          "id": "k-gone",
+          "title": "removed"
+        }
+      ],
+      "cells": [
+        {
+          "row": "m-detect",
+          "column": "k-detect",
+          "state": "valid"
+        },
+        {
+          "row": "m-discover",
+          "column": "k-discover",
+          "state": "valid"
+        },
+        {
+          "row": "m-gather",
+          "column": "k-discover",
+          "state": "valid"
+        },
+        {
+          "row": "m-execute",
+          "column": "k-delete",
+          "state": "valid"
+        },
+        {
+          "row": "m-annotate",
+          "column": "k-object",
+          "state": "valid"
+        },
+        {
+          "row": "m-remove",
+          "column": "k-prepare",
+          "state": "valid"
+        },
+        {
+          "row": "m-remove",
+          "column": "k-delete",
+          "state": "valid"
+        },
+        {
+          "row": "m-remove",
+          "column": "k-deleted",
+          "state": "valid"
+        },
+        {
+          "row": "m-host-blocker",
+          "column": "k-object",
+          "state": "valid"
+        },
+        {
+          "row": "m-blockers",
+          "column": "k-object",
+          "state": "valid"
+        },
+        {
+          "row": "m-risks",
+          "column": "k-object",
+          "state": "valid"
+        },
+        {
+          "row": "m-fingerprint",
+          "column": "k-core",
+          "state": "valid"
+        },
+        {
+          "row": "m-plan",
+          "column": "k-core",
+          "state": "valid"
+        },
+        {
+          "row": "m-receipt",
+          "column": "k-core",
+          "state": "valid"
+        },
+        {
+          "row": "m-unattended",
+          "column": "k-core",
+          "state": "valid"
+        },
+        {
+          "row": "m-chain",
+          "column": "k-gone",
+          "state": "valid"
+        }
+      ],
+      "default": "skip"
+    },
+    {
+      "id": "code-says-1",
+      "type": "prose",
+      "title": "The code says: where the flat model needs more than the sketch",
+      "text": "Three places where the code is not as flat as the model.\n\n**1. Candidates are related.** The git plugin's candidates are not independent. repo-cleaner holds a branch when the worktree that would free it is held: `holdFreedBranches` runs after `annotate` in `sweepRepo` (`packages/ts/repo-cleaner/src/sweep.ts`, around line 530). Under additive objections the git plugin cannot see Orca's refusal of a worktree in the same pass, so it cannot hold the branch. Artifacts have the same shape: a `target/` inside a worktree is deleted with the worktree, and `failedIds` in `src/auto.ts` already special-cases \"a row gone because an earlier step removed its parent\". Today repo rows run before host rows by construction. The model needs an explicit relation (`Candidate.requires`) or a path rule. That is q-relations.\n\n**2. Discovery depends on discovery.** `cargo` and `node` find `target/` and `node_modules` by listing the worktrees of the roots the sweep read (`checkoutsOf(ctx)` in `src/artifacts.ts`; the context's `targets` are \"the roots of the repositories the sweep read\" when an adapter gathers). In a flat `discover` phase every plugin runs at once, so cargo cannot depend on git's output. Either plugins find roots themselves, from `ctx.targets` (as `checkoutsOf` already does by calling `git worktree list`), or there is a scope step that settles the roots first. That is q-scope.\n\n**3. One step covers many candidates.** repo-cleaner's `archive` pushes one archive branch per repository and verifies it before anything in that repository is deleted; a failed push stops the run, host rows included (`clean.ts`, `archiveSteps`, and `q-archive-failure` in the existing review). A per-candidate `prepare` does not fit that. The git plugin would run the archive lazily in the first `prepare` for a repository, and a failure there has to stop more than one candidate. That is part of q-prepare-fail.",
+      "source": [
+        {
+          "uri": "packages/ts/repo-cleaner/src/sweep.ts"
+        },
+        {
+          "uri": "packages/ts/host-cleaner/src/artifacts.ts"
+        },
+        {
+          "uri": "packages/ts/host-cleaner/src/auto.ts"
+        }
+      ]
+    },
+    {
+      "id": "prior-art",
+      "type": "prose",
+      "title": "Prior art",
+      "text": "**Kubernetes admission webhooks.** A validating admission webhook can only accept or reject; the API server calls every one and rejects the request if any rejects, so the order does not matter. Mutating webhooks rewrite the object and run in sequence, and the result depends on the order. host-cleaner's `annotate` chain is a mutating chain (each hook gets the previous hook's rows); `object` is a validating one. The proposal is the move from the first kind to the second. What it borrows: veto by any, no override. What it does not borrow: webhooks run before an object is persisted, ours run before deletion and again at re-check.\n\n**Kubernetes finalizers.** An object with finalizers is not removed until each finalizer's controller has done its cleanup and removed its name. `prepare` is the same idea. The difference matters for q-prepare-fail: in Kubernetes a stuck finalizer blocks the deletion indefinitely, which for a cleaner running unattended every six hours would mean a candidate that never goes and no one told.\n\n**Kubernetes watch events.** Watchers learn of a change after it has happened, independently, and cannot change it. `deleted` is that. Kubernetes keeps events in a stream a watcher can resume; the proposal asks whether we need that (q-deleted-mode).\n\n**Git hooks** are the version everyone knows: `pre-*` can refuse, `post-*` cannot.\n\n**Inside this repo.** I searched `packages/ts` and `docs` for a plugin or event pattern. There is no plugin framework. What exists: repo-cleaner's `Annotate` and `RemoveWorktree` hooks, which are the design being replaced; `@osdlc/observe`, which defines a session event model (`packages/ts/observe/src/model.ts`, `lifecycle.ts`, `hook-payload.ts`), which is a record of what happened rather than a set of hooks and so is a model for the `deleted` event log option, not for the pipeline; and a `detect-harness` catalog that the `claude-code` adapter already uses. Orca has its own `orca plugin` commands (scaffold, validate, inspect, in its CLI), but those extend Orca's UI and are unrelated.",
+      "source": [
+        {
+          "uri": "packages/ts/observe/src/model.ts"
+        }
+      ]
+    },
+    {
+      "id": "plug-git",
+      "type": "code",
+      "title": "Plugin: git (this is repo-cleaner) (proposal)",
+      "language": "ts",
+      "code": "const git: Plugin = {\n  name: 'git',\n  detect: (ctx) => ctx.targets.length > 0,\n  discover(ctx) {\n    // repo-cleaner's own sweep: worktrees, branches, remote branches, with evidence.\n    const swept = sweep(ctx.targets, ctx.repoCleaner)\n    this.rows = rowsByCandidateId(swept)           // kept for object(); re-made on each discover\n    return swept.repos.flatMap(r => r.rows.filter(row => row.verdict !== 'keep').map(toCandidate))\n    // toCandidate: id=row.id, kind=row.kind, path, owner:'git', evidence=row.evidence,\n    //   requires = [worktree id] on a branch candidate that worktree frees,\n    //   unattended = (row.verdict === 'delete' && row.risks.length === 0)\n  },\n  object(all) {\n    // Its own rows' blockers and risks, unchanged: live-process, locked-worktree, ... -> refuse;\n    // abandon-unmerged, discard-changes, confirm-open-pr -> protest. Nothing about others' candidates.\n    return all.filter(c => c.owner === 'git').flatMap(c => objectionsOf(this.rows.get(c.id)))\n  },\n  delete(c, ctx) {\n    // repo-cleaner's library step: refuses a live process and an unsafe force, runs the removal,\n    // checks the directory is gone and git no longer lists it (and `archive` first, if asked).\n    return removeCandidate(this.rows.get(c.id), { force: ctx.force, archive: ctx.archive })\n  },\n}",
+      "caption": "The sweep already holds everything the objections need, so `discover` and `object` share one sweep per pass. `this.rows` is state kept between the two calls; the core calls them as a pair, and the re-check makes a fresh pair. `removeCandidate` is the library function that does what `run` does for one step today.",
+      "source": {
+        "uri": "packages/ts/repo-cleaner/src/clean.ts"
+      }
+    },
+    {
+      "id": "plug-cargo",
+      "type": "code",
+      "title": "Plugins: cargo and node (proposal)",
+      "language": "ts",
+      "code": "const cargo: Plugin = {\n  name: 'cargo',\n  detect: (ctx) => commandRuns('cargo') || rootsHaveFile(ctx, 'Cargo.toml'),\n  discover: (ctx) => checkoutsOf(ctx).flatMap(c => rowsIn(ctx, c)).map(rowToCandidate),\n  // rowsIn already produces artifactRow(...): path, size, idle time, newest mtime, held-by-a-process.\n  object(all, ctx) {\n    // Its own: a process working in the checkout -> refuse('running-in-checkout').\n    return all.filter(c => c.owner === 'cargo').flatMap(c => holdersObjection(c, ctx))\n  },\n  delete: (c, ctx) => removeArtifact(rowsIn, c, ctx),   // re-gathers, path-guard, rm, verify. As today.\n}\n// node is the same with kind 'node-modules' and its own detect and rowsIn.",
+      "caption": "Both reuse the shared artifact layer in `src/artifacts.ts` (`checkoutsOf`, `artifactRow`, `holdersIn`, `removeArtifact`, `sizeOf`), which survives unchanged except that `artifactRow` returns a `Candidate` and objections instead of a `HostRow` with `verdict` and `blockers`. `unattended` is today's `evidence.unattended`: idle past the threshold, nothing building.",
+      "source": {
+        "uri": "packages/ts/host-cleaner/src/cargo.ts"
+      }
+    },
+    {
+      "id": "plug-orca",
+      "type": "code",
+      "title": "Plugin: orca (proposal)",
+      "language": "ts",
+      "code": "const orca: Plugin = {\n  name: 'orca',\n  detect: () => cli() !== null,\n  scope: () => orcaRepoPaths(),                // `orca repo list`, if q-scope adopts a scope phase\n  object(all) {\n    const listed = listing()                   // one `orca worktree list` and `orca terminal list` per phase\n    return all.filter(c => c.kind === 'worktree').flatMap(c => {\n      if (listed === null)                     // Orca cannot be asked\n        return ORCA_WORKSPACES.test(c.path)\n          ? [refuse(c, 'orca-unreachable', 'probably managed by Orca; start Orca and sweep again')]\n          : []\n      const w = listed.get(canon(c.path))\n      return w ? [note(c, `Orca manages this worktree (${w.displayName}), ${w.terminals} terminals open`)] : []\n    })\n  },\n  prepare(c) {                                 // just before git removes the worktree\n    if (managed(c)) run(['terminal', 'close', '--worktree', `path:${c.path}`, '--all'])   // throws on failure\n  },\n  deleted(c) {                                 // after git removed it, best effort\n    if (managed(c)) run(['worktree', 'rm', '--worktree', `path:${c.path}`])   // UNVERIFIED: see q-orca-forget\n  },\n}",
+      "caption": "What it replaces: `annotate` and `removeWorktree` in `src/orca.ts`. The unreachable-Orca refusal, `ORCA_WORKSPACES`, `canon` and the CLI discovery are reused as they are. The `note` call is the new level in q-levels; without it that line is dropped.",
+      "source": {
+        "uri": "packages/ts/host-cleaner/src/orca.ts"
+      }
+    },
+    {
+      "id": "orca-forget",
+      "type": "prose",
+      "title": "Can Orca forget a worktree that git already removed?  (the key question)",
+      "text": "I read the Orca CLI's help, read-only, from `/Applications/Orca.app/Contents/Resources/bin/orca`: `orca --help`, `orca worktree --help`, `orca worktree rm --help`, `orca worktree list --help`, `orca worktree set --help` and `orca terminal --help`. I did not run any removal.\n\nWhat it says. `orca worktree` has `list, show, activate, current, create, set, rm, ps`. There is **no `forget`, `prune` or `deregister` command**. `orca worktree rm --worktree <selector>` is described as \"Remove a Git worktree or a folder workspace entry from Orca\", and \"needs an explicit workspace ... as `git worktree remove` needs a path\". Its note says that for a non-root **folder** workspace it \"removes its Orca entry ... without deleting the folder or touching Git\". For a Git worktree it describes a removal: it runs the repo's archive hooks only with `--run-hooks`, and it keeps or deletes the branch. Nothing in the help says what it does when the directory is already gone and git no longer lists it.\n\nSo whether `deleted` can be `orca worktree rm` on an already-removed worktree is **not documented, and I could not test it without removing something**. It may succeed (Orca drops its record), fail with \"not a git worktree\" (leaving the record), or fail on the selector `path:` if Orca resolves a selector by looking at the disk. This has to be settled with a throwaway worktree before the plugin model can claim to need no takeover. Until then there are three ways forward, in q-orca-forget: verify and use `rm` as the forget step; have orca's `prepare` call `orca worktree rm` itself, so Orca removes the worktree and git's `delete` finds it gone (a takeover again, in different clothes); or let orca own the deletion of its own worktrees by kind.\n\nA related property the proposal gets for free: if Orca's record outlives its worktree for any reason (a failed `deleted`, or Orca being down when it ran), the next run's `orca.discover` can list a stale record as a candidate of its own kind, owned by orca. That needs `orca worktree list` to show such records, which I also could not verify.",
+      "source": {
+        "uri": "packages/ts/host-cleaner/src/orca.ts"
+      }
+    },
+    {
+      "id": "plug-claude",
+      "type": "code",
+      "title": "Plugin: claude-code (proposal)",
+      "language": "ts",
+      "code": "const claudeCode: Plugin = {\n  name: 'claude-code',\n  detect: (ctx) => locate(ctx).installed,\n  discover: (ctx) => sessions(ctx).map(toCandidate),     // kind 'session', path = its working directory\n  object: (all) => all.filter(c => c.owner === 'claude-code')\n                      .map(c => protest(c, 'close-session', 'ends a running coding-agent session')),\n  delete: (c, ctx) => sigtermAndWait(c, ctx),            // checks pid + start time + command, SIGTERM, never SIGKILL\n  // optional, new: object(all) can also refuse or protest a *git worktree* candidate that a live\n  // session works in, with a friendlier reason than the git plugin's generic 'live-process'.\n}",
+      "caption": "Same as `src/claude.ts` with the row replaced by a candidate. Every session is a protest, `unattended` is never set, so `--auto` never touches one: both as today. `sigtermAndWait` is the body of the current `execute`.",
+      "source": {
+        "uri": "packages/ts/host-cleaner/src/claude.ts"
+      }
+    },
+    {
+      "id": "repo-cleaner-changes",
+      "type": "prose",
+      "title": "What changes in repo-cleaner",
+      "text": "**Added (proposal).** A library API for the `git` plugin, and nothing else:\n- `candidatesOf(sweep)`: the swept rows as plain data (id, kind, path, evidence, requires), with each row's blockers and risks as objections.\n- `removeCandidate(row, { force, archive })`: what `run` does for one step today: the live-process and force checks, the removal, the verification, with the archive step in front when asked.\n\n**Unchanged.** The standalone CLI, `sweep`, `plan`, `check`, `run`, the plan and receipt files, the fingerprint rule, and the `archive` option. The safety model is repo-cleaner's, and the `git` plugin is a thin adapter to it.\n\n**What PR 946's repo-cleaner additions become.** The stack's repo-cleaner diff is the `removeWorktree` hook (`hooks.ts`, `clean.ts`), the `host:<name>` blocker type (`types.ts`), their tests and README lines, and the exports host-cleaner needs (`fingerprint`, `sameFingerprint`, `PlanSchema`, `writeJsonAtomic`, `busyHolders`). `removeWorktree` and `HostBlocker` are not needed in the plugin model and are never merged (they are unmerged now, so this is \"not added\", not \"removed\"). The exports stay, since the artifact layer and the core still use them. `annotate` is on main since #600 and in repo-cleaner's decision D-RSWP; in this repo only host-cleaner would use it. It can stay for any outside host, and nothing here requires removing it.\n\nThe architecture page says PR 946 is the only PR that changes repo-cleaner; its own \"Which PR adds what\" table puts the `removeWorktree` hook in 943. I did not resolve which is right, since the proposal removes the hook either way.",
+      "source": [
+        {
+          "uri": "packages/ts/repo-cleaner/src/hooks.ts"
+        },
+        {
+          "uri": "packages/ts/repo-cleaner/README.md"
+        }
+      ]
+    },
+    {
+      "id": "migration",
+      "type": "plan",
+      "title": "Cost and migration: the stack under the proposal (proposal)",
+      "phases": [
+        {
+          "id": "ph-spike",
+          "title": "0. Settle the unknowns",
+          "gate": "The owner answers q-adopt",
+          "status": "todo",
+          "workstreams": [
+            {
+              "id": "ws-spike",
+              "title": "Spikes",
+              "tasks": [
+                {
+                  "id": "t-orca",
+                  "title": "Throwaway worktree: does `orca worktree rm` forget a record whose directory git already removed?",
+                  "status": "todo"
+                },
+                {
+                  "id": "t-list",
+                  "title": "Does `orca worktree list` show a record with no directory?",
+                  "status": "todo"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ph-rc",
+          "title": "1. repo-cleaner library API",
+          "gate": "Phase 0",
+          "status": "todo",
+          "workstreams": [
+            {
+              "id": "ws-rc",
+              "title": "repo-cleaner",
+              "tasks": [
+                {
+                  "id": "t-rc-api",
+                  "title": "`candidatesOf` and `removeCandidate`; no `removeWorktree`, no `HostBlocker`",
+                  "status": "todo"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ph-core",
+          "title": "2. Core, replacing 943",
+          "gate": "Phase 1",
+          "status": "todo",
+          "workstreams": [
+            {
+              "id": "ws-core",
+              "title": "host-cleaner core (rewritten)",
+              "tasks": [
+                {
+                  "id": "t-contract",
+                  "title": "Plugin contract, the phases, the flat plan and receipt (replaces adapter.ts, registry.ts, sweep.ts, plan.ts, clean.ts)",
+                  "status": "todo"
+                },
+                {
+                  "id": "t-gitplugin",
+                  "title": "The `git` plugin",
+                  "status": "todo"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ph-cli",
+          "title": "3. CLI, from 944",
+          "gate": "Phase 2",
+          "status": "todo",
+          "workstreams": [
+            {
+              "id": "ws-cli",
+              "title": "Kept, adjusted",
+              "tasks": [
+                {
+                  "id": "t-cli",
+                  "title": "cli.ts, config.ts, bin.ts, flags, exit codes: `--adapter` stays as an alias or becomes `--plugin` (q-supersede)",
+                  "status": "todo"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ph-plugins",
+          "title": "4. Plugins",
+          "gate": "Phase 2",
+          "status": "todo",
+          "workstreams": [
+            {
+              "id": "ws-art",
+              "title": "cargo and node, from 945",
+              "tasks": [
+                {
+                  "id": "t-art",
+                  "title": "artifacts.ts kept; rows become candidates and objections",
+                  "status": "todo"
+                }
+              ]
+            },
+            {
+              "id": "ws-orca",
+              "title": "orca, from 946 (rewritten)",
+              "tasks": [
+                {
+                  "id": "t-orca-plugin",
+                  "title": "scope or discover, object, prepare, deleted",
+                  "status": "todo",
+                  "gate": "Phase 0 spike"
+                }
+              ]
+            },
+            {
+              "id": "ws-claude",
+              "title": "claude-code, from 947",
+              "tasks": [
+                {
+                  "id": "t-claude",
+                  "title": "rows become candidates; protest `close-session`",
+                  "status": "todo"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ph-auto",
+          "title": "5. Unattended and schedule, from 948",
+          "gate": "Phases 3 and 4",
+          "status": "todo",
+          "workstreams": [
+            {
+              "id": "ws-auto",
+              "title": "Kept, adjusted",
+              "tasks": [
+                {
+                  "id": "t-auto",
+                  "title": "`selectUnattended` becomes the core rule; lock, report, launchd `schedule` unchanged",
+                  "status": "todo"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cost",
+      "type": "prose",
+      "title": "Cost: what survives and what is rewritten",
+      "text": "**Survives as it is:** the CLI shape, flags and exit codes (`src/cli.ts`, `config.ts`, `bin.ts`); the config file; the shared artifact layer (`artifacts.ts`: `checkoutsOf`, `holdersIn`, `removeArtifact`, `sizeOf`); the auto rules, the lock, the report and `schedule` with launchd (`src/auto.ts`, `schedule.ts`); repo-cleaner's whole engine and its safety model; the claude-code session reading and its SIGTERM sequence; orca's CLI discovery, schema parsing and `canon`.\n\n**Rewritten:** the contract and everything that handles it: `adapter.ts`, `registry.ts`, `sweep.ts`, `plan.ts` and `clean.ts`, which are PR 943 and the heart of the stack; the host half of `HostPlan` and `HostReceipt`; `orca.ts` from hooks to plugin phases; `selectUnattended` and `cleanedIds`/`failedIds` over the new receipt; the tests that assert on `HostRow` and on `chainAnnotate`.\n\n**Size.** The branch adds 6,269 lines in `packages/ts/host-cleaner` across 41 files (`git diff --stat origin/main..origin/sksizer/issue-666-scheduled-run -- packages/ts/host-cleaner`). I have not estimated the rewrite beyond the file list above, and it would be a guess to put a number on it. The core files are the part that changes; the CLI, the artifact layer, auto and schedule are the larger remainder.\n\n**Risk of the model itself.** It trades order for a few new rules: relations (q-relations), roots (q-scope), a place for batch steps like the archive (q-prepare-fail). Each is smaller than the chain rules it removes, but they are new surface, and the git plugin keeps state between `discover` and `object` that a pure interface would not."
+    },
+    {
+      "id": "supersede-note",
+      "type": "prose",
+      "title": "How this relates to the existing review",
+      "text": "The existing review ([host-cleaner-design](host-cleaner-design.html)) has 22 questions. If the plugin model is adopted, some are answered by it, some change shape and the rest do not care. I did not edit that review or its answers.\n\n**Superseded.** q-order (run order: no plugin order exists); q-discover and q-orca-discover (the sixth hook and when it runs: replaced by q-scope here); q-split-943 (943 is rewritten, not split). The architecture page's two open questions about two hosts claiming one worktree and per-host run order go away.\n\n**Change shape, still needed.** q-marker (`evidence.unattended` becomes `Candidate.unattended`); q-orca-heuristic and q-orca-refuse (they now describe orca's `object`); q-archive-pass, q-archive-failure and q-auto-archive (they interact with q-prepare-fail); q-unknown-adapter and q-risk-names (plugin names in the plan; `Objection.code` instead of a risk string).\n\n**Unaffected.** q-packaging, q-flag, q-threshold, q-subset, q-launchd, q-every, q-targets, q-session-policy, q-sizeof, q-fingerprint and q-cargo-stable.\n\nThe flag name `--adapter`/`--no-adapter` and the word \"adapter\" are in the CLI, the config (`adapters.<name>`) and the plan file; renaming them to \"plugin\" is included in q-supersede below."
+    },
+    {
+      "id": "q1",
+      "type": "question",
+      "questions": [
+        {
+          "id": "q-adopt",
+          "about": "phases",
+          "prompt": "Adopt the flat plugin model, or keep the two-layer hook design?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "adopt",
+              "title": "Adopt the plugin model",
+              "detail": "Recommended. It removes the chains, the takeover and the two-halves plan and receipt, and it makes more than one worktree host a matter of adding a plugin that objects, prepares and is told, with no claim to settle. It costs the rewrite of PR 943 and a new set of rules (relations, roots, batch steps) that the current design gets from ordering. The contract is unmerged, so this is the cheap moment. Condition: the orca spike (q-orca-forget) does not show that the model needs a takeover after all."
+            },
+            {
+              "id": "keep",
+              "title": "Keep the current design",
+              "detail": "No rewrite, and the stack can merge as reviewed. Cost: every new worktree host adds chain rules, the \"two hosts claim one worktree\" question stays open, and the contract becomes an interface with order in it."
+            },
+            {
+              "id": "hybrid",
+              "title": "Hybrid: keep annotate and the engine/adapters split, replace only the takeover with `prepare` and `deleted` hooks",
+              "detail": "Fixes the Orca problem (terminals closed before, record forgotten after) without rewriting the core. Cost: keeps both layers, the order-dependent `annotate` chain and the two-halves plan, which are most of the complaint."
+            }
+          ],
+          "recommended": "adopt"
+        }
+      ]
+    },
+    {
+      "id": "q2",
+      "type": "question",
+      "questions": [
+        {
+          "id": "q-git-plugin",
+          "about": "plug-git",
+          "prompt": "Is repo-cleaner the `git` plugin, or a separate engine that host-cleaner calls?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "as-plugin",
+              "title": "The `git` plugin, through a library API",
+              "detail": "Recommended. One kind of integration; repo-cleaner exposes `candidatesOf` and `removeCandidate` and keeps its CLI and safety model. Cost: the plugin holds state between `discover` and `object`, and the archive step does not fit per-candidate `prepare` cleanly (q-prepare-fail)."
+            },
+            {
+              "id": "engine",
+              "title": "A separate engine, plugins around it",
+              "detail": "host-cleaner runs repo-cleaner as it does today and plugins act on the other candidates and on its output. Keeps repo-cleaner untouched. Cost: it keeps the two layers: git candidates are special, and a second host cannot object to them the way the model intends."
+            }
+          ],
+          "recommended": "as-plugin"
+        }
+      ]
+    },
+    {
+      "id": "q3",
+      "type": "question",
+      "questions": [
+        {
+          "id": "q-scope",
+          "about": "code-says-1",
+          "prompt": "Does the run have a scope phase before discover, or only discover?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "scope",
+              "title": "A scope step: plugins add roots to look in, then discover runs with the roots",
+              "detail": "Recommended. Orca's `orca repo list` is a root, not a candidate, and cargo and node need git's roots. Cost: one more phase and one more method (`scope`), and a rule that scope is the only place a plugin may add a repository."
+            },
+            {
+              "id": "discover-only",
+              "title": "Discover only; every plugin works out its own roots from `ctx.targets`",
+              "detail": "No new phase, and `checkoutsOf` already works this way. Cost: Orca's repositories cannot be added, so `host-cleaner` with no target would sweep only the working directory, which drops PR 946's discovery. Each plugin repeats root-finding."
+            },
+            {
+              "id": "two-pass",
+              "title": "Two discover passes: the second sees the first pass's candidates",
+              "detail": "Cargo and node discover from git's worktree candidates. Cost: a hidden order between plugins (which pass a plugin is in), which is the thing the model removes."
+            }
+          ],
+          "recommended": "scope"
+        }
+      ]
+    },
+    {
+      "id": "q4",
+      "type": "question",
+      "questions": [
+        {
+          "id": "q-levels",
+          "about": "rules",
+          "prompt": "Objection levels: only `refuse` and `protest`, or also a non-gating `note`?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "two",
+              "title": "Only refuse and protest",
+              "detail": "The smallest model. Cost: `annotate` can add notes to a row today (orca's \"Orca manages this worktree, id, N terminals\"), and the preview and report would lose them."
+            },
+            {
+              "id": "note",
+              "title": "Add `note`",
+              "detail": "Recommended. A `note` never gates and never needs granting; it only shows in the report and preview. It keeps what `annotate` notes do today for the cost of one enum value. No `info` level: it would be a second name for the same thing."
+            },
+            {
+              "id": "note-info",
+              "title": "Add `note` and `info`",
+              "detail": "Splits \"worth reading\" from \"FYI\". No use for the split exists in the code today."
+            }
+          ],
+          "recommended": "note"
+        }
+      ]
+    },
+    {
+      "id": "q5",
+      "type": "question",
+      "questions": [
+        {
+          "id": "q-dupes",
+          "about": "rules",
+          "prompt": "Two plugins propose a candidate with the same id. What happens?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "owner-by-kind",
+              "title": "The kind has one registered owner; any other plugin proposing it is an error",
+              "detail": "Recommended. `git` owns worktree, branch and remote; cargo owns its artifact kinds. A plugin that proposes a kind it does not own is a bug caught at once, as `checkRow` already refuses a kind that is repo-cleaner's (`src/sweep.ts`). A duplicate id from the right owner is refused too."
+            },
+            {
+              "id": "refuse",
+              "title": "Refuse both, report an ambiguity",
+              "detail": "The behaviour today for two adapters with one id (`bad-row`), but as a run-level error. Simple, but a second worktree host that listed the same worktree would block that worktree for everyone."
+            },
+            {
+              "id": "merge",
+              "title": "Merge them: union the evidence, keep the first as owner",
+              "detail": "Lets two plugins discover the same thing. Cost: \"first\" is order again, and merging evidence means the fingerprint is the union of two views."
+            }
+          ],
+          "recommended": "owner-by-kind"
+        }
+      ]
+    },
+    {
+      "id": "q6",
+      "type": "question",
+      "questions": [
+        {
+          "id": "q-prepare-fail",
+          "about": "code-says-1",
+          "prompt": "When a plugin's `prepare` throws, what stops?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "candidate",
+              "title": "Only that candidate's delete; the run continues; a `FatalRun` error type stops the whole run",
+              "detail": "Recommended. A failed terminal close on one worktree should not stop the run, and the receipt records it as failed. The git plugin's archive push throws `FatalRun`, which keeps `q-archive-failure`'s \"stop all\" answer."
+            },
+            {
+              "id": "run",
+              "title": "Stop the whole run on any prepare failure",
+              "detail": "Safe and simple. A single stuck Orca terminal then blocks every other candidate on every unattended run."
+            },
+            {
+              "id": "continue",
+              "title": "Continue and delete anyway",
+              "detail": "`prepare` becomes advisory. Cost: orca would delete a worktree with its terminals still open when the close failed, which is what the hook exists to prevent."
+            }
+          ],
+          "recommended": "candidate"
+        }
+      ]
+    },
+    {
+      "id": "q7",
+      "type": "question",
+      "questions": [
+        {
+          "id": "q-veto",
+          "about": "phases",
+          "prompt": "May a plugin veto during `prepare`, after the re-check?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "no",
+              "title": "No: objections belong to `object`; a throw in `prepare` is a failure, not a veto",
+              "detail": "Recommended. One place for a \"no\", and it is the one that is re-run at re-check. The window between re-check and delete is short, and each owner already re-verifies at delete time (`removeArtifact` re-gathers; the claude `execute` re-checks the process identity; repo-cleaner's `run` refuses a live process)."
+            },
+            {
+              "id": "yes",
+              "title": "Yes: a typed `Veto` that stops the candidate and is recorded as such",
+              "detail": "Catches a terminal opened in the gap. Cost: a second way to say no that the re-check does not see, and a reason a person cannot grant."
+            }
+          ],
+          "recommended": "no"
+        }
+      ]
+    },
+    {
+      "id": "q8",
+      "type": "question",
+      "questions": [
+        {
+          "id": "q-deleted-mode",
+          "about": "phases",
+          "prompt": "Is `deleted` a synchronous best-effort call, or an event log?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "sync",
+              "title": "Synchronous, best effort; failures go in the receipt",
+              "detail": "Recommended. The only consumer today is orca's forget. A stale Orca record left by a failure can be found by the next run's `discover` (q-orca-forget). No new store."
+            },
+            {
+              "id": "log",
+              "title": "An append-only event log that plugins consume",
+              "detail": "Closer to Kubernetes watch events; a plugin that was down catches up. Cost: a log file, an offset per plugin, a reader. The receipt already holds what was deleted; this would be a second record of it."
+            }
+          ],
+          "recommended": "sync"
+        }
+      ]
+    },
+    {
+      "id": "q9",
+      "type": "question",
+      "questions": [
+        {
+          "id": "q-orca-forget",
+          "about": "orca-forget",
+          "prompt": "How does Orca forget its record of a worktree git removed?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "verify",
+              "title": "Spike first: if `orca worktree rm` on the removed path works, use it in `deleted`",
+              "detail": "Recommended. It is the model as proposed. The help text does not say what `rm` does for a directory that is already gone, so it needs one test with a throwaway worktree before PR 946's replacement is written."
+            },
+            {
+              "id": "prepare-rm",
+              "title": "Orca's `prepare` removes the worktree through Orca; git's `delete` finds it gone and verifies",
+              "detail": "Works without knowing the answer. It is a takeover again, hidden in `prepare`, and git's checks before the removal (live process, unsafe force) would then run after Orca has acted."
+            },
+            {
+              "id": "own-kind",
+              "title": "Orca owns the deletion of its own worktrees, under an `orca-worktree` kind",
+              "detail": "Orca candidates are discovered by orca, with git's objections applied by git on the same path. Clean ownership. Cost: two candidates for one directory (q-dupes), or git must not propose worktrees Orca manages, which puts the claim problem back."
+            }
+          ],
+          "recommended": "verify"
+        }
+      ]
+    },
+    {
+      "id": "q10",
+      "type": "question",
+      "questions": [
+        {
+          "id": "q-relations",
+          "about": "code-says-1",
+          "prompt": "How do candidates relate: a branch freed by a worktree, an artifact inside a worktree?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "requires",
+              "title": "Owners declare `requires`; the core refuses a candidate whose requirement is refused, and deletes requirements' dependents first",
+              "detail": "Recommended. Keeps `holdFreedBranches`' rule without plugin order: a refused worktree holds its branch because the branch requires it. Cost: one field and one propagation step in the core."
+            },
+            {
+              "id": "paths",
+              "title": "No field: the core orders by path containment only; the git plugin holds branches itself",
+              "detail": "Less to specify. But the git plugin cannot see Orca's refusal of a worktree in the same pass, so a branch could go while its worktree is held. Git itself refuses to delete a branch checked out in a worktree, so the failure is a failed delete, not data loss."
+            },
+            {
+              "id": "rounds",
+              "title": "Run `object` repeatedly until no new objection appears",
+              "detail": "Plugins see each other's objections, so git can react to Orca. Still order-independent, since objections only grow. Cost: it makes `object` a fixpoint, with the cost and the termination rule that implies."
+            }
+          ],
+          "recommended": "requires"
+        }
+      ]
+    },
+    {
+      "id": "q11",
+      "type": "question",
+      "questions": [
+        {
+          "id": "q-rewrite-timing",
+          "about": "migration",
+          "prompt": "Rewrite the stack to the plugin model now, or merge it as built and migrate after?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "now",
+              "title": "Rewrite before merging, keeping the PR order and the parts that survive",
+              "detail": "Recommended. Nothing is merged, so no user or scheduled job depends on the contract, and there is one migration (none) rather than two. The CLI, artifact layer, auto and schedule carry over, and the review the stack already has stays useful for them. Cost: delay, and the 943 review is thrown away."
+            },
+            {
+              "id": "merge-first",
+              "title": "Merge 943 to 948 as built, then migrate in follow-up PRs",
+              "detail": "The tool exists sooner and the Orca terminal problem is solved by the takeover. Cost: the contract ships and has to change under the first scheduled job, with a deprecation for the hook names; the rewrite is then a breaking change of a package with users."
+            },
+            {
+              "id": "split",
+              "title": "Merge the parts that do not touch the contract now (CLI 944, artifact rows 945 without orca), rewrite the rest",
+              "detail": "Gets part of the stack in. Cost: 944 and 945 are built on the `HostAdapter` types, so they merge in a form that changes in the next PR; a half-merged package with a CLI that cannot run orca."
+            }
+          ],
+          "recommended": "now"
+        }
+      ]
+    },
+    {
+      "id": "q12",
+      "type": "question",
+      "questions": [
+        {
+          "id": "q-supersede",
+          "about": "supersede-note",
+          "prompt": "How should the existing review's superseded questions be handled, and should \"adapter\" become \"plugin\" everywhere?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "close-and-rename",
+              "title": "Close the four superseded questions with a resolution that points here once this review is approved; rename to \"plugin\" (flags `--plugin` and `--no-plugin`, config `plugins.<name>`)",
+              "detail": "Recommended. The old answers stay on record. The rename costs a flag alias in a CLI that is unmerged, so there is nothing to deprecate. `--adapter` can stay as an alias."
+            },
+            {
+              "id": "close-keep-name",
+              "title": "Close the four, keep the word \"adapter\"",
+              "detail": "Less churn. Cost: the interface is a plugin and the flags say adapter."
+            },
+            {
+              "id": "wait",
+              "title": "Hold the old review until this one is decided",
+              "detail": "Avoids answering four questions twice. Cost: the other 18 questions wait on a decision they do not depend on."
+            }
+          ],
+          "recommended": "close-and-rename"
+        }
+      ]
+    }
+  ]
+}
