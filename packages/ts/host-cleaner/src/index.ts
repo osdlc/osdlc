@@ -79,3 +79,26 @@ export {
   type OrcaOptions,
   type OrcaWorktree,
 } from './orca.ts'
+export {
+  cleanedIds,
+  leftForReview,
+  measureRows,
+  renderAutoReport,
+  selectUnattended,
+  type AutoReport,
+  type CleanedRow,
+  type LeftRow,
+} from './auto.ts'
+export {
+  DEFAULT_EVERY_HOURS,
+  SCHEDULE_LABEL,
+  installSchedule,
+  parseEvery,
+  plistPath,
+  renderPlist,
+  scheduleStatus,
+  uninstallSchedule,
+  type PlistSpec,
+  type ScheduleEnv,
+  type ScheduleStatus,
+} from './schedule.ts'
