@@ -59,7 +59,7 @@ function externalGroupLabel(ecosystem: Ecosystem): string {
  */
 const GROUP_COLLISION_WARNING = 'id collision: directory'
 
-/** The order `Ecosystem`'s derived `Ord` gives on the Rust side. */
+/** The order the Rust peer's derived `Ord` on `Ecosystem` must give. */
 const ECOSYSTEM_RANK: Record<Ecosystem, number> = { node: 0, rust: 1 }
 
 /**
@@ -145,7 +145,7 @@ export function applyContainment(graph: DependencyGraph, options: ContainmentOpt
 
   // ── materialize the surviving groups ─────────────────────────────────
   const tree = new Set<string>([...dirOwner.keys(), ...groupDirs])
-  // Sorted, because the Rust reference holds these in a BTreeSet and both id
+  // Sorted, because the Rust peer must hold these in a BTreeSet and both id
   // claiming and node order depend on the traversal.
   const sortedGroupDirs = [...groupDirs].sort(byteCompare)
   const groupIds = new Map<string, string>()

@@ -4,10 +4,8 @@
  * workspace root, a Nuxt layer, a binary, and one deliberately malformed
  * manifest.
  *
- * The fixture tree is the `system-model` crate's — this suite and
- * `cargo test -p system-model` walk the SAME directories and assert the same
- * contract, which is the whole drift gate between the two implementations. A
- * change to one that the other does not match fails here.
+ * The fixture tree is shared with the Rust peer, which arrives in a later
+ * change and will walk the SAME directories and assert the same contract.
  */
 
 import { beforeAll, describe, expect, test } from 'vitest'

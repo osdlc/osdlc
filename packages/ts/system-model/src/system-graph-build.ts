@@ -2,7 +2,7 @@
  * The `SystemGraph` wire payload: a walk of one project, flattened into the
  * shape the system-graph viewer reads.
  *
- * Peer of the `system-model` Rust crate's `system_graph` module.
+ * Peer of the Rust `system_graph` module, which arrives in a later change.
  * The shape itself is `@osdlc/system-model`'s; what lives here is the walk
  * that fills it in.
  *
@@ -29,7 +29,7 @@ export type { SystemEdge, SystemGraph, SystemNode } from './graph.ts'
 export interface SystemGraphOptions {
   /** Also materialise the registry packages the project depends on. */
   includeExternal?: boolean
-  /** Additional directory names to skip, merged with `DEFAULT_EXCLUDES`. */
+  /** Passed through to `walkManifests`. */
   walk?: WalkOptions
 }
 
@@ -79,7 +79,10 @@ export async function buildSystemGraph(
 ): Promise<SystemGraph> {
   const includeExternal = options.includeExternal ?? false
   const absolute = resolve(root)
-  const info = await stat(absolute).catch(() => null)
+  const info = await stat(absolute).catch((e: NodeJS.ErrnoException) => {
+    if (e.code === 'ENOENT' || e.code === 'ENOTDIR') return null
+    throw new Error(`cannot read ${absolute}: ${e.message}`, { cause: e })
+  })
   if (info === null || !info.isDirectory()) {
     throw new Error(`not a directory: ${absolute}`)
   }

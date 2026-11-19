@@ -6,8 +6,8 @@
  * `@osdlc/system-model`'s `EvidenceKind`), looks at one thing, and returns
  * what it saw — never a verdict without the reason for it.
  *
- * PARITY IS THE CONSTRAINT. The `system-model` crate runs the same scanners
- * in the same order and must produce byte-identical output, so:
+ * PARITY IS THE CONSTRAINT. The Rust peer, when it lands, must run the same scanners
+ * in the same order and produce byte-identical output, so:
  *
  *   - scanners are ordered by tier, then by registration order, and evidence
  *     is emitted in that order;

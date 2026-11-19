@@ -98,3 +98,14 @@ test('a manifest with an empty name is labelled by its directory', async () => {
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('a root that is missing or is a file is reported as not a directory', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'sg-notdir-'))
+  try {
+    writeFileSync(join(root, 'f'), '')
+    await expect(buildSystemGraph(join(root, 'nope'))).rejects.toThrow('not a directory')
+    await expect(buildSystemGraph(join(root, 'f'))).rejects.toThrow('not a directory')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
