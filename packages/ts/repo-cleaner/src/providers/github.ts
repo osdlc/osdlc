@@ -40,6 +40,8 @@ export const OPEN_PR_LIMIT = 1000
  * a repository the signed-in account cannot see, throws with `gh`'s reason.
  */
 export function githubProvider(gh: Gh): PrProvider {
+  // Fork status per repository: it does not change between one listing and the next.
+  const parents = new Map<string, string | null>()
   return {
     name: 'github',
     words: { tool: 'gh', noun: 'PR', listing: 'gh pr list' },
@@ -71,11 +73,20 @@ export function githubProvider(gh: Gh): PrProvider {
       if (branch !== undefined && all.truncated) {
         incomplete.push(`more than ${PR_LIMIT} PRs have the head ${branch}`)
       }
-      const parent = target.project === null ? null : parentOf(client)
-      if (parent !== null) {
-        incomplete.push(
-          `the repository is a fork of ${parent}, and PRs from it to ${parent} are not listed`,
-        )
+      if (target.project !== null) {
+        const key = `${target.host ?? ''}/${target.project}`
+        let parent = parents.get(key)
+        if (parent === undefined) {
+          parent = parentOf(client)
+          parents.set(key, parent)
+        }
+        if (parent === 'unknown') {
+          incomplete.push('whether the repository is a fork could not be read')
+        } else if (parent !== null) {
+          incomplete.push(
+            `the repository is a fork of ${parent}, and PRs from it to ${parent} are not listed`,
+          )
+        }
       }
 
       const prs: PRInfo[] = []
@@ -98,11 +109,11 @@ export function githubProvider(gh: Gh): PrProvider {
   }
 }
 
-/** The parent's `owner/name` when the client's repository is a fork; null when it is not, or could not be read. */
+/** The parent's `owner/name` when the client's repository is a fork; null when it is not; `'unknown'` when it could not be read. */
 function parentOf(client: Gh): string | null {
   const answer = client.api('repos/{owner}/{repo}')
   const body = answer.body
-  if (!answer.ok || typeof body !== 'object' || body === null) return null
+  if (!answer.ok || typeof body !== 'object' || body === null) return 'unknown'
   const { fork, parent } = body as { fork?: unknown; parent?: { full_name?: unknown } | null }
   if (fork !== true) return null
   return typeof parent?.full_name === 'string' ? parent.full_name : 'its parent'

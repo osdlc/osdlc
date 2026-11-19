@@ -93,8 +93,14 @@ export function cannedGh(
         const wanted = rows.filter((r) => state !== 'open' || r.state === 'OPEN')
         return ok(JSON.stringify(wanted.slice(0, limit)))
       }
-      if (argv[0] === 'api' && opts.fork !== undefined) {
-        return ok(JSON.stringify({ fork: true, parent: { full_name: opts.fork } }))
+      if (argv[0] === 'api') {
+        return ok(
+          JSON.stringify(
+            opts.fork === undefined
+              ? { fork: false }
+              : { fork: true, parent: { full_name: opts.fork } },
+          ),
+        )
       }
       return { exitCode: 1, stdout: '', stderr: 'not canned' }
     },
