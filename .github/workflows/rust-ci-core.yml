@@ -442,7 +442,7 @@ jobs:
         id: msrv
         run: |
           set -euo pipefail
-          v="$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml)"
+          v="$(sed -n 's/^rust-version *= *"\([^"]*\)".*$/\1/p' Cargo.toml)"
           if [ -z "$v" ]; then
             echo "::error::no rust-version in $(pwd)/Cargo.toml"
             exit 1
