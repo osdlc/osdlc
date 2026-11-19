@@ -373,7 +373,7 @@ function pushRevAndPaths(
  * The `git diff` flags that pin patch text against the user's git settings:
  * no colour codes, no external diff tool, no textconv conversion, the `a/`
  * and `b/` prefixes, paths that are not cut to the cwd, a submodule change as
- * a `Subproject commit` patch, and three lines of context.
+ * a `Subproject commit` patch. The context is {@link unifiedArg}'s.
  */
 const PLAIN_PATCH: readonly string[] = [
   '--no-color',
@@ -388,7 +388,11 @@ const PLAIN_PATCH: readonly string[] = [
 /** The lines of context {@link diffText} and {@link diffAddedFile} print by default. */
 const DEFAULT_CONTEXT = 3
 
-/** `--unified=<n>`, for a context of `n` lines; `n` must be a non-negative safe integer. */
+/**
+ * `--unified=<context>`, or the default when `context` is undefined. Throws
+ * `TypeError` when `context` is not a non-negative safe integer; `verb` names
+ * the caller in the message.
+ */
 function unifiedArg(verb: string, context: number | undefined): string {
   const n = context ?? DEFAULT_CONTEXT
   if (!Number.isSafeInteger(n) || n < 0) {
@@ -1451,8 +1455,7 @@ export interface DiffAddedFileOptions {
  * {@link diffNameOnly} selects the same paths except under `diff.relative`,
  * which it still follows.
  *
- * The text is a plain unified diff with `a/` and `b/` prefixes and three
- * lines of context. The flags that are always passed turn off colour codes
+ * The text is a plain unified diff with `a/` and `b/` prefixes. The flags that are always passed turn off colour codes
  * (`color.ui`, `color.diff`), an external diff tool (`diff.external`, a
  * `diff.<driver>.command`), textconv conversion, other prefixes
  * (`diff.noprefix`, `diff.mnemonicPrefix`, `diff.srcPrefix`,

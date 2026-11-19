@@ -318,7 +318,7 @@ prints `-` there and a fabricated `0` would be worse than nothing.
 ## Diff output and the user's git configuration
 
 `diffText` and `diffAddedFile` return a plain unified diff with `a/` and `b/`
-prefixes and three lines of context. Both always pass `--no-color`,
+prefixes and, by default, three lines of context. Both always pass `--no-color`,
 `--no-ext-diff`, `--no-textconv`, `--src-prefix=a/`, `--dst-prefix=b/`,
 `--no-relative`, `--submodule=short` and `--unified=3`; `context: n` (both
 verbs) changes the last to `--unified=<n>`, so `context: 0` gives the changed

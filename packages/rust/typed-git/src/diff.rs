@@ -297,6 +297,10 @@ fn has_error_line(stderr: &[u8]) -> bool {
         .any(|line| line.starts_with("error:") || line.starts_with("fatal:"))
 }
 
+/// The lines of context [`diff_text`] prints when [`DiffTextOptions::context`]
+/// is unset.
+const DEFAULT_CONTEXT: u32 = 3;
+
 /// The unified diff (`git diff --no-color --no-ext-diff --no-textconv
 /// --src-prefix=a/ --dst-prefix=b/ --no-relative --submodule=short
 /// --unified=<context> [--cached] [--binary] [-M] [rev] [--] [paths]`). `--` is passed
@@ -310,8 +314,7 @@ fn has_error_line(stderr: &[u8]) -> bool {
 /// invalid bytes replaced, so a patch of a file that is not UTF-8 may not
 /// apply.
 ///
-/// The text is a plain unified diff with `a/` and `b/` prefixes and three
-/// lines of context. The flags that are always passed turn off escape codes
+/// The text is a plain unified diff with `a/` and `b/` prefixes. The flags that are always passed turn off escape codes
 /// (`color.ui`, `color.diff`), an external diff tool (`diff.external`, a
 /// `diff.<driver>.command`), textconv conversion, other prefixes
 /// (`diff.noprefix`, `diff.mnemonicPrefix`, `diff.srcPrefix`,
@@ -338,7 +341,7 @@ pub fn diff_text(
     rev: Option<&str>,
     opts: &DiffTextOptions,
 ) -> Result<String, GitError> {
-    let unified = format!("--unified={}", opts.context.unwrap_or(3));
+    let unified = format!("--unified={}", opts.context.unwrap_or(DEFAULT_CONTEXT));
     let mut args = vec![
         "diff",
         "--no-color",
