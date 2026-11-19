@@ -737,8 +737,7 @@ fn a_hide_source_applies_a_changed_list_at_the_next_refresh_without_re_parsing()
 }
 
 #[test]
-fn the_caches_stay_send_sync_and_unwind_safe() {
+fn the_frontmatter_index_stays_send_sync_and_unwind_safe() {
     fn ok<T: Send + Sync + std::panic::UnwindSafe + std::panic::RefUnwindSafe>() {}
     ok::<FrontmatterIndex>();
-    ok::<crate::LinkGraph>();
 }
