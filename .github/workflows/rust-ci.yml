@@ -188,9 +188,7 @@ jobs:
           # shellcheck disable=SC2086 # one flag per word
           cargo package --workspace --locked $unpublished
 
-  # The format check; clippy and the tests per OS (`cfg(unix)` and
-  # `cfg(windows)` code is only linted on its own OS), Windows included and
-  # gating; and the tests on the workspace `rust-version`.
+  # windows-latest is in `os`, not `windows: 'true'`, so it gates here.
   core:
     needs: changes
     if: needs.changes.outputs.rust == 'true'

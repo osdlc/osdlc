@@ -1,4 +1,4 @@
-# The checks every Cargo workspace gets: the format check, then clippy and the
+# The checks every Cargo workspace gets: the format check, and clippy and the
 # tests on each runner OS, and, when asked, the same on Windows without gating
 # and the tests on the workspace `rust-version` (MSRV).
 #
@@ -36,8 +36,8 @@
 #   RUST_CI_NODE_VERSION   Node to install, if the build or tests need it
 #   RUST_CI_BUN_VERSION    Bun to install: a version, or a file to read it from
 #                          (package.json, .bun-version, .tool-versions)
-#   RUST_CI_ENV            NAME=value pairs for every job's environment, one
-#                          per line. The only multi-line setting; `settings`
+#   RUST_CI_ENV            NAME=value pairs for each build job's environment,
+#                          one per line. The only multi-line setting; `settings`
 #                          passes it on as one JSON line.
 #   RUST_CI_TIMEOUT        minutes for each build job; default 60
 #   RUST_CI_TEST_RUNNER    nextest (default: cargo nextest run, then cargo
@@ -45,9 +45,11 @@
 #                          or cargo (cargo test). nextest runs each test in
 #                          its own process, all binaries at once; test-args
 #                          are then nextest's (e.g. --run-ignored only, not
-#                          -- --ignored). Either way every test binary runs
-#                          and every failure is reported.
-#   RUST_CI_DEBUG          debug info for the dev and test profiles:
+#                          -- --ignored); they do not reach the doctests.
+#                          Either way every test binary runs and every
+#                          failure is reported.
+#   RUST_CI_DEBUG          debug info for the dev and test profiles (not in
+#                          the msrv job: older cargo rejects the named levels):
 #                          line-tables-only (default: file and line in
 #                          backtraces, smaller and faster to link and cache),
 #                          none, limited, full, or `profile` to keep what
@@ -64,7 +66,6 @@
 name: rust-ci-core
 
 on:
-  # Each input overrides the variable named in the header.
   workflow_call:
     inputs:
       workspace:
@@ -112,7 +113,7 @@ on:
         type: string
         default: ""
       env:
-        description: NAME=value lines for every job's environment. Default the variable RUST_CI_ENV.
+        description: NAME=value lines for each build job's environment. Default the variable RUST_CI_ENV.
         type: string
         default: ""
       timeout:
@@ -202,7 +203,7 @@ jobs:
           fi
           [ "$PACKAGES" != default ] || PACKAGES=
           [ "$LOCKED" = true ] && LOCKED=--locked || LOCKED=
-          # One matrix entry per OS; `optional` is the non-gating Windows one.
+          # `optional` marks the non-gating Windows entry.
           matrix="$(jq -cn --arg os "$OS" --argjson win "$([ "$WINDOWS" = true ] && echo true || echo false)" '
             {include: ([$os | splits(" +") | select(. != "") | {os: ., optional: false}]
               + (if $win then [{os: "windows-latest", optional: true}] else [] end))}')"
@@ -371,8 +372,8 @@ jobs:
           # shellcheck disable=SC2086 # one argument per word
           if [ "$RUNNER" = nextest ]; then
             cargo nextest run $PACKAGES $LOCKED --no-fail-fast --no-tests=pass $ARGS
-            # Doctests live in libraries; with a -p list, keep the packages
-            # that have one, since cargo test --doc refuses a binary-only one.
+            # cargo test --doc errors on a binary-only package, so with a -p
+            # list keep only the packages with a lib or proc-macro target.
             doc=$PACKAGES
             if [[ " $PACKAGES " == *" -p "* ]]; then
               libs=$(cargo metadata $LOCKED --no-deps --format-version 1 \
@@ -427,19 +428,14 @@ jobs:
           sparse-checkout-cone-mode: false
           persist-credentials: false
 
+      # As in `test`, minus the debug levels: a `rust-version` below 1.71
+      # rejects the named ones, and MSRV needs no backtraces.
       - name: Set up the environment
         working-directory: .
         env:
           JOB_ENV: ${{ needs.settings.outputs.env }}
-          DEBUG: ${{ needs.settings.outputs.debug }}
         run: |
           echo /.rust-ci-tools/ >> .git/info/exclude
-          # Before RUST_CI_ENV, so a CARGO_PROFILE_* line there wins. Set
-          # ahead of the cache step, whose key includes CARGO_* variables.
-          if [ "$DEBUG" != profile ]; then
-            echo "CARGO_PROFILE_DEV_DEBUG=$DEBUG" >> "$GITHUB_ENV"
-            echo "CARGO_PROFILE_TEST_DEBUG=$DEBUG" >> "$GITHUB_ENV"
-          fi
           jq -r '.[]' <<< "$JOB_ENV" >> "$GITHUB_ENV"
 
       - name: Read rust-version
@@ -489,7 +485,9 @@ jobs:
       - name: Test
         env:
           PACKAGES: ${{ needs.settings.outputs.packages }}
-          ARGS: ${{ needs.settings.outputs.test-args }}
+          # test-args are nextest's under the default runner, so cargo test
+          # gets them only when the runner is cargo.
+          ARGS: ${{ needs.settings.outputs.test-runner == 'cargo' && needs.settings.outputs.test-args || '' }}
         run: |
           # shellcheck disable=SC2086 # one argument per word
           cargo test $PACKAGES --locked --no-fail-fast $ARGS
