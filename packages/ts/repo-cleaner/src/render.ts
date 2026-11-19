@@ -102,10 +102,14 @@ function risksNote(row: Pick<Row, 'risks' | 'evidence'>): string {
   return `needs --allow ${names.join(', ')}`
 }
 
+/** What a row's size read gave: bytes, null when `du` could not say, undefined when none was read. */
+function sizeRead(row: Row): number | null | undefined {
+  return row.kind === 'worktree' ? row.evidence.sizeBytes : undefined
+}
+
 /** The bytes a row's size was read as; -1 when none was, so those rows follow the sized ones. */
 function sizeRank(row: Row): number {
-  const size = row.kind === 'worktree' ? row.evidence.sizeBytes : undefined
-  return typeof size === 'number' ? size : -1
+  return sizeRead(row) ?? -1
 }
 
 /** By kind, then verdict, then largest first (rows with a size read), then name. */
@@ -123,7 +127,7 @@ function sortRows(rows: readonly Row[]): Row[] {
 
 /** A row's size column: its size, `?` when `du` could not say, blank for a row with none. */
 function sizeCell(row: Row): string {
-  const size = row.kind === 'worktree' ? row.evidence.sizeBytes : undefined
+  const size = sizeRead(row)
   return size === undefined ? '' : size === null ? '?' : formatBytes(size)
 }
 
