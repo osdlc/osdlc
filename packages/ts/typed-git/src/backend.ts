@@ -174,6 +174,8 @@ export type GitRequest =
   | ({ kind: 'commitTree'; tree: string } & CommitTreeOptions)
   | ({ kind: 'hashObject'; content: string } & HashObjectOptions)
   | { kind: 'mktree'; entries: readonly MktreeEntry[] }
+  | { kind: 'readTree'; rev: string }
+  | { kind: 'writeTree' }
   // These requests reuse their verb's options type rather than restating its
   // fields. The option types live in `verbs.ts` beside the argv they build,
   // and a copy written out by hand would drift from it.
@@ -273,6 +275,8 @@ export interface GitResults {
   commitTree: string
   hashObject: string
   mktree: string
+  readTree: void
+  writeTree: string
   lsFiles: string[]
   lsFilesTagged: TaggedFile[]
   submodules: IndexSubmodule[]
@@ -417,6 +421,10 @@ function toVerb(request: Exclude<GitRequest, { kind: 'rawBytes' }>): GitVerb<unk
       return v.hashObject(request.content, request)
     case 'mktree':
       return v.mktree(request.entries)
+    case 'readTree':
+      return v.readTree(request.rev)
+    case 'writeTree':
+      return v.writeTree()
     case 'checkIgnore':
       return v.checkIgnore(request.relPaths)
     case 'checkIgnoreVerbose':

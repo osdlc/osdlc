@@ -203,6 +203,8 @@ failure. Without `--pick` it runs every row judged `delete`.
 | `--spare <row>` | Leave this row alone, and make sure it is what you saw. Repeatable. |
 | `--allow <risk>` | Accept this risk for every row that carries it. |
 | `--allow <risk>=<row>` | Accept it for that one row only. |
+| `--archive` | Before deleting, push unlanded work to an archive branch on the remote. See [Archive before delete](#archive-before-delete). |
+| `--archive-exclude <glob>` | With `--archive`, leave files matching the glob out of a worktree snapshot. Repeatable. |
 | `--plan <file\|->` | Run a saved plan instead of sweeping now (`-` reads stdin). Rows whose evidence changed since the plan are dropped, not deleted. |
 | `-y, --yes` | Do not ask. Without it, and with no terminal to ask on, `clean` refuses. |
 | `--dry-run` | Check and show the steps, then stop. |
@@ -225,6 +227,57 @@ Delete 2 items? [y/N]
 
 `clean` throws away anything typed while the sweep ran, so a key pressed
 early cannot answer the question, and says so when it did.
+
+### Archive before delete
+
+Deleting a worktree with uncommitted files, or a branch with unpushed commits,
+loses that work unless you allow `abandon-unmerged` or `discard-changes` and
+accept the loss. With `--archive`, the run's first step per repository pushes
+the work to the repository's own remote, checks with `ls-remote` that the
+branch is there, and only then deletes:
+
+1. Each accepted branch or remote branch with unlanded commits contributes its
+   tip. Each accepted worktree with unpushed commits contributes HEAD.
+2. Each accepted worktree with modified, staged or untracked files contributes
+   a snapshot commit, built in a temporary index (`GIT_INDEX_FILE`) on top of
+   HEAD, so the worktree's own index and files are not touched.
+3. One archive commit has the remote default branch's tree and, as parents,
+   the default branch's tip and everything contributed. Its message names the
+   source of each parent and the files left out.
+4. It is pushed to `refs/heads/archive/<repo>-local-<YYYY-MM-DD>`, with `-2`,
+   `-3` and so on when that branch exists. If the push or the check fails, the
+   run stops before any delete and the receipt is `failed` at the `archive`
+   step. The step records the ref, the sha and, for each parent, the rows it
+   holds.
+
+`--allow discard-archived` then takes the place of `abandon-unmerged` and
+`discard-changes` on a row whose work the archive holds. The row is still
+`review` and still runs only when picked. It keeps its own risk where the
+archive does not hold the work:
+
+- A worktree with a file the snapshot leaves out keeps `discard-changes`.
+  Left out: ignored files, secret-shaped files (`.env*`, `*.pem`, `*.key`,
+  `id_rsa*`, `id_ed25519*`), files matching `--archive-exclude`, and files
+  over 10 MiB (`maxFileBytes` in the library).
+- A worktree with submodule commits, stashes or files keeps `abandon-unmerged`
+  and `discard-changes`: the archive holds none of them. Neither does it hold
+  the worktree's stashes. A worktree whose directory is gone has nothing to
+  snapshot.
+
+An unattended run should not grant `discard-archived`.
+
+To restore from an archive, fetch it and read the parent that holds your work.
+The message of the archive commit lists the parents; the receipt records them:
+
+```sh
+git fetch origin archive/api-local-2026-11-19
+git log -1 --format=%B FETCH_HEAD            # which parent is which
+git worktree add ../restored FETCH_HEAD^2    # parent 2, a snapshot or a tip
+git branch spike/cache FETCH_HEAD^3          # or keep a parent as a branch
+```
+
+The archive commit needs a git identity; without one configured, it is
+written as `repo-cleaner`. Pruning old archive branches is not done here.
 
 ### Pick and spare
 
@@ -286,6 +339,7 @@ you approve them by name with `--allow`:
 | --- | --- |
 | `abandon-unmerged` | Commits not on the default branch and not captured by an exact-head merged PR, or a worktree's (or its submodules') commits and stashes that no remote has. `evidence.uniqueCommits` counts the commits. |
 | `discard-changes` | Uncommitted or untracked files in the worktree or any of its submodules. |
+| `discard-archived` | With `--archive`, stands for `abandon-unmerged` and `discard-changes` on a row whose work the archive holds. See [Archive before delete](#archive-before-delete). |
 | `confirm-open-pr` | The branch has an open pull request, or open pull requests could not be checked (the CLI is missing or signed out, or the listing failed) so one cannot be ruled out; deleting the remote branch closes it. |
 
 A worktree's submodules are part of it: one `--allow` on the worktree row
@@ -321,6 +375,7 @@ anything is swept; a row named two ways (a bare name and its id), and an
 | `--plan -` without `--yes` or `--dry-run` | stdin carries the plan, so nothing can ask |
 | `--yes` with `--dry-run` | One deletes without asking, the other deletes nothing |
 | `--receipt` with `--dry-run` | Nothing runs, so there is nothing to record |
+| `--archive-exclude` without `--archive`, or `--allow discard-archived` without `--archive` | There is no archive for them to act on |
 | `--offline` or `--provider` without `--remote` | Nothing is fetched or looked up without it |
 | `--remote` with an `--only` that leaves `remote` out | They ask for opposite things |
 | A remote URL target with `--only worktree` or `--only branch`, with `--offline`, or mixed with checkout targets | A remote URL has only remote branches, and it is fetched to be swept |
