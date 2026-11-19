@@ -1,12 +1,19 @@
 /**
- * The CLI as a function. It parses the arguments, runs the command and returns the exit code and
- * the output. It never exits the process or writes to the real streams. `./bin.ts` does that.
+ * The CLI: the three commands' work, as functions of the parsed flags, the command tree over them
+ * (`createApp`) and `runCli`, which runs the tree in-process. Each command returns the exit code
+ * and the output. None exits the process or writes to the real streams. `./bin.ts` does that.
+ *
+ * `validate`, `init` and `migrate` are declared on `@osdlc/cli-tool`'s command model. They are
+ * interactive commands: each prints its own text (`--format human|json|sarif` for `validate`), so
+ * they have no `--json` or `--output` form. `markdown-contract` alone prints the command list on
+ * stderr and exits 2.
  */
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { parseArgs } from 'node:util'
 
+import { captureContext, type FlagSpec } from '@osdlc/cli-tool'
+import { type App, type CommandContext, defineApp, defineCommand } from '@osdlc/cli-tool/command'
 import { stringify as stringifyYaml } from 'yaml'
 
 import {
@@ -23,21 +30,6 @@ import { assertLoads, isVersion2, migrateV1ToV2 } from '../declarative/migrate.j
 import { type CorpusConfig, runCorpus } from '../runner/index.js'
 import { formatHuman, formatJson, formatRunSummary, formatSarif } from './format.js'
 import { VERSION } from './version.generated.js'
-
-const USAGE = [
-  'usage: markdown-contract validate <path> [--format human|json|sarif]',
-  '       [--config <file>] | [--contract <file>] | [--contract <file> --path <dir> ...]',
-  '       [--glob <glob> ...] [--include <glob> ...] [--exclude <glob> ...]',
-  '',
-  '       markdown-contract init <dir> ... [--meta] [--depth <n>] [--relax] [--inline]',
-  '       [--out <dir>] [--force] [--dry-run] [--check]',
-  '       [--max-const-len <n>] [--min-const-examples <n>]',
-  '       [--glob <glob> ...] [--include <glob> ...] [--exclude <glob> ...]',
-  '',
-  '       markdown-contract migrate <file> ... [--write]',
-  '',
-  '       markdown-contract --version',
-].join('\n')
 
 /** One rule of a `CorpusConfig`: `include` and `exclude` globs and a contract. */
 type Rule = CorpusConfig['rules'][number]
@@ -66,126 +58,18 @@ export interface CliResult {
   stderr: string
 }
 
-/**
- * Parses the CLI flags. It is a separate function so `runCli` can name its return type
- * (`ReturnType<typeof parseCliArgs>`) for `parsed`.
- */
-function parseCliArgs(argv: string[]) {
-  return parseArgs({
-    args: argv,
-    options: {
-      format: { type: 'string' }, // human (default) | json | sarif
-      config: { type: 'string' },
-      contract: { type: 'string', multiple: true }, // a YAML contract (repeatable for pairs)
-      path: { type: 'string', multiple: true }, // the target dir paired with each --contract
-      glob: { type: 'string', multiple: true }, // same as --include, relative to the run folder
-      include: { type: 'string', multiple: true }, // include globs, relative to the run folder
-      exclude: { type: 'string', multiple: true }, // exclude globs, relative to the run folder
-      help: { type: 'boolean', short: 'h' },
-      version: { type: 'boolean' },
-      // `init` flags.
-      meta: { type: 'boolean' }, // one contract per folder, plus a config (default: one contract)
-      depth: { type: 'string' }, // folder depth for --meta (default 1; 0 means one contract)
-      relax: { type: 'boolean' }, // make the inferred contracts looser
-      inline: { type: 'boolean' }, // --meta only: one config with the contracts inline, no contracts/ files
-      out: { type: 'string' }, // where to write (default: the one root; cwd for several roots)
-      force: { type: 'boolean' }, // overwrite existing files (default: refuse)
-      'dry-run': { type: 'boolean' }, // print the files to stdout and write nothing
-      check: { type: 'boolean' }, // check that an existing config still accepts the files
-      'max-const-len': { type: 'string' }, // a longer string never becomes a const or enum value
-      'min-const-examples': { type: 'string' }, // docs a value needs to become a const
-      // `migrate` flag.
-      write: { type: 'boolean' }, // rewrite each file in place instead of printing it
-    },
-    allowPositionals: true,
-  })
-}
+/** The parsed flags of `validate`, `init` and `migrate`, as `commands.ts` declares them. */
+export type CliValues = ValidateFlags & InitFlags & { write?: boolean | undefined }
 
-/** The parsed flags, passed to each command. */
-type CliValues = ReturnType<typeof parseCliArgs>['values']
-
-/** The flags each command accepts. `--help` is handled before the command runs. */
-const COMMAND_FLAGS: Record<string, readonly string[]> = {
-  validate: ['format', 'config', 'contract', 'path', 'glob', 'include', 'exclude'],
-  init: [
-    'meta',
-    'depth',
-    'relax',
-    'inline',
-    'out',
-    'force',
-    'dry-run',
-    'check',
-    'max-const-len',
-    'min-const-examples',
-    'glob',
-    'include',
-    'exclude',
-  ],
-  migrate: ['write'],
-}
-
-/** A usage error for the first flag the command does not take, or `null` when all fit. */
-function checkFlags(command: string, values: CliValues): CliResult | null {
-  const allowed = COMMAND_FLAGS[command] ?? []
-  const stray = Object.keys(values).find((flag) => flag !== 'help' && !allowed.includes(flag))
-  if (stray === undefined) return null
-  return {
-    code: 2,
-    stdout: '',
-    stderr: `markdown-contract: --${stray} does not apply to ${command}\n${USAGE}`,
-  }
-}
-
-/**
- * Runs the `markdown-contract` command in-process: `argv` is what follows the command name, such
- * as `['validate', 'docs', '--format', 'json']`. It returns the exit code and the output instead
- * of printing them, and never exits the process.
- *
- * Commands: `validate` checks a folder against a config or a contract; `init` infers contracts
- * from a folder and writes them; `migrate` rewrites version 1 YAML contracts as version 2. `init`
- * and `migrate --write` write files. A `.js` or `.mjs` config is loaded with `import()`, which
- * runs its code.
- *
- * Exit codes: `0` success, `1` an error-level finding, `2` a usage or config error.
- *
- * @param opts.cwd The folder relative paths resolve against. Default: `process.cwd()`.
- * @experimental The CLI may change in a minor release.
- */
-export async function runCli(argv: string[], opts?: { cwd?: string }): Promise<CliResult> {
-  const cwd = opts?.cwd ?? process.cwd()
-
-  let parsed: ReturnType<typeof parseCliArgs>
-  try {
-    parsed = parseCliArgs(argv)
-  } catch (err) {
-    return {
-      code: 2,
-      stdout: '',
-      stderr: `markdown-contract: ${(err as Error).message}\n${USAGE}`,
-    }
-  }
-
-  const { values, positionals } = parsed
-
-  // `--help` → usage on stdout, exit 0. `--version` → `markdown-contract <version>` on stdout, exit 0. No args at all → usage on stderr, exit 2.
-  if (values.help) return { code: 0, stdout: USAGE, stderr: '' }
-  if (values.version) return { code: 0, stdout: `markdown-contract ${VERSION}`, stderr: '' }
-  if (positionals.length === 0) return { code: 2, stdout: '', stderr: USAGE }
-
-  const [command = '', ...rest] = positionals
-  if (!Object.hasOwn(COMMAND_FLAGS, command)) {
-    return {
-      code: 2,
-      stdout: '',
-      stderr: `markdown-contract: unknown command "${command}"\n${USAGE}`,
-    }
-  }
-  const stray = checkFlags(command, values)
-  if (stray) return stray
-  if (command === 'init') return runInit(cwd, rest, values)
-  if (command === 'validate') return runValidate(cwd, rest, values)
-  return runMigrate(cwd, rest, values.write === true)
+/** The flags `validate` reads. */
+export interface ValidateFlags {
+  format?: string | undefined
+  config?: string | undefined
+  contract?: string[] | undefined
+  path?: string[] | undefined
+  glob?: string[] | undefined
+  include?: string[] | undefined
+  exclude?: string[] | undefined
 }
 
 /**
@@ -193,12 +77,16 @@ export async function runCli(argv: string[], opts?: { cwd?: string }): Promise<C
  * formats the findings. `--contract` and `--config` both become one `CorpusConfig` for
  * `runCorpus`. Exit codes: `0` or `1` from `runCorpus`, `2` for a usage or config error.
  */
-async function runValidate(cwd: string, rest: string[], values: CliValues): Promise<CliResult> {
+export async function runValidate(
+  cwd: string,
+  rest: string[],
+  values: CliValues,
+): Promise<CliResult> {
   if (rest.length > 1) {
     return {
       code: 2,
       stdout: '',
-      stderr: `markdown-contract: validate takes one <path> (got ${rest.length})\n${USAGE}`,
+      stderr: `markdown-contract: validate takes one <path> (got ${rest.length})`,
     }
   }
   const format = values.format ?? 'human'
@@ -266,14 +154,14 @@ function validateRunArgs(
     return {
       code: 2,
       stdout: '',
-      stderr: `markdown-contract: use either --contract or --config, not both\n${USAGE}`,
+      stderr: `markdown-contract: use either --contract or --config, not both`,
     }
   }
   if (contracts.length === 0 && paths.length > 0) {
     return {
       code: 2,
       stdout: '',
-      stderr: `markdown-contract: --path requires a matching --contract\n${USAGE}`,
+      stderr: `markdown-contract: --path requires a matching --contract`,
     }
   }
   return null
@@ -356,12 +244,12 @@ function formatOutput(
  * be read, or is not a version 1 document, is also reported and skipped. The exit code is then 2.
  * A file that is already version 2 is noted on stderr and does not change the exit code.
  */
-function runMigrate(cwd: string, files: string[], write: boolean): CliResult {
+export function runMigrate(cwd: string, files: string[], write: boolean): CliResult {
   if (files.length === 0) {
     return {
       code: 2,
       stdout: '',
-      stderr: `markdown-contract: migrate needs at least one <file>\n${USAGE}`,
+      stderr: `markdown-contract: migrate needs at least one <file>`,
     }
   }
   const stdout: string[] = []
@@ -398,20 +286,20 @@ function runMigrate(cwd: string, files: string[], write: boolean): CliResult {
 }
 
 /** The flags `runInit` reads. */
-interface InitFlags {
-  meta?: boolean
-  depth?: string
-  relax?: boolean
-  inline?: boolean
-  out?: string
-  force?: boolean
-  'dry-run'?: boolean
-  check?: boolean
-  'max-const-len'?: string
-  'min-const-examples'?: string
-  glob?: string[]
-  include?: string[]
-  exclude?: string[]
+export interface InitFlags {
+  meta?: boolean | undefined
+  depth?: string | undefined
+  relax?: boolean | undefined
+  inline?: boolean | undefined
+  out?: string | undefined
+  force?: boolean | undefined
+  'dry-run'?: boolean | undefined
+  check?: boolean | undefined
+  'max-const-len'?: string | undefined
+  'min-const-examples'?: string | undefined
+  glob?: string[] | undefined
+  include?: string[] | undefined
+  exclude?: string[] | undefined
 }
 
 /** The config file name `init` writes and `--check` loads. */
@@ -445,12 +333,12 @@ const INIT_CONFIG_NAME = 'markdown-contract.yaml'
  * wins at each path, so later roots' configs are dropped. A summary (groups, files, warnings, self-check) goes to stdout.
  * Usage and config errors exit 2.
  */
-function runInit(cwd: string, roots: string[], flags: InitFlags): CliResult {
+export function runInit(cwd: string, roots: string[], flags: InitFlags): CliResult {
   if (roots.length === 0) {
     return {
       code: 2,
       stdout: '',
-      stderr: `markdown-contract: init needs at least one <dir>\n${USAGE}`,
+      stderr: `markdown-contract: init needs at least one <dir>`,
     }
   }
 
@@ -950,4 +838,179 @@ async function loadConfig(cwd: string, configFlag?: string): Promise<CorpusConfi
     )
   }
   return config as CorpusConfig
+}
+
+/** Writes what a command returned to `ctx.io`, a newline after each non-empty stream, and returns its exit code. */
+function emit(ctx: CommandContext, { code, stdout, stderr }: CliResult): number {
+  if (stdout) ctx.io.stdout(`${stdout}\n`)
+  if (stderr) ctx.io.stderr(`${stderr}\n`)
+  return code
+}
+
+/** The `--glob`, `--include` and `--exclude` flags, which `validate` and `init` share. */
+const scopeFlags = {
+  glob: {
+    kind: 'list',
+    valueName: 'glob',
+    help: 'Same as --include, relative to the run folder. Repeatable.',
+  },
+  include: {
+    kind: 'list',
+    valueName: 'glob',
+    help: 'Only files matching this glob, relative to the run folder. Repeatable.',
+  },
+  exclude: {
+    kind: 'list',
+    valueName: 'glob',
+    help: 'Skip files matching this glob, relative to the run folder. Repeatable.',
+  },
+} as const satisfies FlagSpec
+
+export const validateCommand = defineCommand({
+  interactive: true,
+  summary: 'Check a folder of markdown against a config or a contract.',
+  description:
+    'Runs the folder <path> (default: the current folder) against the config named by --config, ' +
+    'the default config file in it, or --contract (with --path for each, when several). A .js ' +
+    'or .mjs config is loaded with import(), which runs its code. The findings go to stdout in ' +
+    'the --format.',
+  positionals: [{ name: 'path', variadic: true, help: 'The folder to check.' }],
+  flags: {
+    format: {
+      kind: 'string',
+      valueName: 'format',
+      help: 'human (default), json or sarif.',
+    },
+    config: {
+      kind: 'string',
+      valueName: 'file',
+      help: 'The config file. Default: look in <path>.',
+    },
+    contract: {
+      kind: 'list',
+      valueName: 'file',
+      help: 'A YAML contract, instead of a config. Repeat it, with a --path each, for pairs.',
+    },
+    path: {
+      kind: 'list',
+      valueName: 'dir',
+      help: 'The folder checked by the --contract before it.',
+    },
+    ...scopeFlags,
+  },
+  exits: { 1: 'an error-level finding' },
+  examples: [
+    'validate docs --format json',
+    'validate --config markdown-contract.yaml',
+    'validate --contract task.yaml --path tasks --contract note.yaml --path notes',
+  ],
+  readOnly: true,
+  async run({ flags, positionals }, ctx) {
+    return emit(ctx, await runValidate(ctx.cwd, positionals, flags))
+  },
+})
+
+export const initCommand = defineCommand({
+  interactive: true,
+  summary: 'Infer contracts from existing markdown and write them.',
+  description:
+    'Infers a config and contracts from the markdown under each <dir> and writes them there ' +
+    '(or under --out), then checks that they accept the files. Refuses to overwrite a file ' +
+    'without --force. --check does not infer: it runs the existing config over the files and ' +
+    'exits 1 when they have drifted from it.',
+  positionals: [{ name: 'dir', variadic: true, help: 'A folder of markdown to infer from.' }],
+  flags: {
+    meta: {
+      kind: 'boolean',
+      help: 'One contract per folder, plus a config (default: one contract).',
+    },
+    depth: {
+      kind: 'string',
+      valueName: 'n',
+      help: 'Folder depth for --meta (default 1; 0 means one contract).',
+    },
+    relax: { kind: 'boolean', help: 'Make the inferred contracts looser.' },
+    inline: {
+      kind: 'boolean',
+      help: '--meta only: one config with the contracts inline, no contracts/ files.',
+    },
+    out: {
+      kind: 'string',
+      valueName: 'dir',
+      help: 'Where to write. Default: the one root; the current folder for several roots.',
+    },
+    force: { kind: 'boolean', help: 'Overwrite existing files.' },
+    'dry-run': { kind: 'boolean', help: 'Print the files to stdout and write nothing.' },
+    check: {
+      kind: 'boolean',
+      help: 'Check that an existing config still accepts the files; write nothing.',
+    },
+    'max-const-len': {
+      kind: 'string',
+      valueName: 'n',
+      help: 'A longer string never becomes a const or enum value.',
+    },
+    'min-const-examples': {
+      kind: 'string',
+      valueName: 'n',
+      help: 'The number of documents a value needs to become a const.',
+    },
+    ...scopeFlags,
+  },
+  exits: { 1: 'the scaffold rejects its own corpus, or --check found drift' },
+  examples: ['init docs', 'init docs --meta --dry-run', 'init docs --check'],
+  async run({ flags, positionals }, ctx) {
+    return emit(ctx, runInit(ctx.cwd, positionals, flags))
+  },
+})
+
+export const migrateCommand = defineCommand({
+  interactive: true,
+  summary: 'Rewrite version 1 YAML contracts as version 2.',
+  description:
+    'Prints each migrated file to stdout, or with --write rewrites each in place. With several ' +
+    'files and no --write, each document follows a --- line and a # <file> line. A file that is ' +
+    'already version 2 is noted on stderr and left alone.',
+  positionals: [{ name: 'file', variadic: true, help: 'A version 1 contract or config.' }],
+  flags: {
+    write: { kind: 'boolean', help: 'Rewrite each file in place instead of printing it.' },
+  },
+  examples: ['migrate task.contract.yaml', 'migrate contracts/*.yaml --write'],
+  async run({ flags, positionals }, ctx) {
+    return emit(ctx, runMigrate(ctx.cwd, positionals, flags.write))
+  },
+})
+
+/** The `markdown-contract` command tree. */
+export function createApp(): App {
+  return defineApp({
+    name: 'markdown-contract',
+    version: VERSION,
+    summary: 'Check markdown against contracts, and infer contracts from markdown.',
+    commands: { validate: validateCommand, init: initCommand, migrate: migrateCommand },
+  })
+}
+
+/** One output stream of a run, without its final newline. */
+const trimmed = (text: string): string => (text.endsWith('\n') ? text.slice(0, -1) : text)
+
+/**
+ * Runs the `markdown-contract` command in-process: `argv` is what follows the command name, such
+ * as `['validate', 'docs', '--format', 'json']`. It returns the exit code and the output instead
+ * of printing them, and never exits the process.
+ *
+ * Commands: `validate` checks a folder against a config or a contract; `init` infers contracts
+ * from a folder and writes them; `migrate` rewrites version 1 YAML contracts as version 2. `init`
+ * and `migrate --write` write files. A `.js` or `.mjs` config is loaded with `import()`, which
+ * runs its code.
+ *
+ * Exit codes: `0` success, `1` an error-level finding, `2` a usage or config error.
+ *
+ * @param opts.cwd The folder relative paths resolve against. Default: `process.cwd()`.
+ * @experimental The CLI may change in a minor release.
+ */
+export async function runCli(argv: string[], opts?: { cwd?: string }): Promise<CliResult> {
+  const ctx = captureContext(opts?.cwd === undefined ? {} : { cwd: opts.cwd })
+  const code = await createApp().run(argv, ctx)
+  return { code, stdout: trimmed(ctx.io.out), stderr: trimmed(ctx.io.err) }
 }

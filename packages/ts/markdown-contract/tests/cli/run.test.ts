@@ -39,10 +39,10 @@ describe('runCli — usage errors', () => {
   })
 
   test.each([
-    [['validate', CORPUS, '--config', CONFIG, '--write'], '--write does not apply to validate'],
-    [['validate', CORPUS, '--config', CONFIG, '--meta'], '--meta does not apply to validate'],
-    [['migrate', 'a.yaml', '--format', 'json'], '--format does not apply to migrate'],
-    [['init', CORPUS, '--contract', 'c.yaml'], '--contract does not apply to init'],
+    [['validate', CORPUS, '--config', CONFIG, '--write'], "unknown option '--write'"],
+    [['validate', CORPUS, '--config', CONFIG, '--meta'], "unknown option '--meta'"],
+    [['migrate', 'a.yaml', '--format', 'json'], "unknown option '--format'"],
+    [['init', CORPUS, '--contract', 'c.yaml'], "unknown option '--contract'"],
   ])('a flag from another command is rejected: %j', async (argv, message) => {
     const r = await runCli(argv, { cwd: CORPUS })
     expect(r.code).toBe(2)
@@ -58,7 +58,37 @@ describe('runCli — usage errors', () => {
   test('an unknown command name that is an Object property is still unknown', async () => {
     const r = await runCli(['toString'], { cwd: CORPUS })
     expect(r.code).toBe(2)
-    expect(r.stderr).toContain('unknown command "toString"')
+    expect(r.stderr).toContain("unknown command 'toString'")
+  })
+})
+
+describe('runCli — the command tree', () => {
+  test('a command takes --help: its usage on stdout, exit 0', async () => {
+    const r = await runCli(['validate', '--help'], { cwd: CORPUS })
+    expect(r.code).toBe(0)
+    expect(r.stdout).toContain('markdown-contract validate')
+    expect(r.stdout).toContain('--format')
+    expect(r.stderr).toBe('')
+  })
+
+  test('help names every command', async () => {
+    const r = await runCli(['--help'], { cwd: CORPUS })
+    for (const name of ['validate', 'init', 'migrate']) expect(r.stdout).toContain(name)
+  })
+
+  test('--json is refused: the commands print their own text', async () => {
+    const r = await runCli(['validate', CORPUS, '--config', CONFIG, '--json'], { cwd: CORPUS })
+    expect(r.code).toBe(2)
+    expect(r.stderr).toContain('interactive')
+  })
+
+  test('init and migrate without their argument exit 2', async () => {
+    const init = await runCli(['init'], { cwd: CORPUS })
+    expect(init.code).toBe(2)
+    expect(init.stderr).toContain('init needs at least one <dir>')
+    const migrate = await runCli(['migrate'], { cwd: CORPUS })
+    expect(migrate.code).toBe(2)
+    expect(migrate.stderr).toContain('migrate needs at least one <file>')
   })
 })
 

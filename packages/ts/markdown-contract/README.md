@@ -193,7 +193,11 @@ markdown-contract migrate old.contract.yaml --write
 ```
 
 Each command takes only its own flags. A flag from another command, or a second
-`validate` path, exits with 2. `migrate` loads each result before it prints or
+`validate` path, exits with 2. The commands are declared on
+[`@osdlc/cli-tool`'s command model](https://github.com/osdlc/osdlc/tree/main/packages/ts/cli-tool#readme),
+so `markdown-contract <command> --help` prints that command's flags, and
+`markdown-contract help` and `schema` list the tree. Each command prints its own
+text, so `--json` and `--output` are refused with exit 2; use `validate --format json`. `migrate` loads each result before it prints or
 writes it. A file that version 2 cannot load is reported and left alone, and
 the exit code is 2. With several files and no `--write`, each document follows
 a `---` line and a `# <file>` line. A file that is already version 2 is noted
@@ -203,7 +207,7 @@ enter `.git` or `node_modules` folders.
 Without `--config <file>` or `--contract <file>`, `validate` looks in the
 current folder for `markdown-contract.config.js`, `.mjs`, `.yaml` or `.yml`,
 then `markdown-contract.yaml` or `.yml`. `--glob`, `--include` and `--exclude`
-narrow the files. `markdown-contract --help` prints the full usage, and
+narrow the files. `markdown-contract --help` lists the commands, and
 `markdown-contract --version` prints `markdown-contract <version>`.
 
 `runCli(argv, { cwd })` from `@osdlc/markdown-contract/cli` runs the same
