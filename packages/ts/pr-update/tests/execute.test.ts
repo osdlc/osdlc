@@ -13,7 +13,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
@@ -1268,6 +1268,50 @@ describe('submodules in the update worktree', () => {
     if (out.status !== 'failed') throw new Error('unreachable')
     expect(out.reason).toMatch(/^submodule setup failed: /)
     expect(out.unrecorded).toBe(true)
+  })
+
+  /** Commit `build/out.txt` alone: the `commit` helper's `add -A` would also stage the checkout's HEAD. */
+  function editOut(text: string): void {
+    mkdirSync(join(fx.worker.dir, 'build'), { recursive: true })
+    writeFileSync(join(fx.worker.dir, 'build', 'out.txt'), `${text}\n`)
+    fx.worker.git.add(['build/out.txt'])
+    fx.worker.git.commit({ message: `${text} work` })
+  }
+
+  test('a pointer base moved is not restaged to the PR commit when an unrelated file conflicts', async () => {
+    const { git } = fx.worker
+    pin(s1, true)
+    git.push('origin', 'main')
+    git.checkout('main', { branch: 'sub-pr' })
+    editOut('pr')
+    git.push('origin', 'sub-pr')
+    // Main moves the pointer cleanly and edits the same generated file, which conflicts.
+    git.checkout('main')
+    editOut('main')
+    pin(s2)
+    git.push('origin', 'main')
+    git.fetch('origin')
+
+    git.worktreeAdd(wtRoot, { detach: true, startPoint: 'origin/main' })
+    try {
+      const wt = git.at(wtRoot)
+      const out = await updateOne(
+        wt,
+        target({ head: 'sub-pr' }),
+        settings({ resolvers: [{ paths: ['build/**'], run: 'regen' }] }),
+        (verb, cwd) => {
+          if (verb === 'regen') writeFileSync(join(cwd, 'build', 'out.txt'), 'regenerated\n')
+          return ok
+        },
+        { apply: false, worktree: wtRoot },
+      )
+      expect(out.status).toBe('updated')
+      expect(wt.rawChecked(['ls-tree', 'HEAD', 'deps/sub']).stdout + '').toContain(s2)
+    } finally {
+      git.try.worktreeRemove(wtRoot, { force: true })
+      git.try.worktreePrune()
+      git.try.deleteBranch(scratchBranch(wtRoot), { force: true })
+    }
   })
 
   test('both sides moving the pointer names the two commits', async () => {

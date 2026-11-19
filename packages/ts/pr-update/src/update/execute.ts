@@ -299,6 +299,20 @@ function populateSubmodules(git: Git): string | null {
 }
 
 /**
+ * Move the submodule checkouts to what the index pins, before an `add .` that would otherwise
+ * record each checkout's HEAD: a pointer the base moved cleanly while some other file
+ * conflicted would be restaged to the commit the PR had checked out. A pointer still
+ * conflicted is left alone, since git skips unmerged submodules. The failure reason, or null.
+ */
+function syncSubmodulesToIndex(
+  git: Git,
+  worktree: string,
+  settings: UpdateSettings,
+): string | null {
+  return submoduleState(git, worktree, settings) === null ? null : populateSubmodules(git)
+}
+
+/**
  * Name the two commits a submodule pointer conflict is between. A gitlink on both sides
  * has no built-in resolver, and "no resolver claims it" does not say which commit to pick.
  * In a rebase stage 2 is the base and stage 3 the PR's commit; in a merge, the reverse.
@@ -470,6 +484,8 @@ function rebaseThroughRungs(
     }
     const failure = rebuild(git, plans, settings, runVerb, worktree)
     if (failure !== null) return failed(failure)
+    const stale = syncSubmodulesToIndex(git, worktree, settings)
+    if (stale !== null) return failed(stale)
     try {
       // `.`, not only the conflicted paths. A generator can rewrite files
       // beyond the ones that conflicted, and leaving those unstaged would
@@ -576,6 +592,8 @@ async function integrateAndPush(
       if (!res.ok) return fail(res.reason)
       repaired.push({ kind: 'conflict', note: res.note })
     }
+    const stale = syncSubmodulesToIndex(git, opts.worktree, settings)
+    if (stale !== null) return fail(stale, true)
     try {
       // See `rebaseThroughRungs` for why the pathspec is `.`.
       git.add(['.'])
