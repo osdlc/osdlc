@@ -1,5 +1,14 @@
 # @osdlc/agent-seat
 
+## 0.8.1
+
+### Patch Changes
+
+- 0f4ff65: README: say why `engines.node` is `^22.22.2 || ^24.15.0 || >=26.0.0`. It is the range of the dependency `@osdlc/typed-git` (from its dependency `hosted-git-info`), and a package never declares a wider range than a dependency's. The range is unchanged.
+- Updated dependencies [b0ff1b3]
+- Updated dependencies [cb56f16]
+  - @osdlc/typed-git@0.18.0
+
 ## 0.8.0
 
 ### Minor Changes
