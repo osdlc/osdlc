@@ -156,7 +156,9 @@ export function harnessArgv(
   const build = Object.hasOwn(INTERACTIVE_ARGV, harness) ? INTERACTIVE_ARGV[harness] : undefined
   if (build === undefined) throw new Error(`'${harness}' has no interactive launch`)
   const bin = typeof binary === 'string' ? [binary] : binary
-  if (bin.length === 0) throw new Error('harnessArgv needs a binary')
+  if (bin.length === 0 || bin.some((w) => w === '')) {
+    throw new Error('harnessArgv needs a binary: a non-empty word, or a list of non-empty words')
+  }
   return build({
     bin,
     prompt,

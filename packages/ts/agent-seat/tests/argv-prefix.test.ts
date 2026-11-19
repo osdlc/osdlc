@@ -26,8 +26,10 @@ describe('harnessArgv with a launcher prefix', () => {
     ])
   })
 
-  test('an empty prefix throws', () => {
+  test('an empty binary, empty prefix or empty word throws', () => {
     expect(() => harnessArgv('claude', [], 'p')).toThrow(/needs a binary/)
+    expect(() => harnessArgv('claude', '', 'p')).toThrow(/needs a binary/)
+    expect(() => harnessArgv('claude', ['npx', ''], 'p')).toThrow(/needs a binary/)
   })
 
   test('harnessAvailable looks up the first word', () => {
