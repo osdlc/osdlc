@@ -80,6 +80,9 @@ interface LockInput {
   ageMs: number
 }
 
+/** A marker's lock text, or that and how long ago the marker was created, when not just now. */
+type MarkerInput = Raw | { raw: Raw; ageMs: number }
+
 /** A lock file younger than this counts as fresh. */
 const FRESH_MS = 5_000
 
@@ -110,8 +113,13 @@ function setUp(input: Record<string, unknown>): { dir: string; lock: string } {
     const at = new Date(Date.now() - before.ageMs)
     utimesSync(lock, at, at)
   }
-  for (const marker of (input['markers'] as Raw[] | undefined) ?? []) {
-    writeFileSync(markerFor(lock, text(marker)), '')
+  for (const marker of (input['markers'] as MarkerInput[] | undefined) ?? []) {
+    const { raw, ageMs } =
+      typeof marker === 'object' && 'raw' in marker ? marker : { raw: marker, ageMs: 0 }
+    const file = markerFor(lock, text(raw))
+    writeFileSync(file, '')
+    const at = new Date(Date.now() - ageMs)
+    utimesSync(file, at, at)
   }
   return { dir, lock }
 }
