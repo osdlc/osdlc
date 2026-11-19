@@ -47,6 +47,10 @@ describe('window argv builders', () => {
     ])
   })
 
+  test('Terminal.app: newlines are escaped in the script literal', () => {
+    expect(terminalAppArgv("echo 'a\nb'")).toContain('do script "echo \'a\\nb\'"')
+  })
+
   test('Terminal.app: focus false drops activate; quotes and backslashes are escaped', () => {
     const argv = terminalAppArgv('echo "a\\b"', { focus: false })
     expect(argv).not.toContain('activate')

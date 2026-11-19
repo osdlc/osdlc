@@ -41,7 +41,7 @@ export interface WindowOpener {
 
 /** `text` as the body of an AppleScript string literal. */
 function appleScriptString(text: string): string {
-  return `"${text.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+  return `"${text.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r')}"`
 }
 
 /**
@@ -89,12 +89,12 @@ export function makeWindowHost(
   opts: {
     runner?: CommandRunner | undefined
     opener?: WindowOpener | undefined
-    /** The platforms the host runs on; default macOS only (the built-in opener's). */
-    platforms?: readonly NodeJS.Platform[] | undefined
+    /** The platforms the host runs on; default macOS for the built-in opener, any for a supplied one. */
+    platforms?: readonly NodeJS.Platform[] | 'all' | undefined
   } = {},
 ): Host {
   const opener = opts.opener ?? makeTerminalAppOpener()
-  const platforms = opts.platforms ?? ['darwin']
+  const platforms = opts.platforms ?? (opts.opener === undefined ? ['darwin'] : 'all')
   return {
     name: 'window',
     platforms,
@@ -106,8 +106,7 @@ export function makeWindowHost(
       const [bin] = argv
       if (bin === undefined) throw new Error('window opener returned an empty argv')
       const res = resolveRunner(bin, opts.runner).run(argv.slice(1), {
-        cwd: req.cwd,
-        timeoutMs: 30_000,
+        timeoutMs: 120_000,
       })
       if (!ran(res)) throw new Error(`opening a window failed: ${failureText(res)}`)
       return 0

@@ -9,7 +9,7 @@ terminal. Each of those places has its own CLI or protocol, its own way to
 name a pane, and its own failure modes. This package gives them one contract.
 
 - A **host** is one place a session can open. Ten are built in: `terminal`,
-  `tmux`, `wezterm`, `cmux`, `herdr`, `orca`, `otty`, `vscode` and `jetbrains`.
+  `tmux`, `wezterm`, `cmux`, `herdr`, `orca`, `otty`, `vscode`, `jetbrains` and `window`.
 - A **harness** is the agent CLI that runs in it: `claude`, `codex`, `cursor`,
   `pi` and `opencode` have an interactive launch.
 - The two are independent. Every host runs any harness, so where a session

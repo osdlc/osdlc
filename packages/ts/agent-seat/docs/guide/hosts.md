@@ -47,7 +47,7 @@ const host = makeWindowHost({
 ```
 
 The host keeps no state: it cannot find, focus, send to or close the window afterwards, and it
-cannot wait for the window's process to exit, so `wait` is ignored. The window's shell stays open
+cannot wait for the window's process to exit, so `wait` is ignored and the call returns 0 once the window is open. `focus: false` is not honoured either: Terminal may come to the front and, when it was not running, start with an empty window of its own. A supplied opener runs on any platform unless you pass `platforms`. The window's shell stays open
 after the command ends.
 
 ## `tmux`
