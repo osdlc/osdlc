@@ -11,7 +11,7 @@ import { mkdirSync, rmSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 
 import { atomicWrite } from '@osdlc/etag-write'
-import { EXIT, failWith, failureOf, type CliContext } from '@osdlc/cli-tool'
+import { EXIT, canPrompt, failWith, failureOf, type CliContext } from '@osdlc/cli-tool'
 import {
   CommandError,
   UsageError,
@@ -28,7 +28,13 @@ import { selectedCodeHostFor } from './code-host.ts'
 import { loadConfigLayers } from './config-file.ts'
 import { standalonePorts } from './defaults.ts'
 import { gitMissingFailure, preflight, type WhichSeam } from './preflight.ts'
-import { REPAIR_AGENTS, REPAIR_AGENT_SUMMARIES, type RepairAgent } from './repair/names.ts'
+import {
+  REPAIR_AGENTS,
+  REPAIR_AGENT_SUMMARIES,
+  REPAIR_MODES,
+  type RepairAgent,
+  type RepairMode,
+} from './repair/names.ts'
 import {
   SurveyUsageError,
   output as surveyOutputSchema,
@@ -180,10 +186,11 @@ function runEnv(
   ctx: CliContext,
   layers: ReturnType<typeof loadConfigLayers>,
   seams: CliSeams,
-  repairFlags: { agent: RepairAgent | null; command: string | null } = {
-    agent: null,
-    command: null,
-  },
+  repairFlags: {
+    agent: RepairAgent | null
+    command: string | null
+    mode: RepairMode | null
+  } = { agent: null, command: null, mode: null },
   remote = 'origin',
   notice: (line: string) => void = () => {},
 ): UpdateEnv {
@@ -191,10 +198,16 @@ function runEnv(
   const gh = seams.gh ?? spawnRunner('gh', { absolutePathOnly: true })
   const projectRoot = ctx.cwd
   const loaded = layers.merged.pr_update
-  const cfg =
-    repairFlags.agent === null && repairFlags.command === null
-      ? loaded
-      : { ...loaded, repair: { ...loaded.repair, ...repairFlags } }
+  const cfg = {
+    ...loaded,
+    repair: {
+      ...loaded.repair,
+      ...(repairFlags.agent === null && repairFlags.command === null
+        ? {}
+        : { agent: repairFlags.agent, command: repairFlags.command }),
+      ...(repairFlags.mode === null ? {} : { mode: repairFlags.mode }),
+    },
+  }
   return {
     projectRoot,
     dryRun: false,
@@ -402,6 +415,12 @@ export function updateCommand(seams: CliSeams) {
         valueName: 'cmd',
         help: 'Repair a conflict no resolver claims by running this shell command in the update worktree (request as JSON on stdin). Beats repair.agent and repair.command in config; not with --repair-agent.',
       },
+      repairMode: {
+        kind: 'enum',
+        choices: REPAIR_MODES,
+        valueName: 'mode',
+        help: "How the repair agent runs. headless (default) is unattended; interactive runs the agent's own CLI in this terminal (needs a terminal); terminal opens it in a detached tmux session and waits. Beats repair.mode in config. Needs a repair agent.",
+      },
       strategy: {
         kind: 'enum',
         choices: ['rebase', 'merge'] as const,
@@ -437,6 +456,7 @@ export function updateCommand(seams: CliSeams) {
       flags.trust === true ||
       flags.repairAgent !== undefined ||
       flags.repairCommand !== undefined ||
+      flags.repairMode !== undefined ||
       flags.report !== undefined
         ? 'cli-only'
         : 'all',
@@ -459,10 +479,17 @@ export function updateCommand(seams: CliSeams) {
       }
       // A repair chosen on the command line is the person's own consent. It
       // replaces whatever the project file names, which then never runs.
-      const repairFlag = flags.repairAgent !== undefined || flags.repairCommand !== undefined
+      // Either flag replaces both of the project's repair choices. The mode flag stands alone.
+      const consented: ('command' | 'agent' | 'mode')[] = [
+        ...(flags.repairAgent !== undefined || flags.repairCommand !== undefined
+          ? (['command', 'agent'] as const)
+          : []),
+        ...(flags.repairMode !== undefined ? (['mode'] as const) : []),
+      ]
       const refusal = await untrustedMessage({
         root: ctx.cwd,
-        project: repairFlag ? withoutRepairChoice(layers.project) : layers.project,
+        project:
+          consented.length > 0 ? withoutRepairChoice(layers.project, consented) : layers.project,
         local: layers.local,
         trust: flags.trust,
         env: ctx.env,
@@ -471,6 +498,10 @@ export function updateCommand(seams: CliSeams) {
         throw new CommandError(refusal, { exit: EXIT_UNTRUSTED, code: 'untrusted' })
       }
       checkStart(ctx, layers, seams, flags)
+      const mode = flags.repairMode ?? layers.merged.pr_update.repair.mode
+      if (flags.apply && mode === 'interactive' && !canPrompt()) {
+        throw new UsageError('repair mode interactive needs a terminal on stdin and stderr')
+      }
       const env: UpdateEnv = runEnv(
         ctx,
         layers,
@@ -478,6 +509,7 @@ export function updateCommand(seams: CliSeams) {
         {
           agent: flags.repairAgent ?? null,
           command: flags.repairCommand ?? null,
+          mode: flags.repairMode ?? null,
         },
         flags.remote,
         (line) => ctx.note(line),

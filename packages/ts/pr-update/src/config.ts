@@ -17,7 +17,7 @@ import { z } from 'zod'
 
 import { defineConfigSection, type ConfigKeyMeta } from '@osdlc/config-layers'
 
-import { REPAIR_AGENTS } from './repair/names.ts'
+import { REPAIR_AGENTS, REPAIR_MODES } from './repair/names.ts'
 
 /** The block's shape, bare of the section wrapper. */
 export const prUpdateConfigSchema = z
@@ -167,6 +167,12 @@ export const prUpdateConfigSchema = z
           .describe(
             'A built-in headless agent that does the repair: `claude`, `codex`, `cursor` or `pi`. It runs in the update worktree with file edits allowed and no prompts, under the same contract as `command`. The agent CLI must be installed and signed in. Trust-gated like `command`: an agent reads the repository and can run tools, so an untrusted repository must not start one. Null (the default) means no agent. Exclusive with `command`, checked on the merged config: a local overlay that sets `agent` over a project `command` must also set `command: null`.',
           ),
+        mode: z
+          .enum(REPAIR_MODES)
+          .default('headless')
+          .describe(
+            "How `agent` runs. `headless` (default) is one unattended call. `interactive` runs the agent's own CLI in this terminal with stdio inherited, so the person can answer it or stop it; it needs a terminal and a rehearsal-free `--apply`, and a PR is repaired one at a time. `terminal` opens the session in a detached tmux session (`tmux attach -t <name>`, named in the run's notes), waits for it to end, and needs tmux on PATH. The prompt is the same, given as the session's first message. After the session ends, the same checks as a headless repair decide the result, so quitting without a fix gives `conflict` or `failed`. A mode other than `headless` is trust-gated like `agent`. Only meaningful with `agent`.",
+          ),
         model: z
           .string()
           .trim()
@@ -195,6 +201,10 @@ export const prUpdateConfigSchema = z
       .strict()
       .refine((r) => r.command === null || r.agent === null, {
         message: '`repair.command` and `repair.agent` are mutually exclusive; set one',
+      })
+      .refine((r) => r.mode === 'headless' || r.command === null, {
+        message:
+          '`repair.mode` other than `headless` runs an agent; it cannot be used with `repair.command`',
       })
       .prefault({})
       .describe(

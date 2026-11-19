@@ -20,6 +20,7 @@ import { DETECT_LOOKED_FOR, detectVerifyCommand } from './detect.ts'
 import type { PrUpdateConfig, PrUpdateStandaloneConfig } from './config.ts'
 import type { Ports, Repair } from './ports.ts'
 import { agentRepair } from './repair/agents.ts'
+import { seatRepair } from './repair/seat.ts'
 import { attemptsDir, fileAttemptStore } from './update/attempts.ts'
 import { defaultLeaseTtlSeconds, refBranchLease } from './update/lease.ts'
 import { attemptsPrefix, refAttemptStore } from './update/ref-attempts.ts'
@@ -77,6 +78,7 @@ export function standalonePorts(
   const command = cfg?.repair.command ?? null
   const agent = cfg?.repair.agent ?? null
   const timeout = cfg?.repair.timeout_seconds ?? null
+  const mode = cfg?.repair.mode ?? 'headless'
   const testCommand = cfg?.test_command ?? null
   return {
     locate: () => null,
@@ -112,10 +114,18 @@ export function standalonePorts(
     },
     ...(agent !== null
       ? {
-          repair: agentRepair(agent, {
-            model: cfg?.repair.model ?? null,
-            timeoutSeconds: timeout,
-          }),
+          repair:
+            mode === 'headless'
+              ? agentRepair(agent, {
+                  model: cfg?.repair.model ?? null,
+                  timeoutSeconds: timeout,
+                })
+              : seatRepair(
+                  agent,
+                  mode,
+                  { model: cfg?.repair.model ?? null, timeoutSeconds: timeout },
+                  { notice },
+                ),
         }
       : command !== null
         ? { repair: commandRepair(command, timeout) }
