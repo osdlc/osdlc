@@ -182,6 +182,10 @@ rewritten after every step.
 host-cleaner [target...]   # the report; deletes nothing
 host-cleaner plan          # save the rows and their evidence, to run later
 host-cleaner clean         # check again, show the steps, ask, delete
+host-cleaner --auto        # clean the unattended subset, no person present
+host-cleaner schedule install [--every <hours>]   # a launchd agent that runs --auto
+host-cleaner schedule uninstall
+host-cleaner schedule status
 ```
 
 The options are repo-cleaner's (`--only`, `--format`, `--pick`, `--spare`,
@@ -199,8 +203,39 @@ Files live in the `host-cleaner` tier of `@osdlc/tiered-dirs`, moved by the
 | Directory | Holds |
 | --- | --- |
 | config | `config.json`: `targets` (swept when none is named) and `adapters` (settings by adapter name, read through `HostContext.config`); `--config <file>` reads another |
-| state | `receipts/`: a receipt for each `clean` run without `--receipt` |
+| state | `receipts/`: a receipt for each `clean` run without `--receipt` and each `--auto` run; `reports/`: one report per `--auto` run; `host-cleaner.lock` |
 | logs | `host-cleaner.log`: one JSON line per `clean` that ran |
+
+## Unattended runs
+
+`host-cleaner --auto` sweeps, picks the unattended subset by row id, cleans it
+with no `--allow`, and writes a report and a receipt to the state directory
+(`reports/` and `receipts/`). The subset is fixed:
+
+| Rows | Condition |
+| --- | --- |
+| `artifact` rows | `unattended` in their evidence: idle past the threshold (24 hours by default), nothing building in the checkout |
+| `worktree` rows | Verdict `delete` and no risk. A live process already makes a row `blocked`; Orca-managed worktrees go through Orca |
+
+Everything else is left for a person and listed in the report: branch rows
+(`delete` ones too), `review` rows, any row with a risk, and every session.
+`selectUnattended(sweep)` is the pure function that picks the ids. An empty
+selection runs nothing. The report says what was cleaned, what was left, and
+the bytes freed. The lock `host-cleaner.lock` in the state directory makes a
+second `--auto` that starts while one runs exit with code 0 and no work; a lock
+whose process is gone is taken over. `--auto` never grants `discard-archived`
+or any other risk.
+
+`host-cleaner schedule install` writes
+`~/Library/LaunchAgents/dev.osdlc.host-cleaner.plist`, which runs this node and
+this script with `--auto` every `--every` hours (default 6), and loads it with
+`launchctl bootstrap`. `uninstall` runs `launchctl bootout` and removes the
+file; `status` says whether the plist is there and launchd has it. macOS only,
+and `launchctl` runs through the command seam. Output goes to
+`host-cleaner-schedule.log` in the logs directory.
+
+When a general trigger service exists, register the same command,
+`host-cleaner --auto`, with it. Nothing about the run changes.
 
 ## Install
 

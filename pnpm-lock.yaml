@@ -835,6 +835,9 @@ importers:
       '@osdlc/detect-harness':
         specifier: workspace:^
         version: link:../detect-harness
+      '@osdlc/file-lock':
+        specifier: workspace:^
+        version: link:../file-lock
       '@osdlc/path-guard':
         specifier: workspace:^
         version: link:../path-guard

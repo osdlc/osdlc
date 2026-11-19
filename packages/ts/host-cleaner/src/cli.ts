@@ -15,7 +15,8 @@
  * sweep; 11 clean stopped at a failed step; the receipt says which.
  */
 
-import { appendFileSync, mkdirSync, readSync } from 'node:fs'
+import { appendFileSync, mkdirSync, readSync, realpathSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
 import {
@@ -29,14 +30,39 @@ import {
   type FlagSpec,
   type FlagValues,
 } from '@osdlc/cli-tool'
-import { KINDS, RepoCleanerError, render, type Kind, type RepoNote } from '@osdlc/repo-cleaner'
+import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
+import { claimLock, holderGone, releaseLock } from '@osdlc/file-lock'
+import {
+  KINDS,
+  RepoCleanerError,
+  render,
+  writeJsonAtomic,
+  type Kind,
+  type RepoNote,
+} from '@osdlc/repo-cleaner'
 import { stripControls } from '@osdlc/ux'
 
 import { HostCleanerError, type HostAdapter, type HostRow } from './adapter.ts'
+import {
+  cleanedIds,
+  failedIds,
+  leftForReview,
+  measureRows,
+  renderAutoReport,
+  selectUnattended,
+  type AutoReport,
+} from './auto.ts'
 import { hostCheck, hostRun, type HostApproval, type HostPreview } from './clean.ts'
 import { configFile, hostConfigOf, hostDirs, readConfig, type Config } from './config.ts'
 import type { HostOptions } from './options.ts'
 import { hostPlan, parseHostPlan, readHostPlan, writeHostPlan, type HostPlan } from './plan.ts'
+import {
+  installSchedule,
+  parseEvery,
+  scheduleStatus,
+  uninstallSchedule,
+  type ScheduleEnv,
+} from './schedule.ts'
 import { hostSweep, type HostSweep } from './sweep.ts'
 
 const NAME = 'host-cleaner'
@@ -98,6 +124,12 @@ const reportCli = () =>
     flags: {
       ...SWEEP_FLAGS,
       all: { kind: 'boolean', help: 'also show keep rows (with --format text)' },
+      auto: {
+        kind: 'boolean',
+        help:
+          'clean the unattended subset with no --allow: artifacts idle past their threshold and ' +
+          'worktrees judged delete with no risk. Writes a report and a receipt to the state directory',
+      },
       format: {
         kind: 'enum',
         choices: ['text', 'json'] as const,
@@ -110,7 +142,26 @@ const reportCli = () =>
     shortEpilogue: `commands:
   ${NAME} [target...]   this report (the default)
   ${NAME} plan          save the rows and their evidence, to run later
-  ${NAME} clean         check again, show the steps, ask, delete`,
+  ${NAME} clean         check again, show the steps, ask, delete
+  ${NAME} --auto        clean what is safe with no person present
+  ${NAME} schedule      install, uninstall or show the launchd agent that runs --auto`,
+  })
+
+const scheduleCli = () =>
+  defineCli({
+    name: `${NAME} schedule`,
+    summary:
+      'Install a launchd user agent that runs `host-cleaner --auto` on a timer, remove it, or say whether it is there. macOS only.',
+    autoHelp: false,
+    positionals: [{ name: 'action', required: true, help: 'install, uninstall or status' }],
+    flags: {
+      every: {
+        kind: 'string',
+        valueName: 'hours',
+        help: 'install: run every this many hours (default 6)',
+      },
+      ...HELP_FLAGS,
+    },
   })
 
 const planCli = () =>
@@ -182,6 +233,12 @@ export interface MainDeps {
   confirm?: Confirm
   /** Reads `--plan -`. Defaults to stdin. */
   readStdin?: () => string
+  /** `schedule`: the command the agent runs. Default: this node and this script. */
+  program?: readonly string[]
+  /** `schedule`: the platform, the uid launchd domain and the runner for `launchctl`. */
+  platform?: string
+  uid?: number
+  launchctl?: CommandRunner
   /** Read by the adapters and the sweep in place of the real ones. */
   host?: Pick<HostOptions, 'git' | 'command' | 'probe' | 'now'>
 }
@@ -327,6 +384,10 @@ function runReport(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
   const parsed = parseWith(reportCli(), NAME, argv, ctx)
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
+  if (v.auto) {
+    if (v.all) return usageError(ctx, NAME, '--auto cleans a fixed subset; --all does not apply')
+    return runAuto(v, parsed.positionals, ctx, deps)
+  }
   let s: HostSweep
   try {
     s = sweepWith(v, parsed.positionals, loadConfig(v, ctx), ctx, deps)
@@ -544,10 +605,169 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   return receipt.status === 'failed' ? EXIT_STEP_FAILED : ok()
 }
 
+const LOCK_FILE = 'host-cleaner.lock'
+
+/**
+ * `--auto`: sweep, pick the unattended subset by id, clean it with no allow, and
+ * leave a report and a receipt in the state directory. A second run that finds
+ * the lock held exits without work.
+ */
+function runAuto(
+  v: ValuesOf<ReturnType<typeof reportCli>>,
+  targets: readonly string[],
+  ctx: CliContext,
+  deps: MainDeps,
+): number {
+  const name = `${NAME} --auto`
+  const dirs = hostDirs(ctx.env)
+  mkdirSync(dirs.state, { recursive: true })
+  const lockPath = join(dirs.state, LOCK_FILE)
+  const claim = claimLock(
+    lockPath,
+    { pid: process.pid, startedAt: new Date().toISOString() },
+    { isStale: holderGone<{ pid: number }>((c) => [c.pid]) },
+  )
+  if (!claim.ok) {
+    const pid = claim.holder?.content?.pid
+    ctx.io.stderr(
+      `${name}: another run holds ${lockPath}${pid === undefined ? '' : ` (pid ${pid})`}; exiting without work\n`,
+    )
+    return EXIT.ok
+  }
+  try {
+    return autoWork(v, targets, ctx, deps, dirs)
+  } finally {
+    releaseLock(lockPath, claim.token)
+  }
+}
+
+function autoWork(
+  v: ValuesOf<ReturnType<typeof reportCli>>,
+  targets: readonly string[],
+  ctx: CliContext,
+  deps: MainDeps,
+  dirs: ReturnType<typeof hostDirs>,
+): number {
+  const name = `${NAME} --auto`
+  const startedAt = (deps.host?.now ?? (() => new Date()))()
+  let config: Config
+  let s: HostSweep
+  try {
+    config = loadConfig(v, ctx)
+    s = sweepWith(v, targets, config, ctx, deps)
+  } catch (err) {
+    return refusal(ctx, name, err)
+  }
+  if (nothingSwept(s)) return EXIT_NOTHING_TO_SWEEP
+  const unreadable = reportUnreadable(ctx, name, s)
+
+  const ids = selectUnattended(s)
+  const sizes = measureRows(s, ids)
+  const receiptPath = join(dirs.state, 'receipts', `receipt-${stamp(startedAt)}.json`)
+  let receipt = null
+  try {
+    // An empty pick would run every delete row, so an empty selection runs nothing.
+    if (ids.length > 0) {
+      const preview = hostCheck(
+        hostPlan(s, startedAt),
+        { pick: ids },
+        {
+          ...hostOptions(v, config, deps),
+          cwd: ctx.cwd,
+        },
+      )
+      writeNotes(ctx, name, preview.repo.notes)
+      mkdirSync(dirname(receiptPath), { recursive: true })
+      receipt = hostRun(preview, {
+        ...hostOptions(v, config, deps),
+        cwd: ctx.cwd,
+        source: '(auto)',
+        receiptPath,
+        now: () => new Date(),
+        onNotes: (notes) => writeNotes(ctx, name, notes),
+      })
+    }
+  } catch (err) {
+    return refusal(ctx, name, err)
+  }
+  const done = receipt === null ? [] : cleanedIds(receipt)
+  const cleaned = done.map((id) => ({ id, bytes: sizes.get(id) ?? 0 }))
+  const report: AutoReport = {
+    startedAt: startedAt.toISOString(),
+    finishedAt: new Date().toISOString(),
+    status:
+      receipt === null ? 'nothing-to-clean' : receipt.status === 'failed' ? 'failed' : 'complete',
+    receipt: receipt === null ? null : receiptPath,
+    cleaned,
+    failed: receipt === null ? [] : failedIds(receipt),
+    left: leftForReview(s, new Set(done)),
+    bytesFreed: cleaned.reduce((sum, c) => sum + c.bytes, 0),
+  }
+  const reportPath = join(dirs.state, 'reports', `report-${stamp(startedAt)}.json`)
+  try {
+    mkdirSync(dirname(reportPath), { recursive: true })
+    writeJsonAtomic(reportPath, report)
+  } catch (err) {
+    ctx.io.stderr(renderError(`cannot write the report: ${(err as Error).message}`, name))
+  }
+  logRun(dirs.logs, {
+    at: report.startedAt,
+    source: '(auto)',
+    receipt: report.receipt,
+    status: report.status,
+  })
+  ctx.io.stdout(
+    v.format === 'json'
+      ? `${JSON.stringify({ reportPath, report }, null, 2)}\n`
+      : renderAutoReport(report) + `report: ${stripControls(reportPath)}\n`,
+  )
+  return report.status === 'failed' ? EXIT_STEP_FAILED : unreadable ? EXIT.error : EXIT.ok
+}
+
+function runSchedule(argv: readonly string[], ctx: CliContext, deps: MainDeps): number {
+  const name = `${NAME} schedule`
+  const parsed = parseWith(scheduleCli(), name, argv, ctx)
+  if (parsed.status === 'done') return parsed.code
+  const action = parsed.positionals[0]
+  if (parsed.positionals.length !== 1 || !['install', 'uninstall', 'status'].includes(action ?? ''))
+    return usageError(ctx, name, 'say one of: install, uninstall, status')
+  if (action !== 'install' && parsed.values.every !== undefined)
+    return usageError(ctx, name, '--every applies to install only')
+  const env: ScheduleEnv = {
+    platform: deps.platform ?? process.platform,
+    home: ctx.env.HOME ?? homedir(),
+    uid: deps.uid ?? process.getuid?.() ?? 0,
+    launchctl: deps.launchctl ?? spawnRunner('launchctl'),
+    program: deps.program ?? [process.execPath, realpathSync(process.argv[1] ?? ''), '--auto'],
+    logFile: join(hostDirs(ctx.env).logs, `${NAME}-schedule.log`),
+    path: ctx.env.PATH,
+  }
+  try {
+    if (action === 'install') {
+      const hours = parseEvery(parsed.values.every)
+      const file = installSchedule(env, hours)
+      ctx.io.stdout(
+        `installed ${stripControls(file)}: runs \`${NAME} --auto\` every ${hours} hour${hours === 1 ? '' : 's'}\n`,
+      )
+    } else if (action === 'uninstall') {
+      ctx.io.stdout(uninstallSchedule(env) ? 'uninstalled\n' : 'not installed\n')
+    } else {
+      const st = scheduleStatus(env)
+      ctx.io.stdout(
+        `plist: ${stripControls(st.plist)} (${st.installed ? 'present' : 'absent'})\nlaunchd: ${st.loaded ? 'loaded' : 'not loaded'}\n`,
+      )
+    }
+  } catch (err) {
+    return refusal(ctx, name, err)
+  }
+  return EXIT.ok
+}
+
 /** `main(argv, ctx)`: returns an exit code, never exits. */
 export function main(argv: readonly string[], ctx: CliContext, deps: MainDeps = {}): number {
   const [sub, ...rest] = argv
   if (sub === 'plan') return runPlan(rest, ctx, deps)
   if (sub === 'clean') return runClean(rest, ctx, deps)
+  if (sub === 'schedule') return runSchedule(rest, ctx, deps)
   return runReport(argv, ctx, deps)
 }
