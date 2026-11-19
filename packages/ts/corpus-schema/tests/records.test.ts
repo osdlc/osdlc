@@ -216,6 +216,29 @@ describe('hints for supporting files outside a record folder', () => {
     assert.match(e ?? '', /not a record folder: perf-run\/ has no perf-run\.md/)
     assert.match(e ?? '', /add study\/perf-run\/perf-run\.md \(or set x-record-file\)/)
     assert.match(e ?? '', /under a folder starting with _/)
+    assert.ok(!(e ?? '').includes('\n'))
+  })
+
+  test('a file that fails to parse in a subfolder gets the hint on its one line', () => {
+    study()
+    put('c/study/perf-run/results.md', '---\na: [1\n---\n')
+    const e = errors().filter((m) => m.startsWith('study/perf-run/results.md:'))
+    assert.equal(e.length, 1)
+    assert.match(e[0] ?? '', /\(data\).*not a record folder: perf-run\//)
+    assert.ok(!(e[0] ?? '').includes('\n'))
+  })
+
+  test('no hint for a yaml file when records are not mostly .md', () => {
+    root('c')
+    put('c/study/study.schema.yaml', 'type: object\nrequired: [title]\n')
+    put('c/study/a.md', '---\ntitle: A\n---\n')
+    put('c/study/b.yaml', 'title: B\n')
+    put('c/study/c.yaml', 'x: 1\n')
+    const e = errors().filter((m) => m.startsWith('study/c.yaml:'))
+    assert.ok(e.length > 0)
+    assert.ok(e.every((m) => !m.includes('mostly')))
+    put('c/study/d.md', '---\ntitle: D\n---\n')
+    assert.ok(errors().some((m) => m.startsWith('study/c.yaml:') && !m.includes('mostly')))
   })
 
   test('a .yml file in a subfolder and a yaml file among .md records get a hint', () => {

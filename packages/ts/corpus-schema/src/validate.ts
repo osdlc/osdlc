@@ -1168,46 +1168,40 @@ function recordFolders(c: Corpus, type: Type, dirs: string[]): Map<string, strin
 
 /**
  * A hint for a file that fails as a record but may be supporting data outside a record folder:
- * one in a subfolder with no record file, a .yml file, or a non-.md file in a type whose
- * top-level records are mostly .md. Empty for any other file. At most one hint per file.
+ * one in a subfolder with no record file, a .yml file, or a non-.md file in a type folder whose
+ * top-level record files are mostly .md. Empty for any other file. Append it to one error per file.
+ * It stays on the error's line, so an error is still one line.
+ *
+ * @param folder the record folder whose record `file` is, if any; a defined value means no hint.
+ * @param declared the type's `x-record-file`, if set.
+ * @param extensions the record extensions the corpus's `formats` allow.
+ * @param mostlyMd whether most of the type folder's top-level record files are .md.
  */
 function strayHint(
   type: Type,
   file: string,
   folder: string | undefined,
-  files: string[],
   declared: string | undefined,
   extensions: string[],
+  mostlyMd: boolean,
 ): string {
   if (folder !== undefined) return ''
   const dir = posix.dirname(file)
   const ext = extname(file).toLowerCase()
   const yml = ext === '.yml'
+  const out = 'To keep it out of the corpus, move it under a folder starting with _.'
   if (dir !== type.dir) {
     const name = basename(dir)
     const preferred = extensions.includes('.md') ? '.md' : (extensions[0] ?? '.md')
     const record = declared ?? `${name}${preferred}`
     const add = `add ${dir}/${record}${declared === undefined ? ' (or set x-record-file)' : ''}`
-    const keep = yml
-      ? 'rename it to .yaml and move it into a record folder'
-      : `keep these files with one record, ${add}`
-    return (
-      `\n  not a record folder: ${name}/ has no ${record}.` +
-      `\n  To ${keep}.` +
-      `\n  To keep them out of the corpus, move them under a folder starting with _.`
-    )
+    const keep = yml ? `rename it to .yaml and ${add}` : add
+    return `; not a record folder: ${name}/ has no ${record}. To keep it with one record, ${keep}. ${out}`
   }
-  const inType = files.filter(
-    (f) =>
-      posix.dirname(f) === type.dir &&
-      !f.includes('.schema.') &&
-      RECORD_EXTENSIONS.includes(extname(f).toLowerCase()),
-  )
-  const md = inType.filter((f) => extname(f).toLowerCase() === '.md').length
   if (yml)
-    return `\n  To keep it with a record, rename it to .yaml and move it into that record's folder. To keep it out of the corpus, move it under a folder starting with _.`
-  if (ext !== '.md' && md > inType.length - md)
-    return `\n  This ${ext.slice(1)} file sits in the ${type.dir}/ folder, whose records are mostly .md, so it may be supporting data. To keep it with one record, move it into that record's folder. To keep it out of the corpus, move it under a folder starting with _.`
+    return `; To keep it with a record, rename it to .yaml and move it into that record's folder. ${out}`
+  if (ext !== '.md' && mostlyMd)
+    return `; this ${ext.slice(1)} file sits in the ${type.dir}/ folder, whose records are mostly .md, so it may be supporting data. To keep it with one record, move it into that record's folder. ${out}`
   return ''
 }
 
@@ -1228,6 +1222,14 @@ function readRecords(
     const folders = recordFolders(c, type, dirs)
     const types = chain(type)
     const declared = recordFileOf(type)
+    const top = files.filter(
+      (f) =>
+        posix.dirname(f) === type.dir &&
+        !f.includes('.schema.') &&
+        RECORD_EXTENSIONS.includes(extname(f).toLowerCase()),
+    )
+    const md = top.filter((f) => extname(f).toLowerCase() === '.md').length
+    const mostlyMd = md > top.length - md
     for (const file of files) {
       if (!file.startsWith(`${type.dir}/`) || schemaFiles.has(file)) continue
       if (inNarrative(type.dir, file)) continue
@@ -1239,7 +1241,7 @@ function readRecords(
       const lower = ext.toLowerCase()
       if (lower === '.yml') {
         c.errors.push(
-          `${file}: (file): use the .yaml extension${strayHint(type, file, folder, files, declared, extensions)}`,
+          `${file}: (file): use the .yaml extension${strayHint(type, file, folder, declared, extensions, mostlyMd)}`,
         )
         continue
       }
@@ -1250,7 +1252,7 @@ function readRecords(
       }
       if (!extensions.includes(ext)) {
         c.errors.push(
-          `${file}: format: ${ext.slice(1)} is not in the corpus's formats${strayHint(type, file, folder, files, declared, extensions)}`,
+          `${file}: format: ${ext.slice(1)} is not in the corpus's formats${strayHint(type, file, folder, declared, extensions, mostlyMd)}`,
         )
         continue
       }
@@ -1272,8 +1274,20 @@ function readRecords(
       else ids.set(fold(id), file)
       if (fold(name) !== fold(id) && !type.stems.has(fold(name))) type.stems.set(fold(name), file)
 
+      const before = c.errors.length
       const data = readChecked(c, file)
-      if (data === undefined) continue
+      if (data === undefined) {
+        if (c.errors.length > before)
+          c.errors[c.errors.length - 1] += strayHint(
+            type,
+            file,
+            folder,
+            declared,
+            extensions,
+            mostlyMd,
+          )
+        continue
+      }
       const stated = data['id']
       let wrongId = false
       if (
@@ -1292,7 +1306,10 @@ function readRecords(
             if (e.keyword !== 'if') failures.add(`${file}: ${describe(e)}`)
       const [first, ...rest] = failures
       if (first !== undefined)
-        c.errors.push(first + strayHint(type, file, folder, files, declared, extensions), ...rest)
+        c.errors.push(
+          first + strayHint(type, file, folder, declared, extensions, mostlyMd),
+          ...rest,
+        )
       if (failures.size === 0 && problem === undefined && other === undefined && !wrongId) {
         type.records.set(id, { file, data })
         record.valid = true
