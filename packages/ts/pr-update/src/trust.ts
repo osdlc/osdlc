@@ -47,7 +47,7 @@ export function projectSourcedCommands(
   const keys = COMMAND_KEYS.filter(
     (path) => isSet(getIn(project, path).value) && !isSet(getIn(local, path).value),
   ).map((path) => path.join('.'))
-  // `verify: detect` names no command, but the repository's own files choose the one it runs.
+  // Not in COMMAND_KEYS: the value is a mode, not a command.
   if (getIn(project, VERIFY_KEY).value === 'detect' && !isSet(getIn(local, VERIFY_KEY).value)) {
     keys.push(VERIFY_KEY.join('.'))
   }

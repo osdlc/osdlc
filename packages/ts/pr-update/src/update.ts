@@ -524,8 +524,8 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
     else groups.set(t.repo, { path: pathOf.get(t.repo) ?? env.projectRoot, targets: [t] })
   }
   const runId = `${process.pid}.${Date.now()}`
-  // Except for `detect`, which reads each PR's own update worktree after checkout:
-  // once per repository, not inside `updateAll`'s per-PR loop. All of them
+  // Once per repository, not inside `updateAll`'s per-PR loop (`detect` resolves per PR
+  // instead; see `verifyVerbs` in update/execute.ts). All of them
   // before any update, so a list the host refuses for one repository stops
   // the run before anything in any repository is pushed. And every surveyed
   // checkout, not only those with a PR to update, so a missing or refused

@@ -9,7 +9,7 @@ import { join } from 'node:path'
 /** The test command a rung found, and which rung it was. */
 export interface DetectedVerify {
   command: string
-  /** Names the rung and the file it read, for the line printed on every run. */
+  /** Names the rung and the file it read, e.g. `Makefile test target`. */
   rung: string
 }
 
@@ -20,7 +20,8 @@ export const DETECT_LOOKED_FOR =
 
 const JUSTFILES = ['justfile', 'Justfile', '.justfile']
 const MAKEFILES = ['GNUmakefile', 'makefile', 'Makefile']
-// A recipe or target named `test`, not `test-all`, a `test := value` assignment or an indented line.
+// A line-start recipe or target named exactly `test`: not `test-all`, not an indented line,
+// not a `test := value` assignment.
 const JUST_TEST = /^@?test(?:[ \t][^:\n]*)?:(?!=)/m
 const MAKE_TEST = /^test[ \t]*::?(?![:=])/m
 const NPM_INIT_PLACEHOLDER = /no test specified/
