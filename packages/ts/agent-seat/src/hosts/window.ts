@@ -13,13 +13,13 @@
 
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { resolve } from 'node:path'
 
 import {
+  commandString,
   failureText,
   ran,
   resolveRunner,
-  shellJoin,
-  shellQuote,
   type CommandRunner,
 } from '@osdlc/command-seam'
 
@@ -50,7 +50,7 @@ function appleScriptString(text: string): string {
  * The shell stays open after the command, so the person can read what it printed.
  */
 export function windowShellCommand(req: CommandRequest): string {
-  return `cd ${shellQuote(req.cwd)} && ${shellJoin(req.argv)}`
+  return commandString(req.argv, { shell: 'posix', cwd: resolve(req.cwd) })
 }
 
 /**

@@ -33,6 +33,12 @@ describe('window argv builders', () => {
     )
   })
 
+  test('shell command: a relative cwd becomes absolute', () => {
+    expect(windowShellCommand({ cwd: 'rel', argv: ['ls'], title: 't' })).toBe(
+      `cd ${process.cwd()}/rel && ls`,
+    )
+  })
+
   test('Terminal.app: activate then do script, one -e per line', () => {
     expect(terminalAppArgv('cd /w && claude')).toEqual([
       'osascript',
