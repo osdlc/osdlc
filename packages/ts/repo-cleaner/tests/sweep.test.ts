@@ -1440,7 +1440,7 @@ describe('a clean worktree whose HEAD is on a remote branch (#659)', () => {
 
   afterAll(() => rmSync(parent, { recursive: true, force: true }), HOOK_TIMEOUT_MS)
 
-  /** A checkout, and a worktree on `topic` with one commit, pushed (with `-u` unless `upstream` is false). */
+  /** A checkout, and a worktree on `topic` with one commit, pushed unless `push` is false, with `-u` unless `upstream` is false. */
   function setup(opts: { upstream?: boolean; push?: boolean } = {}) {
     const { origin, checkout } = makeOriginAndCheckout({ parent })
     git(['checkout', '-q', '--detach'], origin.dir)
@@ -1508,14 +1508,14 @@ describe('a clean worktree whose HEAD is on a remote branch (#659)', () => {
     const row = rowAt(sweepOne(root, { cwd: root }), wt)
     expect(row?.verdict).toBe('review')
     expect(row?.evidence.recoverableFrom).toBeUndefined()
-    expect(row?.notes?.join('\n')).toContain('`--remote` would check')
+    expect(row?.notes?.join('\n')).toContain('`--remote` without `--offline` would check')
   })
 
   test('a local sweep notes it on an unlanded row too', () => {
     const { root, wt } = setup({ upstream: false })
     const row = rowAt(sweepOne(root, { cwd: root }), wt)
     expect(row?.risks).toContain('abandon-unmerged')
-    expect(row?.notes?.join('\n')).toContain('`--remote` would check')
+    expect(row?.notes?.join('\n')).toContain('`--remote` without `--offline` would check')
   })
 
   test('a dirty worktree keeps its verdict', () => {

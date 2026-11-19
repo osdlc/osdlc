@@ -418,8 +418,8 @@ function classifyWorktree(opts: {
   const submoduleWorkText = submoduleWork ? unpushedPhrase(submodules.unpushed) : ''
 
   // Work that a remote branch holds is not lost with the worktree. Only a
-  // clean worktree on a used branch: a dirty one has files no remote holds,
-  // and a fresh one may hold ignored files of work about to start.
+  // clean worktree on a used branch: a dirty one has files no remote holds;
+  // a fresh branch is left alone (see `branchUse`).
   let remoteNote: string | null = null
   const settled = landed || patchLanded || evidence.merged === true
   if (onDisk && !settled && !dirty && !submoduleWork && branch && head !== null && branchExists) {
@@ -432,7 +432,7 @@ function classifyWorktree(opts: {
           evidence.recoverableFrom = holders
           unlanded = false
         } else {
-          remoteNote = `HEAD is on ${holders.join(', ')}, but this sweep did not fetch, so those remote-tracking refs may be stale; \`--remote\` would check them.`
+          remoteNote = `HEAD is on ${holders.join(', ')}, but this sweep did not fetch, so those remote-tracking refs may be stale; \`--remote\` without \`--offline\` would check them.`
         }
       }
     }
@@ -576,7 +576,7 @@ function classifyWorktree(opts: {
 /**
  * The remote-tracking branches of `repo`'s remote whose history holds `head`,
  * as `<remote>/<name>`. The default branch is left out: ancestry of it has its
- * own rule. Empty when the repository has no remote.
+ * own rule. Empty when there is no remote or the lookup fails.
  */
 function remoteBranchesHolding(repo: RepoInfo, git: Git, head: string): string[] {
   if (repo.remote === null) return []
