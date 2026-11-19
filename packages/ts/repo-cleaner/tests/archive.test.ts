@@ -285,6 +285,8 @@ describe('what the archive covers', () => {
     expect(leftOutReason('a/b.log', '/nowhere', { exclude: ['*.log'] })).toBe('excluded')
     expect(leftOutReason('a/b.log', '/nowhere', { exclude: ['b/*.log'] })).toBeNull()
     expect(leftOutReason('a/b.log', '/nowhere', { exclude: ['a/**'] })).toBe('excluded')
+    expect(leftOutReason('secrets/p.txt', '/nowhere', { exclude: ['secrets'] })).toBe('excluded')
+    expect(leftOutReason('.NPMRC', '/nowhere', {})).toBe('secret')
   })
 
   test('a file over the size cap is left out of the snapshot', () => {

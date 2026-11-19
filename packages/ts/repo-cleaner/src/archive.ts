@@ -15,7 +15,7 @@
  * submodule commits, files and stashes.
  */
 
-import { mkdtempSync, rmSync, statSync } from 'node:fs'
+import { lstatSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 
@@ -28,7 +28,7 @@ import type { Risk, Row, RowId } from './types.ts'
 export interface ArchiveOptions {
   /**
    * Globs of files left out of a snapshot, besides the secret-shaped ones. A
-   * glob without a `/` matches a file's name anywhere; one with a `/` matches
+   * glob without a `/` matches a file or directory name anywhere; one with a `/` matches
    * the path from the worktree root. `*` stays inside a directory, `**` does not.
    */
   exclude?: readonly string[] | undefined
@@ -46,7 +46,8 @@ export interface LeftOut {
 }
 
 /** File names that look like secrets. */
-const SECRET_NAME = /^(\.env.*|.*\.pem|.*\.key|id_rsa.*|id_ed25519.*)$/
+const SECRET_NAME =
+  /^(\.env.*|.*\.pem|.*\.key|.*\.p12|.*\.pfx|id_rsa.*|id_ed25519.*|\.npmrc|\.netrc|credentials(\..*)?)$/i
 
 /** A glob as a regular expression. */
 function globRegExp(glob: string): RegExp {
@@ -73,11 +74,16 @@ export function leftOutReason(
 ): LeftOut['reason'] | null {
   const name = basename(path)
   if (SECRET_NAME.test(name)) return 'secret'
+  const segments = path.split('/')
   for (const glob of opts.exclude ?? []) {
-    if (globRegExp(glob).test(glob.includes('/') ? path : name)) return 'excluded'
+    const re = globRegExp(glob)
+    // A glob without a `/` matches a file or directory name anywhere on the path.
+    if (glob.includes('/') ? re.test(path) : segments.some((seg) => re.test(seg))) {
+      return 'excluded'
+    }
   }
   try {
-    if (statSync(join(root, path)).size > (opts.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES)) {
+    if (lstatSync(join(root, path)).size > (opts.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES)) {
       return 'too-large'
     }
   } catch {

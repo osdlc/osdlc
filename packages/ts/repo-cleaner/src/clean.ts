@@ -901,7 +901,7 @@ export function check(plan: Plan, approval: Approval, opts: CheckOptions = {}): 
       (a) =>
         !accepted.some(
           (row) =>
-            row.needs.includes(a.risk) &&
+            (row.needs.includes(a.risk) || row.row.risks.includes(a.risk)) &&
             (a.row === null || same(a.row, { repo: row.repo, id: row.row.id })),
         ),
     )
