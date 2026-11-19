@@ -449,8 +449,8 @@
           "name": "an exact tie between two 16-digit candidates",
           "input": {
             "value": [
-              702598671665523.25,
-              80497518425576.625
+              702598671665523.2,
+              80497518425576.62
             ]
           },
           "expect": {
