@@ -163,6 +163,8 @@ fn a_marker_held_by_another_reaper_leaves_the_stale_lock_alone() {
     let dir = tempfile::tempdir().unwrap();
     let lock = lock_in(&dir);
     fs::write(&lock, "{\"token\": \"dead\"}").unwrap();
+    // The lock is old; the marker, a file of its own, is not.
+    age(&lock, 60);
     let marker = marker_for(&lock, "{\"token\": \"dead\"}");
     fs::write(&marker, "").unwrap();
     assert_eq!(
@@ -172,6 +174,25 @@ fn a_marker_held_by_another_reaper_leaves_the_stale_lock_alone() {
     assert_eq!(fs::read_to_string(&lock).unwrap(), "{\"token\": \"dead\"}");
     fs::remove_file(&marker).unwrap();
     claimed(claim_lock(&lock, &json!({}), always).unwrap());
+}
+
+#[test]
+fn a_marker_a_dead_reaper_left_is_cleared_and_the_stale_lock_taken_over() {
+    let dir = tempfile::tempdir().unwrap();
+    let lock = lock_in(&dir);
+    fs::write(&lock, "{\"token\": \"dead\"}").unwrap();
+    let marker = marker_for(&lock, "{\"token\": \"dead\"}");
+    fs::write(&marker, "").unwrap();
+    // Younger than MARKER_STALE: a live reaper's.
+    age(&marker, 5);
+    assert_eq!(
+        claim_lock(&lock, &json!({}), always).unwrap(),
+        LockClaim::Held { holder: None }
+    );
+    assert!(marker.exists());
+    age(&marker, 60);
+    claimed(claim_lock(&lock, &json!({}), always).unwrap());
+    assert!(beside(&dir).is_empty(), "{:?}", beside(&dir));
 }
 
 #[test]
