@@ -304,6 +304,9 @@ function renderAdapters(s: HostSweep): string {
   return lines.length === 0 ? '' : stripControls(lines.join('\n'), { newline: true }) + '\n'
 }
 
+/** True when the sweep found no repository and no host row. */
+const nothingSwept = (s: HostSweep): boolean => s.repo.repos.length === 0 && s.rows.length === 0
+
 function runReport(argv: readonly string[], ctx: CliContext, deps: MainDeps): number {
   const parsed = parseWith(reportCli(), NAME, argv, ctx)
   if (parsed.status === 'done') return parsed.code
@@ -314,7 +317,7 @@ function runReport(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
   } catch (err) {
     return refusal(ctx, NAME, err)
   }
-  const none = s.repo.repos.length === 0 && s.rows.length === 0
+  const none = nothingSwept(s)
   if (v.format === 'json') {
     ctx.io.stdout(render.json(s.repo, { adapters: s.adapters, hostRows: s.rows }))
   } else {
@@ -333,7 +336,7 @@ function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps): numb
   let plan: HostPlan
   try {
     const s = sweepWith(v, parsed.positionals, loadConfig(v, ctx), ctx, deps)
-    if (s.repo.repos.length === 0 && s.rows.length === 0) return EXIT_NOTHING_TO_SWEEP
+    if (nothingSwept(s)) return EXIT_NOTHING_TO_SWEEP
     plan = hostPlan(s)
   } catch (err) {
     return refusal(ctx, name, err)
@@ -448,7 +451,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
     const approval: HostApproval = { pick: v.pick, spare: v.spare, allow: v.allow.map(parseAllow) }
     if (v.plan === undefined) {
       const s = sweepWith(v, parsed.positionals, config, ctx, deps)
-      if (s.repo.repos.length === 0 && s.rows.length === 0) return EXIT_NOTHING_TO_SWEEP
+      if (nothingSwept(s)) return EXIT_NOTHING_TO_SWEEP
       plan = hostPlan(s, now)
       source = '(swept)'
     } else if (v.plan === '-') {
