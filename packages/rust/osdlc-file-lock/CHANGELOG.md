@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- On Windows, two claimants racing over one stale lock could both win. A
+  takeover marker's age was read from its mtime, which is the lock's, so a
+  live reaper's marker looked dead and was cleared by another reaper. A
+  marker is now never judged dead where the ctime cannot be read.
+
 ## [0.3.0](https://github.com/osdlc/osdlc/releases/tag/osdlc-file-lock/v0.3.0) - 2026-11-18
 
 ### Other
