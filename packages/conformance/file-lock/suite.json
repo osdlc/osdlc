@@ -71,7 +71,7 @@
       ]
     },
     "claim": {
-      "description": "Claim `x.lock` in an empty directory with `content`, judging a held lock by its age (stale once untouched for more than `staleMs`). `lock` is the file there before, with its mtime `ageMs` in the past; each of `markers` is a takeover marker present beforehand, named from that text. The result: whether the lock was claimed, the holder named when it was not (`null` when none was settled), the lock afterwards (`null` when absent; its parsed content, with this claim's own token shown as `<ours>`; whether its text is unchanged; whether its mtime is under 5 s old), and the other names left in the directory.",
+      "description": "Claim `x.lock` in an empty directory with `content`, judging a held lock by its age (stale once untouched for more than `staleMs`). `lock` is the file there before, with its mtime `ageMs` in the past; each of `markers` is a takeover marker present beforehand, named from that text and created just now, or `{ raw, ageMs }` for one created `ageMs` ago. The result: whether the lock was claimed, the holder named when it was not (`null` when none was settled), the lock afterwards (`null` when absent; its parsed content, with this claim's own token shown as `<ours>`; whether its text is unchanged; whether its mtime is under 5 s old), and the other names left in the directory.",
       "cases": [
         {
           "name": "a free lock is claimed",
@@ -450,6 +450,72 @@
             "beside": [
               "x.lock.stale-e9ade9d56abe978305415929"
             ]
+          }
+        },
+        {
+          "name": "a marker younger than the lock is a live reaper's, however old the lock",
+          "input": {
+            "lock": {
+              "raw": "{\n  \"pid\": 4120,\n  \"token\": \"9b2e1c5a-0d7e-4c55-8f1e-2b6a3c4d5e6f\"\n}\n",
+              "ageMs": 60000
+            },
+            "content": {
+              "pid": 7
+            },
+            "staleMs": 10000,
+            "markers": [
+              {
+                "raw": "{\n  \"pid\": 4120,\n  \"token\": \"9b2e1c5a-0d7e-4c55-8f1e-2b6a3c4d5e6f\"\n}\n",
+                "ageMs": 5000
+              }
+            ]
+          },
+          "expect": {
+            "claimed": false,
+            "holder": null,
+            "after": {
+              "content": {
+                "pid": 4120,
+                "token": "9b2e1c5a-0d7e-4c55-8f1e-2b6a3c4d5e6f"
+              },
+              "unchanged": true,
+              "fresh": false
+            },
+            "beside": [
+              "x.lock.stale-e9ade9d56abe978305415929"
+            ]
+          }
+        },
+        {
+          "name": "a marker a dead reaper left is cleared and the stale lock taken over",
+          "input": {
+            "lock": {
+              "raw": "{\n  \"pid\": 4120,\n  \"token\": \"9b2e1c5a-0d7e-4c55-8f1e-2b6a3c4d5e6f\"\n}\n",
+              "ageMs": 60000
+            },
+            "content": {
+              "pid": 7
+            },
+            "staleMs": 10000,
+            "markers": [
+              {
+                "raw": "{\n  \"pid\": 4120,\n  \"token\": \"9b2e1c5a-0d7e-4c55-8f1e-2b6a3c4d5e6f\"\n}\n",
+                "ageMs": 60000
+              }
+            ]
+          },
+          "expect": {
+            "claimed": true,
+            "holder": null,
+            "after": {
+              "content": {
+                "pid": 7,
+                "token": "<ours>"
+              },
+              "unchanged": false,
+              "fresh": true
+            },
+            "beside": []
           }
         },
         {
@@ -878,6 +944,28 @@
           },
           "error": {
             "kind": "lock_timeout"
+          }
+        },
+        {
+          "name": "a stale lock whose marker a dead reaper left: it is cleared and the section runs",
+          "input": {
+            "lock": {
+              "raw": "{\n  \"pid\": 4120,\n  \"token\": \"9b2e1c5a-0d7e-4c55-8f1e-2b6a3c4d5e6f\"\n}\n",
+              "ageMs": 60000
+            },
+            "staleMs": 10000,
+            "timeoutMs": 0,
+            "markers": [
+              {
+                "raw": "{\n  \"pid\": 4120,\n  \"token\": \"9b2e1c5a-0d7e-4c55-8f1e-2b6a3c4d5e6f\"\n}\n",
+                "ageMs": 60000
+              }
+            ]
+          },
+          "expect": {
+            "ran": true,
+            "after": null,
+            "beside": []
           }
         }
       ]
