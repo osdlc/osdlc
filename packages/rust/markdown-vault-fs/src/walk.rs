@@ -126,8 +126,8 @@ pub enum Hide {
     Vault,
     /// These rules, as the caller compiled them.
     Rules(Arc<HideRules>),
-    /// Rules the caller keeps somewhere else, asked for at each walk and each
-    /// admission query. See [`HideSource`].
+    /// Rules the caller keeps itself and may change between walks. See
+    /// [`HideSource`].
     Source(HideSource),
     /// Hide nothing beyond the visibility policy.
     Off,
@@ -501,10 +501,11 @@ impl WalkOptions {
     /// excluded files (read from the vault for [`Hide::Vault`], asked of the
     /// caller for [`Hide::Source`]), the exclude list and notes versus
     /// attachments decide [`Admission::Outside`]. Then the file system decides
-    /// [`Admission::Unlisted`], as the walk reaches a file: by listing each folder from the walk's start down. A folder
-    /// on the way that cannot be listed or is a symlink (never entered), or
-    /// a file its folder does not list, is unlisted. So is a folder, a file
-    /// under [`WalkOptions::min_bytes`] or a symlink under
+    /// [`Admission::Unlisted`], as the walk reaches a file: by listing each
+    /// folder from the walk's start down. A folder on the way that cannot be
+    /// listed or is a symlink (never entered), or a file its folder does not
+    /// list, is unlisted. So is a folder, a file under
+    /// [`WalkOptions::min_bytes`] or a symlink under
     /// [`WalkOptions::refuse_symlinks`]. A name a folder does not list but
     /// the file system still answers for is [`Admission::Respelled`].
     ///
