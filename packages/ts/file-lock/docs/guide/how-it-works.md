@@ -73,8 +73,8 @@ The package removes a stale lock in four steps:
 
 ```text
 1. re-read x.lock; if it is no longer exactly D, stop (someone replaced it)
-2. link x.lock → x.lock.stale-<sha256(D)>     exclusive: one reaper wins
-3. if both files still read exactly D, remove x.lock
+2. create x.lock.stale-<sha256(D)>, empty     exclusive: one reaper wins
+3. if x.lock still reads exactly D, remove x.lock
 4. remove the marker, then claim again
 ```
 
@@ -90,8 +90,9 @@ longer than a file name may be (255 bytes on most file systems).
 **A reaper that dies holding the marker** would block every later takeover of
 that lock. A live reaper holds its marker for microseconds, so a marker older
 than `MARKER_STALE_MS` (10 s) is a dead one's and the next claimant removes
-it. Its age comes from the inode's ctime: the marker is a hard link of the
-lock, so its mtime is the lock's, but creating the link sets the ctime.
+it. Its age is its mtime. The marker is a file of its own, created empty, so
+its mtime is when its reaper began; a hard link of the lock would share the
+lock's mtime, and a live reaper's marker on an old lock would look dead.
 
 ## Release, touch, update: only with your token
 
@@ -162,7 +163,7 @@ then throw LockTimeoutError(path, last holder seen)
 - **No shared (reader) locks**, and the kernel does not release the lock when a
   process dies: the staleness rule does that.
 - **Windows is not tested.** `pidAlive` relies on signal 0, and takeover on
-  hard links and ctime. Node has no `O_NOFOLLOW` there, so a symlink swapped in
+  hard links. Node has no `O_NOFOLLOW` there, so a symlink swapped in
   between the `lstat` check and the open is followed.
 - **Only the last component is checked.** A symlink at the lock path is
   refused, but the directories above it are trusted.

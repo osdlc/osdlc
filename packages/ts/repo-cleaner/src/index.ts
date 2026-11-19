@@ -27,6 +27,7 @@ export {
   type PlanRepo,
   type PlanRow,
 } from './plan.ts'
+export { DEFAULT_MAX_FILE_BYTES, type ArchiveOptions, type LeftOut } from './archive.ts'
 export {
   check,
   run,
@@ -43,6 +44,7 @@ export {
   ReceiptSchema,
   type DropReason,
   type Dropped,
+  type ArchiveRecord,
   type Receipt,
   type Step,
 } from './receipt.ts'
