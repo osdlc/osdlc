@@ -805,6 +805,16 @@ export class Git {
     return this.exec(v.mktree(entries), opts)
   }
 
+  /** Load `rev`'s tree into the index; pass `env: { GIT_INDEX_FILE }` to use a temporary one. See `readTree` in `verbs.ts`. */
+  readTree(rev: string, opts: GitSyncCallOptions = {}): void {
+    this.exec(v.readTree(rev), opts)
+  }
+
+  /** Write the index as a tree and return its sha; no ref moves. See `writeTree` in `verbs.ts`. */
+  writeTree(opts: GitSyncCallOptions = {}): string {
+    return this.exec(v.writeTree(), opts)
+  }
+
   /** Configured remote names (`git remote`); `[]` when there are none. */
   remotes(opts: GitSyncCallOptions = {}): string[] {
     return this.exec(v.remote(), opts)
