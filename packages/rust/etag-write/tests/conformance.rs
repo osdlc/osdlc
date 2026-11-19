@@ -174,6 +174,8 @@ struct WriteAtomicInput {
     content: Data,
 }
 
+/// Read only by the unix runner; Windows has no such cases.
+#[cfg(unix)]
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct WriteAtomicModeInput {
