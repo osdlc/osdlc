@@ -8,6 +8,12 @@ here from the `manifest-graph` crate. The model types, the walk, the aspect
 scanners and the dependency graph are in; the containment tree and the wire
 schema follow.
 
+## Install
+
+```sh
+cargo add system-model
+```
+
 ```rust
 use system_model::{GraphOptions, ManifestInfo, build_dependency_graph};
 
@@ -25,6 +31,7 @@ an entry with `error` set. Dependency tables are read in sorted key order.
 
 `tests/mini-repo` is the fixture tree both implementations walk.
 
-## Licence
+## License
 
-Dual-licensed under [MIT](./LICENSE-MIT) or [Apache-2.0](./LICENSE-APACHE), at your option.
+Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or
+[MIT License](LICENSE-MIT), at your option.
