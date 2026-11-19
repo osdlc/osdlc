@@ -709,7 +709,7 @@ async function integrateAndPush(
       repair,
       request('verify-failed', changed.ok ? changed.value : [], verifyFailure.detail),
     )
-    if (!res.ok) return fail(res.reason)
+    if (!res.ok) return fail(res.reason, false, verifyFailure.log)
     repaired.push({ kind: 'verify-failed', note: res.note })
     try {
       commitRepair(git, target, res.note)

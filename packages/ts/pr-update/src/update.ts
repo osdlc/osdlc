@@ -544,6 +544,8 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
 
   const writes = wantsWrite(args, env.dryRun)
   const keepFailed = (args.keepFailed ?? effectiveCfg.keep_failed) && writes
+  if (args.keepFailed === true && !args.apply)
+    throw new UpdateUsageError('--keep-failed needs --apply')
   if (args.discardKept === true && !args.apply)
     throw new UpdateUsageError('--discard-kept needs --apply')
 
@@ -558,7 +560,6 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
     else groups.set(t.repo, { path: pathOf.get(t.repo) ?? env.projectRoot, targets: [t] })
   }
   const runId = `${process.pid}.${Date.now()}`
-  const discarded = discardStaleKept(args, writes, env, pathOf, groups, skipped)
   // Once per repository, not inside `updateAll`'s per-PR loop (`detect` resolves per PR
   // instead; see `verifyVerbs` in update/execute.ts). All of them
   // before any update, so a list the host refuses for one repository stops
@@ -583,6 +584,7 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
       )
     }
   }
+  const discarded = discardStaleKept(args, writes, env, pathOf, groups, skipped)
   const settings = {
     remote: args.remote,
     resolvers: effectiveCfg.resolvers,
@@ -705,6 +707,8 @@ function discardStaleKept(
   for (const group of groups.values()) {
     const git = new Git(group.path, { runner: env.git })
     group.targets = group.targets.filter((t) => {
+      // A restack child's base moves when its parent does, so its kept tree is stale by then.
+      if (t.stackParent !== undefined) return true
       const record = findKept(group.path, t.repo, t.number)
       if (record === null || removed.includes(record.path)) return true
       if (args.retryFailed || !keptIsCurrent(record, t)) {
@@ -721,7 +725,7 @@ function discardStaleKept(
       return false
     })
   }
-  return removed
+  return writes ? removed : []
 }
 
 /**

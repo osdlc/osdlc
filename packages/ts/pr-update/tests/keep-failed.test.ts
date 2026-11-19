@@ -129,7 +129,7 @@ describe('update --keep-failed', () => {
   })
 
   test('a rehearsal keeps nothing', async () => {
-    const out = await update({ keepFailed: true, apply: false })
+    const out = await update({ apply: false }, { keep_failed: true })
     expect(out.results[0]!.keptWorktree).toBeUndefined()
     expect(existsSync(kept())).toBe(false)
   })
@@ -174,6 +174,10 @@ describe('update --keep-failed', () => {
     expect(out.results.map((r) => r.status)).toEqual(['updated'])
     expect(existsSync(kept())).toBe(false)
     expect(renderUpdateText(out)).toContain(`discarded kept worktree ${kept()}`)
+  })
+
+  test('--keep-failed without --apply is refused', async () => {
+    await expect(update({ keepFailed: true, apply: false })).rejects.toThrow('needs --apply')
   })
 
   test('--discard-kept without --apply is refused', async () => {

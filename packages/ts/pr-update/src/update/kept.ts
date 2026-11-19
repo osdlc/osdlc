@@ -11,7 +11,7 @@
  */
 
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
 import { atomicWrite } from '@osdlc/etag-write'
 import type { Git } from '@osdlc/typed-git'
@@ -54,7 +54,7 @@ function sidecar(checkout: string, repo: string, number: number): string {
 export function findKept(checkout: string, repo: string, number: number): KeptRecord | null {
   try {
     const record = JSON.parse(readFileSync(sidecar(checkout, repo, number), 'utf8')) as KeptRecord
-    return existsSync(record.path) ? record : null
+    return existsSync(record.path) && record.repo === repo ? record : null
   } catch {
     return null
   }
@@ -94,7 +94,7 @@ export function keptIsCurrent(
   record: KeptRecord,
   t: { headOid: string | null; baseOid: string | null },
 ): boolean {
-  return record.headOid === t.headOid && record.baseOid === t.baseOid
+  return record.headOid !== null && record.headOid === t.headOid && record.baseOid === t.baseOid
 }
 
 /**
@@ -116,13 +116,30 @@ export function keepWorktree(
   const branch = `pr-update/failed-${keptName(target.repo, target.number)}`
   mkdirSync(keptRoot(checkout), { recursive: true })
   git.worktreeMove(worktree, path)
-  const kept = git.at(path)
-  kept.checkout('HEAD', { branch, resetBranch: true })
+  try {
+    return finishKeep(git, checkout, path, branch, target, verifyLog)
+  } catch (e) {
+    // Put it back, so a half-kept tree with no record is not left behind.
+    git.try.worktreeMove(path, worktree)
+    throw e
+  }
+}
+
+function finishKeep(
+  git: Git,
+  checkout: string,
+  path: string,
+  branch: string,
+  target: Pick<KeptRecord, 'repo' | 'number' | 'head' | 'base' | 'headOid' | 'baseOid'>,
+  verifyLog: string | undefined,
+): KeptRecord {
+  git.at(path).checkout('HEAD', { branch, resetBranch: true })
   if (verifyLog !== undefined) {
     atomicWrite(join(path, VERIFY_LOG), verifyLog)
     // The exclude file is shared by the repository's worktrees, and names only this file.
-    const common = git.gitCommonDir()
-    if (common !== null) {
+    const found = git.gitCommonDir()
+    if (found !== null) {
+      const common = resolve(checkout, found)
       const exclude = join(common, 'info', 'exclude')
       mkdirSync(join(common, 'info'), { recursive: true })
       const has = existsSync(exclude) && readFileSync(exclude, 'utf8').includes(`/${VERIFY_LOG}`)
