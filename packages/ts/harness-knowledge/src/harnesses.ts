@@ -28,8 +28,6 @@ export type HarnessId = keyof typeof HARNESS_SLUGS
 /** A knowledge slug a short id maps to, such as `claude-code`. */
 export type HarnessSlug = (typeof HARNESS_SLUGS)[HarnessId]
 
-const IDS = Object.keys(HARNESS_SLUGS) as HarnessId[]
-
 function isId(name: string): name is HarnessId {
   return Object.hasOwn(HARNESS_SLUGS, name)
 }
@@ -37,13 +35,13 @@ function isId(name: string): name is HarnessId {
 /** The knowledge slug for a short id; a slug resolves to itself; undefined for anything else. */
 export function slugFor(harness: string): HarnessSlug | undefined {
   if (isId(harness)) return HARNESS_SLUGS[harness]
-  return IDS.map((id) => HARNESS_SLUGS[id]).find((slug) => slug === harness)
+  return Object.values(HARNESS_SLUGS).find((slug) => slug === harness)
 }
 
 /** The short id for a knowledge slug; an id resolves to itself; undefined for anything else. */
 export function idFor(harness: string): HarnessId | undefined {
   if (isId(harness)) return harness
-  return IDS.find((id) => HARNESS_SLUGS[id] === harness)
+  return (Object.keys(HARNESS_SLUGS) as HarnessId[]).find((id) => HARNESS_SLUGS[id] === harness)
 }
 
 /**
