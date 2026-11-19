@@ -17,8 +17,11 @@
 export { sweep, inspectWorktree, type Runners, type SweepOptions } from './sweep.ts'
 export {
   PLAN_VERSION,
+  PlanSchema,
+  fingerprint,
   plan,
   readPlan,
+  sameFingerprint,
   writePlan,
   type Plan,
   type PlanRepo,
@@ -27,15 +30,20 @@ export {
 export { DEFAULT_MAX_FILE_BYTES, type ArchiveOptions, type LeftOut } from './archive.ts'
 export {
   check,
+  removeCandidate,
   run,
   type Allow,
   type Approval,
+  type CandidateRemoval,
   type CheckOptions,
   type Preview,
   type ResolvedApproval,
   type Resolved,
+  type RemoveCandidateOptions,
   type RunOptions,
 } from './clean.ts'
+export { candidatesOf, type CleanCandidate } from './candidates.ts'
+export { writeJsonAtomic } from './write-json.ts'
 export {
   RECEIPT_VERSION,
   ReceiptSchema,
@@ -46,7 +54,12 @@ export {
   type Step,
 } from './receipt.ts'
 export { render, type RunSummary, type Style } from './render.ts'
-export { defaultProcessProbe, type ProcessHolder, type ProcessProbe } from './processes.ts'
+export {
+  busyHolders,
+  defaultProcessProbe,
+  type ProcessHolder,
+  type ProcessProbe,
+} from './processes.ts'
 export { providers, type PrProvider, type ProviderChoice } from './providers/index.ts'
 export type { Annotate } from './hooks.ts'
 export {
