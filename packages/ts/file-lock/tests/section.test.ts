@@ -1,7 +1,6 @@
 import { execFile } from 'node:child_process'
 import {
   existsSync,
-  linkSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -101,7 +100,7 @@ describe('withLock', () => {
     const lock = join(dir, 'x.lock')
     staleLock(lock)
     // a live reaper's marker: young, so it is respected
-    linkSync(lock, markerFor(lock, ''))
+    writeFileSync(markerFor(lock, ''), '')
     const started = Date.now()
     expect(() => withLock(lock, () => 0, { staleMs: 1000, timeoutMs: 100 })).toThrow('timed out')
     expect(Date.now() - started).toBeLessThan(2000)
@@ -111,7 +110,7 @@ describe('withLock', () => {
   test('a marker from a killed reaper is cleared and the stale lock then taken', () => {
     const lock = join(dir, 'x.lock')
     staleLock(lock)
-    linkSync(lock, markerFor(lock, ''))
+    writeFileSync(markerFor(lock, ''), '')
     expect(afterMarkersExpire(() => withLock(lock, () => 'ran', { staleMs: 1000 }))).toBe('ran')
     expect(readdirSync(dir)).toEqual([])
   })
