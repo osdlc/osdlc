@@ -796,6 +796,9 @@ importers:
 
   packages/ts/harness-knowledge:
     devDependencies:
+      '@osdlc/corpus-schema':
+        specifier: workspace:^
+        version: link:../corpus-schema
       '@osdlc/prettier-config':
         specifier: workspace:^
         version: link:../prettier-config

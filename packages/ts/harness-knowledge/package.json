@@ -62,6 +62,7 @@
     "check:release": "node scripts/check-release.ts"
   },
   "devDependencies": {
+    "@osdlc/corpus-schema": "workspace:^",
     "@osdlc/prettier-config": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
     "@types/node": "catalog:",
