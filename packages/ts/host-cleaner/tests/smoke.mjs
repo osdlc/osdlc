@@ -11,7 +11,8 @@ import { strict as assert } from 'node:assert'
 import { spawnSync } from 'node:child_process'
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { hostCheck, hostPlan, hostRun, hostSweep } from '@osdlc/host-cleaner'
 
@@ -72,7 +73,12 @@ try {
   )
 
   // The installed binary runs: --help and --version exit 0, and a report over the repository does too.
-  const bin = join(import.meta.dirname, '..', 'bin', 'host-cleaner.js')
+  const bin = join(
+    dirname(fileURLToPath(import.meta.resolve('@osdlc/host-cleaner'))),
+    '..',
+    'bin',
+    'host-cleaner.js',
+  )
   for (const args of [['--help'], ['--version'], ['--format', 'json']]) {
     const r = spawnSync(process.execPath, [bin, ...args], { cwd: root, env, encoding: 'utf8' })
     assert.equal(r.status, 0, `host-cleaner ${args.join(' ')}: ${r.stderr}`)
