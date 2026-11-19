@@ -383,7 +383,8 @@ export function updateCommand(seams: CliSeams) {
         help: 'Treat this repo as trusted for this run (satisfies the trust gate on commands and agents the project file names).',
       },
       restack: {
-        kind: 'boolean',
+        kind: 'tristate',
+        offHelp: 'Do not restack this run, overriding a configured pr_update.restack: true.',
         help: "Update a whole stack in one run: a PR blocked on its parent is updated right after it, onto the parent's new head. With --pr or --branch, their stack ancestors are updated too.",
       },
       retryFailed: {
@@ -497,7 +498,7 @@ export function updateCommand(seams: CliSeams) {
             ...(branch !== undefined ? { branch } : {}),
             trust: flags.trust,
             retryFailed: flags.retryFailed,
-            restack: flags.restack,
+            ...(flags.restack !== undefined ? { restack: flags.restack } : {}),
             ...(flags.strategy !== undefined ? { strategy: flags.strategy } : {}),
           },
           env,

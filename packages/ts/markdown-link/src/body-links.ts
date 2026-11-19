@@ -38,7 +38,8 @@ export interface ScanOptions {
    * counts only when `isVaultLinkUrl` accepts its URL. A link with a URI
    * scheme, a URL starting with `//` or an empty destination is never read.
    * The target keeps any `#fragment` or `?query` as written, and loses `.md`
-   * only at its end: `[a](a.md#Intro)` targets `a.md#Intro`.
+   * only at its end: `[a](a.md#Intro)` targets `a.md#Intro`, and `[x](#h)`
+   * targets `#h`.
    */
   allMarkdownLinks?: boolean
 }
@@ -625,7 +626,7 @@ interface Destination {
   urlStart: number
   /** The code point index just past the URL. */
   urlEnd: number
-  /** The code point range of the title between its delimiters, if there is one. */
+  /** The code point range of the title, without its delimiters. */
   title: [number, number] | null
   /** The code point index just past the `)`. */
   end: number
@@ -697,7 +698,8 @@ class UrlScan {
    * Where the unbracketed URL at `from` ends, or -1 when it is not one: it
    * runs to the first whitespace or the first unescaped `)` that no `(` in it
    * opens, and its parentheses balance. A short URL is read in place; a long
-   * one from tables, so that a body of long failed attempts stays linear.
+   * one from a run or the tables, so that a body of long failed attempts
+   * stays linear.
    */
   private bareUrlEnd(from: number): number {
     const chars = this.chars
@@ -809,7 +811,7 @@ class UrlScan {
   }
 
   /**
-   * The index past the spaces and tabs from `at`, and at most one line break
+   * The index past the spaces and tabs from `from`, and at most one line break
    * among them. A `\r` counts only before a `\n`.
    */
   private skipSpace(from: number): number {
@@ -868,7 +870,7 @@ class UrlScan {
 }
 
 const CLOSE_PAREN = 0x29
-/** How many code points of a URL are read in place before the tables take over. */
+/** How many code points of a URL are read in place before a run or the tables take over. */
 const IN_PLACE = 64
 
 /**
@@ -883,11 +885,9 @@ class UrlRun {
     readonly end: number,
     /** The unescaped `)`, or -1. */
     private readonly close: number,
-    /**
-     * The last two unescaped `(` before `close`, or before `end` when there is
-     * no `)`, latest first; -1 for none.
-     */
+    /** The last unescaped `(` before `close`, or before `end` when there is no `)`; -1 for none. */
     private readonly lastOpen: number,
+    /** The unescaped `(` before `lastOpen`, or -1. */
     private readonly priorOpen: number,
     /** The last unescaped `(` after `close`, or -1. */
     private readonly openAfter: number,
@@ -944,14 +944,11 @@ class UrlRun {
 class UrlTables {
   /** For each index, the first whitespace at or after it. */
   readonly space: Int32Array
-  /**
-   * For each index, how many unescaped `(` before it are not closed by an
-   * unescaped `)` before it, less any `)` with no `(`.
-   */
+  /** For each index, the number of unescaped `(` before it minus the number of unescaped `)`. */
   readonly depth: Int32Array
   /**
    * For each index, the first unescaped `)` at or after it that closes a `(`
-   * before it: where a destination starting there ends.
+   * before it, or the body's length.
    */
   readonly unopenedClose: Int32Array
 
@@ -999,7 +996,7 @@ const APOSTROPHE = 0x27
 
 /**
  * Whether `chars[from, end)` points outside the vault: it has a URI scheme,
- * or starts with `//` and names a host.
+ * or starts with `//`.
  */
 function isExternal(chars: Int32Array, from: number, end: number): boolean {
   return (

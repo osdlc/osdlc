@@ -1,0 +1,609 @@
+{
+  "family": "etag-write",
+  "reference": "ts",
+  "referenceVersion": "0.3.1",
+  "sections": {
+    "etag": {
+      "description": "The etag of some bytes: lowercase hex sha256. `input.data` is the bytes, as text (UTF-8) or `{ \"hex\": ... }` for bytes that are not text. `expect.etag` is the etag.",
+      "cases": [
+        {
+          "name": "the empty input",
+          "input": {
+            "data": ""
+          },
+          "expect": {
+            "etag": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        {
+          "name": "plain text",
+          "input": {
+            "data": "abc"
+          },
+          "expect": {
+            "etag": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+          }
+        },
+        {
+          "name": "text with non-ASCII characters hashes as UTF-8",
+          "input": {
+            "data": "héllo ✓"
+          },
+          "expect": {
+            "etag": "5657cdef8a85a584e0e961e6f8247cf5d3f8ed21496ed6fdbcfd43a761e94245"
+          }
+        },
+        {
+          "name": "CRLF line endings are hashed as given",
+          "input": {
+            "data": "a\r\nb\r\n"
+          },
+          "expect": {
+            "etag": "58055bdcc73787eb88c78d36f0b4939e9c5dc1c3ad17e25cc85a6833cf1a0cab"
+          }
+        },
+        {
+          "name": "bytes that are not UTF-8",
+          "input": {
+            "data": {
+              "hex": "fffe00c328"
+            }
+          },
+          "expect": {
+            "etag": "d2b4465a410ab73d19480230dd87c2f5caa50197a14be0d0d726937d6ac6d76d"
+          }
+        },
+        {
+          "name": "a byte-order mark is hashed, not stripped",
+          "input": {
+            "data": {
+              "hex": "efbbbf6869"
+            }
+          },
+          "expect": {
+            "etag": "7611e336d2b333aa772acee003373474c86cd9ce975c10d66a4b0156e8641dca"
+          }
+        }
+      ]
+    },
+    "etag_of_file": {
+      "description": "The etag of a file, or `null` when it does not exist (`etagOfFile`, Rust `etag_of_file`). `input.existing` is what is at the path: absent, the file content (text or `{ \"hex\": ... }`), or `{ \"directory\": true }`. `expect.etag` is the etag or `null`. A path that exists but cannot be read is not absent: it is an `io` error.",
+      "cases": [
+        {
+          "name": "a path that does not exist",
+          "input": {},
+          "expect": {
+            "etag": null
+          }
+        },
+        {
+          "name": "an empty file",
+          "input": {
+            "existing": ""
+          },
+          "expect": {
+            "etag": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        {
+          "name": "a file with text",
+          "input": {
+            "existing": "hello"
+          },
+          "expect": {
+            "etag": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+          }
+        },
+        {
+          "name": "a file that is not UTF-8",
+          "input": {
+            "existing": {
+              "hex": "00ff80"
+            }
+          },
+          "expect": {
+            "etag": "f742b965f156c10374bc23aea96e3a8aff8facd6fc079defeaa30219ad86f211"
+          }
+        },
+        {
+          "name": "a directory is not an absent file",
+          "input": {
+            "existing": {
+              "directory": true
+            }
+          },
+          "error": {
+            "kind": "io"
+          }
+        }
+      ]
+    },
+    "write_cas": {
+      "description": "Compare-and-swap write (`writeCas`, Rust `write_cas`). `input.existing` is what is at the path (as in `etag_of_file`), `input.expectedEtag` is `null`, a literal etag string, or `{ \"etagOf\": data }` for the etag of that data, and `input.content` is what to write. `expect.etag` is the returned etag and `expect.content` is the file afterwards. An `error` kind is `changed` (the etag differs), `exists_without_etag` (a file exists and no etag was sent) or `io`. A refused write leaves the file as it was and leaves no other file beside it.",
+      "cases": [
+        {
+          "name": "a missing file and no etag: create it",
+          "input": {
+            "expectedEtag": null,
+            "content": "v1"
+          },
+          "expect": {
+            "etag": "3bfc269594ef649228e9a74bab00f042efc91d5acc6fbee31a382e80d42388fe",
+            "content": "v1"
+          }
+        },
+        {
+          "name": "a missing file and an etag: create it, the file was deleted since it was read",
+          "input": {
+            "expectedEtag": {
+              "etagOf": "v0"
+            },
+            "content": "v1"
+          },
+          "expect": {
+            "etag": "3bfc269594ef649228e9a74bab00f042efc91d5acc6fbee31a382e80d42388fe",
+            "content": "v1"
+          }
+        },
+        {
+          "name": "a matching etag: write",
+          "input": {
+            "existing": "v1",
+            "expectedEtag": {
+              "etagOf": "v1"
+            },
+            "content": "v2"
+          },
+          "expect": {
+            "etag": "fb04dcb6970e4c3d1873de51fd5a50d7bb46b3383113602665c350ec40b5f990",
+            "content": "v2"
+          }
+        },
+        {
+          "name": "a matching etag and the same content: write",
+          "input": {
+            "existing": "v1",
+            "expectedEtag": {
+              "etagOf": "v1"
+            },
+            "content": "v1"
+          },
+          "expect": {
+            "etag": "3bfc269594ef649228e9a74bab00f042efc91d5acc6fbee31a382e80d42388fe",
+            "content": "v1"
+          }
+        },
+        {
+          "name": "a differing etag: changed",
+          "input": {
+            "existing": "v2",
+            "expectedEtag": {
+              "etagOf": "v1"
+            },
+            "content": "v3"
+          },
+          "error": {
+            "kind": "changed"
+          }
+        },
+        {
+          "name": "an etag that is not an etag: changed",
+          "input": {
+            "existing": "v1",
+            "expectedEtag": "not-an-etag",
+            "content": "v2"
+          },
+          "error": {
+            "kind": "changed"
+          }
+        },
+        {
+          "name": "the etag of the empty input does not match a file with content: changed",
+          "input": {
+            "existing": "v1",
+            "expectedEtag": {
+              "etagOf": ""
+            },
+            "content": "v2"
+          },
+          "error": {
+            "kind": "changed"
+          }
+        },
+        {
+          "name": "no etag for an existing file: exists_without_etag",
+          "input": {
+            "existing": "v1",
+            "expectedEtag": null,
+            "content": "v2"
+          },
+          "error": {
+            "kind": "exists_without_etag"
+          }
+        },
+        {
+          "name": "no etag for an existing empty file: exists_without_etag",
+          "input": {
+            "existing": "",
+            "expectedEtag": null,
+            "content": "v2"
+          },
+          "error": {
+            "kind": "exists_without_etag"
+          }
+        },
+        {
+          "name": "content that is not UTF-8",
+          "input": {
+            "existing": {
+              "hex": "00"
+            },
+            "expectedEtag": {
+              "etagOf": {
+                "hex": "00"
+              }
+            },
+            "content": {
+              "hex": "fffe00"
+            }
+          },
+          "expect": {
+            "etag": "ba778c0261008c8f71ae4061ad0162ffcbe63b52c91f89f236738131d1217ec7",
+            "content": {
+              "hex": "fffe00"
+            }
+          }
+        },
+        {
+          "name": "empty content",
+          "input": {
+            "existing": "v1",
+            "expectedEtag": {
+              "etagOf": "v1"
+            },
+            "content": ""
+          },
+          "expect": {
+            "etag": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "content": ""
+          }
+        },
+        {
+          "name": "a directory at the path with no etag: io",
+          "input": {
+            "existing": {
+              "directory": true
+            },
+            "expectedEtag": null,
+            "content": "v1"
+          },
+          "error": {
+            "kind": "io"
+          }
+        },
+        {
+          "name": "a directory at the path with an etag: io",
+          "input": {
+            "existing": {
+              "directory": true
+            },
+            "expectedEtag": {
+              "etagOf": "v1"
+            },
+            "content": "v1"
+          },
+          "error": {
+            "kind": "io"
+          }
+        }
+      ]
+    },
+    "write_if_changed": {
+      "description": "Write only when the content differs (`writeIfChanged`, Rust `write_if_changed`). `input.existing` is what is at the path, `input.content` is what to write. `expect.wrote` is whether it wrote and `expect.content` is the file afterwards. A path that exists but cannot be read is not absent: it is an `io` error.",
+      "cases": [
+        {
+          "name": "a missing file is created",
+          "input": {
+            "content": "v1"
+          },
+          "expect": {
+            "wrote": true,
+            "content": "v1"
+          }
+        },
+        {
+          "name": "a missing file is created with empty content",
+          "input": {
+            "content": ""
+          },
+          "expect": {
+            "wrote": true,
+            "content": ""
+          }
+        },
+        {
+          "name": "the same content is not written",
+          "input": {
+            "existing": "v1",
+            "content": "v1"
+          },
+          "expect": {
+            "wrote": false,
+            "content": "v1"
+          }
+        },
+        {
+          "name": "the same empty content is not written",
+          "input": {
+            "existing": "",
+            "content": ""
+          },
+          "expect": {
+            "wrote": false,
+            "content": ""
+          }
+        },
+        {
+          "name": "the same bytes that are not UTF-8 are not written",
+          "input": {
+            "existing": {
+              "hex": "fffe00"
+            },
+            "content": {
+              "hex": "fffe00"
+            }
+          },
+          "expect": {
+            "wrote": false,
+            "content": {
+              "hex": "fffe00"
+            }
+          }
+        },
+        {
+          "name": "different content is written",
+          "input": {
+            "existing": "v1",
+            "content": "v2"
+          },
+          "expect": {
+            "wrote": true,
+            "content": "v2"
+          }
+        },
+        {
+          "name": "content that differs only in a trailing newline is written",
+          "input": {
+            "existing": "v1",
+            "content": "v1\n"
+          },
+          "expect": {
+            "wrote": true,
+            "content": "v1\n"
+          }
+        },
+        {
+          "name": "empty content over a file with content is written",
+          "input": {
+            "existing": "v1",
+            "content": ""
+          },
+          "expect": {
+            "wrote": true,
+            "content": ""
+          }
+        },
+        {
+          "name": "a directory at the path: io",
+          "input": {
+            "existing": {
+              "directory": true
+            },
+            "content": "v1"
+          },
+          "error": {
+            "kind": "io"
+          }
+        }
+      ]
+    },
+    "write_atomic": {
+      "description": "Atomic write (`atomicWrite`, Rust `write_atomic`). `input.existing` is what is at the path, `input.path` is the path under the scratch directory (default `target.txt`), `input.content` is what to write. `expect.content` is the file afterwards and `expect.entries` is every file and directory then under the scratch directory, sorted, `/`-separated: a temp file left behind would show here. An `error` kind is `io`; a failed write leaves the directory as it was.",
+      "cases": [
+        {
+          "name": "a new file",
+          "input": {
+            "content": "v1"
+          },
+          "expect": {
+            "content": "v1",
+            "entries": [
+              "target.txt"
+            ]
+          }
+        },
+        {
+          "name": "an overwrite",
+          "input": {
+            "existing": "old content",
+            "content": "new"
+          },
+          "expect": {
+            "content": "new",
+            "entries": [
+              "target.txt"
+            ]
+          }
+        },
+        {
+          "name": "an overwrite with longer content",
+          "input": {
+            "existing": "v1",
+            "content": "a much longer v2"
+          },
+          "expect": {
+            "content": "a much longer v2",
+            "entries": [
+              "target.txt"
+            ]
+          }
+        },
+        {
+          "name": "empty content",
+          "input": {
+            "existing": "v1",
+            "content": ""
+          },
+          "expect": {
+            "content": "",
+            "entries": [
+              "target.txt"
+            ]
+          }
+        },
+        {
+          "name": "content that is not UTF-8",
+          "input": {
+            "content": {
+              "hex": "00ff80"
+            }
+          },
+          "expect": {
+            "content": {
+              "hex": "00ff80"
+            },
+            "entries": [
+              "target.txt"
+            ]
+          }
+        },
+        {
+          "name": "parent directories are created",
+          "input": {
+            "path": "a/b/c/note.md",
+            "content": "v1"
+          },
+          "expect": {
+            "content": "v1",
+            "entries": [
+              "a",
+              "a/b",
+              "a/b/c",
+              "a/b/c/note.md"
+            ]
+          }
+        },
+        {
+          "name": "parent directories that exist are kept",
+          "input": {
+            "path": "a/note.md",
+            "existing": "v1",
+            "content": "v2"
+          },
+          "expect": {
+            "content": "v2",
+            "entries": [
+              "a",
+              "a/note.md"
+            ]
+          }
+        },
+        {
+          "name": "a directory at the path: io, and no temp file is left",
+          "input": {
+            "existing": {
+              "directory": true
+            },
+            "content": "v1"
+          },
+          "error": {
+            "kind": "io"
+          }
+        }
+      ]
+    },
+    "write_atomic_mode": {
+      "description": "The permission bits an overwrite keeps (Unix). `input.existingMode` is the octal mode the existing file has, `input.content` is what an overwrite writes. `expect.mode` is the octal mode of the file afterwards, setuid and setgid included. An overwrite keeps the old file's `0o777` bits and drops setuid, setgid and sticky. No case sets sticky: macOS refuses it on a file. A new file gets the platform default, which depends on the umask, so no case pins it.",
+      "cases": [
+        {
+          "name": "0640 is kept",
+          "input": {
+            "existingMode": "640",
+            "content": "v2"
+          },
+          "expect": {
+            "mode": "640"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "0600 is kept",
+          "input": {
+            "existingMode": "600",
+            "content": "v2"
+          },
+          "expect": {
+            "mode": "600"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "0755 is kept",
+          "input": {
+            "existingMode": "755",
+            "content": "v2"
+          },
+          "expect": {
+            "mode": "755"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a read-only file is overwritten and stays read-only",
+          "input": {
+            "existingMode": "444",
+            "content": "v2"
+          },
+          "expect": {
+            "mode": "444"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "setuid is dropped",
+          "input": {
+            "existingMode": "4755",
+            "content": "v2"
+          },
+          "expect": {
+            "mode": "755"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "setgid is dropped",
+          "input": {
+            "existingMode": "2755",
+            "content": "v2"
+          },
+          "expect": {
+            "mode": "755"
+          },
+          "platforms": [
+            "unix"
+          ]
+        }
+      ]
+    }
+  }
+}

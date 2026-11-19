@@ -13,7 +13,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { chmodSync, existsSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 
@@ -1182,6 +1183,256 @@ describe('the executor against real git', () => {
       expect(describeOutcome(outcome)).toBe('updated (repaired conflict)')
       expect(toResult({ ...target(), outcome }).repaired).toEqual(outcome.repaired)
     })
+  })
+})
+
+describe('submodules in the update worktree', () => {
+  let fx: ReturnType<typeof makeBareAndWorker>
+  let wtRoot: string
+  let subDir: string
+  let s1: string
+  let s2: string
+  let s3: string
+  const GIT_ENV = ['GIT_ALLOW_PROTOCOL'] as const
+  const savedEnv = Object.fromEntries(GIT_ENV.map((k) => [k, process.env[k]]))
+
+  beforeEach(() => {
+    // Lets the fixture's `submodule add` and the verb use a local-path URL; both refuse `file` by default.
+    process.env.GIT_ALLOW_PROTOCOL = 'file'
+    subDir = mkdtempSync(join(tmpdir(), 'pr-update-sub-'))
+    const sub = new Git(subDir)
+    sub.rawChecked(['init', '-b', 'main'])
+    sub.rawChecked(['config', 'user.email', 't@t'])
+    sub.rawChecked(['config', 'user.name', 't'])
+    const commit = (n: string): string => {
+      writeFileSync(join(subDir, 'f.txt'), `${n}\n`)
+      sub.add(['.'])
+      sub.commit({ message: n })
+      return sub.resolveRef('HEAD')!
+    }
+    s1 = commit('one')
+    s2 = commit('two')
+    s3 = commit('three')
+
+    fx = makeBareAndWorker({ initialBranch: 'main' })
+    fx.worker.commit('initial', { 'README.md': 'fixture\n' })
+    fx.worker.git.push('origin', 'main')
+    fx.worker.git.fetch('origin')
+    wtRoot = join(fx.worker.dir, '.pr-update', 'test')
+  })
+  afterEach(() => {
+    fx.cleanup()
+    rmSync(subDir, { recursive: true, force: true })
+    for (const k of GIT_ENV) {
+      if (savedEnv[k] === undefined) delete process.env[k]
+      else process.env[k] = savedEnv[k]
+    }
+  })
+
+  /** A gitlink at `deps/sub` pinned to `sha`, committed on the checked-out branch. */
+  function pin(sha: string, addSubmodule = false): void {
+    const { git } = fx.worker
+    if (addSubmodule) {
+      git.rawChecked(['submodule', 'add', subDir, 'deps/sub'])
+    }
+    git.rawChecked(['update-index', '--add', '--cacheinfo', `160000,${sha},deps/sub`])
+    git.commit({ message: `pin ${sha.slice(0, 7)}` })
+  }
+
+  /** A commit on main that stages only `b.txt`, so `add` does not pick up the untracked `deps/sub` checkout. */
+  function moveMain(): void {
+    writeFileSync(join(fx.worker.dir, 'b.txt'), 'b\n')
+    fx.worker.git.add(['b.txt'])
+    fx.worker.git.commit({ message: 'main moves' })
+  }
+
+  /** `sub-pr` pins the submodule at s1; main then moves by `onMain`. */
+  function makeBehindPr(onMain: () => void): void {
+    const { git } = fx.worker
+    git.checkout('main', { branch: 'sub-pr' })
+    pin(s1, true)
+    git.push('origin', 'sub-pr')
+    git.checkout('main')
+    onMain()
+    git.push('origin', 'main')
+    git.fetch('origin')
+  }
+
+  async function update(set: Partial<UpdateSettings>, run: RunVerb): Promise<UpdateOutcome> {
+    const { git } = fx.worker
+    git.worktreeAdd(wtRoot, { detach: true, startPoint: 'origin/main' })
+    try {
+      return await updateOne(git.at(wtRoot), target({ head: 'sub-pr' }), settings(set), run, {
+        apply: false,
+        worktree: wtRoot,
+      })
+    } finally {
+      git.try.worktreeRemove(wtRoot, { force: true })
+      git.try.worktreePrune()
+      git.try.deleteBranch(scratchBranch(wtRoot), { force: true })
+    }
+  }
+
+  /** A verify verb that records whether the submodule's files are on disk when it runs. */
+  function sees(): RunVerb & { seen: boolean[] } {
+    const seen: boolean[] = []
+    const fn = (): CommandResult => {
+      seen.push(existsSync(join(wtRoot, 'deps', 'sub', 'f.txt')))
+      return ok
+    }
+    return Object.assign(fn, { seen })
+  }
+
+  test('the submodule is checked out before verify runs', async () => {
+    makeBehindPr(moveMain)
+    const run = sees()
+    const out = await update({ verifyVerbs: ['test'] }, run)
+    expect(out.status).toBe('updated')
+    expect(run.seen).toEqual([true])
+  })
+
+  test('submodules: off leaves it alone', async () => {
+    makeBehindPr(moveMain)
+    const run = sees()
+    await update({ verifyVerbs: ['test'], submodules: 'off' }, run)
+    expect(run.seen).toEqual([false])
+  })
+
+  test('a repository without .gitmodules is not touched', async () => {
+    const { git } = fx.worker
+    git.checkout('main', { branch: 'sub-pr' })
+    fx.worker.commit('work', { 'a.txt': 'a\n' })
+    git.push('origin', 'sub-pr')
+    git.checkout('main')
+    moveMain()
+    git.push('origin', 'main')
+    git.fetch('origin')
+    const out = await update({}, recorder())
+    expect(out.status).toBe('updated')
+  })
+
+  test('a submodule that will not check out is its own, unrecorded failure', async () => {
+    makeBehindPr(moveMain)
+    rmSync(join(subDir, '.git'), { recursive: true, force: true })
+    const out = await update({}, recorder())
+    expect(out.status).toBe('failed')
+    if (out.status !== 'failed') throw new Error('unreachable')
+    expect(out.reason).toMatch(/^submodule setup failed: /)
+    expect(out.unrecorded).toBe(true)
+  })
+
+  /** Commit `build/out.txt` alone: the `commit` helper's `add -A` would also stage the checkout's HEAD. */
+  function editOut(text: string): void {
+    mkdirSync(join(fx.worker.dir, 'build'), { recursive: true })
+    writeFileSync(join(fx.worker.dir, 'build', 'out.txt'), `${text}\n`)
+    fx.worker.git.add(['build/out.txt'])
+    fx.worker.git.commit({ message: `${text} work` })
+  }
+
+  test('a pointer base moved is not restaged to the PR commit when an unrelated file conflicts', async () => {
+    const { git } = fx.worker
+    pin(s1, true)
+    git.push('origin', 'main')
+    git.checkout('main', { branch: 'sub-pr' })
+    editOut('pr')
+    git.push('origin', 'sub-pr')
+    // Main moves the pointer cleanly and edits the same generated file, which conflicts.
+    git.checkout('main')
+    editOut('main')
+    pin(s2)
+    git.push('origin', 'main')
+    git.fetch('origin')
+
+    git.worktreeAdd(wtRoot, { detach: true, startPoint: 'origin/main' })
+    try {
+      const wt = git.at(wtRoot)
+      const out = await updateOne(
+        wt,
+        target({ head: 'sub-pr' }),
+        settings({ resolvers: [{ paths: ['build/**'], run: 'regen' }] }),
+        (verb, cwd) => {
+          if (verb === 'regen') writeFileSync(join(cwd, 'build', 'out.txt'), 'regenerated\n')
+          return ok
+        },
+        { apply: false, worktree: wtRoot },
+      )
+      expect(out.status).toBe('updated')
+      expect(wt.rawChecked(['ls-tree', 'HEAD', 'deps/sub']).stdout + '').toContain(s2)
+    } finally {
+      git.try.worktreeRemove(wtRoot, { force: true })
+      git.try.worktreePrune()
+      git.try.deleteBranch(scratchBranch(wtRoot), { force: true })
+    }
+  })
+
+  test("a PR's submodule URL is not left in the repository config", async () => {
+    makeBehindPr(moveMain)
+    const urls = (): string => {
+      try {
+        return fx.worker.git.rawChecked(['config', '--get-regexp', '^submodule\\..*\\.url$']).stdout
+      } catch {
+        return ''
+      }
+    }
+    // A PR whose `.gitmodules` names another URL than the one the repository has.
+    fx.worker.git.rawChecked(['config', 'submodule.deps/sub.url', '/nowhere/else'])
+    const out = await update({}, recorder())
+    expect(out.status).toBe('updated')
+    expect(urls()).toBe('submodule.deps/sub.url /nowhere/else\n')
+  })
+
+  test("the previous PR's submodule is gone before the next PR's resolution is staged", async () => {
+    const { git } = fx.worker
+    git.checkout('main', { branch: 'sub-pr' })
+    pin(s1, true)
+    git.push('origin', 'sub-pr')
+    git.checkout('main', { branch: 'plain' })
+    editOut('plain')
+    git.push('origin', 'plain')
+    git.checkout('main')
+    editOut('main')
+    git.push('origin', 'main')
+    git.fetch('origin')
+
+    git.worktreeAdd(wtRoot, { detach: true, startPoint: 'origin/main' })
+    try {
+      const wt = git.at(wtRoot)
+      const cfg = settings({ resolvers: [{ paths: ['build/**'], run: 'regen' }] })
+      const run: RunVerb = (verb, cwd) => {
+        if (verb === 'regen') writeFileSync(join(cwd, 'build', 'out.txt'), 'regenerated\n')
+        return ok
+      }
+      const o = { apply: false, worktree: wtRoot }
+      const first = await updateOne(wt, target({ head: 'sub-pr' }), cfg, run, o)
+      expect(first.status).toBe('updated')
+      const second = await updateOne(wt, target({ head: 'plain', number: 2 }), cfg, run, o)
+      expect(second.status).toBe('updated')
+      expect(wt.rawChecked(['ls-tree', 'HEAD', 'deps']).stdout).toBe('')
+    } finally {
+      git.try.worktreeRemove(wtRoot, { force: true })
+      git.try.worktreePrune()
+      git.try.deleteBranch(scratchBranch(wtRoot), { force: true })
+    }
+  })
+
+  test('both sides moving the pointer names the two commits', async () => {
+    makeBehindPr(() => pin(s3))
+    // The branch moves it too, to s2.
+    const { git } = fx.worker
+    git.checkout('sub-pr')
+    pin(s2)
+    git.push('origin', 'sub-pr')
+    git.checkout('main')
+    git.fetch('origin')
+    const out = await update({}, recorder())
+    expect(out.status).toBe('conflict')
+    if (out.status !== 'conflict') throw new Error('unreachable')
+    expect(out.needsHuman).toEqual([
+      {
+        path: 'deps/sub',
+        why: `submodule pointer moved on both sides: base ${s3}, branch ${s2}`,
+      },
+    ])
   })
 })
 

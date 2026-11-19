@@ -251,14 +251,14 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
     let blanked =
         options.skip_html_comments || regions.iter().any(|(_, region)| *region == Region::Code);
     let mut written: Option<Vec<char>> = None;
-    blank_chars(
-        &mut chars,
-        &at,
-        regions
-            .iter()
-            .filter(|(_, region)| options.skip_html_comments || *region == Region::Code)
-            .map(|(range, _)| range),
-    );
+    // The char ranges blanked. In order and disjoint, since `regions` emits
+    // them in one left-to-right pass: `inner_text` relies on it.
+    let blanked_chars: Vec<Range<usize>> = regions
+        .iter()
+        .filter(|(_, region)| options.skip_html_comments || *region == Region::Code)
+        .map(|(range, _)| at.char_range(range))
+        .collect();
+    blank_chars(&mut chars, blanked_chars.iter().cloned());
     // With comments blanked too, the chars with only code blanked, made the
     // first time an abandoned link needs them.
     let mut code_chars: Option<Vec<char>> = None;
@@ -280,23 +280,18 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
         if chars.get(i + 1) == Some(&'[') {
             let embed = i > 0 && chars[i - 1] == '!' && !escaped_bang(&chars, i - 1);
             let start = at.of(if embed { i - 1 } else { i });
+            // `[[` never nests, and `[`/`]` inside would be a malformed
+            // link — bail rather than swallow the rest of the note.
             let mut j = i + 2;
-            let mut inner = String::new();
             let mut closed = false;
             let mut bracket = false;
-            while j + 1 < chars.len() {
+            if let Some(end) = next_bracket(&chars, j) {
+                j = end;
                 if chars[j] == ']' && chars[j + 1] == ']' {
                     closed = true;
-                    break;
-                }
-                // `[[` never nests, and `[`/`]` inside would be a malformed
-                // link — bail rather than swallow the rest of the note.
-                if chars[j] == '[' || chars[j] == ']' {
+                } else {
                     bracket = true;
-                    break;
                 }
-                inner.push(chars[j]);
-                j += 1;
             }
             if !closed {
                 abandoned.push(AbandonedLink {
@@ -311,6 +306,7 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
                 });
             }
             if closed {
+                let inner = inner_text(body, &chars, &at, &blanked_chars, i + 2..j);
                 let parsed = if inner.is_empty() {
                     None
                 } else if options.self_links {
@@ -328,11 +324,10 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
                                 let mut code: Vec<char> = body.chars().collect();
                                 blank_chars(
                                     &mut code,
-                                    &at,
                                     regions
                                         .iter()
                                         .filter(|(_, region)| *region == Region::Code)
-                                        .map(|(range, _)| range),
+                                        .map(|(range, _)| at.char_range(range)),
                                 );
                                 code
                             })
@@ -358,9 +353,7 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
                     // Split at the pipe `parse_inner` used, found in the
                     // stripped chars so a `|` in code is not one, then read
                     // the alias from the body so code inside it is kept.
-                    let alias = chars[i + 2..j]
-                        .iter()
-                        .position(|&c| c == '|')
+                    let alias = find_char(&chars[i + 2..j], |c| c == '|')
                         .map(|p| body[at.of(i + 3 + p)..at.of(j)].trim())
                         .filter(|alias| !alias.is_empty())
                         .map(str::to_string);
@@ -469,23 +462,71 @@ impl Offsets {
             Offsets::Table(at) => at.partition_point(|&start| (start as usize) < offset),
         }
     }
+
+    /// The chars of a byte range.
+    fn char_range(&self, bytes: &Range<usize>) -> Range<usize> {
+        self.char_index(bytes.start)..self.char_index(bytes.end)
+    }
 }
 
-/// Blanks the chars of each byte range to spaces, but `\n`, as [`blank`] does
-/// to text. `at` maps a char index to its byte offset.
-fn blank_chars<'a>(
-    chars: &mut [char],
-    at: &Offsets,
-    ranges: impl IntoIterator<Item = &'a Range<usize>>,
-) {
+/// Blanks the chars of each range to spaces, but `\n`, as [`blank`] does to
+/// text.
+fn blank_chars(chars: &mut [char], ranges: impl IntoIterator<Item = Range<usize>>) {
     for range in ranges {
-        let from = at.char_index(range.start);
-        let to = at.char_index(range.end);
-        for c in &mut chars[from..to] {
+        for c in &mut chars[range] {
             if *c != '\n' {
                 *c = ' ';
             }
         }
+    }
+}
+
+/// The index of the first `[` or `]` at or after `from`, but not the last
+/// char, since the caller reads the char after it.
+fn next_bracket(chars: &[char], from: usize) -> Option<usize> {
+    let (_, text) = chars.get(from..)?.split_last()?;
+    find_char(text, |c| c == '[' || c == ']').map(|p| from + p)
+}
+
+/// The index of the first char `is` accepts, as `position` would return it.
+///
+/// Tests the first sixteen chars one by one (most links are shorter), then
+/// sixteen at a time as one or-reduction the compiler vectorizes. A loop
+/// counter spilled to the stack in a large caller such as `scan_body_with`
+/// then costs one store-to-load round trip per sixteen chars, not per char.
+fn find_char(chars: &[char], is: impl Fn(char) -> bool) -> Option<usize> {
+    let head = chars.len().min(16);
+    if let Some(p) = chars[..head].iter().position(|&c| is(c)) {
+        return Some(p);
+    }
+    let mut skipped = head;
+    for chunk in chars[head..].as_chunks::<16>().0 {
+        if chunk.iter().fold(false, |any, &c| any | is(c)) {
+            break;
+        }
+        skipped += 16;
+    }
+    chars[skipped..]
+        .iter()
+        .position(|&c| is(c))
+        .map(|p| skipped + p)
+}
+
+/// The chars of `range` as a string: the body's bytes there, or the blanked
+/// chars when a blanked range reaches into it. `blanked` is in order and
+/// disjoint, so only the first range that ends after `range` starts can.
+fn inner_text(
+    body: &str,
+    chars: &[char],
+    at: &Offsets,
+    blanked: &[Range<usize>],
+    range: Range<usize>,
+) -> String {
+    let next = blanked.partition_point(|b| b.end <= range.start);
+    if blanked.get(next).is_some_and(|b| b.start < range.end) {
+        chars[range].iter().collect()
+    } else {
+        body[at.of(range.start)..at.of(range.end)].to_string()
     }
 }
 
@@ -675,7 +716,7 @@ struct Destination {
     url_start: usize,
     /// The char index just past the URL.
     url_end: usize,
-    /// The char range of the title between its delimiters, if there is one.
+    /// The char range of the title, without its delimiters.
     title: Option<(usize, usize)>,
     /// The char index just past the `)`.
     end: usize,
@@ -722,14 +763,16 @@ fn spanned_markdown_link(
     })
 }
 
-/// How many chars of a URL are read in place before the tables take over.
+/// How many chars of a URL are read in place before a run or the tables take
+/// over.
 const IN_PLACE: usize = 64;
 
 /// What earlier markdown link attempts learned about the destinations they
-/// read, in a body's chars as written. Each attempt starts later than the one
-/// before, so remembering the last answer of each kind, the parentheses of the last
-/// run of a URL too long to read in place, and tables when a run is not enough,
-/// keep a body of failed attempts linear.
+/// read, in a body's chars as written, so that a body of failed attempts stays
+/// linear. Each attempt starts later than the one before. The last answer of
+/// each kind is remembered. A URL too long to read in place leaves the
+/// parentheses of its run, which answer later starts in that run. When a run
+/// is not enough, tables answer every start.
 ///
 /// A destination and title are read as written, not with code blanked, as
 /// CommonMark reads them where the link's `](` is: `[a](notes/$x$.md)` is a
@@ -802,7 +845,8 @@ impl Run {
         })
     }
 
-    /// Where the URL at `from` ends, if `from` is in the run.
+    /// Where the URL at `from` ends: `None` when `from` is outside the run,
+    /// `Some(None)` when no URL starts there.
     fn url_end(&self, from: usize, body_len: usize) -> Option<Option<usize>> {
         if !(self.start..self.end).contains(&from) {
             return None;
@@ -827,20 +871,19 @@ impl Run {
 #[derive(Debug)]
 struct UrlTables {
     /// For each char index, where an unbracketed URL starting there ends, or
-    /// `NONE` when none does.
+    /// `NO_END` when none does.
     end: Vec<u32>,
 }
 
-/// An entry of [`UrlTables::end`] for a start that no URL ends.
-const NONE: u32 = u32::MAX;
+const NO_END: u32 = u32::MAX;
 
 impl UrlTables {
     fn new(chars: &[char]) -> Self {
         let n = chars.len();
-        let mut end = vec![NONE; n + 1];
+        let mut end = vec![NO_END; n + 1];
         // From the right, within the run of non-whitespace chars after
         // `space`: the unescaped `)` that no `(` after the char `k` closes,
-        // nearest first, and how many unescaped `(` after `k` close no `)`.
+        // nearest last, and how many unescaped `(` after `k` close no `)`.
         let mut space = n;
         let mut closes: Vec<u32> = Vec::new();
         let mut unclosed = 0usize;
@@ -872,8 +915,8 @@ impl UrlTables {
 /// How many chars [`Run::new`] tests at once.
 const CHUNK: usize = 32;
 
-/// Whether `c` may end a run or hold a `)` for [`Run::new`] to read: it is
-/// whitespace, `)`, `\`, or not ASCII.
+/// Whether [`Run::new`] must look at `c`. Non-ASCII is included because it
+/// may be Unicode whitespace.
 fn is_stop(c: char) -> bool {
     (c <= ' ') | (c == ')') | (c == '\\') | (c >= '\u{80}')
 }
@@ -964,8 +1007,8 @@ impl UrlScan {
     /// Where the unbracketed URL at `from` ends, or `None` when it is not
     /// one: it runs to the first whitespace or the first unescaped `)` that no
     /// `(` in it opens, and its parentheses balance. A short URL is read in
-    /// place; a long one from tables, so that a body of long failed attempts
-    /// stays linear.
+    /// place; a long one from a run or the tables, so that a body of long
+    /// failed attempts stays linear.
     fn bare_url_end(&mut self, chars: &[char], from: usize) -> Option<usize> {
         if let Some(answer) = self
             .run
@@ -1012,7 +1055,7 @@ impl UrlScan {
         }
         let tables = self.tables.get_or_insert_with(|| UrlTables::new(chars));
         let end = tables.end[from];
-        (end != NONE).then_some(end as usize)
+        (end != NO_END).then_some(end as usize)
     }
 
     /// [`is_vault_link_url`] of `chars[from..end]`. That answer depends only
@@ -1088,7 +1131,7 @@ fn delimited(chars: &[char], from: usize, close: char, refused: &[char]) -> Opti
 }
 
 /// Whether a URL points outside the vault: it has a URI scheme, or starts
-/// with `//` and names a host.
+/// with `//`.
 fn is_external(url: &[char]) -> bool {
     url.starts_with(&['/', '/']) || has_scheme(url)
 }
@@ -1171,6 +1214,74 @@ mod tests {
                 }
                 from += 1 + next(30);
             }
+        }
+    }
+
+    #[test]
+    fn find_char_finds_what_position_finds() {
+        for len in 0..80 {
+            for at in (0..len).map(Some).chain([None]) {
+                let mut chars = vec!['a'; len];
+                if let Some(at) = at {
+                    chars[at] = '|';
+                    // A later match in another block must not win.
+                    chars[len - 1] = '|';
+                }
+                assert_eq!(
+                    find_char(&chars, |c| c == '|'),
+                    chars.iter().position(|&c| c == '|'),
+                    "{at:?} in {len}"
+                );
+            }
+        }
+    }
+
+    /// A `]]`, `|`, stray `]` or code span at every distance from the `[[`,
+    /// across the sixteen-char blocks `find_char` reads.
+    #[test]
+    fn long_wikilinks_read_like_short_ones() {
+        let options = ScanOptions::default();
+        for n in 1..80 {
+            let a = "a".repeat(n);
+            let link = |body: &str| {
+                let scan = scan_body_with(body, &options);
+                assert!(scan.abandoned.is_empty(), "{body}: {:?}", scan.abandoned);
+                let [link] = <[BodyLink; 1]>::try_from(scan.links)
+                    .unwrap_or_else(|links| panic!("{body}: {links:?}"));
+                link
+            };
+            let abandoned = |body: &str| {
+                let scan = scan_body_with(body, &options);
+                assert!(scan.links.is_empty(), "{body}: {:?}", scan.links);
+                let ends: Vec<_> = scan
+                    .abandoned
+                    .iter()
+                    .map(|a| (a.reason, a.byte_end))
+                    .collect();
+                ends
+            };
+
+            let plain = link(&format!("[[{a}]]"));
+            assert_eq!((plain.raw.as_str(), plain.byte_end), (a.as_str(), n + 4));
+            let aliased = link(&format!("[[{a}|b]]"));
+            assert_eq!(
+                (aliased.target.as_str(), aliased.alias.as_deref()),
+                (a.as_str(), Some("b"))
+            );
+            // The raw text comes from the code-blanked chars, not the body.
+            let code = link(&format!("[[{a}`c`]]"));
+            assert_eq!(
+                (code.raw, code.target.as_str(), code.byte_end),
+                (format!("{a}   "), a.as_str(), n + 7)
+            );
+            assert_eq!(
+                abandoned(&format!("[[{a}]x]]")),
+                [(AbandonReason::Bracket, n + 2)]
+            );
+            assert_eq!(
+                abandoned(&format!("[[{a}]")),
+                [(AbandonReason::Unclosed, n + 3)]
+            );
         }
     }
 
