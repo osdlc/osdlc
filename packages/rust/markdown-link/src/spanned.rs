@@ -251,8 +251,8 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
     let blanked =
         options.skip_html_comments || regions.iter().any(|(_, region)| *region == Region::Code);
     let mut written: Option<Vec<char>> = None;
-    // The char ranges blanked, in order: where none reaches, `chars` are the
-    // body's bytes.
+    // The char ranges blanked. In order and disjoint, since `regions` emits
+    // them in one left-to-right pass: `inner_text` relies on it.
     let blanked_chars: Vec<Range<usize>> = regions
         .iter()
         .filter(|(_, region)| options.skip_html_comments || *region == Region::Code)
@@ -481,22 +481,19 @@ fn blank_chars(chars: &mut [char], ranges: impl IntoIterator<Item = Range<usize>
     }
 }
 
-/// The index of the first `[` or `]` at or after `from` that another char
-/// follows: where a `[[` opened before `from` ends, in a `]]` or in a bracket
-/// inside it. `None` when there is none before the last char.
+/// The index of the first `[` or `]` at or after `from`, but not the last
+/// char, since the caller reads the char after it.
 fn next_bracket(chars: &[char], from: usize) -> Option<usize> {
     let (_, text) = chars.get(from..)?.split_last()?;
     find_char(text, |c| c == '[' || c == ']').map(|p| from + p)
 }
 
-/// The index of the first char `is` accepts, as `position` would find it.
+/// The index of the first char `is` accepts, as `position` would return it.
 ///
-/// The first sixteen chars are tested one by one: most links are short. After
-/// them, sixteen at a time, as one or-reduction the compiler vectorizes, and
-/// the char is found in the chunk that holds one. The text inside a `[[` is
-/// read this way: it is where a body's scan spends its time, and a loop that
-/// moves once per sixteen chars costs the same whether `scan_body_with`, a
-/// large function, gives its index a register or a stack slot.
+/// Tests the first sixteen chars one by one (most links are shorter), then
+/// sixteen at a time as one or-reduction the compiler vectorizes. A loop
+/// counter spilled to the stack in a large caller such as `scan_body_with`
+/// then costs one store-to-load round trip per sixteen chars, not per char.
 fn find_char(chars: &[char], is: impl Fn(char) -> bool) -> Option<usize> {
     let head = chars.len().min(16);
     if let Some(p) = chars[..head].iter().position(|&c| is(c)) {
@@ -515,9 +512,9 @@ fn find_char(chars: &[char], is: impl Fn(char) -> bool) -> Option<usize> {
         .map(|p| skipped + p)
 }
 
-/// The chars of `range` as a string: a copy of the body's bytes there, unless
-/// a blanked range reaches into it. `blanked` is in order and disjoint, so
-/// only the first range that ends after `range` starts can.
+/// The chars of `range` as a string: the body's bytes there, or the blanked
+/// chars when a blanked range reaches into it. `blanked` is in order and
+/// disjoint, so only the first range that ends after `range` starts can.
 fn inner_text(
     body: &str,
     chars: &[char],
@@ -1217,6 +1214,74 @@ mod tests {
                 }
                 from += 1 + next(30);
             }
+        }
+    }
+
+    #[test]
+    fn find_char_finds_what_position_finds() {
+        for len in 0..80 {
+            for at in (0..len).map(Some).chain([None]) {
+                let mut chars = vec!['a'; len];
+                if let Some(at) = at {
+                    chars[at] = '|';
+                    // A later match in another block must not win.
+                    chars[len - 1] = '|';
+                }
+                assert_eq!(
+                    find_char(&chars, |c| c == '|'),
+                    chars.iter().position(|&c| c == '|'),
+                    "{at:?} in {len}"
+                );
+            }
+        }
+    }
+
+    /// A `]]`, `|`, stray `]` or code span at every distance from the `[[`,
+    /// across the sixteen-char blocks `find_char` reads.
+    #[test]
+    fn long_wikilinks_read_like_short_ones() {
+        let options = ScanOptions::default();
+        for n in 1..80 {
+            let a = "a".repeat(n);
+            let link = |body: &str| {
+                let scan = scan_body_with(body, &options);
+                assert!(scan.abandoned.is_empty(), "{body}: {:?}", scan.abandoned);
+                let [link] = <[BodyLink; 1]>::try_from(scan.links)
+                    .unwrap_or_else(|links| panic!("{body}: {links:?}"));
+                link
+            };
+            let abandoned = |body: &str| {
+                let scan = scan_body_with(body, &options);
+                assert!(scan.links.is_empty(), "{body}: {:?}", scan.links);
+                let ends: Vec<_> = scan
+                    .abandoned
+                    .iter()
+                    .map(|a| (a.reason, a.byte_end))
+                    .collect();
+                ends
+            };
+
+            let plain = link(&format!("[[{a}]]"));
+            assert_eq!((plain.raw.as_str(), plain.byte_end), (a.as_str(), n + 4));
+            let aliased = link(&format!("[[{a}|b]]"));
+            assert_eq!(
+                (aliased.target.as_str(), aliased.alias.as_deref()),
+                (a.as_str(), Some("b"))
+            );
+            // The raw text comes from the code-blanked chars, not the body.
+            let code = link(&format!("[[{a}`c`]]"));
+            assert_eq!(
+                (code.raw, code.target.as_str(), code.byte_end),
+                (format!("{a}   "), a.as_str(), n + 7)
+            );
+            assert_eq!(
+                abandoned(&format!("[[{a}]x]]")),
+                [(AbandonReason::Bracket, n + 2)]
+            );
+            assert_eq!(
+                abandoned(&format!("[[{a}]")),
+                [(AbandonReason::Unclosed, n + 3)]
+            );
         }
     }
 
