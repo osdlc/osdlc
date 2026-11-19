@@ -69,7 +69,16 @@ fn js_number(x: f64) -> String {
         return "0".into();
     }
     // `{:e}` gives the shortest digits that round-trip: `d.ddde<exp>`.
-    let sci = format!("{:e}", x.abs());
+    let mut sci = format!("{:e}", x.abs());
+    // At 17 digits several candidates can round-trip. JavaScript takes the one
+    // nearest the exact value (ties to even); Rust's shortest form breaks an
+    // exact tie upward. The exactly rounded 17 digits are JavaScript's choice.
+    if sci.split_once('e').is_some_and(|(m, _)| m.len() == 18) {
+        let exact = format!("{:.16e}", x.abs());
+        if exact.parse::<f64>().is_ok_and(|back| back == x.abs()) {
+            sci = exact;
+        }
+    }
     let (mantissa, exp) = sci.split_once('e').expect("{:e} has an exponent");
     let digits: String = mantissa.chars().filter(|c| *c != '.').collect();
     let k = i32::try_from(digits.len()).expect("a double has at most 17 digits");
@@ -104,6 +113,12 @@ fn js_number(x: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::canonical_json;
+
+    #[test]
+    fn an_exact_tie_at_17_digits_rounds_to_even_as_javascript_does() {
+        let value = serde_json::from_str("[2.98023223876953125e-8]").expect("valid JSON");
+        assert_eq!(canonical_json(&value), "[2.9802322387695312e-8]");
+    }
 
     #[test]
     fn negative_zero_is_written_as_zero() {

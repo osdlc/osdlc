@@ -433,6 +433,17 @@
           "expect": {
             "json": "{\"a\":3,\"😀\":2,\"￿\":1}"
           }
+        },
+        {
+          "name": "an exact tie between two 17-digit candidates",
+          "input": {
+            "value": [
+              2.9802322387695312e-8
+            ]
+          },
+          "expect": {
+            "json": "[2.9802322387695312e-8]"
+          }
         }
       ]
     }
