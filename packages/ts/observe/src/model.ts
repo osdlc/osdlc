@@ -12,10 +12,8 @@
  * them. {@link looseSessionModel} accepts any string, for a reader
  * that must stay able to read a log after a harness or host is added or removed.
  *
- * Kinds: `launched`, `host_attached`, `pid_recorded`, `harness_session_resolved`,
- * `state_changed`, `usage_sample`, `output`, `outcome`, `pr_linked`, `named`,
- * `interrupted`, `closed`, `done`, `ended` and `resumed`. A reader skips a line
- * whose kind it does not know.
+ * Kinds: the `kind` literals of `SessionEventSchema` in {@link defineSessionModel}.
+ * A reader skips a line whose kind it does not know.
  *
  * State machine: `starting` to `running`, `idle` or `ended`; `running` to
  * `waiting_for_input`, `idle`, `done` or `ended`; `waiting_for_input` to `running`,
@@ -29,7 +27,7 @@
  * an ended session, is ignored the same way. `output`, `outcome`, `pr_linked`,
  * `named`, `interrupted`, `closed` and `harness_session_resolved` still apply
  * after the end, since each describes the session, not its state. `interrupted`
- * and `closed` change no record field and never move the run state.
+ * and `closed` set no record field.
  *
  * Keys renamed in 0.3.3: the `launched` event and the record write `harness`,
  * `launchFlags` and `pin`. Logs and records written before carry `engine`,
@@ -520,7 +518,7 @@ export function defineSessionModel<H extends string, Ho extends string, F>(
         kind: z.literal('interrupted'),
         /** Who or what sent the interrupt, e.g. `close-out`. */
         cause: z.string(),
-        /** The host the interrupt went through. */
+        /** The host the interrupt went through; null for a headless session, signalled directly. */
         host: v.host.nullable(),
       }),
       z.object({
@@ -529,8 +527,8 @@ export function defineSessionModel<H extends string, Ho extends string, F>(
         kind: z.literal('closed'),
         /** Who or what closed the host pane, e.g. `close-out`. */
         cause: z.string(),
-        /** The host whose pane was closed. */
-        host: v.host.nullable(),
+        /** The host whose pane was closed. A headless session has no pane, so this is never null. */
+        host: v.host,
       }),
       z.object({ ts, via, kind: z.literal('ended') }),
       z.object({
@@ -727,8 +725,7 @@ export function defineSessionModel<H extends string, Ho extends string, F>(
           return
         case 'interrupted':
         case 'closed':
-          // They describe what was done to the session, not its state, and a pane may
-          // close after the session ended.
+          // Log-only: no record field, no run state.
           return
         case 'ended':
           if (endedSeen) return skip('after_ended')

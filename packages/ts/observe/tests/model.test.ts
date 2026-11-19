@@ -268,7 +268,7 @@ describe('the pid_recorded event', () => {
 
 describe('the interrupted and closed events', () => {
   const interrupted: NewEvent = { kind: 'interrupted', cause: 'close-out', host: 'tmux' }
-  const closed: NewEvent = { kind: 'closed', cause: 'close-out', host: null }
+  const closed: NewEvent = { kind: 'closed', cause: 'close-out', host: 'tmux' }
 
   test('leave the record and the run state as they were, and are not ignored', () => {
     const base = model.reduceSessionEvents(stamp(launched, to('running')))
