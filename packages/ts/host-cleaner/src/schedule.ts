@@ -123,8 +123,7 @@ export function installSchedule(env: ScheduleEnv, everyHours: number): string {
   if (loaded(env)) env.launchctl.run(['bootout', target(env)], { cwd: env.home })
   const boot = env.launchctl.run(['bootstrap', domain(env), file], { cwd: env.home })
   if (boot.exitCode !== 0) {
-    throw new HostCleanerError(
-      'bad-input',
+    throw new Error(
       `launchctl bootstrap failed: ${boot.stderr.trim() || boot.error || `exit ${boot.exitCode}`}`,
     )
   }
@@ -139,8 +138,7 @@ export function uninstallSchedule(env: ScheduleEnv): boolean {
   if (was) {
     const out = env.launchctl.run(['bootout', target(env)], { cwd: env.home })
     if (out.exitCode !== 0) {
-      throw new HostCleanerError(
-        'bad-input',
+      throw new Error(
         `launchctl bootout failed, so the agent is still loaded and its plist is kept: ${out.stderr.trim() || out.error || `exit ${out.exitCode}`}`,
       )
     }
