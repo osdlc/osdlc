@@ -174,6 +174,8 @@ struct WriteAtomicInput {
     content: Data,
 }
 
+/// Parsed on every host by `check_input`; only the unix runner reads the fields.
+#[cfg_attr(not(unix), allow(dead_code))]
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct WriteAtomicModeInput {
