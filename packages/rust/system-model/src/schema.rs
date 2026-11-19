@@ -41,7 +41,7 @@ pub struct Evidence {
 /// being handed a total nobody can justify.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Aspect {
-    /// The node's id, as in `SystemNode.id`.
+    /// The technology's id, such as `typescript` or `nuxt`.
     pub id: String,
     /// The most direct tier that supported this aspect.
     pub tier: i64,

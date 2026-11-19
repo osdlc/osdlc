@@ -55,6 +55,9 @@ pub fn build_system_graph(
     if !root.is_dir() {
         return Err(NotADirectory(root.display().to_string()));
     }
+    // Absolute, so `root` and the checkout's label hold for a relative input like `.`.
+    let absolute = std::path::absolute(root).unwrap_or_else(|_| root.to_path_buf());
+    let root = absolute.as_path();
     let root_label = root
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())

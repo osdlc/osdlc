@@ -44,3 +44,10 @@ fn the_wire_keys_are_snake_case_in_declaration_order() {
 fn a_missing_root_is_an_error() {
     assert!(build_system_graph(Path::new("/definitely/not/here"), false).is_err());
 }
+
+#[test]
+fn a_relative_root_is_made_absolute() {
+    let graph = build_system_graph(Path::new("tests/mini-repo"), false).unwrap();
+    assert!(Path::new(&graph.root).is_absolute());
+    assert_eq!(graph.root_label, "mini-repo");
+}
