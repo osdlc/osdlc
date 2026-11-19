@@ -84,6 +84,11 @@ host-cleaner is a hook model at two levels, and the two are easy to mix up:
   five more hooks. host-cleaner is repo-cleaner's host: it merges its adapters' `annotate` and
   `removeWorktree` into one of each and passes them down.
 
+A **host** here is anything on the machine that keeps its own record of worktrees: a terminal
+app, an editor, an agent runner. Orca is the first one with an adapter; the hooks are written for
+any number of them. Several can be active in one run, and the rules for combining them are in
+[More than one worktree host](#more-than-one-worktree-host).
+
 ```mermaid
 flowchart TB
   subgraph HC["host-cleaner: the host"]
@@ -92,6 +97,7 @@ flowchart TB
     NODE["node"]
     ORCA["orca"]
     CLAUDE["claude-code"]
+    NEXT["next worktree host"]
   end
   subgraph SOCK["repo-cleaner's two host hooks"]
     direction LR
@@ -104,6 +110,8 @@ flowchart TB
   end
   ORCA --> AN
   ORCA --> RW
+  NEXT -.-> AN
+  NEXT -.-> RW
   AN --> S
   AN --> C
   RW --> R
@@ -113,24 +121,28 @@ flowchart TB
   classDef host fill:#efeaf8,stroke:#6b4fa3,color:#1c2227
   classDef sock fill:#ffffff,stroke:#8a939b,stroke-dasharray:4 3,color:#1c2227
   classDef eng fill:#e3f0f5,stroke:#1f6f8b,color:#1c2227
+  classDef future fill:#ffffff,stroke:#6b4fa3,stroke-dasharray:4 3,color:#1c2227
   class CARGO,NODE,ORCA,CLAUDE host
+  class NEXT future
   class AN,RW sock
   class S,P,C,R eng
 ```
 
-Solid arrows are hooks repo-cleaner calls. Dotted arrows are host rows: they join the same plan,
-re-check and receipt, but host-cleaner gathers and executes them itself.
+Solid arrows are hooks repo-cleaner calls. The dashed box is any further worktree host: it plugs
+into the same two hooks as orca. The dotted arrows from cargo, node and claude-code are host rows:
+they join the same plan, re-check and receipt, but host-cleaner gathers and executes them itself.
 
 ### What repo-cleaner offers a host
 
-| Surface | Status | What a host does with it | Used by |
+| Surface | Status | What a host does with it | First user |
 | --- | --- | --- | --- |
 | `annotate(repo, rows)` (`src/hooks.ts`) | On main since #600 | Re-rank rows after classification: change a verdict, add a note, drop a row. It runs inside the sweep and again inside every `check` and `run`, so a host's verdict can't be lost between plan and run | orca: notes each Orca worktree's id and open terminals |
 | `removeWorktree(row, { repo, force })` (`src/hooks.ts`) | New in PR 946 | Remove a worktree the host manages instead of `git worktree remove`, or return `null` to leave it to git. repo-cleaner still refuses a live process or an unsafe force first, and checks afterwards that the directory is gone and git no longer lists it | orca: closes the worktree's terminals, then removes it through Orca |
 | `HostBlocker`, `host:<name>` (`src/types.ts`) | New in PR 946 | A blocker a host attaches from `annotate`. repo-cleaner never produces one | orca: `host:orca-unreachable` |
 
-PR 946 is the only PR in the stack that changes repo-cleaner, and everything it adds there is for
-Orca.
+PR 946 is the only PR in the stack that changes repo-cleaner. Orca is the reason it was added, but
+nothing in it is Orca-specific: every worktree host uses the same two hooks and names its own
+blocker, `host:<name>`.
 
 ### The six adapter hooks
 
@@ -155,8 +167,25 @@ Orca.
 That gives two shapes of adapter:
 - **Row owners** (cargo, node, claude-code) add rows of their own and delete them themselves. They
   never touch repo-cleaner's rows.
-- **Row shapers** (orca) add no rows. They change how repo-cleaner judges and removes the worktrees
-  it already found.
+- **Worktree hosts** (orca today) add no rows. They change how repo-cleaner judges and removes the
+  worktrees it already found. Every other app that keeps its own record of worktrees plugs in the
+  same way.
+
+### More than one worktree host
+
+When several worktree hosts are active in one run, `src/registry.ts` combines their hooks like
+this:
+
+| Hook | Combined by | With two hosts |
+| --- | --- | --- |
+| `annotate` | `chainAnnotate`: each one in run order, each given the previous one's output | Both can note or block the same worktree. A later host sees, and can override, an earlier host's verdict |
+| `removeWorktree` | `chainRemoveWorktree`: asked in run order; the first non-`null` answer wins | Each host claims only the worktrees it manages. If two claim the same worktree, the one earlier in run order removes it and the other is not asked |
+| `discover` | Every host's paths, added to the targets and de-duplicated by real path | A repository two hosts both know is swept once |
+| Blockers | Each host names its own, `host:<name>` | A worktree can carry blockers from more than one host, and any one of them holds it back |
+
+Two questions are still open. Should a worktree claimed by two hosts be refused rather than given
+to the first? And should run order be stated per host, rather than following the order the adapters
+are listed in?
 
 The full contract, with types and rules, is in [The adapter contract](#the-adapter-contract), and
 when each hook fires in a run is in [The lifecycle, end to end](#the-lifecycle-end-to-end).
