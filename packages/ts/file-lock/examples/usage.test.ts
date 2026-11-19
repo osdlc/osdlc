@@ -123,7 +123,8 @@ test('a lock kept alive by its holder touching it', () => {
   expect(releaseLock(lock, claim.token)).toBe(true)
 })
 
-test('a lock only its owner can read', () => {
+// Windows has no POSIX modes: every file reads back as 0o666.
+test.skipIf(process.platform === 'win32')('a lock only its owner can read', () => {
   const lock = join(dir, 'publisher.lock')
   const claim = claimLock(lock, { pid: process.pid }, { isStale: () => false, mode: 0o600 })
   if (!claim.ok) throw new Error('expected a free lock')
