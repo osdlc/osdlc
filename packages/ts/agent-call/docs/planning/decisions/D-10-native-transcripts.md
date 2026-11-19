@@ -16,10 +16,14 @@ created: 2026-10-19
   ```ts
   type TranscriptCoverage = 'complete' | 'partial' | 'unavailable'
   interface NativeTranscriptOptions {
-    cwd?: string // the session's working directory; narrows the search
-    running?: boolean // the session may still be writing: coverage is at most 'partial'
-    home?: string // default os.homedir()
-    env?: Record<string, string | undefined> // default process.env
+    /** The session's working directory. Narrows the search; without it every project directory is searched. */
+    cwd?: string
+    /** The session may still be writing. Caps coverage at `'partial'`. */
+    running?: boolean
+    /** Home directory to resolve `~` against. @defaultValue `os.homedir()` */
+    home?: string
+    /** Where `CLAUDE_CONFIG_DIR` and `CODEX_HOME` are read from. @defaultValue `process.env` */
+    env?: Record<string, string | undefined>
   }
   interface NativeTranscriptFile {
     path: string
@@ -44,7 +48,7 @@ created: 2026-10-19
   reports `unavailable` with no files. The first release covers claude and
   codex.
 - `TranscriptCoverage` mirrors observe's closed list of the same name (observe
-  D-09), which owns it on disk. The values and their order (`unavailable` <
+  D-11), which owns it on disk. The values and their order (`unavailable` <
   `partial` < `complete`) are pinned in both packages' tests, so a caller can
   pass the value to observe unchanged.
 - `lines` holds complete lines only. A cut-off last line sets `torn` and makes

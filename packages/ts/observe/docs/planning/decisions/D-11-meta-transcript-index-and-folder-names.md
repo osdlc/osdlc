@@ -156,5 +156,5 @@ There is no change to the closed lists. The README gets a section on mapping:
     without `meta` or `transcript`, stamping the log length it covered. A newer
     reader would then trust that record. To prevent this, the record gains
     `projection`, an integer revision of the observe model (bumped on any change to the reducer) that wrote it, and a reader reduces
-    the log again when a record's version is older than its own (or absent).
+    the log again when a record's `projection` is older than its own (or absent).
 - A minor release.
