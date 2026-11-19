@@ -67,10 +67,9 @@ export function projectSourcedCommands(
 }
 
 /**
- * `project` without the repair choice, for a run whose command line already
- * made it. A flag is the person's own consent. The project file's
- * `repair.command` or `repair.agent` that it overrides never runs, so it needs
- * no consent.
+ * `project` without the repair keys in `keys`, for a run whose command line
+ * already chose them. A flag is the person's own consent. A project value it
+ * overrides never runs, so it needs no consent.
  */
 export function withoutRepairChoice(
   project: Record<string, unknown> | null,

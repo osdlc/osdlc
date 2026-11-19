@@ -4,8 +4,8 @@
  * `interactive` runs it in this terminal with stdio inherited. `terminal` opens it in a detached
  * tmux session through `@osdlc/agent-seat`, the one host that holds a launch until the session
  * ends, and waits. Both give the agent `repairPrompt(req)` as its first message, then return
- * to the executor, which applies the headless contract (HEAD unmoved, no refs, no markers,
- * `git diff --check`, then stage, commit, verify, push). A person who quits without a fix gets
+ * to the executor, which checks the result as it does a headless one (see `Repair` in
+ * ports.ts and `tryRepair` in update/execute.ts). A person who quits without a fix gets
  * the same `conflict` or `failed` as a headless repair that gave up.
  */
 

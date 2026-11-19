@@ -10,10 +10,7 @@ export const REPAIR_AGENTS = ['claude', 'codex', 'cursor', 'pi'] as const
 
 export type RepairAgent = (typeof REPAIR_AGENTS)[number]
 
-/**
- * How the agent runs: `headless` is one unattended call; `interactive` is the agent's own CLI in
- * this terminal; `terminal` is a session in a tmux session the person attaches to.
- */
+/** The ways a repair agent runs; `repair.mode` in config.ts describes each. */
 export const REPAIR_MODES = ['headless', 'interactive', 'terminal'] as const
 
 export type RepairMode = (typeof REPAIR_MODES)[number]

@@ -352,6 +352,15 @@ describe('repair agent presets in config', () => {
     expect(res.err).toContain('cannot be used with a repair command')
   })
 
+  test('--repair-command beats a configured agent mode', async () => {
+    const { dir, env } = project()
+    writeFileSync(
+      join(dir, LOCAL_FILE_NAME),
+      'pr_update:\n  repair:\n    agent: pi\n    mode: terminal\n',
+    )
+    expect((await run(dir, env, 'update', '--repair-command', 'fix-it')).code).toBe(EXIT.ok)
+  })
+
   test('a repair.agent in the .local overlay needs no consent', async () => {
     const { dir, env } = project()
     writeFileSync(join(dir, LOCAL_FILE_NAME), 'pr_update:\n  repair:\n    agent: pi\n')

@@ -28,6 +28,7 @@ import {
   harnessOrNull,
   hostRegistry,
   hostRegistryDir,
+  tmuxRunSessionName,
   makeCmuxHost,
   makeHerdrHost,
   makeOrcaHost,
@@ -674,5 +675,12 @@ describe('receipts', () => {
     const hosts = hostRegistry({ runtimeDir: tempDir('receipts') })
     const acking: HostName[] = (Object.keys(hosts) as HostName[]).filter((n) => hosts[n].acksSend)
     expect(acking.sort()).toEqual(['herdr', 'orca'])
+  })
+})
+
+describe('tmuxRunSessionName', () => {
+  test('a run id names the session a person attaches to', () => {
+    expect(tmuxRunSessionName('run 7')).toBe('sd-run_7')
+    expect(tmuxRunSessionName('run-7', 'abc')).toMatch(/^sd-run-7-/)
   })
 })

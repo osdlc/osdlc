@@ -498,8 +498,10 @@ export function updateCommand(seams: CliSeams) {
         throw new CommandError(refusal, { exit: EXIT_UNTRUSTED, code: 'untrusted' })
       }
       checkStart(ctx, layers, seams, flags)
-      const mode = flags.repairMode ?? layers.merged.pr_update.repair.mode
       const repairCfg = layers.merged.pr_update.repair
+      // A repair command is headless; the configured mode applies to the agent it replaced.
+      const mode =
+        flags.repairMode ?? (flags.repairCommand === undefined ? repairCfg.mode : 'headless')
       const agent =
         flags.repairAgent ?? (flags.repairCommand === undefined ? repairCfg.agent : null)
       const command =
@@ -509,8 +511,14 @@ export function updateCommand(seams: CliSeams) {
           `repair mode ${mode} runs an agent; it cannot be used with a repair command`,
         )
       }
-      if (flags.apply && agent !== null && mode === 'interactive' && !canPrompt()) {
-        throw new UsageError('repair mode interactive needs a terminal on stdin and stderr')
+      // The agent shares stdout, which `--json` and a pipe own.
+      if (
+        flags.apply &&
+        agent !== null &&
+        mode === 'interactive' &&
+        (!canPrompt() || process.stdout.isTTY !== true)
+      ) {
+        throw new UsageError('repair mode interactive needs a terminal on stdin, stdout and stderr')
       }
       const env: UpdateEnv = runEnv(
         ctx,
@@ -519,7 +527,7 @@ export function updateCommand(seams: CliSeams) {
         {
           agent: flags.repairAgent ?? null,
           command: flags.repairCommand ?? null,
-          mode: flags.repairMode ?? null,
+          mode: flags.repairMode ?? (flags.repairCommand === undefined ? null : 'headless'),
         },
         flags.remote,
         (line) => ctx.note(line),
