@@ -9,6 +9,8 @@
  * zod-only; a Standard Schema validator exposes none of that.
  */
 
+import type { z } from 'zod'
+
 /**
  * The Standard Schema V1 interface (spec version 1).
  *
@@ -78,6 +80,16 @@ export function validateStandard<S extends StandardSchemaV1>(
   schema: S,
   value: unknown,
 ): StandardValidation<StandardSchemaV1.InferOutput<S>> {
+  if (isZodSchema(schema)) {
+    // Zod's own sync parse keeps an error thrown inside the schema as it is; its
+    // `~standard.validate` would retry it asynchronously.
+    const r = schema.safeParse(value)
+    if (r.success) return { ok: true, value: r.data as StandardSchemaV1.InferOutput<S> }
+    return {
+      ok: false,
+      issues: r.error.issues.map((i) => ({ path: i.path.map(String), message: i.message })),
+    }
+  }
   const outcome = schema['~standard'].validate(value)
   if (typeof (outcome as { then?: unknown }).then === 'function') {
     // Settle the promise so a rejection is not left unhandled.
@@ -99,8 +111,8 @@ export function validateStandard<S extends StandardSchemaV1>(
   }
 }
 
-/** Whether `schema` is a zod 4 schema (it has `_zod`), the only kind whose shape the library can read. */
-export function isZodSchema(schema: unknown): boolean {
+/** Whether `schema` is a zod 4 schema (it has `_zod`, `safeParse` and the zod vendor tag), the only kind whose shape the library can read. */
+export function isZodSchema(schema: unknown): schema is z.ZodTypeAny {
   return (
     typeof schema === 'object' &&
     schema !== null &&

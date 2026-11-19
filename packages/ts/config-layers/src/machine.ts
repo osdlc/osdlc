@@ -20,7 +20,6 @@ import { copyFileSync, existsSync, lstatSync, readFileSync, readlinkSync, statSy
 import { dirname, join, resolve } from 'node:path'
 
 import { atomicWrite, etag, WriteConflictError, writeCas } from '@osdlc/etag-write'
-import type { z } from 'zod'
 
 import { rewriteMigrated } from './edit.ts'
 import { parseYamlText } from './loader.ts'
@@ -418,7 +417,7 @@ function salvage<S extends StandardSchemaV1>(
   if (first.ok) return { value: first.value as Out, issues: [] }
 
   const stripped = isZodSchema(schema)
-    ? stripUnknownKeys(schema as unknown as z.ZodTypeAny, raw)
+    ? stripUnknownKeys(schema, raw)
     : { value: raw, unknown: [] as string[][] }
   const { unknown } = stripped
   // The deletes below must not reach the caller's object, which is what

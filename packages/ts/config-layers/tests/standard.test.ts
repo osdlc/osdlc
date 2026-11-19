@@ -104,6 +104,73 @@ describe('machineConfigFile with a non-zod schema', () => {
     expect(load('name: a\nextra: 1\n').value).toEqual({ name: 'a', count: 0 })
   })
 
+  test('a strict validator drops the whole section an unknown key sits in, as invalid', () => {
+    const strict: StandardSchemaV1<unknown, { name: string }> = {
+      '~standard': {
+        version: 1,
+        vendor: 'strict',
+        validate: (value) => {
+          const v = value as Record<string, unknown>
+          const extra = Object.keys(v).find((k) => k !== 'name')
+          if (extra !== undefined) return { issues: [{ message: 'unknown key', path: [extra] }] }
+          return { value: { name: (v.name as string | undefined) ?? 'x' } }
+        },
+      },
+    }
+    const m = machineConfigFile({
+      tool: 'tooly',
+      schema: strict,
+      vendorDirs: VENDOR_DIRS,
+      dirs: () => sb.dirs,
+    })
+    const file = join(sb.root, 'strict.yaml')
+    writeFileSync(file, 'name: a\ntypo: 1\n')
+    process.env[m.env] = file
+    const r = m.loadWithIssues()
+    expect(r.value).toEqual({ name: 'a' })
+    expect(r.issues.map((i) => [i.path, i.code])).toEqual([[['typo'], 'invalid']])
+  })
+
+  test('write refuses a new invalid value and allows an edit beside an old one', () => {
+    const m = make()
+    const file = join(sb.root, 'w.yaml')
+    process.env[m.env] = file
+    writeFileSync(file, 'count: nope\n')
+    expect(() => m.write('count: nope\nname: 3\n')).toThrow(/refusing to write/)
+    expect(() => m.write('count: nope\nname: b\n')).not.toThrow()
+  })
+
+  test('a validator that rejects an empty file is an error, not a silent default', () => {
+    const picky: StandardSchemaV1 = {
+      '~standard': {
+        version: 1,
+        vendor: 'picky',
+        validate: () => ({ issues: [{ message: 'nothing is valid' }] }),
+      },
+    }
+    const m = machineConfigFile({
+      tool: 'tooly',
+      schema: picky,
+      vendorDirs: VENDOR_DIRS,
+      dirs: () => sb.dirs,
+    })
+    process.env[m.env] = join(sb.root, 'absent.yaml')
+    expect(() => m.load()).toThrow(/rejects an empty file/)
+  })
+
+  test('a zod schema that throws inside keeps its own error', () => {
+    const schema = z.object({
+      a: z
+        .string()
+        .default('')
+        .transform((s) => {
+          if (s === 'bad') throw new Error('a is bad')
+          return s
+        }),
+    })
+    expect(() => validateStandard(schema, { a: 'bad' })).toThrow('a is bad')
+  })
+
   test('a missing file gives the defaults', () => {
     const m = make()
     process.env[m.env] = join(sb.root, 'absent.yaml')
