@@ -48,7 +48,7 @@ import { harnessOrNull, sessionViaTerminal } from '../harness.ts'
 
 /** The text a workspace's description carries to name the caller session id it was opened for. */
 export function cmuxSessionMarker(sessionId: string): string {
-  return `agent-seat:${sessionIdSlug(sessionId)}`
+  return `${MARKER_PREFIX}${sessionIdSlug(sessionId)}`
 }
 
 /** Argv for `cmux workspace create` — pure, so a test can pin it. */
@@ -157,18 +157,38 @@ export function parseCmuxSessions(stdout: string, cwd: string): FoundSession[] {
   return found
 }
 
-/** The `description`, `name` and `title` of a listed workspace, joined for a marker search. */
-function rowText(row: Record<string, unknown>): string {
-  return ['description', 'name', 'title'].map((k) => nonEmptyString(row[k]) ?? '').join('\n')
+const MARKER_PREFIX = 'agent-seat:'
+
+/** A listed workspace in `cwd` that carries an agent-seat marker: its ref and id, and whether it is `sessionId`'s. */
+interface MarkedWorkspace {
+  keys: string[]
+  own: boolean
+}
+
+/** The workspaces in `cwd` whose `description`, `name` or `title` holds an agent-seat marker. DOCS-ONLY shape. */
+function markedWorkspaces(stdout: string, cwd: string, sessionId: string): MarkedWorkspace[] {
+  const want = realResolve(cwd)
+  const marker = cmuxSessionMarker(sessionId)
+  const parsed = parseJsonOrNull(stdout)
+  const rows = Array.isArray(parsed) ? parsed : isRecord(parsed) ? parsed['workspaces'] : null
+  if (!Array.isArray(rows)) return []
+  const found: MarkedWorkspace[] = []
+  for (const row of rows) {
+    if (!isRecord(row)) continue
+    const rowCwd = nonEmptyString(row['cwd']) ?? nonEmptyString(row['current_directory'])
+    if (rowCwd === null || realResolve(rowCwd) !== want) continue
+    const text = ['description', 'name', 'title']
+      .map((k) => nonEmptyString(row[k]) ?? '')
+      .join('\n')
+    if (!text.includes(MARKER_PREFIX)) continue
+    const keys = [row['ref'], row['id']].flatMap((k) => nonEmptyString(k) ?? [])
+    found.push({ keys, own: text.includes(marker) })
+  }
+  return found
 }
 
 /** Parses `cmux --json workspace list`: an array (or `{workspaces}`) of `{ref|id, cwd|current_directory}`. DOCS-ONLY shape. */
-export function parseCmuxWorkspaces(
-  stdout: string,
-  cwd: string,
-  sessionId?: string,
-): FoundSession[] {
-  const marker = sessionId === undefined ? null : cmuxSessionMarker(sessionId)
+export function parseCmuxWorkspaces(stdout: string, cwd: string): FoundSession[] {
   const want = realResolve(cwd)
   const parsed = parseJsonOrNull(stdout)
   const rows = Array.isArray(parsed) ? parsed : isRecord(parsed) ? parsed['workspaces'] : null
@@ -179,7 +199,6 @@ export function parseCmuxWorkspaces(
     const rowCwd = nonEmptyString(row['cwd']) ?? nonEmptyString(row['current_directory'])
     const ref = nonEmptyString(row['ref']) ?? nonEmptyString(row['id'])
     if (rowCwd === null || realResolve(rowCwd) !== want || ref === null) continue
-    if (marker !== null && !rowText(row).includes(marker)) continue
     found.push({ cwd, harness: null, alive: true, lastOutputAt: null, handle: ref })
   }
   return found
@@ -221,19 +240,37 @@ export function makeCmuxHost(opts: {
       const fromStore = stored === null ? [] : parseCmuxSessions(stored, query.cwd)
       // The workspace list needs the socket; when it is denied the command exits nonzero and `run` returns null.
       let listed: string | null | undefined
-      const list = () => (listed ??= run(cmuxWorkspaceListArgv()))
+      const list = () => (listed === undefined ? (listed = run(cmuxWorkspaceListArgv())) : listed)
+      let rows = fromStore
+      let others = new Set<string>()
       if (query.sessionId !== undefined) {
-        const bound =
-          list() === null ? [] : parseCmuxWorkspaces(list()!, query.cwd, query.sessionId)
-        if (bound.length > 0) {
-          const ids = new Set(bound.map((b) => b.handle))
-          const sessions = fromStore.filter((f) => ids.has(f.handle?.split('/')[0] ?? ''))
-          return sessions.length > 0 ? sessions : bound
+        const text = list()
+        const marked = text === null ? [] : markedWorkspaces(text, query.cwd, query.sessionId)
+        const inKeys = (f: FoundSession, own: boolean) =>
+          marked.some((m) => m.own === own && m.keys.includes(f.handle?.split('/')[0] ?? ''))
+        const own = fromStore.filter((f) => inKeys(f, true))
+        if (own.length > 0) return own
+        // A workspace opened for another session is never this one's fallback.
+        others = new Set(marked.flatMap((m) => (m.own ? [] : m.keys)))
+        rows = fromStore.filter((f) => !inKeys(f, false))
+        const bound = marked.find((m) => m.own)
+        if (rows.length === 0 && bound?.keys[0] !== undefined) {
+          return [
+            {
+              cwd: query.cwd,
+              harness: null,
+              alive: true,
+              lastOutputAt: null,
+              handle: bound.keys[0],
+            },
+          ]
         }
       }
-      if (fromStore.length > 0) return fromStore
+      if (rows.length > 0) return rows
       const all = list()
-      return all === null ? [] : parseCmuxWorkspaces(all, query.cwd)
+      return all === null
+        ? []
+        : parseCmuxWorkspaces(all, query.cwd).filter((f) => !others.has(f.handle ?? ''))
     },
     send(req: SendRequest): SendReceipt {
       // No delivery confirmation exists, so ack is always false.
@@ -286,9 +323,9 @@ export function makeCmuxHost(opts: {
     close(query: FindQuery): boolean {
       try {
         // Only a workspace whose saved session names an agent, as in `send`: one found by
-        // cwd alone (the workspace-list fallback) may be one the person opened. No session
-        // id can be matched here, so close only when the cwd names one such workspace: with
-        // several, any pick could close another session's.
+        // cwd alone (the workspace-list fallback) may be one the person opened. With a
+        // `sessionId`, `find` already narrowed to its marked workspace; without one, close
+        // only when the cwd names one such workspace: with several, any pick could close another session's.
         const workspaces = new Set(
           this.find!(query).flatMap((s) =>
             s.harness !== null && s.handle ? [s.handle.split('/')[0]] : [],
