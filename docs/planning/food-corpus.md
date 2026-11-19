@@ -302,7 +302,7 @@ portions. As records they would be 135,411 and 5,621 files for the current slice
 per food, or roughly 380,000 files across SR Legacy and Foundation. They are arrays in the food record, with
 their shape written once in the food schema (`$defs`), because corpus-schema schemas stand alone
 and cross-type `$ref` is not allowed. This differs from the five types the brief listed; the
-recommendation is four plus the release (as `releases`), and it is Q-3.
+recommendation is four plus the release (as `releases`), and it is a decision in the owner list below (portions embedded).
 
 A food record (JSON, abbreviated):
 
@@ -386,7 +386,7 @@ find the record at any version.
   each changing. It is a lookup (the live API in `fdc.rs` and the dashboard's T-F9KM), as D-0041
   and the dashboard's food `source` enum already treat it. An app that wants a pantry of branded
   items caches the ones it uses; it does not ingest the dump. A `builder` flag for a barcode slice
-  can come later (Q-11).
+  can come later (Branded is never in a corpus).
 - **Open Food Facts:** a builder and a small slice (phase 7), opt-in, ODbL. Other corpora refer to it by id only.
 
 ### Q5. The builder
@@ -415,8 +415,8 @@ find the record at any version.
   `bundles` map). The builder reads its inputs from these pins. The corpus is validated
   against them by `build` itself, which fails on a hash mismatch. `verify` does not touch the cache (see the script table).
 - **Reproducibility.** Output is a pure function of the pins, the rules file and the builder
-  version: records sorted by fdc id, object keys in a fixed order, numbers written as the source
-  CSV wrote them (parse once, print with `String`, as the existing script does), no timestamps in
+  version: records sorted by fdc id, object keys in a fixed order, numbers parsed once and printed with `String`
+  (as the existing script does, so trailing zeros are normalised), no timestamps in
   records (the release record's `downloaded` is an input). `pnpm run build` twice gives the same
   bytes; CI's check is "build from the committed pins and fixtures, diff the corpus". Full builds
   need the 54 MB bundle, so CI builds from *fixtures* (a few hundred rows of real CSV rows, as
@@ -455,7 +455,7 @@ packages/corpora/<name>/
                           datapackage.json (Data Package v2: licences, sources, version)
 ```
 
-`package.json` scripts, all required unless noted:
+`package.json` scripts. `validate` and `check` are required of every corpus. The rest are required of a corpus with a builder:
 
 | Script | Does |
 | --- | --- |
@@ -484,7 +484,7 @@ Rules:
    `README.md`. No other corpus copies its contents or bundles it through a `_references` copy; a
    pointer by id is allowed (see the OFF section).
 7. Published corpora set `"corpus"`, `files` and `publishConfig`, as `sdlc-starter` does, and
-   ship `corpus/` and `export/` (with its `datapackage.json`). Builder source ships too (`src/build/`, `fixtures/`), so a
+   ship `corpus/`, and `export/` with its `datapackage.json` when the corpus has one. Builder source ships too (`src/build/`, `fixtures/`), so a
    consumer can audit and rerun it; its dependencies are `devDependencies`.
 8. The version is semver: upstream release or rule change, minor; id change, major.
 
@@ -495,8 +495,8 @@ convention is enforced instead by a `corpora` mode in `@osdlc/package-checks` (i
 `packages/ts` against `S-package-shape-ts` today; the checks are in
 `packages/ts/package-checks/src/`, and no corpus check exists), as phase 1. It also fixes the
 sentence in `packages/README.md` that says corpora hold no code. Existing corpora: `sdlc-starter`
-already conforms (no builder, so `fetch`, `build` and the rest are "n/a"); `harness-reference`
-conforms after renaming `src/compile` to `src/build` (decided), renaming its `compile` script to `build`, running `validate` with `--strict`, and adding `verify`. The standard
+needs a `validate` script (it has no `scripts` block today) and a `check` script, and is exempt from the builder scripts because it has no builder; `harness-reference`
+conforms after renaming `src/compile` to `src/build` (decided), renaming its `compile` script to `build`, running `validate` with `--strict`, adding `verify`, and either adding `LICENSE-*` and `CHANGELOG.md` or being exempt from them as a private package. The standard
 fixes the folder name as `src/build/`.
 
 ### Owner review: corpus-schema changes
@@ -559,11 +559,11 @@ parent, and phases 1 to 7 are tasks 90 to 96, each waiting on the one before it 
 
 | # | Phase | Delivers | Done when |
 | --- | --- | --- | --- |
-| 1 (task 90) | **The standard** | `S-corpus-package-shape.md`, the `packages/README.md` fix, a `corpora` mode in `@osdlc/package-checks`, the `harness-reference` rename `src/compile` to `src/build` | `pnpm run check:packages` runs the corpora checks; `sdlc-starter` and `harness-reference` pass or are listed with the one change each needs |
+| 1 (task 90) | **The standard** | `S-corpus-package-shape.md`, the `packages/README.md` fix, a `corpora` mode in `@osdlc/package-checks`, the `harness-reference` rename `src/compile` to `src/build`, the `compile` script to `build`, `validate --strict`, and `verify` | `pnpm run check:packages` runs the corpora checks; `sdlc-starter` and `harness-reference` pass or are listed with the changes each needs |
 | 2 (task 91) | **`food-nutrients`** | The catalogue: 68 records seeded from determined's vault notes, each with `infoods_tagname`, plus nutrient categories; schemas; README; validates `--strict`. The owner decided on 2026-11-17 that the notes seed the public catalogue (see Decided by the owner); task 85 must agree with this task on the catalogue's shape | `validate` passes; ids equal determined's catalog ids |
 | 3 (task 92) | **`usda-fdc` builder on fixtures** | `src/build/` ported from `build-usda-pack.ts` and `rules.ts`, schemas for foods, categories, releases; fixtures; tests; `check` green | A fixture build matches golden records; no network |
 | 4 (task 93) | **`usda-fdc` first release** | `pin`, `fetch`, and the real SR Legacy 2018-04 and Foundation 2026-04-30 build committed; `export/foods.ndjson` and `export/datapackage.json`; README with licence and credit; changelog | Reproducible: a second `build` gives zero diff; sizes measured and written in the README; the oracle test of Q8 step 1 passes |
-| 5 (task 94) | **Publish** | npm publish workflow entry, `0.1.0`, provenance, `corpus-site` page for it (optional) | `npm view @osdlc/corpus-usda-fdc` shows it |
+| 5 (task 94) | **Publish** | npm publish workflow entry for `usda-fdc` and the `food-nutrients` it references, `0.1.0`, provenance, `corpus-site` page for it (optional) | `npm view` shows both `@osdlc/corpus-usda-fdc` and `@osdlc/corpus-food-nutrients` |
 | 6 (task 95) | **Consumers** (in sksizer/dev, two PRs) | (a) determined switches to the package and an adapter; (b) the dashboard pack tool and the T-F9KM offline match | determined's ndjson regenerates equal; the dashboard installs the pack in a dry run |
 | 7 (task 96) | **Other sources** (each its own PR, each optional) | `open-food-facts` slice builder and ODbL package; CNF; CoFID; Foundation 2026-10 as a release bump; FNDDS tag set | per source |
 
@@ -600,17 +600,17 @@ On 2026-11-17 ([comment on the plan PR](https://github.com/osdlc/osdlc/pull/866#
 
 The remaining questions take the plan's recommendation unless the owner says otherwise:
 
-- Q-2 foods as JSON and nutrients as Markdown; Q-3 portions and amounts embedded in the food.
-- Q-6 the builder ships in the tarball (`src/build/`, `fixtures/`), dependencies as devDependencies.
-- Q-8 licence `(MIT OR Apache-2.0) AND CC0-1.0` for `usda-fdc`, with an exception clause in the
+- Foods as JSON and nutrients as Markdown; portions and amounts embedded in the food.
+- The builder ships in the tarball (`src/build/`, `fixtures/`), dependencies as devDependencies.
+- Licence `(MIT OR Apache-2.0) AND CC0-1.0` for `usda-fdc`, with an exception clause in the
   standard.
-- Q-9 `0.1.0` on determined's pins, then Foundation 2026-10 as a minor.
-- Q-10 Open Food Facts, AFCD and Frida deferred (AFCD and Frida until their licences are
-  confirmed). Q-11 Branded never in a corpus. Q-12 no Python.
+- `0.1.0` on determined's pins, then Foundation 2026-10 as a minor.
+- Open Food Facts, AFCD and Frida deferred (AFCD and Frida until their licences are
+  confirmed). Branded never in a corpus. No Python.
 
 ## Open question for the owner
 
-- **Q-1. Three corpora or two?** The plan assumes three: `food-nutrients`, `usda-fdc`,
+- **Q1. Three corpora or two?** The plan assumes three: `food-nutrients`, `usda-fdc`,
   `open-food-facts`. Recommend three. Fallback: the catalogue lives in `usda-fdc` until OFF and
   moves out as a breaking change.
 
