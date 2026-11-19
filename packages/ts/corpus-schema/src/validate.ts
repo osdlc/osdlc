@@ -416,7 +416,7 @@ function refPath(place: string[]): { path: string[]; lists: boolean[] } | undefi
 }
 
 /** Each value `ref` reaches in `data`: where it sits, and what it holds. Null is skipped. */
-export function refValues(data: Data, ref: Ref): { at: (string | number)[]; value: unknown }[] {
+function refValues(data: Data, ref: Ref): { at: (string | number)[]; value: unknown }[] {
   const out: { at: (string | number)[]; value: unknown }[] = []
   const walk = (node: unknown, depth: number, at: (string | number)[]): void => {
     if (node === null || typeof node !== 'object' || Array.isArray(node)) return
@@ -1655,7 +1655,7 @@ function checkLinks(c: Corpus): void {
  * before the last name. `hasEvidenceLines.0.hasEvidenceItems` for the value at
  * `hasEvidenceLines.0.hasEvidenceItems.1`; a top-level field is its own name.
  */
-export const refLabel = (f: FoundRef): string =>
+const refLabel = (f: FoundRef): string =>
   f.at.slice(0, f.ref.lists.at(-1) && typeof f.at.at(-1) === 'number' ? -1 : undefined).join('.')
 
 /** The record file a resolved link points at, or undefined when it points at none. */
