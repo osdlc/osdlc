@@ -86,8 +86,9 @@ const canon = (path: string): string => {
   }
 }
 
+const SLEEPER = new Int32Array(new SharedArrayBuffer(4))
 const pause = (ms: number): void => {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+  Atomics.wait(SLEEPER, 0, 0, ms)
 }
 
 /** The folder name Claude Code gives a working directory under `projects/`. */
@@ -207,11 +208,16 @@ export function createClaudeAdapter(options: ClaudeOptions = {}): HostAdapter {
 
   const cwdsOf = (ctx: HostContext, pids: readonly number[]): Map<number, string> => {
     if (pids.length === 0) return new Map()
-    const lsof = ctx
-      .command('lsof')
-      .run(['-n', '-P', '-a', '-d', 'cwd', '-Fpn', '-p', pids.join(',')], { cwd: '/' })
-    // lsof exits 1 when some pid is gone yet lists the rest.
-    return parseCwds(lsof.stdout)
+    try {
+      const lsof = ctx
+        .command('lsof')
+        .run(['-n', '-P', '-a', '-d', 'cwd', '-Fpn', '-p', pids.join(',')], { cwd: '/' })
+      // lsof exits 1 when some pid is gone yet lists the rest.
+      return parseCwds(lsof.stdout)
+    } catch {
+      // No lsof: the rows say the working directory is unreadable.
+      return new Map()
+    }
   }
 
   const gather = (ctx: HostContext): HostRow[] => {
@@ -221,7 +227,7 @@ export function createClaudeAdapter(options: ClaudeOptions = {}): HostAdapter {
       ctx,
       procs.map((p) => p.pid),
     )
-    const checkouts = checkoutsOf(ctx).map((c) => c.path)
+    const checkouts = checkoutsOf(ctx).map((c) => ({ path: c.path, real: canon(c.path) }))
     return procs.map((p): HostRow => {
       const cwd = cwds.get(p.pid) ?? null
       const real = cwd === null ? null : canon(cwd)
@@ -236,8 +242,8 @@ export function createClaudeAdapter(options: ClaudeOptions = {}): HostAdapter {
         real === null
           ? null
           : (checkouts
-              .filter((c) => nodeGuard.contains(canon(c), real))
-              .sort((a, b) => b.length - a.length)[0] ?? null)
+              .filter((c) => nodeGuard.contains(c.real, real))
+              .sort((a, b) => b.path.length - a.path.length)[0]?.path ?? null)
       const evidence: SessionEvidence = {
         kind: 'claude-session',
         pid: p.pid,
