@@ -22,10 +22,11 @@
  * generators) run at every stop. A stop they cannot clear aborts the rebase,
  * and the PR is retried as a merge, which meets the same conflict once. Only
  * then is `repair` called, so an agent is never asked to fix twenty versions
- * of one conflict. With `on_rebase_conflict: repair` a repository that
- * refuses merges repairs the stop instead, up to a cap, and never merges. The
- * outcome records the change of strategy, so a reader
+ * of one conflict. The outcome records the change of strategy, so a reader
  * does not mistake the push for a rebase.
+ *
+ * With `on_rebase_conflict: repair`, a repository that refuses merges repairs
+ * each stop instead, up to a cap, and never falls back to a merge.
  *
  * The caller decides the order. A stack must be updated parent first, because
  * updating a child before its parent is work that has to be redone as soon as
@@ -502,11 +503,31 @@ type RebaseAttempt =
  *
  * Generated files tend to conflict on every commit that touches them. Clearing
  * only the first stop would leave exactly those files failing at the second.
- * A stop the resolvers cannot clear aborts the rebase, leaves the worktree
- * clean, and returns `stuck`, for the caller to merge or report. `repair` is
- * not called here unless `limits.repair` is set (`on_rebase_conflict: repair`),
- * and then for at most `limits.maxRepairs` stops (see the module comment).
+ * A stop the resolvers cannot clear is repaired when `limits.repair` is set,
+ * for at most `limits.maxRepairs` stops. Otherwise, or past that cap, it
+ * aborts the rebase, leaves the worktree clean, and returns `stuck` for the
+ * caller to merge or report.
  */
+/** The request for a repair of unclaimed conflicts, at a rebase stop when `replaying` is set. */
+function conflictRequest(
+  target: UpdateTarget,
+  worktree: string,
+  needsHuman: readonly { path: string; why: string }[],
+  replaying?: RepairRequest['replaying'],
+): RepairRequest {
+  const why = needsHuman.map((c) => `${c.path} (${c.why})`).join(', ')
+  return {
+    kind: 'conflict',
+    pr: target.number,
+    base: target.base,
+    head: target.head,
+    worktree,
+    paths: needsHuman.map((c) => c.path),
+    reason: `unclaimed conflicts: ${why}`,
+    ...(replaying === undefined ? {} : { replaying }),
+  }
+}
+
 async function rebaseThroughRungs(
   git: Git,
   base: string,
@@ -569,19 +590,16 @@ async function rebaseThroughRungs(
     if (failure !== null) return failed(failure)
     if (needsHuman.length > 0 && limits.repair !== null) {
       const sha = git.resolveRef('REBASE_HEAD')
-      const why = needsHuman.map((c) => `${c.path} (${c.why})`).join(', ')
-      const res = await tryRepair(git, limits.repair, {
-        kind: 'conflict',
-        pr: limits.target.number,
-        base: limits.target.base,
-        head: limits.target.head,
-        worktree,
-        paths: needsHuman.map((c) => c.path),
-        reason: `unclaimed conflicts: ${why}`,
-        ...(sha === null
-          ? {}
-          : { replaying: { sha, subject: git.logSubject(sha) ?? '', onto: base } }),
-      })
+      const res = await tryRepair(
+        git,
+        limits.repair,
+        conflictRequest(
+          limits.target,
+          worktree,
+          needsHuman,
+          sha === null ? undefined : { sha, subject: git.logSubject(sha) ?? '', onto: base },
+        ),
+      )
       if (!res.ok) return stuck(needsHuman.map((c) => ({ path: c.path, why: res.reason })))
       repaired.push({ kind: 'conflict', note: res.note })
     }
@@ -685,16 +703,7 @@ async function integrateAndPush(
     const failure = rebuild(git, plans, settings, runVerb, opts.worktree)
     if (failure !== null) return fail(failure)
     if (needsHuman.length > 0 && repair !== null) {
-      const why = needsHuman.map((c) => `${c.path} (${c.why})`).join(', ')
-      const res = await tryRepair(
-        git,
-        repair,
-        request(
-          'conflict',
-          needsHuman.map((c) => c.path),
-          `unclaimed conflicts: ${why}`,
-        ),
-      )
+      const res = await tryRepair(git, repair, conflictRequest(target, opts.worktree, needsHuman))
       if (!res.ok) return fail(res.reason)
       repaired.push({ kind: 'conflict', note: res.note })
     }
