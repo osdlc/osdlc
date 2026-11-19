@@ -157,7 +157,7 @@ function recordJson(text: string, r: DelimitedRecord) {
   }
 }
 
-/** A read of `text`, in the fixture's spelling. */
+/** A read of `text`, in the suite's spelling. */
 function readJson(text: string, read: DelimitedRead) {
   return {
     delimiter: read.delimiter,
@@ -370,7 +370,6 @@ class Refusal extends Error {
   }
 }
 
-/** The suite file, by its path in the repository. */
 export const SUITE_PATH = join(import.meta.dirname, '../../../conformance/gfm-table/suite.json')
 
 export interface SuiteCase {
@@ -390,7 +389,6 @@ export interface Suite {
   sections: Record<string, { description: string; cases: SuiteCase[] }>
 }
 
-/** What a case gives: its `expect`, or its `error`. */
 export type Outcome = { expect: unknown } | { error: { kind: string } }
 
 export function readSuite(): Suite {
