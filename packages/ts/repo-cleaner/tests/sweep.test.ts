@@ -1591,6 +1591,21 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
     expect(rowsOf(swept.rows, 'branch').get('merged')?.risks).toEqual([])
   })
 
+  test('in an incomplete listing a merged PR does not rule out an open one', () => {
+    const gh = cannedGh(
+      [{ number: 5, state: 'MERGED', headRefName: 'merged', headRefOid: 'moved' }],
+      { fork: 'upstream/app' },
+    )
+    const swept = sweepHere({
+      provider: 'github',
+      gh,
+      git: hostedAt('https://github.com/me/app.git'),
+    })
+    const merged = rowsOf(swept.rows, 'remote').get('origin/merged')
+    expect(merged?.verdict).toBe('delete')
+    expect(merged?.risks).toEqual(['confirm-open-pr'])
+  })
+
   test('a working gh with no PRs says none was found, on both rows', () => {
     const swept = sweepHere({ provider: 'github', gh: cannedGh([]) })
     expect(rowsOf(swept.rows, 'branch').get('live')?.notes).toContain(
