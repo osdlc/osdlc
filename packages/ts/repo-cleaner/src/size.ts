@@ -1,5 +1,7 @@
 /** Disk usage of a directory, read with `du` through the command seam. */
 
+import { resolve } from 'node:path'
+
 import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 
 /** What {@link sizeOf} takes. */
@@ -14,14 +16,15 @@ const DEFAULT_TIMEOUT_MS = 60_000
 
 /**
  * Bytes `path` takes on disk (`du -sk`: allocated blocks, not apparent size;
- * a symlink counts as itself). Null when the size could not be read: `du`
+ * a symlink counts as itself; a relative `path` is resolved against the
+ * process's directory). Null when the size could not be read: `du`
  * missing, failed, timed out or printed something else. A `du` that hit an
  * unreadable file still prints a total and exits non-zero; that total is
  * used, a floor of what is on disk.
  */
 export function sizeOf(path: string, opts: SizeOfOptions = {}): number | null {
   const du = opts.du ?? spawnRunner('du')
-  const r = du.run(['-sk', '--', path], {
+  const r = du.run(['-sk', '--', resolve(path)], {
     cwd: '/',
     timeoutMs: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
   })

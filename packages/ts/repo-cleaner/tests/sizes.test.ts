@@ -6,7 +6,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
 import { captureContext } from '@osdlc/cli-tool'
 import type { CommandResult, CommandRunner } from '@osdlc/command-seam'
@@ -90,6 +90,12 @@ describe('sizeOf', () => {
       run: () => ({ exitCode: 1, stdout: '9\t/x\n', stderr: 'du: denied' }),
     }
     expect(sizeOf('/x', { du: partial })).toBe(9 * KIB)
+  })
+
+  test('resolves a relative path before asking du', () => {
+    const { runner, calls } = fakeDu({ [resolve('rel/dir')]: 3 })
+    expect(sizeOf('rel/dir', { du: runner })).toBe(3 * KIB)
+    expect(calls[0]!.at(-1)).toBe(resolve('rel/dir'))
   })
 
   test('passes its timeout to the runner', () => {
