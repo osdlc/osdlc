@@ -195,7 +195,7 @@ may state its type's identity in `x-identity`, and then it must match.
 ## Command line
 
 ```sh
-corpus-schema validate [--fix] [--strict] <folder>...
+corpus-schema validate [--fix] [--strict] [--no-rules] <folder>...
 corpus-schema sync [<folder>...]
 ```
 
@@ -205,7 +205,8 @@ for each corpus that passes. A problem that is not in one field puts a word in p
 field's place, such as `(data)` for frontmatter that does not parse. Warnings start with
 `warning: `. `--fix` first rewrites every bare-name wikilink it can resolve as a relative Markdown
 link, except in a field that refers by id. A wikilink that holds a path stays. `--strict` fails a corpus that has warnings, as if they were
-errors, so CI can hold a corpus to no warnings.
+errors, so CI can hold a corpus to no warnings. Once a corpus passes, `validate` runs the [profile
+rules](#profile-rules) of the corpora it extends; `--no-rules` skips them.
 
 `sync` writes the `_references/` copies of every corpus at or below each folder, by default `.`. A
 corpus syncs after the corpora it extends or references, so a chain of corpora in one repository
@@ -349,6 +350,31 @@ These read a model, or a copy of one read back from JSON:
 | `getRecord(model, type, id, corpus?)` | The record with that id, compared as `fold` compares.    |
 | `resolveTarget(model, target)`      | The record a `RecordTarget` names, in any corpus.          |
 
+## Profile rules
+
+A profile whose records relate to each other can ship checks that JSON Schema cannot express one
+record at a time: a statement that cites a passing result must cite a result that passed, or
+`depends_on` links that must not form a cycle. The package names a rules module in its
+package.json, as a path inside the package:
+
+```json
+{ "name": "acme-profile", "corpus-schema": { "rules": "./dist/rules.js" } }
+```
+
+The module exports `check(corpus: LoadedCorpus): Problem[]`, which may be async. A `Problem` is
+`{ file, field, message, severity? }`, with the file relative to the root of the corpus being
+validated and `severity` `error` (the default) or `warning`.
+
+`validate` runs the rules of every corpus the validated one extends, at any depth, only after
+the corpus passes schema validation with no errors. It prints their problems in the usual
+`<file>: <field>: <message>` form, so they count toward the exit status and `--strict`. A module
+that is missing, outside its package, throws or returns something else is an error of the
+corpus, with the field `(rules)`. `runRules(loadCorpus(root))` does the same from the library.
+
+Rules come only from `extends` packages: not from the corpus itself, not from a corpus it
+references, and not from a corpus in no package. Another implementation of the spec may leave
+rules out, as it leaves out `format` checks: they are not part of schema conformance.
+
 ## Trust
 
 A corpus's schemas run on its data. JSON Schema `pattern` and the spec's `x-id-pattern` are regular
@@ -358,6 +384,9 @@ CI job with a timeout.
 
 A parent's schemas run on the corpus's records too. Treat a corpus package you extend or reference
 as you treat the corpus.
+
+A parent's rules module is code, and `validate` runs it with your permissions. That is the trust of
+installing the package. Pass `--no-rules` to validate a corpus whose parents you do not trust.
 
 `--fix` and `validateCorpus(root, { fix: true })` rewrite files in place. They change only
 bare-name wikilinks, and they leave a file alone if the rewrite would change its data, but they do not keep a
@@ -411,6 +440,7 @@ release.
 
 The experimental exports, which may change in any release:
 
+- `runRules`, `Problem` and `RulesReport`, while profile rules are new
 - `npmPackageUrl`, `packageUrl` and `PackageUrl`, while the spec's Identity section is new
 - `loadCorpus`, `getCorpus`, `getType`, `recordsOf`, `getRecord`, `resolveTarget`, and the model's
   types `LoadedCorpus`, `LoadOptions`, `CorpusModel`, `CorpusType`, `CorpusField`, `FieldRef`,

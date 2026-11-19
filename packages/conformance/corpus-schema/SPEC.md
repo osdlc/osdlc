@@ -259,7 +259,7 @@ Obsidian writes links as its settings say, under Settings → Files and links:
   Markdown links.
 - `New link format` sets the path a new link holds. The default, `Shortest path when possible`,
   writes the shortest path that is unique in the vault, which depends on the vault. `Relative path
-  to file` writes a path relative to the note, as this spec asks.
+to file` writes a path relative to the note, as this spec asks.
 - `Automatically update internal links`, when on, makes Obsidian update the links to a file when
   the file is renamed.
 
@@ -637,6 +637,7 @@ v0 defines two verbs.
   read is an error of the corpus that holds it.
 - `validate --strict <folder>` also exits non-zero when it reports any warning. It still reports
   each warning as a warning. A corpus passes `--strict` when it has no errors and no warnings.
+- `validate --no-rules <folder>` skips the profile rules (see Profile rules).
 - `validate --fix <folder>` first rewrites every bare-name wikilink that finds one file as a
   relative Markdown link, in the files a validator checks, except in a field in the `id` or
   `wikilink` form (see Typed references). A wikilink that holds a path stays as it is. It changes
@@ -653,6 +654,24 @@ v0 defines two verbs.
   replaces the stale path in the copy.
 - `sync` owns `_references/`: in a corpus with no `references` it empties it. It does not follow a
   symbolic link in `_references/`, and reports one as an error.
+
+### Profile rules
+
+A corpus package MAY ship rules that span records, which a schema cannot express one record at a
+time. This section is not part of schema conformance: a validator MAY leave rules out and still
+conform, and the conformance suite holds no case for them.
+
+- A package names its rules module in package.json, as `"corpus-schema": { "rules": "<path>" }`,
+  a path inside the package starting `./`. The module exports `check`, which takes the loaded
+  corpus and returns problems: each a file relative to the root of the corpus being validated, a
+  field, a message and a severity of `error` (the default) or `warning`.
+- A validator that runs rules runs those of every corpus the validated one `extends`, at any
+  depth, once its own checks find no error. It reports their problems in the form of `validate`,
+  so they count toward the exit status and `--strict`. A module that cannot be loaded or run is an
+  error with the field `(rules)`.
+- Rules are code. They come only from `extends` packages. A validator MUST NOT run rules of a
+  corpus in `references`, of the corpus being validated, or from a copy under `_references/`. It
+  MUST offer a way to turn them off.
 
 ### Writing records
 
