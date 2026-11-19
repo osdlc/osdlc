@@ -1,6 +1,5 @@
 import {
   existsSync,
-  linkSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -83,8 +82,9 @@ describe('claimLock', () => {
 
   test('a marker left by a reaper that died mid-takeover does not block later takeovers', () => {
     writeFileSync(lock, JSON.stringify({ token: 'dead' }))
-    // the dead reaper got as far as linking its marker
-    linkSync(lock, markerFor(lock, readFileSync(lock, 'utf-8')))
+    // the dead reaper got as far as creating its marker
+    const marker = markerFor(lock, readFileSync(lock, 'utf-8'))
+    writeFileSync(marker, '')
     // a young marker may belong to a live reaper: the claim is not granted over it,
     // and the stale lock is not reported as a live holder
     expect(claimLock(lock, {}, always)).toEqual({ ok: false, holder: null })
@@ -93,14 +93,18 @@ describe('claimLock', () => {
     expect(readdirSync(dir)).toEqual(['x.lock'])
   })
 
-  test("a marker linked to an old lock is a live reaper's: the lock's age is not the marker's", () => {
+  test("a marker's age is its own, not its lock's", () => {
     writeFileSync(lock, JSON.stringify({ token: 'dead' }))
     age(lock)
     const marker = markerFor(lock, readFileSync(lock, 'utf-8'))
-    linkSync(lock, marker)
-    // the marker has the old lock's mtime, but was linked just now
+    writeFileSync(marker, '')
+    // the lock is old and the marker is new: a live reaper's
     expect(claimLock(lock, {}, always)).toEqual({ ok: false, holder: null })
     expect(existsSync(marker)).toBe(true)
+    // the same marker, made long ago, is a dead reaper's
+    age(marker)
+    claimed(claimLock(lock, {}, always))
+    expect(readdirSync(dir)).toEqual(['x.lock'])
   })
 
   test('an unparseable lock reaches the rule with null content', () => {

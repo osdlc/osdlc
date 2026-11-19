@@ -306,10 +306,10 @@ withLock(`${path}.lock`, () => {
   before returning (`withLock` writes it once and keeps it while it waits). A
   release renames the lock to `<path>.release-<uuid>` for microseconds. A
   takeover creates `<path>.stale-<24 hex digits>` for microseconds. A process
-  killed in between can leave any of them behind. A marker whose lock is still
-  there blocks the takeover of that lock until it is `MARKER_STALE_MS` (10 s)
-  old, judged by the inode's ctime; then the next claimant removes it. A
-  marker left after its lock was removed blocks nothing and is safe to delete.
+  killed in between can leave any of them behind. A marker is an empty file of
+  its own. One whose lock is still there blocks the takeover of that lock until
+  its mtime is `MARKER_STALE_MS` (10 s) old; then the next claimant removes it.
+  A marker left after its lock was removed blocks nothing and is safe to delete.
 - **The content is pretty-printed JSON** with a trailing newline, and the
   `token` field last.
 - **`updateLock` checks the token, then renames.** A takeover that lands
@@ -384,7 +384,7 @@ The experimental exports:
 
 Node.js 22 or later, ESM only. Bun works too, through the compiled `dist/`.
 The tests run on Linux and macOS. Windows is not tested: `pidAlive` relies on
-signal 0, the takeover relies on hard links and ctime, and Node has no
+signal 0, the takeover relies on hard links, and Node has no
 `O_NOFOLLOW` there, so a symlink swapped in at the lock path between the
 `lstat` check and the open is followed. `processStartedAt` returns null on
 Windows, so `sameProcess` falls back to `pidAlive` there.
