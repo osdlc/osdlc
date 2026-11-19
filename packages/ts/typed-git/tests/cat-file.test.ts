@@ -39,7 +39,7 @@ describe('catFileBatch', () => {
         'HEAD:dir/big.txt',
       ]
       const got = fx.git.catFileBatch(names, { maxBytes: 1000 })
-      expect([...got.keys()].sort()).toEqual([...names].sort())
+      expect([...got.keys()]).toEqual(names)
 
       const a = got.get('HEAD:a.txt')
       expect(a).toMatchObject({ kind: 'text', size: 6 })
@@ -100,7 +100,7 @@ describe('catFileBatch', () => {
   test('a bad name or option throws TypeError, and a failing git throws the classified failure', async () => {
     const fx = fixture()
     try {
-      for (const bad of ['', 'a\nb', 'a\0b']) {
+      for (const bad of ['', 'a\nb', 'a\0b', 'HEAD:a.txt\r']) {
         expect(() => fx.git.catFileBatch([bad])).toThrow(TypeError)
       }
       expect(() => fx.git.catFileBatch(['HEAD:a.txt'], { maxBytes: -1 })).toThrow(TypeError)

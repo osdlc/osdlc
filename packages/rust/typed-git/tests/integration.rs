@@ -1428,7 +1428,7 @@ fn cat_file_batch_classifies_and_keeps_bytes() {
 fn cat_file_batch_refuses_bad_names_and_reports_git_failure() {
     use typed_git::object::{self, CatFileBatchOptions};
     let tmp = tempfile::tempdir().unwrap();
-    for bad in ["", "a\nb", "a\0b"] {
+    for bad in ["", "a\nb", "a\0b", "HEAD:a\r"] {
         let err = object::cat_file_batch(tmp.path(), &[bad], &CatFileBatchOptions::new());
         assert!(matches!(err, Err(GitError::Command { .. })), "{bad:?}");
     }

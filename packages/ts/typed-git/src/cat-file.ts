@@ -17,7 +17,7 @@ export type CatFileEntry =
   | { kind: 'too-large'; sha: string; size: number }
   /** A tree, commit or tag, such as `rev:dir`. Its content was not read. */
   | { kind: 'not-blob'; type: string; sha: string; size: number }
-  /** No such object. */
+  /** No such object, or a short sha that names more than one. */
   | { kind: 'missing' }
 
 /** Options for `catFileBatch` and `catFileBatchChunks`. */
@@ -68,9 +68,9 @@ interface Found {
 function checkNames(names: readonly string[]): string[] {
   const unique = new Set<string>()
   for (const name of names) {
-    if (typeof name !== 'string' || name === '' || /[\n\0]/.test(name)) {
+    if (typeof name !== 'string' || name === '' || /[\n\0]|\r$/.test(name)) {
       throw new TypeError(
-        `typed-git: catFileBatch: a name must be a non-empty string with no newline or NUL (got ${JSON.stringify(name)})`,
+        `typed-git: catFileBatch: a name must be a non-empty string with no newline, NUL or trailing CR (got ${JSON.stringify(name)})`,
       )
     }
     unique.add(name)
@@ -100,7 +100,7 @@ function parseCheck(stdout: Buffer, names: readonly string[], out: Map<string, C
   const found: Found[] = []
   lines.forEach((line, i) => {
     const name = names[i] as string
-    if (line.endsWith(' missing')) {
+    if (line.endsWith(' missing') || line.endsWith(' ambiguous')) {
       out.set(name, { kind: 'missing' })
       return
     }
@@ -135,6 +135,16 @@ function parseContent(stdout: Buffer, blobs: readonly Found[]): Map<string, CatF
     out.set(b.name, { kind: binary ? 'binary' : 'text', sha: b.sha, size: b.size, bytes })
     at = end + 1
   }
+  return out
+}
+
+/** `entries` in the order of `names`, a repeated name once. */
+export function inOrder(
+  names: readonly string[],
+  entries: Map<string, CatFileEntry>,
+): Map<string, CatFileEntry> {
+  const out = new Map<string, CatFileEntry>()
+  for (const name of names) out.set(name, entries.get(name) as CatFileEntry)
   return out
 }
 
@@ -197,7 +207,8 @@ export function* planCatFileBatch(
     const stdout: Buffer = yield {
       type: 'run',
       argv: ['cat-file', '--batch'],
-      input: g.map((f) => f.name).join('\n') + '\n',
+      // By sha, so a ref that moves after the size check cannot change the object.
+      input: g.map((f) => f.sha).join('\n') + '\n',
       maxOutputBytes: g.reduce((sum, f) => sum + f.size + OBJECT_OVERHEAD, 0),
     }
     const entries = parseContent(stdout, g)

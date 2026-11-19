@@ -27,7 +27,12 @@ import {
   type CommandRunOptions,
 } from '@osdlc/command-seam'
 
-import { planCatFileBatch, type CatFileBatchOptions, type CatFileEntry } from './cat-file.ts'
+import {
+  inOrder,
+  planCatFileBatch,
+  type CatFileBatchOptions,
+  type CatFileEntry,
+} from './cat-file.ts'
 import { UnsupportedRequest } from './failure.ts'
 import { versionedVerb } from './features.ts'
 import { pinnedGitVersion, probeGitVersion, type GitVersion } from './git-version.ts'
@@ -311,7 +316,7 @@ export class Git {
    * sizes, then `cat-file --batch` for the blobs within `maxBytes`, a few
    * processes in all, on the `bytesRunner`. The map is keyed by the names
    * given. Throws the classified failure if git fails, and `TypeError` for a
-   * name that is empty or holds a newline or NUL. See {@link CatFileEntry}.
+   * name that is empty or holds a newline, a NUL or a trailing CR. See {@link CatFileEntry}.
    *
    * @experimental command-seam's bytes runners are experimental.
    */
@@ -323,7 +328,7 @@ export class Git {
     for (const chunk of this.catFileBatchChunks(names, opts)) {
       for (const [name, entry] of chunk) all.set(name, entry)
     }
-    return all
+    return inOrder(names, all)
   }
 
   /**

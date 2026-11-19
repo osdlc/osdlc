@@ -74,7 +74,7 @@ pub enum CatFileEntry {
         /// Its size in bytes.
         size: u64,
     },
-    /// No such object.
+    /// No such object, or a short sha that names more than one.
     Missing,
 }
 
@@ -142,9 +142,9 @@ fn unique_names(names: &[&str]) -> Result<Vec<String>, GitError> {
     let mut seen = HashSet::new();
     let mut out = Vec::new();
     for name in names {
-        if name.is_empty() || name.contains(['\n', '\0']) {
+        if name.is_empty() || name.contains(['\n', '\0']) || name.ends_with('\r') {
             return Err(refuse(format!(
-                "a name must be non-empty with no newline or NUL (got {name:?})"
+                "a name must be non-empty with no newline, NUL or trailing CR (got {name:?})"
             )));
         }
         if seen.insert(*name) {
@@ -166,7 +166,7 @@ fn input_of(names: impl Iterator<Item = impl AsRef<str>>) -> Vec<u8> {
 /// Reads the objects of `names` byte for byte, in a few git processes. The
 /// result is in the order of `names`, with a repeated name once.
 ///
-/// A name that is empty, or holds a newline or NUL, is refused with a
+/// A name that is empty, or holds a newline, a NUL or a trailing CR, is refused with a
 /// [`GitError::Command`] before git runs, as is a git failure.
 pub fn cat_file_batch(
     repo: &Path,
@@ -213,7 +213,7 @@ pub fn cat_file_batch_chunks(
             )));
         }
         for (name, line) in part.iter().zip(lines) {
-            if line.ends_with(" missing") {
+            if line.ends_with(" missing") || line.ends_with(" ambiguous") {
                 settled.push((name.clone(), CatFileEntry::Missing));
                 continue;
             }
@@ -268,10 +268,12 @@ pub fn cat_file_batch_chunks(
     }
     let mut settled = Some(settled);
     for group in groups {
+        // By sha, so a ref that moves after the size check cannot change the
+        // object.
         let stdout = git()
             .dir(repo)
             .args(&["cat-file", "--batch"])
-            .stdin(input_of(group.iter().map(|f| &f.name)))
+            .stdin(input_of(group.iter().map(|f| &f.sha)))
             .run_bytes()?;
         let mut entries = parse_content(&stdout, group)?;
         if let Some(first) = settled.take() {

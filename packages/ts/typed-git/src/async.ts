@@ -17,7 +17,12 @@ import { basename, dirname, resolve } from 'node:path'
 
 import type { CommandResult } from '@osdlc/command-seam'
 
-import { planCatFileBatch, type CatFileBatchOptions, type CatFileEntry } from './cat-file.ts'
+import {
+  inOrder,
+  planCatFileBatch,
+  type CatFileBatchOptions,
+  type CatFileEntry,
+} from './cat-file.ts'
 import { cliBackend, type GitBackend, type GitCallOptions } from './backend.ts'
 import type { GitVersion } from './git-version.ts'
 import { softAsync, triedAsync, type Soft, type TriedAsync } from './outcome.ts'
@@ -232,7 +237,7 @@ export class AsyncGit {
     for await (const chunk of this.catFileBatchChunks(names, opts)) {
       for (const [name, entry] of chunk) all.set(name, entry)
     }
-    return all
+    return inOrder(names, all)
   }
 
   /**

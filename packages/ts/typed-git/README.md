@@ -906,7 +906,7 @@ from each name to one of:
 | `text`, `binary` | `sha`, `size`, `bytes` | a blob; `binary` has a NUL in its first 8000 bytes |
 | `too-large` | `sha`, `size` | a blob over `maxBytes`; not read |
 | `not-blob` | `type`, `sha`, `size` | a tree, commit or tag, such as `rev:dir`; not read |
-| `missing` | | no such object |
+| `missing` | | no such object, or a short sha that names more than one |
 
 ```ts
 const got = git.catFileBatch(changed.map((p) => `HEAD:${p}`), { maxBytes: 1 << 20 });
@@ -915,7 +915,7 @@ for (const [name, e] of got) if (e.kind === "text") scan(name, e.bytes.toString(
 
 `catFileBatchChunks` yields the map one group at a time, so a caller can use
 the bytes and drop them before the next read; `AsyncGit` has both, with
-`for await` on the chunks. A name that is empty or holds a newline or NUL
+`for await` on the chunks. A name that is empty or holds a newline, a NUL or a trailing CR
 throws `TypeError` (the protocol is one name per line). The entry `bytes` are
 views of the group's buffer. Both run on the `bytesRunner`, so they are
 experimental and throw `UnsupportedRequest` where `rawBytes` does.
