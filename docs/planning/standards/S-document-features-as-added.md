@@ -9,8 +9,8 @@ where a library documents each feature.
 
 ## Rule
 
-- **Same change.** [doc-locations](../../../standards/doc-locations.md)
-  Rule 2, "Docs change with the code", applies to every change that adds,
+- **Same change.** The rule "Docs change with the code" in
+  [doc-locations](../../../standards/doc-locations.md) applies to every change that adds,
   changes or removes something a library's users can use: an export, a CLI
   command or flag, a bin, a config key, an output format. The docs below
   change in that library, in the same pull request, and no README text,
