@@ -83,7 +83,7 @@ export function isHandOffHarness(harness: string): harness is HandOffHarness {
 /**
  * The first prompt that runs `skill` in `harness`: its mention, such as
  * `/review`, then `args` after a space when there are any. `args` is what
- * the skill's `argument-hint` asks for, as typed; it is prompt text, not
+ * the skill's `argument-hint` asks for, trimmed; it is prompt text, not
  * argv, so it is sent as one string.
  */
 export function skillPrompt(

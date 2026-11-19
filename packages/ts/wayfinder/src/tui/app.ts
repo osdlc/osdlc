@@ -1335,7 +1335,7 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     state.entering = { skill, agent, text: '' }
   }
 
-  /** Hand the terminal to an agent CLI started with `skill`, and exit with its code. */
+  /** Hand the terminal to an agent CLI started with `skill`, and exit with its code. A refused plan is shown as an error and the UI stays. */
   function handOverSkill(skill: SkillRow, args: string, agent: AgentCli | undefined): void {
     let plan: ReturnType<typeof planSkillHandOff>
     try {
@@ -1660,7 +1660,7 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
         return
       }
       case '\x07': {
-        // ctrl-g: hand a skill to an agent CLI. A task has no agent to go to.
+        // ctrl-g
         const entry = entries()[cursor()]
         if (entry?.skill !== undefined) startSkill(entry.skill.skill)
         else if (entry?.task !== undefined) say('^g starts an agent with a skill; this is a task')
