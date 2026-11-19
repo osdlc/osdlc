@@ -142,3 +142,37 @@ describe('newRecord', () => {
     assert.throws(() => newRecord(at('c'), 'claims', 'C-5', { values: { claim: { text: 'x' } } }))
   })
 })
+
+describe('newRecord edges', () => {
+  test('keeps required nested fields of every type in the chain, and treats __proto__ as data', () => {
+    root('c')
+    put(
+      'c/a/a.schema.yaml',
+      'required: [d]\nproperties:\n  d: { type: object, required: [p], properties: { p: { type: string } } }\n',
+    )
+    put(
+      'c/b/b.schema.yaml',
+      'x-extends: a\nrequired: [d]\nproperties:\n  d: { type: object, required: [q], properties: { q: { type: string } } }\n',
+    )
+    assert.deepEqual(recordSkeleton(at('c'), 'b'), { d: { p: '', q: '' } })
+    newRecord(at('c'), 'a', 'X', {
+      values: JSON.parse('{"d":{"p":"x"},"__proto__":{"polluted":1}}'),
+    })
+    assert.equal(({} as Record<string, unknown>)['polluted'], undefined)
+  })
+
+  test('writes a folder record in the syntax of an x-record-file, and refuses a format not allowed', () => {
+    root('c', { extra: 'formats: [md, json]\n' })
+    put(
+      'c/j/j.schema.yaml',
+      'x-record-file: record.json\nrequired: [n]\nproperties:\n  n: { type: integer }\n',
+    )
+    newRecord(at('c'), 'j', 'A', { folder: true })
+    assert.equal(readFileSync(at('c/j/A/record.json'), 'utf8'), '{\n  "n": 0\n}\n')
+    put('c/y/y.schema.yaml', 'x-record-file: record.yaml\n')
+    assert.throws(
+      () => newRecord(at('c'), 'y', 'A', { folder: true }),
+      /yaml is not in the corpus's formats/,
+    )
+  })
+})

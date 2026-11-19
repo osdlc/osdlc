@@ -3,7 +3,7 @@
  * type's schema, and a record file written from it.
  */
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, extname, join } from 'node:path'
 import { stringify } from 'yaml'
 
 import { fold } from './links.ts'
@@ -99,7 +99,7 @@ function find(root: string, name: string): { c: Corpus; type: Type } {
 function skeleton(type: Type): Data {
   const out: Data = {}
   for (const t of chain(type).reverse())
-    if (t.schema !== undefined) Object.assign(out, build(t.schema, t.schema))
+    if (t.schema !== undefined) merge(out, build(t.schema, t.schema) as Data)
   return out
 }
 
@@ -136,8 +136,14 @@ const plain = (x: unknown): x is Data => x !== null && typeof x === 'object' && 
 /** `from` merged into `into`: objects merge, anything else replaces. */
 const merge = (into: Data, from: Data): Data => {
   for (const [k, v] of Object.entries(from)) {
-    const here = into[k]
-    into[k] = plain(here) && plain(v) ? merge(here, v) : v
+    const here = Object.hasOwn(into, k) ? into[k] : undefined
+    // defineProperty, so a `__proto__` key is data and never the prototype.
+    Object.defineProperty(into, k, {
+      value: plain(here) && plain(v) ? merge(here, v) : v,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    })
   }
   return into
 }
@@ -179,6 +185,8 @@ export function newRecord(
     options.folder === true
       ? `${t.dir}/${id}/${recordFileOf(t) ?? `${id}${ext}`}`
       : `${t.dir}/${id}${ext}`
+  if (!c.extensions.includes(extname(file)))
+    throw new Error(`${file}: format: ${extname(file).slice(1)} is not in the corpus's formats`)
   if (existsSync(join(root, file))) throw new Error(`${file}: (file): already exists`)
 
   // A type that declares `id` gets the record's own, first.
@@ -196,10 +204,11 @@ export function newRecord(
     if (problems.length > 0) throw new Error([...new Set(problems)].join('\n'))
   }
 
+  // The file's own extension decides its syntax, as an x-record-file may differ from the corpus's.
   const text =
-    ext === '.json'
+    extname(file) === '.json'
       ? `${JSON.stringify(data, null, 2)}\n`
-      : ext === '.yaml'
+      : extname(file) === '.yaml'
         ? stringify(data)
         : `---\n${Object.keys(data).length === 0 ? '' : stringify(data)}---\n`
   mkdirSync(dirname(join(root, file)), { recursive: true })
