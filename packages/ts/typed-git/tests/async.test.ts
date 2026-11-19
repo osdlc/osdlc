@@ -71,6 +71,7 @@ describe('AsyncGit — parity with Git', () => {
       'hash-object --stdin': { stdout: `${'b'.repeat(40)}\n` },
       'hash-object -w --stdin': { stdout: `${'b'.repeat(40)}\n` },
       'mktree -z': { stdout: `${'c'.repeat(40)}\n` },
+      'write-tree': { stdout: `${'e'.repeat(40)}\n` },
       'merge-tree --write-tree --name-only -z --merge-base=abc x main': {
         stdout: 'deadbeef\x00',
       },
@@ -147,6 +148,8 @@ describe('AsyncGit — parity with Git', () => {
     sync.hashObject('data\n')
     sync.hashObject('data\n', { write: true })
     sync.mktree([{ mode: '100644', sha: 'a'.repeat(40), path: 'data' }])
+    sync.readTree('HEAD')
+    sync.writeTree()
     sync.updateRef('refs/heads/data', 'a'.repeat(40), { oldSha: null })
     sync.updateRef('refs/heads/data', 'a'.repeat(40), { oldSha: 'b'.repeat(40), reason: 'r' })
     sync.statusPorcelain({ paths: ['docs'] })
@@ -263,6 +266,8 @@ describe('AsyncGit — parity with Git', () => {
     await asyncGit.hashObject('data\n')
     await asyncGit.hashObject('data\n', { write: true })
     await asyncGit.mktree([{ mode: '100644', sha: 'a'.repeat(40), path: 'data' }])
+    await asyncGit.readTree('HEAD')
+    await asyncGit.writeTree()
     await asyncGit.updateRef('refs/heads/data', 'a'.repeat(40), { oldSha: null })
     await asyncGit.updateRef('refs/heads/data', 'a'.repeat(40), {
       oldSha: 'b'.repeat(40),
