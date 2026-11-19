@@ -19,7 +19,7 @@ import { FailureError } from '@osdlc/result'
 import type { GitFailure } from '../src/failure.ts'
 
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -638,6 +638,41 @@ describe('Git — argv construction (fake runner)', () => {
       expect(git.cherry('HEAD', 'HEAD')).toEqual([])
       expect(git.cherry('HEAD~1', 'HEAD')).toEqual([{ sha: head, equivalent: false }])
       expect(() => git.cherry('HEAD', 'no-such-rev')).toThrow(FailureError)
+    } finally {
+      fx.cleanup()
+    }
+  })
+
+  test('readTree and writeTree build their argv, and writeTree throws on a reply that is no sha', () => {
+    const sha = 'e'.repeat(40)
+    const read = recorder(OK(''))
+    new Git('/repo', { runner: read.runner }).readTree('HEAD')
+    expect(read.calls[0]!.argv).toEqual(['read-tree', 'HEAD'])
+    expect(() => new Git('/repo', { runner: read.runner }).readTree('--bad')).toThrow()
+    const write = recorder(OK(`${sha}\n`))
+    expect(new Git('/repo', { runner: write.runner }).writeTree()).toBe(sha)
+    expect(write.calls[0]!.argv).toEqual(['write-tree'])
+    for (const out of ['', 'not a sha\n']) {
+      expect(() => new Git('/repo', { runner: recorder(OK(out)).runner }).writeTree()).toThrow(
+        FailureError,
+      )
+    }
+  })
+
+  test('a snapshot of a working tree is built in a temporary index and the real one is untouched', () => {
+    const fx = makeGitFixture()
+    try {
+      fx.commit('one', { 'a.txt': 'one\n' })
+      const git = fx.git
+      writeFileSync(join(fx.dir, 'a.txt'), 'changed\n')
+      writeFileSync(join(fx.dir, 'new.txt'), 'new\n')
+      const before = git.statusPorcelain()
+      const env = { GIT_INDEX_FILE: join(fx.dir, '.git', 'snapshot-index') }
+      git.readTree('HEAD', { env })
+      git.add(['.'], { all: true, env })
+      const tree = git.writeTree({ env })
+      expect(git.lsTree(tree, { recursive: true }).map((e) => e.path)).toEqual(['a.txt', 'new.txt'])
+      expect(git.statusPorcelain()).toEqual(before)
     } finally {
       fx.cleanup()
     }
@@ -1844,6 +1879,92 @@ describe('Git — real repo round trips', () => {
       expect(git.submodules()).toEqual([{ path: 'deps/sub', commit: head }])
     } finally {
       git.rawChecked(['update-index', '--force-remove', 'deps/sub'])
+    }
+  })
+
+  test('submoduleUpdate checks out a submodule a clone left empty', () => {
+    const root = mkdtempSync(join(tmpdir(), 'typedgit-submodule-'))
+    const env = { ...process.env }
+    // Lets the fixture's `submodule add` and the verb use a local-path URL; both refuse `file` by default.
+    process.env.GIT_ALLOW_PROTOCOL = 'file'
+    try {
+      const sub = new Git(join(root, 'sub'))
+      mkdirSync(join(root, 'sub'))
+      sub.rawChecked(['init', '-b', 'main'])
+      sub.rawChecked(['config', 'user.email', 't@t'])
+      sub.rawChecked(['config', 'user.name', 't'])
+      writeFileSync(join(root, 'sub', 'f.txt'), 'x\n')
+      sub.add(['.'])
+      sub.commit({ message: 's1' })
+      const up = new Git(join(root, 'up'))
+      mkdirSync(join(root, 'up'))
+      up.rawChecked(['init', '-b', 'main'])
+      up.rawChecked(['config', 'user.email', 't@t'])
+      up.rawChecked(['config', 'user.name', 't'])
+      up.rawChecked(['submodule', 'add', join(root, 'sub'), 'deps/sub'])
+      up.commit({ message: 'u1' })
+      new Git(root).rawChecked(['clone', join(root, 'up'), 'down'])
+      const down = new Git(join(root, 'down'))
+      expect(existsSync(join(root, 'down', 'deps', 'sub', 'f.txt'))).toBe(false)
+      down.submoduleUpdate()
+      expect(existsSync(join(root, 'down', 'deps', 'sub', 'f.txt'))).toBe(true)
+      down.submoduleUpdate()
+    } finally {
+      for (const k of [
+        'GIT_ALLOW_PROTOCOL',
+        'GIT_CONFIG_COUNT',
+        'GIT_CONFIG_KEY_0',
+        'GIT_CONFIG_VALUE_0',
+      ]) {
+        if (env[k] === undefined) delete process.env[k]
+        else process.env[k] = env[k]
+      }
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test('submoduleUpdate refuses a local-path submodule URL unless the environment allows it', () => {
+    const root = mkdtempSync(join(tmpdir(), 'typedgit-submodule-'))
+    const env = { ...process.env }
+    // Git's default refuses a local-path `submodule add`; allow it while building the fixture.
+    process.env.GIT_ALLOW_PROTOCOL = 'file'
+    try {
+      const sub = new Git(join(root, 'sub'))
+      mkdirSync(join(root, 'sub'))
+      sub.rawChecked(['init', '-b', 'main'])
+      sub.rawChecked(['config', 'user.email', 't@t'])
+      sub.rawChecked(['config', 'user.name', 't'])
+      writeFileSync(join(root, 'sub', 'f.txt'), 'x\n')
+      sub.add(['.'])
+      sub.commit({ message: 's1' })
+      const up = new Git(join(root, 'up'))
+      mkdirSync(join(root, 'up'))
+      up.rawChecked(['init', '-b', 'main'])
+      up.rawChecked(['config', 'user.email', 't@t'])
+      up.rawChecked(['config', 'user.name', 't'])
+      up.rawChecked(['submodule', 'add', join(root, 'sub'), 'deps/sub'])
+      up.commit({ message: 'u1' })
+      new Git(root).rawChecked(['clone', join(root, 'up'), 'down'])
+      const down = new Git(join(root, 'down'))
+      expect(existsSync(join(root, 'down', 'deps', 'sub', 'f.txt'))).toBe(false)
+      // Git's own default already refuses `file`; allow it by config so only the verb's flag refuses.
+      delete process.env.GIT_ALLOW_PROTOCOL
+      process.env.GIT_CONFIG_COUNT = '1'
+      process.env.GIT_CONFIG_KEY_0 = 'protocol.file.allow'
+      process.env.GIT_CONFIG_VALUE_0 = 'always'
+      expect(() => down.submoduleUpdate()).toThrow()
+      expect(existsSync(join(root, 'down', 'deps', 'sub', 'f.txt'))).toBe(false)
+    } finally {
+      for (const k of [
+        'GIT_ALLOW_PROTOCOL',
+        'GIT_CONFIG_COUNT',
+        'GIT_CONFIG_KEY_0',
+        'GIT_CONFIG_VALUE_0',
+      ]) {
+        if (env[k] === undefined) delete process.env[k]
+        else process.env[k] = env[k]
+      }
+      rmSync(root, { recursive: true, force: true })
     }
   })
 

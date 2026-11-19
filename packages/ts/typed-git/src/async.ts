@@ -586,6 +586,16 @@ export class AsyncGit {
     return this.backend.execute(this.cwd, { kind: 'mktree', entries }, opts)
   }
 
+  /** Load `rev`'s tree into the index; pass `env: { GIT_INDEX_FILE }` to use a temporary one. See {@link Git.readTree}. */
+  readTree(rev: string, opts: GitCallOptions = {}): Promise<void> {
+    return this.backend.execute(this.cwd, { kind: 'readTree', rev }, opts)
+  }
+
+  /** Write the index as a tree and return its sha; no ref moves. See {@link Git.writeTree}. */
+  writeTree(opts: GitCallOptions = {}): Promise<string> {
+    return this.backend.execute(this.cwd, { kind: 'writeTree' }, opts)
+  }
+
   /** Configured remote names (`git remote`); `[]` when there are none. */
   remotes(opts: GitCallOptions = {}): Promise<string[]> {
     return this.backend.execute(this.cwd, { kind: 'remote' }, opts)
@@ -777,6 +787,11 @@ export class AsyncGit {
   /** `git worktree prune`. */
   worktreePrune(opts: GitCallOptions = {}): Promise<void> {
     return this.backend.execute(this.cwd, { kind: 'worktreePrune' }, opts)
+  }
+
+  /** `git submodule update --init --recursive --checkout`, refusing `file` and `ext` URLs. See `submoduleUpdate` in verbs.ts. */
+  submoduleUpdate(opts: GitCallOptions = {}): Promise<void> {
+    return this.backend.execute(this.cwd, { kind: 'submoduleUpdate' }, opts)
   }
 
   /** `git remote add <name> <url>`. */

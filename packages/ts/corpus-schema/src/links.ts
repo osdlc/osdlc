@@ -25,8 +25,8 @@ export interface Link {
   end: number
 }
 
-// @osdlc/markdown-link does not find every relative Markdown link (osdlc/osdlc#635), so they are
-// found here.
+// Read here, not with @osdlc/markdown-link: a Link needs the link text, the `!` of an embed, and
+// the destination unescaped and split at `#`, and that scanner's links give none of these.
 // [text](dest "title"): dest is <...> or a run with balanced parentheses, as in CommonMark.
 const MARKDOWN =
   /(!?)\[((?:\\.|[^[\]\\\n])*)\]\(\s*(<[^<>\n]*>|(?:\\.|[^\s()\\]|\((?:\\.|[^\s()\\])*\))*)(?:\s+(?:"[^"\n]*"|'[^'\n]*'))?\s*\)/g

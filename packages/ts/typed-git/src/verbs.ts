@@ -1676,6 +1676,27 @@ export function commitTree(tree: string, opts: CommitTreeOptions): GitVerb<strin
   return { argv, absent: NONE, parse: shaReply }
 }
 
+/**
+ * Load `rev`'s tree into the index (`git read-tree <rev>`), replacing it.
+ *
+ * It leaves the working tree alone. Run it with `env: { GIT_INDEX_FILE }` on
+ * the call to seed a temporary index, so the repository's own index is not
+ * touched. `absent: []`.
+ */
+export function readTree(rev: string): GitVerb<void> {
+  return { argv: ['read-tree', positional('readTree', 'rev', rev)], absent: NONE, parse: nothing }
+}
+
+/**
+ * Write the index as a tree object and print its sha (`git write-tree`).
+ *
+ * It writes objects and no ref. A conflicted index makes git exit 128 and
+ * this throws; a reply that is not a sha throws. `absent: []`.
+ */
+export function writeTree(): GitVerb<string> {
+  return { argv: ['write-tree'], absent: NONE, parse: shaReply }
+}
+
 /** A full object id in either hash format: 40 hex digits (SHA-1) or 64 (SHA-256). */
 const FULL_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
 
@@ -2631,14 +2652,18 @@ export function resetHard(rev: string): GitVerb<void> {
 export interface CleanOptions {
   /** `-d` — also delete untracked directories. */
   directories?: boolean | undefined
+  /** A second `-f`, so a nested repository (a populated submodule) is deleted too. */
+  nested?: boolean | undefined
 }
 
 /**
  * `git clean -f`: delete untracked files, and untracked directories with
- * `{directories: true}`. Ignored files are kept.
+ * `{directories: true}`; `{nested: true}` also deletes untracked nested repositories.
+ * Ignored files are kept.
  */
 export function clean(opts: CleanOptions = {}): GitVerb<void> {
-  return { argv: ['clean', opts.directories ? '-fd' : '-f'], absent: NONE, parse: nothing }
+  const flags = `${opts.nested ? '-ff' : '-f'}${opts.directories ? 'd' : ''}`
+  return { argv: ['clean', flags], absent: NONE, parse: nothing }
 }
 
 /** Delete a local branch (`-d`, or `-D` with `{force: true}`). */
@@ -2809,6 +2834,34 @@ export function worktreeUnlock(path: string): GitVerb<void> {
 /** `git worktree prune`. */
 export function worktreePrune(): GitVerb<void> {
   return { argv: ['worktree', 'prune'], absent: NONE, parse: nothing }
+}
+
+/**
+ * `git submodule update --init --recursive --checkout`, with the `file` and `ext` transports
+ * refused: check out every submodule, nested ones included, at the commit the checked-out tree pins, cloning those not yet initialised. A repository
+ * with no submodules is exit 0 and no work.
+ *
+ * The URLs come from the tree's own `.gitmodules`, which a pull request's author controls, so
+ * the `file` and `ext` transports are refused (a local path or a command as a "URL"). A
+ * `GIT_ALLOW_PROTOCOL` in the environment still takes precedence over these. `--checkout` ignores a
+ * `submodule.<name>.update` the tree's `.gitmodules` sets (`none`, `rebase`, `merge`, `!command`).
+ */
+export function submoduleUpdate(): GitVerb<void> {
+  return {
+    argv: [
+      '-c',
+      'protocol.file.allow=never',
+      '-c',
+      'protocol.ext.allow=never',
+      'submodule',
+      'update',
+      '--init',
+      '--recursive',
+      '--checkout',
+    ],
+    absent: NONE,
+    parse: nothing,
+  }
 }
 
 /** `git remote add <name> <url>`. */
