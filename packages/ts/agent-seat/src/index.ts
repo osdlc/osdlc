@@ -70,6 +70,8 @@ export {
   parseRolloutMeta,
   walkRolloutFiles,
   withEnv,
+  envPrefixLine,
+  commandArgv,
   wrapperSession,
   type ClaudeLaunchFlags,
   type ClaudeSessionFlags,

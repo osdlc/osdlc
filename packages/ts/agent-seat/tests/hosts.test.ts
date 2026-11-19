@@ -29,6 +29,8 @@ import {
   ROLLOUT_CREATED_MARGIN_MS,
   sessionViaTerminal,
   withEnv,
+  envPrefixLine,
+  commandArgv,
   wrapperSession,
 } from '../src/harness.ts'
 import {
@@ -250,6 +252,21 @@ describe('wrapperSession', () => {
   test('withEnv on win32 refuses a variable name that is not a plain identifier', () => {
     expect(() => withEnv(['claude'], { 'A; calc': '1' }, 'win32')).toThrow(/invalid environment/)
     expect(() => withEnv(['claude'], { 'A B': undefined }, 'win32')).toThrow(/invalid environment/)
+  })
+  test('commandArgv puts req.env on a plain command, and leaves argv alone without one', () => {
+    expect(commandArgv({ argv: ['zsh'], env: { A: '1' } })).toEqual(['env', 'A=1', 'zsh'])
+    expect(commandArgv({ argv: ['zsh'] })).toEqual(['zsh'])
+  })
+  test('envPrefixLine writes a plain K=V prefix, quoting values and words', () => {
+    expect(envPrefixLine(['a', 'x y'], { K: 'v w', N: '1' }, 'linux')).toBe("K='v w' N=1 a 'x y'")
+    expect(envPrefixLine(['a'], undefined, 'linux')).toBe('a')
+  })
+  test('envPrefixLine refuses to unset or to take a bad name', () => {
+    expect(() => envPrefixLine(['a'], { K: undefined }, 'linux')).toThrow(/cannot unset/)
+    expect(() => envPrefixLine(['a'], { 'A B': '1' }, 'linux')).toThrow(/invalid environment/)
+  })
+  test('envPrefixLine on win32 is the powershell form of withEnv', () => {
+    expect(envPrefixLine(['a'], { K: 'v' }, 'win32')).toContain('$env:K')
   })
   test('withEnv leaves argv alone when there is nothing to set', () => {
     expect(withEnv(['claude'], undefined)).toEqual(['claude'])

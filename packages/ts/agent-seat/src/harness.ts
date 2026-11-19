@@ -34,7 +34,15 @@ import {
 } from '@osdlc/agent-call'
 import { harnessId } from '@osdlc/detect-harness'
 
-import { ran, resolveRunner, type CommandRunner, type EnvOverrides } from '@osdlc/command-seam'
+import {
+  commandString,
+  ran,
+  resolveRunner,
+  shellJoin,
+  shellQuote,
+  type CommandRunner,
+  type EnvOverrides,
+} from '@osdlc/command-seam'
 import { isRecord, parseJsonOrNull, realResolve, sleepSync, strOrNull, which } from './util.ts'
 
 // `contract.ts` imports only types from this file (`Harness` for
@@ -691,6 +699,43 @@ export function withEnv(
     else pairs.push(`${k}=${v}`)
   }
   return ['env', ...unset, ...pairs, ...argv]
+}
+
+/**
+ * `argv` as one command line with `env` as a plain POSIX assignment prefix
+ * (`K=V cmd`), for typing into an interactive shell. Unlike `env K=V cmd` (see
+ * {@link withEnv}) the shell resolves the command itself, so a shell function or alias
+ * still runs. It is a string, not an argv: `commandString` quotes a first word that
+ * holds `=`, so an argv cannot carry the prefix.
+ *
+ * A prefix cannot unset a variable, so an `undefined` value throws. On win32 there is no
+ * such prefix, so the line is `commandString(withEnv(argv, env, 'win32'))`.
+ *
+ * @example
+ * envPrefixLine(['a', 'x y'], { K: 'v w' }, 'linux') // K='v w' a 'x y'
+ */
+export function envPrefixLine(
+  argv: string[],
+  env: EnvOverrides | undefined,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const entries = Object.entries(env ?? {})
+  if (platform === 'win32') {
+    return commandString(withEnv(argv, env, platform), { platform })
+  }
+  for (const [k, v] of entries) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k))
+      throw new Error(`invalid environment variable name: ${k}`)
+    if (v === undefined)
+      throw new Error(`cannot unset ${k} in an assignment prefix: use withEnv for \`env -u\``)
+  }
+  const assigns = entries.map(([k, v]) => `${k}=${shellQuote(v!)}`)
+  return [...assigns, shellJoin(argv)].join(' ')
+}
+
+/** `req.argv` under `req.env`: what a host runs for a {@link CommandRequest}. */
+export function commandArgv(req: Pick<CommandRequest, 'argv' | 'env'>): string[] {
+  return withEnv(req.argv, req.env)
 }
 
 /** `word` as a single-quoted PowerShell literal, each single quote (typographic ones too) doubled. */
