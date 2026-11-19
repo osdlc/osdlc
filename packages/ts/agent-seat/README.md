@@ -126,11 +126,22 @@ for the host's own directory.
 
 `harnessArgv(harness, binary, prompt, claudeFlags?, choice?)` builds the argv
 for an interactive launch: the bare CLI with the first message, plus the model
-and effort flags of a resolved `choice`. `harnessAvailable(harness, binary)` asks
-whether `binary` is on PATH. `claudeSessionArgv` and `claudeHookSettings` build
+and effort flags of a resolved `choice`. `binary` is one word or a launcher
+prefix such as `['npx', '-y', 'claude']`, whose words lead the argv; the
+session flags follow them. `harnessAvailable(harness, binary)` asks
+whether `binary` (its first word, for a prefix) is on PATH. `claudeSessionArgv` and `claudeHookSettings` build
 the Claude Code flags a session can carry (plugins, a system prompt, hook
 settings). `findCodexSessionId` finds the id of a codex session from its
 rollout file.
+
+## Argv builders
+
+The pure functions that build each host's CLI argv are exported, so a caller
+that needs one extra flag can build the argv itself and run the rest through
+its own runner: `orcaCreateArgv`, `cmuxCreateArgv`, `ottyCreateArgv`,
+`herdrWorkspaceCreateArgv`, `weztermSpawnArgv`, `tmuxCreateArgv`, and the
+send, focus, close, list and read builders beside them (`orcaSendArgv`,
+`cmuxCloseArgv`, ...). They run nothing and read no state.
 
 ## Compared with other tools
 

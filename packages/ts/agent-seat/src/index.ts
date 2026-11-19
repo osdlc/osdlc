@@ -77,17 +77,62 @@ export {
   type NativeSendResult,
 } from './harness.ts'
 export { ensureWorkspace } from './open-workspace.ts'
-export { makeCmuxHost } from './hosts/cmux.ts'
-export { makeHerdrHost } from './hosts/herdr.ts'
+export {
+  cmuxCloseArgv,
+  cmuxCreateArgv,
+  cmuxFocusArgv,
+  cmuxReadScreenArgv,
+  cmuxSendArgv,
+  cmuxSendEnterArgv,
+  cmuxSessionsArgv,
+  cmuxWorkspaceListArgv,
+  makeCmuxHost,
+} from './hosts/cmux.ts'
+export {
+  herdrAgentPromptArgv,
+  herdrPaneCloseArgv,
+  herdrPaneListArgv,
+  herdrPaneReadArgv,
+  herdrPaneRunArgv,
+  herdrTabFocusArgv,
+  herdrWorkspaceCreateArgv,
+  herdrWorkspaceFocusArgv,
+  makeHerdrHost,
+} from './hosts/herdr.ts'
 export { JETBRAINS_PROTOCOL, makeJetbrainsHost, type JetbrainsSettings } from './hosts/jetbrains.ts'
-export { ORCA_BUNDLED_CLI, makeOrcaHost } from './hosts/orca.ts'
-export { makeOttyHost } from './hosts/otty.ts'
+export {
+  ORCA_BUNDLED_CLI,
+  makeOrcaHost,
+  orcaCloseArgv,
+  orcaCreateArgv,
+  orcaFindArgv,
+  orcaSendArgv,
+  orcaSwitchArgv,
+} from './hosts/orca.ts'
+export {
+  makeOttyHost,
+  ottyCaptureArgv,
+  ottyCloseArgv,
+  ottyCreateArgv,
+  ottyFocusArgv,
+  ottyListArgv,
+  ottySendArgv,
+} from './hosts/otty.ts'
 export { hostRegistryDir, type HostStateOptions } from './hosts/registry.ts'
 export { makeTerminalHost, terminalHost } from './hosts/terminal.ts'
 export {
   insideTmux,
   makeTmuxHost,
   tmuxAttachArgv,
+  tmuxCapturePaneArgv,
+  tmuxCreateArgv,
+  tmuxHasSessionArgv,
+  tmuxKillSessionArgv,
+  tmuxListSessionsArgv,
+  tmuxLoadBufferArgv,
+  tmuxPaneStatusArgv,
+  tmuxPasteBufferArgv,
+  tmuxSendEnterArgv,
   tmuxIdSessionName,
   tmuxSessionName,
   tmuxSwitchClientArgv,
@@ -100,7 +145,15 @@ export {
   type VscodeTransport,
   type VscodeWindow,
 } from './hosts/vscode-client.ts'
-export { makeWeztermHost } from './hosts/wezterm.ts'
+export {
+  makeWeztermHost,
+  weztermActivateArgv,
+  weztermGetTextArgv,
+  weztermKillPaneArgv,
+  weztermListArgv,
+  weztermSendTextArgv,
+  weztermSpawnArgv,
+} from './hosts/wezterm.ts'
 
 /** What {@link hostRegistry} needs. */
 export interface HostRegistryOptions {

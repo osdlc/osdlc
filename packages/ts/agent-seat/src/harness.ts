@@ -76,7 +76,8 @@ export function harnessOrNull(value: unknown): Harness | null {
 
 /** What an interactive argv builder is handed: the binary, the first message, and the flags around it. */
 interface InteractiveParts {
-  bin: string
+  /** The launcher words: one binary, or a prefix such as `['npx', '-y', 'claude']`. */
+  bin: readonly string[]
   prompt: string
   /** The launch mode, model and effort flags (`modelArgs`). */
   model: string[]
@@ -86,7 +87,7 @@ interface InteractiveParts {
 
 /** `<bin> <model flags> <injected> -- <prompt>`: the shape of every CLI whose positional is the first message. */
 const guarded = (p: InteractiveParts): string[] => [
-  p.bin,
+  ...p.bin,
   ...p.model,
   ...p.injected,
   '--',
@@ -113,11 +114,18 @@ const guarded = (p: InteractiveParts): string[] => [
  *     with `-` is not read as a flag), per `opencode --help`.
  */
 const INTERACTIVE_ARGV: Readonly<Record<string, (p: InteractiveParts) => string[]>> = {
-  claude: (p) => [p.bin, ...p.model, ...claudeSessionArgv(p.claude), ...p.injected, '--', p.prompt],
+  claude: (p) => [
+    ...p.bin,
+    ...p.model,
+    ...claudeSessionArgv(p.claude),
+    ...p.injected,
+    '--',
+    p.prompt,
+  ],
   codex: guarded,
   cursor: guarded,
   pi: guarded,
-  opencode: (p) => [p.bin, ...p.model, ...p.injected, `--prompt=${p.prompt}`],
+  opencode: (p) => [...p.bin, ...p.model, ...p.injected, `--prompt=${p.prompt}`],
 }
 
 /** Whether an interactive argv can be built for `tool`. */
@@ -127,7 +135,8 @@ export function hasInteractiveArgv(tool: string): boolean {
 
 /**
  * The argv that opens `harness`, run as `binary` (a name on PATH or an
- * absolute path), interactively with `prompt` as its first message
+ * absolute path, or a launcher prefix such as `['npx', '-y', 'claude']`
+ * whose words lead the argv), interactively with `prompt` as its first message
  * ({@link INTERACTIVE_ARGV}). A resolved `choice` adds its launch mode,
  * model and effort flags (`modelArgs`, `@osdlc/agent-call`) before the `--` guard; a
  * tool with no model or effort flags wired throws on a choice rather than
@@ -138,7 +147,7 @@ export function hasInteractiveArgv(tool: string): boolean {
  */
 export function harnessArgv(
   harness: Harness,
-  binary: string,
+  binary: string | readonly string[],
   prompt: string,
   claude: ClaudeLaunchFlags = {},
   choice: ModelChoice = {},
@@ -146,8 +155,10 @@ export function harnessArgv(
 ): string[] {
   const build = Object.hasOwn(INTERACTIVE_ARGV, harness) ? INTERACTIVE_ARGV[harness] : undefined
   if (build === undefined) throw new Error(`'${harness}' has no interactive launch`)
+  const bin = typeof binary === 'string' ? [binary] : binary
+  if (bin.length === 0) throw new Error('harnessArgv needs a binary')
   return build({
-    bin: binary,
+    bin,
     prompt,
     model: modelArgs(harness, choice),
     claude,
@@ -282,12 +293,13 @@ export function claudeResumeArgv(id: string, flags: ClaudeSessionFlags = {}): st
 }
 
 /**
- * Whether `harness`'s CLI, `binary` (a name on PATH or an absolute path), is
- * on PATH. A synchronous lookup that spawns nothing. Only a PATH hit counts: an
+ * Whether `harness`'s CLI, `binary` (a name on PATH or an absolute path; for a
+ * launcher prefix, its first word), is on PATH. A synchronous lookup that spawns nothing. Only a PATH hit counts: an
  * installed app bundle (Cursor.app) gives a session nothing to run.
  */
-export function harnessAvailable(_harness: Harness, binary: string): boolean {
-  return which(binary) !== null
+export function harnessAvailable(_harness: Harness, binary: string | readonly string[]): boolean {
+  const first = typeof binary === 'string' ? binary : binary[0]
+  return first !== undefined && which(first) !== null
 }
 
 /** {@link SendReceipt}'s shape, reused here under its own name: both answer "did the message get in", one via a host, one via the harness's own process/daemon directly. */
