@@ -10,7 +10,7 @@
  */
 
 import { existsSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 
 import type { HostAdapter, HostContext, HostRow } from './adapter.ts'
 import {
@@ -72,13 +72,7 @@ function rowsFor(ctx: HostContext, checkout: Checkout, threshold: number): HostR
   if (safeTarget === null) return [refusedRow(CARGO_ADAPTER, 'cargo-target', target, checkout.path)]
   if (!existsSync(join(safeTarget, 'CACHEDIR.TAG'))) return []
 
-  const holders = holdersIn(ctx, checkout.path, (all) =>
-    all.filter((h) => BUILDERS.test(h.command)),
-  )
-  const held = {
-    holders: holders.names,
-    ...(holders.unknown === undefined ? {} : { holdersUnknown: holders.unknown }),
-  }
+  const held = holdersIn(ctx, checkout.path, (all) => all.filter((h) => BUILDERS.test(h.command)))
   const now = ctx.now()
   const profiles = profileDirs(safeTarget)
   const prints = profiles.flatMap((p) => {
@@ -100,7 +94,7 @@ function rowsFor(ctx: HostContext, checkout: Checkout, threshold: number): HostR
           newestMtimeMs: newest,
           idle: true,
           why: `no build for ${idleHoursSince(newest, now)} hours (threshold ${threshold})`,
-          ...held,
+          held,
         },
         now,
       ),
@@ -109,10 +103,7 @@ function rowsFor(ctx: HostContext, checkout: Checkout, threshold: number): HostR
   // An idle target/ takes its incremental directories with it.
   if (!idle && incrementalOff(ctx, checkout.path)) {
     for (const profile of profiles) {
-      const dir = inside(
-        checkout.path,
-        join('target', profile.slice(safeTarget.length + 1), 'incremental'),
-      )
+      const dir = inside(checkout.path, relative(checkout.path, join(profile, 'incremental')))
       if (dir === null) {
         rows.push(
           refusedRow(
@@ -136,7 +127,7 @@ function rowsFor(ctx: HostContext, checkout: Checkout, threshold: number): HostR
             newestMtimeMs: mtime,
             idle: mtime !== null && idleHoursSince(mtime, now) >= threshold,
             why: 'incremental builds are off for this checkout',
-            ...held,
+            held,
           },
           now,
         ),

@@ -122,16 +122,20 @@ export function inside(checkout: string, rel: string): string | null {
 export const present = (path: string): boolean =>
   lstatSync(path, { throwIfNoEntry: false }) !== undefined
 
+/** Processes found working in a checkout; `unknown` is set when the process table could not be read. */
+export interface Held {
+  names: string[]
+  unknown?: string
+}
+
 export interface ArtifactFacts {
   kind: ArtifactKind
   path: string
   checkout: string
   /** Newest mtime that decides idleness; null when there is no file to date it by. */
   newestMtimeMs: number | null
-  /** Process names found working in the checkout. */
-  holders: string[]
-  /** Set when the process table could not be read. */
-  holdersUnknown?: string
+  /** What {@link holdersIn} found in the checkout. */
+  held: Held
   /** Idle for the threshold, which decides `unattended`. */
   idle: boolean
   why: string
@@ -142,8 +146,8 @@ export interface ArtifactFacts {
 export function artifactRow(adapter: string, f: ArtifactFacts, now: Date): HostRow {
   const idleHours = f.newestMtimeMs === null ? null : idleHoursSince(f.newestMtimeMs, now)
   const blockers = [
-    ...(f.holders.length > 0 ? [`running in the checkout: ${f.holders.join(', ')}`] : []),
-    ...(f.holdersUnknown === undefined ? [] : [`process table unreadable: ${f.holdersUnknown}`]),
+    ...(f.held.names.length > 0 ? [`running in the checkout: ${f.held.names.join(', ')}`] : []),
+    ...(f.held.unknown === undefined ? [] : [`process table unreadable: ${f.held.unknown}`]),
   ]
   const blocked = blockers.length > 0
   return {
@@ -206,7 +210,7 @@ export function holdersIn(
   ctx: HostContext,
   checkout: string,
   select: (all: ProcessHolder[]) => ProcessHolder[],
-): { names: string[]; unknown?: string } {
+): Held {
   try {
     const names = select(ctx.probe.holders(checkout)).map((h) => `${h.command} (pid ${h.pid})`)
     return { names }
