@@ -1249,7 +1249,7 @@ export function run(preview: Preview, opts: RunOptions = {}): Receipt {
 // ── one candidate ──────────────────────────────────────────────────────────
 
 export interface RemoveCandidateOptions extends Runners {
-  /** Where git runs from. A candidate for the worktree the caller stands in is not made: the sweep keeps it. Defaults to the process's cwd. */
+  /** Where git runs from. A worktree the caller stands in is refused. Defaults to the process's cwd. */
   cwd?: string | undefined
   /** The risks granted for this candidate. */
   allow?: readonly Risk[] | undefined
@@ -1371,7 +1371,7 @@ export function removeCandidate(
         steps: taken,
         ok: false,
         archiveFailed: step.action === 'archive',
-        error: step.error,
+        error: step.error ?? 'failed',
       }
     }
   }
