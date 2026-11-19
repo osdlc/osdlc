@@ -52,9 +52,15 @@ if (verb === 'types') {
   const model = loadCorpus(found[0] as string, { bodies: false })
   for (const e of model.errors) process.stderr.write(`${e}\n`)
   const text = generateTypes(model)
-  // Written synchronously, to fd 1 without --out, so that exiting here cannot cut off the output.
-  writeFileSync(out ?? 1, text)
-  process.exit(model.errors.length > 0 ? 1 : 0)
+  if (model.errors.length > 0) process.exit(1)
+  try {
+    if (out === undefined) await new Promise((done) => process.stdout.write(text, done))
+    else writeFileSync(out, text)
+  } catch (e) {
+    process.stderr.write(`${out ?? 'stdout'}: cannot write (${(e as Error).message})\n`)
+    process.exit(1)
+  }
+  process.exit(0)
 }
 if (out !== undefined) usage()
 if (verb === 'validate' ? args.length === 0 : verb !== 'sync' || fix || strict) usage()

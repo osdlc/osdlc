@@ -20,15 +20,22 @@ function schemaType(schema: unknown): string {
   if (!isSchema(schema)) return 'unknown'
   if ('const' in schema) return lit(schema.const)
   if (Array.isArray(schema.enum)) return union(schema.enum.map(lit))
+  const types = typeof schema.type === 'string' ? [schema.type] : list(schema.type)
+  // The keywords that restrict a type are not modelled, so a combinator is only as exact as its
+  // branches, and it narrows the type or properties beside it.
+  const parts: string[] = []
+  if (types.length > 0) parts.push(union(types.map((t) => named(String(t), schema))))
+  else if (isSchema(schema.properties)) parts.push(object(schema))
   for (const k of ['anyOf', 'oneOf']) {
     const alternatives = schema[k]
-    if (Array.isArray(alternatives)) return union(alternatives.map(schemaType))
+    if (Array.isArray(alternatives) && alternatives.length > 0)
+      parts.push(union(alternatives.map(schemaType)))
   }
-  if (Array.isArray(schema.allOf) && schema.allOf.length > 0)
-    return schema.allOf.map((s) => paren(schemaType(s))).join(' & ')
-  const types = typeof schema.type === 'string' ? [schema.type] : list(schema.type)
-  if (types.length === 0) return isSchema(schema.properties) ? object(schema) : 'unknown'
-  return union(types.map((t) => named(String(t), schema)))
+  if (Array.isArray(schema.allOf)) parts.push(...schema.allOf.map(schemaType))
+  const known = parts.filter((p) => p !== 'unknown')
+  return known.length === 0
+    ? 'unknown'
+    : (known.length === 1 ? known : known.map(paren)).join(' & ')
 }
 
 function named(type: string, schema: Schema): string {
@@ -44,8 +51,12 @@ function named(type: string, schema: Schema): string {
       return 'null'
     case 'array': {
       const prefix = list(schema.prefixItems)
-      if (prefix.length > 0)
-        return `[${prefix.map(schemaType).join(', ')}, ...${paren(schemaType(schema.items))}[]]`
+      if (prefix.length > 0) {
+        const head = prefix.map(schemaType).join(', ')
+        return schema.items === false
+          ? `[${head}]`
+          : `[${head}, ...${paren(schemaType(schema.items))}[]]`
+      }
       return `${paren(schemaType(schema.items))}[]`
     }
     case 'object':
@@ -88,7 +99,7 @@ const pascal = (name: string): string => {
 /** The interface name of each type: its folder name in PascalCase, made unique with a number. */
 function names(types: CorpusType[]): Map<string, string> {
   const out = new Map<string, string>()
-  const taken = new Set(['Ref', 'CorpusTypes'])
+  const taken = new Set(['Ref', 'CorpusTypes', 'Record', 'Array'])
   for (const t of types) {
     let n = pascal(t.name)
     for (let i = 2; taken.has(n); i++) n = `${pascal(t.name)}${i}`

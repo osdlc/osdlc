@@ -70,7 +70,15 @@ describe('field types', () => {
       '{ a?: unknown }',
     )
     assert.equal(typeOf({ anyOf: [{ type: 'string' }, { type: 'null' }] }), 'string | null')
-    assert.equal(typeOf({ allOf: [{ type: 'string' }, { minLength: 1 }] }), 'string & unknown')
+    assert.equal(typeOf({ allOf: [{ type: 'string' }, { minLength: 1 }] }), 'string')
+    assert.equal(
+      typeOf({ type: 'object', properties: { a: {} }, anyOf: [{ type: 'object' }] }),
+      '{ a?: unknown; [key: string]: unknown } & Record<string, unknown>',
+    )
+    assert.equal(
+      typeOf({ type: 'array', prefixItems: [{ type: 'string' }], items: false }),
+      '[string]',
+    )
     assert.equal(typeOf({ $ref: '#/$defs/x' }), 'unknown')
     assert.equal(typeOf(true), 'unknown')
     assert.equal(
@@ -95,6 +103,15 @@ describe('generateTypes', () => {
     assert.match(claims, /"odd-key"\?: number \| null/)
     assert.match(out, /export interface CorpusTypes \{\n {2}"base-notes": BaseNotes\n/)
     assert.match(out, /\/\*\*\n \* A note\.\n \*\/\nexport interface BaseNotes/)
+  })
+})
+
+describe('type names', () => {
+  test('a type named like a global stays compilable', () => {
+    put('r/r.corpus-schema.yaml', 'corpus-schema: 0\nid: r\nformats: [md]\n')
+    put('r/record/record.schema.json', '{"properties":{"x":{"type":"object"}}}')
+    const out = generateTypes(loadCorpus(join(dir, 'r')))
+    assert.match(out, /export interface Record2 \{\n {2}x\?: Record<string, unknown>/)
   })
 })
 
