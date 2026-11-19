@@ -295,9 +295,10 @@ export function claudeResumeArgv(id: string, flags: ClaudeSessionFlags = {}): st
 }
 
 /**
- * Whether `harness`'s CLI, `binary` (a name on PATH or an absolute path; for a
- * launcher prefix, its first word), is on PATH. A synchronous lookup that spawns nothing. Only a PATH hit counts: an
- * installed app bundle (Cursor.app) gives a session nothing to run.
+ * Whether the first word of `binary` (a name on PATH, an absolute path, or a
+ * launcher prefix) is on PATH: a synchronous lookup that spawns nothing. Only a
+ * PATH hit counts: an installed app bundle (Cursor.app) gives a session nothing
+ * to run.
  */
 export function harnessAvailable(_harness: Harness, binary: string | readonly string[]): boolean {
   const first = typeof binary === 'string' ? binary : binary[0]

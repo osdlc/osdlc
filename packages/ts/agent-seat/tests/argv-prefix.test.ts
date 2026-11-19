@@ -12,7 +12,7 @@ describe('harnessArgv with a launcher prefix', () => {
   })
 
   test('a one-word array equals the string form, for every harness shape', () => {
-    for (const h of ['claude', 'codex', 'pi', 'opencode'] as const) {
+    for (const h of ['claude', 'codex', 'cursor', 'pi', 'opencode'] as const) {
       expect(harnessArgv(h, [h], 'p')).toEqual(harnessArgv(h, h, 'p'))
     }
   })
@@ -40,7 +40,7 @@ describe('harnessArgv with a launcher prefix', () => {
 })
 
 describe('pure argv builders are exported', () => {
-  test('every host argv builder is on the package entry', () => {
+  test('the create and spawn builders are on the package entry', () => {
     const names = Object.keys(seat).filter((k) =>
       /^(orca|cmux|otty|herdr|wezterm|tmux).*Argv$/.test(k),
     )

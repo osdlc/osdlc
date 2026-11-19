@@ -129,8 +129,8 @@ for an interactive launch: the bare CLI with the first message, plus the model
 and effort flags of a resolved `choice`. `binary` is one word or a launcher
 prefix such as `['npx', '-y', 'claude']`, whose words lead the argv; the
 session flags follow them. `harnessAvailable(harness, binary)` asks
-whether `binary` (its first word, for a prefix) is on PATH. `claudeSessionArgv` and `claudeHookSettings` build
-the Claude Code flags a session can carry (plugins, a system prompt, hook
+whether `binary` (its first word, for a prefix) is on PATH.
+`claudeSessionArgv` and `claudeHookSettings` build the Claude Code flags a session can carry (plugins, a system prompt, hook
 settings). `findCodexSessionId` finds the id of a codex session from its
 rollout file.
 
