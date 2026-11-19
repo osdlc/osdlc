@@ -7,7 +7,7 @@
 
 import { claudePluginArgv, claudeResumeFlag } from './adapters/claude.js'
 import { modelArgs, type ModelChoice } from './model-args.js'
-import type { AgentCallSpec, PluginSpec } from './spec.js'
+import type { PluginSpec } from './spec.js'
 
 /**
  * Session flags only `claude` takes; a caller can store them to resume with the same flags.
@@ -143,7 +143,7 @@ export function claudeResumeArgv(id: string, flags: ClaudeSessionFlags = {}): st
 }
 
 /**
- * What an interactive launch is handed. Not {@link AgentCallSpec} minus its
+ * What an interactive launch is handed. Not `AgentCallSpec` minus its
  * output fields: a headless spec says what the call must produce, and a
  * session produces nothing a program reads.
  *
