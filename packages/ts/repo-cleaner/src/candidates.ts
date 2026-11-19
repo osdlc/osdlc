@@ -8,14 +8,15 @@ import { fingerprint } from './plan.ts'
 import {
   landedRef,
   rowId,
+  type Action,
   type Blocker,
   type Kind,
   type Risk,
   type Row,
   type RowId,
   type Sweep,
+  type Verdict,
 } from './types.ts'
-import type { Action, Verdict } from './types.ts'
 
 /** One row of a sweep, as data a host can compare, object to and hand back. */
 export interface CleanCandidate {
