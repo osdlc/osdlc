@@ -174,21 +174,29 @@ describe.skipIf(noBun)('the bun-test capture path, under Bun (skipped without bu
     })
   }, 20_000)
 
-  test('a missing binary under Bun is classified not-installed', () => {
+  test('a missing binary under Bun is classified not-installed, sync and async', () => {
+    // No NODE_ENV=test: in-process `spawnSync` and `spawn` report Bun's own
+    // `Executable not found in $PATH` text, with no `ENOENT` in it.
     withTempDir((dir) => {
-      const tmp = join(dir, 'tmp')
-      mkdirSync(tmp)
+      const { NODE_ENV: _, ...env } = bunEnv(dir, dir)
       const { result } = runProbe(
         dir,
         ON_BUN,
         [
           'const name = "definitely-not-a-real-binary-b2";',
-          'const run = seam.spawnRunner(name).run([], { cwd: process.cwd() });',
-          'report(seam.classifyFailure(run, { binary: name }));',
+          'const cwd = process.cwd();',
+          'const sync = seam.spawnRunner(name).run([], { cwd });',
+          'const later = await seam.spawnRunnerAsync(name).run([], { cwd });',
+          'report({',
+          '  sync: seam.classifyFailure(sync, { binary: name })?.kind,',
+          '  async: seam.classifyFailure(later, { binary: name })?.kind,',
+          '  error: sync.error,',
+          '});',
         ],
-        bunEnv(dir, tmp),
+        env,
       )
-      expect(result).toMatchObject({ kind: 'not-installed' })
+      expect(result).toMatchObject({ sync: 'not-installed', async: 'not-installed' })
+      expect((result as { error: string }).error).toContain('Executable not found in $PATH')
     })
   }, 20_000)
 
