@@ -1,13 +1,10 @@
+/**
+ * Runs `packages/conformance/ref-lease/suite.json`, the cases this package and
+ * the Rust `ref-lease` crate must agree on. The runner is `run` in `conformance.ts`.
+ */
 import { describe, expect, test } from 'vitest'
 
 import { CASE_KEYS, INPUT_KEYS, checkInput, readSuite, run } from './conformance.ts'
-
-/**
- * Runs `packages/conformance/ref-lease/suite.json`, the cases this package
- * and the Rust `ref-lease` crate must agree on. `conformance.ts` holds the
- * runner, which also writes the suite's expected values. The suite's sections
- * must be exactly the ones this package runs.
- */
 
 const suite = readSuite()
 const sections = suite.sections

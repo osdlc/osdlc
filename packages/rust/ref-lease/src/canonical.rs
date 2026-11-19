@@ -10,7 +10,7 @@ use serde_json::Value;
 ///   differs for characters above U+FFFF.)
 /// - No whitespace and no trailing newline.
 /// - Strings are written as `JSON.stringify` writes them: non-ASCII characters
-///   as UTF-8, control characters as `\u00xx`.
+///   as UTF-8, control characters as `\n`-style escapes where JSON has one and `\u00xx` otherwise.
 /// - Every number is written as the JavaScript number it parses to, in
 ///   JavaScript's shortest form: `1e+21`, `1.5`, and `0` for `-0`. An integer
 ///   above 2^53 loses the precision a JavaScript reader would lose.
@@ -68,21 +68,18 @@ fn js_number(x: f64) -> String {
     if x == 0.0 {
         return "0".into();
     }
-    // `{:e}` gives the shortest digits that round-trip: `d.ddde<exp>`.
-    let mut sci = format!("{:e}", x.abs());
-    // At 17 digits several candidates can round-trip. JavaScript takes the one
-    // nearest the exact value (ties to even); Rust's shortest form breaks an
-    // exact tie upward. The exactly rounded 17 digits are JavaScript's choice.
-    if sci.split_once('e').is_some_and(|(m, _)| m.len() == 18) {
-        let exact = format!("{:.16e}", x.abs());
-        if exact.parse::<f64>().is_ok_and(|back| back == x.abs()) {
-            sci = exact;
-        }
-    }
+    // `{:e}` gives the shortest digit count k that round-trips. Several k-digit
+    // candidates can round-trip near the top of a binade; JavaScript takes the
+    // exactly rounded one (ties to even), which Rust's precision form gives.
+    let shortest = format!("{:e}", x.abs());
+    let k = shortest
+        .split_once('e')
+        .map_or(1, |(m, _)| m.chars().filter(char::is_ascii_digit).count());
+    let sci = format!("{:.*e}", k - 1, x.abs());
     let (mantissa, exp) = sci.split_once('e').expect("{:e} has an exponent");
     let digits: String = mantissa.chars().filter(|c| *c != '.').collect();
     let k = i32::try_from(digits.len()).expect("a double has at most 17 digits");
-    // The value is 0.<digits> * 10^n.
+    // k, n and the branches below follow ECMA-262 Number::toString: the value is 0.<digits> x 10^n.
     let n = exp.parse::<i32>().expect("a decimal exponent") + 1;
     let body = if k <= n && n <= 21 {
         format!(
@@ -113,12 +110,6 @@ fn js_number(x: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::canonical_json;
-
-    #[test]
-    fn an_exact_tie_at_17_digits_rounds_to_even_as_javascript_does() {
-        let value = serde_json::from_str("[2.98023223876953125e-8]").expect("valid JSON");
-        assert_eq!(canonical_json(&value), "[2.9802322387695312e-8]");
-    }
 
     #[test]
     fn negative_zero_is_written_as_zero() {

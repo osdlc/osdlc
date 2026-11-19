@@ -12,7 +12,6 @@ import { join } from 'node:path'
 import { canonicalJson } from '../src/canonical-json.ts'
 import { fetchFailure, pushOutcome } from '../src/classify.ts'
 
-/** The suite file, by its path in the repository. */
 export const SUITE_PATH = join(import.meta.dirname, '../../../conformance/ref-lease/suite.json')
 
 export interface Case {
