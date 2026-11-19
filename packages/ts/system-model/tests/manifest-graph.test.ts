@@ -210,7 +210,7 @@ describe('buildDependencyGraph id collisions', () => {
       entry: { main: null, types: null },
       isNuxtLayer: false,
       hasBin: false,
-      deps: deps.map((d) => ({ name: d, spec: '*', kind: 'normal' })),
+      deps: deps.map((d) => ({ name: d, specifier: '*', kind: 'normal' })),
       error: null,
     }) as unknown as ManifestInfo
 
@@ -231,7 +231,7 @@ describe('buildDependencyGraph id collisions', () => {
   })
 
   test('an external dependency named like an in-set id takes the #external suffix', () => {
-    const g = buildDependencyGraph([mk('node', 'a', 'x', ['dep']), mk('cargo', 'dep', 'z')], {
+    const g = buildDependencyGraph([mk('node', 'a', 'x', ['dep']), mk('cargo', 'b', 'dep')], {
       includeExternal: true,
     })
     expect(g.nodes.find((n) => n.external)?.id).toBe('dep#external')
