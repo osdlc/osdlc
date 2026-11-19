@@ -227,6 +227,19 @@ const cleanCli = () =>
         'leave this row alone; a spared remote branch that moved stops the run; repeatable',
       ),
       allow: rowList('risk[=row]', 'accept a risk for every row, or for one row; repeatable'),
+      archive: {
+        kind: 'boolean',
+        help:
+          'push unlanded work to an archive branch on the remote before deleting it; ' +
+          'then --allow discard-archived stands for abandon-unmerged and discard-changes',
+      },
+      archiveExclude: {
+        kind: 'list',
+        valueName: 'glob',
+        default: [] as readonly string[],
+        commaSeparated: false,
+        help: 'with --archive, leave files matching this glob out of a worktree snapshot; repeatable',
+      },
       plan: {
         kind: 'string',
         valueName: 'file',
@@ -541,6 +554,9 @@ function cleanConflict(v: CleanValues, targets: readonly string[]): string | nul
   if (v.plan === '-' && !v.yes && !v.dryRun) {
     return '--plan - reads the plan from stdin, so nothing can ask; pass --yes or --dry-run'
   }
+  if (!v.archive && v.archiveExclude.length > 0) {
+    return '--archive-exclude has no effect without --archive'
+  }
   if (v.yes && v.dryRun)
     return '--yes and --dry-run contradict: one deletes without asking, the other deletes nothing'
   if (v.receipt !== undefined && v.dryRun)
@@ -646,6 +662,7 @@ function runClean(
 
   const shared = {
     cwd: ctx.cwd,
+    ...(v.archive ? { archive: { exclude: v.archiveExclude } } : {}),
     ...(v.progress
       ? {
           onProgress: (p: Parameters<typeof describeSweep>[0]) =>

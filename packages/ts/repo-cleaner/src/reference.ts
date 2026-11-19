@@ -113,6 +113,10 @@ Risks (approve each by name with --allow)
                      (or its submodules') commits and stashes that no remote has.
   discard-changes    Uncommitted or untracked files in the worktree or any of its
                      submodules.
+  discard-archived   With --archive, stands for abandon-unmerged and discard-changes on
+                     a row whose work the archive holds. Files the snapshot leaves out
+                     (secret-shaped, --archive-exclude, over 10 MiB) keep discard-changes;
+                     a worktree's submodule work keeps both risks.
   confirm-open-pr    The branch has an open pull request, or open pull requests could
                      not be checked (the CLI is missing or signed out, or the listing
                      failed); deleting the remote branch closes it.
