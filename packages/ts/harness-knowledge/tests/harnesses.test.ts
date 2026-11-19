@@ -49,3 +49,12 @@ test('configDirEnv names the config folder variable, by id or slug', () => {
   expect(configDirEnv('codex')).toBe('CODEX_HOME')
   expect(configDirEnv('no-such-harness')).toBeUndefined()
 })
+
+test('a slug outside the map still resolves through the data', () => {
+  expect(credentialEnv('gemini-cli')).toContain('GEMINI_API_KEY')
+  expect(configDirEnv('gemini-cli')).toBe('GEMINI_CLI_HOME')
+})
+
+test('credentialEnv is empty when the fact lists no variables', () => {
+  expect(credentialEnv('opencode')).toEqual([])
+})
