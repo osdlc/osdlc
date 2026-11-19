@@ -19,6 +19,7 @@ from its documentation, is in [`../planning/research/`](../planning/research/).
 | `otty` | macOS | `otty` on `PATH` | no | yes, by a tab-title tag |
 | `vscode` | all | a VS Code, Cursor or Windsurf window with the `sdlc-host` extension | no | yes, by the extension |
 | `jetbrains` | macOS | a JetBrains IDE with the companion plugin, and `curl` | no | no |
+| `window` | macOS | Terminal.app, or your own opener | no `send` | no |
 
 ## `terminal`
 
@@ -26,6 +27,28 @@ Runs the agent in the caller's own terminal and returns when it exits. It is the
 only host that always blocks, and the only one with nothing to find or send to
 afterwards. Use it for a person running your tool by hand. Do not use it from a
 server process that has no terminal of its own.
+
+## `window`
+
+Opens a new GUI terminal window running the command and returns as soon as the window is open, so
+the person works in a window of their own and your process keeps its TTY. The built-in opener drives
+Terminal.app through `osascript` (`do script`). To use another app, pass an opener:
+
+```ts
+import { makeWindowHost } from '@osdlc/agent-seat'
+
+const host = makeWindowHost({
+  opener: {
+    available: () => true,
+    // `shellCommand` is `cd <cwd> && <command>`, ready for a shell.
+    argv: (shellCommand) => ['open', '-na', 'Ghostty', '--args', '-e', 'sh', '-c', shellCommand],
+  },
+})
+```
+
+The host keeps no state: it cannot find, focus, send to or close the window afterwards, and it
+cannot wait for the window's process to exit, so `wait` is ignored. The window's shell stays open
+after the command ends.
 
 ## `tmux`
 
