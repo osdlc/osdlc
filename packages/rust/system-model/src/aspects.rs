@@ -1,9 +1,7 @@
 //! The aspect scanners: what a manifest reveals about what it IS.
 //!
-//! A registry, not a function, so a new form of evidence is a registration
-//! rather than an edit to a growing `if`. Each scanner names the tier it works
-//! at, looks at one thing, and returns what it saw — never a verdict without
-//! the reason for it.
+//! Each check names the tier it works at, looks at one thing, and returns what
+//! it saw — never a verdict without the reason for it.
 //!
 //! PARITY IS THE CONSTRAINT. `@osdlc/system-model`'s `src/aspect-scan.ts` runs
 //! the same scanners in the same order and must produce identical output, so:
