@@ -17,7 +17,7 @@
 # the pick.
 #
 # Load on pull requests: see "Load on pull requests" in packages-ci.yml. A draft
-# that pr-update.yml just updated skips the job, and marking it ready runs the
+# that a bot just pushed a merge commit to (pr-update.yml; see pr-load.yml) skips the job, and marking it ready runs the
 # gate (`ready_for_review`). A label change other than `perf-accepted` skips
 # the job. The pick above already limits the work to pull requests that touch
 # a package with benchmarks, or one it depends on. A manual run is never
@@ -46,13 +46,17 @@ env:
   CARGO_INCREMENTAL: '0'
 
 jobs:
+  load:
+    uses: ./.github/workflows/pr-load.yml
+
   gate:
     name: perf gate
+    needs: load
     if: >-
-      github.event_name != 'pull_request' || (
-      !(github.event.pull_request.draft == true && github.actor == 'osdlc-release[bot]') && (
+      !cancelled() && (github.event_name != 'pull_request' || (
+      needs.load.outputs.light != 'true' && (
       (github.event.action != 'labeled' && github.event.action != 'unlabeled') ||
-      github.event.label.name == 'perf-accepted'))
+      github.event.label.name == 'perf-accepted')))
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
