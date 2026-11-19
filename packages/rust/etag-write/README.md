@@ -171,6 +171,13 @@ This comparison is from each crate's documentation. Pick one of the others when
 you stream a large file or only need atomic replace. Pick `etag-write` when more
 than one writer edits the same file and a lost update matters.
 
+## Twin
+
+`@osdlc/etag-write` is the TypeScript implementation. Both run one conformance
+suite, `packages/conformance/etag-write/suite.json` in the repository, so they
+agree on every case in it. `atomicWriteAsync` and the `mode` option have no
+Rust counterpart.
+
 ## Stability
 
 The crate stays on 0.x for now. The seven public

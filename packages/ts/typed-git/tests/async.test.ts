@@ -102,6 +102,7 @@ describe('AsyncGit — parity with Git', () => {
     sync.resetHard('HEAD~1')
     sync.worktreeUnlock('/wt')
     sync.worktreePrune()
+    sync.submoduleUpdate()
     sync.lsFiles({ cached: true, others: true, excludeStandard: true, paths: ['docs'] })
     sync.forEachRef(['refs/heads/', 'refs/tags/*'], {
       format: '%(refname)',
@@ -217,6 +218,7 @@ describe('AsyncGit — parity with Git', () => {
     await asyncGit.resetHard('HEAD~1')
     await asyncGit.worktreeUnlock('/wt')
     await asyncGit.worktreePrune()
+    await asyncGit.submoduleUpdate()
     await asyncGit.lsFiles({ cached: true, others: true, excludeStandard: true, paths: ['docs'] })
     await asyncGit.forEachRef(['refs/heads/', 'refs/tags/*'], {
       format: '%(refname)',
