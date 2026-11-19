@@ -422,18 +422,6 @@
           }
         },
         {
-          "name": "negative zero is written as 0",
-          "input": {
-            "value": [
-              0,
-              0
-            ]
-          },
-          "expect": {
-            "json": "[0,0]"
-          }
-        },
-        {
           "name": "keys sorted by UTF-16 code unit, not UTF-8 byte",
           "input": {
             "value": {

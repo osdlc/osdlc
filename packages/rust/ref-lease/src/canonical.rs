@@ -100,3 +100,14 @@ fn js_number(x: f64) -> String {
     };
     if x < 0.0 { format!("-{body}") } else { body }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::canonical_json;
+
+    #[test]
+    fn negative_zero_is_written_as_zero() {
+        let value = serde_json::from_str("[-0, -0.0]").expect("valid JSON");
+        assert_eq!(canonical_json(&value), "[0,0]");
+    }
+}

@@ -31,4 +31,6 @@ to write its `expect`. Never write that by hand.
   alone.
 - Values `canonicalJson` refuses (`undefined`, functions, a `Map`, a cycle):
   JSON input cannot hold them, so the Rust crate has nothing to refuse.
+- Negative zero (`-0`), which the generator's `JSON.stringify` would write as `0`. Each
+  package tests it on its own.
 - `toJSON`, and `NaN` and infinity as `null`: JSON input cannot hold them.
