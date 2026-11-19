@@ -33,6 +33,7 @@ beforeAll(() => {
 })
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
 
+const testUnderBun = 'Bun' in globalThis ? test : test.skip
 const sh = (script: string) => ['-c', script]
 
 describe('classifyFailure on real runs', () => {
@@ -56,6 +57,22 @@ describe('classifyFailure on real runs', () => {
       expect(f?.hint).toBeUndefined()
       expect(f?.detail).toContain('ENOENT')
     }
+  })
+
+  test("Bun's missing-executable text is not-installed", () => {
+    const run = {
+      exitCode: 1,
+      neverExited: true,
+      reason: 'spawn' as const,
+      error: `Executable not found in $PATH: "${MISSING}"`,
+    }
+    expect(classifyFailure(run, { binary: MISSING })).toMatchObject({
+      kind: 'not-installed',
+      message: `\`${MISSING}\` is not installed or not on PATH.`,
+    })
+  })testUnderBun('a missing binary is not-installed under Bun', () => {
+    const f = classifyFailure(spawnRunner(MISSING).run(['x'], { cwd: CWD }), { binary: MISSING })
+    expect(f?.kind).toBe('not-installed')
   })
 
   test('a missing cwd is bad-cwd, not not-installed, on every runner', async () => {
