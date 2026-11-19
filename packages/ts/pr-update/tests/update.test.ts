@@ -1158,7 +1158,11 @@ describe('runUpdate --restack — a three-level stack, against real git', () => 
     return fx.worker.git.resolveRef(`origin/${name}`)!
   }
 
-  async function run(patch: Partial<UpdateArgs>, ports: Partial<Ports> = {}) {
+  async function run(
+    patch: Partial<UpdateArgs>,
+    ports: Partial<Ports> = {},
+    cfgPatch: Partial<PrUpdateConfig> = {},
+  ) {
     calls = []
     const real = spawnRunner('git')
     const git: CommandRunner = {
@@ -1194,7 +1198,7 @@ describe('runUpdate --restack — a three-level stack, against real git', () => 
         gh: UNREACHABLE_GH,
         codeHost: () =>
           ({ listPrDetails: () => ({ ok: true, value: prs }) }) as unknown as CodeHost,
-        cfg: cfg(),
+        cfg: cfg(cfgPatch),
         ports: fakePorts({ locate: () => fx.worker.dir, ...ports }),
       },
     )
@@ -1239,6 +1243,28 @@ describe('runUpdate --restack — a three-level stack, against real git', () => 
 
   test('without --restack, the children wait for the next run', async () => {
     const out = await run({ apply: true, strategy: 'merge', restack: false })
+    expect(out.results.map((r) => r.number)).toEqual([1])
+    expect(out.skipped.map((s) => [s.number, s.reason])).toEqual([
+      [2, 'blocked on #1'],
+      [3, 'blocked on #1'],
+    ])
+  })
+
+  test('pr_update.restack: true restacks without the flag', async () => {
+    const out = await run(
+      { apply: true, strategy: 'merge', restack: undefined },
+      {},
+      { restack: true },
+    )
+    expect(out.results.map((r) => [r.number, r.restackedOnto])).toEqual([
+      [1, undefined],
+      [2, 1],
+      [3, 2],
+    ])
+  })
+
+  test('restack: false overrides pr_update.restack: true', async () => {
+    const out = await run({ apply: true, strategy: 'merge', restack: false }, {}, { restack: true })
     expect(out.results.map((r) => r.number)).toEqual([1])
     expect(out.skipped.map((s) => [s.number, s.reason])).toEqual([
       [2, 'blocked on #1'],

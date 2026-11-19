@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.5](https://github.com/osdlc/osdlc/compare/etag-write/v0.2.4...etag-write/v0.2.5) - 2026-11-19
+
+### Other
+
+- add the etag-write suite ([#889](https://github.com/osdlc/osdlc/pull/889))
+
 ## [0.2.4](https://github.com/osdlc/osdlc/compare/etag-write/v0.2.3...etag-write/v0.2.4) - 2026-10-26
 
 ### Other

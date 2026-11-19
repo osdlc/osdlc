@@ -445,7 +445,7 @@ dependencies = [
 
 [[package]]
 name = "etag-write"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "serde",
  "serde_json",
@@ -927,7 +927,7 @@ dependencies = [
 
 [[package]]
 name = "markdown-link"
-version = "0.11.0"
+version = "0.11.1"
 dependencies = [
  "criterion",
  "frontmatter-lossless",

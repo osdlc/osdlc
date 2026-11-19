@@ -19,7 +19,7 @@ tags:
 that is `blocked` only because its parent is behind is updated right after
 that parent, onto the head the parent just got. A rebase replays only the
 PR's own commits, with `rebase --onto <parent's new head> <parent's old
-head>`. It is opt-in: without the flag, a blocked child waits for the next
+head>`. It is opt-in: without the flag or `pr_update.restack: true`, a blocked child waits for the next
 run, as before.
 
 ^summary
