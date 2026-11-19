@@ -826,6 +826,9 @@ importers:
 
   packages/ts/host-cleaner:
     dependencies:
+      '@osdlc/cli-tool':
+        specifier: workspace:^
+        version: link:../cli-tool
       '@osdlc/command-seam':
         specifier: workspace:^
         version: link:../command-seam
@@ -838,6 +841,9 @@ importers:
       '@osdlc/typed-git':
         specifier: workspace:^
         version: link:../typed-git
+      '@osdlc/ux':
+        specifier: workspace:^
+        version: link:../ux
       zod:
         specifier: 'catalog:'
         version: 4.6.7

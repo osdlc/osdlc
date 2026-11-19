@@ -1,0 +1,63 @@
+/**
+ * Where host-cleaner keeps its files, and what its config file holds. The
+ * directories are `@osdlc/tiered-dirs`' `standalone('host-cleaner')` tier,
+ * moved by the `HOST_CLEANER_*` override variables:
+ *
+ *   config  `config.json`: the targets to sweep and each adapter's settings
+ *   state   `receipts/`: one receipt per `clean` that was not given `--receipt`
+ *   logs    `host-cleaner.log`: one JSON line per `clean`
+ */
+
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { z } from 'zod'
+
+import { envVars, systemDirs } from '@osdlc/cli-tool'
+
+import { HostCleanerError, type HostConfig } from './adapter.ts'
+
+const VENDOR_DIRS = { vendor: 'host-cleaner', envVars: envVars('HOST_CLEANER') }
+
+export const ConfigSchema = z.strictObject({
+  /** Checkouts and directories of checkouts, swept when none is named on the command line. */
+  targets: z.array(z.string().min(1)).default([]),
+  /** Settings by adapter name; an adapter reads only its own entry. */
+  adapters: z.record(z.string(), z.record(z.string(), z.unknown())).default({}),
+})
+
+export type Config = z.infer<typeof ConfigSchema>
+
+export interface HostDirs {
+  config: string
+  state: string
+  logs: string
+}
+
+export function hostDirs(env: Record<string, string | undefined> = process.env): HostDirs {
+  const tier = systemDirs(VENDOR_DIRS, { env }).standalone('host-cleaner')
+  return { config: tier.config().path, state: tier.state().path, logs: tier.logs().path }
+}
+
+export const configFile = (dirs: HostDirs): string => join(dirs.config, 'config.json')
+
+/**
+ * The config at `path`; empty when the file does not exist.
+ *
+ * @throws HostCleanerError (`bad-input`) for a file that is not valid
+ */
+export function readConfig(path: string): Config {
+  if (!existsSync(path)) return ConfigSchema.parse({})
+  let raw: unknown
+  try {
+    raw = JSON.parse(readFileSync(path, 'utf-8'))
+  } catch (err) {
+    throw new HostCleanerError('bad-input', `cannot read config ${path}: ${(err as Error).message}`)
+  }
+  const parsed = ConfigSchema.safeParse(raw)
+  if (!parsed.success) {
+    throw new HostCleanerError('bad-input', `bad config ${path}: ${parsed.error.message}`)
+  }
+  return parsed.data
+}
+
+export const hostConfigOf = (config: Config): HostConfig => ({ adapters: config.adapters })

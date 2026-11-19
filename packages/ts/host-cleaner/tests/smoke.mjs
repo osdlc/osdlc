@@ -70,6 +70,13 @@ try {
     receipt.repo.steps.map((s) => s.row),
     ['branch:fix/done'],
   )
+
+  // The installed binary runs: --help and --version exit 0, and a report over the repository does too.
+  const bin = join(import.meta.dirname, '..', 'bin', 'host-cleaner.js')
+  for (const args of [['--help'], ['--version'], ['--format', 'json']]) {
+    const r = spawnSync(process.execPath, [bin, ...args], { cwd: root, env, encoding: 'utf8' })
+    assert.equal(r.status, 0, `host-cleaner ${args.join(' ')}: ${r.stderr}`)
+  }
 } finally {
   rmSync(root, { recursive: true, force: true })
 }

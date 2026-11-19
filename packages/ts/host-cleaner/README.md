@@ -10,7 +10,7 @@ repo-cleaner's safety model.
 With no adapter detected, the result is repo-cleaner's, row for row.
 
 This release is the library and the adapter contract. It ships no adapter; each
-integration is its own package change. There is no command line yet.
+integration is its own package change. The `host-cleaner` command, with no adapter built in, reports, plans and cleans repo-cleaner's rows.
 
 ```ts
 import { hostSweep, hostPlan, hostCheck, hostRun, type HostAdapter } from '@osdlc/host-cleaner'
@@ -88,6 +88,32 @@ A row is dropped, with a reason, when it is `gone`, `blocked`, has no action
 adapter, and stops at the first failure. The receipt holds repo-cleaner's
 receipt under `repo` and the host steps and drops under `host`, and is
 rewritten after every step.
+
+## Command line
+
+```sh
+host-cleaner [target...]   # the report; deletes nothing
+host-cleaner plan          # save the rows and their evidence, to run later
+host-cleaner clean         # check again, show the steps, ask, delete
+```
+
+The options are repo-cleaner's (`--only`, `--format`, `--pick`, `--spare`,
+`--allow`, `--plan`, `--yes`, `--dry-run`, `--receipt`), less its remote-branch
+and URL-target options, plus `--adapter <names>` to run only those adapters and
+`--skip-adapter <names>` to never run them. Every command takes `--help`. The
+exit codes are repo-cleaner's: 10 for nothing to sweep, 11 for a failed step.
+
+The bin runs the adapters a program passes to `main` from `src/cli.ts`; this
+release ships none, so the command is repo-cleaner's with the host's plumbing.
+
+Files live in the `host-cleaner` tier of `@osdlc/tiered-dirs`, moved by the
+`HOST_CLEANER_*` variables (`HOST_CLEANER_ROOT` moves all of them):
+
+| Directory | Holds |
+| --- | --- |
+| config | `config.json`: `targets` (swept when none is named) and `adapters` (settings by adapter name, read through `HostContext.config`); `--config <file>` reads another |
+| state | `receipts/`: a receipt for each `clean` run without `--receipt` |
+| logs | `host-cleaner.log`: one JSON line per `clean` that ran |
 
 ## Install
 

@@ -31,6 +31,7 @@
   },
   "files": [
     "dist/",
+    "bin/",
     "README.md",
     "CHANGELOG.md",
     "LICENSE-MIT",
@@ -42,7 +43,7 @@
     "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "cli-tool-stamp-version && tsc -p tsconfig.build.json",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "test": "vitest run",
     "smoke": "node tests/smoke.mjs",
@@ -51,13 +52,16 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "oxlint .",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit",
+    "stamp-version": "cli-tool-stamp-version"
   },
   "dependencies": {
+    "@osdlc/cli-tool": "workspace:^",
     "@osdlc/command-seam": "workspace:^",
     "@osdlc/detect-harness": "workspace:^",
     "@osdlc/repo-cleaner": "workspace:^",
     "@osdlc/typed-git": "workspace:^",
+    "@osdlc/ux": "workspace:^",
     "zod": "catalog:"
   },
   "devDependencies": {
@@ -69,5 +73,8 @@
     "prettier": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
+  },
+  "bin": {
+    "host-cleaner": "./bin/host-cleaner.js"
   }
 }
