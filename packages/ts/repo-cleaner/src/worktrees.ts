@@ -543,11 +543,7 @@ function classifyWorktree(opts: {
   // Merged by ancestry alone: a worktree just made from the default branch is
   // merged that way too, so ancestry needs a sign the branch was worked on.
   if (evidence.merged === true && branch && head !== null) {
-    // Already read when a remote branch held HEAD.
-    const used =
-      evidence.branchUsed !== undefined
-        ? evidence.branchUsed
-        : branchUse(git.at(repo.root), branch, repo.mainBranch)
+    const used = branchUse(git.at(repo.root), branch, repo.mainBranch)
     evidence.branchUsed = used
     if (used !== null) {
       return deletes(`clean; merged into ${landedRef(repo)}, and ${USE_REASON[used]}${forced}`)

@@ -409,7 +409,7 @@ with `--track` from `main` or `origin/main` does not count). With either, the wo
 is `delete`; with neither (`null`) it stays `review`.
 
 A clean worktree whose HEAD is on a branch of the fetched remote is also
-`delete`, whatever its PR state, because the remote holds every commit. The
+`delete`, whatever its PR state short of an open one (which keeps it), because the remote holds every commit. The
 sweep must have fetched (`--remote` without `--offline`): a local sweep's
 remote-tracking refs may name branches the remote has deleted, so there the row
 keeps its verdict and a note says `--remote` would check. The default branch
