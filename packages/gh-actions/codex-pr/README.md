@@ -11,6 +11,8 @@ request when the comment starts with `@codex review`. It works like
   focus. The comment opens with **Codex review done** and the commit it covered.
 - **Skill:** `@codex /<plugin>:<skill> [args]` runs any installed skill, read-only, or
   with `--apply` commits and pushes its edits; see [Skill mode](#skill-mode).
+- **Instruction:** `@codex <free text> --apply` (not a `/skill`) carries out the text as a
+  free-form instruction, with edits allowed; see [Free-form instruction](#free-form-instruction).
 - **Marker:** every comment ends with `<!-- codex-review: done head=<sha> -->`
   (or `failed`; answers use `codex-answer`).
 - **Only real mentions:** `@codex` inside code blocks, inline code or quoted
@@ -62,7 +64,7 @@ please keep behaviour identical
   harness, repo, PR number and title, base and head sha, headless (no human to
   ask), the exact skill and args, the rest of the comment as fenced data, read-only or
   apply, where the diff is, the limits and how the final message is used.
-- **Markers.** `<!-- codex-skill: done|failed head=<sha> -->`; the first line is
+- **Markers.** `<!-- codex-run: done|failed head=<sha> -->`; the first line is
   **Codex ran /<skill>** for `<sha7>` (and ` and pushed <sha7>` after `--apply`
   pushed). A skill the CLI does not know (Codex's "unknown skill" reply) posts a failed marker with the reason.
 
@@ -163,3 +165,23 @@ nothing is pushed.
 
 `@main` takes every fix as soon as it merges in osdlc/osdlc. For a fixed
 version, pin a commit SHA instead.
+
+### Free-form instruction
+
+`@codex <free text> --apply` is an instruction when the first line after the
+mention is not a `/skill` and has a standalone `--apply` word. `--apply` is
+removed; the rest of the comment, following lines included, is the instruction.
+It uses the skill path with edits allowed: the same "How you were called" block
+(the instruction fenced as data, edits allowed), patch artifact, push job,
+refusals and one comment. There is no skill to find.
+Free text without `--apply` is still an answer, always read-only.
+
+```
+@codex rename the helper foo to bar --apply
+@codex --apply
+fix the typos in docs/ and keep the wording otherwise
+```
+
+- **Commit:** `codex: instruction from #<pr> comment`.
+- **Comment:** **Codex applied the instruction** for `<sha7>` and pushed `<sha7>`;
+  marker `<!-- codex-run: done|failed head=<sha> -->` (skill runs use the same marker).

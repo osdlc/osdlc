@@ -174,7 +174,7 @@ run() {
     "$here/ask.sh" > "$FAKE_DIR/ask.log" 2>&1
     echo $? > "$FAKE_DIR/status"
     # The action's patch step: only for a successful skill run that asked for --apply.
-    if [ "$mode" = skill ] && [ "$(cat "$FAKE_DIR/status")" = 0 ] && printf '%s\n' "$REQUEST" | head -n 1 | grep -q -- ' --apply\( \|$\)'; then
+    if [ "$mode" = run ] && [ "$(cat "$FAKE_DIR/status")" = 0 ] && printf '%s\n' "$REQUEST" | head -n 1 | grep -q -- ' --apply\( \|$\)'; then
       "$here/apply.sh" patch >> "$FAKE_DIR/ask.log" 2>&1 || echo 1 > "$FAKE_DIR/status"
     fi
     if grep -q '^patch=true$' "$GITHUB_OUTPUT"; then
@@ -219,13 +219,21 @@ for agent in claude codex cursor; do
   [ "$(mention $agent "  @$agent review")" = "real=1 mode=review " ] && ok "$agent: review mode, indented, no focus" || bad "$agent: review mode, indented, no focus"
   [ "$(mention $agent "thanks @$agent review please")" = "real=1 mode=answer " ] && ok "$agent: review not on first line start is an answer" || bad "$agent: review not at start is an answer"
   [ "$(mention $agent "@$agent reviewer?")" = "real=1 mode=answer " ] && ok "$agent: reviewer is not review" || bad "$agent: reviewer is not review"
-  [ "$(mention $agent "@$agent /craft:simplify")" = "real=1 mode=skill apply=0 " ] && ok "$agent: skill mode" || bad "$agent: skill mode"
-  [ "$(mention $agent "@$agent /craft:simplify src --apply")" = "real=1 mode=skill apply=1 " ] && ok "$agent: skill mode with --apply" || bad "$agent: skill mode with --apply"
-  [ "$(mention $agent "@$agent /simplify")" = "real=1 mode=skill apply=0 " ] && ok "$agent: bare skill" || bad "$agent: bare skill"
-  [ "$(mention $agent "@$agent /simplify --applyx")" = "real=1 mode=skill apply=0 " ] && ok "$agent: --applyx is not --apply" || bad "$agent: --applyx is not --apply"
+  [ "$(mention $agent "@$agent /craft:simplify")" = "real=1 mode=run kind=skill apply=0 " ] && ok "$agent: skill mode" || bad "$agent: skill mode"
+  [ "$(mention $agent "@$agent /craft:simplify src --apply")" = "real=1 mode=run kind=skill apply=1 " ] && ok "$agent: skill mode with --apply" || bad "$agent: skill mode with --apply"
+  [ "$(mention $agent "@$agent /simplify")" = "real=1 mode=run kind=skill apply=0 " ] && ok "$agent: bare skill" || bad "$agent: bare skill"
+  [ "$(mention $agent "@$agent /simplify --applyx")" = "real=1 mode=run kind=skill apply=0 " ] && ok "$agent: --applyx is not --apply" || bad "$agent: --applyx is not --apply"
   [ "$(mention $agent "@$agent /simplify
---apply")" = "real=1 mode=skill apply=0 " ] && ok "$agent: --apply only counts on the first line" || bad "$agent: --apply only counts on the first line"
+--apply")" = "real=1 mode=run kind=skill apply=0 " ] && ok "$agent: --apply only counts on the first line" || bad "$agent: --apply only counts on the first line"
   [ "$(mention $agent "@$agent what about /craft:simplify")" = "real=1 mode=answer " ] && ok "$agent: skill not first is an answer" || bad "$agent: skill not first is an answer"
+  [ "$(mention $agent "@$agent fix the typo in README --apply")" = "real=1 mode=run kind=instruction apply=1 " ] && ok "$agent: free text with --apply is an instruction" || bad "$agent: free text with --apply is an instruction"
+  [ "$(mention $agent "@$agent --apply
+rename foo to bar")" = "real=1 mode=run kind=instruction apply=1 " ] && ok "$agent: --apply first, instruction on the next lines" || bad "$agent: --apply first, instruction on the next lines"
+  [ "$(mention $agent "@$agent fix the typo --applyx")" = "real=1 mode=answer " ] && ok "$agent: free text with --applyx is an answer" || bad "$agent: free text with --applyx is an answer"
+  [ "$(mention $agent "@$agent fix the typo in README
+and --apply it")" = "real=1 mode=answer " ] && ok "$agent: free text without --apply on the first line is an answer" || bad "$agent: free text without --apply on the first line is an answer"
+  [ "$(mention $agent "@$agent --apply")" = "real=1 mode=answer " ] && ok "$agent: --apply with no instruction is an answer" || bad "$agent: --apply with no instruction is an answer"
+  [ "$(mention $agent "@$agent review --apply")" = "real=1 mode=review " ] && ok "$agent: review stays review with --apply" || bad "$agent: review stays review with --apply"
   [ -z "$(mention $agent "\`@$agent\` in code")" ] && ok "$agent: inline code ignored" || bad "$agent: inline code ignored"
   [ -z "$(mention $agent $'```\n@'"$agent"$'\n```')" ] && ok "$agent: fenced code ignored" || bad "$agent: fenced code ignored"
   [ -z "$(mention $agent "> @$agent quoted")" ] && ok "$agent: quote ignored" || bad "$agent: quote ignored"
@@ -341,7 +349,7 @@ for agent in claude codex cursor; do
   sk=/craft:code-review
 
   # read-only, with extra lines
-  run $agent skill good "$(skillreq $agent "$sk some args" 'please be brief')"
+  run $agent run good "$(skillreq $agent "$sk some args" 'please be brief')"
   prompt_of $agent > "$T/prompt"
   block_of $agent > "$T/block"
   [ "$status" = 0 ] && ok "$agent skill: read-only run succeeds" || bad "$agent skill: read-only run succeeds"
@@ -367,7 +375,7 @@ for agent in claude codex cursor; do
   check "$agent skill: extra lines fenced as data" grep -q -F -x -- "$fenced" "$T/block"
   check "$agent skill: output instructions" grep -q 'posted verbatim as a PR comment' "$T/block"
   check "$agent skill: no --apply text in args" bash -c "! grep -q -- '--apply' '$T/prompt'"
-  check "$agent skill: marker" grep -q "^<!-- $agent-skill: done head=[0-9a-f]\{40\} -->\$" "$FAKE_DIR/posted"
+  check "$agent skill: marker" grep -q "^<!-- $agent-run: done head=[0-9a-f]\{40\} -->\$" "$FAKE_DIR/posted"
   check "$agent skill: header" grep -q "^\*\*$label ran /craft:code-review\*\* for [0-9a-f]\{7\}\.\$" "$FAKE_DIR/posted"
   check "$agent skill: read-only pushes nothing" test "$(remote_head)" = "$BASE_HEAD"
   case $agent in
@@ -385,17 +393,17 @@ for agent in claude codex cursor; do
   esac
 
   # a fence longer than any backtick run in the comment
-  run $agent skill good "$(skillreq $agent "$sk" "$ticks")"
+  run $agent run good "$(skillreq $agent "$sk" "$ticks")"
   block_of $agent > "$T/block"
   check "$agent skill: fence outgrows backticks in the comment" grep -q -x -- '````' "$T/block"
 
   # --apply with changes: the agent job makes a patch, the push job commits and pushes
-  FAKE_EDIT=1 run $agent skill good "$(skillreq $agent "$sk x --apply")"
+  FAKE_EDIT=1 run $agent run good "$(skillreq $agent "$sk x --apply")"
   prompt_of $agent > "$T/prompt"
   block_of $agent > "$T/block"
   check "$agent apply: --apply not in the prompt" bash -c "! grep -q -- '--apply' '$T/prompt'"
   [ "$status" = 0 ] && ok "$agent apply: succeeds" || bad "$agent apply: succeeds"
-  check "$agent apply: APPLY wording" grep -q -- '^- Mode: APPLY\. You may edit files in the working tree\. Do not run git commit, git push or post comments' "$T/block"
+  check "$agent apply: APPLY wording" grep -q -- '^- Mode: APPLY (edits are allowed)\. You may edit files in the working tree\. Do not run git commit, git push or post comments' "$T/block"
   check "$agent apply: --apply stripped from args" grep -q -- 'arguments: x$' "$T/block"
   check "$agent apply: patch artifact" test -s "$T/artifact/patch"
   check "$agent apply: artifact records head and paths" test "$(jq -c '[.head, .paths]' "$T/artifact/meta.json")" = "[\"$BASE_HEAD\",[\"f\"]]"
@@ -407,7 +415,7 @@ for agent in claude codex cursor; do
   check "$agent apply: no trailers" test "$(git -C "$T/origin.git" log -1 --format=%b feat)" = ""
   check "$agent apply: header names both commits" grep -q "^\*\*$label ran /craft:code-review\*\* for [0-9a-f]\{7\} and pushed $(remote_head | cut -c1-7)\.\$" "$FAKE_DIR/posted"
   check "$agent apply: the push job posts the agent output" grep -q "$agent says hi" "$FAKE_DIR/posted"
-  check "$agent apply: marker head is the one covered" grep -q "^<!-- $agent-skill: done head=$BASE_HEAD -->\$" "$FAKE_DIR/posted"
+  check "$agent apply: marker head is the one covered" grep -q "^<!-- $agent-run: done head=$BASE_HEAD -->\$" "$FAKE_DIR/posted"
   check "$agent apply: diffstat posted" grep -q ' f | 1 +' "$FAKE_DIR/posted"
   case $agent in
     claude)
@@ -421,21 +429,46 @@ for agent in claude codex cursor; do
   esac
 
   # new files are in the patch too; a commit the agent made is squashed into the one commit
-  FAKE_COMMIT=1 FAKE_EDIT=1 FAKE_EDIT_PATH=docs/new.md run $agent skill good "$(skillreq $agent "$sk --apply")"
+  FAKE_COMMIT=1 FAKE_EDIT=1 FAKE_EDIT_PATH=docs/new.md run $agent run good "$(skillreq $agent "$sk --apply")"
   [ "$status" = 0 ] && [ "$(git -C "$T/origin.git" rev-list --count "$BASE_HEAD..feat")" = 1 ] && ok "$agent apply: agent commit and new file become one commit" || bad "$agent apply: agent commit and new file become one commit"
   check "$agent apply: new file pushed" test "$(git -C "$T/origin.git" show feat:docs/new.md)" = x
 
   # --apply, nothing changed: no artifact, no push job
-  run $agent skill good "$(skillreq $agent "$sk --apply")"
+  run $agent run good "$(skillreq $agent "$sk --apply")"
   [ "$status" = 0 ] && ok "$agent apply: no changes succeeds" || bad "$agent apply: no changes succeeds"
   check "$agent apply: no changes makes no artifact" test ! -e "$T/artifact"
   check "$agent apply: no changes pushes nothing" test "$(remote_head)" = "$BASE_HEAD"
   check "$agent apply: no changes is said" grep -q 'No files changed' "$FAKE_DIR/posted"
   check "$agent apply: no changes header has no push" bash -c "! grep -q 'and pushed' '$FAKE_DIR/posted'"
-  check "$agent apply: no changes marker" grep -q "^<!-- $agent-skill: done head=" "$FAKE_DIR/posted"
+  check "$agent apply: no changes marker" grep -q "^<!-- $agent-run: done head=" "$FAKE_DIR/posted"
+
+  # free-form instruction: --apply on the first line, the rest of the comment is the instruction
+  FAKE_EDIT=1 run $agent run good "$(skillreq $agent "fix the typo --apply" 'in the README, then stop')"
+  prompt_of $agent > "$T/prompt"
+  block_of $agent > "$T/block"
+  [ "$status" = 0 ] && ok "$agent instruction: succeeds" || bad "$agent instruction: succeeds"
+  check "$agent instruction: --apply not in the prompt or block" bash -c "! grep -q -- '--apply' '$T/prompt' '$T/block'"
+  check "$agent instruction: requested line" grep -q -- '^- Requested: a free-form instruction' "$T/block"
+  check "$agent instruction: text in the fenced data" grep -q -x -- 'in the README, then stop' "$T/block"
+  check "$agent instruction: first line in the fenced data" grep -q -x -- 'fix the typo' "$T/block"
+  check "$agent instruction: edits allowed wording" grep -q -- '^- Mode: APPLY (edits are allowed)\.' "$T/block"
+  case $agent in
+    cursor) check "cursor instruction: no SKILL.md inlined" bash -c "! grep -q 'code-review — the review itself' '$T/prompt'" ;;
+  esac
+  check "$agent instruction: one commit" test "$(git -C "$T/origin.git" rev-list --count "$BASE_HEAD..feat")" = 1
+  check "$agent instruction: commit message" test "$(git -C "$T/origin.git" log -1 --format=%s feat)" = "$agent: instruction from #7 comment"
+  check "$agent instruction: header" grep -q "^\*\*$label applied the instruction\*\* for [0-9a-f]\{7\} and pushed $(remote_head | cut -c1-7)\.\$" "$FAKE_DIR/posted"
+  check "$agent instruction: marker" grep -q "^<!-- $agent-run: done head=$BASE_HEAD -->\$" "$FAKE_DIR/posted"
+  FAKE_EDIT=1 PUSH_TOKEN= run $agent run good "$(skillreq $agent "fix the typo --apply")"
+  check "$agent instruction: refusal says what was asked" grep -q "^\*\*$label could not apply the instruction\*\*" "$FAKE_DIR/posted"
+  run $agent run good "$(skillreq $agent "fix the typo --apply")"
+  check "$agent instruction: no changes is said" grep -q 'No files changed' "$FAKE_DIR/posted"
+  # free text without --apply is answer mode: read-only, no block
+  run $agent answer good "@$agent please fix the typo"
+  check "$agent instruction: free text without --apply is read-only" bash -c "! grep -q 'How you were called' '$FAKE_DIR/stdin' '$FAKE_DIR/system' '$FAKE_DIR/prompt' 2>/dev/null"
 
   # changes without --apply make no patch and are never pushed
-  FAKE_EDIT=1 run $agent skill good "$(skillreq $agent "$sk")"
+  FAKE_EDIT=1 run $agent run good "$(skillreq $agent "$sk")"
   check "$agent skill: edits without --apply are not pushed" test "$(remote_head)" = "$BASE_HEAD"
   check "$agent skill: edits without --apply make no artifact" test ! -e "$T/artifact"
 
@@ -445,73 +478,74 @@ for agent in claude codex cursor; do
     check "$agent apply: $1 comment" grep -q -- "$2" "$FAKE_DIR/posted"
     check "$agent apply: $1 keeps the agent output" grep -q "$agent says hi" "$FAKE_DIR/posted"
     check "$agent apply: $1 pushes nothing" test "$(remote_head)" = "$BASE_HEAD"
-    check "$agent apply: $1 marker" grep -q "^<!-- $agent-skill: failed head=$BASE_HEAD -->" "$FAKE_DIR/posted"
+    check "$agent apply: $1 marker" grep -q "^<!-- $agent-run: failed head=$BASE_HEAD -->" "$FAKE_DIR/posted"
   }
-  PUSH_TOKEN= FAKE_EDIT=1 run $agent skill good "$(skillreq $agent "$sk --apply")"
+  PUSH_TOKEN= FAKE_EDIT=1 run $agent run good "$(skillreq $agent "$sk --apply")"
   refused "missing token or environment" 'no push token'
-  check "$agent apply: missing token names the environment" grep -q 'pr-agent' "$FAKE_DIR/posted"
-  PUSH_FAKE_OID=0000000000000000000000000000000000000000 FAKE_EDIT=1 run $agent skill good "$(skillreq $agent "$sk --apply")"
+  check "$agent apply: missing token names the real settings" grep -q 'PR_AGENT_APP_CLIENT_ID.*PR_AGENT_APP_PRIVATE_KEY.*PR_AGENT_ENVIRONMENT' "$FAKE_DIR/posted"
+  check "$agent apply: missing token no longer names release-plz" bash -c "! grep -q 'RELEASE_PLZ' '$FAKE_DIR/posted'"
+  PUSH_FAKE_OID=0000000000000000000000000000000000000000 FAKE_EDIT=1 run $agent run good "$(skillreq $agent "$sk --apply")"
   refused "moved head" 'branch moved since'
-  PUSH_FAKE_OWNER=someone-else FAKE_EDIT=1 run $agent skill good "$(skillreq $agent "$sk --apply")"
+  PUSH_FAKE_OWNER=someone-else FAKE_EDIT=1 run $agent run good "$(skillreq $agent "$sk --apply")"
   refused "fork (push job)" 'only works when the pull request.s branch is in o/r'
-  PUSH_FAKE_REF=main FAKE_EDIT=1 run $agent skill good "$(skillreq $agent "$sk --apply")"
+  PUSH_FAKE_REF=main FAKE_EDIT=1 run $agent run good "$(skillreq $agent "$sk --apply")"
   refused "default branch (push job)" 'never pushes to the default or base branch'
-  PUSH_FAKE_BASE=feat FAKE_EDIT=1 run $agent skill good "$(skillreq $agent "$sk --apply")"
+  PUSH_FAKE_BASE=feat FAKE_EDIT=1 run $agent run good "$(skillreq $agent "$sk --apply")"
   refused "base branch (push job)" 'never pushes to the default or base branch'
-  FAKE_EDIT_PATH=.github/workflows/x.yml run $agent skill good "$(skillreq $agent "$sk --apply")"
+  FAKE_EDIT_PATH=.github/workflows/x.yml run $agent run good "$(skillreq $agent "$sk --apply")"
   refused ".github path" 'a protected path (.github/workflows/x.yml)'
-  FAKE_EDIT_PATH=.gitmodules run $agent skill good "$(skillreq $agent "$sk --apply")"
+  FAKE_EDIT_PATH=.gitmodules run $agent run good "$(skillreq $agent "$sk --apply")"
   refused ".git* path" 'a protected path (.gitmodules)'
-  FAKE_EDIT_PATH=pkg/.gitattributes run $agent skill good "$(skillreq $agent "$sk --apply")"
+  FAKE_EDIT_PATH=pkg/.gitattributes run $agent run good "$(skillreq $agent "$sk --apply")"
   refused "nested .git* path" 'a protected path'
-  FAKE_EDIT_LINK=1 run $agent skill good "$(skillreq $agent "$sk --apply")"
+  FAKE_EDIT_LINK=1 run $agent run good "$(skillreq $agent "$sk --apply")"
   refused "symlink" 'a symlink (lnk)'
-  FAKE_EDIT_EXEC=1 run $agent skill good "$(skillreq $agent "$sk --apply")"
+  FAKE_EDIT_EXEC=1 run $agent run good "$(skillreq $agent "$sk --apply")"
   refused "new executable" 'a new executable bit (run.sh)'
-  FAKE_EDIT_SUB=1 run $agent skill good "$(skillreq $agent "$sk --apply")"
+  FAKE_EDIT_SUB=1 run $agent run good "$(skillreq $agent "$sk --apply")"
   refused "submodule" 'a submodule (sub)'
 
   # the agent job refuses before the agent runs
-  FAKE_OWNER=someone-else FAKE_EDIT=1 run $agent skill good "$(skillreq $agent "$sk --apply")"
+  FAKE_OWNER=someone-else FAKE_EDIT=1 run $agent run good "$(skillreq $agent "$sk --apply")"
   [ "$status" != 0 ] && [ ! -e "$FAKE_DIR/keys" ] && ok "$agent apply: fork refused, agent not run" || bad "$agent apply: fork refused, agent not run"
   check "$agent apply: fork comment" grep -q 'only works when the pull request.s branch is in o/r' "$FAKE_DIR/posted"
   check "$agent apply: fork pushes nothing" test "$(remote_head)" = "$BASE_HEAD"
-  FAKE_OWNER=someone-else run $agent skill good "$(skillreq $agent "$sk")"
+  FAKE_OWNER=someone-else run $agent run good "$(skillreq $agent "$sk")"
   [ "$status" = 0 ] && ok "$agent skill: a fork is fine read-only" || bad "$agent skill: a fork is fine read-only"
-  FAKE_REF=main FAKE_EDIT=1 run $agent skill good "$(skillreq $agent "$sk --apply")"
+  FAKE_REF=main FAKE_EDIT=1 run $agent run good "$(skillreq $agent "$sk --apply")"
   [ "$status" != 0 ] && [ ! -e "$FAKE_DIR/keys" ] && ok "$agent apply: default branch head refused, agent not run" || bad "$agent apply: default branch head refused, agent not run"
   check "$agent apply: default branch comment" grep -q 'never pushes to the default or base branch' "$FAKE_DIR/posted"
 
   # names
-  run $agent skill good "$(skillreq $agent '/bad;name')"
+  run $agent run good "$(skillreq $agent '/bad;name')"
   [ "$status" != 0 ] && [ ! -e "$FAKE_DIR/keys" ] && ok "$agent skill: invalid name refused, agent not run" || bad "$agent skill: invalid name refused, agent not run"
   check "$agent skill: invalid name comment" grep -q 'not a valid skill name' "$FAKE_DIR/posted"
-  check "$agent skill: invalid name marker" grep -q "^<!-- $agent-skill: failed head=" "$FAKE_DIR/posted"
+  check "$agent skill: invalid name marker" grep -q "^<!-- $agent-run: failed head=" "$FAKE_DIR/posted"
   check "$agent skill: invalid name is sanitized in the header" grep -q "^\*\*$label could not run /badname\*\*" "$FAKE_DIR/posted"
-  run $agent skill good "$(skillreq $agent '/a:b:c')"
+  run $agent run good "$(skillreq $agent '/a:b:c')"
   [ "$status" != 0 ] && ok "$agent skill: two colons refused" || bad "$agent skill: two colons refused"
 
   # unknown skill
   if [ $agent = cursor ]; then
-    run $agent skill good "$(skillreq $agent '/craft:nope')"
+    run $agent run good "$(skillreq $agent '/craft:nope')"
     check "cursor skill: unknown skill lists where it looked" grep -q 'Looked in:' "$FAKE_DIR/posted"
     check "cursor skill: lists the bundled pack" grep -q 'packs/craft/skills/nope/SKILL.md' "$FAKE_DIR/posted"
     [ ! -e "$FAKE_DIR/keys" ] && ok "cursor skill: unknown skill, agent not run" || bad "cursor skill: unknown skill, agent not run"
-    run $agent skill good "$(skillreq $agent '/code-review')"
+    run $agent run good "$(skillreq $agent '/code-review')"
     [ "$status" = 0 ] && ok "cursor skill: bare name found in any pack" || bad "cursor skill: bare name found in any pack"
   else
-    FAKE_SAY="Unknown skill: nope:thing" run $agent skill good "$(skillreq $agent '/nope:thing')"
+    FAKE_SAY="Unknown skill: nope:thing" run $agent run good "$(skillreq $agent '/nope:thing')"
     [ "$status" != 0 ] && ok "$agent skill: unknown skill fails" || bad "$agent skill: unknown skill fails"
     check "$agent skill: unknown skill reason" grep -q 'is not installed or not found' "$FAKE_DIR/posted"
-    check "$agent skill: unknown skill marker" grep -q "^<!-- $agent-skill: failed head=" "$FAKE_DIR/posted"
+    check "$agent skill: unknown skill marker" grep -q "^<!-- $agent-run: failed head=" "$FAKE_DIR/posted"
   fi
 
   # a long ordinary answer that mentions "skill" is not an unknown skill
-  FAKE_SAY="Reviewed. The command was found in the skill and applied cleanly to $(printf 'x%.0s' $(seq 1 450))" run $agent skill good "$(skillreq $agent "$sk")"
+  FAKE_SAY="Reviewed. The command was found in the skill and applied cleanly to $(printf 'x%.0s' $(seq 1 450))" run $agent run good "$(skillreq $agent "$sk")"
   [ "$status" = 0 ] && ok "$agent skill: long output is not an unknown skill" || bad "$agent skill: long output is not an unknown skill"
 
   # failure of the CLI is a failed skill comment
-  run $agent skill boom "$(skillreq $agent "$sk")"
+  run $agent run boom "$(skillreq $agent "$sk")"
   check "$agent skill: failed run" grep -q "^\*\*$label could not run /craft:code-review\*\* for [0-9a-f]\{7\}\." "$FAKE_DIR/posted"
 
   # answers and reviews carry no skill block

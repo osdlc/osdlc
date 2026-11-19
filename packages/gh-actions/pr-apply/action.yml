@@ -59,7 +59,7 @@ runs:
         GH_TOKEN: ${{ inputs.github-token }}
         PR: ${{ github.event.issue.number || github.event.pull_request.number }}
         REPO: ${{ github.repository }}
-        MODE: skill
+        MODE: run
         REQUEST: ${{ github.event.comment.body || github.event.review.body }}
         RESULT: ${{ runner.temp }}/${{ inputs.agent }}-pr-apply/result.json
         RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

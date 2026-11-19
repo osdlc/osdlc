@@ -1,7 +1,8 @@
 # Mention @codex in a pull request comment, an inline review comment or a
 # review and Codex replies on the pull request. A comment that starts with
 # `@codex review [focus]` gets a code review of the pull request
-# instead, and `@codex /<plugin>:<skill> [args] [--apply]` runs a skill;
+# instead, and `@codex /<plugin>:<skill> [args] [--apply]` runs a skill,
+# `@codex <text> --apply` an instruction;
 # --apply pushes its edits from a second job (packages/gh-actions/pr-apply).
 # The work is the codex-pr action (packages/gh-actions/codex-pr); this file
 # says when it runs and with what.

@@ -1,7 +1,8 @@
 # Mention @claude in a pull request comment, an inline review comment or a
 # review and Claude replies on the pull request. A comment that starts with
 # `@claude review [focus]` gets a /craft:code-review of the pull request
-# instead, and `@claude /<plugin>:<skill> [args] [--apply]` runs a skill;
+# instead, and `@claude /<plugin>:<skill> [args] [--apply]` runs a skill,
+# `@claude <text> --apply` an instruction;
 # --apply pushes its edits from a second job (packages/gh-actions/pr-apply).
 # The work is the claude-pr action (packages/gh-actions/claude-pr); this file
 # says when it runs and with what.

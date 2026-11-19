@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The `--apply` half of skill mode, in two jobs so the agent never shares a
+# The `--apply` half of run mode (a skill or an instruction), in two jobs so the agent never shares a
 # runner with the push token.
 #   apply.sh check   agent job, before the agent: refuse a fork head or a head
 #                    that is the default or base branch. Prints the reason, exits 1.
@@ -7,7 +7,7 @@
 #                    $RUNNER_TEMP/$AGENT-pr-apply/{patch,meta.json,result.json}
 #                    (patch is `git diff --binary` against the head recorded
 #                    before the agent ran). Writes patch=true|false to $GITHUB_OUTPUT.
-#   apply.sh push    push job (environment pr-agent, a fresh checkout, nothing
+#   apply.sh push    push job (optional environment, a fresh checkout, nothing
 #                    from the agent but the downloaded artifact): refuse unless
 #                    the head is unmoved, same repo, not the default or base
 #                    branch and the patch touches only allowed paths and modes;
@@ -20,8 +20,8 @@ set -e
 step="${1:?check, patch or push}"
 here="$(dirname "$0")"
 # shellcheck source=/dev/null
-. "$here/skill-request.sh"
-parse_skill_request
+. "$here/run-request.sh"
+parse_run_request
 tmp="${RUNNER_TEMP:-/tmp}"
 dir="$tmp/$AGENT-pr-apply"
 
@@ -93,7 +93,7 @@ fail() {
 }
 
 if [ -z "${PUSH_TOKEN:-}" ]; then
-  fail "no push token. The push job needs the \`pr-agent\` environment with the App secrets (RELEASE_PLZ_APP_ID, RELEASE_PLZ_APP_PRIVATE_KEY) so it can mint a token; see the action's README. The patch is in the run's artifacts."
+  fail "no push token. The push job needs the variable PR_AGENT_APP_CLIENT_ID and the secret PR_AGENT_APP_PRIVATE_KEY (set on the repository or organization; in the environment named by PR_AGENT_ENVIRONMENT, if you use one) so it can mint a token; see the pr-apply README. The patch is in the run's artifacts."
 fi
 : "${GIT_USER_NAME:?GIT_USER_NAME is required}" "${GIT_USER_EMAIL:?GIT_USER_EMAIL is required}"
 read_head || fail "$pr_err"
@@ -127,7 +127,11 @@ if [ -n "$violation" ]; then
   fail "the patch touches $violation, which --apply does not allow (.github/, .git*, paths outside the repository, symlinks, submodules, new executables)."
 fi
 
-msg="$AGENT: /${SKILL_NAME}${SKILL_ARGS:+ $SKILL_ARGS} (requested in #$PR comment)"
+if [ "$RUN_KIND" = instruction ]; then
+  msg="$AGENT: instruction from #$PR comment"
+else
+  msg="$AGENT: /${SKILL_NAME}${SKILL_ARGS:+ $SKILL_ARGS} (requested in #$PR comment)"
+fi
 git -c core.hooksPath=/dev/null -c commit.gpgsign=false -c user.name="$GIT_USER_NAME" -c user.email="$GIT_USER_EMAIL" \
   commit -q --no-verify -m "$msg" || fail "git commit failed."
 sha=$(git rev-parse HEAD)

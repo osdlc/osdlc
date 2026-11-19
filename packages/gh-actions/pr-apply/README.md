@@ -25,13 +25,13 @@ job stays silent on success (on failure, or when nothing changed, it posts).
    change is refused if any path is under `.github/` or has a component starting
    with `.git`, is absolute or contains `..`, any side is a symlink (120000) or a
    submodule (160000), or a file gains the executable bit.
-5. One commit, `<agent>: /<skill> <args> (requested in #<pr> comment)`, author
+5. One commit, `<agent>: /<skill> <args> (requested in #<pr> comment)` (or `<agent>: instruction from #<pr> comment` for a free-form instruction), author
    `git-user-name` / `git-user-email` (the workflows here use the App's bot user),
    no trailers. Pushed with `git push --no-verify origin HEAD:refs/heads/<PR head branch>`:
    never forced, only that ref. The token reaches git through a credential helper
    reading the environment, not argv or a file.
 
-The comment ends with the usual marker, `<!-- <agent>-skill: done|failed head=<sha> -->`.
+The comment ends with the usual marker, `<!-- <agent>-run: done|failed head=<sha> -->`.
 Main is also protected by the repository's rules (PRs required, no force-push).
 
 ## Owner setup

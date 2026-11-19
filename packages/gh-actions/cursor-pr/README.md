@@ -11,6 +11,8 @@ request when the comment starts with `@cursor review`. It works like
   focus. The comment opens with **Cursor review done** and the commit it covered.
 - **Skill:** `@cursor /<plugin>:<skill> [args]` runs any installed skill, read-only, or
   with `--apply` commits and pushes its edits; see [Skill mode](#skill-mode).
+- **Instruction:** `@cursor <free text> --apply` (not a `/skill`) carries out the text as a
+  free-form instruction, with edits allowed; see [Free-form instruction](#free-form-instruction).
 - **Marker:** every comment ends with `<!-- cursor-review: done head=<sha> -->`
   (or `failed`; answers use `cursor-answer`).
 - **Only real mentions:** `@cursor` inside code blocks, inline code or quoted
@@ -73,7 +75,7 @@ please keep behaviour identical
   harness, repo, PR number and title, base and head sha, headless (no human to
   ask), the exact skill and args, the rest of the comment as fenced data, read-only or
   apply, where the diff is, the limits and how the final message is used.
-- **Markers.** `<!-- cursor-skill: done|failed head=<sha> -->`; the first line is
+- **Markers.** `<!-- cursor-run: done|failed head=<sha> -->`; the first line is
   **Cursor ran /<skill>** for `<sha7>` (and ` and pushed <sha7>` after `--apply`
   pushed). A skill the CLI does not know (a missing `SKILL.md`) posts a failed marker with the reason.
 
@@ -174,3 +176,23 @@ nothing is pushed.
 
 `@main` takes every fix as soon as it merges in osdlc/osdlc. For a fixed
 version, pin a commit SHA instead.
+
+### Free-form instruction
+
+`@cursor <free text> --apply` is an instruction when the first line after the
+mention is not a `/skill` and has a standalone `--apply` word. `--apply` is
+removed; the rest of the comment, following lines included, is the instruction.
+It uses the skill path with edits allowed: the same "How you were called" block
+(the instruction fenced as data, edits allowed), patch artifact, push job,
+refusals and one comment. There is no skill to find, so the instruction alone is the prompt, after the block.
+Free text without `--apply` is still an answer, always read-only.
+
+```
+@cursor rename the helper foo to bar --apply
+@cursor --apply
+fix the typos in docs/ and keep the wording otherwise
+```
+
+- **Commit:** `cursor: instruction from #<pr> comment`.
+- **Comment:** **Cursor applied the instruction** for `<sha7>` and pushed `<sha7>`;
+  marker `<!-- cursor-run: done|failed head=<sha> -->` (skill runs use the same marker).

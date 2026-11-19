@@ -3,8 +3,8 @@ description: >-
   Answers @codex on a pull request with the Codex CLI, or reviews the pull
   request with the craft code-review skill when the comment starts with
   "@codex review". Runs any installed skill from "@codex /<plugin>:<skill>"
-  (read-only, or with --apply it commits and pushes the changes). Posts the
-  result as a comment ending in a done or failed marker.
+  (read-only, or with --apply it commits and pushes the changes), or a free-form
+  instruction from "@codex <text> --apply". Posts the result as a comment ending in a done or failed marker.
 author: osdlc
 
 inputs:
@@ -93,7 +93,7 @@ runs:
 
     # Patch for the pr-apply job; see ../pr-apply/README.md.
     - id: patch
-      if: steps.mention.outputs.real == '1' && steps.mention.outputs.mode == 'skill' && steps.mention.outputs.apply == '1'
+      if: steps.mention.outputs.real == '1' && steps.mention.outputs.mode == 'run' && steps.mention.outputs.apply == '1'
       shell: bash
       env:
         AGENT: codex

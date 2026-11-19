@@ -11,6 +11,8 @@ request when the comment starts with `@claude review`.
   **Claude review done** and the commit it covered.
 - **Skill:** `@claude /<plugin>:<skill> [args]` runs any installed skill, read-only, or
   with `--apply` commits and pushes its edits; see [Skill mode](#skill-mode).
+- **Instruction:** `@claude <free text> --apply` (not a `/skill`) carries out the text as a
+  free-form instruction, with edits allowed; see [Free-form instruction](#free-form-instruction).
 - **Marker:** every comment ends with `<!-- claude-review: done head=<sha> -->`
   (or `failed`; answers use `claude-answer`), so people and scripts can tell
   the run finished.
@@ -54,7 +56,7 @@ please keep behaviour identical
   harness, repo, PR number and title, base and head sha, headless (no human to
   ask), the exact skill and args, the rest of the comment as fenced data, read-only or
   apply, where the diff is, the limits and how the final message is used.
-- **Markers.** `<!-- claude-skill: done|failed head=<sha> -->`; the first line is
+- **Markers.** `<!-- claude-run: done|failed head=<sha> -->`; the first line is
   **Claude ran /<skill>** for `<sha7>` (and ` and pushed <sha7>` after `--apply`
   pushed). A skill the CLI does not know (Claude's "unknown command" reply) posts a failed marker with the reason.
 
@@ -168,3 +170,23 @@ version, pin a commit SHA instead.
 This is a stopgap. The planned `agent-pr-answer` action (see
 `docs/planning/agent-ci.md`) runs the same job through `@osdlc/agent-call` on
 any harness and will replace it.
+
+### Free-form instruction
+
+`@claude <free text> --apply` is an instruction when the first line after the
+mention is not a `/skill` and has a standalone `--apply` word. `--apply` is
+removed; the rest of the comment, following lines included, is the instruction.
+It uses the skill path with edits allowed: the same "How you were called" block
+(the instruction fenced as data, edits allowed), patch artifact, push job,
+refusals and one comment. There is no skill to find.
+Free text without `--apply` is still an answer, always read-only.
+
+```
+@claude rename the helper foo to bar --apply
+@claude --apply
+fix the typos in docs/ and keep the wording otherwise
+```
+
+- **Commit:** `claude: instruction from #<pr> comment`.
+- **Comment:** **Claude applied the instruction** for `<sha7>` and pushed `<sha7>`;
+  marker `<!-- claude-run: done|failed head=<sha> -->` (skill runs use the same marker).

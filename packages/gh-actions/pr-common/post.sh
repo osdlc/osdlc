@@ -9,23 +9,25 @@ label="$(printf '%s' "${AGENT:0:1}" | tr '[:lower:]' '[:upper:]')${AGENT:1}"
 # a visible "<Agent> review done" line naming the commit it covered.
 head=$(git rev-parse HEAD 2>/dev/null || echo unknown)  # checkout may have failed
 pushed=""
-if [ "${MODE:-}" = skill ]; then
+if [ "${MODE:-}" = run ]; then
   # The checkout moves when --apply pushes, so the head the run covered was saved first.
   if [ -s "$RUNNER_TEMP/$AGENT-pr-head" ]; then head=$(cat "$RUNNER_TEMP/$AGENT-pr-head"); fi
   if [ -s "$RUNNER_TEMP/$AGENT-pr-pushed" ]; then pushed=$(cat "$RUNNER_TEMP/$AGENT-pr-pushed"); fi
   # shellcheck source=/dev/null
-  . "$(dirname "$0")/skill-request.sh"
-  parse_skill_request
+  . "$(dirname "$0")/run-request.sh"
+  parse_run_request
   skill="/${SKILL_TOKEN#/}"
   skill="${skill//[^A-Za-z0-9_.:\/-]/}"
+  ran="ran $skill" cannot="could not run $skill"
+  if [ "$RUN_KIND" = instruction ]; then ran="applied the instruction" cannot="could not apply the instruction"; fi
 fi
 kind=$AGENT-${MODE:-answer}
 out="$RUNNER_TEMP/$AGENT-pr-answer.md"
 if [ -s "$RESULT" ] && jq -e '.is_error == false' "$RESULT" > /dev/null 2>&1; then
   outcome=done
   {
-    if [ "$MODE" = skill ]; then
-      echo "**$label ran $skill** for ${head:0:7}${pushed:+ and pushed ${pushed:0:7}}."
+    if [ "$MODE" = run ]; then
+      echo "**$label $ran** for ${head:0:7}${pushed:+ and pushed ${pushed:0:7}}."
       echo
     fi
     if [ "$MODE" = review ]; then
@@ -37,8 +39,8 @@ if [ -s "$RESULT" ] && jq -e '.is_error == false' "$RESULT" > /dev/null 2>&1; th
 else
   outcome=failed
   {
-    if [ "$MODE" = skill ]; then
-      echo "**$label could not run $skill** for ${head:0:7}. [Run log]($RUN_URL)"
+    if [ "$MODE" = run ]; then
+      echo "**$label $cannot** for ${head:0:7}. [Run log]($RUN_URL)"
     elif [ "$MODE" = review ]; then
       echo "**$label review failed** for ${head:0:7}."
     else
