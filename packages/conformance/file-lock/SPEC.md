@@ -36,19 +36,25 @@ A claimant that judged the lock, with text `D` and mtime `M`, to be stale:
 
 1. Reads `x.lock` again. If its text is no longer exactly `D`, it stops and
    claims again.
-2. Hard-links `x.lock` to the marker `x.lock.stale-<h>`, where `<h>` is the
-   first 24 lowercase hex digits of the SHA-256 of `D`'s UTF-8 bytes. If the
-   marker exists, another reaper holds it: a marker whose ctime is at least
-   10 s old is a dead reaper's and is removed. Either way it stops and claims
-   again.
-3. Removes `x.lock` only if the marker and `x.lock` both still read exactly
-   `D`, and `x.lock`'s mtime is still `M`.
+2. Creates the marker `x.lock.stale-<h>` exclusively (`O_EXCL`, `create_new`),
+   empty, where `<h>` is the first 24 lowercase hex digits of the SHA-256 of
+   `D`'s UTF-8 bytes. If the marker exists, another reaper holds it: a marker
+   whose mtime is at least 10 s old is a dead reaper's and is removed. Either
+   way it stops and claims again.
+3. Removes `x.lock` only if it still reads exactly `D` and its mtime is still
+   `M`.
 4. Removes the marker, and claims again.
 
+The marker is a file of its own, never a link to the lock, and nothing is
+written to it. Its mtime is when its reaper began, so its age is judged the
+way the lock's is: by mtime, against the clock of the machine that set it. It
+needs no content, no ctime, and no allowance for clock skew beyond the one a
+lock's own age has.
+
 The marker name is part of the protocol: two implementations that judge one
-stale lock contend for the same marker. A claim gives up after a bounded number of
-rounds of claim and takeover (six in both implementations), and reports the
-lock as held by no settled holder.
+stale lock contend for the same marker. A claim gives up after a bounded
+number of rounds of claim and takeover (six in both implementations), and
+reports the lock as held by no settled holder.
 
 ## Release, touch, update
 
@@ -75,9 +81,17 @@ error.
 
 ## Limits
 
-One machine, on a local file system with hard links. Windows is not tested:
-the marker's age is read from its ctime on Unix only. An implementation that
-cannot read the ctime never removes a marker as dead: the marker's mtime is
-the lock's, and a lock's age would clear a live reaper's marker, so that two
-reapers could each remove a lock. A reaper that dies mid-takeover there
-leaves its lock stale until the marker is deleted by hand.
+One machine, on a local file system with hard links. Windows is not tested by
+every implementation; none of the rules above read a ctime or any time other
+than an mtime.
+
+A reaper that stalls for longer than 10 s between creating its marker and
+removing the lock, or between judging a marker dead and removing it, can
+remove a lock a later claimant holds: its marker was cleared as dead's, and
+another reaper took the same lock over. A live reaper's work is a few
+microseconds.
+
+Versions 0.3 of both implementations made the marker a hard link of the lock
+and read its ctime (Unix only). Their marker has the lock's mtime, so a 0.4
+claimant judges it dead once the lock is 10 s old, and the two cannot take one
+lock over together safely: upgrade both implementations together.

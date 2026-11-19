@@ -7,10 +7,12 @@
 //!   `O_EXCL` does, so one of several racing claimants wins, and the lock
 //!   never exists empty or half written.
 //! - Takeover of a stale lock: the caller's rule judges a held lock. One it
-//!   judges stale is hard-linked to a marker named from a hash of its content,
-//!   exclusively, so one reaper wins. The winner removes the lock only if it
-//!   still reads as it did when it was judged, removes the marker, and claims
-//!   again. A loser claims again too.
+//!   judges stale gets a marker, an empty file named from a hash of its
+//!   content and created exclusively, so one reaper wins. The winner removes
+//!   the lock only if it still reads as it did when it was judged, removes the
+//!   marker, and claims again. A loser claims again too. A marker is its own
+//!   file, so its mtime is when its reaper began: one older than
+//!   [`MARKER_STALE`] is a dead reaper's, and the next claimant removes it.
 //! - Release, touch and rewrite act only while the lock still holds this
 //!   claim's token, so an owner whose lock was taken over never disturbs the
 //!   taker's.
@@ -86,9 +88,9 @@ impl LockClaim {
 }
 
 /// A takeover marker older than this belongs to a reaper that died
-/// mid-takeover: a live one holds its marker for microseconds. It is judged by
-/// the inode's ctime on Unix. The marker is a hard link of the lock, so its
-/// mtime is the lock's, but linking sets the ctime.
+/// mid-takeover: a live one holds its marker for microseconds. Its age is its
+/// mtime, the way a lock's is. The marker is a file of its own, created empty,
+/// so its mtime is when its reaper began and never the lock's.
 pub const MARKER_STALE: Duration = Duration::from_secs(10);
 
 /// Claim attempts before giving up: enough for a few reapers racing over one
@@ -250,7 +252,8 @@ fn take_over(path: &Path, seen: &HeldLock) {
         _ => return, // replaced since it was judged, or gone
     }
     let marker = marker_for(path, &seen.raw);
-    if let Err(e) = fs::hard_link(path, &marker) {
+    // Created exclusively and empty: its mtime is the start of this takeover.
+    if let Err(e) = File::options().write(true).create_new(true).open(&marker) {
         // Another reaper holds the marker, or one died holding it. A marker
         // that old is cleared, and the caller's next attempt takes over.
         if e.kind() == ErrorKind::AlreadyExists {
@@ -259,28 +262,10 @@ fn take_over(path: &Path, seen: &HeldLock) {
         return;
     }
     // Still the very lock that was judged: the same bytes, and not touched since.
-    let unchanged = (|| -> io::Result<bool> {
-        let now = read_held(path)?;
-        Ok(read_text(&marker)? == seen.raw && now.raw == seen.raw && now.modified == seen.modified)
-    })();
-    if matches!(unchanged, Ok(true)) {
+    if read_held(path).is_ok_and(|now| now.raw == seen.raw && now.modified == seen.modified) {
         let _ = fs::remove_file(path);
     }
     let _ = fs::remove_file(&marker);
-}
-
-#[cfg(unix)]
-fn changed_at(meta: &fs::Metadata) -> Option<SystemTime> {
-    use std::os::unix::fs::MetadataExt;
-    let secs = u64::try_from(meta.ctime()).ok()?;
-    let nanos = u32::try_from(meta.ctime_nsec()).ok()?;
-    SystemTime::UNIX_EPOCH.checked_add(Duration::new(secs, nanos))
-}
-
-/// No ctime without `unsafe`, and the mtime is the lock's, not the marker's.
-#[cfg(not(unix))]
-fn changed_at(_meta: &fs::Metadata) -> Option<SystemTime> {
-    None
 }
 
 fn clear_dead_marker(marker: &Path) {
@@ -292,11 +277,11 @@ pub(crate) fn clear_dead_marker_at(marker: &Path, now: SystemTime) {
     let Ok(meta) = fs::metadata(marker) else {
         return; // gone meanwhile
     };
-    let Some(changed) = changed_at(&meta) else {
+    let Ok(started) = meta.modified() else {
         return;
     };
     if now
-        .duration_since(changed)
+        .duration_since(started)
         .is_ok_and(|age| age >= MARKER_STALE)
     {
         let _ = fs::remove_file(marker);
@@ -411,29 +396,10 @@ mod tests {
     }
 
     #[test]
-    fn a_marker_linked_to_an_old_lock_is_a_live_reapers() {
-        let dir = tempfile::tempdir().unwrap();
-        let lock = dir.path().join("x.lock");
-        fs::write(&lock, "{}").unwrap();
-        let old = SystemTime::now() - Duration::from_secs(60);
-        File::options()
-            .write(true)
-            .open(&lock)
-            .unwrap()
-            .set_times(FileTimes::new().set_modified(old))
-            .unwrap();
-        let marker = dir.path().join("x.lock.stale-0");
-        fs::hard_link(&lock, &marker).unwrap();
-        clear_dead_marker_at(&marker, SystemTime::now());
-        assert!(marker.exists(), "the lock's age is not the marker's");
-    }
-
-    #[cfg(unix)]
-    #[test]
     fn a_marker_from_a_dead_reaper_is_cleared_and_a_live_one_kept() {
         let dir = tempfile::tempdir().unwrap();
         let marker = dir.path().join("x.lock.stale-0");
-        fs::write(&marker, "x").unwrap();
+        fs::write(&marker, "").unwrap();
         clear_dead_marker_at(&marker, SystemTime::now());
         assert!(marker.exists(), "a fresh marker is a live reaper's");
         clear_dead_marker_at(
