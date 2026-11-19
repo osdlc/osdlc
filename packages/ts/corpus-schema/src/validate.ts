@@ -72,7 +72,7 @@ const REF_FORMS: readonly string[] = ['link', 'id', 'wikilink']
 export interface Ref {
   /** The property names from the record's top level to the `x-ref`, joined with `.`. */
   field: string
-  /** The same names, apart. */
+  /** `field`'s names, unjoined. */
   path: string[]
   /**
    * Per name in `path`: the property holds a list, and the walk goes through each item. On the
@@ -415,7 +415,7 @@ function refPath(place: string[]): { path: string[]; lists: boolean[] } | undefi
   return path.length === 0 ? undefined : { path, lists }
 }
 
-/** Each value `ref` reaches in `data`: where it sits, and what it holds. Null is skipped. */
+/** Each value `ref` reaches in `data`, with its place. Missing and null values, and levels that are not objects, yield nothing. */
 function refValues(data: Data, ref: Ref): { at: (string | number)[]; value: unknown }[] {
   const out: { at: (string | number)[]; value: unknown }[] = []
   const walk = (node: unknown, depth: number, at: (string | number)[]): void => {
@@ -424,7 +424,7 @@ function refValues(data: Data, ref: Ref): { at: (string | number)[]; value: unkn
     const value = Object.hasOwn(node, key) ? (node as Data)[key] : undefined
     const here = [...at, key]
     const last = depth === ref.path.length - 1
-    // A list property that holds no list is one value: the schema says whether it may.
+    // On the last name, a list property holding a non-list is one value; on an inner name the walk stops. The schema says whether either is allowed.
     const list = ref.lists[depth] === true && Array.isArray(value)
     for (const [i, v] of (list ? (value as unknown[]) : [value]).entries()) {
       const place = list ? [...here, i] : here
@@ -1544,17 +1544,24 @@ function intoReference(c: Corpus, path: string, file: string, dest: string): Res
   return { problem: `${dest}: no such file in ${prefix}` }
 }
 
-/** Calls `visit` with each string in `value` and the dotted field it sits in. */
+/**
+ * Calls `visit` with each string in `value` and the dotted field it sits in. `skip` holds places
+ * to leave out, each as its names and list indexes joined with `\0`; `at` is `value`'s place.
+ */
 function eachString(
   value: unknown,
   field: string,
   visit: (field: string, s: string) => void,
+  skip: ReadonlySet<string> = new Set(),
+  at: (string | number)[] = [],
 ): void {
+  if (skip.has(at.join('\0'))) return
   if (typeof value === 'string') visit(field, value)
-  else if (Array.isArray(value)) value.forEach((v) => eachString(v, field, visit))
+  else if (Array.isArray(value))
+    value.forEach((v, i) => eachString(v, field, visit, skip, [...at, i]))
   else if (value !== null && typeof value === 'object')
     for (const [k, v] of Object.entries(value))
-      eachString(v, field === '' ? k : `${field}.${k}`, visit)
+      eachString(v, field === '' ? k : `${field}.${k}`, visit, skip, [...at, k])
 }
 
 /** The keywords whose strings are prose in a schema, and may hold links. */
@@ -1570,13 +1577,21 @@ function eachProse(node: unknown, field: string, visit: (field: string, s: strin
   }
 }
 
-/** The top-level fields of `file`'s type chain that hold references by id, not links, at any depth. */
-function idFields(c: Corpus, file: string): Set<string> {
+/** The places in `data`, `file`'s record, of values that refer by id or wikilink, not by link. */
+function idPlaces(c: Corpus, file: string, data: Data): (string | number)[][] {
   const type = c.recordFiles.get(file)?.type
-  if (type === undefined) return new Set()
-  const refs = chain(type).flatMap((t) => t.refs)
-  return new Set(refs.filter((r) => r.form !== 'link').map((r) => r.path[0] as string))
+  if (type === undefined) return []
+  return chain(type)
+    .flatMap((t) => t.refs)
+    .filter((r) => r.form !== 'link')
+    .flatMap((r) => refValues(data, r).map((v) => v.at))
 }
+
+const valueAt = (data: unknown, at: (string | number)[]): unknown =>
+  at.reduce<unknown>(
+    (n, k) => (n === null || typeof n !== 'object' ? undefined : (n as Data)[k]),
+    data,
+  )
 
 /** Check every link in the checked files, and every `x-ref` field. */
 function checkLinks(c: Corpus): void {
@@ -1606,10 +1621,9 @@ function checkLinks(c: Corpus): void {
       eachProse(data ?? {}, '', visit)
       continue
     }
-    // A field that refers by id holds no link: checkRef checks its values.
-    const byId = idFields(c, file)
-    for (const [key, value] of Object.entries(data ?? {}))
-      if (!byId.has(key)) eachString(value, key, visit)
+    // A value that refers by id holds no link: its x-ref check reads it.
+    const byId = new Set(idPlaces(c, file, data ?? {}).map((at) => at.join('\0')))
+    eachString(data ?? {}, '', visit, byId)
   }
 
   const refsOf = new Map<Type, Ref[]>()
@@ -1913,12 +1927,12 @@ function fixWikilinks(c: Corpus): { fixed: string[]; warnings: string[]; errors:
     } else regions.push([0, extractLinks(text)])
 
     // A wikilink in a field that refers by id is the field's form, so it stays.
-    const byId = idFields(c, file)
+    const byId = idPlaces(c, file, data)
     const keepsIdFields = (start: number, end: number, replacement: string): boolean => {
-      if (byId.size === 0) return true
+      if (byId.length === 0) return true
       try {
         const after = readData(`${text.slice(0, start)}${replacement}${text.slice(end)}`, ext)
-        return [...byId].every((k) => isDeepStrictEqual(after[k], data[k]))
+        return byId.every((at) => isDeepStrictEqual(valueAt(after, at), valueAt(data, at)))
       } catch {
         // The check on the whole file below reports it.
         return true

@@ -273,6 +273,35 @@ properties:
     assert.match(errors().join('\n'), /properties\.a\.additionalProperties: x-ref sits only/)
   })
 
+  test('an id-form value exempts only itself: a sibling link is still checked, and fixed', () => {
+    plan('{ type: string }')
+    put(
+      'c/notes/notes.schema.yaml',
+      'type: object\nproperties:\n  lines:\n    type: array\n    items:\n      type: object\n      properties:\n        owner: { type: string, x-ref: tasks, x-ref-form: wikilink }\n        note: { type: string }\n',
+    )
+    put(
+      'c/notes/N.md',
+      '---\nlines:\n  - owner: "[[T-0001]]"\n    note: "[gone](../none.md)"\n---\n',
+    )
+    assert.match(errors().join('\n'), /notes\/N\.md: lines\.note: .*none\.md/)
+    put('c/notes/N.md', '---\nlines:\n  - owner: "[[T-0001]]"\n    note: "[[T-0002]]"\n---\n')
+    report('c', true)
+    assert.match(read('c/notes/N.md'), /owner: "\[\[T-0001\]\]"/)
+    assert.match(read('c/notes/N.md'), /note: .*\]\(\.\.\/tasks\/done\/T-0002\.yaml\)/)
+  })
+
+  test('x-ref-form on a nested property needs an x-ref beside it', () => {
+    plan('{ type: string }')
+    put(
+      'c/notes/notes.schema.yaml',
+      'type: object\nproperties:\n  meta:\n    type: object\n    properties:\n      by: { type: string, x-ref-form: id }\n',
+    )
+    assert.match(
+      errors().join('\n'),
+      /properties\.meta\.properties\.by: x-ref-form sits only beside x-ref/,
+    )
+  })
+
   test('loadCorpus gives each value its full pointer', () => {
     notes('lines:\n  - items: [T-0001]\nmeta: { owner: "[[T-0001]]" }')
     const record = loadCorpus(join(dir, 'c')).records.find((r) => r.type === 'notes')

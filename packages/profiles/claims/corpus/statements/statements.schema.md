@@ -152,7 +152,7 @@ The rules a description does not say clearly:
   corpus-schema that allows `x-ref` inside nested objects (0.6.0).
 - `subject` may link to a record of a type the corpus adds itself, such as a `tools` type. The
   claims types do not define one. The validator checks that the link resolves, but not what type
-  it points at, because `x-ref` does not work inside the proposition yet.
+  it points at, because the claims types define no type for a subject.
 - `object` can be any value except null, including an object or a list. The claims types do not
   say what shape it has. That is up to the corpus.
 - A statement, its proposition and its evidence lines accept fields the schema does not list. A

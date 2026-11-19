@@ -259,7 +259,7 @@ Obsidian writes links as its settings say, under Settings → Files and links:
   Markdown links.
 - `New link format` sets the path a new link holds. The default, `Shortest path when possible`,
   writes the shortest path that is unique in the vault, which depends on the vault. `Relative path
-to file` writes a path relative to the note, as this spec asks.
+  to file` writes a path relative to the note, as this spec asks.
 - `Automatically update internal links`, when on, makes Obsidian update the links to a file when
   the file is renamed.
 
@@ -361,12 +361,13 @@ about: { type: string, x-ref: notes, x-ref-form: wikilink }
   or inside an object, or inside the items of a list of objects, at any depth: through
   `properties`, and through `items` then `properties`. On `items`, each item is a reference. A
   validator MUST report `x-ref` anywhere else, such as under `additionalProperties`, `allOf` or
-  `patternProperties`. It checks each value the data holds at the place: a list that is absent,
-  null or not a list, or an object that is not an object, holds none there. The schema says
-  whether that is allowed. An error line names the value's field: the property names down to it
+  `patternProperties`. It checks each value the data holds at the place: a level that is absent,
+  null or not an object holds none there, and so does an inner list that is not a list. On the
+  last name, a list property that holds a non-list is one value. The schema says whether that is
+  allowed. An error line names the value's field: the property names down to it
   joined with `.`, with the index of each list before the last name, such as
   `hasEvidenceLines.0.hasEvidenceItems` for the value at `hasEvidenceLines.0.hasEvidenceItems.1`.
-  A reference by `id` or `wikilink` is exempt from the Links rules in its top-level field.
+  The Links rules do not apply to the value of a reference by `id` or `wikilink`.
 - A list MUST hold one or more names, each a string. Every name MUST name a type that exists, in
   the corpus or in the corpus its prefixes name. A validator does not check the values of a field
   whose `x-ref` names no type: that is already an error in the schema.

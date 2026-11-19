@@ -242,8 +242,9 @@ A contribution has `contributor` (an Agent with `name` and `agentType`), `activi
    abstract class whose `subject` and `object` are entities. Here `subject` and `predicate` are
    text, and `object` is any JSON value except null: text, a number, true or false, an object or a
    list. The corpus decides the object's shape. `subject` may be a slug or a link to a record. The
-   validator checks that a link resolves, but not what type it points at, because corpus-schema
-   does not support `x-ref` inside nested objects yet. The proposition has no `type`.
+   validator checks that a link resolves, but not what type it points at, because the claims types
+   name no type for a subject. A corpus can add `x-ref` to `proposition.subject`. The proposition
+   has no `type`.
 9. Some optional fields are required. `title` on a document, `contributions` on study results and
    statements, `hasEvidenceItems` on an evidence line, and all three parts of a contribution. A
    record without them does not carry enough to check.
@@ -376,7 +377,7 @@ Extend the profile, as [Use it](#use-it) says. Then:
 - Add your fields to your type's schema, beside `x-extends`, so the validator checks them. A field
   you leave out of the schema is still allowed, but nothing checks it.
 - Add your own types, such as `harnesses` or `subjects`, as folders beside the claims types. A
-  top-level field can point at them with `x-ref`.
+  field can point at them with `x-ref`.
 - Keep the field names the claims types use. If you add a field that VA-Spec defines and the claims
   types leave out, such as `score`, give it VA-Spec's meaning.
 - For strict checking, close your type with `additionalProperties: false`. The profile's fields
@@ -405,8 +406,8 @@ properties:
   scope: { type: object }
 ```
 
-`harness` and `subject` are top-level fields here, so they can be typed links. A typed link inside
-a typed link inside the proposition needs `x-ref` on a nested property, which now works.
+`harness` and `subject` are top-level fields here. A typed link inside the proposition also works:
+put `x-ref` on the nested property.
 
 ### What stays in your corpus
 
