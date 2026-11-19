@@ -675,11 +675,8 @@ export function withEnv(
   const entries = Object.entries(env ?? {})
   if (entries.length === 0) return argv
   if (platform === 'win32') {
-    for (const [k] of entries) {
-      // The name goes into a PowerShell command unquoted (set branch), so it must be a plain identifier.
-      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k))
-        throw new Error(`invalid environment variable name: ${k}`)
-    }
+    // The name goes into a PowerShell command unquoted (set branch), so it must be a plain identifier.
+    for (const [k] of entries) assertEnvName(k)
     const sets = entries.map(([k, v]) =>
       v === undefined
         ? `Remove-Item -ErrorAction SilentlyContinue ${powershellLiteral(`Env:${k}`)}`
@@ -701,6 +698,11 @@ export function withEnv(
   return ['env', ...unset, ...pairs, ...argv]
 }
 
+function assertEnvName(name: string): void {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name))
+    throw new Error(`invalid environment variable name: ${name}`)
+}
+
 /**
  * `argv` as one command line with `env` as a plain POSIX assignment prefix
  * (`K=V cmd`), for typing into an interactive shell. Unlike `env K=V cmd` (see
@@ -719,13 +721,12 @@ export function envPrefixLine(
   env: EnvOverrides | undefined,
   platform: NodeJS.Platform = process.platform,
 ): string {
-  const entries = Object.entries(env ?? {})
   if (platform === 'win32') {
     return commandString(withEnv(argv, env, platform), { platform })
   }
+  const entries = Object.entries(env ?? {})
   for (const [k, v] of entries) {
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k))
-      throw new Error(`invalid environment variable name: ${k}`)
+    assertEnvName(k)
     if (v === undefined)
       throw new Error(`cannot unset ${k} in an assignment prefix: use withEnv for \`env -u\``)
   }
