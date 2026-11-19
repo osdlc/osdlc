@@ -945,8 +945,7 @@ async fn check(state: &GuardState, mut req: Request<Body>, next: Next) -> Respon
                 best = best.max(rank(t));
             }
         }
-        // Tagged under the same read lock as the match, so a
-        // `replace_tokens` that withdraws the entry cuts this connection.
+        // Must stay under the read lock; see GuardState::replace_tokens.
         if let (Some((_, _, id)), Some(c)) = (best, &conn) {
             c.tag(id);
         }

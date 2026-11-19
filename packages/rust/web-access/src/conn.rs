@@ -33,6 +33,8 @@ pub(crate) struct Conn {
     /// The id of the token entry that admitted the latest request on this
     /// connection; 0 for none (ids start at 1). HTTP/1 carries one request at
     /// a time, so a stream or an upgraded socket runs under this one.
+    /// Assumes HTTP/1 (one request at a time): with axum's http2
+    /// feature on, concurrent requests on one connection would overwrite each other's tag.
     tag: AtomicU64,
 }
 
@@ -236,9 +238,8 @@ impl AsyncWrite for CutStream {
 }
 
 /// Fires when the server cuts the connection a request arrived on: its token
-/// was withdrawn ([`crate::ServerHandle::replace_tokens`], or a
-/// [`crate::SharingRuntime`] rotation, admin or sharing turned off), or the
-/// server stopped.
+/// was withdrawn (see [`crate::ServerHandle::replace_tokens`]) or the server
+/// stopped.
 ///
 /// Once cut, every read and write on the connection fails, so a handler that
 /// owns an upgraded connection sees an error on its next read or write anyway.

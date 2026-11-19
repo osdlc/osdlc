@@ -94,8 +94,8 @@ impl ServerHandle {
     /// Where another device can open the app: one URL per reachable address,
     /// carrying the current tokens' [`Tokens::share_token`] when there is one.
     /// A wildcard bind expands to the host's non-loopback interface addresses
-    /// of its family, as the machine has them now (read at most every two
-    /// seconds). Use [`Self::share_urls_for`] for a particular grant's link.
+    /// of its family, as the machine has them now (see
+    /// [`Listen::AllInterfaces`]). Use [`Self::share_urls_for`] for a particular grant's link.
     pub fn share_urls(&self) -> Vec<String> {
         match self.state.share_token() {
             Some(t) => self.share_urls_for(&t),
@@ -131,6 +131,9 @@ impl ServerHandle {
     /// or one given an explicit [`ServeOptions::policy`], keeps its policy: if
     /// it is handed [`Tokens::none`], it refuses every request that needs a
     /// token.
+    ///
+    /// Assumes HTTP/1 (one request at a time): with axum's http2 feature on,
+    /// concurrent requests on one connection would overwrite each other's tag.
     pub fn replace_tokens(&self, tokens: Tokens) {
         self.state.replace_tokens(tokens);
     }
@@ -356,8 +359,6 @@ async fn serve_with_ips(
         return Err(ServeError::AdminPublicOnlyWithoutPublicHosts);
     }
 
-    // The default opens loopback while there is no token, which `serve`
-    // allows only on a loopback-only listen. It follows `replace_tokens`.
     let loopback_follows_tokens = opts.policy.is_none() && cfg.listen.is_loopback_only();
     let policy = opts.policy.unwrap_or_default();
 

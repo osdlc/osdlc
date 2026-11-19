@@ -181,8 +181,7 @@ impl WebAccessStatus {
     }
 }
 
-/// The running server; only `set`, `rotate` and `start_from_store` touch it,
-/// under [`SharingRuntime::live`].
+/// The running server; touched only under [`SharingRuntime::live`].
 #[derive(Default)]
 struct Live {
     server: Option<Running>,
