@@ -175,8 +175,8 @@ describe.skipIf(noBun)('the bun-test capture path, under Bun (skipped without bu
   }, 20_000)
 
   test('a missing binary under Bun is classified not-installed, sync and async', () => {
-    // No NODE_ENV=test: in-process `spawnSync` and `spawn` report Bun's own
-    // `Executable not found in $PATH` text, with no `ENOENT` in it.
+    // Without NODE_ENV=test the sync runner spawns in-process (see CHILD_STDIO_CORRUPTED
+    // in src/sync.ts), so both runners report Bun's text.
     withTempDir((dir) => {
       const { NODE_ENV: _, ...env } = bunEnv(dir, dir)
       const { result } = runProbe(

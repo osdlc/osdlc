@@ -218,7 +218,7 @@ function spawnFailure(
       detail,
     )
   }
-  // Bun words a missing binary as this text, not as `ENOENT`.
+  // Bun reports a missing binary as `Executable not found in $PATH`, with no `ENOENT`.
   if (/\bENOENT\b|Executable not found in \$PATH/.test(error)) {
     return make('not-installed', `${subject} is not installed or not on PATH.`, detail)
   }
