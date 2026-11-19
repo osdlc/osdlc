@@ -274,7 +274,9 @@ function sweepWith(
 }
 
 const loadConfig = (v: { config?: string | undefined }, ctx: CliContext): Config =>
-  readConfig(v.config === undefined ? configFile(hostDirs(ctx.env)) : resolve(ctx.cwd, v.config))
+  v.config === undefined
+    ? readConfig(configFile(hostDirs(ctx.env)))
+    : readConfig(resolve(ctx.cwd, v.config), { required: true })
 
 function writeNotes(ctx: CliContext, name: string, notes: readonly RepoNote[]): void {
   for (const { repo, note } of notes)

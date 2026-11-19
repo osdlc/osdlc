@@ -41,12 +41,16 @@ export function hostDirs(env: Record<string, string | undefined> = process.env):
 export const configFile = (dirs: HostDirs): string => join(dirs.config, 'config.json')
 
 /**
- * The config at `path`; empty when the file does not exist.
+ * The config at `path`; empty when the file does not exist, unless `required` (a file the
+ * person named).
  *
  * @throws HostCleanerError (`bad-input`) for a file that is not valid
  */
-export function readConfig(path: string): Config {
-  if (!existsSync(path)) return ConfigSchema.parse({})
+export function readConfig(path: string, opts: { required?: boolean } = {}): Config {
+  if (!existsSync(path)) {
+    if (opts.required) throw new HostCleanerError('bad-input', `config ${path} does not exist`)
+    return ConfigSchema.parse({})
+  }
   let raw: unknown
   try {
     raw = JSON.parse(readFileSync(path, 'utf-8'))
