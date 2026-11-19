@@ -315,8 +315,9 @@ export class Git {
    * reads, such as `rev:path` or a sha. Runs `cat-file --batch-check` for the
    * sizes, then `cat-file --batch` for the blobs within `maxBytes`, a few
    * processes in all, on the `bytesRunner`. The map is keyed by the names
-   * given. Throws the classified failure if git fails, and `TypeError` for a
-   * name that is empty or holds a newline, a NUL or a trailing CR. See {@link CatFileEntry}.
+   * given. Throws the classified failure if git fails, `UnsupportedRequest`
+   * when the client has no bytes runner, and `TypeError` for a name that is
+   * empty or holds a newline, a NUL or a trailing CR. See {@link CatFileEntry}.
    *
    * @experimental command-seam's bytes runners are experimental.
    */

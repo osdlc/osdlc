@@ -35,8 +35,6 @@ use std::path::Path;
 use crate::{GitError, git};
 
 /// What one name resolved to. `bytes` are git's, never decoded.
-///
-/// The enum is `#[non_exhaustive]`, so a `match` on it needs a `_` arm.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum CatFileEntry {
@@ -122,7 +120,7 @@ pub type NamedEntry = (String, CatFileEntry);
 
 /// Git's binary test: a NUL in the first 8000 bytes.
 const BINARY_WINDOW: usize = 8000;
-/// Names per `--batch-check` run: its output is a short line per name.
+/// Names per `--batch-check` run: bounds one process's input and output.
 const CHECK_NAMES: usize = 10_000;
 
 struct Found {
@@ -138,6 +136,8 @@ fn refuse(reason: String) -> GitError {
     }
 }
 
+// git reads names a line at a time and drops a CR before the LF, so `foo\r`
+// would be read as `foo` and its entry filed under the wrong name.
 fn unique_names(names: &[&str]) -> Result<Vec<String>, GitError> {
     let mut seen = HashSet::new();
     let mut out = Vec::new();
@@ -166,8 +166,10 @@ fn input_of(names: impl Iterator<Item = impl AsRef<str>>) -> Vec<u8> {
 /// Reads the objects of `names` byte for byte, in a few git processes. The
 /// result is in the order of `names`, with a repeated name once.
 ///
-/// A name that is empty, or holds a newline, a NUL or a trailing CR, is refused with a
-/// [`GitError::Command`] before git runs, as is a git failure.
+/// # Errors
+///
+/// [`GitError::Command`] for a name that is empty or holds a newline, a NUL or
+/// a trailing CR (before git runs), and for a failed or unreadable git answer.
 pub fn cat_file_batch(
     repo: &Path,
     names: &[&str],
@@ -188,6 +190,10 @@ pub fn cat_file_batch(
 /// [`cat_file_batch`] one group of blobs at a time: `sink` gets each group as
 /// it is read, so a caller can use the bytes and drop them before the next
 /// read. The first group also holds every entry that needed no content read.
+///
+/// # Errors
+///
+/// As [`cat_file_batch`]. Groups already given to `sink` stay given.
 pub fn cat_file_batch_chunks(
     repo: &Path,
     names: &[&str],
@@ -298,7 +304,7 @@ fn parse_content(stdout: &[u8], blobs: Vec<Found>) -> Result<Vec<NamedEntry>, Gi
         let expected = format!("{} blob {}", b.sha, b.size);
         if header != expected {
             return Err(refuse(format!(
-                "{} changed while it was read (expected {expected:?}, got {header:?})",
+                "unexpected header for {} (expected {expected:?}, got {header:?})",
                 b.name
             )));
         }

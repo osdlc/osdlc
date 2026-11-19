@@ -40,7 +40,7 @@ export interface CatFileRun {
   readonly type: 'run'
   readonly argv: string[]
   readonly input: string
-  /** An output cap that fits the answer, so the runner's default never cuts it. */
+  /** An output cap sized to the answer; `undefined` leaves the runner's default. */
   readonly maxOutputBytes: number | undefined
 }
 
@@ -51,7 +51,7 @@ export interface CatFileChunk {
 }
 
 const DEFAULT_CHUNK_BYTES = 64 * 1024 * 1024
-/** Names per `--batch-check` run: its output is a short line per name. */
+/** Names per `--batch-check` run: bounds one process's input and output. */
 const CHECK_NAMES = 10_000
 /** More than a `<sha> <type> <size>\n` header and the `\n` after the content take. */
 const OBJECT_OVERHEAD = 160
@@ -65,6 +65,8 @@ interface Found {
   size: number
 }
 
+// git reads names a line at a time and drops a CR before the LF, so `foo\r`
+// would be read as `foo` and its entry filed under the wrong name.
 function checkNames(names: readonly string[]): string[] {
   const unique = new Set<string>()
   for (const name of names) {
@@ -88,10 +90,10 @@ function limit(option: string, value: number | undefined, fallback: number, zero
   return n
 }
 
-/** The `--batch-check` answer for `names`, in order. */
+/** Parses the `--batch-check` answer for `names`: sets `missing` names in `out` and returns the others, in order. */
 function parseCheck(stdout: Buffer, names: readonly string[], out: Map<string, CatFileEntry>) {
   const lines = stdout.toString('utf8').split('\n')
-  lines.pop() // after the last newline
+  lines.pop() // the empty string after the trailing newline
   if (lines.length !== names.length) {
     throw new Error(
       `typed-git: catFileBatch: git answered ${lines.length} lines for ${names.length} names`,
@@ -119,10 +121,11 @@ function parseContent(stdout: Buffer, blobs: readonly Found[]): Map<string, CatF
   let at = 0
   for (const b of blobs) {
     const eol = stdout.indexOf(0x0a, at)
-    const header = eol < 0 ? '' : stdout.toString('utf8', at, eol)
+    if (eol < 0) throw new Error(`typed-git: catFileBatch: git's output for ${b.name} is cut short`)
+    const header = stdout.toString('utf8', at, eol)
     if (header !== `${b.sha} blob ${b.size}`) {
       throw new Error(
-        `typed-git: catFileBatch: ${b.name} changed while it was read (expected "${b.sha} blob ${b.size}", got "${header}")`,
+        `typed-git: catFileBatch: unexpected header for ${b.name} (expected "${b.sha} blob ${b.size}", got "${header}")`,
       )
     }
     const start = eol + 1
