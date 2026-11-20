@@ -182,6 +182,8 @@ export type {
   MigrationStep,
   MigrationWarning,
 } from './migrate.ts'
+export { validateStandard } from './standard.ts'
+export type { StandardIssue, StandardSchemaV1, StandardValidation } from './standard.ts'
 export { currentMachineVersion, migrateMachineRaw } from './machine-migrate.ts'
 export type { MachineMigration } from './machine-migrate.ts'
 
