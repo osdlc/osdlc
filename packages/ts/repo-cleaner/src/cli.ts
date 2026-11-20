@@ -16,7 +16,7 @@
  * Exit codes: see EXIT in src/reference.ts (shown by --help --extended).
  */
 
-import { existsSync, readSync, rmSync } from 'node:fs'
+import { readSync, rmSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import { isatty } from 'node:tty'
 
@@ -33,12 +33,26 @@ import {
   type FlagSpec,
   type FlagValues,
 } from '@osdlc/cli-tool'
-import { Git } from '@osdlc/typed-git'
 import { detectColorLevel, stripControls } from '@osdlc/ux'
 
-import { checkApproval, parseAllow, resolveApproval, type Approval } from './approval.ts'
+import {
+  allowed,
+  checkApproval,
+  keyOf,
+  parseAllow,
+  resolveApproval,
+  type Approval,
+} from './approval.ts'
 import { check, run, type Preview } from './clean.ts'
-import { fileStamp, parsePlan, plan as planOf, readPlan, writePlan, type Plan } from './plan.ts'
+import {
+  fileStamp,
+  parsePlan,
+  plan as planOf,
+  readPlan,
+  runnable,
+  writePlan,
+  type Plan,
+} from './plan.ts'
 import { PROVIDER_CHOICES } from './providers/index.ts'
 import type { Receipt, Step } from './receipt.ts'
 import { REFERENCE } from './reference.ts'
@@ -81,7 +95,6 @@ import {
   RepoCleanerError,
   sweepNotes,
   type Kind,
-  type Risk,
   type RepoNote,
   type Sweep,
 } from './types.ts'
@@ -90,6 +103,9 @@ const EXIT_NOTHING_TO_SWEEP = 10
 const EXIT_STEP_FAILED = 11
 
 const NAME = 'repo-cleaner'
+
+const NO_TERMINAL_FOR_I =
+  '-i needs a terminal to ask on; name the rows with --pick and --spare instead'
 
 /** `--help` and its modifier: commander must not own `--help`, or it would never see `--extended`. */
 const HELP_FLAGS = {
@@ -483,25 +499,6 @@ function remoteNote(s: Sweep, style: Style): string {
   )
 }
 
-/**
- * Refuse a target that names no directory but does name a remote of the
- * checkout here: `--remote upstream`, with a space, reads `upstream` as a
- * target, and the fix is `--remote=upstream`.
- */
-function refuseRemoteSlip(targets: readonly string[], ctx: CliContext, deps: MainDeps): void {
-  const loose = targets.filter((t) => !existsSync(resolve(ctx.cwd, t)) && !t.includes(':'))
-  if (loose.length === 0) return
-  const listed = new Git(ctx.cwd, { runner: deps.runners?.git }).try.remotes()
-  if (!listed.ok) return
-  const slip = loose.find((t) => listed.value.includes(t))
-  if (slip !== undefined) {
-    throw new RepoCleanerError(
-      'conflict',
-      `${slip} is a remote, not a directory: write --remote=${slip}`,
-    )
-  }
-}
-
 type Swept =
   { kind: 'ok'; sweep: Sweep } | { kind: 'nothing'; sweep: Sweep } | { kind: 'exit'; code: number }
 
@@ -523,7 +520,6 @@ function doSweep(
       onWarn: (message) => ctx.io.stderr(`${NAME}: ${message}\n`),
       ...(v.progress ? { onProgress: (p) => status.update(describeSweep(p)) } : {}),
     }
-    refuseRemoteSlip(targets, ctx, deps)
     if (v.progress) status.update(`${NAME}: finding repositories`)
     result = sweepTargets(targets, opts)
   } catch (err) {
@@ -636,19 +632,12 @@ type CleanValues = ValuesOf<ReturnType<typeof cleanCli>>
 /** The run's options that contradict each other, as a usage message, or null. */
 function cleanConflict(v: CleanValues, targets: readonly string[]): string | null {
   if (v.plan !== undefined) {
-    const fixed = [
-      targets.length > 0 ? 'targets' : null,
-      v.local ? '--local' : null,
-      v.remote !== undefined ? '--remote' : null,
-      v.all ? '--all' : null,
-      v.worktrees ? '--worktrees' : null,
-      v.branches ? '--branches' : null,
-      v.branch !== undefined ? '--branch' : null,
-      v.fetch ? '--fetch' : null,
-      v.offline ? '--offline' : null,
-      v.against !== undefined ? '--against' : null,
-      v.provider !== undefined ? '--provider' : null,
-    ].filter((f) => f !== null)
+    // Every sweep flag given, so a new one cannot be missed here. `progress`
+    // only draws.
+    const given = (Object.keys(SWEEP_FLAGS) as (keyof typeof SWEEP_FLAGS)[]).filter(
+      (k) => k !== 'progress' && v[k] !== undefined && v[k] !== false,
+    )
+    const fixed = [...(targets.length > 0 ? ['targets'] : []), ...given.map((k) => `--${k}`)]
     if (fixed.length > 0) return `--plan already fixed what is swept; drop ${fixed.join(', ')}`
   }
   if (v.interactive && v.pick.length > 0) {
@@ -683,22 +672,26 @@ function chooseRows(
   ctx: CliContext,
   deps: MainDeps,
 ): Approval | null {
-  const spared = resolveApproval(plan, { spare: approval.spare ?? [] }, ctx.cwd)
-  const left = new Set([...spared.spare, ...spared.spareMatched].map((r) => `${r.repo}\0${r.id}`))
+  const given = resolveApproval(plan, { spare: approval.spare, allow: approval.allow }, ctx.cwd)
+  const left = new Set([...given.spare, ...given.spareMatched].map(keyOf))
   const why = new Map(
     (sweep?.repos ?? []).flatMap((r) =>
-      r.rows.map((row) => [`${r.repo?.root}\0${row.id}`, row.why]),
+      r.repo === null
+        ? []
+        : r.rows.map((row) => [keyOf({ repo: r.repo!.root, id: row.id }), row.why]),
     ),
   )
   const rows = plan.repos.flatMap((r) =>
-    r.rows.filter((row) => !left.has(`${r.root}\0${row.id}`)).map((row) => ({ repo: r.root, row })),
+    r.rows
+      .map((row) => ({ at: { repo: r.root, id: row.id }, row }))
+      .filter(({ at }) => !left.has(keyOf(at))),
   )
   if (rows.length === 0) return { spare: approval.spare, allow: approval.allow }
   const several = plan.repos.length > 1
-  const items: ChecklistItem[] = rows.map(({ repo, row }) => {
-    const reason = why.get(`${repo}\0${row.id}`)
-    const label = `${row.id}  ${row.verdict}${reason === undefined ? '' : `: ${reason}`}${several ? `  (${repo})` : ''}`
-    const runs = row.action !== null && row.verdict !== 'blocked'
+  const items: ChecklistItem[] = rows.map(({ at, row }) => {
+    const reason = why.get(keyOf(at))
+    const label = `${row.id}  ${row.verdict}${reason === undefined ? '' : `: ${reason}`}${several ? `  (${at.repo})` : ''}`
+    const runs = runnable(row)
     return {
       label,
       checked: runs && row.verdict === 'delete',
@@ -708,29 +701,15 @@ function chooseRows(
   const ticked = (deps.checklist ?? terminalChecklist)('Clean which rows?', items)
   if (ticked === null) return null
   const allow = [...(approval.allow ?? [])]
-  const allowedFor = (risk: Risk, repo: string, id: string): boolean =>
-    allow.some((a) =>
-      typeof a === 'string'
-        ? a === risk
-        : a.risk === risk &&
-          (a.row === undefined ||
-            (typeof a.row === 'string' ? a.row === id : a.row.repo === repo && a.row.id === id)),
-    )
   const ask = deps.confirm ?? terminalConfirm
   for (const i of ticked) {
-    const { repo, row } = rows[i]!
+    const { at, row } = rows[i]!
     for (const risk of row.risks) {
-      if (allowedFor(risk, repo, row.id)) continue
-      if (ask(`${row.id} carries ${risk}: allow it?`) === true) {
-        allow.push({ risk, row: { repo, id: row.id } })
-      }
+      if (allowed(given.allow, at, risk)) continue
+      if (ask(`${row.id} carries ${risk}: allow it?`) === true) allow.push({ risk, row: at })
     }
   }
-  return {
-    select: ticked.map((i) => ({ repo: rows[i]!.repo, id: rows[i]!.row.id })),
-    spare: approval.spare,
-    allow,
-  }
+  return { select: ticked.map((i) => rows[i]!.at), spare: approval.spare, allow }
 }
 
 /** Where `clean`'s plan came from, and what that decides about the run. */
@@ -809,11 +788,7 @@ function runClean(
   const conflict = cleanConflict(v, targets)
   if (conflict !== null) return usageError(ctx, name, conflict)
   if (v.interactive && deps.checklist === undefined && !canPrompt()) {
-    return usageError(
-      ctx,
-      name,
-      '-i needs a terminal to ask on; name the rows with --pick and --spare instead',
-    )
+    return usageError(ctx, name, NO_TERMINAL_FOR_I)
   }
   // Refuse what can be refused before sweeping; a saved plan's own options
   // are checked when the approval is resolved against it.
@@ -834,11 +809,7 @@ function runClean(
     try {
       const chosen = chooseRows(plan, loaded.sweep, approval, ctx, deps)
       if (chosen === null) {
-        return usageError(
-          ctx,
-          name,
-          '-i needs a terminal to ask on; name the rows with --pick and --spare instead',
-        )
+        return usageError(ctx, name, NO_TERMINAL_FOR_I)
       }
       approval = chosen
     } catch (err) {

@@ -125,6 +125,27 @@ describe('the command line', () => {
     expect(left).not.toContain('feat/unsure')
   })
 
+  test('-i does not ask again for a risk already allowed by a bare name', () => {
+    const fx = forkAndParent()
+    fx.pushBranch('origin', 'feat/unsure')
+    const asked: string[] = []
+    const res = cli(
+      fx,
+      ['clean', '--branches', '-i', '-y', '--allow', 'abandon-unmerged=feat/unsure'],
+      {
+        checklist: (_q, items) =>
+          items.flatMap((i, n) => (i.label.startsWith('branch:feat/unsure') ? [n] : [])),
+        confirm: (q) => {
+          asked.push(q)
+          return true
+        },
+      },
+    )
+    expect(res.code).toBe(0)
+    expect(asked).toEqual([])
+    expect(sh(fx.root, ['branch', '--format=%(refname:short)'])).not.toContain('feat/unsure')
+  })
+
   test('-i needs a terminal, and does not go with --pick', () => {
     const fx = forkAndParent()
     expect(cli(fx, ['clean', '-i', '-y']).err).toContain('-i needs a terminal')

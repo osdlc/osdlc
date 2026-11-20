@@ -63,6 +63,14 @@ export function sweptWith(
   const exists = (t: string): boolean => existsSync(resolve(cwd, expandTilde(t)))
   const isUrl = targets.map((t) => isRemoteUrl(t, exists))
   const urls = isUrl.some(Boolean)
+  // `--remote upstream`, with a space, reads `upstream` as a target: refuse a
+  // target that names no directory but does name a remote of the checkout here.
+  const loose = targets.filter((t, i) => !isUrl[i] && !exists(t))
+  if (loose.length > 0) {
+    const listed = new Git(cwd, { runner: opts.git }).try.remotes()
+    const slip = listed.ok ? loose.find((t) => listed.value.includes(t)) : undefined
+    if (slip !== undefined) conflict(`${slip} is a remote, not a directory: write --remote=${slip}`)
+  }
   if (urls && !isUrl.every(Boolean)) {
     conflict('a remote URL target sweeps remote branches only; sweep it apart from checkouts')
   }

@@ -201,13 +201,9 @@ function spareRows(
   const paths = pathForms(ref.name, cwd)
   const named: Resolved[] = []
   const matched: Resolved[] = []
-  for (const repo of plan.repos) {
-    for (const row of repo.rows) {
-      const { kind, name } = parseRowId(row.id)!
-      const at = { repo: repo.root, id: row.id }
-      if (kind === 'worktree' ? paths.has(name) : name === ref.name) named.push(at)
-      else if (kind === 'remote' && name.slice(name.indexOf('/') + 1) === ref.name) matched.push(at)
-    }
+  for (const e of planEntries(plan)) {
+    if (e.kind === 'worktree' ? paths.has(e.name) : e.name === ref.name) named.push(rowOf(e))
+    else if (e.branch === ref.name) matched.push(rowOf(e))
   }
   if (named.length + matched.length === 0) {
     throw new RepoCleanerError('not-found', `--spare ${text}: no such row in the plan`)
@@ -219,18 +215,32 @@ function spareRows(
 function matchGlob(plan: Plan, glob: string): Resolved[] {
   const ref = parseRowRef(glob)
   const re = globRegExp(ref.name)
-  const hits: Resolved[] = []
-  for (const repo of plan.repos) {
-    for (const row of repo.rows) {
-      const { kind, name } = parseRowId(row.id)!
-      if (ref.kind !== null && ref.kind !== kind) continue
-      const names = [name]
-      if (kind === 'remote') names.push(name.slice(name.indexOf('/') + 1))
-      if (names.some((n) => re.test(n))) hits.push({ repo: repo.root, id: row.id })
-    }
-  }
-  return hits
+  return planEntries(plan)
+    .filter((e) => ref.kind === null || ref.kind === e.kind)
+    .filter((e) => re.test(e.name) || (e.branch !== null && re.test(e.branch)))
+    .map(rowOf)
 }
+
+/** A plan row with its name split out, and a remote branch's name without its remote. */
+interface PlanEntry extends Resolved {
+  kind: Kind
+  name: string
+  /** `feat/x` for `remote:origin/feat/x`; null for a local row. */
+  branch: string | null
+}
+
+/** Every row of `plan`, with its repository. */
+function planEntries(plan: Plan): PlanEntry[] {
+  return plan.repos.flatMap((repo) =>
+    repo.rows.map((row) => {
+      const { kind, name } = parseRowId(row.id)!
+      const branch = kind === 'remote' ? name.slice(name.indexOf('/') + 1) : null
+      return { repo: repo.root, id: row.id, kind, name, branch }
+    }),
+  )
+}
+
+const rowOf = (e: PlanEntry): Resolved => ({ repo: e.repo, id: e.id })
 
 /** The names a worktree reference may match: as written, against `cwd`, and resolved through symlinks. */
 function pathForms(name: string, cwd: string): Set<string> {
@@ -247,8 +257,7 @@ function pathForms(name: string, cwd: string): Set<string> {
 /** The plan row `text` names, its scope checked first so a row the plan could never hold is a conflict, not a miss. */
 function resolveRef(plan: Plan, text: string | Resolved, flag: string, cwd: string): Resolved {
   if (typeof text !== 'string') {
-    const found = plan.repos.find((r) => r.root === text.repo)?.rows.some((r) => r.id === text.id)
-    if (found !== true) {
+    if (!planEntries(plan).some((e) => same(e, text))) {
       throw new RepoCleanerError(
         'not-found',
         `${flag} ${text.id} in ${text.repo}: no such row in the plan`,
@@ -259,16 +268,10 @@ function resolveRef(plan: Plan, text: string | Resolved, flag: string, cwd: stri
   const ref = parseRowRef(text)
   checkScope(plan.options, ref, flag, text)
   const paths = ref.kind === null || ref.kind === 'worktree' ? pathForms(ref.name, cwd) : null
-  const hits: Resolved[] = []
-  for (const repo of plan.repos) {
-    for (const row of repo.rows) {
-      const { kind, name } = parseRowId(row.id)!
-      if (ref.kind !== null && ref.kind !== kind) continue
-      if (kind === 'worktree' ? paths!.has(name) : ref.name === name) {
-        hits.push({ repo: repo.root, id: row.id })
-      }
-    }
-  }
+  const hits = planEntries(plan)
+    .filter((e) => ref.kind === null || ref.kind === e.kind)
+    .filter((e) => (e.kind === 'worktree' ? paths!.has(e.name) : ref.name === e.name))
+    .map(rowOf)
   if (hits.length === 0) {
     throw new RepoCleanerError('not-found', `${flag} ${text}: no such row in the plan`)
   }
