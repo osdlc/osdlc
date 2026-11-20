@@ -402,7 +402,13 @@ describe('a real process', () => {
     const ctx = { ...ctxOf(root), cwd: dir, allow: [CLOSE_SESSION] }
     const s = survey([plugin], ctx)
     const c = sessions(s.candidates).find((x) => x.evidence.pid === pid)
-    expect(c).toBeDefined()
+    const seen = spawnSync('ps', ['-o', 'pid=,lstart=,command=', '-p', String(pid)], {
+      encoding: 'utf8',
+    }).stdout
+    expect(
+      c,
+      JSON.stringify({ pid, warnings: s.warnings, plugins: s.plugins.map((p) => p.name), seen }),
+    ).toBeDefined()
     const receipt = clean(plan(s, { pick: [c!.id], allow: [CLOSE_SESSION] }), [plugin], ctx)
     expect(receipt.steps).toMatchObject([{ id: c!.id, result: 'ok' }])
     expect(spawnSync('ps', ['-p', String(pid)]).status).toBe(1)
