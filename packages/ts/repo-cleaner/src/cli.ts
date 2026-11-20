@@ -32,7 +32,8 @@ import {
 } from '@osdlc/cli-tool'
 import { detectColorLevel, stripControls } from '@osdlc/ux'
 
-import { check, checkApproval, parseAllow, run, type Approval, type Preview } from './clean.ts'
+import { checkApproval, parseAllow, type Approval } from './approval.ts'
+import { check, run, type Preview } from './clean.ts'
 import { fileStamp, parsePlan, plan as planOf, readPlan, writePlan, type Plan } from './plan.ts'
 import { PROVIDER_CHOICES } from './providers/index.ts'
 import type { Receipt, Step } from './receipt.ts'
@@ -68,7 +69,8 @@ import {
   type StatusLine,
 } from './status-line.ts'
 import { stepBoard, type StepBoard } from './step-board.ts'
-import { sweep as sweepTargets, sweptWith, type SweepOptions } from './sweep.ts'
+import { sweptWith } from './scope.ts'
+import { sweep as sweepTargets, type SweepOptions } from './sweep.ts'
 import {
   KINDS,
   RISKS,

@@ -36,9 +36,9 @@ import {
   inspectWorktree,
   sweep,
   sweepRepo,
-  sweptWith,
   type SweepOptions,
 } from '../src/sweep.ts'
+import { sweptWith } from '../src/scope.ts'
 import {
   KINDS,
   RepoCleanerError,

@@ -25,12 +25,11 @@ import { Git, PUSH_REJECTIONS } from '@osdlc/typed-git'
 import { makeBareAndWorker } from '@osdlc/typed-git/testing'
 
 import { cannedGh, sh } from './helpers.ts'
+import { resolveApproval, type Approval } from '../src/approval.ts'
 import {
   check,
   networkRemoteKey,
-  resolveApproval,
   run,
-  type Approval,
   type CheckOptions,
   type Preview,
   type RunOptions,
