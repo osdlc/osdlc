@@ -9,7 +9,7 @@
 
 import type { PrProvider } from './providers/index.ts'
 import type { PrListing, ProviderStatus } from './providers/types.ts'
-import type { PRInfo, RepoInfo } from './types.ts'
+import type { PRInfo } from './types.ts'
 import { errorText } from './util.ts'
 
 /** Why open pull requests cannot be ruled out, and the words for it. */
@@ -78,21 +78,27 @@ export interface PrLookup {
  * than losing every row to one listing. A listing that answered but says it
  * left requests out returns the PRs it read, with `incomplete` saying why.
  *
+ * @param at The repository's root, and what the probe of one remote's
+ *   provider found (a `RepoInfo` gives its default remote's).
  * @param provider The provider to ask. It is asked only when it is the one
- *   `repo.provider` names and that probe found it signed in.
+ *   `at.provider` names and that probe found it signed in.
  * @param branch Ask only for PRs whose head is exactly this branch; rows
  *   for any other head are dropped here too.
  */
-export function lookupPrs(repo: RepoInfo, provider: PrProvider, branch?: string): PrLookup {
+export function lookupPrs(
+  at: { root: string; provider: ProviderStatus | null },
+  provider: PrProvider,
+  branch?: string,
+): PrLookup {
   const byHead = new Map<string, PRInfo>()
-  const status = repo.provider
+  const status = at.provider
   if (status === null || status.name !== provider.name || !status.authenticated) {
     return { prs: byHead, error: null, incomplete: null }
   }
 
   let rows: PRInfo[] | PrListing | null
   try {
-    rows = provider.listPrs(repo.root, status, branch)
+    rows = provider.listPrs(at.root, status, branch)
   } catch (err) {
     // A bug in the provider is not a listing that failed: let it fail loudly,
     // as an error on the repository, rather than gate every remote branch.

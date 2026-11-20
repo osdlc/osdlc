@@ -14,22 +14,18 @@ import type { CommandRunner } from '@osdlc/command-seam'
 import { Git, checkoutRoot } from '@osdlc/typed-git'
 import { Gh } from '@osdlc/typed-gh'
 
-import {
-  HELD_BY_WORKTREE,
-  gatherLocalBranches,
-  gatherRemoteBranches,
-  resolveBranch,
-} from './branches.ts'
-import { discoverRepo } from './discover.ts'
+import { HELD_BY_WORKTREE, gatherLocalBranches, gatherRemoteBranches } from './branches.ts'
+import { discoverRepo, resolveRemoteDefaults } from './discover.ts'
 import type { Annotate } from './hooks.ts'
 import { defaultProcessProbe, type ProcessProbe } from './processes.ts'
 import { lookupPrs, prsUnchecked } from './prs.ts'
-import { PROVIDER_CHOICES, providers, type ProviderChoice } from './providers/index.ts'
-import { defaultCacheDir, ensureMirror, isRemoteUrl, redactUrl } from './remote-mirror.ts'
+import { providers, type ProviderChoice } from './providers/index.ts'
+import type { ProviderStatus } from './providers/types.ts'
+import { defaultCacheDir, ensureMirror, redactUrl } from './remote-mirror.ts'
 import { sizeOf } from './size.ts'
-import { expandTilde, resolveEntries, type Resolution } from './resolve.ts'
+import { resolveEntries, type Resolution } from './resolve.ts'
+import { sweptWith } from './scope.ts'
 import {
-  KINDS,
   RepoCleanerError,
   countRows,
   emptyScan,
@@ -43,7 +39,6 @@ import {
   type Row,
   type Sweep,
   type SweepProgress,
-  type SweptWith,
   type WorktreeRow,
 } from './types.ts'
 import { errorText, isDir } from './util.ts'
@@ -66,19 +61,32 @@ export interface Runners {
 }
 
 export interface SweepOptions extends Runners {
-  /** Only these kinds of row. Default: `worktree` and `branch`, and `remote` with `remote`. Naming `remote` implies `remote`. */
+  /**
+   * Only these kinds of row. Default: `worktree` and `branch`, and `remote`
+   * with `remotes`. Naming `remote` alone judges the default remote's branches.
+   */
   only?: readonly Kind[] | undefined
-  /** Also judge remote branches: fetches each remote first and looks up pull requests. */
-  remote?: boolean | undefined
-  /** With `remote`: do not fetch; judge against the remote-tracking refs on disk. */
+  /**
+   * Also judge these remotes' branches: a name, `''` for the default remote,
+   * `*` for every remote. Each is fetched first, and its pull requests looked
+   * up.
+   */
+  remotes?: readonly string[] | undefined
+  /** Fetch the default remote before judging local rows. Remote rows fetch their remotes anyway. */
+  fetch?: boolean | undefined
+  /** With `remotes`: do not fetch; judge against the remote-tracking refs on disk. */
   offline?: boolean | undefined
-  /** The remote whose default branch counts as "merged into". Default `origin`, then the first remote. */
+  /**
+   * Judge every row against this remote's default branch, as a fork against
+   * its parent. Without it, a remote's branches are judged against its own
+   * default branch, and local rows against the default remote's.
+   */
   against?: string | undefined
-  /** With `remote`: where pull requests come from. Default `auto`, by the remote's host. */
+  /** With `remotes`: where pull requests come from. Default `auto`, by each remote's host. */
   provider?: ProviderChoice | undefined
   /**
-   * One branch only: its worktree, its local branch, and its remote branch
-   * with `remote`. `HEAD` is the branch checked out at the target. Takes at
+   * One branch only: its worktree, its local branch, and its remote branches
+   * with `remotes`. `HEAD` is the branch checked out at the target. Takes at
    * most one target, no remote URL, and never the default branch.
    */
   branch?: string | undefined
@@ -104,110 +112,6 @@ export interface SweepOptions extends Runners {
   onProgress?: ((progress: SweepProgress) => void) | undefined
   /** Told, mid-walk, that a target directory is enormous. Defaults to stderr. */
   onWarn?: ((message: string) => void) | undefined
-}
-
-const LOCAL: readonly Kind[] = ['worktree', 'branch']
-
-/**
- * The sweep `targets` and `opts` ask for, as a plan records it. Throws a
- * {@link RepoCleanerError} for options that contradict each other or would
- * have no effect, before anything is read.
- */
-export function sweptWith(
-  targets: readonly string[],
-  opts: Omit<
-    SweepOptions,
-    | Exclude<keyof Runners, 'git'>
-    | 'annotate'
-    | 'onProgress'
-    | 'onWarn'
-    | 'cacheDir'
-    | 'sizes'
-    | 'sizeTimeoutMs'
-  >,
-): SweptWith & { urls: boolean } {
-  const cwd = opts.cwd ?? process.cwd()
-  const conflict = (message: string): never => {
-    throw new RepoCleanerError('conflict', message)
-  }
-  if (targets.some((t) => t.trim() === '')) {
-    throw new RepoCleanerError('bad-input', 'a target is empty')
-  }
-  const only = opts.only === undefined ? undefined : [...new Set(opts.only)]
-  const unknown = (only ?? []).filter((k) => !(KINDS as readonly string[]).includes(k))
-  if (unknown.length > 0) {
-    throw new RepoCleanerError(
-      'bad-input',
-      `unknown kind(s) ${unknown.join(', ')}: expected ${KINDS.join(', ')}`,
-    )
-  }
-  if (only !== undefined && only.length === 0) {
-    throw new RepoCleanerError('bad-input', 'only names no kind')
-  }
-  if (
-    opts.provider !== undefined &&
-    !(PROVIDER_CHOICES as readonly string[]).includes(opts.provider)
-  ) {
-    throw new RepoCleanerError('bad-input', `unknown provider ${JSON.stringify(opts.provider)}`)
-  }
-
-  const exists = (t: string): boolean => existsSync(resolve(cwd, expandTilde(t)))
-  const isUrl = targets.map((t) => isRemoteUrl(t, exists))
-  const urls = isUrl.some(Boolean)
-  if (urls && !isUrl.every(Boolean)) {
-    conflict('a remote URL target sweeps remote branches only; sweep it apart from checkouts')
-  }
-  if (urls && only !== undefined && only.some((k) => k !== 'remote')) {
-    conflict(`a remote URL has only remote branches; drop --only ${only.join(',')}`)
-  }
-  if (urls && opts.branch !== undefined) {
-    conflict('--branch reads one branch of a checkout; it does not take a remote URL')
-  }
-  if (urls && opts.offline === true) {
-    conflict('a remote URL target is fetched to be swept; --offline would have no effect')
-  }
-  if (opts.branch !== undefined && targets.length > 1) {
-    conflict(`--branch sweeps one repository; ${targets.length} targets given`)
-  }
-  const remote = urls || opts.remote === true || (only ?? []).includes('remote')
-  if (opts.remote === true && only !== undefined && !only.includes('remote')) {
-    conflict(`--remote includes remote branches, but --only ${only.join(',')} leaves them out`)
-  }
-  if (opts.offline === true && !remote) {
-    conflict('--offline has no effect without --remote: nothing is fetched anyway')
-  }
-  if (opts.provider !== undefined && !remote) {
-    conflict(
-      '--provider has no effect without --remote: pull requests are looked up only for remote branches',
-    )
-  }
-  const kinds: Kind[] = urls
-    ? ['remote']
-    : only !== undefined
-      ? KINDS.filter((k) => only.includes(k))
-      : remote
-        ? [...LOCAL, 'remote']
-        : [...LOCAL]
-  // `HEAD` is the branch checked out at the target, resolved here so the
-  // options checked before the sweep are the ones the plan records.
-  let branch = opts.branch ?? null
-  if (branch === 'HEAD') {
-    const at = targets[0] === undefined ? cwd : resolve(cwd, expandTilde(targets[0]))
-    try {
-      branch = resolveBranch('HEAD', new Git(at, { runner: opts.git }))
-    } catch (err) {
-      throw new RepoCleanerError('conflict', err instanceof Error ? err.message : String(err))
-    }
-  }
-  return {
-    only: kinds,
-    remote,
-    offline: opts.offline === true,
-    against: opts.against ?? null,
-    provider: remote ? (opts.provider ?? 'auto') : 'none',
-    branch,
-    urls,
-  }
 }
 
 /**
@@ -285,9 +189,10 @@ export function sweep(targets: readonly string[], opts: SweepOptions = {}): Swee
       sweepRepo(root, {
         ...opts,
         only: options.only,
+        remotes: options.remotes,
         against: options.against ?? undefined,
         provider: options.provider,
-        fetch: options.remote && !options.offline,
+        fetch: options.offline ? [] : options.fetch ? 'local' : 'scope',
         branch,
         cwd,
         position: { index: i + 1, of },
@@ -312,15 +217,12 @@ export function sweep(targets: readonly string[], opts: SweepOptions = {}): Swee
  * deleted on its account, which then needs confirm-open-pr.
  */
 function providerNote(
-  repo: RepoInfo,
+  status: ProviderStatus | null,
   kinds: ReadonlySet<Kind>,
   choice: ProviderChoice,
 ): string | null {
-  const status = repo.provider
   const unchecked = status === null ? null : prsUnchecked(status)
-  // With no remote there is no remote branch to gate and no forge to point
-  // at; the local rows already say the lookup failed.
-  if (status === null || unchecked === null || repo.remote === null) return null
+  if (status === null || unchecked === null) return null
   // A local remote names no forge, and `auto` asks GitHub for any host that
   // is not GitLab's, so a host that is not a forge lands here too. github.com
   // is a forge: there the cause is access, not the provider.
@@ -389,11 +291,18 @@ function errorSweep(path: string, err: unknown): RepoSweep {
 /** What {@link sweepRepo} takes: a sweep's options, already resolved. */
 interface RepoSweepOptions extends Runners {
   only: readonly Kind[]
+  /** As {@link SweepOptions.remotes}; a plan's re-check passes the names it resolved. */
+  remotes: readonly string[]
   against?: string | undefined
   provider: ProviderChoice
-  fetch: boolean
   sizes?: boolean | undefined
   sizeTimeoutMs?: number | undefined
+  /**
+   * What to fetch first. `scope`: every remote whose branches are judged, and
+   * the `against` remote with them. `local`: those, and the default remote.
+   * A list: exactly those remotes, as a plan's re-check does. `[]`: nothing.
+   */
+  fetch: 'scope' | 'local' | readonly string[]
   /**
    * Read remote tips with `ls-remote` even without a fetch: `clean`'s
    * re-check, which must not delete on the strength of a stale tracking ref.
@@ -451,7 +360,8 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
   let repo
   try {
     repo = discoverRepo(path, {
-      remote: opts.against ?? null,
+      remotes: opts.remotes,
+      against: opts.against ?? null,
       allowProvider: opts.provider !== 'none',
       provider: opts.provider,
       git,
@@ -472,38 +382,87 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
   // A branch sweep judges the worktree on its own evidence, wherever the caller stands.
   const cwd = only === undefined ? opts.cwd : repo.root
 
-  if (opts.fetch && repo.remote !== null) {
+  const toFetch = fetchSet(repo, opts.fetch)
+  for (const name of toFetch) {
     report('fetch')
     const fetched = git
       .at(repo.root)
-      .try.fetch(repo.remote, undefined, { prune: true, quiet: true, noWriteFetchHead: true })
+      .try.fetch(name, undefined, { prune: true, quiet: true, noWriteFetchHead: true })
     // Unlike the lookups below, a failed fetch fails the repository: every
     // row, local ones included, would be judged against a default branch
     // older than the one asked for.
     if (!fetched.ok) {
       return {
-        ...errorSweep(path, new Error(`fetch failed: ${errorText(fetched.error)}`)),
+        ...errorSweep(path, new Error(`fetch of ${name} failed: ${errorText(fetched.error)}`)),
         repo,
       }
     }
-    repo = { ...repo, fetched: true }
+  }
+  repo = {
+    ...repo,
+    fetched: repo.remote !== null && toFetch.includes(repo.remote),
+    fetchedRemotes: toFetch,
+  }
+  try {
+    repo = resolveRemoteDefaults(repo, git)
+  } catch (err) {
+    return { ...errorSweep(path, err), repo }
+  }
+  if (only !== undefined && repo.remotes.some((r) => r.defaultBranch === only)) {
+    throw new RepoCleanerError(
+      'conflict',
+      `--branch ${only} is a remote's default branch, which is never a candidate for deletion`,
+    )
   }
 
   const notes: string[] = []
+  if (
+    repo.remote === null &&
+    repo.against === null &&
+    (kinds.has('worktree') || kinds.has('branch')) &&
+    repo.allRemotes.length > 0
+  ) {
+    notes.push(
+      `No default remote (no origin, and the default branch tracks none), so local rows are judged against the local \`${repo.mainBranch}\`; pass \`--against <remote>\` to judge them against a remote.`,
+    )
+  }
   try {
-    const status = repo.provider ?? null
-    if (status?.authenticated === true) report('prs', undefined, undefined, status.tool)
-    let prs = new Map<string, PRInfo>()
-    if (status !== null) {
-      const looked = lookupPrs(repo, known[status.name], only)
-      prs = looked.prs
-      if (looked.error !== null) {
-        repo = { ...repo, provider: { ...status, listError: looked.error } }
-      } else if (looked.incomplete !== null) {
-        repo = { ...repo, provider: { ...status, incomplete: looked.incomplete } }
+    // One lookup per remote: the default remote's answer serves both its
+    // own branches and the local rows. A repository with no default remote
+    // keys its local rows' lookup by ''.
+    const root = repo.root
+    // The default remote's pull requests are for the local rows: with none in
+    // scope, it is asked only when it is judged itself.
+    const local = kinds.has('worktree') || kinds.has('branch')
+    const statuses = new Map<string, ProviderStatus | null>(
+      local ? [[repo.remote ?? '', repo.provider]] : [],
+    )
+    for (const r of repo.remotes) if (!statuses.has(r.name)) statuses.set(r.name, r.provider)
+    const answered = new Map<string, { prs: Map<string, PRInfo>; status: ProviderStatus | null }>()
+    for (const [name, status] of statuses) {
+      if (status === null) {
+        answered.set(name, { prs: new Map(), status })
+        continue
       }
-      const note = providerNote(repo, kinds, opts.provider)
-      if (note !== null) notes.push(note)
+      if (status.authenticated) report('prs', undefined, undefined, status.tool)
+      const looked = lookupPrs({ root, provider: status }, known[status.name], only)
+      const after: ProviderStatus =
+        looked.error !== null
+          ? { ...status, listError: looked.error }
+          : looked.incomplete !== null
+            ? { ...status, incomplete: looked.incomplete }
+            : status
+      answered.set(name, { prs: looked.prs, status: after })
+      // With no remote there is no remote branch to gate and no forge to point
+      // at; the local rows already say the lookup failed.
+      const note = name === '' ? null : providerNote(after, kinds, opts.provider)
+      if (note !== null) notes.push(statuses.size > 1 ? `${name}: ${note}` : note)
+    }
+    const prs = answered.get(repo.remote ?? '')?.prs ?? new Map<string, PRInfo>()
+    repo = {
+      ...repo,
+      provider: answered.get(repo.remote ?? '')?.status ?? repo.provider,
+      remotes: repo.remotes.map((r) => ({ ...r, provider: answered.get(r.name)!.status })),
     }
     const rows: Row[] = []
 
@@ -550,14 +509,23 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
     }
 
     if (kinds.has('remote')) {
-      const remote = gatherRemoteBranches(repo, prs, localBranchNames, git, {
-        live: repo.fetched || opts.liveRemoteTips === true,
-        strict: opts.liveRemoteTips === true && !repo.fetched,
-        only,
-        tick: ticker('remote'),
-      })
-      rows.push(...remote.rows)
-      if (remote.note !== null) notes.push(remote.note)
+      for (const remote of repo.remotes) {
+        const gathered = gatherRemoteBranches(
+          repo,
+          remote,
+          answered.get(remote.name)!.prs,
+          localBranchNames,
+          git,
+          {
+            live: toFetch.includes(remote.name) || opts.liveRemoteTips === true,
+            strict: opts.liveRemoteTips === true && !toFetch.includes(remote.name),
+            only,
+            tick: ticker('remote'),
+          },
+        )
+        rows.push(...gathered.rows)
+        if (gathered.note !== null) notes.push(gathered.note)
+      }
     }
 
     const annotated =
@@ -645,8 +613,9 @@ export function inspectWorktree(
   const swept = sweepRepo(there ? real : cwd, {
     ...opts,
     only: ['worktree'],
+    remotes: [],
     provider: 'none',
-    fetch: false,
+    fetch: [],
     cwd,
     worktree: real,
   })
@@ -659,4 +628,15 @@ export function inspectWorktree(
     )
   }
   return row
+}
+
+/** The remotes `fetch` names for `repo`; see {@link RepoSweepOptions.fetch}. */
+function fetchSet(repo: RepoInfo, fetch: RepoSweepOptions['fetch']): string[] {
+  if (Array.isArray(fetch)) return [...fetch]
+  const names = repo.remotes.map((r) => r.name)
+  if (fetch === 'local' && repo.remote !== null) names.unshift(repo.remote)
+  if ((names.length > 0 || fetch === 'local') && repo.against !== null) {
+    names.push(repo.against.remote)
+  }
+  return [...new Set(names)]
 }

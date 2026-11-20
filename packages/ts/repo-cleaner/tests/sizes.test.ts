@@ -240,11 +240,11 @@ describe('--sizes on the command line', () => {
       const code = main(argv, ctx, { confirm: () => null })
       return { code, out: ctx.io.out }
     }
-    const on = JSON.parse(run(['--sizes', '--format', 'json', '--no-progress']).out) as {
+    const on = JSON.parse(run(['status', '--sizes', '--format', 'json', '--no-progress']).out) as {
       reclaimableBytes: { delete: number } | null
     }
     expect(on.reclaimableBytes?.delete).toBeGreaterThan(0)
-    const off = JSON.parse(run(['--format', 'json', '--no-progress']).out) as {
+    const off = JSON.parse(run(['status', '--format', 'json', '--no-progress']).out) as {
       reclaimableBytes: unknown
     }
     expect(off.reclaimableBytes).toBeNull()
