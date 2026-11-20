@@ -38,6 +38,14 @@
       { "language": "ts", "dir": "packages/ts/frontmatter-lossless", "name": "@osdlc/frontmatter-lossless" }
       ]
     },
+  "gfm-table": {
+    "reference": "ts",
+    "generator": "pnpm --filter @osdlc/gfm-table conformance:write",
+    "implementations": [
+      { "language": "ts", "dir": "packages/ts/gfm-table", "name": "@osdlc/gfm-table" },
+      { "language": "rust", "dir": "packages/rust/gfm-pipe-table", "name": "gfm-pipe-table" }
+    ]
+  },
   "intersect": {
     "reference": "ts",
     "generator": "pnpm --filter @osdlc/intersect conformance:write",
