@@ -9,6 +9,7 @@ import {
   readdirSync,
   realpathSync,
   rmSync,
+  writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -21,7 +22,7 @@ import { IDENTITY, makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { selectUnattended } from '../src/auto.ts'
 import { main, type MainDeps } from '../src/cli.ts'
-import { hostDirs } from '../src/config.ts'
+import { configFile, hostDirs } from '../src/config.ts'
 import type { Candidate, Objection, Plugin } from '../src/index.ts'
 import { renderPlist } from '../src/schedule.ts'
 
@@ -187,8 +188,13 @@ describe('host-cleaner --auto', () => {
 })
 
 describe('host-cleaner schedule', () => {
-  function sched(argv: string[], over: MainDeps = {}) {
+  function sched(argv: string[], over: MainDeps = {}, targets: string[] | null = ['~/dev']) {
     const { env, cwd, home } = setup()
+    if (targets !== null) {
+      const file = configFile(hostDirs(env))
+      mkdirSync(join(file, '..'), { recursive: true })
+      writeFileSync(file, JSON.stringify({ targets }))
+    }
     const calls: string[][] = []
     const launchctl = fakeRunner((a) => {
       calls.push(a)
@@ -211,6 +217,13 @@ describe('host-cleaner schedule', () => {
     expect(readFileSync(plist, 'utf8')).toContain('<integer>10800</integer>')
     expect(r.calls.some((c) => c[0] === 'bootstrap' && c[1] === 'gui/501')).toBe(true)
     expect(r.out).toContain('every 3 hours')
+  })
+
+  test('install refuses when the config names no targets, since launchd starts the job in /', () => {
+    const r = sched(['install'], {}, null)
+    expect(r.code).toBe(2)
+    expect(r.err).toContain('targets')
+    expect(r.calls).toEqual([])
   })
 
   test('status says whether the plist is present and the agent loaded', () => {

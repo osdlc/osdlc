@@ -28,7 +28,7 @@
  */
 
 import { existsSync, realpathSync } from 'node:fs'
-import { isAbsolute, join, resolve } from 'node:path'
+import { isAbsolute, join, resolve, sep } from 'node:path'
 
 import { shellJoin } from '@osdlc/command-seam'
 import { nodeGuard } from '@osdlc/path-guard/node'
@@ -1410,7 +1410,9 @@ export function removeCandidate(
   const row = rowOfCandidate(candidate)
   if (!runnable(row)) return refused(`refused: ${candidate.id} ${candidate.why}`)
   const cwd = opts.cwd ?? process.cwd()
-  if (row.kind === 'worktree' && nodeGuard.contains(row.name, resolve(cwd))) {
+  // Anchored without folding `..`, as the sweep does, so a `..` after a symlink is judged where it really is.
+  const absCwd = isAbsolute(cwd) ? cwd : `${process.cwd()}${sep}${cwd}`
+  if (row.kind === 'worktree' && nodeGuard.contains(row.name, absCwd)) {
     return refused(`refused: ${candidate.id} is the worktree the caller stands in`)
   }
   const allow = new Set(opts.allow ?? [])

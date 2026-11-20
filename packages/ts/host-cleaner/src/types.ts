@@ -21,8 +21,9 @@ export interface Candidate {
   /** Candidate ids that must be deleted before this one; if one is refused or dropped, so is this. */
   requires?: string[] | undefined
   /**
-   * False when the owner wants a person to choose it: a run with no pick skips it.
-   * True or absent: unattended runs may take it, if nothing objects.
+   * True: `--auto` may take it if nothing refuses or protests.
+   * False: a run with no pick skips it.
+   * Absent: a run with no pick takes it; `--auto` does not.
    */
   unattended?: boolean | undefined
 }

@@ -3,10 +3,7 @@
  * present, and the report it leaves.
  *
  * The subset is fixed and grants nothing: a candidate its owner marked
- * `unattended: true` that nothing refuses or protests. A worktree judged
- * `delete` with no risk (the git plugin) and an artifact idle past its
- * threshold with nothing building in its checkout (cargo, node) qualify.
- * Branches, sessions and every candidate with a protest are left for a person.
+ * `unattended: true` that nothing refuses or protests.
  */
 
 import { stripControls } from '@osdlc/ux'
@@ -15,7 +12,7 @@ import { sizeOf } from './artifacts.ts'
 import type { Receipt } from './plan.ts'
 import type { Candidate, Objection } from './types.ts'
 
-/** What a candidate was judged and why, for the report's "left for review" list. */
+/** A candidate the run did not clean, for the report's "left for review" list. */
 export interface LeftRow {
   id: string
   why: string
@@ -40,7 +37,7 @@ export interface AutoReport {
   bytesFreed: number
 }
 
-/** The ids `--auto` cleans. Pure: reads the candidates and objections and nothing else. */
+/** The ids `--auto` cleans: `unattended: true`, and no refuse or protest; a note does not hold one. */
 export function selectUnattended(
   candidates: readonly Candidate[],
   objections: readonly Objection[],
@@ -63,7 +60,7 @@ export function measure(
   return sizes
 }
 
-/** Every candidate worth a person's attention that was not cleaned. */
+/** Every surveyed candidate the run did not clean, with its refusals and protests. */
 export function leftForReview(
   candidates: readonly Candidate[],
   objections: readonly Objection[],
@@ -83,17 +80,13 @@ export function leftForReview(
 /** The candidates a receipt shows were removed. */
 export const cleanedIds = (r: Receipt): string[] => [
   ...r.steps.filter((s) => s.result === 'ok').map((s) => s.id),
-  // Gone because an earlier step removed its parent (an artifact inside a removed worktree): cleaned.
-  ...r.dropped.filter((d) => d.reason === 'gone').map((d) => d.id),
 ]
 
 export function failedIds(r: Receipt): { id: string; reason: string }[] {
   const failed = r.steps
     .filter((s) => s.result === 'failed' || s.result === 'skipped')
     .map((s) => ({ id: s.id, reason: s.error ?? s.result }))
-  const dropped = r.dropped
-    .filter((d) => d.reason !== 'gone')
-    .map((d) => ({ id: d.id, reason: `${d.reason}: ${d.detail}` }))
+  const dropped = r.dropped.map((d) => ({ id: d.id, reason: `${d.reason}: ${d.detail}` }))
   return [...failed, ...dropped]
 }
 
@@ -108,7 +101,7 @@ const sizeText = (bytes: number): string => {
   return `${i === 0 ? value : value.toFixed(1)} ${units[i]}`
 }
 
-/** The report as text: what was cleaned, what is left, the bytes freed. */
+/** The report as text, control characters stripped. */
 export function renderAutoReport(r: AutoReport): string {
   const lines = [`host-cleaner --auto: ${r.status}`, `freed: ${sizeText(r.bytesFreed)}`]
   lines.push(`cleaned (${r.cleaned.length})`)

@@ -145,12 +145,13 @@ report to `reports/`, a receipt to `receipts/` and a log line.
 
 `host-cleaner schedule install [--every <hours>]` (default 6) writes a launchd
 user agent that runs `host-cleaner --auto`, with the `HOST_CLEANER_*`
-overrides it was installed with; `schedule status` and `schedule uninstall`
+overrides it was installed with (it needs `targets` in the config file, since
+launchd starts the job in `/`); `schedule status` and `schedule uninstall`
 show and remove it. macOS only.
 
 Exit codes: 0 done, declined or nothing to delete; 1 failed against the state
-found; 2 cannot run as typed; 10 nothing to sweep; 11 `clean` stopped at a
-failed step.
+found; 2 cannot run as typed; 10 nothing to sweep; 11 `clean` or `--auto` stopped at a
+failed step. A run that finds the lock held exits 0.
 
 ## Install
 

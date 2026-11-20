@@ -349,9 +349,14 @@ function contextFor(
   ctx: CliContext,
   allow: readonly string[],
 ): Ctx {
+  const chosen =
+    targets.length > 0 ? targets : config.targets.length > 0 ? config.targets : [ctx.cwd]
+  const home = ctx.env.HOME ?? homedir()
   return {
     cwd: ctx.cwd,
-    targets: targets.length > 0 ? targets : config.targets.length > 0 ? config.targets : [ctx.cwd],
+    targets: chosen.map((t) =>
+      resolve(ctx.cwd, t === '~' || t.startsWith('~/') ? join(home, t.slice(1)) : t),
+    ),
     allow,
   }
 }
@@ -625,7 +630,7 @@ function runAuto(
   const claim = claimLock(
     lockPath,
     { pid: process.pid, startedAt: new Date().toISOString() },
-    { isStale: holderGone<{ pid: number }>((c) => [c.pid]) },
+    { isStale: holderGone<{ pid: number; startedAt: string }>((c) => [c]) },
   )
   if (!claim.ok) {
     const pid = claim.holder?.content?.pid
@@ -662,22 +667,27 @@ function autoWork(
   } catch (err) {
     return refusal(ctx, name, err)
   }
-  if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
   writeWarnings(ctx, name, s.warnings)
+  if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
 
   const ids = selectUnattended(s.candidates, s.objections)
   const sizes = measure(s.candidates, ids)
   const receiptPath = join(dirs.state, 'receipts', `receipt-${stamp(startedAt)}.json`)
   let receipt: Receipt | null = null
   try {
-    // An empty selection runs nothing: skip the clean.
+    // Skipped on an empty pick so no empty receipt is written and the status is nothing-to-clean.
     if (ids.length > 0) {
       mkdirSync(dirname(receiptPath), { recursive: true })
-      receipt = clean(makePlan(s, { pick: ids, now: startedAt }), plugins, cctx, {
-        source: '(auto)',
-        receiptPath,
-        now,
-      })
+      receipt = clean(
+        makePlan(s, { targets: cctx.targets, pick: ids, now: startedAt }),
+        plugins,
+        cctx,
+        {
+          source: '(auto)',
+          receiptPath,
+          now,
+        },
+      )
     }
   } catch (err) {
     return refusal(ctx, name, err)
@@ -744,6 +754,11 @@ function runSchedule(argv: readonly string[], ctx: CliContext, deps: MainDeps): 
   }
   try {
     if (action === 'install') {
+      if (loadConfig({}, ctx).targets.length === 0) {
+        throw new BadInput(
+          'schedule install needs `targets` in the config file: a scheduled run starts in /, so it has nowhere else to sweep',
+        )
+      }
       const hours = parseEvery(parsed.values.every)
       const program = deps.program ?? [
         process.execPath,
