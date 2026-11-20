@@ -27,7 +27,8 @@ When not to use it:
 
 - You want to find a config file in any of many places and formats. `cosmiconfig`
   and `c12` do that.
-- You do not use Zod. The schema walk reads Zod 4 types.
+- You do not use Zod. The schema walk reads Zod 4 types. Only the machine file reads through any
+  other validator (see Standard Schema).
 - You need Windows support today. See Platforms.
 - You want a config library that knows nothing about CLI tools. Parts of this one
   (needs messages, `config set` edits, scaffold files) assume a tool with a
@@ -371,6 +372,54 @@ The schema walk reads Zod's private `_def` layout by tag name, not with
 works. A test fails if a zod release changes that layout, and
 `tests/zod-copy.test.ts` loads a config through a second copy of zod.
 
+## Standard Schema
+
+`machineConfigFile` takes any [Standard Schema](https://standardschema.dev) validator as its
+`schema`: zod 4, valibot, arktype or a hand-written one. The file is read, salvaged and checked
+before a write through the validator's own `~standard.validate`, and each issue becomes the
+`path: message` form. The validator must answer synchronously; an asynchronous one throws a
+`TypeError`. `StandardSchemaV1` is the spec's interface, copied as the spec asks, so the package
+adds no dependency. `validateStandard(schema, value)` is the same check for your own use.
+
+<!-- snippet: standard-schema -->
+
+```ts
+interface Machine {
+  editor: string
+}
+
+const machineSchema: StandardSchemaV1<unknown, Machine> = {
+  '~standard': {
+    version: 1,
+    vendor: 'hand-written',
+    validate: (value) => {
+      const editor = (value as { editor?: unknown }).editor ?? 'vi'
+      return typeof editor === 'string'
+        ? { value: { editor } }
+        : { issues: [{ message: 'must be a string', path: ['editor'] }] }
+    },
+  },
+}
+
+const machine = machineConfigFile({
+  tool: 'tooly',
+  schema: machineSchema,
+  vendorDirs: { vendor: 'osdlc', envVars: envVars('osdlc') },
+})
+// machine.load() is a Machine: a section that fails takes its default.
+
+const checked: StandardValidation<Machine> = validateStandard(machineSchema, { editor: 3 })
+const issues: StandardIssue[] = checked.ok ? [] : checked.issues
+// issues is [{ path: ['editor'], message: 'must be a string' }]
+```
+
+What stays zod-only is everything that reads a schema's shape, since a Standard Schema validator
+does not expose one: the sections and the project loader, `configNeeds`, `scaffoldYaml`,
+`renderReference`, `resolveKeyPath` and the `.meta()` checks. With a non-zod machine schema,
+unknown keys are not told apart from other invalid ones: an unknown key makes its top-level section
+fall back to its default, and the load reports it as `invalid`, not `unknown_key`. A zod schema keeps
+the `unknown_key` behaviour when every object in it is `.strict()`.
+
 ## Sections and the loader
 
 The project file is built from sections, one per top-level key. A section is
@@ -568,7 +617,8 @@ The experimental exports:
 `RegisteredKeyMetaSchema`, `ResolveConfigFileOptions`, `ResolveConfigPathOptions`,
 `ResolveKeyPathOptions`, `ResolveLayeredStepsOptions`, `ResolveLayeredValueOptions`,
 `ResolvedConfigFile`, `ResolvedKey`, `ResolvedLayeredSteps`, `ResolvedLayeredValue`, `ResolvedStep`,
-`STABILITY_LEVELS`, `ScaffoldOptions`, `Stability`, `StabilitySchema`, `StarterOptions`, `StepMode`,
+`STABILITY_LEVELS`, `ScaffoldOptions`, `Stability`, `StabilitySchema`, `StandardIssue`,
+`StandardSchemaV1`, `StandardValidation`, `StarterOptions`, `StepMode`,
 `StepProvenance`, `StrippedKeys`, `SubstituteOptions`, `TermsOf`, `UnknownKeyUse`, `ValueLayer`,
 `VendorDirs`, `applierAndReservedProblems`, `applierOf`, `assembleConfig`, `checkConfigMeta`,
 `closestMatches`, `configFields`, `configNeeds`, `consumerProblems`, `currentConfigVersion`,
@@ -581,8 +631,8 @@ The experimental exports:
 `readMappingFile`, `readParsedFile`, `reconcileYaml`, `renderReference`, `resolveConfigFile`,
 `resolveConfigPath`, `resolveKeyPath`, `resolveLayeredSteps`, `resolveLayeredValue`,
 `scaffoldLocalYaml`, `scaffoldYaml`, `setPath`, `splitKeyPath`, `starterYaml`, `stripUnknownKeys`,
-`substitutePathNames`, `systemDirs`, `topLevelKeys`, `unknownKeyMessage`, `unsetPath`, `valueAt`,
-`valueIsSet`
+`substitutePathNames`, `systemDirs`, `topLevelKeys`, `unknownKeyMessage`, `unsetPath`,
+`validateStandard`, `valueAt`, `valueIsSet`
 
 A test compares this list with the `@experimental` tags in the source.
 

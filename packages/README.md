@@ -99,10 +99,8 @@ the standard.
   `pnpm run check:conformance` checks the suites with `@osdlc/conformance-suites`;
   `packages/conformance/config.json` holds its exemptions. `tiered-dirs`,
   `config-layers`, `corpus-schema`, `etag-write`, `file-lock`,
-  `frontmatter-lossless`, `intersect`, `markdown-link`, `markdown-tags` and
-  `path-guard` are there. Until they move, `gfm-pipe-table` (the Rust
-  implementation of `@osdlc/gfm-table`) keeps
-  `packages/rust/gfm-pipe-table/tests/fixtures/parity.json`, and
+  `frontmatter-lossless`, `gfm-table`, `intersect`, `markdown-link`,
+  `markdown-tags` and `path-guard` are there. Until it moves,
   `markdown-contract` runs the TypeScript package's `corpus/` directly.
   The `agent-router` crate reads the TypeScript package's `fixtures/` and its
   catalogue snapshot.

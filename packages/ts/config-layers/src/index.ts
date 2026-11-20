@@ -185,6 +185,8 @@ export type {
 } from './migrate.ts'
 export { configFields, defaultControl } from './fields.ts'
 export type { ConfigField } from './fields.ts'
+export { validateStandard } from './standard.ts'
+export type { StandardIssue, StandardSchemaV1, StandardValidation } from './standard.ts'
 export { currentMachineVersion, migrateMachineRaw } from './machine-migrate.ts'
 export type { MachineMigration } from './machine-migrate.ts'
 

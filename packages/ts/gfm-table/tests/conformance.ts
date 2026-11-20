@@ -1,22 +1,28 @@
 /**
- * The runner for each section of the shared parity fixture,
- * `packages/rust/gfm-pipe-table/tests/fixtures/parity.json`. Each runner
- * takes a case's inputs and returns the value the fixture's `expected`
- * holds, in the fixture's spelling.
+ * Runs the gfm-table conformance suite's cases against this package.
  *
- * The fixture's offsets are UTF-8 byte offsets, as the Rust twin reports
- * them. This package reports UTF-16 string indices, so the runners convert:
- * an offset into a line becomes the byte length of the line before it. A
- * line's `base` is a plain number in both and is not converted. Sections
- * whose offsets index cell text (`cell_text`, `source_offset`,
- * `text_offset`) hold ASCII text only, where the two agree.
+ * `packages/conformance/gfm-table/suite.json` is the family's suite, and this
+ * package is its reference implementation. `conformance-write.ts` calls
+ * {@link run} to write each case's `expect` or `error`, and
+ * `conformance.test.ts` calls it to check them, so the two cannot drift.
  *
- * A refusal is `{ error: kind }`. There are two: `pad_table`'s `RangeError`
- * for a `maxColumnWidth` that is not a positive integer, kind
- * `invalid_max_column_width`, which the Rust twin's type cannot hold; and
- * `apply_delimited_changes`' `RangeError` for changes that overlap, kind
- * `overlapping_changes`, the Rust twin's `OverlappingChanges` error.
+ * The suite's offsets are UTF-8 byte offsets, as the Rust crate reports them.
+ * This package reports UTF-16 string indices, so the runners convert: an
+ * offset into a line becomes the byte length of the line before it. A line's
+ * `base` is a plain number in both and is not converted. Sections whose
+ * offsets index cell text (`cell_text`, `source_offset`, `text_offset`) hold
+ * ASCII text only, where the two agree.
+ *
+ * A refusal is a {@link Refusal}, which {@link run} turns into an `error`.
+ * There are two: `pad_table`'s `RangeError` for a `maxColumnWidth` that is not
+ * a positive integer, kind `invalid_max_column_width`, which the Rust crate's
+ * type cannot hold; and `apply_delimited_changes`' `RangeError` for changes
+ * that overlap, kind `overlapping_changes`, the crate's `OverlappingChanges`
+ * error.
  */
+
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 import { displayWidth } from '../src/width.ts'
 import {
@@ -151,7 +157,7 @@ function recordJson(text: string, r: DelimitedRecord) {
   }
 }
 
-/** A read of `text`, in the fixture's spelling. */
+/** A read of `text`, in the suite's spelling. */
 function readJson(text: string, read: DelimitedRead) {
   return {
     delimiter: read.delimiter,
@@ -193,10 +199,10 @@ function oneChangeJson(text: string, ch: TextChange | null) {
   }
 }
 
-/** A case as the fixture holds it: any inputs. */
+/** A case's `input`: any keys, checked against {@link INPUT_KEYS}. */
 type Case = Record<string, any>
 
-export const RUNNERS: Record<string, (c: Case) => unknown> = {
+const RUNNERS: Record<string, (c: Case) => unknown> = {
   split_row: (c) => spanJson(c.line, c.base, splitRow(c.line, c.base)),
   row_from_pipes: (c) =>
     spanJson(
@@ -253,7 +259,7 @@ export const RUNNERS: Record<string, (c: Case) => unknown> = {
         c.max_column_width === undefined ? {} : { maxColumnWidth: c.max_column_width },
       )
     } catch (e) {
-      if (e instanceof RangeError) return { error: 'invalid_max_column_width' }
+      if (e instanceof RangeError) throw new Refusal('invalid_max_column_width')
       throw e
     }
   },
@@ -348,8 +354,125 @@ export const RUNNERS: Record<string, (c: Case) => unknown> = {
     try {
       return applyDelimitedChanges(c.text, changes)
     } catch (e) {
-      if (e instanceof RangeError) return { error: 'overlapping_changes' }
+      if (e instanceof RangeError) throw new Refusal('overlapping_changes')
       throw e
     }
   },
+}
+
+/** A refusal both implementations report, by `kind`. */
+class Refusal extends Error {
+  readonly kind: string
+
+  constructor(kind: string) {
+    super(kind)
+    this.kind = kind
+  }
+}
+
+export const SUITE_PATH = join(import.meta.dirname, '../../../conformance/gfm-table/suite.json')
+
+export interface SuiteCase {
+  name: string
+  input: Record<string, unknown>
+  expect?: unknown
+  /** The kind only: a case sets no message. */
+  error?: { kind: string }
+  platforms?: string[]
+  skip?: Record<string, string>
+}
+
+export interface Suite {
+  family: string
+  reference: string
+  referenceVersion: string
+  sections: Record<string, { description: string; cases: SuiteCase[] }>
+}
+
+export type Outcome = { expect: unknown } | { error: { kind: string } }
+
+export function readSuite(): Suite {
+  return JSON.parse(readFileSync(SUITE_PATH, 'utf8')) as Suite
+}
+
+/** The keys a case may set. */
+export const CASE_KEYS = ['name', 'input', 'expect', 'error', 'platforms', 'skip']
+
+/** Every section this implementation runs, with the keys its `input` may hold. */
+export const INPUT_KEYS: Record<string, string[]> = {
+  split_row: ['line', 'base'],
+  row_from_pipes: ['line', 'base', 'pipes'],
+  row_pipes: ['line', 'base'],
+  is_delimiter_row: ['line'],
+  parse_align: ['spec'],
+  cell_text: ['source'],
+  source_offset: ['source', 'pos'],
+  text_offset: ['source', 'offset'],
+  escape_cell: ['text'],
+  escape_cell_insert: ['text'],
+  escape_code_cell: ['text'],
+  ends_with_escape: ['source'],
+  literal_pipe_fixes: ['text', 'inserted'],
+  row_cell_texts: ['line'],
+  row_cell_sources: ['line'],
+  read_table: ['lines'],
+  table_grid: ['lines'],
+  render_table: ['header', 'rows', 'align', 'line_break'],
+  pad_table: ['table', 'max_column_width'],
+  display_width: ['text'],
+  row_line_text: ['cells'],
+  insert_cell_splice: ['line', 'base', 'at', 'filler'],
+  delete_cell_splice: ['line', 'base', 'col'],
+  pad_row_splice: ['line', 'base', 'width', 'filler'],
+  has_trailing_pipe: ['line'],
+  table_lines: ['lines', 'delimiter'],
+  rectangular: ['rows'],
+  pad_row: ['cells', 'width'],
+  clipboard_lines: ['text'],
+  grid_from_tsv: ['text'],
+  tsv_from_grid: ['grid'],
+  to_csv: ['rows'],
+  grid_from_csv: ['text'],
+  grid_from_csv_paste: ['text'],
+  html_from_grid: ['shown', 'source', 'header'],
+  paste_rect: ['grid', 'start', 'probes', 'range'],
+  round_trip: ['grid', 'format'],
+  sniff_delimiter: ['text'],
+  delimiter_name: ['delimiter'],
+  parse_delimited: ['text', 'delimiter'],
+  looks_like_header: ['first'],
+  read_delimited: ['text', 'delimiter', 'header'],
+  quote_delimited_field: ['value', 'delimiter', 'always_quote'],
+  delimited_record_text: ['fields', 'delimiter'],
+  set_delimited_field: ['text', 'delimiter', 'header', 'record', 'column', 'value'],
+  insert_delimited_row: ['text', 'delimiter', 'header', 'at', 'fields'],
+  delete_delimited_row: ['text', 'delimiter', 'header', 'index'],
+  insert_delimited_column: ['text', 'delimiter', 'header', 'at', 'header_text'],
+  delete_delimited_column: ['text', 'delimiter', 'header', 'column'],
+  reread_delimited: ['text', 'delimiter', 'header', 'next'],
+  apply_delimited_changes: ['text', 'changes'],
+}
+
+/**
+ * Throws unless `section` is one this implementation runs and `raw` holds only
+ * the keys that section's `input` may hold.
+ */
+export function checkInput(section: string, raw: Record<string, unknown>): void {
+  const allowed = INPUT_KEYS[section]
+  if (allowed === undefined) {
+    throw new Error(`the suite has a section this implementation does not know: ${section}`)
+  }
+  const unknown = Object.keys(raw).filter((k) => !allowed.includes(k))
+  if (unknown.length > 0) throw new Error(`${section}: unknown input keys ${unknown.join(', ')}`)
+}
+
+/** The outcome this package gives for one case of a section. */
+export function run(section: string, raw: Record<string, unknown>): Outcome {
+  checkInput(section, raw)
+  try {
+    return { expect: RUNNERS[section]!(raw) }
+  } catch (e) {
+    if (e instanceof Refusal) return { error: { kind: e.kind } }
+    throw e
+  }
 }
