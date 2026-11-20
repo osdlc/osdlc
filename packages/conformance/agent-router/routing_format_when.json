@@ -1,0 +1,58 @@
+{
+  "family": "agent-router",
+  "reference": "ts",
+  "referenceVersion": "0.4.4",
+  "sections": {
+    "routing_format_when": {
+      "description": "formatWhen: a when as the config writes it, in display order",
+      "cases": [
+        {
+          "name": "empty",
+          "input": {
+            "when": {}
+          },
+          "expect": "{}"
+        },
+        {
+          "name": "one-key",
+          "input": {
+            "when": {
+              "workflow": "implement"
+            }
+          },
+          "expect": "{workflow: implement}"
+        },
+        {
+          "name": "display-order-not-insertion-order",
+          "input": {
+            "when": {
+              "tags": [
+                "ui",
+                "db"
+              ],
+              "complexity": "small",
+              "workflow": "implement"
+            }
+          },
+          "expect": "{workflow: implement, complexity: small, tags: [ui, db]}"
+        },
+        {
+          "name": "every-key",
+          "input": {
+            "when": {
+              "workflow": "w",
+              "stage": "s",
+              "complexity": "c",
+              "impact": "i",
+              "autonomy": "a",
+              "tags": [
+                "t"
+              ]
+            }
+          },
+          "expect": "{workflow: w, stage: s, complexity: c, impact: i, autonomy: a, tags: [t]}"
+        }
+      ]
+    }
+  }
+}

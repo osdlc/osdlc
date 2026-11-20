@@ -796,6 +796,9 @@ importers:
 
   packages/ts/harness-knowledge:
     devDependencies:
+      '@osdlc/corpus-schema':
+        specifier: workspace:^
+        version: link:../corpus-schema
       '@osdlc/prettier-config':
         specifier: workspace:^
         version: link:../prettier-config
@@ -811,6 +814,9 @@ importers:
       ajv:
         specifier: ^8.20.0
         version: 8.20.0
+      harness-reference:
+        specifier: workspace:^
+        version: link:../../corpora/harness-reference
       oxlint:
         specifier: 'catalog:'
         version: 1.88.0

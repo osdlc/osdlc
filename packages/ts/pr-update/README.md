@@ -211,12 +211,12 @@ as the rebase keeps stopping. The chain:
 1. Rebase, with the resolvers at each stop.
 2. A stop they cannot clear aborts the rebase, and the PR is retried as a
    merge with the same resolvers. This is `pr_update.on_rebase_conflict`:
-   `merge` (the default) retries, and `fail` reports the PR as a conflict
-   instead.
+   `merge` (the default) retries, `fail` reports the PR as a conflict
+   instead, and `repair` repairs the stop (see below).
 3. A merge that still has a conflict goes to `repair`, called once, which edits
-   files in the open merge only. `repair` is never called during a rebase.
-   Repairing each stop of a 20-commit rebase could mean 20 agent calls on 20
-   versions of one conflict.
+   files in the open merge only. By default `repair` is never called during a
+   rebase. Repairing each stop of a 20-commit rebase could mean 20 agent calls
+   on 20 versions of one conflict.
 4. Otherwise the PR is reported for a person. The failed-attempt record keeps
    it from being retried until its head or base moves.
 
@@ -224,6 +224,30 @@ When step 2 ran, the result's `strategy` is `merge`, whatever was planned, and
 `strategyFallback` says what stopped the rebase. A reader must use the result's
 strategy, not the requested one, because a PR planned as a rebase can be pushed
 as a merge.
+
+### Repair at rebase stops
+
+For a repository that refuses merge commits, set `on_rebase_conflict: repair`:
+
+```yaml
+pr_update:
+  on_rebase_conflict: repair
+  repair:
+    agent: claude
+    max_rebase_stops: 3 # default
+```
+
+At a stop the resolvers cannot clear, `repair` is called with `kind: conflict`, the
+conflicted paths and `replaying` (the commit's sha and subject, and the base it moves
+onto; as `PR_UPDATE_COMMIT`, `PR_UPDATE_COMMIT_SUBJECT` and `PR_UPDATE_ONTO` for a
+command). The prompt asks it to keep that commit's intent, not the branch's final state.
+`update` runs the usual checks, then `git rebase --continue`, and the next stop gets the
+resolvers and a repair again. After `repair.max_rebase_stops` repairs in one rebase, or on
+a failed repair, the rebase is aborted and the PR is reported as a conflict. It never falls
+back to a merge. `guards.max_rebase_commits` bounds the rebase length, so the two settings
+bound the cost. `repaired` gets one entry per stop. It needs a configured repair with
+`conflict` in `repair.on`, and a rehearsal never calls it, so a stop it would have
+repaired is reported as a conflict.
 
 ### Repair
 
@@ -320,7 +344,36 @@ pr_update:
 ```
 
 With `verify: test` and no `test_command`, a standalone `update` fails before
-it touches any PR.
+it touches any PR. `test` never guesses.
+
+### `verify: detect`
+
+`verify: detect` is the opt-in middle ground for a person updating PRs across
+many repositories, none of which has a `test_command`. It walks a fixed ladder
+in each PR's own update worktree, after checkout and before verify, and runs
+the first rung that matches:
+
+1. `test_command`, when configured;
+2. a `test` recipe in a `justfile` (`just test`), then a `test` target in a
+   `Makefile` (`make test`);
+3. `scripts.test` in `package.json`, run with the package manager its lockfile
+   names (`pnpm test`, `yarn test`, `bun run test`; `npm test` for
+   `package-lock.json` or no lockfile). The `npm init` placeholder is not a test;
+4. `cargo test` for `Cargo.toml`, `go test ./...` for `go.mod`, `sbt test` for
+   `build.sbt`.
+
+The run prints the choice for each PR on stderr
+(`pr-update: verify: detect owner/name#12: make test  (Makefile test target)`).
+When no rung matches, that PR's update fails, naming what was looked for; the
+other PRs go on. Nothing beyond the ladder is guessed. Because the repository's
+own files choose the command, `verify: detect` in the project file is gated
+like `test_command`: it needs `--trust` or a recorded trust. A host that
+supplies `Ports.resolveVerifyVerbs` receives `which: 'detect'` and may call the
+exported `detectVerifyCommand(dir, testCommand?)` for the same ladder.
+
+Detection runs once per PR, so a PR that adds or removes a `justfile`, `Makefile`
+or `package.json` test script is judged by its own files. Every other `verify`
+value resolves once per repository.
 
 ## Not retrying a failure that will repeat
 
