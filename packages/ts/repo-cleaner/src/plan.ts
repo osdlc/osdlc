@@ -68,11 +68,12 @@ export const PlanSchema = z.object({
 export type Plan = z.infer<typeof PlanSchema>
 
 /**
- * The evidence a row's verdict rests on. A branch: its sha and its PR's number
- * and state. A worktree: HEAD, branch, how much unlanded work it holds, whether
- * its lock was stale, whether it is on disk, and each submodule's state, so a
- * lock taken or revived after planning, a directory that came back, or a
- * submodule that changed, drops the row.
+ * The evidence a row's verdict rests on. Every row: the default branch it was
+ * judged against. A branch: its sha and its PR's number and state. A worktree:
+ * HEAD, branch, how much unlanded work it holds, whether its lock was stale,
+ * whether it is on disk, each submodule's state, and the remote branches that
+ * hold HEAD, so a lock taken or revived after planning, a directory that came
+ * back, or a submodule that changed, drops the row.
  */
 export function fingerprint(row: Row): Record<string, unknown> {
   if (row.kind === 'worktree') {
@@ -88,10 +89,16 @@ export function fingerprint(row: Row): Record<string, unknown> {
       onDisk: e.onDisk ?? null,
       submodules: e.submodules ?? null,
       recoverableFrom: e.recoverableFrom ?? null,
+      landedAgainst: e.landedAgainst ?? null,
     }
   }
-  const pr = row.evidence.pr
-  return { sha: row.evidence.sha, prNumber: pr?.number ?? null, prState: pr?.state ?? null }
+  const e = row.evidence
+  return {
+    sha: e.sha,
+    prNumber: e.pr?.number ?? null,
+    prState: e.pr?.state ?? null,
+    landedAgainst: e.landedAgainst ?? null,
+  }
 }
 
 /** Equal fingerprints, treating a missing key as null. */

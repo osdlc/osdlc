@@ -130,6 +130,8 @@ export type PrEvidence = Omit<PRInfo, 'headRef'> & {
 
 /** Evidence every kind of row records about whether its work landed. */
 export interface LandingEvidence {
+  /** The default branch the row was judged against, as a ref: `origin/main`, or `main` without a remote. */
+  landedAgainst?: string
   pr?: PrEvidence
   /** The work is on the default branch: by ancestry, an exact-head merged PR, or a patch match. Absent on a row not judged. */
   merged?: boolean
@@ -208,7 +210,6 @@ export interface BranchEvidence extends LandingEvidence {
   track: string | null
   lastCommit: string
   sha: string
-  compareAgainst?: string
   /** Null when the remote default branch was not found. */
   ancestorOfRemoteMain?: boolean | null
   /** The worktree whose removal frees this branch; it is deleted only when that worktree goes in the same run. */
@@ -310,9 +311,24 @@ export interface RepoInfo {
   fetched: boolean
 }
 
-/** The ref a branch must reach to count as landed: `<remote>/<default>`, or the local default without a remote. */
-export function landedRef(repo: RepoInfo): string {
-  return repo.remote === null ? repo.mainBranch : `${repo.remote}/${repo.mainBranch}`
+/** A default branch a row's work can land on, and the remote it is on; null for the local default branch. */
+export interface LandedAgainst {
+  remote: string | null
+  branch: string
+}
+
+/** `<remote>/<branch>`, or the bare branch without a remote. */
+export function refOf(against: LandedAgainst): string {
+  return against.remote === null ? against.branch : `${against.remote}/${against.branch}`
+}
+
+/**
+ * What rows of `remote` are judged against; `remote` null for local rows
+ * (worktrees and local branches). Every row is judged against the default
+ * branch of the one remote a sweep reads.
+ */
+export function landedFor(repo: RepoInfo, _remote: string | null): LandedAgainst {
+  return { remote: repo.remote, branch: repo.mainBranch }
 }
 
 /** True when the repository has a remote the sweep did not fetch, so its refs may be stale. */

@@ -163,7 +163,7 @@ describe('sweep', () => {
     expect(branch?.commands).toEqual([`git update-ref -d refs/heads/merged-branch ${sha}`])
     expect(branch?.evidence.ancestorOfRemoteMain).toBe(true)
     // No remote, so the local default branch is the measure.
-    expect(branch?.evidence.compareAgainst).toBe('main')
+    expect(branch?.evidence.landedAgainst).toBe('main')
   })
 
   test('a diverged branch with no other signal is left for a person', () => {
@@ -895,7 +895,7 @@ describe('ancestry against the remote default branch', () => {
     const branch = rowsOf(swept.rows, 'branch').get('unpushed')
     expect(branch?.verdict).toBe('review')
     expect(branch?.evidence.ancestorOfRemoteMain).toBe(false)
-    expect(branch?.evidence.compareAgainst).toBe('origin/main')
+    expect(branch?.evidence.landedAgainst).toBe('origin/main')
   })
 
   test('a branch reachable from origin/main is deletable', () => {
@@ -909,7 +909,7 @@ describe('ancestry against the remote default branch', () => {
     const branch = rowsOf(swept.rows, 'branch').get('pushed')
     expect(branch?.verdict).toBe('delete')
     expect(branch?.why).toBe('fully merged into origin/main')
-    expect(branch?.evidence.compareAgainst).toBe('origin/main')
+    expect(branch?.evidence.landedAgainst).toBe('origin/main')
   })
 
   test('a missing remote default branch leaves ancestry unknown', () => {

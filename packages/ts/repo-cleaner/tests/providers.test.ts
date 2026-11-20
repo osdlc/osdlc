@@ -610,7 +610,12 @@ describe('a sweep of a GitLab checkout', () => {
     expect(plan.options.only).toEqual(['worktree', 'branch'])
     // Branch fingerprints carry no PR, since none was looked up.
     const feat = plan.repos[0]?.rows.find((r) => r.id === 'branch:feat')
-    expect(feat?.fingerprint).toEqual({ sha: tip, prNumber: null, prState: null })
+    expect(feat?.fingerprint).toEqual({
+      sha: tip,
+      prNumber: null,
+      prState: null,
+      landedAgainst: 'origin/main',
+    })
 
     const refused = captureContext({ cwd: checkout })
     expect(main(['plan', '--provider', 'gitlab', '--no-progress'], refused, {})).toBe(2)

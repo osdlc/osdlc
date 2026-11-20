@@ -14,9 +14,9 @@ import { type CommandResult } from '@osdlc/command-seam'
 import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeOriginAndCheckout } from '@osdlc/typed-git/testing'
 
-import { assessLanding, patchEquivalent } from '../src/landing.ts'
+import { assessLanding, patchEquivalent, type Onto } from '../src/landing.ts'
 import { sweep as sweepTargets, type SweepOptions } from '../src/sweep.ts'
-import type { Kind, RepoInfo, RepoSweep, Row } from '../src/types.ts'
+import { landedFor, refOf, type Kind, type RepoSweep, type Row } from '../src/types.ts'
 import { cannedGh, commitFile, git, interposedRunner, newRepo, sh } from './helpers.ts'
 
 const HOOK_TIMEOUT_MS = 60_000
@@ -77,10 +77,11 @@ const branchRow = (dir: string, name: string, opts?: SweepOptions) =>
   row(sweep(dir, opts).rows, 'branch', name)
 
 /** The repository facts a landing check takes, read from a real sweep. */
-function repoInfo(dir: string): RepoInfo {
+/** What `dir`'s local rows are judged against. */
+function onto(dir: string): Onto {
   const info = sweep(dir).repo
   if (info === null) throw new Error('not a repository')
-  return info
+  return { root: info.root, ref: refOf(landedFor(info, null)) }
 }
 
 /** A client over {@link interposedRunner}. */
@@ -468,7 +469,7 @@ describe('a patch match alone needs the grant', () => {
       ['b.txt', 'b\n'],
     ])
     squashMerge(dir, 'feat')
-    const repo = repoInfo(dir)
+    const repo = onto(dir)
     const real = new Git(dir, { env: { ...IDENTITY } })
     expect(assessLanding(repo, 'feat', real)).toEqual({ check: 'squashed', confirmed: true })
     const answers: Array<[string, CommandResult]> = [
@@ -673,7 +674,7 @@ describe('worktrees and remote branches', () => {
       sh(shallow, ['checkout', '-q', 'main'])
       expect(sh(shallow, ['rev-parse', '--is-shallow-repository'])).toBe('true')
       expect(branchRow(shallow, 'feat').verdict).toBe('review')
-      expect(patchEquivalent(repoInfo(shallow), 'feat', new Git(shallow))).toBeNull()
+      expect(patchEquivalent(onto(shallow), 'feat', new Git(shallow))).toBeNull()
     })
   })
 })
@@ -700,7 +701,7 @@ describe('the check changes nothing', () => {
     writeFileSync(join(dir, 'staged.txt'), 's\n')
     sh(dir, ['add', 'staged.txt'])
     const before = snapshot(dir)
-    expect(patchEquivalent(repoInfo(dir), 'feat', new Git(dir))).toBeNull()
+    expect(patchEquivalent(onto(dir), 'feat', new Git(dir))).toBeNull()
     expect(snapshot(dir)).toEqual(before)
   })
 
@@ -713,7 +714,7 @@ describe('the check changes nothing', () => {
     squashMerge(dir, 'feat')
     writeFileSync(join(dir, 'untracked.txt'), 'u\n')
     const before = snapshot(dir)
-    expect(patchEquivalent(repoInfo(dir), 'feat', new Git(dir))).toBe('squashed')
+    expect(patchEquivalent(onto(dir), 'feat', new Git(dir))).toBe('squashed')
     expect(snapshot(dir)).toEqual(before)
   })
 
@@ -736,7 +737,7 @@ describe('the check changes nothing', () => {
       },
     })
     expect(() => noIdentity.commitTree('HEAD^{tree}', { message: 'needs an identity' })).toThrow()
-    expect(patchEquivalent(repoInfo(dir), 'feat', noIdentity)).toBe('squashed')
+    expect(patchEquivalent(onto(dir), 'feat', noIdentity)).toBe('squashed')
   })
 })
 
@@ -745,7 +746,7 @@ describe('the probe is isolated from local git configuration', () => {
     const dir = fresh('landing-replace')
     branchOff(dir, 'feat', [['a.txt', 'a\n']])
     commitFile(dir, 'main.txt', 'main moved on\n', 'main: moves on')
-    const repo = repoInfo(dir)
+    const repo = onto(dir)
     const git = new Git(dir, { env: { ...IDENTITY } })
     expect(assessLanding(repo, 'feat', git)).toEqual({ check: null, unmatched: [] })
     // Make `feat`'s commit read as main's tip: with replacements honoured, its
@@ -772,7 +773,7 @@ describe('the probe is isolated from local git configuration', () => {
         GIT_CONFIG_VALUE_1: '/nonexistent/gpg',
       },
     })
-    expect(assessLanding(repoInfo(dir), 'feat', signing)).toEqual({
+    expect(assessLanding(onto(dir), 'feat', signing)).toEqual({
       check: 'squashed',
       confirmed: true,
     })
@@ -782,7 +783,7 @@ describe('the probe is isolated from local git configuration', () => {
 
 describe('failing closed', () => {
   let dir: string
-  let repo: RepoInfo
+  let repo: Onto
 
   beforeAll(() => {
     dir = fresh('landing-closed')
@@ -791,7 +792,7 @@ describe('failing closed', () => {
       ['b.txt', 'b\n'],
     ])
     squashMerge(dir, 'feat')
-    repo = repoInfo(dir)
+    repo = onto(dir)
   }, HOOK_TIMEOUT_MS)
 
   test('the fixture is landed when git behaves', () => {
@@ -853,7 +854,7 @@ describe('failing closed', () => {
   test('a tip or landed ref that does not resolve is no evidence', () => {
     const git = new Git(dir, { env: { ...IDENTITY } })
     expect(patchEquivalent(repo, 'no-such-branch', git)).toBeNull()
-    expect(patchEquivalent({ ...repo, mainBranch: 'no-such-main' }, 'feat', git)).toBeNull()
+    expect(patchEquivalent({ ...repo, ref: 'no-such-main' }, 'feat', git)).toBeNull()
     expect(patchEquivalent(repo, '-x', git)).toBeNull()
   })
 

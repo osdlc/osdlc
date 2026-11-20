@@ -64,7 +64,8 @@ import {
   KINDS,
   RepoCleanerError,
   type Kind,
-  landedRef,
+  landedFor,
+  refOf,
   type RemoteRow,
   type RepoInfo,
   type Risk,
@@ -654,7 +655,7 @@ function planSteps(
       )
       archives.set(step, {
         remote: info.remote,
-        defaultRef: landedRef(info),
+        defaultRef: refOf(landedFor(info, null)),
         jobs: members.map((a) => ({ id: a.row.id, row: a.row, discardAllowed: a.discardNamed })),
       })
       archiveSteps.push([step, null])

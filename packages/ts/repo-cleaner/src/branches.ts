@@ -22,7 +22,9 @@ import {
   type Landing,
 } from './landing.ts'
 import {
-  landedRef,
+  landedFor,
+  refOf,
+  type LandedAgainst,
   makeRow,
   risksFor,
   type BranchEvidence,
@@ -48,12 +50,12 @@ const LOCAL_FORMAT =
   '%(refname:short)%09%(upstream:short)%09%(upstream:track)%09%(committerdate:iso8601-strict)%09%(objectname)'
 
 /**
- * True when merged `pr` proves `tip` landed: it targeted the default branch
- * and its head commit is `tip`. Fork PRs never reach here; the provider drops
- * them. A PR with no reported head counts as `head-moved`.
+ * True when merged `pr` proves `tip` landed: it targeted the branch the row is
+ * judged against and its head commit is `tip`. Fork PRs never reach here; the
+ * provider drops them. A PR with no reported head counts as `head-moved`.
  */
-function prCapturesTip(pr: PRInfo, tip: string, repo: RepoInfo): true | PrEvidenceGap {
-  if (pr.baseRef !== repo.mainBranch) return 'other-base'
+function prCapturesTip(pr: PRInfo, tip: string, against: LandedAgainst): true | PrEvidenceGap {
+  if (pr.baseRef !== against.branch) return 'other-base'
   if (pr.headOid === null || pr.headOid !== tip) return 'head-moved'
   return true
 }
@@ -66,14 +68,14 @@ export function recordPr(
   evidence: LandingEvidence,
   pr: PRInfo | undefined,
   tip: string,
-  repo: RepoInfo,
+  against: LandedAgainst,
 ): { landed: boolean; gap: PrEvidenceGap | null } {
   if (pr === undefined) return { landed: false, gap: null }
   const { headRef: _, ...rest } = pr
   const out: PrEvidence = rest
   evidence.pr = out
   if (pr.state !== 'MERGED') return { landed: false, gap: null }
-  const verdict = prCapturesTip(pr, tip, repo)
+  const verdict = prCapturesTip(pr, tip, against)
   out.proof = verdict === true ? 'exact-head' : verdict
   return verdict === true ? { landed: true, gap: null } : { landed: false, gap: verdict }
 }
@@ -89,9 +91,9 @@ function noPrSentence(repo: RepoInfo): string {
 }
 
 /** One sentence on why a merged PR did not count, for a row's notes. */
-export function gapSentence(pr: PRInfo, gap: PrEvidenceGap, repo: RepoInfo): string {
+export function gapSentence(pr: PRInfo, gap: PrEvidenceGap, against: LandedAgainst): string {
   return gap === 'other-base'
-    ? `PR #${pr.number} merged into \`${pr.baseRef}\`, not \`${repo.mainBranch}\`, so it is not landing proof (other-base).`
+    ? `PR #${pr.number} merged into \`${pr.baseRef}\`, not \`${against.branch}\`, so it is not landing proof (other-base).`
     : `PR #${pr.number} merged at head ${pr.headOid ?? '(unknown)'}, which is not this tip, so it is not landing proof (head-moved).`
 }
 
@@ -220,6 +222,9 @@ function classifyLocalBranch(opts: {
   const pinned = (why: string): BranchRow => row({ verdict: 'keep', action: null, why })
 
   if (name === repo.mainBranch) return pinned('default branch')
+  const against = landedFor(repo, null)
+  const compareRef = refOf(against)
+  const onto = { root: repo.root, ref: compareRef }
   const held =
     name === repo.currentBranch
       ? 'current HEAD'
@@ -231,10 +236,11 @@ function classifyLocalBranch(opts: {
     // an exact-head merged PR, without the patch checks a deletable row gets.
     // `soft`: a missing default ref reads as not merged.
     const pr = prs.get(name)
-    const { landed } = recordPr(evidence, pr, sha, repo)
+    const { landed } = recordPr(evidence, pr, sha, against)
+    evidence.landedAgainst = compareRef
     evidence.merged = mergedFact({
       landed,
-      ancestor: git.at(repo.root).soft.isAncestor(sha, landedRef(repo)),
+      ancestor: git.at(repo.root).soft.isAncestor(sha, compareRef),
       patchLanded: false,
     })
     return pinned(held)
@@ -242,18 +248,17 @@ function classifyLocalBranch(opts: {
 
   // Work merged only into an unpushed local default has not landed. A missing
   // remote-tracking ref exits 128: ancestry unknown (null).
-  const compareRef = landedRef(repo)
-  evidence.compareAgainst = compareRef
+  evidence.landedAgainst = compareRef
   const ancestry = git.at(repo.root).try.isAncestor(name, compareRef)
   const ancestor = ancestry.ok ? ancestry.value : null
   evidence.ancestorOfRemoteMain = ancestor
   const isAncestor = ancestor === true
 
   const pr = prs.get(name)
-  const { landed, gap } = recordPr(evidence, pr, sha, repo)
+  const { landed, gap } = recordPr(evidence, pr, sha, against)
   // Rebase merges, cherry-picks and squash merges leave the tip off the default
   // branch; the patches say whether the work is there anyway.
-  const patch: Landing | null = landed || isAncestor ? null : judgeLanding(repo, sha, pr, gap, git)
+  const patch: Landing | null = landed || isAncestor ? null : judgeLanding(onto, sha, pr, gap, git)
   if (patch !== null) recordLanding(evidence, patch)
   const patchLanded = patch !== null && patch.check !== null
   const unmerged = !landed && !isAncestor && !landingConfirmed(patch)
@@ -284,8 +289,8 @@ function classifyLocalBranch(opts: {
   const notes = [lead]
   notes.push(upstream ? `Tracks \`${upstream}\` (${track || 'in sync'}).` : 'Has no upstream.')
   notes.push(pr ? `Associated PR #${pr.number} is ${pr.state} (${pr.url}).` : noPrSentence(repo))
-  if (pr && gap) notes.push(gapSentence(pr, gap, repo))
-  const unmatched = patch === null ? null : unmatchedSentence(patch, repo)
+  if (pr && gap) notes.push(gapSentence(pr, gap, against))
+  const unmatched = patch === null ? null : unmatchedSentence(patch, compareRef)
   if (unmatched !== null) notes.push(unmatched)
   notes.push(`Last commit: ${lastCommit} (${sha}).`)
   return row({
@@ -429,7 +434,9 @@ function classifyRemoteBranch(opts: {
   if (branch === repo.mainBranch)
     return row({ verdict: 'keep', action: null, why: 'default branch' })
 
-  const remoteMain = landedRef(repo)
+  const against = landedFor(repo, remote)
+  const remoteMain = refOf(against)
+  evidence.landedAgainst = remoteMain
   // `soft`: `sha` may come from `ls-remote`, so the clone may never have
   // fetched it, and `remoteMain` may not exist either. Both exit 128; this row
   // renders "cannot tell" as false.
@@ -437,10 +444,13 @@ function classifyRemoteBranch(opts: {
   evidence.ancestorOfRemoteMain = isAncestor
 
   const pr = prs.get(branch)
-  const { landed, gap } = recordPr(evidence, pr, sha, repo)
+  const { landed, gap } = recordPr(evidence, pr, sha, against)
   // A `sha` from `ls-remote` may not be in this clone; the check then finds
   // nothing and the branch stays unlanded.
-  const patch: Landing | null = landed || isAncestor ? null : judgeLanding(repo, sha, pr, gap, git)
+  const patch: Landing | null =
+    landed || isAncestor
+      ? null
+      : judgeLanding({ root: repo.root, ref: remoteMain }, sha, pr, gap, git)
   if (patch !== null) recordLanding(evidence, patch)
   const patchLanded = patch !== null && patch.check !== null
   const unmerged = !landed && !isAncestor && !landingConfirmed(patch)
@@ -484,8 +494,8 @@ function classifyRemoteBranch(opts: {
 
   const notes = [`Remote branch \`${name}\` is not an ancestor of \`${remoteMain}\`.`]
   notes.push(pr ? `Associated PR #${pr.number} is ${pr.state}.` : (unknownPr ?? noPrSentence(repo)))
-  if (pr && gap) notes.push(gapSentence(pr, gap, repo))
-  const unmatched = patch === null ? null : unmatchedSentence(patch, repo)
+  if (pr && gap) notes.push(gapSentence(pr, gap, against))
+  const unmatched = patch === null ? null : unmatchedSentence(patch, remoteMain)
   if (unmatched !== null) notes.push(unmatched)
   notes.push('Decide whether to push more work, delete, or leave it as long-lived.')
   return row({

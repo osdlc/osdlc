@@ -137,7 +137,9 @@ identity is the boot id and the start in kernel ticks
 (`@osdlc/file-lock`'s `processIdentity`); elsewhere it is the start time.
 
 **fingerprint.** The evidence a row's verdict rests on, recorded in a plan:
-for a branch, its commit and its pull request's number and state; for a
+for every row, the default branch it was judged against
+(`evidence.landedAgainst`); for a branch, its commit and its pull request's
+number and state; for a
 worktree, its head and branch, how much unlanded work it holds, whether its
 lock was stale, whether it is on disk, its submodules' state, and the remote
 branches that hold its head. Two looks agree on a row when its fingerprints
