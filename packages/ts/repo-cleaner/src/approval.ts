@@ -38,11 +38,12 @@ export interface Allow {
  *   `pick`   also run these rows: a `review` row, or a `keep` row with an
  *            action, runs only when picked or selected.
  *   `spare`  leave these rows alone: a row id; a bare name, which is every
- *            row of that name, a remote branch of that branch name included;
- *            or a glob (`release/*`, `remote:origin/tmp-*`) matched against row
- *            names, and a remote branch's name without its remote. A remote
- *            branch named in full (`remote:origin/x` or `origin/x`) is still
- *            checked, and the run stops if it moved or is gone since the plan.
+ *            row of that name, the remote branches and worktrees of that
+ *            branch included, and nothing where no row has it; or a glob
+ *            (`release/*`, `remote:origin/tmp-*`) matched against row names
+ *            and the branch a remote row or worktree is of. A remote branch
+ *            named in full (`remote:origin/x` or `origin/x`) is still checked,
+ *            and the run stops if it moved or is gone since the plan.
  *   `allow`  the risks a row's action may carry.
  */
 export interface Approval {
@@ -185,9 +186,10 @@ export function checkApproval(
  * The rows one `spare` entry leaves alone: `named`, a remote branch among
  * which gets the tip check, and `matched`, which do not. A row id is named. A
  * bare name names the rows it names exactly (a worktree's path, a local
- * branch, `<remote>/<branch>`), and matches every remote branch of that name,
- * so `--spare staging` keeps `staging` everywhere; one that hits nothing is
- * not in the plan. A glob matches; see {@link matchGlob}.
+ * branch, `<remote>/<branch>`), and matches every remote branch of that name
+ * and every worktree that has it checked out, so `--spare staging` keeps
+ * `staging` everywhere; one that hits nothing spares nothing. A glob matches;
+ * see {@link matchGlob}.
  */
 function spareRows(
   plan: Plan,
@@ -205,9 +207,7 @@ function spareRows(
     if (e.kind === 'worktree' ? paths.has(e.name) : e.name === ref.name) named.push(rowOf(e))
     else if (e.branch === ref.name) matched.push(rowOf(e))
   }
-  if (named.length + matched.length === 0) {
-    throw new RepoCleanerError('not-found', `--spare ${text}: no such row in the plan`)
-  }
+  // A branch some repositories lack spares nothing there, as a glob does.
   return { named, matched }
 }
 
@@ -225,7 +225,7 @@ function matchGlob(plan: Plan, glob: string): Resolved[] {
 interface PlanEntry extends Resolved {
   kind: Kind
   name: string
-  /** `feat/x` for `remote:origin/feat/x`; null for a local row. */
+  /** `feat/x` for `remote:origin/feat/x`, the branch a worktree has checked out; null otherwise. */
   branch: string | null
 }
 
@@ -234,7 +234,13 @@ function planEntries(plan: Plan): PlanEntry[] {
   return plan.repos.flatMap((repo) =>
     repo.rows.map((row) => {
       const { kind, name } = parseRowId(row.id)!
-      const branch = kind === 'remote' ? name.slice(name.indexOf('/') + 1) : null
+      const held = row.fingerprint['branch']
+      const branch =
+        kind === 'remote'
+          ? name.slice(name.indexOf('/') + 1)
+          : kind === 'worktree' && typeof held === 'string'
+            ? held
+            : null
       return { repo: repo.root, id: row.id, kind, name, branch }
     }),
   )

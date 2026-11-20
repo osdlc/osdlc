@@ -746,11 +746,16 @@ describe('resolveApproval refuses', () => {
   test('not-found: a row the plan does not have', () => {
     for (const approval of [
       { select: ['branch:main'] },
-      { spare: ['nope'] },
+      { spare: ['branch:nope'] },
       { allow: [{ risk: 'abandon-unmerged' as const, row: 'remote:origin/nope' }] },
     ]) {
       expectRefused(() => resolve(approval), 'not-found', /no such row in the plan/)
     }
+  })
+
+  test('a bare --spare name no row has spares nothing, as a glob that matches nothing', () => {
+    const r = resolve({ spare: ['nope', 'nope/*'] })
+    expect([...r.spare, ...r.spareMatched]).toEqual([])
   })
 
   test('ambiguous: a bare name two rows share, or an id in two repositories', () => {

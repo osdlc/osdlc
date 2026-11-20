@@ -105,9 +105,10 @@ requests whose head is the fork.
 its risks.
 
 **spare.** `--spare <row or glob>`: leave this row alone, whatever its
-verdict. A bare branch name is that branch everywhere, a remote branch of that
-name on every remote included; a glob matches row names, and a remote branch's
-name without its remote. A remote branch spared by its full name is still
+verdict. A bare branch name is that branch everywhere: its worktree, its local
+branch, and its remote branch on every remote, and nothing where no row has
+it. A glob matches row names, a remote branch's name without its remote, and
+the branch a worktree has out. A remote branch spared by its full name is still
 checked: if it moved or is gone since the plan, the run stops, because the
 plan relied on it.
 

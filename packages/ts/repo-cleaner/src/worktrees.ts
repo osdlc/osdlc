@@ -434,8 +434,9 @@ function classifyWorktree(opts: {
       const used = branchUse(git.at(repo.root), branch, repo.mainBranch)
       evidence.branchUsed = used
       if (used !== null) {
-        const fresh = repo.fetchedRemotes
-        const recoverable = holders.filter((h) => fresh.some((r) => h.startsWith(`${r}/`)))
+        const recoverable = holders.filter((h) =>
+          repo.fetchedRemotes.includes(remoteOf(h, repo.allRemotes) ?? ''),
+        )
         if (recoverable.length > 0) {
           evidence.recoverableFrom = recoverable
           unlanded = false
@@ -596,16 +597,27 @@ function remoteBranchesHolding(repo: RepoInfo, git: Git, head: string): string[]
   const rows = git.at(repo.root).try.forEachRef(prefixes, { format: '%(refname)', contains: head })
   if (!rows.ok) return []
   const out: string[] = []
-  for (const [remote, defaultBranch] of defaults) {
-    const prefix = `refs/remotes/${remote}/`
-    out.push(
-      ...rows.value
-        .filter((ref) => ref.startsWith(prefix))
-        .map((ref) => ref.slice('refs/remotes/'.length))
-        .filter((name) => name !== `${remote}/HEAD` && name !== `${remote}/${defaultBranch}`),
-    )
+  for (const ref of rows.value) {
+    const name = ref.slice('refs/remotes/'.length)
+    const remote = remoteOf(name, repo.allRemotes)
+    const defaultBranch = remote === null ? undefined : defaults.get(remote)
+    if (defaultBranch === undefined) continue
+    if (name === `${remote}/HEAD` || name === `${remote}/${defaultBranch}`) continue
+    if (!out.includes(name)) out.push(name)
   }
   return out.sort()
+}
+
+/**
+ * The remote `name` (`origin/feat/x`) is a branch of: the longest remote name
+ * it starts with, since git allows `/` in one (`origin/mirror`). Null for none.
+ */
+function remoteOf(name: string, remotes: readonly string[]): string | null {
+  let found: string | null = null
+  for (const r of remotes) {
+    if (name.startsWith(`${r}/`) && (found === null || r.length > found.length)) found = r
+  }
+  return found
 }
 
 const USE_REASON: Record<BranchUse, string> = {

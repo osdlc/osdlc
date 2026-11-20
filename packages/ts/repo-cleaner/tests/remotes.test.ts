@@ -3,6 +3,9 @@
  * whose default branches differ (D-4CE9, U9 to U11).
  */
 
+import { realpathSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+
 import { afterEach, describe, expect, test } from 'vitest'
 
 import type { CommandRunner } from '@osdlc/command-seam'
@@ -13,6 +16,7 @@ import { cannedGh, sh, withRemotes } from './helpers.ts'
 import { main, type MainDeps } from '../src/cli.ts'
 import { check, run } from '../src/clean.ts'
 import { plan } from '../src/plan.ts'
+import { renderText } from '../src/render.ts'
 import { sweep, type SweepOptions } from '../src/sweep.ts'
 import type { RepoSweep, Row } from '../src/types.ts'
 
@@ -467,5 +471,67 @@ describe('choosing rows', () => {
       'branch:feat/b',
       'branch:feat/open-question',
     ])
+  })
+})
+
+describe('review fixes', () => {
+  test('a bare --spare name also spares the worktree that has that branch out', () => {
+    const fx = forkAndParent()
+    fx.pushBranch('origin', 'staging')
+    land(fx.root, 'staging', 'origin')
+    const wt = join(dirname(fx.root), 'wt-staging')
+    sh(fx.root, ['worktree', 'add', '-q', wt, 'staging'])
+    const p = plan(sweep([fx.root], { cwd: fx.root, provider: 'none', remotes: [''] }))
+    const preview = check(p, { spare: ['staging'] }, { cwd: fx.root })
+    expect(preview.steps.map((st) => st.row).filter((r) => r.includes('staging'))).toEqual([])
+  })
+
+  test("judging another remote alone does not list the default remote's pull requests", () => {
+    const fx = forkAndParent()
+    const gh = cannedGh([])
+    sweep([fx.root], { cwd: fx.root, remotes: ['upstream'], only: ['remote'], git: fx.git, gh })
+    const listed = gh.calls.filter((c) => c[0] === 'pr' && c[1] === 'list').map((c) => c.join(' '))
+    expect(listed.length).toBeGreaterThan(0)
+    expect(listed.every((c) => c.includes('acme/app'))).toBe(true)
+  })
+
+  test('--fetch fetches the --against remote, with or without a default remote', () => {
+    const fx = forkAndParent()
+    sh(fx.root, ['remote', 'rename', 'origin', 'mine'])
+    sh(fx.root, ['config', '--unset', 'branch.main.remote'])
+    const swept = sweepOne(fx.root, { fetch: true, against: 'upstream' })
+    expect(swept.error).toBeNull()
+    expect(swept.repo?.fetchedRemotes).toEqual(['upstream'])
+  })
+
+  test('an --against remote with no refs on disk says to fetch it', () => {
+    const fx = forkAndParent()
+    sh(fx.root, ['remote', 'add', 'later', fx.bare['upstream']!])
+    expect(sweepOne(fx.root, { against: 'later' }).error).toContain('fetch it')
+  })
+
+  test("a branch on a remote named inside another (origin/mirror) is that remote's", () => {
+    const fx = forkAndParent()
+    sh(fx.root, ['remote', 'add', 'origin/mirror', fx.bare['upstream']!])
+    const wt = join(dirname(fx.root), 'wt-topic')
+    sh(fx.root, ['worktree', 'add', '-q', '-b', 'topic', wt, 'main'])
+    sh(wt, ['commit', '-q', '--allow-empty', '-m', 'topic work'])
+    sh(wt, ['push', '-q', 'origin/mirror', 'topic'])
+    sh(fx.root, ['fetch', '-q', 'origin/mirror'])
+    // Only origin is fetched now; the branch holding the worktree is origin/mirror's.
+    const swept = sweepOne(fx.root, { fetch: true })
+    const row = swept.rows.find((r) => r.kind === 'worktree' && r.name === realpathSync(wt))
+    expect(row?.kind === 'worktree' && row.evidence.recoverableFrom).toBeFalsy()
+  })
+
+  test('the header names each judged remote, and says which were not fetched', () => {
+    const fx = forkAndParent()
+    const swept = sweep([fx.root], {
+      cwd: fx.root,
+      remotes: ['upstream'],
+      offline: true,
+      provider: 'none',
+    })
+    expect(renderText(swept)).toMatch(/origin, not fetched, upstream not fetched\)/)
   })
 })

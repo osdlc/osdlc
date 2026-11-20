@@ -383,7 +383,12 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
     // own branches and the local rows. A repository with no default remote
     // keys its local rows' lookup by ''.
     const root = repo.root
-    const statuses = new Map<string, ProviderStatus | null>([[repo.remote ?? '', repo.provider]])
+    // The default remote's pull requests are for the local rows: with none in
+    // scope, it is asked only when it is judged itself.
+    const local = kinds.has('worktree') || kinds.has('branch')
+    const statuses = new Map<string, ProviderStatus | null>(
+      local ? [[repo.remote ?? '', repo.provider]] : [],
+    )
     for (const r of repo.remotes) if (!statuses.has(r.name)) statuses.set(r.name, r.provider)
     const answered = new Map<string, { prs: Map<string, PRInfo>; status: ProviderStatus | null }>()
     for (const [name, status] of statuses) {
@@ -405,10 +410,10 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
       const note = name === '' ? null : providerNote(after, kinds, opts.provider)
       if (note !== null) notes.push(statuses.size > 1 ? `${name}: ${note}` : note)
     }
-    const prs = answered.get(repo.remote ?? '')!.prs
+    const prs = answered.get(repo.remote ?? '')?.prs ?? new Map<string, PRInfo>()
     repo = {
       ...repo,
-      provider: answered.get(repo.remote ?? '')!.status,
+      provider: answered.get(repo.remote ?? '')?.status ?? repo.provider,
       remotes: repo.remotes.map((r) => ({ ...r, provider: answered.get(r.name)!.status })),
     }
     const rows: Row[] = []
@@ -571,6 +576,8 @@ function fetchSet(repo: RepoInfo, fetch: RepoSweepOptions['fetch']): string[] {
   if (Array.isArray(fetch)) return [...fetch]
   const names = repo.remotes.map((r) => r.name)
   if (fetch === 'local' && repo.remote !== null) names.unshift(repo.remote)
-  if (names.length > 0 && repo.against !== null) names.push(repo.against.remote)
+  if ((names.length > 0 || fetch === 'local') && repo.against !== null) {
+    names.push(repo.against.remote)
+  }
   return [...new Set(names)]
 }

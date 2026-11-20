@@ -213,9 +213,11 @@ export function resolveRemoteDefaults(info: RepoInfo, git: Git): RepoInfo {
     if (branch !== '') return branch
     const found = remoteDefault(at, name)
     if (found === null) {
-      throw new DiscoveryFailed(
-        `could not tell the default branch of remote ${name}; set it with \`git remote set-head ${name} --auto\``,
-      )
+      const fix =
+        at.refs(`refs/remotes/${name}/`).length === 0
+          ? `it has no remote-tracking refs: fetch it (\`--fetch\`, or judge its branches with \`--remote=${name}\` without \`--offline\`)`
+          : `set it with \`git remote set-head ${name} --auto\``
+      throw new DiscoveryFailed(`could not tell the default branch of remote ${name}; ${fix}`)
     }
     return found
   }

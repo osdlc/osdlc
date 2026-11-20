@@ -513,11 +513,12 @@ skipped and shown with the reason.
 
 **`--spare <row>`** means "leave this row alone, and make sure it is what I
 saw". A bare name (`--spare staging`) is that branch everywhere: its
-worktree, its local branch, and its remote branch on every remote. A glob
-(`--spare 'release/*'`, `--spare 'remote:origin/tmp-*'`) leaves every row it
-matches alone, by name, and a remote branch also by its name without the
-remote; `*` stays within a `/`, `**` does not. A glob that matches nothing is
-no error. The usual case: delete a merged worktree and its local branch, but keep
+worktree, its local branch, and its remote branch on every remote; in a
+repository without it, nothing. A glob (`--spare 'release/*'`, `--spare
+'remote:origin/tmp-*'`) leaves every row it matches alone, by name, a remote
+branch also by its name without the remote, and a worktree by the branch it
+has out; `*` stays within a `/`, `**` does not. A glob that matches nothing
+is no error. The usual case: delete a merged worktree and its local branch, but keep
 the branch on the remote as a backup.
 
 - A spared row is not deleted, even if it is judged `delete`.
