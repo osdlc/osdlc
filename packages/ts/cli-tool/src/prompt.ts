@@ -486,3 +486,95 @@ export function askChoice<const T extends string>(
     asking.write(`${said}${help}\n${line}`)
   }
 }
+
+/**
+ * One line of {@link askChecklist}.
+ * @experimental
+ */
+export interface ChecklistItem {
+  label: string
+  /** Ticked when the list is first shown. */
+  checked?: boolean
+  /** Why it cannot be ticked; shown beside it. An item with a reason is never chosen. */
+  disabled?: string
+}
+
+/**
+ * Options for {@link askChecklist}.
+ * @experimental
+ */
+export type AskChecklistOptions = PromptOptions
+
+/** The item numbers `answer` names: `3`, `1 4`, `2-5`, `1,3`; null when any word is not one. */
+function numbersIn(answer: string, count: number): number[] | null {
+  const out: number[] = []
+  for (const word of answer.split(/[\s,]+/).filter((w) => w !== '')) {
+    const range = /^(\d+)(?:-(\d+))?$/.exec(word)
+    if (range === null) return null
+    const from = Number(range[1])
+    const to = range[2] === undefined ? from : Number(range[2])
+    if (from < 1 || to > count || from > to) return null
+    for (let n = from; n <= to; n++) out.push(n)
+  }
+  return out
+}
+
+/**
+ * Write `question` and `items` as a numbered checklist, `[x]` ticked, `[ ]`
+ * not, `[-]` not selectable with its reason, then read lines: each names
+ * item numbers or ranges (`2`, `1 4`, `3-5`) to toggle, and the list is shown
+ * again; an empty line accepts it. Returns the ticked indexes, in order.
+ *
+ * A word that is not an item number, or names one that cannot be ticked, is
+ * asked again on a terminal, and otherwise throws a plain `Error`, as
+ * {@link askChoice} does. End of input accepts the list as it stands.
+ *
+ * Labels and reasons are printed on one line with terminal controls escaped or
+ * removed; the question is printed as given.
+ *
+ * @throws {@link NotInteractiveError} when `required` is set and nobody can answer.
+ * @experimental
+ */
+export function askChecklist(
+  question: string,
+  items: readonly ChecklistItem[],
+  opts: AskChecklistOptions = {},
+): number[] {
+  const ticked = items.map((item) => item.disabled === undefined && item.checked === true)
+  const asking = startAsking(opts)
+  const width = String(items.length).length
+  const show = (): void => {
+    const lines = items.map((item, i) => {
+      const mark = item.disabled !== undefined ? '[-]' : ticked[i] ? '[x]' : '[ ]'
+      const why = item.disabled === undefined ? '' : `  (${safeLine(item.disabled)})`
+      return `  ${String(i + 1).padStart(width)} ${mark} ${safeLine(item.label)}${why}\n`
+    })
+    asking.write(`${lines.join('')}Toggle numbers (1 3-5), or Enter to accept: `)
+  }
+  asking.write(`${question}\n`)
+  show()
+  for (;;) {
+    const answer = readAnswer(asking)
+    if (answer === null || answer === '') {
+      return ticked.flatMap((on, i) => (on ? [i] : []))
+    }
+    const numbers = numbersIn(answer, items.length)
+    const locked = numbers?.find((n) => items[n - 1]!.disabled !== undefined)
+    const problem =
+      numbers === null
+        ? `'${safeLine(answer)}' is not a list of item numbers from 1 to ${items.length}`
+        : locked !== undefined
+          ? `${locked} cannot be ticked (${safeLine(items[locked - 1]!.disabled!)})`
+          : null
+    if (problem !== null) {
+      if (!asking.terminal) {
+        const pass = asking.flag === undefined ? '' : `. Pass ${asking.flag} instead.`
+        throw new Error(`${problem}${pass}`)
+      }
+      asking.write(`${problem}.\nToggle numbers (1 3-5), or Enter to accept: `)
+      continue
+    }
+    for (const n of numbers!) ticked[n - 1] = !ticked[n - 1]
+    show()
+  }
+}

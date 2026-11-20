@@ -448,6 +448,12 @@ a key pressed while a long step ran cannot answer it.
   `yes | tooly` cannot loop and a bad line does not eat the next question's
   answer.
   The return type is the union of the choices.
+- `askChecklist(question, items)` prints the items as a numbered checklist,
+  `[x]` ticked, `[ ]` not, `[-]` not selectable with its reason, and reads
+  lines of item numbers or ranges (`2`, `1 4`, `3-5`) that toggle them, showing
+  the list again each time; an empty line, or end of input, accepts it. It
+  returns the ticked indexes. A bad line is asked again on a terminal and
+  throws otherwise, as with `askChoice`.
 
 ```ts
 const format = askChoice('Output format?', ['text', 'json'], { default: 'text' })
@@ -928,8 +934,8 @@ follow `@osdlc/tiered-dirs`.
 
 The experimental exports of `@osdlc/cli-tool`:
 
-`AskChoiceOptions`, `AskTextOptions`, `AskYesNoOptions`, `DEFAULT_WIDTH`, `DevlinkWhere`, `MAX_WIDTH`, `NotInteractiveError`,
-`NotInteractiveReason`, `OpenTtyOptions`, `PromptTerminal`, `RequireInteractiveOptions`, `Terminal`, `VendorDirs`, `askChoice`, `askText`,
+`AskChecklistOptions`, `AskChoiceOptions`, `AskTextOptions`, `AskYesNoOptions`, `ChecklistItem`, `DEFAULT_WIDTH`, `DevlinkWhere`, `MAX_WIDTH`, `NotInteractiveError`,
+`NotInteractiveReason`, `OpenTtyOptions`, `PromptTerminal`, `RequireInteractiveOptions`, `Terminal`, `VendorDirs`, `askChecklist`, `askChoice`, `askText`,
 `closestMatches`, `colorEnabled`, `columns`, `didYouMean`, `helpWidth`, `openTty`, `requireInteractive`, `systemDirs`,
 `wrapText`
 
