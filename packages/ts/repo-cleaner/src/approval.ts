@@ -24,8 +24,8 @@ import { globRegExp } from './util.ts'
 /** A risk allowed for every row (`row` absent), or for one row. */
 export interface Allow {
   risk: Risk
-  /** A row id or bare name, resolved as a pick is. */
-  row?: string | undefined
+  /** A row id or bare name, resolved as a pick is, or a row already resolved. */
+  row?: string | Resolved | undefined
 }
 
 /**
@@ -44,7 +44,8 @@ export interface Allow {
  *   `allow`  the risks a row's action may carry.
  */
 export interface Approval {
-  select?: readonly string[] | undefined
+  /** Row names, or rows already resolved: a checklist names each by its repository. */
+  select?: readonly (string | Resolved)[] | undefined
   pick?: readonly string[] | undefined
   spare?: readonly string[] | undefined
   allow?: readonly (Risk | Allow)[] | undefined
@@ -157,7 +158,9 @@ export function checkApproval(
   approval: Approval,
 ): void {
   const refs: Array<[string, string]> = [
-    ...(approval.select ?? []).map((t): [string, string] => ['--select', t]),
+    ...(approval.select ?? [])
+      .filter((t) => typeof t === 'string')
+      .map((t): [string, string] => ['--select', t]),
     ...(approval.pick ?? []).map((t): [string, string] => ['--pick', t]),
     ...(approval.spare ?? [])
       .filter((t) => !isGlob(t))
@@ -167,11 +170,11 @@ export function checkApproval(
   for (const a of approval.allow ?? []) {
     const { risk, row } = typeof a === 'string' ? { risk: a, row: undefined } : a
     checkRisk(risk)
-    if (row !== undefined) refs.push(['--allow', row])
+    if (typeof row === 'string') refs.push(['--allow', row])
   }
   for (const [flag, text] of refs) checkScope(options, parseRowRef(text), flag, text)
   const chosen = [...(approval.select ?? []), ...(approval.pick ?? [])]
-  const both = chosen.find((p) => (approval.spare ?? []).includes(p))
+  const both = chosen.find((p) => typeof p === 'string' && (approval.spare ?? []).includes(p))
   if (both !== undefined)
     throw new RepoCleanerError('conflict', `${both} is both picked and spared`)
 }
@@ -206,7 +209,17 @@ function pathForms(name: string, cwd: string): Set<string> {
 }
 
 /** The plan row `text` names, its scope checked first so a row the plan could never hold is a conflict, not a miss. */
-function resolveRef(plan: Plan, text: string, flag: string, cwd: string): Resolved {
+function resolveRef(plan: Plan, text: string | Resolved, flag: string, cwd: string): Resolved {
+  if (typeof text !== 'string') {
+    const found = plan.repos.find((r) => r.root === text.repo)?.rows.some((r) => r.id === text.id)
+    if (found !== true) {
+      throw new RepoCleanerError(
+        'not-found',
+        `${flag} ${text.id} in ${text.repo}: no such row in the plan`,
+      )
+    }
+    return { repo: text.repo, id: text.id }
+  }
   const ref = parseRowRef(text)
   checkScope(plan.options, ref, flag, text)
   const paths = ref.kind === null || ref.kind === 'worktree' ? pathForms(ref.name, cwd) : null
@@ -265,11 +278,12 @@ export function resolveApproval(plan: Plan, approval: Approval, cwd: string): Re
     const { risk, row } = typeof a === 'string' ? { risk: a, row: undefined } : a
     if (row === undefined) return { risk, row: null }
     const at = resolveRef(plan, row, '--allow', cwd)
+    const named = typeof row === 'string' ? row : row.id
     if (spared.has(keyOf(at))) {
-      throw new RepoCleanerError('conflict', `--allow ${risk}=${row}: ${at.id} is spared`)
+      throw new RepoCleanerError('conflict', `--allow ${risk}=${named}: ${at.id} is spared`)
     }
     if (select !== null && !picked.has(keyOf(at))) {
-      throw new RepoCleanerError('conflict', `--allow ${risk}=${row}: ${at.id} is not selected`)
+      throw new RepoCleanerError('conflict', `--allow ${risk}=${named}: ${at.id} is not selected`)
     }
     return { risk, row: at }
   })

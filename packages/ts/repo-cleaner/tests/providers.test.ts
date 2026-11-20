@@ -668,12 +668,12 @@ describe('a sweep of a GitLab checkout', () => {
 
     const refused = captureContext({ cwd: checkout })
     expect(main(['plan', '--provider', 'gitlab', '--no-progress'], refused, {})).toBe(2)
-    expect(refused.io.err).toContain('--provider has no effect without --remote')
+    expect(refused.io.err).toContain('--provider has no effect without remote rows')
   })
 
   test('--no-gh is gone: --provider none does the same', () => {
     const ctx = captureContext({ cwd: checkout })
-    const code = main(['--no-gh'], ctx, { confirm: () => null })
+    const code = main(['status', '--no-gh'], ctx, { confirm: () => null })
     expect(code).toBe(2)
     expect(ctx.io.err).toContain("unknown option '--no-gh'")
   })

@@ -86,7 +86,7 @@ export function discoverRepo(
 
   // We are provably inside a repository by now, so a failure here is a
   // failure, not "no remotes".
-  const all = at.remote()
+  const all = at.remotes()
   const remote = defaultRemote(at, all)
 
   let mainBranch = remote === null ? null : remoteHead(at, remote)

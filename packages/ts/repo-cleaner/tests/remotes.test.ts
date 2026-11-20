@@ -5,10 +5,12 @@
 
 import { afterEach, describe, expect, test } from 'vitest'
 
+import type { CommandRunner } from '@osdlc/command-seam'
+
 import { captureContext } from '@osdlc/cli-tool'
 
 import { cannedGh, sh, withRemotes } from './helpers.ts'
-import { main } from '../src/cli.ts'
+import { main, type MainDeps } from '../src/cli.ts'
 import { check, run } from '../src/clean.ts'
 import { plan } from '../src/plan.ts'
 import { sweep, type SweepOptions } from '../src/sweep.ts'
@@ -59,11 +61,83 @@ describe('a fork and its parent', () => {
 })
 
 describe('the command line', () => {
+  /** Run `argv` at `fx`, with `deps` answering whatever is asked. */
+  function cli(fx: { root: string; git: CommandRunner }, argv: string[], deps: MainDeps = {}) {
+    const ctx = captureContext({ cwd: fx.root })
+    const code = main(argv, ctx, {
+      confirm: () => null,
+      runners: { git: fx.git, gh: cannedGh([]) },
+      ...deps,
+    })
+    return { code, out: ctx.io.out, err: ctx.io.err }
+  }
+
+  test('--remote=<name> judges that remote, and adds to a bare --remote', () => {
+    const fx = forkAndParent()
+    fx.pushBranch('origin', 'feat/o')
+    fx.pushBranch('upstream', 'feat/u')
+    const ids = (argv: string[]) => {
+      const res = cli(fx, ['status', ...argv, '--provider', 'none', '--format', 'json'])
+      expect(res.code).toBe(0)
+      const out = JSON.parse(res.out) as { repos: { rows: { id: string }[] }[] }
+      return out.repos[0]!.rows.map((r) => r.id)
+    }
+    const upstream = ids(['--remote=upstream'])
+    expect(upstream).toContain('remote:upstream/feat/u')
+    expect(upstream.some((id) => id.startsWith('remote:origin/') || id.startsWith('branch:'))).toBe(
+      false,
+    )
+    const both = ids(['--remote', '--remote=upstream'])
+    expect(both).toContain('remote:origin/feat/o')
+    expect(both).toContain('remote:upstream/feat/u')
+    const every = ids(['--local', '--remote=*'])
+    expect(every).toContain('branch:feat/o')
+    expect(every).toContain('remote:upstream/feat/u')
+  })
+
+  test("clean -i runs the ticked rows, and asks for each ticked row's risks", () => {
+    const fx = forkAndParent()
+    fx.pushBranch('origin', 'feat/landed')
+    land(fx.root, 'feat/landed', 'origin')
+    fx.pushBranch('origin', 'feat/unsure')
+    const shown: string[] = []
+    const asked: string[] = []
+    const res = cli(fx, ['clean', '--branches', '-i', '-y'], {
+      checklist: (_q, items) => {
+        shown.push(
+          ...items.map((i) => `${i.checked === true ? 'x' : i.disabled ? '-' : ' '} ${i.label}`),
+        )
+        // Untick the delete row, tick the review row.
+        return items.flatMap((i, n) => (i.label.startsWith('branch:feat/unsure') ? [n] : []))
+      },
+      confirm: (q) => {
+        asked.push(q)
+        return true
+      },
+    })
+    expect(res.code).toBe(0)
+    expect(shown.find((l) => l.includes('branch:feat/landed'))).toMatch(/^x /)
+    expect(shown.find((l) => l.includes('branch:feat/unsure'))).toMatch(/^ {2}/)
+    expect(shown.find((l) => l.includes('branch:main'))).toMatch(/^- /)
+    expect(asked).toEqual(['branch:feat/unsure carries abandon-unmerged: allow it?'])
+    const left = sh(fx.root, ['branch', '--format=%(refname:short)'])
+    expect(left).toContain('feat/landed')
+    expect(left).not.toContain('feat/unsure')
+  })
+
+  test('-i needs a terminal, and does not go with --pick', () => {
+    const fx = forkAndParent()
+    expect(cli(fx, ['clean', '-i', '-y']).err).toContain('-i needs a terminal')
+    const both = cli(fx, ['clean', '-i', '--pick', 'x'], { checklist: () => [] })
+    expect(both.code).toBe(2)
+    expect(both.err).toContain('drop --pick')
+  })
+
   test('takes its runners from the caller', () => {
     const fx = forkAndParent()
     const gh = cannedGh([])
     const ctx = captureContext({ cwd: fx.root })
-    const code = main(['--remote', '--format', 'json', fx.root], ctx, {
+    const code = main(['status', '--remote', '--format', 'json', fx.root], ctx, {
       runners: { git: fx.git, gh },
     })
     expect(code).toBe(0)

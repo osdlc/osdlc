@@ -373,7 +373,7 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
     repo.remote === null &&
     repo.against === null &&
     (kinds.has('worktree') || kinds.has('branch')) &&
-    git.at(repo.root).remote().length > 0
+    git.at(repo.root).remotes().length > 0
   ) {
     notes.push(
       `No default remote (no origin, and the default branch tracks none), so local rows are judged against the local \`${repo.mainBranch}\`; pass \`--against <remote>\` to judge them against a remote.`,

@@ -67,7 +67,7 @@ export function sweptWith(
     conflict('a remote URL target sweeps remote branches only; sweep it apart from checkouts')
   }
   if (urls && only !== undefined && only.some((k) => k !== 'remote')) {
-    conflict(`a remote URL has only remote branches; drop --only ${only.join(',')}`)
+    conflict('a remote URL has only remote branches; drop --local, --worktrees and --branches')
   }
   if (urls && opts.branch !== undefined) {
     conflict('--branch reads one branch of a checkout; it does not take a remote URL')
@@ -88,17 +88,19 @@ export function sweptWith(
         : []
   const remote = remotes.length > 0
   if (asked.length > 0 && only !== undefined && !only.includes('remote')) {
-    conflict(`--remote includes remote branches, but --only ${only.join(',')} leaves them out`)
+    conflict(`remotes name remote branches, but only ${only.join(',')} leaves them out`)
   }
   if (opts.fetch === true && opts.offline === true) {
     conflict('--fetch and --offline contradict each other')
   }
   if (opts.offline === true && !remote) {
-    conflict('--offline has no effect without --remote: nothing is fetched anyway')
+    conflict(
+      '--offline has no effect without remote rows (--remote or --all): nothing is fetched anyway',
+    )
   }
   if (opts.provider !== undefined && !remote) {
     conflict(
-      '--provider has no effect without --remote: pull requests are looked up only for remote branches',
+      '--provider has no effect without remote rows (--remote or --all): pull requests are looked up only for them',
     )
   }
   const kinds: Kind[] = urls
