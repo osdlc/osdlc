@@ -9,11 +9,17 @@ import { describe, expect, test } from 'vitest'
 
 import {
   callAgent,
+  CLAUDE_HOOK_EVENTS,
+  claudeHookSettings,
   claudePluginArgv,
+  claudeResumeArgv,
   claudeResumeFlag,
+  claudeSessionArgv,
   cursorAdapter,
   customAdapter,
   detectAgents,
+  hasInteractiveArgv,
+  interactiveArgv,
   modelArgs,
   modelArgsRefusal,
   planCall,
@@ -21,7 +27,10 @@ import {
   templateRefusal,
   type AgentAdapter,
   type AgentAvailability,
+  type ClaudeLaunchFlags,
+  type ClaudeSessionFlags,
   type CustomAdapterOptions,
+  type InteractiveSpec,
   type ModelChoice,
   type ParsedOutput,
   type RawProcessOutput,
@@ -213,5 +222,29 @@ describe('launch-argv helpers (experimental)', () => {
       '{"enabledPlugins":{"x@y":false}}',
     ])
     expect(claudeResumeFlag('-abc')).toBe('--resume=-abc')
+  })
+
+  test('interactiveArgv builds the command line of a session, the prompt guarded behind `--`', () => {
+    const spec: InteractiveSpec = { binary: 'codex', prompt: '-fix it', choice: { model: 'm' } }
+    expect(interactiveArgv('codex', spec)).toEqual(['codex', '--model', 'm', '--', '-fix it'])
+    expect(interactiveArgv('opencode', { binary: 'opencode', prompt: 'hi' })).toEqual([
+      'opencode',
+      '--prompt=hi',
+    ])
+    expect(hasInteractiveArgv('claude')).toBe(true)
+    expect(hasInteractiveArgv('antigravity')).toBe(false)
+    expect(() => interactiveArgv('antigravity', spec)).toThrow('no interactive launch')
+  })
+
+  test('claude session flags: preset id, hooks in one --settings, and a resume that keeps them', () => {
+    const flags: ClaudeLaunchFlags = { harnessSessionId: 'abc', hookCommand: 'run-hook' }
+    const argv = interactiveArgv('claude', { binary: 'claude', prompt: 'p', claude: flags })
+    expect(argv.slice(0, 3)).toEqual(['claude', '--session-id', 'abc'])
+    expect(argv.slice(-2)).toEqual(['--', 'p'])
+    expect(claudeSessionArgv(flags)).toEqual(argv.slice(1, -2))
+    const kept: ClaudeSessionFlags = { appendSystemPrompt: 'pin' }
+    expect(claudeResumeArgv('abc', kept)).toEqual(['--resume=abc', '--append-system-prompt', 'pin'])
+    const { hooks } = claudeHookSettings('run-hook')
+    expect(Object.keys(hooks)).toEqual(Object.keys(CLAUDE_HOOK_EVENTS))
   })
 })

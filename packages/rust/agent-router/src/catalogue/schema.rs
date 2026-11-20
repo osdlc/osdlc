@@ -4,8 +4,8 @@
 //! The zod schemas are `.strict()` at every level; these types are
 //! `deny_unknown_fields` and each has a `validate` for what the type system
 //! cannot say (patterns, ranges, dates, the headless slot rules). An explicit
-//! `null` is refused anywhere, as zod refuses it. The fixture
-//! vectors in `packages/ts/agent-router/fixtures/catalogue/schema-*.json` hold
+//! `null` is refused anywhere, as zod refuses it. The conformance
+//! cases in `packages/conformance/agent-router/catalogue_schema_*.json` hold
 //! accept and reject cases for both. Not mirrored: `RouterConfigSchema`, which
 //! belongs to the `config` subpath; see the [crate] docs.
 

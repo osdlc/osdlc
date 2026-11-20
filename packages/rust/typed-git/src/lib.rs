@@ -9,6 +9,8 @@
 //! - [`diff`]: the changed paths with their status, for a range, the index
 //!   or the working tree, the unified diff, and the merge base of two
 //!   revisions.
+//! - [`object`]: many objects at once, byte-exact, through
+//!   `git cat-file --batch`.
 //! - [`commit`]: commits and reverts limited to named paths, and a push to
 //!   the branch's upstream.
 //! - [`clone`]: a cache checkout of another repository at a branch, tag or
@@ -42,6 +44,7 @@ pub mod commit;
 pub mod diff;
 pub mod error;
 pub mod info;
+pub mod object;
 pub mod query;
 pub mod worktree;
 
