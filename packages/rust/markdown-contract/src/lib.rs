@@ -1,8 +1,8 @@
 //! The Rust engine for markdown-contract, the twin of the TypeScript package
-//! `@osdlc/markdown-contract`. The shared corpus in `packages/ts/markdown-contract/corpus/`
-//! pins the two to the same findings for every YAML-expressible fixture: the same count
-//! and ids in order, and the level, line and hint where a fixture records them
-//! (`tests/corpus.rs`).
+//! `@osdlc/markdown-contract`. The conformance suite
+//! `packages/conformance/markdown-contract/suite.json` pins the two to the same findings
+//! for every YAML-expressible fixture: the same count, and the same ids, levels, lines and
+//! hints in order (`tests/conformance.rs`).
 //!
 //! [`validate()`] runs every check in one pass: the projection, the structure plane, the
 //! content plane (frontmatter schema; table, list, code and `maxWords` leaves), the
