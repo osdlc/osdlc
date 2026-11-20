@@ -54,7 +54,7 @@ const found = survey([cache], ctx) // scope, discover, object
 const receipt = clean(plan(found), [cache], ctx) // re-check, prepare, delete, deleted
 ```
 
-Without a `pick`, a plan runs every candidate nothing objects to. With one, it
+Without a `pick`, a plan runs every candidate nothing objects to and no plugin holds for review. With one, it
 runs the named candidates, each judged by the rules above.
 
 ## The `git` plugin

@@ -1,4 +1,12 @@
 {
+  "agent-router": {
+    "reference": "ts",
+    "generator": "pnpm --filter @osdlc/agent-router conformance:write",
+    "implementations": [
+      { "language": "ts", "dir": "packages/ts/agent-router", "name": "@osdlc/agent-router" },
+      { "language": "rust", "dir": "packages/rust/agent-router", "name": "agent-router" }
+    ]
+  },
   "config-layers": {
     "reference": "ts",
     "generator": "pnpm --filter @osdlc/config-layers conformance:write",
@@ -52,6 +60,14 @@
     "implementations": [
       { "language": "ts", "dir": "packages/ts/intersect", "name": "@osdlc/intersect" },
       { "language": "rust", "dir": "packages/rust/glob-intersect", "name": "glob-intersect" }
+    ]
+  },
+  "markdown-contract": {
+    "reference": "ts",
+    "generator": "pnpm --filter @osdlc/markdown-contract conformance:write",
+    "implementations": [
+      { "language": "ts", "dir": "packages/ts/markdown-contract", "name": "@osdlc/markdown-contract" },
+      { "language": "rust", "dir": "packages/rust/markdown-contract", "name": "markdown-contract" }
     ]
   },
   "markdown-link": {

@@ -8,7 +8,7 @@
 export interface Candidate {
   /** `<kind>:<path>`; unique across the run. */
   id: string
-  /** `worktree`, `branch`, `remote`, `artifact`, `session`, ... */
+  /** Free-form, e.g. `worktree`, `branch`. */
   kind: string
   /** The thing itself; for a session, its working directory. */
   path: string
@@ -42,10 +42,10 @@ export interface Objection {
   reason: string
 }
 
-/** What a run was asked to do, as plugins see it. `scope` is the only phase that adds to `targets`. */
+/** What a run was asked to do, as plugins see it. */
 export interface Ctx {
   cwd: string
-  /** The repository roots and URLs in scope; plugins add to them in `scope`. */
+  /** The checkouts and directories in scope; `scope` is the only phase that adds to them. */
   targets: readonly string[]
   /** The protest codes granted by name. */
   allow: readonly string[]
