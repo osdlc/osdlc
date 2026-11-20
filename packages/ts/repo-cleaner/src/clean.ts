@@ -1,8 +1,8 @@
 /**
  * Cleaning up: `check` a plan against an approval, then `run` what it shows.
  *
- * `check` resolves the approval (the rows picked, the rows spared, the risks
- * allowed), refuses one that contradicts itself, sweeps every plan repository
+ * `check` resolves the approval (the rows selected or picked, the rows
+ * spared, the risks allowed), refuses one that contradicts itself, sweeps every plan repository
  * again and drops each selected row that is gone, cannot be deleted, moved
  * since the plan, or carries a risk not allowed. It returns the steps a run
  * would take. `run` sweeps once more and takes those steps in a fixed order,
@@ -27,8 +27,8 @@
  * verified, and the receipt is rewritten after each.
  */
 
-import { existsSync, realpathSync } from 'node:fs'
-import { isAbsolute, join, resolve } from 'node:path'
+import { existsSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 
 import { shellJoin } from '@osdlc/command-seam'
 import { nodeGuard } from '@osdlc/path-guard/node'
@@ -42,6 +42,16 @@ import {
   type ArchiveOptions,
   type ArchiveRowJob,
 } from './archive.ts'
+import {
+  allowed,
+  keyOf,
+  resolveApproval,
+  same,
+  uniq,
+  type Approval,
+  type Resolved,
+  type ResolvedApproval,
+} from './approval.ts'
 import { localDeleteCommand, remoteDeleteCommand } from './branches.ts'
 import type { Annotate } from './hooks.ts'
 import type { CleanCandidate } from './candidates.ts'
@@ -53,10 +63,10 @@ import { inspectSubmodules, submoduleHazards } from './submodules.ts'
 import { holdFreedBranches, sweepRepo, type Runners } from './sweep.ts'
 import {
   KINDS,
-  RISKS,
   RepoCleanerError,
   type Kind,
-  landedRef,
+  landedFor,
+  refOf,
   type RemoteRow,
   type RepoInfo,
   type Risk,
@@ -64,7 +74,6 @@ import {
   type RowId,
   type Sweep,
   type SweepProgress,
-  type SweptWith,
   makeRow,
   parseRowId,
   sweepNotes,
@@ -73,42 +82,6 @@ import {
 import { errorText } from './util.ts'
 import { removeIsForced, worktreeCommands } from './worktrees.ts'
 import { writeJsonAtomic } from './write-json.ts'
-
-/** A risk allowed for every row (`row` absent), or for one row. */
-export interface Allow {
-  risk: Risk
-  /** A row id or bare name, resolved as a pick is. */
-  row?: string | undefined
-}
-
-/**
- * What a person approved. Rows are named by id (`branch:feat/x`), or by a
- * bare name or path when only one plan row has it.
- *
- *   `pick`   work on exactly these rows; a `review` row, or a `keep` row with
- *            an action, runs only when picked. Default: every `delete` row.
- *   `spare`  leave these rows alone; a spared remote branch is still checked,
- *            and the run stops if it moved or is gone since the plan.
- *   `allow`  the risks a row's action may carry.
- */
-export interface Approval {
-  pick?: readonly string[] | undefined
-  spare?: readonly string[] | undefined
-  allow?: readonly (Risk | Allow)[] | undefined
-}
-
-/** A row reference resolved to one plan row. */
-export interface Resolved {
-  repo: string
-  id: RowId
-}
-
-/** An approval with every row resolved to its plan row. */
-export interface ResolvedApproval {
-  pick: Resolved[]
-  spare: Resolved[]
-  allow: { risk: Risk; row: Resolved | null }[]
-}
 
 interface Shared extends Runners {
   /** Where the caller stands: the base for relative worktree paths, and a worktree never removed. Defaults to the process's cwd. */
@@ -177,178 +150,6 @@ export interface Preview {
   archive?: ArchiveOptions | undefined
 }
 
-// ── resolving an approval ──────────────────────────────────────────────────
-
-/** A row reference as typed: a kind and a name, or a bare name (`kind: null`). */
-export interface RowRef {
-  kind: Kind | null
-  name: string
-}
-
-/**
- * `kind:name`, or a bare name. A word before a colon that is not a kind is an
- * error (a typo such as `wt:x`), but a path is a bare name whatever colons it
- * holds: a prefix with a path separator in it is never a kind.
- */
-export function parseRowRef(text: string): RowRef {
-  if (text === '') throw new RepoCleanerError('bad-input', 'an empty row')
-  const id = parseRowId(text)
-  if (id !== null) {
-    if (id.name === '')
-      throw new RepoCleanerError('bad-input', `bad row ${JSON.stringify(text)}: no name`)
-    return id
-  }
-  const colon = text.indexOf(':')
-  if (colon > 1 && !/[\\/]/.test(text.slice(0, colon))) {
-    throw new RepoCleanerError(
-      'bad-input',
-      `bad row ${JSON.stringify(text)}: expected <kind>:<name> with kind one of ${KINDS.join(', ')}, or a bare name`,
-    )
-  }
-  return { kind: null, name: text }
-}
-
-/** `<risk>` for every row, or `<risk>=<row>` for one. */
-export function parseAllow(text: string): Allow {
-  const eq = text.indexOf('=')
-  const risk = eq < 0 ? text : text.slice(0, eq)
-  checkRisk(risk)
-  if (eq < 0) return { risk }
-  const row = text.slice(eq + 1)
-  if (row === '') throw new RepoCleanerError('bad-input', `--allow ${text} names no row`)
-  return { risk, row }
-}
-
-function checkRisk(risk: string): asserts risk is Risk {
-  if (!(RISKS as readonly string[]).includes(risk)) {
-    throw new RepoCleanerError(
-      'bad-input',
-      `unknown risk ${JSON.stringify(risk)}: expected one of ${RISKS.join(', ')}`,
-    )
-  }
-}
-
-/** A conflict for a reference no sweep with `options` could hold: a kind it left out, or a row outside its `--branch`. */
-function checkScope(
-  options: Pick<SweptWith, 'only' | 'branch'>,
-  ref: RowRef,
-  flag: string,
-  text: string,
-): void {
-  const { only, branch } = options
-  if (ref.kind !== null && !only.includes(ref.kind)) {
-    throw new RepoCleanerError(
-      'conflict',
-      `${flag} ${text}: the sweep has no ${ref.kind} rows (it sweeps ${only.join(', ')})`,
-    )
-  }
-  const outside =
-    branch !== null &&
-    ((ref.kind === 'branch' && ref.name !== branch) ||
-      (ref.kind === 'remote' && !ref.name.endsWith(`/${branch}`)))
-  if (outside) {
-    throw new RepoCleanerError('conflict', `${flag} ${text} is not a row of --branch ${branch}`)
-  }
-}
-
-/**
- * What can be refused of `approval` before anything is swept: a malformed
- * row or risk, a row a sweep with `options` could never hold, and a row
- * picked and spared as written. A row named two ways, and an `allow` for a
- * spared or unpicked row, are found when the approval is resolved against
- * the plan.
- */
-export function checkApproval(
-  options: Pick<SweptWith, 'only' | 'branch'>,
-  approval: Approval,
-): void {
-  const refs: Array<[string, string]> = [
-    ...(approval.pick ?? []).map((t): [string, string] => ['--pick', t]),
-    ...(approval.spare ?? []).map((t): [string, string] => ['--spare', t]),
-  ]
-  for (const a of approval.allow ?? []) {
-    const { risk, row } = typeof a === 'string' ? { risk: a, row: undefined } : a
-    checkRisk(risk)
-    if (row !== undefined) refs.push(['--allow', row])
-  }
-  for (const [flag, text] of refs) checkScope(options, parseRowRef(text), flag, text)
-  const both = (approval.pick ?? []).find((p) => (approval.spare ?? []).includes(p))
-  if (both !== undefined)
-    throw new RepoCleanerError('conflict', `${both} is both picked and spared`)
-}
-
-/** The names a worktree reference may match: as written, against `cwd`, and resolved through symlinks. */
-function pathForms(name: string, cwd: string): Set<string> {
-  const abs = isAbsolute(name) ? name : resolve(cwd, name)
-  const forms = new Set([name, abs])
-  try {
-    forms.add(realpathSync(abs))
-  } catch {
-    // A gone worktree has no real path; the plan names it as git did.
-  }
-  return forms
-}
-
-/** The plan row `text` names, its scope checked first so a row the plan could never hold is a conflict, not a miss. */
-function resolveRef(plan: Plan, text: string, flag: string, cwd: string): Resolved {
-  const ref = parseRowRef(text)
-  checkScope(plan.options, ref, flag, text)
-  const paths = ref.kind === null || ref.kind === 'worktree' ? pathForms(ref.name, cwd) : null
-  const hits: Resolved[] = []
-  for (const repo of plan.repos) {
-    for (const row of repo.rows) {
-      const { kind, name } = parseRowId(row.id)!
-      if (ref.kind !== null && ref.kind !== kind) continue
-      if (kind === 'worktree' ? paths!.has(name) : ref.name === name) {
-        hits.push({ repo: repo.root, id: row.id })
-      }
-    }
-  }
-  if (hits.length === 0) {
-    throw new RepoCleanerError('not-found', `${flag} ${text}: no such row in the plan`)
-  }
-  if (hits.length > 1) {
-    const where = [...new Set(hits.map((h) => `${h.id} in ${h.repo}`))].join(', ')
-    throw new RepoCleanerError(
-      'ambiguous',
-      `${flag} ${text} matches ${hits.length} rows (${where}); sweep or plan only the repository it is in${ref.kind === null ? ', or name it by its full id' : ''}`,
-    )
-  }
-  return hits[0]!
-}
-
-const keyOf = (r: Resolved): string => `${r.repo}\0${r.id}`
-const same = (a: Resolved, b: Resolved): boolean => a.repo === b.repo && a.id === b.id
-const uniq = (rows: Resolved[]): Resolved[] => [...new Map(rows.map((r) => [keyOf(r), r])).values()]
-
-/**
- * `approval` resolved against `plan`, or a {@link RepoCleanerError} for one
- * that contradicts itself or names rows the plan does not have.
- */
-export function resolveApproval(plan: Plan, approval: Approval, cwd: string): ResolvedApproval {
-  checkApproval(plan.options, approval)
-  const pick = uniq((approval.pick ?? []).map((t) => resolveRef(plan, t, '--pick', cwd)))
-  const spare = uniq((approval.spare ?? []).map((t) => resolveRef(plan, t, '--spare', cwd)))
-  const picked = new Set(pick.map(keyOf))
-  const spared = new Set(spare.map(keyOf))
-  const both = pick.find((p) => spared.has(keyOf(p)))
-  if (both !== undefined)
-    throw new RepoCleanerError('conflict', `${both.id} is both picked and spared`)
-  const allow = (approval.allow ?? []).map((a) => {
-    const { risk, row } = typeof a === 'string' ? { risk: a, row: undefined } : a
-    if (row === undefined) return { risk, row: null }
-    const at = resolveRef(plan, row, '--allow', cwd)
-    if (spared.has(keyOf(at))) {
-      throw new RepoCleanerError('conflict', `--allow ${risk}=${row}: ${at.id} is spared`)
-    }
-    if (pick.length > 0 && !picked.has(keyOf(at))) {
-      throw new RepoCleanerError('conflict', `--allow ${risk}=${row}: ${at.id} is not picked`)
-    }
-    return { risk, row: at }
-  })
-  return { pick, spare, allow }
-}
-
 // ── the re-check ───────────────────────────────────────────────────────────
 
 interface Accepted {
@@ -362,10 +163,6 @@ interface Accepted {
   discardNamed: boolean
   /** The risks the row needs allowed: `discard-archived` where the archive covers one. */
   needs: Risk[]
-}
-
-function allowed(allow: ResolvedApproval['allow'], at: Resolved, risk: Risk): boolean {
-  return allow.some((a) => a.risk === risk && (a.row === null || same(a.row, at)))
 }
 
 /**
@@ -410,7 +207,9 @@ function resweep(
   // An offline sweep read remote tips from disk, so it cannot stand in for
   // the re-check of remote rows: sweep again and ask the remote, so the
   // preview shows what the run will do.
-  const readFromDisk = kinds.includes('remote') && given?.repo?.fetched !== true
+  const readFromDisk =
+    kinds.includes('remote') &&
+    given?.repo?.remotes.every((r) => given.repo!.fetchedRemotes.includes(r.name)) !== true
   if (given !== undefined && given.error === null && !readFromDisk) {
     // Its notes are reported with the rest of that sweep's, by `recheck`.
     return { rows: holdFreedBranches([...given.rows], branchScoped), notes: [], info: given.repo! }
@@ -418,6 +217,7 @@ function resweep(
   const swept = sweepRepo(repo.root, {
     ...opts,
     only: kinds,
+    remotes: repo.remotes,
     against: plan.options.against ?? undefined,
     provider: plan.options.provider,
     fetch: repo.fetched,
@@ -444,28 +244,24 @@ interface Rechecked {
 }
 
 /**
- * Re-sweep, then split the selection into rows to run and rows dropped. With
- * no pick every plan row is selected. `safeOnly` drops each one the re-sweep
- * does not judge `delete`.
+ * Re-sweep, then split the selection into rows to run and rows dropped: the
+ * selected rows, or every row that could run, and the picked rows, less the
+ * spared. `mustDelete` names the rows that run only while the re-sweep judges
+ * them `delete`: those no one picked or selected by name.
  */
 function recheck(
   plan: Plan,
   approval: ResolvedApproval,
   opts: CheckOptions,
-  safeOnly: boolean,
+  mustDelete: (s: Resolved) => boolean,
 ): Rechecked {
-  const spared = new Set(approval.spare.map(keyOf))
-  // With no pick, every row that could run: a plan also holds the blocked and
+  const spared = new Set([...approval.spare, ...approval.spareMatched].map(keyOf))
+  // By default every row that could run: a plan also holds the blocked and
   // structural rows, so a pick of one can be skipped with its reason.
-  const selected: Resolved[] =
-    approval.pick.length === 0
-      ? plan.repos.flatMap((r) =>
-          r.rows
-            .filter(runnable)
-            .map((row) => ({ repo: r.root, id: row.id }))
-            .filter((s) => !spared.has(keyOf(s))),
-        )
-      : approval.pick
+  const base: Resolved[] =
+    approval.select ??
+    plan.repos.flatMap((r) => r.rows.filter(runnable).map((row) => ({ repo: r.root, id: row.id })))
+  const selected = uniq([...base, ...approval.pick]).filter((s) => !spared.has(keyOf(s)))
   const all = [...selected, ...approval.spare]
   const plannedRows = new Map(
     plan.repos.flatMap((r) => r.rows.map((row) => [keyOf({ repo: r.root, id: row.id }), row])),
@@ -546,7 +342,7 @@ function recheck(
       drop(row.verdict === 'blocked' ? 'blocked' : 'keep', row.why)
       continue
     }
-    if (safeOnly && row.verdict !== 'delete') {
+    if (mustDelete(s) && row.verdict !== 'delete') {
       drop('needs-pick', `${row.verdict}: ${row.why}; pick it to run it`)
       continue
     }
@@ -824,15 +620,21 @@ interface ArchiveJob {
   defaultRef: string
 }
 
+/** Rows no one picked or selected by name: they run only while judged `delete`. */
+function unchosen(approval: ResolvedApproval): (s: Resolved) => boolean {
+  const chosen = new Set([...(approval.select ?? []), ...approval.pick].map(keyOf))
+  return (s) => !chosen.has(keyOf(s))
+}
+
 function planSteps(
   plan: Plan,
   approval: ResolvedApproval,
   opts: CheckOptions,
-  safeOnly: boolean,
+  mustDelete: (s: Resolved) => boolean,
 ): Planned {
   const cwd = opts.cwd ?? process.cwd()
   const git = new Git(cwd, { runner: opts.git })
-  const rechecked = recheck(plan, approval, opts, safeOnly)
+  const rechecked = recheck(plan, approval, opts, mustDelete)
   const unique = onePerRemoteBranch(rechecked, git)
   const dropped = [...unique.dropped]
   // A worktree whose directory is left without its `.git` goes only by the
@@ -879,7 +681,7 @@ function planSteps(
       )
       archives.set(step, {
         remote: info.remote,
-        defaultRef: landedRef(info),
+        defaultRef: refOf(landedFor(info)),
         jobs: members.map((a) => ({ id: a.row.id, row: a.row, discardAllowed: a.discardNamed })),
       })
       archiveSteps.push([step, null])
@@ -939,12 +741,7 @@ export function check(plan: Plan, approval: Approval, opts: CheckOptions = {}): 
   if (opts.archive === undefined && resolved.allow.some((a) => a.risk === 'discard-archived')) {
     throw new RepoCleanerError('conflict', '--allow discard-archived has no effect without archive')
   }
-  const { steps, dropped, accepted, notes } = planSteps(
-    plan,
-    resolved,
-    opts,
-    resolved.pick.length === 0,
-  )
+  const { steps, dropped, accepted, notes } = planSteps(plan, resolved, opts, unchosen(resolved))
   for (const [step] of steps) step.result = 'would-run'
   const unusedAllows = resolved.allow
     .filter(
@@ -1264,8 +1061,10 @@ export function run(preview: Preview, opts: RunOptions = {}): Receipt {
   )
   const pick = uniq(shown)
   const approval: ResolvedApproval = {
-    pick,
+    select: pick,
+    pick: [],
     spare: preview.approval.spare,
+    spareMatched: preview.approval.spareMatched,
     allow: preview.approval.allow.filter(
       (a) => a.row === null || pick.some((p) => same(p, a.row!)),
     ),
@@ -1289,15 +1088,15 @@ export function run(preview: Preview, opts: RunOptions = {}): Receipt {
     return receipt
   }
   if (pick.length === 0) return finish('complete')
-  // A preview with no pick ran only `delete` rows; the run keeps that guard,
-  // so a row the re-check now judges `review` drops rather than runs.
-  const safeOnly = preview.approval.pick.length === 0
+  // A row the preview ran only for its `delete` verdict keeps that guard, so
+  // one the re-check now judges `review` drops rather than runs.
+  const mustDelete = unchosen(preview.approval)
   const archive = opts.archive ?? preview.archive
   const planned = planSteps(
     preview.plan,
     approval,
     { ...opts, archive, sweep: undefined },
-    safeOnly,
+    mustDelete,
   )
   opts.onNotes?.(planned.notes)
   const known = new Set(receipt.dropped.map((d) => `${d.repo}\0${d.row}`))
