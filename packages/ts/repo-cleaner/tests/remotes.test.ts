@@ -18,7 +18,7 @@ import { check, run } from '../src/clean.ts'
 import { plan } from '../src/plan.ts'
 import { renderText } from '../src/render.ts'
 import { sweep, type SweepOptions } from '../src/sweep.ts'
-import type { RepoSweep, Row } from '../src/types.ts'
+import { landedFor, type RepoSweep, type Row } from '../src/types.ts'
 
 const cleanups: Array<() => void> = []
 afterEach(() => {
@@ -191,7 +191,10 @@ describe('several remotes', () => {
     fx.pushBranch('upstream', 'feat/b')
     const swept = sweepOne(fx.root, { remotes: ['origin', 'upstream'] })
     expect(swept.error).toBeNull()
-    expect(swept.repo?.remotes.map((r) => r.name)).toEqual(['origin', 'upstream'])
+    expect(swept.repo?.remotes.filter((r) => r.judged).map((r) => r.name)).toEqual([
+      'origin',
+      'upstream',
+    ])
     expect(swept.repo?.fetchedRemotes).toEqual(['origin', 'upstream'])
     expect(rowOf(swept, 'remote:origin/feat/a')).toBeDefined()
     expect(rowOf(swept, 'remote:upstream/feat/b')).toBeDefined()
@@ -200,13 +203,16 @@ describe('several remotes', () => {
 
   test("'' is the default remote and * every remote", () => {
     const fx = forkAndParent()
-    expect(sweepOne(fx.root, { remotes: [''] }).repo?.remotes.map((r) => r.name)).toEqual([
-      'origin',
-    ])
-    expect(sweepOne(fx.root, { remotes: ['*'] }).repo?.remotes.map((r) => r.name)).toEqual([
-      'origin',
-      'upstream',
-    ])
+    expect(
+      sweepOne(fx.root, { remotes: [''] })
+        .repo?.remotes.filter((r) => r.judged)
+        .map((r) => r.name),
+    ).toEqual(['origin'])
+    expect(
+      sweepOne(fx.root, { remotes: ['*'] })
+        .repo?.remotes.filter((r) => r.judged)
+        .map((r) => r.name),
+    ).toEqual(['origin', 'upstream'])
   })
 
   test("each remote's branches are judged against its own default branch", () => {
@@ -271,7 +277,13 @@ describe('--against', () => {
   test('the --against remote is fetched with the remotes judged', () => {
     const fx = forkAndParent()
     const swept = sweepOne(fx.root, { remotes: [''], against: 'upstream' })
-    expect(swept.repo?.against).toEqual({ remote: 'upstream', branch: 'main' })
+    expect(swept.repo?.against).toBe('upstream')
+    expect(landedFor(swept.repo!)).toEqual({ remote: 'upstream', branch: 'main' })
+    // Touched, not judged: its default branch is known, its branches are not rows.
+    expect(swept.repo?.remotes.map((r) => [r.name, r.judged])).toEqual([
+      ['origin', true],
+      ['upstream', false],
+    ])
     const plan_ = plan(
       sweep([fx.root], { cwd: fx.root, remotes: [''], against: 'upstream', provider: 'none' }),
     )
@@ -378,9 +390,9 @@ describe('fetching', () => {
 
   test('local rows fetch nothing unless asked, and then the default remote', () => {
     const fx = forkAndParent()
-    expect(sweepOne(fx.root, {}).repo?.fetched).toBe(false)
+    expect(sweepOne(fx.root, {}).repo?.fetchedRemotes).toEqual([])
     const fetched = sweepOne(fx.root, { fetch: true })
-    expect(fetched.repo?.fetched).toBe(true)
+    expect(fetched.repo?.fetchedRemotes).toContain('origin')
   })
 })
 

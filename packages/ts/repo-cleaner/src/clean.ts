@@ -65,6 +65,7 @@ import {
   KINDS,
   RepoCleanerError,
   type Kind,
+  judgedRemotes,
   landedFor,
   refOf,
   type RemoteRow,
@@ -187,7 +188,9 @@ function resweep(
   // preview shows what the run will do.
   const readFromDisk =
     kinds.includes('remote') &&
-    given?.repo?.remotes.every((r) => given.repo!.fetchedRemotes.includes(r.name)) !== true
+    (given?.repo === undefined ||
+      given.repo === null ||
+      !judgedRemotes(given.repo).every((r) => given.repo!.fetchedRemotes.includes(r.name)))
   if (given !== undefined && given.error === null && !readFromDisk) {
     // Its notes are reported with the rest of that sweep's, by `recheck`.
     return { rows: holdFreedBranches([...given.rows], branchScoped), notes: [], info: given.repo! }

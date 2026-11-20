@@ -129,7 +129,14 @@ export function discoverRepo(
   const known = probedOnce(opts.providers ?? providers({ gh, glab: opts.glab }))
   const scoped = [...new Set(names)]
   const urls = new Map<string, string | null>()
-  for (const name of new Set([...(remote === null ? [] : [remote]), ...scoped])) {
+  const touched = [
+    ...new Set([
+      ...(remote === null ? [] : [remote]),
+      ...scoped,
+      ...(against === null ? [] : [against]),
+    ]),
+  ]
+  for (const name of touched) {
     const url = at.try.remoteGetUrl(name)
     urls.set(name, url.ok && typeof url.value === 'string' ? url.value : null)
   }
@@ -163,19 +170,19 @@ export function discoverRepo(
     remote,
     currentBranch: at.headRef() ?? '',
     provider,
-    fetched: false,
     fetchedRemotes: [],
     allRemotes: all,
     // Another remote's default branch is read after the fetch, by
-    // resolveRemoteDefaults: until then it is ''.
-    remotes: scoped.map((name) => ({
+    // resolveRemoteDefaults: until then it is ''. Only a judged remote's
+    // provider is asked.
+    remotes: touched.map((name) => ({
       name,
+      judged: scoped.includes(name),
       defaultBranch: name === remote ? mainBranch : '',
       slug: remoteSlugOf(urlOf(name)),
-      provider: name === remote ? provider : probe(name),
+      provider: name === remote ? provider : scoped.includes(name) ? probe(name) : null,
     })),
-    against:
-      against === null ? null : { remote: against, branch: against === remote ? mainBranch : '' },
+    against,
   }
 }
 
@@ -209,10 +216,7 @@ function probedOnce(all: Record<ProviderName, PrProvider>): Record<ProviderName,
  */
 export function resolveRemoteDefaults(info: RepoInfo, git: Git): RepoInfo {
   const at = git.at(info.root)
-  const unread = [
-    ...info.remotes.filter((r) => r.defaultBranch === '').map((r) => r.name),
-    ...(info.against?.branch === '' ? [info.against.remote] : []),
-  ]
+  const unread = info.remotes.filter((r) => r.defaultBranch === '').map((r) => r.name)
   const defaults = remoteDefaults(at, unread)
   const known = (name: string, branch: string): string => {
     if (branch !== '') return branch
@@ -229,10 +233,6 @@ export function resolveRemoteDefaults(info: RepoInfo, git: Git): RepoInfo {
   return {
     ...info,
     remotes: info.remotes.map((r) => ({ ...r, defaultBranch: known(r.name, r.defaultBranch) })),
-    against:
-      info.against === null
-        ? null
-        : { ...info.against, branch: known(info.against.remote, info.against.branch) },
   }
 }
 

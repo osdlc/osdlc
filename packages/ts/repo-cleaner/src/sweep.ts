@@ -27,6 +27,7 @@ import { resolveEntries, type Resolution } from './resolve.ts'
 import { sweptWith } from './scope.ts'
 import {
   RepoCleanerError,
+  judgedRemotes,
   countRows,
   emptyScan,
   reclaimableOf,
@@ -410,7 +411,6 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
   }
   repo = {
     ...repo,
-    fetched: repo.remote !== null && toFetch.includes(repo.remote),
     fetchedRemotes: toFetch,
   }
   try {
@@ -447,7 +447,7 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
     const statuses = new Map<string, ProviderStatus | null>(
       local ? [[repo.remote ?? '', repo.provider]] : [],
     )
-    for (const r of repo.remotes) if (!statuses.has(r.name)) statuses.set(r.name, r.provider)
+    for (const r of judgedRemotes(repo)) if (!statuses.has(r.name)) statuses.set(r.name, r.provider)
     const answered = new Map<string, { prs: Map<string, PRInfo>; status: ProviderStatus | null }>()
     for (const [name, status] of statuses) {
       if (status === null) {
@@ -472,7 +472,10 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
     repo = {
       ...repo,
       provider: answered.get(repo.remote ?? '')?.status ?? repo.provider,
-      remotes: repo.remotes.map((r) => ({ ...r, provider: answered.get(r.name)!.status })),
+      remotes: repo.remotes.map((r) => ({
+        ...r,
+        provider: answered.get(r.name)?.status ?? r.provider,
+      })),
     }
     const rows: Row[] = []
 
@@ -519,7 +522,7 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
     }
 
     if (kinds.has('remote')) {
-      for (const remote of repo.remotes) {
+      for (const remote of judgedRemotes(repo)) {
         const gathered = gatherRemoteBranches(
           repo,
           remote,
@@ -646,10 +649,8 @@ const FETCH_JOBS = 8
 /** The remotes `fetch` names for `repo`; see {@link RepoSweepOptions.fetch}. */
 function fetchSet(repo: RepoInfo, fetch: RepoSweepOptions['fetch']): string[] {
   if (Array.isArray(fetch)) return [...fetch]
-  const names = repo.remotes.map((r) => r.name)
+  const names = judgedRemotes(repo).map((r) => r.name)
   if (fetch === 'local' && repo.remote !== null) names.unshift(repo.remote)
-  if ((names.length > 0 || fetch === 'local') && repo.against !== null) {
-    names.push(repo.against.remote)
-  }
+  if ((names.length > 0 || fetch === 'local') && repo.against !== null) names.push(repo.against)
   return [...new Set(names)]
 }
