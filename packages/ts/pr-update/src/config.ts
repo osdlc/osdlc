@@ -105,10 +105,10 @@ export const prUpdateConfigSchema = z
         "Whether the update worktree gets the repository's git submodules. `auto` (default) runs `git submodule update --init --recursive` in it when it has a `.gitmodules`, after each PR's checkout and again when the update moved a submodule pointer or changed `.gitmodules`, so `verify` verbs, resolvers and `lockfile_install` find them. A failure is reported as `submodule setup failed: <detail>` and is not recorded as a failed attempt. It clones the URLs the PR's `.gitmodules` names (never over `file` or `ext`). `off` leaves submodules alone.",
       ),
     on_rebase_conflict: z
-      .enum(['merge', 'fail'])
+      .enum(['merge', 'fail', 'repair'])
       .default('merge')
       .describe(
-        'What a rebase does when it stops on a conflict the automatic rungs (rerere, lockfile, resolvers, generators) cannot clear. The rungs run at every stop. `merge` (default) aborts the rebase and retries the PR as a merge, which resolves the conflict once and is where `repair` is offered it; the result then reports strategy `merge` with the reason. `fail` reports the PR as a conflict and calls no repair.',
+        'What a rebase does when it stops on a conflict the automatic rungs (rerere, lockfile, resolvers, generators) cannot clear. The rungs run at every stop. `merge` (default) aborts the rebase and retries the PR as a merge, which resolves the conflict once and is where `repair` is offered it; the result then reports strategy `merge` with the reason. `fail` reports the PR as a conflict and calls no repair. `repair` calls `repair` (kind `conflict`) at the stop, then continues the rebase, for at most `repair.max_rebase_stops` stops; past that cap, or when a repair fails, it aborts the rebase and reports the PR as a conflict. It never falls back to a merge, so it suits a repository that refuses merge commits. It needs a configured repair with `conflict` in `repair.on`, and a rehearsal never calls it.',
       ),
     lockfile_install: z
       .string()
@@ -191,6 +191,14 @@ export const prUpdateConfigSchema = z
           .describe(
             'Which problems the repair is asked to fix: an unclaimed `conflict`, a failed `verify` step, or both.',
           ),
+        max_rebase_stops: z
+          .number()
+          .int()
+          .min(1)
+          .default(3)
+          .describe(
+            'With `on_rebase_conflict: repair`, repair at most this many stops in one rebase, then give up and report the PR as a conflict. `guards.max_rebase_commits` bounds the rebase length, so the two together bound the number of agent calls.',
+          ),
       })
       .strict()
       .refine((r) => r.command === null || r.agent === null, {
@@ -198,7 +206,7 @@ export const prUpdateConfigSchema = z
       })
       .prefault({})
       .describe(
-        'The last rung of the ladder, called once per kind only when nothing deterministic resolved the problem. A conflict repair is offered only on a merge (a rebase that needs one is retried as a merge first); a verify-failed repair runs for either strategy. Never called in a rehearsal (no `--apply`).',
+        'The last rung of the ladder, called once per kind only when nothing deterministic resolved the problem. A conflict repair is offered on a merge (a rebase that needs one is retried as a merge first), or at rebase stops with `on_rebase_conflict: repair`; a verify-failed repair runs for either strategy. Never called in a rehearsal (no `--apply`).',
       ),
     max_failed_attempts: z
       .number()
