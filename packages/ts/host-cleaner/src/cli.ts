@@ -268,6 +268,10 @@ const wanted = (v: SweepValues): string[] | undefined =>
 function pluginsFor(v: SweepValues, config: Config, deps: MainDeps): Plugin[] {
   const named = v.only?.filter((s) => s !== '')
   const only = named === undefined || named.length === 0 ? undefined : (named as Kind[])
+  const bad = named?.filter((k) => !(KINDS as readonly string[]).includes(k))
+  if (bad !== undefined && bad.length > 0) {
+    throw new BadInput(`--only names no kind ${bad.join(', ')}; have ${KINDS.join(', ')}`)
+  }
   if (only?.includes('remote')) {
     throw new BadInput('remote branches are repo-cleaner’s: use `repo-cleaner --remote`')
   }
@@ -282,7 +286,6 @@ function pluginsFor(v: SweepValues, config: Config, deps: MainDeps): Plugin[] {
 }
 
 function contextFor(
-  v: SweepValues,
   targets: readonly string[],
   config: Config,
   ctx: CliContext,
@@ -294,6 +297,10 @@ function contextFor(
     allow,
   }
 }
+
+/** The lines as one control-stripped block, or nothing for no lines. */
+const block = (lines: readonly string[]): string =>
+  lines.length === 0 ? '' : stripControls(lines.join('\n'), { newline: true }) + '\n'
 
 const nothingFound = (s: { candidates: readonly Candidate[] }): boolean => s.candidates.length === 0
 
@@ -323,7 +330,7 @@ function renderCandidates(
       lines.push(`          ${o.level} ${o.code} (${o.by}): ${o.reason}`)
     }
   }
-  return lines.length === 0 ? '' : stripControls(lines.join('\n'), { newline: true }) + '\n'
+  return block(lines)
 }
 
 function runReport(argv: readonly string[], ctx: CliContext, deps: MainDeps): number {
@@ -333,7 +340,7 @@ function runReport(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
   let s: ReturnType<typeof survey>
   try {
     const config = loadConfig(v, ctx)
-    s = survey(pluginsFor(v, config, deps), contextFor(v, parsed.positionals, config, ctx, []))
+    s = survey(pluginsFor(v, config, deps), contextFor(parsed.positionals, config, ctx, []))
   } catch (err) {
     return refusal(ctx, NAME, err)
   }
@@ -361,10 +368,10 @@ function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps): numb
     const config = loadConfig(v, ctx)
     const s = survey(
       pluginsFor(v, config, deps),
-      contextFor(v, parsed.positionals, config, ctx, v.allow),
+      contextFor(parsed.positionals, config, ctx, v.allow),
     )
-    if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
     writeWarnings(ctx, name, s.warnings)
+    if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
     plan = makePlan(s, { pick: v.pick.length > 0 ? v.pick : undefined, allow: v.allow })
   } catch (err) {
     return refusal(ctx, name, err)
@@ -407,10 +414,7 @@ function renderPreview(d: Decision): string {
   const lines: string[] = []
   for (const c of d.run) lines.push(`  delete  ${c.id}`, `          ${c.why}`)
   for (const x of d.dropped) lines.push(`  skip    ${x.id}`, `          ${x.reason}: ${x.detail}`)
-  return (
-    (lines.length === 0 ? '' : stripControls(lines.join('\n'), { newline: true }) + '\n') +
-    `would delete: ${d.run.length} item(s)\n`
-  )
+  return block(lines) + `would delete: ${d.run.length} item(s)\n`
 }
 
 function renderReceipt(r: Receipt, path: string): string {
@@ -424,10 +428,7 @@ function renderReceipt(r: Receipt, path: string): string {
       if (n.error !== null) lines.push(`          ${n.plugin}: ${n.error}`)
   }
   for (const x of r.dropped) lines.push(`  skip    ${x.id}`, `          ${x.reason}: ${x.detail}`)
-  return (
-    (lines.length === 0 ? '' : stripControls(lines.join('\n'), { newline: true }) + '\n') +
-    `receipt: ${stripControls(path)} (${r.status})\n`
-  )
+  return block(lines) + `receipt: ${stripControls(path)} (${r.status})\n`
 }
 
 const stamp = (d: Date): string => d.toISOString().replace(/[:.]/g, '-')
@@ -459,11 +460,11 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   try {
     const config = loadConfig(v, ctx)
     plugins = pluginsFor(v, config, deps)
-    cctx = contextFor(v, parsed.positionals, config, ctx, v.allow)
+    cctx = contextFor(parsed.positionals, config, ctx, v.allow)
     if (v.plan === undefined) {
       const s = survey(plugins, cctx)
-      if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
       writeWarnings(ctx, name, s.warnings)
+      if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
       plan = makePlan(s, { pick: v.pick.length > 0 ? v.pick : undefined, allow: v.allow, now })
       source = '(swept)'
     } else if (v.plan === '-') {
