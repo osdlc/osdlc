@@ -223,7 +223,7 @@ function classifyLocalBranch(opts: {
   const pinned = (why: string): BranchRow => row({ verdict: 'keep', action: null, why })
 
   if (name === repo.mainBranch) return pinned('default branch')
-  const against = landedFor(repo, null)
+  const against = landedFor(repo)
   const compareRef = refOf(against)
   const onto = { root: repo.root, ref: compareRef }
   const held =
@@ -365,7 +365,7 @@ export function gatherRemoteBranches(
     }
   }
   if (tips === null) {
-    tips = trackingTips(repo.root, remote, git, only)
+    tips = trackingTips(repo, remote, git, only)
     // A fetched remote has at least its default branch on disk; none at all
     // means it was never fetched, or its refs live somewhere else.
     if (!opts.live && tips.length === 0 && only === undefined) {
@@ -402,17 +402,16 @@ export function gatherRemoteBranches(
  * branch.
  */
 function trackingTips(
-  root: string,
+  repo: RepoInfo,
   remote: string,
   git: Git,
   only: string | undefined,
 ): Array<{ name: string; sha: string }> {
   const prefix = `refs/remotes/${remote}/`
-  const at = git.at(root)
+  const at = git.at(repo.root)
   // Git allows `/` in a remote's name: `origin/mirror`'s refs sit under
   // `refs/remotes/origin/` too, and are not `origin`'s branches.
-  const nested = at
-    .remotes()
+  const nested = repo.allRemotes
     .filter((r) => r.startsWith(`${remote}/`))
     .map((r) => `refs/remotes/${r}/`)
   return at.refs(only === undefined ? prefix : `${prefix}${only}`).flatMap(({ sha, ref }) => {
@@ -447,7 +446,7 @@ function classifyRemoteBranch(opts: {
     return row({ verdict: 'keep', action: null, why: 'default branch' })
   }
 
-  const against = landedFor(repo, remote)
+  const against = landedFor(repo, opts.remote)
   const remoteMain = refOf(against)
   evidence.landedAgainst = remoteMain
   // `soft`: `sha` may come from `ls-remote`, so the clone may never have

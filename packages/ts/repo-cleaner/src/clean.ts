@@ -180,7 +180,8 @@ function resweep(
   // the re-check of remote rows: sweep again and ask the remote, so the
   // preview shows what the run will do.
   const readFromDisk =
-    kinds.includes('remote') && given?.repo?.remotes.some((r) => !r.fetched) !== false
+    kinds.includes('remote') &&
+    given?.repo?.remotes.every((r) => given.repo!.fetchedRemotes.includes(r.name)) !== true
   if (given !== undefined && given.error === null && !readFromDisk) {
     // Its notes are reported with the rest of that sweep's, by `recheck`.
     return { rows: holdFreedBranches([...given.rows], branchScoped), notes: [], info: given.repo! }
@@ -659,7 +660,7 @@ function planSteps(
       )
       archives.set(step, {
         remote: info.remote,
-        defaultRef: refOf(landedFor(info, null)),
+        defaultRef: refOf(landedFor(info)),
         jobs: members.map((a) => ({ id: a.row.id, row: a.row, discardAllowed: a.discardNamed })),
       })
       archiveSteps.push([step, null])

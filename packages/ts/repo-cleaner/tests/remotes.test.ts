@@ -166,10 +166,8 @@ describe('several remotes', () => {
     fx.pushBranch('upstream', 'feat/b')
     const swept = sweepOne(fx.root, { remotes: ['origin', 'upstream'] })
     expect(swept.error).toBeNull()
-    expect(swept.repo?.remotes.map((r) => [r.name, r.fetched])).toEqual([
-      ['origin', true],
-      ['upstream', true],
-    ])
+    expect(swept.repo?.remotes.map((r) => r.name)).toEqual(['origin', 'upstream'])
+    expect(swept.repo?.fetchedRemotes).toEqual(['origin', 'upstream'])
     expect(rowOf(swept, 'remote:origin/feat/a')).toBeDefined()
     expect(rowOf(swept, 'remote:upstream/feat/b')).toBeDefined()
     expect(rowOf(swept, 'remote:upstream/main')?.verdict).toBe('keep')

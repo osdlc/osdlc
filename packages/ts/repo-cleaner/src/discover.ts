@@ -126,18 +126,14 @@ export function discoverRepo(
   // Installed and signed in are probed separately: "not installed" and "not
   // authenticated" send a person somewhere different.
   const choice: ProviderChoice = allowProvider ? (opts.provider ?? 'auto') : 'none'
-  const known = opts.providers ?? providers({ gh, glab: opts.glab })
+  const known = probedOnce(opts.providers ?? providers({ gh, glab: opts.glab }))
   const scoped = [...new Set(names)]
-  const urls = new Map(
-    [...new Set([...(remote === null ? [] : [remote]), ...scoped])].map((name) => {
-      const url = at.try.remoteGetUrl(name)
-      return [name, url] as const
-    }),
-  )
-  const urlOf = (name: string): string | null => {
-    const url = urls.get(name)
-    return url?.ok === true && typeof url.value === 'string' ? url.value : null
+  const urls = new Map<string, string | null>()
+  for (const name of new Set([...(remote === null ? [] : [remote]), ...scoped])) {
+    const url = at.try.remoteGetUrl(name)
+    urls.set(name, url.ok && typeof url.value === 'string' ? url.value : null)
   }
+  const urlOf = (name: string): string | null => urls.get(name) ?? null
   if (choice === 'github' || choice === 'gitlab') {
     const kinds = new Set(
       scoped
@@ -157,7 +153,7 @@ export function discoverRepo(
 
   // A short name for the report's header, so a fan-out over long paths stays
   // readable. It also keys duplicate checkouts.
-  const slug = remote === null ? null : remoteSlugOf(urls.get(remote)!)
+  const slug = remote === null ? null : remoteSlugOf(urlOf(remote))
   const provider = probe(remote)
 
   return {
@@ -169,27 +165,47 @@ export function discoverRepo(
     provider,
     fetched: false,
     fetchedRemotes: [],
+    allRemotes: all,
+    // Another remote's default branch is read after the fetch, by
+    // resolveRemoteDefaults: until then it is ''.
     remotes: scoped.map((name) => ({
       name,
-      defaultBranch: name === remote ? mainBranch : (remoteDefault(at, name) ?? ''),
-      slug: remoteSlugOf(urls.get(name)!),
+      defaultBranch: name === remote ? mainBranch : '',
+      slug: remoteSlugOf(urlOf(name)),
       provider: name === remote ? provider : probe(name),
-      fetched: false,
     })),
     against:
-      against === null
-        ? null
-        : {
-            remote: against,
-            branch: against === remote ? mainBranch : (remoteDefault(at, against) ?? ''),
-          },
+      against === null ? null : { remote: against, branch: against === remote ? mainBranch : '' },
   }
 }
 
 /**
- * `info` with every default branch it could not read before the fetch read
- * now. Throws {@link DiscoveryFailed} for one still unknown: a remote's
- * default branch is never a candidate, so the sweep must know which it is.
+ * `all` with each provider's probe asked once per host: it answers whether
+ * the CLI is installed and signed in, which does not change from one remote
+ * on that host to the next.
+ */
+function probedOnce(all: Record<ProviderName, PrProvider>): Record<ProviderName, PrProvider> {
+  const answers = new Map<string, ReturnType<PrProvider['probe']>>()
+  const wrap = (p: PrProvider): PrProvider => ({
+    ...p,
+    probe(root, target) {
+      const key = `${p.name}\0${target.host ?? ''}`
+      let answer = answers.get(key)
+      if (answer === undefined) {
+        answer = p.probe(root, target)
+        answers.set(key, answer)
+      }
+      return answer
+    },
+  })
+  return { github: wrap(all.github), gitlab: wrap(all.gitlab) }
+}
+
+/**
+ * `info` with the default branch of every remote other than the default one
+ * read, after the fetch, so a remote fetched for the first time has its refs.
+ * Throws {@link DiscoveryFailed} for one it cannot tell: a remote's default
+ * branch is never a candidate, so the sweep must know which it is.
  */
 export function resolveRemoteDefaults(info: RepoInfo, git: Git): RepoInfo {
   const at = git.at(info.root)
@@ -209,7 +225,7 @@ export function resolveRemoteDefaults(info: RepoInfo, git: Git): RepoInfo {
     against:
       info.against === null
         ? null
-        : { ...info.against, branch: known(info.against.remote!, info.against.branch) },
+        : { ...info.against, branch: known(info.against.remote, info.against.branch) },
   }
 }
 
@@ -245,9 +261,9 @@ function remoteDefault(at: Git, remote: string): string | null {
  * null when the URL names no repository. The host keeps two hosts' `a/b`
  * apart.
  */
-function remoteSlugOf(url: { ok: boolean; value?: string | null }): string | null {
-  if (!url.ok || url.value === undefined || url.value === null) return null
-  const remote = parseRemoteRepo(url.value)
+function remoteSlugOf(url: string | null): string | null {
+  if (url === null) return null
+  const remote = parseRemoteRepo(url)
   if (remote === null) return null
   const slug = `${remote.owner}/${remote.repo}`
   return remote.host === 'github.com' ? slug : `${remote.host}/${slug}`

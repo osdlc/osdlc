@@ -354,7 +354,6 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
     ...repo,
     fetched: repo.remote !== null && toFetch.includes(repo.remote),
     fetchedRemotes: toFetch,
-    remotes: repo.remotes.map((r) => ({ ...r, fetched: toFetch.includes(r.name) })),
   }
   try {
     repo = resolveRemoteDefaults(repo, git)
@@ -373,43 +372,44 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
     repo.remote === null &&
     repo.against === null &&
     (kinds.has('worktree') || kinds.has('branch')) &&
-    git.at(repo.root).remotes().length > 0
+    repo.allRemotes.length > 0
   ) {
     notes.push(
       `No default remote (no origin, and the default branch tracks none), so local rows are judged against the local \`${repo.mainBranch}\`; pass \`--against <remote>\` to judge them against a remote.`,
     )
   }
   try {
-    // Each provider status asked once, its answer shared by the default
-    // remote's local rows and that remote's own branches.
+    // One lookup per remote: the default remote's answer serves both its
+    // own branches and the local rows. A repository with no default remote
+    // keys its local rows' lookup by ''.
+    const root = repo.root
+    const statuses = new Map<string, ProviderStatus | null>([[repo.remote ?? '', repo.provider]])
+    for (const r of repo.remotes) if (!statuses.has(r.name)) statuses.set(r.name, r.provider)
     const answered = new Map<string, { prs: Map<string, PRInfo>; status: ProviderStatus | null }>()
-    // Keyed by remote name; '' for the local rows of a repository with no default remote.
-    const ask = (name: string, status: ProviderStatus | null) => {
-      if (status === null) return { prs: new Map<string, PRInfo>(), status }
-      const known_ = answered.get(name)
-      if (known_ !== undefined) return known_
+    for (const [name, status] of statuses) {
+      if (status === null) {
+        answered.set(name, { prs: new Map(), status })
+        continue
+      }
       if (status.authenticated) report('prs', undefined, undefined, status.tool)
-      const looked = lookupPrs({ root: repo!.root, provider: status }, known[status.name], only)
+      const looked = lookupPrs({ root, provider: status }, known[status.name], only)
       const after: ProviderStatus =
         looked.error !== null
           ? { ...status, listError: looked.error }
           : looked.incomplete !== null
             ? { ...status, incomplete: looked.incomplete }
             : status
+      answered.set(name, { prs: looked.prs, status: after })
       // With no remote there is no remote branch to gate and no forge to point
       // at; the local rows already say the lookup failed.
       const note = name === '' ? null : providerNote(after, kinds, opts.provider)
-      if (note !== null) notes.push(repo!.remotes.length > 1 ? `${name}: ${note}` : note)
-      const answer = { prs: looked.prs, status: after }
-      answered.set(name, answer)
-      return answer
+      if (note !== null) notes.push(statuses.size > 1 ? `${name}: ${note}` : note)
     }
-    const local = ask(repo.remote ?? '', repo.provider)
-    const prs = local.prs
+    const prs = answered.get(repo.remote ?? '')!.prs
     repo = {
       ...repo,
-      provider: local.status,
-      remotes: repo.remotes.map((r) => ({ ...r, provider: ask(r.name, r.provider).status })),
+      provider: answered.get(repo.remote ?? '')!.status,
+      remotes: repo.remotes.map((r) => ({ ...r, provider: answered.get(r.name)!.status })),
     }
     const rows: Row[] = []
 
@@ -457,12 +457,12 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
         const gathered = gatherRemoteBranches(
           repo,
           remote,
-          answered.get(remote.name)?.prs ?? new Map(),
+          answered.get(remote.name)!.prs,
           localBranchNames,
           git,
           {
-            live: remote.fetched || opts.liveRemoteTips === true,
-            strict: opts.liveRemoteTips === true && !remote.fetched,
+            live: toFetch.includes(remote.name) || opts.liveRemoteTips === true,
+            strict: opts.liveRemoteTips === true && !toFetch.includes(remote.name),
             only,
             tick: ticker('remote'),
           },
@@ -571,6 +571,6 @@ function fetchSet(repo: RepoInfo, fetch: RepoSweepOptions['fetch']): string[] {
   if (Array.isArray(fetch)) return [...fetch]
   const names = repo.remotes.map((r) => r.name)
   if (fetch === 'local' && repo.remote !== null) names.unshift(repo.remote)
-  if (names.length > 0 && repo.against?.remote != null) names.push(repo.against.remote)
+  if (names.length > 0 && repo.against !== null) names.push(repo.against.remote)
   return [...new Set(names)]
 }

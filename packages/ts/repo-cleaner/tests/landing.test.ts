@@ -81,7 +81,7 @@ const branchRow = (dir: string, name: string, opts?: SweepOptions) =>
 function onto(dir: string): Onto {
   const info = sweep(dir).repo
   if (info === null) throw new Error('not a repository')
-  return { root: info.root, ref: refOf(landedFor(info, null)) }
+  return { root: info.root, ref: refOf(landedFor(info)) }
 }
 
 /** A client over {@link interposedRunner}. */

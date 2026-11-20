@@ -316,7 +316,7 @@ function classifyWorktree(opts: {
   gitDirOf: (path: string) => string | null
 }): WorktreeRow {
   const { path, branch, head, isBare, isDetached, isPrimary, repo, prs, cwd, git } = opts
-  const against = landedFor(repo, null)
+  const against = landedFor(repo)
   const landedOn = refOf(against)
   const evidence: WorktreeEvidence = {
     path,
@@ -588,13 +588,16 @@ function classifyWorktree(opts: {
  * Empty when there is no remote or the lookup fails.
  */
 function remoteBranchesHolding(repo: RepoInfo, git: Git, head: string): string[] {
-  const remotes = new Map(repo.remotes.map((r) => [r.name, r.defaultBranch]))
-  if (repo.remote !== null) remotes.set(repo.remote, repo.mainBranch)
+  const defaults = new Map(repo.remotes.map((r) => [r.name, r.defaultBranch]))
+  if (repo.remote !== null) defaults.set(repo.remote, repo.mainBranch)
+  if (defaults.size === 0) return []
+  // One walk of history for every remote, not one per remote.
+  const prefixes = [...defaults.keys()].map((r) => `refs/remotes/${r}/`)
+  const rows = git.at(repo.root).try.forEachRef(prefixes, { format: '%(refname)', contains: head })
+  if (!rows.ok) return []
   const out: string[] = []
-  for (const [remote, defaultBranch] of remotes) {
+  for (const [remote, defaultBranch] of defaults) {
     const prefix = `refs/remotes/${remote}/`
-    const rows = git.at(repo.root).try.forEachRef(prefix, { format: '%(refname)', contains: head })
-    if (!rows.ok) continue
     out.push(
       ...rows.value
         .filter((ref) => ref.startsWith(prefix))

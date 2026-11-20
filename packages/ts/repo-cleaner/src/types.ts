@@ -302,8 +302,6 @@ export interface RemoteInfo {
   slug: string | null
   /** As {@link RepoInfo.provider}, for this remote. */
   provider: ProviderStatus | null
-  /** True when the sweep fetched this remote before classifying. */
-  fetched: boolean
 }
 
 /** What the sweep learned about a repository before inventorying it. */
@@ -334,10 +332,12 @@ export interface RepoInfo {
   fetched: boolean
   /** Every remote the sweep fetched before classifying, the `against` remote included. */
   fetchedRemotes: string[]
+  /** Every remote the repository has, judged or not. */
+  allRemotes: string[]
   /** Every remote whose branches the sweep judges, in the order asked. */
   remotes: RemoteInfo[]
   /** `against`: the default branch every row is judged against instead of its own; null without it. */
-  against: LandedAgainst | null
+  against: { remote: string; branch: string } | null
 }
 
 /** A default branch a row's work can land on, and the remote it is on; null for the local default branch. */
@@ -352,21 +352,15 @@ export function refOf(against: LandedAgainst): string {
 }
 
 /**
- * What rows of `remote` are judged against; `remote` null for local rows
+ * What rows of `remote` are judged against; no `remote` for local rows
  * (worktrees and local branches). With `against`, every row is judged against
  * that. Otherwise a remote's branches are judged against its own default
  * branch, and local rows against the default remote's.
  */
-export function landedFor(repo: RepoInfo, remote: string | null): LandedAgainst {
+export function landedFor(repo: RepoInfo, remote?: RemoteInfo): LandedAgainst {
   if (repo.against !== null) return repo.against
-  if (remote === null) return { remote: repo.remote, branch: repo.mainBranch }
-  return { remote, branch: defaultBranchOf(repo, remote) }
-}
-
-/** `remote`'s own default branch, which is kept; the local default branch for null. */
-export function defaultBranchOf(repo: RepoInfo, remote: string | null): string {
-  if (remote === null || remote === repo.remote) return repo.mainBranch
-  return repo.remotes.find((r) => r.name === remote)?.defaultBranch ?? repo.mainBranch
+  if (remote === undefined) return { remote: repo.remote, branch: repo.mainBranch }
+  return { remote: remote.name, branch: remote.defaultBranch }
 }
 
 /** True when the repository has a default remote the sweep did not fetch, so its refs may be stale. */
