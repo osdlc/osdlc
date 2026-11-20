@@ -37,9 +37,11 @@ export interface Allow {
  *            that chose the rows itself.
  *   `pick`   also run these rows: a `review` row, or a `keep` row with an
  *            action, runs only when picked or selected.
- *   `spare`  leave these rows alone: a row, or a glob (`release/*`, `remote:
- *            origin/tmp-*`) matched against row names, and a remote branch's
- *            name without its remote. A remote branch spared by name is still
+ *   `spare`  leave these rows alone: a row id; a bare name, which is every
+ *            row of that name, a remote branch of that branch name included;
+ *            or a glob (`release/*`, `remote:origin/tmp-*`) matched against row
+ *            names, and a remote branch's name without its remote. A remote
+ *            branch named in full (`remote:origin/x` or `origin/x`) is still
  *            checked, and the run stops if it moved or is gone since the plan.
  *   `allow`  the risks a row's action may carry.
  */
@@ -179,6 +181,40 @@ export function checkApproval(
     throw new RepoCleanerError('conflict', `${both} is both picked and spared`)
 }
 
+/**
+ * The rows one `spare` entry leaves alone: `named`, a remote branch among
+ * which gets the tip check, and `matched`, which do not. A row id is named. A
+ * bare name names the rows it names exactly (a worktree's path, a local
+ * branch, `<remote>/<branch>`), and matches every remote branch of that name,
+ * so `--spare staging` keeps `staging` everywhere; one that hits nothing is
+ * not in the plan. A glob matches; see {@link matchGlob}.
+ */
+function spareRows(
+  plan: Plan,
+  text: string,
+  cwd: string,
+): { named: Resolved[]; matched: Resolved[] } {
+  if (isGlob(text)) return { named: [], matched: matchGlob(plan, text) }
+  const ref = parseRowRef(text)
+  if (ref.kind !== null) return { named: [resolveRef(plan, text, '--spare', cwd)], matched: [] }
+  checkScope(plan.options, ref, '--spare', text)
+  const paths = pathForms(ref.name, cwd)
+  const named: Resolved[] = []
+  const matched: Resolved[] = []
+  for (const repo of plan.repos) {
+    for (const row of repo.rows) {
+      const { kind, name } = parseRowId(row.id)!
+      const at = { repo: repo.root, id: row.id }
+      if (kind === 'worktree' ? paths.has(name) : name === ref.name) named.push(at)
+      else if (kind === 'remote' && name.slice(name.indexOf('/') + 1) === ref.name) matched.push(at)
+    }
+  }
+  if (named.length + matched.length === 0) {
+    throw new RepoCleanerError('not-found', `--spare ${text}: no such row in the plan`)
+  }
+  return { named, matched }
+}
+
 /** The plan rows `glob` matches; see {@link Approval.spare}. */
 function matchGlob(plan: Plan, glob: string): Resolved[] {
   const ref = parseRowRef(glob)
@@ -263,11 +299,9 @@ export function resolveApproval(plan: Plan, approval: Approval, cwd: string): Re
       ? null
       : uniq(approval.select.map((t) => resolveRef(plan, t, '--select', cwd)))
   const pick = uniq((approval.pick ?? []).map((t) => resolveRef(plan, t, '--pick', cwd)))
-  const named = (approval.spare ?? []).filter((t) => !isGlob(t))
-  const spare = uniq(named.map((t) => resolveRef(plan, t, '--spare', cwd)))
-  const spareMatched = uniq(
-    (approval.spare ?? []).filter(isGlob).flatMap((g) => matchGlob(plan, g)),
-  )
+  const spares = (approval.spare ?? []).map((t) => spareRows(plan, t, cwd))
+  const spare = uniq(spares.flatMap((s) => s.named))
+  const spareMatched = uniq(spares.flatMap((s) => s.matched))
   const chosen = [...(select ?? []), ...pick]
   const picked = new Set(chosen.map(keyOf))
   const spared = new Set([...spare, ...spareMatched].map(keyOf))

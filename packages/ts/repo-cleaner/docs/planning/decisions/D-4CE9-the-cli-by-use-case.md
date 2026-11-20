@@ -502,8 +502,9 @@ gaps, and settled them:
   library takes an exact list of rows (`select`) for `-i` and for hosts. An
   `--allow <risk>=<row>` no longer needs the row picked.
 - **A `--spare` glob only leaves rows alone.** The tip check that stops a run
-  applies to remote rows spared by exact name. A glob is matched against the
-  branch name of remote rows too.
+  applies to remote rows spared by their full name. A glob is matched against
+  the branch name of remote rows too, and so is a bare name: `--spare staging`
+  keeps `staging` everywhere, as U14 means it.
 - **No default remote:** local rows are judged against the local default
   branch, with a note. "The remote the default branch tracks" is read from
   `branch.<default>.remote`.

@@ -163,22 +163,23 @@ const PHASES = `phases:
   ${NAME} cache    list or remove the clones kept for remote URL targets`
 
 /** What the bare command prints: the phases, and that nothing ran. */
-const OVERVIEW = `${NAME}: what has been merged, and what can go away.
+const OVERVIEW = `${NAME} finds worktrees and branches whose work has landed, and deletes them safely.
 
-Nothing runs until a phase is named:
+It works in phases. Nothing is deleted until clean, and only what is safe.
 
-${PHASES}
+  1. status   Look: each worktree and branch, with a verdict and the reason.
+                $ ${NAME} status            this repository
+                $ ${NAME} status --all      local and remote branches
+  2. plan     Optional: save what status found, to run later or hand on.
+                $ ${NAME} plan --all -o plan.json
+  3. clean    Delete what is safe: checks each row again, shows the steps, asks.
+                $ ${NAME} clean             asks first
+                $ ${NAME} clean -y          does not ask
+                $ ${NAME} clean --plan plan.json
 
-Each phase looks at the same rows: worktrees and local branches (--local, the
-default), a remote's branches (--remote, --remote=<name>), or both (--all).
-Only clean deletes, and only rows judged delete unless you pick more.
-
-  ${NAME} status            what could go, here
-  ${NAME} clean -y          delete what is safe to, without asking
-  ${NAME} clean -i          choose from a checklist
-
-${NAME} <phase> --help shows a phase's options.
-${NAME} dev runs it from a development checkout.
+Nothing ran. Name a phase; \`${NAME} <phase> --help\` shows its options.
+\`${NAME} cache\` manages the clones of remote URL targets; \`${NAME} dev\` runs a
+development checkout.
 `
 
 const statusCli = () =>

@@ -502,7 +502,12 @@ describe('naming rows', () => {
     const p = plan(sweepOf([a.root, b.root], a.root))
     for (const name of ['merged-a', 'branch:merged-a']) {
       expectRefused(() => preview(a, p, { select: [name] }), 'ambiguous', /matches 2 rows/)
-      expectRefused(() => preview(a, p, { spare: [name] }), 'ambiguous')
+      // Sparing errs toward leaving alone: a bare name spares it in each repository.
+      if (name.includes(':')) expectRefused(() => preview(a, p, { spare: [name] }), 'ambiguous')
+      else
+        expect(
+          preview(a, p, { spare: [name] }).steps.some((st) => st.row === 'branch:merged-a'),
+        ).toBe(false)
       expectRefused(
         () => preview(a, p, { allow: [{ risk: 'abandon-unmerged', row: name }] }),
         'ambiguous',

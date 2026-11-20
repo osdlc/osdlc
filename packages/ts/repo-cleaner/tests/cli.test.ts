@@ -106,13 +106,14 @@ describe('arguments', () => {
     const res = run([], fx.root)
     expect(res.code).toBe(2)
     expect(res.out).toBe('')
-    expect(res.err).toContain('Nothing runs until a phase is named')
+    expect(res.err).toContain('Nothing ran. Name a phase')
     for (const verb of ['status', 'plan', 'clean', 'cache']) {
       expect(res.err).toContain(`repo-cleaner ${verb}`)
     }
+    expect(res.err).toContain('$ repo-cleaner clean -y')
     const help = run(['--help'], fx.root)
     expect(help.code).toBe(0)
-    expect(help.out).toContain('Nothing runs until a phase is named')
+    expect(help.out).toContain('It works in phases')
   })
 
   test('a word that is no phase is refused, a path included', () => {

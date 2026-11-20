@@ -105,8 +105,11 @@ requests whose head is the fork.
 its risks.
 
 **spare.** `--spare <row or glob>`: leave this row alone, whatever its
-verdict. A spared remote branch is still checked: if it moved or is gone
-since the plan, the run stops, because the plan relied on it.
+verdict. A bare branch name is that branch everywhere, a remote branch of that
+name on every remote included; a glob matches row names, and a remote branch's
+name without its remote. A remote branch spared by its full name is still
+checked: if it moved or is gone since the plan, the run stops, because the
+plan relied on it.
 
 **allow.** `--allow <risk>` for every row, or `--allow <risk>=<row>` for one.
 
