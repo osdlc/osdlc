@@ -9,6 +9,8 @@
  * Branches, sessions and every candidate with a protest are left for a person.
  */
 
+import { stripControls } from '@osdlc/ux'
+
 import { sizeOf } from './artifacts.ts'
 import type { Receipt } from './plan.ts'
 import type { Candidate, Objection } from './types.ts'
@@ -79,14 +81,16 @@ export function leftForReview(
 }
 
 /** The candidates a receipt shows were removed. */
-export const cleanedIds = (r: Receipt): string[] =>
-  r.steps.filter((s) => s.result === 'ok').map((s) => s.id)
+export const cleanedIds = (r: Receipt): string[] => [
+  ...r.steps.filter((s) => s.result === 'ok').map((s) => s.id),
+  // Gone because an earlier step removed its parent (an artifact inside a removed worktree): cleaned.
+  ...r.dropped.filter((d) => d.reason === 'gone').map((d) => d.id),
+]
 
 export function failedIds(r: Receipt): { id: string; reason: string }[] {
   const failed = r.steps
     .filter((s) => s.result === 'failed' || s.result === 'skipped')
     .map((s) => ({ id: s.id, reason: s.error ?? s.result }))
-  // A candidate gone because an earlier step removed its parent (an artifact inside a removed worktree) was cleaned.
   const dropped = r.dropped
     .filter((d) => d.reason !== 'gone')
     .map((d) => ({ id: d.id, reason: `${d.reason}: ${d.detail}` }))
@@ -119,5 +123,5 @@ export function renderAutoReport(r: AutoReport): string {
     if (l.objections.length > 0) lines.push(`          ${l.objections.join(', ')}`)
   }
   if (r.receipt !== null) lines.push(`receipt: ${r.receipt}`)
-  return `${lines.join('\n')}\n`
+  return `${stripControls(lines.join('\n'), { newline: true })}\n`
 }

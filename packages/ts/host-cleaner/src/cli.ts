@@ -652,7 +652,7 @@ function autoWork(
   const receiptPath = join(dirs.state, 'receipts', `receipt-${stamp(startedAt)}.json`)
   let receipt: Receipt | null = null
   try {
-    // An empty pick would run every candidate nothing objects to, so an empty selection runs nothing.
+    // An empty selection runs nothing: skip the clean.
     if (ids.length > 0) {
       mkdirSync(dirname(receiptPath), { recursive: true })
       receipt = clean(makePlan(s, { pick: ids, now: startedAt }), plugins, cctx, {
