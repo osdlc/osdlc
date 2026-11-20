@@ -16,7 +16,7 @@ import { nodeGuard } from '@osdlc/path-guard/node'
 import { defaultProcessProbe, type ProcessHolder, type ProcessProbe } from '@osdlc/repo-cleaner'
 import { Git } from '@osdlc/typed-git'
 
-import type { Candidate, Ctx, Objection } from './types.ts'
+import type { Candidate, Ctx, Objection, Plugin } from './types.ts'
 
 export const DEFAULT_IDLE_HOURS = 24
 const HOUR_MS = 3_600_000
@@ -305,11 +305,28 @@ export function removeArtifact(
   return `removed ${target}; freed ${bytes} bytes`
 }
 
-/** A path with symlinks resolved, so differently spelled paths to one place compare equal; the path itself when it does not resolve. */
-export function canon(path: string): string {
-  try {
-    return realpathSync(path)
-  } catch {
-    return path
+/** The plugin both artifact plugins are: `rowsOf` lists one checkout's rows, `detect` says whether the plugin applies. */
+export function artifactPlugin(
+  name: string,
+  opts: ArtifactOptions,
+  detect: (env: Env) => boolean,
+  rowsOf: (env: Env, checkout: Checkout) => Row[],
+): Plugin {
+  let rows = new Map<string, Row>()
+  return {
+    name,
+    detect: (ctx) => detect(envOf(opts, ctx)),
+    discover(ctx) {
+      const env = envOf(opts, ctx)
+      const found = checkoutsOf(env).flatMap((c) => rowsOf(env, c))
+      rows = new Map(found.map((r) => [r.candidate.id, r]))
+      return found.map((r) => r.candidate)
+    },
+    object: (all) =>
+      all.flatMap((c) => {
+        const row = rows.get(c.id)
+        return c.owner === name && row !== undefined ? objectionsTo(name, row) : []
+      }),
+    delete: (c, ctx) => removeArtifact(rowsOf, c, envOf(opts, ctx)),
   }
 }
