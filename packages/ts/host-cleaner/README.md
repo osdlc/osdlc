@@ -95,7 +95,8 @@ folder; `CLAUDE_CONFIG_DIR` moves it). A session is a process whose executable
 is `claude` or `claude.exe`, or `node` running a `claude` script, found with
 `ps` and its working directory with `lsof`. Each candidate carries a
 `close-session` protest and is never `unattended`, so a session closes only
-when picked and allowed by name:
+when picked and allowed by name. A session that host-cleaner itself runs
+inside (an ancestor of its process) is refused with `own-session`:
 
 ```sh
 host-cleaner clean --pick session:1234 --allow close-session

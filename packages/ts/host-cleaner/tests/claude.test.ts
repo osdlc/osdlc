@@ -50,6 +50,8 @@ const psLine = (pid: number, command: string, lstart = 'Wed Nov 18 23:37:21 2026
 
 interface Machine {
   ps: string[]
+  /** `pid ppid` lines for the ancestor walk. */
+  ppids?: string[]
   cwds: Record<number, string>
 }
 
@@ -59,6 +61,7 @@ function machine(m: Machine) {
   const alive = new Set(Object.keys(m.cwds).map(Number))
   const runners = {
     ps: fakeRunner((argv) => {
+      if (argv[1] === 'pid=,ppid=') return { stdout: (m.ppids ?? []).join('\n') + '\n' }
       if (argv[0] === '-axo') return { stdout: m.ps.join('\n') + '\n' }
       const pid = Number(argv.at(-1))
       const line = m.ps.find((l) => Number(l.trim().split(/\s+/)[0]) === pid)
@@ -295,6 +298,22 @@ describe('closing a session', () => {
     expect(receipt.dropped).toEqual([
       expect.objectContaining({ id: 'session:100', reason: 'not-allowed' }),
     ])
+    expect(mach.killed).toEqual([])
+  })
+
+  test('a session host-cleaner runs inside is refused, so it is never signalled', () => {
+    const { m, mach, plugin, ctx } = setup({ ownPid: 300 })
+    m.ppids = ['  300   200', '  200   100', '  100     1']
+    const planned = survey([plugin], ctx)
+    expect(planned.objections).toContainEqual(
+      expect.objectContaining({ candidate: 'session:100', level: 'refuse', code: 'own-session' }),
+    )
+    const receipt = clean(
+      plan(planned, { pick: ['session:100'], allow: [CLOSE_SESSION] }),
+      [plugin],
+      ctx,
+    )
+    expect(receipt.steps).toEqual([])
     expect(mach.killed).toEqual([])
   })
 
