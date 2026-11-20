@@ -452,8 +452,9 @@ function classifyRemoteBranch(opts: {
   }
   const status = repo.provider
   // `--provider none` is a choice that this remote has no forge; anything else
-  // that left PRs unchecked means one could be open.
-  const unchecked = status === null || pr !== undefined ? null : prsUnchecked(status)
+  // that left PRs unchecked means one could be open. A merged or closed PR
+  // does not rule out an open one the listing missed, so only an open PR ends the doubt.
+  const unchecked = status === null || pr?.state === 'OPEN' ? null : prsUnchecked(status)
   const unknownPr =
     status === null || unchecked === null
       ? null

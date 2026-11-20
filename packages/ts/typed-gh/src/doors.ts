@@ -126,6 +126,7 @@ type Triable<C> = Omit<
   | 'rawChecked'
   | 'at'
   | 'withRepo'
+  | 'withHostname'
   | 'ownerRepo'
   | 'try'
   | 'soft'
