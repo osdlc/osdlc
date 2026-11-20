@@ -27,7 +27,8 @@ When not to use it:
 
 - You want to find a config file in any of many places and formats. `cosmiconfig`
   and `c12` do that.
-- You do not use Zod. The schema walk reads Zod 4 types.
+- You do not use Zod. The schema walk reads Zod 4 types. Only the machine file reads through any
+  other validator (see Standard Schema).
 - You need Windows support today. See Platforms.
 - You want a config library that knows nothing about CLI tools. Parts of this one
   (needs messages, `config set` edits, scaffold files) assume a tool with a
@@ -247,6 +248,40 @@ step yet). Then:
 
 Without `migrations`, `version` is an ordinary key, as before.
 
+## Fields
+
+`configFields(shape)` turns the config schema into a flat list of its leaves, so a tool renders its
+example file, `config list`, a settings screen or an interactive `init` from one place. Each
+`ConfigField` has its `path`, `key`, `section`, `kind` (the Zod type tag), `label`, `description`,
+`help`, `control`, `hidden`, `secret`, `optional`, `default` and, for an enum, `choices`.
+
+Any field, top-level or nested, may carry `label`, `help`, `control` and `hidden` in its `.meta()`
+(`FieldMeta`). Without them, `label` is the last path segment, `help` is the `.describe()` text and
+`control` comes from the type (`defaultControl`: `toggle`, `number`, `select`, `list`, `map`,
+`text`). A `control` is free text, since the widgets belong to the tool. `hidden` and `secret` on an object
+apply to everything under it; an optional or defaulted object makes its fields `optional`, and its default value wins over a field's own. Only `hidden` is read from an object's own meta; its `label` and `help` are not used. A malformed value throws, naming the path. Objects are walked into. A record,
+an array, a union and a scalar are leaves.
+
+<!-- snippet: fields -->
+
+```ts
+const editorMeta: FieldMeta = { label: 'Editor', control: 'path' }
+
+const shape = {
+  editor: z.string().default('vi').describe('The editor to open.').meta(editorMeta),
+  server: z.object({
+    port: z.number().default(8080).describe('The port to listen on.'),
+    mode: z.enum(['dev', 'prod']).default('dev'),
+    token: z.string().optional().meta({ hidden: true }),
+  }),
+}
+
+const fields: ConfigField[] = configFields(shape)
+const visible = fields.filter((f) => !f.hidden)
+// visible.map((f) => [f.key, f.control]) is
+//   [['editor', 'path'], ['server.port', 'number'], ['server.mode', 'select']]
+```
+
 ## Needs
 
 A command declares the settings it cannot run without, as needs.
@@ -336,6 +371,54 @@ The schema walk reads Zod's private `_def` layout by tag name, not with
 `instanceof`, so a second copy of zod in a consumer's dependency tree still
 works. A test fails if a zod release changes that layout, and
 `tests/zod-copy.test.ts` loads a config through a second copy of zod.
+
+## Standard Schema
+
+`machineConfigFile` takes any [Standard Schema](https://standardschema.dev) validator as its
+`schema`: zod 4, valibot, arktype or a hand-written one. The file is read, salvaged and checked
+before a write through the validator's own `~standard.validate`, and each issue becomes the
+`path: message` form. The validator must answer synchronously; an asynchronous one throws a
+`TypeError`. `StandardSchemaV1` is the spec's interface, copied as the spec asks, so the package
+adds no dependency. `validateStandard(schema, value)` is the same check for your own use.
+
+<!-- snippet: standard-schema -->
+
+```ts
+interface Machine {
+  editor: string
+}
+
+const machineSchema: StandardSchemaV1<unknown, Machine> = {
+  '~standard': {
+    version: 1,
+    vendor: 'hand-written',
+    validate: (value) => {
+      const editor = (value as { editor?: unknown }).editor ?? 'vi'
+      return typeof editor === 'string'
+        ? { value: { editor } }
+        : { issues: [{ message: 'must be a string', path: ['editor'] }] }
+    },
+  },
+}
+
+const machine = machineConfigFile({
+  tool: 'tooly',
+  schema: machineSchema,
+  vendorDirs: { vendor: 'osdlc', envVars: envVars('osdlc') },
+})
+// machine.load() is a Machine: a section that fails takes its default.
+
+const checked: StandardValidation<Machine> = validateStandard(machineSchema, { editor: 3 })
+const issues: StandardIssue[] = checked.ok ? [] : checked.issues
+// issues is [{ path: ['editor'], message: 'must be a string' }]
+```
+
+What stays zod-only is everything that reads a schema's shape, since a Standard Schema validator
+does not expose one: the sections and the project loader, `configNeeds`, `scaffoldYaml`,
+`renderReference`, `resolveKeyPath` and the `.meta()` checks. With a non-zod machine schema,
+unknown keys are not told apart from other invalid ones: an unknown key makes its top-level section
+fall back to its default, and the load reports it as `invalid`, not `unknown_key`. A zod schema keeps
+the `unknown_key` behaviour when every object in it is `.strict()`.
 
 ## Sections and the loader
 
@@ -520,11 +603,11 @@ package.
 The experimental exports:
 
 `APPLY_PREFIX`, `AppliesVia`, `AssembleConfigOptions`, `BASE_CONFIG_VERSION`, `CONFIG_INVALID_EXIT`,
-`CONSUMER_REF`, `ConfigFileMigrateResult`, `ConfigFileSpec`, `ConfigHandle`, `ConfigInvalidError`,
+`CONSUMER_REF`, `ConfigField`, `ConfigFileMigrateResult`, `ConfigFileSpec`, `ConfigHandle`, `ConfigInvalidError`,
 `ConfigIssue`, `ConfigKeyMeta`, `ConfigKeyMetaSchema`, `ConfigLayers`, `ConfigMetaIssue`,
 `ConfigMigration`, `ConfigNeed`, `ConfigNeeds`, `ConfigNeedsOptions`, `ConfigOf`, `ConfigSection`,
 `ConfigSectionHooks`, `ConfigVocabulary`, `ConfigVocabularySpec`, `ConsumerSchema`,
-`DeprecatedKeyUse`, `Deprecation`, `DeprecationSchema`, `KeyScopes`, `LayerCheckContext`,
+`DeprecatedKeyUse`, `Deprecation`, `DeprecationSchema`, `FieldMeta`, `KeyScopes`, `LayerCheckContext`,
 `LayerMigration`, `MACHINE_CONFIG_ISSUE_CODES`, `MachineConfigFile`, `MachineConfigFileOptions`,
 `MachineConfigIssue`, `MachineConfigLoad`, `MachineMigrateResult`, `MachineMigration`,
 `MachineWriteOptions`, `MessageOptions`, `MetOptions`, `MetaTerms`, `MetaValidator`, `MigratedRaw`,
@@ -534,11 +617,12 @@ The experimental exports:
 `RegisteredKeyMetaSchema`, `ResolveConfigFileOptions`, `ResolveConfigPathOptions`,
 `ResolveKeyPathOptions`, `ResolveLayeredStepsOptions`, `ResolveLayeredValueOptions`,
 `ResolvedConfigFile`, `ResolvedKey`, `ResolvedLayeredSteps`, `ResolvedLayeredValue`, `ResolvedStep`,
-`STABILITY_LEVELS`, `ScaffoldOptions`, `Stability`, `StabilitySchema`, `StarterOptions`, `StepMode`,
+`STABILITY_LEVELS`, `ScaffoldOptions`, `Stability`, `StabilitySchema`, `StandardIssue`,
+`StandardSchemaV1`, `StandardValidation`, `StarterOptions`, `StepMode`,
 `StepProvenance`, `StrippedKeys`, `SubstituteOptions`, `TermsOf`, `UnknownKeyUse`, `ValueLayer`,
 `VendorDirs`, `applierAndReservedProblems`, `applierOf`, `assembleConfig`, `checkConfigMeta`,
-`closestMatches`, `configNeeds`, `consumerProblems`, `currentConfigVersion`,
-`currentMachineVersion`, `deepMergeConfig`, `defaultOf`, `defineConfigSection`,
+`closestMatches`, `configFields`, `configNeeds`, `consumerProblems`, `currentConfigVersion`,
+`currentMachineVersion`, `deepMergeConfig`, `defaultControl`, `defaultOf`, `defineConfigSection`,
 `defineConfigVocabulary`, `defineMigrations`, `deprecatedKeysSet`, `deprecationMessage`,
 `describeShape`, `descriptionOf`, `didYouMean`, `enforcementProblems`, `envStem`, `getIn`,
 `isReserved`, `jsonSchemaOf`, `keyDescription`, `keyExists`, `leafSchema`, `machineConfigFile`,
@@ -547,8 +631,8 @@ The experimental exports:
 `readMappingFile`, `readParsedFile`, `reconcileYaml`, `renderReference`, `resolveConfigFile`,
 `resolveConfigPath`, `resolveKeyPath`, `resolveLayeredSteps`, `resolveLayeredValue`,
 `scaffoldLocalYaml`, `scaffoldYaml`, `setPath`, `splitKeyPath`, `starterYaml`, `stripUnknownKeys`,
-`substitutePathNames`, `systemDirs`, `topLevelKeys`, `unknownKeyMessage`, `unsetPath`, `valueAt`,
-`valueIsSet`
+`substitutePathNames`, `systemDirs`, `topLevelKeys`, `unknownKeyMessage`, `unsetPath`,
+`validateStandard`, `valueAt`, `valueIsSet`
 
 A test compares this list with the `@experimental` tags in the source.
 

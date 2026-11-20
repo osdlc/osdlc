@@ -58,6 +58,18 @@ describe('footerHints', () => {
     expect(footerHints(keysFor('tui', 'list'), 200, '  ', 'skill')).toContain('enter copy /name')
     expect(footerHints(keysFor('tui', 'list'), 200, '  ', 'skill')).not.toContain('enter run')
   })
+
+  test('a key with only a skill form is shown on skill rows alone', () => {
+    const skillOnly: KeyBinding[] = [
+      ...keys.slice(0, 1),
+      { surface: 'tui', view: 'list', keys: ['g'], action: 'g', skillHint: 'g go', rank: 1 },
+      ...keys.slice(1),
+    ]
+    expect(footerHints(skillOnly, 80, '  ', 'skill')).toBe('a one  g go  b two  q quit')
+    expect(footerHints(skillOnly, 80)).toBe('a one  b two  q quit')
+    expect(footerHints(keysFor('tui', 'list'), 200, '  ', 'skill')).toContain('^g agent')
+    expect(footerHints(keysFor('tui', 'list'), 200)).not.toContain('^g')
+  })
 })
 
 describe('keyLines', () => {
