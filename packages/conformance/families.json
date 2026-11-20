@@ -54,6 +54,14 @@
       { "language": "rust", "dir": "packages/rust/glob-intersect", "name": "glob-intersect" }
     ]
   },
+  "markdown-contract": {
+    "reference": "ts",
+    "generator": "pnpm --filter @osdlc/markdown-contract conformance:write",
+    "implementations": [
+      { "language": "ts", "dir": "packages/ts/markdown-contract", "name": "@osdlc/markdown-contract" },
+      { "language": "rust", "dir": "packages/rust/markdown-contract", "name": "markdown-contract" }
+    ]
+  },
   "markdown-link": {
     "reference": "rust",
     "generator": "cargo run -p markdown-link --example conformance-write",
