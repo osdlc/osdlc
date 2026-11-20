@@ -1406,6 +1406,10 @@ export function removeCandidate(
   })
   const row = rowOfCandidate(candidate)
   if (!runnable(row)) return refused(`refused: ${candidate.id} ${candidate.why}`)
+  const cwd = opts.cwd ?? process.cwd()
+  if (row.kind === 'worktree' && nodeGuard.contains(row.name, resolve(cwd))) {
+    return refused(`refused: ${candidate.id} is the worktree the caller stands in`)
+  }
   const allow = new Set(opts.allow ?? [])
   let judged: ReturnType<typeof judgeRisks>
   try {
@@ -1448,7 +1452,6 @@ export function removeCandidate(
     }
     steps.unshift([step, null])
   }
-  const cwd = opts.cwd ?? process.cwd()
   const ctx: StepContext = {
     git: new Git(cwd, { runner: opts.git }),
     probe: opts.probe ?? defaultProcessProbe(),

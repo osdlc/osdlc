@@ -1535,6 +1535,28 @@ describe('candidatesOf and removeCandidate', () => {
     expect(existsSync(fx.worktree)).toBe(true)
   })
 
+  test('the worktree the caller stands in is refused, and stays', () => {
+    const fx = buildFixture()
+    mergeWorktreeBranch(fx)
+    const out = removeCandidate(candidate(fx, wt(fx.worktree)), { cwd: fx.worktree, probe: idle })
+    expect(out).toMatchObject({ ok: false, steps: [] })
+    expect(out.error).toMatch(/the worktree the caller stands in/)
+    expect(existsSync(fx.worktree)).toBe(true)
+  })
+
+  test('archive with no remote is refused before anything runs', () => {
+    const fx = buildFixture()
+    const c = { ...candidate(fx, 'branch:unmerged'), remote: null }
+    const out = removeCandidate(c, {
+      cwd: fx.root,
+      probe: idle,
+      allow: ['abandon-unmerged'],
+      archive: { now: new Date(0) } as never,
+    })
+    expect(out.ok).toBe(false)
+    expect(out.error).toMatch(/no remote/)
+  })
+
   test('a risk not granted refuses the delete; granted, it runs', () => {
     const fx = buildFixture()
     const refused = removeCandidate(candidate(fx, 'branch:unmerged'), { cwd: fx.root, probe: idle })
