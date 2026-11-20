@@ -9,34 +9,34 @@
 //
 // The globs match a file name prefix anywhere in the tree (`**/D-*.md`, `**/T-*.md`), so they
 // hold whether a run covers the whole corpus or one subfolder.
-import { contract, defineConfig, section, sections } from "@osdlc/markdown-contract";
-import { z } from "zod";
+import { contract, defineConfig, section, sections } from '@osdlc/markdown-contract'
+import { z } from 'zod'
 
 const decisionFrontmatter = z.strictObject({
   id: z.string().regex(/^D-[0-9]{4}$/),
-  status: z.enum(["open/proposed", "open/accepted", "closed/superseded"]),
+  status: z.enum(['open/proposed', 'open/accepted', 'closed/superseded']),
   title: z.string().min(1),
-});
+})
 
 const taskFrontmatter = z.strictObject({
   id: z.string().regex(/^T-[0-9]{4}$/),
-  status: z.enum(["open/ready", "in-progress/active", "closed/done"]),
+  status: z.enum(['open/ready', 'in-progress/active', 'closed/done']),
   title: z.string().min(1),
-});
+})
 
 const decisionContract = contract({
   frontmatter: decisionFrontmatter,
-  body: sections({ allowUnknown: true }, [section("Context"), section("Decision")]),
-});
+  body: sections({ allowUnknown: true }, [section('Context'), section('Decision')]),
+})
 
 const taskContract = contract({
   frontmatter: taskFrontmatter,
-  body: sections({ allowUnknown: true }, [section("Goal"), section("Approach")]),
-});
+  body: sections({ allowUnknown: true }, [section('Goal'), section('Approach')]),
+})
 
 export default defineConfig({
   rules: [
-    { include: ["**/D-*.md", "D-*.md"], contract: decisionContract },
-    { include: ["**/T-*.md", "T-*.md"], contract: taskContract },
+    { include: ['**/D-*.md', 'D-*.md'], contract: decisionContract },
+    { include: ['**/T-*.md', 'T-*.md'], contract: taskContract },
   ],
-});
+})

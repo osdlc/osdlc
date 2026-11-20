@@ -44,6 +44,19 @@ describe('projectSourcedCommands', () => {
     ])
   })
 
+  test('verify: detect in the project file is gated, as the repository chooses the command', () => {
+    expect(projectSourcedCommands({ pr_update: { verify: 'detect' } }, null)).toEqual([
+      'pr_update.verify',
+    ])
+    expect(projectSourcedCommands({ pr_update: { verify: 'test' } }, null)).toEqual([])
+    expect(
+      projectSourcedCommands(
+        { pr_update: { verify: 'detect' } },
+        { pr_update: { verify: 'none' } },
+      ),
+    ).toEqual([])
+  })
+
   test("a key the overlay also sets is the person's own and not gated", () => {
     const block = { test_command: 'make test' }
     expect(projectSourcedCommands({ pr_update: block }, { pr_update: block })).toEqual([])

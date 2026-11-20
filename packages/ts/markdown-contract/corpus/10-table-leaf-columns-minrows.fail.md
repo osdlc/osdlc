@@ -1,4 +1,0 @@
-## Files
-
-| Location | Kind | Change |
-| -------- | ---- | ------ |
