@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { captureContext } from '@osdlc/cli-tool'
+import type { CommandRunner } from '@osdlc/command-seam'
 import { Gh } from '@osdlc/typed-gh'
 import { makeOriginAndCheckout } from '@osdlc/typed-git/testing'
 
@@ -297,16 +298,61 @@ describe('the GitLab provider', () => {
     expect(looked.incomplete).toContain(`more than ${OPEN_PR_LIMIT} open PRs`)
   })
 
-  test('a fork is incomplete: its PRs to the parent are not listed', () => {
-    const canned = cannedGh([], { fork: 'upstream-owner/proj' })
+  test("a fork's PRs are read from its parent, by head repository owner", () => {
+    const canned = cannedGh([], {
+      fork: 'upstream-owner/proj',
+      byRepo: {
+        'fork-owner/proj': [],
+        'upstream-owner/proj': [
+          {
+            number: 5,
+            state: 'OPEN',
+            headRefName: 'mine',
+            headRefOid: 'a',
+            isCrossRepository: true,
+            headRepositoryOwner: { login: 'Fork-Owner' },
+          },
+          {
+            number: 6,
+            state: 'OPEN',
+            headRefName: 'theirs',
+            headRefOid: 'b',
+            isCrossRepository: true,
+            headRepositoryOwner: { login: 'someone-else' },
+          },
+          { number: 7, state: 'MERGED', headRefName: 'upstream-own', headRefOid: 'c' },
+        ],
+      },
+    })
     const looked = lookupPrs(
       repoWith(GITHUB),
       githubProvider(new Gh('/srv/proj', { runner: canned })),
     )
-    expect(looked.incomplete).toContain('fork of upstream-owner/proj')
+    expect(looked.incomplete).toBeNull()
+    expect([...looked.prs.keys()]).toEqual(['mine'])
     const api = canned.calls.find((argv) => argv[0] === 'api')!
     expect(api).toContain('repos/fork-owner/proj')
     expect(api).toContain('--hostname')
+    const parent = canned.calls.filter((argv) => argv.join(' ').includes('upstream-owner/proj'))
+    expect(parent.some((argv) => argv.join(' ').includes('headRepositoryOwner'))).toBe(true)
+  })
+
+  test("a fork whose parent's listing fails is incomplete, with the reason", () => {
+    const canned = cannedGh([], { fork: 'upstream-owner/proj' })
+    const failing: CommandRunner = {
+      run: (argv, o) =>
+        argv.includes('list') && argv.join(' ').includes('upstream-owner/proj')
+          ? { exitCode: 1, stdout: '', stderr: 'HTTP 404: Not Found' }
+          : canned.run(argv, o),
+    }
+    const looked = lookupPrs(
+      repoWith(GITHUB),
+      githubProvider(new Gh('/srv/proj', { runner: failing })),
+    )
+    expect(looked.error).toBeNull()
+    expect(looked.incomplete).toContain(
+      'fork of upstream-owner/proj, whose PRs could not be listed',
+    )
   })
 
   test('a host gh holds no credentials for, such as an SSH alias, is left to gh', () => {

@@ -3,6 +3,7 @@
 import type { Gh, PullRequest } from '@osdlc/typed-gh'
 
 import type { PRInfo } from '../types.ts'
+import { errorText } from '../util.ts'
 import type { PrProvider } from './types.ts'
 
 /** The fields classification consults. Asking for more costs latency. */
@@ -36,8 +37,13 @@ export const OPEN_PR_LIMIT = 1000
  * {@link PR_LIMIT} of any state, so an old open PR is not lost to newer merged
  * ones. The listing is incomplete, and says so, when the open PRs hit their
  * cap, when one branch has more than {@link PR_LIMIT} PRs, and when the
- * repository is a fork (PRs opened from it to its parent live in the parent
- * and are not read) or its fork status cannot be read. A listing `gh` fails, such as one for
+ * repository's fork status cannot be read.
+ *
+ * PRs opened from a fork live in the parent they target. For a fork, the
+ * parent's PRs whose head repository is the fork are listed too, under the
+ * same caps, and count for the fork's branches; a parent listing that fails
+ * or is capped leaves the listing incomplete, as does a fork whose parent
+ * cannot be named. A listing `gh` fails, such as one for
  * a repository the signed-in account cannot see, throws with `gh`'s reason.
  */
 export function githubProvider(gh: Gh): PrProvider {
@@ -69,23 +75,13 @@ export function githubProvider(gh: Gh): PrProvider {
         }
       }
       const incomplete: string[] = []
-      const rows: PullRequest[] = []
-      // A branch narrows the listing to its own PRs, so its one listing is whole
-      // unless that branch alone has more PRs than the cap.
-      if (branch === undefined) {
-        const open = client.prList({ state: 'open', limit: OPEN_PR_LIMIT, fields: FIELDS })
-        if (open === null) return null
-        rows.push(...open.rows)
-        if (open.truncated) {
-          incomplete.push(`the repository has more than ${OPEN_PR_LIMIT} open PRs`)
-        }
-      }
-      const all = client.prList({ state: 'all', limit: PR_LIMIT, fields: FIELDS, head: branch })
-      if (all === null) return null
-      rows.push(...all.rows)
-      if (branch !== undefined && all.truncated) {
-        incomplete.push(`more than ${PR_LIMIT} PRs have the head ${branch}`)
-      }
+      const own = listing(client, branch, FIELDS, null)
+      if (own === null) return null
+      incomplete.push(...own.capped)
+      const rows: PullRequest[] = [...own.rows]
+      // The parent's PRs from this fork: cross-repository there, but this
+      // repository's branches.
+      const fromFork = new Set<PullRequest>()
       if (target.project !== null) {
         const key = `${target.host ?? ''}/${target.project}`
         let parent = parents.get(key)
@@ -95,17 +91,46 @@ export function githubProvider(gh: Gh): PrProvider {
         }
         if (parent === 'unknown') {
           incomplete.push('whether the repository is a fork could not be read')
-        } else if (parent !== null) {
+        } else if (parent === FORK_WITHOUT_PARENT) {
           incomplete.push(
-            `the repository is a fork of ${parent}, and PRs from it to ${parent} are not listed`,
+            'the repository is a fork of its parent, and PRs from it to its parent are not listed',
           )
+        } else if (parent !== null) {
+          // A PR from a fork lives in the parent it targets: read the parent's
+          // PRs whose head repository is this fork.
+          const owner = target.project.split('/')[0]!.toLowerCase()
+          let theirs: Listing | null = null
+          let why = 'the listing gave no reason'
+          try {
+            theirs = listing(
+              client.withRepo(parent),
+              branch,
+              [...FIELDS, 'headRepositoryOwner'],
+              parent,
+            )
+          } catch (err) {
+            why = errorText(err)
+          }
+          if (theirs === null) {
+            incomplete.push(
+              `the repository is a fork of ${parent}, whose PRs could not be listed (${why})`,
+            )
+          } else {
+            incomplete.push(...theirs.capped)
+            for (const r of theirs.rows) {
+              if (r.isCrossRepository && r.headRepositoryOwner?.toLowerCase() === owner) {
+                rows.push(r)
+                fromFork.add(r)
+              }
+            }
+          }
         }
       }
 
       const prs: PRInfo[] = []
       for (const row of rows) {
         // A fork's head branch is not this repository's branch, whatever its name.
-        if (!row.headRefName || row.isCrossRepository) continue
+        if (!row.headRefName || (row.isCrossRepository && !fromFork.has(row))) continue
         prs.push({
           number: row.number,
           state: row.state,
@@ -122,6 +147,47 @@ export function githubProvider(gh: Gh): PrProvider {
   }
 }
 
+/** One repository's PRs, and why the listing may have left some out. */
+interface Listing {
+  rows: PullRequest[]
+  capped: string[]
+}
+
+/**
+ * Every open PR and the newest {@link PR_LIMIT} of any state, or a branch's
+ * PRs only. A branch narrows the listing to its own PRs, so its one listing
+ * is whole unless that branch alone has more PRs than the cap.
+ */
+function listing(
+  client: Gh,
+  branch: string | undefined,
+  fields: readonly string[],
+  /** The repository's name for the reasons; null for the one listed for. */
+  name: string | null,
+): Listing | null {
+  const rows: PullRequest[] = []
+  const capped: string[] = []
+  if (branch === undefined) {
+    const open = client.prList({ state: 'open', limit: OPEN_PR_LIMIT, fields })
+    if (open === null) return null
+    rows.push(...open.rows)
+    if (open.truncated) {
+      capped.push(`${name ?? 'the repository'} has more than ${OPEN_PR_LIMIT} open PRs`)
+    }
+  }
+  const all = client.prList({ state: 'all', limit: PR_LIMIT, fields, head: branch })
+  if (all === null) return null
+  rows.push(...all.rows)
+  if (branch !== undefined && all.truncated) {
+    const where = name === null ? '' : ` in ${name}`
+    capped.push(`more than ${PR_LIMIT} PRs${where} have the head ${branch}`)
+  }
+  return { rows, capped }
+}
+
+/** What {@link parentOf} answers for a fork whose parent it could not name. */
+const FORK_WITHOUT_PARENT = 'its parent'
+
 /** The parent's `owner/name` when the client's repository is a fork; null when it is not; `'unknown'` when it could not be read. */
 function parentOf(client: Gh): string | null {
   const answer = client.api('repos/{owner}/{repo}')
@@ -129,5 +195,5 @@ function parentOf(client: Gh): string | null {
   if (!answer.ok || typeof body !== 'object' || body === null) return 'unknown'
   const { fork, parent } = body as { fork?: unknown; parent?: { full_name?: unknown } | null }
   if (fork !== true) return null
-  return typeof parent?.full_name === 'string' ? parent.full_name : 'its parent'
+  return typeof parent?.full_name === 'string' ? parent.full_name : FORK_WITHOUT_PARENT
 }

@@ -187,6 +187,64 @@ describe('--against', () => {
   })
 })
 
+describe("a fork's pull requests (U10)", () => {
+  test('a PR merged in the parent at the exact head is proof, with no confirm-open-pr', () => {
+    const fx = forkAndParent()
+    const sha = fx.pushBranch('origin', 'feat/pr')
+    // Squash-merged upstream: upstream/main has the change, not the commit.
+    sh(fx.root, ['checkout', '-q', 'main'])
+    sh(fx.root, ['merge', '-q', '--squash', 'feat/pr'])
+    sh(fx.root, ['commit', '-q', '-m', 'feat/pr (#9)'])
+    sh(fx.root, ['push', '-q', 'upstream', 'main'])
+    const pr = {
+      number: 9,
+      state: 'MERGED' as const,
+      headRefName: 'feat/pr',
+      headRefOid: sha,
+      isCrossRepository: true,
+      headRepositoryOwner: { login: 'me' },
+    }
+    const swept = sweep([fx.root], {
+      cwd: fx.root,
+      remotes: [''],
+      against: 'upstream',
+      git: fx.git,
+      gh: cannedGh([], {
+        forks: { 'me/app': 'acme/app' },
+        byRepo: { 'me/app': [], 'acme/app': [pr] },
+      }),
+    }).repos[0]!
+    expect(swept.notes).toEqual([])
+    const row = rowOf(swept, 'remote:origin/feat/pr')
+    expect(row?.verdict).toBe('delete')
+    expect(row?.risks).toEqual([])
+    expect(row?.why).toContain('PR #9 merged')
+  })
+
+  test('an open PR in the parent keeps the branch', () => {
+    const fx = forkAndParent()
+    const sha = fx.pushBranch('origin', 'feat/open')
+    const pr = {
+      number: 3,
+      state: 'OPEN' as const,
+      headRefName: 'feat/open',
+      headRefOid: sha,
+      isCrossRepository: true,
+      headRepositoryOwner: { login: 'me' },
+    }
+    const swept = sweep([fx.root], {
+      cwd: fx.root,
+      remotes: [''],
+      git: fx.git,
+      gh: cannedGh([], {
+        forks: { 'me/app': 'acme/app' },
+        byRepo: { 'me/app': [], 'acme/app': [pr] },
+      }),
+    }).repos[0]!
+    expect(rowOf(swept, 'remote:origin/feat/open')?.verdict).toBe('keep')
+  })
+})
+
 describe('fetching', () => {
   test('local rows fetch nothing unless asked, and then the default remote', () => {
     const fx = forkAndParent()

@@ -1678,8 +1678,8 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
     expect(noteOf('auto', 'https://github.com/acme/gone.git')).not.toContain(hint)
   })
 
-  test('a fork is noted as incomplete, and deleting a remote branch needs confirm-open-pr', () => {
-    const gh = cannedGh([], { fork: 'upstream/app' })
+  test('a fork whose parent is not named is noted as incomplete, and deleting a remote branch needs confirm-open-pr', () => {
+    const gh = cannedGh([], { forkWithoutParent: true })
     const swept = sweepHere({
       provider: 'github',
       gh,
@@ -1689,7 +1689,7 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
     expect(swept.repo?.provider?.listError).toBeUndefined()
     expect(swept.notes).toHaveLength(1)
     expect(swept.notes[0]).toMatch(
-      /^The PR listing from `gh pr list` is incomplete \(the repository is a fork of upstream\/app.*\), so a remote branch with no PR found needs confirm-open-pr to delete\./,
+      /^The PR listing from `gh pr list` is incomplete \(the repository is a fork of its parent.*\), so a remote branch with no PR found needs confirm-open-pr to delete\./,
     )
     const lists = gh.calls.filter((argv) => argv[1] === 'list')
     expect(lists.every((argv) => argv.includes('github.com/me/app'))).toBe(true)
@@ -1702,7 +1702,7 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
   test('in an incomplete listing a merged PR does not rule out an open one', () => {
     const gh = cannedGh(
       [{ number: 5, state: 'MERGED', headRefName: 'merged', headRefOid: 'moved' }],
-      { fork: 'upstream/app' },
+      { forkWithoutParent: true },
     )
     const swept = sweepHere({
       provider: 'github',

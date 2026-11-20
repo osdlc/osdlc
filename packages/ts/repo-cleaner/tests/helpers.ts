@@ -49,6 +49,7 @@ export interface CannedPr {
   headRefOid: string
   baseRefName?: string
   isCrossRepository?: boolean
+  headRepositoryOwner?: { login: string }
 }
 
 /**

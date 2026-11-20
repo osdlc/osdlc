@@ -1032,8 +1032,12 @@ Open PRs are what gate a delete, so they are read on their own and an old open
 one is found however many newer PRs there are. Merged and closed PRs past the
 newest 300 are not read; they only prove that work landed, so a branch whose
 merged PR is that old falls back to ancestry or a patch match. A listing that
-stops at the open-PR cap is incomplete, and so is one for a fork on GitHub:
-the PRs a fork opened to its parent live in the parent, and are not listed.
+stops at the open-PR cap is incomplete.
+
+The PRs a fork opens live in its parent, so for a fork on GitHub the parent's
+PRs whose head repository is the fork are listed too, under the same caps, and
+count for the fork's branches. A parent listing that fails or stops at a cap
+leaves the listing incomplete, as does a fork whose parent cannot be named.
 For an incomplete listing the repository carries a note, and a remote branch
 with no PR found needs `confirm-open-pr` to delete, as after a failed listing.
 
