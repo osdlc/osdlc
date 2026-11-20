@@ -512,6 +512,59 @@ describe('naming rows', () => {
   })
 })
 
+describe('a worktree whose HEAD only a remote branch holds (#659)', () => {
+  function pushedWorktree(): Fixture & { plan: Plan } {
+    const fx = buildFixture()
+    const topic = join(dirname(fx.worktree), 'wt-topic')
+    sh(fx.root, ['worktree', 'add', '-q', '-b', 'topic', topic])
+    sh(topic, ['commit', '--allow-empty', '-m', 'topic work'])
+    sh(topic, ['push', '-q', '-u', 'origin', 'topic'])
+    const p = plan(sweep([fx.root], { remote: true, provider: 'none', cwd: fx.root }))
+    return { ...fx, worktree: realpathSync(topic), plan: p }
+  }
+
+  test('the worktree alone runs without abandon-unmerged', () => {
+    const fx = pushedWorktree()
+    const shown = preview(fx, fx.plan, { pick: [wt(fx.worktree)] })
+    expect(shown.dropped).toEqual([])
+    expect(shown.steps.some((s) => s.row === wt(fx.worktree))).toBe(true)
+  })
+
+  test('with the remote branch picked too, it is dropped until abandon-unmerged is allowed', () => {
+    const fx = pushedWorktree()
+    const pick = [wt(fx.worktree), 'remote:origin/topic']
+    const remoteAllowed = { risk: 'abandon-unmerged', row: 'remote:origin/topic' } as const
+    const refused = preview(fx, fx.plan, { pick, allow: [remoteAllowed] })
+    expect(refused.dropped.find((d) => d.row === wt(fx.worktree))).toMatchObject({
+      reason: 'not-allowed',
+      detail: expect.stringContaining('needs abandon-unmerged'),
+    })
+    const allowed = preview(fx, fx.plan, {
+      pick,
+      allow: [remoteAllowed, { risk: 'abandon-unmerged', row: wt(fx.worktree) }],
+    })
+    expect(allowed.dropped.some((d) => d.row === wt(fx.worktree))).toBe(false)
+  })
+})
+
+describe('a worktree held by two remote branches (#659)', () => {
+  test('deleting only one of them leaves the worktree to run', () => {
+    const fx = buildFixture()
+    const topic = join(dirname(fx.worktree), 'wt-two')
+    sh(fx.root, ['worktree', 'add', '-q', '-b', 'two', topic])
+    sh(topic, ['commit', '--allow-empty', '-m', 'two work'])
+    sh(topic, ['push', '-q', '-u', 'origin', 'two'])
+    sh(topic, ['push', '-q', 'origin', 'HEAD:refs/heads/two-copy'])
+    const p = plan(sweep([fx.root], { remote: true, provider: 'none', cwd: fx.root }))
+    const row = realpathSync(topic)
+    const shown = preview(fx, p, {
+      pick: [wt(row), 'remote:origin/two'],
+      allow: [{ risk: 'abandon-unmerged', row: 'remote:origin/two' }],
+    })
+    expect(shown.dropped.some((d) => d.row === wt(row))).toBe(false)
+  })
+})
+
 describe('unusedAllows', () => {
   test('lists the allows no row that runs carries', () => {
     const fx = buildFixture()
