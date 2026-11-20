@@ -11,9 +11,10 @@ created: 2026-11-07
 
 - The `agent-router` crate is the Rust implementation of the package's pure core: references,
   the model catalogue, validity, effort, context and the profile walk.
-- The TypeScript package is the reference. It emits JSON vectors to its `fixtures/` folder, and
-  both test suites read them. A behaviour change regenerates the vectors in the same change, and
-  a check fails when the committed vectors are stale.
+- The TypeScript package is the reference. Its generator writes the expected values of the
+  conformance suite in `packages/conformance/agent-router/`, and both test suites run it. A
+  behaviour change regenerates the suite in the same change, and a check fails when the committed
+  suite is stale. (Until T-05 the vectors were a `fixtures/` folder in this package.)
 - The crate is not published to crates.io until a Rust host needs it. It keeps the shared major
   and minor version all the same.
 
