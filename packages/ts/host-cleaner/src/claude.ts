@@ -22,14 +22,14 @@
  * SIGKILL: a session that ignores SIGTERM is reported as failed.
  */
 
-import { existsSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, realpathSync, statSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 
 import { resolveConfigDir, type HarnessCatalog } from '@osdlc/detect-harness'
 import { nodeGuard } from '@osdlc/path-guard/node'
 
-import { canon, checkoutsOf, envOf, type ArtifactOptions, type Env } from './artifacts.ts'
+import { checkoutsOf, envOf, type ArtifactOptions, type Env } from './artifacts.ts'
 import type { Candidate, Plugin } from './types.ts'
 
 export const CLAUDE_PLUGIN = 'claude-code'
@@ -83,6 +83,15 @@ export interface SessionEvidence {
   orphan: boolean
   worktree: string | null
   unattended: false
+}
+
+/** A path with symlinks resolved, so differently spelled paths to one place compare equal; the path itself when it does not resolve. */
+function canon(path: string): string {
+  try {
+    return realpathSync(path)
+  } catch {
+    return path
+  }
 }
 
 const SLEEPER = new Int32Array(new SharedArrayBuffer(4))
