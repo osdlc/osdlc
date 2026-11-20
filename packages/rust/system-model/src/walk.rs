@@ -129,10 +129,6 @@ fn parse_manifest(
     }
 }
 
-// ---------------------------------------------------------------------------
-// node — package.json
-// ---------------------------------------------------------------------------
-
 const NODE_DEP_FIELDS: &[(&str, DepKind)] = &[
     ("dependencies", DepKind::Prod),
     ("devDependencies", DepKind::Dev),
@@ -242,10 +238,6 @@ fn classify_node_specifier(spec: &str) -> SpecifierKind {
     }
     SpecifierKind::Registry
 }
-
-// ---------------------------------------------------------------------------
-// rust — Cargo.toml
-// ---------------------------------------------------------------------------
 
 const CARGO_DEP_TABLES: &[(&str, DepKind)] = &[
     ("dependencies", DepKind::Prod),

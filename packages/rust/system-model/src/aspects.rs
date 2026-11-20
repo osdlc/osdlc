@@ -3,8 +3,7 @@
 //! Each check names the tier it works at, looks at one thing, and returns what
 //! it saw — never a verdict without the reason for it.
 //!
-//! PARITY IS THE CONSTRAINT. `@osdlc/system-model`'s `src/aspect-scan.ts` runs
-//! the same scanners in the same order and must produce identical output, so:
+//! Must produce the same output as `@osdlc/system-model`'s aspect scanner, so:
 //!
 //!   - scanners run in the order declared here, and evidence is emitted in
 //!     that order;
@@ -53,18 +52,22 @@ struct Finding {
 /// Every aspect a manifest supports, with the evidence for each.
 ///
 /// Ordered by the most direct tier, then by aspect id, so the payload is
-/// deterministic and diffable — the same reason the walk sorts everything else.
+/// deterministic and diffable.
 pub fn scan_aspects(manifest: &ManifestInfo) -> Vec<Aspect> {
     let mut findings: Vec<Finding> = Vec::new();
 
-    // Tier 1. A Cargo.toml is not evidence that something is Rust; it is the
-    // thing being Rust. No inference, so nothing to get wrong.
+    // Tier 1. Every Cargo.toml is a Rust aspect.
     if manifest.ecosystem == Ecosystem::Rust {
         findings.push(Finding {
             aspect: "rust",
             kind: EvidenceKind::Manifest,
             source: "Cargo.toml".to_string(),
-            found: "[package]".to_string(),
+            found: if manifest.name.is_some() {
+                "[package]"
+            } else {
+                "[workspace]"
+            }
+            .to_string(),
         });
     }
 

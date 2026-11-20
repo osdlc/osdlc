@@ -1,6 +1,5 @@
 //! Walk and graph cases written against scratch trees rather than the shared
-//! `mini-repo` fixture, which both implementations walk and neither may change
-//! unilaterally.
+//! `mini-repo` fixture, which the other cases read and which these must not change.
 
 use std::fs;
 use std::path::{Path, PathBuf};

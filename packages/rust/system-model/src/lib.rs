@@ -4,7 +4,7 @@
 //! `package.json` and `Cargo.toml` under a directory and parses each into a
 //! [`ManifestInfo`]; [`build_dependency_graph`] turns them into the dependency
 //! graph they declare, and [`scan_aspects`] reads the technologies a manifest
-//! uses. The containment tree and the wire schema follow in a later change.
+//! uses.
 //!
 //! ```
 //! use system_model::{GraphOptions, ManifestInfo, build_dependency_graph};
