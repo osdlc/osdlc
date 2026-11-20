@@ -248,7 +248,7 @@ describe('plan', () => {
     const res = run(['plan', '--branch', BRANCH, ...REMOTE], fx.root)
     expect(res.code).toBe(0)
     const plan = JSON.parse(res.out) as Plan
-    expect(plan.version).toBe(2)
+    expect(plan.version).toBe(3)
     expect(kindsOf(plan)).toEqual(['branch', 'remote', 'worktree'])
     expect(res.err).toContain('to delete')
   })
@@ -374,10 +374,10 @@ describe('local by default means offline', () => {
     expect(sh(fx.root, ['rev-parse', 'origin/main'])).toBe(before)
     const plan = JSON.parse(run(['plan'], fx.root).out) as Plan
     expect(plan.options.provider).toBe('none')
-    expect(plan.options.remote).toBe(false)
-    expect(plan.repos[0]!.fetched).toBe(false)
+    expect(plan.options.remotes).toEqual([])
+    expect(plan.repos[0]!.fetched).toEqual([])
     const fetched = JSON.parse(run(['plan', '--remote', '--provider', 'none'], fx.root).out) as Plan
-    expect(fetched.repos[0]!.fetched).toBe(true)
+    expect(fetched.repos[0]!.fetched).toEqual(['origin'])
 
     const online = run(['--remote', '--provider', 'none'], fx.root)
     expect(online.code).toBe(0)
@@ -899,10 +899,10 @@ describe('clean', () => {
     sh(fx.root, ['remote', 'set-url', 'origin', join(tempDir(), 'missing.git')])
     const res = run(['clean', '--remote', '--provider', 'none', '--yes'], fx.root)
     expect(res.code).toBe(1)
-    expect(res.err).toContain('fetch failed')
+    expect(res.err).toContain('fetch of origin failed')
     const plan = run(['plan', '--remote', '--provider', 'none'], fx.root)
     expect(plan.code).toBe(1)
-    expect(plan.err).toContain('fetch failed')
+    expect(plan.err).toContain('fetch of origin failed')
   })
 
   test('the receipt file records the rows the preview dropped', () => {
@@ -1602,8 +1602,8 @@ describe('refused combinations', () => {
       const plan = JSON.parse(
         run(['plan', '--only', 'remote', '--provider', 'none'], fx.root).out,
       ) as Plan
-      expect(plan.options).toMatchObject({ only: ['remote'], remote: true })
-      expect(plan.repos[0]!.fetched).toBe(true)
+      expect(plan.options).toMatchObject({ only: ['remote'], remotes: [''] })
+      expect(plan.repos[0]!.fetched).toEqual(['origin'])
     })
   })
 })

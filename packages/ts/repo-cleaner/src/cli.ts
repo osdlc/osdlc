@@ -385,7 +385,7 @@ function sweepOptions(v: SweepValues, ctx: CliContext, deps: MainDeps): SweepOpt
   return {
     ...deps.runners,
     cwd: ctx.cwd,
-    remote: v.remote,
+    remotes: v.remote ? [''] : [],
     offline: v.offline,
     ...(only === undefined ? {} : { only: only as Kind[] }),
     ...(v.branch === undefined ? {} : { branch: v.branch }),

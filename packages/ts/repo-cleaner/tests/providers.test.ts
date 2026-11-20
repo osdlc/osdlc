@@ -83,7 +83,10 @@ function repoWith(provider: ProviderStatus | null): RepoInfo {
     remote: 'origin',
     currentBranch: 'main',
     provider,
+    remotes: [],
+    against: null,
     fetched: false,
+    fetchedRemotes: [],
   }
 }
 
@@ -508,7 +511,7 @@ describe('a sweep of a GitLab checkout', () => {
   const remoteSweep = (opts: SweepOptions = {}) => {
     const swept = sweep([checkout], {
       cwd: checkout,
-      remote: true,
+      remotes: [''],
       offline: true,
       git: gitlabUrlGit,
       ...opts,
@@ -594,7 +597,7 @@ describe('a sweep of a GitLab checkout', () => {
     expect(code).toBe(0)
     const plan = parsePlan(ctx.io.out, 'stdout')
     expect(plan.options.provider).toBe('gitlab')
-    expect(plan.options.remote).toBe(true)
+    expect(plan.options.remotes).toEqual([''])
     const { provider: _, ...old } = plan.options
     expect(() => parsePlan(JSON.stringify({ ...plan, options: old }), 'old')).toThrow(
       expect.objectContaining({ code: 'bad-plan' }),
@@ -605,7 +608,7 @@ describe('a sweep of a GitLab checkout', () => {
     const ctx = captureContext({ cwd: checkout })
     expect(main(['plan', '--no-progress'], ctx, {})).toBe(0)
     const plan = parsePlan(ctx.io.out, 'stdout')
-    expect(plan.options.remote).toBe(false)
+    expect(plan.options.remotes).toEqual([])
     expect(plan.options.provider).toBe('none')
     expect(plan.options.only).toEqual(['worktree', 'branch'])
     // Branch fingerprints carry no PR, since none was looked up.

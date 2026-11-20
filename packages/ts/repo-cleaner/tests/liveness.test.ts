@@ -113,7 +113,7 @@ function buildFixture(): Fixture {
  */
 function worktreeItem(fx: Fixture, probe: ProcessProbe): WorktreeRow {
   const swept = sweep([fx.root], {
-    remote: true,
+    remotes: [''],
     offline: true,
     provider: 'github',
     gh: fx.gh,
@@ -300,7 +300,7 @@ describe('run', () => {
   function makePlan(fx: Fixture, probe: ProcessProbe): Plan {
     return planOf(
       sweep([fx.root], {
-        remote: true,
+        remotes: [''],
         offline: true,
         provider: 'github',
         gh: fx.gh,

@@ -179,7 +179,8 @@ function resweep(
   // An offline sweep read remote tips from disk, so it cannot stand in for
   // the re-check of remote rows: sweep again and ask the remote, so the
   // preview shows what the run will do.
-  const readFromDisk = kinds.includes('remote') && given?.repo?.fetched !== true
+  const readFromDisk =
+    kinds.includes('remote') && given?.repo?.remotes.some((r) => !r.fetched) !== false
   if (given !== undefined && given.error === null && !readFromDisk) {
     // Its notes are reported with the rest of that sweep's, by `recheck`.
     return { rows: holdFreedBranches([...given.rows], branchScoped), notes: [], info: given.repo! }
@@ -187,6 +188,7 @@ function resweep(
   const swept = sweepRepo(repo.root, {
     ...opts,
     only: kinds,
+    remotes: repo.remotes,
     against: plan.options.against ?? undefined,
     provider: plan.options.provider,
     fetch: repo.fetched,

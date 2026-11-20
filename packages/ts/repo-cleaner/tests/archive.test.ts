@@ -53,7 +53,7 @@ function buildFixture(): Fixture {
 const wt = (path: string) => `worktree:${path}` as const
 
 function makePlan(root: string): Plan {
-  return plan(sweep([root], { remote: true, offline: true, provider: 'none', cwd: root }))
+  return plan(sweep([root], { remotes: [''], offline: true, provider: 'none', cwd: root }))
 }
 
 const NOW = () => new Date('2026-11-19T10:00:00Z')
@@ -330,7 +330,7 @@ describe('what the archive covers', () => {
   test('a file over the size cap is left out of the snapshot', () => {
     const fx = buildFixture()
     writeFileSync(join(fx.worktree, 'big.bin'), 'x'.repeat(100))
-    const swept = sweep([fx.root], { remote: true, offline: true, provider: 'none', cwd: fx.root })
+    const swept = sweep([fx.root], { remotes: [''], offline: true, provider: 'none', cwd: fx.root })
     const live = swept.repos[0]!.rows.find((r) => r.id === wt(fx.worktree))!
     const cover = coverageOf(live, { maxFileBytes: 10 }, (p) => new Git(p))
     expect(cover.leftOut).toEqual([{ path: 'big.bin', reason: 'too-large' }])

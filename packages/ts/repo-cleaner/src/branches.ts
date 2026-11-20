@@ -34,12 +34,14 @@ import {
   type PrEvidence,
   type PrEvidenceGap,
   type RemoteEvidence,
+  type RemoteInfo,
   type RemoteRow,
   type RepoInfo,
   type Risk,
   type RowFields,
 } from './types.ts'
 import { prsUnchecked } from './prs.ts'
+import type { ProviderStatus } from './providers/types.ts'
 import { errorText } from './util.ts'
 
 /**
@@ -81,8 +83,7 @@ export function recordPr(
 }
 
 /** Why a branch has no PR, naming where the sweep looked, or why it could not. */
-function noPrSentence(repo: RepoInfo): string {
-  const provider = repo.provider
+function noPrSentence(provider: ProviderStatus | null): string {
   if (provider === null) return 'No PR lookup (no provider).'
   // The provider's own error is in the repository's note, not on every row.
   const unchecked = prsUnchecked(provider)
@@ -288,7 +289,9 @@ function classifyLocalBranch(opts: {
       : `Branch \`${name}\` is not an ancestor of \`${compareRef}\`.`
   const notes = [lead]
   notes.push(upstream ? `Tracks \`${upstream}\` (${track || 'in sync'}).` : 'Has no upstream.')
-  notes.push(pr ? `Associated PR #${pr.number} is ${pr.state} (${pr.url}).` : noPrSentence(repo))
+  notes.push(
+    pr ? `Associated PR #${pr.number} is ${pr.state} (${pr.url}).` : noPrSentence(repo.provider),
+  )
   if (pr && gap) notes.push(gapSentence(pr, gap, against))
   const unmatched = patch === null ? null : unmatchedSentence(patch, compareRef)
   if (unmatched !== null) notes.push(unmatched)
@@ -331,6 +334,7 @@ export interface RemoteBranches {
  */
 export function gatherRemoteBranches(
   repo: RepoInfo,
+  remoteInfo: RemoteInfo,
   prs: Map<string, PRInfo>,
   localBranchNames: ReadonlySet<string>,
   git: Git,
@@ -341,8 +345,7 @@ export function gatherRemoteBranches(
     tick?: ((done: number, total: number) => void) | undefined
   },
 ): RemoteBranches {
-  const remote = repo.remote
-  if (remote === null) return { rows: [], note: null }
+  const remote = remoteInfo.name
   const { only, tick } = opts
   let tips: Array<{ name: string; sha: string }> | null = null
   let note: string | null = null
@@ -374,7 +377,15 @@ export function gatherRemoteBranches(
   for (const [i, { name, sha }] of tips.entries()) {
     tick?.(i, tips.length)
     if (only !== undefined && name !== only) continue
-    const row = classifyRemoteBranch({ name, sha, repo, prs, localBranchNames, git })
+    const row = classifyRemoteBranch({
+      name,
+      sha,
+      repo,
+      remote: remoteInfo,
+      prs,
+      localBranchNames,
+      git,
+    })
     if (note !== null) {
       row.notes.push(
         `Tip read from \`refs/remotes/${remote}/${name}\` on disk: \`git ls-remote\` failed.`,
@@ -415,12 +426,13 @@ function classifyRemoteBranch(opts: {
   name: string
   sha: string
   repo: RepoInfo
+  remote: RemoteInfo
   prs: Map<string, PRInfo>
   localBranchNames: ReadonlySet<string>
   git: Git
 }): RemoteRow {
   const { name: branch, sha, repo, prs, localBranchNames, git } = opts
-  const remote = repo.remote ?? ''
+  const remote = opts.remote.name
   const name = `${remote}/${branch}`
   const evidence: RemoteEvidence = {
     branch,
@@ -431,8 +443,9 @@ function classifyRemoteBranch(opts: {
   const row = (r: RowFields<RemoteRow>): RemoteRow =>
     makeRow<RemoteRow>({ kind: 'remote', name, evidence, ...r })
 
-  if (branch === repo.mainBranch)
+  if (branch === opts.remote.defaultBranch) {
     return row({ verdict: 'keep', action: null, why: 'default branch' })
+  }
 
   const against = landedFor(repo, remote)
   const remoteMain = refOf(against)
@@ -460,7 +473,7 @@ function classifyRemoteBranch(opts: {
     const counted = git.at(repo.root).try.aheadBehind(remoteMain, sha)
     evidence.uniqueCommits = counted.ok ? counted.value.ahead : null
   }
-  const status = repo.provider
+  const status = opts.remote.provider
   // `--provider none` is a choice that this remote has no forge; anything else
   // that left PRs unchecked means one could be open. A merged or closed PR
   // does not rule out an open one the listing missed, so only an open PR ends the doubt.
@@ -470,7 +483,7 @@ function classifyRemoteBranch(opts: {
       ? null
       : `Whether it has an open ${status.noun} is unknown (${unchecked.why}), so deleting it needs confirm-open-pr.`
   const risks = branchRisks(unmerged, pr, unknownPr !== null)
-  const commands = repo.remote === null ? [] : [remoteDeleteCommand(repo.remote, branch, sha)]
+  const commands = [remoteDeleteCommand(remote, branch, sha)]
   const deletes = (why: string): RemoteRow =>
     row({
       verdict: 'delete',
@@ -493,7 +506,9 @@ function classifyRemoteBranch(opts: {
   }
 
   const notes = [`Remote branch \`${name}\` is not an ancestor of \`${remoteMain}\`.`]
-  notes.push(pr ? `Associated PR #${pr.number} is ${pr.state}.` : (unknownPr ?? noPrSentence(repo)))
+  notes.push(
+    pr ? `Associated PR #${pr.number} is ${pr.state}.` : (unknownPr ?? noPrSentence(status)),
+  )
   if (pr && gap) notes.push(gapSentence(pr, gap, against))
   const unmatched = patch === null ? null : unmatchedSentence(patch, remoteMain)
   if (unmatched !== null) notes.push(unmatched)

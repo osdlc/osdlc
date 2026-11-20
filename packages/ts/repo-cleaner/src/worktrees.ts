@@ -434,11 +434,13 @@ function classifyWorktree(opts: {
       const used = branchUse(git.at(repo.root), branch, repo.mainBranch)
       evidence.branchUsed = used
       if (used !== null) {
-        if (repo.fetched) {
-          evidence.recoverableFrom = holders
+        const fresh = repo.fetchedRemotes
+        const recoverable = holders.filter((h) => fresh.some((r) => h.startsWith(`${r}/`)))
+        if (recoverable.length > 0) {
+          evidence.recoverableFrom = recoverable
           unlanded = false
         } else {
-          remoteNote = `HEAD is on ${holders.join(', ')}, but this sweep did not fetch, so those remote-tracking refs may be stale; \`--remote\` without \`--offline\` would check them.`
+          remoteNote = `HEAD is on ${holders.join(', ')}, but this sweep did not fetch, so those remote-tracking refs may be stale; \`--fetch\` would check them.`
         }
       }
     }
@@ -580,22 +582,27 @@ function classifyWorktree(opts: {
 }
 
 /**
- * The remote-tracking branches of `repo`'s remote whose history holds `head`,
- * as `<remote>/<name>`. The default branch is left out: ancestry of it has its
- * own rule. Empty when there is no remote or the lookup fails.
+ * The remote-tracking branches whose history holds `head`, as
+ * `<remote>/<name>`, on the default remote and every remote the sweep judges.
+ * Each remote's default branch is left out: ancestry of it has its own rule.
+ * Empty when there is no remote or the lookup fails.
  */
 function remoteBranchesHolding(repo: RepoInfo, git: Git, head: string): string[] {
-  if (repo.remote === null) return []
-  const prefix = `refs/remotes/${repo.remote}/`
-  const rows = git.at(repo.root).try.forEachRef(prefix, { format: '%(refname)', contains: head })
-  if (!rows.ok) return []
-  return rows.value
-    .filter((ref) => ref.startsWith(prefix))
-    .map((ref) => ref.slice('refs/remotes/'.length))
-    .filter(
-      (name) => name !== `${repo.remote}/HEAD` && name !== `${repo.remote}/${repo.mainBranch}`,
+  const remotes = new Map(repo.remotes.map((r) => [r.name, r.defaultBranch]))
+  if (repo.remote !== null) remotes.set(repo.remote, repo.mainBranch)
+  const out: string[] = []
+  for (const [remote, defaultBranch] of remotes) {
+    const prefix = `refs/remotes/${remote}/`
+    const rows = git.at(repo.root).try.forEachRef(prefix, { format: '%(refname)', contains: head })
+    if (!rows.ok) continue
+    out.push(
+      ...rows.value
+        .filter((ref) => ref.startsWith(prefix))
+        .map((ref) => ref.slice('refs/remotes/'.length))
+        .filter((name) => name !== `${remote}/HEAD` && name !== `${remote}/${defaultBranch}`),
     )
-    .sort()
+  }
+  return out.sort()
 }
 
 const USE_REASON: Record<BranchUse, string> = {

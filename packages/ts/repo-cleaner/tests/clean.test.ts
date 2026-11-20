@@ -86,7 +86,7 @@ function mergeWorktreeBranch(fx: Fixture): void {
 
 /** A sweep of every kind, remote branches judged on the refs on disk, no provider. */
 function sweepOf(targets: string[], cwd: string, extra: SweepOptions = {}): Sweep {
-  return sweep(targets, { remote: true, offline: true, provider: 'none', cwd, ...extra })
+  return sweep(targets, { remotes: [''], offline: true, provider: 'none', cwd, ...extra })
 }
 
 function makePlan(root: string, extra: SweepOptions = {}): Plan {
@@ -175,21 +175,21 @@ describe('check and run fetch as the plan did', () => {
 
   test('a plan swept after a fetch is re-checked after one', () => {
     const { fx, plan: p, remoteMain } = setup(true)
-    expect(p.repos[0]!.fetched).toBe(true)
+    expect(p.repos[0]!.fetched).toEqual(['origin'])
     expect(runIt(fx, p).status).toBe('complete')
     expect(sh(fx.root, ['rev-parse', 'origin/main'])).toBe(remoteMain)
   })
 
   test('a plan that did not fetch is not fetched', () => {
     const { fx, plan: p, remoteMain } = setup(false)
-    expect(p.repos[0]!.fetched).toBe(false)
+    expect(p.repos[0]!.fetched).toEqual([])
     expect(runIt(fx, p).status).toBe('complete')
     expect(sh(fx.root, ['rev-parse', 'origin/main'])).not.toBe(remoteMain)
   })
 
   test('a plan repository marked fetched is fetched, whatever the sweep did', () => {
     const { fx, plan: p, remoteMain } = setup(false)
-    p.repos[0]!.fetched = true
+    p.repos[0]!.fetched = ['origin']
     expect(runIt(fx, p).status).toBe('complete')
     expect(sh(fx.root, ['rev-parse', 'origin/main'])).toBe(remoteMain)
   })
@@ -197,7 +197,7 @@ describe('check and run fetch as the plan did', () => {
   test('a failed fetch fails the run before any step', () => {
     const { fx, plan: p } = setup(true)
     sh(fx.root, ['remote', 'set-url', 'origin', join(tmpdir(), 'rc-missing.git')])
-    expect(() => runIt(fx, p)).toThrow(/fetch failed/)
+    expect(() => runIt(fx, p)).toThrow(/fetch of origin failed/)
     expect(refs(fx.root)).toContain('refs/heads/merged-a ')
   })
 
@@ -210,7 +210,7 @@ describe('check and run fetch as the plan did', () => {
             createdAt: 'x',
             options: {
               only: ['branch'],
-              remote: false,
+              remotes: [],
               offline: false,
               against: null,
               provider: 'none',
@@ -518,7 +518,7 @@ describe('a worktree whose HEAD only a remote branch holds (#659)', () => {
     sh(fx.root, ['worktree', 'add', '-q', '-b', 'topic', topic])
     sh(topic, ['commit', '--allow-empty', '-m', 'topic work'])
     sh(topic, ['push', '-q', '-u', 'origin', 'topic'])
-    const p = plan(sweep([fx.root], { remote: true, provider: 'none', cwd: fx.root }))
+    const p = plan(sweep([fx.root], { remotes: [''], provider: 'none', cwd: fx.root }))
     return { ...fx, worktree: realpathSync(topic), plan: p }
   }
 
@@ -554,7 +554,7 @@ describe('a worktree held by two remote branches (#659)', () => {
     sh(topic, ['commit', '--allow-empty', '-m', 'two work'])
     sh(topic, ['push', '-q', '-u', 'origin', 'two'])
     sh(topic, ['push', '-q', 'origin', 'HEAD:refs/heads/two-copy'])
-    const p = plan(sweep([fx.root], { remote: true, provider: 'none', cwd: fx.root }))
+    const p = plan(sweep([fx.root], { remotes: [''], provider: 'none', cwd: fx.root }))
     const row = realpathSync(topic)
     const shown = preview(fx, p, {
       pick: [wt(row), 'remote:origin/two'],
@@ -621,7 +621,8 @@ describe('resolveApproval refuses', () => {
       createdAt: 'x',
       options: {
         only: ['worktree', 'branch', 'remote'],
-        remote: true,
+        remotes: [''],
+        fetch: false,
         offline: true,
         against: null,
         provider: 'none',
@@ -631,7 +632,8 @@ describe('resolveApproval refuses', () => {
       repos: [
         {
           root: '/r',
-          fetched: false,
+          remotes: ['origin'],
+          fetched: [],
           rows: [row('branch:feat/x'), row('branch:feat/y'), row('remote:origin/feat/x')],
         },
       ],
@@ -1415,7 +1417,7 @@ describe('plan files', () => {
     expectRefused(
       () => parsePlan(JSON.stringify(v1), 'v1.json'),
       'bad-plan',
-      /plan v1\.json is version 1; this repo-cleaner reads version 2\. Sweep again/,
+      /plan v1\.json is version 1; this repo-cleaner reads version 3\. Sweep again/,
     )
     const fx = buildFixture()
     const path = join(fx.root, 'v1.json')

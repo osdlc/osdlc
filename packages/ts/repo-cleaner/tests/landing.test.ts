@@ -65,7 +65,7 @@ function sweep(dir: string, opts: SweepOptions = {}): RepoSweep {
 }
 
 /** Remote branches too, against the remote-tracking refs on disk, with no provider asked. */
-const withRemote: SweepOptions = { remote: true, provider: 'none' }
+const withRemote: SweepOptions = { remotes: [''], provider: 'none' }
 
 function row<K extends Kind>(rows: Row[], kind: K, name: string): Extract<Row, { kind: K }> {
   const found = rows.find((r): r is Extract<Row, { kind: K }> => r.kind === kind && r.name === name)
@@ -531,7 +531,7 @@ describe('merged PR at an earlier head', () => {
     const later = commitFile(dir, 'later.txt', 'later\n', 'feat: after the merge')
     sh(dir, ['checkout', '-q', 'main'])
     sh(dir, ['cherry-pick', later])
-    const item = branchRow(dir, 'feat', { remote: true, ...prFor(dir, first!) })
+    const item = branchRow(dir, 'feat', { remotes: [''], ...prFor(dir, first!) })
     expect(item.verdict).toBe('delete')
     expect(item.evidence.landingCheck).toBe('head-moved')
     expect(item.evidence.pr?.proof).toBe('head-moved')
@@ -547,7 +547,7 @@ describe('merged PR at an earlier head', () => {
     sh(dir, ['checkout', '-q', 'feat'])
     commitFile(dir, 'later.txt', 'later\n', 'feat: after the merge')
     sh(dir, ['checkout', '-q', 'main'])
-    const item = branchRow(dir, 'feat', { remote: true, ...prFor(dir, first!) })
+    const item = branchRow(dir, 'feat', { remotes: [''], ...prFor(dir, first!) })
     expect(item.verdict).toBe('review')
     expect(item.evidence.landing).toBeUndefined()
     expect(item.evidence.unmatchedCommits).toEqual([
@@ -567,7 +567,7 @@ describe('merged PR at an earlier head', () => {
     sh(dir, ['checkout', '-q', 'main'])
     commitFile(dir, 'main.txt', 'main moved on\n', 'main: moves on')
     sh(dir, ['cherry-pick', later])
-    const item = branchRow(dir, 'feat', { remote: true, ...prFor(dir, first!) })
+    const item = branchRow(dir, 'feat', { remotes: [''], ...prFor(dir, first!) })
     expect(item.verdict).toBe('review')
   })
 
@@ -578,7 +578,7 @@ describe('merged PR at an earlier head', () => {
     sh(dir, ['checkout', '-q', 'feat'])
     commitFile(dir, 'later.txt', 'later\n', 'feat: after')
     sh(dir, ['checkout', '-q', 'main'])
-    const item = branchRow(dir, 'feat', { remote: true, ...prFor(dir, 'f'.repeat(40)) })
+    const item = branchRow(dir, 'feat', { remotes: [''], ...prFor(dir, 'f'.repeat(40)) })
     expect(item.verdict).toBe('review')
   })
 })

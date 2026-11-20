@@ -290,6 +290,22 @@ export function makeRow<R extends Row>(
   } as R
 }
 
+/** One remote whose branches a sweep judges, as it resolved it. */
+export interface RemoteInfo {
+  name: string
+  /**
+   * Its own default branch, which is kept: what `refs/remotes/<name>/HEAD`
+   * points at, else `main`, then `master`, where the remote has them.
+   */
+  defaultBranch: string
+  /** As {@link RepoInfo.slug}, for this remote. */
+  slug: string | null
+  /** As {@link RepoInfo.provider}, for this remote. */
+  provider: ProviderStatus | null
+  /** True when the sweep fetched this remote before classifying. */
+  fetched: boolean
+}
+
 /** What the sweep learned about a repository before inventorying it. */
 export interface RepoInfo {
   /** The main checkout's root, even when the sweep was pointed at a worktree. */
@@ -299,16 +315,29 @@ export interface RepoInfo {
    * host, or null when the remote names no repository.
    */
   slug: string | null
+  /** The local default branch: the default remote's default branch, or `main`, then `master`, without one. */
   mainBranch: string
+  /**
+   * The default remote: `origin`, else the remote the local default branch
+   * tracks, else the only remote. Null when none of those exists. Local rows
+   * are judged against its default branch.
+   */
   remote: string | null
   currentBranch: string
   /**
-   * The provider asked for pull requests and what its probe found. Null when
-   * none was asked (`provider: 'none'`, or a sweep without remote branches).
+   * The default remote's provider, asked for the local rows' pull requests,
+   * and what its probe found. Null when none was asked (`provider: 'none'`,
+   * or a sweep without remote branches).
    */
   provider: ProviderStatus | null
-  /** True when the sweep fetched the remote before classifying. */
+  /** True when the sweep fetched the default remote before classifying. */
   fetched: boolean
+  /** Every remote the sweep fetched before classifying, the `against` remote included. */
+  fetchedRemotes: string[]
+  /** Every remote whose branches the sweep judges, in the order asked. */
+  remotes: RemoteInfo[]
+  /** `against`: the default branch every row is judged against instead of its own; null without it. */
+  against: LandedAgainst | null
 }
 
 /** A default branch a row's work can land on, and the remote it is on; null for the local default branch. */
@@ -324,14 +353,23 @@ export function refOf(against: LandedAgainst): string {
 
 /**
  * What rows of `remote` are judged against; `remote` null for local rows
- * (worktrees and local branches). Every row is judged against the default
- * branch of the one remote a sweep reads.
+ * (worktrees and local branches). With `against`, every row is judged against
+ * that. Otherwise a remote's branches are judged against its own default
+ * branch, and local rows against the default remote's.
  */
-export function landedFor(repo: RepoInfo, _remote: string | null): LandedAgainst {
-  return { remote: repo.remote, branch: repo.mainBranch }
+export function landedFor(repo: RepoInfo, remote: string | null): LandedAgainst {
+  if (repo.against !== null) return repo.against
+  if (remote === null) return { remote: repo.remote, branch: repo.mainBranch }
+  return { remote, branch: defaultBranchOf(repo, remote) }
 }
 
-/** True when the repository has a remote the sweep did not fetch, so its refs may be stale. */
+/** `remote`'s own default branch, which is kept; the local default branch for null. */
+export function defaultBranchOf(repo: RepoInfo, remote: string | null): string {
+  if (remote === null || remote === repo.remote) return repo.mainBranch
+  return repo.remotes.find((r) => r.name === remote)?.defaultBranch ?? repo.mainBranch
+}
+
+/** True when the repository has a default remote the sweep did not fetch, so its refs may be stale. */
 export function isUnfetched(repo: RepoInfo): boolean {
   return repo.remote !== null && !repo.fetched
 }

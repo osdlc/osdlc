@@ -48,6 +48,11 @@ export function sweptWith(
   if (only !== undefined && only.length === 0) {
     throw new RepoCleanerError('bad-input', 'only names no kind')
   }
+  const asked = opts.remotes === undefined ? [] : [...new Set(opts.remotes)]
+  const bad = asked.find((r) => r !== r.trim() || r.startsWith('-'))
+  if (bad !== undefined) {
+    throw new RepoCleanerError('bad-input', `bad remote name ${JSON.stringify(bad)}`)
+  }
   if (
     opts.provider !== undefined &&
     !(PROVIDER_CHOICES as readonly string[]).includes(opts.provider)
@@ -73,9 +78,20 @@ export function sweptWith(
   if (opts.branch !== undefined && targets.length > 1) {
     conflict(`--branch sweeps one repository; ${targets.length} targets given`)
   }
-  const remote = urls || opts.remote === true || (only ?? []).includes('remote')
-  if (opts.remote === true && only !== undefined && !only.includes('remote')) {
+  // A remote URL is swept through a clone whose only remote is its origin.
+  const remotes = urls
+    ? ['']
+    : asked.length > 0
+      ? asked
+      : (only ?? []).includes('remote')
+        ? ['']
+        : []
+  const remote = remotes.length > 0
+  if (asked.length > 0 && only !== undefined && !only.includes('remote')) {
     conflict(`--remote includes remote branches, but --only ${only.join(',')} leaves them out`)
+  }
+  if (opts.fetch === true && opts.offline === true) {
+    conflict('--fetch and --offline contradict each other')
   }
   if (opts.offline === true && !remote) {
     conflict('--offline has no effect without --remote: nothing is fetched anyway')
@@ -103,9 +119,13 @@ export function sweptWith(
       throw new RepoCleanerError('conflict', err instanceof Error ? err.message : String(err))
     }
   }
+  if (opts.fetch === true && !kinds.some((k) => k !== 'remote')) {
+    conflict('--fetch fetches for local rows; remote rows fetch their remotes anyway')
+  }
   return {
     only: kinds,
-    remote,
+    remotes,
+    fetch: opts.fetch === true,
     offline: opts.offline === true,
     against: opts.against ?? null,
     provider: remote ? (opts.provider ?? 'auto') : 'none',

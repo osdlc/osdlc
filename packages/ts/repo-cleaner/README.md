@@ -147,7 +147,7 @@ The report, `plan` and `clean` take these:
 | `--offline` | With `--remote`: do not fetch. Judge against the remote-tracking refs already on disk, remote branches included, so judging needs no access to the remote. Pull requests are still looked up; add `--provider none` for no network at all. The refs can be stale: see [`--offline` reads what is already on disk](#--offline-reads-what-is-already-on-disk). |
 | `--only <kinds>` | Only these kinds of row: `worktree`, `branch`, `remote`, comma-separated. Default: `worktree,branch`, plus `remote` with `--remote`. Naming `remote` implies `--remote`. |
 | `--branch <name\|HEAD>` | Only the rows of one branch: its worktree, its local branch, and its remote branch with `--remote`. `HEAD` is the branch checked out at the target. Never the default branch. |
-| `--against <remote>` | The remote whose default branch counts as "merged into". Default: `origin`, then the first remote. |
+| `--against <remote>` | Judge every row against this remote's default branch, as a fork against its parent. Without it, a remote's branches are judged against its own default branch, and local rows against the default remote's: `origin`, else the remote the default branch tracks, else the only remote. |
 | `--provider <name>` | With `--remote`: where pull requests come from. `auto` (by the remote's host), `github`, `gitlab`, or `none` to judge on git evidence alone. |
 | `--no-progress` | No progress line on stderr. |
 
@@ -829,7 +829,7 @@ The same information is on the result, for a host to show or act on:
 ```ts
 import { sweep } from '@osdlc/repo-cleaner'
 
-const result = sweep(['.'], { remote: true, offline: true, provider: 'github' })
+const result = sweep(['.'], { remotes: [''], offline: true, provider: 'github' })
 for (const repo of result.repos) {
   if (repo.error !== null) {
     console.log(`${repo.path}: could not be swept: ${repo.error}`)
@@ -944,7 +944,7 @@ that swept, or read its plan from stdin, writes a receipt only when
 ```ts
 import { check, plan, render, run, sweep } from '@osdlc/repo-cleaner'
 
-const result = sweep(['/Users/me/work/api'], { remote: true })
+const result = sweep(['/Users/me/work/api'], { remotes: [''] })
 for (const row of result.repos[0]?.rows ?? []) {
   console.log(row.id, row.verdict, row.why, row.risks)
 }
@@ -959,7 +959,7 @@ const receipt = run(preview)
 
 | Export | What it does |
 | --- | --- |
-| `sweep(targets, opts?)` | Resolve the targets and judge every row. Options as on the command line: `only`, `remote`, `offline`, `against`, `provider`, `branch`, plus `cwd`, `cacheDir`, `annotate`, `onProgress`, `onWarn`, and the injectable `git`, `gh`, `glab` runners and `probe` |
+| `sweep(targets, opts?)` | Resolve the targets and judge every row. Options as on the command line: `only`, `remotes` (a name, `''` for the default remote, `*` for every remote), `fetch`, `offline`, `against`, `provider`, `branch`, plus `cwd`, `cacheDir`, `annotate`, `onProgress`, `onWarn`, and the injectable `git`, `gh`, `glab` runners and `probe` |
 | `plan(sweep)` | Every row, fingerprinted, with the sweep's options |
 | `check(plan, approval, opts?)` | Resolve `{ pick, spare, allow }` against the plan, sweep again, and return a `Preview`: the steps, the rows dropped and why, the allows no row needed, and `notes`, what the re-check judged without. Deletes nothing |
 | `run(preview, opts?)` | Sweep once more and take the preview's steps, writing a `Receipt` (to `receiptPath` after every step, when given). `onNotes` hears what its own re-check judged without |
