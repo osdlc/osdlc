@@ -26,13 +26,13 @@
 
 import type { Git, GitSyncCallOptions } from '@osdlc/typed-git'
 
-import {
-  landedRef,
-  type LandingEvidence,
-  type PRInfo,
-  type PrEvidenceGap,
-  type RepoInfo,
-} from './types.ts'
+import type { LandingEvidence, PRInfo, PrEvidenceGap } from './types.ts'
+
+/** Where a tip is judged: the repository's root, and the ref its work must be on (`origin/main`). */
+export interface Onto {
+  root: string
+  ref: string
+}
 
 /** Which check showed that the work is on the landed ref. */
 export type LandingCheck =
@@ -183,15 +183,15 @@ function describeCommits(at: Git, range: string, shas: string[]): string[] {
 /** The check that passed, with `confirmed` not yet decided. */
 type Verdict = { check: LandingCheck } | Extract<Landing, { check: null }>
 
-function assess(repo: RepoInfo, tip: string, git: Git, prHead: string | null): Verdict {
-  const at = git.at(repo.root)
+function assess(onto: Onto, tip: string, git: Git, prHead: string | null): Verdict {
+  const at = git.at(onto.root)
   const none: Verdict = { check: null, unmatched: [] }
 
   // A shallow clone cuts history short, so the merge base and the commit list
   // are not the real ones. Anything but a plain "false" is read as shallow.
   if (at.revParse('--is-shallow-repository', CALL) !== 'false') return none
 
-  const landed = at.resolveRef(landedRef(repo), CALL)
+  const landed = at.resolveRef(onto.ref, CALL)
   const tipSha = at.resolveRef(`${tip}^{commit}`, CALL)
   if (landed === null || tipSha === null) return none
 
@@ -246,10 +246,10 @@ function contentConfirmed(at: Git, landed: string, tipSha: string): boolean {
 }
 
 /** {@link contentConfirmed} for `tip` against the landed ref; any error is false. */
-function confirm(repo: RepoInfo, tip: string, git: Git): boolean {
+function confirm(onto: Onto, tip: string, git: Git): boolean {
   try {
-    const at = git.at(repo.root)
-    const landed = at.resolveRef(landedRef(repo), CALL)
+    const at = git.at(onto.root)
+    const landed = at.resolveRef(onto.ref, CALL)
     const tipSha = at.resolveRef(`${tip}^{commit}`, CALL)
     return landed !== null && tipSha !== null && contentConfirmed(at, landed, tipSha)
   } catch {
@@ -272,19 +272,19 @@ function confirm(repo: RepoInfo, tip: string, git: Git): boolean {
  * evidence.
  */
 export function assessLanding(
-  repo: RepoInfo,
+  onto: Onto,
   tip: string,
   git: Git,
   prHead: string | null = null,
 ): Landing {
   let verdict: Verdict
   try {
-    verdict = assess(repo, tip, git, prHead)
+    verdict = assess(onto, tip, git, prHead)
   } catch {
     return { check: null, unmatched: [] }
   }
   if (verdict.check === null) return verdict
-  return { check: verdict.check, confirmed: confirm(repo, tip, git) }
+  return { check: verdict.check, confirmed: confirm(onto, tip, git) }
 }
 
 /**
@@ -293,14 +293,14 @@ export function assessLanding(
  * squash merge and look at the commits after it.
  */
 export function judgeLanding(
-  repo: RepoInfo,
+  onto: Onto,
   tip: string,
   pr: PRInfo | undefined,
   gap: PrEvidenceGap | null,
   git: Git,
 ): Landing {
   const prHead = pr !== undefined && gap === 'head-moved' ? pr.headOid : null
-  return assessLanding(repo, tip, git, prHead)
+  return assessLanding(onto, tip, git, prHead)
 }
 
 /** True when the verdict is a patch match that the content check agreed with, so no grant is needed. */
@@ -310,12 +310,12 @@ export function landingConfirmed(landing: Landing | null): boolean {
 
 /** {@link assessLanding}, reduced to the check that passed, or null. */
 export function patchEquivalent(
-  repo: RepoInfo,
+  onto: Onto,
   tip: string,
   git: Git,
   prHead: string | null = null,
 ): LandingCheck | null {
-  return assessLanding(repo, tip, git, prHead).check
+  return assessLanding(onto, tip, git, prHead).check
 }
 
 /** Write the landing evidence into a row's evidence. */
@@ -340,7 +340,7 @@ export function confirmationNote(landing: Extract<Landing, { check: LandingCheck
 }
 
 /** One sentence naming the commits that kept a partly landed branch from counting, or null. */
-export function unmatchedSentence(landing: Landing, repo: RepoInfo): string | null {
+export function unmatchedSentence(landing: Landing, ref: string): string | null {
   if (landing.check !== null || landing.unmatched.length === 0) return null
-  return `Part of the work is on \`${landedRef(repo)}\`, but these commits are not (no patch-equivalent commit): ${landing.unmatched.join('; ')}.`
+  return `Part of the work is on \`${ref}\`, but these commits are not (no patch-equivalent commit): ${landing.unmatched.join('; ')}.`
 }

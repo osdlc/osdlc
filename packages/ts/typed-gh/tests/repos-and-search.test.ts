@@ -17,6 +17,7 @@ import {
   type CommandRunOptions,
 } from '../src/index.ts'
 import { parsePrSearchHit, parseRepository } from '../src/parse.ts'
+import { NO_COLOUR_ENV } from '../src/verbs.ts'
 
 const out = (body: unknown): CommandResult => ({
   exitCode: 0,
@@ -191,9 +192,9 @@ describe('the clients pass the env through', () => {
     await agh.repoList('acme')
     await agh.soft.repoView('acme/widgets')
     expect(seen.map((o) => o.env)).toEqual([
-      { GH_HOST: 'ghe.acme.com' },
-      { GH_HOST: 'ghe.acme.com' },
-      undefined,
+      { ...NO_COLOUR_ENV, GH_HOST: 'ghe.acme.com' },
+      { ...NO_COLOUR_ENV, GH_HOST: 'ghe.acme.com' },
+      NO_COLOUR_ENV,
     ])
   })
 })
