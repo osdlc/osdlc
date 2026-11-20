@@ -24,6 +24,10 @@ and the behaviour cannot drift apart.
 
 ## The model
 
+The words below (phase, row, verdict, risk, scope, landed, pick, spare,
+plan, receipt, identity) have fixed meanings, defined in
+[the terms](../terms.md).
+
 `repo-cleaner` works in named phases, and does nothing until one is named.
 
 | Phase | Command | What it does | Deletes? |
@@ -298,6 +302,7 @@ carries a named risk, and is skipped until that risk is allowed:
 |---|---|
 | `abandon-unmerged` | Commits that are on no remote and not on the default branch |
 | `discard-changes` | Uncommitted edits in a worktree |
+| `discard-archived` | Work that `--archive` pushed to an archive branch first (U19) |
 | `confirm-open-pr` | An open pull request, which deleting its branch closes |
 
 **U14. "Never touch these."**
@@ -307,6 +312,18 @@ $ repo-cleaner clean --all --spare 'release/*' --spare staging -y
 ```
 
 `--spare` takes a row or a glob.
+
+**U19. "Delete it, but keep a copy of the unfinished work."**
+
+```console
+$ repo-cleaner clean --pick feat/spike --archive --allow discard-archived -y
+```
+
+Before deleting, pushes the row's unlanded commits and uncommitted files to
+an archive branch on the remote, checks it is there, then deletes.
+`discard-archived` stands in for `abandon-unmerged` and `discard-changes` for
+what the archive holds. `--archive-exclude <glob>` leaves files out of a
+worktree's snapshot; secret-shaped files are left out already.
 
 ### Working with others and with machines
 
@@ -377,6 +394,8 @@ repo-cleaner cache   [list | remove <url>...]                      the clone cac
 | | `--pick <row>` | Also run this `review` row. Repeatable. |
 | | `--spare <row\|glob>` | Leave these rows alone. Repeatable. |
 | | `--allow <risk>[=<row>]` | Accept a risk, for every row or one. Repeatable. |
+| | `--archive` | Push unlanded work to an archive branch before deleting (U19). |
+| | `--archive-exclude <glob>` | With `--archive`, leave these files out of a snapshot. Repeatable. |
 | | `-i`, `--interactive` | Choose rows from a checklist. |
 | go | `-y`, `--yes` | Delete without asking. |
 | | `--dry-run` | Check and show the steps; delete nothing. |

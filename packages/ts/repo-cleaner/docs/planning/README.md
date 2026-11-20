@@ -14,6 +14,7 @@ are in the root [`docs/decisions/`](../../../../../docs/decisions/README.md).
 | Folder                     | Holds                                         | Ids              |
 | -------------------------- | --------------------------------------------- | ---------------- |
 | [`decisions/`](decisions/) | Choices that shape the package, one per topic | random, `D-XXXX` |
+| [`terms.md`](terms.md)     | Words used with one fixed meaning             |                  |
 | [`tasks/`](tasks/)         | Work on the package, open or done             | random, `T-XXXX` |
 
 Ids are random keys, so parallel branches do not collide. A record that
