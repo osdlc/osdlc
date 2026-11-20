@@ -2,15 +2,7 @@
 
 import { afterEach, describe, expect, test } from 'vitest'
 import { spawnSync } from 'node:child_process'
-import {
-  mkdirSync,
-  mkdtempSync,
-  realpathSync,
-  rmSync,
-  symlinkSync,
-  utimesSync,
-  writeFileSync,
-} from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -384,11 +376,15 @@ describe('a real process', () => {
   test('SIGTERM stops a process that looks like a session', () => {
     const dir = temp()
     const bin = join(dir, 'claude')
-    symlinkSync(realpathSync('/bin/sleep'), bin)
-    // The shell exits at once, so init owns the sleeper and reaps it when it dies.
-    const out = spawnSync('/bin/sh', ['-c', `${bin} 300 >/dev/null 2>&1 & echo $!`], {
-      encoding: 'utf8',
-    })
+    // `node <dir>/claude` reads as a session. (A symlink to sleep would not run on
+    // systems whose sleep is a multi-call binary.)
+    writeFileSync(bin, 'setTimeout(() => {}, 300000)\n')
+    // The shell exits at once, so init owns the process and reaps it when it dies.
+    const out = spawnSync(
+      '/bin/sh',
+      ['-c', `"${process.execPath}" "${bin}" >/dev/null 2>&1 & echo $!`],
+      { encoding: 'utf8' },
+    )
     const pid = Number(out.stdout.trim())
     cleanups.push(() => {
       try {
