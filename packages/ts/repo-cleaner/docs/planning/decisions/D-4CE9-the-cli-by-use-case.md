@@ -30,6 +30,56 @@ showing them and asking. Everything else is a question of **where** to look
 branches), **how sure** to be (the network, pull requests) and **which rows**
 to act on.
 
+## How it works
+
+A run has two halves. Looking is the same for every command; only `clean`
+goes on to delete, and it checks everything again first.
+
+```mermaid
+%%{init: {"flowchart": {"wrappingWidth": 420}}}%%
+flowchart TD
+    start(["repo-cleaner [clean] [target...]"]) --> find["Find the repositories:<br/>a checkout is itself, a directory is searched,<br/>a remote URL is cloned into a cache"]
+    find --> rows["Gather the rows in scope:<br/>worktrees, local branches, remote branches"]
+    rows --> judge["Judge each row on its evidence<br/>(see the next chart)"]
+    judge --> report["Report: verdict, reason, and the git command<br/>that would delete it"]
+    report --> isclean{"clean?"}
+    isclean -->|"no"| done(["Done. Nothing deleted"])
+    isclean -->|"yes"| select["Select the rows: every delete row,<br/>plus review rows you --pick,<br/>minus rows you --spare"]
+    select --> risk{"Risk not<br/>allowed?"}
+    risk -->|"yes"| skip(["Skipped. Never deleted"])
+    risk -->|"no"| show["Show the steps"]
+    show --> confirm{"Go ahead?"}
+    confirm -->|"--dry-run, or no<br/>at the prompt"| done
+    confirm -->|"-y, or yes"| recheck["Check the row again,<br/>against the repository as it is now"]
+    recheck -->|"changed"| skip
+    recheck -->|"unchanged"| act["Delete it, only if it still points<br/>at the commit that was checked"]
+    act --> verify{"Gone?"}
+    verify -->|"yes"| receipt(["Recorded in the receipt"])
+    verify -->|"no"| failed["Step failed: skip only what<br/>depends on it, carry on"]
+    failed --> receipt
+```
+
+How one row gets its verdict:
+
+```mermaid
+%%{init: {"flowchart": {"wrappingWidth": 420}}}%%
+flowchart TD
+    row(["A worktree, local branch or remote branch"]) --> b1["Look for blockers: a lock whose owner is running,<br/>a process working in it, a nested repository,<br/>hidden index flags, its branch checked out elsewhere,<br/>a submodule that cannot be read"]
+    b1 --> b2{"Any?"}
+    b2 -->|"yes"| blocked(["blocked<br/>never deleted"])
+    b2 -->|"no"| p1["Look for reasons to keep it: the default branch,<br/>the main worktree, the worktree you are in,<br/>an open pull request"]
+    p1 --> p2{"Any?"}
+    p2 -->|"yes"| keep(["keep"])
+    p2 -->|"no"| l1["Look for its work on the default branch:<br/>merged by ancestry (and the branch was used),<br/>a merged pull request at this exact commit,<br/>or the same changes as commits already there"]
+    l1 --> l2{"Found?"}
+    l2 -->|"yes"| delete(["delete"])
+    l2 -->|"no, or unclear"| review(["review<br/>a person decides"])
+    delete --> risks
+    review --> risks
+    keep --> risks
+    risks["Name the risks that deleting it would carry:<br/>abandon-unmerged: commits found nowhere else<br/>discard-changes: uncommitted edits<br/>confirm-open-pr: an open pull request cannot be ruled out"]
+```
+
 ## Use cases
 
 Each use case is a sentence a person would say, the command, and what
