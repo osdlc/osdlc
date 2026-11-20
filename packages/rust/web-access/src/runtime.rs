@@ -1,7 +1,7 @@
 //! The sharing runtime an app embeds: load the stored config, start, stop or
 //! rebind the server to match it, hold its tokens (read, full, and admin while
-//! the config's `admin` is on), and report a
-//! status for the settings UI. The app supplies where the config lives
+//! the config's `admin` is on), close the connections of a token it withdraws,
+//! and report a status for the settings UI. The app supplies where the config lives
 //! ([`ConfigStore`]) and its router; nothing here knows Tauri. The host's
 //! interfaces, for a listen picker, are [`crate::interfaces`].
 
@@ -181,19 +181,25 @@ impl WebAccessStatus {
     }
 }
 
-/// The server and its tokens; only `set`, `rotate` and `start_from_store`
-/// touch it, under [`SharingRuntime::live`].
+/// The running server; touched only under [`SharingRuntime::live`].
 #[derive(Default)]
 struct Live {
-    server: Option<ServerHandle>,
+    server: Option<Running>,
 }
 
-/// The tokens a server was started with; `admin` only while the config's
-/// `admin` is on.
-struct StartTokens {
+/// A server and the config it was started for.
+struct Running {
+    handle: ServerHandle,
+    cfg: WebAccessConfig,
+}
+
+/// The tokens a config calls for; `admin` only while the config's `admin` is
+/// on.
+struct ConfigTokens {
     full: Token,
     read: Token,
     admin: Option<Token>,
+    set: Tokens,
 }
 
 /// What the last apply left behind, readable without the apply lock.
@@ -306,9 +312,13 @@ impl SharingRuntime {
         Ok(self.status_of(&self.load()?))
     }
 
-    /// Persist `cfg`, then make the server match it. Always a stop-then-start,
-    /// so a changed port or listen address takes effect. A failed start leaves
-    /// the setting saved and nothing running, with the reason in `error`.
+    /// Persist `cfg`, then make the server match it. A changed listen setting
+    /// or port restarts the server. Otherwise it keeps running and takes the
+    /// tokens `cfg` calls for in place: turning admin off closes the
+    /// connections opened with the admin token at once and leaves the others
+    /// open. Turning sharing off closes every connection opened with a token at
+    /// once, then stops the server. A failed start leaves the setting saved and
+    /// nothing running, with the reason in `error`.
     ///
     /// # Errors
     ///
@@ -321,9 +331,10 @@ impl SharingRuntime {
         Ok(self.status_of(&cfg))
     }
 
-    /// Mint a new token for `grant` and restart so it takes effect; the old
-    /// token's links and cookies stop working and the other grants' keep
-    /// working. A no-op while web access is disabled. [`Grant::Admin`] works
+    /// Mint a new token for `grant` and hand it to the running server. The old
+    /// token's links and cookies stop working, and the connections opened with
+    /// it close at once; the other grants' keep working, and so do their open
+    /// connections. A no-op while web access is disabled. [`Grant::Admin`] works
     /// only while the config's `admin` is on, else [`RuntimeError::AdminOff`].
     ///
     /// # Errors
@@ -356,56 +367,107 @@ impl SharingRuntime {
         self.store.load().map_err(RuntimeError::Config)
     }
 
-    /// Stop what is running, then start for `cfg` when it is enabled, and
-    /// publish the outcome to the snapshot.
+    /// Make the server match `cfg` and publish the outcome to the snapshot.
     async fn apply(&self, live: &mut Live, cfg: &WebAccessConfig) {
-        if let Some(running) = live.server.take() {
-            running.stop().await;
-        }
-        let mut snap = Snapshot::default();
-        // Admin off forgets the token whether or not sharing runs, so turning
-        // admin on again (now or after sharing restarts) mints a fresh one
-        // rather than reviving links an earlier session handed out.
-        if !cfg.admin
-            && let Err(e) = token::forget_admin(&self.token_dir)
-        {
-            snap.error = Some(e.to_string());
-        }
-        if cfg.enabled && snap.error.is_none() {
-            match self.start(cfg).await {
-                Ok((handle, tokens)) => {
-                    snap.running = true;
-                    snap.share_urls = ShareUrls {
-                        read: handle.share_urls_for(&tokens.read),
-                        full: handle.share_urls_for(&tokens.full),
-                        admin: tokens
-                            .admin
-                            .as_ref()
-                            .map(|t| {
-                                // Off a public name the admin link is refused.
-                                if self.options.admin_public_only {
-                                    handle.public_share_urls_for(t)
-                                } else {
-                                    handle.share_urls_for(t)
-                                }
-                            })
-                            .unwrap_or_default(),
-                    };
-                    live.server = Some(handle);
-                }
-                Err(e) => snap.error = Some(e.to_string()),
-            }
-        }
+        let snap = match self.reconcile(live, cfg).await {
+            Ok(Some(share_urls)) => Snapshot {
+                running: true,
+                share_urls,
+                error: None,
+            },
+            Ok(None) => Snapshot::default(),
+            Err(error) => Snapshot {
+                error: Some(error),
+                ..Snapshot::default()
+            },
+        };
         *self
             .snapshot
             .write()
             .unwrap_or_else(PoisonError::into_inner) = snap;
     }
 
-    async fn start(
+    /// A running server that can serve `cfg` as it is
+    /// ([`WebAccessConfig::same_bind`]) takes the tokens `cfg` calls for, which
+    /// closes the connections of every withdrawn token at once. Any other is
+    /// stopped, with every connection cut at once. Returns the share links
+    /// while a server runs.
+    async fn reconcile(
         &self,
+        live: &mut Live,
         cfg: &WebAccessConfig,
-    ) -> Result<(ServerHandle, StartTokens), RuntimeError> {
+    ) -> Result<Option<ShareUrls>, String> {
+        let tokens = self.tokens_for(cfg);
+        if let Some(running) = live.server.take() {
+            match &tokens {
+                Ok(Some(t)) if running.cfg.same_bind(cfg) => {
+                    running.handle.replace_tokens(t.set.clone());
+                    live.server = Some(running);
+                }
+                // Cutting first closes every connection at once, rather than
+                // after the stop's grace period.
+                _ => {
+                    running.handle.cut_all();
+                    running.handle.stop().await;
+                }
+            }
+        }
+        let Some(tokens) = tokens? else {
+            return Ok(None);
+        };
+        let running = match live.server.take() {
+            Some(running) => running,
+            None => {
+                let router = (self.build_router)();
+                let handle = serve_opts(router, cfg, tokens.set.clone(), self.options.clone())
+                    .await
+                    .map_err(|e| RuntimeError::from(e).to_string())?;
+                Running {
+                    handle,
+                    cfg: cfg.clone(),
+                }
+            }
+        };
+        let urls = self.share_urls(&running.handle, &tokens);
+        live.server = Some(running);
+        Ok(Some(urls))
+    }
+
+    fn share_urls(&self, handle: &ServerHandle, tokens: &ConfigTokens) -> ShareUrls {
+        ShareUrls {
+            read: handle.share_urls_for(&tokens.read),
+            full: handle.share_urls_for(&tokens.full),
+            admin: tokens
+                .admin
+                .as_ref()
+                .map(|t| {
+                    // Off a public name the admin link is refused.
+                    if self.options.admin_public_only {
+                        handle.public_share_urls_for(t)
+                    } else {
+                        handle.share_urls_for(t)
+                    }
+                })
+                .unwrap_or_default(),
+        }
+    }
+
+    /// Load (or mint) the tokens `cfg` calls for; `None` while sharing is off.
+    ///
+    /// Admin off forgets the admin token first, whether or not sharing runs,
+    /// so turning admin on again (now or after sharing restarts) mints a fresh
+    /// one rather than reviving links an earlier session handed out.
+    fn tokens_for(&self, cfg: &WebAccessConfig) -> Result<Option<ConfigTokens>, String> {
+        if !cfg.admin {
+            token::forget_admin(&self.token_dir).map_err(|e| e.to_string())?;
+        }
+        if !cfg.enabled {
+            return Ok(None);
+        }
+        self.load_tokens(cfg).map(Some).map_err(|e| e.to_string())
+    }
+
+    fn load_tokens(&self, cfg: &WebAccessConfig) -> Result<ConfigTokens, RuntimeError> {
         if let Some(t) = self.full_token_override.as_ref().map(Token::as_str)
             && !cfg.listen.is_loopback_only()
             && t.len() < self.min_override_len
@@ -422,18 +484,22 @@ impl SharingRuntime {
         )?;
         let read = token::load_or_mint_read(&self.token_dir)?;
         // Loaded only while admin is on: off, the guard never holds it, so
-        // presenting it grants nothing (`apply` has already removed the file).
+        // presenting it grants nothing (`tokens_for` has removed the file).
         let admin = if cfg.admin {
             Some(token::load_or_mint_admin(&self.token_dir)?)
         } else {
             None
         };
-        let mut tokens = Tokens::full_only(full.clone()).with(read.clone(), Grant::Read)?;
+        let mut set = Tokens::full_only(full.clone()).with(read.clone(), Grant::Read)?;
         if let Some(a) = &admin {
-            tokens = tokens.with(a.clone(), Grant::Admin)?;
+            set = set.with(a.clone(), Grant::Admin)?;
         }
-        let handle = serve_opts((self.build_router)(), cfg, tokens, self.options.clone()).await?;
-        Ok((handle, StartTokens { full, read, admin }))
+        Ok(ConfigTokens {
+            full,
+            read,
+            admin,
+            set,
+        })
     }
 
     fn status_of(&self, cfg: &WebAccessConfig) -> WebAccessStatus {
@@ -476,7 +542,14 @@ mod tests {
     use std::sync::Arc;
     use std::sync::Mutex as StdMutex;
 
+    use std::time::Duration;
+
+    use tokio::net::TcpStream;
+
     use super::*;
+    use crate::test_support::{
+        STAYS_OPEN, closes_within, echoes, long_lived_router, open_stream, open_upgrade,
+    };
 
     #[derive(Clone, Default)]
     struct MemStore(Arc<StdMutex<Option<WebAccessConfig>>>);
@@ -508,13 +581,27 @@ mod tests {
     }
 
     fn runtime(dir: &tempfile::TempDir, store: MemStore) -> SharingRuntime {
-        SharingRuntime::new(store, dir.path().to_path_buf(), || {
-            Router::new().route("/api/ping", axum::routing::get(|| async { "pong" }))
-        })
+        SharingRuntime::new(store, dir.path().to_path_buf(), long_lived_router)
+    }
+
+    /// The address and token a share link carries.
+    fn link(url: &str) -> (std::net::SocketAddr, String) {
+        let (base, token) = url.split_once("/?token=").unwrap();
+        let addr = base.strip_prefix("http://").unwrap();
+        (addr.parse().unwrap(), token.to_owned())
+    }
+
+    /// An upgraded socket and a stream opened with the first link in `urls`.
+    async fn open_both(urls: &[String]) -> (TcpStream, TcpStream) {
+        let (addr, token) = link(&urls[0]);
+        (
+            open_upgrade(addr, "/up", &token).await,
+            open_stream(addr, &token).await,
+        )
     }
 
     fn token_of(url: &str) -> &str {
-        url.split("?token=").nth(1).unwrap()
+        url.split_once("/?token=").unwrap().1
     }
 
     #[tokio::test]
@@ -528,10 +615,22 @@ mod tests {
         assert!(store.load().unwrap().enabled);
         let first = up.share_urls.full[0].clone();
 
-        // Same config again rebinds, still serving with the same tokens.
+        // Same config again keeps the server, and its links.
         let again = rt.set(cfg(true)).await.unwrap();
         assert!(again.running);
-        assert_eq!(token_of(&again.share_urls.full[0]), token_of(&first));
+        assert_eq!(again.share_urls.full[0], first);
+
+        // A new listen setting or port moves it, with the same tokens.
+        let moved = rt
+            .set(WebAccessConfig {
+                listen: Listen::Interfaces(vec!["127.0.0.1".parse().unwrap()]),
+                ..cfg(true)
+            })
+            .await
+            .unwrap();
+        assert!(moved.running);
+        assert_ne!(moved.share_urls.full[0], first);
+        assert_eq!(token_of(&moved.share_urls.full[0]), token_of(&first));
 
         let down = rt.set(cfg(false)).await.unwrap();
         assert!(!down.enabled && !down.running);
@@ -739,6 +838,104 @@ mod tests {
         rt.set(cfg(false)).await.unwrap();
     }
 
+    /// Turning admin off closes the admin token's socket and stream within a
+    /// second, on the same server: the full and read grants' stay open.
+    #[tokio::test]
+    async fn admin_off_closes_the_admin_connections_and_only_those() {
+        let dir = tempfile::tempdir().unwrap();
+        let rt = runtime(&dir, MemStore::default());
+        let up = rt.set(cfg_admin()).await.unwrap();
+        let (mut admin_up, mut admin_stream) = open_both(&up.share_urls.admin).await;
+        let (mut full_up, mut full_stream) = open_both(&up.share_urls.full).await;
+        let (addr, read) = link(&up.share_urls.read[0]);
+        let mut read_stream = open_stream(addr, &read).await;
+
+        let off = rt.set(cfg(true)).await.unwrap();
+        assert!(closes_within(&mut admin_up, Duration::from_secs(1)).await);
+        assert!(closes_within(&mut admin_stream, Duration::from_secs(1)).await);
+        assert!(echoes(&mut full_up).await, "the full socket was closed");
+        assert!(!closes_within(&mut full_stream, STAYS_OPEN).await);
+        assert!(!closes_within(&mut read_stream, STAYS_OPEN).await);
+        assert_eq!(off.share_urls.full, up.share_urls.full, "the server moved");
+        rt.set(cfg(false)).await.unwrap();
+    }
+
+    /// Rotating a token closes what it opened within a second and leaves the
+    /// other grants' connections open.
+    #[tokio::test]
+    async fn rotate_closes_the_old_tokens_connections_and_only_those() {
+        let dir = tempfile::tempdir().unwrap();
+        let rt = runtime(&dir, MemStore::default());
+        let up = rt.set(cfg_admin()).await.unwrap();
+        let (mut admin_up, _admin_stream) = open_both(&up.share_urls.admin).await;
+        let (mut full_up, mut full_stream) = open_both(&up.share_urls.full).await;
+
+        let rotated = rt.rotate(Grant::Admin).await.unwrap();
+        assert!(closes_within(&mut admin_up, Duration::from_secs(1)).await);
+        assert!(echoes(&mut full_up).await, "the full socket was closed");
+        assert!(!closes_within(&mut full_stream, STAYS_OPEN).await);
+        // The new admin link works on the same server.
+        let (mut new_admin, _) = open_both(&rotated.share_urls.admin).await;
+        assert!(echoes(&mut new_admin).await);
+
+        rt.rotate(Grant::Full).await.unwrap();
+        assert!(closes_within(&mut full_up, Duration::from_secs(1)).await);
+        assert!(closes_within(&mut full_stream, Duration::from_secs(1)).await);
+        assert!(echoes(&mut new_admin).await, "the admin socket was closed");
+        rt.set(cfg(false)).await.unwrap();
+    }
+
+    /// Turning sharing off closes every connection opened with a token within
+    /// a second, without waiting out the stop's grace period.
+    #[tokio::test]
+    async fn sharing_off_closes_every_connection_at_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let rt = Arc::new(runtime(&dir, MemStore::default()));
+        let up = rt.set(cfg_admin()).await.unwrap();
+        let (mut admin_up, mut admin_stream) = open_both(&up.share_urls.admin).await;
+        let (mut full_up, mut full_stream) = open_both(&up.share_urls.full).await;
+
+        let off = tokio::spawn({
+            let rt = rt.clone();
+            async move { rt.set(cfg(false)).await }
+        });
+        for s in [
+            &mut admin_up,
+            &mut admin_stream,
+            &mut full_up,
+            &mut full_stream,
+        ] {
+            assert!(closes_within(s, Duration::from_secs(1)).await);
+        }
+        assert!(!off.await.unwrap().unwrap().running);
+    }
+
+    /// A new port moves the server without waiting out the old one's grace
+    /// period for its open streams.
+    #[tokio::test]
+    async fn a_port_change_closes_the_old_servers_connections_at_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let rt = runtime(&dir, MemStore::default());
+        let up = rt.set(cfg(true)).await.unwrap();
+        let (_, mut stream) = open_both(&up.share_urls.full).await;
+        let started = std::time::Instant::now();
+        let moved = rt
+            .set(WebAccessConfig {
+                listen: Listen::Interfaces(vec!["127.0.0.1".parse().unwrap()]),
+                ..cfg(true)
+            })
+            .await
+            .unwrap();
+        assert!(moved.running);
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "{:?}",
+            started.elapsed()
+        );
+        assert!(closes_within(&mut stream, Duration::from_millis(100)).await);
+        rt.set(cfg(false)).await.unwrap();
+    }
+
     #[tokio::test]
     async fn rotate_while_disabled_mints_nothing() {
         let dir = tempfile::tempdir().unwrap();
@@ -764,7 +961,7 @@ mod tests {
         assert!(!error.contains("my password"), "{error}");
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "my password\n");
         assert!(matches!(
-            rt.start(&cfg(true)).await.err(),
+            rt.load_tokens(&cfg(true)).err(),
             Some(RuntimeError::Token(TokenError::BadFile { .. }))
         ));
     }

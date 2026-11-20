@@ -71,14 +71,20 @@ function sourceFiles(dir: string): string[] {
   })
 }
 
-test('the entry point exports 72 names', () => {
-  expect(EXPORTS.size).toBe(72)
+test('the entry point exports 81 names', () => {
+  expect(EXPORTS.size).toBe(81)
 })
 
 test('the runtime exports are the functions and constants, no more', () => {
   expect(Object.keys(api).sort()).toEqual(
     [
       'adapterFor',
+      'CLAUDE_HOOK_EVENTS',
+      'claudeHookSettings',
+      'claudeResumeArgv',
+      'claudeSessionArgv',
+      'hasInteractiveArgv',
+      'interactiveArgv',
       'antigravityAdapter',
       'assistantText',
       'BASELINE_ENV',
@@ -154,13 +160,22 @@ test('the README experimental list matches the @experimental tags', () => {
   expect([...listed].sort()).toEqual([...tagged].sort())
   expect([...tagged].sort()).toEqual(
     [
+      'CLAUDE_HOOK_EVENTS',
+      'ClaudeLaunchFlags',
+      'ClaudeSessionFlags',
       'FailureCause',
       'FailureOutput',
+      'InteractiveSpec',
       'ModelChoice',
       'TemplateAdapterOptions',
       'classifyFailure',
+      'claudeHookSettings',
       'claudePluginArgv',
+      'claudeResumeArgv',
       'claudeResumeFlag',
+      'claudeSessionArgv',
+      'hasInteractiveArgv',
+      'interactiveArgv',
       'modelArgs',
       'modelArgsRefusal',
       'parseOutput',
@@ -172,7 +187,9 @@ test('the README experimental list matches the @experimental tags', () => {
 
 test('the functions that can throw say so with @throws, and no others do', () => {
   const throwing = [...EXPORTS].filter(([, info]) => info.throws).map(([name]) => name)
-  expect(throwing.sort()).toEqual(['callAgent', 'modelArgs', 'planCall', 'templateAdapter'].sort())
+  expect(throwing.sort()).toEqual(
+    ['callAgent', 'interactiveArgv', 'modelArgs', 'planCall', 'templateAdapter'].sort(),
+  )
 })
 
 test('the README names every export', () => {

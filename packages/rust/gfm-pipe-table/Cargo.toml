@@ -28,9 +28,9 @@ name = "gfm_pipe_table"
 
 [dependencies]
 
-# tests/parity.rs only: it reads tests/fixtures/parity.json, the fixture the
-# TypeScript package (packages/ts/gfm-table) reads in place. The crate parses
-# no JSON at runtime.
+# tests/conformance.rs only: it reads packages/conformance/gfm-table/suite.json,
+# the suite the TypeScript package (packages/ts/gfm-table) runs too. The crate
+# parses no JSON at runtime.
 [dev-dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -7,8 +7,8 @@
  * lives in the tool's standalone config home (`<config>/<tool>/config.yaml`).
  * It is never committed and holds only machine-specific keys.
  *
- * The Zod schema defines the file, and every key has a default. The loader
- * never throws. `loadWithIssues()` reports what it dropped. The result is
+ * A Standard Schema validator defines the file, and every key has a default.
+ * The loader never throws. `loadWithIssues()` reports what it dropped. The result is
  * memoised per path. The path is computed on each call, so a test or a one-off
  * run can move the file with an environment variable and not write into the
  * developer's real config home. The YAML is read by the same rules as a
@@ -20,7 +20,6 @@ import { copyFileSync, existsSync, lstatSync, readFileSync, readlinkSync, statSy
 import { dirname, join, resolve } from 'node:path'
 
 import { atomicWrite, etag, WriteConflictError, writeCas } from '@osdlc/etag-write'
-import type { z } from 'zod'
 
 import { rewriteMigrated } from './edit.ts'
 import { parseYamlText } from './loader.ts'
@@ -31,6 +30,7 @@ import {
   type ConfigMigration,
   type MigrationWarning,
 } from './migrate.ts'
+import { isZodSchema, validateStandard, type StandardSchemaV1 } from './standard.ts'
 import { stripUnknownKeys } from './unknown-keys.ts'
 import { isPlainObject } from './value.ts'
 import { envStem, systemDirs, type TieredDirs, type VendorDirs } from './dirs.ts'
@@ -39,12 +39,14 @@ import { envStem, systemDirs, type TieredDirs, type VendorDirs } from './dirs.ts
  * Options for describing a tool's machine file: the tool name, its schema, and where it lives.
  * @experimental
  */
-export interface MachineConfigFileOptions<S extends z.ZodTypeAny> {
+export interface MachineConfigFileOptions<S extends StandardSchemaV1> {
   /** The tool's standalone name: the directory segment under the config home. */
   tool: string
   /**
    * Every key with a default; the loader parses `{}` to get the defaults.
-   * Unknown keys are reported only when every object in it is `.strict()`.
+   * Unknown keys are reported only for a zod schema whose objects are all
+   * `.strict()`; another validator drops the whole top-level section an
+   * unknown key sits in, as `invalid`.
    */
   schema: S
   /** Env var that relocates the file. Default `<STEM>_MACHINE_CONFIG`. */
@@ -140,7 +142,7 @@ export interface MachineWriteOptions {
  * A handle on a tool's machine file: its path, load, write and migrate.
  * @experimental
  */
-export interface MachineConfigFile<S extends z.ZodTypeAny> {
+export interface MachineConfigFile<S extends StandardSchemaV1> {
   readonly tool: string
   readonly schema: S
   /** The env var that relocates the file (tests, one-off runs). */
@@ -153,9 +155,9 @@ export interface MachineConfigFile<S extends z.ZodTypeAny> {
    * a non-mapping document give the defaults. Never throws. Memoised per
    * path, so a run that swaps {@link env} is read fresh.
    */
-  load(): z.output<S>
+  load(): StandardSchemaV1.InferOutput<S>
   /** {@link load}'s value plus one issue per thing it dropped. Shares its cache. */
-  loadWithIssues(): MachineConfigLoad<z.output<S>>
+  loadWithIssues(): MachineConfigLoad<StandardSchemaV1.InferOutput<S>>
   /** Drop the memoised value. Call from tests between runs. */
   clearCache(): void
   /** The version the last migration produces; 1 when there are none. */
@@ -199,7 +201,7 @@ export interface MachineConfigFile<S extends z.ZodTypeAny> {
  * Describe a tool's machine file and return a handle that finds, loads, writes and migrates it.
  * @experimental
  */
-export function machineConfigFile<S extends z.ZodTypeAny>(
+export function machineConfigFile<S extends StandardSchemaV1>(
   opts: MachineConfigFileOptions<S>,
 ): MachineConfigFile<S> {
   const { tool, schema } = opts
@@ -208,7 +210,8 @@ export function machineConfigFile<S extends z.ZodTypeAny>(
   const dirs = opts.dirs ?? (() => systemDirs(opts.vendorDirs))
   const migrations = opts.migrations ?? []
   const currentVersion = currentConfigVersion(migrations)
-  let cache: { path: string; result: MachineConfigLoad<z.output<S>> } | null = null
+  let cache: { path: string; result: MachineConfigLoad<StandardSchemaV1.InferOutput<S>> } | null =
+    null
 
   const path = (): string => {
     const override = process.env[env]
@@ -216,8 +219,8 @@ export function machineConfigFile<S extends z.ZodTypeAny>(
     return join(dirs().standalone(tool).config().path, fileName)
   }
 
-  const loadUncached = (file: string): MachineConfigLoad<z.output<S>> => {
-    const defaults = (): z.output<S> => schema.parse({}) as z.output<S>
+  const loadUncached = (file: string): MachineConfigLoad<StandardSchemaV1.InferOutput<S>> => {
+    const defaults = (): StandardSchemaV1.InferOutput<S> => parseDefaults(schema)
     if (!existsSync(file)) return { value: defaults(), issues: [] }
     const fail = (code: MachineConfigIssue['code'], err: unknown) => {
       const message = err instanceof Error ? err.message : String(err)
@@ -250,7 +253,7 @@ export function machineConfigFile<S extends z.ZodTypeAny>(
     return salvage(schema, migrateConfigRaw(raw, migrations).raw)
   }
 
-  const loadWithIssues = (): MachineConfigLoad<z.output<S>> => {
+  const loadWithIssues = (): MachineConfigLoad<StandardSchemaV1.InferOutput<S>> => {
     const file = path()
     if (cache !== null && cache.path === file) return cache.result
     const result = loadUncached(file)
@@ -391,22 +394,34 @@ function readOrNull(file: string): Buffer | null {
   }
 }
 
+/** The schema's defaults: what it makes of `{}`. Throws when the schema rejects `{}`, which a machine schema must accept. */
+function parseDefaults<S extends StandardSchemaV1>(schema: S): StandardSchemaV1.InferOutput<S> {
+  const result = validateStandard(schema, {})
+  if (result.ok) return result.value
+  const lines = result.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)
+  throw new Error(`the machine schema rejects an empty file:\n  ${lines.join('\n  ')}`)
+}
+
 /**
  * Parse `raw`, dropping what fails: first every unknown key, then the
  * top-level section of each remaining issue. Full defaults only if that still
- * fails.
+ * fails. Unknown keys are found only for a zod schema; with another validator
+ * they are issues like any other, and drop their top-level section.
  */
-function salvage<S extends z.ZodTypeAny>(
+function salvage<S extends StandardSchemaV1>(
   schema: S,
   raw: Record<string, unknown>,
-): MachineConfigLoad<z.output<S>> {
-  const first = schema.safeParse(raw)
-  if (first.success) return { value: first.data as z.output<S>, issues: [] }
+): MachineConfigLoad<StandardSchemaV1.InferOutput<S>> {
+  type Out = StandardSchemaV1.InferOutput<S>
+  const first = validateStandard(schema, raw)
+  if (first.ok) return { value: first.value as Out, issues: [] }
 
-  const stripped = stripUnknownKeys(schema, raw)
+  const stripped = isZodSchema(schema)
+    ? stripUnknownKeys(schema, raw)
+    : { value: raw, unknown: [] as string[][] }
   const { unknown } = stripped
-  // The deletes below must not reach the caller's object, which is what
-  // stripUnknownKeys hands back when it found no unknown key.
+  // The deletes below must not reach the caller's object, which `stripped.value`
+  // still is when nothing was stripped.
   const draft = stripped.value === raw ? { ...raw } : stripped.value
   const issues: MachineConfigIssue[] = unknown.map((path) => ({
     path,
@@ -414,23 +429,23 @@ function salvage<S extends z.ZodTypeAny>(
     message: 'unknown key; ignored',
   }))
 
-  const second = schema.safeParse(draft)
-  if (second.success) return { value: second.data as z.output<S>, issues }
+  const second = validateStandard(schema, draft)
+  if (second.ok) return { value: second.value as Out, issues }
 
-  for (const issue of second.error.issues) {
-    const path = issue.path.map(String)
+  for (const issue of second.issues) {
+    const path = issue.path
     const top = path[0]
     if (top !== undefined) delete draft[top]
     const fallback = top === undefined ? 'using defaults' : `using the default for '${top}'`
     issues.push({ path, code: 'invalid', message: `${issue.message}; ${fallback}` })
   }
 
-  const third = schema.safeParse(draft)
-  if (third.success) return { value: third.data as z.output<S>, issues }
+  const third = validateStandard(schema, draft)
+  if (third.ok) return { value: third.value as Out, issues }
   issues.push({
     path: [],
     code: 'invalid',
     message: 'the file could not be salvaged; using defaults',
   })
-  return { value: schema.parse({}) as z.output<S>, issues }
+  return { value: parseDefaults(schema), issues }
 }

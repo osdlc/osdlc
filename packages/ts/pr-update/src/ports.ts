@@ -63,6 +63,12 @@ export interface RepairRequest {
   /** Unclaimed conflicted paths for `conflict`; the update's changed paths for `verify-failed`. */
   paths: readonly string[]
   reason: string
+  /**
+   * Set for a `conflict` met at a rebase stop: the commit being replayed and
+   * the base it is moving onto. The repair keeps that commit's intent, not the
+   * branch's final state.
+   */
+  replaying?: { sha: string; subject: string; onto: string } | undefined
 }
 
 export interface RepairResult {

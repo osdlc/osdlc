@@ -150,6 +150,18 @@ export class Gh {
   }
 
   /**
+   * The same client aimed at another host (same runner, directory and repo).
+   * `''` clears it, as in the options.
+   */
+  withHostname(hostname: string): Gh {
+    const opts = { runner: this.runner, hostname }
+    // A client with no directory was built with a repo.
+    return this.boundCwd === undefined
+      ? new Gh({ ...opts, repo: this.repo! })
+      : new Gh(this.boundCwd, { ...opts, repo: this.repo })
+  }
+
+  /**
    * The whole surface again, returning a `Result<T, GhFailure>` instead of
    * throwing. `gh.try.prList()` is `{ ok: true, value } | { ok: false, error }`.
    * A query for one thing that finds nothing is `ok: true` with `null`. See
