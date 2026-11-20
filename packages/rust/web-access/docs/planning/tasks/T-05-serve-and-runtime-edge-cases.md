@@ -9,25 +9,22 @@ created: 2026-11-07
 
 ## Goal
 
-Three cases where the server or the runtime does something a caller would not
+Two cases where the server or the runtime does something a caller would not
 expect.
+
+The port-0 case is closed: a rotation no longer restarts the server
+([T-03](T-03-end-connections-when-a-grant-is-withdrawn.md)), so the port and
+the other grants' links stay. The guard now admits an interface address that
+appears after start.
 
 ## Cases
 
-- **Port 0 moves on every restart.** With `port: 0`, rotating one grant's token
-  restarts the server on a new port, so every grant's links and cookies stop
-  working, not only the rotated one's. Keep the port the running server holds
-  across a restart of the same config.
 - **Rotating while sharing is off does nothing.** `SharingRuntime::rotate`
   returns `Ok` and leaves the token files as they are while sharing is
   disabled, so a link that leaked keeps working once sharing is turned on
   again. Rotate the files even while sharing is off.
-- **The host list is taken once.** With `Listen::AllInterfaces`, the allowed
-  `Host` list is built from the interfaces present when the server starts, so
-  an address that appears later is refused with 421, although the docs say
-  "present and future". IPv6 link-local addresses cannot be used at all,
-  because a zone id does not survive in a `Host` header. Rebuild the list when
-  the interfaces change, or document the limit.
+- **IPv6 link-local addresses cannot be used.** A zone id does not survive in
+  a `Host` header. Document the limit, or serve them some other way.
 
 ## Done when
 
