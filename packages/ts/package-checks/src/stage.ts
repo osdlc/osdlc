@@ -1,6 +1,8 @@
 /**
  * Stages a new package on npm so CI can publish it. For each package it
- * builds and packs the package at version `0.0.1-stage`, publishes that
+ * installs when `node_modules` is missing at the root or in the package,
+ * builds the package and its workspace dependencies, packs the package at
+ * version `0.0.1-stage`, publishes that
  * tarball under the `stage` tag, then adds the GitHub Actions trusted
  * publisher with `npm trust github`. package.json is restored after packing.
  * npm can only add a trusted publisher to a package that already exists.
@@ -18,7 +20,7 @@
  * `npm trust` needs two-factor authentication on the account, and npm asks for
  * a one-time password or a browser login. npm runs through npx at a pinned
  * version, because `npm trust` needs 11.15 or later. A dry run publishes
- * nothing and changes nothing on npm, but it does build the package.
+ * nothing and changes nothing on npm, but it does run the install and build steps.
  */
 
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -129,8 +131,62 @@ function onNpm(name: string, cwd: string): boolean {
   throw new Error(`npm view ${name} failed:\n${r.stderr}`)
 }
 
-/** Builds and packs `dir` at the placeholder version, and publishes it under the `stage` tag. */
-function publishPlaceholder(dir: string, dry: string[], cwd: string): boolean {
+/** One step before the placeholder publish: what to call it in a failure, and how to run it. */
+export interface PrepareStep {
+  label: string
+  command: string
+  argv: string[]
+  cwd: string
+  needed: boolean
+}
+
+/**
+ * The steps that make a package buildable from a fresh clone: install when
+ * `node_modules` is missing at the root or in the package, then build the
+ * package and the workspace packages it depends on (`<name>...`), which
+ * import each other from `dist/`.
+ * @param dir The package folder; the default checks only the root.
+ */
+export function prepareSteps(name: string, root: string, dir: string = root): PrepareStep[] {
+  return [
+    {
+      label: 'pnpm install',
+      command: 'pnpm',
+      argv: ['install'],
+      cwd: root,
+      needed: !existsSync(join(root, 'node_modules')) || !existsSync(join(dir, 'node_modules')),
+    },
+    {
+      label: `build ${name} and its workspace dependencies`,
+      command: 'pnpm',
+      argv: ['--filter', `${name}...`, '--fail-if-no-match', 'run', '--if-present', 'build'],
+      cwd: root,
+      needed: true,
+    },
+  ]
+}
+
+/** Runs the needed steps in order; returns the label of the first one that fails, or null. */
+export function runSteps(
+  steps: PrepareStep[],
+  run: (command: string, argv: string[], cwd: string) => number = stream,
+): string | null {
+  for (const step of steps) {
+    if (!step.needed) continue
+    console.log(`  ${[step.command, ...step.argv].join(' ')}`)
+    if (run(step.command, step.argv, step.cwd) !== 0) return step.label
+  }
+  return null
+}
+
+/** Prepares (install and build), packs and publishes `target` at the placeholder version under the `stage` tag. */
+function publishPlaceholder(target: StageTarget, dry: string[], cwd: string): boolean {
+  const { dir, name } = target
+  const failedStep = runSteps(prepareSteps(name, cwd, dir))
+  if (failedStep !== null) {
+    console.error(`  the step "${failedStep}" failed.`)
+    return false
+  }
   const manifest = join(dir, 'package.json')
   const original = readFileSync(manifest, 'utf8')
   const out = mkdtempSync(join(tmpdir(), 'stage-npm-package-'))
@@ -143,17 +199,20 @@ function publishPlaceholder(dir: string, dry: string[], cwd: string): boolean {
     process.on('SIGINT', ignoreInterrupt)
     try {
       // pnpm pack, unlike npm pack, rewrites workspace: and catalog: versions.
-      console.log('  pnpm run --if-present build')
-      if (stream('pnpm', ['run', '--if-present', 'build'], dir) !== 0) return false
       console.log(`  pnpm pack --json --pack-destination ${out}`)
       const pack = spawnRunner('pnpm').run(['pack', '--json', '--pack-destination', out], {
         cwd: dir,
       })
       process.stderr.write(pack.stderr)
-      if (pack.exitCode !== 0) return false
+      if (pack.exitCode !== 0) {
+        console.error('  the step "pnpm pack" failed.')
+        return false
+      }
       tarball = (JSON.parse(pack.stdout) as { filename: string }).filename
       if (!existsSync(tarball)) {
-        console.error(`  pnpm pack reported ${tarball}, which does not exist.`)
+        console.error(
+          `  the step "pnpm pack" failed: it reported ${tarball}, which does not exist.`,
+        )
         return false
       }
     } finally {
@@ -162,7 +221,11 @@ function publishPlaceholder(dir: string, dry: string[], cwd: string): boolean {
     }
     const publish = ['publish', tarball, '--access', 'public', '--tag', 'stage', ...dry]
     console.log(`  npm ${publish.join(' ')}`)
-    return npmLive(publish, cwd) === 0
+    if (npmLive(publish, cwd) !== 0) {
+      console.error('  the step "npm publish" failed.')
+      return false
+    }
+    return true
   } finally {
     rmSync(out, { recursive: true, force: true })
   }
@@ -190,12 +253,12 @@ export function stage(dirs: string[], options: StageOptions = {}): number {
 
   let failed = false
   for (const target of targets) {
-    const { dir, name } = target
+    const { name } = target
     console.log(`\n${name}`)
     const existed = onNpm(name, root)
     if (existed) {
       console.log('  already on npm; no placeholder needed.')
-    } else if (!publishPlaceholder(dir, dry, root)) {
+    } else if (!publishPlaceholder(target, dry, root)) {
       console.error('  the placeholder publish failed; skipping its trusted publisher.')
       failed = true
       continue

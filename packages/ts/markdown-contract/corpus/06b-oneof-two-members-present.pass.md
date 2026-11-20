@@ -1,2 +1,0 @@
-## Goal
-Ship the validator.

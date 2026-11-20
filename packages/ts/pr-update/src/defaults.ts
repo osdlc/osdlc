@@ -16,6 +16,7 @@ import {
   stderrOrError,
 } from '@osdlc/command-seam'
 
+import { DETECT_LOOKED_FOR, detectVerifyCommand } from './detect.ts'
 import type { PrUpdateConfig, PrUpdateStandaloneConfig } from './config.ts'
 import type { Ports, Repair } from './ports.ts'
 import { agentRepair } from './repair/agents.ts'
@@ -49,6 +50,13 @@ export function commandRepair(command: string, timeoutSeconds: number | null = n
         PR_UPDATE_WORKTREE: req.worktree,
         PR_UPDATE_PATHS: req.paths.join('\n'),
         PR_UPDATE_REASON: req.reason,
+        ...(req.replaying === undefined
+          ? {}
+          : {
+              PR_UPDATE_COMMIT: req.replaying.sha,
+              PR_UPDATE_COMMIT_SUBJECT: req.replaying.subject,
+              PR_UPDATE_ONTO: req.replaying.onto,
+            }),
       },
     })
     const out = (res.stdout.trim() || stderrOrError(res)).split('\n')
@@ -64,11 +72,14 @@ export function commandRepair(command: string, timeoutSeconds: number | null = n
  * With `projectRoot`, failed updates are recorded in
  * `<projectRoot>/.pr-update/attempts/`, or, with `attempts.store: git-ref`, as refs on `remote`
  * (default `origin`) along with a per-branch update lease.
+ *
+ * `notice` receives one line per PR naming the command `verify: detect` chose.
  */
 export function standalonePorts(
   cfg?: PrUpdateConfig & Partial<PrUpdateStandaloneConfig>,
   projectRoot?: string,
   remote = 'origin',
+  notice: (line: string) => void = () => {},
 ): Ports {
   const command = cfg?.repair.command ?? null
   const agent = cfg?.repair.agent ?? null
@@ -77,10 +88,22 @@ export function standalonePorts(
   return {
     locate: () => null,
     runVerb: (verb, cwd) => sh.run(verb, { cwd }),
-    // A standalone run has no host registry to look up `check` in, and runs
-    // `test` only from `test_command`. Failing is better than running no verbs
-    // and reporting a push as verified when nothing was checked.
-    async resolveVerifyVerbs({ which }) {
+    // A standalone run has no host registry to look up `check` in, and `test` runs only
+    // `test_command`. Failing is better than running no verbs and reporting a push as
+    // verified when nothing was checked.
+    async resolveVerifyVerbs({ which, repo, checkout, pr }) {
+      if (which === 'detect') {
+        const found = detectVerifyCommand(checkout, testCommand)
+        if (found === null) {
+          throw new Error(
+            `verify: detect found no test command in ${repo}'s update worktree (looked for ${DETECT_LOOKED_FOR}) — set pr_update.test_command, or set verify: 'none'`,
+          )
+        }
+        notice(
+          `verify: detect ${repo}${pr === undefined ? '' : `#${pr}`}: ${found.command}  (${found.rung})`,
+        )
+        return [found.command]
+      }
       if (which === 'check') {
         throw new Error(
           'verify: check has no meaning in a standalone run — embed @osdlc/pr-update as a ' +
