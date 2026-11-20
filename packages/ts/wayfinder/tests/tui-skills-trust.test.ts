@@ -3,13 +3,16 @@
  * real session in a throwaway repository and HOME.
  */
 
+import { chmod, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+
 import { afterAll, describe, expect, test } from 'vitest'
 
 import { COPY_REFUSED } from '../src/core/copy-text.ts'
 import { SKILLS_TAB } from '../src/tui/app.ts'
 import { toolNote } from '../src/tui/settings.ts'
 import type { ToolSummary } from '../src/tool-info.ts'
-import { cleanupAll, screen, testTui } from './tui-support.ts'
+import { cleanupAll, screen, temp, testTui } from './tui-support.ts'
 
 afterAll(cleanupAll)
 
@@ -127,6 +130,104 @@ describe('the Skills tab', () => {
     const { tui } = await booted({ files: WITH_SKILL, userConfig: { skills: 'off' } })
     expect(screen(tui)[0]).not.toContain('skills')
     expect(tui.state.skills).toEqual([])
+  })
+})
+
+describe.skipIf(process.platform === 'win32')('^g: a skill handed to an agent CLI', () => {
+  /** A PATH directory holding a fake `claude`, which nothing runs: the host records hand-offs. */
+  async function agentPath(): Promise<string> {
+    const dir = await temp('wayfinder-agent-bin-')
+    await writeFile(join(dir, 'claude'), '#!/bin/sh\nexit 0\n', 'utf-8')
+    await chmod(join(dir, 'claude'), 0o755)
+    return dir
+  }
+
+  const NO_HINT = SKILL.replace('argument-hint: "[pr-number]"\n', '')
+
+  test('a skill with a hint asks for its arguments, then hands the prompt to claude', async () => {
+    const path = await agentPath()
+    const { tui, host, root } = await booted({ files: WITH_SKILL, env: { PATH: path } })
+    tui.feed('review')
+    expect(screen(tui).join('\n')).toContain('skill for claude · ^g starts claude')
+    expect(screen(tui).at(-1)).toContain('^g agent')
+    tui.feed('\x07')
+    expect(tui.state.entering?.skill?.name).toBe('review')
+    expect(host.handedOff).toEqual([])
+    tui.feed('12 please')
+    const text = screen(tui).join('\n')
+    expect(text).toContain('claude ▸ /review 12 please█')
+    expect(text).toContain('takes [pr-number]; type any, or none')
+    tui.feed('\r')
+    expect(host.released).toBe(1)
+    expect(host.handedOff).toEqual([
+      {
+        skill: expect.anything(),
+        harness: 'claude',
+        prompt: '/review 12 please',
+        argv: [join(path, 'claude'), '/review 12 please'],
+        env: {},
+        cwd: root,
+      },
+    ])
+    expect(host.written.join('')).toContain(`$ ${join(path, 'claude')} '/review 12 please'`)
+    expect(host.exits).toEqual([0])
+  })
+
+  test('esc on the entry line goes back and starts nothing', async () => {
+    const { tui, host } = await booted({ files: WITH_SKILL, env: { PATH: await agentPath() } })
+    tui.feed('review')
+    tui.feed('\x07')
+    tui.feed('\x1b')
+    expect(tui.state.entering).toBeNull()
+    expect(host.handedOff).toEqual([])
+    expect(host.exits).toEqual([])
+  })
+
+  test('a skill with no hint starts at once, with its name alone', async () => {
+    const path = await agentPath()
+    const files = { ...WITH_SKILL, '.claude/skills/review/SKILL.md': NO_HINT }
+    const { tui, host } = await booted({ files, env: { PATH: path } })
+    tui.feed('review')
+    tui.feed('\x07')
+    expect(host.handedOff.map((p) => p.argv)).toEqual([[join(path, 'claude'), '/review']])
+    expect(host.exits).toEqual([0])
+  })
+
+  test('the agent exit code and a failure to start are passed on', async () => {
+    const files = { ...WITH_SKILL, '.claude/skills/review/SKILL.md': NO_HINT }
+    const { tui, host } = await booted({ files, env: { PATH: await agentPath() } })
+    host.handOffResult = { exit: 1, error: 'spawn EACCES' }
+    tui.feed('review')
+    tui.feed('\x07')
+    expect(host.written.join('')).toContain('claude: spawn EACCES')
+    expect(host.exits).toEqual([1])
+  })
+
+  test('with no agent CLI on PATH it says why, and the UI stays', async () => {
+    const { tui, host } = await booted({ files: WITH_SKILL, env: { PATH: '' } })
+    tui.feed('review')
+    expect(screen(tui).join('\n')).not.toContain('^g starts')
+    tui.feed('\x07')
+    expect(tui.state.entering).toBeNull()
+    expect(tui.state.message).toEqual({
+      text: '/review: no agent CLI that reads it is on PATH — looked for claude; type /review in claude',
+      tone: 'error',
+    })
+    expect(host.handedOff).toEqual([])
+    expect(host.released).toBe(0)
+    expect(host.exits).toEqual([])
+  })
+
+  test('^g on a task does nothing but say so; Enter on a skill still copies', async () => {
+    const { tui, host } = await booted({ files: WITH_SKILL, env: { PATH: await agentPath() } })
+    tui.feed('build')
+    tui.feed('\x07')
+    expect(tui.state.message?.text).toBe('^g starts an agent with a skill; this is a task')
+    expect(screen(tui).at(-1)).not.toContain('^g')
+    tui.feed('\x15review\r')
+    await tui.idle()
+    expect(host.copied).toEqual(['/review'])
+    expect(host.handedOff).toEqual([])
   })
 })
 

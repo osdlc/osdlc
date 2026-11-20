@@ -214,7 +214,7 @@ The target goes into the argv, so a failure's `argv` shows which repository a
 call hit. `pr`, `issue` and `label` calls get `--repo github.acme.com/acme/widgets`.
 `api` calls get `--hostname` and a filled `{owner}/{repo}`. `authStatus`
 asks about that host. `repoList` and `searchPrs` have no host flag in gh, so
-they get `GH_HOST` in the environment. `withRepo` and `at` keep the runner and
+they get `GH_HOST` in the environment. `withRepo`, `withHostname` and `at` keep the runner and
 the rest of the target. `at` on a client with no directory gives one rooted
 at that directory. `withRepo` keeps the client's form.
 
@@ -709,8 +709,8 @@ experimental.
 Methods on both clients:
 
 - Direct calls: `raw` runs any `gh` call and returns the result. `rawChecked` throws on a failed
-  exit. `at` returns the same client rooted at another directory, and `withRepo` the same client
-  aimed at another repository.
+  exit. `at` returns the same client rooted at another directory, `withRepo` the same client
+  aimed at another repository, and `withHostname` the same client aimed at another host.
 - Pull request queries: `prList`, `prView`, `prFind`, `openPrFor`, `prViewSettled`, `prBody`,
   `prReviewThreads`, `prActivity` and `searchPrs`.
 - Pull request changes: `createPr`, `editPr`, `editPrBody`, `prComment`, `prUpdateBranch`,
@@ -735,7 +735,7 @@ and a `parse` function. `readOnly` is true for every query and `prDiff`, and fal
 mutation and for `raw` and `rawChecked`, so a caller that keeps an allowlist of safe calls can check
 a verb before running it. Each verb takes an optional `GhTarget` last, except `raw` and
 `rawChecked`, which take only argv. Each client method has a verb of the same name, except `at`,
-`withRepo`, `prViewSettled`, `openPrFor`, `prFind`, `authenticated`, `ready` and `ownerRepo`.
+`withRepo`, `withHostname`, `prViewSettled`, `openPrFor`, `prFind`, `authenticated`, `ready` and `ownerRepo`.
 `openPrsForBranch` is a verb with no method.
 
 - `GhVerb`: the shape of a verb. `GhTarget`: the `repo` and `hostname` a verb talks to.

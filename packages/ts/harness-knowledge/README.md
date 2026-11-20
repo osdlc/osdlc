@@ -51,6 +51,31 @@ fact('codex', 'skills/user-dirs')?.dirs
 Harness and subject keys are slugs such as `claude-code` and `cli/binary`; the file's `harnesses`
 and `subjects` maps list them, and each subject carries the JSON Schema of its value.
 
+## Ids, credentials and config folders
+
+Other packages name harnesses with short ids (`claude`, `copilot`, `deepseek`); the file uses
+slugs (`claude-code`, `copilot-cli`, `dsh`). `HARNESS_SLUGS` is the map. `credentialEnv` and
+`configDirEnv` read the variable names the file states under `config/credentials-env` and
+`config/config-dir-env`; both accept an id or a slug.
+
+The map is frozen, and `HarnessId` and `HarnessSlug` are the types of its keys and values.
+
+```ts
+import {
+  HARNESS_SLUGS,
+  slugFor,
+  idFor,
+  credentialEnv,
+  configDirEnv,
+} from '@osdlc/harness-knowledge'
+
+HARNESS_SLUGS.copilot // 'copilot-cli'
+slugFor('claude') // 'claude-code'; undefined for a name with no slug
+idFor('dsh') // 'deepseek'
+credentialEnv('codex') // ['CODEX_API_KEY', 'OPENAI_API_KEY']
+configDirEnv('claude') // 'CLAUDE_CONFIG_DIR'
+```
+
 The data is also importable on its own:
 
 ```ts
@@ -59,37 +84,35 @@ import knowledge from '@osdlc/harness-knowledge/data/harness-knowledge.json' wit
 
 ## Where the data comes from
 
-`data/harness-knowledge.json` and `data/harness-knowledge.schema.json` are compiled from the
-harness reference, the corpus of statements in
+`data/harness-knowledge.json` is compiled from the harness reference, the corpus of statements in
 [`packages/corpora/harness-reference`](https://github.com/osdlc/osdlc/tree/main/packages/corpora/harness-reference)
-of this repository, and copied here unchanged. Only current and disputed statements are in the
-file.
+of this repository. It is not committed: `pnpm run build` writes it (`build:data`, before `tsc`),
+and the published package ships it. `data/harness-knowledge.schema.json` is committed and
+reviewed by hand; the build fails if the compiler writes something else. Only current and
+disputed statements are in the file.
+
+`loadKnowledge` imports the file as a JSON module, so a bundler inlines it and Node loads it from
+the package. It reads no path relative to its own module.
+
+Every `basis` link names the commit the corpus was compiled at, `HEAD`. A build from a commit of
+`origin/main`, as the release job does, gives links that last. A local build from any other
+commit warns that its links name a commit that may never be published.
 
 The corpus came here from [osdlc/skillwright](https://github.com/osdlc/skillwright). Data
-compiled there has `corpus.repo` `osdlc/skillwright`, and its `basis` links name a commit of that
-repository. They still resolve.
+published from there has `corpus.repo` `osdlc/skillwright`, and its `basis` links name a commit of
+that repository. They still resolve.
 
-To update the data, after a change to the corpus is on `main`:
-
-```sh
-git switch --detach origin/main
-pnpm --filter @osdlc/harness-knowledge run sync
-```
-
-`sync` compiles the corpus at `HEAD` and writes both files. It refuses a `HEAD` that is not a
-commit of `origin/main`, and a corpus with uncommitted changes, because every `basis` names that
-commit. Commit the two files on a branch, with a changeset, and open a pull request. So a change
-to a fact is two pull requests: the corpus, then the data.
+A change to a fact is one pull request, the corpus change. Build first, since the tests, the
+typecheck and the dependents' tests read the compiled file:
 
 ```sh
-pnpm --filter @osdlc/harness-knowledge run sync --commit <sha>   # the corpus as it was at <sha>
-pnpm --filter @osdlc/harness-knowledge run sync --from <dir>     # two files compiled elsewhere
-pnpm --filter @osdlc/harness-knowledge run check:data
+pnpm --filter '@osdlc/harness-knowledge...' run build
+pnpm --filter @osdlc/harness-knowledge run check:release
 ```
 
-`check:data` is what CI runs. The data must be exactly what the corpus compiles to at the commit
-the data names. When the corpus has changed since, it prints a warning and passes. A test checks
-the data file against the schema.
+`check:release` is what CI runs on a pull request. When the compiled values differ from the
+version on npm, a changeset naming `@osdlc/harness-knowledge` must be in the pull request, since
+that is what releases the change. A test checks the data file against the schema.
 
 ## Licence
 

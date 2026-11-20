@@ -53,14 +53,15 @@ pnpm run format:check
   Start a breaking change's summary with `**Breaking:**`. Do not edit `CHANGELOG.md` or `version`
   by hand; the release writes them.
 
-## Fixture vectors
+## The conformance suite
 
-The Rust twin is checked against JSON vectors this package emits to `fixtures/`.
-`scripts/fixtures.ts` holds the inputs; the expected output is what this package computes. After
-a change to behaviour, run `node scripts/emit-fixtures.ts` and commit the result, then run the
-crate's tests (`cargo test -p agent-router` from `packages/rust`). `pnpm run check:extra` fails
-when the committed files are stale; `tests/fixtures.test.ts` checks that the TypeScript
-reproduces each vector. A behaviour change ships in both twins in the same pull request.
+The Rust twin and this package run one suite, `packages/conformance/agent-router/`, one JSON file per
+section. Write a new case's `input` by hand in the section's file, then run
+`pnpm run conformance:write` to write its `expect`; never write an `expect` by hand. After a change
+to behaviour, run the same command and commit the result, then run the crate's tests
+(`cargo test -p agent-router` from `packages/rust`). `tests/conformance.test.ts` checks that this
+package gives each case's `expect`, and `pnpm run check:conformance` at the repository root checks
+the suite's shape. A behaviour change ships in both twins in the same pull request.
 
 ## The shipped snapshot
 
