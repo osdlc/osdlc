@@ -165,6 +165,12 @@ export interface PullRequest {
    * base repository's `origin`. Fetch `refs/pull/<n>/head` instead.
    */
   isCrossRepository: boolean
+  /**
+   * The login of the head repository's owner, when requested: for a fork's
+   * PR, the fork's owner. Null when not asked for, or when the head
+   * repository is gone.
+   */
+  headRepositoryOwner: string | null
   mergeable: MergeableState
   mergeStateStatus: MergeStateStatus
   reviewDecision: ReviewDecision

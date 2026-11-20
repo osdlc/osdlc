@@ -134,6 +134,7 @@ describe('prRow', () => {
       headRefName: 'feature/add-retries',
       headRefOid: '6dcb09b5b57875f334f61aebed695e2e4193db5e',
       isCrossRepository: false,
+      headRepositoryOwner: null,
       mergeable: 'MERGEABLE',
       mergeStateStatus: 'CLEAN',
       reviewDecision: null,
@@ -146,6 +147,12 @@ describe('prRow', () => {
       createdAt: '2024-01-15T09:30:00Z',
       updatedAt: '2024-01-16T14:05:00Z',
     })
+  })
+  test('a fork PR names its head repository owner', () => {
+    const pr = parsePullRequest(
+      prRow({ isCrossRepository: true, headRepositoryOwner: { id: 'U_1', login: 'me' } }),
+    )
+    expect(pr?.headRepositoryOwner).toBe('me')
   })
 
   test('overrides parse through, nested rows included, and the url follows the number', () => {

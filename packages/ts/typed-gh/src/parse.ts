@@ -216,6 +216,11 @@ function parseReviewDecision(x: unknown): ReviewDecision {
   return v === 'APPROVED' || v === 'CHANGES_REQUESTED' || v === 'REVIEW_REQUIRED' ? v : null
 }
 
+/** `{ login }` as gh prints `headRepositoryOwner`; null for anything else. */
+function ownerLogin(raw: unknown): string | null {
+  return isRecord(raw) && typeof raw['login'] === 'string' ? raw['login'] : null
+}
+
 /**
  * One PR from a `gh --json` object, or null when it carries no usable number.
  *
@@ -245,6 +250,7 @@ export function parsePullRequest(raw: unknown): PullRequest | null {
     headRefName: str(raw['headRefName']),
     headRefOid: strOrNull(raw['headRefOid']),
     isCrossRepository: bool(raw['isCrossRepository']),
+    headRepositoryOwner: ownerLogin(raw['headRepositoryOwner']),
     mergeable: parseMergeable(raw['mergeable']),
     mergeStateStatus: str(raw['mergeStateStatus'], 'UNKNOWN').toUpperCase(),
     reviewDecision: parseReviewDecision(raw['reviewDecision']),

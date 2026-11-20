@@ -245,6 +245,8 @@ export interface GhPrJson {
   headRefName: string
   headRefOid: string
   isCrossRepository: boolean
+  /** Only when asked for; a fork's PR has the fork's owner here. */
+  headRepositoryOwner?: { id: string; login: string }
   mergeable: MergeableState
   mergeStateStatus: MergeStateStatus
   /** gh prints `""` when there is no decision. */
