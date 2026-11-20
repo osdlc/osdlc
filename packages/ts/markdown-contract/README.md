@@ -310,10 +310,10 @@ See [SECURITY.md](./SECURITY.md).
 
 The tests run on [Vitest](https://vitest.dev) under Node. From the package
 folder, `pnpm test` builds `dist/` once, then runs the unit tests, the fixture
-suites and `examples/`. `corpus/` holds the shared validation corpus: YAML
-contracts, documents and expected findings that any engine for these
-contracts can run. See [corpus/README.md](./corpus/README.md) and
-[CONTRIBUTING.md](./CONTRIBUTING.md).
+suites and `examples/`. The shared validation corpus (YAML contracts,
+documents and expected findings) is the conformance suite
+`packages/conformance/markdown-contract/suite.json`, which the Rust crate runs
+too. See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## Running from a checkout
 
