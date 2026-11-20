@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.1](https://github.com/osdlc/osdlc/compare/markdown-vault-fs/v0.7.0...markdown-vault-fs/v0.7.1) - 2026-11-20
+
+### Other
+
+- cheaper note scans and one is_note (part of #641) ([#878](https://github.com/osdlc/osdlc/pull/878))
+
 ### Added
 
 - `is_note`: whether a name or path ends in `.md`, in any case, the rule the

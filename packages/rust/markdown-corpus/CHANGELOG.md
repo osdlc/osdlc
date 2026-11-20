@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.1](https://github.com/osdlc/osdlc/compare/markdown-corpus/v0.4.0...markdown-corpus/v0.4.1) - 2026-11-20
+
+### Other
+
+- cheaper note scans and one is_note (part of #641) ([#878](https://github.com/osdlc/osdlc/pull/878))
+
 ### Changed
 
 - Reading a note for the link graph splits and parses its frontmatter once,
