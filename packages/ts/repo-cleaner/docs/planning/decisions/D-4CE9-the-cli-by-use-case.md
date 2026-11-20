@@ -488,6 +488,44 @@ Nothing is kept for compatibility: each old form is removed, not aliased.
   default branch, or the `--against` remote's. Comparing against the wrong
   branch only makes work look unmerged, so either choice errs toward keeping.
 
+## Decided at implementation
+
+An architecture review of the code on `main` before building turned up these
+gaps, and settled them:
+
+- **A remote's own default branch and the branch a row is judged against
+  are separate.** Each remote keeps its own default branch, which decides
+  `keep` for that branch; the landed-against branch decides `delete`. Each row
+  records what it was judged against (`evidence.landedAgainst`), and it is part
+  of the fingerprint.
+- **`--pick` means "also run this `review` row"** on the command line. The
+  library takes an exact list of rows (`select`) for `-i` and for hosts. An
+  `--allow <risk>=<row>` no longer needs the row picked.
+- **A `--spare` glob only leaves rows alone.** The tip check that stops a run
+  applies to remote rows spared by exact name. A glob is matched against the
+  branch name of remote rows too.
+- **No default remote:** local rows are judged against the local default
+  branch, with a note. "The remote the default branch tracks" is read from
+  `branch.<default>.remote`.
+- **Fetching:** every remote in scope, plus the `--against` remote. A failed
+  fetch of any of them fails the repository, as
+  [D-UVUH](D-UVUH-failed-lookups.md) has it. Local rows look up pull requests
+  only when a remote is in scope; `--fetch` fetches and nothing else.
+- **`--provider`** applies to every remote; an explicit `github` or `gitlab`
+  is refused when the remotes in scope are on different kinds of host.
+- **`--archive`** pushes to the default remote (a fork, in U10), never the
+  `--against` remote.
+- **A busy parent:** when the parent has more open pull requests than the
+  listing reads, the fork's listing stays incomplete and its branches keep
+  `confirm-open-pr`.
+- **Plans move to version 3:** the options record the scope, the remotes and
+  `--against`; each plan repository records the remotes it resolved and which
+  were fetched.
+- **`--remote=<name>`** needs a flag that takes its value only after `=`;
+  `@osdlc/cli-tool` gains one, and a line-based checklist prompt for `-i`.
+  `@osdlc/typed-gh` gains a pull request's head repository owner, for fork
+  pull requests.
+
 ## Reopen if
 
 A use case comes up that none of the above covers without a new concept.
