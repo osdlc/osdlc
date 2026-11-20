@@ -27,6 +27,12 @@ import {
   type CommandRunOptions,
 } from '@osdlc/command-seam'
 
+import {
+  inOrder,
+  planCatFileBatch,
+  type CatFileBatchOptions,
+  type CatFileEntry,
+} from './cat-file.ts'
 import { UnsupportedRequest } from './failure.ts'
 import { versionedVerb } from './features.ts'
 import { pinnedGitVersion, probeGitVersion, type GitVersion } from './git-version.ts'
@@ -303,6 +309,54 @@ export class Git {
   ): CommandResult<Buffer> {
     const ran = this.argv(argv)
     return gateBytes(this.bytes().run(ran, this.runOpts(opts)), ran)
+  }
+
+  /**
+   * Many objects at once, byte-exact: `names` are anything `git cat-file`
+   * reads, such as `rev:path` or a sha. Runs `cat-file --batch-check` for the
+   * sizes, then `cat-file --batch` for the blobs within `maxBytes`, a few
+   * processes in all, on the `bytesRunner`. The map is keyed by the names
+   * given. Throws the classified failure if git fails, `UnsupportedRequest`
+   * when the client has no bytes runner, and `TypeError` for a name that is
+   * empty or holds a newline, a NUL or a trailing CR. See {@link CatFileEntry}.
+   *
+   * @experimental command-seam's bytes runners are experimental.
+   */
+  catFileBatch(
+    names: readonly string[],
+    opts: GitSyncCallOptions & CatFileBatchOptions = {},
+  ): Map<string, CatFileEntry> {
+    const all = new Map<string, CatFileEntry>()
+    for (const chunk of this.catFileBatchChunks(names, opts)) {
+      for (const [name, entry] of chunk) all.set(name, entry)
+    }
+    return inOrder(names, all)
+  }
+
+  /**
+   * {@link Git.catFileBatch} one group of blobs at a time (about `chunkBytes`
+   * each), so a caller can use the bytes and drop them before the next read.
+   * The first map also holds every entry that needed no content read.
+   *
+   * @experimental command-seam's bytes runners are experimental.
+   */
+  *catFileBatchChunks(
+    names: readonly string[],
+    opts: GitSyncCallOptions & CatFileBatchOptions = {},
+  ): Generator<Map<string, CatFileEntry>, void, undefined> {
+    const { maxBytes, chunkBytes, ...call } = opts
+    const plan = planCatFileBatch(names, { maxBytes, chunkBytes })
+    let step = plan.next()
+    while (step.done !== true) {
+      if (step.value.type === 'chunk') {
+        yield step.value.entries
+        step = plan.next()
+      } else {
+        const { argv, input, maxOutputBytes } = step.value
+        const run = { ...call, input, maxOutputBytes: call.maxOutputBytes ?? maxOutputBytes }
+        step = plan.next(this.rawBytesChecked(argv, run).stdout)
+      }
+    }
   }
 
   private bytes(): BytesCommandRunner {

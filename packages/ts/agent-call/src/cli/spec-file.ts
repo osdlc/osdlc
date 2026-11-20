@@ -19,7 +19,9 @@ export interface RunFile {
   model?: string | undefined
   maxTurns?: number | undefined
   strict: boolean
-  permissions?: { mode?: PermissionMode; allowTools?: string[]; denyTools?: string[] } | undefined
+  permissions?:
+    | { mode?: PermissionMode; allowTools?: string[]; denyTools?: string[]; tools?: string[] }
+    | undefined
   prompt: PromptPart[]
   context: ContextPart[]
 }
@@ -94,7 +96,7 @@ export function parseSpecText(text: string, ext: string): RunFile {
     const p = run.permissions
     if (!isRecord(p)) throw new UsageError('run.permissions must be a mapping')
     for (const key of Object.keys(p)) {
-      if (!['mode', 'allowTools', 'denyTools'].includes(key)) {
+      if (!['mode', 'allowTools', 'denyTools', 'tools'].includes(key)) {
         throw new UsageError(`unknown run.permissions.${key}`)
       }
     }
@@ -110,6 +112,9 @@ export function parseSpecText(text: string, ext: string): RunFile {
     }
     if (p.denyTools !== undefined) {
       out.permissions.denyTools = stringList(p.denyTools, 'run.permissions.denyTools')
+    }
+    if (p.tools !== undefined) {
+      out.permissions.tools = stringList(p.tools, 'run.permissions.tools')
     }
   }
   out.prompt = parts(run.prompt, 'run.prompt', ['file', 'text', 'input']) as PromptPart[]

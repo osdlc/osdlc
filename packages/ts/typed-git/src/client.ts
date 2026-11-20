@@ -139,3 +139,5 @@ export {
   type CommandRunner,
   type CommandRunOptions,
 } from '@osdlc/command-seam'
+
+export type { CatFileBatchOptions, CatFileEntry } from './cat-file.ts'

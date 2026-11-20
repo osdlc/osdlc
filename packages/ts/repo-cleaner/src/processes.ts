@@ -102,21 +102,29 @@ const START_TOLERANCE_MS = 2000
 // look like a reused pid.
 const ISO_WITH_TIME = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})$/
 /** `ps -o lstart`: `Sat Oct 25 18:22:19 2026`, the day space-padded on Linux. */
-const PS_LSTART = /^[A-Z][a-z]{2}\s+[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\d{4}$/
+const PS_LSTART =
+  /^[A-Z][a-z]{2}\s+([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{2}):(\d{2}):(\d{2})\s+(\d{4})$/
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 /**
  * Epoch milliseconds of a start time, or NaN when the text is not precise to
  * the second. Accepted: a full ISO-8601 timestamp with a time of day, epoch
  * seconds (9-10 digits), epoch milliseconds (12-13 digits), or the `lstart`
- * form. A date alone, a short digit string or a partial date such as `Oct 25`
- * is NaN, so the owner is treated as alive: the comparison would otherwise
+ * form, read as UTC: the zone the default probe runs `ps` under (see `PS_ENV`).
+ * A date alone, a short digit string or a partial date such as `Oct 25` is NaN, so the owner is treated as alive: the comparison would otherwise
  * call a live owner dead.
  */
 export function startMs(text: string): number {
   const trimmed = text.trim()
   if (/^\d{9,10}$/.test(trimmed)) return Number(trimmed) * 1000
   if (/^\d{12,13}$/.test(trimmed)) return Number(trimmed)
-  if (ISO_WITH_TIME.test(trimmed) || PS_LSTART.test(trimmed)) return Date.parse(trimmed)
+  if (ISO_WITH_TIME.test(trimmed)) return Date.parse(trimmed)
+  const l = PS_LSTART.exec(trimmed)
+  if (l !== null) {
+    const month = MONTHS.indexOf(l[1] ?? '')
+    if (month < 0) return Number.NaN
+    return Date.UTC(Number(l[6]), month, Number(l[2]), Number(l[3]), Number(l[4]), Number(l[5]))
+  }
   return Number.NaN
 }
 
@@ -149,7 +157,56 @@ export interface DefaultProbeOptions {
   lsof?: CommandRunner | undefined
   /** Cap on each command, in ms. Defaults to 60 s. */
   timeoutMs?: number | undefined
+  /**
+   * Whether a pid exists, asked before `ps` so a dead pid costs no spawn:
+   * `false` is gone, `true` exists, `undefined` cannot tell. Defaults to a
+   * `process.kill(pid, 0)` check when `ps` is not injected, and to "cannot
+   * tell" when it is, since a fake `ps` has its own idea of the pids.
+   */
+  pidExists?: ((pid: number) => boolean | undefined) | undefined
 }
+
+const QUARTER_HOUR_MS = 900_000
+// Real UTC offsets run -12 h to +14 h. Keep in step with `inSomeTimeZone` in
+// packages/ts/file-lock/src/process-start.ts, which this mirrors.
+const MIN_ZONE_OFFSET_MS = -12 * 3_600_000
+const MAX_ZONE_OFFSET_MS = 14 * 3_600_000
+
+/**
+ * Whether zoneless text read as UTC (`utcMs`) is the instant `actual` in some
+ * time zone: they differ by a whole number of quarter hours, from -12 h to +14 h, give
+ * or take the tolerance.
+ */
+function inSomeTimeZone(utcMs: number, actual: number): boolean {
+  const diff = utcMs - actual
+  const offset = Math.round(diff / QUARTER_HOUR_MS) * QUARTER_HOUR_MS
+  return (
+    offset >= MIN_ZONE_OFFSET_MS &&
+    offset <= MAX_ZONE_OFFSET_MS &&
+    Math.abs(diff - offset) <= START_TOLERANCE_MS
+  )
+}
+
+/** `process.kill(pid, 0)`: ESRCH is gone, EPERM is alive, anything else is unknown. */
+function killProbe(pid: number): boolean | undefined {
+  // Pid 0 and negative pids name process groups, not a process.
+  if (!Number.isInteger(pid) || pid <= 0) return undefined
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code
+    if (code === 'ESRCH') return false
+    return code === 'EPERM' ? true : undefined
+  }
+}
+
+/**
+ * `ps` reads its own zone and locale. `TZ=UTC` makes the zoneless `lstart` one
+ * instant, so the repeated hour of a DST fall-back cannot read as two; `LC_ALL=C`
+ * keeps the month and day names English.
+ */
+const PS_ENV = { TZ: 'UTC', LC_ALL: 'C' } as const
 
 /** True when the command ran and reported an exit status. */
 const answered = (r: CommandResult): boolean => r.neverExited !== true
@@ -168,12 +225,14 @@ export function defaultProcessProbe(opts: DefaultProbeOptions = {}): ProcessProb
   const ps = opts.ps ?? spawnRunner('ps')
   const lsof = opts.lsof ?? spawnRunner('lsof')
   const timeoutMs = opts.timeoutMs ?? 60_000
+  const pidExists = opts.pidExists ?? (opts.ps === undefined ? killProbe : () => undefined)
   let table: Array<ProcessHolder & { cwd: string }> | null = null
 
   return {
     alive(pid, startedAt) {
+      if (pidExists(pid) === false) return false
       // `lstart` is the same five-field date on macOS and Linux procps.
-      const r = ps.run(['-o', 'lstart=', '-p', String(pid)], { cwd: '/', timeoutMs })
+      const r = ps.run(['-o', 'lstart=', '-p', String(pid)], { cwd: '/', env: PS_ENV, timeoutMs })
       if (!answered(r)) return true
       const started = r.stdout.trim()
       // Only exit 1 with nothing printed is ps saying "no such pid". Any other
@@ -182,8 +241,11 @@ export function defaultProcessProbe(opts: DefaultProbeOptions = {}): ProcessProb
       if (r.exitCode !== 0 || started === '') return true
       if (startedAt === undefined) return true
       const claimed = startMs(startedAt)
-      const actual = Date.parse(started)
+      const actual = startMs(started)
       if (Number.isNaN(claimed) || Number.isNaN(actual)) return true
+      // A writer may have recorded `lstart` text in its own zone, which is not
+      // known: it matches when it is the real start in some zone.
+      if (PS_LSTART.test(startedAt.trim())) return inSomeTimeZone(claimed, actual)
       return Math.abs(claimed - actual) <= START_TOLERANCE_MS
     },
 

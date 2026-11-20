@@ -13,7 +13,14 @@ import { captureContext } from '@osdlc/cli-tool'
 import { Gh } from '@osdlc/typed-gh'
 import { makeOriginAndCheckout } from '@osdlc/typed-git/testing'
 
-import { cannedGh, cannedGlab, git, interposedRunner, isGetUrlOrigin } from './helpers.ts'
+import {
+  cannedGh,
+  cannedGlab,
+  git,
+  interposedRunner,
+  isGetUrlOrigin,
+  type CannedPr,
+} from './helpers.ts'
 import { main } from '../src/cli.ts'
 import { parsePlan } from '../src/plan.ts'
 import { lookupPrs } from '../src/prs.ts'
@@ -21,6 +28,7 @@ import {
   chooseProvider,
   forgeTarget,
   githubProvider,
+  OPEN_PR_LIMIT,
   gitlabProvider,
   type PrProvider,
   type ProviderStatus,
@@ -44,6 +52,27 @@ const GITLAB: ProviderStatus = {
   authenticated: true,
   host: 'gitlab.example.com',
   project: 'group/sub/proj',
+}
+
+const GITHUB: ProviderStatus = {
+  name: 'github',
+  tool: 'gh',
+  noun: 'PR',
+  listing: 'gh pr list',
+  available: true,
+  authenticated: true,
+  host: 'github.example.com',
+  project: 'fork-owner/proj',
+}
+
+/** `n` merged PRs, newest first, on branches `b0`, `b1`, ... */
+function merged(n: number, from = 0): CannedPr[] {
+  return Array.from({ length: n }, (_, i) => ({
+    number: 10_000 - from - i,
+    state: 'MERGED' as const,
+    headRefName: `b${from + i}`,
+    headRefOid: 's',
+  }))
 }
 
 function repoWith(provider: ProviderStatus | null): RepoInfo {
@@ -128,7 +157,7 @@ describe('the GitLab provider', () => {
   test('asks the host and the full project path the remote names', () => {
     const glab = cannedGlab([])
     lookupPrs(repoWith(GITLAB), gitlabProvider(glab))
-    const api = glab.calls.find((argv) => argv[0] === 'api')!
+    const api = glab.calls.find((argv) => argv[3]?.includes('state=all'))!
     expect(api.slice(0, 3)).toEqual(['api', '--hostname', 'gitlab.example.com'])
     expect(api[3]).toMatch(/^projects\/group%2Fsub%2Fproj\/merge_requests\?/)
     expect(api[3]).toContain('state=all')
@@ -157,9 +186,35 @@ describe('the GitLab provider', () => {
       sha: 's',
     }))
     const glab = cannedGlab(many)
-    const prs = lookupPrs(repoWith(GITLAB), gitlabProvider(glab)).prs
-    expect(prs.size).toBe(300)
-    expect(glab.calls.filter((argv) => argv[0] === 'api')).toHaveLength(3)
+    const looked = lookupPrs(repoWith(GITLAB), gitlabProvider(glab))
+    expect(looked.prs.size).toBe(300)
+    // One page of open MRs (none), then three of every state.
+    expect(glab.calls.filter((argv) => argv[0] === 'api')).toHaveLength(4)
+    // Open MRs were all read, so a closed one past the cap is not a gap in the gate.
+    expect(looked.incomplete).toBeNull()
+  })
+
+  test('an open MR past the newest 300 is found, and a cap of open MRs is incomplete', () => {
+    const closed = Array.from({ length: 400 }, (_, i) => ({
+      iid: i + 2,
+      state: 'closed' as const,
+      source_branch: `b${i}`,
+      sha: 's',
+    }))
+    const old = { iid: 1, state: 'opened' as const, source_branch: 'old', sha: 'o' }
+    const glab = cannedGlab([...closed, old])
+    const looked = lookupPrs(repoWith(GITLAB), gitlabProvider(glab))
+    expect(looked.prs.get('old')?.state).toBe('OPEN')
+    expect(looked.incomplete).toBeNull()
+
+    const flooded = Array.from({ length: OPEN_PR_LIMIT }, (_, i) => ({
+      iid: i + 1,
+      state: 'opened' as const,
+      source_branch: `o${i}`,
+      sha: 's',
+    }))
+    const capped = lookupPrs(repoWith(GITLAB), gitlabProvider(cannedGlab(flooded)))
+    expect(capped.incomplete).toContain(`${OPEN_PR_LIMIT} or more open merge requests`)
   })
 
   test('a branch is sent as the exact source branch, and other heads are dropped', () => {
@@ -186,18 +241,119 @@ describe('the GitLab provider', () => {
         },
       },
     })
-    const github: ProviderStatus = {
-      ...GITLAB,
-      name: 'github',
-      tool: 'gh',
-      noun: 'PR',
-      listing: 'gh pr list',
-    }
-    const prs = lookupPrs(repoWith(github), githubProvider(gh), 'feat').prs
+    const prs = lookupPrs(repoWith(GITHUB), githubProvider(gh), 'feat').prs
     expect([...prs.keys()]).toEqual(['feat'])
     const list = calls.find((argv) => argv[1] === 'list')!
     expect(list[list.indexOf('--head') + 1]).toBe('feat')
     expect(list).not.toContain('--search')
+  })
+
+  test('GitHub is asked for the swept remote by host and project, not the one gh prefers', () => {
+    const canned = cannedGh([])
+    const client = new Gh('/srv/proj', { runner: canned })
+    lookupPrs(repoWith(GITHUB), githubProvider(client))
+    const lists = canned.calls.filter((argv) => argv[1] === 'list')
+    expect(lists).toHaveLength(2)
+    for (const list of lists) {
+      expect(list[list.indexOf('--repo') + 1]).toBe('github.example.com/fork-owner/proj')
+    }
+  })
+
+  test('a repository with no project in its URL is listed as gh would, with no --repo', () => {
+    const canned = cannedGh([])
+    lookupPrs(
+      repoWith({ ...GITHUB, host: null, project: null }),
+      githubProvider(new Gh('/srv/proj', { runner: canned })),
+    )
+    expect(canned.calls.find((argv) => argv[1] === 'list')).not.toContain('--repo')
+  })
+
+  test('an old open PR is found past 300 newer ones, and the open listing is whole', () => {
+    const old: CannedPr = { number: 1, state: 'OPEN', headRefName: 'old', headRefOid: 'o' }
+    const canned = cannedGh([...merged(400), old])
+    const looked = lookupPrs(
+      repoWith(GITHUB),
+      githubProvider(new Gh('/srv/proj', { runner: canned })),
+    )
+    expect(looked.prs.get('old')?.state).toBe('OPEN')
+    expect(looked.incomplete).toBeNull()
+  })
+
+  test('a full open listing is incomplete, so an unseen open PR cannot be ruled out', () => {
+    const open = Array.from({ length: OPEN_PR_LIMIT + 1 }, (_, i) => ({
+      number: i + 1,
+      state: 'OPEN' as const,
+      headRefName: `o${i}`,
+      headRefOid: 's',
+    }))
+    const looked = lookupPrs(
+      repoWith(GITHUB),
+      githubProvider(new Gh('/srv/proj', { runner: cannedGh(open) })),
+    )
+    expect(looked.error).toBeNull()
+    expect(looked.incomplete).toContain(`more than ${OPEN_PR_LIMIT} open PRs`)
+  })
+
+  test('a fork is incomplete: its PRs to the parent are not listed', () => {
+    const canned = cannedGh([], { fork: 'upstream-owner/proj' })
+    const looked = lookupPrs(
+      repoWith(GITHUB),
+      githubProvider(new Gh('/srv/proj', { runner: canned })),
+    )
+    expect(looked.incomplete).toContain('fork of upstream-owner/proj')
+    const api = canned.calls.find((argv) => argv[0] === 'api')!
+    expect(api).toContain('repos/fork-owner/proj')
+    expect(api).toContain('--hostname')
+  })
+
+  test('a host gh holds no credentials for, such as an SSH alias, is left to gh', () => {
+    const canned = cannedGh([], { signedInHosts: ['github.com'] })
+    const gh = new Gh('/srv/proj', { runner: canned })
+    lookupPrs(repoWith({ ...GITHUB, host: 'github-work' }), githubProvider(gh))
+    const list = canned.calls.find((argv) => argv[1] === 'list')!
+    expect(list[list.indexOf('--repo') + 1]).toBe('fork-owner/proj')
+  })
+
+  test('a fork probe that fails marks the listing incomplete, and is asked once per repository', () => {
+    const canned = cannedGh([], { apiFails: true })
+    const provider = githubProvider(new Gh('/srv/proj', { runner: canned }))
+    const first = lookupPrs(repoWith(GITHUB), provider)
+    lookupPrs(repoWith(GITHUB), provider, 'feat')
+    expect(first.incomplete).toContain('whether the repository is a fork could not be read')
+    expect(canned.calls.filter((argv) => argv[0] === 'api')).toHaveLength(1)
+  })
+
+  test('a fork with no parent name is still a fork', () => {
+    const canned = cannedGh([], { forkWithoutParent: true })
+    const looked = lookupPrs(
+      repoWith(GITHUB),
+      githubProvider(new Gh('/srv/proj', { runner: canned })),
+    )
+    expect(looked.incomplete).toContain('fork of its parent')
+  })
+
+  test('a branch with more than 300 PRs is incomplete, on both providers', () => {
+    const many = (n: number): CannedPr[] =>
+      Array.from({ length: n }, (_, i) => ({
+        number: i + 1,
+        state: 'CLOSED' as const,
+        headRefName: 'busy',
+        headRefOid: 's',
+      }))
+    const gh = lookupPrs(
+      repoWith(GITHUB),
+      githubProvider(new Gh('/srv/proj', { runner: cannedGh(many(301)) })),
+      'busy',
+    )
+    expect(gh.incomplete).toContain('more than 300 PRs have the head busy')
+    const mrs = Array.from({ length: 300 }, (_, i) => ({
+      iid: i + 1,
+      state: 'closed' as const,
+      source_branch: 'busy',
+      sha: 's',
+    }))
+    const gl = lookupPrs(repoWith(GITLAB), gitlabProvider(cannedGlab(mrs)), 'busy')
+    expect(gl.incomplete).toContain('more than 300 merge requests have the source branch busy')
   })
 
   test('a failed listing says why, whether the provider answers null or throws', () => {
@@ -206,6 +362,7 @@ describe('the GitLab provider', () => {
     }
     expect(lookupPrs(repoWith(GITLAB), gitlabProvider(failing))).toEqual({
       prs: new Map(),
+      incomplete: null,
       error: '401 Unauthorized',
     })
     const silent: PrProvider = { ...gitlabProvider(failing), listPrs: () => null }
@@ -229,6 +386,7 @@ describe('the GitLab provider', () => {
     }
     expect(lookupPrs(repoWith(GITLAB), throwing)).toEqual({
       prs: new Map(),
+      incomplete: null,
       error: 'GitHub has no such pull request, issue or repository, or you cannot see it.',
     })
     const unasked = lookupPrs(repoWith({ ...GITLAB, authenticated: false }), throwing)
@@ -263,6 +421,7 @@ describe('the GitLab provider', () => {
     const cut = { run: () => ({ exitCode: 0, stdout: page, stderr: '', outputIncomplete: true }) }
     expect(lookupPrs(repoWith(GITLAB), gitlabProvider(cut))).toEqual({
       prs: new Map(),
+      incomplete: null,
       error: 'page 1 was cut short',
     })
   })
