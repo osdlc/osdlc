@@ -28,7 +28,7 @@ returns findings, each with a finding id, a level and a line number.
 
 This is the Rust twin of the npm package
 [`@osdlc/markdown-contract`](https://www.npmjs.com/package/@osdlc/markdown-contract).
-It reads the same YAML contracts. A shared corpus checks that both give the
+It reads the same YAML contracts. A shared conformance suite checks that both give the
 same findings; see [Parity with the TypeScript package](#parity-with-the-typescript-package)
 for exactly what it checks.
 
@@ -112,23 +112,25 @@ in `DocTree::body` too.
 
 ## Parity with the TypeScript package
 
-Both packages are checked against one corpus of contracts, documents and
-expected findings: `packages/ts/markdown-contract/corpus/` in the
-[osdlc/osdlc](https://github.com/osdlc/osdlc) repository. This crate's
-`tests/corpus.rs` loads each shared contract, validates each document and
-compares the findings with the expected ones, as the TypeScript test does:
+Both packages run one conformance suite,
+`packages/conformance/markdown-contract/suite.json` in the
+[osdlc/osdlc](https://github.com/osdlc/osdlc) repository. Each case gives a
+YAML contract and a document. This crate's `tests/conformance.rs` loads the
+contract, validates the document and compares the findings with the expected
+ones. The TypeScript package writes the expected findings, and for each
+finding the crate must give the same:
 
 - the number of findings;
 - each finding id, in order;
-- the level, line and hint, where the expected file records them.
+- the level, the line and the hint.
 
 That is the whole claim. Message text, columns, `fix` edits and findings on
-documents outside the corpus are not checked. Fixtures that need custom `rule`
-or `docRule` functions cannot be written in YAML, so the corpus marks them
-TypeScript-only and the crate skips them.
+documents outside the suite are not checked. Fixtures that need custom `rule`
+or `docRule` functions cannot be written in YAML, so they stay in the
+TypeScript package's tests and the crate has no case for them.
 
-The crate and the package are versioned separately: crate 0.4.0 is checked
-against the corpus of `@osdlc/markdown-contract` 0.3. `comrak` is
+The crate and the package are versioned separately: crate 0.4.3 is checked
+against the suite as written by `@osdlc/markdown-contract` 0.7.8. `comrak` is
 pinned to an exact version: the line numbers come from its parser, and a
 release of `comrak` can move them.
 
@@ -167,7 +169,7 @@ trimming), which follow JavaScript.
 - Frontmatter YAML is parsed with `serde_yaml`, not the `yaml` package. A
   document whose frontmatter does not parse gets one `frontmatter/yaml`
   finding, where the TypeScript package can report several. Its message text
-  differs, and its line can differ in cases the corpus does not cover.
+  differs, and its line can differ in cases the suite does not cover.
 - A frontmatter finding on a value inside a flow collection (`{a: 1}`,
   `[1, 2]`) has no line, and unknown keys in a flow mapping are reported in
   sorted order rather than document order.

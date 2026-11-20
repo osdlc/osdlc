@@ -18,6 +18,9 @@ path, runs git there and returns a typed value or a `GitError`.
   (`diff_name_status`), the unified diff, optionally staged, with `--binary`,
   limited to paths (`diff_text`), and the merge base of two revisions
   (`merge_base`, `None` for unrelated histories).
+- `object`: many objects at once, byte for byte, through
+  `git cat-file --batch` (`cat_file_batch`, `cat_file_batch_chunks`), with a
+  size cap and groups of about `chunk_bytes`.
 - `commit`: commits of named paths only (`commit_only`), which leave other
   staged work alone, a commit of everything, a revert that stays inside the
   reverted commit's paths, and a push to the branch's upstream that never

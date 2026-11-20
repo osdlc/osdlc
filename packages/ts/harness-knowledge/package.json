@@ -48,7 +48,8 @@
     "CONTRIBUTING.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build:data": "node scripts/build-data.ts",
+    "build": "pnpm run build:data && tsc -p tsconfig.build.json",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "test": "vitest run",
     "coverage": "vitest run --coverage",
@@ -58,15 +59,16 @@
     "format:check": "prettier --check .",
     "lint": "oxlint .",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit",
-    "sync": "node scripts/sync.ts",
-    "check:data": "node scripts/sync.ts --check"
+    "check:release": "node scripts/check-release.ts"
   },
   "devDependencies": {
+    "@osdlc/corpus-schema": "workspace:^",
     "@osdlc/prettier-config": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "ajv": "^8.20.0",
+    "harness-reference": "workspace:^",
     "oxlint": "catalog:",
     "prettier": "catalog:",
     "typescript": "catalog:",
