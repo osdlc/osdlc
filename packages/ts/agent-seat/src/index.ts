@@ -25,6 +25,7 @@ import { makeJetbrainsHost, type JetbrainsSettings } from './hosts/jetbrains.ts'
 import { makeOrcaHost } from './hosts/orca.ts'
 import { makeOttyHost } from './hosts/otty.ts'
 import { terminalHost } from './hosts/terminal.ts'
+import { windowHost } from './hosts/window.ts'
 import { makeTmuxHost } from './hosts/tmux.ts'
 import { makeVscodeHost } from './hosts/vscode.ts'
 import { makeWeztermHost } from './hosts/wezterm.ts'
@@ -87,6 +88,14 @@ export { makeOttyHost } from './hosts/otty.ts'
 export { hostRegistryDir, type HostStateOptions } from './hosts/registry.ts'
 export { makeTerminalHost, terminalHost } from './hosts/terminal.ts'
 export {
+  makeTerminalAppOpener,
+  makeWindowHost,
+  terminalAppArgv,
+  windowHost,
+  windowShellCommand,
+  type WindowOpener,
+} from './hosts/window.ts'
+export {
   insideTmux,
   makeTmuxHost,
   tmuxAttachArgv,
@@ -135,5 +144,6 @@ export function hostRegistry(opts: HostRegistryOptions): HostRegistry {
     wezterm: makeWeztermHost({ runtimeDir }),
     vscode: makeVscodeHost({ runtimeDir }),
     jetbrains: makeJetbrainsHost({ runtimeDir, settings: opts.jetbrains }),
+    window: windowHost,
   }
 }

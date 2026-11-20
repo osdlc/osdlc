@@ -34,13 +34,18 @@ import {
   makeHerdrHost,
   makeOrcaHost,
   makeOttyHost,
+  makeTerminalAppOpener,
   makeTerminalHost,
   makeWeztermHost,
+  makeWindowHost,
   onPath,
   parseRolloutMeta,
   requirePart,
+  terminalAppArgv,
   terminalHost,
   walkRolloutFiles,
+  windowHost,
+  windowShellCommand,
   withEnv,
   wrapperSession,
   type ClaudeLaunchFlags,
@@ -60,6 +65,7 @@ import {
   type OpenWorkspaceQuery,
   type SendReceipt,
   type SendRequest,
+  type WindowOpener,
   type SessionRequest,
   type WaitRequest,
 } from '@osdlc/agent-seat'
@@ -174,6 +180,7 @@ describe('registry and state', () => {
         'tmux',
         'vscode',
         'wezterm',
+        'window',
       ].sort(),
     )
     expect(hostRegistryDir(runtimeDir, 'herdr')).toBe(join(runtimeDir, 'hosts', 'herdr'))
@@ -428,6 +435,36 @@ describe('otty host', () => {
     expect(calls[0]!.slice(0, 2)).toEqual(['tab', 'new'])
     expect(calls[0]!.join(' ')).toMatch(/--title review \[sd-i-review-1-[0-9a-f]{8}\]/)
     expect(makeOttyHost().name).toBe('otty')
+  })
+})
+
+describe('window host', () => {
+  test('a command opens in a new window and the call returns at once', () => {
+    const { runner, calls } = recorder(() => ok())
+    const window = makeWindowHost({ runner })
+    requirePart(window, 'terminal')({ cwd: '/work/repo', argv: ['claude'], title: 'review' })
+    expect(calls[0]).toContain('do script "cd /work/repo && claude"')
+    expect(windowShellCommand({ cwd: '/w', argv: ['ls'], title: 't' })).toBe('cd /w && ls')
+    expect(terminalAppArgv('ls', { focus: false })).not.toContain('activate')
+    expect(makeTerminalAppOpener({ exists: () => false }).available()).toBe(false)
+    expect(windowHost.name).toBe('window')
+  })
+
+  test('a caller-supplied opener launches another app', () => {
+    const { runner, calls } = recorder(() => ok())
+    const opener: WindowOpener = {
+      available: () => true,
+      argv: (shellCommand) => ['open-in-iterm', shellCommand],
+    }
+    requirePart(
+      makeWindowHost({ runner, opener }),
+      'terminal',
+    )({
+      cwd: '/w',
+      argv: ['claude'],
+      title: 't',
+    })
+    expect(calls[0]).toEqual(['cd /w && claude'])
   })
 })
 

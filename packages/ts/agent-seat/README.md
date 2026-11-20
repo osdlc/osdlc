@@ -8,8 +8,8 @@ answer it: a new terminal tab, a tmux session, a WezTerm pane, a VS Code
 terminal. Each of those places has its own CLI or protocol, its own way to
 name a pane, and its own failure modes. This package gives them one contract.
 
-- A **host** is one place a session can open. Nine are built in: `terminal`,
-  `tmux`, `wezterm`, `cmux`, `herdr`, `orca`, `otty`, `vscode` and `jetbrains`.
+- A **host** is one place a session can open. Ten are built in: `terminal`,
+  `tmux`, `wezterm`, `cmux`, `herdr`, `orca`, `otty`, `vscode`, `jetbrains` and `window`.
 - A **harness** is the agent CLI that runs in it: `claude`, `codex`, `cursor`,
   `pi` and `opencode` have an interactive launch.
 - The two are independent. Every host runs any harness, so where a session
@@ -99,6 +99,7 @@ Why the package has the shape it has, and the research on each host app, are in
 | `otty` | macOS | the otty app and its CLI | send, find, focus, capture, close |
 | `vscode` | all | a VS Code, Cursor or Windsurf window with the `sdlc-host` extension | send, find, focus, close |
 | `jetbrains` | macOS | a JetBrains IDE with the companion plugin, and `curl` | send, find, focus, open workspace |
+| `window` | macOS | Terminal.app, or an opener you supply for another app | none; opens a new window and returns |
 
 `host.platforms` and `supportsPlatform(host)` say where a host runs;
 `available()` says whether it can open a session right now.

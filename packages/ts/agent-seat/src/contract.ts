@@ -45,6 +45,7 @@ export const HOST_NAMES = [
   'wezterm',
   'vscode',
   'jetbrains',
+  'window',
 ] as const
 
 /**
