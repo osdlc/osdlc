@@ -30,6 +30,7 @@
   },
   "files": [
     "dist/",
+    "bin/",
     "README.md",
     "CHANGELOG.md",
     "LICENSE-MIT",
@@ -54,11 +55,12 @@
     "stamp-version": "cli-tool-stamp-version"
   },
   "dependencies": {
+    "@osdlc/cli-tool": "workspace:^",
     "@osdlc/repo-cleaner": "workspace:^",
+    "@osdlc/ux": "workspace:^",
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@osdlc/cli-tool": "workspace:^",
     "@osdlc/prettier-config": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
     "@osdlc/typed-git": "workspace:^",
@@ -68,5 +70,8 @@
     "prettier": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
+  },
+  "bin": {
+    "host-cleaner": "./bin/host-cleaner.js"
   }
 }

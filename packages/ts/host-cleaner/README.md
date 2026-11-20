@@ -7,12 +7,12 @@ receipt. The `git` plugin is [`@osdlc/repo-cleaner`](../repo-cleaner/README.md):
 its sweep supplies worktrees and branches, and its `removeCandidate` deletes them,
 under repo-cleaner's safety model.
 
-This release is the library and the `git` plugin. There is no command line yet.
+This release is the library, the `git` plugin and the `host-cleaner` command.
 
 ## Phases
 
 Plugins run in a fixed order: `git`, `cargo`, `node`, `claude-code`, `orca`, then
-any other in the order given. The order decides only who keeps a duplicate id.
+any other in the order given. The order decides which plugin keeps a duplicate id, and the order `prepare` and `deleted` run in.
 
 | Phase | Who | What |
 | --- | --- | --- |
@@ -65,6 +65,35 @@ blockers are `refuse` objections and its risks `protest`s, so
 freed by a worktree requires it. With `archive`, unlanded work is pushed to the
 remote first; a failed push throws `FatalRun`. Grant the named risks; the
 `discard-archived` cover is not yet offered here.
+
+## Command line
+
+```sh
+host-cleaner [target...]   # the report; deletes nothing
+host-cleaner plan -o plan.json
+host-cleaner clean [--plan plan.json] [--pick <id>] [--allow <code>] [--yes | --dry-run]
+```
+
+`--plugin <name>` runs only those plugins (`--adapter` is an alias) and
+`--skip-plugin <name>` never runs these. Targets default to the config file's
+`targets`, then the directory you are in. `clean` re-checks, shows the steps,
+asks (`--yes` skips the question; with no terminal and no `--yes` it exits 2),
+deletes, and writes one receipt to `--receipt` or the state directory's
+`receipts/`, plus a line in `logs/host-cleaner.log`.
+
+The config is `config.json` in the config directory (`HOST_CLEANER_ROOT` moves
+all three directories):
+
+```json
+{ "targets": ["~/dev"], "plugins": { "git": {} } }
+```
+
+`plugins.<name>` holds that plugin's settings; a name that no plugin has is an
+error.
+
+Exit codes: 0 done, declined or nothing to delete; 1 failed against the state
+found; 2 cannot run as typed; 10 nothing to sweep; 11 `clean` stopped at a
+failed step.
 
 ## Install
 

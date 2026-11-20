@@ -8,6 +8,9 @@
 // not a test-runner suite and is not in `files`.
 
 import { strict as assert } from 'node:assert'
+import { spawnSync } from 'node:child_process'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import {
   FatalRun,
@@ -47,5 +50,13 @@ const receipt = clean(plan(survey([cache], ctx)), [cache], ctx)
 assert.equal(receipt.status, 'complete')
 assert.deepEqual(log, ['artifact:c'])
 assert.ok(new FatalRun('x') instanceof Error)
+
+// The binary sits beside dist/ in the package, installed or not.
+const dist = dirname(fileURLToPath(import.meta.resolve('@osdlc/host-cleaner')))
+const bin = join(dist, '..', 'bin', 'host-cleaner.js')
+for (const args of [['--help'], ['--version']]) {
+  const r = spawnSync(process.execPath, [bin, ...args], { encoding: 'utf8' })
+  assert.equal(r.status, 0, `host-cleaner ${args.join(' ')}: ${r.stderr}`)
+}
 
 console.log('host-cleaner smoke: OK')
