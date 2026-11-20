@@ -133,6 +133,7 @@ describe('prRow', () => {
       baseRefName: 'main',
       headRefName: 'feature/add-retries',
       headRefOid: '6dcb09b5b57875f334f61aebed695e2e4193db5e',
+      baseRefOid: '0f4ff658a1c3e5d7b9a2c4e6f8091a2b3c4d5e6f',
       isCrossRepository: false,
       mergeable: 'MERGEABLE',
       mergeStateStatus: 'CLEAN',
