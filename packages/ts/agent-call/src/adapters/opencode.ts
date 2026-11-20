@@ -14,6 +14,7 @@ import {
   get,
   parseJsonLines,
   withStructured,
+  noteDroppedToolSet,
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
@@ -141,6 +142,7 @@ function planOpencode(
   }
 
   const permissions = spec.permissions
+  noteDroppedToolSet(notes, permissions?.tools, 'opencode has no flag to limit the built-in tools')
   if (permissions?.mode !== undefined && permissions.mode !== 'default') {
     env['OPENCODE_PERMISSION'] = JSON.stringify(PERMISSION_ENV[permissions.mode])
     note(
