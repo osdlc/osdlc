@@ -54,7 +54,7 @@ const found = survey([cache], ctx) // scope, discover, object
 const receipt = clean(plan(found), [cache], ctx) // re-check, prepare, delete, deleted
 ```
 
-Without a `pick`, a plan runs every candidate nothing objects to. With one, it
+Without a `pick`, a plan runs every candidate nothing objects to and no plugin holds for review. With one, it
 runs the named candidates, each judged by the rules above.
 
 ## The `git` plugin
@@ -74,8 +74,8 @@ Build caches fill agent machines, so two plugins list them. Both propose
 
 - `cargo`: a `target/` with a `CACHEDIR.TAG` whose newest file under
   `target/*/.fingerprint/` is at least `idleHours` old. Where incremental
-  builds are off (`CARGO_BUILD_INCREMENTAL`, else `cargo config get
-  build.incremental`), `target/*/incremental` is its own candidate.
+  builds are off (`CARGO_INCREMENTAL`, else `CARGO_BUILD_INCREMENTAL`, else `cargo config
+  get build.incremental`, which only nightly cargo answers), `target/*/incremental` is its own candidate.
 - `node`: `node_modules` of a linked worktree where nothing outside
   `node_modules`, `.git` and `target` changed for `idleHours`. A primary
   checkout is never proposed. A `.pnpm` tree frees less than it measures.
@@ -95,7 +95,8 @@ folder; `CLAUDE_CONFIG_DIR` moves it). A session is a process whose executable
 is `claude` or `claude.exe`, or `node` running a `claude` script, found with
 `ps` and its working directory with `lsof`. Each candidate carries a
 `close-session` protest and is never `unattended`, so a session closes only
-when picked and allowed by name:
+when picked and allowed by name. A session that host-cleaner itself runs
+inside (an ancestor of its process) is refused with `own-session`:
 
 ```sh
 host-cleaner clean --pick session:1234 --allow close-session

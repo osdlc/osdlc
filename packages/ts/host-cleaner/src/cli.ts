@@ -1,19 +1,4 @@
-/**
- * `host-cleaner`: machine cleanup over plugins.
- *
- *   host-cleaner [target...]   the report; deletes nothing
- *   host-cleaner plan          save the candidates and objections, to run later
- *   host-cleaner clean         check again, show the steps, ask, delete
- *
- * `--plugin` and `--skip-plugin` choose among the plugins (`--adapter` is an
- * alias of `--plugin`). Targets default to the config file's, then to the
- * directory you are in. See `config.ts` for where the config, receipts and log
- * live.
- *
- * Exit codes: 0 swept, or clean ran, was declined or had nothing to do; 1
- * failed against the state it found; 2 cannot run as typed; 10 nothing to
- * sweep; 11 clean stopped at a failed step; the receipt says which.
- */
+/** `host-cleaner`: report, plan, clean. Commands are in `reportCli`, exit codes in README.md, directories in `config.ts`. */
 
 import { appendFileSync, mkdirSync, readSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -55,7 +40,15 @@ import {
   uninstallSchedule,
   type ScheduleEnv,
 } from './schedule.ts'
-import { clean, orderPlugins, plan as makePlan, recheck, survey, type Decision } from './run.ts'
+import {
+  clean,
+  decidePlan,
+  orderPlugins,
+  plan as makePlan,
+  recheck,
+  survey,
+  type Decision,
+} from './run.ts'
 import type { Candidate, Ctx, Objection, Plugin } from './types.ts'
 
 const NAME = 'host-cleaner'
@@ -190,7 +183,7 @@ const cleanCli = () =>
     name: `${NAME} clean`,
     summary:
       'Delete what the sweep (or a saved plan) found: check each candidate again, show the steps, ' +
-      'ask, then delete. Without --pick, every candidate nothing objects to runs.',
+      'ask, then delete. Without --pick, every candidate nothing objects to and no plugin holds for review runs.',
     autoHelp: false,
     positionals: TARGETS,
     flags: {
@@ -332,6 +325,14 @@ function pluginsFor(v: SweepValues, config: Config, deps: MainDeps): Plugin[] {
   if (only?.includes('remote')) {
     throw new BadInput('remote branches are repo-cleaner’s: use `repo-cleaner --remote`')
   }
+  const gitSettings = config.plugins.git
+  if (
+    deps.plugins === undefined &&
+    gitSettings !== undefined &&
+    Object.keys(gitSettings).length > 0
+  ) {
+    throw new BadInput('config `plugins.git` is not read yet: the git plugin takes no settings')
+  }
   const all =
     deps.plugins ??
     Object.entries(FACTORIES).map(([name, make]) =>
@@ -427,13 +428,15 @@ function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps): numb
   let plan: Plan
   try {
     const config = loadConfig(v, ctx)
-    const s = survey(
-      pluginsFor(v, config, deps),
-      contextFor(parsed.positionals, config, ctx, v.allow),
-    )
+    const cctx = contextFor(parsed.positionals, config, ctx, v.allow)
+    const s = survey(pluginsFor(v, config, deps), cctx)
     writeWarnings(ctx, name, s.warnings)
     if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
-    plan = makePlan(s, { pick: v.pick.length > 0 ? v.pick : undefined, allow: v.allow })
+    plan = makePlan(s, {
+      targets: cctx.targets,
+      pick: v.pick.length > 0 ? v.pick : undefined,
+      allow: v.allow,
+    })
   } catch (err) {
     return refusal(ctx, name, err)
   }
@@ -521,21 +524,33 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   try {
     const config = loadConfig(v, ctx)
     plugins = pluginsFor(v, config, deps)
-    cctx = contextFor(parsed.positionals, config, ctx, v.allow)
     if (v.plan === undefined) {
+      cctx = contextFor(parsed.positionals, config, ctx, v.allow)
       const s = survey(plugins, cctx)
       writeWarnings(ctx, name, s.warnings)
       if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
-      plan = makePlan(s, { pick: v.pick.length > 0 ? v.pick : undefined, allow: v.allow, now })
+      plan = makePlan(s, {
+        targets: cctx.targets,
+        pick: v.pick.length > 0 ? v.pick : undefined,
+        allow: v.allow,
+        now,
+      })
       source = '(swept)'
-    } else if (v.plan === '-') {
-      plan = parsePlan((deps.readStdin ?? readAllStdin)(), 'stdin')
-      source = '(stdin)'
+      // Swept a moment ago: `clean` checks again before it deletes.
+      preview = decidePlan(plan)
     } else {
-      source = resolve(ctx.cwd, v.plan)
-      plan = readPlan(source)
+      if (v.plan === '-') {
+        plan = parsePlan((deps.readStdin ?? readAllStdin)(), 'stdin')
+        source = '(stdin)'
+      } else {
+        source = resolve(ctx.cwd, v.plan)
+        plan = readPlan(source)
+      }
+      cctx = { cwd: ctx.cwd, targets: plan.targets, allow: plan.allow }
+      const checked = recheck(plan, plugins, cctx)
+      writeWarnings(ctx, name, checked.survey.warnings)
+      preview = checked.decision
     }
-    preview = recheck(plan, plugins, cctx).decision
   } catch (err) {
     return refusal(ctx, name, err)
   }
@@ -570,8 +585,11 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   let receipt: Receipt
   try {
     mkdirSync(dirname(receiptPath), { recursive: true })
-    receipt = clean(plan, plugins, cctx, { source, receiptPath })
+    // Only what the person saw as `delete`: a block that clears while they decide must not add to it.
+    const approved = { ...plan, pick: preview.run.map((c) => c.id) }
+    receipt = clean(approved, plugins, cctx, { source, receiptPath })
   } catch (err) {
+    logRun(dirs.logs, { at: now.toISOString(), source, receipt: receiptPath, status: 'failed' })
     return refusal(ctx, name, err)
   }
   logRun(dirs.logs, { at: now.toISOString(), source, receipt: receiptPath, status: receipt.status })
@@ -750,7 +768,7 @@ function runSchedule(argv: readonly string[], ctx: CliContext, deps: MainDeps): 
   return EXIT.ok
 }
 
-/** `main(argv, ctx)`: returns an exit code, never exits. */
+/** Returns an exit code; never exits the process. */
 export function main(argv: readonly string[], ctx: CliContext, deps: MainDeps = {}): number {
   const [sub, ...rest] = argv
   if (sub === 'plan') return runPlan(rest, ctx, deps)

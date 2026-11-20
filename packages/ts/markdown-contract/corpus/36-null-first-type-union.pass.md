@@ -1,7 +1,0 @@
----
-supersededBy: null
----
-
-## Notes
-
-Text.

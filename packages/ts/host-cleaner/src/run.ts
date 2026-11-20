@@ -130,6 +130,7 @@ export function survey(all: readonly Plugin[], ctx: Ctx): Survey {
 export function plan(
   s: Pick<Survey, 'candidates' | 'objections' | 'warnings'>,
   opts: {
+    targets?: readonly string[] | undefined
     pick?: readonly string[] | undefined
     allow?: readonly string[] | undefined
     now?: Date
@@ -138,6 +139,7 @@ export function plan(
   return {
     version: PLAN_VERSION,
     createdAt: (opts.now ?? new Date()).toISOString(),
+    targets: [...(opts.targets ?? [])],
     pick: opts.pick === undefined ? null : [...opts.pick],
     allow: [...(opts.allow ?? [])],
     warnings: s.warnings,
@@ -154,8 +156,8 @@ export interface Decision {
 }
 
 /**
- * What runs. The picked ids, or without a pick every candidate nothing
- * objects to at `refuse` or `protest`. A refused candidate is dropped as
+ * What runs. The picked ids, or without a pick every candidate its owner has
+ * not marked `unattended: false` and nothing objects to at `refuse` or `protest`. A refused candidate is dropped as
  * `blocked`, an un-granted protest as `not-allowed`, an unknown pick as
  * `gone`. A candidate whose requirement does not run is dropped as `blocked`,
  * and so on up the chain. A `note` never gates.
@@ -177,8 +179,6 @@ export function decide(
     (byCandidate.get(id) ?? []).filter((o) => o.level === level)
   const unmet = (id: string): Objection[] =>
     gating(id, 'protest').filter((o) => !granted.has(o.code))
-  // With no pick, only what no owner has held back: an owner marks a candidate
-  // `unattended: false` when it wants a person to choose it.
   const ids =
     pick ??
     candidates
@@ -262,7 +262,7 @@ export function decidePlan(p: Plan): Decision {
  * Judge a plan against the world now. Surveys again and decides over the same
  * picks, so a refusal that appeared since is `blocked`, a protest nobody
  * granted `not-allowed`, a vanished candidate `gone`, and one whose evidence
- * moved (repo-cleaner's `sameFingerprint`) `changed`.
+ * moved `changed`.
  */
 export function recheck(
   p: Plan,
@@ -317,7 +317,7 @@ export function clean(
   try {
     checked = recheck(p, plugins, ctx)
   } catch (err) {
-    // A plugin that cannot be re-read still leaves a receipt saying nothing ran.
+    // A throw from the re-check still leaves a receipt saying nothing ran.
     if (opts.receiptPath !== undefined && opts.dryRun !== true) {
       const at = now().toISOString()
       try {

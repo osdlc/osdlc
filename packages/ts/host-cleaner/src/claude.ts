@@ -1,25 +1,9 @@
 /**
- * The `claude-code` plugin: Claude Code sessions that are still running,
- * and closing one on approval.
+ * The `claude-code` plugin: running Claude Code sessions, closed one at a time on approval.
  *
- * Detected when detect-harness reports Claude Code, or, with no report given,
- * when its config folder exists. The transcript folder is
- * `<config>/projects`, with the config folder from detect-harness, so
- * `CLAUDE_CONFIG_DIR` moves it.
- *
- * A session is a process whose executable, a path without spaces, is `claude` or `claude.exe` (or
- * `node` running a `claude` script). `ps -axo pid=,lstart=,command=` lists
- * them and `lsof -a -d cwd` reads each working directory. A shell wrapper such
- * as `/bin/sh .../node_modules/.bin/claude` is not one: its child is. Claude
- * Code puts no session id on its command line unless it was started with
+ * Claude Code puts no session id on its command line unless started with
  * `--resume <id>`, so `resumeId` is often null; the transcript is then the
- * newest in the project folder for the working directory, which is that
- * path with every character that is not a letter or digit turned into `-`.
- *
- * Every candidate carries a `close-session` protest and is never `unattended`.
- * `delete` checks the process is the same (start time and command),
- * sends SIGTERM through `kill`, and waits for it to exit. It never sends
- * SIGKILL: a session that ignores SIGTERM is reported as failed.
+ * newest one in the working directory's project folder (see `projectSlug`).
  */
 
 import { existsSync, readdirSync, realpathSync, statSync } from 'node:fs'
@@ -30,23 +14,22 @@ import { resolveConfigDir, type HarnessCatalog } from '@osdlc/detect-harness'
 import { nodeGuard } from '@osdlc/path-guard/node'
 
 import { checkoutsOf, envOf, type ArtifactOptions, type Env } from './artifacts.ts'
-import type { Candidate, Plugin } from './types.ts'
+import type { Candidate, Objection, Plugin } from './types.ts'
 
 export const CLAUDE_PLUGIN = 'claude-code'
 
 /** The risk a person grants by name before a session is closed. */
 export const CLOSE_SESSION = 'close-session'
 
-/** How long `execute` waits for a session to exit after SIGTERM. */
 const DEFAULT_WAIT_MS = 10_000
 const POLL_MS = 200
-/** The zone and locale `lstart` is read in, as repo-cleaner's process probe runs `ps`. */
+/** `ps` zone and locale for `lstart`; see `PS_ENV` in repo-cleaner/src/processes.ts. */
 const PS_ENV = { TZ: 'UTC', LC_ALL: 'C' } as const
 
 /** `<pid> <lstart: Wed Nov 18 23:37:21 2026> <command>` */
 const PS_LINE =
   /^\s*(\d+)\s+([A-Z][a-z]{2}\s+[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\d{4})\s+(.+?)\s*$/
-/** `claude` or `claude.exe` as a path or bare name, ending at a space or the end. */
+/** `claude` or `claude.exe`, bare or as a path without spaces, ending at a space or the end. */
 const CLAUDE_EXE = /^(?:\S*\/)?claude(?:\.exe)?(?=\s|$)/
 const NODE_CLAUDE = /^(?:\S*\/)?node\s+(?:\S*\/)?claude(?=\s|$)/
 /** A shell running a `claude` wrapper script is not the session; its child is. */
@@ -60,6 +43,8 @@ export interface ClaudeOptions extends ArtifactOptions {
   home?: string | undefined
   /** The OS temp directory a session's working directory counts as orphaned under. */
   tmp?: string | undefined
+  /** The pid whose ancestors are the sessions host-cleaner runs under. Defaults to this process. */
+  ownPid?: number | undefined
   /** How long to wait for a process to exit after SIGTERM, in ms. */
   waitMs?: number | undefined
   sleep?: ((ms: number) => void) | undefined
@@ -83,6 +68,8 @@ export interface SessionEvidence {
   lastWrite: string | null
   duplicateOf: number[]
   orphan: boolean
+  /** host-cleaner runs inside this session, so closing it would end the run. */
+  ownSession: boolean
   worktree: string | null
   unattended: false
 }
@@ -97,6 +84,7 @@ function canon(path: string): string {
 }
 
 const SLEEPER = new Int32Array(new SharedArrayBuffer(4))
+// Synchronous sleep: `execute` is sync.
 const pause = (ms: number): void => {
   Atomics.wait(SLEEPER, 0, 0, ms)
 }
@@ -199,6 +187,15 @@ function lastWriteMs(projects: string, cwd: string | null, resumeId: string | nu
   }
 }
 
+/**
+ * Lists each running Claude Code session as a `session:<pid>` candidate
+ * carrying a `close-session` protest; none is `unattended`. A session
+ * host-cleaner runs inside is refused.
+ *
+ * `delete` checks the pid still has the planned start time and command, sends
+ * SIGTERM and waits up to `waitMs` for it to exit. It never sends SIGKILL: a
+ * session still running after `waitMs` fails its step.
+ */
 export function claudeCodePlugin(options: ClaudeOptions = {}): Plugin {
   const tmp = canon(options.tmp ?? tmpdir())
   const waitMs = options.waitMs ?? DEFAULT_WAIT_MS
@@ -219,17 +216,41 @@ export function claudeCodePlugin(options: ClaudeOptions = {}): Plugin {
       const lsof = env
         .command('lsof')
         .run(['-n', '-P', '-a', '-d', 'cwd', '-Fpn', '-p', pids.join(',')], { cwd: '/' })
-      // lsof exits 1 when some pid is gone yet lists the rest.
+      // lsof exits 1 when some pid is gone yet lists the rest. With no lsof the
+      // output is empty, and every row reads its working directory as unreadable.
       return parseCwds(lsof.stdout)
     } catch {
-      // No lsof: the rows say the working directory is unreadable.
+      // A command seam that throws: treat as no lsof.
       return new Map()
     }
+  }
+
+  /** The pids from `ownPid` up through its parents. Throws when the process table cannot be read. */
+  const ancestorsOf = (env: Env): Set<number> => {
+    const ps = env.command('ps').run(['-axo', 'pid=,ppid='], { cwd: '/', env: PS_ENV })
+    if (ps.exitCode !== 0) {
+      throw new Error(`ps failed (exit ${ps.exitCode}): ${ps.stderr.trim() || 'no output'}`)
+    }
+    const parent = new Map<number, number>()
+    for (const line of ps.stdout.split('\n')) {
+      const m = /^\s*(\d+)\s+(\d+)\s*$/.exec(line)
+      if (m !== null) parent.set(Number(m[1]), Number(m[2]))
+    }
+    const chain = new Set<number>()
+    for (
+      let p: number | undefined = options.ownPid ?? process.pid;
+      p !== undefined && !chain.has(p);
+      p = parent.get(p)
+    ) {
+      chain.add(p)
+    }
+    return chain
   }
 
   const gather = (env: Env): Candidate[] => {
     const { projects } = locate(options)
     const procs = sessions(env)
+    const own = ancestorsOf(env)
     const cwds = cwdsOf(
       env,
       procs.map((p) => p.pid),
@@ -261,12 +282,14 @@ export function claudeCodePlugin(options: ClaudeOptions = {}): Plugin {
         lastWrite: written === null ? null : new Date(written).toISOString(),
         duplicateOf,
         orphan,
+        ownSession: own.has(p.pid),
         worktree,
         unattended: false,
       }
       const facts = [
         cwd === null ? 'working directory unreadable' : `in ${cwd}`,
         ...(orphan ? ['its directory is gone or temporary'] : []),
+        ...(own.has(p.pid) ? ['host-cleaner is running inside it'] : []),
         ...(duplicateOf.length > 0 ? [`also resumed by pid ${duplicateOf.join(', ')}`] : []),
         evidence.lastWrite === null ? 'no transcript found' : `last wrote ${evidence.lastWrite}`,
       ]
@@ -285,6 +308,7 @@ export function claudeCodePlugin(options: ClaudeOptions = {}): Plugin {
   const execute = (c: Candidate, env: Env): string => {
     const ev = c.evidence as unknown as SessionEvidence
     const { pid, startedAt } = ev
+    if (ancestorsOf(env).has(pid)) throw new Error(`pid ${pid} is the session host-cleaner runs in`)
     if (!env.probe.alive(pid, startedAt)) throw new Error(`pid ${pid} is no longer running`)
     const now = env
       .command('ps')
@@ -316,13 +340,26 @@ export function claudeCodePlugin(options: ClaudeOptions = {}): Plugin {
     object: (all) =>
       all
         .filter((c) => c.owner === CLAUDE_PLUGIN)
-        .map((c) => ({
-          by: CLAUDE_PLUGIN,
-          candidate: c.id,
-          level: 'protest' as const,
-          code: CLOSE_SESSION,
-          reason: 'ends a running coding-agent session',
-        })),
+        .flatMap((c): Objection[] => [
+          {
+            by: CLAUDE_PLUGIN,
+            candidate: c.id,
+            level: 'protest',
+            code: CLOSE_SESSION,
+            reason: 'ends a running coding-agent session',
+          },
+          ...((c.evidence as unknown as SessionEvidence).ownSession
+            ? [
+                {
+                  by: CLAUDE_PLUGIN,
+                  candidate: c.id,
+                  level: 'refuse' as const,
+                  code: 'own-session',
+                  reason: 'host-cleaner is running inside this session',
+                },
+              ]
+            : []),
+        ]),
     delete: (c, ctx) => execute(c, envOf(options, ctx)),
   }
 }
