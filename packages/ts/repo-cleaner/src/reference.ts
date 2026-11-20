@@ -58,7 +58,7 @@ const PLAN = `repo-cleaner plan [target...]
 
 const CLEAN = `repo-cleaner clean [target...]
   Sweeps (or reads --plan), checks every row again, shows the steps, asks, then
-  deletes, compare-and-swap, verifying each step and stopping at the first failure.
+  deletes, compare-and-swap, verifying each step. A failed step skips only the steps that depend on it.
   Without --pick it runs every row judged delete.
   --pick <row>            Work on exactly these rows. Narrows the run to them, and opts
                           in review rows and kept rows with an action (an open pull
@@ -160,7 +160,7 @@ const EXIT = `Exit codes
   1    failed against the state it found: an unreadable plan, a row not in it
   2    cannot run as typed: an unknown flag, a malformed row, a refused combination
   10   no target named a repository
-  11   clean stopped at a failed step; the receipt says which`
+  11   clean had a failed step; the receipt says which, and which steps it skipped`
 
 /** The extended help for each command: its own options, then the shared vocabulary. */
 export const REFERENCE = {

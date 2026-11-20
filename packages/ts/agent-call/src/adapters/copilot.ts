@@ -18,6 +18,7 @@ import {
   withStructured,
   commandPrefix,
   type CommandOptions,
+  noteDroppedToolSet,
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
@@ -145,6 +146,11 @@ function planCopilot(command: readonly string[], spec: AgentCallSpec): PlannedCa
   }
 
   const permissions = spec.permissions
+  noteDroppedToolSet(
+    notes,
+    permissions?.tools,
+    'copilot has no flag for an exact tool set; allowTools and denyTools are the closest',
+  )
   applyPermissionMode(argv, notes, permissions?.mode, {
     'read-only': {
       argv: ['--deny-tool=write'],

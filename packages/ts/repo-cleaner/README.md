@@ -195,8 +195,8 @@ stdout, and the totals line goes to stderr.
 ### `repo-cleaner clean`
 
 Sweeps (or reads `--plan`), checks every row again, shows the steps, asks,
-then deletes, compare-and-swap, verifying each step and stopping at the first
-failure. Without `--pick` it runs every row judged `delete`.
+then deletes, compare-and-swap, verifying each step. A failed step skips only
+the steps that depend on it (see below). Without `--pick` it runs every row judged `delete`.
 
 | Option | Meaning |
 | --- | --- |
@@ -464,6 +464,17 @@ tracks a branch on a remote, other than the default branch (a branch made
 with `--track` from `main` or `origin/main` does not count). With either, the worktree
 is `delete`; with neither (`null`) it stays `review`.
 
+A clean worktree whose HEAD is on a branch of the fetched remote is also
+`delete`, whatever its PR state short of an open one (which keeps it), because the remote holds every commit. The
+sweep must have fetched (`--remote` without `--offline`): a local sweep's
+remote-tracking refs may name branches the remote has deleted, so there the row
+keeps its verdict and a note says `--remote` would check. The default branch
+does not count, the branch needs the same sign of use as above, and a dirty
+worktree or one with submodule work is judged as before. `evidence.recoverableFrom`
+lists the remote branches (`origin/topic`) and is part of the plan's
+fingerprint. If a run also deletes every branch in that list, the worktree
+needs `--allow abandon-unmerged`, since the run would remove the last copy.
+
 Some worktrees are held back whatever their branch says and whatever is
 allowed. Each lands in `row.blockers`, the row's verdict is `blocked`, and it
 carries no command and no action:
@@ -598,8 +609,10 @@ reason, so a free-form reason such as `keep, build running` always blocks.
 - The owner is alive, or cannot be ruled out: `locked-worktree`.
 - A lock writes `pid <N>` and, to guard against pid reuse, `start <time>`. The
   time must be precise to the second: a full ISO-8601 timestamp with a time of
-  day and a zone (`2026-10-25T18:22:19Z`; one with no zone is not accepted), epoch seconds (9-10 digits), epoch milliseconds
-  (12-13 digits), or the `ps -o lstart` form (`Sat Oct 25 18:22:19 2026`). With
+  day and a zone (`2026-10-25T18:22:19Z`; one with no zone is not accepted),
+  epoch seconds (9-10 digits), epoch milliseconds (12-13 digits), or the
+  `ps -o lstart` form (`Sat Oct 25 18:22:19 2026`; matches when it is the real
+  start in some time zone, since the writer's zone is unknown). With
   one of those, a live pid whose own start time differs by more than two
   seconds is a reused pid and counts as dead. Anything else, a date alone, a
   short number or a partial date, cannot rule the owner out and the lock stays
@@ -612,7 +625,7 @@ reason, so a free-form reason such as `keep, build running` always blocks.
 - Before the unlock and again before the remove, `clean` asks again, and reads
   the process table afresh. If the owner is alive by then, or a process other
   than an idle shell works in the directory, or the table cannot be read, the
-  step fails and the run stops. A row dropped at the re-sweep touches nothing;
+  step fails, and the steps that depend on it are skipped. A row dropped at the re-sweep touches nothing;
   a step that fails at the unlock leaves the lock in place. `stale_lock` is part
   of a worktree row's fingerprint, so a lock taken after the plan was written
   drops the row too.
@@ -629,7 +642,10 @@ Both questions go to a `ProcessProbe` (`alive(pid, startedAt?)` and
 `holders(path, { fresh? })`), passed as `probe` in the options of `sweep`,
 `check` and `run`. The default, `defaultProcessProbe()`, runs
 `ps -o lstart=`, `ps -A -o pid=,ppid=` and `lsof -d cwd` through
-`@osdlc/command-seam`, and needs `ps` and `lsof` on `PATH`. It reads the
+`@osdlc/command-seam`, and needs `ps` and `lsof` on `PATH`. `alive` first asks
+`process.kill(pid, 0)`, so a gone pid costs no `ps`, and runs `ps` under
+`TZ=UTC` and `LC_ALL=C` so the start time is one instant (a DST fall-back
+cannot shift it). It reads the
 process table once per probe and reuses it for every worktree: `sweep` makes
 one probe per repository, and `run` uses one probe for its re-sweep and
 reads the table afresh for each pre-unlock and pre-remove check. Where the
@@ -875,14 +891,33 @@ plan's sweep did, so it judges against the same, current default branch.
 
 On yes it runs only the steps it showed: spared remote tips first, then
 worktrees, local branches and remote branches, in that order. Branch
-deletes are compare-and-swap, every step is verified, and the first failure
-stops the run. Every run ends with what it did:
+deletes are compare-and-swap and every step is verified.
+
+A step that fails is marked `failed`, and the steps that depend on it are
+marked `skipped`, with the failed step named in the receipt's `error`. Every
+other step runs, so one worktree that cannot be removed no longer leaves the
+rest undone.
+
+| Failed step | Skipped | Why |
+| --- | --- | --- |
+| `verify-remote` (a spared tip moved or is gone) | every later step: the run stops | the plan's premise no longer holds |
+| `unlock-worktree` | that row's `remove-worktree` or `prune-worktrees` | it is still locked |
+| `remove-worktree`, `prune-worktrees` | the `delete-branch` of the branch that worktree held, and a repository-wide prune | the branch was deletable only because its worktree was going; the prune counted on the removal |
+| `delete-branch` | the same branch's `delete-remote` in the same repository | the remote copy may be the one the plan relied on |
+| any | nothing in another repository, and no unrelated row | independent |
+
+A step skipped for a skipped step names the failed step at the root. The run
+still ends `failed` (exit `11`) when any step failed. Every run ends with what
+it did:
 
 ```text
 deleted: 1 worktree, 3 local branches, 2 remote branches, 1 stale worktree pruned
 skipped 2, not deleted: 1 needs-pick (name with --pick), 1 duplicate
 status: complete
 ```
+
+A run with a failure adds a line such as `9 steps ran, 1 failed, 2 skipped`; a
+run stopped by a spared tip says how many rows did not run instead.
 
 Two clones of one remote list the same remote branches; `clean` deletes each
 once and drops the other clone's row as `duplicate`, or as `spared` when the
@@ -903,7 +938,7 @@ that swept, or read its plan from stdin, writes a receipt only when
 | `1` | Failed against the state it found: an unreadable plan, a row not in it, a spared branch that moved |
 | `2` | Cannot run as typed: an unknown flag, a malformed row, a refused combination, `clean` with nobody to ask and no `--yes` |
 | `10` | Nothing to sweep: no target named a repository |
-| `11` | `clean` stopped at a failed step; the receipt says which |
+| `11` | `clean` had a failed step; the receipt says which, and which steps it skipped. A failed spared-tip check stops the run |
 
 ## As a library
 
@@ -991,8 +1026,21 @@ branch.
 
 | Provider | CLI | Listing |
 | --- | --- | --- |
-| `github` | `gh` | `gh pr list --state all`, up to 300 |
-| `gitlab` | `glab` | `glab api projects/<path>/merge_requests?state=all`, 100 a page, up to 300 |
+| `github` | `gh` | `gh pr list --repo <host>/<project>`: every open PR (up to 1000), then the newest 300 of any state |
+| `gitlab` | `glab` | `glab api projects/<path>/merge_requests`, 100 a page: every opened MR (up to 1000), then the newest 300 of any state |
+
+Open PRs are what gate a delete, so they are read on their own and an old open
+one is found however many newer PRs there are. Merged and closed PRs past the
+newest 300 are not read; they only prove that work landed, so a branch whose
+merged PR is that old falls back to ancestry or a patch match. A listing that
+stops at the open-PR cap is incomplete, and so is one for a fork on GitHub:
+the PRs a fork opened to its parent live in the parent, and are not listed.
+For an incomplete listing the repository carries a note, and a remote branch
+with no PR found needs `confirm-open-pr` to delete, as after a failed listing.
+
+The GitHub provider names the repository the sweep judges (`--repo`), not the
+one `gh` would pick from the checkout's remotes, which prefers `upstream` over
+`origin`.
 
 With `--remote`, `--provider auto` (the default) reads the remote's host: a
 remote that names no host (a local path or `file://`) gets no provider, since

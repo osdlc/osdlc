@@ -332,6 +332,9 @@ function providerNote(
   if (unchecked.kind === 'list-failed') {
     return `Listing ${status.noun}s with \`${status.listing}\` failed (${status.listError}); judged on git evidence alone.${hint}`
   }
+  if (unchecked.kind === 'incomplete') {
+    return `The ${status.noun} listing from \`${status.listing}\` is incomplete (${status.incomplete}), so a remote branch with no ${status.noun} found needs confirm-open-pr to delete.${hint}`
+  }
   if (!kinds.has('remote')) return null
   const fix =
     unchecked.kind === 'not-installed'
@@ -496,6 +499,8 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
       prs = looked.prs
       if (looked.error !== null) {
         repo = { ...repo, provider: { ...status, listError: looked.error } }
+      } else if (looked.incomplete !== null) {
+        repo = { ...repo, provider: { ...status, incomplete: looked.incomplete } }
       }
       const note = providerNote(repo, kinds, opts.provider)
       if (note !== null) notes.push(note)

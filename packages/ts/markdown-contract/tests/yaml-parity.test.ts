@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 import type { Finding } from '../src/core/types.js'
 import { loadContract } from '../src/declarative/index.js'
 import type { ConsumptionFixture, ValidationFixture } from './harness.js'
+import { TS_ONLY_URL, sharedCases } from './harness.js'
 
 /**
  * TS ⇄ YAML contract parity. Each fixture's `.contract.yaml` peer (the YAML form of its
@@ -54,17 +55,24 @@ function fixtures<T>(mods: Record<string, { default: T }>): Entry<T>[] {
     .sort((a, b) => a.stem.localeCompare(b.stem))
 }
 
-/** A fixture's `.contract.yaml` peer: in the shared corpus for validation, beside it otherwise. */
-const peerText = (key: string): string =>
-  readFileSync(
-    fileURLToPath(
-      new URL(
-        key.replace('./fixtures/validation/', '../corpus/').replace(/\.ts$/, '.contract.yaml'),
-        import.meta.url,
-      ),
-    ),
+/**
+ * A fixture's `.contract.yaml` peer. A shared validation fixture's peer is the `contract` input
+ * of its suite cases, which are named `<stem>.<case>.md`. A TypeScript-only validation fixture's
+ * peer is in `tests/fixtures/ts-only/`. A consumption fixture's peer sits beside it.
+ */
+const peerText = (key: string): string => {
+  const stem = key.slice(key.lastIndexOf('/') + 1).replace(/\.ts$/, '')
+  if (key.startsWith('./fixtures/validation/')) {
+    for (const [name, c] of sharedCases) {
+      if (name.startsWith(`${stem}.`)) return c.input['contract'] as string
+    }
+    return readFileSync(new URL(`${stem}.contract.yaml`, TS_ONLY_URL), 'utf8')
+  }
+  return readFileSync(
+    fileURLToPath(new URL(key.replace(/\.ts$/, '.contract.yaml'), import.meta.url)),
     'utf8',
   )
+}
 
 /** Whether a fixture's `.contract.yaml` peer exists on disk. */
 const hasPeer = (key: string): boolean => {

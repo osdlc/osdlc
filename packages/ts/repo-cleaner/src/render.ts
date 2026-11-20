@@ -367,9 +367,11 @@ export interface RunSummary {
   pruned: number
   /** Dropped rows by reason. */
   dropped: Record<string, number>
-  /** Steps that failed: 0 or 1, since the first failure stops the run. */
+  succeeded: number
   failed: number
-  /** Row steps never reached because a step failed. */
+  /** Steps not run because a step they depend on failed. */
+  skipped: number
+  /** Row steps never reached because a spared tip check failed and stopped the run. */
   notRun: number
 }
 
@@ -383,12 +385,16 @@ export function summarizeRun(r: {
     gone: 0,
     pruned: 0,
     dropped: {},
+    succeeded: 0,
     failed: 0,
+    skipped: 0,
     notRun: 0,
   }
   for (const d of r.dropped) out.dropped[d.reason] = (out.dropped[d.reason] ?? 0) + 1
   for (const s of r.steps) {
     if (s.result === 'failed') out.failed += 1
+    if (s.result === 'skipped') out.skipped += 1
+    if (s.result === 'ok') out.succeeded += 1
     if (s.result === 'pending') {
       // Rows not reached are rows a run would have deleted; an unlock or a
       // tip check deletes nothing.
@@ -461,8 +467,13 @@ export function renderRunSummary(
     })
     lines.push(`skipped ${total}, not deleted: ${counts.join(', ')}`)
   }
-  if (s.failed > 0)
-    lines.push(`stopped at a failed step; ${plural(s.notRun, 'row', 'rows')} not run`)
+  if (s.failed > 0) {
+    lines.push(
+      s.notRun > 0
+        ? `stopped at a failed step; ${plural(s.notRun, 'row', 'rows')} not run`
+        : `${plural(s.succeeded, 'step', 'steps')} ran, ${s.failed} failed, ${s.skipped} skipped`,
+    )
+  }
   return lines
 }
 
@@ -482,7 +493,7 @@ function resultWord(step: Step, style: Style): string {
   const word = step.result.padEnd(8)
   if (step.result === 'failed') return style.delete(word)
   if (step.result === 'ok') return style.keep(word)
-  if (step.result === 'pending') return style.muted(word)
+  if (step.result === 'pending' || step.result === 'skipped') return style.muted(word)
   return step.action === 'prune-worktrees' ? style.prune(word) : style.delete(word)
 }
 
