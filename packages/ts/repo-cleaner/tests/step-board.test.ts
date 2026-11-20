@@ -37,6 +37,12 @@ describe('boardLines', () => {
     expect(lines[2]).toMatch(/ 2\/2$/)
   })
 
+  test('a skipped step is dimmed and counts as done', () => {
+    const lines = boardLines([step('a', 'ok'), step('b', 'skipped')], null, SIZE)
+    expect(lines[1]).toBe('  ░░░░░░░░░░ - delete  branch:b')
+    expect(lines[2]).toMatch(/ 2\/2$/)
+  })
+
   test('a list taller than the terminal shows a window around the running step', () => {
     const steps = Array.from({ length: 30 }, (_, i) => step(`b${i}`, i < 20 ? 'ok' : 'pending'))
     const lines = boardLines(steps, 20, { width: 80, height: 9 })

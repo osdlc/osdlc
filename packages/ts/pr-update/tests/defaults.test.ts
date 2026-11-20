@@ -33,6 +33,18 @@ describe('commandRepair', () => {
     expect(JSON.parse(readFileSync(join(dir, 'req.json'), 'utf8'))).toEqual(request())
   })
 
+  test('a rebase stop adds the commit being replayed to the environment', async () => {
+    const repair = commandRepair(
+      'echo "${PR_UPDATE_COMMIT-unset} ${PR_UPDATE_COMMIT_SUBJECT-unset} ${PR_UPDATE_ONTO-unset}"',
+    )
+    const replaying = { sha: 'abc123', subject: 'add a', onto: 'main' }
+    expect(await repair({ ...request(), replaying })).toEqual({
+      ok: true,
+      note: 'abc123 add a main',
+    })
+    expect(await repair(request())).toEqual({ ok: true, note: 'unset unset unset' })
+  })
+
   test('a non-zero exit is a failed repair, with its last line as the note', async () => {
     const repair = commandRepair('echo trying; echo "cannot fix" >&2; exit 3')
     expect(await repair(request())).toEqual({ ok: false, note: 'trying' })

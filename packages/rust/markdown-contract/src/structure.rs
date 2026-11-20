@@ -841,8 +841,8 @@ pub fn scan_heading_depth_jumps(root: &SectionNode, ctx: &Ctx) -> Vec<Finding> {
 //
 // Each test is one fixture from `packages/ts/markdown-contract/tests/fixtures/validation/`: the same
 // contract (built programmatically), the same verbatim markdown, and the fixture's
-// pinned `{id, level?, line?}` expectations. The shared corpus harness over the
-// `.expected.json` goldens (`tests/corpus.rs`) pins the declarative path; these
+// pinned `{id, level?, line?}` expectations. The conformance suite
+// (`tests/conformance.rs`) pins the declarative path; these
 // inline ports pin the programmatic builder path.
 
 #[cfg(test)]

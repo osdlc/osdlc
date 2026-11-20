@@ -14,6 +14,13 @@ describe('templateAdapter', () => {
     expect(planned.stdin).toBeUndefined()
   })
 
+  test('notes permissions.tools as dropped', () => {
+    const planned = grok.plan({ prompt: 'p', model: 'grok-4', permissions: { tools: [] } })
+    expect(planned.notes).toContainEqual(
+      expect.objectContaining({ field: 'permissions.tools', support: 'dropped' }),
+    )
+  })
+
   test('leaves an argument that only looks like a slot as written', () => {
     const odd = templateAdapter({
       name: 'odd',

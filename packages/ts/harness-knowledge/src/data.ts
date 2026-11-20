@@ -1,16 +1,21 @@
-import { readFileSync } from 'node:fs'
+import knowledge from '../data/harness-knowledge.json' with { type: 'json' }
 
 import type { Knowledge } from './knowledge.js'
 
-let cached: Knowledge | undefined
-
-/** Where the shipped `data/` folder is, from both `src/` and `dist/`. */
+/**
+ * Where the shipped `data/` folder is when this package is loaded from `node_modules`. Nothing
+ * here reads it: a bundle's `import.meta.url` is the bundle, so a path built from it points at
+ * nothing.
+ *
+ * @deprecated Import `@osdlc/harness-knowledge/data/harness-knowledge.json`, or call
+ * {@link loadKnowledge}.
+ */
 export const DATA_DIR = new URL('../data/', import.meta.url)
 
-/** The compiled knowledge file shipped with this package. Read once, then cached. */
+/**
+ * The compiled knowledge file shipped with this package. It is a JSON module, so a bundler
+ * inlines it and Node loads it from the package.
+ */
 export function loadKnowledge(): Knowledge {
-  cached ??= JSON.parse(
-    readFileSync(new URL('harness-knowledge.json', DATA_DIR), 'utf-8'),
-  ) as Knowledge
-  return cached
+  return knowledge as unknown as Knowledge
 }

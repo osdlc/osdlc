@@ -2,10 +2,10 @@
 //! (`packages/ts/agent-router`), so a Rust host resolves the same references and
 //! profiles as a TypeScript one.
 //!
-//! The TypeScript package is the reference. It emits JSON fixture vectors
-//! (`packages/ts/agent-router/fixtures`), and this crate's tests read the same
-//! files: a vector is `{ name, input, expected }` and the Rust result must
-//! equal `expected`.
+//! The TypeScript package is the reference. The conformance suite
+//! (`packages/conformance/agent-router/`) holds the cases both implementations
+//! run: a case is `{ name, input, expect }` and the Rust result must equal
+//! `expect`.
 //!
 //! Not mirrored: the author rule, the `config` subpath and the models.dev fetch; see the
 //! README.
