@@ -1390,6 +1390,10 @@ function rowOfCandidate(c: CleanCandidate): Row {
  * first failure. The caller has already re-checked the candidate; this
  * refuses only what is unsafe now.
  *
+ * A worktree whose removal needs `git worktree prune` is refused when the
+ * prune would also drop another worktree of its repository, since this sees
+ * only the one row.
+ *
  * Does not throw for a refused or failed delete: see `CandidateRemoval`.
  */
 export function removeCandidate(

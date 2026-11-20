@@ -5,7 +5,7 @@
  * `node_modules` is a candidate when no process works in the worktree and its
  * newest file outside `node_modules`, `.git` and `target` is older than the
  * threshold. The primary checkout's `node_modules` is never a row.
- * Settings: `plugins.node.idleHours` (default 24).
+ * Settings: `plugins.node.idleHours` (default {@link DEFAULT_IDLE_HOURS}).
  */
 
 import { existsSync } from 'node:fs'

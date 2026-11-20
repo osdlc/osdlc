@@ -74,8 +74,8 @@ Build caches fill agent machines, so two plugins list them. Both propose
 
 - `cargo`: a `target/` with a `CACHEDIR.TAG` whose newest file under
   `target/*/.fingerprint/` is at least `idleHours` old. Where incremental
-  builds are off (`CARGO_BUILD_INCREMENTAL`, else `cargo config get
-  build.incremental`), `target/*/incremental` is its own candidate.
+  builds are off (`CARGO_INCREMENTAL`, else `CARGO_BUILD_INCREMENTAL`, else `cargo config
+  get build.incremental`, which only nightly cargo answers), `target/*/incremental` is its own candidate.
 - `node`: `node_modules` of a linked worktree where nothing outside
   `node_modules`, `.git` and `target` changed for `idleHours`. A primary
   checkout is never proposed. A `.pnpm` tree frees less than it measures.

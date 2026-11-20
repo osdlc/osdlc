@@ -35,14 +35,17 @@ const HOUR = 3_600_000
 const ago = (hours: number): Date => new Date(NOW.getTime() - hours * HOUR)
 
 const cleanups: Array<() => void> = []
-let savedEnv: string | undefined
+const INCREMENTAL_VARS = ['CARGO_INCREMENTAL', 'CARGO_BUILD_INCREMENTAL'] as const
+let savedEnv: Array<string | undefined> = []
 beforeEach(() => {
-  savedEnv = process.env.CARGO_BUILD_INCREMENTAL
-  delete process.env.CARGO_BUILD_INCREMENTAL
+  savedEnv = INCREMENTAL_VARS.map((k) => process.env[k])
+  for (const k of INCREMENTAL_VARS) delete process.env[k]
 })
 afterEach(() => {
-  if (savedEnv === undefined) delete process.env.CARGO_BUILD_INCREMENTAL
-  else process.env.CARGO_BUILD_INCREMENTAL = savedEnv
+  INCREMENTAL_VARS.forEach((k, i) => {
+    if (savedEnv[i] === undefined) delete process.env[k]
+    else process.env[k] = savedEnv[i]
+  })
   while (cleanups.length > 0) cleanups.pop()!()
 })
 
@@ -214,6 +217,15 @@ describe('cargo plugin', () => {
     expect(cargo(root).candidates).toHaveLength(1)
     process.env.CARGO_BUILD_INCREMENTAL = 'true'
     expect(cargo(root, { command: fakeCargo({ incremental: false }) }).candidates).toEqual([])
+  })
+
+  test('CARGO_INCREMENTAL decides before CARGO_BUILD_INCREMENTAL', () => {
+    const root = repo()
+    target(root, 1)
+    put(join(root, 'target', 'debug', 'incremental', 'work'), 1)
+    process.env.CARGO_INCREMENTAL = '0'
+    process.env.CARGO_BUILD_INCREMENTAL = 'true'
+    expect(cargo(root).candidates).toHaveLength(1)
   })
 
   test('an idle target/ is one candidate; its incremental directories go with it', () => {
