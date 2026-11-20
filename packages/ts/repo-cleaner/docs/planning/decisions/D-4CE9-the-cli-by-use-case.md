@@ -13,6 +13,8 @@ The CLI grew one flag at a time, and it shows. "Remote" means three things
 (judge remote branches, use the network, look up pull requests), `--only`
 takes a comma list of internal kind names, and there is no single obvious
 way to say "clean my local branches", "clean the remote" or "clean both".
+And a bare `repo-cleaner` quietly runs one phase, the report, so a first
+run never learns that there are phases at all.
 
 This record designs the CLI from what people come to it to do, ignoring
 the current flags, then maps the current CLI onto it. Each use case below is
@@ -21,35 +23,46 @@ documentation and the behaviour cannot drift apart.
 
 ## The model in one paragraph
 
-`repo-cleaner` looks at a repository and sorts what can go into four
-verdicts: `delete` (its work is already on the default branch), `review`
-(unclear), `keep` (still in use) and `blocked` (cannot be removed). Looking
-never deletes anything. `repo-cleaner clean` deletes the `delete` rows, after
-showing them and asking. Everything else is a question of **where** to look
-(which repositories), **what** to clean (worktrees, local branches, remote
+`repo-cleaner` works in named phases, and does nothing until one is named.
+`report` looks at a repository and sorts what can go into four verdicts:
+`delete` (its work is already on the default branch), `review` (unclear),
+`keep` (still in use) and `blocked` (cannot be removed). `plan` saves what
+the report found, to run later or hand to someone. `clean` deletes the
+`delete` rows, after checking them again, showing them and asking. Only
+`clean` deletes. Everything else is a question of **where** to look (which
+repositories), **what** to clean (worktrees, local branches, remote
 branches), **how sure** to be (the network, pull requests) and **which rows**
 to act on.
 
+| Phase | Command | Deletes? |
+|---|---|---|
+| Look | `repo-cleaner report` | Never |
+| Save (optional) | `repo-cleaner plan` | Never |
+| Delete | `repo-cleaner clean` | Only what is safe, after asking |
+
 ## How it works
 
-A run has two halves. Looking is the same for every command; only `clean`
-goes on to delete, and it checks everything again first.
+Every phase looks the same way. `report` stops there, `plan` saves what it
+found, and only `clean` goes on to delete, checking everything again first.
+With no phase named, nothing runs.
 
 ```mermaid
 %%{init: {"flowchart": {"wrappingWidth": 420}}}%%
 flowchart TD
-    start(["repo-cleaner [clean] [target...]"]) --> find["Find the repositories:<br/>a checkout is itself, a directory is searched,<br/>a remote URL is cloned into a cache"]
+    start(["repo-cleaner"]) --> named{"A phase named?"}
+    named -->|"no"| intro(["Explain the phases and how to run each.<br/>Nothing runs"])
+    named -->|"report, plan or clean"| find["Find the repositories:<br/>a checkout is itself, a directory is searched,<br/>a remote URL is cloned into a cache"]
     find --> rows["Gather the rows in scope:<br/>worktrees, local branches, remote branches"]
     rows --> judge["Judge each row on its evidence<br/>(see the next chart)"]
-    judge --> report["Report: verdict, reason, and the git command<br/>that would delete it"]
-    report --> isclean{"clean?"}
-    isclean -->|"no"| done(["Done. Nothing deleted"])
-    isclean -->|"yes"| select["Select the rows: every delete row,<br/>plus review rows you --pick,<br/>minus rows you --spare"]
+    judge --> phase{"Which phase?"}
+    phase -->|"report"| report(["Show each row: verdict, reason,<br/>and the git command that would delete it.<br/>Nothing deleted"])
+    phase -->|"plan"| plan(["Save the rows and their evidence to a plan file,<br/>for clean --plan later. Nothing deleted"])
+    phase -->|"clean"| select["Select the rows: every delete row,<br/>plus review rows you --pick,<br/>minus rows you --spare"]
     select --> risk{"Risk not<br/>allowed?"}
     risk -->|"yes"| skip(["Skipped. Never deleted"])
     risk -->|"no"| show["Show the steps"]
     show --> confirm{"Go ahead?"}
-    confirm -->|"--dry-run, or no<br/>at the prompt"| done
+    confirm -->|"--dry-run, or no<br/>at the prompt"| done(["Done. Nothing deleted"])
     confirm -->|"-y, or yes"| recheck["Check the row again,<br/>against the repository as it is now"]
     recheck -->|"changed"| skip
     recheck -->|"unchanged"| act["Delete it, only if it still points<br/>at the commit that was checked"]
@@ -85,12 +98,38 @@ flowchart TD
 Each use case is a sentence a person would say, the command, and what
 happens. A `$` line is a command to type.
 
+### Starting out
+
+**U0. "What is this, and how do I use it?"**
+
+```console
+$ repo-cleaner
+repo-cleaner finds worktrees and branches whose work has landed, and deletes them safely.
+
+It works in phases. Nothing is deleted until clean, and only what is safe.
+
+  1. report   Look: each worktree and branch, with a verdict and the reason.
+                $ repo-cleaner report            this repository
+                $ repo-cleaner report --all      local and remote branches
+  2. plan     Optional: save what the report found, to run later or hand on.
+                $ repo-cleaner plan --all > plan.json
+  3. clean    Delete what is safe: checks each row again, shows the steps, asks.
+                $ repo-cleaner clean             asks first
+                $ repo-cleaner clean -y          does not ask
+
+Nothing ran. Name a phase; `repo-cleaner <phase> --help` shows its options.
+```
+
+Exits 2, so a script that expected a report from the bare command fails
+loudly instead of quietly getting none. `repo-cleaner --help` prints the
+same overview with the shared options, and exits 0.
+
 ### Looking
 
 **U1. "What can I clean up here?"**
 
 ```console
-$ repo-cleaner
+$ repo-cleaner report
 ```
 
 Reports this repository's worktrees and local branches, with a verdict, the
@@ -100,8 +139,8 @@ directory inside the checkout.
 **U2. "…and on the remote too."**
 
 ```console
-$ repo-cleaner --remote        # remote branches only
-$ repo-cleaner --all           # local and remote
+$ repo-cleaner report --remote   # remote branches only
+$ repo-cleaner report --all      # local and remote
 ```
 
 Fetches first and looks up pull requests, because a remote branch can only
@@ -110,7 +149,7 @@ be judged against the remote as it is now.
 **U3. "Across every project I have."**
 
 ```console
-$ repo-cleaner ~/Developer
+$ repo-cleaner report ~/Developer
 ```
 
 A directory that is not a checkout is searched for checkouts. Every command
@@ -219,7 +258,7 @@ the repository as it is then, and drops any that changed.
 **U13. "An agent or a script needs to read it."**
 
 ```console
-$ repo-cleaner --json
+$ repo-cleaner report --json
 $ repo-cleaner clean --all -y --json
 ```
 
@@ -229,7 +268,7 @@ exit codes that say what happened (below).
 **U14. "No network."**
 
 ```console
-$ repo-cleaner --all --offline
+$ repo-cleaner report --all --offline
 ```
 
 Judges from what is on disk. `clean` of remote branches still asks the
@@ -246,9 +285,10 @@ Remote branches only, through a clone kept in a cache.
 ## The grammar
 
 ```text
-repo-cleaner         [target...] [scope] [network] [output]            look
-repo-cleaner clean   [target...] [scope] [network] [select] [confirm]  delete
+repo-cleaner                                                           explain the phases; run nothing
+repo-cleaner report  [target...] [scope] [network] [output]            look
 repo-cleaner plan    [target...] [scope] [network]                     save a plan
+repo-cleaner clean   [target...] [scope] [network] [select] [confirm]  delete
 repo-cleaner cache   [list | remove <url>...]                          the clone cache
 ```
 
@@ -266,8 +306,9 @@ or just `<name>` when that is unambiguous.
 
 ### Rules that keep it safe
 
-1. Looking never deletes. Only `clean` does, and only `delete` rows, unless
-   a `review` row is picked.
+1. Nothing runs until a phase is named. `report` and `plan` never delete.
+   Only `clean` does, and only `delete` rows, unless a `review` row is
+   picked.
 2. A risk is never accepted by default; it is named with `--allow`.
 3. `clean` re-checks every row just before acting, and each delete is
    compare-and-swap on the commit it saw.
@@ -282,7 +323,7 @@ or just `<name>` when that is unambiguous.
 |---|---|
 | 0 | Looked, or cleaned, or nothing to do, or the prompt was declined |
 | 1 | The state found refused it: an unreadable plan, a row not in it |
-| 2 | Cannot run as typed: an unknown flag, a refused combination |
+| 2 | Cannot run as typed: no phase named, an unknown flag, a refused combination |
 | 10 | No target named a repository |
 | 11 | A step failed; the receipt says which, and what was skipped because of it |
 
@@ -290,7 +331,7 @@ or just `<name>` when that is unambiguous.
 
 | 0.20 | Proposed | Note |
 |---|---|---|
-| `repo-cleaner` | same | |
+| `repo-cleaner` (runs the report) | `repo-cleaner report` | **Breaking:** the bare command explains the phases, runs nothing and exits 2. |
 | `--remote` (adds remote branches) | `--all` | **Breaking:** `--remote` now means remote branches only. Safe direction: a script that passed `--remote` cleans less, not more. |
 | `--only remote` | `--remote` | |
 | `--only worktree,branch` | `--local` (default) | |
@@ -324,9 +365,9 @@ or just `<name>` when that is unambiguous.
    merged on the remote since the last fetch reads as unmerged. That is safe
    (it is kept) but incomplete. Fetching every time is slower and needs the
    network. The proposal keeps local offline and adds `--fetch`.
-3. **Keep the bare command as the report,** or name it (`repo-cleaner
-   status`)? The proposal keeps the bare command and accepts `status` as an
-   alias.
+3. **The look phase's name.** `report` matches what the docs already call
+   its output. `status` is familiar from git; `scan` says what it does. The
+   proposal uses `report`.
 4. **`-i` now or later.** It is the most useful addition for people and the
    least for agents.
 
