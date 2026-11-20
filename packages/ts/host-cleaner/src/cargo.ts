@@ -51,7 +51,9 @@ function cargoOnPath(env: Env): boolean {
  * answer that cannot be read counts as on, so no row is made.
  */
 export function incrementalOff(env: Env, checkout: string): boolean {
-  const setting = process.env.CARGO_BUILD_INCREMENTAL?.trim().toLowerCase()
+  const setting = (process.env.CARGO_INCREMENTAL ?? process.env.CARGO_BUILD_INCREMENTAL)
+    ?.trim()
+    .toLowerCase()
   if (setting === 'false' || setting === '0') return true
   if (setting === 'true' || setting === '1') return false
   try {

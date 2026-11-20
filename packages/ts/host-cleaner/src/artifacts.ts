@@ -220,7 +220,7 @@ export function artifactRow(owner: string, f: ArtifactFacts, now: Date): Row {
       owner,
       why: f.why,
       bytes: sizeBytes,
-      unattended: f.idle,
+      unattended: blockers.length === 0 && f.idle,
       evidence: {
         kind: f.kind,
         path: f.path,
@@ -229,6 +229,7 @@ export function artifactRow(owner: string, f: ArtifactFacts, now: Date): Row {
         idleHours,
         newestMtimeMs: f.newestMtimeMs,
         unattended: blockers.length === 0 && f.idle,
+        notes: f.notes ?? [],
       },
     },
   }
