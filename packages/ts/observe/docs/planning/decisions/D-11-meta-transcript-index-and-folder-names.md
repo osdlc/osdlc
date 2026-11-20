@@ -53,7 +53,7 @@ created: 2026-10-19
   same `events.jsonl`: a later process, a resume, a hook reporter, another
   machine. A process that is a new session writes its own `launched` event in
   its own directory, with its own meta.
-- The record gains `meta?: M`, and `projection`, an integer revision of the model that
+- The record gains `meta?: M`, and `projectionRevision`, an integer revision of the model that
   projected it (see Consequences).
 - `meta` is for the caller's own fields only. The fields observe already
   defines, such as `run`, `subject`, `task` and `parent`, stay where they are,
@@ -72,7 +72,9 @@ created: 2026-10-19
   reducer validates it against the reading model's schema. A `launched` event
   whose meta fails a newer schema still yields a record without `meta`, and its
   index is reported as `invalid_meta`. A schema change never makes a session
-  vanish. The README advises adding keys as optional.
+  vanish. A `meta_updated` merges over the record's own meta, which is absent
+  after a failed launch, so a session recovers when an update supplies every
+  required key. The README advises adding keys as optional.
 
 ### Transcript index
 
@@ -81,8 +83,9 @@ created: 2026-10-19
   The coverages are ordered `unavailable` < `partial` < `complete`.
 - observe owns this vocabulary on disk. agent-call D-10 returns the same three
   values from its own identical union, because neither package depends on the
-  other. Each package's tests pin the three values in that order, so a change
-  to one fails until both change, and the change is breaking in both.
+  other. Each package's tests pin its own copy of the three values. Nothing
+  checks the pair, so a change to one is made to both in the same review, and
+  is breaking in both.
 - A new event, `transcript_captured { paths, coverage }`.
   - `paths` are relative to the store and normalized: `/` separators, no empty,
     `.` or `..` segment, no drive letter, no backslash. The same record then
@@ -116,14 +119,13 @@ There is no change to the closed lists. The README gets a section on mapping:
 
 ### Safe folder names
 
-- `sessionDirectoryName(parts, label?)` sits next to `sessionEventsPath`. It
+- `sessionDirectoryName(parts: readonly (string | number)[], label?: string)` sits next to `sessionEventsPath`. It
   returns 24 hex characters of SHA-256 over `JSON.stringify(parts)`.
 - With a label, the label comes first: lowercased, each run of characters other
   than `a-z` and `0-9` turned into one `-`, and cut to 40 characters.
-- The label and the hash are joined by one `-`. A label that is empty after
-  that treatment is dropped, and so is a trailing `-` left by the cut.
-- It throws a `RangeError` when `parts` is empty, or when `parts` holds a value
-  that `JSON.stringify` cannot keep apart (`undefined`, `NaN`, a function).
+- The label and the hash are joined by one `-`. `-` is trimmed from both ends of the label, before and after the cut, so a
+  name never starts with `-` or holds `--`. A label that is empty after that is dropped.
+- It throws a `RangeError` when `parts` is empty, or when `parts` holds a number that is not finite.
 - The same parts give the same name, and an opaque id never becomes a path.
 
 ## Why
@@ -143,7 +145,8 @@ There is no change to the closed lists. The README gets a section on mapping:
 - The new exports are `sessionDirectoryName`, `TRANSCRIPT_COVERAGES`,
   `TranscriptCoverageSchema`, `TranscriptCoverage`, `SessionTranscriptSchema` and
   `SessionTranscript`. They are stable for 0.x.
-- `TranscriptCoverage` joins the closed unions of D-04.
+- `TranscriptCoverage` joins the closed unions of D-04, which this decision amends.
+- A `launched` whose meta fails the schema still creates the session but is listed in `ignored`, so the append reports `applied: false`. A launcher must not retry on that alone: a second `launched` is ignored as `repeated_launched`.
 - `IgnoredEventOf['reason']` gains `immutable_meta`, `invalid_meta` and
   `weaker_transcript`. D-04 does not list it as closed, but the implementation changeset will say
   so.
@@ -157,6 +160,7 @@ There is no change to the closed lists. The README gets a section on mapping:
   - An older writer that appends to the same log re-projects `record.json`
     without `meta` or `transcript`, stamping the log length it covered. A newer
     reader would then trust that record. To prevent this, the record gains
-    `projection`, an integer revision of the observe model (bumped on any change to the reducer) that wrote it, and a reader reduces
-    the log again when a record's `projection` is older than its own (or absent).
+    `projectionRevision`, an integer revision of the observe model (bumped on any change to the reducer) that wrote it, and a reader reduces
+    the log again when a record's `projectionRevision` is older than its own (or absent). A reader also reduces the log again when a cached `meta` fails its own schema, so a record written under another schema never reads as `null`.
+- A record with no `projectionRevision` (every record on disk today) is reduced again on each read until a writer appends to its session and stamps it. A reader never writes, so an ended session nobody appends to stays re-reduced; a one-off `reprojectStore` helper is a follow-up, not part of this change.
 - A minor release.

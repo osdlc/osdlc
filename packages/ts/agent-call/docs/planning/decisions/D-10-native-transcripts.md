@@ -48,12 +48,14 @@ created: 2026-10-19
   reports `unavailable` with no files. The first release covers claude and
   codex.
 - `TranscriptCoverage` mirrors observe's closed list of the same name (observe
-  D-11), which owns it on disk. The values and their order (`unavailable` <
-  `partial` < `complete`) are pinned in both packages' tests, so a caller can
-  pass the value to observe unchanged.
+  D-11), which owns it on disk. The three values are pinned in each package's tests, so a caller can pass
+  the value to observe unchanged. The order `unavailable` < `partial` <
+  `complete` is observe's, and this package exports a union only.
 - `lines` holds complete lines only. A cut-off last line sets `torn` and makes
   the coverage `partial`. `running: true` also makes it `partial`. No log found
-  makes it `unavailable`. `notes` says why the coverage is below `complete`.
+  makes it `unavailable`, which takes precedence over `running`. `partial` and
+  `complete` always include the `main` file; when the main log cannot be read,
+  coverage is `unavailable` and related files are not returned. `notes` says why the coverage is below `complete`.
 - A related file is a log linked to this session, such as a sub-agent's. Logs of
   other conversations are never returned.
 - The package reads and never writes. Copying the logs somewhere, and the rules
@@ -67,8 +69,7 @@ created: 2026-10-19
 `@osdlc/detect-harness` keeps a table of where each harness keeps its files.
 That table already names the claude transcripts folder (`{config}/projects`)
 and the codex sessions folder (`{config}/sessions`), as paths only;
-detect-harness never reads them. agent-call keeps its dependency list short
-(`@osdlc/command-seam` and `yaml` today) and adds none for this, so it does not
+detect-harness never reads them. agent-call keeps its dependency list short and adds none for this, so it does not
 import the table. It holds its own copy of the few
 paths it reads instead, and its tests pin the same values. The table has no
 entry for codex's `archived_sessions` or claude's per-session `subagents`
@@ -99,7 +100,7 @@ folder; those would be added there as paths, so the two packages agree.
     current history.
 - A `.jsonl.zst` copy is decompressed with `zlib.zstdDecompressSync` when the
   runtime has it. When both a plain and a compressed copy exist, the plain one
-  wins. When the runtime cannot decompress, the file is left out of `files`, a note names it, and coverage is `unavailable` if nothing else was read, else `partial`.
+  wins. When the runtime cannot decompress, the file is left out of `files`, a note names it, and coverage is `unavailable`, and related files are not returned.
 - When `session_meta.history_base` says the earlier history is in another
   thread's rollout (a fork), coverage is `partial`, and a note names that
   thread.
