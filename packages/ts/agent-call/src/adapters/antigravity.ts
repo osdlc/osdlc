@@ -19,6 +19,7 @@ import {
   commandPrefix,
   type CommandOptions,
   withStructured,
+  noteDroppedToolSet,
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
@@ -90,6 +91,7 @@ function planAntigravity(command: readonly string[], spec: AgentCallSpec): Plann
   }
 
   const permissions = spec.permissions
+  noteDroppedToolSet(notes, permissions?.tools, 'agy has no flag to limit the built-in tools')
   applyPermissionMode(argv, notes, permissions?.mode, {
     edits: {
       argv: ['--mode', 'accept-edits'],

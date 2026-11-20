@@ -105,10 +105,10 @@ export const prUpdateConfigSchema = z
         "Whether the update worktree gets the repository's git submodules. `auto` (default) runs `git submodule update --init --recursive` in it when it has a `.gitmodules`, after each PR's checkout and again when the update moved a submodule pointer or changed `.gitmodules`, so `verify` verbs, resolvers and `lockfile_install` find them. A failure is reported as `submodule setup failed: <detail>` and is not recorded as a failed attempt. It clones the URLs the PR's `.gitmodules` names (never over `file` or `ext`). `off` leaves submodules alone.",
       ),
     on_rebase_conflict: z
-      .enum(['merge', 'fail'])
+      .enum(['merge', 'fail', 'repair'])
       .default('merge')
       .describe(
-        'What a rebase does when it stops on a conflict the automatic rungs (rerere, lockfile, resolvers, generators) cannot clear. The rungs run at every stop. `merge` (default) aborts the rebase and retries the PR as a merge, which resolves the conflict once and is where `repair` is offered it; the result then reports strategy `merge` with the reason. `fail` reports the PR as a conflict and calls no repair.',
+        'What a rebase does when it stops on a conflict the automatic rungs (rerere, lockfile, resolvers, generators) cannot clear. The rungs run at every stop. `merge` (default) aborts the rebase and retries the PR as a merge, which resolves the conflict once and is where `repair` is offered it; the result then reports strategy `merge` with the reason. `fail` reports the PR as a conflict and calls no repair. `repair` calls `repair` (kind `conflict`) at the stop, then continues the rebase, for at most `repair.max_rebase_stops` stops; past that cap, or when a repair fails, it aborts the rebase and reports the PR as a conflict. It never falls back to a merge, so it suits a repository that refuses merge commits. It needs a configured repair with `conflict` in `repair.on`, and a rehearsal never calls it.',
       ),
     lockfile_install: z
       .string()
@@ -144,10 +144,10 @@ export const prUpdateConfigSchema = z
         "Project-specific conflict resolvers for generated artifacts, first match wins. A conflict in a file a generator owns is not a judgement call — it is `re-run the generator`, and the run's output is the resolution. Lockfiles are handled without configuration; this is for a project's own codegen (`docs/index.md` rebuilt by `make docs`, say). Every conflicted path in a PR must be claimed by some rung or the update is left for a human.",
       ),
     verify: z
-      .enum(['none', 'check', 'test'])
+      .enum(['none', 'check', 'test', 'detect'])
       .default('none')
       .describe(
-        "What must pass before an updated branch is pushed. `none` (default) because the deterministic tier only ever produces a merge git itself resolved or an artifact a generator rebuilt, and running the project's whole gate once per PR is not affordable across a 50-PR run — CI on the PR is the real gate. `check` runs the host's check commands anyway, for a project where a bad push is expensive. `test` runs the project's explicitly configured test commands (a standalone run reads `test_command`): it never falls back to detection, and when it resolves to no command the update fails before touching any PR. Both are trust-gated like every other project-sourced command: they need the repository trusted or a one-run trust flag.",
+        "What must pass before an updated branch is pushed. `none` (default) because the deterministic tier only ever produces a merge git itself resolved or an artifact a generator rebuilt, and running the project's whole gate once per PR is not affordable across a run over many PRs — CI on the PR is the real gate. `check` runs the host's check commands anyway, for a project where a bad push is expensive. `test` runs the project's explicitly configured test commands (a standalone run reads `test_command`): it never falls back to detection, and when it resolves to no command the update fails before touching any PR. `detect` is the opt-in detected tier, kept apart from `test` so nobody gets detection by accident: it walks a fixed ladder of well-known test commands (see the README's `verify: detect`) in each PR's update worktree, prints which it chose, and fails that PR's verify, not the run, when none matches. `check`, `test` and `detect` are trust-gated like every other project-sourced command: they need the repository trusted or a one-run trust flag.",
       ),
     repair: z
       .object({
@@ -191,6 +191,14 @@ export const prUpdateConfigSchema = z
           .describe(
             'Which problems the repair is asked to fix: an unclaimed `conflict`, a failed `verify` step, or both.',
           ),
+        max_rebase_stops: z
+          .number()
+          .int()
+          .min(1)
+          .default(3)
+          .describe(
+            'With `on_rebase_conflict: repair`, repair at most this many stops in one rebase, then give up and report the PR as a conflict. `guards.max_rebase_commits` bounds the rebase length, so the two together bound the number of agent calls.',
+          ),
       })
       .strict()
       .refine((r) => r.command === null || r.agent === null, {
@@ -198,7 +206,7 @@ export const prUpdateConfigSchema = z
       })
       .prefault({})
       .describe(
-        'The last rung of the ladder, called once per kind only when nothing deterministic resolved the problem. A conflict repair is offered only on a merge (a rebase that needs one is retried as a merge first); a verify-failed repair runs for either strategy. Never called in a rehearsal (no `--apply`).',
+        'The last rung of the ladder, called once per kind only when nothing deterministic resolved the problem. A conflict repair is offered on a merge (a rebase that needs one is retried as a merge first), or at rebase stops with `on_rebase_conflict: repair`; a verify-failed repair runs for either strategy. Never called in a rehearsal (no `--apply`).',
       ),
     max_failed_attempts: z
       .number()

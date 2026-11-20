@@ -27,6 +27,7 @@ import {
   tryParseJson,
   commandPrefix,
   type CommandOptions,
+  noteDroppedToolSet,
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
@@ -151,6 +152,7 @@ function planCursor(command: readonly string[], trust: boolean, spec: AgentCallS
   }
 
   const permissions = spec.permissions
+  noteDroppedToolSet(notes, permissions?.tools, 'cursor has no flag to limit the built-in tools')
   // Observed headless postures: with no flag, file writes apply and shell
   // commands come back `rejected` (nothing waits on a prompt). --sandbox
   // enabled runs commands without asking, in a workspace-write sandbox with

@@ -219,7 +219,7 @@ and points here.
 | Family               | Implementations             | Fixture today                                                                       | Reference |
 | -------------------- | --------------------------- | ----------------------------------------------------------------------------------- | --------- |
 | agent-call           | TS, Rust `osdlc-agent-call` | `rust/osdlc-agent-call/tests/fixtures/parity.json`                                  | TS        |
-| agent-router         | TS, Rust                    | `ts/agent-router/fixtures/` (T-05 moves it)                                         | TS        |
+| agent-router         | TS, Rust                    | moved: `conformance/agent-router/`, one file per section                            | TS        |
 | cli-tool             | TS, Rust `osdlc-cli-tool`   | `rust/osdlc-cli-tool/tests/fixtures/parity.json`                                    | TS        |
 | code-host            | TS, Rust                    | `rust/code-host/tests/fixtures/parity.json`                                         | TS        |
 | color                | TS, Rust `srgb-color`       | `rust/srgb-color/tests/fixtures/parity.json`                                        | TS        |
@@ -231,10 +231,10 @@ and points here.
 | fenced-lock          | TS, Rust                    | `rust/fenced-lock/tests/fixtures/parity.json`                                       | TS        |
 | file-lock            | TS, Rust `osdlc-file-lock`  | moved: `conformance/file-lock/suite.json`                                           | TS        |
 | frontmatter-lossless | Rust, TS                    | moved: `conformance/frontmatter-lossless/suite.json`                                | Rust      |
-| gfm-table            | TS, Rust `gfm-pipe-table`   | `rust/gfm-pipe-table/tests/fixtures/parity.json`                                    | TS        |
+| gfm-table            | TS, Rust `gfm-pipe-table`   | moved: `conformance/gfm-table/suite.json`                                           | TS        |
 | intersect            | TS, Rust `glob-intersect`   | moved: `conformance/intersect/suite.json`                                           | TS        |
 | manifest-graph       | TS, Rust                    | `rust/manifest-graph/tests/fixtures/parity.json`                                    | TS        |
-| markdown-contract    | TS, Rust                    | `ts/markdown-contract/corpus/`, `rust/markdown-contract/tests/fixtures/parity.json` | TS        |
+| markdown-contract    | TS, Rust                    | moved: `conformance/markdown-contract/suite.json`                                   | TS        |
 | markdown-link        | Rust, TS                    | moved: `conformance/markdown-link/suite.json`                                       | Rust      |
 | markdown-tags        | Rust, TS                    | moved: `conformance/markdown-tags/suite.json`                                       | Rust      |
 | observe              | TS, Rust `osdlc-observe`    | `rust/osdlc-observe/tests/fixtures/parity.json`                                     | TS        |
@@ -249,5 +249,5 @@ and points here.
 
 Paths are under `packages/`. Many of these families exist only on local
 `rust-twin/*` branches so far. `yaml-splice` is a binding and is not listed.
-The `markdown-contract` corpus is the input set for both implementations and
-moves as one section of its suite.
+The `markdown-contract` corpus was the input set for both implementations and
+moved as one section of its suite.
