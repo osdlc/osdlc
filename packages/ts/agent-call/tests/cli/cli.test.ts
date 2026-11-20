@@ -76,6 +76,14 @@ describe('spec loading', () => {
       parseSpecText('run:\n  permissions: {mode: nope}\n  prompt: [{text: a}]', '.yml'),
     ).toThrow(/mode must be/)
   })
+
+  test('permissions.tools reaches the spec, [] included, and must be a list', () => {
+    const run = (tools: string) =>
+      parseSpecText(`run:\n  permissions: {tools: ${tools}}\n  prompt: [{text: a}]`, '.yml')
+    expect(run('[Read, Grep]').permissions?.tools).toEqual(['Read', 'Grep'])
+    expect(run('[]').permissions?.tools).toEqual([])
+    expect(() => run('Read')).toThrow(UsageError)
+  })
 })
 
 describe('path containment', () => {
