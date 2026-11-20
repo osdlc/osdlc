@@ -21,7 +21,7 @@ export interface GitPluginOptions extends Runners {
   /** What the sweep judges; `annotate`, `cwd` and progress are the plugin's to set. */
   sweep?: Pick<
     SweepOptions,
-    'only' | 'remote' | 'offline' | 'against' | 'provider' | 'branch' | 'cacheDir'
+    'only' | 'remotes' | 'fetch' | 'offline' | 'against' | 'provider' | 'branch' | 'cacheDir'
   >
   /** Archive unlanded work to the remote before deleting it. A failed archive push stops the run. */
   archive?: ArchiveOptions | undefined

@@ -36,7 +36,7 @@ function fixture() {
   const ctx: Ctx = { cwd: root, targets: [root], allow: [] }
   const plugin = gitPlugin({
     probe: idle,
-    sweep: { remote: true, offline: true, provider: 'none' },
+    sweep: { remotes: [''], offline: true, provider: 'none' },
   })
   return { root, worktree: realpathSync(worktree), ctx, plugin }
 }
@@ -99,7 +99,7 @@ describe('the git plugin', () => {
     const plugin = gitPlugin({
       probe: idle,
       archive: {},
-      sweep: { remote: true, offline: true, provider: 'none' },
+      sweep: { remotes: [''], offline: true, provider: 'none' },
     })
     const s = survey([plugin], fx.ctx)
     const target = s.candidates.find((c) => c.path.endsWith(':unmerged'))!
