@@ -512,7 +512,14 @@ describe('review fixes', () => {
 
   test("a branch on a remote named inside another (origin/mirror) is that remote's", () => {
     const fx = forkAndParent()
-    sh(fx.root, ['remote', 'add', 'origin/mirror', fx.bare['upstream']!])
+    // Newer git refuses `git remote add` for a name nested in another; an
+    // older repository can still have one, so configure it directly.
+    sh(fx.root, ['config', 'remote.origin/mirror.url', fx.bare['upstream']!])
+    sh(fx.root, [
+      'config',
+      'remote.origin/mirror.fetch',
+      '+refs/heads/*:refs/remotes/origin/mirror/*',
+    ])
     const wt = join(dirname(fx.root), 'wt-topic')
     sh(fx.root, ['worktree', 'add', '-q', '-b', 'topic', wt, 'main'])
     sh(wt, ['commit', '-q', '--allow-empty', '-m', 'topic work'])
