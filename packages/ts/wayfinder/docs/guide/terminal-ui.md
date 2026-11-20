@@ -168,6 +168,17 @@ query matches them as it matches tasks; `^t` hides them. A skill runs in an
 agent, not here, so Enter and `^y` copy `/<name>` and nothing is spawned. The
 `skills` setting chooses which skills are listed.
 
+`^g` on a skill starts an agent CLI with it instead, handing it this
+terminal: the first of `claude`, `codex` and `cursor-agent` on `PATH` whose
+agent reads the skill. The line under the row names it
+(`^g starts claude`). A skill with an `argument-hint` asks first: the key line becomes
+`claude ▸ /review `, with the hint below it. Enter starts the agent with
+`/review` and what you typed as its first prompt (Codex gets `$review`), and
+`esc` goes back. A skill with no hint starts at once. With no such CLI on
+`PATH`, the status line says which binaries it looked for. When the agent
+exits, `way` exits with its code, as after a task. `way run /<name> --agent`
+does the same from the shell, and `--harness` picks the agent.
+
 ## Startup and the cache
 
 The frame appears at once. When an earlier run saved what it showed (see

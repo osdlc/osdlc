@@ -24,8 +24,9 @@ import type { Result } from '@osdlc/result'
 import { thrownGitFailure, type GitFailure } from './failure.ts'
 
 /**
- * The methods `try` mirrors: everything except the `raw*` methods, `at`,
- * and `try` itself. The unchecked `raw*` methods already return a
+ * The methods `try` mirrors: everything except the `raw*` methods, the
+ * `catFileBatchChunks` generator (git runs as it is iterated, after any
+ * `try` could catch), `at`, and `try` itself. The unchecked `raw*` methods already return a
  * `CommandResult` and never throw for a failed git; the checked ones exist
  * to throw. `at(cwd)` returns a new client that has its own `.try`. The
  * types leave them out, but the runtime proxy wraps every function property,
@@ -33,7 +34,15 @@ import { thrownGitFailure, type GitFailure } from './failure.ts'
  */
 type Triable<C> = Omit<
   C,
-  'raw' | 'rawChecked' | 'rawBytes' | 'rawBytesChecked' | 'at' | 'try' | 'soft' | 'cwd'
+  | 'raw'
+  | 'rawChecked'
+  | 'rawBytes'
+  | 'rawBytesChecked'
+  | 'catFileBatchChunks'
+  | 'at'
+  | 'try'
+  | 'soft'
+  | 'cwd'
 >
 
 /** Every synchronous client method, returning a `Result<T, GitFailure>`. */

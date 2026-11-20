@@ -58,6 +58,15 @@ export function applyPermissionMode(
   note(notes, 'permissions.mode', entry.support, entry.detail)
 }
 
+/** Notes `permissions.tools` as dropped, for adapters whose CLI has no exact built-in tool set. */
+export function noteDroppedToolSet(
+  notes: CapabilityNote[],
+  tools: readonly string[] | undefined,
+  detail: string,
+): void {
+  if (tools !== undefined) note(notes, 'permissions.tools', 'dropped', detail)
+}
+
 /** Which spec fields the target CLI has flags for. The rest are emulated in the prompt. */
 export interface PromptEmulation {
   /** The CLI attaches context files itself. Skip the file preamble. */
