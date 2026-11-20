@@ -18,6 +18,7 @@ import {
   withStructured,
   commandPrefix,
   type CommandOptions,
+  noteDroppedToolSet,
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
@@ -201,6 +202,7 @@ function planDeepseek(command: readonly string[], spec: AgentCallSpec): PlannedC
   }
 
   const permissions = spec.permissions
+  noteDroppedToolSet(notes, permissions?.tools, 'dsh has no exact tool set; use permissions.mode')
   const mode = permissions?.mode
   if (mode !== undefined && mode !== 'default' && spec.session?.resume !== undefined) {
     // DSH_PERMISSION_MODE applies to new sessions only. A resumed session keeps
