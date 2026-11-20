@@ -42,7 +42,7 @@ import {
   type SendReceipt,
   type SendRequest,
 } from '../contract.ts'
-import { harnessOrNull, sessionViaTerminal } from '../harness.ts'
+import { commandArgv, harnessOrNull, sessionViaTerminal } from '../harness.ts'
 
 /** Argv for `cmux workspace create` — pure, so a test can pin it. */
 export function cmuxCreateArgv(req: CommandRequest): string[] {
@@ -54,7 +54,7 @@ export function cmuxCreateArgv(req: CommandRequest): string[] {
     '--cwd',
     req.cwd,
     '--command',
-    commandString(req.argv),
+    commandString(commandArgv(req)),
     // Per `cmux new-workspace --help` the default is already false; explicit so the person's view is never taken.
     '--focus',
     'false',

@@ -132,6 +132,16 @@ the Claude Code flags a session can carry (plugins, a system prompt, hook
 settings). `findCodexSessionId` finds the id of a codex session from its
 rollout file.
 
+### Environment variables
+
+`SessionRequest.env` sets variables on the harness process, and
+`CommandRequest.env` sets them on a plain command, such as a workspace shell
+whose later agents inherit them. Every host applies `env` with `withEnv`
+(`commandArgv(req)` is `req.argv` under `req.env`); an `undefined` value unsets
+the variable. `withEnv` builds `env K=V cmd`, which cannot run a shell function
+or alias. For a line typed into an interactive shell, use `envPrefixLine(argv, env)`,
+which builds the plain POSIX prefix `K=V cmd`.
+
 ## Compared with other tools
 
 | Tool | Difference |

@@ -19,7 +19,9 @@ import {
   claudeResumeArgv,
   claudeSessionArgv,
   codexSessionsDir,
+  commandArgv,
   ensureWorkspace,
+  envPrefixLine,
   findCodexSessionId,
   hasInteractiveArgv,
   harnessArgv,
@@ -547,6 +549,20 @@ describe('harness argv and Claude flags', () => {
       'hi',
     ])
     expect(withEnv(['claude'], undefined)).toEqual(['claude'])
+  })
+
+  test('commandArgv runs a CommandRequest under its env, as a workspace shell needs', () => {
+    expect(commandArgv({ argv: ['zsh'], env: { TAG: 'pr-7' } }, 'linux')).toEqual([
+      'env',
+      'TAG=pr-7',
+      'zsh',
+    ])
+  })
+
+  test('envPrefixLine is the plain K=V prefix, so a shell function or alias still runs', () => {
+    expect(envPrefixLine(['claude', 'hi there'], { MODE: 'review' }, 'linux')).toBe(
+      "MODE=review claude 'hi there'",
+    )
   })
 
   test('wrapperSession is the body of a host session(): argv under env, then the id lookup', () => {
