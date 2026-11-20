@@ -75,11 +75,23 @@ test('a client aimed at a repository, with no clone', () => {
   gh.prView(9, { fields: ['number'] })
   gh.withRepo('acme/gadgets').prBody(9)
   gh.api('repos/{owner}/{repo}/branches')
+  gh.withHostname('github.example.com').prBody(9)
 
   expect(calls).toEqual([
     ['pr', 'view', '9', '--repo', 'github.acme.com/acme/widgets', '--json', 'number'],
     ['pr', 'view', '9', '--repo', 'github.acme.com/acme/gadgets', '--json', 'body', '-q', '.body'],
     ['api', '--hostname', 'github.acme.com', 'repos/acme/widgets/branches'],
+    [
+      'pr',
+      'view',
+      '9',
+      '--repo',
+      'github.example.com/acme/widgets',
+      '--json',
+      'body',
+      '-q',
+      '.body',
+    ],
   ])
   expect(() => new Gh('/repo', { repo: 'not a slug' })).toThrow(RangeError)
 })
