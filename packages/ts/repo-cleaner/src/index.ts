@@ -28,17 +28,8 @@ export {
   type PlanRow,
 } from './plan.ts'
 export { DEFAULT_MAX_FILE_BYTES, type ArchiveOptions, type LeftOut } from './archive.ts'
-export {
-  check,
-  run,
-  type Allow,
-  type Approval,
-  type CheckOptions,
-  type Preview,
-  type ResolvedApproval,
-  type Resolved,
-  type RunOptions,
-} from './clean.ts'
+export { type Allow, type Approval, type ResolvedApproval, type Resolved } from './approval.ts'
+export { check, run, type CheckOptions, type Preview, type RunOptions } from './clean.ts'
 export {
   RECEIPT_VERSION,
   ReceiptSchema,

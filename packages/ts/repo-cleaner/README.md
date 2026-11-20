@@ -2,31 +2,28 @@
 
 What has been merged into the default branch, and what can go away.
 
-Point it at a repository and it lists the worktrees and local branches, and
-with `--remote` the remote branches too, and judges each one: `delete`,
+repo-cleaner finds the worktrees, local branches and remote branches whose
+work has landed, and deletes them safely. It judges each one `delete`,
 `review`, `keep` or `blocked`, with the evidence behind the verdict, the risks
 deleting it carries, and the literal command that would delete it.
 
-`repo-cleaner` never deletes anything; it prints the commands that would.
-`repo-cleaner clean` deletes: it checks each row again, shows you what it
-will delete and skip, and asks before it runs.
+It works in three phases, and runs nothing until one is named:
 
-By default it works on your own machine only: worktrees and local branches,
-nothing fetched and no pull-request lookup, compared with the
-`origin/<default>` you last fetched (the header says `not fetched`).
-`--remote` turns on all three things that need the network: it fetches each
-remote first, asks GitHub or GitLab about pull requests, and judges remote
-branches. Remote branches are shared, often number in the hundreds, and each
-one is compared with the default branch, so they make a sweep much slower. A
-local report ends with a line saying what it left out.
+| Phase | Command | What it does | Deletes? |
+|---|---|---|---|
+| **status** | `repo-cleaner status` | Looks: every row with its verdict, the reason, and the git command that would delete it | Never |
+| **plan** | `repo-cleaner plan -o <file>` | Saves what status found: each row with its fingerprint, and the options it ran with | Never |
+| **clean** | `repo-cleaner clean`, or `clean --plan <file>` | Checks each row again, shows the steps, asks, and deletes what it may | Yes |
 
-Without a pull-request lookup, a squash-merged branch is still found by
-comparing patches, and a clean worktree merged by ancestry is `delete` once
-its branch shows it was worked on (see [How it decides](#how-it-decides)); one
-that looks freshly made stays `review`.
+By default it looks at your own machine only: worktrees and local branches,
+nothing fetched, no pull-request lookup, judged against the `origin/<default>`
+you last fetched (the header says `not fetched`). `--remote` judges a remote's
+branches too: it fetches the remote first and asks GitHub or GitLab about pull
+requests. Remote branches are shared and often number in the hundreds, so
+they make a look much slower.
 
 ```console
-$ repo-cleaner --remote
+$ repo-cleaner status --all
 /Users/me/work/api  (acme/api, default main, origin)
   branch    fix/login-redirect     delete   PR #412 merged
             git update-ref -d refs/heads/fix/login-redirect 3f9c2e1d8b7a6c5d4e3f2a1b0c9d8e7f6a5b4c3d
@@ -39,6 +36,10 @@ $ repo-cleaner --remote
 
 3 to delete, 1 to review, across 1 repository.
 ```
+
+The words it uses (phases, rows, verdicts, risks, scope, landed) are defined
+in [the terms](docs/planning/terms.md), and the design is
+[D-4CE9](docs/planning/decisions/D-4CE9-the-cli-by-use-case.md).
 
 On a terminal, the report and the preview are colored: red for a delete,
 blue for a prune, yellow for a review, a blocked or a skipped row, green for a
@@ -89,19 +90,328 @@ nvm users in fish can use a fish port such as `nvm.fish`; fnm has
 with `type repo-cleaner`.
 
 
-## Commands
+## Recipes
 
-```bash
-repo-cleaner [target...]          # the report: what is merged, what can go; deletes nothing
-repo-cleaner plan  [target...]    # save the sweep's rows and their evidence, to run later (-o <file>)
-repo-cleaner clean [target...]    # check again, show the steps, ask, delete
-repo-cleaner cache                # list or remove the clones kept for remote URL targets
-repo-cleaner dev                  # run repo-cleaner from a development checkout
+Each recipe is something a person would say, the command, and what happens.
+Every command here runs in `tests/recipes.test.ts`, so a recipe that stops
+working fails the build.
+
+### Starting out
+
+**"What is this, and how do I use it?"**
+
+```console
+$ repo-cleaner
 ```
 
-Every command takes `--help`, and `--help --extended` for the full reference:
-what each option means, the words the report uses, and which combinations are
-refused. A checkout directory named like a command is swept as `./<name>`.
+Explains the phases and exits 2: nothing ran. `repo-cleaner --help` shows the
+same and exits 0; `repo-cleaner <phase> --help` shows a phase's options, and
+`--help --extended` the full reference.
+
+### Looking
+
+**"What can I clean up here?"**
+
+```console
+$ repo-cleaner status
+```
+
+This repository's worktrees and local branches, each with a verdict, the
+reason and the exact git command that would delete it. No network. Run from
+anywhere inside the checkout.
+
+**"…and on the remote too."**
+
+```console
+$ repo-cleaner status --remote
+$ repo-cleaner status --all
+```
+
+`--remote` is the default remote's branches (usually `origin`); `--all` is
+local and the default remote's branches. Each fetches the remote first and
+looks up pull requests, because a remote branch can only be judged against
+the remote as it is now.
+
+**"Across every project I have."**
+
+```console
+$ repo-cleaner status ~/Developer
+```
+
+A directory that is not a checkout is searched for checkouts. Every phase
+takes the same targets; see [Targets](#targets).
+
+### Cleaning
+
+**"Just clean it up."** Immediate, still safe:
+
+```console
+$ repo-cleaner clean -y
+```
+
+Deletes every local row judged `delete`, without asking. `review`, `keep` and
+`blocked` rows are never touched. Before each delete it checks the row again
+and deletes only the commit it saw.
+
+**"Clean, but show me first."**
+
+```console
+$ repo-cleaner clean
+```
+
+Shows the steps and asks:
+
+```text
+/Users/me/work/api
+  delete  branch:fix/login-redirect
+          git update-ref -d refs/heads/fix/login-redirect 3f9c2e1d…
+  prune   worktree:/Users/me/work/wt/old
+          git -C /Users/me/work/api worktree remove /Users/me/work/wt/old
+  skip    worktree:/Users/me/work/wt/spike
+          needs-pick: review: clean but no clear disposability signal; pick it to run it
+
+would delete: 1 local branch, 1 stale worktree pruned
+skipped 1, not deleted: 1 needs-pick (name with --pick)
+Delete 2 items? [y/N]
+```
+
+`clean` throws away anything typed while the sweep ran, so a key pressed
+early cannot answer the question, and says so when it did.
+
+With no terminal to ask on (a script, an agent), it refuses unless `-y` is
+given. It throws away anything typed while it looked, so a key pressed early
+cannot answer the question.
+
+**"Only local", "only the remote", "both".**
+
+```console
+$ repo-cleaner clean --local -y
+$ repo-cleaner clean --remote -y
+$ repo-cleaner clean --all -y
+```
+
+`--local` (the default) is worktrees and local branches; `--remote` the
+default remote's branches only; `--all` both. Narrower: `--worktrees`,
+`--branches`. Scope flags add up: `--worktrees --remote` is worktrees and the
+default remote's branches.
+
+**"I just merged my PR: clean up that branch everywhere."**
+
+```console
+$ repo-cleaner clean --branch feat/login --all -y
+$ repo-cleaner clean --branch HEAD --all -y
+```
+
+Its worktree, its local branch and its remote branch, each if it is `delete`.
+`HEAD` is the branch checked out here.
+
+**"What exactly would it do?"**
+
+```console
+$ repo-cleaner clean --all --dry-run
+```
+
+The same checks and the same step list as a real run; deletes nothing.
+
+### Choosing remotes
+
+**"Clean a remote other than origin."**
+
+```console
+$ repo-cleaner clean --remote=upstream -y
+$ repo-cleaner clean --remote --remote=upstream -y
+$ repo-cleaner clean --local --remote=upstream -y
+```
+
+A bare `--remote` is the default remote: `origin` if there is one, else the
+remote the default branch tracks, else the only remote; with several remotes
+and none of those, it is refused and asks for a name. Another remote is named
+with `=`, and `--remote` is repeatable. `--all` with `--remote=<name>` is
+refused: write `--local --remote=<name>`.
+
+`--remote upstream`, with a space, reads `upstream` as a target. When no
+directory of that name exists but a remote does, it is refused (exit 2) with
+the fix: `upstream is a remote, not a directory: write --remote=upstream`.
+
+**"Clean my fork's branches that landed upstream."**
+
+```console
+$ repo-cleaner clean --remote --against upstream -y
+```
+
+Here `origin`, the default remote, is your fork, and `upstream` the original
+project. Without `--against`, each remote's branches are judged against that
+remote's own default branch, and your fork's `main` is usually stale, so
+merged work would look unmerged. `--against upstream` judges every row
+against `upstream/main` instead; the fork's own `main` is still kept.
+
+A pull request belongs to the repository it targets, so the PRs opened from a
+fork live in its parent. For a fork on GitHub, the parent's pull requests
+whose head repository is the fork are listed too: an open one keeps the
+branch, one merged at the branch's exact commit proves it landed, and with
+none the branch is judged on git evidence, with no `confirm-open-pr`. A
+parent listing that fails or reaches its cap keeps that gate.
+
+**"Every remote."**
+
+```console
+$ repo-cleaner status --remote='*'
+```
+
+Every configured remote, each fetched, and each remote's branches judged
+against its own default branch. Where remotes are separate homes (a GitHub
+`origin` and a company GitLab `internal`, each merging its own branches), a
+branch merged into `internal/main` is `delete` without any flag.
+
+### Deciding the unclear ones
+
+**"Let me choose."**
+
+```console
+$ repo-cleaner clean -i
+```
+
+A checklist of the rows: `delete` rows ticked, `review` rows not, `keep` and
+`blocked` rows shown but not selectable. Type item numbers or ranges to
+toggle them, and Enter to accept. Ticking a row with a risk asks for the risk
+by name. Needs a terminal.
+
+**"Delete this one too; I've checked it."**
+
+```console
+$ repo-cleaner clean --pick feat/spike -y
+$ repo-cleaner clean --pick feat/spike --allow abandon-unmerged -y
+```
+
+A `review` row runs only when picked. A row that would lose something
+carries a named risk, and is skipped until that risk is allowed; see
+[Pick and spare](#pick-and-spare) and [Rows, verdicts and
+risks](#rows-verdicts-and-risks).
+
+**"Never touch these."**
+
+```console
+$ repo-cleaner clean --all --spare 'release/*' --spare staging -y
+```
+
+`--spare` takes a row or a glob.
+
+**"Delete it, but keep a copy of the unfinished work."**
+
+```console
+$ repo-cleaner clean --pick feat/spike --archive --allow discard-archived -y
+```
+
+Before deleting, pushes the row's unlanded commits and uncommitted files to an
+archive branch on the default remote, checks it is there, then deletes; see
+[Archive before delete](#archive-before-delete).
+
+### Working with others and with machines
+
+**"Plan now, clean later, or hand it to someone."**
+
+```console
+$ repo-cleaner plan --all -o plan.json
+$ repo-cleaner clean --plan plan.json -y
+```
+
+The plan records each row's evidence. `clean --plan` checks every row again
+against the repository as it is then, and drops any that changed. The plan
+fixes what is cleaned, so targets and scope flags are refused with `--plan`;
+`--pick`, `--spare` and `--allow` still choose among its rows. `--plan -`
+reads the plan from stdin. The receipt is written beside the plan file. See
+[Plan and clean](#plan-and-clean).
+
+**"An agent or a script needs to read it."**
+
+```console
+$ repo-cleaner status --format json
+$ repo-cleaner clean --all -y --format json
+```
+
+No prompts without a terminal, a JSON report or receipt on stdout, and
+[exit codes](#exit-codes) that say what happened.
+
+**"No network."**
+
+```console
+$ repo-cleaner status --all --offline
+```
+
+Judges remote branches from the remote-tracking refs on disk. `clean` still
+asks the remote before deleting a remote branch, and refuses if it cannot. See
+[`--offline` reads what is already on disk](#--offline-reads-what-is-already-on-disk).
+
+**"A remote I have no checkout of."**
+
+```console
+$ repo-cleaner clean https://github.com/acme/app.git --dry-run
+```
+
+Remote branches only, through a clone kept in a cache; see [A remote with no
+checkout](#a-remote-with-no-checkout).
+
+## The grammar
+
+```text
+repo-cleaner                                                       explain the phases; run nothing
+repo-cleaner status  [target...] [what] [how sure] [output]        look
+repo-cleaner plan    [target...] [what] [how sure] -o <file>       save a plan
+repo-cleaner clean   [target...] [what] [how sure] [which] [go]    delete
+repo-cleaner clean   --plan <file|-> [which] [go]                  delete what a plan saved
+repo-cleaner cache   [list | remove <url>...]                      the clone cache
+repo-cleaner dev                                                   run a development checkout
+```
+
+| Group | Flag | Meaning |
+|---|---|---|
+| what | `--local` | Worktrees and local branches. The default when no scope flag is given. |
+| | `--remote` | Branches on the default remote: `origin`, else the one the default branch tracks, else the only one. |
+| | `--remote=<name>` | Branches on this remote; `*` is every remote. Repeatable, and combines with a bare `--remote`. |
+| | `--all` | `--local` and `--remote`. |
+| | `--worktrees`, `--branches` | Only worktrees, or only local branches. |
+| how sure | `--fetch` | Fetch the default remote before judging local rows. Off by default. |
+| | `--offline` | No fetch; judge from the refs on disk. Pull requests are still looked up; add `--provider none` for no network at all. |
+| | `--against <remote>` | Judge every row against this remote's default branch. Without it, each remote's branches are judged against their own remote's default branch, and local rows against the default remote's. |
+| | `--provider <auto\|github\|gitlab\|none>` | Where pull requests come from. Default `auto`, by each remote's host. An explicit `github` or `gitlab` over remotes on different kinds of host is refused. |
+| | `--branch <name\|HEAD>` | One branch's rows: its worktree, local branch and remote branches. Never a default branch. |
+| which | `--pick <row>` | Also run this `review` row. Repeatable. |
+| | `--spare <row\|glob>` | Leave these rows alone. Repeatable. |
+| | `--allow <risk>[=<row>]` | Accept a risk, for every row or one. Repeatable. |
+| | `--archive` | Push unlanded work to an archive branch before deleting. |
+| | `--archive-exclude <glob>` | With `--archive`, leave these files out of a snapshot. Repeatable. |
+| | `-i`, `--interactive` | Choose rows from a checklist. |
+| go | `-y`, `--yes` | Delete without asking. |
+| | `--dry-run` | Check and show the steps; delete nothing. |
+| | `--receipt <file>` | Where the receipt goes. Default: beside a `--plan` file, else none. |
+| output | `--format <text\|json\|summary\|commands>` | `status`: default `text`; `commands` is only the safe delete commands, for a script. `clean`: `text` or `json`. |
+| | `--all-rows` | `status` also shows `keep` rows. |
+| | `--no-progress` | No progress line on stderr. |
+| | `-o, --out <file>` | `plan`: where the plan goes; `-` (the default) is stdout, and the totals go to stderr. |
+
+`status --format summary` counts rows per repository:
+
+```console
+$ repo-cleaner status --all --format summary
+/Users/me/work/api  (acme/api, default main, origin)
+                   total  merged  delete  prune  review  blocked   keep
+  local branches      12       8       6      0       1        0      5
+  worktrees            4       3       1      1       0        1      1
+  remote branches     40      31      30      0       6        0      4
+
+37 to delete, 1 to prune, 7 to review, 1 blocked, across 1 repository.
+```
+
+`prune` counts worktree rows whose directory is gone, or is no longer a
+checkout: deleting one drops the stale record, with `git worktree remove
+<path>` for a directory that is gone (that worktree's record alone) and the
+repository-wide `git worktree prune` for one left without its `.git`, and a
+directory that is still there stays. `merged` counts rows whose work is on the
+default branch, by ancestry, by a merged PR at the branch's head, or by a patch
+match; the default branch and the primary worktree are counted in `total` but
+not judged.
+
+## Reference
 
 ### Targets
 
@@ -136,97 +446,6 @@ directories read, 12 checkouts found.` — because those numbers are how a
 target pointing at the wrong directory gets caught. A search that passes
 10,000 directories says so on stderr while it is still running. A target that
 resolves to nothing is reported rather than dropped.
-
-### Sweep options
-
-The report, `plan` and `clean` take these:
-
-| Option | Meaning |
-| --- | --- |
-| `--remote` | Also judge remote branches. Turns on the network: fetches each remote first and asks GitHub or GitLab about pull requests. Slower. |
-| `--offline` | With `--remote`: do not fetch. Judge against the remote-tracking refs already on disk, remote branches included, so judging needs no access to the remote. Pull requests are still looked up; add `--provider none` for no network at all. The refs can be stale: see [`--offline` reads what is already on disk](#--offline-reads-what-is-already-on-disk). |
-| `--only <kinds>` | Only these kinds of row: `worktree`, `branch`, `remote`, comma-separated. Default: `worktree,branch`, plus `remote` with `--remote`. Naming `remote` implies `--remote`. |
-| `--branch <name\|HEAD>` | Only the rows of one branch: its worktree, its local branch, and its remote branch with `--remote`. `HEAD` is the branch checked out at the target. Never the default branch. |
-| `--against <remote>` | The remote whose default branch counts as "merged into". Default: `origin`, then the first remote. |
-| `--provider <name>` | With `--remote`: where pull requests come from. `auto` (by the remote's host), `github`, `gitlab`, or `none` to judge on git evidence alone. |
-| `--no-progress` | No progress line on stderr. |
-
-### The report
-
-`repo-cleaner [target...]` lists each row with its verdict, why, the risks it
-carries, and the command that would delete it.
-
-| Option | Meaning |
-| --- | --- |
-| `--all` | Also show `keep` rows. By default only `delete`, `review` and `blocked` rows are listed. Only with `--format text`. |
-| `--format text` | The report. The default. |
-| `--format summary` | Counts per repository: total, merged, delete, prune, review, blocked, keep. |
-| `--format commands` | Only the commands of `delete` rows that carry no risk, ready to copy. |
-| `--format json` | Everything, evidence included, for scripts. |
-
-```console
-$ repo-cleaner --format summary --remote
-/Users/me/work/api  (acme/api, default main, origin)
-                   total  merged  delete  prune  review  blocked   keep
-  local branches      12       8       6      0       1        0      5
-  worktrees            4       3       1      1       0        1      1
-  remote branches     40      31      30      0       6        0      4
-
-37 to delete, 1 to prune, 7 to review, 1 blocked, across 1 repository.
-```
-
-`prune` counts worktree rows whose directory is gone, or is no longer a
-checkout: deleting one drops the stale record, with `git worktree remove
-<path>` for a directory that is gone (that worktree's record alone) and the
-repository-wide `git worktree prune` for one left without its `.git`, and a
-directory that is still there stays. `merged` counts rows whose work is on
-the default branch, by ancestry, by a merged PR at the branch's head, or by a
-patch match; the default branch and the primary worktree are counted in
-`total` but not judged.
-
-### `repo-cleaner plan`
-
-Sweeps and saves every row, each with a fingerprint of the evidence behind its
-verdict, so it can be reviewed now and run later with
-`clean --plan`. `-o, --out <file>` sets where it goes; the default, `-`, is
-stdout, and the totals line goes to stderr.
-
-### `repo-cleaner clean`
-
-Sweeps (or reads `--plan`), checks every row again, shows the steps, asks,
-then deletes, compare-and-swap, verifying each step. A failed step skips only
-the steps that depend on it (see below). Without `--pick` it runs every row judged `delete`.
-
-| Option | Meaning |
-| --- | --- |
-| `--pick <row>` | Work on exactly these rows. See [Pick and spare](#pick-and-spare). Repeatable. |
-| `--spare <row>` | Leave this row alone, and make sure it is what you saw. Repeatable. |
-| `--allow <risk>` | Accept this risk for every row that carries it. |
-| `--allow <risk>=<row>` | Accept it for that one row only. |
-| `--archive` | Before deleting, push unlanded work to an archive branch on the remote. See [Archive before delete](#archive-before-delete). |
-| `--archive-exclude <glob>` | With `--archive`, leave files matching the glob out of a worktree snapshot. Repeatable. |
-| `--plan <file\|->` | Run a saved plan instead of sweeping now (`-` reads stdin). Rows whose evidence changed since the plan are dropped, not deleted. |
-| `-y, --yes` | Do not ask. Without it, and with no terminal to ask on, `clean` refuses. |
-| `--dry-run` | Check and show the steps, then stop. |
-| `--receipt <file>` | Write a record of every step, rewritten after each one. Default: next to a `--plan` file; none otherwise. |
-| `--format text\|json` | How the steps and the outcome are shown. |
-
-```text
-/Users/me/work/api
-  delete  branch:fix/login-redirect
-          git update-ref -d refs/heads/fix/login-redirect 3f9c2e1d…
-  prune   worktree:/Users/me/work/wt/old
-          git -C /Users/me/work/api worktree remove /Users/me/work/wt/old
-  skip    worktree:/Users/me/work/wt/spike
-          needs-pick: review: clean but no clear disposability signal; pick it to run it
-
-would delete: 1 local branch, 1 stale worktree pruned
-skipped 1, not deleted: 1 needs-pick (name with --pick)
-Delete 2 items? [y/N]
-```
-
-`clean` throws away anything typed while the sweep ran, so a key pressed
-early cannot answer the question, and says so when it did.
 
 ### Archive before delete
 
@@ -281,25 +500,30 @@ written as `repo-cleaner`. Pruning old archive branches is not done here.
 
 ### Pick and spare
 
-**`--pick <row>`** means "work on exactly these rows". It does two things:
-
-1. **It narrows the run.** Only the picked rows are considered; everything
-   else is left alone.
-2. **It opts in rows that never run otherwise.** Without `--pick`, `clean`
-   deletes only rows judged `delete`. A `review` row, or a `keep` row with an
-   action (a branch with an open pull request), is deleted only when it is
-   named, so a borderline row never goes as part of a batch.
+**`--pick <row>`** means "also run this row". `clean` deletes the rows judged
+`delete`; a `review` row, or a `keep` row with an action (a branch with an
+open pull request), is deleted only when it is picked, so a borderline row
+never goes as part of a batch. To leave rows out, spare them. The library's
+`select` takes an exact list of rows instead, for a checklist or a host that
+chose the rows itself.
 
 Picking does not approve anything: a picked row that carries a risk still
 needs `--allow` for it. A `blocked` row, or a `keep` row with no action, is
 skipped and shown with the reason.
 
 **`--spare <row>`** means "leave this row alone, and make sure it is what I
-saw". The usual case: delete a merged worktree and its local branch, but keep
+saw". A bare name (`--spare staging`) is that branch everywhere: its
+worktree, its local branch, and its remote branch on every remote; in a
+repository without it, nothing. A glob (`--spare 'release/*'`, `--spare
+'remote:origin/tmp-*'`) leaves every row it matches alone, by name, a remote
+branch also by its name without the remote, and a worktree by the branch it
+has out; `*` stays within a `/`, `**` does not. A glob that matches nothing
+is no error. The usual case: delete a merged worktree and its local branch, but keep
 the branch on the remote as a backup.
 
 - A spared row is not deleted, even if it is judged `delete`.
-- A spared remote branch is still checked. If it is gone or its tip moved
+- A remote branch spared by its full name (`remote:origin/x` or `origin/x`),
+  not by a bare branch name or a glob, is still checked. If it is gone or its tip moved
   since the plan, the run stops before deleting anything: you spared it for
   what it held, so if that changed, the rest of the plan rests on a wrong
   assumption. The run's first step checks the tip again with `git ls-remote`,
@@ -350,7 +574,7 @@ A branch whose worktree is judged `delete` is not held by it: the sweep judges
 the branch on its own and records the worktree's path in `evidence.worktree`,
 so one run removes the worktree and then deletes the branch. `clean` deletes
 such a branch only when the same run removes its worktree, and drops it as
-`held` otherwise. With `--only branch` no worktree is swept, so the branch
+`held` otherwise. With `--branches` no worktree is swept, so the branch
 stays held.
 
 ### Refused combinations
@@ -366,20 +590,29 @@ anything is swept; a row named two ways (a bare name and its id), and an
 
 | Combination | Why |
 | --- | --- |
+| No phase named | The bare command explains the phases and runs nothing |
+| A target that is no directory but a remote's name | `--remote upstream` with a space; write `--remote=upstream` |
+| `--all` with `--remote=<name>` | `--all` is the default remote; write `--local --remote=<name>` |
 | The same row in `--pick` and `--spare` | Asks for the row to be deleted and kept |
-| `--allow <risk>=<row>` for a spared row, or for a row outside `--pick` | Approves deleting something that will not be deleted |
-| A picked or spared row of a kind `--only` leaves out | The row cannot be in the run |
+| `--allow <risk>=<row>` for a spared row | Approves deleting something that will not be deleted |
+| `-i` with `--pick`, or with `--plan -`; `-i` without a terminal | The checklist chooses the rows, on the terminal |
+| A picked or spared row of a kind the scope leaves out | The row cannot be in the run |
 | A picked or spared row that is not one of `--branch`'s rows | The same |
-| `--branch` with more than one target, with a remote URL, or naming the default branch | `--branch` means one branch of one checkout, and the default branch is never a candidate |
-| `--plan` with targets or sweep options | The plan already fixed what is swept |
+| `--branch` with more than one target, with a remote URL, or naming a default branch | `--branch` means one branch of one checkout, and a default branch is never a candidate |
+| `--plan` with targets, scope flags or sweep options | The plan already fixed what is swept |
 | `--plan -` without `--yes` or `--dry-run` | stdin carries the plan, so nothing can ask |
 | `--yes` with `--dry-run` | One deletes without asking, the other deletes nothing |
 | `--receipt` with `--dry-run` | Nothing runs, so there is nothing to record |
 | `--archive-exclude` without `--archive`, or `--allow discard-archived` without `--archive` | There is no archive for them to act on |
-| `--offline` or `--provider` without `--remote` | Nothing is fetched or looked up without it |
-| `--remote` with an `--only` that leaves `remote` out | They ask for opposite things |
-| A remote URL target with `--only worktree` or `--only branch`, with `--offline`, or mixed with checkout targets | A remote URL has only remote branches, and it is fetched to be swept |
-| `--all` with any `--format` but `text` | `--all` shows keep rows in the text report only |
+| `--fetch` with `--offline`, or with remote rows only | They contradict, or remote rows fetch anyway |
+| `--offline` or `--provider` without remote rows | Nothing is fetched or looked up without them |
+| A remote URL target with `--local`, `--worktrees` or `--branches`, with `--offline`, or mixed with checkout targets | A remote URL has only remote branches, and it is fetched to be swept |
+| `--all-rows` with any `--format` but `text` | `--all-rows` shows keep rows in the text report only |
+
+A repository that cannot be judged as asked is an error row, and the rest are
+still swept: a `--remote=<name>` or `--against` remote it does not have, a
+bare `--remote` where several remotes leave no default, and an explicit
+`--provider github` or `gitlab` over remotes on different kinds of host.
 
 Refused after the sweep, before deleting, with exit 1:
 
@@ -398,12 +631,12 @@ Allowed, because nothing contradicts:
 | `--allow <risk>` with `--allow <risk>=<row>` | The broader one covers it |
 | `--allow` for a risk no row that runs carries | Runs; the preview lists it as `unused` |
 | Picking a `blocked` or `keep` row | It is skipped and shown with the reason; the rest runs |
-| `--only remote` without `--remote` | Asking for remote branches implies the network |
+| A `--spare` glob that matches nothing | Nothing is spared by it |
 
 ### A remote with no checkout
 
 ```bash
-repo-cleaner git@github.com:acme/api.git
+repo-cleaner status git@github.com:acme/api.git
 repo-cleaner clean git@github.com:acme/api.git
 ```
 
@@ -465,9 +698,10 @@ is `delete`; with neither (`null`) it stays `review`.
 
 A clean worktree whose HEAD is on a branch of the fetched remote is also
 `delete`, whatever its PR state short of an open one (which keeps it), because the remote holds every commit. The
-sweep must have fetched (`--remote` without `--offline`): a local sweep's
-remote-tracking refs may name branches the remote has deleted, so there the row
-keeps its verdict and a note says `--remote` would check. The default branch
+sweep must have fetched that remote (it is in scope, or `--fetch`, without
+`--offline`): a local sweep's remote-tracking refs may name branches the remote
+has deleted, so there the row keeps its verdict and a note says `--fetch` would
+check. Every remote the sweep fetched counts. The default branch
 does not count, the branch needs the same sign of use as above, and a dirty
 worktree or one with submodule work is judged as before. `evidence.recoverableFrom`
 lists the remote branches (`origin/topic`) and is part of the plan's
@@ -687,7 +921,7 @@ read. In 0.18 and earlier the repository came back as an error, and none of
 it was judged:
 
 ```console
-$ repo-cleaner --remote --offline
+$ repo-cleaner status --all --offline
 ~/work/app  (acme/app, default main, origin, not fetched)
   error: GitHub has no such pull request, issue or repository, or you cannot see it.
 
@@ -697,7 +931,7 @@ $ repo-cleaner --remote --offline
 Now the merged branch is still found, and the note says what was missing:
 
 ```console
-$ repo-cleaner --remote --offline
+$ repo-cleaner status --all --offline
 ~/work/app  (acme/app, default main, origin, not fetched)
   note: Listing PRs with `gh pr list` failed (GitHub has no such pull request, issue or repository, or you cannot see it.); judged on git evidence alone.
   branch  feat/login         delete   fully merged into origin/main
@@ -742,7 +976,7 @@ The same happens when `gh` is not installed or not signed in. Nothing was
 asked, so nothing can rule out an open pull request:
 
 ```console
-$ repo-cleaner --remote --offline
+$ repo-cleaner status --all --offline
 ~/work/app  (acme/app, default main, origin, not fetched)
   note: Could not check for open PRs: `gh` is not installed, so deleting a remote branch needs confirm-open-pr. Install `gh`, or pass `--allow confirm-open-pr` once you have checked.
   branch  feat/login         delete   fully merged into origin/main
@@ -765,13 +999,13 @@ no longer exists. In 0.18 and earlier it still called `git ls-remote`, and a
 remote that could not be read failed the whole repository:
 
 ```console
-$ repo-cleaner --remote --offline --provider none     # 0.18 and earlier
+$ repo-cleaner --remote --offline --provider none            # 0.18 and earlier
 ~/work/api  (default main, origin, not fetched)
   error: git ls-remote: The remote '/srv/git/api.git' does not exist or is not a git repository. …
 ```
 
 ```console
-$ repo-cleaner --remote --offline --provider none     # now
+$ repo-cleaner status --all --offline --provider none        # now
 ~/work/api  (default main, origin, not fetched)
   branch  feat/login         delete   fully merged into origin/main
           git update-ref -d refs/heads/feat/login 255acd56…
@@ -793,7 +1027,7 @@ branch the remote no longer has is skipped as gone, and one whose tip moved
 is skipped too:
 
 ```console
-$ repo-cleaner clean --remote --offline --provider none --only remote --yes
+$ repo-cleaner clean --remote --offline --provider none --yes
 skipped  remote:origin/feat/search — gone (no longer in the sweep)
 ok       remote:origin/feat/cart — git push … origin :refs/heads/feat/cart (ls-remote lists nothing)
 
@@ -829,7 +1063,7 @@ The same information is on the result, for a host to show or act on:
 ```ts
 import { sweep } from '@osdlc/repo-cleaner'
 
-const result = sweep(['.'], { remote: true, offline: true, provider: 'github' })
+const result = sweep(['.'], { remotes: [''], offline: true, provider: 'github' })
 for (const repo of result.repos) {
   if (repo.error !== null) {
     console.log(`${repo.path}: could not be swept: ${repo.error}`)
@@ -865,17 +1099,17 @@ The decision behind this is
 ## Plan and clean
 
 ```bash
-repo-cleaner clean                                   # sweep, show the steps, ask, delete
-repo-cleaner clean --only worktree --yes             # no question
+repo-cleaner clean                                   # look, show the steps, ask, delete
+repo-cleaner clean --worktrees --yes                 # no question
 repo-cleaner plan -o plan.json                       # save the plan to review or edit
 repo-cleaner clean --plan plan.json --pick branch:feat/x
 repo-cleaner plan | repo-cleaner clean --plan - --yes
 ```
 
 A plan holds every row with a fingerprint of the evidence behind its verdict,
-and the sweep options it was made with. Without `--pick` only the rows that
-could be deleted run; the blocked and structural rows are there so a pick of
-one is skipped with its reason. `clean`
+and the sweep options it was made with. The rows judged `delete` run, and
+the rows picked; the blocked and structural rows are there so a pick of one
+is skipped with its reason. `clean`
 either sweeps and plans in memory, or reads a plan with `--plan`. A plan of an
 older version is refused, not translated: sweep again.
 
@@ -933,9 +1167,9 @@ that swept, or read its plan from stdin, writes a receipt only when
 
 | Code | Meaning |
 | --- | --- |
-| `0` | Swept; or `clean` ran, was declined, or had nothing to do |
+| `0` | Looked or saved; or `clean` ran, was declined, or had nothing to do |
 | `1` | Failed against the state it found: an unreadable plan, a row not in it, a spared branch that moved |
-| `2` | Cannot run as typed: an unknown flag, a malformed row, a refused combination, `clean` with nobody to ask and no `--yes` |
+| `2` | Cannot run as typed: no phase named, an unknown flag, a malformed row, a refused combination, `clean` with nobody to ask and no `--yes` |
 | `10` | Nothing to sweep: no target named a repository |
 | `11` | `clean` had a failed step; the receipt says which, and which steps it skipped. A failed spared-tip check stops the run |
 
@@ -944,13 +1178,13 @@ that swept, or read its plan from stdin, writes a receipt only when
 ```ts
 import { check, plan, render, run, sweep } from '@osdlc/repo-cleaner'
 
-const result = sweep(['/Users/me/work/api'], { remote: true })
+const result = sweep(['/Users/me/work/api'], { remotes: [''] })
 for (const row of result.repos[0]?.rows ?? []) {
   console.log(row.id, row.verdict, row.why, row.risks)
 }
 
 const preview = check(plan(result), {
-  pick: ['branch:spike/cache'],
+  select: ['branch:spike/cache'],
   allow: [{ risk: 'abandon-unmerged', row: 'branch:spike/cache' }],
 })
 process.stdout.write(render.preview(preview))
@@ -959,9 +1193,9 @@ const receipt = run(preview)
 
 | Export | What it does |
 | --- | --- |
-| `sweep(targets, opts?)` | Resolve the targets and judge every row. Options as on the command line: `only`, `remote`, `offline`, `against`, `provider`, `branch`, plus `cwd`, `cacheDir`, `annotate`, `onProgress`, `onWarn`, and the injectable `git`, `gh`, `glab` runners and `probe` |
+| `sweep(targets, opts?)` | Resolve the targets and judge every row. Options as on the command line: `only`, `remotes` (a name, `''` for the default remote, `*` for every remote), `fetch`, `offline`, `against`, `provider`, `branch`, plus `cwd`, `cacheDir`, `annotate`, `onProgress`, `onWarn`, and the injectable `git`, `gh`, `glab` runners and `probe` |
 | `plan(sweep)` | Every row, fingerprinted, with the sweep's options |
-| `check(plan, approval, opts?)` | Resolve `{ pick, spare, allow }` against the plan, sweep again, and return a `Preview`: the steps, the rows dropped and why, the allows no row needed, and `notes`, what the re-check judged without. Deletes nothing |
+| `check(plan, approval, opts?)` | Resolve `{ select, pick, spare, allow }` against the plan, sweep again, and return a `Preview`: the steps, the rows dropped and why, the allows no row needed, and `notes`, what the re-check judged without. Deletes nothing |
 | `run(preview, opts?)` | Sweep once more and take the preview's steps, writing a `Receipt` (to `receiptPath` after every step, when given). `onNotes` hears what its own re-check judged without |
 | `inspectWorktree(path, opts?)` | One worktree judged as a sweep judges it, submodules included |
 | `readPlan`, `writePlan` | Plans on disk |
@@ -1040,8 +1274,12 @@ Open PRs are what gate a delete, so they are read on their own and an old open
 one is found however many newer PRs there are. Merged and closed PRs past the
 newest 300 are not read; they only prove that work landed, so a branch whose
 merged PR is that old falls back to ancestry or a patch match. A listing that
-stops at the open-PR cap is incomplete, and so is one for a fork on GitHub:
-the PRs a fork opened to its parent live in the parent, and are not listed.
+stops at the open-PR cap is incomplete.
+
+The PRs a fork opens live in its parent, so for a fork on GitHub the parent's
+PRs whose head repository is the fork are listed too, under the same caps, and
+count for the fork's branches. A parent listing that fails or stops at a cap
+leaves the listing incomplete, as does a fork whose parent cannot be named.
 For an incomplete listing the repository carries a note, and a remote branch
 with no PR found needs `confirm-open-pr` to delete, as after a failed listing.
 
