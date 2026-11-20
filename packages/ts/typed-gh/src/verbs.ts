@@ -390,7 +390,7 @@ export interface PrListOptions {
    * Head branch filter, exact: `task/foo` does not match `task/foo-2`. Passed
    * as gh's `--head`, and the rows are filtered again on `headRefName`. Two
    * forks can share a branch name. Ask for `headRepositoryOwner` to tell them
-   * apart.
+   * apart; it parses to {@link PullRequest.headRepositoryOwner}.
    */
   head?: string | undefined
   /**

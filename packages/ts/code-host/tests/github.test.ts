@@ -549,6 +549,7 @@ const PARSED_PR: PullRequest = {
   headRefOid: 'sha1',
   baseRefOid: null,
   isCrossRepository: false,
+  headRepositoryOwner: null,
   mergeable: 'MERGEABLE',
   mergeStateStatus: 'CLEAN',
   reviewDecision: null,
