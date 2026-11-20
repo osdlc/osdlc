@@ -45,11 +45,17 @@ How sure
   --branch <name|HEAD>    Only the rows of one branch: its worktree, its local branch,
                           and its remote branches. HEAD is the branch checked out at
                           the target. Never a default branch.
+
+What is shown
   --no-progress           No progress line on stderr.`
 
 const STATUS = `repo-cleaner status [target...]
   Deletes nothing. Lists each row with its verdict, why, the risks it carries,
   and the command that would delete it.
+  --sizes                 Read each worktree's size on disk (du), list rows largest
+                          first within each verdict, and total the bytes the delete
+                          and review rows would free. Slower: it reads every file
+                          under every worktree. status only; plan and clean refuse it.
   --all-rows              Also show keep rows. By default only delete, review and
                           blocked rows are listed. Only with --format text.
   --format text           The report. The default.
@@ -67,6 +73,9 @@ const CLEAN = `repo-cleaner clean [target...]
   Sweeps (or reads --plan), checks every row again, shows the steps, asks, then
   deletes, compare-and-swap, verifying each step. A failed step skips only the
   steps that depend on it. Every row judged delete runs, and each row picked.
+  Ends with what it deleted and the disk space the removed worktrees freed, each
+  measured with du just before its removal (freed: 4.2 GB (2 worktrees)); a size
+  du could not read makes it "at least". A dry run measures nothing.
   --pick <row>            Also run this row: a review row, or a kept row with an
                           action (an open pull request), never runs otherwise. A
                           picked row still needs --allow for its risks. A blocked
@@ -161,6 +170,7 @@ const CONFLICTS = `Refused before anything is deleted (exit 2)
     a remote URL target with --worktrees or --branches, with --offline, or mixed
       with checkout targets
     --all-rows with any --format but text
+    --sizes with plan or clean: it is a status flag
 
 Refused after the sweep, before deleting (exit 1)
     a picked, spared or allowed row the plan does not have

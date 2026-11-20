@@ -37,6 +37,7 @@ export {
   type Step,
 } from './receipt.ts'
 export { render, type RunSummary, type Style } from './render.ts'
+export { formatBytes, sizeOf, type SizeOfOptions } from './size.ts'
 export { defaultProcessProbe, type ProcessHolder, type ProcessProbe } from './processes.ts'
 export { providers, type PrProvider, type ProviderChoice } from './providers/index.ts'
 export type { Annotate } from './hooks.ts'
@@ -59,6 +60,7 @@ export {
   type RepoInfo,
   type RepoNote,
   type RepoSweep,
+  type Reclaimable,
   type Risk,
   type Row,
   type RowId,

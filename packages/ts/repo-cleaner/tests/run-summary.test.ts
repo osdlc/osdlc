@@ -55,6 +55,9 @@ describe('run summary', () => {
       failed: 0,
       skipped: 0,
       notRun: 0,
+      // The test step carries no measurement.
+      freedBytes: 0,
+      unmeasured: 1,
     })
     expect(renderRunSummary(r)).toEqual([
       'deleted: 1 worktree, 2 local branches, 1 remote branch, 1 stale worktree pruned',
