@@ -6,7 +6,7 @@
  * Detected when `cargo` runs or a swept checkout has a `Cargo.toml`. A
  * `target/` counts only with a `CACHEDIR.TAG`, the marker cargo writes. Its
  * idle time is the age of the newest file under `target/*\/.fingerprint/`.
- * Settings: `plugins.cargo.idleHours` (default 24).
+ * Settings: `plugins.cargo.idleHours` (default {@link DEFAULT_IDLE_HOURS}).
  */
 
 import { existsSync, readdirSync } from 'node:fs'
@@ -46,9 +46,10 @@ function cargoOnPath(env: Env): boolean {
 }
 
 /**
- * Whether incremental builds are off for `checkout`: `CARGO_BUILD_INCREMENTAL`
- * wins, as it does in cargo, then `cargo config get build.incremental`. An
- * answer that cannot be read counts as on, so no row is made.
+ * Whether incremental builds are off for `checkout`: `CARGO_INCREMENTAL`, then
+ * `CARGO_BUILD_INCREMENTAL`, then `cargo config get build.incremental`, in cargo's
+ * own order. Stable cargo refuses `config get`, so that step answers only on
+ * nightly. An answer that cannot be read counts as on, so no row is made.
  */
 export function incrementalOff(env: Env, checkout: string): boolean {
   const setting = (process.env.CARGO_INCREMENTAL ?? process.env.CARGO_BUILD_INCREMENTAL)

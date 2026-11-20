@@ -3,9 +3,8 @@
  * covers, measuring a directory, containing a path inside its checkout, and
  * removing one artifact directory under the same checks that listed it.
  *
- * A candidate is `artifact:<absolute path>`. Its evidence is its fingerprint:
- * `kind`, `path`, `checkout`, `sizeBytes`, `idleHours` (rounded down),
- * `newestMtimeMs` and `unattended`.
+ * A candidate is `artifact:<absolute path>`; its evidence is built in
+ * `artifactRow` and `refusedRow`. `idleHours` is rounded down.
  */
 
 import { existsSync, lstatSync, readdirSync, realpathSync, rmSync } from 'node:fs'
@@ -51,7 +50,7 @@ export interface Env {
   targets: readonly string[]
 }
 
-/** `opts` with defaults over the targets `ctx` names. */
+/** `opts` with defaults filled in; an `idleHours` that is not a positive finite number becomes {@link DEFAULT_IDLE_HOURS}. */
 export function envOf(opts: ArtifactOptions, ctx: Ctx): Env {
   const idle = opts.idleHours
   return {
@@ -106,7 +105,7 @@ export function sizeOf(path: string): number {
 /**
  * The newest modification time (ms) of any file under `dir`, links not followed;
  * null when it holds none. Throws when a directory cannot be read, since what
- * it hides may be recent. `skip` names entries to pass over, files and directories alike.
+ * it hides may be recent; one that vanishes mid-walk is skipped. `skip` names entries to pass over, files and directories alike.
  */
 export function newestMtime(
   dir: string,
@@ -118,7 +117,6 @@ export function newestMtime(
     try {
       entries = readdirSync(path, { withFileTypes: true })
     } catch (err) {
-      // A directory that vanished under a running build is fine; one that cannot be read hides activity.
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') return
       throw err
     }
@@ -179,7 +177,6 @@ export interface Row {
   blockers: Array<{ code: string; reason: string }>
 }
 
-/** `<owner>`'s refusals of `row`, as objections. */
 export const objectionsTo = (owner: string, row: Row): Objection[] =>
   row.blockers.map((b) => ({
     by: owner,
@@ -189,7 +186,7 @@ export const objectionsTo = (owner: string, row: Row): Objection[] =>
     reason: b.reason,
   }))
 
-/** The row for one artifact directory: a candidate, refused while a process works in the checkout. */
+/** The row for one artifact directory: a candidate, refused while a process works in the checkout or the process table cannot be read. */
 export function artifactRow(owner: string, f: ArtifactFacts, now: Date): Row {
   const idleHours = f.newestMtimeMs === null ? null : idleHoursSince(f.newestMtimeMs, now)
   const blockers = [

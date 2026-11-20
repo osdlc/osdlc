@@ -18,7 +18,7 @@ import {
 import { FatalRun, type Candidate, type Objection, type Plugin } from './types.ts'
 
 export interface GitPluginOptions extends Runners {
-  /** What the sweep judges; `annotate`, `cwd` and progress are the plugin's to set. */
+  /** What the sweep judges; the plugin sets `cwd` from the run. */
   sweep?: Pick<
     SweepOptions,
     'only' | 'remote' | 'offline' | 'against' | 'provider' | 'branch' | 'cacheDir'
