@@ -1,6 +1,0 @@
-mcVersion: 2
-kind: contract
-body:
-  sections:
-    - section: Context
-    - section: Decision

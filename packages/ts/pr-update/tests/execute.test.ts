@@ -323,6 +323,57 @@ describe('the executor against real git', () => {
     expect(git.resolveRef('origin/verify')).toBe(before!)
   })
 
+  test('verifyVerbs resolves in the PR worktree, and its verbs gate the push', async () => {
+    makeBehindPr('late', { 'a.txt': 'a\n' }, { 'b.txt': 'b\n' })
+    const { git } = fx.worker
+    const before = git.resolveRef('origin/late')
+    const seen: string[] = []
+
+    const out = await inWorktree((wt) =>
+      updateOne(
+        wt,
+        target({ head: 'late', number: 7 }),
+        settings({
+          verifyVerbs: async (worktree, pr) => {
+            seen.push(`${worktree}#${pr}`)
+            return ['check']
+          },
+        }),
+        recorder(nope),
+        { apply: true, worktree: wtRoot },
+      ),
+    )
+    expect(out.status).toBe('failed')
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toMatch(/#7$/)
+    git.fetch('origin')
+    expect(git.resolveRef('origin/late')).toBe(before!)
+  })
+
+  test('a verifyVerbs that throws fails that PR with its message and pushes nothing', async () => {
+    makeBehindPr('nodetect', { 'a.txt': 'a\n' }, { 'b.txt': 'b\n' })
+    const { git } = fx.worker
+    const before = git.resolveRef('origin/nodetect')
+
+    const out = await inWorktree((wt) =>
+      updateOne(
+        wt,
+        target({ head: 'nodetect' }),
+        settings({
+          verifyVerbs: async () => {
+            throw new Error('verify: detect found no test command')
+          },
+        }),
+        recorder(nope),
+        { apply: true, worktree: wtRoot },
+      ),
+    )
+    if (out.status !== 'failed') throw new Error('unreachable')
+    expect(out.reason).toContain('found no test command')
+    git.fetch('origin')
+    expect(git.resolveRef('origin/nodetect')).toBe(before!)
+  })
+
   test('a rebase with no known head sha is refused rather than force-pushed blind', async () => {
     // Without a sha the lease has nothing to check. The executor does not
     // force-push on someone's behalf without one.
@@ -593,6 +644,96 @@ describe('the executor against real git', () => {
       const { git } = fx.worker
       git.fetch('origin')
       expect(git.resolveRef('origin/stay')).toBe(oid)
+    })
+
+    describe('on_rebase_conflict: repair', () => {
+      /** Fixes whatever path it is given, and keeps each request. */
+      function stopRepair(
+        result: RepairResult = { ok: true, note: 'fixed' },
+      ): Repair & { calls: RepairRequest[]; midRebase: boolean[] } {
+        const calls: RepairRequest[] = []
+        const midRebase: boolean[] = []
+        const fn = async (req: RepairRequest): Promise<RepairResult> => {
+          calls.push(req)
+          midRebase.push(fx.worker.git.at(req.worktree).resolveRef('REBASE_HEAD') !== null)
+          for (const p of req.paths) writeFileSync(join(req.worktree, p), 'repaired\n')
+          return result
+        }
+        return Object.assign(fn, { calls, midRebase })
+      }
+      const run = (
+        branch: string,
+        oid: string,
+        extra: Partial<UpdateSettings>,
+        apply = true,
+      ): Promise<UpdateOutcome> =>
+        inWorktree((wt) =>
+          updateOne(
+            wt,
+            target({ head: branch, headOid: oid, strategy: 'rebase' }),
+            settings({ onRebaseConflict: 'repair', repairOn: ['conflict'], ...extra }),
+            regen(),
+            { apply, worktree: wtRoot },
+          ),
+        )
+
+      test('repairs the stop the resolvers cannot clear, then pushes a rebase', async () => {
+        const oid = makeTwoStopPr('rr', 'shared.ts')
+        const repair = stopRepair()
+        const out = await run('rr', oid, { resolvers, repair })
+        expect(out).toMatchObject({
+          status: 'updated',
+          pushed: true,
+          repaired: [{ kind: 'conflict', note: 'fixed' }],
+        })
+        expect(out).not.toHaveProperty('strategyFallback')
+        expect(repair.calls).toHaveLength(1)
+        expect(repair.midRebase).toEqual([true])
+        expect(repair.calls[0]).toMatchObject({
+          kind: 'conflict',
+          paths: ['shared.ts'],
+          replaying: { subject: 'two', onto: 'origin/main' },
+        })
+        expect(repair.calls[0]!.replaying!.sha).toMatch(/^[0-9a-f]{40}$/)
+        const { git } = fx.worker
+        git.fetch('origin')
+        expect(git.showAtRev('origin/rr', 'shared.ts')).toBe('repaired\n')
+        expect(git.logSubject('origin/rr')).toBe('two')
+      })
+
+      test('past max_rebase_stops the rebase is aborted and reported, not merged', async () => {
+        const oid = makeTwoStopPr('cap', 'shared.ts')
+        const repair = stopRepair()
+        const out = await run('cap', oid, { repair, maxRebaseStops: 1 })
+        expect(out.status).toBe('conflict')
+        if (out.status !== 'conflict') throw new Error('unreachable')
+        expect(out.needsHuman[0]!.why).toContain('after 1 repaired stop')
+        expect(out).not.toHaveProperty('strategyFallback')
+        expect(repair.calls).toHaveLength(1)
+        const { git } = fx.worker
+        git.fetch('origin')
+        expect(git.resolveRef('origin/cap')).toBe(oid)
+      })
+
+      test('a failed repair reports a conflict with the reason', async () => {
+        const oid = makeTwoStopPr('bad', 'shared.ts')
+        const repair = stopRepair({ ok: false, note: 'unsure' })
+        const out = await run('bad', oid, { resolvers, repair })
+        if (out.status !== 'conflict') throw new Error(`got ${out.status}`)
+        expect(out.needsHuman[0]!.why).toContain('gave up')
+        expect(repair.calls).toHaveLength(1)
+        const { git } = fx.worker
+        git.fetch('origin')
+        expect(git.resolveRef('origin/bad')).toBe(oid)
+      })
+
+      test('a rehearsal never calls the repair', async () => {
+        const oid = makeTwoStopPr('dry', 'shared.ts')
+        const repair = stopRepair()
+        const out = await run('dry', oid, { resolvers, repair }, false)
+        expect(out.status).toBe('conflict')
+        expect(repair.calls).toEqual([])
+      })
     })
 
     test('a fallback merge with no repair is reported as a conflict, strategy merge', async () => {
