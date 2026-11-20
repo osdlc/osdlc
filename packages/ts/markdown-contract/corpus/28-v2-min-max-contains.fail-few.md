@@ -1,3 +1,0 @@
-## Entry
-
-Only one.
