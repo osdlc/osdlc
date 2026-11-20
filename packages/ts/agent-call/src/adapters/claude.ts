@@ -158,6 +158,11 @@ function planClaude(command: readonly string[], spec: AgentCallSpec): PlannedCal
       detail: '--dangerously-skip-permissions',
     },
   })
+  if (permissions?.tools !== undefined) {
+    // One comma list; `--tools` also takes `""` for no tools at all.
+    argv.push('--tools', permissions.tools.join(','))
+    note(notes, 'permissions.tools', 'native', '--tools')
+  }
   if (permissions?.allowTools !== undefined && permissions.allowTools.length > 0) {
     argv.push('--allowedTools', permissions.allowTools.join(','))
     note(notes, 'permissions.allowTools', 'native', '--allowedTools')

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0](https://github.com/osdlc/osdlc/compare/web-access/v0.5.0...web-access/v0.6.0) - 2026-11-20
+
+### Other
+
+- close a withdrawn token's connections at once, and only those ([#885](https://github.com/osdlc/osdlc/pull/885))
+
 ### Added
 
 - Public names behind a TLS-terminating reverse proxy:
