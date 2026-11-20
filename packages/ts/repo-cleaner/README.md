@@ -990,8 +990,21 @@ branch.
 
 | Provider | CLI | Listing |
 | --- | --- | --- |
-| `github` | `gh` | `gh pr list --state all`, up to 300 |
-| `gitlab` | `glab` | `glab api projects/<path>/merge_requests?state=all`, 100 a page, up to 300 |
+| `github` | `gh` | `gh pr list --repo <host>/<project>`: every open PR (up to 1000), then the newest 300 of any state |
+| `gitlab` | `glab` | `glab api projects/<path>/merge_requests`, 100 a page: every opened MR (up to 1000), then the newest 300 of any state |
+
+Open PRs are what gate a delete, so they are read on their own and an old open
+one is found however many newer PRs there are. Merged and closed PRs past the
+newest 300 are not read; they only prove that work landed, so a branch whose
+merged PR is that old falls back to ancestry or a patch match. A listing that
+stops at the open-PR cap is incomplete, and so is one for a fork on GitHub:
+the PRs a fork opened to its parent live in the parent, and are not listed.
+For an incomplete listing the repository carries a note, and a remote branch
+with no PR found needs `confirm-open-pr` to delete, as after a failed listing.
+
+The GitHub provider names the repository the sweep judges (`--repo`), not the
+one `gh` would pick from the checkout's remotes, which prefers `upstream` over
+`origin`.
 
 With `--remote`, `--provider auto` (the default) reads the remote's host: a
 remote that names no host (a local path or `file://`) gets no provider, since

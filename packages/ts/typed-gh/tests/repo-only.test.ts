@@ -179,6 +179,21 @@ describe('new Gh({ repo }) and new AsyncGh({ repo })', () => {
     expect(sync.calls[0]!.argv).toContain('ghe.acme.com/acme/gadgets')
   })
 
+  test('withHostname(host) keeps the repo, the directory and the runner', async () => {
+    const sync = syncRecorder()
+    const as = asyncRecorder()
+    const gh = new Gh('/clone', { repo: 'acme/widgets', runner: sync.runner }).withHostname(
+      'ghe.acme.com',
+    )
+    const agh = new AsyncGh({ ...TARGET, runner: as.runner }).withHostname('ghe.other.com')
+    gh.prList()
+    await agh.prList()
+
+    expect(gh.cwd).toBe('/clone')
+    expect(sync.calls[0]!.argv).toContain('ghe.acme.com/acme/widgets')
+    expect(as.calls[0]!.argv).toContain('ghe.other.com/acme/widgets')
+  })
+
   test('withRepo(repo) on a cwd-bound client keeps the directory', () => {
     const gh = new Gh('/clone', { repo: 'acme/widgets' }).withRepo('acme/gadgets')
     expect(gh.cwd).toBe('/clone')
