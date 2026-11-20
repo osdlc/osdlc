@@ -13,17 +13,15 @@ import { existsSync, readdirSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
 import {
+  artifactPlugin,
   artifactRow,
   checkoutsOf,
-  envOf,
   holdersIn,
   idleHoursSince,
   inside,
   newestMtime,
-  objectionsTo,
   present,
   refusedRow,
-  removeArtifact,
   type ArtifactOptions,
   type Checkout,
   type Env,
@@ -53,7 +51,9 @@ function cargoOnPath(env: Env): boolean {
  * answer that cannot be read counts as on, so no row is made.
  */
 export function incrementalOff(env: Env, checkout: string): boolean {
-  const setting = process.env.CARGO_BUILD_INCREMENTAL?.trim().toLowerCase()
+  const setting = (process.env.CARGO_INCREMENTAL ?? process.env.CARGO_BUILD_INCREMENTAL)
+    ?.trim()
+    .toLowerCase()
   if (setting === 'false' || setting === '0') return true
   if (setting === 'true' || setting === '1') return false
   try {
@@ -161,26 +161,11 @@ function rowsOrThrow(env: Env, checkout: Checkout): Row[] {
 
 /** Idle `target/` directories, and `incremental` directories where incremental builds are off. Settings: `idleHours`. */
 export function cargoPlugin(opts: ArtifactOptions = {}): Plugin {
-  let rows = new Map<string, Row>()
-  return {
-    name: CARGO_PLUGIN,
-    detect: (ctx) => {
-      const env = envOf(opts, ctx)
-      return (
-        cargoOnPath(env) || checkoutsOf(env).some((c) => existsSync(join(c.path, 'Cargo.toml')))
-      )
-    },
-    discover(ctx) {
-      const env = envOf(opts, ctx)
-      const found = checkoutsOf(env).flatMap((c) => rowsFor(env, c))
-      rows = new Map(found.map((r) => [r.candidate.id, r]))
-      return found.map((r) => r.candidate)
-    },
-    object: (all) =>
-      all.flatMap((c) => {
-        const row = rows.get(c.id)
-        return c.owner === CARGO_PLUGIN && row !== undefined ? objectionsTo(CARGO_PLUGIN, row) : []
-      }),
-    delete: (c, ctx) => removeArtifact(rowsFor, c, envOf(opts, ctx)),
-  }
+  return artifactPlugin(
+    CARGO_PLUGIN,
+    opts,
+    (env) =>
+      cargoOnPath(env) || checkoutsOf(env).some((c) => existsSync(join(c.path, 'Cargo.toml'))),
+    rowsFor,
+  )
 }

@@ -14,17 +14,15 @@ import { join } from 'node:path'
 import { busyHolders } from '@osdlc/repo-cleaner'
 
 import {
+  artifactPlugin,
   artifactRow,
   checkoutsOf,
-  envOf,
   holdersIn,
   idleHoursSince,
   inside,
   newestMtime,
-  objectionsTo,
   present,
   refusedRow,
-  removeArtifact,
   type ArtifactOptions,
   type Checkout,
   type Env,
@@ -81,22 +79,10 @@ function rowOrThrow(env: Env, checkout: Checkout): Row[] {
 
 /** `node_modules` of idle linked worktrees. Settings: `idleHours`. */
 export function nodePlugin(opts: ArtifactOptions = {}): Plugin {
-  let rows = new Map<string, Row>()
-  return {
-    name: NODE_PLUGIN,
-    detect: (ctx) =>
-      checkoutsOf(envOf(opts, ctx)).some((c) => existsSync(join(c.path, 'package.json'))),
-    discover(ctx) {
-      const env = envOf(opts, ctx)
-      const found = checkoutsOf(env).flatMap((c) => rowFor(env, c))
-      rows = new Map(found.map((r) => [r.candidate.id, r]))
-      return found.map((r) => r.candidate)
-    },
-    object: (all) =>
-      all.flatMap((c) => {
-        const row = rows.get(c.id)
-        return c.owner === NODE_PLUGIN && row !== undefined ? objectionsTo(NODE_PLUGIN, row) : []
-      }),
-    delete: (c, ctx) => removeArtifact(rowFor, c, envOf(opts, ctx)),
-  }
+  return artifactPlugin(
+    NODE_PLUGIN,
+    opts,
+    (env) => checkoutsOf(env).some((c) => existsSync(join(c.path, 'package.json'))),
+    rowFor,
+  )
 }
