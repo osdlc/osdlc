@@ -217,7 +217,7 @@ error comes back as a value.
 | `boolean` | `boolean` | `negatable: true` starts it at `true` and spells it `--no-<name>` |
 | `string` | `string`, or `string \| undefined` with no default | `required: true` refuses the run when absent |
 | `enum` | one of `choices` | commander rejects anything else |
-| `list` | `string[]` | comma-separated and repeatable |
+| `list` | `string[]` | comma-separated and repeatable; `valueAfterEquals: true` takes a value only after `=`, so a bare `--remote` adds `''` and `--remote x` leaves `x` a positional |
 | `count` | `number` | `-vv` is 2 |
 | `tristate` | `boolean \| undefined` | `--x`, `--no-x`, or neither |
 
