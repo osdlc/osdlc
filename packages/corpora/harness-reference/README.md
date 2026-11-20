@@ -48,8 +48,9 @@ pnpm run compile        # write dist/harness-knowledge.json and its schema (not 
 ```
 
 CI (`.github/workflows/harness-reference.yml`) runs `pnpm run check` when this folder, the
-validator or `packages/ts/harness-knowledge/data/` changes. It also checks the compiled file
-`@osdlc/harness-knowledge` ships against the corpus.
+validator or `packages/ts/harness-knowledge/` changes. It also builds and tests
+`@osdlc/harness-knowledge` and the packages that depend on it, since its build compiles this
+corpus. A change that alters the compiled values needs a changeset for `@osdlc/harness-knowledge`.
 
 ## The site
 

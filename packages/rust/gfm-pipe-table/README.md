@@ -5,8 +5,8 @@ strings and byte offsets. No dependencies.
 
 This crate is the Rust twin of the npm package
 [`@osdlc/gfm-table`](https://github.com/osdlc/osdlc/tree/main/packages/ts/gfm-table):
-for the same input both give the same result, checked by a shared fixture,
-[`tests/fixtures/parity.json`](tests/fixtures/parity.json), that both
+for the same input both give the same result, checked by one conformance suite,
+`packages/conformance/gfm-table/suite.json` in the repository, that both
 packages' tests run. The two share the major and minor version. The crate is
 named `gfm-pipe-table` because `gfm-table` is taken on crates.io.
 
@@ -127,13 +127,13 @@ Multilingual Plane and an offset `apply_delimited_changes` cannot slice at
   TypeScript package's are UTF-16 string indices. They agree on ASCII text.
   `CellText::offsets` has one entry per byte of the text. A splice's cursor
   `offset` past one filler character is that character's length in bytes.
-  The fixture holds byte offsets, and the TypeScript runner converts.
+  The suite holds byte offsets, and the TypeScript runner converts.
 - **`Option` for `null`.** `read_table`, `table_grid`, `rectangular`, the grid
   readers, `pad_row_splice` and `delete_delimited_row` return `None` where
   the TypeScript twin returns `null`.
 - **No invalid cap.** `PadTableOptions::max_column_width` is an
   `Option<NonZeroUsize>`. The TypeScript twin throws a `RangeError` for a cap
-  that is not a positive integer; the fixture names that refusal
+  that is not a positive integer; the suite names that refusal
   `invalid_max_column_width`.
 - **A splice has all three fields.** `Change` is `from`, `to` and `insert`; an
   insert has `to == from` and a delete an empty `insert`. The TypeScript twin
@@ -159,7 +159,7 @@ Multilingual Plane and an offset `apply_delimited_changes` cannot slice at
 - **Applying changes.** `apply_delimited_changes` takes a slice of changes,
   so one change is `&[change]`, and returns
   `Err(OverlappingChanges)` where the TypeScript twin throws a `RangeError`;
-  the fixture names that refusal `overlapping_changes`. An offset past the
+  the suite names that refusal `overlapping_changes`. An offset past the
   end of the text or inside a character panics, as slicing a `str` does;
   the TypeScript twin clamps it.
 - **`pad_row_splice` on a line that is not a row.** For a line with no pipe

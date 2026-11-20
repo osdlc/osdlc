@@ -47,6 +47,19 @@ export interface ProviderStatus extends ForgeTarget, ProviderWords {
    * in the provider's words. Absent when it answered or was not asked.
    */
   listError?: string | undefined
+  /**
+   * Why the provider's listing may leave out an open request; set by the
+   * sweep. A branch with no known request then needs the same confirmation
+   * as after a failed listing.
+   */
+  incomplete?: string | undefined
+}
+
+/** A listing that answered, with what it could not read. */
+export interface PrListing {
+  prs: PRInfo[]
+  /** Why requests that could be open are missing from `prs`; absent when none are. */
+  incomplete?: string | undefined
 }
 
 /** One source of pull request evidence. */
@@ -59,10 +72,11 @@ export interface PrProvider {
    * The repository's pull requests, fork PRs already dropped, in any order;
    * null, or a throw whose message says why, when the listing failed. A
    * failure is not "no PRs": the caller classifies on git evidence alone and
-   * notes the failure on the repository.
+   * notes the failure on the repository. A listing that answered but cannot
+   * rule out an open request returns a {@link PrListing} with `incomplete`.
    *
    * @param branch Narrow the listing to this exact head branch. The caller
    *   checks the head again, so a provider that cannot narrow may list all.
    */
-  listPrs(root: string, target: ForgeTarget, branch?: string): PRInfo[] | null
+  listPrs(root: string, target: ForgeTarget, branch?: string): PRInfo[] | PrListing | null
 }

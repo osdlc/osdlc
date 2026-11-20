@@ -200,6 +200,11 @@ export interface WorktreeEvidence extends LandingEvidence {
   otherWorktrees?: string[]
   submodules?: SubmoduleEvidence[]
   submoduleDirtyFiles?: number
+  /**
+   * Remote-tracking branches (`origin/feature`) of the fetched remote whose history holds HEAD,
+   * the default branch excluded. Set only for a clean, used worktree of a fetched sweep.
+   */
+  recoverableFrom?: string[]
   /** Its submodules make plain `git worktree remove` refuse, so the remove is forced. */
   forcedForSubmodules?: boolean
 }
