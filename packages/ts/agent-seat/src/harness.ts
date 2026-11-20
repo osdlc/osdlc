@@ -39,7 +39,15 @@ import {
 } from '@osdlc/agent-call'
 import { harnessId } from '@osdlc/detect-harness'
 
-import { ran, resolveRunner, type CommandRunner, type EnvOverrides } from '@osdlc/command-seam'
+import {
+  commandString,
+  ran,
+  resolveRunner,
+  shellJoin,
+  shellQuote,
+  type CommandRunner,
+  type EnvOverrides,
+} from '@osdlc/command-seam'
 import { isRecord, parseJsonOrNull, realResolve, sleepSync, strOrNull, which } from './util.ts'
 
 // `contract.ts` imports only types from this file (`Harness` for
@@ -519,6 +527,8 @@ export const SESSION_ID_WAIT_MS = 3_000
  * word of the command is single-quoted, even one that needs no quoting: Windows
  * PowerShell 5.1 drops a bare `--` (the guard `harnessArgv` puts before the
  * prompt) and splits a bare `-name.value`, which a quoted word avoids.
+ *
+ * @throws Error if a variable name is not a plain identifier.
  */
 export function withEnv(
   argv: string[],
@@ -528,11 +538,7 @@ export function withEnv(
   const entries = Object.entries(env ?? {})
   if (entries.length === 0) return argv
   if (platform === 'win32') {
-    for (const [k] of entries) {
-      // The name goes into a PowerShell command unquoted (set branch), so it must be a plain identifier.
-      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k))
-        throw new Error(`invalid environment variable name: ${k}`)
-    }
+    for (const [k] of entries) assertEnvName(k)
     const sets = entries.map(([k, v]) =>
       v === undefined
         ? `Remove-Item -ErrorAction SilentlyContinue ${powershellLiteral(`Env:${k}`)}`
@@ -548,10 +554,68 @@ export function withEnv(
   const unset: string[] = []
   const pairs: string[] = []
   for (const [k, v] of entries) {
+    assertEnvName(k)
     if (v === undefined) unset.push('-u', k)
     else pairs.push(`${k}=${v}`)
   }
   return ['env', ...unset, ...pairs, ...argv]
+}
+
+/**
+ * Throws unless `name` is a plain identifier. PowerShell takes the name unquoted, `env`
+ * misreads a name holding `=` or starting with `-`, and a shell treats `K=V` as an
+ * assignment only when `K` is an identifier.
+ */
+function assertEnvName(name: string): void {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name))
+    throw new Error(`invalid environment variable name: ${name}`)
+}
+
+/**
+ * `argv` as one command line with `env` as a plain POSIX assignment prefix
+ * (`K=V cmd`), for typing into an interactive shell. Unlike `env K=V cmd` (see
+ * {@link withEnv}) the shell resolves the command itself, so a shell function or alias
+ * still runs. It is a string, not an argv: `commandString` quotes a first word that
+ * holds `=`, so an argv cannot carry the prefix.
+ *
+ * On win32 there is no such prefix, so the line is `commandString(withEnv(argv, env, 'win32'))`.
+ *
+ * @throws RangeError if argv is empty; Error if a value is `undefined` (a prefix cannot
+ * unset) or a name is not a plain identifier.
+ *
+ * @example
+ * envPrefixLine(['a', 'x y'], { K: 'v w' }, 'linux') // K='v w' a 'x y'
+ */
+export function envPrefixLine(
+  argv: string[],
+  env: EnvOverrides | undefined,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  if (argv.length === 0) throw new RangeError('argv must not be empty')
+  if (platform === 'win32') {
+    return commandString(withEnv(argv, env, platform), { platform })
+  }
+  const entries = Object.entries(env ?? {})
+  for (const [k, v] of entries) {
+    assertEnvName(k)
+    if (v === undefined)
+      throw new Error(`cannot unset ${k} in an assignment prefix: use withEnv for \`env -u\``)
+  }
+  const assigns = entries.map(([k, v]) => `${k}=${shellQuote(v!)}`)
+  return [...assigns, shellJoin(argv)].join(' ')
+}
+
+/**
+ * `req.argv` under `req.env`: what a host runs for a {@link CommandRequest}.
+ *
+ * @throws Error if `req.argv` is empty, even when `req.env` is set.
+ */
+export function commandArgv(
+  req: Pick<CommandRequest, 'argv' | 'env'>,
+  platform: NodeJS.Platform = process.platform,
+): string[] {
+  if (req.argv.length === 0) throw new Error('empty argv')
+  return withEnv(req.argv, req.env, platform)
 }
 
 /** `word` as a single-quoted PowerShell literal, each single quote (typographic ones too) doubled. */
