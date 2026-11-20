@@ -1045,6 +1045,8 @@ export interface ForEachRefOptions {
   sort?: string | undefined
   /** `--count=` cap on the rows returned. */
   count?: number | undefined
+  /** `--contains=` commit: only refs whose history includes it. */
+  contains?: string | undefined
 }
 
 /** The `forEachRef` format {@link refs} parses: sha, TAB, full refname. */
@@ -1067,6 +1069,7 @@ export function forEachRef(
   const argv = ['for-each-ref', `--format=${opts.format ?? REF_FORMAT}`]
   if (opts.sort !== undefined) argv.push(`--sort=${opts.sort}`)
   if (opts.count !== undefined) argv.push(`--count=${opts.count}`)
+  if (opts.contains !== undefined) argv.push(`--contains=${opts.contains}`)
   for (const p of typeof pattern === 'string' ? [pattern] : pattern) {
     argv.push(positional('forEachRef', 'pattern', p))
   }

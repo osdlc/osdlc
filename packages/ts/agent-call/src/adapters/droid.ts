@@ -19,6 +19,7 @@ import {
   commandPrefix,
   type CommandOptions,
   withStructured,
+  noteDroppedToolSet,
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
@@ -105,6 +106,11 @@ function planDroid(command: readonly string[], spec: AgentCallSpec): PlannedCall
   // instead of prompting. --auto and --skip-permissions-unsafe cannot be
   // combined, so only one is ever planned.
   const permissions = spec.permissions
+  noteDroppedToolSet(
+    notes,
+    permissions?.tools,
+    'droid has no exact tool set; --add-tools and --remove-tools only adjust the default set',
+  )
   if (permissions?.mode === 'read-only') {
     note(
       notes,

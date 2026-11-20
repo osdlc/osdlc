@@ -1,7 +1,12 @@
 import type { CapabilityNote, PlannedCall } from '../plan.js'
 import { note } from '../plan.js'
 import type { AgentCallSpec } from '../spec.js'
-import { buildEffectivePrompt, commandPrefix, type CommandOptions } from './shared.js'
+import {
+  buildEffectivePrompt,
+  commandPrefix,
+  type CommandOptions,
+  noteDroppedToolSet,
+} from './shared.js'
 import type { AgentAdapter, ParsedOutput } from './types.js'
 
 /** Options for {@link customAdapter}. */
@@ -56,6 +61,11 @@ export function customAdapter(options: CustomAdapterOptions): AgentAdapter {
           `custom adapter "${options.name}" defines no permission mapping`,
         )
       }
+      noteDroppedToolSet(
+        notes,
+        spec.permissions?.tools,
+        `custom adapter "${options.name}" cannot limit the built-in tools`,
+      )
       const argv = [...command, ...options.args(spec, effectivePrompt), ...(spec.extraArgs ?? [])]
       return {
         agent: options.name,
