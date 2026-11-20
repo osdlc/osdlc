@@ -194,8 +194,8 @@ stdout, and the totals line goes to stderr.
 ### `repo-cleaner clean`
 
 Sweeps (or reads `--plan`), checks every row again, shows the steps, asks,
-then deletes, compare-and-swap, verifying each step and stopping at the first
-failure. Without `--pick` it runs every row judged `delete`.
+then deletes, compare-and-swap, verifying each step. A failed step skips only
+the steps that depend on it (see below). Without `--pick` it runs every row judged `delete`.
 
 | Option | Meaning |
 | --- | --- |
@@ -613,7 +613,7 @@ reason, so a free-form reason such as `keep, build running` always blocks.
 - Before the unlock and again before the remove, `clean` asks again, and reads
   the process table afresh. If the owner is alive by then, or a process other
   than an idle shell works in the directory, or the table cannot be read, the
-  step fails and the run stops. A row dropped at the re-sweep touches nothing;
+  step fails, and the steps that depend on it are skipped. A row dropped at the re-sweep touches nothing;
   a step that fails at the unlock leaves the lock in place. `stale_lock` is part
   of a worktree row's fingerprint, so a lock taken after the plan was written
   drops the row too.
@@ -879,14 +879,33 @@ plan's sweep did, so it judges against the same, current default branch.
 
 On yes it runs only the steps it showed: spared remote tips first, then
 worktrees, local branches and remote branches, in that order. Branch
-deletes are compare-and-swap, every step is verified, and the first failure
-stops the run. Every run ends with what it did:
+deletes are compare-and-swap and every step is verified.
+
+A step that fails is marked `failed`, and the steps that depend on it are
+marked `skipped`, with the failed step named in the receipt's `error`. Every
+other step runs, so one worktree that cannot be removed no longer leaves the
+rest undone.
+
+| Failed step | Skipped | Why |
+| --- | --- | --- |
+| `verify-remote` (a spared tip moved or is gone) | every later step: the run stops | the plan's premise no longer holds |
+| `unlock-worktree` | that row's `remove-worktree` or `prune-worktrees` | it is still locked |
+| `remove-worktree`, `prune-worktrees` | the `delete-branch` of the branch that worktree held, and a repository-wide prune | the branch was deletable only because its worktree was going; the prune counted on the removal |
+| `delete-branch` | the same branch's `delete-remote` in the same repository | the remote copy may be the one the plan relied on |
+| any | nothing in another repository, and no unrelated row | independent |
+
+A step skipped for a skipped step names the failed step at the root. The run
+still ends `failed` (exit `11`) when any step failed. Every run ends with what
+it did:
 
 ```text
 deleted: 1 worktree, 3 local branches, 2 remote branches, 1 stale worktree pruned
 skipped 2, not deleted: 1 needs-pick (name with --pick), 1 duplicate
 status: complete
 ```
+
+A run with a failure adds a line such as `9 steps ran, 1 failed, 2 skipped`; a
+run stopped by a spared tip says how many rows did not run instead.
 
 Two clones of one remote list the same remote branches; `clean` deletes each
 once and drops the other clone's row as `duplicate`, or as `spared` when the
@@ -907,7 +926,7 @@ that swept, or read its plan from stdin, writes a receipt only when
 | `1` | Failed against the state it found: an unreadable plan, a row not in it, a spared branch that moved |
 | `2` | Cannot run as typed: an unknown flag, a malformed row, a refused combination, `clean` with nobody to ask and no `--yes` |
 | `10` | Nothing to sweep: no target named a repository |
-| `11` | `clean` stopped at a failed step; the receipt says which |
+| `11` | `clean` had a failed step; the receipt says which, and which steps it skipped. A failed spared-tip check stops the run |
 
 ## As a library
 
