@@ -12,12 +12,7 @@
  * with an option that would have no effect, is refused with exit 2 before
  * anything is swept.
  *
- * Exit codes:
- *   0   swept; or clean ran, was declined, or had nothing to do
- *   1   failed against the state it found
- *   2   cannot run as typed
- *   10  no target named a repository
- *   11  clean stopped at a failed step; the receipt says which
+ * Exit codes: see EXIT in src/reference.ts (shown by --help --extended).
  */
 
 import { readSync, rmSync } from 'node:fs'

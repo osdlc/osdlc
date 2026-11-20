@@ -666,6 +666,30 @@ describe('runUpdate — failed attempts', () => {
     expect(existsSync(file)).toBe(false)
   })
 
+  test('verify: detect asks resolveVerifyVerbs once per PR, with the update worktree and PR number', async () => {
+    branchOff('clean', { 'c.txt': 'c\n' })
+    commitOn('main', { 'd.txt': 'd\n' })
+    const asked: { checkout: string; pr?: number | undefined; which: string }[] = []
+    await update(
+      { strategy: 'rebase' },
+      {
+        branches: ['clean'],
+        cfg: { verify: 'detect' },
+        ports: {
+          resolveVerifyVerbs: async ({ which, checkout, pr }) => {
+            asked.push({ which, checkout, pr })
+            return []
+          },
+        },
+      },
+    )
+    expect(asked).toHaveLength(1)
+    expect(asked[0]?.which).toBe('detect')
+    expect(asked[0]?.pr).toBe(1)
+    expect(asked[0]?.checkout).toContain('.pr-update')
+    expect(asked[0]?.checkout).not.toBe(fx.worker.dir)
+  })
+
   test('a dry run with --confirm-push needs no terminal and never asks', async () => {
     branchOff('clean', { 'c.txt': 'c\n' })
     const out = await update(

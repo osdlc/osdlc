@@ -156,6 +156,19 @@ describe('the built-in adapters', () => {
   })
 })
 
+describe('permissions.tools', () => {
+  test('claude gets --tools; the notes say which agents drop it', () => {
+    const planned = planCall(claudeAdapter(), {
+      prompt: 'Judge this thread.',
+      permissions: { tools: ['Read', 'Glob', 'Grep'] },
+    })
+
+    expect(planned.argv).toContain('Read,Glob,Grep')
+    const codex = planCall(codexAdapter(), planned.spec)
+    expect(codex.notes.find((n) => n.field === 'permissions.tools')?.support).toBe('dropped')
+  })
+})
+
 describe('planCall', () => {
   test('the same spec plans on every agent, and notes say what changed', () => {
     for (const name of BUILTIN_AGENTS) {

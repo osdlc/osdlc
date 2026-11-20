@@ -171,6 +171,10 @@ says why.
 - tmux attach helpers, to be replaced by an `attach` part: `tmuxSessionName`,
   `tmuxIdSessionName`, `tmuxAttachArgv`, `tmuxSwitchClientArgv`, `insideTmux`.
 - `hostCanWait`, to become a declaration on the host.
+- The interactive argv helpers re-exported from `@osdlc/agent-call`, which owns
+  each CLI's command line and marks them experimental: `hasInteractiveArgv`,
+  `claudeSessionArgv`, `claudeResumeArgv`, `claudeHookSettings`,
+  `CLAUDE_HOOK_EVENTS`, `ClaudeSessionFlags` and `ClaudeLaunchFlags`.
 
 ## Known limits
 
