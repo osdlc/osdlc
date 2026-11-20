@@ -49,7 +49,7 @@ function defOf(schema: unknown): Def {
  * one, and the file holds what the input side reads). Undefined for anything
  * else.
  */
-function peelOnce(schema: z.ZodTypeAny): z.ZodTypeAny | undefined {
+export function peelOnce(schema: z.ZodTypeAny): z.ZodTypeAny | undefined {
   const def = defOf(schema)
   if (def.type === undefined) return undefined
   if (WRAPPER_TYPES.has(def.type)) return def.innerType as z.ZodTypeAny | undefined

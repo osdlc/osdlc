@@ -9,6 +9,7 @@ import {
   modelFlag,
   commandPrefix,
   type CommandOptions,
+  noteDroppedToolSet,
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
@@ -109,6 +110,11 @@ function planQwen(command: readonly string[], spec: AgentCallSpec): PlannedCall 
   // Headless, a tool that needs approval is declined, never prompted for, so
   // every posture below is safe to run unattended.
   const permissions = spec.permissions
+  noteDroppedToolSet(
+    notes,
+    permissions?.tools,
+    'qwen has no exact tool set; allowTools and denyTools are the closest',
+  )
   applyPermissionMode(argv, notes, permissions?.mode, {
     'read-only': {
       argv: ['--approval-mode', 'plan'],
