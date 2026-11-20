@@ -230,12 +230,24 @@ $ repo-cleaner clean --remotes fork --against upstream -y
 the repository's default remote, usually `origin`). Here, a branch on `fork`
 whose work is on `upstream/main` is `delete`.
 
-Pull requests opened from a fork to its parent live in the parent, and the
-GitHub provider does not read them
-([#909](https://github.com/osdlc/osdlc/pull/909)): the fork's listing is
-marked incomplete, so each fork branch carries `confirm-open-pr`. Until that
-changes (open question 3), add `--allow confirm-open-pr` once you have
-checked there is no open PR.
+A pull request belongs to the repository it targets, so the PRs opened from
+a fork live in its parent. For a fork, the GitHub provider also lists the
+parent's pull requests whose head repository is the fork, and counts them
+for the fork's branches:
+
+| The parent's listing shows, for this branch | Verdict |
+|---|---|
+| An open pull request | `keep`: deleting the branch would close it |
+| A merged pull request at the branch's exact commit | `delete`, with the PR as its proof |
+| No pull request | judged on git evidence, with no `confirm-open-pr` |
+
+So U10 needs no `--allow`. Today ([#909](https://github.com/osdlc/osdlc/pull/909))
+the provider knows a repository is a fork but does not read the parent's
+PRs: it marks the fork's listing incomplete, and every fork branch carries
+`confirm-open-pr`. This removes that gate by reading the evidence instead.
+It costs one more `gh pr list` per fork, against the parent, with the same
+open-PR and recent-PR caps; a capped or failed parent listing keeps the
+gate, as any incomplete listing does.
 
 **U11. "Every remote."**
 
@@ -417,6 +429,7 @@ Nothing is kept for compatibility: each old form is removed, not aliased.
   - the phases: bare command, `status`;
   - scope: `--local`, `--remote`, `--all`, `--worktrees`, `--branches`;
   - several remotes: `--remotes`, and `--against` across them;
+  - a fork's pull requests: list the parent's PRs whose head is the fork (U10);
   - `--fetch`;
   - `--spare` globs;
   - `-i`;
@@ -435,11 +448,6 @@ Nothing is kept for compatibility: each old form is removed, not aliased.
 2. **`--against` with several remotes.** One landed-in remote for all of them
    suits the fork workflow (U10). A per-remote default (each remote's own
    default branch) suits mirrors. The proposal uses one.
-
-3. **A fork's pull requests to its parent.** Today they are not read, so a
-   fork's branches carry `confirm-open-pr` (U10). Reading the parent's PRs
-   whose head is the fork would let U10 run without `--allow`, at the cost of
-   a second listing per fork.
 
 ## Reopen if
 
