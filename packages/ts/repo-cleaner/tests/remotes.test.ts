@@ -357,6 +357,25 @@ describe("a fork's pull requests (U10)", () => {
 })
 
 describe('fetching', () => {
+  test('several remotes are fetched in one git fetch --multiple, their defaults read once', () => {
+    const fx = forkAndParent()
+    const argvs: string[][] = []
+    const git: CommandRunner = {
+      run: (argv, o) => {
+        argvs.push([...argv])
+        return fx.git.run(argv, o)
+      },
+    }
+    const swept = sweep([fx.root], { cwd: fx.root, remotes: ['*'], provider: 'none', git })
+    expect(swept.repos[0]?.error).toBeNull()
+    const fetches = argvs.filter((a) => a.includes('fetch'))
+    expect(fetches).toHaveLength(1)
+    expect(fetches[0]).toEqual(
+      expect.arrayContaining(['--multiple', '--jobs=2', 'origin', 'upstream']),
+    )
+    expect(argvs.filter((a) => a.includes('symbolic-ref'))).toHaveLength(1)
+  })
+
   test('local rows fetch nothing unless asked, and then the default remote', () => {
     const fx = forkAndParent()
     expect(sweepOne(fx.root, {}).repo?.fetched).toBe(false)

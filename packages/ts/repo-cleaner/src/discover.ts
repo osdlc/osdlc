@@ -209,9 +209,14 @@ function probedOnce(all: Record<ProviderName, PrProvider>): Record<ProviderName,
  */
 export function resolveRemoteDefaults(info: RepoInfo, git: Git): RepoInfo {
   const at = git.at(info.root)
+  const unread = [
+    ...info.remotes.filter((r) => r.defaultBranch === '').map((r) => r.name),
+    ...(info.against?.branch === '' ? [info.against.remote] : []),
+  ]
+  const defaults = remoteDefaults(at, unread)
   const known = (name: string, branch: string): string => {
     if (branch !== '') return branch
-    const found = remoteDefault(at, name)
+    const found = defaults.get(name) ?? null
     if (found === null) {
       const fix =
         at.refs(`refs/remotes/${name}/`).length === 0
@@ -248,14 +253,34 @@ function remoteHead(at: Git, remote: string): string | null {
   return head?.startsWith(prefix) === true ? head.slice(prefix.length) : null
 }
 
-/** {@link remoteHead}, else `main`, then `master`, where the remote has them; null for none. */
-function remoteDefault(at: Git, remote: string): string | null {
-  const head = remoteHead(at, remote)
-  if (head !== null) return head
-  for (const candidate of ['main', 'master']) {
-    if (at.resolveRef(`refs/remotes/${remote}/${candidate}`) !== null) return candidate
+/**
+ * Each of `remotes`' default branches: what `refs/remotes/<remote>/HEAD`
+ * points at, else `main`, then `master`, where the remote has them; null for
+ * none. One `for-each-ref` reads them all, where asking each remote took up to
+ * three calls.
+ */
+function remoteDefaults(at: Git, remotes: readonly string[]): Map<string, string | null> {
+  const out = new Map<string, string | null>()
+  if (remotes.length === 0) return out
+  const lines = at.forEachRef(
+    remotes.map((r) => `refs/remotes/${r}/`),
+    { format: '%(refname)%09%(symref)' },
+  )
+  const refs = new Map(
+    lines.map((line) => {
+      const [ref = '', target = ''] = line.split('\t')
+      return [ref, target] as const
+    }),
+  )
+  for (const remote of remotes) {
+    const prefix = `refs/remotes/${remote}/`
+    // Whole ref names, so `origin/mirror/main` is never `origin`'s `main`.
+    const head = refs.get(`${prefix}HEAD`)
+    const fromHead = head?.startsWith(prefix) === true ? head.slice(prefix.length) : null
+    const found = fromHead ?? ['main', 'master'].find((b) => refs.has(`${prefix}${b}`)) ?? null
+    out.set(remote, found)
   }
-  return null
+  return out
 }
 
 /**

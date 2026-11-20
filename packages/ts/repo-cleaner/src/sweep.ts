@@ -386,17 +386,24 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
   const cwd = only === undefined ? opts.cwd : repo.root
 
   const toFetch = fetchSet(repo, opts.fetch)
-  for (const name of toFetch) {
+  if (toFetch.length > 0) {
     report('fetch')
-    const fetched = git
-      .at(repo.root)
-      .try.fetch(name, undefined, { prune: true, quiet: true, noWriteFetchHead: true })
+    // Several remotes in one `git fetch --multiple`, fetched at once.
+    const flags = { prune: true, quiet: true, noWriteFetchHead: true }
+    const at = git.at(repo.root)
+    const fetched =
+      toFetch.length === 1
+        ? at.try.fetch(toFetch[0]!, undefined, flags)
+        : at.try.fetchMany(toFetch, { ...flags, jobs: Math.min(toFetch.length, FETCH_JOBS) })
     // Unlike the lookups below, a failed fetch fails the repository: every
     // row, local ones included, would be judged against a default branch
-    // older than the one asked for.
+    // older than the one asked for. Git names the remote that failed.
     if (!fetched.ok) {
       return {
-        ...errorSweep(path, new Error(`fetch of ${name} failed: ${errorText(fetched.error)}`)),
+        ...errorSweep(
+          path,
+          new Error(`fetch of ${toFetch.join(', ')} failed: ${errorText(fetched.error)}`),
+        ),
         repo,
       }
     }
@@ -632,6 +639,9 @@ export function inspectWorktree(
   }
   return row
 }
+
+/** The most remotes one repository fetches at once. */
+const FETCH_JOBS = 8
 
 /** The remotes `fetch` names for `repo`; see {@link RepoSweepOptions.fetch}. */
 function fetchSet(repo: RepoInfo, fetch: RepoSweepOptions['fetch']): string[] {
