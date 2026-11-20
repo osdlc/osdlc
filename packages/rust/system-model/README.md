@@ -35,7 +35,7 @@ authority on that shape; `@osdlc/system-model/graph` states it once for
 TypeScript. Enum-shaped fields are strings on purpose, so a newer walker can add
 a kind without breaking a consumer.
 
-`tests/mini-repo` is the fixture tree both implementations walk.
+`tests/mini-repo` is the fixture tree the walk tests read.
 
 ## License
 

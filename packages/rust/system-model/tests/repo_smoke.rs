@@ -8,7 +8,6 @@ use system_model::{
     build_dependency_graph, walk_manifests,
 };
 
-/// packages/rust/system-model → up 3.
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../..")

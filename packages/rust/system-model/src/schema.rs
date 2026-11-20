@@ -5,11 +5,10 @@
 //! persists, and `build_system_graph` assembles all of it from the manifests
 //! on disk.
 //!
-//! Enum-shaped fields are `String`. A newer walker may learn a sixth dependency
-//! kind or a fifth node kind, and a frontend that pattern-matched an exhaustive
+//! Enum-shaped fields are `String`. A newer walker may add a kind, and a frontend that pattern-matched an exhaustive
 //! enum would break on data it could simply have shown.
 //!
-//! THE WHOLE PAYLOAD CROSSES ONCE. Containment is a tree the viewer folds and
+//! The whole payload crosses once. Containment is a tree the viewer folds and
 //! unfolds constantly; a round trip per collapse would be unusable, so the
 //! full node set and the full edge set ship together and the client does its
 //! own aggregation.

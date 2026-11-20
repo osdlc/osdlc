@@ -55,8 +55,10 @@ pub fn build_system_graph(
     if !root.is_dir() {
         return Err(NotADirectory(root.display().to_string()));
     }
-    // Absolute, so `root` and the checkout's label hold for a relative input like `.`.
-    let absolute = std::path::absolute(root).unwrap_or_else(|_| root.to_path_buf());
+    // Absolute, so `root` and the checkout's label hold for a relative input like `.` or `..`.
+    let absolute = root
+        .canonicalize()
+        .unwrap_or_else(|_| std::path::absolute(root).unwrap_or_else(|_| root.to_path_buf()));
     let root = absolute.as_path();
     let root_label = root
         .file_name()
@@ -89,7 +91,6 @@ pub fn build_system_graph(
             is_nuxt_layer: n.manifest.as_ref().is_some_and(|m| m.is_nuxt_layer),
             has_bin: n.manifest.as_ref().is_some_and(|m| m.has_bin),
             error: n.manifest.as_ref().and_then(|m| m.error.clone()),
-            // Synthetic nodes and externals have no manifest to scan.
             aspects: n
                 .manifest
                 .as_ref()

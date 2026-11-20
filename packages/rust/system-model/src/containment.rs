@@ -91,10 +91,9 @@ pub fn apply_containment(graph: &mut DependencyGraph, options: &ContainmentOptio
 
     let mut used_ids: HashSet<String> = graph.nodes.iter().map(|n| n.id.clone()).collect();
 
-    // ── the root ─────────────────────────────────────────────────────────
     // Always synthetic. The checkout is not the same thing as the manifest
     // that happens to sit at its top — and a monorepo root commonly carries
-    // TWO (a `package.json` beside a virtual-workspace `Cargo.toml`), so
+    // two (a `package.json` beside a virtual-workspace `Cargo.toml`), so
     // electing one of them the repo would be arbitrary. Both become children.
     let root_id = ROOT_ID.to_string();
     used_ids.insert(root_id.clone());
@@ -112,7 +111,6 @@ pub fn apply_containment(graph: &mut DependencyGraph, options: &ContainmentOptio
         },
     );
 
-    // ── which node owns which directory ──────────────────────────────────
     // Two manifests can share a directory (a `package.json` beside a
     // `Cargo.toml`). Below the root the first in walk order owns the dir and
     // the other becomes its child, rather than a sibling floating at the
@@ -140,7 +138,6 @@ pub fn apply_containment(graph: &mut DependencyGraph, options: &ContainmentOptio
         }
     }
 
-    // ── candidate group directories ──────────────────────────────────────
     // Every proper ancestor of a manifest dir that holds no manifest itself.
     let mut group_dirs: BTreeSet<String> = BTreeSet::new();
     for dir in dir_owner.keys() {
@@ -151,9 +148,8 @@ pub fn apply_containment(graph: &mut DependencyGraph, options: &ContainmentOptio
         }
     }
 
-    // ── chain collapse ───────────────────────────────────────────────────
     // A group with exactly one child says nothing the child does not already
-    // say, so `…/runners/sqlite/builder` reports one node, not three, while
+    // say, so `a/b/c` with one manifest reports one node, not three, while
     // `packages/ts` (many children) survives. Manifest dirs are never removed:
     // they are real, whatever their fan-out.
     loop {
@@ -182,7 +178,6 @@ pub fn apply_containment(graph: &mut DependencyGraph, options: &ContainmentOptio
         }
     }
 
-    // ── materialize the surviving groups ─────────────────────────────────
     let tree: BTreeSet<String> = dir_owner
         .keys()
         .cloned()
@@ -220,7 +215,6 @@ pub fn apply_containment(graph: &mut DependencyGraph, options: &ContainmentOptio
         })
         .collect();
 
-    // ── stamp parents on the manifests ───────────────────────────────────
     for node in graph.nodes.iter_mut() {
         if node.external || node.id == root_id {
             continue;
@@ -235,7 +229,6 @@ pub fn apply_containment(graph: &mut DependencyGraph, options: &ContainmentOptio
         node.parent = Some(id_at(&nearest_ancestor(&dir, &tree)));
     }
 
-    // ── externals ────────────────────────────────────────────────────────
     let mut external_groups: Vec<GraphNode> = Vec::new();
     if options.group_externals {
         let ecosystems: BTreeSet<Ecosystem> = graph
@@ -279,9 +272,9 @@ pub fn apply_containment(graph: &mut DependencyGraph, options: &ContainmentOptio
 }
 
 /// A group's display name: its path with the container's path stripped off.
-/// `packages/ts` under `packages` reads `ts`; `tools/cage/crates` sitting at
-/// the repo root (its middle links chain-collapsed) keeps all three segments
-/// rather than claiming to be some other repo's `crates`.
+/// `packages/ts` under `packages` reads `ts`; a group parented to the root
+/// keeps its full path (`x/y/z`, after its middle links collapse) rather than
+/// reading as a bare `z`.
 fn label_under(dir: &str, parent_dir: &str) -> String {
     if parent_dir.is_empty() {
         return dir.to_string();

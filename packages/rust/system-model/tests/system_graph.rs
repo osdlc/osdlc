@@ -51,3 +51,10 @@ fn a_relative_root_is_made_absolute() {
     assert!(Path::new(&graph.root).is_absolute());
     assert_eq!(graph.root_label, "mini-repo");
 }
+
+#[test]
+fn a_root_ending_in_dot_dot_is_labelled_by_its_directory() {
+    let graph = build_system_graph(Path::new("tests/mini-repo/crates/.."), false).unwrap();
+    assert_eq!(graph.root_label, "mini-repo");
+    assert!(!graph.root.contains(".."));
+}

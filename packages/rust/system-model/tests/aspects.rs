@@ -1,9 +1,7 @@
 //! The gate for the aspect scanners, over the shared fixture tree.
 //!
-//! `@osdlc/system-model`'s `tests/aspect-scan.test.ts` asserts the SAME
-//! expectations against the SAME directories. Aspects are inference, and two
-//! implementations inferring separately is exactly where they would quietly
-//! stop agreeing — so the expectations are written out in full, including the
+//! Aspects are inference, and the same expectations must hold for
+//! `@osdlc/system-model`'s scanner. The expectations are written out in full, including the
 //! evidence strings, which are payload rather than debug text.
 
 use std::path::{Path, PathBuf};
@@ -52,6 +50,18 @@ fn a_cargo_toml_is_rust_tier_one_no_inference() {
             "rust",
             1,
             vec![evidence("manifest", 1, "Cargo.toml", "[package]")]
+        )]
+    );
+}
+
+#[test]
+fn a_virtual_workspace_root_is_rust_by_its_workspace_table() {
+    assert_eq!(
+        scan_aspects(at("crates")),
+        vec![aspect(
+            "rust",
+            1,
+            vec![evidence("manifest", 1, "Cargo.toml", "[workspace]")]
         )]
     );
 }

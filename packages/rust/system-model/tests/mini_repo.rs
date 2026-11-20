@@ -2,8 +2,8 @@
 //! is a miniature monorepo: two ecosystems, a virtual cargo workspace root, a
 //! Nuxt layer, a binary, and one deliberately malformed manifest.
 //!
-//! Ported from `@osdlc/system-model`'s `tests/manifest-graph.test.ts`, whose
-//! fixture tree this is — the assertions are the same because the contract is.
+//! The `mini-repo` fixture tree is the one `@osdlc/system-model`'s manifest
+//! tests were written against.
 
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -37,10 +37,6 @@ fn dep(m: &ManifestInfo, name: &str) -> (DepKind, String, SpecifierKind) {
         .unwrap_or_else(|| panic!("no dep \"{name}\" on {}", m.dir));
     (d.kind, d.specifier.clone(), d.specifier_kind)
 }
-
-// ---------------------------------------------------------------------------
-// walk_manifests
-// ---------------------------------------------------------------------------
 
 #[test]
 fn finds_every_manifest_in_the_tree() {
@@ -196,10 +192,6 @@ fn exclude_option_skips_caller_named_directories() {
     );
     assert!(without.iter().all(|m| m.ecosystem != Ecosystem::Rust));
 }
-
-// ---------------------------------------------------------------------------
-// build_dependency_graph
-// ---------------------------------------------------------------------------
 
 #[test]
 fn one_node_per_manifest_and_externals_dropped_by_default() {

@@ -22,10 +22,6 @@ fn manifests() -> &'static Vec<ManifestInfo> {
     CELL.get_or_init(|| walk_manifests(&root(), &WalkOptions::default()))
 }
 
-// ---------------------------------------------------------------------------
-// apply_containment
-// ---------------------------------------------------------------------------
-
 fn contained(include_external: bool) -> system_model::DependencyGraph {
     let mut graph = build_dependency_graph(manifests(), &GraphOptions { include_external });
     apply_containment(&mut graph, &ContainmentOptions::default());
@@ -170,10 +166,7 @@ fn externals_gather_under_one_group_per_ecosystem_outside_the_repo() {
 }
 
 #[test]
-fn a_collapsed_chain_keeps_its_whole_path_as_a_label() {
-    // `layers` collapsed away, so nothing here spans segments — assert the
-    // ordinary case reads short, and cover the spanning case on the real repo
-    // (repo_smoke.rs), where `tools/cage/crates` exercises it.
+fn a_group_under_the_root_is_labelled_by_its_dir() {
     let graph = contained(false);
     let packages = graph.nodes.iter().find(|n| n.id == "packages").unwrap();
     assert_eq!(packages.name.as_deref(), Some("packages"));
