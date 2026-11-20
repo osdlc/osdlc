@@ -1,7 +1,7 @@
 ---
 id: T-05
 type: task
-state: open
+state: done
 created: 2026-11-09
 ---
 
@@ -31,6 +31,13 @@ runs when either path changes.
 
 ## Acceptance criteria
 
-- [ ] `pnpm run check:conformance` lists the family and passes.
-- [ ] `packages/rust/agent-router` is not in `UNMIGRATED`.
-- [ ] The crate reads nothing under `packages/ts/`, or the plan says why the snapshot path stays.
+- [x] `pnpm run check:conformance` lists the family and passes.
+- [x] `packages/rust/agent-router` is not in `UNMIGRATED`.
+- [x] The crate reads nothing under `packages/ts/`, or the plan says why the snapshot path stays.
+
+## Outcome
+
+The suite is one file per section, because it is over 1 MB as a single file. The shipped snapshot
+is the `snapshot_layer` section, written by the generator from `src/catalogue/snapshot.json`, and
+the catalogue layers that vectors name are the `named_layers` section. The crate reads nothing
+under `packages/ts/`, so the Rust workflow no longer lists this package's paths.
