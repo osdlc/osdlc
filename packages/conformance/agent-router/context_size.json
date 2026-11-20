@@ -1,0 +1,316 @@
+{
+  "family": "agent-router",
+  "reference": "ts",
+  "referenceVersion": "0.4.4",
+  "sections": {
+    "context_size": {
+      "description": "parseSize and formatSize: the `ctx=` size grammar",
+      "cases": [
+        {
+          "name": "parse-\"1k\"",
+          "input": {
+            "fn": "parse",
+            "value": "1k"
+          },
+          "expect": 1000
+        },
+        {
+          "name": "parse-\"200k\"",
+          "input": {
+            "fn": "parse",
+            "value": "200k"
+          },
+          "expect": 200000
+        },
+        {
+          "name": "parse-\"1m\"",
+          "input": {
+            "fn": "parse",
+            "value": "1m"
+          },
+          "expect": 1000000
+        },
+        {
+          "name": "parse-\"2m\"",
+          "input": {
+            "fn": "parse",
+            "value": "2m"
+          },
+          "expect": 2000000
+        },
+        {
+          "name": "parse-\"999k\"",
+          "input": {
+            "fn": "parse",
+            "value": "999k"
+          },
+          "expect": 999000
+        },
+        {
+          "name": "parse-\"10m\"",
+          "input": {
+            "fn": "parse",
+            "value": "10m"
+          },
+          "expect": 10000000
+        },
+        {
+          "name": "parse-\"\"",
+          "input": {
+            "fn": "parse",
+            "value": ""
+          },
+          "expect": null
+        },
+        {
+          "name": "parse-\"1\"",
+          "input": {
+            "fn": "parse",
+            "value": "1"
+          },
+          "expect": null
+        },
+        {
+          "name": "parse-\"1000\"",
+          "input": {
+            "fn": "parse",
+            "value": "1000"
+          },
+          "expect": null
+        },
+        {
+          "name": "parse-\"1M\"",
+          "input": {
+            "fn": "parse",
+            "value": "1M"
+          },
+          "expect": null
+        },
+        {
+          "name": "parse-\"1K\"",
+          "input": {
+            "fn": "parse",
+            "value": "1K"
+          },
+          "expect": null
+        },
+        {
+          "name": "parse-\"0k\"",
+          "input": {
+            "fn": "parse",
+            "value": "0k"
+          },
+          "expect": null
+        },
+        {
+          "name": "parse-\"01m\"",
+          "input": {
+            "fn": "parse",
+            "value": "01m"
+          },
+          "expect": null
+        },
+        {
+          "name": "parse-\"max\"",
+          "input": {
+            "fn": "parse",
+            "value": "max"
+          },
+          "expect": null
+        },
+        {
+          "name": "parse-\"1.5m\"",
+          "input": {
+            "fn": "parse",
+            "value": "1.5m"
+          },
+          "expect": null
+        },
+        {
+          "name": "parse-\"k\"",
+          "input": {
+            "fn": "parse",
+            "value": "k"
+          },
+          "expect": null
+        },
+        {
+          "name": "parse-\"m\"",
+          "input": {
+            "fn": "parse",
+            "value": "m"
+          },
+          "expect": null
+        },
+        {
+          "name": "parse-\"1km\"",
+          "input": {
+            "fn": "parse",
+            "value": "1km"
+          },
+          "expect": null
+        },
+        {
+          "name": "parse-\" 1k\"",
+          "input": {
+            "fn": "parse",
+            "value": " 1k"
+          },
+          "expect": null
+        },
+        {
+          "name": "parse-\"-1k\"",
+          "input": {
+            "fn": "parse",
+            "value": "-1k"
+          },
+          "expect": null
+        },
+        {
+          "name": "parse-\"1g\"",
+          "input": {
+            "fn": "parse",
+            "value": "1g"
+          },
+          "expect": null
+        },
+        {
+          "name": "parse-\"9007199254740k\"",
+          "input": {
+            "fn": "parse",
+            "value": "9007199254740k"
+          },
+          "expect": 9007199254740000
+        },
+        {
+          "name": "parse-\"9007199254741k\"",
+          "input": {
+            "fn": "parse",
+            "value": "9007199254741k"
+          },
+          "expect": null
+        },
+        {
+          "name": "parse-\"9007199254m\"",
+          "input": {
+            "fn": "parse",
+            "value": "9007199254m"
+          },
+          "expect": 9007199254000000
+        },
+        {
+          "name": "parse-\"9007199255m\"",
+          "input": {
+            "fn": "parse",
+            "value": "9007199255m"
+          },
+          "expect": null
+        },
+        {
+          "name": "parse-\"99999999999999999999999m\"",
+          "input": {
+            "fn": "parse",
+            "value": "99999999999999999999999m"
+          },
+          "expect": null
+        },
+        {
+          "name": "format-0",
+          "input": {
+            "fn": "format",
+            "value": 0
+          },
+          "expect": "0m"
+        },
+        {
+          "name": "format-1",
+          "input": {
+            "fn": "format",
+            "value": 1
+          },
+          "expect": "1"
+        },
+        {
+          "name": "format-999",
+          "input": {
+            "fn": "format",
+            "value": 999
+          },
+          "expect": "999"
+        },
+        {
+          "name": "format-1000",
+          "input": {
+            "fn": "format",
+            "value": 1000
+          },
+          "expect": "1k"
+        },
+        {
+          "name": "format-1500",
+          "input": {
+            "fn": "format",
+            "value": 1500
+          },
+          "expect": "1k"
+        },
+        {
+          "name": "format-200000",
+          "input": {
+            "fn": "format",
+            "value": 200000
+          },
+          "expect": "200k"
+        },
+        {
+          "name": "format-1000000",
+          "input": {
+            "fn": "format",
+            "value": 1000000
+          },
+          "expect": "1m"
+        },
+        {
+          "name": "format-1048576",
+          "input": {
+            "fn": "format",
+            "value": 1048576
+          },
+          "expect": "1048k"
+        },
+        {
+          "name": "format-1050000",
+          "input": {
+            "fn": "format",
+            "value": 1050000
+          },
+          "expect": "1050k"
+        },
+        {
+          "name": "format-262144",
+          "input": {
+            "fn": "format",
+            "value": 262144
+          },
+          "expect": "262k"
+        },
+        {
+          "name": "format-2000000",
+          "input": {
+            "fn": "format",
+            "value": 2000000
+          },
+          "expect": "2m"
+        },
+        {
+          "name": "format-1999999",
+          "input": {
+            "fn": "format",
+            "value": 1999999
+          },
+          "expect": "1999k"
+        }
+      ]
+    }
+  }
+}
