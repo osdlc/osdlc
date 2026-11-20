@@ -7,7 +7,7 @@
  * `<config>/projects`, with the config folder from detect-harness, so
  * `CLAUDE_CONFIG_DIR` moves it.
  *
- * A session is a process whose executable is `claude` or `claude.exe` (or
+ * A session is a process whose executable, a path without spaces, is `claude` or `claude.exe` (or
  * `node` running a `claude` script). `ps -axo pid=,lstart=,command=` lists
  * them and `lsof -a -d cwd` reads each working directory. A shell wrapper such
  * as `/bin/sh .../node_modules/.bin/claude` is not one: its child is. Claude
@@ -40,12 +40,14 @@ export const CLOSE_SESSION = 'close-session'
 /** How long `execute` waits for a session to exit after SIGTERM. */
 const DEFAULT_WAIT_MS = 10_000
 const POLL_MS = 200
+/** The zone and locale `lstart` is read in, as repo-cleaner's process probe runs `ps`. */
+const PS_ENV = { TZ: 'UTC', LC_ALL: 'C' } as const
 
 /** `<pid> <lstart: Wed Nov 18 23:37:21 2026> <command>` */
 const PS_LINE =
   /^\s*(\d+)\s+([A-Z][a-z]{2}\s+[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\d{4})\s+(.+?)\s*$/
 /** `claude` or `claude.exe` as a path or bare name, ending at a space or the end. */
-const CLAUDE_EXE = /^(?:\/.*?\/)?claude(?:\.exe)?(?=\s|$)/
+const CLAUDE_EXE = /^(?:\S*\/)?claude(?:\.exe)?(?=\s|$)/
 const NODE_CLAUDE = /^(?:\S*\/)?node\s+(?:\S*\/)?claude(?=\s|$)/
 /** A shell running a `claude` wrapper script is not the session; its child is. */
 const SHELLS: ReadonlySet<string> = new Set(['sh', 'bash', 'zsh', 'fish', 'dash'])
@@ -120,7 +122,6 @@ export function parseSession(line: string): Proc | null {
   const m = PS_LINE.exec(line)
   if (m === null) return null
   const command = m[3]!
-  // The path may hold spaces, so find the executable by name, not by the first word.
   const launched = SHELLS.has(basename(command.split(/\s+/)[0]!))
     ? null
     : (CLAUDE_EXE.exec(command) ?? NODE_CLAUDE.exec(command))
@@ -205,7 +206,7 @@ export function claudeCodePlugin(options: ClaudeOptions = {}): Plugin {
 
   /** Every session now, or throws when the process table cannot be read. */
   const sessions = (env: Env): Proc[] => {
-    const ps = env.command('ps').run(['-axo', 'pid=,lstart=,command='], { cwd: '/' })
+    const ps = env.command('ps').run(['-axo', 'pid=,lstart=,command='], { cwd: '/', env: PS_ENV })
     if (ps.exitCode !== 0 || ps.stdout.trim() === '') {
       throw new Error(`ps failed (exit ${ps.exitCode}): ${ps.stderr.trim() || 'no output'}`)
     }
@@ -287,7 +288,7 @@ export function claudeCodePlugin(options: ClaudeOptions = {}): Plugin {
     if (!env.probe.alive(pid, startedAt)) throw new Error(`pid ${pid} is no longer running`)
     const now = env
       .command('ps')
-      .run(['-o', 'pid=,lstart=,command=', '-p', String(pid)], { cwd: '/' })
+      .run(['-o', 'pid=,lstart=,command=', '-p', String(pid)], { cwd: '/', env: PS_ENV })
     const current = parseSession(now.stdout)
     if (current === null)
       throw new Error(`pid ${pid} cannot be read as a session: ${now.stderr.trim() || 'no output'}`)
