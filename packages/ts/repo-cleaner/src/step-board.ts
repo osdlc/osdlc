@@ -31,9 +31,11 @@ function stepRow(step: Step, running: boolean, width: number, style: Style): str
       ? ['█'.repeat(BAR), '✓', style.keep, (t) => t]
       : step.result === 'failed'
         ? ['█'.repeat(BAR), '✗', style.delete, (t) => t]
-        : running
-          ? ['█'.repeat(BAR / 2) + '░'.repeat(BAR / 2), '›', style.review, style.strong]
-          : ['░'.repeat(BAR), ' ', style.muted, style.muted]
+        : step.result === 'skipped'
+          ? ['░'.repeat(BAR), '-', style.muted, style.muted]
+          : running
+            ? ['█'.repeat(BAR / 2) + '░'.repeat(BAR / 2), '›', style.review, style.strong]
+            : ['░'.repeat(BAR), ' ', style.muted, style.muted]
   const head = `  ${bar} ${mark} `
   if (width <= head.length) return color(fitWidth(head, width))
   return `  ${color(bar)} ${color(mark)} ${text(fitWidth(label(step), width - head.length))}`
@@ -88,7 +90,9 @@ export function boardLines(
   if (notes) lines.push(note(`  … ${first} above`))
   for (let i = first; i < last; i++) lines.push(stepRow(steps[i]!, i === running, width, style))
   if (notes) lines.push(note(`  … ${steps.length - last} below`))
-  const done = steps.filter((s) => s.result === 'ok' || s.result === 'failed').length
+  const done = steps.filter(
+    (s) => s.result === 'ok' || s.result === 'failed' || s.result === 'skipped',
+  ).length
   const failed = steps.some((s) => s.result === 'failed')
   lines.push(totalRow(done, steps.length, failed, width, style))
   return lines
