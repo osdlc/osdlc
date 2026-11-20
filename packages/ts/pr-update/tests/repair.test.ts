@@ -35,6 +35,17 @@ const request = (patch: Partial<RepairRequest> = {}): RepairRequest => ({
 })
 
 describe('repairPrompt', () => {
+  test('a rebase stop names the commit being replayed and the base', () => {
+    const text = repairPrompt({
+      ...request(),
+      replaying: { sha: 'abcdef0123456789', subject: 'add the parser', onto: 'origin/main' },
+    })
+    expect(text).toContain('abcdef012345')
+    expect(text).toContain('add the parser')
+    expect(text).toContain('origin/main')
+    expect(repairPrompt(request())).not.toContain('replaying commit')
+  })
+
   test('names the PR, the branches, the paths and the reason', () => {
     const text = repairPrompt(request())
     expect(text).toContain('#7')
