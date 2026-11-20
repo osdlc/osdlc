@@ -40,7 +40,7 @@ Every phase is asked the same four questions:
 | Question | Flags | Default |
 |---|---|---|
 | **Where** to look | targets: paths or remote URLs | the directory you are in |
-| **What** to clean | `--local`, `--remote`, `--all`; `--worktrees`, `--branches`; `--remotes <names>` | `--local` |
+| **What** to clean | `--local`, `--remote <name>`, `--all`; `--worktrees`, `--branches` | `--local` |
 | **How sure** to be | `--fetch`, `--offline`, `--against <remote>`, `--provider <name>` | local: no network; remote: fetch and look up PRs |
 | **Which rows** (`clean` only) | `--branch`, `--pick`, `--spare`, `--allow`, `-i` | every `delete` row in scope |
 
@@ -143,8 +143,8 @@ anywhere inside the checkout.
 **U2. "…and on the remote too."**
 
 ```console
-$ repo-cleaner status --remote      # origin's branches only
-$ repo-cleaner status --all         # local, and origin's branches
+$ repo-cleaner status --remote origin   # origin's branches only
+$ repo-cleaner status --all             # local, and the default remote's branches
 ```
 
 Fetches the remote first and looks up pull requests, because a remote branch
@@ -183,13 +183,13 @@ Shows the steps and asks `Delete 3 rows? [y/N]`. With no terminal to ask on
 **U6. "Only local", "only the remote", "both".**
 
 ```console
-$ repo-cleaner clean --local -y     # worktrees and local branches (the default)
-$ repo-cleaner clean --remote -y    # origin's branches only
-$ repo-cleaner clean --all -y       # both
+$ repo-cleaner clean --local -y           # worktrees and local branches (the default)
+$ repo-cleaner clean --remote origin -y   # origin's branches only
+$ repo-cleaner clean --all -y             # both: local, and the default remote
 ```
 
 Narrower: `--worktrees`, `--branches`. Scope flags add up: `--worktrees
---remote` is worktrees and origin's branches.
+--remote origin` is worktrees and origin's branches.
 
 **U7. "I just merged my PR: clean up that branch everywhere."**
 
@@ -214,21 +214,24 @@ The same checks and the same step list as a real run; deletes nothing.
 **U9. "Clean a remote other than origin."**
 
 ```console
-$ repo-cleaner clean --remotes upstream -y
+$ repo-cleaner clean --remote upstream -y
+$ repo-cleaner clean --remote origin --remote upstream -y
+$ repo-cleaner clean --local --remote upstream -y        # local, and upstream's branches
 ```
 
-`--remotes` names the remotes whose branches to clean, and implies remote
-scope. With `--all` it adds local rows too.
+`--remote` always names a remote, and is repeatable. A name is required, so
+`--remote` can never swallow a target path that follows it.
 
 **U10. "Clean my fork's branches that landed upstream."**
 
 ```console
-$ repo-cleaner clean --remotes fork --against upstream -y
+$ repo-cleaner clean --remote origin --against upstream -y
 ```
 
-`--against` names the remote whose default branch counts as landed (default:
-the repository's default remote, usually `origin`). Here, a branch on `fork`
-whose work is on `upstream/main` is `delete`.
+Here `origin` is your fork and `upstream` the original project. `--against`
+names the remote whose default branch counts as landed (default: the
+repository's default remote, usually `origin`). A branch on your fork whose
+work is on `upstream/main` is `delete`.
 
 A pull request belongs to the repository it targets, so the PRs opened from
 a fork live in its parent. For a fork, the GitHub provider also lists the
@@ -252,7 +255,7 @@ gate, as any incomplete listing does.
 **U11. "Every remote."**
 
 ```console
-$ repo-cleaner status --remotes '*'
+$ repo-cleaner status --remote '*'
 ```
 
 Every configured remote, each fetched and judged against the `--against`
@@ -351,10 +354,9 @@ repo-cleaner cache   [list | remove <url>...]                      the clone cac
 | Group | Flag | Meaning |
 |---|---|---|
 | what | `--local` | Worktrees and local branches. The default when no scope flag is given. |
-| | `--remote` | Branches on the default remote (usually `origin`). |
-| | `--all` | `--local` and `--remote`. |
+| | `--remote <name>` | Branches on this remote; `*` is every remote. Repeatable. The name is required. |
+| | `--all` | `--local` and the default remote (usually `origin`). With other remotes, write them out: `--local --remote upstream`; `--all` with `--remote` is refused. |
 | | `--worktrees`, `--branches` | Only worktrees, or only local branches. |
-| | `--remotes <name,...>` | Branches on these remotes; `*` is every remote. Implies `--remote` scope; refused with `--local` alone. |
 | how sure | `--fetch` | Fetch before judging local rows. Off by default. |
 | | `--offline` | No network: no fetch, no PR lookup. |
 | | `--against <remote>` | Whose default branch counts as landed. Default: the default remote. |
@@ -409,9 +411,9 @@ Nothing is kept for compatibility: each old form is removed, not aliased.
 | 0.20 | Now |
 |---|---|
 | `repo-cleaner` runs the report | `repo-cleaner status`; the bare command explains the phases, runs nothing and exits 2 |
-| `--remote` adds remote branches | `--all`; `--remote` means remote branches only |
-| `--only worktree,branch` / `--only worktree` / `--only branch` / `--only remote` | `--local` / `--worktrees` / `--branches` / `--remote`; `--only` is removed |
-| one remote only (`origin`, or the default branch's) | `--remotes <name,...>`, `*` for every remote |
+| `--remote` adds remote branches | `--all`; `--remote <name>` means that remote's branches only |
+| `--only worktree,branch` / `--only worktree` / `--only branch` / `--only remote` | `--local` / `--worktrees` / `--branches` / `--remote origin`; `--only` is removed |
+| one remote only (`origin`, or the default branch's) | `--remote <name>`, repeatable, `*` for every remote |
 | local rows never fetch | the same, and `--fetch` to opt in |
 | `--all` shows keep rows | `--all-rows`; `--all` is scope |
 | `--spare <row>` | also takes a glob |
@@ -427,8 +429,8 @@ Nothing is kept for compatibility: each old form is removed, not aliased.
   README examples. A recipe that stops working fails the build.
 - Work is split into tasks:
   - the phases: bare command, `status`;
-  - scope: `--local`, `--remote`, `--all`, `--worktrees`, `--branches`;
-  - several remotes: `--remotes`, and `--against` across them;
+  - scope: `--local`, `--remote <name>`, `--all`, `--worktrees`, `--branches`;
+  - several remotes: repeated `--remote`, `*`, and `--against` across them;
   - a fork's pull requests: list the parent's PRs whose head is the fork (U10);
   - `--fetch`;
   - `--spare` globs;
@@ -438,14 +440,18 @@ Nothing is kept for compatibility: each old form is removed, not aliased.
   (closing #677 and #678), which already lists pull requests for the swept
   remote rather than whichever remote `gh` picks.
 
+## Decided along the way
+
+- **One flag for remotes, with a required name.** `--remote origin`, not a
+  bare `--remote` beside a `--remotes` list: two flags a letter apart are
+  easy to confuse, and a flag whose value is optional either swallows a
+  following target path or needs `=`. Typing `origin` is the price of a flag
+  that always means the same thing.
+- **A fork's pull requests are read from its parent** (U10).
+
 ## Open questions
 
-1. **`--remotes` beside `--remote`.** Two flags for one idea: scope (`--remote`)
-   and which remotes (`--remotes`). The alternative is one flag that takes an
-   optional value (`--remote` alone for the default remote, `--remote=fork` for
-   another), which reads well but cannot take a space-separated value without
-   swallowing a following target path.
-2. **`--against` with several remotes.** One landed-in remote for all of them
+1. **`--against` with several remotes.** One landed-in remote for all of them
    suits the fork workflow (U10). A per-remote default (each remote's own
    default branch) suits mirrors. The proposal uses one.
 
