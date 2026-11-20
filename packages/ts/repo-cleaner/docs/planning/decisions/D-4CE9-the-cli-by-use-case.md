@@ -236,10 +236,11 @@ $ repo-cleaner clean --remote --against upstream -y
 ```
 
 Here `origin`, the default remote, is your fork, and `upstream` the original
-project. `--against`
-names the remote whose default branch counts as landed (default: the
-repository's default remote, usually `origin`). A branch on your fork whose
-work is on `upstream/main` is `delete`.
+project. Without `--against`, each remote's branches are judged against that
+remote's own default branch, and your fork's `main` is usually stale, so
+merged work would look unmerged. `--against upstream` judges every row
+against `upstream/main` instead: a branch on your fork whose work is there is
+`delete`.
 
 A pull request belongs to the repository it targets, so the PRs opened from
 a fork live in its parent. For a fork, the GitHub provider also lists the
@@ -266,8 +267,10 @@ gate, as any incomplete listing does.
 $ repo-cleaner status --remote='*'
 ```
 
-Every configured remote, each fetched and judged against the `--against`
-remote's default branch.
+Every configured remote, each fetched, and each remote's branches judged
+against its own default branch. Where remotes are separate homes (a GitHub
+`origin` and a company GitLab `internal`, each merging its own branches), a
+branch merged into `internal/main` is `delete` without any flag.
 
 ### Deciding the unclear ones
 
@@ -368,7 +371,7 @@ repo-cleaner cache   [list | remove <url>...]                      the clone cac
 | | `--worktrees`, `--branches` | Only worktrees, or only local branches. |
 | how sure | `--fetch` | Fetch before judging local rows. Off by default. |
 | | `--offline` | No network: no fetch, no PR lookup. |
-| | `--against <remote>` | Whose default branch counts as landed. Default: the default remote. |
+| | `--against <remote>` | Judge every row against this remote's default branch. Without it, each remote's branches are judged against their own remote's default branch, and local rows against the default remote's. |
 | | `--provider <auto\|github\|gitlab\|none>` | Where pull requests come from. Default `auto`. |
 | which | `--branch <name\|HEAD>` | One branch's rows: its worktree, local branch and remote branches. |
 | | `--pick <row>` | Also run this `review` row. Repeatable. |
@@ -459,12 +462,12 @@ Nothing is kept for compatibility: each old form is removed, not aliased.
   path, and `--remote <name>` with a space, the likely slip, is refused with
   the fix when `<name>` is a remote and not a directory.
 - **A fork's pull requests are read from its parent** (U10).
-
-## Open questions
-
-1. **`--against` with several remotes.** One landed-in remote for all of them
-   suits the fork workflow (U10). A per-remote default (each remote's own
-   default branch) suits mirrors. The proposal uses one.
+- **Each remote is judged against its own default branch, unless
+  `--against` overrides.** A remote that merges its own branches (U11) then
+  needs no flag, a fork passes `--against upstream` (U10), and a single remote
+  behaves as before. Local rows are judged against the default remote's
+  default branch, or the `--against` remote's. Comparing against the wrong
+  branch only makes work look unmerged, so either choice errs toward keeping.
 
 ## Reopen if
 
