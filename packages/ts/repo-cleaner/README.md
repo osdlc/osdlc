@@ -597,8 +597,10 @@ reason, so a free-form reason such as `keep, build running` always blocks.
 - The owner is alive, or cannot be ruled out: `locked-worktree`.
 - A lock writes `pid <N>` and, to guard against pid reuse, `start <time>`. The
   time must be precise to the second: a full ISO-8601 timestamp with a time of
-  day and a zone (`2026-10-25T18:22:19Z`; one with no zone is not accepted), epoch seconds (9-10 digits), epoch milliseconds
-  (12-13 digits), or the `ps -o lstart` form (`Sat Oct 25 18:22:19 2026`). With
+  day and a zone (`2026-10-25T18:22:19Z`; one with no zone is not accepted),
+  epoch seconds (9-10 digits), epoch milliseconds (12-13 digits), or the
+  `ps -o lstart` form (`Sat Oct 25 18:22:19 2026`; matches when it is the real
+  start in some time zone, since the writer's zone is unknown). With
   one of those, a live pid whose own start time differs by more than two
   seconds is a reused pid and counts as dead. Anything else, a date alone, a
   short number or a partial date, cannot rule the owner out and the lock stays
@@ -628,7 +630,10 @@ Both questions go to a `ProcessProbe` (`alive(pid, startedAt?)` and
 `holders(path, { fresh? })`), passed as `probe` in the options of `sweep`,
 `check` and `run`. The default, `defaultProcessProbe()`, runs
 `ps -o lstart=`, `ps -A -o pid=,ppid=` and `lsof -d cwd` through
-`@osdlc/command-seam`, and needs `ps` and `lsof` on `PATH`. It reads the
+`@osdlc/command-seam`, and needs `ps` and `lsof` on `PATH`. `alive` first asks
+`process.kill(pid, 0)`, so a gone pid costs no `ps`, and runs `ps` under
+`TZ=UTC` and `LC_ALL=C` so the start time is one instant (a DST fall-back
+cannot shift it). It reads the
 process table once per probe and reuses it for every worktree: `sweep` makes
 one probe per repository, and `run` uses one probe for its re-sweep and
 reads the table afresh for each pre-unlock and pre-remove check. Where the
@@ -1009,8 +1014,21 @@ branch.
 
 | Provider | CLI | Listing |
 | --- | --- | --- |
-| `github` | `gh` | `gh pr list --state all`, up to 300 |
-| `gitlab` | `glab` | `glab api projects/<path>/merge_requests?state=all`, 100 a page, up to 300 |
+| `github` | `gh` | `gh pr list --repo <host>/<project>`: every open PR (up to 1000), then the newest 300 of any state |
+| `gitlab` | `glab` | `glab api projects/<path>/merge_requests`, 100 a page: every opened MR (up to 1000), then the newest 300 of any state |
+
+Open PRs are what gate a delete, so they are read on their own and an old open
+one is found however many newer PRs there are. Merged and closed PRs past the
+newest 300 are not read; they only prove that work landed, so a branch whose
+merged PR is that old falls back to ancestry or a patch match. A listing that
+stops at the open-PR cap is incomplete, and so is one for a fork on GitHub:
+the PRs a fork opened to its parent live in the parent, and are not listed.
+For an incomplete listing the repository carries a note, and a remote branch
+with no PR found needs `confirm-open-pr` to delete, as after a failed listing.
+
+The GitHub provider names the repository the sweep judges (`--repo`), not the
+one `gh` would pick from the checkout's remotes, which prefers `upstream` over
+`origin`.
 
 With `--remote`, `--provider auto` (the default) reads the remote's host: a
 remote that names no host (a local path or `file://`) gets no provider, since

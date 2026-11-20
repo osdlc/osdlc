@@ -41,11 +41,6 @@ what shipped.
 - [T-R61B](tasks/T-R61B-archive-before-delete.md): archive unlanded work to
   the remote before clean deletes it
   ([#661](https://github.com/osdlc/osdlc/issues/661))
-- [T-95L2](tasks/T-95L2-open-prs-beyond-the-listing-cap.md): open PRs older
-  than the newest 300 are not missed
-  ([#677](https://github.com/osdlc/osdlc/issues/677))
-- [T-DEZH](tasks/T-DEZH-fork-pull-requests.md): in a fork, PRs are listed for
-  the swept remote ([#678](https://github.com/osdlc/osdlc/issues/678))
 - [T-FZEU](tasks/T-FZEU-utc-safe-process-probe.md): the process probe
   compares start times in UTC
   ([#679](https://github.com/osdlc/osdlc/issues/679))
@@ -61,6 +56,11 @@ what shipped.
 - [T-INEW](tasks/T-INEW-bare-invocation-from-a-subdirectory.md): run with no
   target from a subdirectory, sweep the checkout around it
   ([#689](https://github.com/osdlc/osdlc/pull/689))
+- [T-95L2](tasks/T-95L2-open-prs-beyond-the-listing-cap.md): open PRs older
+  than the newest 300 are not missed
+  ([#677](https://github.com/osdlc/osdlc/issues/677))
+- [T-DEZH](tasks/T-DEZH-fork-pull-requests.md): in a fork, PRs are listed for
+  the swept remote ([#677](https://github.com/osdlc/osdlc/issues/677))
 - [T-UH0R](tasks/T-UH0R-a-failed-step-skips-only-what-depends-on-it.md): a
   failed step skips only what depends on it
   ([#646](https://github.com/osdlc/osdlc/issues/646))

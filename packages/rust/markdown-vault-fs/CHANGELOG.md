@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `is_note`: whether a name or path ends in `.md`, in any case, the rule the
+  walk and both caches in `markdown-corpus` share.
+
 ## [0.7.0] - 2026-11-14
 
 A path the disk spells otherwise than a watcher reported it is told apart
