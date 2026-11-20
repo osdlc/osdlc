@@ -7,6 +7,8 @@ import { test } from 'vitest'
 
 import { githubRepository, readTarget, stage, trustArgs } from '@osdlc/package-checks'
 
+import { prepareSteps, runSteps } from '../src/stage.ts'
+
 test('the GitHub repository comes from any form of repository.url', () => {
   for (const url of [
     'git+https://github.com/osdlc/markdown.git',
@@ -76,4 +78,47 @@ test('stage reads each package folder from the root, not the working directory',
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
+})
+
+test('preparing a package installs only when node_modules is missing, then builds its workspace dependencies', () => {
+  const root = mkdtempSync(join(tmpdir(), 'stage-prepare-'))
+  try {
+    const needed = (steps: ReturnType<typeof prepareSteps>) =>
+      steps.filter((s) => s.needed).map((s) => [s.command, ...s.argv].join(' '))
+    assert.deepEqual(needed(prepareSteps('@osdlc/x', root)), [
+      'pnpm install',
+      'pnpm --filter @osdlc/x... --fail-if-no-match run --if-present build',
+    ])
+    mkdirSync(join(root, 'node_modules'))
+    assert.equal(needed(prepareSteps('@osdlc/x', root, join(root, 'new-lib'))).length, 2)
+    assert.deepEqual(needed(prepareSteps('@osdlc/x', root)), [
+      'pnpm --filter @osdlc/x... --fail-if-no-match run --if-present build',
+    ])
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('the first failing step is named and later steps do not run', () => {
+  const step = (label: string, needed = true) => ({
+    label,
+    command: label,
+    argv: [],
+    cwd: '.',
+    needed,
+  })
+  const ran: string[] = []
+  const run = (command: string) => {
+    ran.push(command)
+    return command === 'two' ? 1 : 0
+  }
+  assert.equal(
+    runSteps([step('one'), step('skipped', false), step('two'), step('three')], run),
+    'two',
+  )
+  assert.deepEqual(ran, ['one', 'two'])
+  assert.equal(
+    runSteps([step('one')], () => 0),
+    null,
+  )
 })

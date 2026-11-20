@@ -105,14 +105,7 @@ pub fn read_note_with(src: &str, mode: SplitMode) -> Note {
             ..Note::default()
         },
         Some(yaml) => {
-            let (frontmatter, parse_error) = match parse_mapping(yaml) {
-                Ok(m) => (m, None),
-                Err(ParseError::NotAMapping(what)) => (
-                    Mapping::new(),
-                    Some(format!("frontmatter is {what}, not a mapping")),
-                ),
-                Err(e) => (Mapping::new(), Some(e.to_string())),
-            };
+            let (frontmatter, parse_error) = parse_frontmatter(yaml);
             Note {
                 frontmatter,
                 frontmatter_yaml: yaml.to_string(),
@@ -121,6 +114,19 @@ pub fn read_note_with(src: &str, mode: SplitMode) -> Note {
                 parse_error,
             }
         }
+    }
+}
+
+/// A frontmatter block's mapping, empty with the reason when it does not
+/// parse as one.
+pub(crate) fn parse_frontmatter(yaml: &str) -> (Mapping, Option<String>) {
+    match parse_mapping(yaml) {
+        Ok(m) => (m, None),
+        Err(ParseError::NotAMapping(what)) => (
+            Mapping::new(),
+            Some(format!("frontmatter is {what}, not a mapping")),
+        ),
+        Err(e) => (Mapping::new(), Some(e.to_string())),
     }
 }
 

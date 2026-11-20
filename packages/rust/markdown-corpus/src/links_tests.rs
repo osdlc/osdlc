@@ -1346,3 +1346,65 @@ fn a_snapshot_is_the_paths_and_links_of_one_sweep() {
         "a note with no frontmatter links is left out"
     );
 }
+
+/// A file system that counts the folders listed through it.
+struct Listings<'a> {
+    inner: &'a MemVfs,
+    count: std::cell::Cell<usize>,
+}
+
+impl Vfs for Listings<'_> {
+    fn metadata(&self, path: &Path) -> Result<vfs_seam::Metadata, VfsError> {
+        self.inner.metadata(path)
+    }
+    fn read_file(&self, path: &Path) -> Result<Vec<u8>, VfsError> {
+        self.inner.read_file(path)
+    }
+    fn read_dir(&self, path: &Path) -> Result<Vec<vfs_seam::DirEntry>, VfsError> {
+        self.count.set(self.count.get() + 1);
+        self.inner.read_dir(path)
+    }
+    fn write_file(&self, path: &Path, bytes: &[u8]) -> Result<(), VfsError> {
+        self.inner.write_file(path, bytes)
+    }
+    fn create_dir_all(&self, path: &Path) -> Result<(), VfsError> {
+        self.inner.create_dir_all(path)
+    }
+    fn exists(&self, path: &Path) -> bool {
+        self.inner.exists(path)
+    }
+    fn is_executable(&self, path: &Path) -> bool {
+        self.inner.is_executable(path)
+    }
+    fn set_executable(&self, path: &Path, yes: bool) -> Result<(), VfsError> {
+        self.inner.set_executable(path, yes)
+    }
+    fn rename(&self, from: &Path, to: &Path) -> Result<(), VfsError> {
+        self.inner.rename(from, to)
+    }
+    fn remove(&self, path: &Path) -> Result<(), VfsError> {
+        self.inner.remove(path)
+    }
+}
+
+#[test]
+fn a_batch_for_another_corpus_lists_no_folder() {
+    let d = linked_vault();
+    let (g, c) = (graph(), FixedClock::new(0));
+    let idx = crate::FrontmatterIndex::new();
+    g.refresh(&*d, &c, root());
+    idx.refresh_now(&*d, &c, root());
+    let vfs = Listings {
+        inner: &d,
+        count: std::cell::Cell::new(0),
+    };
+    let rels = ["Home.md".to_string()];
+    g.apply_changes(&vfs, Path::new("/elsewhere"), &rels);
+    idx.apply_change(&vfs, Path::new("/elsewhere"), "Home.md");
+    assert_eq!(vfs.count.get(), 0);
+    g.apply_changes(&vfs, root(), &rels);
+    assert!(
+        vfs.count.get() > 0,
+        "the counter sees this corpus's listings"
+    );
+}
