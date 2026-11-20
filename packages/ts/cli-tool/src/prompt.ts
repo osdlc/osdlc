@@ -351,6 +351,16 @@ function startAsking(opts: PromptOptions): Asking {
   return { fd, write, terminal, required, flag: opts.flag }
 }
 
+/**
+ * Throw for an answer that is not one: off a terminal, input gave an answer,
+ * just not a usable one, and the next line belongs to whatever reads next.
+ * The message names the flag that answers instead.
+ */
+function refuseOffTerminal(asking: Asking, problem: string): never {
+  const pass = asking.flag === undefined ? '' : `. Pass ${asking.flag} instead.`
+  throw new Error(`${problem}${pass}`)
+}
+
 /** One answer, trimmed. `null` at end of input, or a throw when an answer is required. */
 function readAnswer(asking: Asking): string | null {
   const line = readLineOrEnd(asking.fd)
@@ -478,9 +488,10 @@ export function askChoice<const T extends string>(
     const shown = safeLine(answer)
     if (!asking.terminal) {
       const what = shown === '' ? 'An empty line' : `'${shown}'`
-      const named = choices.map(safeLine).join(', ')
-      const pass = asking.flag === undefined ? '' : `. Pass ${asking.flag} instead.`
-      throw new Error(`${what} is not one of the choices (${named})${pass}`)
+      refuseOffTerminal(
+        asking,
+        `${what} is not one of the choices (${choices.map(safeLine).join(', ')})`,
+      )
     }
     const said = shown === '' ? '' : `'${shown}' is not one of the choices. `
     asking.write(`${said}${help}\n${line}`)
@@ -567,10 +578,7 @@ export function askChecklist(
           ? `${locked} cannot be ticked (${safeLine(items[locked - 1]!.disabled!)})`
           : null
     if (problem !== null) {
-      if (!asking.terminal) {
-        const pass = asking.flag === undefined ? '' : `. Pass ${asking.flag} instead.`
-        throw new Error(`${problem}${pass}`)
-      }
+      if (!asking.terminal) refuseOffTerminal(asking, problem)
       asking.write(`${problem}.\nToggle numbers (1 3-5), or Enter to accept: `)
       continue
     }

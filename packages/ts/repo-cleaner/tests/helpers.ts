@@ -254,9 +254,8 @@ export function withRemotes(prefix: string, remotes: Record<string, RemoteSpec>)
   const bare: Record<string, string> = {}
   for (const [name, spec] of Object.entries(remotes)) {
     const dir = join(parent, `${name}.git`)
-    sh(parent, ['init', '-q', '--bare', dir])
     const head = spec.defaultBranch ?? 'main'
-    sh(dir, ['symbolic-ref', 'HEAD', `refs/heads/${head}`])
+    makeGitFixture({ dir, bare: true, initialBranch: head })
     sh(root, ['remote', 'add', name, dir])
     sh(root, ['push', '-q', name, `main:${head}`])
     sh(root, ['remote', 'set-head', name, '--auto'])

@@ -257,17 +257,23 @@ function equalsTerm(name: string, decl: ListFlag): string {
   return `--${kebab(name)}[=<${decl.valueName ?? 'value'}>]`
 }
 
+/** The `valueAfterEquals` flags, by long form (`--remote`), each with its help term. */
+function equalsFlags(flags: FlagSpec): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const [name, decl] of Object.entries(flags)) {
+    if (decl.kind === 'list' && decl.valueAfterEquals === true) {
+      out.set(`--${kebab(name)}`, equalsTerm(name, decl))
+    }
+  }
+  return out
+}
+
 /**
  * Spell each bare `--name` of a `valueAfterEquals` flag `--name=`, so
  * commander reads it as an empty value rather than taking the next word.
  * Nothing after a `--` terminator is touched.
  */
-function equalsOnly(argv: readonly string[], flags: FlagSpec): string[] {
-  const bare = new Set(
-    Object.entries(flags)
-      .filter(([, decl]) => decl.kind === 'list' && decl.valueAfterEquals === true)
-      .map(([name]) => `--${kebab(name)}`),
-  )
+function equalsOnly(argv: readonly string[], bare: ReadonlyMap<string, string>): string[] {
   const end = argv.indexOf('--')
   return argv.map((arg, i) => (bare.has(arg) && (end === -1 || i < end) ? `${arg}=` : arg))
 }
@@ -334,6 +340,7 @@ function buildOption(name: string, decl: Exclude<FlagDecl, TristateFlag>): Optio
  * values into the next.
  */
 export function defineCli<F extends FlagSpec>(decl: CliDecl<F>): Cli<F> {
+  const terms = equalsFlags(decl.flags)
   const build = (io: CliIo, all = true): Command => {
     const command = new Command(decl.name)
       .description(decl.summary)
@@ -349,12 +356,6 @@ export function defineCli<F extends FlagSpec>(decl: CliDecl<F>): Cli<F> {
         outputError: () => {},
       })
     const width = decl.width
-    const terms = new Map<string, string>()
-    for (const [name, flag] of Object.entries(decl.flags)) {
-      if (flag.kind === 'list' && flag.valueAfterEquals === true) {
-        terms.set(`--${kebab(name)}`, equalsTerm(name, flag))
-      }
-    }
     command.configureHelp({
       ...(width === undefined ? {} : { helpWidth: width }),
       ...(terms.size === 0
@@ -383,7 +384,7 @@ export function defineCli<F extends FlagSpec>(decl: CliDecl<F>): Cli<F> {
     parse(argv, io) {
       const command = build(io)
       try {
-        command.parse(equalsOnly(argv, decl.flags), { from: 'user' })
+        command.parse(equalsOnly(argv, terms), { from: 'user' })
       } catch (err) {
         if (!(err instanceof CommanderError)) throw err
         // Commander has already written the help text.

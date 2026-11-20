@@ -314,6 +314,20 @@ describe("a fork's pull requests (U10)", () => {
     expect(row?.why).toContain('PR #9 merged')
   })
 
+  test('a parent judged as a remote of its own is listed once, for itself and its fork', () => {
+    const fx = forkAndParent()
+    const gh = cannedGh([], {
+      forks: { 'me/app': 'acme/app' },
+      byRepo: { 'me/app': [], 'acme/app': [] },
+    })
+    sweep([fx.root], { cwd: fx.root, remotes: ['*'], git: fx.git, gh })
+    const parentLists = gh.calls.filter(
+      (c) => c[0] === 'pr' && c[1] === 'list' && c.join(' ').includes('acme/app'),
+    )
+    // One open listing and one of every state.
+    expect(parentLists).toHaveLength(2)
+  })
+
   test('an open PR in the parent keeps the branch', () => {
     const fx = forkAndParent()
     const sha = fx.pushBranch('origin', 'feat/open')
