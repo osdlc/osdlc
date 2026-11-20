@@ -160,6 +160,8 @@ export interface PullRequest {
   headRefName: string
   /** Head commit sha, when requested. Use it as the expected value for `--force-with-lease`. */
   headRefOid: string | null
+  /** Base branch commit sha, when requested. GitHub shows the PR diff from the merge base, so reproduce it with a three-dot range (`base...head`). */
+  baseRefOid: string | null
   /**
    * True when the head branch is in a fork. Its ref is then not on the
    * base repository's `origin`. Fetch `refs/pull/<n>/head` instead.

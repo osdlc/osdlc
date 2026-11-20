@@ -249,6 +249,7 @@ export function parsePullRequest(raw: unknown): PullRequest | null {
     baseRefName: str(raw['baseRefName']),
     headRefName: str(raw['headRefName']),
     headRefOid: strOrNull(raw['headRefOid']),
+    baseRefOid: strOrNull(raw['baseRefOid']),
     isCrossRepository: bool(raw['isCrossRepository']),
     headRepositoryOwner: ownerLogin(raw['headRepositoryOwner']),
     mergeable: parseMergeable(raw['mergeable']),
