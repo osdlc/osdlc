@@ -1,7 +1,0 @@
-mcVersion: 2
-kind: contract
-body:
-  sections:
-    - section: Example
-      forbids:
-        - regex: 'TODO$'
