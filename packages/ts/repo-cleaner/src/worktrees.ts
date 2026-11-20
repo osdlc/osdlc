@@ -33,7 +33,8 @@ import {
   type SubmoduleReport,
 } from './submodules.ts'
 import {
-  landedRef,
+  landedFor,
+  refOf,
   makeRow,
   risksFor,
   type Blocker,
@@ -315,6 +316,8 @@ function classifyWorktree(opts: {
   gitDirOf: (path: string) => string | null
 }): WorktreeRow {
   const { path, branch, head, isBare, isDetached, isPrimary, repo, prs, cwd, git } = opts
+  const against = landedFor(repo)
+  const landedOn = refOf(against)
   const evidence: WorktreeEvidence = {
     path,
     branch: branch || null,
@@ -374,7 +377,7 @@ function classifyWorktree(opts: {
       if (upstream.ok && upstream.value) compareAgainst = upstream.value
     }
     if (!compareAgainst) {
-      compareAgainst = landedRef(repo)
+      compareAgainst = landedOn
     }
     // `try`: `compareAgainst` is a guess — the fallback `origin/main` need not
     // exist locally, and an unresolvable range renders as zero unpushed commits.
@@ -389,7 +392,7 @@ function classifyWorktree(opts: {
   evidence.branchExists = branchExists
 
   const pr = branch ? prs.get(branch) : undefined
-  const { landed, gap } = recordPr(evidence, pr, head ?? '', repo)
+  const { landed, gap } = recordPr(evidence, pr, head ?? '', against)
   if (unpushed.length > 0) evidence.uniqueCommits = unpushed.length
   // A merged PR at HEAD lands every commit, even ones the fallback
   // `compareAgainst` (a squash merge, a deleted upstream) counts as ahead.
@@ -397,16 +400,19 @@ function classifyWorktree(opts: {
   // branch; the patches say whether the work is there anyway. Judged from HEAD,
   // so a dirty tree is still caught by the dirty-file check below.
   const patch: Landing | null =
-    landed || !onDisk || head === null ? null : judgeLanding(repo, head, pr, gap, git)
+    landed || !onDisk || head === null
+      ? null
+      : judgeLanding({ root: repo.root, ref: landedOn }, head, pr, gap, git)
   if (patch !== null) recordLanding(evidence, patch)
   const patchLanded = patch !== null && patch.check !== null
   let unlanded = unpushed.length > 0 && !landed && !landingConfirmed(patch)
   if (onDisk && head !== null) {
+    evidence.landedAgainst = landedOn
     // `soft`: a missing default ref reads as not merged.
     evidence.merged = mergedFact({
       landed,
       patchLanded,
-      ancestor: git.at(repo.root).soft.isAncestor(head, landedRef(repo)),
+      ancestor: git.at(repo.root).soft.isAncestor(head, landedOn),
     })
   }
   const dirty = dirtyFiles.length > 0 || submoduleDirty > 0
@@ -428,11 +434,14 @@ function classifyWorktree(opts: {
       const used = branchUse(git.at(repo.root), branch, repo.mainBranch)
       evidence.branchUsed = used
       if (used !== null) {
-        if (repo.fetched) {
-          evidence.recoverableFrom = holders
+        const recoverable = holders.filter((h) =>
+          repo.fetchedRemotes.includes(remoteOf(h, repo.allRemotes) ?? ''),
+        )
+        if (recoverable.length > 0) {
+          evidence.recoverableFrom = recoverable
           unlanded = false
         } else {
-          remoteNote = `HEAD is on ${holders.join(', ')}, but this sweep did not fetch, so those remote-tracking refs may be stale; \`--remote\` without \`--offline\` would check them.`
+          remoteNote = `HEAD is on ${holders.join(', ')}, but this sweep did not fetch, so those remote-tracking refs may be stale; \`--fetch\` would check them.`
         }
       }
     }
@@ -509,7 +518,7 @@ function classifyWorktree(opts: {
           : []),
         ...(patchLanded && unlanded
           ? [
-              `Its commits are patch-equivalent to commits on ${landedRef(repo)} (${patch.check}), but ${confirmationNote(patch)}.`,
+              `Its commits are patch-equivalent to commits on ${landedOn} (${patch.check}), but ${confirmationNote(patch)}.`,
             ]
           : []),
         ...(remoteNote !== null ? [remoteNote] : []),
@@ -524,7 +533,7 @@ function classifyWorktree(opts: {
   if (pr && landed) return deletes(`clean; PR #${pr.number} merged${forced}`)
   if (patchLanded) {
     return deletes(
-      `clean; patch-equivalent to commits on ${landedRef(repo)} (${patch.check}); ${confirmationNote(patch)}${forced}`,
+      `clean; patch-equivalent to commits on ${landedOn} (${patch.check}); ${confirmationNote(patch)}${forced}`,
     )
   }
   if (branch && !branchExists) {
@@ -546,7 +555,7 @@ function classifyWorktree(opts: {
     const used = branchUse(git.at(repo.root), branch, repo.mainBranch)
     evidence.branchUsed = used
     if (used !== null) {
-      return deletes(`clean; merged into ${landedRef(repo)}, and ${USE_REASON[used]}${forced}`)
+      return deletes(`clean; merged into ${landedOn}, and ${USE_REASON[used]}${forced}`)
     }
   }
 
@@ -559,8 +568,8 @@ function classifyWorktree(opts: {
   const notes = [`Worktree \`${path}\` is clean.`]
   if (branch) notes.push(`Branch: \`${branch}\`.`)
   notes.push(pr ? `PR #${pr.number} is ${pr.state}.` : 'No associated PR.')
-  if (pr && gap) notes.push(gapSentence(pr, gap, repo))
-  const unmatched = patch === null ? null : unmatchedSentence(patch, repo)
+  if (pr && gap) notes.push(gapSentence(pr, gap, against))
+  const unmatched = patch === null ? null : unmatchedSentence(patch, landedOn)
   if (unmatched !== null) notes.push(unmatched)
   if (remoteNote !== null) notes.push(remoteNote)
   return row({
@@ -574,22 +583,41 @@ function classifyWorktree(opts: {
 }
 
 /**
- * The remote-tracking branches of `repo`'s remote whose history holds `head`,
- * as `<remote>/<name>`. The default branch is left out: ancestry of it has its
- * own rule. Empty when there is no remote or the lookup fails.
+ * The remote-tracking branches whose history holds `head`, as
+ * `<remote>/<name>`, on the default remote and every remote the sweep judges.
+ * Each remote's default branch is left out: ancestry of it has its own rule.
+ * Empty when there is no remote or the lookup fails.
  */
 function remoteBranchesHolding(repo: RepoInfo, git: Git, head: string): string[] {
-  if (repo.remote === null) return []
-  const prefix = `refs/remotes/${repo.remote}/`
-  const rows = git.at(repo.root).try.forEachRef(prefix, { format: '%(refname)', contains: head })
+  const defaults = new Map(repo.remotes.map((r) => [r.name, r.defaultBranch]))
+  if (repo.remote !== null) defaults.set(repo.remote, repo.mainBranch)
+  if (defaults.size === 0) return []
+  // One walk of history for every remote, not one per remote.
+  const prefixes = [...defaults.keys()].map((r) => `refs/remotes/${r}/`)
+  const rows = git.at(repo.root).try.forEachRef(prefixes, { format: '%(refname)', contains: head })
   if (!rows.ok) return []
-  return rows.value
-    .filter((ref) => ref.startsWith(prefix))
-    .map((ref) => ref.slice('refs/remotes/'.length))
-    .filter(
-      (name) => name !== `${repo.remote}/HEAD` && name !== `${repo.remote}/${repo.mainBranch}`,
-    )
-    .sort()
+  const out: string[] = []
+  for (const ref of rows.value) {
+    const name = ref.slice('refs/remotes/'.length)
+    const remote = remoteOf(name, repo.allRemotes)
+    const defaultBranch = remote === null ? undefined : defaults.get(remote)
+    if (defaultBranch === undefined) continue
+    if (name === `${remote}/HEAD` || name === `${remote}/${defaultBranch}`) continue
+    if (!out.includes(name)) out.push(name)
+  }
+  return out.sort()
+}
+
+/**
+ * The remote `name` (`origin/feat/x`) is a branch of: the longest remote name
+ * it starts with, since git allows `/` in one (`origin/mirror`). Null for none.
+ */
+function remoteOf(name: string, remotes: readonly string[]): string | null {
+  let found: string | null = null
+  for (const r of remotes) {
+    if (name.startsWith(`${r}/`) && (found === null || r.length > found.length)) found = r
+  }
+  return found
 }
 
 const USE_REASON: Record<BranchUse, string> = {

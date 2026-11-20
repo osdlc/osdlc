@@ -6,7 +6,8 @@
 
 import { fingerprint } from './plan.ts'
 import {
-  landedRef,
+  landedFor,
+  refOf,
   rowId,
   type Action,
   type Blocker,
@@ -44,7 +45,7 @@ export interface CleanCandidate {
   risks: Risk[]
   /** The repository's remote, where an archive is pushed; null without one. */
   remote: string | null
-  /** The ref a row must reach to count as landed, the base an archive is made on. */
+  /** The ref the repository's local rows are judged against (`origin/main`), the base an archive is made on. */
   landedRef: string
 }
 
@@ -76,7 +77,8 @@ export function candidatesOf(sweep: Sweep): CleanCandidate[] {
           blockers: [...row.blockers],
           risks: [...row.risks],
           remote: repo.remote,
-          landedRef: landedRef(repo),
+          // The archive's base, as `run` uses: the local rows' landed-against ref.
+          landedRef: refOf(landedFor(repo)),
         }
       })
   })
