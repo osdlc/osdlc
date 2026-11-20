@@ -52,7 +52,13 @@ export interface Survey {
  */
 export function survey(all: readonly Plugin[], ctx: Ctx): Survey {
   const warnings: string[] = []
+  const names = new Set<string>()
   const plugins = orderPlugins(all).filter((p) => {
+    if (names.has(p.name)) {
+      warnings.push(`${p.name}: a second plugin of that name was left out`)
+      return false
+    }
+    names.add(p.name)
     try {
       return p.detect(ctx)
     } catch (err) {
@@ -135,8 +141,9 @@ export function plan(
     pick: opts.pick === undefined ? null : [...opts.pick],
     allow: [...(opts.allow ?? [])],
     warnings: s.warnings,
-    candidates: s.candidates,
-    objections: s.objections,
+    // A copy, so a plugin that mutates and returns the same objects on re-discovery cannot change the plan.
+    candidates: structuredClone(s.candidates),
+    objections: structuredClone(s.objections),
   }
 }
 
@@ -197,18 +204,34 @@ export function decide(
   return { ...closeRequires(running, dropped), dropped }
 }
 
-/** Drop what requires something that is not running, until none does; order the rest, requirements first. */
+/** True when following `requires` from `c` leads back to `c`. */
+function requiresItself(c: Candidate, running: ReadonlyMap<string, Candidate>): boolean {
+  const seen = new Set<string>()
+  const stack = [...(c.requires ?? [])]
+  for (let id = stack.pop(); id !== undefined; id = stack.pop()) {
+    if (id === c.id) return true
+    if (seen.has(id)) continue
+    seen.add(id)
+    stack.push(...(running.get(id)?.requires ?? []))
+  }
+  return false
+}
+
+/** Drop what requires something that is not running or is in a cycle, until none does; order the rest, requirements first. */
 function closeRequires(running: Map<string, Candidate>, dropped: Dropped[]): { run: Candidate[] } {
   for (let again = true; again;) {
     again = false
     for (const c of running.values()) {
       const lacking = c.requires?.find((r) => !running.has(r))
-      if (lacking === undefined) continue
+      const cyclic = lacking === undefined && requiresItself(c, running)
+      if (lacking === undefined && !cyclic) continue
       running.delete(c.id)
       dropped.push({
         id: c.id,
         reason: 'blocked',
-        detail: `requires ${lacking}, which does not run`,
+        detail: cyclic
+          ? 'its requirements form a cycle'
+          : `requires ${lacking}, which does not run`,
       })
       again = true
     }

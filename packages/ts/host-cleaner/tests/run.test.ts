@@ -91,6 +91,25 @@ describe('plugin order and duplicates', () => {
     expect(s.warnings).toEqual(["duplicate artifact:/a: kept git's, dropped node's"])
   })
 
+  test('a second plugin of the same name is left out with a warning', () => {
+    const s = survey(
+      [fake('cache', [cand('a:1', 'cache')], []), fake('cache', [cand('a:2', 'cache')], [])],
+      ctx,
+    )
+    expect(s.candidates.map((c) => c.id)).toEqual(['a:1'])
+    expect(s.warnings).toEqual(['cache: a second plugin of that name was left out'])
+  })
+
+  test('a plugin that mutates a candidate it returns cannot move the plan under the re-check', () => {
+    const shared = cand('a:1', 'cache', { evidence: { v: 0 } })
+    let calls = 0
+    const mutating = fake('cache', [], [], {
+      discover: () => ((shared.evidence.v = ++calls), [shared]),
+    })
+    const receipt = clean(plan(survey([mutating], ctx)), [mutating], ctx)
+    expect(receipt.dropped.map((d) => d.reason)).toEqual(['changed'])
+  })
+
   test('a candidate naming another plugin as owner is dropped', () => {
     const s = survey([fake('git', [cand('worktree:/a', 'node')], [])], ctx)
     expect(s.candidates).toEqual([])
@@ -210,6 +229,15 @@ describe('requires', () => {
     expect(d.dropped).toEqual([
       { id: 'branch:b', reason: 'blocked', detail: 'requires worktree:/w, which does not run' },
     ])
+  })
+
+  test('requirements that form a cycle are blocked, with whatever requires them', () => {
+    const a = cand('a:a', 'git', { requires: ['a:b'] })
+    const b = cand('a:b', 'git', { requires: ['a:a'] })
+    const c = cand('a:c', 'git', { requires: ['a:a'] })
+    const d = decide([a, b, c, cand('a:d', 'git')], [], null, [])
+    expect(d.run.map((x) => x.id)).toEqual(['a:d'])
+    expect(d.dropped.map((x) => x.id).sort()).toEqual(['a:a', 'a:b', 'a:c'])
   })
 
   test('a failed requirement skips its dependent and leaves the rest', () => {
@@ -400,7 +428,6 @@ describe('prepare, delete and deleted', () => {
     const log: string[] = []
     const git = fake('git', [cand('a:1', 'git')], log)
     const receipt = clean(plan(survey([git], ctx)), [git], ctx, { dryRun: true })
-    log.length = 0
     expect(receipt.status).toBe('dry-run')
     expect(receipt.steps.map((s) => s.result)).toEqual(['would-run'])
     expect(log).toEqual([])
