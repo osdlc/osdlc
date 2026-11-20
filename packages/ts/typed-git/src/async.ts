@@ -17,6 +17,12 @@ import { basename, dirname, resolve } from 'node:path'
 
 import type { CommandResult } from '@osdlc/command-seam'
 
+import {
+  inOrder,
+  planCatFileBatch,
+  type CatFileBatchOptions,
+  type CatFileEntry,
+} from './cat-file.ts'
 import { cliBackend, type GitBackend, type GitCallOptions } from './backend.ts'
 import type { GitVersion } from './git-version.ts'
 import { softAsync, triedAsync, type Soft, type TriedAsync } from './outcome.ts'
@@ -214,6 +220,50 @@ export class AsyncGit {
       { kind: 'rawBytes', argv, checked: true, input: opts.input },
       opts,
     )
+  }
+
+  /**
+   * Many objects at once, byte-exact. Rejects with the classified failure if
+   * git fails, and with `UnsupportedRequest` when the backend has no bytes
+   * runner. See {@link Git.catFileBatch}.
+   *
+   * @experimental command-seam's bytes runners are experimental.
+   */
+  async catFileBatch(
+    names: readonly string[],
+    opts: GitCallOptions & CatFileBatchOptions = {},
+  ): Promise<Map<string, CatFileEntry>> {
+    const all = new Map<string, CatFileEntry>()
+    for await (const chunk of this.catFileBatchChunks(names, opts)) {
+      for (const [name, entry] of chunk) all.set(name, entry)
+    }
+    return inOrder(names, all)
+  }
+
+  /**
+   * {@link AsyncGit.catFileBatch} one group of blobs at a time. See
+   * {@link Git.catFileBatchChunks}.
+   *
+   * @experimental command-seam's bytes runners are experimental.
+   */
+  async *catFileBatchChunks(
+    names: readonly string[],
+    opts: GitCallOptions & CatFileBatchOptions = {},
+  ): AsyncGenerator<Map<string, CatFileEntry>, void, undefined> {
+    const { maxBytes, chunkBytes, ...call } = opts
+    const plan = planCatFileBatch(names, { maxBytes, chunkBytes })
+    let step = plan.next()
+    while (step.done !== true) {
+      if (step.value.type === 'chunk') {
+        yield step.value.entries
+        step = plan.next()
+      } else {
+        const { argv, input, maxOutputBytes } = step.value
+        const run = { ...call, maxOutputBytes: call.maxOutputBytes ?? maxOutputBytes }
+        const result = await this.rawBytesChecked(argv, { ...run, input })
+        step = plan.next(result.stdout)
+      }
+    }
   }
 
   // ── queries ───────────────────────────────────────────────────────────────
