@@ -70,7 +70,7 @@ import {
 } from './status-line.ts'
 import { stepBoard, type StepBoard } from './step-board.ts'
 import { sweptWith } from './scope.ts'
-import { sweep as sweepTargets, type SweepOptions } from './sweep.ts'
+import { sweep as sweepTargets, type Runners, type SweepOptions } from './sweep.ts'
 import {
   KINDS,
   RISKS,
@@ -296,6 +296,8 @@ const terminalConfirm: Confirm = (question) => (canPrompt() ? askYesNo(question)
 
 export interface MainDeps {
   confirm?: Confirm
+  /** The `git`, `gh` and `glab` runners and the process probe every phase uses. Default: the real ones. */
+  runners?: Runners
   /** Reads `--plan -`. Defaults to stdin. */
   readStdin?: () => string
   /** Whether stderr is a terminal, so a status line may be drawn. Defaults to `isatty(2)`. */
@@ -378,9 +380,10 @@ function parseWith<F extends FlagSpec & typeof HELP_FLAGS>(
 type SweepValues = FlagValues<typeof SWEEP_FLAGS>
 
 /** The sweep options as typed, for {@link sweptWith} and {@link sweepTargets}. */
-function sweepOptions(v: SweepValues, ctx: CliContext): SweepOptions {
+function sweepOptions(v: SweepValues, ctx: CliContext, deps: MainDeps): SweepOptions {
   const only = v.only?.filter((s) => s !== '')
   return {
+    ...deps.runners,
     cwd: ctx.cwd,
     remote: v.remote,
     offline: v.offline,
@@ -418,10 +421,11 @@ function doSweep(
   v: SweepValues,
   targets: readonly string[],
   ctx: CliContext,
+  deps: MainDeps,
   status: StatusLine,
 ): Swept {
   const opts: SweepOptions = {
-    ...sweepOptions(v, ctx),
+    ...sweepOptions(v, ctx, deps),
     // Mid-walk, while the wait is happening: the totals come too late to
     // explain why the tool appeared to hang.
     onWarn: (message) => ctx.io.stderr(`${NAME}: ${message}\n`),
@@ -463,7 +467,12 @@ function writeNotes(ctx: CliContext, name: string, notes: readonly RepoNote[]): 
   for (const { repo, note } of notes) ctx.io.stderr(renderError(`${repo}: ${note}`, name))
 }
 
-function runReport(argv: readonly string[], ctx: CliContext, status: StatusLine): number {
+function runReport(
+  argv: readonly string[],
+  ctx: CliContext,
+  deps: MainDeps,
+  status: StatusLine,
+): number {
   const parsed = parseWith(reportCli(), NAME, argv, ctx)
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
@@ -475,7 +484,7 @@ function runReport(argv: readonly string[], ctx: CliContext, status: StatusLine)
     )
   }
   const style = styleFor(ctx, 'stdout')
-  const swept = doSweep(NAME, v, parsed.positionals, ctx, status)
+  const swept = doSweep(NAME, v, parsed.positionals, ctx, deps, status)
   if (swept.kind === 'exit') return swept.code
   const s = swept.sweep
   if (v.format === 'json') ctx.io.stdout(renderJson(s))
@@ -490,12 +499,17 @@ function runReport(argv: readonly string[], ctx: CliContext, status: StatusLine)
   return swept.kind === 'nothing' ? EXIT_NOTHING_TO_SWEEP : EXIT.ok
 }
 
-function runPlan(argv: readonly string[], ctx: CliContext, status: StatusLine): number {
+function runPlan(
+  argv: readonly string[],
+  ctx: CliContext,
+  deps: MainDeps,
+  status: StatusLine,
+): number {
   const name = `${NAME} plan`
   const parsed = parseWith(planCli(), name, argv, ctx)
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
-  const swept = doSweep(name, v, parsed.positionals, ctx, status)
+  const swept = doSweep(name, v, parsed.positionals, ctx, deps, status)
   if (swept.kind === 'exit') return swept.code
   // stdout carries only the plan, so the totals go to stderr either way.
   if (swept.kind === 'nothing') {
@@ -577,7 +591,7 @@ function loadPlan(
 ): LoadedPlan | number {
   const receiptPath = v.receipt === undefined ? undefined : resolve(ctx.cwd, v.receipt)
   if (v.plan === undefined) {
-    const swept = doSweep(name, v, targets, ctx, status)
+    const swept = doSweep(name, v, targets, ctx, deps, status)
     if (swept.kind === 'exit') return swept.code
     if (swept.kind === 'nothing') {
       ctx.io.stdout(v.format === 'json' ? renderJson(swept.sweep) : renderText(swept.sweep))
@@ -633,7 +647,7 @@ function runClean(
   // are checked when the approval is resolved against it.
   if (v.plan === undefined) {
     try {
-      checkApproval(sweptWith(targets, sweepOptions(v, ctx)), approval)
+      checkApproval(sweptWith(targets, sweepOptions(v, ctx, deps)), approval)
     } catch (err) {
       return refusal(ctx, name, err)
     }
@@ -651,6 +665,7 @@ function runClean(
   const style = styleFor(ctx, 'stdout')
 
   const shared = {
+    ...deps.runners,
     cwd: ctx.cwd,
     ...(v.archive ? { archive: { exclude: v.archiveExclude } } : {}),
     ...(v.progress
@@ -945,10 +960,10 @@ export function main(argv: readonly string[], ctx: CliContext, deps: MainDeps = 
   const c: CliContext = { ...ctx, io }
   const [sub, ...rest] = argv
   try {
-    if (sub === 'plan') return runPlan(rest, c, status)
+    if (sub === 'plan') return runPlan(rest, c, deps, status)
     if (sub === 'clean') return runClean(rest, c, deps, status)
     if (sub === 'cache') return runCache(rest, c)
-    return runReport(argv, c, status)
+    return runReport(argv, c, deps, status)
   } finally {
     status.clear()
   }
