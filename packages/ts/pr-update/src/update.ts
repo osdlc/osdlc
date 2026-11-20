@@ -556,6 +556,7 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
     repair: env.ports.repair,
     repairOn: effectiveCfg.repair.on,
     onRebaseConflict: effectiveCfg.on_rebase_conflict,
+    maxRebaseStops: effectiveCfg.repair.max_rebase_stops,
     submodules: effectiveCfg.submodules,
     confirmPush,
     lease: writes ? env.ports.lease : undefined,

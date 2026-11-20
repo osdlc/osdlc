@@ -6,3 +6,6 @@ dist/
 
 # Test coverage (`npm run coverage`).
 coverage/
+
+# Compiled from the harness reference by `npm run build:data`; see README.
+/data/harness-knowledge.json

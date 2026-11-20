@@ -1,5 +1,0 @@
-[
-  { "id": "frontmatter/enum", "level": "error" },
-  { "id": "structure/anchor-missing", "level": "error" },
-  { "id": "structure/section-order", "level": "error" }
-]
