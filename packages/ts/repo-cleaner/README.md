@@ -597,8 +597,10 @@ reason, so a free-form reason such as `keep, build running` always blocks.
 - The owner is alive, or cannot be ruled out: `locked-worktree`.
 - A lock writes `pid <N>` and, to guard against pid reuse, `start <time>`. The
   time must be precise to the second: a full ISO-8601 timestamp with a time of
-  day and a zone (`2026-10-25T18:22:19Z`; one with no zone is not accepted), epoch seconds (9-10 digits), epoch milliseconds
-  (12-13 digits), or the `ps -o lstart` form (`Sat Oct 25 18:22:19 2026`). With
+  day and a zone (`2026-10-25T18:22:19Z`; one with no zone is not accepted),
+  epoch seconds (9-10 digits), epoch milliseconds (12-13 digits), or the
+  `ps -o lstart` form (`Sat Oct 25 18:22:19 2026`; matches when it is the real
+  start in some time zone, since the writer's zone is unknown). With
   one of those, a live pid whose own start time differs by more than two
   seconds is a reused pid and counts as dead. Anything else, a date alone, a
   short number or a partial date, cannot rule the owner out and the lock stays
@@ -628,7 +630,10 @@ Both questions go to a `ProcessProbe` (`alive(pid, startedAt?)` and
 `holders(path, { fresh? })`), passed as `probe` in the options of `sweep`,
 `check` and `run`. The default, `defaultProcessProbe()`, runs
 `ps -o lstart=`, `ps -A -o pid=,ppid=` and `lsof -d cwd` through
-`@osdlc/command-seam`, and needs `ps` and `lsof` on `PATH`. It reads the
+`@osdlc/command-seam`, and needs `ps` and `lsof` on `PATH`. `alive` first asks
+`process.kill(pid, 0)`, so a gone pid costs no `ps`, and runs `ps` under
+`TZ=UTC` and `LC_ALL=C` so the start time is one instant (a DST fall-back
+cannot shift it). It reads the
 process table once per probe and reuses it for every worktree: `sweep` makes
 one probe per repository, and `run` uses one probe for its re-sweep and
 reads the table afresh for each pre-unlock and pre-remove check. Where the
