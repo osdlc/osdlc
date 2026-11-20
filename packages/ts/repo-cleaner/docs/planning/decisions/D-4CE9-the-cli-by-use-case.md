@@ -230,6 +230,13 @@ $ repo-cleaner clean --remotes fork --against upstream -y
 the repository's default remote, usually `origin`). Here, a branch on `fork`
 whose work is on `upstream/main` is `delete`.
 
+Pull requests opened from a fork to its parent live in the parent, and the
+GitHub provider does not read them
+([#909](https://github.com/osdlc/osdlc/pull/909)): the fork's listing is
+marked incomplete, so each fork branch carries `confirm-open-pr`. Until that
+changes (open question 3), add `--allow confirm-open-pr` once you have
+checked there is no open PR.
+
 **U11. "Every remote."**
 
 ```console
@@ -414,9 +421,9 @@ Nothing is kept for compatibility: each old form is removed, not aliased.
   - `--spare` globs;
   - `-i`;
   - the recipes and their tests.
-- Several remotes depends on [#678](https://github.com/osdlc/osdlc/issues/678):
-  pull requests have to be listed for each swept remote, not whichever remote
-  `gh` picks.
+- Several remotes builds on [#909](https://github.com/osdlc/osdlc/pull/909)
+  (closing #677 and #678), which already lists pull requests for the swept
+  remote rather than whichever remote `gh` picks.
 
 ## Open questions
 
@@ -428,6 +435,11 @@ Nothing is kept for compatibility: each old form is removed, not aliased.
 2. **`--against` with several remotes.** One landed-in remote for all of them
    suits the fork workflow (U10). A per-remote default (each remote's own
    default branch) suits mirrors. The proposal uses one.
+
+3. **A fork's pull requests to its parent.** Today they are not read, so a
+   fork's branches carry `confirm-open-pr` (U10). Reading the parent's PRs
+   whose head is the fork would let U10 run without `--allow`, at the cost of
+   a second listing per fork.
 
 ## Reopen if
 
