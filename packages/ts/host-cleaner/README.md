@@ -7,7 +7,7 @@ receipt. The `git` plugin is [`@osdlc/repo-cleaner`](../repo-cleaner/README.md):
 its sweep supplies worktrees and branches, and its `removeCandidate` deletes them,
 under repo-cleaner's safety model.
 
-This release is the library, the `git`, `cargo` and `node` plugins, and the `host-cleaner` command.
+This release is the library, the `git`, `cargo`, `node` and `claude-code` plugins, and the `host-cleaner` command.
 
 ## Phases
 
@@ -86,6 +86,26 @@ its checkout (checked with `@osdlc/path-guard`) is a `refuse` and is never
 measured. `delete` reads the checkout's candidates again over a fresh process
 table, removes the directory and checks it is gone; a directory that is already
 gone (its worktree went first) is not a failure.
+
+## The `claude-code` plugin
+
+Lists running Claude Code sessions (`session:<pid>`) and closes one when asked.
+Detected through `@osdlc/detect-harness` (or, with no report, the config
+folder; `CLAUDE_CONFIG_DIR` moves it). A session is a process whose executable
+is `claude` or `claude.exe`, or `node` running a `claude` script, found with
+`ps` and its working directory with `lsof`. Each candidate carries a
+`close-session` protest and is never `unattended`, so a session closes only
+when picked and allowed by name:
+
+```sh
+host-cleaner clean --pick session:1234 --allow close-session
+```
+
+Its evidence holds the start time, the command, the working directory, the
+resume id, the transcript's last write, other sessions resuming the same id,
+and whether the directory is gone or temporary. `delete` checks the pid still
+has the planned start time and command, sends SIGTERM and waits for the exit.
+It never sends SIGKILL; a session that ignores SIGTERM fails its step.
 
 ## Command line
 
