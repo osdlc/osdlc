@@ -73,12 +73,13 @@ repo-cleaner's `sameFingerprint`.
 
 ## The approval
 
-`hostCheck(plan, approval)` takes repo-cleaner's `{ pick, spare, allow }`. A
-host row is named by its exact id. Anything else in `pick` or `spare` is a
-repo-cleaner row. A risk repo-cleaner knows (`abandon-unmerged`,
-`discard-changes`, `confirm-open-pr`) is granted to its rows, and any other
-risk to host rows. As in repo-cleaner, without a pick only `delete` rows run,
-and naming rows of one kind leaves the other alone.
+`hostCheck(plan, approval)` takes `{ pick, spare, allow }`. `pick` is the
+exact list of rows to work on, as repo-cleaner's `select` is: the repo rows in
+it go to repo-cleaner as its `select`. A host row is named by its exact id.
+Anything else in `pick` or `spare` is a repo-cleaner row. A risk repo-cleaner
+knows (`abandon-unmerged`, `discard-changes`, `confirm-open-pr`) is granted to
+its rows, and any other risk to host rows. As in repo-cleaner, without a pick
+only `delete` rows run, and naming rows of one kind leaves the other alone.
 
 A row is dropped, with a reason, when it is `gone`, `blocked`, has no action
 (`keep`), is not `delete` and not picked (`needs-pick`), is `changed`, is

@@ -45,6 +45,7 @@ export interface HostAllow {
 
 /** What a person approved, over repo and host rows. */
 export interface HostApproval {
+  /** Work on exactly these rows, repo and host; the repo rows go to repo-cleaner as its `select`. */
   pick?: readonly string[] | undefined
   spare?: readonly string[] | undefined
   allow?: readonly (string | HostAllow)[] | undefined
@@ -110,13 +111,16 @@ function split(plan: HostPlan, approval: HostApproval): { repo: Approval; host: 
   const hostIds = new Set(plan.rows.map((r) => r.id))
   const picks = approval.pick ?? []
   const spares = approval.spare ?? []
+  // A host pick is the exact list of rows, so the repo side of one is
+  // repo-cleaner's `select`; without a pick, its default (every `delete` row).
+  const select: string[] = []
   const repo = {
-    pick: [] as string[],
+    ...(picks.length > 0 && { select }),
     spare: [] as string[],
     allow: [] as Allow[],
   }
   const host: HostResolved = { explicit: picks.length > 0, pick: [], spare: [], allow: [] }
-  for (const p of picks) (hostIds.has(p) ? host.pick : repo.pick).push(p)
+  for (const p of picks) (hostIds.has(p) ? host.pick : select).push(p)
   for (const s of spares) (hostIds.has(s) ? host.spare : repo.spare).push(s)
   for (const raw of approval.allow ?? []) {
     const { risk, row } = typeof raw === 'string' ? { risk: raw, row: undefined } : raw
@@ -204,11 +208,11 @@ function adaptersFor(plan: HostPlan, opts: HostOptions, roots: readonly string[]
 
 const roots = (plan: HostPlan): string[] => plan.repo.repos.map((r) => r.root)
 
-/** An empty preview, for an approval that picks no repo row: repo-cleaner would default to all of them. */
+/** An empty preview, for an approval that picks only host rows: repo-cleaner would default to every `delete` row. */
 function emptyRepoPreview(plan: HostPlan): Preview {
   return {
     plan: plan.repo,
-    approval: { pick: [], spare: [], allow: [] },
+    approval: { select: [], pick: [], spare: [], spareMatched: [], allow: [] },
     steps: [],
     dropped: [],
     unusedAllows: [],
@@ -229,7 +233,7 @@ export function hostCheck(
 ): HostPreview {
   const parts = split(plan, approval)
   const { active, reports, ctx } = adaptersFor(plan, opts, roots(plan))
-  const repoOnly = parts.host.explicit && parts.repo.pick?.length === 0
+  const repoOnly = parts.host.explicit && parts.repo.select?.length === 0
   const repo = repoOnly
     ? emptyRepoPreview(plan)
     : check(plan.repo, parts.repo, {

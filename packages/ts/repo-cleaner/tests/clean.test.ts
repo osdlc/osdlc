@@ -854,7 +854,7 @@ describe('check and run', () => {
         run: () => rmSync(row.name, { recursive: true, force: true }),
       }
     }
-    const shown = preview(fx, p, { pick: [wt(fx.worktree)] }, { removeWorktree })
+    const shown = preview(fx, p, { select: [wt(fx.worktree)] }, { removeWorktree })
     expect(shown.steps.map((s) => s.command)).toEqual([`host-remove ${fx.worktree}`])
 
     const receipt = run(shown, { cwd: fx.root, removeWorktree })
@@ -867,7 +867,7 @@ describe('check and run', () => {
   test('removeWorktree returning null leaves the removal to git', () => {
     const fx = buildFixture()
     const p = makePlan(fx.root)
-    const { receipt } = apply(fx, p, { pick: [wt(fx.worktree)] }, { removeWorktree: () => null })
+    const { receipt } = apply(fx, p, { select: [wt(fx.worktree)] }, { removeWorktree: () => null })
     expect(receipt.steps.map((s) => [s.action, s.result])).toEqual([['remove-worktree', 'ok']])
     expect(receipt.steps[0]!.command).toContain('worktree remove')
     expect(existsSync(fx.worktree)).toBe(false)
@@ -882,7 +882,7 @@ describe('check and run', () => {
         new Git(fx.root).worktreeRemove(row.name)
       },
     })
-    const { receipt } = apply(fx, p, { pick: [wt(fx.worktree)] }, { removeWorktree })
+    const { receipt } = apply(fx, p, { select: [wt(fx.worktree)] }, { removeWorktree })
     expect(receipt.steps.map((s) => [s.command, s.result, s.verification])).toEqual([
       [`host-remove ${fx.worktree}`, 'ok', 'directory gone and unregistered'],
     ])
