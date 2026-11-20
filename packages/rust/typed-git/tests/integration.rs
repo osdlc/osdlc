@@ -1348,3 +1348,91 @@ fn diff_verbs_ignore_diff_relative_in_a_subdirectory() {
         "{text:?}"
     );
 }
+
+// ── object::cat_file_batch ──────────────────────────────────────────────────
+
+#[test]
+#[serial]
+fn cat_file_batch_classifies_and_keeps_bytes() {
+    use typed_git::object::{self, CatFileBatchOptions, CatFileEntry};
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path();
+    init_repo(repo);
+    fs::create_dir(repo.join("dir")).unwrap();
+    fs::write(repo.join("a.txt"), "hello\n").unwrap();
+    fs::write(repo.join("bin.dat"), [1u8, 2, 0, 3, 10, 4]).unwrap();
+    fs::write(repo.join("latin1.txt"), [0xe9u8, 0xff, 0x0a]).unwrap();
+    fs::write(repo.join("with space.txt"), "spaced\n").unwrap();
+    fs::write(repo.join("dir/big.txt"), "x".repeat(5000)).unwrap();
+    fs::write(repo.join("empty.txt"), "").unwrap();
+    run(repo, &["add", "-A"]);
+    run(repo, &["commit", "-q", "-m", "first"]);
+
+    let names = [
+        "HEAD:a.txt",
+        "HEAD:bin.dat",
+        "HEAD:latin1.txt",
+        "HEAD:with space.txt",
+        "HEAD:empty.txt",
+        "HEAD:dir",
+        "HEAD:nope.txt",
+        "HEAD:dir/big.txt",
+        "HEAD:a.txt",
+    ];
+    let opts = CatFileBatchOptions::new().max_bytes(1000);
+    let got = object::cat_file_batch(repo, &names, &opts).unwrap();
+    let keys: Vec<&str> = got.iter().map(|(n, _)| n.as_str()).collect();
+    assert_eq!(keys, names[..8], "input order, a repeat once");
+    assert!(matches!(&got[0].1, CatFileEntry::Text { size: 6, bytes, .. } if bytes == b"hello\n"));
+    assert!(
+        matches!(&got[1].1, CatFileEntry::Binary { bytes, .. } if bytes == &[1, 2, 0, 3, 10, 4])
+    );
+    assert!(matches!(&got[2].1, CatFileEntry::Text { bytes, .. } if bytes == &[0xe9, 0xff, 0x0a]));
+    assert!(matches!(&got[3].1, CatFileEntry::Text { size: 7, .. }));
+    assert!(matches!(&got[4].1, CatFileEntry::Text { size: 0, .. }));
+    assert!(
+        matches!(&got[5].1, CatFileEntry::NotBlob { object_type, .. } if object_type == "tree")
+    );
+    assert_eq!(got[6].1, CatFileEntry::Missing);
+    assert!(matches!(
+        &got[7].1,
+        CatFileEntry::TooLarge { size: 5000, .. }
+    ));
+
+    // Small chunks split the content reads; the groups cover every name once.
+    let mut chunks = Vec::new();
+    let small = CatFileBatchOptions::new().chunk_bytes(8);
+    object::cat_file_batch_chunks(
+        repo,
+        &[
+            "HEAD:a.txt",
+            "HEAD:with space.txt",
+            "HEAD:dir/big.txt",
+            "HEAD:nope",
+        ],
+        &small,
+        |c| chunks.push(c),
+    )
+    .unwrap();
+    assert_eq!(chunks.len(), 3);
+    assert_eq!(chunks.iter().map(Vec::len).sum::<usize>(), 4);
+    assert!(
+        chunks[0]
+            .iter()
+            .any(|(n, e)| n == "HEAD:nope" && *e == CatFileEntry::Missing)
+    );
+}
+
+#[test]
+#[serial]
+fn cat_file_batch_refuses_bad_names_and_reports_git_failure() {
+    use typed_git::object::{self, CatFileBatchOptions};
+    let tmp = tempfile::tempdir().unwrap();
+    for bad in ["", "a\nb", "a\0b", "HEAD:a\r"] {
+        let err = object::cat_file_batch(tmp.path(), &[bad], &CatFileBatchOptions::new());
+        assert!(matches!(err, Err(GitError::Command { .. })), "{bad:?}");
+    }
+    // Not a repository: git itself fails.
+    let err = object::cat_file_batch(tmp.path(), &["HEAD:a"], &CatFileBatchOptions::new());
+    assert!(matches!(err, Err(GitError::Command { .. })));
+}

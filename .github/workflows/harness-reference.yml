@@ -1,6 +1,5 @@
 # Checks the harness reference in packages/corpora/harness-reference/, and the
-# compiled file @osdlc/harness-knowledge ships from it, in
-# packages/ts/harness-knowledge/data/.
+# packages that read the file compiled from it.
 #
 # The validator is built from packages/ts/corpus-schema with
 # tools/build-corpus-schema.sh; the corpus takes it from the workspace.
@@ -9,12 +8,12 @@
 # then validates it again, runs the lint rules that compare records, the tests
 # of capture, lint and compile, and the typecheck.
 #
-# The compiled data must be what the corpus compiles to at the commit the data
-# names, byte for byte. A corpus change that the data does not hold yet is a
-# warning, not a failure: the data is rewritten once the change is on main, so
-# its links can name that commit (see packages/ts/harness-knowledge/README.md).
-# Data that still names osdlc/skillwright, where the corpus was, must hold what
-# the corpus here compiles to apart from where its links point.
+# The compiled file @osdlc/harness-knowledge ships is not committed. Its build
+# compiles it from this corpus, so a corpus change reaches the packages that read
+# it: the build and tests of harness-knowledge and of every package that depends
+# on it run here. When the compiled values differ from the version on npm, a
+# changeset naming @osdlc/harness-knowledge must be in the pull request, since
+# that is what releases the change (check:release).
 #
 # profiles.yml also validates this corpus, with every other one, and scans it
 # for private data.
@@ -29,8 +28,7 @@ on:
   pull_request:
     paths:
       - 'packages/corpora/harness-reference/**'
-      - 'packages/ts/harness-knowledge/data/**'
-      - 'packages/ts/harness-knowledge/scripts/**'
+      - 'packages/ts/harness-knowledge/**'
       - 'packages/ts/corpus-schema/**'
       - 'packages/ts/frontmatter-lossless/**'
       - 'packages/ts/markdown-link/**'
@@ -39,6 +37,7 @@ on:
       - 'tools/build-corpus-schema.sh'
       - 'tools/validate-strict.sh'
       - 'tools/validator.sh'
+      - '.changeset/**'
       - 'package.json'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
@@ -47,8 +46,7 @@ on:
     branches: [main]
     paths:
       - 'packages/corpora/harness-reference/**'
-      - 'packages/ts/harness-knowledge/data/**'
-      - 'packages/ts/harness-knowledge/scripts/**'
+      - 'packages/ts/harness-knowledge/**'
       - 'packages/ts/corpus-schema/**'
       - 'packages/ts/frontmatter-lossless/**'
       - 'packages/ts/markdown-link/**'
@@ -57,6 +55,7 @@ on:
       - 'tools/build-corpus-schema.sh'
       - 'tools/validate-strict.sh'
       - 'tools/validator.sh'
+      - '.changeset/**'
       - 'package.json'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
@@ -73,13 +72,10 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
-      # The whole history: the data check compiles the corpus as it was at the
-      # commit the data names.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
           persist-credentials: false
 
       # Reads the pnpm version from `packageManager` in the root package.json.
@@ -103,5 +99,14 @@ jobs:
       - name: Validate, lint, test and typecheck
         run: pnpm --filter harness-reference run check
 
-      - name: The compiled data matches the corpus
-        run: pnpm --filter @osdlc/harness-knowledge run check:data
+      # The build compiles the corpus into harness-knowledge's data/, then builds
+      # every package that depends on harness-knowledge.
+      - name: Build harness-knowledge and its dependents
+        run: pnpm --filter '...@osdlc/harness-knowledge...' --if-present run build
+
+      - name: Test harness-knowledge and its dependents
+        run: pnpm --filter '...@osdlc/harness-knowledge' --no-bail --if-present run test
+
+      - name: A corpus change that changes the data carries a changeset
+        if: github.event_name == 'pull_request'
+        run: pnpm --filter @osdlc/harness-knowledge run check:release

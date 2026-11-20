@@ -1,0 +1,110 @@
+{
+  "family": "agent-router",
+  "reference": "ts",
+  "referenceVersion": "0.4.4",
+  "sections": {
+    "context_default_window": {
+      "description": "defaultWindow: the offering’s default before the model’s, never a max",
+      "cases": [
+        {
+          "name": "snap-codex-offering-default",
+          "input": {
+            "layers": [
+              "snapshot"
+            ],
+            "tool": "codex",
+            "model": "gpt-6.1-sol"
+          },
+          "expect": 272000
+        },
+        {
+          "name": "snap-claude-no-default",
+          "input": {
+            "layers": [
+              "snapshot"
+            ],
+            "tool": "claude",
+            "model": "opus"
+          },
+          "expect": null
+        },
+        {
+          "name": "snap-no-model",
+          "input": {
+            "layers": [
+              "snapshot"
+            ],
+            "tool": "codex"
+          },
+          "expect": null
+        },
+        {
+          "name": "snap-unknown-model",
+          "input": {
+            "layers": [
+              "snapshot"
+            ],
+            "tool": "codex",
+            "model": "nosuch"
+          },
+          "expect": null
+        },
+        {
+          "name": "snap-unknown-tool",
+          "input": {
+            "layers": [
+              "snapshot"
+            ],
+            "tool": "nosuch",
+            "model": "opus"
+          },
+          "expect": null
+        },
+        {
+          "name": "mini-offering-wins-over-model",
+          "input": {
+            "layers": [
+              "mini"
+            ],
+            "tool": "alpha",
+            "model": "big"
+          },
+          "expect": 200000
+        },
+        {
+          "name": "mini-curated-offering-default",
+          "input": {
+            "layers": [
+              "mini"
+            ],
+            "tool": "delta",
+            "model": "large"
+          },
+          "expect": 100000
+        },
+        {
+          "name": "mini-model-default-when-offering-has-none",
+          "input": {
+            "layers": [
+              "mini"
+            ],
+            "tool": "gamma",
+            "model": "anthropic/big-2"
+          },
+          "expect": 200000
+        },
+        {
+          "name": "mini-max-is-never-a-default",
+          "input": {
+            "layers": [
+              "mini"
+            ],
+            "tool": "alpha",
+            "model": "anthropic/mid-1"
+          },
+          "expect": null
+        }
+      ]
+    }
+  }
+}
