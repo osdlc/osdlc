@@ -93,7 +93,7 @@ Why the package has the shape it has, and the research on each host app, are in
 | `terminal` | all | nothing; runs in the caller's own terminal and blocks until the session exits | none |
 | `tmux` | macOS, Linux | `tmux` on `PATH` | send, find, focus, capture, close; can wait for the session to exit |
 | `wezterm` | all | `wezterm` on `PATH` and a running WezTerm | send, find, focus, capture, close |
-| `cmux` | macOS | the cmux app and its CLI | send, find, focus, capture, close |
+| `cmux` | macOS | the cmux app and its CLI (`makeCmuxHost({ binary })` names it; a `sessionId` is bound through the workspace description) | send, find, focus, capture, close |
 | `herdr` | macOS, Linux | `herdr` on `PATH` | send, find, focus, capture, close |
 | `orca` | macOS | the Orca app (its bundled CLI is found) | send, find, focus, close |
 | `otty` | macOS | the otty app and its CLI | send, find, focus, capture, close |

@@ -6,10 +6,12 @@
  * `workspace create` is the canonical spelling; `new-workspace` is the legacy
  * alias and prints a deprecation notice on every call.
  *
- * cmux cannot bind a pane to a caller session id: `workspace create` has no
- * tag the list commands read back (the shapes are docs-only), so every part
- * resolves by `cwd` and ignores `sessionId`. `close` therefore acts only when
- * exactly one workspace is at the cwd.
+ * A caller session id is bound through `--description`: the create carries
+ * {@link cmuxSessionMarker}, and a `find` with a `sessionId` keeps the
+ * workspaces whose listed `description` (or `name`/`title`) holds it. The list
+ * shapes are docs-only (cmux was not installed where this was written), so when
+ * no workspace carries the marker, or the list is denied, `find` falls back to
+ * `cwd`, leaving out workspaces marked for another session.
  *
  * Socket access: send/focus/capture and the workspace-list half of `find` use
  * the cmux control socket, which by default (`automation.socketControlMode`
@@ -29,7 +31,7 @@ import {
   resolveRunner,
   type CommandRunner,
 } from '@osdlc/command-seam'
-import { isRecord, nonEmptyString, parseJsonOrNull, realResolve } from '../util.ts'
+import { isRecord, nonEmptyString, parseJsonOrNull, realResolve, sessionIdSlug } from '../util.ts'
 
 import {
   onPath,
@@ -44,6 +46,11 @@ import {
 } from '../contract.ts'
 import { commandArgv, harnessOrNull, sessionViaTerminal } from '../harness.ts'
 
+/** The text a workspace's description carries to name the caller session id it was opened for. */
+export function cmuxSessionMarker(sessionId: string): string {
+  return `${MARKER_PREFIX}${sessionIdSlug(sessionId)}`
+}
+
 /** Argv for `cmux workspace create` — pure, so a test can pin it. */
 export function cmuxCreateArgv(req: CommandRequest): string[] {
   return [
@@ -51,6 +58,7 @@ export function cmuxCreateArgv(req: CommandRequest): string[] {
     'create',
     '--name',
     req.title,
+    ...(req.sessionId === undefined ? [] : ['--description', cmuxSessionMarker(req.sessionId)]),
     '--cwd',
     req.cwd,
     '--command',
@@ -149,6 +157,38 @@ export function parseCmuxSessions(stdout: string, cwd: string): FoundSession[] {
   return found
 }
 
+const MARKER_PREFIX = 'agent-seat:'
+
+/** A listed workspace in `cwd` carrying an agent-seat marker. */
+interface MarkedWorkspace {
+  /** The workspace's `ref` and `id`, whichever are listed. */
+  keys: string[]
+  /** Whether the marker is the queried `sessionId`'s. */
+  own: boolean
+}
+
+/** The workspaces in `cwd` whose `description`, `name` or `title` holds an agent-seat marker. DOCS-ONLY shape. */
+function markedWorkspaces(stdout: string, cwd: string, sessionId: string): MarkedWorkspace[] {
+  const want = realResolve(cwd)
+  const marker = cmuxSessionMarker(sessionId)
+  const parsed = parseJsonOrNull(stdout)
+  const rows = Array.isArray(parsed) ? parsed : isRecord(parsed) ? parsed['workspaces'] : null
+  if (!Array.isArray(rows)) return []
+  const found: MarkedWorkspace[] = []
+  for (const row of rows) {
+    if (!isRecord(row)) continue
+    const rowCwd = nonEmptyString(row['cwd']) ?? nonEmptyString(row['current_directory'])
+    if (rowCwd === null || realResolve(rowCwd) !== want) continue
+    const text = ['description', 'name', 'title']
+      .map((k) => nonEmptyString(row[k]) ?? '')
+      .join('\n')
+    if (!text.includes(MARKER_PREFIX)) continue
+    const keys = [row['ref'], row['id']].flatMap((k) => nonEmptyString(k) ?? [])
+    found.push({ keys, own: text.includes(marker) })
+  }
+  return found
+}
+
 /** Parses `cmux --json workspace list`: an array (or `{workspaces}`) of `{ref|id, cwd|current_directory}`. DOCS-ONLY shape. */
 export function parseCmuxWorkspaces(stdout: string, cwd: string): FoundSession[] {
   const want = realResolve(cwd)
@@ -167,22 +207,27 @@ export function parseCmuxWorkspaces(stdout: string, cwd: string): FoundSession[]
 }
 
 /**
- * The cmux host: drives the cmux app through the `cmux` binary, which must be on PATH.
- * darwin only. Keeps no state of its own; every part resolves by `cwd`.
+ * The cmux host: drives the cmux app through the `cmux` binary (see `opts.binary`).
+ * darwin only. Keeps no state of its own; see the module doc for how a part picks its workspace.
  */
 export function makeCmuxHost(opts: {
+  /** The `cmux` binary to run; null makes the host unavailable and every part a no-op. Default: `cmux` on PATH. */
+  binary?: string | null | undefined
   runner?: CommandRunner | undefined
   available?: (() => boolean) | undefined
 }): Host {
+  const bin = opts.binary === undefined ? 'cmux' : opts.binary
   return {
     name: 'cmux',
     platforms: ['darwin'],
     available() {
       if (opts.available !== undefined) return opts.available()
+      if (opts.binary !== undefined) return opts.binary !== null
       return supportsPlatform(this) && onPath('cmux')
     },
     terminal(req) {
-      const runner = resolveRunner('cmux', opts.runner)
+      if (bin === null) throw new Error('cmux binary is not configured')
+      const runner = resolveRunner(bin, opts.runner)
       const res = runner.run(cmuxCreateArgv(req), { cwd: req.cwd, timeoutMs: 60_000 })
       if (!ran(res)) {
         throw new Error(`cmux workspace create failed: ${failureText(res)}`)
@@ -191,14 +236,46 @@ export function makeCmuxHost(opts: {
     },
     session: sessionViaTerminal,
     find(query: FindQuery): FoundSession[] {
-      const runner = resolveRunner('cmux', opts.runner)
+      if (bin === null) return []
+      const runner = resolveRunner(bin, opts.runner)
       const run = (argv: string[]) => quietRun(runner, argv, { cwd: query.cwd, timeoutMs: 10_000 })
       const stored = run(cmuxSessionsArgv(query.cwd))
       const fromStore = stored === null ? [] : parseCmuxSessions(stored, query.cwd)
-      if (fromStore.length > 0) return fromStore
       // The workspace list needs the socket; when it is denied the command exits nonzero and `run` returns null.
-      const listed = run(cmuxWorkspaceListArgv())
-      return listed === null ? [] : parseCmuxWorkspaces(listed, query.cwd)
+      let listed: string | null | undefined
+      const list = () => (listed === undefined ? (listed = run(cmuxWorkspaceListArgv())) : listed)
+      let rows = fromStore
+      let others = new Set<string>()
+      if (query.sessionId !== undefined) {
+        const text = list()
+        const marked = text === null ? [] : markedWorkspaces(text, query.cwd, query.sessionId)
+        const inKeys = (f: FoundSession, own: boolean) =>
+          marked.some((m) => m.own === own && m.keys.includes(f.handle?.split('/')[0] ?? ''))
+        const own = fromStore.filter((f) => inKeys(f, true))
+        if (own.length > 0) return own
+        // A workspace opened for another session is never this one's fallback.
+        others = new Set(marked.flatMap((m) => (m.own ? [] : m.keys)))
+        rows = fromStore.filter((f) => !inKeys(f, false))
+        const bound = marked.find((m) => m.own)
+        if (bound !== undefined) {
+          return bound.keys[0] === undefined
+            ? []
+            : [
+                {
+                  cwd: query.cwd,
+                  harness: null,
+                  alive: true,
+                  lastOutputAt: null,
+                  handle: bound.keys[0],
+                },
+              ]
+        }
+      }
+      if (rows.length > 0) return rows
+      const all = list()
+      return all === null
+        ? []
+        : parseCmuxWorkspaces(all, query.cwd).filter((f) => !others.has(f.handle ?? ''))
     },
     send(req: SendRequest): SendReceipt {
       // No delivery confirmation exists, so ack is always false.
@@ -208,12 +285,12 @@ export function makeCmuxHost(opts: {
         // (the workspace-list fallback) may be a shell the agent has exited, and the
         // pointer would run as a command. With `req.harness`, only that harness's row, and
         // only when exactly one row is left: any pick among several could reach another session.
-        const agents = this.find!({ cwd: req.cwd }).filter(
+        const agents = this.find!({ cwd: req.cwd, sessionId: req.sessionId }).filter(
           (s) => s.harness !== null && (req.harness === undefined || s.harness === req.harness),
         )
         const handle = agents.length === 1 ? agents[0]?.handle : undefined
         if (handle === undefined || handle === null) return { accepted: false, ack: false }
-        const runner = resolveRunner('cmux', opts.runner)
+        const runner = resolveRunner(bin!, opts.runner)
         const typed = runner.run(cmuxSendArgv(handle, req.text), {
           cwd: req.cwd,
           timeoutMs: 15_000,
@@ -232,7 +309,7 @@ export function makeCmuxHost(opts: {
       try {
         const handle = this.find!(query)[0]?.handle
         if (handle === undefined || handle === null) return false
-        const runner = resolveRunner('cmux', opts.runner)
+        const runner = resolveRunner(bin!, opts.runner)
         return ran(runner.run(cmuxFocusArgv(handle), { cwd: query.cwd, timeoutMs: 10_000 }))
       } catch {
         return false
@@ -242,7 +319,7 @@ export function makeCmuxHost(opts: {
       try {
         const handle = this.find!(query)[0]?.handle
         if (handle === undefined || handle === null) return null
-        const runner = resolveRunner('cmux', opts.runner)
+        const runner = resolveRunner(bin!, opts.runner)
         return quietRun(runner, cmuxReadScreenArgv(handle), { cwd: query.cwd, timeoutMs: 10_000 })
       } catch {
         return null
@@ -251,9 +328,8 @@ export function makeCmuxHost(opts: {
     close(query: FindQuery): boolean {
       try {
         // Only a workspace whose saved session names an agent, as in `send`: one found by
-        // cwd alone (the workspace-list fallback) may be one the person opened. No session
-        // id can be matched here, so close only when the cwd names one such workspace: with
-        // several, any pick could close another session's.
+        // cwd alone (the workspace-list fallback) may be one the person opened. Close only
+        // when exactly one such workspace is left: with several, any pick could close another session's.
         const workspaces = new Set(
           this.find!(query).flatMap((s) =>
             s.harness !== null && s.handle ? [s.handle.split('/')[0]] : [],
@@ -262,7 +338,7 @@ export function makeCmuxHost(opts: {
         const [workspace] = [...workspaces]
         if (workspaces.size !== 1 || workspace === undefined) return false
         return (
-          quietRun(resolveRunner('cmux', opts.runner), cmuxCloseArgv(workspace), {
+          quietRun(resolveRunner(bin!, opts.runner), cmuxCloseArgv(workspace), {
             cwd: query.cwd,
             timeoutMs: 10_000,
           }) !== null
