@@ -18,7 +18,7 @@ are in the root [`docs/decisions/`](../../../../../docs/decisions/README.md).
 
 Ids are random keys, so parallel branches do not collide. A record that
 started in sksizer/dev keeps the id it had there. Each decision has a `state`:
-`accepted` or `superseded`. A superseded decision names the one that replaces
+`proposed`, `accepted` or `superseded`. A superseded decision names the one that replaces
 it. A task is `open` or `done`. An open task names the issue that holds its
 spec and discussion; when that issue closes, the task becomes `done` and says
 what shipped.
@@ -29,6 +29,8 @@ what shipped.
   a host adds what it knows through `annotate`
 - [D-UVUH](decisions/D-UVUH-failed-lookups.md): a failed lookup costs its
   evidence; a failed fetch costs the repository
+- [D-4CE9](decisions/D-4CE9-the-cli-by-use-case.md): the CLI, by use case
+  (proposed)
 
 ## Open tasks
 
