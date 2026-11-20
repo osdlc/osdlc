@@ -31,7 +31,7 @@ what shipped.
 - [D-UVUH](decisions/D-UVUH-failed-lookups.md): a failed lookup costs its
   evidence; a failed fetch costs the repository
 - [D-4CE9](decisions/D-4CE9-the-cli-by-use-case.md): the CLI, by use case
-  (proposed)
+
 
 ## Open tasks
 

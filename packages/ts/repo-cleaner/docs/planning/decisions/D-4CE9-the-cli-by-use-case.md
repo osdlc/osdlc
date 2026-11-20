@@ -1,7 +1,7 @@
 ---
 id: D-4CE9
 type: decision
-state: proposed
+state: accepted
 created: 2026-11-20
 ---
 
