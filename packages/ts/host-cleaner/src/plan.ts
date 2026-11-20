@@ -33,7 +33,9 @@ export const PlanSchema = z
   .object({
     version: z.literal(PLAN_VERSION),
     createdAt: z.string(),
-    /** The candidates the person picked by id; null means every one nothing objects to. */
+    /** The targets the plan was swept over, so `clean --plan` checks the same place. */
+    targets: z.array(z.string()),
+    /** The candidates the person picked by id; null means every one `decide` takes without a pick. */
     pick: z.array(z.string()).nullable(),
     /** The protest codes granted by name. */
     allow: z.array(z.string()),

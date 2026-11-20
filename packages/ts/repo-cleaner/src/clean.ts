@@ -385,7 +385,6 @@ function judgeRisks(
   const archived = (risk: Risk): boolean =>
     coverage?.covers.includes(risk) === true && isAllowed('discard-archived')
   const grants = (risk: Risk): boolean => isAllowed(risk) || archived(risk)
-  // A risk the archive covers is asked for as `discard-archived`.
   const asked = (risk: Risk): Risk => (coverage?.covers.includes(risk) ? 'discard-archived' : risk)
   return {
     needs: [...new Set(row.risks.map(asked))],

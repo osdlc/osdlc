@@ -13,7 +13,7 @@ export interface PluginInit {
 
 export type PluginFactory = (init: PluginInit) => Plugin
 
-/** The shipped plugins by name, in run order (`orderPlugins` fixes the order again). */
+/** The shipped plugins by name; `orderPlugins` sets the run order. */
 export const FACTORIES: Readonly<Record<string, PluginFactory>> = {
   git: ({ only }) => gitPlugin({ sweep: { only: [...only] } }),
 }
@@ -24,7 +24,7 @@ export class UnknownPlugin extends Error {
 }
 
 /**
- * `plugins` less `skip`, or only `want` when given. A name that no plugin has is an error.
+ * `plugins` narrowed to `want` when given, less `skip`. A name no plugin has is an error.
  *
  * @throws UnknownPlugin
  */

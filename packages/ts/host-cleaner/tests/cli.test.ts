@@ -182,6 +182,29 @@ describe('plan and clean', () => {
     expect(readFileSync(join(dirs.logs, 'host-cleaner.log'), 'utf8')).toContain('"complete"')
   })
 
+  test('clean --plan checks the targets the plan was made over, whatever the directory', () => {
+    const { env } = setup()
+    const dir = repo()
+    const elsewhere = tempDir()
+    const planFile = join(tempDir(), 'plan.json')
+    expect(run(['plan', dir, '-o', planFile], elsewhere, env).code).toBe(0)
+    expect(JSON.parse(readFileSync(planFile, 'utf8')).targets).toEqual([dir])
+    const r = run(['clean', '--plan', planFile, '--yes'], elsewhere, env)
+    expect(r.code).toBe(0)
+    expect(new Git(dir).rawChecked(['branch', '--format=%(refname:short)']).stdout).not.toContain(
+      'merged-a',
+    )
+  })
+
+  test('a plugins.git entry is refused until the git plugin reads settings', () => {
+    const { env, cwd, home } = setup()
+    const config = join(home, 'config.json')
+    writeFileSync(config, JSON.stringify({ plugins: { git: { offline: true } } }))
+    const r = run(['--config', config], cwd, env)
+    expect(r.code).toBe(2)
+    expect(r.err).toContain('plugins.git')
+  })
+
   test('clean with the real git plugin deletes the merged branch and spares the unmerged one', () => {
     const { env } = setup()
     const dir = repo()
