@@ -22,7 +22,7 @@ import { makeStyles, type StyleInput } from '../src/tui/style.ts'
 export interface FakeHost extends TuiHost {
   written: string[]
   exits: number[]
-  handedOff: RunPlan[]
+  handedOff: Pick<RunPlan, 'argv' | 'env' | 'cwd'>[]
   copied: string[]
   released: number
   /** What the next hand-off returns. */
