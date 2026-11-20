@@ -145,6 +145,13 @@ applyDelimitedChanges(text, setDelimitedField(file, file.rows[1]!, 1, 'yes, fine
   4180 for paste, a tolerant reader that reports problems by line, and text
   changes that edit one field, row or column without rewriting the file.
 
+## Twin
+
+The `gfm-pipe-table` Rust crate is this package's twin. Both run one
+conformance suite, `packages/conformance/gfm-table/suite.json` in the
+repository, of which this package is the reference. The crate's README lists
+the differences of idiom, such as byte offsets in place of UTF-16 indices.
+
 ## Stability
 
 The package is 0.x, so any minor release may break the API. Within that, each

@@ -218,8 +218,8 @@ describe('archive before delete', () => {
     expect(receipt.status).toBe('failed')
     expect(receipt.steps.map((s) => [s.action, s.result])).toEqual([
       ['archive', 'failed'],
-      ['remove-worktree', 'pending'],
-      ['delete-branch', 'pending'],
+      ['remove-worktree', 'skipped'],
+      ['delete-branch', 'skipped'],
     ])
     expect(existsSync(fx.worktree)).toBe(true)
     expect(sh(fx.root, ['branch', '--list', 'unmerged'])).toContain('unmerged')

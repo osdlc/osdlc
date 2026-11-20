@@ -8,22 +8,23 @@
  */
 
 import type { PrProvider } from './providers/index.ts'
-import type { ProviderStatus } from './providers/types.ts'
+import type { PrListing, ProviderStatus } from './providers/types.ts'
 import type { PRInfo, RepoInfo } from './types.ts'
 import { errorText } from './util.ts'
 
-/** Why the provider did not answer, and the words for it. */
+/** Why open pull requests cannot be ruled out, and the words for it. */
 export interface PrsUnchecked {
-  kind: 'not-installed' | 'not-signed-in' | 'list-failed'
+  kind: 'not-installed' | 'not-signed-in' | 'list-failed' | 'incomplete'
   /** For a sentence: "`gh` is not installed", "`gh pr list` failed". */
   why: string
 }
 
 /**
  * Why open pull requests cannot be ruled out for this repository, or null
- * when the provider answered. A missing or signed-out CLI was never asked, and
- * a failed listing answered nothing; either way a remote branch with no known
- * PR may still have an open one. Every sentence about a lookup that did not
+ * when the provider answered with a whole listing. A missing or signed-out CLI
+ * was never asked, a failed listing answered nothing, and an incomplete one
+ * left requests out; in each case a remote branch with no known PR may still
+ * have an open one. Every sentence about a lookup that did not
  * answer is built from this one answer.
  */
 export function prsUnchecked(status: ProviderStatus): PrsUnchecked | null {
@@ -35,6 +36,9 @@ export function prsUnchecked(status: ProviderStatus): PrsUnchecked | null {
   if (status.listError !== undefined) {
     return { kind: 'list-failed', why: `\`${status.listing}\` failed` }
   }
+  if (status.incomplete !== undefined) {
+    return { kind: 'incomplete', why: `\`${status.listing}\` did not read every ${status.noun}` }
+  }
   return null
 }
 
@@ -43,7 +47,7 @@ function priority(state: string): number {
   return ({ OPEN: 3, MERGED: 2, CLOSED: 1 } as Record<string, number>)[state] ?? 0
 }
 
-/** A provider's answer for one repository: its pull requests, or why there are none to read. */
+/** A provider's answer for one repository: its pull requests, and why any could be missing. */
 export interface PrLookup {
   /** Pull requests keyed by head branch; empty when the lookup failed or was not made. */
   prs: Map<string, PRInfo>
@@ -52,6 +56,8 @@ export interface PrLookup {
    * null when it answered, or when it was not asked at all.
    */
   error: string | null
+  /** {@link PrListing.incomplete}, passed through; null when the listing is whole. */
+  incomplete: string | null
 }
 
 /**
@@ -69,7 +75,8 @@ export interface PrLookup {
  * null or throws has failed (a repository the signed-in account cannot see, a
  * forge that is down, output that cannot be read), and `error` says why.
  * Classification then degrades to git evidence, and the sweep notes it rather
- * than losing every row to one listing.
+ * than losing every row to one listing. A listing that answered but says it
+ * left requests out returns the PRs it read, with `incomplete` saying why.
  *
  * @param provider The provider to ask. It is asked only when it is the one
  *   `repo.provider` names and that probe found it signed in.
@@ -80,21 +87,22 @@ export function lookupPrs(repo: RepoInfo, provider: PrProvider, branch?: string)
   const byHead = new Map<string, PRInfo>()
   const status = repo.provider
   if (status === null || status.name !== provider.name || !status.authenticated) {
-    return { prs: byHead, error: null }
+    return { prs: byHead, error: null, incomplete: null }
   }
 
-  let rows: PRInfo[] | null
+  let rows: PRInfo[] | PrListing | null
   try {
     rows = provider.listPrs(repo.root, status, branch)
   } catch (err) {
     // A bug in the provider is not a listing that failed: let it fail loudly,
     // as an error on the repository, rather than gate every remote branch.
     if (err instanceof TypeError || err instanceof ReferenceError) throw err
-    return { prs: byHead, error: errorText(err) }
+    return { prs: byHead, error: errorText(err), incomplete: null }
   }
-  if (rows === null) return { prs: byHead, error: 'the provider gave no reason' }
+  if (rows === null) return { prs: byHead, error: 'the provider gave no reason', incomplete: null }
 
-  for (const info of rows) {
+  const incomplete = Array.isArray(rows) ? null : (rows.incomplete ?? null)
+  for (const info of Array.isArray(rows) ? rows : rows.prs) {
     const head = info.headRef
     if (!head) continue
     if (branch !== undefined && head !== branch) continue
@@ -109,5 +117,5 @@ export function lookupPrs(repo: RepoInfo, provider: PrProvider, branch?: string)
       byHead.set(head, info)
     }
   }
-  return { prs: byHead, error: null }
+  return { prs: byHead, error: null, incomplete }
 }
