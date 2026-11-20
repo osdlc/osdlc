@@ -16,7 +16,7 @@ import {
 } from './plan.ts'
 import { FatalRun, type Candidate, type Ctx, type Objection, type Plugin } from './types.ts'
 
-/** The fixed plugin order. It decides only which plugin keeps a duplicate candidate: the first. */
+/** The fixed plugin order: which plugin keeps a duplicate candidate (the first), and the order `prepare` and `deleted` run in. */
 export const PLUGIN_ORDER: readonly string[] = ['git', 'cargo', 'node', 'claude-code', 'orca']
 
 /** `plugins` in {@link PLUGIN_ORDER}; a plugin not named there goes after, in the order given. */
@@ -177,10 +177,15 @@ export function decide(
     (byCandidate.get(id) ?? []).filter((o) => o.level === level)
   const unmet = (id: string): Objection[] =>
     gating(id, 'protest').filter((o) => !granted.has(o.code))
+  // With no pick, only what no owner has held back: an owner marks a candidate
+  // `unattended: false` when it wants a person to choose it.
   const ids =
     pick ??
     candidates
-      .filter((c) => gating(c.id, 'refuse').length === 0 && unmet(c.id).length === 0)
+      .filter(
+        (c) =>
+          c.unattended !== false && gating(c.id, 'refuse').length === 0 && unmet(c.id).length === 0,
+      )
       .map((c) => c.id)
 
   const dropped: Dropped[] = []
@@ -308,7 +313,31 @@ export function clean(
   opts: CleanOptions = {},
 ): Receipt {
   const now = opts.now ?? (() => new Date())
-  const { decision, survey: s } = recheck(p, plugins, ctx)
+  let checked: ReturnType<typeof recheck>
+  try {
+    checked = recheck(p, plugins, ctx)
+  } catch (err) {
+    // A plugin that cannot be re-read still leaves a receipt saying nothing ran.
+    if (opts.receiptPath !== undefined && opts.dryRun !== true) {
+      const at = now().toISOString()
+      try {
+        writeReceipt(opts.receiptPath, {
+          version: RECEIPT_VERSION,
+          plan: opts.source ?? '(swept)',
+          status: 'failed',
+          startedAt: at,
+          finishedAt: at,
+          warnings: [...p.warnings],
+          dropped: [],
+          steps: [],
+        })
+      } catch {
+        // the original error is the one to report
+      }
+    }
+    throw err
+  }
+  const { decision, survey: s } = checked
   const receipt: Receipt = {
     version: RECEIPT_VERSION,
     plan: opts.source ?? '(swept)',

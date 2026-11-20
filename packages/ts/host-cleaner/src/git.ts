@@ -57,7 +57,7 @@ export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
           why: row.why,
           evidence: row.fingerprint,
           ...(row.requires === undefined ? {} : { requires: row.requires }),
-          unattended: row.verdict === 'delete' && row.risks.length === 0,
+          unattended: row.verdict === 'delete',
         }
       })
     },

@@ -1,3 +1,7 @@
+import { mkdtempSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -154,6 +158,12 @@ describe('objection levels', () => {
     const d = decide(cs, os, null, [])
     expect(d.run.map((c) => c.id)).toEqual(['a:1', 'a:4'])
     expect(d.dropped).toEqual([])
+  })
+
+  test('without a pick, a candidate its owner marked unattended: false does not run; a pick still takes it', () => {
+    const held = [cand('a:1', 'git', { unattended: false }), cand('a:2', 'git')]
+    expect(decide(held, [], null, []).run.map((c) => c.id)).toEqual(['a:2'])
+    expect(decide(held, [], ['a:1'], []).run.map((c) => c.id)).toEqual(['a:1'])
   })
 
   test('without a pick, a protest that is granted does not keep a candidate out', () => {
@@ -331,6 +341,24 @@ describe('re-check', () => {
 })
 
 describe('prepare, delete and deleted', () => {
+  test('a plugin that throws in the re-check leaves a failed receipt and rethrows', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'hc-recheck-'))
+    const receiptPath = join(dir, 'receipt.json')
+    let reads = 0
+    const flaky = fake('git', [cand('a:1', 'git')], [], {
+      discover: () => {
+        if (++reads > 1) throw new FatalRun('cannot read')
+        return [cand('a:1', 'git')]
+      },
+    })
+    const p = plan(survey([flaky], ctx), {})
+    expect(() => clean(p, [flaky], ctx, { receiptPath })).toThrow('cannot read')
+    expect(JSON.parse(readFileSync(receiptPath, 'utf8'))).toMatchObject({
+      status: 'failed',
+      steps: [],
+    })
+  })
+
   test('every plugin prepares, the owner deletes, the others are told', () => {
     const log: string[] = []
     const receipt = run([

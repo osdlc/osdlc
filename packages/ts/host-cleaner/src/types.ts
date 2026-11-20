@@ -20,7 +20,10 @@ export interface Candidate {
   evidence: Record<string, unknown>
   /** Candidate ids that must be deleted before this one; if one is refused or dropped, so is this. */
   requires?: string[] | undefined
-  /** The owner says `--auto` may take it, if nothing objects. */
+  /**
+   * False when the owner wants a person to choose it: a run with no pick skips it.
+   * True or absent: unattended runs may take it, if nothing objects.
+   */
   unattended?: boolean | undefined
 }
 
