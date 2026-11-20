@@ -86,10 +86,10 @@ describe('archive before delete', () => {
     dirty(fx)
     const p = makePlan(fx.root)
     const row = wt(fx.worktree)
-    const approval = { pick: [row], allow: ['discard-archived' as const] }
+    const approval = { select: [row], allow: ['discard-archived' as const] }
 
     // Without the archive risk the row stays: it needs discard-archived.
-    const refused = check(p, { pick: [row] }, { cwd: fx.root, archive: {} })
+    const refused = check(p, { select: [row] }, { cwd: fx.root, archive: {} })
     expect(refused.dropped).toMatchObject([
       { reason: 'not-allowed', detail: 'needs discard-archived' },
     ])
@@ -138,13 +138,13 @@ describe('archive before delete', () => {
 
     const only = check(
       p,
-      { pick: [row], allow: ['discard-archived'] },
+      { select: [row], allow: ['discard-archived'] },
       { cwd: fx.root, archive: {} },
     )
     expect(only.dropped).toMatchObject([{ reason: 'not-allowed', detail: 'needs discard-changes' }])
     expect(only.steps).toEqual([])
 
-    const { receipt } = apply(fx, p, { pick: [row], allow: ['discard-changes'] })
+    const { receipt } = apply(fx, p, { select: [row], allow: ['discard-changes'] })
     expect(receipt.status).toBe('complete')
     const archive = receipt.steps[0]!.archive!
     expect(archive.parents[0]!.leftOut).toEqual([{ path: '.env.local', reason: 'secret' }])
@@ -163,7 +163,7 @@ describe('archive before delete', () => {
     const { receipt } = apply(
       fx,
       makePlan(fx.root),
-      { pick: [wt(fx.worktree)], allow: ['discard-archived'] },
+      { select: [wt(fx.worktree)], allow: ['discard-archived'] },
       {
         onStepDone: (_i, _n, step) => {
           if (step.action === 'archive') writeFileSync(join(fx.worktree, 'late.txt'), 'late\n')
@@ -186,7 +186,7 @@ describe('archive before delete', () => {
     writeFileSync(join(fx.worktree, 'tracked.txt'), 'one\n')
     const p = makePlan(fx.root)
     const row = wt(fx.worktree)
-    const { receipt } = apply(fx, p, { pick: [row], allow: ['discard-archived'] })
+    const { receipt } = apply(fx, p, { select: [row], allow: ['discard-archived'] })
     expect(receipt.status).toBe('failed')
     expect(receipt.steps[0]).toMatchObject({ action: 'archive', result: 'failed' })
     expect(existsSync(fx.worktree)).toBe(true)
@@ -197,7 +197,7 @@ describe('archive before delete', () => {
     const p = makePlan(fx.root)
     const tip = sh(fx.root, ['rev-parse', 'unmerged'])
     const { receipt, steps } = apply(fx, p, {
-      pick: ['branch:unmerged'],
+      select: ['branch:unmerged'],
       allow: ['discard-archived'],
     })
     expect(steps).toEqual(['archive', 'delete-branch'])
@@ -213,7 +213,7 @@ describe('archive before delete', () => {
     writeFileSync(hook, '#!/bin/sh\nexit 1\n')
     chmodSync(hook, 0o755)
     const { receipt } = apply(fx, makePlan(fx.root), {
-      pick: [wt(fx.worktree), 'branch:unmerged'],
+      select: [wt(fx.worktree), 'branch:unmerged'],
       allow: ['discard-archived'],
     })
     expect(receipt.status).toBe('failed')
@@ -230,7 +230,7 @@ describe('archive before delete', () => {
   test('two runs on one day push two distinct archive branches', () => {
     const fx = buildFixture()
     const first = apply(fx, makePlan(fx.root), {
-      pick: ['branch:unmerged'],
+      select: ['branch:unmerged'],
       allow: ['discard-archived'],
     })
     sh(fx.root, ['branch', 'unmerged-2', 'main'])
@@ -238,7 +238,7 @@ describe('archive before delete', () => {
     sh(fx.root, ['commit', '--allow-empty', '-m', 'wip: second'])
     sh(fx.root, ['checkout', '-q', 'main'])
     const second = apply(fx, makePlan(fx.root), {
-      pick: ['branch:unmerged-2'],
+      select: ['branch:unmerged-2'],
       allow: ['discard-archived'],
     })
     const refs = [first, second].map((r) => r.receipt.steps[0]!.archive!.ref)
@@ -250,11 +250,11 @@ describe('archive before delete', () => {
     const fx = buildFixture()
     const p = makePlan(fx.root)
     expect(() =>
-      check(p, { pick: ['branch:unmerged'], allow: ['discard-archived'] }, { cwd: fx.root }),
+      check(p, { select: ['branch:unmerged'], allow: ['discard-archived'] }, { cwd: fx.root }),
     ).toThrow(RepoCleanerError)
     const plain = check(
       p,
-      { pick: ['branch:unmerged'], allow: ['abandon-unmerged'] },
+      { select: ['branch:unmerged'], allow: ['abandon-unmerged'] },
       { cwd: fx.root },
     )
     expect(plain.steps.map((s) => s.action)).toEqual(['delete-branch'])
@@ -263,7 +263,7 @@ describe('archive before delete', () => {
   test('abandon-unmerged named for a row still allows it, and the archive is made anyway', () => {
     const fx = buildFixture()
     const { receipt, steps } = apply(fx, makePlan(fx.root), {
-      pick: ['branch:unmerged'],
+      select: ['branch:unmerged'],
       allow: ['abandon-unmerged'],
     })
     expect(steps).toEqual(['archive', 'delete-branch'])

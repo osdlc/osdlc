@@ -1,6 +1,6 @@
 /**
  * What a person approved for a clean, and resolving it against a plan: the
- * rows picked, the rows spared, and the risks allowed. `checkApproval`
+ * rows selected or picked, the rows spared, and the risks allowed. `checkApproval`
  * refuses what can be refused before anything is swept; `resolveApproval`
  * names each reference's one plan row.
  */
@@ -19,6 +19,7 @@ import {
   type RowId,
   type SweptWith,
 } from './types.ts'
+import { globRegExp } from './util.ts'
 
 /** A risk allowed for every row (`row` absent), or for one row. */
 export interface Allow {
@@ -31,13 +32,19 @@ export interface Allow {
  * What a person approved. Rows are named by id (`branch:feat/x`), or by a
  * bare name or path when only one plan row has it.
  *
- *   `pick`   work on exactly these rows; a `review` row, or a `keep` row with
- *            an action, runs only when picked. Default: every `delete` row.
- *   `spare`  leave these rows alone; a spared remote branch is still checked,
- *            and the run stops if it moved or is gone since the plan.
+ *   `select` work on exactly these rows, whatever their verdict, instead of
+ *            the default: every `delete` row. For a checklist (`-i`) or a host
+ *            that chose the rows itself.
+ *   `pick`   also run these rows: a `review` row, or a `keep` row with an
+ *            action, runs only when picked or selected.
+ *   `spare`  leave these rows alone: a row, or a glob (`release/*`, `remote:
+ *            origin/tmp-*`) matched against row names, and a remote branch's
+ *            name without its remote. A remote branch spared by name is still
+ *            checked, and the run stops if it moved or is gone since the plan.
  *   `allow`  the risks a row's action may carry.
  */
 export interface Approval {
+  select?: readonly string[] | undefined
   pick?: readonly string[] | undefined
   spare?: readonly string[] | undefined
   allow?: readonly (Risk | Allow)[] | undefined
@@ -51,9 +58,19 @@ export interface Resolved {
 
 /** An approval with every row resolved to its plan row. */
 export interface ResolvedApproval {
+  /** Null for the default selection: every `delete` row. */
+  select: Resolved[] | null
   pick: Resolved[]
+  /** Spared by name; a remote branch among them has its tip checked. */
   spare: Resolved[]
+  /** Spared by a glob: left alone, nothing checked. */
+  spareMatched: Resolved[]
   allow: { risk: Risk; row: Resolved | null }[]
+}
+
+/** Whether a `spare` entry is a glob rather than a row. */
+export function isGlob(text: string): boolean {
+  return /[*?]/.test(text)
 }
 
 /** A row reference as typed: a kind and a name, or a bare name (`kind: null`). */
@@ -140,18 +157,40 @@ export function checkApproval(
   approval: Approval,
 ): void {
   const refs: Array<[string, string]> = [
+    ...(approval.select ?? []).map((t): [string, string] => ['--select', t]),
     ...(approval.pick ?? []).map((t): [string, string] => ['--pick', t]),
-    ...(approval.spare ?? []).map((t): [string, string] => ['--spare', t]),
+    ...(approval.spare ?? [])
+      .filter((t) => !isGlob(t))
+      .map((t): [string, string] => ['--spare', t]),
   ]
+  for (const glob of (approval.spare ?? []).filter(isGlob)) parseRowRef(glob)
   for (const a of approval.allow ?? []) {
     const { risk, row } = typeof a === 'string' ? { risk: a, row: undefined } : a
     checkRisk(risk)
     if (row !== undefined) refs.push(['--allow', row])
   }
   for (const [flag, text] of refs) checkScope(options, parseRowRef(text), flag, text)
-  const both = (approval.pick ?? []).find((p) => (approval.spare ?? []).includes(p))
+  const chosen = [...(approval.select ?? []), ...(approval.pick ?? [])]
+  const both = chosen.find((p) => (approval.spare ?? []).includes(p))
   if (both !== undefined)
     throw new RepoCleanerError('conflict', `${both} is both picked and spared`)
+}
+
+/** The plan rows `glob` matches; see {@link Approval.spare}. */
+function matchGlob(plan: Plan, glob: string): Resolved[] {
+  const ref = parseRowRef(glob)
+  const re = globRegExp(ref.name)
+  const hits: Resolved[] = []
+  for (const repo of plan.repos) {
+    for (const row of repo.rows) {
+      const { kind, name } = parseRowId(row.id)!
+      if (ref.kind !== null && ref.kind !== kind) continue
+      const names = [name]
+      if (kind === 'remote') names.push(name.slice(name.indexOf('/') + 1))
+      if (names.some((n) => re.test(n))) hits.push({ repo: repo.root, id: row.id })
+    }
+  }
+  return hits
 }
 
 /** The names a worktree reference may match: as written, against `cwd`, and resolved through symlinks. */
@@ -206,11 +245,20 @@ export const uniq = (rows: Resolved[]): Resolved[] => [
  */
 export function resolveApproval(plan: Plan, approval: Approval, cwd: string): ResolvedApproval {
   checkApproval(plan.options, approval)
+  const select =
+    approval.select === undefined
+      ? null
+      : uniq(approval.select.map((t) => resolveRef(plan, t, '--select', cwd)))
   const pick = uniq((approval.pick ?? []).map((t) => resolveRef(plan, t, '--pick', cwd)))
-  const spare = uniq((approval.spare ?? []).map((t) => resolveRef(plan, t, '--spare', cwd)))
-  const picked = new Set(pick.map(keyOf))
-  const spared = new Set(spare.map(keyOf))
-  const both = pick.find((p) => spared.has(keyOf(p)))
+  const named = (approval.spare ?? []).filter((t) => !isGlob(t))
+  const spare = uniq(named.map((t) => resolveRef(plan, t, '--spare', cwd)))
+  const spareMatched = uniq(
+    (approval.spare ?? []).filter(isGlob).flatMap((g) => matchGlob(plan, g)),
+  )
+  const chosen = [...(select ?? []), ...pick]
+  const picked = new Set(chosen.map(keyOf))
+  const spared = new Set([...spare, ...spareMatched].map(keyOf))
+  const both = chosen.find((p) => spared.has(keyOf(p)))
   if (both !== undefined)
     throw new RepoCleanerError('conflict', `${both.id} is both picked and spared`)
   const allow = (approval.allow ?? []).map((a) => {
@@ -220,12 +268,18 @@ export function resolveApproval(plan: Plan, approval: Approval, cwd: string): Re
     if (spared.has(keyOf(at))) {
       throw new RepoCleanerError('conflict', `--allow ${risk}=${row}: ${at.id} is spared`)
     }
-    if (pick.length > 0 && !picked.has(keyOf(at))) {
-      throw new RepoCleanerError('conflict', `--allow ${risk}=${row}: ${at.id} is not picked`)
+    if (select !== null && !picked.has(keyOf(at))) {
+      throw new RepoCleanerError('conflict', `--allow ${risk}=${row}: ${at.id} is not selected`)
     }
     return { risk, row: at }
   })
-  return { pick, spare, allow }
+  return {
+    select,
+    pick,
+    spare,
+    spareMatched: spareMatched.filter((r) => !spare.some((s) => same(s, r))),
+    allow,
+  }
 }
 
 /** Whether `allow` grants `risk` for the row `at`. */

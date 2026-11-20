@@ -1,8 +1,8 @@
 /**
  * Cleaning up: `check` a plan against an approval, then `run` what it shows.
  *
- * `check` resolves the approval (the rows picked, the rows spared, the risks
- * allowed), refuses one that contradicts itself, sweeps every plan repository
+ * `check` resolves the approval (the rows selected or picked, the rows
+ * spared, the risks allowed), refuses one that contradicts itself, sweeps every plan repository
  * again and drops each selected row that is gone, cannot be deleted, moved
  * since the plan, or carries a risk not allowed. It returns the steps a run
  * would take. `run` sweeps once more and takes those steps in a fixed order,
@@ -215,28 +215,24 @@ interface Rechecked {
 }
 
 /**
- * Re-sweep, then split the selection into rows to run and rows dropped. With
- * no pick every plan row is selected. `safeOnly` drops each one the re-sweep
- * does not judge `delete`.
+ * Re-sweep, then split the selection into rows to run and rows dropped: the
+ * selected rows, or every row that could run, and the picked rows, less the
+ * spared. `mustDelete` names the rows that run only while the re-sweep judges
+ * them `delete`: those no one picked or selected by name.
  */
 function recheck(
   plan: Plan,
   approval: ResolvedApproval,
   opts: CheckOptions,
-  safeOnly: boolean,
+  mustDelete: (s: Resolved) => boolean,
 ): Rechecked {
-  const spared = new Set(approval.spare.map(keyOf))
-  // With no pick, every row that could run: a plan also holds the blocked and
+  const spared = new Set([...approval.spare, ...approval.spareMatched].map(keyOf))
+  // By default every row that could run: a plan also holds the blocked and
   // structural rows, so a pick of one can be skipped with its reason.
-  const selected: Resolved[] =
-    approval.pick.length === 0
-      ? plan.repos.flatMap((r) =>
-          r.rows
-            .filter(runnable)
-            .map((row) => ({ repo: r.root, id: row.id }))
-            .filter((s) => !spared.has(keyOf(s))),
-        )
-      : approval.pick
+  const base: Resolved[] =
+    approval.select ??
+    plan.repos.flatMap((r) => r.rows.filter(runnable).map((row) => ({ repo: r.root, id: row.id })))
+  const selected = uniq([...base, ...approval.pick]).filter((s) => !spared.has(keyOf(s)))
   const all = [...selected, ...approval.spare]
   const plannedRows = new Map(
     plan.repos.flatMap((r) => r.rows.map((row) => [keyOf({ repo: r.root, id: row.id }), row])),
@@ -317,7 +313,7 @@ function recheck(
       drop(row.verdict === 'blocked' ? 'blocked' : 'keep', row.why)
       continue
     }
-    if (safeOnly && row.verdict !== 'delete') {
+    if (mustDelete(s) && row.verdict !== 'delete') {
       drop('needs-pick', `${row.verdict}: ${row.why}; pick it to run it`)
       continue
     }
@@ -602,15 +598,21 @@ interface ArchiveJob {
   defaultRef: string
 }
 
+/** Rows no one picked or selected by name: they run only while judged `delete`. */
+function unchosen(approval: ResolvedApproval): (s: Resolved) => boolean {
+  const chosen = new Set([...(approval.select ?? []), ...approval.pick].map(keyOf))
+  return (s) => !chosen.has(keyOf(s))
+}
+
 function planSteps(
   plan: Plan,
   approval: ResolvedApproval,
   opts: CheckOptions,
-  safeOnly: boolean,
+  mustDelete: (s: Resolved) => boolean,
 ): Planned {
   const cwd = opts.cwd ?? process.cwd()
   const git = new Git(cwd, { runner: opts.git })
-  const rechecked = recheck(plan, approval, opts, safeOnly)
+  const rechecked = recheck(plan, approval, opts, mustDelete)
   const unique = onePerRemoteBranch(rechecked, git)
   const dropped = [...unique.dropped]
   // A worktree whose directory is left without its `.git` goes only by the
@@ -717,12 +719,7 @@ export function check(plan: Plan, approval: Approval, opts: CheckOptions = {}): 
   if (opts.archive === undefined && resolved.allow.some((a) => a.risk === 'discard-archived')) {
     throw new RepoCleanerError('conflict', '--allow discard-archived has no effect without archive')
   }
-  const { steps, dropped, accepted, notes } = planSteps(
-    plan,
-    resolved,
-    opts,
-    resolved.pick.length === 0,
-  )
+  const { steps, dropped, accepted, notes } = planSteps(plan, resolved, opts, unchosen(resolved))
   for (const [step] of steps) step.result = 'would-run'
   const unusedAllows = resolved.allow
     .filter(
@@ -999,8 +996,10 @@ export function run(preview: Preview, opts: RunOptions = {}): Receipt {
   )
   const pick = uniq(shown)
   const approval: ResolvedApproval = {
-    pick,
+    select: pick,
+    pick: [],
     spare: preview.approval.spare,
+    spareMatched: preview.approval.spareMatched,
     allow: preview.approval.allow.filter(
       (a) => a.row === null || pick.some((p) => same(p, a.row!)),
     ),
@@ -1024,15 +1023,15 @@ export function run(preview: Preview, opts: RunOptions = {}): Receipt {
     return receipt
   }
   if (pick.length === 0) return finish('complete')
-  // A preview with no pick ran only `delete` rows; the run keeps that guard,
-  // so a row the re-check now judges `review` drops rather than runs.
-  const safeOnly = preview.approval.pick.length === 0
+  // A row the preview ran only for its `delete` verdict keeps that guard, so
+  // one the re-check now judges `review` drops rather than runs.
+  const mustDelete = unchosen(preview.approval)
   const archive = opts.archive ?? preview.archive
   const planned = planSteps(
     preview.plan,
     approval,
     { ...opts, archive, sweep: undefined },
-    safeOnly,
+    mustDelete,
   )
   opts.onNotes?.(planned.notes)
   const known = new Set(receipt.dropped.map((d) => `${d.repo}\0${d.row}`))

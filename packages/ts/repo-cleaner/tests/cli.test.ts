@@ -336,25 +336,6 @@ describe('remote branches are opt-in', () => {
       expect(res.out).not.toContain('remote branches not checked')
     }
   })
-
-  test('clean re-checks only the kinds its rows are', () => {
-    const fx = buildFixture()
-    const plan = join(tempDir(), 'p.json')
-    expect(run(['plan', '--branch', BRANCH, ...REMOTE, '-o', plan], fx.root).code).toBe(0)
-    const res = run(
-      ['clean', '--plan', plan, '--yes', '--pick', `worktree:${fx.worktree}`],
-      fx.root,
-      { stderrIsTerminal: true },
-    )
-    expect(res.code).toBe(0)
-    expect(res.err).toContain('re-checking')
-    expect(res.err).not.toContain('checking local branches')
-    expect(res.err).not.toContain('checking remote branches')
-    expect(existsSync(fx.worktree)).toBe(false)
-    // The branches were in the plan but not picked: they are still there.
-    expect(branchRefs(fx.root)).toContain(BRANCH)
-    expect(branchRefs(fx.bare)).toContain(BRANCH)
-  })
 })
 
 describe('local by default means offline', () => {
@@ -1098,7 +1079,16 @@ describe('clean', () => {
     const fx = buildFixture()
     const plan = run(['plan', '--branch', BRANCH, ...REMOTE], fx.root).out
     const res = run(
-      ['clean', '--plan', '-', '--yes', '--pick', `remote:origin/${BRANCH}`],
+      [
+        'clean',
+        '--plan',
+        '-',
+        '--yes',
+        '--spare',
+        `worktree:${fx.worktree}`,
+        '--spare',
+        `branch:${BRANCH}`,
+      ],
       fx.root,
       {
         readStdin: () => plan,
@@ -1196,15 +1186,15 @@ describe('refused combinations', () => {
       untouched(fx)
     })
 
-    test('--allow <risk>=<row> for a row outside --pick', () => {
+    test('--allow <risk>=<row> for a spared row', () => {
       const fx = buildFixture()
       refused(
         run(
           [
             'clean',
             ...REMOTE,
-            '--pick',
-            `worktree:${fx.worktree}`,
+            '--spare',
+            `branch:${BRANCH}`,
             '--allow',
             `abandon-unmerged=branch:${BRANCH}`,
             '--yes',
@@ -1212,7 +1202,7 @@ describe('refused combinations', () => {
           fx.root,
         ),
         2,
-        'is not picked',
+        'is spared',
       )
       untouched(fx)
     })

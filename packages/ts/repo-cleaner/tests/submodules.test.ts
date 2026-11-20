@@ -104,10 +104,10 @@ function run(
   plan: Plan,
   opts: Partial<RunOptions> & { checkWith?: Sweep } = {},
   allow: Approval['allow'] = [],
-  pick: string[] = [wtId(fx)],
+  select: string[] = [wtId(fx)],
 ): Receipt {
   const { checkWith, ...runOpts } = opts
-  const preview = check(plan, { pick, allow }, { cwd: fx.root, sweep: checkWith })
+  const preview = check(plan, { select, allow }, { cwd: fx.root, sweep: checkWith })
   return runPreview(preview, { cwd: fx.root, source: 'plan.json', ...runOpts })
 }
 

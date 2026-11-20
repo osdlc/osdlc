@@ -195,12 +195,12 @@ stdout, and the totals line goes to stderr.
 
 Sweeps (or reads `--plan`), checks every row again, shows the steps, asks,
 then deletes, compare-and-swap, verifying each step. A failed step skips only
-the steps that depend on it (see below). Without `--pick` it runs every row judged `delete`.
+the steps that depend on it (see below). It runs every row judged `delete`, and the rows named with `--pick`.
 
 | Option | Meaning |
 | --- | --- |
-| `--pick <row>` | Work on exactly these rows. See [Pick and spare](#pick-and-spare). Repeatable. |
-| `--spare <row>` | Leave this row alone, and make sure it is what you saw. Repeatable. |
+| `--pick <row>` | Also run this row. See [Pick and spare](#pick-and-spare). Repeatable. |
+| `--spare <row or glob>` | Leave this row, or every row a glob matches, alone; a remote branch spared by name is checked to be what you saw. Repeatable. |
 | `--allow <risk>` | Accept this risk for every row that carries it. |
 | `--allow <risk>=<row>` | Accept it for that one row only. |
 | `--archive` | Before deleting, push unlanded work to an archive branch on the remote. See [Archive before delete](#archive-before-delete). |
@@ -281,25 +281,26 @@ written as `repo-cleaner`. Pruning old archive branches is not done here.
 
 ### Pick and spare
 
-**`--pick <row>`** means "work on exactly these rows". It does two things:
-
-1. **It narrows the run.** Only the picked rows are considered; everything
-   else is left alone.
-2. **It opts in rows that never run otherwise.** Without `--pick`, `clean`
-   deletes only rows judged `delete`. A `review` row, or a `keep` row with an
-   action (a branch with an open pull request), is deleted only when it is
-   named, so a borderline row never goes as part of a batch.
+**`--pick <row>`** means "also run this row". `clean` deletes the rows judged
+`delete`; a `review` row, or a `keep` row with an action (a branch with an
+open pull request), is deleted only when it is picked, so a borderline row
+never goes as part of a batch. To leave rows out, spare them. The library's
+`select` takes an exact list of rows instead, for a checklist or a host that
+chose the rows itself.
 
 Picking does not approve anything: a picked row that carries a risk still
 needs `--allow` for it. A `blocked` row, or a `keep` row with no action, is
 skipped and shown with the reason.
 
 **`--spare <row>`** means "leave this row alone, and make sure it is what I
-saw". The usual case: delete a merged worktree and its local branch, but keep
+saw". A glob (`--spare 'release/*'`, `--spare 'remote:origin/tmp-*'`) leaves
+every row it matches alone, by name, and a remote branch also by its name
+without the remote; `*` stays within a `/`, `**` does not. A glob that matches
+nothing is no error. The usual case: delete a merged worktree and its local branch, but keep
 the branch on the remote as a backup.
 
 - A spared row is not deleted, even if it is judged `delete`.
-- A spared remote branch is still checked. If it is gone or its tip moved
+- A remote branch spared by name, not by a glob, is still checked. If it is gone or its tip moved
   since the plan, the run stops before deleting anything: you spared it for
   what it held, so if that changed, the rest of the plan rests on a wrong
   assumption. The run's first step checks the tip again with `git ls-remote`,
@@ -367,7 +368,7 @@ anything is swept; a row named two ways (a bare name and its id), and an
 | Combination | Why |
 | --- | --- |
 | The same row in `--pick` and `--spare` | Asks for the row to be deleted and kept |
-| `--allow <risk>=<row>` for a spared row, or for a row outside `--pick` | Approves deleting something that will not be deleted |
+| `--allow <risk>=<row>` for a spared row | Approves deleting something that will not be deleted |
 | A picked or spared row of a kind `--only` leaves out | The row cannot be in the run |
 | A picked or spared row that is not one of `--branch`'s rows | The same |
 | `--branch` with more than one target, with a remote URL, or naming the default branch | `--branch` means one branch of one checkout, and the default branch is never a candidate |
@@ -873,9 +874,9 @@ repo-cleaner plan | repo-cleaner clean --plan - --yes
 ```
 
 A plan holds every row with a fingerprint of the evidence behind its verdict,
-and the sweep options it was made with. Without `--pick` only the rows that
-could be deleted run; the blocked and structural rows are there so a pick of
-one is skipped with its reason. `clean`
+and the sweep options it was made with. The rows judged `delete` run, and
+the rows picked; the blocked and structural rows are there so a pick of one
+is skipped with its reason. `clean`
 either sweeps and plans in memory, or reads a plan with `--plan`. A plan of an
 older version is refused, not translated: sweep again.
 
@@ -950,7 +951,7 @@ for (const row of result.repos[0]?.rows ?? []) {
 }
 
 const preview = check(plan(result), {
-  pick: ['branch:spike/cache'],
+  select: ['branch:spike/cache'],
   allow: [{ risk: 'abandon-unmerged', row: 'branch:spike/cache' }],
 })
 process.stdout.write(render.preview(preview))
@@ -961,7 +962,7 @@ const receipt = run(preview)
 | --- | --- |
 | `sweep(targets, opts?)` | Resolve the targets and judge every row. Options as on the command line: `only`, `remotes` (a name, `''` for the default remote, `*` for every remote), `fetch`, `offline`, `against`, `provider`, `branch`, plus `cwd`, `cacheDir`, `annotate`, `onProgress`, `onWarn`, and the injectable `git`, `gh`, `glab` runners and `probe` |
 | `plan(sweep)` | Every row, fingerprinted, with the sweep's options |
-| `check(plan, approval, opts?)` | Resolve `{ pick, spare, allow }` against the plan, sweep again, and return a `Preview`: the steps, the rows dropped and why, the allows no row needed, and `notes`, what the re-check judged without. Deletes nothing |
+| `check(plan, approval, opts?)` | Resolve `{ select, pick, spare, allow }` against the plan, sweep again, and return a `Preview`: the steps, the rows dropped and why, the allows no row needed, and `notes`, what the re-check judged without. Deletes nothing |
 | `run(preview, opts?)` | Sweep once more and take the preview's steps, writing a `Receipt` (to `receiptPath` after every step, when given). `onNotes` hears what its own re-check judged without |
 | `inspectWorktree(path, opts?)` | One worktree judged as a sweep judges it, submodules included |
 | `readPlan`, `writePlan` | Plans on disk |

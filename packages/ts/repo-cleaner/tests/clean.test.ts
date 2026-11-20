@@ -156,14 +156,14 @@ describe('check and run fetch as the plan did', () => {
     return { fx, plan: p, remoteMain: sh(fx.bare, ['rev-parse', 'main']) }
   }
   const runIt = (fx: Fixture, p: Plan) =>
-    run(check(p, { pick: ['branch:merged-a'] }, { cwd: fx.root }), { cwd: fx.root })
+    run(check(p, { select: ['branch:merged-a'] }, { cwd: fx.root }), { cwd: fx.root })
 
   test("the run's own re-check reports a listing that fails only at the run", () => {
     const fx = buildFixture()
     const good = cannedGh([])
     const failing = cannedGh([], { listError: 'boom: rate limited' })
     const p = makePlan(fx.root, { provider: 'github', gh: good })
-    const shown = check(p, { pick: ['branch:merged-a'] }, { cwd: fx.root, gh: good })
+    const shown = check(p, { select: ['branch:merged-a'] }, { cwd: fx.root, gh: good })
     expect(shown.notes).toEqual([])
     const heard: { repo: string; note: string }[] = []
     const receipt = run(shown, { cwd: fx.root, gh: failing, onNotes: (n) => heard.push(...n) })
@@ -232,7 +232,7 @@ describe('the re-check of an offline plan', () => {
     const p = makePlan(fx.root)
     // ls-remote fails; the tracking refs on disk still name merged-a.
     sh(fx.root, ['config', 'remote.origin.uploadpack', '/bin/false'])
-    const approval = { pick: ['remote:origin/merged-a', 'branch:merged-a'] }
+    const approval = { select: ['remote:origin/merged-a', 'branch:merged-a'] }
     expect(() => check(p, approval, { cwd: fx.root })).toThrow(
       /`git ls-remote origin` failed .*nothing was run/,
     )
@@ -245,7 +245,7 @@ describe('a remote branch deleted between the re-check and the push', () => {
   test('is reported as gone, not deleted, and its tracking ref goes too', () => {
     const fx = buildFixture()
     const id = 'remote:origin/merged-a'
-    const preview = check(makePlan(fx.root), { pick: [id] }, { cwd: fx.root })
+    const preview = check(makePlan(fx.root), { select: [id] }, { cwd: fx.root })
     const receipt = run(preview, {
       cwd: fx.root,
       source: 'plan.json',
@@ -277,7 +277,7 @@ describe('sparing a remote branch (#583)', () => {
     return sh(fx.bare, ['rev-parse', 'merged-a'])
   }
   const runIt = (fx: Fixture, p: Plan, extra: RunOptions = {}) =>
-    run(check(p, { pick: [LOCAL], spare: [SPARE] }, { cwd: fx.root }), {
+    run(check(p, { select: [LOCAL], spare: [SPARE] }, { cwd: fx.root }), {
       cwd: fx.root,
       source: 'plan.json',
       ...extra,
@@ -405,7 +405,7 @@ describe('sparing a remote branch (#583)', () => {
     const fx = buildFixture()
     const p = makePlan(fx.root)
     expectRefused(
-      () => preview(fx, p, { pick: [LOCAL, SPARE], spare: [SPARE] }),
+      () => preview(fx, p, { select: [LOCAL, SPARE], spare: [SPARE] }),
       'conflict',
       /both picked and spared/,
     )
@@ -465,7 +465,7 @@ describe('sparing a worktree or a local branch', () => {
     const fx = buildFixture()
     mergeWorktreeBranch(fx)
     const p = makePlan(fx.root)
-    const shown = preview(fx, p, { pick: [wt(fx.worktree), 'branch:wt-branch'] })
+    const shown = preview(fx, p, { select: [wt(fx.worktree), 'branch:wt-branch'] })
     expect(shown.dropped).toEqual([])
     expect(shown.steps.map((s) => s.row)).toEqual([wt(fx.worktree), 'branch:wt-branch'])
   })
@@ -475,8 +475,8 @@ describe('naming rows', () => {
   test('a bare name picks the one row that has it', () => {
     const fx = buildFixture()
     const p = makePlan(fx.root)
-    const shown = preview(fx, p, { pick: ['merged-a'] })
-    expect(shown.approval.pick).toEqual([{ repo: p.repos[0]!.root, id: 'branch:merged-a' }])
+    const shown = preview(fx, p, { select: ['merged-a'] })
+    expect(shown.approval.select).toEqual([{ repo: p.repos[0]!.root, id: 'branch:merged-a' }])
     expect(shown.steps.map((s) => [s.action, s.row])).toEqual([
       ['delete-branch', 'branch:merged-a'],
     ])
@@ -486,11 +486,11 @@ describe('naming rows', () => {
     const fx = buildFixture()
     const p = makePlan(fx.root)
     const root = p.repos[0]!.root
-    expect(resolveApproval(p, { pick: ['origin/merged-a'] }, fx.root).pick).toEqual([
+    expect(resolveApproval(p, { select: ['origin/merged-a'] }, fx.root).select).toEqual([
       { repo: root, id: 'remote:origin/merged-a' },
     ])
     for (const path of [fx.worktree, relative(fx.root, fx.worktree)]) {
-      expect(resolveApproval(p, { pick: [path] }, fx.root).pick).toEqual([
+      expect(resolveApproval(p, { select: [path] }, fx.root).select).toEqual([
         { repo: root, id: wt(fx.worktree) },
       ])
     }
@@ -501,7 +501,7 @@ describe('naming rows', () => {
     const b = buildFixture()
     const p = plan(sweepOf([a.root, b.root], a.root))
     for (const name of ['merged-a', 'branch:merged-a']) {
-      expectRefused(() => preview(a, p, { pick: [name] }), 'ambiguous', /matches 2 rows/)
+      expectRefused(() => preview(a, p, { select: [name] }), 'ambiguous', /matches 2 rows/)
       expectRefused(() => preview(a, p, { spare: [name] }), 'ambiguous')
       expectRefused(
         () => preview(a, p, { allow: [{ risk: 'abandon-unmerged', row: name }] }),
@@ -524,7 +524,7 @@ describe('a worktree whose HEAD only a remote branch holds (#659)', () => {
 
   test('the worktree alone runs without abandon-unmerged', () => {
     const fx = pushedWorktree()
-    const shown = preview(fx, fx.plan, { pick: [wt(fx.worktree)] })
+    const shown = preview(fx, fx.plan, { select: [wt(fx.worktree)] })
     expect(shown.dropped).toEqual([])
     expect(shown.steps.some((s) => s.row === wt(fx.worktree))).toBe(true)
   })
@@ -557,7 +557,7 @@ describe('a worktree held by two remote branches (#659)', () => {
     const p = plan(sweep([fx.root], { remotes: [''], provider: 'none', cwd: fx.root }))
     const row = realpathSync(topic)
     const shown = preview(fx, p, {
-      pick: [wt(row), 'remote:origin/two'],
+      select: [wt(row), 'remote:origin/two'],
       allow: [{ risk: 'abandon-unmerged', row: 'remote:origin/two' }],
     })
     expect(shown.dropped.some((d) => d.row === wt(row))).toBe(false)
@@ -569,7 +569,7 @@ describe('unusedAllows', () => {
     const fx = buildFixture()
     const p = makePlan(fx.root)
     const shown = preview(fx, p, {
-      pick: ['branch:merged-a', 'branch:unmerged'],
+      select: ['branch:merged-a', 'branch:unmerged'],
       allow: [
         'abandon-unmerged',
         'discard-changes',
@@ -588,7 +588,7 @@ describe('unusedAllows', () => {
     const p = makePlan(fx.root)
     sh(fx.root, ['branch', '-D', 'unmerged'])
     const shown = preview(fx, p, {
-      pick: ['branch:unmerged'],
+      select: ['branch:unmerged'],
       allow: [{ risk: 'abandon-unmerged', row: 'branch:unmerged' }],
     })
     expect(shown.dropped.map((d) => d.reason)).toEqual(['gone'])
@@ -598,7 +598,7 @@ describe('unusedAllows', () => {
   test('none when every allow is used', () => {
     const fx = buildFixture()
     const shown = preview(fx, makePlan(fx.root), {
-      pick: ['branch:unmerged'],
+      select: ['branch:unmerged'],
       allow: ['abandon-unmerged'],
     })
     expect(shown.unusedAllows).toEqual([])
@@ -644,16 +644,18 @@ describe('resolveApproval refuses', () => {
   test('resolves rows by id and by bare name, each once', () => {
     expect(
       resolve({
-        pick: ['branch:feat/x', 'feat/x', 'remote:origin/feat/x'],
+        select: ['branch:feat/x', 'feat/x', 'remote:origin/feat/x'],
         spare: ['feat/y'],
         allow: ['confirm-open-pr', { risk: 'abandon-unmerged', row: 'feat/x' }],
       }),
     ).toEqual({
-      pick: [
+      select: [
         { repo: '/r', id: 'branch:feat/x' },
         { repo: '/r', id: 'remote:origin/feat/x' },
       ],
+      pick: [],
       spare: [{ repo: '/r', id: 'branch:feat/y' }],
+      spareMatched: [],
       allow: [
         { risk: 'confirm-open-pr', row: null },
         { risk: 'abandon-unmerged', row: { repo: '/r', id: 'branch:feat/x' } },
@@ -664,14 +666,14 @@ describe('resolveApproval refuses', () => {
   test('a bare path holding a colon is a bare name, not a kind', () => {
     const p = handPlan()
     p.repos[0]!.rows.push({ ...p.repos[0]!.rows[0]!, id: 'worktree:/w/a:b' })
-    expect(resolveApproval(p, { pick: ['/w/a:b'] }, '/').pick).toEqual([
+    expect(resolveApproval(p, { select: ['/w/a:b'] }, '/').select).toEqual([
       { repo: '/r', id: 'worktree:/w/a:b' },
     ])
   })
 
   test('bad-input: an unknown kind, a kind with no name, an empty row, an unknown risk', () => {
-    expectRefused(() => resolve({ pick: ['tag:v1'] }), 'bad-input', /expected <kind>:<name>/)
-    expectRefused(() => resolve({ pick: ['branch:'] }), 'bad-input', /no name/)
+    expectRefused(() => resolve({ select: ['tag:v1'] }), 'bad-input', /expected <kind>:<name>/)
+    expectRefused(() => resolve({ select: ['branch:'] }), 'bad-input', /no name/)
     expectRefused(() => resolve({ spare: [''] }), 'bad-input', /empty row/)
     expectRefused(
       () => resolve({ allow: ['delete-everything' as 'abandon-unmerged'] }),
@@ -682,13 +684,13 @@ describe('resolveApproval refuses', () => {
 
   test('conflict: a row both picked and spared', () => {
     expectRefused(
-      () => resolve({ pick: ['feat/x'], spare: ['branch:feat/x'] }),
+      () => resolve({ select: ['feat/x'], spare: ['branch:feat/x'] }),
       'conflict',
       'branch:feat/x is both picked and spared',
     )
   })
 
-  test('conflict: an allow for a spared row, or for a row outside the pick', () => {
+  test('conflict: an allow for a spared row, or for a row outside the selection', () => {
     expectRefused(
       () =>
         resolve({ spare: ['feat/y'], allow: [{ risk: 'abandon-unmerged', row: 'branch:feat/y' }] }),
@@ -697,9 +699,12 @@ describe('resolveApproval refuses', () => {
     )
     expectRefused(
       () =>
-        resolve({ pick: ['feat/x'], allow: [{ risk: 'abandon-unmerged', row: 'branch:feat/y' }] }),
+        resolve({
+          select: ['feat/x'],
+          allow: [{ risk: 'abandon-unmerged', row: 'branch:feat/y' }],
+        }),
       'conflict',
-      /branch:feat\/y is not picked/,
+      /branch:feat\/y is not selected/,
     )
     // With no pick every row is selected, so an allow for any unspared row stands.
     expect(resolve({ allow: [{ risk: 'abandon-unmerged', row: 'feat/y' }] }).allow).toEqual([
@@ -710,7 +715,7 @@ describe('resolveApproval refuses', () => {
   test('conflict: a row of a kind the plan did not sweep', () => {
     const p = handPlan({ only: ['branch'] })
     for (const approval of [
-      { pick: ['worktree:/w'] },
+      { select: ['worktree:/w'] },
       { spare: ['remote:origin/feat/x'] },
       { allow: [{ risk: 'discard-changes' as const, row: 'worktree:/w' }] },
     ]) {
@@ -721,7 +726,7 @@ describe('resolveApproval refuses', () => {
   test('conflict: a branch or remote row that is not the plan branch', () => {
     const p = handPlan({ branch: 'feat/x' })
     expectRefused(
-      () => resolve({ pick: ['branch:feat/y'] }, p),
+      () => resolve({ select: ['branch:feat/y'] }, p),
       'conflict',
       /is not a row of --branch feat\/x/,
     )
@@ -730,12 +735,12 @@ describe('resolveApproval refuses', () => {
       'conflict',
       /is not a row of --branch feat\/x/,
     )
-    expect(resolve({ pick: ['branch:feat/x', 'remote:origin/feat/x'] }, p).pick).toHaveLength(2)
+    expect(resolve({ select: ['branch:feat/x', 'remote:origin/feat/x'] }, p).select).toHaveLength(2)
   })
 
   test('not-found: a row the plan does not have', () => {
     for (const approval of [
-      { pick: ['branch:main'] },
+      { select: ['branch:main'] },
       { spare: ['nope'] },
       { allow: [{ risk: 'abandon-unmerged' as const, row: 'remote:origin/nope' }] },
     ]) {
@@ -746,19 +751,19 @@ describe('resolveApproval refuses', () => {
   test('ambiguous: a bare name two rows share, or an id in two repositories', () => {
     const p = handPlan()
     p.repos.push({ ...p.repos[0]!, root: '/s' })
-    expectRefused(() => resolve({ pick: ['branch:feat/y'] }, p), 'ambiguous', /matches 2 rows/)
+    expectRefused(() => resolve({ select: ['branch:feat/y'] }, p), 'ambiguous', /matches 2 rows/)
     // One repository, two kinds: `x` is both a branch and a remote's name.
     const q = handPlan()
     q.repos[0]!.rows.push({ ...q.repos[0]!.rows[0]!, id: 'remote:feat/x' })
-    expectRefused(() => resolve({ pick: ['feat/x'] }, q), 'ambiguous')
-    expect(resolve({ pick: ['branch:feat/x'] }, q).pick).toEqual([
+    expectRefused(() => resolve({ select: ['feat/x'] }, q), 'ambiguous')
+    expect(resolve({ select: ['branch:feat/x'] }, q).select).toEqual([
       { repo: '/r', id: 'branch:feat/x' },
     ])
   })
 
   test('check refuses before sweeping anything', () => {
     // `/r` is no repository: a refusal must come before any re-sweep reads it.
-    expectRefused(() => check(handPlan(), { pick: ['branch:main'] }, { cwd: '/' }), 'not-found')
+    expectRefused(() => check(handPlan(), { select: ['branch:main'] }, { cwd: '/' }), 'not-found')
   })
 })
 
@@ -769,7 +774,7 @@ describe('check and run', () => {
     const receiptDir = join(fx.root, '.receipts')
     const done: string[] = []
     const runIt = () =>
-      run(check(p, { pick: ['branch:merged-a'] }, { cwd: fx.root }), {
+      run(check(p, { select: ['branch:merged-a'] }, { cwd: fx.root }), {
         cwd: fx.root,
         receiptPath: join(receiptDir, 'r.json'),
         source: 'plan.json',
@@ -787,7 +792,7 @@ describe('check and run', () => {
     const fx = buildFixture()
     const p = makePlan(fx.root)
     const { receipt, receiptPath } = apply(fx, p, {
-      pick: ['remote:origin/merged-a', 'branch:merged-a', wt(fx.worktree)],
+      select: ['remote:origin/merged-a', 'branch:merged-a', wt(fx.worktree)],
     })
 
     expect(receipt.status).toBe('complete')
@@ -815,7 +820,7 @@ describe('check and run', () => {
     const fx = buildFixture()
     mergeWorktreeBranch(fx)
     const p = makePlan(fx.root)
-    const { receipt } = apply(fx, p, { pick: ['branch:wt-branch', wt(fx.worktree)] })
+    const { receipt } = apply(fx, p, { select: ['branch:wt-branch', wt(fx.worktree)] })
 
     expect(receipt.dropped).toEqual([])
     expect(receipt.steps.map((s) => [s.action, s.result])).toEqual([
@@ -831,7 +836,7 @@ describe('check and run', () => {
     mergeWorktreeBranch(fx)
     const p = makePlan(fx.root)
     expect(p.repos[0]!.rows.some((r) => r.id === 'branch:wt-branch')).toBe(true)
-    const { receipt } = apply(fx, p, { pick: ['branch:wt-branch'] })
+    const { receipt } = apply(fx, p, { select: ['branch:wt-branch'] })
 
     expect(receipt.dropped.map((d) => [d.row, d.reason, d.detail])).toEqual([
       ['branch:wt-branch', 'held', `checked out in ${fx.worktree}, which this run does not remove`],
@@ -848,7 +853,7 @@ describe('check and run', () => {
   test('a freed branch picked without its worktree drops as held', () => {
     const fx = buildFixture()
     mergeWorktreeBranch(fx)
-    const shown = preview(fx, makePlan(fx.root), { pick: ['branch:wt-branch'] })
+    const shown = preview(fx, makePlan(fx.root), { select: ['branch:wt-branch'] })
     expect(shown.dropped.map((d) => [d.row, d.reason, d.detail])).toEqual([
       ['branch:wt-branch', 'held', `checked out in ${fx.worktree}, which this run does not remove`],
     ])
@@ -860,7 +865,7 @@ describe('check and run', () => {
     const other = join(dirname(fx.worktree), 'wt-b')
     sh(fx.root, ['worktree', 'add', '-q', other, 'merged-b'])
     const p = makePlan(fx.root)
-    const { receipt } = apply(fx, p, { pick: ['branch:wt-branch', wt(realpathSync(other))] })
+    const { receipt } = apply(fx, p, { select: ['branch:wt-branch', wt(realpathSync(other))] })
 
     expect(receipt.dropped.map((d) => [d.row, d.reason, d.detail])).toEqual([
       ['branch:wt-branch', 'held', `checked out in ${fx.worktree}, which this run does not remove`],
@@ -877,7 +882,7 @@ describe('check and run', () => {
     sh(fx.root, ['checkout', '-q', 'main'])
     const before = refs(fx.root)
 
-    const { receipt } = apply(fx, p, { pick: ['branch:merged-a'] })
+    const { receipt } = apply(fx, p, { select: ['branch:merged-a'] })
 
     expect(receipt.dropped.map((d) => d.reason)).toEqual(['changed'])
     expect(receipt.status).toBe('complete')
@@ -889,7 +894,7 @@ describe('check and run', () => {
     const p = makePlan(fx.root)
     const row = 'branch:unmerged'
 
-    const refused = apply(fx, p, { pick: [row] }).receipt
+    const refused = apply(fx, p, { select: [row] }).receipt
     expect(refused.dropped.map((d) => [d.reason, d.detail])).toEqual([
       ['not-allowed', 'needs abandon-unmerged'],
     ])
@@ -897,12 +902,12 @@ describe('check and run', () => {
 
     const other = 'branch:merged-a'
     const wrongRow = apply(fx, p, {
-      pick: [row, other],
+      select: [row, other],
       allow: [{ risk: 'abandon-unmerged', row: other }],
     })
     expect(wrongRow.receipt.dropped.map((d) => d.reason)).toEqual(['not-allowed'])
 
-    const allowed = apply(fx, p, { pick: [row], allow: ['abandon-unmerged'] }).receipt
+    const allowed = apply(fx, p, { select: [row], allow: ['abandon-unmerged'] }).receipt
     expect(allowed.dropped).toEqual([])
     expect(allowed.status).toBe('complete')
     expect(refs(fx.root)).not.toContain('refs/heads/unmerged ')
@@ -916,7 +921,7 @@ describe('check and run', () => {
     chmodSync(hook, 0o755)
 
     const { receipt, receiptPath } = apply(fx, p, {
-      pick: ['remote:origin/merged-a', 'remote:origin/merged-b'],
+      select: ['remote:origin/merged-a', 'remote:origin/merged-b'],
     })
 
     expect(receipt.status).toBe('failed')
@@ -949,7 +954,7 @@ describe('check and run', () => {
     const { receipt } = apply(
       fx,
       p,
-      { pick: [...pick] },
+      { select: [...pick] },
       { probe: busy, onStart: () => (taken = true) },
     )
 
@@ -983,7 +988,7 @@ describe('check and run', () => {
     const lockIt = (): void => {
       sh(fx.root, ['worktree', 'lock', gone])
     }
-    const { receipt } = apply(fx, p, { pick: [wt(fx.worktree), wt(gone)] }, { onStart: lockIt })
+    const { receipt } = apply(fx, p, { select: [wt(fx.worktree), wt(gone)] }, { onStart: lockIt })
     expect(receipt.steps.map((s) => [s.action, s.result])).toEqual([
       ['prune-worktrees', 'failed'],
       ['prune-worktrees', 'skipped'],
@@ -1003,7 +1008,7 @@ describe('check and run', () => {
     const { receipt } = apply(
       fx,
       p,
-      { pick: ['branch:merged-a', 'remote:origin/merged-a', 'remote:origin/merged-b'] },
+      { select: ['branch:merged-a', 'remote:origin/merged-a', 'remote:origin/merged-b'] },
       { onStart: move },
     )
     const results = Object.fromEntries(receipt.steps.map((s) => [s.row, s.result]))
@@ -1021,7 +1026,7 @@ describe('check and run', () => {
     const p = makePlan(fx.root)
     const before = refs(fx.root)
 
-    const shown = preview(fx, p, { pick: ['branch:merged-a', 'remote:origin/merged-a'] })
+    const shown = preview(fx, p, { select: ['branch:merged-a', 'remote:origin/merged-a'] })
 
     expect(shown.steps.map((s) => s.action)).toEqual(['delete-branch', 'delete-remote'])
     expect(shown.steps.every((s) => s.result === 'would-run')).toBe(true)
@@ -1035,7 +1040,7 @@ describe('check and run', () => {
     sh(fx.root, ['branch', '-D', 'merged-a'])
     sh(fx.root, ['worktree', 'add', '-q', join(fx.worktree, '..', 'wt-b'), 'merged-b'])
 
-    const { receipt } = apply(fx, p, { pick: ['branch:merged-a', 'branch:merged-b'] })
+    const { receipt } = apply(fx, p, { select: ['branch:merged-a', 'branch:merged-b'] })
 
     expect(receipt.dropped.map((d) => [d.row, d.reason])).toEqual([
       ['branch:merged-a', 'gone'],
@@ -1056,7 +1061,7 @@ describe('check and run', () => {
     sh(fx.worktree, ['update-index', '--skip-worktree', 'tracked.txt'])
     writeFileSync(join(fx.worktree, 'tracked.txt'), 'hidden edit\n')
 
-    const { receipt, receiptPath } = apply(fx, p, { pick: [wt(fx.worktree)] })
+    const { receipt, receiptPath } = apply(fx, p, { select: [wt(fx.worktree)] })
 
     expect(receipt.dropped).toMatchObject([
       { row: wt(fx.worktree), reason: 'blocked', detail: expect.stringMatching(/hidden|skip/i) },
@@ -1077,7 +1082,7 @@ describe('check and run', () => {
       verdict: 'blocked',
       action: null,
     })
-    const { receipt } = apply(fx, p, { pick: [wt(fx.worktree)] })
+    const { receipt } = apply(fx, p, { select: [wt(fx.worktree)] })
 
     expect(receipt.dropped.map((d) => [d.reason, d.detail])).toEqual([
       ['blocked', expect.stringMatching(/lock/i)],
@@ -1088,7 +1093,7 @@ describe('check and run', () => {
   test('a row named twice runs once', () => {
     const fx = buildFixture()
     const { receipt } = apply(fx, makePlan(fx.root), {
-      pick: ['branch:merged-a', 'branch:merged-a', 'merged-a'],
+      select: ['branch:merged-a', 'branch:merged-a', 'merged-a'],
     })
     expect(receipt.status).toBe('complete')
     expect(receipt.steps.map((s) => s.action)).toEqual(['delete-branch'])
@@ -1102,7 +1107,7 @@ describe('check and run', () => {
     rmSync(fx.worktree, { recursive: true, force: true })
     rmSync(gone, { recursive: true, force: true })
     const { receipt } = apply(fx, makePlan(fx.root), {
-      pick: [wt(fx.worktree), 'branch:merged-a'],
+      select: [wt(fx.worktree), 'branch:merged-a'],
       spare: [wt(gone)],
     })
     expect(receipt.status).toBe('complete')
@@ -1122,14 +1127,14 @@ describe('check and run', () => {
     const p = makePlan(fx.root)
 
     // The repository-wide prune would also drop `gone`, which is not picked.
-    const alone = preview(fx, p, { pick: [wt(fx.worktree)] })
+    const alone = preview(fx, p, { select: [wt(fx.worktree)] })
     expect(alone.steps).toEqual([])
     expect(alone.dropped).toMatchObject([
       { row: wt(fx.worktree), reason: 'blocked', detail: expect.stringContaining(gone) },
     ])
 
     // Picked together, `gone` goes by its own record first, then the prune.
-    const { receipt } = apply(fx, p, { pick: [wt(fx.worktree), wt(gone)] })
+    const { receipt } = apply(fx, p, { select: [wt(fx.worktree), wt(gone)] })
     expect(receipt.status).toBe('complete')
     expect(receipt.steps.map((s) => [s.row, s.command.split(' ').slice(3).join(' ')])).toEqual([
       [wt(gone), `worktree remove ${gone}`],
@@ -1142,7 +1147,7 @@ describe('check and run', () => {
   test('prunes a worktree whose directory is gone', () => {
     const fx = buildFixture()
     rmSync(fx.worktree, { recursive: true, force: true })
-    const { receipt } = apply(fx, makePlan(fx.root), { pick: [wt(fx.worktree)] })
+    const { receipt } = apply(fx, makePlan(fx.root), { select: [wt(fx.worktree)] })
     expect(receipt.status).toBe('complete')
     expect(receipt.steps[0]!.verification).toBe('unregistered')
   })
@@ -1162,7 +1167,7 @@ describe('check and run', () => {
     })
     expect(row.evidence).toMatchObject({ onDisk: false, directoryLeft: true })
 
-    const { receipt } = apply(fx, makePlan(fx.root), { pick: [wt(fx.worktree)] })
+    const { receipt } = apply(fx, makePlan(fx.root), { select: [wt(fx.worktree)] })
     expect(receipt.status).toBe('complete')
     expect(receipt.steps[0]!.action).toBe('prune-worktrees')
     expect(sh(fx.root, ['worktree', 'list'])).not.toContain(fx.worktree)
@@ -1176,7 +1181,7 @@ describe('check and run', () => {
     const p = makePlan(fx.root)
     writeFileSync(join(fx.worktree, '.git'), dotGit)
 
-    const { receipt } = apply(fx, p, { pick: [wt(fx.worktree)] })
+    const { receipt } = apply(fx, p, { select: [wt(fx.worktree)] })
     expect(receipt.dropped.map((d) => d.reason)).toEqual(['changed'])
     expect(existsSync(fx.worktree)).toBe(true)
   })
@@ -1192,7 +1197,7 @@ describe('check and run', () => {
     expect(refs(b.root)).not.toContain('refs/heads/merged-a ')
     // Named without a repository, the shared row is still ambiguous.
     expectRefused(
-      () => check(p, { pick: ['branch:merged-b'] }, { cwd: a.root }),
+      () => check(p, { select: ['branch:merged-b'] }, { cwd: a.root }),
       'ambiguous',
       /sweep or plan only the repository it is in/,
     )
@@ -1206,7 +1211,11 @@ describe('check and run', () => {
     const b = join(second, 'b')
     const p = plan(sweepOf([fx.root, b], fx.root))
     const receipt = run(
-      check(p, { pick: ['remote:origin/merged-a', 'remote:upstream/merged-a'] }, { cwd: fx.root }),
+      check(
+        p,
+        { select: ['remote:origin/merged-a', 'remote:upstream/merged-a'] },
+        { cwd: fx.root },
+      ),
       { cwd: fx.root, source: '(test)' },
     )
     expect(receipt.status).toBe('complete')
@@ -1228,7 +1237,7 @@ describe('check and run', () => {
     expect(p.repos.map((r) => r.root)).toContain(b)
     const shown = check(
       p,
-      { pick: ['remote:origin/merged-a', 'remote:upstream/merged-a'] },
+      { select: ['remote:origin/merged-a', 'remote:upstream/merged-a'] },
       { cwd: fx.root },
     )
     expect(shown.dropped.map((d) => [d.repo, d.reason])).toEqual([[b, 'duplicate']])
@@ -1265,14 +1274,14 @@ describe('check and run', () => {
         ),
       })),
     }
-    const shown = preview(fx, plan(swept), { pick: ['branch:merged-a'] }, { sweep: pinned })
+    const shown = preview(fx, plan(swept), { select: ['branch:merged-a'] }, { sweep: pinned })
     expect(shown.dropped.map((d) => d.reason)).toEqual(['keep'])
   })
 
   test('rows the preview dropped are recorded first in the receipt file', () => {
     const fx = buildFixture()
     const receiptPath = join(fx.root, 'r.json')
-    const shown = preview(fx, makePlan(fx.root), { pick: ['branch:merged-a', 'branch:unmerged'] })
+    const shown = preview(fx, makePlan(fx.root), { select: ['branch:merged-a', 'branch:unmerged'] })
     expect(shown.dropped.map((d) => [d.row, d.reason])).toEqual([
       ['branch:unmerged', 'not-allowed'],
     ])
@@ -1289,12 +1298,12 @@ describe('check and run', () => {
     const p = makePlan(fx.root)
     const row = wt(fx.worktree)
 
-    expect(apply(fx, p, { pick: [row] }).receipt.dropped.map((d) => d.reason)).toEqual([
+    expect(apply(fx, p, { select: [row] }).receipt.dropped.map((d) => d.reason)).toEqual([
       'not-allowed',
     ])
 
     const { receipt } = apply(fx, p, {
-      pick: [row],
+      select: [row],
       allow: [{ risk: 'discard-changes', row }],
     })
     expect(receipt.status).toBe('complete')
@@ -1320,10 +1329,13 @@ describe('check and run', () => {
 
   test('without a receiptPath the run writes no receipt', () => {
     const fx = buildFixture()
-    const receipt = run(check(makePlan(fx.root), { pick: ['branch:merged-a'] }, { cwd: fx.root }), {
-      cwd: fx.root,
-      source: '(swept)',
-    })
+    const receipt = run(
+      check(makePlan(fx.root), { select: ['branch:merged-a'] }, { cwd: fx.root }),
+      {
+        cwd: fx.root,
+        source: '(swept)',
+      },
+    )
     expect(receipt.status).toBe('complete')
     expect(receipt.plan).toBe('(swept)')
     expect(existsSync(join(fx.root, '.receipts'))).toBe(false)
@@ -1346,7 +1358,7 @@ describe('check and run', () => {
     const fx = buildFixture()
     const p = makePlan(fx.root)
     expectRefused(
-      () => preview(fx, p, { pick: ['branch:no-such-branch'] }),
+      () => preview(fx, p, { select: ['branch:no-such-branch'] }),
       'not-found',
       'no such row in the plan',
     )
@@ -1397,7 +1409,7 @@ describe('plan files', () => {
     const fx = buildFixture()
     const path = join(fx.root, '.plans', 'p.json')
     writePlan(path, makePlan(fx.root))
-    const { receipt } = apply(fx, readPlan(path), { pick: ['branch:merged-a'] })
+    const { receipt } = apply(fx, readPlan(path), { select: ['branch:merged-a'] })
     expect(receipt.status).toBe('complete')
   })
 
@@ -1431,7 +1443,7 @@ describe('plan files', () => {
     const shown = preview(
       fx,
       makePlan(fx.root),
-      { pick: ['branch:merged-a'] },
+      { select: ['branch:merged-a'] },
       { annotate: (_repo, rows) => rows.map((row): Row => ({ ...row, action: null })) },
     )
     expect(shown.dropped.map((d) => d.reason)).toEqual(['keep'])
@@ -1451,7 +1463,7 @@ describe('plan files', () => {
         ),
       })),
     }
-    const shown = preview(fx, p, { pick: ['branch:wt-branch'] }, { sweep: held })
+    const shown = preview(fx, p, { select: ['branch:wt-branch'] }, { sweep: held })
     expect(shown.dropped.map((d) => [d.row, d.reason, d.detail])).toEqual([
       ['branch:wt-branch', 'keep', 'checked out in a worktree (handle via that worktree)'],
     ])
@@ -1464,7 +1476,7 @@ describe('plan files', () => {
     const shown = preview(
       fx,
       p,
-      { pick: ['branch:wt-branch', wt(fx.worktree)] },
+      { select: ['branch:wt-branch', wt(fx.worktree)] },
       {
         annotate: (_repo, rows) =>
           rows.map((row): Row =>

@@ -313,7 +313,7 @@ describe('run', () => {
   const pick = (fx: Fixture): string => `worktree:${fx.worktree}`
 
   function preview(fx: Fixture, plan: Plan, probe: ProcessProbe): Preview {
-    return check(plan, { pick: [pick(fx)] }, { cwd: fx.root, gh: fx.gh, probe })
+    return check(plan, { select: [pick(fx)] }, { cwd: fx.root, gh: fx.gh, probe })
   }
 
   function apply(fx: Fixture, plan: Plan, probe: ProcessProbe): Receipt {
@@ -401,7 +401,7 @@ describe('run', () => {
     const plan = makePlan(fx, fakeProbe({ alive: false }))
     const probe = fakeProbe({ alive: (call) => call > 2 })
     const receipt = run(
-      check(plan, { pick: [pick(fx), 'branch:wt-branch'] }, { cwd: fx.root, gh: fx.gh, probe }),
+      check(plan, { select: [pick(fx), 'branch:wt-branch'] }, { cwd: fx.root, gh: fx.gh, probe }),
       {
         cwd: fx.root,
         receiptPath: join(fx.root, '.receipts', 'test.json'),

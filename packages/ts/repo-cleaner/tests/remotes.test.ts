@@ -299,3 +299,66 @@ describe('clean across remotes', () => {
     expect(sh(fx.bare['upstream']!, ['branch', '--list', 'feat/gone'])).toBe('')
   })
 })
+
+describe('choosing rows', () => {
+  /** A plan of local and remote rows, with feat/a and feat/b landed on origin. */
+  function landedPlan() {
+    const fx = forkAndParent()
+    fx.pushBranch('origin', 'feat/a')
+    fx.pushBranch('origin', 'feat/b')
+    land(fx.root, 'feat/a', 'origin')
+    land(fx.root, 'feat/b', 'origin')
+    const p = plan(sweep([fx.root], { cwd: fx.root, remotes: [''], provider: 'none' }))
+    return { fx, p }
+  }
+
+  test('select re-checks only the kinds of the rows it names', () => {
+    const { fx, p } = landedPlan()
+    const steps: string[] = []
+    const preview = check(
+      p,
+      { select: ['branch:feat/a'] },
+      { cwd: fx.root, onProgress: (at) => steps.push(at.step) },
+    )
+    expect(preview.steps.map((s) => s.row)).toEqual(['branch:feat/a'])
+    expect(steps).toContain('branch')
+    expect(steps).not.toContain('remote')
+  })
+
+  test('pick adds to the delete rows; a glob spare leaves rows alone without a tip check', () => {
+    const { fx, p } = landedPlan()
+    const preview = check(p, { spare: ['feat/b', 'remote:origin/feat/*'] }, { cwd: fx.root })
+    expect(preview.steps.map((s) => s.row)).toEqual(['branch:feat/a'])
+    // Spared by a glob: no verify-remote step, unlike a remote branch spared by name.
+    expect(preview.steps.some((s) => s.action === 'verify-remote')).toBe(false)
+    const named = check(p, { spare: ['remote:origin/feat/b'] }, { cwd: fx.root })
+    expect(named.steps.some((s) => s.action === 'verify-remote')).toBe(true)
+  })
+
+  test('a glob that names no row spares nothing and is no error', () => {
+    const { fx, p } = landedPlan()
+    const preview = check(p, { spare: ['release/*'] }, { cwd: fx.root })
+    expect(preview.steps.map((s) => s.row).sort()).toEqual([
+      'branch:feat/a',
+      'branch:feat/b',
+      'remote:origin/feat/a',
+      'remote:origin/feat/b',
+    ])
+  })
+
+  test('a picked review row runs beside the delete rows', () => {
+    const { fx } = landedPlan()
+    fx.pushBranch('origin', 'feat/open-question')
+    const q = plan(sweep([fx.root], { cwd: fx.root, remotes: [''], provider: 'none' }))
+    const preview = check(
+      q,
+      { pick: ['branch:feat/open-question'], allow: ['abandon-unmerged'], spare: ['remote:**'] },
+      { cwd: fx.root },
+    )
+    expect(preview.steps.map((s) => s.row).sort()).toEqual([
+      'branch:feat/a',
+      'branch:feat/b',
+      'branch:feat/open-question',
+    ])
+  })
+})
