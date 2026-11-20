@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.4](https://github.com/osdlc/osdlc/compare/markdown-contract/v0.4.3...markdown-contract/v0.4.4) - 2026-11-20
+
+### Other
+
+- migrate the markdown-contract family ([#892](https://github.com/osdlc/osdlc/pull/892))
+
 ## [0.4.3](https://github.com/osdlc/osdlc/compare/markdown-contract/v0.4.2...markdown-contract/v0.4.3) - 2026-11-10
 
 ### Other

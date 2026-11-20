@@ -9,17 +9,32 @@ import { parse as parseYaml, parseAllDocuments } from 'yaml'
 import { runCli } from '../../src/cli/index.js'
 import { loadContract } from '../../src/declarative/index.js'
 import { migrateV1ToV2 } from '../../src/declarative/migrate.js'
+import { sharedCases } from '../harness.js'
 
 const V1_DIR = fileURLToPath(new URL('../fixtures/migrate/', import.meta.url))
-const CORPUS = fileURLToPath(new URL('../../corpus/', import.meta.url))
+const TS_ONLY = fileURLToPath(new URL('../fixtures/ts-only/', import.meta.url))
 
-interface ManifestEntry {
-  contract: string | null
-  cases: { source: string }[]
+/**
+ * A corpus contract and its documents, by the contract's file name: from the conformance suite
+ * for a shared fixture, else from `tests/fixtures/ts-only/`.
+ */
+function corpusEntry(file: string): { contract: string; sources: string[] } | undefined {
+  const stem = file.replace(/\.contract\.yaml$/, '')
+  const shared = [...sharedCases.values()].filter((c) => c.name.startsWith(`${stem}.`))
+  if (shared.length > 0) {
+    return {
+      contract: shared[0]?.input['contract'] as string,
+      sources: shared.map((c) => c.input['source'] as string),
+    }
+  }
+  if (!readdirSync(TS_ONLY).includes(file)) return undefined
+  return {
+    contract: readFileSync(join(TS_ONLY, file), 'utf8'),
+    sources: readdirSync(TS_ONLY)
+      .filter((f) => f.startsWith(`${stem}.`) && f.endsWith('.md'))
+      .map((f) => readFileSync(join(TS_ONLY, f), 'utf8')),
+  }
 }
-const manifest = JSON.parse(
-  readFileSync(join(CORPUS, 'corpus-manifest.json'), 'utf8'),
-) as ManifestEntry[]
 
 /** The version 1 form of each corpus contract. */
 const v1Files = readdirSync(V1_DIR).filter((f) => f.endsWith('.contract.yaml'))
@@ -38,11 +53,10 @@ describe('migrateV1ToV2 over the corpus contracts', () => {
       const { out } = migrateV1ToV2(v1, file)
       expect(parseYaml(out).mcVersion).toBe(2)
       const migrated = loadContract(out)
-      const current = loadContract(readFileSync(join(CORPUS, file), 'utf8'))
-      const entry = manifest.find((e) => e.contract === file)
-      expect(entry, `manifest entry for ${file}`).toBeDefined()
-      for (const c of entry?.cases ?? []) {
-        const source = readFileSync(join(CORPUS, c.source), 'utf8')
+      const entry = corpusEntry(file)
+      expect(entry, `corpus entry for ${file}`).toBeDefined()
+      const current = loadContract(entry?.contract ?? '')
+      for (const source of entry?.sources ?? []) {
         expect(brief(migrated.validate(source, { path: 'x.md' }).findings)).toEqual(
           brief(current.validate(source, { path: 'x.md' }).findings),
         )
