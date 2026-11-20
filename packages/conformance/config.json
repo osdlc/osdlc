@@ -5,7 +5,6 @@
     "config-layers": "the Rust crate gains the project-file migrations and compare-and-swap writes of osdlc#637"
   },
   "unmigrated": [
-    "packages/ts/gfm-table",
     "packages/ts/yaml-splice",
     "packages/rust/agent-router",
     "packages/rust/markdown-contract"

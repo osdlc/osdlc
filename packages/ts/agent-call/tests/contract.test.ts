@@ -234,6 +234,23 @@ const ROWS: Row[] = [
     },
   },
   {
+    label: 'permissions.tools',
+    spec: { permissions: { tools: ['Read'] } },
+    field: 'permissions.tools',
+    cells: {
+      claude: { support: 'native', readme: '--tools' },
+      codex: { support: 'dropped', planned: '' },
+      antigravity: { support: 'dropped', planned: '' },
+      opencode: { support: 'dropped', planned: '' },
+      copilot: { support: 'dropped', planned: '' },
+      pi: { support: 'dropped', planned: '' },
+      qwen: { support: 'dropped', planned: '' },
+      droid: { support: 'dropped', planned: '' },
+      cursor: { support: 'dropped', planned: '' },
+      deepseek: { support: 'dropped', planned: '' },
+    },
+  },
+  {
     label: 'context.files',
     spec: { context: { files: ['src/a.ts'] } },
     field: 'context.files',

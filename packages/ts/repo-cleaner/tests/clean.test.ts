@@ -514,6 +514,59 @@ describe('naming rows', () => {
   })
 })
 
+describe('a worktree whose HEAD only a remote branch holds (#659)', () => {
+  function pushedWorktree(): Fixture & { plan: Plan } {
+    const fx = buildFixture()
+    const topic = join(dirname(fx.worktree), 'wt-topic')
+    sh(fx.root, ['worktree', 'add', '-q', '-b', 'topic', topic])
+    sh(topic, ['commit', '--allow-empty', '-m', 'topic work'])
+    sh(topic, ['push', '-q', '-u', 'origin', 'topic'])
+    const p = plan(sweep([fx.root], { remote: true, provider: 'none', cwd: fx.root }))
+    return { ...fx, worktree: realpathSync(topic), plan: p }
+  }
+
+  test('the worktree alone runs without abandon-unmerged', () => {
+    const fx = pushedWorktree()
+    const shown = preview(fx, fx.plan, { pick: [wt(fx.worktree)] })
+    expect(shown.dropped).toEqual([])
+    expect(shown.steps.some((s) => s.row === wt(fx.worktree))).toBe(true)
+  })
+
+  test('with the remote branch picked too, it is dropped until abandon-unmerged is allowed', () => {
+    const fx = pushedWorktree()
+    const pick = [wt(fx.worktree), 'remote:origin/topic']
+    const remoteAllowed = { risk: 'abandon-unmerged', row: 'remote:origin/topic' } as const
+    const refused = preview(fx, fx.plan, { pick, allow: [remoteAllowed] })
+    expect(refused.dropped.find((d) => d.row === wt(fx.worktree))).toMatchObject({
+      reason: 'not-allowed',
+      detail: expect.stringContaining('needs abandon-unmerged'),
+    })
+    const allowed = preview(fx, fx.plan, {
+      pick,
+      allow: [remoteAllowed, { risk: 'abandon-unmerged', row: wt(fx.worktree) }],
+    })
+    expect(allowed.dropped.some((d) => d.row === wt(fx.worktree))).toBe(false)
+  })
+})
+
+describe('a worktree held by two remote branches (#659)', () => {
+  test('deleting only one of them leaves the worktree to run', () => {
+    const fx = buildFixture()
+    const topic = join(dirname(fx.worktree), 'wt-two')
+    sh(fx.root, ['worktree', 'add', '-q', '-b', 'two', topic])
+    sh(topic, ['commit', '--allow-empty', '-m', 'two work'])
+    sh(topic, ['push', '-q', '-u', 'origin', 'two'])
+    sh(topic, ['push', '-q', 'origin', 'HEAD:refs/heads/two-copy'])
+    const p = plan(sweep([fx.root], { remote: true, provider: 'none', cwd: fx.root }))
+    const row = realpathSync(topic)
+    const shown = preview(fx, p, {
+      pick: [wt(row), 'remote:origin/two'],
+      allow: [{ risk: 'abandon-unmerged', row: 'remote:origin/two' }],
+    })
+    expect(shown.dropped.some((d) => d.row === wt(row))).toBe(false)
+  })
+})
+
 describe('unusedAllows', () => {
   test('lists the allows no row that runs carries', () => {
     const fx = buildFixture()
@@ -751,7 +804,7 @@ describe('check and run', () => {
     expect(remoteHeads(fx.bare)).not.toContain('refs/heads/merged-a')
     expect(new Git(fx.root).configGet('branch.merged-a.remote')).toBeNull()
     const saved = JSON.parse(readFileSync(receiptPath, 'utf-8')) as Receipt
-    expect(saved).toMatchObject({ version: 2, plan: 'plan.json', status: 'complete' })
+    expect(saved).toMatchObject({ version: 3, plan: 'plan.json', status: 'complete' })
     expect(saved.steps[1]).toMatchObject({
       row: 'branch:merged-a',
       action: 'delete-branch',
@@ -856,7 +909,7 @@ describe('check and run', () => {
     expect(refs(fx.root)).not.toContain('refs/heads/unmerged ')
   })
 
-  test('stops at a failing remote delete and records the failure', () => {
+  test('a failing remote delete is recorded and the unrelated remote delete still runs', () => {
     const fx = buildFixture()
     const p = makePlan(fx.root)
     const hook = join(fx.bare, 'hooks', 'pre-receive')
@@ -868,13 +921,100 @@ describe('check and run', () => {
     })
 
     expect(receipt.status).toBe('failed')
-    expect(receipt.steps.map((s) => s.result)).toEqual(['failed', 'pending'])
+    expect(receipt.steps.map((s) => s.result)).toEqual(['failed', 'failed'])
     // The summary, git's reason once in parentheses, then the reference text.
     const error = receipt.steps[0]!.error!
     expect(error).toMatch(/^\[remote rejected\] \([^()]+\): /)
     expect(error.slice(error.indexOf('): ') + 3)).toBe(PUSH_REJECTIONS['hook-declined'].message)
     expect(remoteHeads(fx.bare)).toContain('refs/heads/merged-b')
     expect((JSON.parse(readFileSync(receiptPath, 'utf-8')) as Receipt).status).toBe('failed')
+  })
+
+  test('a failed worktree removal skips the branch it freed and nothing unrelated', () => {
+    const fx = buildFixture()
+    mergeWorktreeBranch(fx)
+    const p = makePlan(fx.root)
+    // A process takes the worktree after the re-check, so its removal fails.
+    let taken = false
+    const busy = {
+      alive: () => false,
+      holders: () => (taken ? [{ pid: 1, command: 'node' }] : []),
+    }
+    const pick = [
+      wt(fx.worktree),
+      'branch:wt-branch',
+      'branch:merged-a',
+      'branch:merged-b',
+      'remote:origin/merged-a',
+    ] as const
+    const { receipt } = apply(
+      fx,
+      p,
+      { pick: [...pick] },
+      { probe: busy, onStart: () => (taken = true) },
+    )
+
+    const by = (action: string, row: string) =>
+      receipt.steps.find((s) => s.action === action && s.row === row)!
+    const removal = by('remove-worktree', wt(fx.worktree))
+    expect(removal.result).toBe('failed')
+    const freed = by('delete-branch', 'branch:wt-branch')
+    expect(freed.result).toBe('skipped')
+    expect(freed.error).toContain(`remove-worktree of ${wt(fx.worktree)}`)
+    for (const row of ['branch:merged-a', 'branch:merged-b']) {
+      expect(by('delete-branch', row).result).toBe('ok')
+    }
+    expect(by('delete-remote', 'remote:origin/merged-a').result).toBe('ok')
+    expect(receipt.status).toBe('failed')
+    expect(refs(fx.root)).toContain('refs/heads/wt-branch ')
+    expect(existsSync(fx.worktree)).toBe(true)
+    expect(refs(fx.root)).not.toContain('refs/heads/merged-a ')
+    expect(summarizeRun(receipt)).toMatchObject({ failed: 1, skipped: 1, notRun: 0 })
+  })
+
+  test('a failed worktree step skips the repository-wide prune in that repository', () => {
+    const fx = buildFixture()
+    const other = join(fx.root, '..', 'wt-gone')
+    sh(fx.root, ['worktree', 'add', '-q', '-b', 'gone-branch', other, 'main'])
+    const gone = realpathSync(other)
+    rmSync(join(fx.worktree, '.git'))
+    rmSync(gone, { recursive: true, force: true })
+    const p = makePlan(fx.root)
+    // The record of `gone` is locked after the re-check, so its removal fails.
+    const lockIt = (): void => {
+      sh(fx.root, ['worktree', 'lock', gone])
+    }
+    const { receipt } = apply(fx, p, { pick: [wt(fx.worktree), wt(gone)] }, { onStart: lockIt })
+    expect(receipt.steps.map((s) => [s.action, s.result])).toEqual([
+      ['prune-worktrees', 'failed'],
+      ['prune-worktrees', 'skipped'],
+    ])
+    expect(receipt.steps[1]!.error).toContain('prune-worktrees of')
+  })
+
+  test("a failed local branch delete skips that branch's remote delete only", () => {
+    const fx = buildFixture()
+    const p = makePlan(fx.root)
+    // The branch moves after the re-check, so its compare-and-swap delete fails.
+    const move = (): void => {
+      sh(fx.root, ['checkout', '-q', 'merged-a'])
+      sh(fx.root, ['commit', '--allow-empty', '-m', 'late'])
+      sh(fx.root, ['checkout', '-q', 'main'])
+    }
+    const { receipt } = apply(
+      fx,
+      p,
+      { pick: ['branch:merged-a', 'remote:origin/merged-a', 'remote:origin/merged-b'] },
+      { onStart: move },
+    )
+    const results = Object.fromEntries(receipt.steps.map((s) => [s.row, s.result]))
+    expect(results).toEqual({
+      'branch:merged-a': 'failed',
+      'remote:origin/merged-a': 'skipped',
+      'remote:origin/merged-b': 'ok',
+    })
+    expect(remoteHeads(fx.bare)).toContain('refs/heads/merged-a')
+    expect(remoteHeads(fx.bare)).not.toContain('refs/heads/merged-b')
   })
 
   test('check changes no ref and writes no receipt', () => {

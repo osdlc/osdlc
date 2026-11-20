@@ -11,8 +11,8 @@ import type { RepairRequest } from '../ports.ts'
 
 const TASK: Record<RepairRequest['kind'], string> = {
   conflict:
-    `Merging the base branch into the pull request's branch stopped on conflicts that no ` +
-    `automatic rule could resolve. The merge is open in your working directory and the ` +
+    `Bringing the pull request's branch up to date with its base stopped on conflicts that no ` +
+    `automatic rule could resolve. The merge or rebase is open in your working directory and the ` +
     `conflicted files hold conflict markers. Resolve each conflict so the result keeps what ` +
     `both sides intended, and remove every marker.`,
   'verify-failed':
@@ -25,12 +25,20 @@ const TASK: Record<RepairRequest['kind'], string> = {
  * the rules the result is checked against.
  */
 export function repairPrompt(req: RepairRequest): string {
+  const replay =
+    req.replaying === undefined
+      ? []
+      : [
+          `This is a rebase, stopped while replaying commit ${req.replaying.sha.slice(0, 12)} ("${req.replaying.subject}") onto ${req.replaying.onto}. Resolve it so that commit keeps its own intent on top of the new base. Do not apply later commits' changes or the branch's final state.`,
+          '',
+        ]
   const files = req.paths.length === 0 ? '(none listed)' : req.paths.map((p) => `- ${p}`).join('\n')
   return [
     `You are repairing pull request #${req.pr}: branch \`${req.head}\` is being updated onto \`${req.base}\`.`,
     '',
     TASK[req.kind],
     '',
+    ...replay,
     'What went wrong:',
     req.reason,
     '',
