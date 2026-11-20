@@ -18,6 +18,7 @@ import {
   withStructured,
   commandPrefix,
   type CommandOptions,
+  noteDroppedToolSet,
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
@@ -145,6 +146,11 @@ function planCodex(command: readonly string[], spec: AgentCallSpec): PlannedCall
   }
 
   const permissions = spec.permissions
+  noteDroppedToolSet(
+    notes,
+    permissions?.tools,
+    'codex has no flag to limit the built-in tools; use permissions.mode',
+  )
   applyPermissionMode(argv, notes, permissions?.mode, {
     'read-only': {
       argv: ['--sandbox', 'read-only'],
