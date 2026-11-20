@@ -1,27 +1,33 @@
-//! The shared conformance fixture, `tests/fixtures/parity.json`.
+//! Runs the gfm-table conformance suite, `packages/conformance/gfm-table/suite.json`.
 //!
-//! This file is the contract between this crate and the TypeScript package in
-//! `packages/ts/gfm-table`, which reads it in place: same input, same result.
-//! A case added on either side goes in the fixture, never in one package's
-//! own suite. Every section is read here, and an unknown section fails the
-//! run, as does a case key its section's `_inputs` entry does not list.
+//! The suite holds the cases this crate and the TypeScript `@osdlc/gfm-table`
+//! package must agree on: same input, same result. The TypeScript package is
+//! the family's reference: its generator writes every `expect` and `error`. A
+//! case added on either side goes in the suite, never in one package's own
+//! tests. Every section and every case runs here, unless the case names
+//! another platform or skips this language. The suite's sections must be
+//! exactly [`SECTIONS`], and a case key or input key this test does not know
+//! fails it, whether or not the case runs.
 //!
-//! Each runner below takes a case's inputs and builds the JSON value the
-//! case's `expected` holds. Offsets in the fixture are UTF-8 byte offsets,
-//! this crate's own; the TypeScript runner converts its UTF-16 indices to
-//! them. A refusal is `{"error": kind}`: `invalid_max_column_width` from
-//! `pad_table`, which this crate's types cannot hold, and
+//! Each runner below takes a case's `input` and builds the JSON value the
+//! case's `expect` holds. Offsets in the suite are UTF-8 byte offsets, this
+//! crate's own; the TypeScript runner converts its UTF-16 indices to them. A
+//! refusal is an `error` holding its kind only: `invalid_max_column_width`
+//! from `pad_table`, which this crate's types cannot hold, and
 //! `overlapping_changes` from `apply_delimited_changes`.
 //!
 //! Compiled in with `include_str!` rather than read at run time, so the test
-//! binary carries the fixture and a moved or deleted fixture is a build error.
+//! binary carries the suite and a moved or deleted suite is a build error.
 
 use std::num::NonZeroUsize;
 
 use gfm_pipe_table::*;
-use serde_json::{Map, Value, json};
+use std::collections::BTreeMap;
 
-const FIXTURE: &str = include_str!("fixtures/parity.json");
+use serde::{Deserialize, Deserializer};
+use serde_json::{Value, json};
+
+const SUITE_JSON: &str = include_str!("../../../conformance/gfm-table/suite.json");
 
 fn s(v: &Value) -> &str {
     v.as_str().expect("a string")
@@ -185,18 +191,19 @@ fn cell_rect(v: &Value) -> CellRect {
 /// The `maxColumnWidth` a case gives, or the refusal the TypeScript twin
 /// throws for it: here a value that is not a positive integer cannot be
 /// built at all.
-fn max_column_width(v: &Value) -> Result<Option<NonZeroUsize>, Value> {
+fn max_column_width(v: &Value) -> Result<Option<NonZeroUsize>, String> {
     if v.is_null() {
         return Ok(None);
     }
     v.as_u64()
         .and_then(|n| NonZeroUsize::new(n as usize))
         .map(Some)
-        .ok_or_else(|| json!({"error": "invalid_max_column_width"}))
+        .ok_or_else(|| "invalid_max_column_width".to_owned())
 }
 
-fn run(section: &str, c: &Value) -> Value {
-    match section {
+/// The value a case gives, or the kind of its refusal.
+fn run(section: &str, c: &Value) -> Result<Value, String> {
+    Ok(match section {
         "split_row" => span(&split_row(s(&c["line"]), n(&c["base"]))),
         "row_from_pipes" => {
             let pipes: Vec<usize> = c["pipes"].as_array().unwrap().iter().map(n).collect();
@@ -280,14 +287,11 @@ fn run(section: &str, c: &Value) -> Value {
                 "issues": g.issues.iter().map(|i| json!({"line": i.line, "row": i.row, "message": i.message})).collect::<Vec<_>>(),
             }),
         },
-        "pad_table" => match max_column_width(&c["max_column_width"]) {
-            Err(refusal) => refusal,
-            Ok(max_column_width) => {
-                let mut options = PadTableOptions::new();
-                options.max_column_width = max_column_width;
-                json!(pad_table(s(&c["table"]), &options))
-            }
-        },
+        "pad_table" => {
+            let mut options = PadTableOptions::new();
+            options.max_column_width = max_column_width(&c["max_column_width"])?;
+            json!(pad_table(s(&c["table"]), &options))
+        }
         "display_width" => json!(display_width(s(&c["text"]))),
 
         "row_line_text" => {
@@ -454,15 +458,83 @@ fn run(section: &str, c: &Value) -> Value {
                 .collect();
             match apply_delimited_changes(s(&c["text"]), &changes) {
                 Ok(text) => json!(text),
-                Err(OverlappingChanges { .. }) => json!({"error": "overlapping_changes"}),
+                Err(OverlappingChanges { .. }) => return Err("overlapping_changes".to_owned()),
             }
         }
         other => panic!("unknown section {other}: add a runner for it"),
+    })
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct Suite {
+    family: String,
+    reference: String,
+    #[allow(
+        dead_code,
+        reason = "the suite format carries it; this test reads none"
+    )]
+    reference_version: String,
+    sections: BTreeMap<String, Section>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Section {
+    #[allow(dead_code, reason = "prose for the reader")]
+    description: String,
+    cases: Vec<Case>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Case {
+    name: String,
+    input: Value,
+    /// Kept when it is `null`: a case may expect `null`.
+    #[serde(default, deserialize_with = "present")]
+    expect: Option<Value>,
+    #[serde(default)]
+    error: Option<ErrorKind>,
+    #[serde(default)]
+    platforms: Option<Vec<String>>,
+    #[serde(default)]
+    skip: BTreeMap<String, String>,
+}
+
+/// `Some` for any value, `null` included: `Option<Value>` alone reads `null` as `None`.
+fn present<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Value>, D::Error> {
+    Value::deserialize(d).map(Some)
+}
+
+/// An error holds its kind only: a case sets no message.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ErrorKind {
+    kind: String,
+}
+
+const HOST: &str = if cfg!(windows) { "windows" } else { "unix" };
+
+impl Case {
+    /// Whether the case names this host, or names no platform.
+    fn for_this_host(&self) -> bool {
+        self.platforms
+            .as_ref()
+            .is_none_or(|platforms| platforms.iter().any(|p| p == HOST))
+    }
+
+    /// What the case wants: its value, or the kind of its refusal.
+    fn want(&self) -> Result<Value, String> {
+        match (&self.expect, &self.error) {
+            (Some(expect), None) => Ok(expect.clone()),
+            (None, Some(error)) => Err(error.kind.clone()),
+            _ => panic!("{}: a case sets exactly one of expect and error", self.name),
+        }
     }
 }
 
-/// Every section `run` has an arm for. The fixture's sections and its
-/// `_inputs` must be exactly these.
+/// Every section `run` has an arm for. The suite's sections must be exactly these.
 const SECTIONS: &[&str] = &[
     "split_row",
     "row_from_pipes",
@@ -517,60 +589,130 @@ const SECTIONS: &[&str] = &[
     "apply_delimited_changes",
 ];
 
-#[test]
-fn every_case_matches() {
-    let fixture: Map<String, Value> = serde_json::from_str(FIXTURE).expect("parity.json parses");
-    let inputs = fixture["_inputs"]
-        .as_object()
-        .expect("_inputs is an object");
-    let mut names: Vec<&str> = fixture
+/// The keys a section's `input` may hold.
+fn input_keys(section: &str) -> &'static [&'static str] {
+    match section {
+        "split_row" => &["line", "base"],
+        "row_from_pipes" => &["line", "base", "pipes"],
+        "row_pipes" => &["line", "base"],
+        "is_delimiter_row" => &["line"],
+        "parse_align" => &["spec"],
+        "cell_text" => &["source"],
+        "source_offset" => &["source", "pos"],
+        "text_offset" => &["source", "offset"],
+        "escape_cell" => &["text"],
+        "escape_cell_insert" => &["text"],
+        "escape_code_cell" => &["text"],
+        "ends_with_escape" => &["source"],
+        "literal_pipe_fixes" => &["text", "inserted"],
+        "row_cell_texts" => &["line"],
+        "row_cell_sources" => &["line"],
+        "read_table" => &["lines"],
+        "table_grid" => &["lines"],
+        "render_table" => &["header", "rows", "align", "line_break"],
+        "pad_table" => &["table", "max_column_width"],
+        "display_width" => &["text"],
+        "row_line_text" => &["cells"],
+        "insert_cell_splice" => &["line", "base", "at", "filler"],
+        "delete_cell_splice" => &["line", "base", "col"],
+        "pad_row_splice" => &["line", "base", "width", "filler"],
+        "has_trailing_pipe" => &["line"],
+        "table_lines" => &["lines", "delimiter"],
+        "rectangular" => &["rows"],
+        "pad_row" => &["cells", "width"],
+        "clipboard_lines" => &["text"],
+        "grid_from_tsv" => &["text"],
+        "tsv_from_grid" => &["grid"],
+        "to_csv" => &["rows"],
+        "grid_from_csv" => &["text"],
+        "grid_from_csv_paste" => &["text"],
+        "html_from_grid" => &["shown", "source", "header"],
+        "paste_rect" => &["grid", "start", "probes", "range"],
+        "round_trip" => &["grid", "format"],
+        "sniff_delimiter" => &["text"],
+        "delimiter_name" => &["delimiter"],
+        "parse_delimited" => &["text", "delimiter"],
+        "looks_like_header" => &["first"],
+        "read_delimited" => &["text", "delimiter", "header"],
+        "quote_delimited_field" => &["value", "delimiter", "always_quote"],
+        "delimited_record_text" => &["fields", "delimiter"],
+        "set_delimited_field" => &["text", "delimiter", "header", "record", "column", "value"],
+        "insert_delimited_row" => &["text", "delimiter", "header", "at", "fields"],
+        "delete_delimited_row" => &["text", "delimiter", "header", "index"],
+        "insert_delimited_column" => &["text", "delimiter", "header", "at", "header_text"],
+        "delete_delimited_column" => &["text", "delimiter", "header", "column"],
+        "reread_delimited" => &["text", "delimiter", "header", "next"],
+        "apply_delimited_changes" => &["text", "changes"],
+        other => panic!("the suite has a section this test does not know: {other}"),
+    }
+}
+
+/// Fails on an input key this section does not know, whether or not the case runs here.
+fn check_input(section: &str, case: &Case) {
+    let keys = case.input.as_object().expect("an input is an object");
+    let allowed = input_keys(section);
+    let unknown: Vec<&String> = keys
         .keys()
-        .map(String::as_str)
-        .filter(|k| !k.starts_with('_'))
+        .filter(|k| !allowed.contains(&k.as_str()))
         .collect();
-    names.sort_unstable();
-    let mut known = SECTIONS.to_vec();
-    known.sort_unstable();
-    assert_eq!(
-        names, known,
-        "the fixture's sections are not the ones run here"
+    assert!(
+        unknown.is_empty(),
+        "{section} / {}: input keys {unknown:?} are not known",
+        case.name
     );
-    let mut listed: Vec<&str> = inputs.keys().map(String::as_str).collect();
-    listed.sort_unstable();
-    assert_eq!(listed, known, "_inputs does not list exactly the sections");
+}
+
+#[test]
+fn every_case_in_the_suite_conforms() {
+    let suite: Suite = serde_json::from_str(SUITE_JSON).expect("the suite parses");
+    assert_eq!(
+        (suite.family.as_str(), suite.reference.as_str()),
+        ("gfm-table", "ts")
+    );
+    assert_eq!(
+        suite
+            .sections
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        {
+            let mut sections = SECTIONS.to_vec();
+            sections.sort_unstable();
+            sections
+        },
+        "the suite's sections are not the ones this test runs"
+    );
 
     let mut failures = Vec::new();
     let mut count = 0;
-    for (section, cases) in &fixture {
-        if section.starts_with('_') {
-            continue;
-        }
-        let allowed = strings(&inputs[section]);
-        for case in cases.as_array().expect("a section is a list of cases") {
+    for (name, section) in &suite.sections {
+        let mut ran = 0;
+        for case in &section.cases {
             count += 1;
-            let keys = case.as_object().expect("a case is an object");
-            // Only the section's inputs: a misspelled key would be ignored.
-            let unknown: Vec<&String> = keys
-                .keys()
-                .filter(|k| *k != "name" && *k != "expected" && !allowed.contains(k))
-                .collect();
+            // Every case's shape and input are checked, before `platforms`
+            // and `skip` filter it.
+            check_input(name, case);
+            let want = case.want();
             assert!(
-                unknown.is_empty(),
-                "{section} / {}: keys {unknown:?} are not in _inputs",
-                case["name"]
+                case.skip.values().all(|reason| !reason.is_empty()),
+                "{name}: {}: a skip needs a reason",
+                case.name
             );
-            let expected = keys
-                .get("expected")
-                .unwrap_or_else(|| panic!("{section} / {}: no expected", case["name"]));
-            let got = run(section, case);
-            if &got != expected {
+            if !case.for_this_host() || case.skip.contains_key("rust") {
+                continue;
+            }
+            ran += 1;
+            let got = run(name, &case.input);
+            if got != want {
                 failures.push(format!(
-                    "{section} / {}:\n  expected {expected}\n  got      {got}",
-                    case["name"]
+                    "{name} / {}:\n  expected {want:?}\n  got      {got:?}",
+                    case.name
                 ));
             }
         }
+        // A section none of whose cases run here would pass unseen.
+        assert!(ran > 0, "{name}: no case of this section runs on this host");
     }
-    assert!(count > 300, "the fixture holds {count} cases");
+    assert!(count > 300, "the suite holds {count} cases");
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
