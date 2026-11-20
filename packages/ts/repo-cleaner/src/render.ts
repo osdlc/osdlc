@@ -113,11 +113,17 @@ function sortRows(rows: readonly Row[]): Row[] {
 function repoHeader(sweep: RepoSweep): string {
   const name = sweep.repo?.root ?? sweep.path
   if (sweep.repo === null) return name
+  const repo = sweep.repo
+  // Each remote judged besides the default one, marked when it was not fetched.
+  const others = repo.remotes
+    .filter((r) => r.name !== repo.remote)
+    .map((r) => (repo.fetchedRemotes.includes(r.name) ? r.name : `${r.name} not fetched`))
   const bits = [
-    sweep.repo.slug,
-    `default ${sweep.repo.mainBranch}`,
-    sweep.repo.remote ?? 'no remote',
-    isUnfetched(sweep.repo) ? 'not fetched' : null,
+    repo.slug,
+    `default ${repo.mainBranch}`,
+    repo.remote ?? 'no remote',
+    isUnfetched(repo) ? 'not fetched' : null,
+    ...others,
   ]
   return `${name}  (${bits.filter((b) => b !== null).join(', ')})`
 }
