@@ -25,8 +25,9 @@
  *     times at this head and base sha, and would fail the same way again.
  *     `--retry-failed` attempts it anyway.
  *
- * `verify: check` or `verify: test` runs the `verifyVerbs` that
- * `ports.resolveVerifyVerbs` returns before a push. It is asked once per
+ * `verify: check`, `test` or `detect` runs the `verifyVerbs` that
+ * `ports.resolveVerifyVerbs` returns before a push. `verify: detect` asks it once per PR,
+ * naming the PR's update worktree as `checkout`. Otherwise it is asked once per
  * repository, naming the repository and its checkout, so a run over several
  * repositories can verify each with its own commands. Whether a verb list from
  * the project may run is the host's decision, made in that port.
@@ -523,14 +524,15 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
     else groups.set(t.repo, { path: pathOf.get(t.repo) ?? env.projectRoot, targets: [t] })
   }
   const runId = `${process.pid}.${Date.now()}`
-  // Once per repository, not inside `updateAll`'s per-PR loop. All of them
+  // Once per repository, not inside `updateAll`'s per-PR loop (`detect` resolves per PR
+  // instead; see `verifyVerbs` in update/execute.ts). All of them
   // before any update, so a list the host refuses for one repository stops
   // the run before anything in any repository is pushed. And every surveyed
   // checkout, not only those with a PR to update, so a missing or refused
   // list is reported on every run, not first on the run that needs it.
   const verify = effectiveCfg.verify
   const verifyVerbsOf = new Map<string, readonly string[]>()
-  if (verify !== 'none') {
+  if (verify !== 'none' && verify !== 'detect') {
     const toAsk = new Map<string, string>()
     for (const { repo, measurable, failure } of report.repos) {
       const checkout = pathOf.get(repo)
@@ -554,6 +556,7 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
     repair: env.ports.repair,
     repairOn: effectiveCfg.repair.on,
     onRebaseConflict: effectiveCfg.on_rebase_conflict,
+    maxRebaseStops: effectiveCfg.repair.max_rebase_stops,
     submodules: effectiveCfg.submodules,
     confirmPush,
     lease: writes ? env.ports.lease : undefined,
@@ -564,7 +567,17 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
   for (const [repo, { path, targets: group }] of groups) {
     const git = new Git(path, { runner: env.git })
     const worktreeRoot = join(path, '.pr-update', runId)
-    const verifyVerbs = verifyVerbsOf.get(repo) ?? []
+    const verifyVerbs =
+      verify === 'detect'
+        ? (worktree: string, pr: number) =>
+            env.ports.resolveVerifyVerbs({
+              pr,
+              which: 'detect',
+              trust: args.trust,
+              repo,
+              checkout: worktree,
+            })
+        : (verifyVerbsOf.get(repo) ?? [])
     results.push(
       ...(await updateAll(git, group, { ...settings, verifyVerbs }, env.ports.runVerb, {
         apply: writes,

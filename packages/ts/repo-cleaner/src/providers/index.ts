@@ -16,7 +16,7 @@ import type {
   ProviderStatus,
 } from './types.ts'
 
-export { githubProvider } from './github.ts'
+export { githubProvider, OPEN_PR_LIMIT, PR_LIMIT } from './github.ts'
 export { gitlabProvider } from './gitlab.ts'
 export * from './types.ts'
 
