@@ -248,6 +248,40 @@ step yet). Then:
 
 Without `migrations`, `version` is an ordinary key, as before.
 
+## Fields
+
+`configFields(shape)` turns the config schema into a flat list of its leaves, so a tool renders its
+example file, `config list`, a settings screen or an interactive `init` from one place. Each
+`ConfigField` has its `path`, `key`, `section`, `kind` (the Zod type tag), `label`, `description`,
+`help`, `control`, `hidden`, `secret`, `optional`, `default` and, for an enum, `choices`.
+
+Any field, top-level or nested, may carry `label`, `help`, `control` and `hidden` in its `.meta()`
+(`FieldMeta`). Without them, `label` is the last path segment, `help` is the `.describe()` text and
+`control` comes from the type (`defaultControl`: `toggle`, `number`, `select`, `list`, `map`,
+`text`). A `control` is free text, since the widgets belong to the tool. `hidden` and `secret` on an object
+apply to everything under it; an optional or defaulted object makes its fields `optional`, and its default value wins over a field's own. Only `hidden` is read from an object's own meta; its `label` and `help` are not used. A malformed value throws, naming the path. Objects are walked into. A record,
+an array, a union and a scalar are leaves.
+
+<!-- snippet: fields -->
+
+```ts
+const editorMeta: FieldMeta = { label: 'Editor', control: 'path' }
+
+const shape = {
+  editor: z.string().default('vi').describe('The editor to open.').meta(editorMeta),
+  server: z.object({
+    port: z.number().default(8080).describe('The port to listen on.'),
+    mode: z.enum(['dev', 'prod']).default('dev'),
+    token: z.string().optional().meta({ hidden: true }),
+  }),
+}
+
+const fields: ConfigField[] = configFields(shape)
+const visible = fields.filter((f) => !f.hidden)
+// visible.map((f) => [f.key, f.control]) is
+//   [['editor', 'path'], ['server.port', 'number'], ['server.mode', 'select']]
+```
+
 ## Needs
 
 A command declares the settings it cannot run without, as needs.
@@ -569,11 +603,11 @@ package.
 The experimental exports:
 
 `APPLY_PREFIX`, `AppliesVia`, `AssembleConfigOptions`, `BASE_CONFIG_VERSION`, `CONFIG_INVALID_EXIT`,
-`CONSUMER_REF`, `ConfigFileMigrateResult`, `ConfigFileSpec`, `ConfigHandle`, `ConfigInvalidError`,
+`CONSUMER_REF`, `ConfigField`, `ConfigFileMigrateResult`, `ConfigFileSpec`, `ConfigHandle`, `ConfigInvalidError`,
 `ConfigIssue`, `ConfigKeyMeta`, `ConfigKeyMetaSchema`, `ConfigLayers`, `ConfigMetaIssue`,
 `ConfigMigration`, `ConfigNeed`, `ConfigNeeds`, `ConfigNeedsOptions`, `ConfigOf`, `ConfigSection`,
 `ConfigSectionHooks`, `ConfigVocabulary`, `ConfigVocabularySpec`, `ConsumerSchema`,
-`DeprecatedKeyUse`, `Deprecation`, `DeprecationSchema`, `KeyScopes`, `LayerCheckContext`,
+`DeprecatedKeyUse`, `Deprecation`, `DeprecationSchema`, `FieldMeta`, `KeyScopes`, `LayerCheckContext`,
 `LayerMigration`, `MACHINE_CONFIG_ISSUE_CODES`, `MachineConfigFile`, `MachineConfigFileOptions`,
 `MachineConfigIssue`, `MachineConfigLoad`, `MachineMigrateResult`, `MachineMigration`,
 `MachineWriteOptions`, `MessageOptions`, `MetOptions`, `MetaTerms`, `MetaValidator`, `MigratedRaw`,
@@ -587,8 +621,8 @@ The experimental exports:
 `StandardSchemaV1`, `StandardValidation`, `StarterOptions`, `StepMode`,
 `StepProvenance`, `StrippedKeys`, `SubstituteOptions`, `TermsOf`, `UnknownKeyUse`, `ValueLayer`,
 `VendorDirs`, `applierAndReservedProblems`, `applierOf`, `assembleConfig`, `checkConfigMeta`,
-`closestMatches`, `configNeeds`, `consumerProblems`, `currentConfigVersion`,
-`currentMachineVersion`, `deepMergeConfig`, `defaultOf`, `defineConfigSection`,
+`closestMatches`, `configFields`, `configNeeds`, `consumerProblems`, `currentConfigVersion`,
+`currentMachineVersion`, `deepMergeConfig`, `defaultControl`, `defaultOf`, `defineConfigSection`,
 `defineConfigVocabulary`, `defineMigrations`, `deprecatedKeysSet`, `deprecationMessage`,
 `describeShape`, `descriptionOf`, `didYouMean`, `enforcementProblems`, `envStem`, `getIn`,
 `isReserved`, `jsonSchemaOf`, `keyDescription`, `keyExists`, `leafSchema`, `machineConfigFile`,
