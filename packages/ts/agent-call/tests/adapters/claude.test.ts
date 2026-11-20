@@ -102,6 +102,19 @@ describe('claude plan', () => {
     expect(bypass.argv).toContain('--dangerously-skip-permissions')
   })
 
+  test('permissions.tools is --tools as one comma list; [] is an empty --tools', () => {
+    const some = adapter.plan({ prompt: 'x', permissions: { tools: ['Read', 'Glob', 'Grep'] } })
+    const at = some.argv.indexOf('--tools')
+    expect(some.argv.slice(at, at + 2)).toEqual(['--tools', 'Read,Glob,Grep'])
+    expect(some.notes.find((n) => n.field === 'permissions.tools')?.support).toBe('native')
+
+    const none = adapter.plan({ prompt: 'x', permissions: { tools: [] } })
+    const empty = none.argv.indexOf('--tools')
+    expect(none.argv.slice(empty, empty + 2)).toEqual(['--tools', ''])
+
+    expect(adapter.plan({ prompt: 'x' }).argv).not.toContain('--tools')
+  })
+
   test('schema is native and upgrades text to json', () => {
     const schema = { type: 'object' as const }
     const planned = adapter.plan({

@@ -1,38 +1,6 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { expect, test } from 'vitest'
 
-import { afterEach, expect, test } from 'vitest'
-
-import { problems, syncFrom, withoutSource } from '../scripts/sync.ts'
-
-const dirs: string[] = []
-const tmp = (): string => {
-  const d = mkdtempSync(join(tmpdir(), 'hk-sync-'))
-  dirs.push(d)
-  return d
-}
-afterEach(() => {
-  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true })
-})
-
-test('syncFrom copies both files unchanged', () => {
-  const from = tmp()
-  const to = tmp()
-  writeFileSync(join(from, 'harness-knowledge.json'), '{"schema":1}\n')
-  writeFileSync(join(from, 'harness-knowledge.schema.json'), '{}\n')
-  syncFrom(from, to)
-  expect(readFileSync(join(to, 'harness-knowledge.json'), 'utf-8')).toBe('{"schema":1}\n')
-})
-
-test('a missing file, bad JSON or another schema number is refused', () => {
-  const from = tmp()
-  expect(problems(from)).toHaveLength(2)
-  writeFileSync(join(from, 'harness-knowledge.json'), '{"schema":2}')
-  writeFileSync(join(from, 'harness-knowledge.schema.json'), 'nope')
-  expect(problems(from)).toHaveLength(2)
-  expect(() => syncFrom(from, tmp())).toThrow()
-})
+import { namesPackage, withoutSource } from '../scripts/check-release.ts'
 
 const compiled = (repo: string, commit: string, path: string, strength = 'strong'): string =>
   JSON.stringify({
@@ -61,4 +29,12 @@ test('withoutSource refuses a basis outside the corpus the file names', () => {
   const k = JSON.parse(compiled('osdlc/osdlc', 'aaa', 'corpus')) as { corpus: { commit: string } }
   k.corpus.commit = 'ccc'
   expect(() => withoutSource(JSON.stringify(k))).toThrow(/outside the corpus/)
+})
+
+test('namesPackage reads the front matter only', () => {
+  const name = '@osdlc/harness-knowledge'
+  expect(namesPackage(`---\n"${name}": patch\n---\n\nFix.\n`, name)).toBe(true)
+  expect(namesPackage(`---\n"@osdlc/other": patch\n---\n\nMentions ${name}: here.\n`, name)).toBe(
+    false,
+  )
 })
