@@ -6,7 +6,8 @@
  * again and drops each selected row that is gone, cannot be deleted, moved
  * since the plan, or carries a risk not allowed. It returns the steps a run
  * would take. `run` sweeps once more and takes those steps in a fixed order,
- * stopping at the first failure:
+ * skipping only the steps that depend on a failed one (a failed tip check of a
+ * spared remote branch stops the run):
  *
  * 1. spared remote branches, each tip checked with `ls-remote`;
  * 2. with `archive`, one archive per repository, pushed to its remote and
@@ -555,10 +556,42 @@ function recheck(
       needs,
     })
   }
-  // A branch freed by its worktree's removal goes only with that worktree.
-  const leaving = new Set(accepted.filter((a) => a.row.kind === 'worktree').map((a) => a.row.name))
-  const kept: Accepted[] = []
+  // A worktree judged safe because remote branches hold its HEAD loses that
+  // cover when the same run deletes every one of them.
+  const deletedRemotes = new Set(
+    accepted.flatMap((a) =>
+      a.row.kind === 'remote'
+        ? [`${a.repo}\0${a.row.evidence.remote}/${a.row.evidence.branch}`]
+        : [],
+    ),
+  )
+  const coverGone = (a: Accepted): string[] | null => {
+    if (a.row.kind !== 'worktree' || a.abandon) return null
+    const from = a.row.evidence.recoverableFrom ?? []
+    return from.length > 0 && from.every((name) => deletedRemotes.has(`${a.repo}\0${name}`))
+      ? from
+      : null
+  }
+  const stillCovered: Accepted[] = []
   for (const a of accepted) {
+    const from = coverGone(a)
+    if (from === null) {
+      stillCovered.push(a)
+      continue
+    }
+    dropped.push({
+      repo: a.repo,
+      row: a.row.id,
+      reason: 'not-allowed',
+      detail: `needs abandon-unmerged: this run also deletes ${from.join(', ')}, the only remote copies of its HEAD`,
+    })
+  }
+  // A branch freed by its worktree's removal goes only with that worktree.
+  const leaving = new Set(
+    stillCovered.filter((a) => a.row.kind === 'worktree').map((a) => a.row.name),
+  )
+  const kept: Accepted[] = []
+  for (const a of stillCovered) {
     const worktree = a.row.kind === 'branch' ? a.row.evidence.worktree : undefined
     if (worktree === undefined || leaving.has(worktree)) {
       kept.push(a)
@@ -961,6 +994,54 @@ function assertSafeToForce(path: string, git: Git, a: Accepted): void {
   if (reasons.length > 0) throw new Error(`refused: ${reasons.join('; ')}`)
 }
 
+/**
+ * Whether `step` cannot run once `prior`, an earlier step, failed or was
+ * skipped. Only steps in the same repository can depend on each other, and
+ * `a` and `priorA` are the rows the two steps act on:
+ *
+ *   - every non-archive step waits on a failed archive push in its repository;
+ *   - a worktree's remove or prune waits on its unlock;
+ *   - a branch delete waits on the removal of the worktree that holds the branch;
+ *   - the repository-wide prune waits on every worktree step in the repository,
+ *     since it counted on each removal;
+ *   - a remote delete waits on the delete of the same branch's local copy.
+ */
+function dependsOn(step: Step, a: Accepted | null, prior: Step, priorA: Accepted | null): boolean {
+  // A failed archive push stops the repository's deletes: nothing is
+  // removed that was not saved.
+  if (prior.action === 'archive' && step.action !== 'archive' && step.repo === prior.repo) {
+    return true
+  }
+  if (a === null || priorA === null || step.repo !== prior.repo) return false
+  const row = a.row
+  const was = priorA.row
+  const worktreeStep = (s: Step): boolean =>
+    s.action === 'unlock-worktree' ||
+    s.action === 'remove-worktree' ||
+    s.action === 'prune-worktrees'
+  if (step.action === 'remove-worktree' || step.action === 'prune-worktrees') {
+    if (prior.action === 'unlock-worktree' && row.id === was.id) return true
+    return prunesAll(row) && worktreeStep(prior)
+  }
+  if (step.action === 'delete-branch') {
+    return (
+      worktreeStep(prior) &&
+      was.kind === 'worktree' &&
+      row.kind === 'branch' &&
+      was.evidence.branch === row.name
+    )
+  }
+  if (step.action === 'delete-remote') {
+    return (
+      prior.action === 'delete-branch' &&
+      row.kind === 'remote' &&
+      was.kind === 'branch' &&
+      row.evidence.branch === was.name
+    )
+  }
+  return false
+}
+
 /** A remote step that found the branch already gone: its verification, marked so. */
 class Gone {
   constructor(readonly verification: string) {}
@@ -1112,7 +1193,8 @@ function execute(
 /**
  * Take the steps `preview` showed: sweeps again, drops a row that moved since
  * the preview, and runs the rest in order, compare-and-swap, verifying each
- * step and stopping at the first failure. Only what the preview showed runs; a
+ * step. A failed step skips only the steps that depend on it, except a failed
+ * spared-tip check, which stops the run. Only what the preview showed runs; a
  * row it dropped stays dropped.
  *
  * @throws RepoCleanerError (`spared-changed`) when a spared remote branch moved
@@ -1180,8 +1262,20 @@ export function run(preview: Preview, opts: RunOptions = {}): Receipt {
   // Worktrees whose lock this run cleared. typed-git has no `worktree lock`
   // verb, so a failed remove cannot put the lock back; the receipt says so.
   const unlocked = new Set<string>()
+  // Steps that failed, or were skipped for one that did, each with the failed
+  // step at the root of it.
+  const blocked: Array<{ step: Step; a: Accepted | null; root: Step }> = []
   const stamps = new Map<string, string>()
   for (const [i, [step, a]] of plannedSteps.entries()) {
+    const cause = blocked.find((b) => dependsOn(step, a, b.step, b.a))
+    if (cause !== undefined) {
+      step.result = 'skipped'
+      step.error = `skipped: depends on ${cause.root.action} of ${cause.root.row}, which failed`
+      blocked.push({ step, a, root: cause.root })
+      opts.onStepDone?.(i, plannedSteps.length, step)
+      save()
+      continue
+    }
     opts.onStep?.(i, plannedSteps.length, step)
     try {
       const done = execute(step, a, git, probe, removedHere, opts.removeWorktree, {
@@ -1207,10 +1301,15 @@ export function run(preview: Preview, opts: RunOptions = {}): Receipt {
       // Told before the save, so a receipt that cannot be written still
       // leaves the step's outcome on screen.
       opts.onStepDone?.(i, plannedSteps.length, step)
-      return finish('failed')
+      // A failed spared-tip check voids the plan's premise: nothing else runs.
+      if (step.action === 'verify-remote') return finish('failed')
+      blocked.push({ step, a, root: step })
+      save()
+      continue
     }
     opts.onStepDone?.(i, plannedSteps.length, step)
     save()
   }
+  if (blocked.length > 0) return finish('failed')
   return finish('complete')
 }

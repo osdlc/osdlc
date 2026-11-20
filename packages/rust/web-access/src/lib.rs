@@ -8,6 +8,7 @@
 #![forbid(unsafe_code)]
 
 mod config;
+mod conn;
 pub mod context;
 pub mod guard;
 mod interfaces;
@@ -16,12 +17,14 @@ pub mod permissions;
 mod response;
 pub mod runtime;
 mod serve;
+#[cfg(test)]
+mod test_support;
 pub mod token;
 
 pub use config::{Listen, WebAccessConfig};
 pub use context::{AccessContext, Grant};
 pub use guard::{
-    Denial, DenialReason, GuardPolicy, GuardState, PublicHost, Tokens, TokensError,
+    ConnectionCut, Denial, DenialReason, GuardPolicy, GuardState, PublicHost, Tokens, TokensError,
     normalize_public_host, origin_matches_host, origin_matches_public_host,
 };
 pub use interfaces::{InterfaceAddr, interfaces};
