@@ -91,7 +91,7 @@ config-layers = { path = "config-layers", version = "0.8.2" }
 etag-write = { path = "etag-write", version = "0.2.5" }
 frontmatter-lossless = { path = "frontmatter-lossless", version = "1.1.3" }
 gfm-pipe-table = { path = "gfm-pipe-table", version = "0.5.0" }
-markdown-contract = { path = "markdown-contract", version = "0.4.3", default-features = false }
+markdown-contract = { path = "markdown-contract", version = "0.4.4", default-features = false }
 markdown-corpus = { path = "markdown-corpus", version = "0.5.0" }
 markdown-link = { path = "markdown-link", version = "0.11.1" }
 markdown-relink = { path = "markdown-relink", version = "0.4.2" }

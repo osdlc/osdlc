@@ -56,5 +56,5 @@ pub use vfs_seam;
 pub use vfs_walk;
 pub use walk::{
     Admission, Entry, Errors, Hide, HideSource, Visibility, WalkError, WalkOptions, WalkOutcome,
-    walk, walk_notes, walk_reporting,
+    is_note, walk, walk_notes, walk_reporting,
 };

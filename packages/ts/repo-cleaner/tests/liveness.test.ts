@@ -7,7 +7,7 @@
  * Worktrees are real, on disk.
  */
 
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import { existsSync, readdirSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -334,7 +334,7 @@ describe('run', () => {
     lock(fx, LOCK)
     const probe = fakeProbe({ alive: false })
     const receipt = apply(fx, makePlan(fx, probe), probe)
-    expect(receipt.version).toBe(2)
+    expect(receipt.version).toBe(3)
     expect(receipt.plan).toBe('plan.json')
     expect(receipt.dropped).toEqual([])
     expect(receipt.steps.map((s) => [s.action, s.result])).toEqual([
@@ -392,6 +392,31 @@ describe('run', () => {
     expect(receipt.steps[0]!.error).toContain('pid 99999 is alive')
     expect(probe.aliveCalls).toHaveLength(3)
     expect(locked(fx)).toBe(true)
+    expect(existsSync(fx.worktree)).toBe(true)
+  })
+
+  test('a failed unlock skips the remove and the delete of the branch the worktree held', () => {
+    const fx = buildFixture()
+    lock(fx, LOCK)
+    const plan = makePlan(fx, fakeProbe({ alive: false }))
+    const probe = fakeProbe({ alive: (call) => call > 2 })
+    const receipt = run(
+      check(plan, { pick: [pick(fx), 'branch:wt-branch'] }, { cwd: fx.root, gh: fx.gh, probe }),
+      {
+        cwd: fx.root,
+        receiptPath: join(fx.root, '.receipts', 'test.json'),
+        source: 'plan.json',
+        gh: fx.gh,
+        probe,
+      },
+    )
+    expect(receipt.steps.map((s) => [s.action, s.result])).toEqual([
+      ['unlock-worktree', 'failed'],
+      ['remove-worktree', 'skipped'],
+      ['delete-branch', 'skipped'],
+    ])
+    expect(receipt.steps[1]!.error).toContain(`unlock-worktree of ${pick(fx)}`)
+    expect(receipt.steps[2]!.error).toContain(`unlock-worktree of ${pick(fx)}`)
     expect(existsSync(fx.worktree)).toBe(true)
   })
 
@@ -559,13 +584,13 @@ describe('default probe: ps', () => {
 
   test('AC-4: a live pid whose start time differs from the lock counts as dead', () => {
     const probe = defaultProcessProbe({ ps: fakePs({ 321: PS_MACOS }) })
-    expect(probe.alive(321, 'Sat Oct 25 08:00:00 2026')).toBe(false)
+    expect(probe.alive(321, 'Sat Oct 25 08:10:00 2026')).toBe(false)
     expect(probe.alive(321, '2026-01-01T00:00:00Z')).toBe(false)
   })
 
   test('a full ISO timestamp that matches is alive; the 2 s tolerance edges', () => {
     const probe = defaultProcessProbe({ ps: fakePs({ 321: PS_MACOS }) })
-    const base = Date.parse('Sat Oct 25 18:22:19 2026')
+    const base = Date.parse('Sat Oct 25 18:22:19 2026 UTC')
     const iso = (offsetS: number): string => new Date(base + offsetS * 1000).toISOString()
     expect(probe.alive(321, iso(0))).toBe(true)
     expect(probe.alive(321, iso(1))).toBe(true)
@@ -610,9 +635,111 @@ describe('default probe: ps', () => {
 
   test('a start time given as epoch seconds is compared as one', () => {
     const probe = defaultProcessProbe({ ps: fakePs({ 321: PS_MACOS }) })
-    const epoch = String(Date.parse('Sat Oct 25 18:22:19 2026') / 1000)
+    const epoch = String(Date.parse('Sat Oct 25 18:22:19 2026 UTC') / 1000)
     expect(probe.alive(321, epoch)).toBe(true)
     expect(probe.alive(321, String(Number(epoch) + 3600))).toBe(false)
+  })
+
+  test('the ps call is pinned to UTC and the C locale', () => {
+    const calls: Array<Record<string, unknown>> = []
+    const ps = canned(() => ({ stdout: PS_MACOS }))
+    const spy: CommandRunner = {
+      ...ps,
+      run: (argv, o) => {
+        calls.push({ ...o })
+        return ps.run(argv, o)
+      },
+    }
+    defaultProcessProbe({ ps: spy }).alive(321, '2026-10-25T18:22:19Z')
+    expect(calls[0]?.['env']).toEqual({ TZ: 'UTC', LC_ALL: 'C' })
+  })
+
+  test('lstart is read as UTC whatever the zone of the process', () => {
+    // 2026-11-01 01:30 happens twice in America/New_York; read as UTC it is one instant.
+    const probe = defaultProcessProbe({ ps: fakePs({ 321: 'Sun Nov  1 01:30:00 2026\n' }) })
+    expect(startMs('Sun Nov  1 01:30:00 2026')).toBe(Date.UTC(2026, 10, 1, 1, 30, 0))
+    expect(probe.alive(321, '2026-11-01T01:30:00Z')).toBe(true)
+    // Neither local reading of the repeated hour (05:30Z or 06:30Z) matches.
+    expect(probe.alive(321, '2026-11-01T05:30:00Z')).toBe(false)
+    expect(probe.alive(321, '2026-11-01T06:30:00Z')).toBe(false)
+  })
+
+  test('lstart text a lock recorded in another zone still matches the same process', () => {
+    // The process started 18:22:19 UTC; writers in Chicago (UTC-5) and Kolkata
+    // (UTC+5:30) would record 13:22:19 and 23:52:19.
+    const probe = defaultProcessProbe({ ps: fakePs({ 321: PS_MACOS }) })
+    expect(probe.alive(321, 'Sat Oct 25 13:22:19 2026')).toBe(true)
+    expect(probe.alive(321, 'Sat Oct 25 23:52:19 2026')).toBe(true)
+    // Not a zone offset from the real start: a reused pid.
+    expect(probe.alive(321, 'Sat Oct 25 13:40:00 2026')).toBe(false)
+    // No zone is UTC-13 or UTC-14, so text that far behind is a reused pid.
+    expect(probe.alive(321, 'Sat Oct 25 05:22:19 2026')).toBe(false)
+  })
+
+  test('a dead pid is answered without spawning ps', () => {
+    const ps = fakePs({ 321: PS_MACOS })
+    const probe = defaultProcessProbe({ ps, pidExists: () => false })
+    expect(probe.alive(321)).toBe(false)
+    expect(ps.calls).toEqual([])
+  })
+
+  test('a pid the kill probe cannot place falls through to ps', () => {
+    const ps = fakePs({ 321: PS_MACOS })
+    expect(defaultProcessProbe({ ps, pidExists: () => undefined }).alive(321)).toBe(true)
+    expect(ps.calls).toHaveLength(1)
+  })
+
+  test('the default probe answers a dead pid from process.kill, with no ps', () => {
+    // Above Linux's PID_MAX_LIMIT (2^22) and macOS's 99998, so kill gives ESRCH.
+    expect(defaultProcessProbe().alive(2 ** 22 + 12345)).toBe(false)
+  })
+
+  describe('the default pid check', () => {
+    const killError = (code: string): never => {
+      throw Object.assign(new Error(code), { code })
+    }
+
+    test('EPERM means the pid exists, so a live owner of another user is kept', () => {
+      const kill = vi.spyOn(process, 'kill').mockImplementation(() => killError('EPERM'))
+      try {
+        // EPERM is not "gone": ps is still asked, and it finds this process.
+        expect(defaultProcessProbe().alive(process.pid)).toBe(true)
+        expect(kill).toHaveBeenCalledWith(process.pid, 0)
+      } finally {
+        kill.mockRestore()
+      }
+    })
+
+    test('ESRCH from a pid that ps would find still answers gone', () => {
+      const kill = vi.spyOn(process, 'kill').mockImplementation(() => killError('ESRCH'))
+      try {
+        expect(defaultProcessProbe().alive(process.pid)).toBe(false)
+      } finally {
+        kill.mockRestore()
+      }
+    })
+
+    test('any other error leaves the answer to ps', () => {
+      const kill = vi.spyOn(process, 'kill').mockImplementation(() => killError('EINVAL'))
+      try {
+        // Unknown from kill, so the real ps is asked and finds this process.
+        expect(defaultProcessProbe().alive(process.pid)).toBe(true)
+        expect(kill).toHaveBeenCalledWith(process.pid, 0)
+      } finally {
+        kill.mockRestore()
+      }
+    })
+
+    test('pid 0, a negative pid and a non-integer never reach process.kill', () => {
+      const kill = vi.spyOn(process, 'kill').mockImplementation(() => true)
+      try {
+        const probe = defaultProcessProbe()
+        for (const pid of [0, -1, 1.5]) probe.alive(pid)
+        expect(kill).not.toHaveBeenCalled()
+      } finally {
+        kill.mockRestore()
+      }
+    })
   })
 
   test('a start time that cannot be read as a time cannot rule the owner out', () => {

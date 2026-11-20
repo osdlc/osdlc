@@ -19,6 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   keeps the list in a file of its own can change it without a new
   `WalkOptions`.
 
+## [0.7.1](https://github.com/osdlc/osdlc/compare/markdown-vault-fs/v0.7.0...markdown-vault-fs/v0.7.1) - 2026-11-20
+
+### Other
+
+- cheaper note scans and one is_note (part of #641) ([#878](https://github.com/osdlc/osdlc/pull/878))
+
+### Added
+
+- `is_note`: whether a name or path ends in `.md`, in any case, the rule the
+  walk and both caches in `markdown-corpus` share.
+
 ## [0.7.0] - 2026-11-14
 
 A path the disk spells otherwise than a watcher reported it is told apart

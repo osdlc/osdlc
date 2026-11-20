@@ -449,8 +449,9 @@ fn shows(
     visibility.admits_path(c.rel)
 }
 
-fn is_note(name: &str) -> bool {
-    name.to_lowercase().ends_with(".md")
+/// Whether `path` (or a bare file name) ends in `.md`, in any case.
+pub fn is_note(path: &str) -> bool {
+    path.to_lowercase().ends_with(".md")
 }
 
 /// What a walk makes of one path. See [`WalkOptions::admission`].
@@ -1637,6 +1638,8 @@ mod tests {
         /// A file name and the listing (counted from 1) it first appears in.
         appears: Vec<(&'static str, usize)>,
         listings: std::cell::Cell<usize>,
+        /// Every folder listed through this file system.
+        listed: std::cell::RefCell<Vec<PathBuf>>,
     }
 
     impl Vfs for Late<'_> {
@@ -1647,6 +1650,7 @@ mod tests {
             self.inner.read_file(path)
         }
         fn read_dir(&self, path: &Path) -> Result<Vec<vfs_seam::DirEntry>, vfs_seam::VfsError> {
+            self.listed.borrow_mut().push(path.to_path_buf());
             let mut entries = self.inner.read_dir(path)?;
             if path == self.folder {
                 let n = self.listings.get() + 1;
@@ -1693,6 +1697,7 @@ mod tests {
             folder: Path::new(V).join("Notes"),
             appears,
             listings: std::cell::Cell::new(0),
+            listed: Default::default(),
         };
         // The second listing has it, so it is a late file, not a respelling.
         let vfs = late(vec![("late1.md", 2)]);
@@ -1710,6 +1715,46 @@ mod tests {
             .map(|(_, a)| a)
             .collect();
         assert_eq!(got, [Admission::Listed, Admission::Respelled]);
+    }
+
+    #[test]
+    fn a_batch_lists_each_folder_once() {
+        let d = fixture();
+        let notes = WalkOptions::content_notes();
+        let vfs = Late {
+            inner: &d,
+            folder: Path::new(V).join("Notes"),
+            appears: Vec::new(),
+            listings: std::cell::Cell::new(0),
+            listed: Default::default(),
+        };
+        let rels = [
+            "Notes/alpha.md".to_string(),
+            "Notes/beta.md".to_string(),
+            "Zed/deep/note.md".to_string(),
+            "Zed/deep/missing.md".to_string(),
+        ];
+        let got: Vec<_> = notes
+            .admissions(&vfs, Path::new(V), &rels)
+            .into_iter()
+            .map(|(_, a)| a)
+            .collect();
+        assert_eq!(
+            got,
+            [
+                Admission::Listed,
+                Admission::Listed,
+                Admission::Listed,
+                Admission::Unlisted
+            ]
+        );
+        let mut listed = vfs.listed.borrow().clone();
+        listed.sort();
+        let once: Vec<PathBuf> = ["", "Notes", "Zed", "Zed/deep"]
+            .iter()
+            .map(|f| Path::new(V).join(f))
+            .collect();
+        assert_eq!(listed, once, "the root and each folder below it, once");
     }
 
     #[test]
