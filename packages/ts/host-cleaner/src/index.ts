@@ -45,3 +45,6 @@ export {
   type Survey,
 } from './run.ts'
 export { gitPlugin, type GitPluginOptions } from './git.ts'
+export { cargoPlugin, CARGO_PLUGIN } from './cargo.ts'
+export { nodePlugin, NODE_PLUGIN } from './node.ts'
+export { DEFAULT_IDLE_HOURS, type ArtifactOptions } from './artifacts.ts'

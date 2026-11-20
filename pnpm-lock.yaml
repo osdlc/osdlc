@@ -835,9 +835,18 @@ importers:
       '@osdlc/cli-tool':
         specifier: workspace:^
         version: link:../cli-tool
+      '@osdlc/command-seam':
+        specifier: workspace:^
+        version: link:../command-seam
+      '@osdlc/path-guard':
+        specifier: workspace:^
+        version: link:../path-guard
       '@osdlc/repo-cleaner':
         specifier: workspace:^
         version: link:../repo-cleaner
+      '@osdlc/typed-git':
+        specifier: workspace:^
+        version: link:../typed-git
       '@osdlc/ux':
         specifier: workspace:^
         version: link:../ux
@@ -851,9 +860,6 @@ importers:
       '@osdlc/tsconfig':
         specifier: workspace:^
         version: link:../tsconfig
-      '@osdlc/typed-git':
-        specifier: workspace:^
-        version: link:../typed-git
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.5

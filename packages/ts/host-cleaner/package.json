@@ -56,14 +56,16 @@
   },
   "dependencies": {
     "@osdlc/cli-tool": "workspace:^",
+    "@osdlc/command-seam": "workspace:^",
+    "@osdlc/path-guard": "workspace:^",
     "@osdlc/repo-cleaner": "workspace:^",
+    "@osdlc/typed-git": "workspace:^",
     "@osdlc/ux": "workspace:^",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@osdlc/prettier-config": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
-    "@osdlc/typed-git": "workspace:^",
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "oxlint": "catalog:",
