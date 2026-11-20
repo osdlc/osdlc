@@ -1,7 +1,7 @@
 ---
 id: T-03
 type: task
-state: open
+state: done
 created: 2026-11-07
 ---
 
@@ -16,18 +16,16 @@ ends the accept loop and waits for in-flight requests, but each connection runs
 in its own task, and a WebSocket that was upgraded is not reached at all. A
 device whose admin access was withdrawn keeps an open shell.
 
-## Proposed
+## Done
 
-- Track each connection the server accepts, with the grant and the token
-  generation it was admitted under.
-- On `stop`, on admin off and on a token rotation, close the connections whose
-  grant or token is no longer valid, upgraded ones included, after the grace
-  period at most.
-- Give apps that upgrade connections themselves a signal they can wait on, so
-  they can close their side cleanly.
-
-## Done when
-
-- A test opens a WebSocket with the admin token, turns admin off, and sees the
-  socket close within one second.
-- The same for a rotated token and for sharing turned off.
+- `serve` gives each connection its own cut switch. The guard notes, on the
+  connection, which token let each request in.
+- `ServerHandle::replace_tokens` hands the running server new tokens and cuts
+  the connections of every token that is gone at once. The others stay open.
+- `SharingRuntime` uses it for a rotation, for admin on or off and before
+  stopping for sharing off. It restarts only for a new listen setting or port.
+- A handler can take `guard::ConnectionCut` to end work it runs apart from
+  the socket.
+- Tests open an upgraded socket and a stream with each grant, turn admin off,
+  rotate a token and turn sharing off, and see the withdrawn ones close within
+  one second while the others stay open (`runtime.rs`, `serve.rs`).

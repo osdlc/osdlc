@@ -87,6 +87,7 @@ export function fingerprint(row: Row): Record<string, unknown> {
       // must not turn a prune into a remove.
       onDisk: e.onDisk ?? null,
       submodules: e.submodules ?? null,
+      recoverableFrom: e.recoverableFrom ?? null,
     }
   }
   const pr = row.evidence.pr

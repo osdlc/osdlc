@@ -27,18 +27,19 @@ Not mirrored: the author rule, the `config` subpath and the models.dev fetch (se
 
 ## How it stays true to the TypeScript
 
-The TypeScript package emits JSON vectors to `packages/ts/agent-router/fixtures/<area>/<name>.json`:
-arrays of `{ name, input, expected }`. Two files sit at the top of `fixtures/`: `constants.json` (a
-one-vector array) and `layers.json` (an object of named catalogue layers, not a vector array).
-`tests/fixtures.rs` reads the same files and requires the Rust result for every `input` to equal
-`expected`. The TypeScript suite runs them too; `pnpm run check:extra` in the TypeScript package
-fails when the committed files differ from what the emitter writes.
+The two implementations run one conformance suite, `packages/conformance/agent-router/`, with one
+JSON file per section (`ref_parse.json`, `walk_choose.json` and so on). A case is
+`{ name, input, expect }`. `tests/conformance.rs` requires the Rust result for every `input` to equal
+`expect`, and fails on a section it does not run. The TypeScript package runs the same cases and is
+the reference: its generator writes every `expect`. Two sections are data, not behaviour:
+`named_layers` (catalogue layers that other sections name) and `snapshot_layer` (a copy of the
+shipped snapshot).
 
 Change behaviour in the TypeScript first, then regenerate and commit:
 
 ```sh
-cd packages/ts/agent-router && pnpm run fixtures
-cd ../../rust && cargo test -p agent-router
+pnpm --filter @osdlc/agent-router conformance:write
+cd packages/rust && cargo test -p agent-router
 ```
 
 Walk vectors script availability: `availability` maps an entry's text (`alpha/standard`, or a
@@ -46,13 +47,14 @@ wildcard candidate such as `gamma/fast`) to `{ reason, detail? }`; an entry not 
 available. The expected output holds the `choice` (trace text exact), the refs the callback was
 `asked` in order, and `validateProfile`'s `errors`.
 
-A vector's `layers` name catalogue layers: `"snapshot"` is the shipped
-`src/catalogue/snapshot.json`; other names are defined in `fixtures/layers.json`.
+A vector's `layers` name catalogue layers: `"snapshot"` is the
+`snapshot_layer` section, a copy of the shipped `src/catalogue/snapshot.json`; other names are cases
+of the `named_layers` section.
 
 ## Adding a trait or tier
 
 `Trait` and `Tier` are single enums. A new trait is one variant, its name in `as_str` and its place
-in `TRAITS`; then regenerate the fixtures from the TypeScript.
+in `TRAITS`; then regenerate the suite from the TypeScript.
 
 A new tier is a variant of `Tier`, an entry in `TIERS`, a matching variant of `classify::Placement`
 (with its `From<Tier>` arm), and its place in the tier mapping the rules and chains use; without
@@ -63,25 +65,25 @@ all of these it is unreachable.
 `image-out` is the one trait that changes what a chain holds: an entry asking for it
 (`*/standard[image-out]`) expands to image-output models whether or not they call tools. Every other
 entry drops a tier's image models without a trace row, and a pinned image model is traced
-`not-agent`. The vectors in `fixtures/catalogue/chains.json` and `fixtures/wildcard/expand.json`
-(names starting `image-`) and in `fixtures/walk/choose.json`
+`not-agent`. The vectors in `catalogue_chains.json` and `wildcard_expand.json`
+(names starting `image-`) and in `walk_choose.json`
 (`plain-wildcard-never-picks-an-image-model`, `skip-pinned-image-model-not-agent`) pin both rules.
 
 ## Differences from the TypeScript
 
 - The models.dev mapping that derives `vision` and `image-out` from a model's modalities is not
-  mirrored; the crate reads the shipped `snapshot.json`, where those traits are already set.
-- The test `image` catalogue layer exists only in the TypeScript fixture generator
-  (`packages/ts/agent-router/scripts/fixtures.ts`); change it there and regenerate.
+  mirrored; the crate reads the suite's copy of the shipped snapshot, where those traits are already set.
+- The test `image` catalogue layer is a case of the suite's `named_layers` section, written by hand there; its
+  `expect` comes from the TypeScript generator.
 - Layers are checked by the strict schemas (`SnapshotLayer::parse`, `MachineCatalogue::parse`)
-  instead of a generated JSON Schema. The vectors in `fixtures/catalogue/schema-*.json` hold the
+  instead of a generated JSON Schema. The cases in `catalogue_schema_snapshot.json` and `catalogue_schema_machine.json` hold the
   accept and reject cases.
 - `layer_catalogue` reports a row whose values do not fit the row type as a `problems` entry; the
   TypeScript passes it through.
 - Numbers: sizes are `u64`, so `ctx=9007199254740993k` or `ctx=99999999999999999999k` (which the
   TypeScript rounds to a float) is not a size here. Schema integers (`context.default`/`max`,
   `version`) must be JSON integers: `200000.0` and `1e6` pass zod's `.int()` but not serde's `u64`,
-  while Rust accepts a `u64` above 2^53 that zod rejects as unsafe. The fixture comparison treats
+  while Rust accepts a `u64` above 2^53 that zod rejects as unsafe. The suite comparison treats
   numbers by value, so int-vs-float output and precision above 2^53 are not pinned.
 - Regexes: JavaScript's `\d` is ASCII, the `regex` crate's is Unicode. The crate writes `[0-9]` so
   both match the same digits; write `[0-9]` in any regex added here.
@@ -101,8 +103,8 @@ entry drops a tier's image models without a trace row, and a pinned image model 
   `SnapshotLayer::parse` / `MachineCatalogue::parse` first.
 - `CatalogueQuery` holds the catalogue and the routing policy (pins, chain order, classify rules)
   together, as `query.ts` does; later modules read policy from the query, not the catalogue.
-- The vectors are the only spec and their inputs exist only in TypeScript, so a new Rust function
-  needs a vector in `packages/ts/agent-router/scripts/fixtures.ts` or it is not covered.
+- The suite is the only spec, so a new Rust function needs a case in
+  `packages/conformance/agent-router/` or it is not covered.
 - `RouterConfigSchema` (the `router:` config block) is not mirrored; it belongs to the config
   subpath, which is out of scope.
 - The author rule is not mirrored (only PR review uses it): no `authorRule`, `author` or

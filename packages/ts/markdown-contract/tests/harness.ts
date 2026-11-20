@@ -8,9 +8,9 @@
  *    so a contract that throws while it is built fails its own test, not the whole file.
  *  - **Tolerant finding match.** Findings are compared on `{ id, level?, line?, hint? }` in
  *    the engine's order. `level`, `line` and `hint` are checked only when the golden sets them.
- *  - **Goldens are the source of truth.** A validation case's expected findings live in the
- *    shared corpus (`../corpus/`), in a `<source-basename>.expected.json` file beside the
- *    case's `.md`. The fixture module keeps only the contract and the wiring.
+ *  - **Goldens are the source of truth.** A validation case's expected findings live beside its
+ *    document: in the conformance suite for a shared fixture, in `tests/fixtures/ts-only/` for a
+ *    TypeScript-only one. The fixture module keeps only the contract and the wiring.
  */
 import { readFileSync } from 'node:fs'
 
@@ -21,6 +21,7 @@ import type { Contract, Doc, Finding } from '../src/index.js'
 import { ContractError } from '../src/index.js'
 import type { CorpusConfig } from '../src/runner/index.js'
 import { runCorpus } from '../src/runner/index.js'
+import { readSuite } from './conformance.ts'
 
 const DEFAULT_PATH = 'fixture.md'
 
@@ -60,24 +61,40 @@ export interface ExpectedFinding {
 }
 
 /**
- * The shared validation corpus: one directory of language-neutral files (contracts as YAML,
- * documents as markdown, expected findings as JSON, and `corpus-manifest.json`) that any
- * implementation of the engine can run. See `corpus/README.md`.
+ * The validation corpus has two homes. A fixture whose YAML contract expresses it fully is
+ * shared: its documents and expected findings are cases of the `validate` section of
+ * `packages/conformance/markdown-contract/suite.json`, named by the document's file name. A
+ * fixture that needs code (custom `rule` / `docRule`s) is TypeScript-only: its files sit in
+ * `tests/fixtures/ts-only/`. See `tests/FIXTURES.md`.
  */
-export const CORPUS_URL = new URL('../corpus/', import.meta.url)
+export const TS_ONLY_URL = new URL('./fixtures/ts-only/', import.meta.url)
 
-/** Loads a validation case's markdown from the corpus, unchanged. */
+/** The suite's shared cases, by document file name. */
+export const sharedCases = new Map(
+  (readSuite().sections['validate']?.cases ?? []).map((c) => [c.name, c]),
+)
+
+/** A document's file name, from the `./name.md` a fixture module gives. */
+const baseName = (rel: string): string => rel.slice(rel.lastIndexOf('/') + 1)
+
+/** Loads a validation case's markdown, unchanged: from the suite, else from `tests/fixtures/ts-only/`. */
 export function loadCorpusSource(rel: string): string {
-  return readFileSync(new URL(rel, CORPUS_URL), 'utf8')
+  const name = baseName(rel)
+  const shared = sharedCases.get(name)
+  if (shared !== undefined) return shared.input['source'] as string
+  return readFileSync(new URL(name, TS_ONLY_URL), 'utf8')
 }
 
 /**
- * Loads a validation case's expected findings from the `<source-basename>.expected.json` file
- * beside the case's `.md` in the corpus. The file is a JSON array of `{ id, level?, line?, hint? }`
- * in engine order. `[]` means the document passes.
+ * Loads a validation case's expected findings: the suite case for the `.md` of the same name,
+ * else the `<source-basename>.expected.json` file beside it in `tests/fixtures/ts-only/`. A list
+ * of `{ id, level?, line?, hint? }` in engine order. `[]` means the document passes.
  */
 export function loadExpected(rel: string): ExpectedFinding[] {
-  return JSON.parse(readFileSync(new URL(rel, CORPUS_URL), 'utf8')) as ExpectedFinding[]
+  const name = baseName(rel)
+  const shared = sharedCases.get(name.replace(/\.expected\.json$/, '.md'))
+  if (shared !== undefined) return shared.expect.findings
+  return JSON.parse(readFileSync(new URL(name, TS_ONLY_URL), 'utf8')) as ExpectedFinding[]
 }
 
 export interface ValidationCase {
