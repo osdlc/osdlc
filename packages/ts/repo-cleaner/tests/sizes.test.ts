@@ -144,6 +144,7 @@ describe('sweep with sizes', () => {
     expect(swept.reclaimableBytes).toEqual({
       delete: byVerdict('delete'),
       review: byVerdict('review'),
+      unsized: 0,
     })
     expect(swept.reclaimableBytes!.delete).toBeGreaterThanOrEqual(5010 * KIB)
     expect(swept.repos[0]!.reclaimableBytes).toEqual(swept.reclaimableBytes)
@@ -199,7 +200,12 @@ describe('sweep with sizes', () => {
     const now = worktrees(timed.repos[0]!.rows).map((r) => [r.id, r.verdict])
     expect(now).toEqual(was)
     expect(worktrees(timed.repos[0]!.rows).every((r) => r.evidence.sizeBytes === null)).toBe(true)
-    expect(timed.reclaimableBytes).toEqual({ delete: 0, review: 0 })
+    const counted = worktrees(timed.repos[0]!.rows).filter(
+      (r) => r.verdict === 'delete' || r.verdict === 'review',
+    ).length
+    expect(counted).toBeGreaterThan(0)
+    expect(timed.reclaimableBytes).toEqual({ delete: 0, review: 0, unsized: counted })
+    expect(renderTotals(timed)).toContain(`(${counted} not measured)`)
     expect(renderRepo(timed.repos[0]!)).toContain('?')
   })
 

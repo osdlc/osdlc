@@ -96,7 +96,7 @@ export interface SweepOptions extends Runners {
    * default: it reads every file under every worktree. Not part of a plan.
    */
   sizes?: boolean | undefined
-  /** How long one worktree's size may take, in ms. Default 60 s. */
+  /** How long one worktree's size may take, in ms. Defaults to {@link sizeOf}'s cap. */
   sizeTimeoutMs?: number | undefined
   /** A host's re-ranking of each repository's rows. */
   annotate?: Annotate | undefined
@@ -341,9 +341,9 @@ function providerNote(
 }
 
 /**
- * Each worktree whose directory is there, even one left without its `.git` or
- * kept for another reason, gets its size in its evidence; null when `du` could
- * not say. A gone worktree has none.
+ * Each worktree whose directory exists (by `isDir`, so one that lost its `.git`
+ * too) gets its size in its evidence; null when `du` could not say. A gone
+ * worktree has none.
  */
 function readSizes(
   rows: readonly WorktreeRow[],
@@ -362,10 +362,11 @@ function readSizes(
 
 /** The repositories' `reclaimableBytes` added up; an unreadable one counts for nothing. */
 function sumReclaimable(repos: readonly RepoSweep[]): Reclaimable {
-  const total: Reclaimable = { delete: 0, review: 0 }
+  const total: Reclaimable = { delete: 0, review: 0, unsized: 0 }
   for (const repo of repos) {
     total.delete += repo.reclaimableBytes?.delete ?? 0
     total.review += repo.reclaimableBytes?.review ?? 0
+    total.unsized += repo.reclaimableBytes?.unsized ?? 0
   }
   return total
 }

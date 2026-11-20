@@ -6,7 +6,7 @@ import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 
 /** What {@link sizeOf} takes. */
 export interface SizeOfOptions {
-  /** Cap on the walk, in ms. Default 60 s. */
+  /** Cap on the walk, in ms. Default {@link DEFAULT_TIMEOUT_MS}. */
   timeoutMs?: number | undefined
   /** Runs `du`. Default spawns the real one. */
   du?: CommandRunner | undefined

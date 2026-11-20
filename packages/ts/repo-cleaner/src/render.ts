@@ -112,7 +112,6 @@ function sizeRank(row: Row): number {
   return sizeRead(row) ?? -1
 }
 
-/** By kind, then verdict, then largest first (rows with a size read), then name. */
 function sortRows(rows: readonly Row[]): Row[] {
   const kindRank = (r: Row): number => KIND_ORDER.indexOf(r.kind)
   const verdictRank = (r: Row): number => VERDICT_ORDER.indexOf(r.verdict)
@@ -125,7 +124,6 @@ function sortRows(rows: readonly Row[]): Row[] {
   )
 }
 
-/** A row's size column: its size, `?` when `du` could not say, blank for a row with none. */
 function sizeCell(row: Row): string {
   const size = sizeRead(row)
   return size === undefined ? '' : size === null ? '?' : formatBytes(size)
@@ -237,7 +235,8 @@ export function renderTotals(sweep: Sweep, style: Style = PLAIN): string {
   const line = `${style.delete(`${t.delete} to delete`)}, ${prune}${style.review(`${t.review} to review`)}${blocked}, across ${repos}${suffix}.`
   const freed = sweep.reclaimableBytes
   if (freed === null) return line
-  return `${line} Reclaimable: ${style.delete(formatBytes(freed.delete))} to delete, ${style.review(formatBytes(freed.review))} to review.`
+  const unsized = freed.unsized > 0 ? ` (${freed.unsized} not measured)` : ''
+  return `${line} Reclaimable: ${style.delete(formatBytes(freed.delete))} to delete, ${style.review(formatBytes(freed.review))} to review${unsized}.`
 }
 
 const KIND_LABEL: Record<Kind, string> = {

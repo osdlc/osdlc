@@ -363,19 +363,22 @@ export function totalOf(counts: Counts): Bucket {
   return out
 }
 
-/** Bytes that rows of each verdict take on disk, summed over the rows whose size was read. */
+/** Bytes the `delete` rows and the `review` rows take on disk; see {@link reclaimableOf}. */
 export interface Reclaimable {
   delete: number
   review: number
+  /** How many `delete` or `review` worktrees have no size read, so the totals are lower bounds. */
+  unsized: number
 }
 
 /** The bytes `rows` would free, per verdict. Rows with no size read count for nothing. */
 export function reclaimableOf(rows: readonly Row[]): Reclaimable {
-  const out: Reclaimable = { delete: 0, review: 0 }
+  const out: Reclaimable = { delete: 0, review: 0, unsized: 0 }
   for (const row of rows) {
-    if (row.kind !== 'worktree' || typeof row.evidence.sizeBytes !== 'number') continue
-    if (row.verdict === 'delete' || row.verdict === 'review')
-      out[row.verdict] += row.evidence.sizeBytes
+    if (row.kind !== 'worktree') continue
+    if (row.verdict !== 'delete' && row.verdict !== 'review') continue
+    if (typeof row.evidence.sizeBytes === 'number') out[row.verdict] += row.evidence.sizeBytes
+    else if (row.evidence.sizeBytes === null) out.unsized += 1
   }
   return out
 }
