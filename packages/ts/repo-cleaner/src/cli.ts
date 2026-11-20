@@ -150,10 +150,6 @@ const SWEEP_FLAGS = {
     valueName: 'name',
     help: 'with remote rows: where pull requests come from',
   },
-  sizes: {
-    kind: 'boolean',
-    help: "read each worktree's size on disk: rank rows largest first and total what can be freed; slower",
-  },
   progress: { kind: 'boolean', negatable: true, help: 'no progress line on stderr' },
 } as const
 
@@ -213,6 +209,10 @@ const statusCli = () =>
     positionals: TARGETS,
     flags: {
       ...SWEEP_FLAGS,
+      sizes: {
+        kind: 'boolean',
+        help: "read each worktree's size on disk: rank rows largest first and total what can be freed; slower",
+      },
       allRows: { kind: 'boolean', help: 'also show keep rows (with --format text)' },
       format: {
         kind: 'enum',
@@ -418,17 +418,29 @@ type Parsed<T> =
 /** The values a command's declared flags parse to. */
 type ValuesOf<C> = C extends Cli<infer F> ? FlagValues<F> : never
 
-/** Parse, and answer `--help` (and `--help --extended`) itself. */
+/** Flags only `status` takes, each with what `plan` and `clean` say when given it. */
+const STATUS_ONLY: Readonly<Record<string, string>> = {
+  '--sizes': `--sizes is a status flag: run \`${NAME} status --sizes\``,
+}
+
+/**
+ * Parse, and answer `--help` (and `--help --extended`) itself. An unknown
+ * option named in `elsewhere` is refused with its message there instead of
+ * the parser's.
+ */
 function parseWith<F extends FlagSpec & typeof HELP_FLAGS>(
   cli: Cli<F>,
   name: string,
   argv: readonly string[],
   ctx: CliContext,
+  elsewhere: Readonly<Record<string, string>> = {},
 ): Parsed<FlagValues<F>> {
   const parsed = cli.parse(argv, ctx.io)
   if (parsed.status === 'help') return { status: 'done', code: EXIT.ok }
   if (parsed.status === 'error') {
-    return { status: 'done', code: usageError(ctx, name, parsed.message) }
+    const flag = /^unknown option '(--[^'=]+)/.exec(parsed.message)?.[1]
+    const message = (flag === undefined ? undefined : elsewhere[flag]) ?? parsed.message
+    return { status: 'done', code: usageError(ctx, name, message) }
   }
   const v = parsed.values as FlagValues<F> & ValuesOf<Cli<typeof HELP_FLAGS>>
   if (v.help) {
@@ -471,15 +483,22 @@ function scopeOf(v: SweepValues): { only?: Kind[]; remotes: string[] } {
   return { only: remotes.length > 0 ? [...local, 'remote'] : local, remotes }
 }
 
-/** The sweep options as typed, for {@link sweptWith} and {@link sweepTargets}. */
-function sweepOptions(v: SweepValues, ctx: CliContext, deps: MainDeps): SweepOptions {
+/**
+ * The sweep options as typed, for {@link sweptWith} and {@link sweepTargets}.
+ * Only `status` takes `--sizes`.
+ */
+function sweepOptions(
+  v: SweepValues & { sizes?: boolean },
+  ctx: CliContext,
+  deps: MainDeps,
+): SweepOptions {
   return {
     ...deps.runners,
     cwd: ctx.cwd,
     ...scopeOf(v),
     fetch: v.fetch,
     offline: v.offline,
-    sizes: v.sizes,
+    sizes: v.sizes === true,
     ...(v.branch === undefined ? {} : { branch: v.branch }),
     ...(v.against === undefined ? {} : { against: v.against }),
     ...(v.provider === undefined ? {} : { provider: v.provider }),
@@ -511,7 +530,7 @@ type Swept =
 /** Sweep, or answer with the exit code. */
 function doSweep(
   name: string,
-  v: SweepValues,
+  v: SweepValues & { sizes?: boolean },
   targets: readonly string[],
   ctx: CliContext,
   deps: MainDeps,
@@ -600,7 +619,7 @@ function runPlan(
   status: StatusLine,
 ): number {
   const name = `${NAME} plan`
-  const parsed = parseWith(planCli(), name, argv, ctx)
+  const parsed = parseWith(planCli(), name, argv, ctx, STATUS_ONLY)
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
   const swept = doSweep(name, v, parsed.positionals, ctx, deps, status)
@@ -780,7 +799,7 @@ function runClean(
   status: StatusLine,
 ): number {
   const name = `${NAME} clean`
-  const parsed = parseWith(cleanCli(), name, argv, ctx)
+  const parsed = parseWith(cleanCli(), name, argv, ctx, STATUS_ONLY)
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
   const targets = parsed.positionals

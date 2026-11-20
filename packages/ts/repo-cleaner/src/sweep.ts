@@ -56,7 +56,10 @@ export interface Runners {
    * `lsof`.
    */
   probe?: ProcessProbe | undefined
-  /** Runs `du` for `sizes`. Default spawns the real one. */
+  /**
+   * Runs `du`: for `sizes`, and for each worktree `run` removes. Default
+   * spawns the real one.
+   */
   du?: CommandRunner | undefined
 }
 

@@ -155,9 +155,9 @@ every file under every worktree. A worktree whose `du` fails or runs past 60 s
 shows `?` (`sizeBytes: null`) and keeps its verdict; the totals line counts
 those `delete` and `review` ones as "not measured", so its bytes read as lower
 bounds, and a `du` that hit an unreadable file still gives its total, also a
-lower bound. Branch and remote rows have no size. `plan` and `clean` take
-`--sizes` too, but a plan ignores sizes: its fingerprints are the same with or
-without.
+lower bound. Branch and remote rows have no size. Only `status` takes
+`--sizes`; `plan` and `clean` refuse it, and `clean` measures each worktree
+it removes without being asked.
 
 ### Cleaning
 
@@ -194,7 +194,9 @@ Delete 2 items? [y/N]
 ```
 
 `clean` throws away anything typed while the sweep ran, so a key pressed
-early cannot answer the question, and says so when it did.
+early cannot answer the question, and says so when it did. Once it has run,
+it reports the disk space the removed worktrees freed (`freed: 4.2 GB (2
+worktrees)`), each measured with `du` just before it was removed.
 
 With no terminal to ask on (a script, an agent), it refuses unless `-y` is
 given. It throws away anything typed while it looked, so a key pressed early
@@ -404,7 +406,7 @@ repo-cleaner dev                                                   run a develop
 | | `--receipt <file>` | Where the receipt goes. Default: beside a `--plan` file, else none. |
 | output | `--format <text\|json\|summary\|commands>` | `status`: default `text`; `commands` is only the safe delete commands, for a script. `clean`: `text` or `json`. |
 | | `--all-rows` | `status` also shows `keep` rows. |
-| | `--sizes` | Read each worktree's size on disk, list rows largest first within each verdict, and total what the `delete` and `review` rows would free. Slower. Not part of a plan. |
+| | `--sizes` | `status` only. Read each worktree's size on disk, list rows largest first within each verdict, and total what the `delete` and `review` rows would free. Slower. |
 | | `--no-progress` | No progress line on stderr. |
 | | `-o, --out <file>` | `plan`: where the plan goes; `-` (the default) is stdout, and the totals go to stderr. |
 
@@ -1164,12 +1166,22 @@ it did:
 
 ```text
 deleted: 1 worktree, 3 local branches, 2 remote branches, 1 stale worktree pruned
+freed: 1.3 GB (1 worktree)
 skipped 2, not deleted: 1 needs-pick (name with --pick), 1 duplicate
 status: complete
 ```
 
 A run with a failure adds a line such as `9 steps ran, 1 failed, 2 skipped`; a
 run stopped by a spared tip says how many rows did not run instead.
+
+`freed` is the disk space of the worktrees the run removed, each read with
+`du -sk` just before its removal and kept on its `remove-worktree` step as
+`freedBytes` in the receipt. A failed removal frees nothing, and a pruned
+worktree's directory was already gone, so neither counts. A size `du` could
+not read (it failed, or ran past 60 s) is `freedBytes: null`, and the line
+says `freed: at least 4.2 GB (2 worktrees, 1 not measured)`. `--format json`
+carries the totals as `summary.freedBytes` and `summary.unmeasured`. A dry run
+measures nothing.
 
 Two clones of one remote list the same remote branches; `clean` deletes each
 once and drops the other clone's row as `duplicate`, or as `spared` when the
@@ -1212,10 +1224,10 @@ const receipt = run(preview)
 
 | Export | What it does |
 | --- | --- |
-| `sweep(targets, opts?)` | Resolve the targets and judge every row. Options as on the command line: `only`, `remotes` (a name, `''` for the default remote, `*` for every remote), `fetch`, `offline`, `against`, `provider`, `branch`, plus `cwd`, `cacheDir`, `annotate`, `onProgress`, `onWarn`, and the injectable `git`, `gh`, `glab` runners and `probe` |
+| `sweep(targets, opts?)` | Resolve the targets and judge every row. Options as on the command line: `only`, `remotes` (a name, `''` for the default remote, `*` for every remote), `fetch`, `offline`, `against`, `provider`, `branch`, `sizes`, plus `sizeTimeoutMs`, `cwd`, `cacheDir`, `annotate`, `onProgress`, `onWarn`, and the injectable `git`, `gh`, `glab`, `du` runners and `probe` |
 | `plan(sweep)` | Every row, fingerprinted, with the sweep's options |
 | `check(plan, approval, opts?)` | Resolve `{ select, pick, spare, allow }` against the plan, sweep again, and return a `Preview`: the steps, the rows dropped and why, the allows no row needed, and `notes`, what the re-check judged without. Deletes nothing |
-| `run(preview, opts?)` | Sweep once more and take the preview's steps, writing a `Receipt` (to `receiptPath` after every step, when given). `onNotes` hears what its own re-check judged without |
+| `run(preview, opts?)` | Sweep once more and take the preview's steps, writing a `Receipt` (to `receiptPath` after every step, when given). `onNotes` hears what its own re-check judged without. Each worktree it removes is measured with `du` first, into the step's `freedBytes` |
 | `inspectWorktree(path, opts?)` | One worktree judged as a sweep judges it, submodules included |
 | `readPlan`, `writePlan` | Plans on disk |
 | `render` | The command line's formats: `text`, `json`, `summary`, `commands`, `preview`, `receipt` |

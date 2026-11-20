@@ -379,6 +379,14 @@ export interface RunSummary {
   skipped: number
   /** Row steps never reached because a spared tip check failed and stopped the run. */
   notRun: number
+  /**
+   * Bytes the removed worktrees took on disk, each measured just before its
+   * removal: the `freedBytes` of every `remove-worktree` step that ran `ok`.
+   * 0 in a preview, which measures nothing.
+   */
+  freedBytes: number
+  /** Removed worktrees whose size could not be read, so `freedBytes` leaves them out. */
+  unmeasured: number
 }
 
 /** Count what `steps` did and `dropped` left out. A preview's `would-run` steps count as done. */
@@ -395,12 +403,18 @@ export function summarizeRun(r: {
     failed: 0,
     skipped: 0,
     notRun: 0,
+    freedBytes: 0,
+    unmeasured: 0,
   }
   for (const d of r.dropped) out.dropped[d.reason] = (out.dropped[d.reason] ?? 0) + 1
   for (const s of r.steps) {
     if (s.result === 'failed') out.failed += 1
     if (s.result === 'skipped') out.skipped += 1
     if (s.result === 'ok') out.succeeded += 1
+    if (s.result === 'ok' && s.action === 'remove-worktree') {
+      if (typeof s.freedBytes === 'number') out.freedBytes += s.freedBytes
+      else out.unmeasured += 1
+    }
     if (s.result === 'pending') {
       // Rows not reached are rows a run would have deleted; an unlock or a
       // tip check deletes nothing.
@@ -429,6 +443,19 @@ export function summarizeRun(r: {
 /** Rows a run deletes or prunes, which is what a person is asked to approve. */
 export function rowsActedOn(summary: RunSummary): number {
   return KINDS.reduce((n, k) => n + summary.deleted[k], 0) + summary.pruned
+}
+
+/**
+ * What a run's removed worktrees freed, as `freed: 4.2 GB (2 worktrees)`, or
+ * null when it removed none.
+ */
+export function renderFreed(s: RunSummary): string | null {
+  const removed = s.deleted.worktree
+  if (removed === 0) return null
+  const worktrees = plural(removed, 'worktree', 'worktrees')
+  if (s.unmeasured === 0) return `freed: ${formatBytes(s.freedBytes)} (${worktrees})`
+  if (s.unmeasured === removed) return `freed: not measured (${worktrees})`
+  return `freed: at least ${formatBytes(s.freedBytes)} (${worktrees}, ${s.unmeasured} not measured)`
 }
 
 /**
@@ -594,7 +621,8 @@ export function renderReceipt(
   const [counts = '', ...rest] = renderRunSummary(receipt, {
     preview: receipt.status === 'dry-run',
   })
-  lines.push(style.strong(counts), ...rest.map(style.review))
+  const freed = receipt.status === 'dry-run' ? null : renderFreed(summarizeRun(receipt))
+  lines.push(style.strong(counts), ...(freed === null ? [] : [freed]), ...rest.map(style.review))
   lines.push(
     style.muted(
       receiptPath === null

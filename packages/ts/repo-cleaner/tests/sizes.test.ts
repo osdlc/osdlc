@@ -1,10 +1,19 @@
 /**
  * `--sizes`: `du` through the command seam, the worktree rows' sizes, their
- * ranking, the reclaimable totals, and what a plan ignores.
+ * ranking, the reclaimable totals, and what a plan ignores. `status` alone
+ * takes the flag. `clean` measures each worktree it removes, without one.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -15,7 +24,16 @@ import { commitFile, git, newRepo } from './helpers.ts'
 import { main } from '../src/cli.ts'
 import { plan } from '../src/plan.ts'
 import { listMirrors } from '../src/remote-mirror.ts'
-import { renderJson, renderRepo, renderSummary, renderText, renderTotals } from '../src/render.ts'
+import type { Receipt } from '../src/receipt.ts'
+import {
+  renderFreed,
+  renderJson,
+  renderRepo,
+  renderSummary,
+  renderText,
+  renderTotals,
+  summarizeRun,
+} from '../src/render.ts'
 import { formatBytes, sizeOf } from '../src/size.ts'
 import { sweep } from '../src/sweep.ts'
 import type { Row, WorktreeRow } from '../src/types.ts'
@@ -248,5 +266,148 @@ describe('--sizes on the command line', () => {
       reclaimableBytes: unknown
     }
     expect(off.reclaimableBytes).toBeNull()
+  })
+})
+
+describe('--sizes belongs to status', () => {
+  test.each(['plan', 'clean'])('%s refuses it, naming status', (phase) => {
+    const ctx = captureContext({ cwd: root })
+    const code = main([phase, '--sizes', '--no-progress'], ctx, { confirm: () => null })
+    expect(code).toBe(2)
+    expect(ctx.io.err).toContain('--sizes is a status flag: run `repo-cleaner status --sizes`')
+    expect(ctx.io.out).toBe('')
+  })
+})
+
+describe('clean reports the space it freed', () => {
+  /** A repository with merged worktrees at `wt/<name>`, each a `delete` row. */
+  function merged(...names: string[]): { repo: string; paths: string[] } {
+    const repo = newRepo('repo-cleaner-freed')
+    const paths = names.map((name) => {
+      const path = join(repo, 'wt', name)
+      git(['worktree', 'add', '-b', name, path, 'main'], repo)
+      commitFile(path, `${name}.txt`, `${name}\n`, `feat: ${name}`)
+      git(['merge', '--no-ff', '-m', `Merge ${name}`, name], repo)
+      return path
+    })
+    return { repo, paths }
+  }
+
+  function clean(repo: string, du: CommandRunner, ...argv: string[]) {
+    const ctx = captureContext({ cwd: repo })
+    const code = main(['clean', '--no-progress', ...argv], ctx, {
+      confirm: () => null,
+      runners: { du },
+    })
+    return { code, out: ctx.io.out, err: ctx.io.err }
+  }
+
+  test('measures each removed worktree just before removing it, into its step and the summary', () => {
+    const { repo, paths } = merged('wt-one', 'wt-two')
+    try {
+      const { runner, calls } = fakeDu({ [paths[0]!]: 3000, [paths[1]!]: 1000 })
+      const receiptPath = join(repo, 'receipt.json')
+      const r = clean(repo, runner, '-y', '--receipt', receiptPath)
+      expect(r.code).toBe(0)
+      expect(paths.every((p) => !existsSync(p))).toBe(true)
+      expect(calls.map((c) => c.at(-1)).sort()).toEqual([...paths].sort())
+      const receipt = JSON.parse(readFileSync(receiptPath, 'utf-8')) as Receipt
+      const removes = receipt.steps.filter((s) => s.action === 'remove-worktree')
+      expect(removes.map((s) => [s.row, s.freedBytes]).sort()).toEqual(
+        [
+          [`worktree:${paths[0]}`, 3000 * KIB],
+          [`worktree:${paths[1]}`, 1000 * KIB],
+        ].sort(),
+      )
+      // Only a removed worktree is measured: a branch delete frees nothing on disk.
+      expect(receipt.steps.filter((s) => s.action !== 'remove-worktree')).not.toHaveLength(0)
+      expect(
+        receipt.steps.filter((s) => s.action !== 'remove-worktree').map((s) => s.freedBytes),
+      ).toEqual(receipt.steps.filter((s) => s.action !== 'remove-worktree').map(() => undefined))
+      expect(r.out).toContain(`freed: ${formatBytes(4000 * KIB)} (2 worktrees)`)
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
+  })
+
+  test('JSON carries freedBytes and unmeasured; a size that timed out is null and counted apart', () => {
+    const { repo, paths } = merged('wt-one', 'wt-two')
+    try {
+      const { runner } = fakeDu({ [paths[0]!]: 2000, [paths[1]!]: 'timeout' })
+      const r = clean(repo, runner, '-y', '--format', 'json')
+      expect(r.code).toBe(0)
+      const json = JSON.parse(r.out) as {
+        summary: { freedBytes: number; unmeasured: number }
+        receipt: Receipt
+      }
+      expect(json.summary).toMatchObject({ freedBytes: 2000 * KIB, unmeasured: 1 })
+      const sizes = json.receipt.steps
+        .filter((s) => s.action === 'remove-worktree')
+        .map((s) => s.freedBytes)
+      expect(sizes.sort()).toEqual([2000 * KIB, null].sort())
+      expect(renderFreed(summarizeRun(json.receipt))).toBe(
+        `freed: at least ${formatBytes(2000 * KIB)} (2 worktrees, 1 not measured)`,
+      )
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
+  })
+
+  test('a dry run measures nothing and reports nothing freed', () => {
+    const { repo, paths } = merged('wt-one')
+    try {
+      const { runner, calls } = fakeDu({ [paths[0]!]: 3000 })
+      const text = clean(repo, runner, '--dry-run')
+      expect(text.code).toBe(0)
+      expect(existsSync(paths[0]!)).toBe(true)
+      expect(text.out).toContain('would delete: 1 worktree')
+      expect(text.out).not.toMatch(/^freed:/m)
+      const json = JSON.parse(clean(repo, runner, '--dry-run', '--format', 'json').out) as {
+        summary: { freedBytes: number; unmeasured: number }
+        steps: { freedBytes?: unknown }[]
+      }
+      expect(json.summary).toMatchObject({ freedBytes: 0, unmeasured: 0 })
+      expect(json.steps.every((s) => s.freedBytes === undefined)).toBe(true)
+      expect(calls).toEqual([])
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
+  })
+
+  test('a failed removal frees nothing; a run that removes no worktree says nothing of space', () => {
+    const base = {
+      repo: '/r',
+      command: 'git worktree remove /wt',
+      expectedSha: null,
+      verification: null,
+    } as const
+    const r = {
+      steps: [
+        {
+          ...base,
+          row: 'worktree:/a',
+          action: 'remove-worktree',
+          result: 'ok',
+          error: null,
+          freedBytes: 5 * KIB,
+        },
+        {
+          ...base,
+          row: 'worktree:/b',
+          action: 'remove-worktree',
+          result: 'failed',
+          error: 'boom',
+          freedBytes: 7 * KIB,
+        },
+      ],
+      dropped: [],
+    } as unknown as Receipt
+    expect(summarizeRun(r)).toMatchObject({ freedBytes: 5 * KIB, unmeasured: 0 })
+    expect(renderFreed(summarizeRun(r))).toBe('freed: 5.0 KB (1 worktree)')
+    expect(renderFreed(summarizeRun({ steps: [r.steps[1]!], dropped: [] }))).toBeNull()
+    const unmeasured = { ...r.steps[0]!, freedBytes: null }
+    expect(renderFreed(summarizeRun({ steps: [unmeasured], dropped: [] }))).toBe(
+      'freed: not measured (1 worktree)',
+    )
   })
 })
