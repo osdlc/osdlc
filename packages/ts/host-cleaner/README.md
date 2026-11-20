@@ -132,6 +132,21 @@ all three directories):
 `plugins.<name>` holds that plugin's settings; a name that no plugin has is an
 error.
 
+### `--auto` and `schedule`
+
+`host-cleaner --auto` cleans with no person present: it takes the candidates
+whose owner marked them `unattended: true` and that nothing refuses or
+protests, and grants no `--allow`. That is a clean worktree (`git`) and an
+artifact idle past its threshold with nothing building in its checkout
+(`cargo`, `node`). Branches, sessions and anything with a protest are left for
+a person. A lock in the state directory stops a second run; the run writes a
+report to `reports/`, a receipt to `receipts/` and a log line.
+
+`host-cleaner schedule install [--every <hours>]` (default 6) writes a launchd
+user agent that runs `host-cleaner --auto`, with the `HOST_CLEANER_*`
+overrides it was installed with; `schedule status` and `schedule uninstall`
+show and remove it. macOS only.
+
 Exit codes: 0 done, declined or nothing to delete; 1 failed against the state
 found; 2 cannot run as typed; 10 nothing to sweep; 11 `clean` stopped at a
 failed step.
