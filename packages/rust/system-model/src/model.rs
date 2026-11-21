@@ -1,4 +1,4 @@
-//! The manifest-graph data model. Plain structs on purpose: any provider
+//! The system-model data model. Plain structs on purpose: any provider
 //! producing the same shapes can stand in for the walker.
 
 use serde::{Deserialize, Serialize};
@@ -261,7 +261,6 @@ pub struct ManifestInfo {
 impl ManifestInfo {
     /// A blank entry for `path`, used as the base every parser fills in and as
     /// the shape an unreadable manifest degrades to.
-    #[allow(dead_code)] // used by the walk, which follows in the next change
     pub(crate) fn blank(path: String, dir: String, ecosystem: Ecosystem) -> Self {
         Self {
             path,

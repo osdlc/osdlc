@@ -4,6 +4,7 @@ import type { Kind } from '@osdlc/repo-cleaner'
 
 import { ConfigError } from './config.ts'
 import { cargoPlugin } from './cargo.ts'
+import { claudeCodePlugin } from './claude.ts'
 import { gitPlugin } from './git.ts'
 import { nodePlugin } from './node.ts'
 import type { Plugin } from './types.ts'
@@ -24,6 +25,7 @@ export const FACTORIES: Readonly<Record<string, PluginFactory>> = {
   git: ({ only }) => gitPlugin({ sweep: { only: [...only] } }),
   cargo: ({ settings }) => cargoPlugin(artifactSettings('cargo', settings)),
   node: ({ settings }) => nodePlugin(artifactSettings('node', settings)),
+  'claude-code': () => claudeCodePlugin(),
 }
 
 /** `idleHours` from a plugin's settings; a wrong type is a config error, not a silent default. */
