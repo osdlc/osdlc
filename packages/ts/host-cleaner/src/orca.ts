@@ -147,7 +147,7 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
   }
 
   /** Asks Orca to forget `r`. `worktree rm` deletes the directory too, so it is never asked of one that exists. */
-  const forget = (r: OrcaRecord, ctx: Ctx): void => {
+  const forget = (r: Pick<OrcaRecord, 'id' | 'path'>, ctx: Ctx): void => {
     if (existsSync(r.path)) throw new Error(`${r.path} still exists; Orca would delete it`)
     call(['worktree', 'rm', '--worktree', `id:${r.id}`, '--force'], ctx)
   }
@@ -252,11 +252,9 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
       if (r.terminals > 0) call(['terminal', 'close', '--worktree', `id:${r.id}`, '--all'], ctx)
     },
     delete(c, ctx) {
-      const orcaId = (c.evidence as { orcaId?: unknown }).orcaId
-      const r = records(ctx).find((x) => x.id === orcaId)
-      if (r === undefined) return `Orca no longer lists ${c.path}`
-      forget(r, ctx)
-      return `orca worktree rm forgot ${r.id}`
+      const orcaId = (c.evidence as { orcaId: string }).orcaId
+      forget({ id: orcaId, path: c.path }, ctx)
+      return `orca worktree rm forgot ${orcaId}`
     },
     deleted(c, ctx) {
       if (!isGitWorktree(c)) return
