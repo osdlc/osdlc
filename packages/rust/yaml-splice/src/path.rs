@@ -18,7 +18,7 @@ use crate::edit::{
 };
 use crate::parse::{self, Ev, EvKind, KeySpan, MapEntry, Parsed};
 use crate::render;
-use crate::splice::{value_assignment, value_edit};
+use crate::splice::{line_start, value_assignment, value_edit};
 use crate::value::{Mapping, Value};
 
 /// What a path edit does at its last segment.
@@ -39,13 +39,6 @@ struct Cx<'a> {
     opts: &'a EditOptions,
     eol: &'static str,
     bom_len: usize,
-}
-
-/// What encloses the mapping being walked, for the one edit that must reach
-/// out of it: removing its only key.
-enum Parent<'a> {
-    /// The value of a mapping entry: `{}` goes after its `:`.
-    Entry(&'a KeySpan),
 }
 
 /// Applies one path edit to `current`. Returns the new text and whether it
@@ -184,7 +177,7 @@ fn walk_map(
     cx: &Cx<'_>,
     map_idx: usize,
     hard_stop: usize,
-    parent: Option<Parent<'_>>,
+    parent: Option<&KeySpan>,
     m: &Mapping,
     depth: usize,
 ) -> Result<Edits, EditError> {
@@ -209,7 +202,7 @@ fn walk_map(
     }
     let last = depth + 1 == cx.path.len();
     let Some(&i) = hits.first() else {
-        return absent(cx, &entries, key, m, depth, last);
+        return absent(cx, &entries, key, depth, last);
     };
     if last {
         return leaf(cx, &entries, i, parent, m);
@@ -225,14 +218,19 @@ fn absent(
     cx: &Cx<'_>,
     entries: &[MapEntry],
     key: &str,
-    m: &Mapping,
     depth: usize,
     last: bool,
 ) -> Result<Edits, EditError> {
+    if !matches!(cx.op, Op::Set(_)) && entries.iter().any(|e| e.span.key == "<<") {
+        return Err(unsupported(
+            cx,
+            "the mapping merges keys (`<<`) that may hold it",
+        ));
+    }
     match cx.op {
         Op::Set(value) => {
             let nested = nest(cx, depth + 1, value)?;
-            append(cx, entries, key, &nested, m)
+            append(cx, entries, key, &nested)
         }
         Op::Remove if last => Ok(Vec::new()),
         Op::Rename(_) if last => Err(EditError::MissingKey {
@@ -259,20 +257,12 @@ fn descend(
     match child {
         // Nothing to lose: an empty value is replaced by the collection the
         // next segment needs.
-        Value::Null => vivify(cx, entry, depth),
-        c if c.is_empty_collection() => vivify(cx, entry, depth),
+        c if matches!(c, Value::Null) || c.is_empty_collection() => vivify(cx, entry, depth),
         Value::Map(child_map) => {
             if starts_with(cx.src, entry.span.value_range.start, b'{') {
                 return Err(unsupported(cx, "flow mappings are not edited yet"));
             }
-            walk_map(
-                cx,
-                entry.value_idx,
-                child_stop,
-                Some(Parent::Entry(span)),
-                child_map,
-                next,
-            )
+            walk_map(cx, entry.value_idx, child_stop, Some(span), child_map, next)
         }
         Value::Seq(_) => match cx.path[next] {
             PathSegment::Key(_) => Err(mismatch(cx, next, "a sequence")),
@@ -306,7 +296,7 @@ fn leaf(
     cx: &Cx<'_>,
     entries: &[MapEntry],
     i: usize,
-    parent: Option<Parent<'_>>,
+    parent: Option<&KeySpan>,
     m: &Mapping,
 ) -> Result<Edits, EditError> {
     let span = &entries[i].span;
@@ -351,10 +341,6 @@ fn column(src: &str, pos: usize) -> String {
     " ".repeat(pos - line_start(src, pos))
 }
 
-fn line_start(src: &str, pos: usize) -> usize {
-    src[..pos].rfind('\n').map_or(0, |i| i + 1)
-}
-
 /// The offset just past the line break that ends the line holding `pos`, or
 /// the end of the source.
 fn line_end_after(src: &str, pos: usize) -> usize {
@@ -387,13 +373,7 @@ fn replace_value(
 /// lines and less indented comments after the block stay after the new key. A
 /// keep-chomped (`|+`) last value owns its trailing blank lines, so the key
 /// goes after them.
-fn append(
-    cx: &Cx<'_>,
-    entries: &[MapEntry],
-    key: &str,
-    value: &Value,
-    _m: &Mapping,
-) -> Result<Edits, EditError> {
+fn append(cx: &Cx<'_>, entries: &[MapEntry], key: &str, value: &Value) -> Result<Edits, EditError> {
     let (Some(first), Some(last)) = (entries.first(), entries.last()) else {
         return Err(unsupported(cx, "the mapping has no editable key"));
     };
@@ -467,8 +447,14 @@ fn keeps_trailing_blanks(cx: &Cx<'_>, entry: &MapEntry) -> bool {
         let from = line_start(cx.src, end - 1);
         let line = cx.src[from..end].trim_end_matches(['\r', '\n']);
         if !line.trim().is_empty() {
-            let code = line.split(" #").next().unwrap_or(line);
-            return code.trim_end().ends_with('+') || code.contains("+ ");
+            let code = line
+                .char_indices()
+                .find(|&(i, c)| c == '#' && line[..i].ends_with([' ', '\t']))
+                .map_or(line, |(i, _)| &line[..i]);
+            return code
+                .split_whitespace()
+                .next_back()
+                .is_some_and(|header| header.contains('+'));
         }
         end = from;
     }
@@ -481,7 +467,7 @@ fn remove(
     cx: &Cx<'_>,
     entries: &[MapEntry],
     i: usize,
-    parent: Option<Parent<'_>>,
+    parent: Option<&KeySpan>,
     m: &Mapping,
 ) -> Result<Edits, EditError> {
     let span = &entries[i].span;
@@ -489,21 +475,42 @@ fn remove(
     let after = span.value_range.end.max(span.key_range.end);
     let end = line_end_after(cx.src, after);
     let only = entries.len() == 1 && m.len() == 1;
-    let Some(Parent::Entry(owner)) = parent.filter(|_| only) else {
+    let Some(owner) = parent.filter(|_| only) else {
         return Ok(vec![(start..end, String::new())]);
     };
     // A document without a final line break loses the break before the
     // removed line too, or `a: {}` would gain one.
     let start = if end == cx.src.len() && !cx.src.ends_with('\n') {
-        start - cx.eol.len().min(start)
+        let before = &cx.src[..start];
+        start
+            - if before.ends_with("\r\n") {
+                2
+            } else {
+                usize::from(before.ends_with('\n'))
+            }
     } else {
         start
     };
-    let at = owner.assign_end;
+    let at = after_properties(cx.src, owner.assign_end);
     Ok(vec![
         (at..at, " {}".to_string()),
         (start.max(at)..end, String::new()),
     ])
+}
+
+/// The offset after any anchor or tag that follows `pos` on its line: an
+/// empty mapping goes after them.
+fn after_properties(src: &str, mut pos: usize) -> usize {
+    loop {
+        let rest = &src[pos..];
+        let token = rest.trim_start_matches([' ', '\t']);
+        if !token.starts_with(['&', '!']) {
+            return pos;
+        }
+        let skipped = rest.len() - token.len();
+        let len = token.find([' ', '\t', '\r', '\n']).unwrap_or(token.len());
+        pos += skipped + len;
+    }
 }
 
 /// The value the rest of the path builds, from the segment at `from`.
