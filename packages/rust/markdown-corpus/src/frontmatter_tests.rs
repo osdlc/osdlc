@@ -704,3 +704,40 @@ mod native {
         assert_eq!(kept.mtime_ns, None, "never fresh, so a sweep retries it");
     }
 }
+
+#[test]
+fn a_hide_source_applies_a_changed_list_at_the_next_refresh_without_re_parsing() {
+    use markdown_vault_fs::HideRules;
+    use markdown_vault_fs::walk::{Hide, HideSource};
+    use std::sync::{Arc, Mutex};
+
+    let d = vault();
+    let list = Arc::new(Mutex::new(Arc::new(HideRules::default())));
+    let source = {
+        let list = Arc::clone(&list);
+        HideSource::new(move || Arc::clone(&list.lock().unwrap()))
+    };
+    let index = FrontmatterIndex::new().with_walk(WalkOptions {
+        hide: Hide::Source(source),
+        ..FrontmatterIndex::default_walk()
+    });
+    let clock = FixedClock::new(0);
+    assert_eq!(index.refresh_now(&*d, &clock, root()).added, 2);
+
+    *list.lock().unwrap() = Arc::new(HideRules::parse(&["Notes/b"]).0);
+    let stats = index.refresh_now(&*d, &clock, root());
+    assert_eq!((stats.removed, stats.updated, stats.added), (1, 0, 0));
+    assert_eq!(stats.unchanged, 1, "the note still listed is not re-parsed");
+    assert!(index.get("Notes/b.md").is_none());
+
+    *list.lock().unwrap() = Arc::new(HideRules::default());
+    let stats = index.refresh_now(&*d, &clock, root());
+    assert_eq!((stats.added, stats.unchanged), (1, 1));
+    assert!(index.get("Notes/b.md").is_some());
+}
+
+#[test]
+fn the_frontmatter_index_stays_send_sync_and_unwind_safe() {
+    fn ok<T: Send + Sync + std::panic::UnwindSafe + std::panic::RefUnwindSafe>() {}
+    ok::<FrontmatterIndex>();
+}
