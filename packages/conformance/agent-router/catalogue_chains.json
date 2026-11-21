@@ -1,7 +1,7 @@
 {
   "family": "agent-router",
   "reference": "ts",
-  "referenceVersion": "0.4.4",
+  "referenceVersion": "0.4.5",
   "sections": {
     "catalogue_chains": {
       "description": "expandChain: tool order, newest first, pins, trait filters and the skipped list",
