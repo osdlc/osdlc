@@ -170,6 +170,13 @@ describe('cargo plugin', () => {
     expect(cargo(root, { idleHours: 6 }).candidates).toHaveLength(1)
   })
 
+  test('idleHours 0 makes an artifact built just now a candidate', () => {
+    const root = repo()
+    target(root, 0)
+    expect(cargo(root).candidates).toEqual([])
+    expect(cargo(root, { idleHours: 0 }).candidates).toHaveLength(1)
+  })
+
   test('a cargo process in the checkout refuses the candidate, and clean drops it as blocked', () => {
     const root = repo()
     const dir = target(root, 48)

@@ -1,0 +1,24 @@
+/**
+ * `@osdlc/tiered-dirs` says where each piece of state lives on disk for a
+ * vendor's products. A Rust crate gives the same answers.
+ *
+ * Two axes. The tier says who shares the state (the vendor, a suite of
+ * products that share user data, or one general tool shipped outside the
+ * suite). The home says how long it must last (durable, config, cache, state,
+ * logs, runtime). A caller names both:
+ *
+ * ```ts
+ * TieredDirs.fromEnv('com.example', envVars('EXAMPLE')).suite('notes').cache().app('search')
+ * ```
+ *
+ * `TieredDirs.scratch()` is on neither axis. It is the platform temp directory,
+ * for state that does not outlive a single call.
+ *
+ * This module matches the Rust `tiered-dirs` crate. The same input must give
+ * the same relative path in both. `tests/conformance.test.ts` checks that
+ * against the conformance suite both packages run.
+ */
+export { TieredDirsError } from './errors.ts';
+export { isValidSegment } from './segment.ts';
+export { CONVENTIONS, HOMES, envVars, expandTilde, homeDir, isOverridden, overrideVars, parseConvention, rootedBaseDirs, systemBaseDirs, testRoot, xdgBaseDirs, } from './base-dirs.ts';
+export { TIER_KINDS, TieredDirs, isVendorBundleId } from './tiered-dirs.ts';

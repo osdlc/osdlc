@@ -53,7 +53,7 @@ export class ConfigError extends Error {
  * The config at `path`; empty when the file does not exist, unless `required`
  * (a file the person named).
  *
- * @throws ConfigError for a file that is not valid, a plugin entry with a key its settings do not have included
+ * @throws ConfigError for a file that is not valid, or whose plugin entry has an unknown key or a wrong type
  */
 export function readConfig(path: string, opts: { required?: boolean } = {}): Config {
   if (!existsSync(path)) {
