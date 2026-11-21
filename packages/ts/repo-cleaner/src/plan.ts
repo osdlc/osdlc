@@ -21,7 +21,7 @@ import {
 } from './types.ts'
 import { writeJsonAtomic } from './write-json.ts'
 
-export const PLAN_VERSION = 2
+export const PLAN_VERSION = 3
 
 /** A row id, `<kind>:<name>` with a name; shared by the plan and the receipt. */
 export const RowIdSchema = z.custom<RowId>(
@@ -43,8 +43,10 @@ export type PlanRow = z.infer<typeof PlanRowSchema>
 
 export const PlanRepoSchema = z.object({
   root: z.string(),
-  /** Whether this repository's sweep fetched; the re-check fetches too, so it judges against the same default branch. */
-  fetched: z.boolean(),
+  /** The remotes whose branches the sweep judged, by name; the re-check judges the same ones. */
+  remotes: z.array(z.string()),
+  /** The remotes the sweep fetched; the re-check fetches them too, so it judges against the same default branches. */
+  fetched: z.array(z.string()),
   rows: z.array(PlanRowSchema),
 })
 
@@ -56,7 +58,10 @@ export const PlanSchema = z.object({
   /** What was swept; the re-check sweeps the same. `SweptWith` is this object's type. */
   options: z.object({
     only: z.array(z.enum(KINDS)),
-    remote: z.boolean(),
+    /** The remotes asked for: a name, `''` for the default remote, `*` for every remote. */
+    remotes: z.array(z.string()),
+    /** Fetch before judging local rows. */
+    fetch: z.boolean(),
     offline: z.boolean(),
     against: z.string().nullable(),
     provider: z.enum(PROVIDER_CHOICES),
@@ -68,11 +73,12 @@ export const PlanSchema = z.object({
 export type Plan = z.infer<typeof PlanSchema>
 
 /**
- * The evidence a row's verdict rests on. A branch: its sha and its PR's number
- * and state. A worktree: HEAD, branch, how much unlanded work it holds, whether
- * its lock was stale, whether it is on disk, and each submodule's state, so a
- * lock taken or revived after planning, a directory that came back, or a
- * submodule that changed, drops the row.
+ * The evidence a row's verdict rests on. Every row: the default branch it was
+ * judged against. A branch: its sha and its PR's number and state. A worktree:
+ * HEAD, branch, how much unlanded work it holds, whether its lock was stale,
+ * whether it is on disk, each submodule's state, and the remote branches that
+ * hold HEAD, so a lock taken or revived after planning, a directory that came
+ * back, or a submodule that changed, drops the row.
  */
 export function fingerprint(row: Row): Record<string, unknown> {
   if (row.kind === 'worktree') {
@@ -87,10 +93,17 @@ export function fingerprint(row: Row): Record<string, unknown> {
       // must not turn a prune into a remove.
       onDisk: e.onDisk ?? null,
       submodules: e.submodules ?? null,
+      recoverableFrom: e.recoverableFrom ?? null,
+      landedAgainst: e.landedAgainst ?? null,
     }
   }
-  const pr = row.evidence.pr
-  return { sha: row.evidence.sha, prNumber: pr?.number ?? null, prState: pr?.state ?? null }
+  const e = row.evidence
+  return {
+    sha: e.sha,
+    prNumber: e.pr?.number ?? null,
+    prState: e.pr?.state ?? null,
+    landedAgainst: e.landedAgainst ?? null,
+  }
 }
 
 /** Equal fingerprints, treating a missing key as null. */
@@ -131,7 +144,14 @@ export function plan(sweep: Sweep, now: Date = new Date()): Plan {
     repos: sweep.repos.flatMap((s) =>
       s.repo === null
         ? []
-        : [{ root: s.repo.root, fetched: s.repo.fetched, rows: planRows(s.rows) }],
+        : [
+            {
+              root: s.repo.root,
+              remotes: s.repo.remotes.map((r) => r.name),
+              fetched: s.repo.fetchedRemotes,
+              rows: planRows(s.rows),
+            },
+          ],
     ),
   }
 }

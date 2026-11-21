@@ -214,7 +214,7 @@ The target goes into the argv, so a failure's `argv` shows which repository a
 call hit. `pr`, `issue` and `label` calls get `--repo github.acme.com/acme/widgets`.
 `api` calls get `--hostname` and a filled `{owner}/{repo}`. `authStatus`
 asks about that host. `repoList` and `searchPrs` have no host flag in gh, so
-they get `GH_HOST` in the environment. `withRepo` and `at` keep the runner and
+they get `GH_HOST` in the environment. `withRepo`, `withHostname` and `at` keep the runner and
 the rest of the target. `at` on a client with no directory gives one rooted
 at that directory. `withRepo` keeps the client's form.
 
@@ -709,8 +709,8 @@ experimental.
 Methods on both clients:
 
 - Direct calls: `raw` runs any `gh` call and returns the result. `rawChecked` throws on a failed
-  exit. `at` returns the same client rooted at another directory, and `withRepo` the same client
-  aimed at another repository.
+  exit. `at` returns the same client rooted at another directory, `withRepo` the same client
+  aimed at another repository, and `withHostname` the same client aimed at another host.
 - Pull request queries: `prList`, `prView`, `prFind`, `openPrFor`, `prViewSettled`, `prBody`,
   `prReviewThreads`, `prActivity` and `searchPrs`.
 - Pull request changes: `createPr`, `editPr`, `editPrBody`, `prComment`, `prUpdateBranch`,
@@ -731,11 +731,14 @@ Methods on both clients:
 ### Verbs
 
 A verb is plain data: argv, a `checked` flag, a `readOnly` flag, optional stdin and environment,
-and a `parse` function. `readOnly` is true for every query and `prDiff`, and false for every
+and a `parse` function. `runVerb` and both clients run every verb but `raw` and `rawChecked` with
+`NO_COLOR=1` set and `CLICOLOR_FORCE` and `GH_FORCE_TTY` removed, so a colour setting in the caller's
+environment cannot put escape codes into the JSON or diff they parse. A `raw` call keeps the
+caller's environment. `readOnly` is true for every query and `prDiff`, and false for every
 mutation and for `raw` and `rawChecked`, so a caller that keeps an allowlist of safe calls can check
 a verb before running it. Each verb takes an optional `GhTarget` last, except `raw` and
 `rawChecked`, which take only argv. Each client method has a verb of the same name, except `at`,
-`withRepo`, `prViewSettled`, `openPrFor`, `prFind`, `authenticated`, `ready` and `ownerRepo`.
+`withRepo`, `withHostname`, `prViewSettled`, `openPrFor`, `prFind`, `authenticated`, `ready` and `ownerRepo`.
 `openPrsForBranch` is a verb with no method.
 
 - `GhVerb`: the shape of a verb. `GhTarget`: the `repo` and `hostname` a verb talks to.
@@ -754,7 +757,8 @@ a verb before running it. Each verb takes an optional `GhTarget` last, except `r
 - `nodesAt`: one connection's nodes, joined across `graphql` pages. With `{ partial: true }`, across
   partial pages, with their errors.
 - Field lists: `PR_REF_FIELDS` (enough to identify a PR), `PR_LIST_FIELDS` (for triage),
-  `PR_VIEW_FIELDS` (the full set), `REPO_FIELDS` and `SEARCH_PR_FIELDS`.
+  `PR_VIEW_FIELDS` (the full set), `REPO_FIELDS` and `SEARCH_PR_FIELDS`. `PR_LIST_FIELDS` and
+  `PR_VIEW_FIELDS` both include `baseRefOid` and `headRefOid`.
 - Option and result types: `ListResult`, `PrListOptions`, `IssueListOptions`, `RepoListOptions`,
   `SearchPrsOptions`, `CreatePrOptions`, `CreateReviewOptions`, `ReviewComment`,
   `CreateLabelOptions`, `ApiOptions`, `ApiResponse`, `GraphqlOptions`, `GraphqlPartialOptions`,

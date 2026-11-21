@@ -212,6 +212,17 @@ describe('herdr host', () => {
     expect(calls[1]![3]).toContain("claude -- 'Review #1'")
   })
 
+  test('terminal: req.env reaches the pane run command', () => {
+    const { runner, calls } = recorder([ok(WORKSPACE_CREATED), ok()])
+    makeHerdrHost({ runtimeDir: RUNTIME, runner }).terminal!({
+      cwd: CWD,
+      argv: ['zsh'],
+      title: 't',
+      env: { SDLC_SESSION: 's1' },
+    })
+    expect(calls[1]![3]).toContain('env SDLC_SESSION=s1 zsh')
+  })
+
   test('terminal: no server throws the clear error; other failures surface stderr', () => {
     const down = recorder([fail(NOT_RUNNING)]).runner
     expect(() =>
