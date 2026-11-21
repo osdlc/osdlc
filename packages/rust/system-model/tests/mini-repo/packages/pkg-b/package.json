@@ -1,0 +1,11 @@
+{
+  "name": "@mini/pkg-b",
+  "version": "0.2.0",
+  "description": "Leaf package with peer and optional deps",
+  "peerDependencies": {
+    "vue": "^3.0.0"
+  },
+  "optionalDependencies": {
+    "fsevents": "^2.3.0"
+  }
+}
