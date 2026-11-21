@@ -447,8 +447,14 @@ fn keeps_trailing_blanks(cx: &Cx<'_>, entry: &MapEntry) -> bool {
         let from = line_start(cx.src, end - 1);
         let line = cx.src[from..end].trim_end_matches(['\r', '\n']);
         if !line.trim().is_empty() {
-            let code = line.split(" #").next().unwrap_or(line);
-            return code.trim_end().ends_with('+') || code.contains("+ ");
+            let code = line
+                .char_indices()
+                .find(|&(i, c)| c == '#' && line[..i].ends_with([' ', '\t']))
+                .map_or(line, |(i, _)| &line[..i]);
+            return code
+                .split_whitespace()
+                .next_back()
+                .is_some_and(|header| header.contains('+'));
         }
         end = from;
     }
@@ -475,15 +481,36 @@ fn remove(
     // A document without a final line break loses the break before the
     // removed line too, or `a: {}` would gain one.
     let start = if end == cx.src.len() && !cx.src.ends_with('\n') {
-        start - cx.eol.len().min(start)
+        let before = &cx.src[..start];
+        start
+            - if before.ends_with("\r\n") {
+                2
+            } else {
+                usize::from(before.ends_with('\n'))
+            }
     } else {
         start
     };
-    let at = owner.assign_end;
+    let at = after_properties(cx.src, owner.assign_end);
     Ok(vec![
         (at..at, " {}".to_string()),
         (start.max(at)..end, String::new()),
     ])
+}
+
+/// The offset after any anchor or tag that follows `pos` on its line: an
+/// empty mapping goes after them.
+fn after_properties(src: &str, mut pos: usize) -> usize {
+    loop {
+        let rest = &src[pos..];
+        let token = rest.trim_start_matches([' ', '\t']);
+        if !token.starts_with(['&', '!']) {
+            return pos;
+        }
+        let skipped = rest.len() - token.len();
+        let len = token.find([' ', '\t', '\r', '\n']).unwrap_or(token.len());
+        pos += skipped + len;
+    }
 }
 
 /// The value the rest of the path builds, from the segment at `from`.
