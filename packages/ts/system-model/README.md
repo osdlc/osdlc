@@ -72,6 +72,14 @@ exported for code that wants to narrow. `Ecosystem` here is the graph's
 packaging ecosystem (`node` or `rust`). Detection's ecosystems are
 `EcosystemDef`s, a wider set.
 
+**`./build`**: `walkManifests` finds every `package.json` and `Cargo.toml`
+under a directory, reading them through detection, and `buildDependencyGraph`
+turns them into nodes and dependency edges (`DependencyGraph`). It is Node only,
+because it reads the filesystem, so it is a separate entry from the
+browser-safe `./graph`. It is the TypeScript half of the `system-model` Rust
+crate (arriving in a later change), which will walk one fixture tree (`tests/fixtures/mini-repo`, a symlink to
+`packages/rust/system-model/tests/mini-repo`) and assert the same contract.
+
 **`./aspect`**: `Aspect`, `Evidence`, `EvidenceKind` and `EVIDENCE_TIERS`.
 Detection uses the same `Evidence` for every claim it makes.
 
