@@ -220,6 +220,19 @@ describe('the declarations an adapter reads', () => {
     expect(r).toMatchObject({ status: 'refused', reason: 'cli-only' })
   })
 
+  test.each(['mcp', 'http'] as const)(
+    'an %s adapter may not write pr_update.verify, which can switch on detect',
+    async (surface) => {
+      const r = await app.call(
+        ['config', 'set'],
+        { key: 'pr_update.verify', value: 'detect' },
+        { cwd, env: isolatedEnv(cwd) },
+        { surface },
+      )
+      expect(r).toMatchObject({ status: 'refused', reason: 'cli-only' })
+    },
+  )
+
   test('an adapter may not name a report file, so it cannot clear or write one', async () => {
     const victim = join(cwd, 'victim.txt')
     writeFileSync(victim, 'keep')
