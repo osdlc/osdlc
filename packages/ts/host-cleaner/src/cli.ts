@@ -494,15 +494,16 @@ function runStatus(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
   } catch (err) {
     return refusal(ctx, name, err)
   }
+  const ignored = s.ctx.ignore ?? []
   if (v.format === 'json') {
     ctx.io.stdout(
-      `${JSON.stringify({ plugins: s.plugins.map((p) => p.name), ignore: s.ctx.ignore, warnings: s.warnings, candidates: s.candidates, objections: s.objections }, null, 2)}\n`,
+      `${JSON.stringify({ plugins: s.plugins.map((p) => p.name), ignore: ignored, warnings: s.warnings, candidates: s.candidates, objections: s.objections }, null, 2)}\n`,
     )
   } else {
     writeWarnings(ctx, name, s.warnings)
     ctx.io.stdout(
       `plugins: ${s.plugins.map((p) => p.name).join(', ') || '(none)'}\n` +
-        ((s.ctx.ignore ?? []).length > 0 ? `ignoring: ${s.ctx.ignore!.join(', ')}\n` : '') +
+        (ignored.length > 0 ? `ignoring: ${ignored.join(', ')}\n` : '') +
         renderCandidates(s.candidates, s.objections, v.allRows),
     )
   }
@@ -737,6 +738,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
       if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
       plan = makePlan(s, {
         targets: cctx.targets,
+        ignore: cctx.ignore,
         pick: v.pick,
         spare: v.spare,
         allow: v.allow,
@@ -753,7 +755,16 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
         source = resolve(ctx.cwd, v.plan)
         plan = readPlan(source)
       }
-      cctx = { cwd: ctx.cwd, targets: plan.targets, allow: plan.allow }
+      cctx = {
+        cwd: ctx.cwd,
+        targets: plan.targets,
+        allow: plan.allow,
+        ignore: ignorePaths(
+          [...loadConfig(v, ctx).ignore, ...v.ignore],
+          ctx.cwd,
+          ctx.env.HOME ?? homedir(),
+        ),
+      }
       const checked = recheck(plan, plugins, cctx)
       writeWarnings(ctx, name, checked.survey.warnings)
       preview = checked.decision

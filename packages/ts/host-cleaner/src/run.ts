@@ -5,7 +5,7 @@
 
 import { globRegExp, isGlob, sameFingerprint } from '@osdlc/repo-cleaner'
 
-import { coveredBy } from './ignore.ts'
+import { coveredBy, containsIgnored } from './ignore.ts'
 import { containedIn } from './roots.ts'
 import {
   writeReceipt,
@@ -46,6 +46,14 @@ export interface Survey {
   candidates: Candidate[]
   objections: Objection[]
   warnings: string[]
+}
+
+/** The ignore entry a candidate sits in, or holds (deleting a directory takes what is inside it). */
+function ignoredBy(c: Candidate, ignore: readonly string[]): string | undefined {
+  return (
+    coveredBy(c.at ?? c.path, ignore) ??
+    (c.at === undefined ? containsIgnored(c.path, ignore) : undefined)
+  )
 }
 
 /**
@@ -107,7 +115,7 @@ export function survey(all: readonly Plugin[], ctx: Ctx): Survey {
   }
   const left = new Map<string, number>()
   const candidates = discovered.filter((c) => {
-    const dir = coveredBy(c.at ?? c.path, ignore)
+    const dir = ignoredBy(c, ignore)
     if (dir !== undefined) left.set(dir, (left.get(dir) ?? 0) + 1)
     return dir === undefined
   })
@@ -377,7 +385,7 @@ export function recheck(
   const fresh = survey(plugins, { ...ctx, ignore, allow: p.allow })
   const planned: Decision = { ...decided, run: [], dropped: [...decided.dropped] }
   for (const c of decided.run) {
-    const dir = coveredBy(c.at ?? c.path, ignore)
+    const dir = ignoredBy(c, ignore)
     if (dir === undefined) planned.run.push(c)
     else planned.dropped.push({ id: c.id, reason: 'ignored', detail: `inside ignored ${dir}` })
   }
