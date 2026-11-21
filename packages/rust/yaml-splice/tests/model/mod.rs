@@ -4,7 +4,7 @@
 //! `tests/real_files.rs`; each uses a part of it.
 #![allow(dead_code)]
 
-use yaml_splice::{Mapping, Value, parse::parse};
+use yaml_splice::{FieldEdit, Mapping, PathSegment, Value, parse::parse};
 
 #[derive(Debug, Clone)]
 pub enum Seg {
@@ -153,4 +153,27 @@ pub fn rename_at(node: &mut Value, path: &[Seg], to: &str, cs: bool) -> Result<(
         })
         .collect();
     Ok(())
+}
+
+/// The crate's edit for a corpus edit.
+pub fn to_field_edit(edit: &PathEdit) -> FieldEdit {
+    let path = |p: &[Seg]| -> Vec<PathSegment> {
+        p.iter()
+            .map(|s| match s {
+                Seg::Key(k) => PathSegment::Key(k.clone()),
+                Seg::Index(i) => PathSegment::Index(*i),
+            })
+            .collect()
+    };
+    match edit {
+        PathEdit::Set(p, value) => FieldEdit::SetPath {
+            path: path(p),
+            value: value.clone(),
+        },
+        PathEdit::Remove(p) => FieldEdit::RemovePath { path: path(p) },
+        PathEdit::Rename(p, to) => FieldEdit::RenamePath {
+            path: path(p),
+            to: to.clone(),
+        },
+    }
 }
