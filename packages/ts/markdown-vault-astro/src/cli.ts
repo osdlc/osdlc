@@ -20,7 +20,10 @@ Commands:
 Options:
   -c, --config <path>   Config file (default: ${DEFAULT_CONFIG_NAME})
       --vault <dir>     Vault directory (default: the config's \`vault:\`, else <astroRoot>/vault)
-      --clean           Delete destination dirs before writing (not when the source has no notes)
+      --clean           Replace destination dirs with a fresh build (not when the source has no notes);
+                        refuses to remove files that have no source unless --yes
+      --yes             With --clean: remove files that have no source
+      --dry-run         Write nothing; report what would be added, changed and removed
   -q, --quiet           Suppress per-collection progress
   -h, --help            Show this help
 `
@@ -39,6 +42,8 @@ function parseArgs(argv: readonly string[]) {
     config: undefined as string | undefined,
     vault: undefined as string | undefined,
     clean: false,
+    yes: false,
+    dryRun: false,
     quiet: false,
     help: false,
   }
@@ -47,6 +52,8 @@ function parseArgs(argv: readonly string[]) {
     if (a === '-h' || a === '--help') args.help = true
     else if (a === '-q' || a === '--quiet') args.quiet = true
     else if (a === '--clean') args.clean = true
+    else if (a === '--yes') args.yes = true
+    else if (a === '--dry-run') args.dryRun = true
     else if (a === '-c' || a === '--config') args.config = optionValue(argv, ++i, a)
     else if (a === '--vault') args.vault = optionValue(argv, ++i, a)
     else if (a.startsWith('-')) throw new Error(`unknown option ${a} (see --help)`)
@@ -60,7 +67,15 @@ function report(stats: RunStats, dryRun: boolean): void {
   const arrow = stats.direction === 'toAstro' ? 'vault → collections' : 'collections → vault'
   console.log(`\n${dryRun ? '[dry-run] ' : ''}${arrow}`)
   console.log(`  files:   ${stats.files}`)
+  console.log(`  added:   ${stats.added}, changed: ${stats.changed}`)
   console.log(`  assets:  ${stats.assetsCopied} copied`)
+  if (stats.removed.length) {
+    console.log(`  ✗ ${dryRun ? 'would remove' : 'removed'} (${stats.removed.length}, no source):`)
+    for (const f of stats.removed) console.log(`      ${f}`)
+  }
+  if (stats.orphans.length) {
+    console.log(`  ⚠ no source, kept (${stats.orphans.length}): ${stats.orphans.join(', ')}`)
+  }
   if (stats.assetsMissing.length) {
     console.log(
       `  ⚠ missing assets (${stats.assetsMissing.length}): ${stats.assetsMissing.slice(0, 8).join(', ')}${stats.assetsMissing.length > 8 ? ' …' : ''}`,
@@ -90,10 +105,16 @@ function main(argv: readonly string[]): number {
 
   switch (args.command) {
     case 'transform':
-      report(transform(config, { verbose, clean: args.clean }), false)
+      report(
+        transform(config, { verbose, clean: args.clean, yes: args.yes, dryRun: args.dryRun }),
+        args.dryRun,
+      )
       break
     case 'export-vault':
-      report(exportVault(config, { verbose, clean: args.clean }), false)
+      report(
+        exportVault(config, { verbose, clean: args.clean, yes: args.yes, dryRun: args.dryRun }),
+        args.dryRun,
+      )
       break
     case 'check': {
       const stats = transform(config, { verbose, dryRun: true })

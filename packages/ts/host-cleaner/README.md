@@ -7,7 +7,7 @@ receipt. The `git` plugin is [`@osdlc/repo-cleaner`](../repo-cleaner/README.md):
 its sweep supplies worktrees and branches, and its `removeCandidate` deletes them,
 under repo-cleaner's safety model.
 
-This release is the library, the `git`, `cargo`, `node` and `claude-code` plugins, and the `host-cleaner` command.
+This release is the library, the `git`, `cargo`, `node`, `claude-code` and `orca` plugins, and the `host-cleaner` command.
 
 ## Phases
 
@@ -131,6 +131,30 @@ resume id, the transcript's last write, other sessions resuming the same id,
 and whether the directory is gone or temporary. `delete` checks the pid still
 has the planned start time and command, sends SIGTERM and waits for the exit.
 It never sends SIGKILL; a session that ignores SIGTERM fails its step.
+
+## The `orca` plugin
+
+Orca keeps its own record of some worktrees and holds terminals and agents open
+in them. Removing one with plain git leaves the record and the terminals behind,
+so this plugin works beside `git`, which still removes the directory.
+
+Detected when the `orca` CLI is on `PATH` (or at
+`/Applications/Orca.app/Contents/Resources/bin/orca`) and `orca status` says the
+app is running. Orca missing is silent; installed but not running adds a
+warning, and the plugin stays out of the run. It never fails the run. Every call
+goes through `@osdlc/command-seam` with `--json`.
+
+| Phase | What it does |
+| --- | --- |
+| scope | Adds each repository `orca repo list` names (`plugins.orca.repos: false` turns this off). |
+| discover | A record in `orca worktree ps` whose directory is gone is `orca-record:<path>`, held for a pick. |
+| object | On a `git` worktree that Orca manages: a `note` with its Orca id; a `refuse` `orca-agent-active` when an agent is at work (any state not `idle` or `done`); a `refuse` `orca-terminal-unverifiable`; a `protest` `close-terminals` when terminals are open. If Orca cannot be read, every `git` worktree is refused with `orca-unreachable`. |
+| prepare | Sees again that no agent is at work, then `orca terminal close --worktree id:<id> --all`. |
+| deleted | After `git` removed the directory, `orca worktree rm --worktree id:<id> --force` so Orca forgets the record. It is never asked while the directory exists, since it would delete it. The branch is kept. |
+
+```sh
+host-cleaner clean --pick worktree:/path/to/wt --allow close-terminals
+```
 
 ## Command line
 

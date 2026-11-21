@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/yaml-splice",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Edit fields of a YAML mapping in place, on bytes, at the top level or nested by path: set, remove or rename a field, and every byte outside the edited span stays as it was, including comments, key order, quoting, a BOM and line endings. The yaml-splice Rust crate, built to WebAssembly. Node.js and Bun.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",

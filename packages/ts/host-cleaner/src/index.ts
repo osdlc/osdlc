@@ -56,3 +56,11 @@ export { cargoPlugin, CARGO_PLUGIN } from './cargo.ts'
 export { nodePlugin, NODE_PLUGIN } from './node.ts'
 export { DEFAULT_IDLE_HOURS, type ArtifactOptions } from './artifacts.ts'
 export { CLAUDE_PLUGIN, CLOSE_SESSION, claudeCodePlugin, type ClaudeOptions } from './claude.ts'
+export {
+  CLOSE_TERMINALS,
+  ORCA_BUNDLE_CLI,
+  ORCA_PLUGIN,
+  orcaPlugin,
+  type OrcaOptions,
+  type OrcaRecord,
+} from './orca.ts'

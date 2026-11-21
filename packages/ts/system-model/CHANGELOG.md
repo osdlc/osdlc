@@ -1,5 +1,11 @@
 # @osdlc/system-model
 
+## 0.8.0
+
+### Minor Changes
+
+- 49b2314: Add the `./build` entry: `walkManifests` finds every `package.json` and `Cargo.toml` under a directory and `buildDependencyGraph` turns them into a typed dependency graph. This is the TypeScript half of `@osdlc/manifest-graph`, which is folded into this package.
+
 ## 0.7.2
 
 ### Patch Changes

@@ -28,6 +28,12 @@ of them.
   that capture, lint and compile it. It is not published. Its compiled file
   ships in `packages/ts/harness-knowledge` (`@osdlc/harness-knowledge` on
   npm), and `.github/workflows/harness-reference.yml` checks both.
+- `packages/profiles/system-cleanup/` and
+  `packages/corpora/system-cleanup-reference/` are the system cleanup profile
+  and reference: cited statements about where tools and apps keep data that
+  can be reclaimed from disk, which host-cleaner's descriptors are drafted
+  from. They live beside host-cleaner while it is their only user, and are not
+  published yet; the reference's backlog item B-0001 says when they will be.
 - TypeScript libraries are published to npm from CI with
   [Changesets](https://changesets.dev). `.github/workflows/packages-publish.yml`
   publishes through npm trusted publishing, with provenance, so no npm token
@@ -447,6 +453,7 @@ Rust crates are released by `.github/workflows/release-plz.yml` with
    Held now (each crate's `Cargo.toml` names what it waits for):
    - `gfm-pipe-table`, until its first release can have a release-plz run of
      its own: it needs `CARGO_REGISTRY_TOKEN` (rules 3, 4 and 7).
+   - `system-model`, for the same reason.
 
 #### Versions and breaking changes
 
