@@ -8,6 +8,9 @@
 
 export { walkManifests, DEFAULT_EXCLUDES, type WalkOptions } from './manifest-walk.ts'
 export { buildDependencyGraph, type GraphOptions } from './dependency-graph.ts'
+export { applyContainment, ROOT_ID, type ContainmentOptions } from './containment.ts'
+export { scanAspects } from './aspect-scan.ts'
+export { buildSystemGraph, type SystemGraphOptions } from './system-graph-build.ts'
 export type {
   DepDecl,
   DependencyGraph,

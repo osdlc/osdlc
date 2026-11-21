@@ -33,6 +33,8 @@ export const PlanSchema = z
   .object({
     version: z.literal(PLAN_VERSION),
     createdAt: z.string(),
+    /** The targets the plan was swept over, so `clean --plan` checks the same place. */
+    targets: z.array(z.string()),
     /** Exactly these candidate ids; null means the default: every one nothing objects to and no owner holds for review. */
     select: z.array(z.string()).nullable(),
     /** Candidate ids run as well as the default or the selection. */

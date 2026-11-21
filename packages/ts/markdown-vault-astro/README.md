@@ -106,8 +106,17 @@ markdown-vault-astro export-vault   # src/content  ->  vault   (one-time canonic
 markdown-vault-astro check          # dry run: resolve everything, write nothing; exits 1 if assets are missing
 ```
 
-Options: `-c, --config <path>`, `--vault <dir>`, `--clean`, `-q, --quiet`, `--version`.
-`--clean` deletes the destination before writing, but not when the source has no notes.
+Options: `-c, --config <path>`, `--vault <dir>`, `--clean`, `--yes`, `--dry-run`, `-q, --quiet`, `--version`.
+
+`--clean` builds each destination collection in a sibling directory (`<dst>.markdown-vault-astro-tmp`),
+compares it with the current one, then swaps it in. A run that fails partway leaves the destination
+as it was. It does not clean when the source has no notes.
+
+The run reports files added and changed (counts), and **removed**: files in the destination with
+no counterpart in the new build. Those are the orphans `--clean` exists to clear, and also the files
+a person would lose. When any would be removed, `--clean` lists them and exits non-zero without
+touching the destination; pass `--yes` to remove them. `--dry-run` prints the same report and always
+stops there. Without `--clean`, files are written in place and orphans are only warned about.
 
 ## Build-time wikilink resolution
 

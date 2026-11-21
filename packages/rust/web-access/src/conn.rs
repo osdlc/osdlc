@@ -32,8 +32,8 @@ pub(crate) struct Conn {
     cut: watch::Sender<bool>,
     /// The id of the token entry that admitted the latest request on this
     /// connection; 0 for none (ids start at 1). HTTP/1 carries one request at
-    /// a time, so a stream or an upgraded socket runs under this one. Under
-    /// HTTP/2, concurrent requests would overwrite each other's tag.
+    /// a time, so a stream or an upgraded socket runs under this one. The guard
+    /// refuses HTTP/2, where concurrent requests would overwrite each other's tag.
     tag: AtomicU64,
 }
 
