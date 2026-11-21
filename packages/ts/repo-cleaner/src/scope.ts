@@ -27,7 +27,13 @@ export function sweptWith(
   targets: readonly string[],
   opts: Omit<
     SweepOptions,
-    Exclude<keyof Runners, 'git'> | 'annotate' | 'onProgress' | 'onWarn' | 'cacheDir'
+    | Exclude<keyof Runners, 'git'>
+    | 'annotate'
+    | 'onProgress'
+    | 'onWarn'
+    | 'cacheDir'
+    | 'sizes'
+    | 'sizeTimeoutMs'
   >,
 ): SweptWith & { urls: boolean } {
   const cwd = opts.cwd ?? process.cwd()
