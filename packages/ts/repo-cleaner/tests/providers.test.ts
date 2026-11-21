@@ -86,7 +86,6 @@ function repoWith(provider: ProviderStatus | null): RepoInfo {
     provider,
     remotes: [],
     against: null,
-    fetched: false,
     fetchedRemotes: [],
     allRemotes: ['origin'],
   }
