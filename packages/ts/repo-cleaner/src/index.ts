@@ -51,6 +51,7 @@ export {
   type Step,
 } from './receipt.ts'
 export { render, type RunSummary, type Style } from './render.ts'
+export { formatBytes, sizeOf, type SizeOfOptions } from './size.ts'
 export {
   busyHolders,
   defaultProcessProbe,
@@ -78,6 +79,7 @@ export {
   type RepoInfo,
   type RepoNote,
   type RepoSweep,
+  type Reclaimable,
   type Risk,
   type Row,
   type RowId,
