@@ -13,6 +13,7 @@ import {
   type Risk,
   type Runners,
   type SweepOptions,
+  type WorktreeEvidence,
 } from '@osdlc/repo-cleaner'
 
 import { FatalRun, type Candidate, type Objection, type Plugin } from './types.ts'
@@ -35,6 +36,12 @@ function candidateId(c: CleanCandidate): string {
   return c.kind === 'worktree' ? c.id : `${c.kind}:${c.repo}:${c.path}`
 }
 
+/** The name `--spare` knows a row by: a branch's name, or the branch a worktree has checked out. */
+function nameOf(row: CleanCandidate): string | null {
+  if (row.kind === 'branch') return row.path
+  return row.kind === 'worktree' ? ((row.evidence as WorktreeEvidence).branch ?? null) : null
+}
+
 export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
   /** The last discovery's rows, kept for `object` and `delete`; `discover` makes them afresh. */
   let rows = new Map<string, CleanCandidate>()
@@ -53,6 +60,7 @@ export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
           id,
           kind: row.kind,
           path: row.kind === 'worktree' ? row.path : `${row.repo}:${row.path}`,
+          ...(nameOf(row) === null ? {} : { name: nameOf(row)! }),
           owner: 'git',
           why: row.why,
           evidence: row.fingerprint,

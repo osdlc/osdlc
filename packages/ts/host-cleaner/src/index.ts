@@ -32,16 +32,21 @@ export {
   type Step,
 } from './plan.ts'
 export {
+  DEFAULT_SELECTION,
   PLUGIN_ORDER,
+  SelectionError,
+  checkSelection,
   clean,
   decide,
   decidePlan,
   orderPlugins,
   plan,
   recheck,
+  spares,
   survey,
   type CleanOptions,
   type Decision,
+  type Selection,
   type Survey,
 } from './run.ts'
 export { gitPlugin, type GitPluginOptions } from './git.ts'

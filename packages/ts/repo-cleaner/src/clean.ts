@@ -189,6 +189,7 @@ function judgeRisks(
   const archived = (risk: Risk): boolean =>
     coverage?.covers.includes(risk) === true && isAllowed('discard-archived')
   const grants = (risk: Risk): boolean => isAllowed(risk) || archived(risk)
+  // A risk the archive covers is asked for as `discard-archived`.
   const asked = (risk: Risk): Risk => (coverage?.covers.includes(risk) ? 'discard-archived' : risk)
   return {
     needs: [...new Set(row.risks.map(asked))],
@@ -1265,7 +1266,7 @@ export function removeCandidate(
     git: new Git(cwd, { runner: opts.git }),
     probe: opts.probe ?? defaultProcessProbe(),
     removedHere: new Set(row.kind === 'worktree' ? [resolve(row.name)] : []),
-    measure: (path) => sizeOf(path),
+    measure: (path) => sizeOf(path, { du: opts.du }),
     unlocked: new Set(),
     stamps: new Map(),
   }

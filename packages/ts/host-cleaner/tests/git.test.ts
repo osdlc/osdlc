@@ -68,7 +68,7 @@ describe('the git plugin', () => {
     const receiptPath = join(dir, 'receipt.json')
     const s = survey([fx.plugin], fx.ctx)
     const pick = [`worktree:${fx.worktree}`, `branch:${realpathSync(fx.root)}:wt-branch`]
-    const receipt = clean(plan(s, { pick }), [fx.plugin], fx.ctx, { receiptPath })
+    const receipt = clean(plan(s, { select: pick }), [fx.plugin], fx.ctx, { receiptPath })
     expect(receipt.steps.map((x) => [x.id, x.result])).toEqual(pick.map((id) => [id, 'ok']))
     expect(receipt.steps[0]!.delete).toBe('directory gone and unregistered')
     expect(existsSync(fx.worktree)).toBe(false)
@@ -84,7 +84,7 @@ describe('the git plugin', () => {
     const unmerged = survey([fx.plugin], fx.ctx).candidates.find((c) =>
       c.path.endsWith(':unmerged'),
     )!
-    const p = plan(survey([fx.plugin], fx.ctx), { pick: [unmerged.id] })
+    const p = plan(survey([fx.plugin], fx.ctx), { select: [unmerged.id] })
     expect(clean(p, [fx.plugin], fx.ctx).dropped[0]).toMatchObject({ reason: 'not-allowed' })
     const granted = { ...fx.ctx, allow: ['abandon-unmerged'] }
     const receipt = clean({ ...p, allow: ['abandon-unmerged'] }, [fx.plugin], granted)
