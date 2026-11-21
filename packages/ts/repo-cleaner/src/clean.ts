@@ -54,6 +54,7 @@ import {
 } from './approval.ts'
 import { localDeleteCommand, remoteDeleteCommand } from './branches.ts'
 import type { Annotate } from './hooks.ts'
+import type { CleanCandidate } from './candidates.ts'
 import { fingerprint, runnable, sameFingerprint, type Plan, type PlanRepo } from './plan.ts'
 import { busyHolders, defaultProcessProbe, parseLockOwner, type ProcessProbe } from './processes.ts'
 import { RECEIPT_VERSION, type Dropped, type Receipt, type Step } from './receipt.ts'
@@ -65,6 +66,7 @@ import {
   KINDS,
   RepoCleanerError,
   type Kind,
+  judgedRemotes,
   landedFor,
   refOf,
   type RemoteRow,
@@ -74,6 +76,7 @@ import {
   type RowId,
   type Sweep,
   type SweepProgress,
+  makeRow,
   parseRowId,
   sweepNotes,
   type RepoNote,
@@ -170,6 +173,33 @@ interface Accepted {
 }
 
 /**
+ * What `row` needs allowed, given `isAllowed`: the risks not granted
+ * (`missing`, phrased as asked, `discard-archived` where the archive covers
+ * one), the risks to ask for (`needs`), and whether the remove may discard
+ * changes or abandon unmerged work.
+ */
+function judgeRisks(
+  row: Row,
+  isAllowed: (risk: Risk) => boolean,
+  archive: ArchiveOptions | undefined,
+  gitAt: (path: string) => Git,
+): { missing: Risk[]; needs: Risk[]; discard: boolean; abandon: boolean } {
+  const coverage = archive === undefined ? null : coverageOf(row, archive, gitAt)
+  // `discard-archived` grants the risks the archive covers, and only those.
+  const archived = (risk: Risk): boolean =>
+    coverage?.covers.includes(risk) === true && isAllowed('discard-archived')
+  const grants = (risk: Risk): boolean => isAllowed(risk) || archived(risk)
+  // A risk the archive covers is asked for as `discard-archived`.
+  const asked = (risk: Risk): Risk => (coverage?.covers.includes(risk) ? 'discard-archived' : risk)
+  return {
+    needs: [...new Set(row.risks.map(asked))],
+    missing: [...new Set(row.risks.filter((risk) => !grants(risk)).map(asked))],
+    discard: grants('discard-changes'),
+    abandon: grants('abandon-unmerged'),
+  }
+}
+
+/**
  * The plan repository's rows as they stand now, annotated as the sweep
  * annotated them, and, when it had to sweep again, that sweep's notes on what
  * it judged without. A sweep passed in reports its notes whole, in `recheck`.
@@ -187,7 +217,9 @@ function resweep(
   // preview shows what the run will do.
   const readFromDisk =
     kinds.includes('remote') &&
-    given?.repo?.remotes.every((r) => given.repo!.fetchedRemotes.includes(r.name)) !== true
+    (given?.repo === undefined ||
+      given.repo === null ||
+      !judgedRemotes(given.repo).every((r) => given.repo!.fetchedRemotes.includes(r.name)))
   if (given !== undefined && given.error === null && !readFromDisk) {
     // Its notes are reported with the rest of that sweep's, by `recheck`.
     return { rows: holdFreedBranches([...given.rows], branchScoped), notes: [], info: given.repo! }
@@ -224,15 +256,12 @@ interface Rechecked {
 /**
  * Re-sweep, then split the selection into rows to run and rows dropped: the
  * selected rows, or every row that could run, and the picked rows, less the
- * spared. `mustDelete` names the rows that run only while the re-sweep judges
- * them `delete`: those no one picked or selected by name.
+ * spared. A row no one picked or selected by name runs only while the
+ * re-sweep judges it `delete`.
  */
-function recheck(
-  plan: Plan,
-  approval: ResolvedApproval,
-  opts: CheckOptions,
-  mustDelete: (s: Resolved) => boolean,
-): Rechecked {
+function recheck(plan: Plan, approval: ResolvedApproval, opts: CheckOptions): Rechecked {
+  const chosen = new Set([...(approval.select ?? []), ...approval.pick].map(keyOf))
+  const mustDelete = (s: Resolved): boolean => !chosen.has(keyOf(s))
   const spared = new Set([...approval.spare, ...approval.spareMatched].map(keyOf))
   // By default every row that could run: a plan also holds the blocked and
   // structural rows, so a pick of one can be skipped with its reason.
@@ -330,30 +359,23 @@ function recheck(
       drop('changed', `planned ${JSON.stringify(was)}, now ${JSON.stringify(now)}`)
       continue
     }
-    const coverage =
-      opts.archive === undefined
-        ? null
-        : coverageOf(row, opts.archive, (path) => new Git(path, { runner: opts.git }))
-    // `discard-archived` grants the risks the archive covers, and only those.
-    const archived = (risk: Risk): boolean =>
-      coverage?.covers.includes(risk) === true && allowed(approval.allow, s, 'discard-archived')
-    const grants = (risk: Risk): boolean => allowed(approval.allow, s, risk) || archived(risk)
-    // A risk the archive covers is asked for as `discard-archived`.
-    const asked = (risk: Risk): Risk =>
-      coverage?.covers.includes(risk) ? 'discard-archived' : risk
-    const needs = [...new Set(row.risks.map(asked))]
-    const missing = row.risks.filter((risk) => !grants(risk))
-    if (missing.length > 0) {
-      drop('not-allowed', `needs ${[...new Set(missing.map(asked))].join(', ')}`)
+    const judged = judgeRisks(
+      row,
+      (risk) => allowed(approval.allow, s, risk),
+      opts.archive,
+      (path) => new Git(path, { runner: opts.git }),
+    )
+    if (judged.missing.length > 0) {
+      drop('not-allowed', `needs ${judged.missing.join(', ')}`)
       continue
     }
     accepted.push({
       repo: s.repo,
       row,
-      discard: grants('discard-changes'),
-      abandon: grants('abandon-unmerged'),
+      discard: judged.discard,
+      abandon: judged.abandon,
       discardNamed: allowed(approval.allow, s, 'discard-changes'),
-      needs,
+      needs: judged.needs,
     })
   }
   // A worktree judged safe because remote branches hold its HEAD loses that
@@ -605,21 +627,10 @@ interface ArchiveJob {
   defaultRef: string
 }
 
-/** Rows no one picked or selected by name: they run only while judged `delete`. */
-function unchosen(approval: ResolvedApproval): (s: Resolved) => boolean {
-  const chosen = new Set([...(approval.select ?? []), ...approval.pick].map(keyOf))
-  return (s) => !chosen.has(keyOf(s))
-}
-
-function planSteps(
-  plan: Plan,
-  approval: ResolvedApproval,
-  opts: CheckOptions,
-  mustDelete: (s: Resolved) => boolean,
-): Planned {
+function planSteps(plan: Plan, approval: ResolvedApproval, opts: CheckOptions): Planned {
   const cwd = opts.cwd ?? process.cwd()
   const git = new Git(cwd, { runner: opts.git })
-  const rechecked = recheck(plan, approval, opts, mustDelete)
+  const rechecked = recheck(plan, approval, opts)
   const unique = onePerRemoteBranch(rechecked, git)
   const dropped = [...unique.dropped]
   // A worktree whose directory is left without its `.git` goes only by the
@@ -726,7 +737,7 @@ export function check(plan: Plan, approval: Approval, opts: CheckOptions = {}): 
   if (opts.archive === undefined && resolved.allow.some((a) => a.risk === 'discard-archived')) {
     throw new RepoCleanerError('conflict', '--allow discard-archived has no effect without archive')
   }
-  const { steps, dropped, accepted, notes } = planSteps(plan, resolved, opts, unchosen(resolved))
+  const { steps, dropped, accepted, notes } = planSteps(plan, resolved, opts)
   for (const [step] of steps) step.result = 'would-run'
   const unusedAllows = resolved.allow
     .filter(
@@ -988,6 +999,51 @@ function execute(
   }
 }
 
+/** What the steps of one run share. */
+interface StepContext {
+  git: Git
+  probe: ProcessProbe
+  removedHere: ReadonlySet<string>
+  /** The size of a directory about to be removed, or null when `du` cannot tell. */
+  measure: (path: string) => number | null
+  /**
+   * Worktrees whose lock this run cleared. typed-git has no `worktree lock`
+   * verb, so a failed remove cannot put the lock back; the receipt says so.
+   */
+  unlocked: Set<string>
+  /** Each archived worktree's stamp, by `<repo>\0<row>`. */
+  stamps: Map<string, string>
+}
+
+/** Run one step and record how it went on the step: its `result`, `verification` and `error`. Never throws. */
+function runStep(
+  step: Step,
+  a: Accepted | null,
+  ctx: StepContext,
+  archive: { job: ArchiveJob | undefined; options: ArchiveOptions | undefined; now: Date },
+): void {
+  try {
+    const done = execute(step, a, ctx.git, ctx.probe, ctx.removedHere, ctx.measure, {
+      ...archive,
+      stamps: ctx.stamps,
+    })
+    if (done instanceof Gone) {
+      step.verification = done.verification
+      step.gone = true
+    } else {
+      step.verification = done
+    }
+    step.result = 'ok'
+    if (step.action === 'unlock-worktree') ctx.unlocked.add(a!.row.name)
+  } catch (err) {
+    step.result = 'failed'
+    step.error = errorText(err)
+    if (a !== null && step.action !== 'unlock-worktree' && ctx.unlocked.has(a.row.name)) {
+      step.error += `; the lock on ${a.row.name} was cleared earlier in this run and is not restored`
+    }
+  }
+}
+
 /**
  * Take the steps `preview` showed: sweeps again, drops a row that moved since
  * the preview, and runs the rest in order, compare-and-swap, verifying each
@@ -1005,17 +1061,30 @@ export function run(preview: Preview, opts: RunOptions = {}): Receipt {
   const cwd = opts.cwd ?? process.cwd()
   // Only the rows the preview would run, pinned to their repositories. A
   // spared tip check is not a selection; the approval carries it again.
-  const shown = preview.steps.flatMap((s) =>
-    s.action === 'verify-remote' || s.action === 'archive' ? [] : [{ repo: s.repo, id: s.row }],
+  const shown = uniq(
+    preview.steps.flatMap((s) =>
+      s.action === 'verify-remote' || s.action === 'archive' ? [] : [{ repo: s.repo, id: s.row }],
+    ),
   )
-  const pick = uniq(shown)
+  // The same approval, narrowed to what the preview showed: the rows chosen
+  // by name stay picked, every other runnable row it did not show is left
+  // alone, and the rest run by the default rule, so a row the preview ran only
+  // for its `delete` verdict drops if the re-check now judges it `review`.
+  const shownKeys = new Set(shown.map(keyOf))
+  const named = new Set([...(preview.approval.select ?? []), ...preview.approval.pick].map(keyOf))
+  const unshown = preview.plan.repos.flatMap((r) =>
+    r.rows
+      .filter(runnable)
+      .map((row) => ({ repo: r.root, id: row.id }))
+      .filter((s) => !shownKeys.has(keyOf(s))),
+  )
   const approval: ResolvedApproval = {
-    select: pick,
-    pick: [],
+    select: null,
+    pick: shown.filter((s) => named.has(keyOf(s))),
     spare: preview.approval.spare,
-    spareMatched: preview.approval.spareMatched,
+    spareMatched: uniq([...preview.approval.spareMatched, ...unshown]),
     allow: preview.approval.allow.filter(
-      (a) => a.row === null || pick.some((p) => same(p, a.row!)),
+      (a) => a.row === null || shown.some((p) => same(p, a.row!)),
     ),
   }
   const receipt: Receipt = {
@@ -1036,17 +1105,9 @@ export function run(preview: Preview, opts: RunOptions = {}): Receipt {
     save()
     return receipt
   }
-  if (pick.length === 0) return finish('complete')
-  // A row the preview ran only for its `delete` verdict keeps that guard, so
-  // one the re-check now judges `review` drops rather than runs.
-  const mustDelete = unchosen(preview.approval)
+  if (shown.length === 0) return finish('complete')
   const archive = opts.archive ?? preview.archive
-  const planned = planSteps(
-    preview.plan,
-    approval,
-    { ...opts, archive, sweep: undefined },
-    mustDelete,
-  )
+  const planned = planSteps(preview.plan, approval, { ...opts, archive, sweep: undefined })
   opts.onNotes?.(planned.notes)
   const known = new Set(receipt.dropped.map((d) => `${d.repo}\0${d.row}`))
   for (const d of planned.dropped) {
@@ -1060,8 +1121,6 @@ export function run(preview: Preview, opts: RunOptions = {}): Receipt {
   const git = new Git(cwd, { runner: opts.git })
   const probe = opts.probe ?? defaultProcessProbe()
   const { removedHere } = planned
-  // Worktrees whose lock this run cleared. typed-git has no `worktree lock`
-  // verb, so a failed remove cannot put the lock back; the receipt says so.
   const unlocked = new Set<string>()
   // Steps that failed, or were skipped for one that did, each with the failed
   // step at the root of it.
@@ -1069,6 +1128,7 @@ export function run(preview: Preview, opts: RunOptions = {}): Receipt {
   const stamps = new Map<string, string>()
   const measure = (path: string): number | null =>
     sizeOf(path, { du: opts.du, timeoutMs: opts.sizeTimeoutMs })
+  const ctx: StepContext = { git, probe, removedHere, measure, unlocked, stamps }
   for (const [i, [step, a]] of plannedSteps.entries()) {
     const cause = blocked.find((b) => dependsOn(step, a, b.step, b.a))
     if (cause !== undefined) {
@@ -1080,39 +1140,153 @@ export function run(preview: Preview, opts: RunOptions = {}): Receipt {
       continue
     }
     opts.onStep?.(i, plannedSteps.length, step)
-    try {
-      const done = execute(step, a, git, probe, removedHere, measure, {
-        job: planned.archives.get(step),
-        options: archive,
-        now: now(),
-        stamps,
-      })
-      if (done instanceof Gone) {
-        step.verification = done.verification
-        step.gone = true
-      } else {
-        step.verification = done
-      }
-      step.result = 'ok'
-      if (step.action === 'unlock-worktree') unlocked.add(a!.row.name)
-    } catch (err) {
-      step.result = 'failed'
-      step.error = errorText(err)
-      if (a !== null && step.action !== 'unlock-worktree' && unlocked.has(a.row.name)) {
-        step.error += `; the lock on ${a.row.name} was cleared earlier in this run and is not restored`
-      }
-      // Told before the save, so a receipt that cannot be written still
-      // leaves the step's outcome on screen.
-      opts.onStepDone?.(i, plannedSteps.length, step)
+    runStep(step, a, ctx, { job: planned.archives.get(step), options: archive, now: now() })
+    // Told before the save, so a receipt that cannot be written still
+    // leaves the step's outcome on screen.
+    opts.onStepDone?.(i, plannedSteps.length, step)
+    if (step.result === 'failed') {
       // A failed spared-tip check voids the plan's premise: nothing else runs.
       if (step.action === 'verify-remote') return finish('failed')
       blocked.push({ step, a, root: step })
-      save()
-      continue
     }
-    opts.onStepDone?.(i, plannedSteps.length, step)
     save()
   }
   if (blocked.length > 0) return finish('failed')
   return finish('complete')
+}
+
+// ── one candidate ──────────────────────────────────────────────────────────
+
+export interface RemoveCandidateOptions extends Runners {
+  /** Where git runs from. A worktree the caller stands in is refused. Defaults to the process's cwd. */
+  cwd?: string | undefined
+  /** The risks granted for this candidate. */
+  allow?: readonly Risk[] | undefined
+  /** Archive unlanded work to the remote first, as `check` is given it. */
+  archive?: ArchiveOptions | undefined
+  now?: (() => Date) | undefined
+  /** Told after each step, with its `result` set. */
+  onStepDone?: ((step: Step) => void) | undefined
+}
+
+/** What taking one candidate did. */
+export interface CandidateRemoval {
+  /** Every step taken, the failed one last. Empty when the candidate was refused before any. */
+  steps: Step[]
+  ok: boolean
+  /** The archive step failed, so nothing was deleted and a host should stop the whole run. */
+  archiveFailed: boolean
+  /** Why it did not complete: the failed step's error, or the refusal. Null when `ok`. */
+  error: string | null
+}
+
+/** The row a candidate stands for. */
+function rowOfCandidate(c: CleanCandidate): Row {
+  return makeRow({
+    kind: c.kind,
+    name: c.path,
+    verdict: c.verdict,
+    action: c.action,
+    why: c.why,
+    risks: c.risks,
+    blockers: c.blockers,
+    evidence: c.evidence,
+  } as Parameters<typeof makeRow>[0])
+}
+
+/**
+ * Delete one candidate as `run` takes one row: the archive first when
+ * `archive` is given and the row holds unlanded work, then the live-process
+ * and unsafe-force checks, the removal and its verification, stopping at the
+ * first failure. The caller has already re-checked the candidate; this
+ * refuses only what is unsafe now.
+ *
+ * Does not throw for a refused or failed delete: see `CandidateRemoval`.
+ */
+export function removeCandidate(
+  candidate: CleanCandidate,
+  opts: RemoveCandidateOptions = {},
+): CandidateRemoval {
+  const now = opts.now ?? (() => new Date())
+  const refused = (error: string): CandidateRemoval => ({
+    steps: [],
+    ok: false,
+    archiveFailed: false,
+    error,
+  })
+  const row = rowOfCandidate(candidate)
+  if (!runnable(row)) return refused(`refused: ${candidate.id} ${candidate.why}`)
+  const cwd = opts.cwd ?? process.cwd()
+  if (row.kind === 'worktree' && nodeGuard.contains(row.name, resolve(cwd))) {
+    return refused(`refused: ${candidate.id} is the worktree the caller stands in`)
+  }
+  const allow = new Set(opts.allow ?? [])
+  let judged: ReturnType<typeof judgeRisks>
+  try {
+    judged = judgeRisks(
+      row,
+      (risk) => allow.has(risk),
+      opts.archive,
+      (path) => new Git(path, { runner: opts.git }),
+    )
+  } catch (err) {
+    return refused(`refused: ${candidate.id}: ${errorText(err)}`)
+  }
+  if (judged.missing.length > 0) {
+    return refused(`refused: ${candidate.id} needs ${judged.missing.join(', ')}`)
+  }
+  const a: Accepted = {
+    repo: candidate.repo,
+    row,
+    discard: judged.discard,
+    abandon: judged.abandon,
+    discardNamed: allow.has('discard-changes'),
+    needs: judged.needs,
+  }
+  const steps: Array<[Step, Accepted | null]> = stepsFor(a).map((step) => [step, a])
+  let job: ArchiveJob | undefined
+  if (opts.archive !== undefined && mayContribute(row)) {
+    if (candidate.remote === null) {
+      return refused(`archive: ${candidate.repo} has no remote to push the archive to`)
+    }
+    const step = pending(
+      candidate.repo,
+      row.id,
+      'archive',
+      shellJoin(['git', 'push', candidate.remote, 'refs/heads/archive/<repo>-local-<date>']),
+    )
+    job = {
+      remote: candidate.remote,
+      defaultRef: candidate.landedRef,
+      jobs: [{ id: row.id, row, discardAllowed: a.discardNamed }],
+    }
+    steps.unshift([step, null])
+  }
+  const ctx: StepContext = {
+    git: new Git(cwd, { runner: opts.git }),
+    probe: opts.probe ?? defaultProcessProbe(),
+    removedHere: new Set(row.kind === 'worktree' ? [resolve(row.name)] : []),
+    measure: (path) => sizeOf(path, { du: opts.du }),
+    unlocked: new Set(),
+    stamps: new Map(),
+  }
+  const taken: Step[] = []
+  for (const [step, accepted] of steps) {
+    taken.push(step)
+    runStep(step, accepted, ctx, {
+      job: step.action === 'archive' ? job : undefined,
+      options: opts.archive,
+      now: now(),
+    })
+    opts.onStepDone?.(step)
+    if (step.result === 'failed') {
+      return {
+        steps: taken,
+        ok: false,
+        archiveFailed: step.action === 'archive',
+        error: step.error ?? 'failed',
+      }
+    }
+  }
+  return { steps: taken, ok: true, archiveFailed: false, error: null }
 }

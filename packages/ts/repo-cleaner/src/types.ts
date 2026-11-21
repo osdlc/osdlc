@@ -296,9 +296,14 @@ export function makeRow<R extends Row>(
   } as R
 }
 
-/** One remote whose branches a sweep judges, as it resolved it. */
+/**
+ * One remote a sweep touches, as it resolved it: the default remote, each
+ * remote whose branches it judges, and the `against` remote.
+ */
 export interface RemoteInfo {
   name: string
+  /** The sweep judges this remote's branches. */
+  judged: boolean
   /**
    * Its own default branch, which is kept: what `refs/remotes/<name>/HEAD`
    * points at, else `main`, then `master`, where the remote has them.
@@ -306,7 +311,7 @@ export interface RemoteInfo {
   defaultBranch: string
   /** As {@link RepoInfo.slug}, for this remote. */
   slug: string | null
-  /** As {@link RepoInfo.provider}, for this remote. */
+  /** As {@link RepoInfo.provider}, for this remote; null for a remote not judged. */
   provider: ProviderStatus | null
 }
 
@@ -334,16 +339,23 @@ export interface RepoInfo {
    * or a sweep without remote branches).
    */
   provider: ProviderStatus | null
-  /** True when the sweep fetched the default remote before classifying. */
-  fetched: boolean
   /** Every remote the sweep fetched before classifying, the `against` remote included. */
   fetchedRemotes: string[]
-  /** Every remote the repository has, judged or not. */
+  /** Every remote the repository has, touched or not. */
   allRemotes: string[]
-  /** Every remote whose branches the sweep judges, in the order asked. */
+  /**
+   * Every remote the sweep touches, each with its own default branch: the
+   * default remote, the remotes whose branches it judges (`judged`, in the
+   * order asked), and the `against` remote.
+   */
   remotes: RemoteInfo[]
-  /** `against`: the default branch every row is judged against instead of its own; null without it. */
-  against: { remote: string; branch: string } | null
+  /** The remote whose default branch every row is judged against instead of its own; null without one. */
+  against: string | null
+}
+
+/** The remotes whose branches the sweep judges, in the order asked. */
+export function judgedRemotes(repo: RepoInfo): RemoteInfo[] {
+  return repo.remotes.filter((r) => r.judged)
 }
 
 /** A default branch a row's work can land on, and the remote it is on; null for the local default branch. */
@@ -364,14 +376,17 @@ export function refOf(against: LandedAgainst): string {
  * branch, and local rows against the default remote's.
  */
 export function landedFor(repo: RepoInfo, remote?: RemoteInfo): LandedAgainst {
-  if (repo.against !== null) return repo.against
+  if (repo.against !== null) {
+    const against = repo.remotes.find((r) => r.name === repo.against)
+    return { remote: repo.against, branch: against?.defaultBranch ?? repo.mainBranch }
+  }
   if (remote === undefined) return { remote: repo.remote, branch: repo.mainBranch }
   return { remote: remote.name, branch: remote.defaultBranch }
 }
 
 /** True when the repository has a default remote the sweep did not fetch, so its refs may be stale. */
 export function isUnfetched(repo: RepoInfo): boolean {
-  return repo.remote !== null && !repo.fetched
+  return repo.remote !== null && !repo.fetchedRemotes.includes(repo.remote)
 }
 
 /** Rows of one kind, counted by what the sweep concluded. */
