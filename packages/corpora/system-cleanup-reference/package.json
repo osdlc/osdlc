@@ -1,0 +1,29 @@
+{
+  "name": "@osdlc/corpus-system-cleanup-reference",
+  "private": true,
+  "version": "0.0.0",
+  "description": "A cited record of where tools and apps keep data that can be reclaimed from disk, and how to clean it safely, typed by @osdlc/corpus-profile-system-cleanup. host-cleaner's descriptors are drafted from it.",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/corpora/system-cleanup-reference"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/corpora/system-cleanup-reference#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "keywords": [
+    "corpus-schema",
+    "corpus",
+    "claims",
+    "disk",
+    "cleanup",
+    "cache",
+    "markdown"
+  ],
+  "corpus": "corpus",
+  "devDependencies": {
+    "@osdlc/corpus-profile-claims": "workspace:*",
+    "@osdlc/corpus-profile-system-cleanup": "workspace:*"
+  }
+}
