@@ -1,0 +1,25 @@
+[package]
+name = "system-model"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "A repository's system model: typed package manifests and the dependency graph they declare. The Rust twin of @osdlc/system-model."
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["monorepo", "dependency-graph", "manifest", "cargo", "npm"]
+categories = ["development-tools", "filesystem"]
+include = [
+  "src/**/*.rs",
+  "examples/**/*.rs",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
+
+[dependencies]
+serde = { workspace = true }
+
+[lints]
+workspace = true
