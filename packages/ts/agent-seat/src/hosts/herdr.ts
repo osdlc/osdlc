@@ -37,7 +37,7 @@ import {
   type SendReceipt,
   type SendRequest,
 } from '../contract.ts'
-import { harnessOrNull, sessionViaTerminal } from '../harness.ts'
+import { commandArgv, harnessOrNull, sessionViaTerminal } from '../harness.ts'
 import { recallSessionPane, rememberSessionPane, type RememberedPane } from './session-panes.ts'
 import { registryDirOf, type HostStateOptions } from './registry.ts'
 
@@ -253,6 +253,7 @@ export function makeHerdrHost(
       return supportsPlatform(this) && onPath('herdr')
     },
     terminal(req) {
+      const argv = commandArgv(req)
       const create = runner().run(herdrWorkspaceCreateArgv(req, opts.session), {
         cwd: req.cwd,
         timeoutMs: 60_000,
@@ -267,7 +268,7 @@ export function makeHerdrHost(
       if (paneId === null) {
         throw new Error(`herdr workspace create returned no root pane: ${create.stdout.trim()}`)
       }
-      const run = runner().run(herdrPaneRunArgv(paneId, req.argv, opts.session), {
+      const run = runner().run(herdrPaneRunArgv(paneId, argv, opts.session), {
         cwd: req.cwd,
         timeoutMs: 60_000,
       })

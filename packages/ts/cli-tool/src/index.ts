@@ -57,6 +57,7 @@ export { envVars, systemDirs, TieredDirs } from '@osdlc/config-layers/dirs'
 export { closestMatches, didYouMean } from '@osdlc/config-layers/did-you-mean'
 export type { EnvVars, ResolveOptions, VendorDirs } from '@osdlc/config-layers/dirs'
 export {
+  askChecklist,
   askChoice,
   askText,
   askYesNo,
@@ -69,7 +70,9 @@ export {
   requireInteractive,
 } from './prompt.ts'
 export type {
+  AskChecklistOptions,
   AskChoiceOptions,
+  ChecklistItem,
   AskTextOptions,
   AskYesNoOptions,
   DiscardTypeAheadOptions,

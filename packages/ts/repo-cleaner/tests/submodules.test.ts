@@ -19,7 +19,8 @@ import { Git } from '@osdlc/typed-git'
 import { makeBareAndWorker } from '@osdlc/typed-git/testing'
 
 import { sh } from './helpers.ts'
-import { check, run as runPreview, type Approval, type RunOptions } from '../src/clean.ts'
+import type { Approval } from '../src/approval.ts'
+import { check, run as runPreview, type RunOptions } from '../src/clean.ts'
 import { plan as makePlan, type Plan } from '../src/plan.ts'
 import type { Receipt } from '../src/receipt.ts'
 import { inspectSubmodules, submoduleHazards, worktreeGitDirs } from '../src/submodules.ts'
@@ -103,10 +104,10 @@ function run(
   plan: Plan,
   opts: Partial<RunOptions> & { checkWith?: Sweep } = {},
   allow: Approval['allow'] = [],
-  pick: string[] = [wtId(fx)],
+  select: string[] = [wtId(fx)],
 ): Receipt {
   const { checkWith, ...runOpts } = opts
-  const preview = check(plan, { pick, allow }, { cwd: fx.root, sweep: checkWith })
+  const preview = check(plan, { select, allow }, { cwd: fx.root, sweep: checkWith })
   return runPreview(preview, { cwd: fx.root, source: 'plan.json', ...runOpts })
 }
 
