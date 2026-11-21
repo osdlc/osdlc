@@ -1,5 +1,20 @@
 # @osdlc/pr-update
 
+## 0.15.0
+
+### Minor Changes
+
+- b58c2d3: `update --apply --keep-failed` (or `pr_update.keep_failed: true`) moves the worktree of a PR that ended `conflict` or `failed` to `.pr-update/failed/<owner>-<name>-<number>/`, on a branch named for the PR, with a failed verify's log in `.pr-update-verify.log`. The result gains `keptWorktree` and the text names it. A later run skips that PR (`failed worktree kept at <path>`) until its head or base moves; `--retry-failed` and `--discard-kept` remove kept worktrees.
+
+### Patch Changes
+
+- Updated dependencies [a1651e3]
+- Updated dependencies [1ba6088]
+  - @osdlc/ref-lease@0.3.5
+  - @osdlc/typed-git@0.20.0
+  - @osdlc/code-host@0.8.4
+  - @osdlc/trust-repo@0.5.12
+
 ## 0.14.0
 
 ### Minor Changes

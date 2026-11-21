@@ -1,5 +1,13 @@
 # @osdlc/wayfinder
 
+## 0.13.2
+
+### Patch Changes
+
+- Updated dependencies [1ba6088]
+  - @osdlc/typed-git@0.20.0
+  - @osdlc/trust-repo@0.5.12
+
 ## 0.13.1
 
 ### Patch Changes

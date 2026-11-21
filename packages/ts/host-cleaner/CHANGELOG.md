@@ -1,5 +1,13 @@
 # @osdlc/host-cleaner
 
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [1ba6088]
+  - @osdlc/typed-git@0.20.0
+  - @osdlc/repo-cleaner@0.23.1
+
 ## 0.1.0
 
 ### Minor Changes
