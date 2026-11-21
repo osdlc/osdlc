@@ -16,7 +16,7 @@ created: 2026-11-07
   - the tmux attach helpers (`tmuxSessionName`, `tmuxIdSessionName`, `tmuxAttachArgv`,
     `tmuxSwitchClientArgv`, `insideTmux`), until an `attach` part replaces them;
   - `hostCanWait`, until waiting is a declaration on the host.
-- `HostName` stays a closed set of the nine built-in hosts in 0.x. A caller can still pass its own
+- `HostName` stays a closed set of the ten built-in hosts in 0.x. A caller can still pass its own
   `Host` object wherever a host is taken; only `HostRegistry` and `HostNameSchema` are keyed by
   the closed set.
 - `harnessArgv`, `claudeSessionArgv`, `claudeResumeArgv` and `ClaudeSessionFlagsSchema` stay

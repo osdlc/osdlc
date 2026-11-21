@@ -20,6 +20,7 @@ import {
   cmuxCloseArgv,
   cmuxCreateArgv,
   cmuxFocusArgv,
+  cmuxSessionMarker,
   cmuxReadScreenArgv,
   cmuxSendArgv,
   cmuxSendEnterArgv,
@@ -283,5 +284,139 @@ describe('cmux host', () => {
     const { runner } = scripted((argv) => (argv[0] === 'sessions' ? ok(sessionsJson) : ok()))
     const host = makeCmuxHost({ runner })
     expect(host.find!({ cwd: '/w', sessionId: 's-1' })).toEqual(host.find!({ cwd: '/w' }))
+  })
+})
+
+describe('cmux binary and session id', () => {
+  test('create carries the session marker as the description', () => {
+    const argv = cmuxCreateArgv({ cwd: '/w', argv: ['claude'], title: 'T', sessionId: 'abc-123' })
+    expect(argv[argv.indexOf('--description') + 1]).toBe(cmuxSessionMarker('abc-123'))
+    expect(cmuxCreateArgv({ cwd: '/w', argv: ['claude'], title: 'T' })).not.toContain(
+      '--description',
+    )
+  })
+
+  test('binary: available follows the option; null is unavailable', () => {
+    expect(makeCmuxHost({ binary: '/opt/cmux' }).available()).toBe(true)
+    expect(makeCmuxHost({ binary: null }).available()).toBe(false)
+  })
+
+  test('binary: the runner is built for the given path', () => {
+    // A missing binary must fail to spawn, proving the option reaches the spawn.
+    const host = makeCmuxHost({ binary: '/nonexistent/cmux-bin' })
+    expect(host.find!({ cwd: '/w' })).toEqual([])
+    expect(() =>
+      host.session!({ cwd: '/w', harness: 'claude', binary: 'claude', prompt: 'p', title: 't' }),
+    ).toThrow(/cmux workspace create failed/)
+  })
+
+  test('find with a session id keeps the workspace carrying its marker', () => {
+    const marker = cmuxSessionMarker('s-two')
+    const { runner } = scripted((argv) =>
+      argv[0] === 'sessions'
+        ? ok(
+            JSON.stringify({
+              sessions: [
+                { agent: 'claude', cwd: '/w', workspace_id: 'W1', surface_id: 'S1' },
+                { agent: 'claude', cwd: '/w', workspace_id: 'W2', surface_id: 'S2' },
+              ],
+            }),
+          )
+        : ok(
+            JSON.stringify([
+              { ref: 'W1', cwd: '/w', description: cmuxSessionMarker('s-one') },
+              { ref: 'W2', cwd: '/w', description: marker },
+            ]),
+          ),
+    )
+    const host = makeCmuxHost({ runner })
+    expect(host.find!({ cwd: '/w', sessionId: 's-two' }).map((f) => f.handle)).toEqual(['W2/S2'])
+    expect(host.find!({ cwd: '/w' }).map((f) => f.handle)).toEqual(['W1/S1', 'W2/S2'])
+  })
+
+  test('find with an unmarked session id falls back to cwd', () => {
+    const { runner } = scripted((argv) => (argv[0] === 'sessions' ? ok(sessionsJson) : ok('[]')))
+    expect(
+      makeCmuxHost({ runner }).find!({ cwd: '/w', sessionId: 'nobody' }).map((f) => f.handle),
+    ).toEqual(['W1/S1', 'W3'])
+  })
+
+  test("find with a session id never falls back onto another session's workspace", () => {
+    const { runner } = scripted((argv) =>
+      argv[0] === 'sessions'
+        ? ok(
+            JSON.stringify({
+              sessions: [{ agent: 'claude', cwd: '/w', workspace_id: 'W1', surface_id: 'S1' }],
+            }),
+          )
+        : ok(JSON.stringify([{ ref: 'W1', cwd: '/w', description: cmuxSessionMarker('s-one') }])),
+    )
+    const host = makeCmuxHost({ runner })
+    expect(host.find!({ cwd: '/w', sessionId: 's-two' })).toEqual([])
+    expect(host.close!({ cwd: '/w', sessionId: 's-two' })).toBe(false)
+  })
+
+  test("find returns the session's own listed workspace over an unmarked store row", () => {
+    const { runner } = scripted((argv) =>
+      argv[0] === 'sessions'
+        ? ok(
+            JSON.stringify({
+              sessions: [{ agent: 'claude', cwd: '/w', workspace_id: 'W3', surface_id: 'S3' }],
+            }),
+          )
+        : ok(JSON.stringify([{ ref: 'W1', cwd: '/w', description: cmuxSessionMarker('s-two') }])),
+    )
+    const host = makeCmuxHost({ runner })
+    expect(host.find!({ cwd: '/w', sessionId: 's-two' }).map((f) => f.handle)).toEqual(['W1'])
+    expect(host.send!({ cwd: '/w', sessionId: 's-two', text: 'x' }).accepted).toBe(false)
+  })
+
+  test('a session id with the workspace list denied still needs exactly one agent row', () => {
+    const { runner } = scripted((argv) =>
+      argv[0] === 'sessions'
+        ? ok(
+            JSON.stringify({
+              sessions: [
+                { agent: 'claude', cwd: '/w', workspace_id: 'W1', surface_id: 'S1' },
+                { agent: 'claude', cwd: '/w', workspace_id: 'W2', surface_id: 'S2' },
+              ],
+            }),
+          )
+        : denied,
+    )
+    const host = makeCmuxHost({ runner })
+    expect(host.send!({ cwd: '/w', sessionId: 's-x', text: 'x' }).accepted).toBe(false)
+    expect(host.close!({ cwd: '/w', sessionId: 's-x' })).toBe(false)
+  })
+
+  test('binary null runs nothing', () => {
+    const { runner, calls } = scripted(() => ok())
+    const host = makeCmuxHost({ binary: null, runner })
+    expect(host.find!({ cwd: '/w' })).toEqual([])
+    expect(host.send!({ cwd: '/w', text: 'x' }).accepted).toBe(false)
+    expect(host.close!({ cwd: '/w' })).toBe(false)
+    expect(() =>
+      host.session!({ cwd: '/w', harness: 'claude', binary: 'claude', prompt: 'p', title: 't' }),
+    ).toThrow()
+    expect(calls).toEqual([])
+  })
+
+  test('find joins a workspace listed by ref to a stored id', () => {
+    const { runner } = scripted((argv) =>
+      argv[0] === 'sessions'
+        ? ok(
+            JSON.stringify({
+              sessions: [{ agent: 'claude', cwd: '/w', workspace_id: 'W1', surface_id: 'S1' }],
+            }),
+          )
+        : ok(
+            JSON.stringify([
+              { ref: 'workspace:1', id: 'W1', cwd: '/w', description: cmuxSessionMarker('s-one') },
+            ]),
+          ),
+    )
+    expect(
+      makeCmuxHost({ runner }).find!({ cwd: '/w', sessionId: 's-one' }).map((f) => f.handle),
+    ).toEqual(['W1/S1'])
   })
 })
