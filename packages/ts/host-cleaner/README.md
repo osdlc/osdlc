@@ -107,10 +107,11 @@ is `claude` or `claude.exe`, or `node` running a `claude` script, found with
 `ps` and its working directory with `lsof`. Each candidate carries a
 `close-session` protest and is never `unattended`, so a session closes only
 when picked and allowed by name. A session that host-cleaner itself runs
-inside (an ancestor of its process) is refused with `own-session`:
+inside (an ancestor of its process) is refused with `own-session`.
 
 ```sh
-host-cleaner clean --pick session:1234 --allow close-session
+host-cleaner clean --pick session:1234 --allow close-session   # the usual clean, and this session
+host-cleaner clean -i                                           # tick only the session
 ```
 
 Its evidence holds the start time, the command, the working directory, the
