@@ -10,3 +10,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 - The model types and `build_dependency_graph`, moved from the `manifest-graph` crate.
+- `walk_manifests` and `scan_aspects`, moved from the same crate.
