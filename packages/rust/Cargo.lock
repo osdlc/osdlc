@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "agent-adapt"
-version = "0.19.4"
+version = "0.19.5"
 dependencies = [
  "serde",
  "serde_json",
@@ -957,7 +957,7 @@ dependencies = [
 
 [[package]]
 name = "markdown-corpus"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "frontmatter-lossless",
  "markdown-link",
@@ -1005,7 +1005,7 @@ dependencies = [
 
 [[package]]
 name = "markdown-vault-fs"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "path-guard",
  "regex",
@@ -1546,6 +1546,8 @@ name = "system-model"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
+ "toml",
 ]
 
 [[package]]
@@ -1774,7 +1776,7 @@ checksum = "6af6ae20167a9ece4bcb41af5b80f8a1f1df981f6391189ce00fd257af04126a"
 
 [[package]]
 name = "typed-git"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "log",
  "serial_test",
@@ -1958,7 +1960,7 @@ dependencies = [
 
 [[package]]
 name = "web-access"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "axum",
  "base64",

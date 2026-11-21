@@ -1003,7 +1003,7 @@ interface StepContext {
   git: Git
   probe: ProcessProbe
   removedHere: ReadonlySet<string>
-  /** Bytes a worktree directory takes, read just before its removal. */
+  /** The size of a directory about to be removed, or null when `du` cannot tell. */
   measure: (path: string) => number | null
   /**
    * Worktrees whose lock this run cleared. typed-git has no `worktree lock`
