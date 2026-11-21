@@ -1,5 +1,5 @@
 /**
- * The unattended run: which candidates `--auto` may clean with no person
+ * The unattended run: which candidates `clean --auto` may clean with no person
  * present, and the report it leaves.
  *
  * The subset is fixed and grants nothing: a candidate its owner marked
@@ -37,7 +37,7 @@ export interface AutoReport {
   bytesFreed: number
 }
 
-/** The ids `--auto` cleans: `unattended: true`, and no refuse or protest; a note does not hold one. */
+/** The ids `clean --auto` cleans: `unattended: true`, and no refuse or protest; a note does not hold one. */
 export function selectUnattended(
   candidates: readonly Candidate[],
   objections: readonly Objection[],
@@ -103,7 +103,7 @@ const sizeText = (bytes: number): string => {
 
 /** The report as text, control characters stripped. */
 export function renderAutoReport(r: AutoReport): string {
-  const lines = [`host-cleaner --auto: ${r.status}`, `freed: ${sizeText(r.bytesFreed)}`]
+  const lines = [`host-cleaner clean --auto: ${r.status}`, `freed: ${sizeText(r.bytesFreed)}`]
   lines.push(`cleaned (${r.cleaned.length})`)
   for (const c of r.cleaned) lines.push(`  ${sizeText(c.bytes).padStart(9)}  ${c.id}`)
   if (r.failed.length > 0) {

@@ -54,8 +54,19 @@ const found = survey([cache], ctx) // scope, discover, object
 const receipt = clean(plan(found), [cache], ctx) // re-check, prepare, delete, deleted
 ```
 
-Without a `pick`, a plan runs every candidate nothing objects to and no plugin holds for review. With one, it
-runs the named candidates, each judged by the rules above.
+What a plan runs uses repo-cleaner's words, with their meaning:
+
+- **The default:** every candidate nothing refuses or protests and no owner
+  holds for review (`unattended: false`).
+- **`select`:** exactly these candidate ids instead of the default.
+- **`pick`:** these as well; a candidate held for review runs only when picked
+  or selected.
+- **`spare`:** leave these alone: an id, a path, a name (every candidate of
+  that name, as a branch and the worktree that has it checked out), or a glob
+  over ids, paths and names. A spared candidate that would have run is
+  dropped as `spared`.
+
+Each candidate that runs is still judged by the rules above.
 
 ## The `git` plugin
 
@@ -96,10 +107,11 @@ is `claude` or `claude.exe`, or `node` running a `claude` script, found with
 `ps` and its working directory with `lsof`. Each candidate carries a
 `close-session` protest and is never `unattended`, so a session closes only
 when picked and allowed by name. A session that host-cleaner itself runs
-inside (an ancestor of its process) is refused with `own-session`:
+inside (an ancestor of its process) is refused with `own-session`.
 
 ```sh
-host-cleaner clean --pick session:1234 --allow close-session
+host-cleaner clean --pick session:1234 --allow close-session   # the usual clean, and this session
+host-cleaner clean -i                                           # tick only the session
 ```
 
 Its evidence holds the start time, the command, the working directory, the
@@ -110,11 +122,23 @@ It never sends SIGKILL; a session that ignores SIGTERM fails its step.
 
 ## Command line
 
+The command works in repo-cleaner's phases, with its flags. Nothing runs until
+a phase is named; the bare command explains them and exits 2.
+
 ```sh
-host-cleaner [target...]   # the report; deletes nothing
+host-cleaner status [target...]   # every candidate and what objects to it; deletes nothing
 host-cleaner plan -o plan.json
-host-cleaner clean [--plan plan.json] [--pick <id>] [--allow <code>] [--yes | --dry-run]
+host-cleaner clean [--plan plan.json] [--pick <id>] [--spare <id|name|glob>] [--allow <code>] [-i] [--yes | --dry-run]
 ```
+
+| Flag | Meaning, as in repo-cleaner |
+| --- | --- |
+| `--pick <id>` | Also run this candidate. One its plugin holds for review runs only when picked. |
+| `--spare <id\|name\|glob>` | Leave these alone: an id, a path, a branch name (its worktree too) or a glob. |
+| `-i` | Choose from a checklist, the default candidates ticked; each ticked protest is asked for by code. Needs a terminal. |
+| `--allow <code>` | Accept a protest by its code. |
+| `--worktrees`, `--branches` | Only the git plugin's worktrees, or only its local branches. Remote branches are repo-cleaner's. |
+| `--all-rows` | `status`: also show candidates a plugin refuses. |
 
 `--plugin <name>` runs only those plugins (`--adapter` is an alias) and
 `--skip-plugin <name>` never runs these. Targets default to the config file's
@@ -133,24 +157,25 @@ all three directories):
 `plugins.<name>` holds that plugin's settings; a name that no plugin has is an
 error.
 
-### `--auto` and `schedule`
+### `clean --auto` and `schedule`
 
-`host-cleaner --auto` cleans with no person present: it takes the candidates
+`host-cleaner clean --auto` cleans with no person present: it takes the candidates
 whose owner marked them `unattended: true` and that nothing refuses or
 protests, and grants no `--allow`. That is a clean worktree (`git`) and an
 artifact idle past its threshold with nothing building in its checkout
 (`cargo`, `node`). Branches, sessions and anything with a protest are left for
-a person. A lock in the state directory stops a second run; the run writes a
-report to `reports/`, a receipt to `receipts/` and a log line.
+a person. `--spare` leaves more out; `--pick`, `--allow`, `-i`, `--yes` and
+`--dry-run` are refused. A lock in the state directory stops a second run; the
+run writes a report to `reports/`, a receipt to `receipts/` and a log line.
 
 `host-cleaner schedule install [--every <hours>]` (default 6) writes a launchd
-user agent that runs `host-cleaner --auto`, with the `HOST_CLEANER_*`
+user agent that runs `host-cleaner clean --auto`, with the `HOST_CLEANER_*`
 overrides it was installed with (it needs `targets` in the config file, since
 launchd starts the job in `/`); `schedule status` and `schedule uninstall`
 show and remove it. macOS only.
 
 Exit codes: 0 done, declined or nothing to delete; 1 failed against the state
-found; 2 cannot run as typed; 10 nothing to sweep; 11 `clean` or `--auto` stopped at a
+found; 2 cannot run as typed; 10 nothing to sweep; 11 `clean` stopped at a
 failed step. A run that finds the lock held exits 0.
 
 ## Install

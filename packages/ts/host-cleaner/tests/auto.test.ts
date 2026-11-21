@@ -1,4 +1,4 @@
-/** `--auto` and `schedule`: which candidates the unattended run takes, the report and lock, and the launchd agent. */
+/** `clean --auto` and `schedule`: which candidates the unattended run takes, the report and lock, and the launchd agent. */
 
 import { afterEach, describe, expect, test } from 'vitest'
 import {
@@ -97,7 +97,7 @@ describe('selectUnattended', () => {
   })
 })
 
-describe('host-cleaner --auto', () => {
+describe('host-cleaner clean --auto', () => {
   test('cleans the unattended subset only, and leaves a report, a receipt and a log line', () => {
     const { env, cwd } = setup()
     const plugin = fake(
@@ -108,10 +108,10 @@ describe('host-cleaner --auto', () => {
       ],
       [objection('artifact:held', 'protest')],
     )
-    const r = run(['--auto'], cwd, env, { plugins: [plugin] })
+    const r = run(['clean', '--auto'], cwd, env, { plugins: [plugin] })
     expect(r.code).toBe(0)
     expect(plugin.removed).toEqual(['artifact:idle'])
-    expect(r.out).toContain('host-cleaner --auto: complete')
+    expect(r.out).toContain('host-cleaner clean --auto: complete')
     expect(r.out).toContain('freed: 2.0 KB')
     expect(r.out).toContain('left for review (2)')
     const dirs = hostDirs(env)
@@ -130,7 +130,7 @@ describe('host-cleaner --auto', () => {
   test('with nothing unattended it runs nothing, though a plain clean would run the rest', () => {
     const { env, cwd } = setup()
     const plugin = fake([cand('artifact:manual')])
-    const r = run(['--auto', '--format', 'json'], cwd, env, { plugins: [plugin] })
+    const r = run(['clean', '--auto', '--format', 'json'], cwd, env, { plugins: [plugin] })
     expect(r.code).toBe(0)
     expect(plugin.removed).toEqual([])
     expect(JSON.parse(r.out).report.status).toBe('nothing-to-clean')
@@ -143,7 +143,7 @@ describe('host-cleaner --auto', () => {
     const git = new Git(dir, { env: { ...IDENTITY } })
     git.rawChecked(['commit', '--allow-empty', '-m', 'initial'])
     git.rawChecked(['branch', 'merged-a'])
-    const r = run(['--auto'], dir, env)
+    const r = run(['clean', '--auto'], dir, env)
     expect(r.code).toBe(0)
     expect(r.out).toContain('nothing-to-clean')
     expect(git.rawChecked(['branch', '--format=%(refname:short)']).stdout).toContain('merged-a')
@@ -157,7 +157,7 @@ describe('host-cleaner --auto', () => {
         throw new Error('disk on fire')
       },
     }
-    const r = run(['--auto'], cwd, env, { plugins: [broken] })
+    const r = run(['clean', '--auto'], cwd, env, { plugins: [broken] })
     expect(r.code).toBe(11)
     expect(r.out).toContain('artifact:a: disk on fire')
   })
@@ -174,16 +174,29 @@ describe('host-cleaner --auto', () => {
     )
     expect(claim.ok).toBe(true)
     const plugin = fake([cand('artifact:a', { unattended: true })])
-    const r = run(['--auto'], cwd, env, { plugins: [plugin] })
+    const r = run(['clean', '--auto'], cwd, env, { plugins: [plugin] })
     if (claim.ok) releaseLock(lock, claim.token)
     expect(r.code).toBe(0)
     expect(r.err).toContain('another run holds')
     expect(plugin.removed).toEqual([])
   })
 
-  test('--all does not apply', () => {
+  test('what --auto fixes for itself is refused with exit 2', () => {
     const { env, cwd } = setup()
-    expect(run(['--auto', '--all'], cwd, env).code).toBe(2)
+    for (const extra of [['--pick', 'x'], ['--allow', 'lossy'], ['-i'], ['--yes'], ['--dry-run']]) {
+      const r = run(['clean', '--auto', ...extra], cwd, env)
+      expect(r.code).toBe(2)
+      expect(r.err).toContain(`drop ${extra[0]}`)
+    }
+    expect(run(['--auto'], cwd, env).code).toBe(2)
+  })
+
+  test('--spare leaves a candidate out of the unattended subset', () => {
+    const { env, cwd } = setup()
+    const plugin = fake([cand('artifact:idle', { unattended: true })])
+    const r = run(['clean', '--auto', '--spare', 'artifact:*'], cwd, env, { plugins: [plugin] })
+    expect(r.code).toBe(0)
+    expect(plugin.removed).toEqual([])
   })
 })
 
@@ -204,7 +217,7 @@ describe('host-cleaner schedule', () => {
       platform: 'darwin',
       uid: 501,
       launchctl,
-      program: ['/usr/bin/node', '/x/host-cleaner.js', '--auto'],
+      program: ['/usr/bin/node', '/x/host-cleaner.js', 'clean', '--auto'],
       ...over,
     })
     return { ...r, calls, home }
@@ -247,7 +260,7 @@ describe('host-cleaner schedule', () => {
   test('the plist escapes its text and carries the HOST_CLEANER_ overrides', () => {
     const text = renderPlist({
       label: 'x',
-      program: ['a&b', '--auto'],
+      program: ['a&b', 'clean', '--auto'],
       everyHours: 1,
       logFile: '/l',
       vars: { HOST_CLEANER_ROOT: '/r' },

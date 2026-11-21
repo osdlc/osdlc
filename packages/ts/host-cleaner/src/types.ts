@@ -20,10 +20,12 @@ export interface Candidate {
   evidence: Record<string, unknown>
   /** Candidate ids that must be deleted before this one; if one is refused or dropped, so is this. */
   requires?: string[] | undefined
+  /** The name a person knows it by, which `spare` matches: a branch's name, the branch a worktree has checked out. */
+  name?: string | undefined
   /**
-   * True: `--auto` may take it if nothing refuses or protests.
-   * False: a run with no pick skips it.
-   * Absent: a run with no pick takes it; `--auto` does not.
+   * True: `clean --auto` may take it if nothing refuses or protests.
+   * False: the default leaves it out; only a pick or a selection runs it.
+   * Absent: the default takes it; `clean --auto` does not.
    */
   unattended?: boolean | undefined
 }
@@ -74,6 +76,6 @@ export class FatalRun extends Error {
 }
 
 /** Why a candidate does not run. */
-export const DROP_REASONS = ['gone', 'blocked', 'not-allowed', 'changed'] as const
+export const DROP_REASONS = ['gone', 'blocked', 'not-allowed', 'changed', 'spared'] as const
 
 export type DropReason = (typeof DROP_REASONS)[number]

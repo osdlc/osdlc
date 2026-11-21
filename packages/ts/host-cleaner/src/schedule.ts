@@ -1,5 +1,5 @@
 /**
- * The scheduled run: a launchd user agent that runs `host-cleaner --auto`.
+ * The scheduled run: a launchd user agent that runs `host-cleaner clean --auto`.
  * Every `launchctl` call goes through the command seam. macOS only; a general
  * trigger service would run the same command.
  */
