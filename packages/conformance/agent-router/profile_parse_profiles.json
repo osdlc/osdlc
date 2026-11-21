@@ -1,7 +1,7 @@
 {
   "family": "agent-router",
   "reference": "ts",
-  "referenceVersion": "0.4.4",
+  "referenceVersion": "0.4.5",
   "sections": {
     "profile_parse_profiles": {
       "description": "parseProfiles: a profiles section beside the built-in profiles; an entry of the same name replaces one whole",
