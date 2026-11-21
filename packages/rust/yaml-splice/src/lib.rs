@@ -1,11 +1,13 @@
-//! Edit top-level fields of a YAML mapping without reserializing it.
+//! Edit fields of a YAML mapping without reserializing it.
 //!
 //! [`edit_yaml`] takes UTF-8 YAML bytes and an ordered list of field edits
-//! ([`FieldEdit::Set`], [`FieldEdit::Remove`], [`FieldEdit::Rename`]) and
-//! returns new bytes or a typed [`EditError`]. Only the bytes of the edited
-//! field change. Every other byte (comments, key order, quoting, blank lines,
-//! a BOM, CRLF line endings) is kept, because it is never re-emitted. An edit
-//! that changes nothing returns the input bytes unchanged.
+//! ([`FieldEdit::Set`], [`FieldEdit::Remove`], [`FieldEdit::Rename`], and
+//! their path forms [`FieldEdit::SetPath`], [`FieldEdit::RemovePath`],
+//! [`FieldEdit::RenamePath`] for keys below the top level) and returns new
+//! bytes or a typed [`EditError`]. Only the bytes of the edited field change.
+//! Every other byte (comments, key order, quoting, blank lines, a BOM, CRLF
+//! line endings) is kept, because it is never re-emitted. An edit that
+//! changes nothing returns the input bytes unchanged.
 //!
 //! The crate does no I/O. It has no clock, locale or global state, so the same
 //! input always gives the same output.
@@ -28,6 +30,7 @@
 //! - [`edit_yaml`] and [`edit_yaml_with`] edit a whole YAML document.
 //! - [`edit_frontmatter`] and [`edit_frontmatter_with`] edit a Markdown
 //!   frontmatter block that was cut out without its last line ending.
+//! - [`PathSegment`] is one step of a path (a key or an index).
 //! - [`Value`] and [`Mapping`] are the value model a `Set` writes. A
 //!   [`Mapping`] keeps keys in insertion order.
 //! - The [`parse`], [`render`] and [`splice`] modules are the lower layers the
@@ -65,13 +68,14 @@
 
 pub mod edit;
 pub mod parse;
+mod path;
 pub mod render;
 pub mod splice;
 pub mod value;
 
 pub use edit::{
-    EditError, EditOptions, EditOutcome, FieldEdit, edit_frontmatter, edit_frontmatter_with,
-    edit_yaml, edit_yaml_with,
+    EditError, EditOptions, EditOutcome, FieldEdit, PathSegment, edit_frontmatter,
+    edit_frontmatter_with, edit_yaml, edit_yaml_with,
 };
 pub use value::{Mapping, Value};
 

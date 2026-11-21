@@ -1035,4 +1035,32 @@ mod tests {
             format!("http://[::1]:80/?token={TOK}")
         );
     }
+
+    /// Cargo feature unification can enable axum's `http2` (the dev-dependency
+    /// does here), so `serve` negotiates it. A connection's tag cannot tell
+    /// concurrent streams apart, so the guard refuses them.
+    #[tokio::test]
+    async fn http2_requests_are_refused() {
+        let handle = serve(router(), &cfg(Listen::Loopback), Tokens::none())
+            .await
+            .unwrap();
+        let addr = handle.addrs()[0];
+        let io = hyper_util::rt::TokioIo::new(TcpStream::connect(addr).await.unwrap());
+        let (mut send, conn) =
+            hyper::client::conn::http2::handshake(hyper_util::rt::TokioExecutor::new(), io)
+                .await
+                .unwrap();
+        tokio::spawn(conn);
+        let req = || {
+            axum::http::Request::get("/")
+                .header("host", addr.to_string())
+                .body(axum::body::Body::empty())
+                .unwrap()
+        };
+        let (a, b) = tokio::join!(send.send_request(req()), send.send_request(req()));
+        for res in [a.unwrap(), b.unwrap()] {
+            assert_eq!(res.status().as_u16(), 505);
+        }
+        handle.stop().await;
+    }
 }

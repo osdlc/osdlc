@@ -1,0 +1,9 @@
+{
+  "name": "@mini/pkg-a",
+  "version": "1.0.0",
+  "description": "Depends on pkg-b in-workspace and lodash externally",
+  "dependencies": {
+    "@mini/pkg-b": "workspace:*",
+    "lodash": "^4.17.21"
+  }
+}
