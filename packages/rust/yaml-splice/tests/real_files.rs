@@ -16,11 +16,11 @@
 
 mod model;
 
-use model::{PathEdit, Seg, apply, read};
-use yaml_splice::Value;
+use model::{PathEdit, Seg, apply, read, to_field_edit};
+use yaml_splice::{EditError, Value, edit_yaml};
 
 /// The tiers whose edits run. Raised as each tier is implemented.
-const ENABLED_TIERS: &[u64] = &[];
+const ENABLED_TIERS: &[u64] = &[1, 2];
 
 const FILES: &[(&str, &str)] = &[
     (
@@ -141,10 +141,6 @@ fn tier(path: &[Seg]) -> u64 {
 }
 
 /// One planned edit and what the document must read as afterwards.
-#[expect(
-    dead_code,
-    reason = "`want` and `one_line` are read by `run` from tier 1"
-)]
 struct Planned {
     edit: PathEdit,
     tier: u64,
@@ -195,6 +191,8 @@ fn one_line_leaf(root: &Value, path: &[Seg]) -> bool {
 #[test]
 fn every_node_of_every_real_file_is_edited() {
     let mut planned = [0usize; 3];
+    let mut written = 0usize;
+    let mut refused: std::collections::BTreeMap<&str, usize> = Default::default();
     let mut failures = Vec::new();
     for (name, src) in FILES {
         assert!(
@@ -206,13 +204,17 @@ fn every_node_of_every_real_file_is_edited() {
             if !ENABLED_TIERS.contains(&p.tier) {
                 continue;
             }
-            if let Err(msg) = run(src, &p) {
-                failures.push(format!("  [{name}] {:?}: {msg}", p.edit));
+            match run(src, &p) {
+                Ok(Outcome::Written) => written += 1,
+                Ok(Outcome::Refused(why)) => {
+                    *refused.entry(why).or_insert(0) += 1;
+                }
+                Err(msg) => failures.push(format!("  [{name}] {:?}: {msg}", p.edit)),
             }
         }
     }
     eprintln!(
-        "real files: {} tier 1 edits, {} tier 2 edits",
+        "real files: {} tier 1 edits, {} tier 2 edits; {written} written, refused: {refused:?}",
         planned[1], planned[2]
     );
     assert!(
@@ -221,6 +223,8 @@ fn every_node_of_every_real_file_is_edited() {
         failures.len(),
         failures.join("\n")
     );
+    // No edit is refused because its result was wrong.
+    assert_eq!(refused.get("InvalidResult"), None, "refused: {refused:?}");
     // Pinned: the files are fixed copies, so a change here means the walk or
     // the model changed.
     assert_eq!(planned, [0, 642, 1228], "edits planned by tier");
@@ -228,9 +232,45 @@ fn every_node_of_every_real_file_is_edited() {
 
 /// Runs one planned edit through the edit functions.
 ///
-/// Tier 1 replaces the body: call `edit_yaml` with the crate's path edit,
-/// require the result to read as `p.want` (or a refusal), and, when
-/// `p.one_line`, require the line count to stay and one line to differ.
-fn run(_src: &str, _p: &Planned) -> Result<(), String> {
-    Err("path edits are not implemented yet".to_string())
+/// The result must read as `p.want`, or the edit must be refused with
+/// `InvalidResult` or `UnsupportedPath`. A `Set` of a one-line scalar must
+/// write one line, however many the old value took.
+fn run(src: &str, p: &Planned) -> Result<Outcome, String> {
+    let out = match edit_yaml(src.as_bytes(), &[to_field_edit(&p.edit)]) {
+        Ok(out) => out,
+        Err(EditError::InvalidResult { .. }) => return Ok(Outcome::Refused("InvalidResult")),
+        Err(EditError::UnsupportedPath { .. }) => return Ok(Outcome::Refused("UnsupportedPath")),
+        Err(e) => return Err(format!("unexpected refusal: {e}")),
+    };
+    let text = String::from_utf8(out.bytes).map_err(|e| e.to_string())?;
+    let got = read(&text)?;
+    if format!("{got:?}") != format!("{:?}", p.want) {
+        return Err(format!("read back as {got:?}, want {:?}", p.want));
+    }
+    if p.one_line {
+        // Exactly one line differs between the shared head and tail.
+        let (before, after): (Vec<&str>, Vec<&str>) =
+            (src.lines().collect(), text.lines().collect());
+        let head = before
+            .iter()
+            .zip(&after)
+            .take_while(|(a, b)| a == b)
+            .count();
+        let tail = before[head..]
+            .iter()
+            .rev()
+            .zip(after[head..].iter().rev())
+            .take_while(|(a, b)| a == b)
+            .count();
+        let written = after.len() - head - tail;
+        if written != 1 {
+            return Err(format!("a one-line set wrote {written} lines"));
+        }
+    }
+    Ok(Outcome::Written)
+}
+
+enum Outcome {
+    Written,
+    Refused(&'static str),
 }

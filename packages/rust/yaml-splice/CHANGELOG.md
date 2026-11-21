@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Nested edits by path: `FieldEdit::SetPath`, `RemovePath` and `RenamePath`,
+  over a `PathSegment` list (`Key` or `Index`). A one-segment path is exactly
+  the top-level edit of the same name. Keys are edited through block mappings
+  and block sequences, `- key:` items included: an index sets an item, one
+  past the end appends, and `RemovePath` deletes an item. A path that steps
+  into a flow collection is refused as `UnsupportedPath`.
+- `EditError::PathNotFound`, `PathTypeMismatch` and `UnsupportedPath`.
+
+### Fixed
+
+- A multi-line scalar written under an indented key (a block scalar, say) is
+  indented under that key. Before, `render` placed its lines for a key at
+  column zero.
+
 ## [0.3.4](https://github.com/osdlc/osdlc/compare/yaml-splice/v0.3.3...yaml-splice/v0.3.4) - 2026-11-10
 
 ### Other
