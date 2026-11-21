@@ -220,9 +220,9 @@ jobs:
         if: env.PICKED == 'true'
         run: pnpm $FILTER --if-present run check:extra
 
-      # One package at a time: vitest sizes its worker pool to the runner's
-      # cores, and pnpm's default of four packages at once would put four pools
-      # on a four-core runner, starving even trivial tests past their 5s limit.
+      # One package at a time: vitest already sizes its worker pool to the
+      # runner's cores, so several packages at once starve even trivial tests
+      # past their 5s limit.
       - name: Test
         if: env.PICKED == 'true'
         run: pnpm $FILTER --workspace-concurrency=1 --no-bail --if-present run test
