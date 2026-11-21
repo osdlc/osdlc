@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { captureContext } from '@osdlc/cli-tool'
 
 import { main } from '../src/cli.ts'
-import { coveredBy, expandHome, ignorePaths } from '../src/ignore.ts'
+import { containsIgnored, coveredBy, expandHome, ignorePaths } from '../src/ignore.ts'
 import { plan, recheck, survey } from '../src/run.ts'
 import { effectiveSettings, settingsOf } from '../src/settings.ts'
 import { envOf } from '../src/artifacts.ts'
@@ -141,5 +141,12 @@ describe('the command line', () => {
     const shown = run(['config', '--config', config])
     expect(shown.out).toContain('ignore: /cfg-ignored')
     expect(shown.out).toMatch(/idleHours = 0 {2}\(idleHours\)/)
+  })
+})
+
+describe('containsIgnored', () => {
+  test('a directory holding an ignored path is flagged, a sibling is not', () => {
+    expect(containsIgnored('/repo/target', ['/repo/target/debug'])).toBe('/repo/target/debug')
+    expect(containsIgnored('/repo/target2', ['/repo/target/debug'])).toBeUndefined()
   })
 })
