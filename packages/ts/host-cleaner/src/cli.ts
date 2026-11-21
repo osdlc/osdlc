@@ -1,26 +1,33 @@
-/** `host-cleaner`: report, plan, clean. Commands are in `reportCli`, exit codes in README.md, directories in `config.ts`. */
+/**
+ * `host-cleaner`: status, plan, clean, in repo-cleaner's phases and words.
+ * Nothing runs until a phase is named; the bare command explains them and
+ * exits 2. Exit codes are in README.md, directories in `config.ts`.
+ */
 
 import { appendFileSync, mkdirSync, readSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 
 import {
   EXIT,
+  askChecklist,
   askYesNo,
   canPrompt,
   defineCli,
   renderError,
+  type ChecklistItem,
   type Cli,
   type CliContext,
   type FlagSpec,
   type FlagValues,
 } from '@osdlc/cli-tool'
-import { KINDS, type Kind } from '@osdlc/repo-cleaner'
+import type { Kind } from '@osdlc/repo-cleaner'
 import { stripControls } from '@osdlc/ux'
 
 import { ConfigError, configFile, hostDirs, readConfig, type Config } from './config.ts'
 import { parsePlan, readPlan, writePlan, type Plan, type Receipt } from './plan.ts'
 import { FACTORIES, UnknownPlugin, selectPlugins } from './registry.ts'
 import {
+  SelectionError,
   clean,
   decidePlan,
   orderPlugins,
@@ -40,11 +47,8 @@ const HELP_FLAGS = {
 } as const
 
 const SWEEP_FLAGS = {
-  only: {
-    kind: 'list',
-    valueName: 'kinds',
-    help: `only these kinds of git candidate: ${KINDS.filter((k) => k !== 'remote').join(', ')}`,
-  },
+  worktrees: { kind: 'boolean', help: 'only worktrees, of the git candidates' },
+  branches: { kind: 'boolean', help: 'only local branches, of the git candidates' },
   plugin: {
     kind: 'list',
     valueName: 'names',
@@ -84,9 +88,32 @@ const TARGETS = [
   },
 ] as const
 
-const reportCli = () =>
+const PHASES = `phases:
+  ${NAME} status   look: every plugin's candidates, and what each objection would stop
+  ${NAME} plan     save what status found, to clean later or hand over
+  ${NAME} clean    check again, show the steps, ask, delete`
+
+/** What the bare command prints: the phases, and that nothing ran. */
+const OVERVIEW = `${NAME} finds what on this machine can go (worktrees and branches whose
+work has landed, and whatever else its plugins know) and deletes it safely.
+
+It works in phases, as repo-cleaner does. Nothing is deleted until clean.
+
+  1. status   Look: each candidate, and what each objection would stop.
+                $ ${NAME} status
+  2. plan     Optional: save what status found, to run later or hand on.
+                $ ${NAME} plan -o plan.json
+  3. clean    Delete what is safe: checks each candidate again, shows the steps, asks.
+                $ ${NAME} clean             asks first
+                $ ${NAME} clean -i          choose from a checklist
+                $ ${NAME} clean --plan plan.json
+
+Nothing ran. Name a phase; \`${NAME} <phase> --help\` shows its options.
+`
+
+const statusCli = () =>
   defineCli({
-    name: NAME,
+    name: `${NAME} status`,
     summary:
       'Say what on this machine can go: every plugin’s candidates, and what each objection ' +
       'would stop. Deletes nothing.',
@@ -94,7 +121,10 @@ const reportCli = () =>
     positionals: TARGETS,
     flags: {
       ...SWEEP_FLAGS,
-      all: { kind: 'boolean', help: 'also show candidates a plugin refuses (with --format text)' },
+      allRows: {
+        kind: 'boolean',
+        help: 'also show candidates a plugin refuses (with --format text)',
+      },
       format: {
         kind: 'enum',
         choices: ['text', 'json'] as const,
@@ -104,10 +134,7 @@ const reportCli = () =>
       },
       ...HELP_FLAGS,
     },
-    shortEpilogue: `commands:
-  ${NAME} [target...]   this report (the default)
-  ${NAME} plan          save the candidates and their evidence, to run later
-  ${NAME} clean         check again, show the steps, ask, delete`,
+    shortEpilogue: PHASES,
   })
 
 const planCli = () =>
@@ -120,7 +147,14 @@ const planCli = () =>
     positionals: TARGETS,
     flags: {
       ...SWEEP_FLAGS,
-      pick: idList('id', 'work on exactly these candidates; repeatable'),
+      pick: idList(
+        'id',
+        'also run this candidate; one its plugin holds for review runs only when picked; repeatable',
+      ),
+      spare: idList(
+        'id|name|glob',
+        'leave these candidates alone: an id, a path, a branch name (its worktree too) or a glob; repeatable',
+      ),
       allow: idList('code', 'accept a protest by its code; repeatable'),
       out: {
         kind: 'string',
@@ -138,17 +172,30 @@ const cleanCli = () =>
     name: `${NAME} clean`,
     summary:
       'Delete what the sweep (or a saved plan) found: check each candidate again, show the steps, ' +
-      'ask, then delete. Without --pick, every candidate nothing objects to and no plugin holds for review runs.',
+      'ask, then delete. By default every candidate nothing objects to and no plugin holds for review runs; ' +
+      '--pick adds to it, --spare takes from it.',
     autoHelp: false,
     positionals: TARGETS,
     flags: {
       ...SWEEP_FLAGS,
-      pick: idList('id', 'work on exactly these candidates; repeatable'),
+      pick: idList(
+        'id',
+        'also run this candidate; one its plugin holds for review runs only when picked; repeatable',
+      ),
+      spare: idList(
+        'id|name|glob',
+        'leave these candidates alone: an id, a path, a branch name (its worktree too) or a glob; repeatable',
+      ),
       allow: idList('code', 'accept a protest by its code; repeatable'),
       plan: {
         kind: 'string',
         valueName: 'file',
         help: 'run this plan (- reads stdin) instead of sweeping',
+      },
+      interactive: {
+        kind: 'boolean',
+        short: 'i',
+        help: 'choose the candidates from a checklist; needs a terminal',
       },
       yes: { kind: 'boolean', short: 'y', help: 'delete without asking' },
       dryRun: { kind: 'boolean', help: 'check and show the steps; delete nothing' },
@@ -174,10 +221,21 @@ export type Confirm = (question: string) => boolean | null
 
 const terminalConfirm: Confirm = (question) => (canPrompt() ? askYesNo(question) : null)
 
+/**
+ * Shows a checklist and returns the ticked indexes, or null when there is no
+ * one to ask. `main` takes it as a parameter so a test can answer.
+ */
+export type Checklist = (question: string, items: readonly ChecklistItem[]) => number[] | null
+
+const terminalChecklist: Checklist = (question, items) =>
+  canPrompt() ? askChecklist(question, items) : null
+
 export interface MainDeps {
   /** The plugins that exist; default is the shipped ones, built from the config. */
   plugins?: readonly Plugin[]
   confirm?: Confirm
+  /** Answers `clean -i`. Defaults to a checklist on the terminal. */
+  checklist?: Checklist
   /** Reads `--plan -`. Defaults to stdin. */
   readStdin?: () => string
 }
@@ -210,7 +268,12 @@ const usageError = (ctx: CliContext, name: string, message: string): number => {
 
 /** A refusal as its exit code: 2 for what was typed, 1 for the state found. */
 function refusal(ctx: CliContext, name: string, err: unknown): number {
-  if (err instanceof ConfigError || err instanceof UnknownPlugin || err instanceof BadInput) {
+  if (
+    err instanceof ConfigError ||
+    err instanceof UnknownPlugin ||
+    err instanceof BadInput ||
+    err instanceof SelectionError
+  ) {
     return usageError(ctx, name, err.message)
   }
   ctx.io.stderr(renderError(err instanceof Error ? err.message : String(err), name))
@@ -259,15 +322,9 @@ const wanted = (v: SweepValues): string[] | undefined =>
 
 /** The plugins this run uses: the shipped ones built from the config, or `deps.plugins`, then chosen by flag. */
 function pluginsFor(v: SweepValues, config: Config, deps: MainDeps): Plugin[] {
-  const named = v.only?.filter((s) => s !== '')
-  const only = named === undefined || named.length === 0 ? undefined : (named as Kind[])
-  const bad = named?.filter((k) => !(KINDS as readonly string[]).includes(k))
-  if (bad !== undefined && bad.length > 0) {
-    throw new BadInput(`--only names no kind ${bad.join(', ')}; have ${KINDS.join(', ')}`)
-  }
-  if (only?.includes('remote')) {
-    throw new BadInput('remote branches are repo-cleaner’s: use `repo-cleaner --remote`')
-  }
+  // As repo-cleaner's --worktrees and --branches; remote branches are repo-cleaner's alone.
+  const only: Kind[] =
+    v.worktrees === v.branches ? ['worktree', 'branch'] : v.worktrees ? ['worktree'] : ['branch']
   const gitSettings = config.plugins.git
   if (
     deps.plugins === undefined &&
@@ -279,7 +336,7 @@ function pluginsFor(v: SweepValues, config: Config, deps: MainDeps): Plugin[] {
   const all =
     deps.plugins ??
     Object.entries(FACTORIES).map(([name, make]) =>
-      make({ settings: config.plugins[name] ?? {}, only: only ?? ['worktree', 'branch'] }),
+      make({ settings: config.plugins[name] ?? {}, only }),
     )
   const unused = Object.keys(config.plugins).filter((n) => !all.some((p) => p.name === n))
   if (unused.length > 0) throw new BadInput(`config names no plugin ${unused.join(', ')}`)
@@ -309,7 +366,7 @@ function writeWarnings(ctx: CliContext, name: string, warnings: readonly string[
   for (const w of warnings) ctx.io.stderr(renderError(w, name))
 }
 
-/** What a candidate would do with no pick and nothing allowed. */
+/** What a candidate would do by default, with nothing allowed. */
 function standing(c: Candidate, os: readonly Objection[]): 'delete' | 'review' | 'refused' {
   const mine = os.filter((o) => o.candidate === c.id)
   if (mine.some((o) => o.level === 'refuse')) return 'refused'
@@ -334,8 +391,9 @@ function renderCandidates(
   return block(lines)
 }
 
-function runReport(argv: readonly string[], ctx: CliContext, deps: MainDeps): number {
-  const parsed = parseWith(reportCli(), NAME, argv, ctx)
+function runStatus(argv: readonly string[], ctx: CliContext, deps: MainDeps): number {
+  const name = `${NAME} status`
+  const parsed = parseWith(statusCli(), name, argv, ctx)
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
   let s: ReturnType<typeof survey>
@@ -343,17 +401,17 @@ function runReport(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
     const config = loadConfig(v, ctx)
     s = survey(pluginsFor(v, config, deps), contextFor(parsed.positionals, config, ctx, []))
   } catch (err) {
-    return refusal(ctx, NAME, err)
+    return refusal(ctx, name, err)
   }
   if (v.format === 'json') {
     ctx.io.stdout(
       `${JSON.stringify({ plugins: s.plugins.map((p) => p.name), warnings: s.warnings, candidates: s.candidates, objections: s.objections }, null, 2)}\n`,
     )
   } else {
-    writeWarnings(ctx, NAME, s.warnings)
+    writeWarnings(ctx, name, s.warnings)
     ctx.io.stdout(
       `plugins: ${s.plugins.map((p) => p.name).join(', ') || '(none)'}\n` +
-        renderCandidates(s.candidates, s.objections, v.all),
+        renderCandidates(s.candidates, s.objections, v.allRows),
     )
   }
   return nothingFound(s) ? EXIT_NOTHING_TO_SWEEP : EXIT.ok
@@ -371,11 +429,7 @@ function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps): numb
     const s = survey(pluginsFor(v, config, deps), cctx)
     writeWarnings(ctx, name, s.warnings)
     if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
-    plan = makePlan(s, {
-      targets: cctx.targets,
-      pick: v.pick.length > 0 ? v.pick : undefined,
-      allow: v.allow,
-    })
+    plan = makePlan(s, { targets: cctx.targets, pick: v.pick, spare: v.spare, allow: v.allow })
   } catch (err) {
     return refusal(ctx, name, err)
   }
@@ -396,11 +450,19 @@ function cleanConflict(v: CleanValues, targets: readonly string[]): string | nul
   if (v.plan !== undefined) {
     const fixed = [
       targets.length > 0 ? 'targets' : null,
-      v.only !== undefined ? '--only' : null,
+      v.worktrees === true ? '--worktrees' : null,
+      v.branches === true ? '--branches' : null,
       v.pick.length > 0 ? '--pick' : null,
+      v.spare.length > 0 ? '--spare' : null,
       v.allow.length > 0 ? '--allow' : null,
     ].filter((f) => f !== null)
     if (fixed.length > 0) return `--plan already fixed what is swept; drop ${fixed.join(', ')}`
+  }
+  if (v.interactive && v.pick.length > 0) {
+    return '-i chooses the candidates from a checklist; drop --pick, or drop -i'
+  }
+  if (v.interactive && v.plan === '-') {
+    return '-i asks on the terminal, and --plan - reads the plan from stdin; save the plan to a file'
   }
   if (v.plan === '-' && !v.yes && !v.dryRun) {
     return '--plan - reads the plan from stdin, so nothing can ask; pass --yes or --dry-run'
@@ -410,6 +472,43 @@ function cleanConflict(v: CleanValues, targets: readonly string[]): string | nul
   if (v.receipt !== undefined && v.dryRun)
     return '--receipt has no effect with --dry-run: nothing runs to record'
   return null
+}
+
+const NO_TERMINAL_FOR_I =
+  '-i needs a terminal to show the checklist; name the candidates with --pick and --spare instead'
+
+/**
+ * `-i`: the plan's candidates as a checklist, those the preview would run
+ * ticked, refused ones shown but not selectable, spared ones left out; then
+ * each ticked candidate's protests not yet allowed, asked for by code. The
+ * answer is the plan selecting exactly the ticked candidates, or null when
+ * there is no one to ask.
+ */
+function chooseCandidates(plan: Plan, preview: Decision, deps: MainDeps): Plan | null {
+  const spared = new Set(preview.dropped.filter((d) => d.reason === 'spared').map((d) => d.id))
+  const shown = plan.candidates.filter((c) => !spared.has(c.id))
+  if (shown.length === 0) return plan
+  const runs = new Set(preview.run.map((c) => c.id))
+  const items: ChecklistItem[] = shown.map((c) => {
+    const how = standing(c, plan.objections)
+    return {
+      label: `${c.id}  ${how}: ${c.why}`,
+      checked: runs.has(c.id),
+      ...(how === 'refused' ? { disabled: how } : {}),
+    }
+  })
+  const ticked = (deps.checklist ?? terminalChecklist)('Clean which candidates?', items)
+  if (ticked === null) return null
+  const allow = [...plan.allow]
+  const ask = deps.confirm ?? terminalConfirm
+  for (const i of ticked) {
+    const c = shown[i]!
+    for (const o of plan.objections) {
+      if (o.candidate !== c.id || o.level !== 'protest' || allow.includes(o.code)) continue
+      if (ask(`${c.id} carries ${o.code} (${o.reason}): allow it?`) === true) allow.push(o.code)
+    }
+  }
+  return { ...plan, select: ticked.map((i) => shown[i]!.id), pick: [], allow }
 }
 
 /** What a clean would do, as text: each candidate to run in order, then each one dropped and why. */
@@ -452,6 +551,9 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   const v = parsed.values
   const conflict = cleanConflict(v, parsed.positionals)
   if (conflict !== null) return usageError(ctx, name, conflict)
+  if (v.interactive && deps.checklist === undefined && !canPrompt()) {
+    return usageError(ctx, name, NO_TERMINAL_FOR_I)
+  }
 
   const now = new Date()
   const dirs = hostDirs(ctx.env)
@@ -470,7 +572,8 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
       if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
       plan = makePlan(s, {
         targets: cctx.targets,
-        pick: v.pick.length > 0 ? v.pick : undefined,
+        pick: v.pick,
+        spare: v.spare,
         allow: v.allow,
         now,
       })
@@ -492,6 +595,13 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
     }
   } catch (err) {
     return refusal(ctx, name, err)
+  }
+
+  if (v.interactive) {
+    const chosen = chooseCandidates(plan, preview, deps)
+    if (chosen === null) return usageError(ctx, name, NO_TERMINAL_FOR_I)
+    plan = chosen
+    preview = decidePlan(plan)
   }
 
   const count = preview.run.length
@@ -540,7 +650,21 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
 /** Returns an exit code; never exits the process. */
 export function main(argv: readonly string[], ctx: CliContext, deps: MainDeps = {}): number {
   const [sub, ...rest] = argv
+  if (sub === 'status') return runStatus(rest, ctx, deps)
   if (sub === 'plan') return runPlan(rest, ctx, deps)
   if (sub === 'clean') return runClean(rest, ctx, deps)
-  return runReport(argv, ctx, deps)
+  if (sub === '-h' || sub === '--help') {
+    ctx.io.stdout(OVERVIEW)
+    return EXIT.ok
+  }
+  // Nothing runs until a phase is named: the bare command explains them.
+  if (sub === undefined) {
+    ctx.io.stderr(OVERVIEW)
+    return EXIT.usage
+  }
+  return usageError(
+    ctx,
+    NAME,
+    `${JSON.stringify(sub)} is not a phase: name one of status, plan or clean, then the targets`,
+  )
 }
