@@ -1,7 +1,7 @@
 {
   "family": "agent-router",
   "reference": "ts",
-  "referenceVersion": "0.4.4",
+  "referenceVersion": "0.4.5",
   "sections": {
     "named_layers": {
       "description": "Layers that other sections name in a catalogue's `layers`. A case's name is the layer's name and its `input.layer` is the layer; `expect` is the problems that laying it alone gives.",
