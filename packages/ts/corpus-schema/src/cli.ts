@@ -2,21 +2,24 @@
  * The corpus-schema command line, for the corpus-schema spec
  * (packages/conformance/corpus-schema/SPEC.md).
  *
- *   corpus-schema validate [--fix] [--strict] <folder>...
+ *   corpus-schema validate [--fix] [--strict] [--no-rules] <folder>...
  *   corpus-schema sync [<folder>...]
  *
  * `validate` checks every corpus at or below each folder. `sync` writes each one's `_references/`
- * copies, the folder defaulting to `.`. Exits 1 on any error, or with `--strict` on any warning,
+ * copies, the folder defaulting to `.`. After a corpus passes, `validate` runs the rules of the
+ * corpora it extends, unless `--no-rules`. Exits 1 on any error, or with `--strict` on any warning,
  * and 2 on bad usage.
  */
 import { existsSync, realpathSync, statSync } from 'node:fs'
 import { relative, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
+import { loadCorpus } from './load.ts'
+import { runRules } from './rules.ts'
 import { namedRoots, syncCorpus } from './sync.ts'
 import { findCorpora, validateCorpus } from './validate.ts'
 
 const USAGE =
-  'usage: corpus-schema validate [--fix] [--strict] <folder>...\n       corpus-schema sync [<folder>...]\n'
+  'usage: corpus-schema validate [--fix] [--strict] [--no-rules] <folder>...\n       corpus-schema sync [<folder>...]\n'
 const usage = (): never => {
   process.stderr.write(USAGE)
   process.exit(2)
@@ -26,7 +29,11 @@ const parse = () => {
   try {
     return parseArgs({
       allowPositionals: true,
-      options: { fix: { type: 'boolean' }, strict: { type: 'boolean' } },
+      options: {
+        fix: { type: 'boolean' },
+        strict: { type: 'boolean' },
+        'no-rules': { type: 'boolean' },
+      },
     })
   } catch {
     return usage()
@@ -35,8 +42,9 @@ const parse = () => {
 const parsed = parse()
 const fix = parsed.values.fix === true
 const strict = parsed.values.strict === true
+const noRules = parsed.values['no-rules'] === true
 const [verb, ...args] = parsed.positionals
-if (verb === 'validate' ? args.length === 0 : verb !== 'sync' || fix || strict) usage()
+if (verb === 'validate' ? args.length === 0 : verb !== 'sync' || fix || strict || noRules) usage()
 const dirs = args.length === 0 ? ['.'] : args
 
 let failed = false
@@ -93,6 +101,11 @@ if (verb === 'sync') {
   const ids = new Map<string, string>()
   for (const root of roots) {
     const report = validateCorpus(root, { fix })
+    if (!noRules && report.errors.length === 0) {
+      const rules = await runRules(loadCorpus(root))
+      report.errors.push(...rules.errors)
+      report.warnings.push(...rules.warnings)
+    }
     if (roots.size > 1) process.stderr.write(`${where(root)}:\n`)
     for (const f of report.fixed) process.stdout.write(`fixed: ${f}\n`)
     for (const w of report.warnings) process.stderr.write(`warning: ${w}\n`)
