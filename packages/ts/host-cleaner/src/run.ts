@@ -537,7 +537,7 @@ function runOne(c: Candidate, step: Step, s: Survey, owner: Plugin | undefined):
     return fail(`${c.owner} cannot delete`)
   }
   try {
-    const roots = owner?.roots?.(s.ctx)
+    const roots = owner.roots?.(s.ctx)
     if (roots !== undefined && containedIn(roots, c.path) === null) {
       return fail(`${c.path} is not inside ${c.owner}'s roots`)
     }
