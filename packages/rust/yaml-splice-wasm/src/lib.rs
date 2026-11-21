@@ -24,7 +24,7 @@ use std::ops::Range;
 
 use serde_json::Value as JsonValue;
 use wasm_bindgen::prelude::*;
-use yaml_splice::{EditError, FieldEdit, Value, edit_yaml};
+use yaml_splice::{EditError, FieldEdit, PathSegment, Value, edit_yaml};
 
 /// The successful outcome of an edit batch. A wasm-bindgen class: the caller
 /// reads `.bytes` / `.changed` and should `.free()` it when done (it owns a
@@ -55,7 +55,9 @@ impl EditResult {
 /// Edit `source` (raw UTF-8 YAML bytes) with `edits_json`, an array of
 /// externally-tagged field edits, e.g.
 /// `[{"Set":{"key":"status","value":"done"}}]`,
-/// `[{"Remove":{"key":"draft"}}]`, `[{"Rename":{"from":"a","to":"b"}}]`.
+/// `[{"Remove":{"key":"draft"}}]`, `[{"Rename":{"from":"a","to":"b"}}]`, and
+/// the nested forms `[{"SetPath":{"path":["a",0,"b"],"value":1}}]`,
+/// `RemovePath {path}` and `RenamePath {path, to}`.
 #[wasm_bindgen(js_name = editYaml)]
 pub fn edit_yaml_wasm(source: &[u8], edits_json: &str) -> Result<EditResult, JsValue> {
     let edits = parse_edits(edits_json).map_err(|msg| {
@@ -93,7 +95,7 @@ fn parse_edits(edits_json: &str) -> Result<Vec<FieldEdit>, String> {
             .ok_or_else(|| format!("edits[{i}] must be an object"))?;
         if obj.len() != 1 {
             return Err(format!(
-                "edits[{i}] must have exactly one tag key (Set | Remove | Rename)"
+                "edits[{i}] must have exactly one tag key (Set | Remove | Rename | SetPath | RemovePath | RenamePath)"
             ));
         }
         let (tag, body) = obj.iter().next().expect("len == 1");
@@ -113,6 +115,20 @@ fn parse_edits(edits_json: &str) -> Result<Vec<FieldEdit>, String> {
                 from: str_field(body, "from", i, "Rename")?,
                 to: str_field(body, "to", i, "Rename")?,
             },
+            "SetPath" => FieldEdit::SetPath {
+                path: path_field(body, i, "SetPath")?,
+                value: Value::from(
+                    body.get("value")
+                        .ok_or_else(|| format!("edits[{i}].SetPath.value is required"))?,
+                ),
+            },
+            "RemovePath" => FieldEdit::RemovePath {
+                path: path_field(body, i, "RemovePath")?,
+            },
+            "RenamePath" => FieldEdit::RenamePath {
+                path: path_field(body, i, "RenamePath")?,
+                to: str_field(body, "to", i, "RenamePath")?,
+            },
             other => return Err(format!("edits[{i}] has unknown tag {other:?}")),
         };
         out.push(edit);
@@ -125,6 +141,33 @@ fn str_field(body: &JsonValue, field: &str, i: usize, tag: &str) -> Result<Strin
         .and_then(JsonValue::as_str)
         .map(str::to_string)
         .ok_or_else(|| format!("edits[{i}].{tag}.{field} must be a string"))
+}
+
+/// A `path`: an array of strings (keys) and non-negative integers (indices).
+/// An empty array passes through, since the crate refuses it as
+/// `UnsupportedPath`.
+fn path_field(body: &JsonValue, i: usize, tag: &str) -> Result<Vec<PathSegment>, String> {
+    let segments = body
+        .get("path")
+        .and_then(JsonValue::as_array)
+        .ok_or_else(|| format!("edits[{i}].{tag}.path must be an array"))?;
+    segments
+        .iter()
+        .enumerate()
+        .map(|(j, seg)| match seg {
+            JsonValue::String(key) => Ok(PathSegment::Key(key.clone())),
+            JsonValue::Number(n) => n
+                .as_u64()
+                .and_then(|u| usize::try_from(u).ok())
+                .map(PathSegment::Index)
+                .ok_or_else(|| {
+                    format!("edits[{i}].{tag}.path[{j}] must be a non-negative integer")
+                }),
+            _ => Err(format!(
+                "edits[{i}].{tag}.path[{j}] must be a string or a non-negative integer"
+            )),
+        })
+        .collect()
 }
 
 // --- EditError -> thrown JS Error ------------------------------------------
@@ -151,6 +194,9 @@ fn variant_name(e: &EditError) -> &'static str {
         EditError::MissingKey { .. } => "MissingKey",
         EditError::KeyConflict { .. } => "KeyConflict",
         EditError::UnrenderableValue { .. } => "UnrenderableValue",
+        EditError::PathNotFound { .. } => "PathNotFound",
+        EditError::PathTypeMismatch { .. } => "PathTypeMismatch",
+        EditError::UnsupportedPath { .. } => "UnsupportedPath",
         EditError::InvalidResult { .. } => "InvalidResult",
         _ => "EditError",
     }
@@ -165,5 +211,73 @@ fn span_of(e: &EditError) -> Option<Range<usize>> {
         | EditError::AmbiguousKey { at, .. }
         | EditError::KeyConflict { at, .. } => Some(at.clone()),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(json: &str) -> Result<Vec<FieldEdit>, String> {
+        parse_edits(json)
+    }
+
+    #[test]
+    fn path_edits_decode_keys_and_indices() {
+        let edits = parse(
+            r#"[{"SetPath":{"path":["a",0,"b"],"value":1}},
+                {"RemovePath":{"path":["a"]}},
+                {"RenamePath":{"path":["a","b"],"to":"c"}}]"#,
+        )
+        .unwrap();
+        assert_eq!(
+            edits[0],
+            FieldEdit::SetPath {
+                path: vec!["a".into(), PathSegment::Index(0), "b".into()],
+                value: Value::from(&serde_json::json!(1)),
+            }
+        );
+        assert_eq!(
+            edits[1],
+            FieldEdit::RemovePath {
+                path: vec!["a".into()]
+            }
+        );
+        assert_eq!(
+            edits[2],
+            FieldEdit::RenamePath {
+                path: vec!["a".into(), "b".into()],
+                to: "c".into()
+            }
+        );
+    }
+
+    #[test]
+    fn an_empty_path_passes_through_to_the_crate() {
+        let edits = parse(r#"[{"RemovePath":{"path":[]}}]"#).unwrap();
+        assert_eq!(edits[0], FieldEdit::RemovePath { path: vec![] });
+    }
+
+    #[test]
+    fn a_bad_path_segment_is_refused() {
+        for seg in ["-1", "1.5", "true", "null", "[]", "1e30"] {
+            let json = format!(r#"[{{"RemovePath":{{"path":["a",{seg}]}}}}]"#);
+            let err = parse(&json).unwrap_err();
+            assert!(err.contains("path[1]"), "{seg}: {err}");
+        }
+        assert!(parse(r#"[{"RemovePath":{"path":"a"}}]"#).is_err());
+        assert!(parse(r#"[{"RemovePath":{}}]"#).is_err());
+        assert!(parse(r#"[{"RenamePath":{"path":["a"]}}]"#).is_err());
+        assert!(parse(r#"[{"SetPath":{"path":["a"]}}]"#).is_err());
+    }
+
+    #[test]
+    fn path_errors_have_names() {
+        let e = EditError::PathNotFound {
+            path: "a.b".into(),
+            segment: 1,
+        };
+        assert_eq!(variant_name(&e), "PathNotFound");
+        assert_eq!(span_of(&e), None);
     }
 }

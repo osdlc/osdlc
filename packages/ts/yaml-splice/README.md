@@ -1,7 +1,7 @@
 # @osdlc/yaml-splice
 
-Edit top-level fields of a YAML mapping in place, on bytes. Set, remove or
-rename a field, and every byte outside the edited span stays as it was:
+Edit fields of a YAML mapping in place, on bytes, at the top level or nested
+by path. Set, remove or rename a field, and every byte outside the edited span stays as it was:
 comments, key order, quoting, a byte-order mark and line endings. It runs the
 `yaml-splice` Rust crate as WebAssembly, so it has no runtime dependencies and
 no native code.
@@ -24,8 +24,9 @@ frontmatter, config files, and tools that sync metadata into notes.
 When not to use it:
 
 - To read values. Use a YAML parser, such as `yaml`.
-- To edit nested values. Only top-level keys of a mapping are addressed; a
-  `Set` replaces a key's whole value.
+- To edit inside a sequence or a flow collection (`{a: 1}`, `[a, b]`). Paths
+  go through block mappings only for now; anything else is refused as
+  `UnsupportedPath`.
 - In a browser or through a bundler such as Vite. This release loads under
   Node.js and Bun only (see Runtimes and platforms).
 
@@ -57,7 +58,7 @@ assert.equal(new TextDecoder().decode(out.bytes), "name: 'Draft'  # shown in the
 assert.equal(out.changed, true)
 ```
 
-More in `examples/`: setting values, removing and renaming in one batch, and
+More in `examples/`: setting values, nested edits by path, removing and renaming in one batch, and
 handling refusals.
 
 ## API
@@ -66,7 +67,12 @@ handling refusals.
   and a list of `FieldEdit`s, and returns an `EditOutcome`: the new `bytes` and
   `changed`. It throws an `EditError` when it refuses.
 - `FieldEdit` is one edit: `{ Set: { key, value } }`,
-  `{ Remove: { key } }` or `{ Rename: { from, to } }`.
+  `{ Remove: { key } }` or `{ Rename: { from, to } }`, or the same at a path:
+  `{ SetPath: { path, value } }`, `{ RemovePath: { path } }` or
+  `{ RenamePath: { path, to } }`. A `path` is an `EditPath`, such as
+  `['server', 'port']`.
+- `EditPath` is a path: a list of keys (strings) and sequence positions
+  (non-negative integers).
 - `EditValue` is the value a `Set` writes: any JSON-shaped value. Maps and
   lists are written as block YAML under the key.
 - `EditOutcome` holds `bytes` and `changed`. When no value changed, `bytes`
@@ -76,7 +82,8 @@ handling refusals.
   `[start, end)` in the input that the refusal is about, when there is one.
 - `EditErrorCode` is one of `InvalidEdit`, `InvalidUtf8`, `MalformedYaml`,
   `UnsupportedDocument`, `RootNotMapping`, `AmbiguousKey`, `MissingKey`,
-  `KeyConflict`, `UnrenderableValue` and `InvalidResult`. A minor release may
+  `KeyConflict`, `UnrenderableValue`, `PathNotFound`, `PathTypeMismatch`,
+  `UnsupportedPath` and `InvalidResult`. A minor release may
   add a code, so give a `switch` over it a `default` branch.
 - Any other error `editYaml` throws is not a refusal and is passed through
   as is. A `RuntimeError` from the WebAssembly module means it crashed; do
@@ -97,12 +104,20 @@ Each export has TSDoc in the source. Your editor shows it.
 - `Set` on a missing key appends it after the last top-level entry. `Remove`
   of a missing key changes nothing. `Rename` of a missing key is
   `MissingKey`; a rename onto an existing key is `KeyConflict`.
+- A one-segment path is exactly the top-level edit. `SetPath` appends a missing
+  last key to its mapping, and creates the collection below an empty parent
+  (`a:`, `a: {}`). `RemovePath` of an absent last key changes nothing; a
+  missing parent is `PathNotFound`. Removing the only key of a mapping leaves
+  `{}`. A path that steps a key into a sequence, an index into a mapping, or
+  anything into a scalar is `PathTypeMismatch`. An empty path, and a path
+  across a sequence or a flow collection, is `UnsupportedPath`.
 - New lines use the document's first line ending (LF or CRLF). A BOM stays at
   byte zero.
 - `NaN` and `±Infinity` anywhere in a `Set` value are refused as
   `UnrenderableValue` before any byte is written.
 - An edit the editor cannot read is refused as `InvalidEdit`: a `Set` with
-  no `value` (or `value: undefined`), an unknown tag, or a `Set` value
+  no `value` (or `value: undefined`), a path segment that is not a string or
+  a non-negative integer, an unknown tag, or a `Set` value
   nested more than 124 levels deep. The last is the JSON decoder's recursion
   limit (serde_json's 128 levels, less the levels the edit list itself
   takes).

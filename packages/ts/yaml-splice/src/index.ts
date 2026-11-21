@@ -25,14 +25,26 @@ export type EditValue =
   null | boolean | number | string | readonly EditValue[] | { readonly [key: string]: EditValue }
 
 /**
- * One top-level field edit, externally tagged to match the crate's `FieldEdit`
- * enum: exactly one of `Set`, `Remove` or `Rename`. A `Remove` of a key that is
- * not there changes nothing.
+ * A path into the document: a string is a mapping key, a non-negative integer
+ * a position in a sequence. An empty path is refused as `UnsupportedPath`.
+ */
+export type EditPath = readonly (string | number)[]
+
+/**
+ * One field edit, externally tagged to match the crate's `FieldEdit` enum:
+ * exactly one of `Set`, `Remove`, `Rename` (top-level keys) or `SetPath`,
+ * `RemovePath`, `RenamePath` (nested, by {@link EditPath}). A one-segment path
+ * behaves like the top-level edit. A `Remove` of a key that is not there
+ * changes nothing. This release edits through block mappings; a path that
+ * crosses a sequence or a flow collection is refused as `UnsupportedPath`.
  */
 export type FieldEdit =
   | { readonly Set: { readonly key: string; readonly value: EditValue } }
   | { readonly Remove: { readonly key: string } }
   | { readonly Rename: { readonly from: string; readonly to: string } }
+  | { readonly SetPath: { readonly path: EditPath; readonly value: EditValue } }
+  | { readonly RemovePath: { readonly path: EditPath } }
+  | { readonly RenamePath: { readonly path: EditPath; readonly to: string } }
 
 /** The result of an edit batch. */
 export interface EditOutcome {
@@ -45,7 +57,8 @@ export interface EditOutcome {
 /**
  * Why an edit was refused: one code per variant of the crate's `EditError`,
  * plus `InvalidEdit` for an edit the editor could not read: a missing `value`,
- * an unknown tag, or a `Set` value nested more than 124 levels deep. A minor
+ * an unknown tag, or a path segment that is not a string or a non-negative integer, or a `Set`
+ * value nested more than 124 levels deep. A minor
  * release may add a code, so a `switch` over it needs a `default` branch.
  */
 export type EditErrorCode =
@@ -58,6 +71,9 @@ export type EditErrorCode =
   | 'MissingKey'
   | 'KeyConflict'
   | 'UnrenderableValue'
+  | 'PathNotFound'
+  | 'PathTypeMismatch'
+  | 'UnsupportedPath'
   | 'InvalidResult'
 
 /**
@@ -107,6 +123,9 @@ const ERROR_CODE_TABLE = {
   MissingKey: true,
   KeyConflict: true,
   UnrenderableValue: true,
+  PathNotFound: true,
+  PathTypeMismatch: true,
+  UnsupportedPath: true,
   InvalidResult: true,
 } as const satisfies Record<EditErrorCode, true>
 
@@ -127,7 +146,7 @@ const ERROR_CODES: ReadonlySet<string> = new Set(Object.keys(ERROR_CODE_TABLE))
  * differ only in case make an edit of either one `AmbiguousKey`.
  */
 export function editYaml(source: Uint8Array, edits: readonly FieldEdit[]): EditOutcome {
-  assertFiniteNumbers(edits)
+  assertValid(edits)
   const editsJson = JSON.stringify(edits)
 
   let result: WasmEditResult
@@ -147,14 +166,40 @@ export function editYaml(source: Uint8Array, edits: readonly FieldEdit[]): EditO
 }
 
 /**
- * Refuse non-finite numbers before the JSON boundary. `JSON.stringify` renders
- * `NaN` and `±Infinity` as `null`, so without this check a `Set` would silently
- * write `null` over the field instead of refusing the value.
+ * Refuse what `JSON.stringify` would change before the JSON boundary. It renders
+ * `NaN` and `±Infinity` as `null`, so without the first check a `Set` would
+ * silently write `null` over the field instead of refusing the value. It also
+ * renders a path segment that is `NaN`, `±Infinity` or `undefined` as `null`, so
+ * a segment must be a string or a safe non-negative integer.
  */
-function assertFiniteNumbers(edits: readonly FieldEdit[]): void {
+function assertValid(edits: readonly FieldEdit[]): void {
   for (const edit of edits) {
     if ('Set' in edit) assertFiniteValue(edit.Set.value, edit.Set.key)
+    else if ('SetPath' in edit) {
+      assertPath(edit.SetPath.path)
+      assertFiniteValue(edit.SetPath.value, formatPath(edit.SetPath.path))
+    } else if ('RemovePath' in edit) assertPath(edit.RemovePath.path)
+    else if ('RenamePath' in edit) assertPath(edit.RenamePath.path)
   }
+}
+
+function assertPath(path: EditPath): void {
+  if (!Array.isArray(path)) throw new EditError('InvalidEdit', 'path must be an array')
+  path.forEach((segment: unknown, i) => {
+    if (typeof segment === 'string') return
+    if (typeof segment === 'number' && Number.isSafeInteger(segment) && segment >= 0) return
+    throw new EditError(
+      'InvalidEdit',
+      `path[${i}] must be a string or a non-negative integer, got ${String(segment)}`,
+    )
+  })
+}
+
+function formatPath(path: EditPath): string {
+  return path
+    .map((s) => (typeof s === 'number' ? `[${s}]` : `.${s}`))
+    .join('')
+    .replace(/^\./, '')
 }
 
 function assertFiniteValue(value: EditValue, key: string): void {
