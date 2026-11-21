@@ -1,7 +1,8 @@
 //! The edit functions: `edit_yaml(bytes, edits) -> EditOutcome`.
 //!
-//! UTF-8 YAML bytes and an ordered list of top-level field edits give new
-//! bytes or a typed refusal. The functions do no I/O and are deterministic.
+//! UTF-8 YAML bytes and an ordered list of field edits (top-level keys, or
+//! keys and items below them, addressed by a path) give new bytes or a typed
+//! refusal. The functions do no I/O and are deterministic.
 //! Only the edited field's bytes are rewritten.
 //!
 //! Compared with [`splice`](crate::splice), the older single-key functions,
@@ -24,6 +25,7 @@ use std::ops::Range;
 use saphyr_parser::{Event, Parser};
 
 use crate::parse::{self, KeySpan, ParseError, Parsed};
+use crate::path;
 use crate::render;
 use crate::splice::{line_indent, value_assignment, value_edit, without_entry};
 use crate::value::{Mapping, Value};
@@ -66,6 +68,83 @@ pub enum FieldEdit {
         /// The new name. No other key may already have it.
         to: String,
     },
+    /// [`FieldEdit::Set`] at a path. A one-segment path is exactly a `Set`.
+    ///
+    /// Missing keys along the path are created, and a null or empty
+    /// (`{}`, `[]`) parent is replaced by the collection the next segment
+    /// needs. A path through a scalar with content is
+    /// [`EditError::PathTypeMismatch`].
+    SetPath {
+        /// The path to the value to write.
+        path: Vec<PathSegment>,
+        /// The value to write.
+        value: Value,
+    },
+    /// [`FieldEdit::Remove`] at a path. A one-segment path is exactly a
+    /// `Remove`.
+    ///
+    /// An absent last segment is a no-op. A missing parent is
+    /// [`EditError::PathNotFound`]. Removing the only entry of a collection
+    /// leaves `{}` (or `[]`).
+    RemovePath {
+        /// The path to the key to remove.
+        path: Vec<PathSegment>,
+    },
+    /// [`FieldEdit::Rename`] at a path. A one-segment path is exactly a
+    /// `Rename`. The last segment must be a key.
+    RenamePath {
+        /// The path to the key to rename.
+        path: Vec<PathSegment>,
+        /// The new name. No sibling may already have it.
+        to: String,
+    },
+}
+
+/// One step of a path: a mapping key or a sequence index.
+///
+/// Build one with `PathSegment::from("key")` or `PathSegment::from(0usize)`.
+///
+/// **Stability:** stable in 0.x.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PathSegment {
+    /// A mapping key, matched like a top-level key.
+    Key(String),
+    /// A position in a sequence.
+    Index(usize),
+}
+
+impl From<&str> for PathSegment {
+    fn from(key: &str) -> Self {
+        PathSegment::Key(key.to_string())
+    }
+}
+
+impl From<String> for PathSegment {
+    fn from(key: String) -> Self {
+        PathSegment::Key(key)
+    }
+}
+
+impl From<usize> for PathSegment {
+    fn from(index: usize) -> Self {
+        PathSegment::Index(index)
+    }
+}
+
+/// A path as text, for messages: `a.b[0]`.
+pub(crate) fn path_text(path: &[PathSegment]) -> String {
+    let mut out = String::new();
+    for seg in path {
+        match seg {
+            PathSegment::Key(k) if out.is_empty() => out.push_str(k),
+            PathSegment::Key(k) => {
+                out.push('.');
+                out.push_str(k);
+            }
+            PathSegment::Index(i) => out.push_str(&format!("[{i}]")),
+        }
+    }
+    out
 }
 
 /// The result of an edit batch.
@@ -198,6 +277,43 @@ pub enum EditError {
         /// The key whose value failed.
         key: String,
         /// Why it failed.
+        message: String,
+    },
+
+    /// A path edit names a parent that is not there: a `RemovePath` or
+    /// `RenamePath` through a missing key, or a `SetPath` past the end of a
+    /// sequence.
+    ///
+    /// An absent *last* segment is not this error: `RemovePath` ignores it
+    /// and `RenamePath` reports [`EditError::MissingKey`].
+    #[error("path {path} not found: nothing at segment {segment}")]
+    PathNotFound {
+        /// The path as given, like `a.b[0]`.
+        path: String,
+        /// The index of the first segment that has no match.
+        segment: usize,
+    },
+
+    /// A path steps into the wrong kind of value: a key into a sequence, an
+    /// index into a mapping, or either into a scalar with content.
+    #[error("path {path} does not fit the document: segment {segment} steps into {found}")]
+    PathTypeMismatch {
+        /// The path as given, like `a.b[0]`.
+        path: String,
+        /// The index of the segment that does not fit.
+        segment: usize,
+        /// What the segment stepped into: `"a scalar"`, `"a mapping"` or
+        /// `"a sequence"`.
+        found: &'static str,
+    },
+
+    /// The path goes somewhere this crate does not edit: through an alias or
+    /// a merge key (`<<`), or into a shape it does not handle yet.
+    #[error("path {path} is not supported: {message}")]
+    UnsupportedPath {
+        /// The path as given, like `a.b[0]`.
+        path: String,
+        /// Why it is not supported.
         message: String,
     },
 
@@ -453,15 +569,63 @@ fn apply_one(
     bom_len: usize,
 ) -> Result<(String, bool), EditError> {
     let parsed = parse::parse_with_spans(current).map_err(|e| map_parse_error(e, bom_len))?;
+    let one_segment = single_key_edit(edit);
+    let edit = one_segment.as_ref().unwrap_or(edit);
     let (next, changed) = match edit {
         FieldEdit::Set { key, value } => set(current, &parsed, key, value, opts, eol, bom_len)?,
         FieldEdit::Remove { key } => remove(current, &parsed, key, opts, bom_len)?,
         FieldEdit::Rename { from, to } => rename(current, &parsed, from, to, opts, bom_len)?,
+        FieldEdit::SetPath { path, value } => {
+            return path::apply(
+                current,
+                &parsed,
+                path,
+                path::Op::Set(value),
+                opts,
+                eol,
+                bom_len,
+            );
+        }
+        FieldEdit::RemovePath { path } => {
+            return path::apply(current, &parsed, path, path::Op::Remove, opts, eol, bom_len);
+        }
+        FieldEdit::RenamePath { path, to } => {
+            return path::apply(
+                current,
+                &parsed,
+                path,
+                path::Op::Rename(to),
+                opts,
+                eol,
+                bom_len,
+            );
+        }
     };
     if changed {
         check_result(&parsed.root, as_read(&next, bom_len), edit, opts)?;
     }
     Ok((next, changed))
+}
+
+/// The top-level edit a one-segment key path stands for, so both forms give
+/// the same bytes.
+fn single_key_edit(edit: &FieldEdit) -> Option<FieldEdit> {
+    let key = |path: &[PathSegment]| match path {
+        [PathSegment::Key(k)] => Some(k.clone()),
+        _ => None,
+    };
+    match edit {
+        FieldEdit::SetPath { path, value } => key(path).map(|key| FieldEdit::Set {
+            key,
+            value: value.clone(),
+        }),
+        FieldEdit::RemovePath { path } => key(path).map(|key| FieldEdit::Remove { key }),
+        FieldEdit::RenamePath { path, to } => key(path).map(|from| FieldEdit::Rename {
+            from,
+            to: to.clone(),
+        }),
+        _ => None,
+    }
 }
 
 /// Refuses an edit whose parsed result is not what the edit asked for: the
@@ -490,6 +654,7 @@ fn check_result(
     let addressed: &[&str] = match edit {
         FieldEdit::Set { key, .. } | FieldEdit::Remove { key } => &[key.as_str()],
         FieldEdit::Rename { from, to } => &[from.as_str(), to.as_str()],
+        _ => return Ok(()),
     };
     let others = |m: &'_ Mapping| -> Vec<(String, Value)> {
         m.iter()
@@ -523,6 +688,7 @@ fn check_result(
             let from_gone = key_eq(from, to, opts) || matching(after, from).is_empty();
             from_gone && matches!((old.as_slice(), new.as_slice()), ([o], [n]) if same_value(o, n))
         }
+        _ => true,
     };
     if !others_kept {
         Err(EditError::InvalidResult {
@@ -538,7 +704,7 @@ fn check_result(
 }
 
 /// Value equality where `.nan` equals `.nan`, at any depth.
-fn same_value(a: &Value, b: &Value) -> bool {
+pub(crate) fn same_value(a: &Value, b: &Value) -> bool {
     value_eq(a, b, false)
 }
 
@@ -549,7 +715,7 @@ fn reads_back_as(read: &Value, written: &Value) -> bool {
     value_eq(read, written, true)
 }
 
-fn value_eq(a: &Value, b: &Value, int_is_float: bool) -> bool {
+pub(crate) fn value_eq(a: &Value, b: &Value, int_is_float: bool) -> bool {
     match (a, b) {
         (Value::Float(x), Value::Float(y)) => x == y || (x.is_nan() && y.is_nan()),
         // The cast is the comparison: an integer equals the float it converts to.
@@ -570,7 +736,7 @@ fn value_eq(a: &Value, b: &Value, int_is_float: bool) -> bool {
     }
 }
 
-fn set(
+pub(crate) fn set(
     current: &str,
     parsed: &Parsed,
     key: &str,
@@ -603,7 +769,7 @@ fn set(
     }
 }
 
-fn remove(
+pub(crate) fn remove(
     current: &str,
     parsed: &Parsed,
     key: &str,
@@ -621,7 +787,7 @@ fn remove(
     }
 }
 
-fn rename(
+pub(crate) fn rename(
     current: &str,
     parsed: &Parsed,
     from: &str,
@@ -673,7 +839,7 @@ fn rename(
 
 // --- span edits ------------------------------------------------------------
 
-fn replace_value(
+pub(crate) fn replace_value(
     current: &str,
     span: &KeySpan,
     value: &Value,
@@ -695,7 +861,7 @@ fn replace_value(
     Ok(out)
 }
 
-fn append_entry(
+pub(crate) fn append_entry(
     current: &str,
     key: &str,
     value: &Value,
@@ -743,13 +909,18 @@ fn doc_end_marker_start(s: &str) -> Option<usize> {
 
 // --- addressing ------------------------------------------------------------
 
-fn find_keys<'a>(src: &str, top: &'a [KeySpan], key: &str, opts: &EditOptions) -> Vec<&'a KeySpan> {
+pub(crate) fn find_keys<'a>(
+    src: &str,
+    top: &'a [KeySpan],
+    key: &str,
+    opts: &EditOptions,
+) -> Vec<&'a KeySpan> {
     top.iter()
         .filter(|k| parse::is_string_key(src, k) && key_eq(&k.key, key, opts))
         .collect()
 }
 
-fn key_eq(a: &str, b: &str, opts: &EditOptions) -> bool {
+pub(crate) fn key_eq(a: &str, b: &str, opts: &EditOptions) -> bool {
     if opts.case_sensitive {
         a == b
     } else {
@@ -785,7 +956,7 @@ fn validate_output(current: &str) -> Result<(), EditError> {
 /// The body as a reader of the output bytes sees it. Without a BOM of its
 /// own, a body that an edit leaves starting with U+FEFF is read with that
 /// character taken as a BOM and dropped, so the checks drop it too.
-fn as_read(body: &str, bom_len: usize) -> &str {
+pub(crate) fn as_read(body: &str, bom_len: usize) -> &str {
     if bom_len == 0 {
         body.strip_prefix(BOM).unwrap_or(body)
     } else {
@@ -805,11 +976,11 @@ fn detect_eol(body: &str) -> &'static str {
     }
 }
 
-fn offset(range: Range<usize>, bom_len: usize) -> Range<usize> {
+pub(crate) fn offset(range: Range<usize>, bom_len: usize) -> Range<usize> {
     (range.start + bom_len)..(range.end + bom_len)
 }
 
-fn map_parse_error(e: ParseError, _bom_len: usize) -> EditError {
+pub(crate) fn map_parse_error(e: ParseError, _bom_len: usize) -> EditError {
     match e {
         ParseError::Syntax(message) => EditError::MalformedYaml { message, at: None },
         ParseError::NotAMapping(found) => EditError::RootNotMapping { found, at: 0..0 },
@@ -1005,5 +1176,60 @@ mod frontmatter_tests {
         }];
         let out = edit_yaml(b"f: 1\n", &edits).unwrap();
         assert_eq!(out.bytes, b"f: 2\n");
+    }
+
+    #[test]
+    fn removing_a_key_a_merge_may_supply_is_refused() {
+        let src = b"base: &base {x: 1}\nchild:\n  <<: *base\n  y: 2\n";
+        let edits = [FieldEdit::RemovePath {
+            path: vec!["child".into(), "x".into()],
+        }];
+        assert!(matches!(
+            edit_yaml(src, &edits),
+            Err(EditError::UnsupportedPath { .. })
+        ));
+    }
+
+    fn edited(src: &str, path: &[&str], remove: bool, value: i64) -> Result<String, EditError> {
+        let path = path.iter().map(|k| (*k).into()).collect();
+        let edit = if remove {
+            FieldEdit::RemovePath { path }
+        } else {
+            FieldEdit::SetPath {
+                path,
+                value: value.into(),
+            }
+        };
+        let out = edit_yaml(src.as_bytes(), &[edit])?;
+        Ok(String::from_utf8(out.bytes).unwrap())
+    }
+
+    #[test]
+    fn removing_an_only_child_keeps_the_parents_properties_first() {
+        assert_eq!(
+            edited("a: &x\n  b: 1\n", &["a", "b"], true, 0).unwrap(),
+            "a: &x {}\n"
+        );
+        assert_eq!(
+            edited("a: !!map\n  b: 1\n", &["a", "b"], true, 0).unwrap(),
+            "a: !!map {}\n"
+        );
+    }
+
+    #[test]
+    fn removing_an_only_child_of_an_unterminated_mixed_eol_document() {
+        assert_eq!(
+            edited("a:\r\n  # \u{e9}\n  b: 1", &["a", "b"], true, 0).unwrap(),
+            "a: {}\r\n  # \u{e9}"
+        );
+    }
+
+    #[test]
+    fn a_keep_chomped_header_is_read_in_either_indicator_order() {
+        for header in ["|+2", "|2+", "|+\t# why"] {
+            let src = format!("a:\n  b: {header}\n    hi\n\nc: 2\n");
+            let out = edited(&src, &["a", "z"], false, 3).unwrap();
+            assert_eq!(out, format!("a:\n  b: {header}\n    hi\n\n  z: 3\nc: 2\n"));
+        }
     }
 }

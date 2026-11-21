@@ -1,5 +1,11 @@
 # @osdlc/typed-git
 
+## 0.20.0
+
+### Minor Changes
+
+- 1ba6088: `diffText` takes `context` (`--unified=<n>`, default 3) and `findRenames` (`-M`, off by default, so `diff.renames` still applies); `diffAddedFile` takes `context`. A negative or non-integer `context` throws a `TypeError`.
+
 ## 0.19.0
 
 ### Minor Changes

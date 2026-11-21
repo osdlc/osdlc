@@ -13,14 +13,32 @@ harness_review_intro() {
   echo "the \$craft:code-review skill with base origin/$1"
 }
 
+harness_skill_ref() {
+  echo "\$$1"
+}
+
+# developer_instructions takes a TOML string; jq's JSON string output is a valid one.
+harness_uses_system_prompt() { :; }
+
+harness_limits() {
+  if [ "$1" = 1 ]; then
+    echo "no network; sandbox workspace-write (only the checkout is writable); the job's timeout."
+  else
+    echo "no network; sandbox read-only; the job's timeout."
+  fi
+}
+
 harness_run() {
-  local d="${RUNNER_TEMP:-/tmp}/codex-pr-run" status
+  local d="${RUNNER_TEMP:-/tmp}/codex-pr-run" status sandbox=read-only
+  if [ "${APPLY:-0}" = 1 ]; then sandbox=workspace-write; fi
+  local dev=()
+  if [ -n "${SYSTEM_PROMPT:-}" ]; then dev=(-c "developer_instructions=$(printf '%s' "$SYSTEM_PROMPT" | jq -Rs .)"); fi
   mkdir -p "$d"
   : > "$d/events"; : > "$d/err"; : > "$d/last"
   # GH_TOKEN stays out of the agent's environment: the sandbox has no network
   # anyway, and the token can post comments.
   printf '%s' "$PROMPT" | env -u GH_TOKEN -u GITHUB_TOKEN CODEX_API_KEY="$KEY" \
-    codex exec --json --ephemeral --color never --sandbox read-only \
+    codex exec --json --ephemeral --color never --sandbox "$sandbox" ${dev[@]+"${dev[@]}"} \
     --output-last-message "$d/last" ${MODEL:+-m "$MODEL"} - > "$d/events" 2> "$d/err"
   status=$?
   # Fold the JSONL events into one result object. A failed turn

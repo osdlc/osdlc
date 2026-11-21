@@ -208,6 +208,12 @@ export const prUpdateConfigSchema = z
       .describe(
         'The last rung of the ladder, called once per kind only when nothing deterministic resolved the problem. A conflict repair is offered on a merge (a rebase that needs one is retried as a merge first), or at rebase stops with `on_rebase_conflict: repair`; a verify-failed repair runs for either strategy. Never called in a rehearsal (no `--apply`).',
       ),
+    keep_failed: z
+      .boolean()
+      .default(false)
+      .describe(
+        "Keep the worktree of a PR whose update ended `conflict` or `failed`, as `update --keep-failed` does: it moves to `.pr-update/failed/<owner>-<name>-<number>/` on a branch named for the PR, with a failed verify's log in `.pr-update-verify.log`, and the run goes on in a fresh worktree. A later run skips that PR until its head or base moves, or `--retry-failed` or `--discard-kept` is given. `--no-keep-failed` overrides it for one run. Only `--apply` runs keep anything.",
+      ),
     max_failed_attempts: z
       .number()
       .int()
