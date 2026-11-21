@@ -22,12 +22,18 @@ const idleHours = z
   .default(DEFAULT_IDLE_HOURS)
   .describe('Hours an artifact must have sat unused before it is a candidate.')
 
+const repos = z
+  .boolean()
+  .default(true)
+  .describe('Sweep the repositories `orca repo list` names, as if they were in `targets`.')
+
 /** The shipped plugins' settings by plugin name; a name without an entry takes no validated settings. */
 export const PLUGIN_SETTINGS = {
   git: z.strictObject({ enabled }),
   cargo: z.strictObject({ enabled, idleHours }),
   node: z.strictObject({ enabled, idleHours }),
   'claude-code': z.strictObject({ enabled }),
+  orca: z.strictObject({ enabled, repos }),
 } as const satisfies Record<string, z.ZodType>
 
 type Entries = Readonly<Record<string, Record<string, unknown>>>
