@@ -1309,13 +1309,13 @@ describe('fetch', () => {
         offline: true,
         provider: 'none',
       })
-      expect(unfetched.repo?.fetched).toBe(false)
+      expect(unfetched.repo?.fetchedRemotes).toEqual([])
       expect(remoteFeature(unfetched)?.verdict).toBe('review')
       expect(renderRepo(unfetched)).toContain('not fetched')
 
       const fetched = sweepOne(stale, { cwd: stale, remotes: [''], provider: 'none' })
       expect(fetched.error).toBeNull()
-      expect(fetched.repo?.fetched).toBe(true)
+      expect(fetched.repo?.fetchedRemotes).toContain('origin')
       expect(remoteFeature(fetched)?.verdict).toBe('delete')
       expect(renderRepo(fetched)).not.toContain('not fetched')
     },
@@ -1334,7 +1334,7 @@ describe('fetch', () => {
       expect(bad?.error?.startsWith('fetch of origin failed:')).toBe(true)
       expect(bad?.rows).toEqual([])
       expect(good?.error).toBeNull()
-      expect(good?.repo?.fetched).toBe(true)
+      expect(good?.repo?.fetchedRemotes).toContain('origin')
       expect(good!.rows.length).toBeGreaterThan(0)
     },
     HOOK_TIMEOUT_MS,
@@ -1343,7 +1343,7 @@ describe('fetch', () => {
   test('a repository with no remote is swept without a fetch', () => {
     const swept = sweepOne(root, { cwd: root, remotes: [''], provider: 'none' })
     expect(swept.error).toBeNull()
-    expect(swept.repo?.fetched).toBe(false)
+    expect(swept.repo?.fetchedRemotes).toEqual([])
   })
 })
 
@@ -1609,7 +1609,7 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
     const failing = lsRemoteGit(true)
     const swept = sweepHere({ offline: false, provider: 'none', git: failing.runner })
     expect(swept.error).toBeNull()
-    expect(swept.repo?.fetched).toBe(true)
+    expect(swept.repo?.fetchedRemotes).toContain('origin')
     expect(failing.calls()).toBe(1)
     expect(swept.notes).toHaveLength(1)
     expect(swept.notes[0]).toContain('`git ls-remote origin` failed (fatal: unreachable)')
